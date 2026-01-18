@@ -53,6 +53,7 @@ ALL implementation work goes to specialized agents via Task tool:
 | Docker/K8s/CI/CD | `devops` |
 | Tests/review/security | `qa` |
 | UI/UX design | `design` |
+| Git operations | Implementing agent (whoever made the changes) |
 
 **NO EXCEPTIONS** - even "trivial" 1-line fixes go through specialized agents.
 
