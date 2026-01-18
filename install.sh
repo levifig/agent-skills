@@ -4,14 +4,7 @@
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.sh | bash
-#   # OR
-#   ./install.sh [--update] [--target <target>]
-#
-# Options:
-#   --update          Update existing installation
-#   --target <name>   Install specific target only (claude-code, opencode, cursor, copilot)
-#   --all             Install all detected targets (non-interactive)
-#   --help            Show this help message
+#   ./install.sh [--update] [--target <target>] [--all]
 #
 set -euo pipefail
 
@@ -21,50 +14,144 @@ INSTALL_DIR="${HOME}/.local/share/agent-skills"
 VERSION="1.0.0"
 
 # Colors
+BOLD='\033[1m'
+DIM='\033[2m'
+ITALIC='\033[3m'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+WHITE='\033[0;37m'
+NC='\033[0m'
 
-# Logging functions
-info() { echo -e "${BLUE}[INFO]${NC} $*"; }
-success() { echo -e "${GREEN}[OK]${NC} $*"; }
-warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+# Check if gum is available
+HAS_GUM=false
+if command -v gum &> /dev/null; then
+    HAS_GUM=true
+fi
 
-# Print banner
-print_banner() {
-    echo -e "${CYAN}"
-    echo "  _   _       _                         _"
-    echo " | | | |_ __ (_)_   _____ _ __ ___  __ _| |"
-    echo " | | | | '_ \| \ \ / / _ \ '__/ __|/ _\` | |"
-    echo " | |_| | | | | |\ V /  __/ |  \__ \ (_| | |"
-    echo "  \___/|_| |_|_| \_/ \___|_|  |___/\__,_|_|"
-    echo ""
-    echo "  Agent Skills Installer v${VERSION}"
-    echo -e "${NC}"
+# ─────────────────────────────────────────────────────────────────────────────
+# UI Components
+# ─────────────────────────────────────────────────────────────────────────────
+
+print_header() {
+    clear
+    if [[ "$HAS_GUM" == true ]]; then
+        gum style \
+            --border rounded \
+            --border-foreground 99 \
+            --padding "1 3" \
+            --margin "1 0" \
+            --align center \
+            "$(gum style --foreground 99 --bold 'Universal Agent Skills')" \
+            "$(gum style --foreground 240 "v${VERSION}")"
+    else
+        echo ""
+        echo -e "${MAGENTA}╭─────────────────────────────────────╮${NC}"
+        echo -e "${MAGENTA}│${NC}                                     ${MAGENTA}│${NC}"
+        echo -e "${MAGENTA}│${NC}   ${BOLD}${CYAN}Universal Agent Skills${NC}            ${MAGENTA}│${NC}"
+        echo -e "${MAGENTA}│${NC}   ${DIM}v${VERSION}${NC}                              ${MAGENTA}│${NC}"
+        echo -e "${MAGENTA}│${NC}                                     ${MAGENTA}│${NC}"
+        echo -e "${MAGENTA}╰─────────────────────────────────────╯${NC}"
+        echo ""
+    fi
 }
 
-# Check requirements
+print_step() {
+    local step="$1"
+    local desc="$2"
+    if [[ "$HAS_GUM" == true ]]; then
+        gum style --foreground 99 --bold "[$step]" --margin "0 1"
+        gum style --foreground 255 "$desc"
+    else
+        echo -e "${MAGENTA}${BOLD}[$step]${NC} $desc"
+    fi
+}
+
+print_success() {
+    if [[ "$HAS_GUM" == true ]]; then
+        gum style --foreground 82 "✓ $1"
+    else
+        echo -e "${GREEN}✓${NC} $1"
+    fi
+}
+
+print_error() {
+    if [[ "$HAS_GUM" == true ]]; then
+        gum style --foreground 196 "✗ $1"
+    else
+        echo -e "${RED}✗${NC} $1" >&2
+    fi
+}
+
+print_info() {
+    if [[ "$HAS_GUM" == true ]]; then
+        gum style --foreground 244 "  $1"
+    else
+        echo -e "${DIM}  $1${NC}"
+    fi
+}
+
+spinner() {
+    local msg="$1"
+    shift
+    if [[ "$HAS_GUM" == true ]]; then
+        gum spin --spinner dot --title "$msg" -- "$@"
+    else
+        echo -en "${DIM}$msg...${NC} "
+        if "$@" > /dev/null 2>&1; then
+            echo -e "${GREEN}done${NC}"
+        else
+            echo -e "${RED}failed${NC}"
+            return 1
+        fi
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Detection
+# ─────────────────────────────────────────────────────────────────────────────
+
+declare -A DETECTED_TOOLS
+
+detect_tools() {
+    DETECTED_TOOLS=()
+
+    # Claude Code
+    if command -v claude &> /dev/null; then
+        DETECTED_TOOLS["claude-code"]="Claude Code (CLI detected)"
+    fi
+
+    # OpenCode
+    if [[ -d "${HOME}/.config/opencode" ]]; then
+        DETECTED_TOOLS["opencode"]="OpenCode (config found)"
+    fi
+
+    # Cursor
+    if [[ -d "${HOME}/.cursor" ]] || [[ -d "/Applications/Cursor.app" ]]; then
+        DETECTED_TOOLS["cursor"]="Cursor (app detected)"
+    fi
+
+    # Copilot - always available
+    DETECTED_TOOLS["copilot"]="GitHub Copilot (project-level)"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Requirements
+# ─────────────────────────────────────────────────────────────────────────────
+
 check_requirements() {
     local missing=()
 
-    if ! command -v git &> /dev/null; then
-        missing+=("git")
-    fi
-
-    if ! command -v node &> /dev/null; then
-        missing+=("node")
-    fi
-
-    if ! command -v npm &> /dev/null; then
-        missing+=("npm")
-    fi
+    command -v git &> /dev/null || missing+=("git")
+    command -v node &> /dev/null || missing+=("node")
+    command -v npm &> /dev/null || missing+=("npm")
 
     if [[ ${#missing[@]} -gt 0 ]]; then
-        error "Missing required tools: ${missing[*]}"
+        print_error "Missing required tools: ${missing[*]}"
+        echo ""
         echo "Please install them before continuing."
         exit 1
     fi
@@ -72,306 +159,210 @@ check_requirements() {
     local node_version
     node_version=$(node -v | sed 's/v//' | cut -d. -f1)
     if [[ "$node_version" -lt 18 ]]; then
-        error "Node.js 18+ required (found: $(node -v))"
+        print_error "Node.js 18+ required (found: $(node -v))"
         exit 1
     fi
 }
 
-# Detect installed AI tools
-detect_tools() {
-    local tools=()
+# ─────────────────────────────────────────────────────────────────────────────
+# Installation Steps
+# ─────────────────────────────────────────────────────────────────────────────
 
-    # Claude Code
-    if command -v claude &> /dev/null; then
-        tools+=("claude-code")
-    fi
-
-    # OpenCode
-    if [[ -d "${HOME}/.config/opencode" ]]; then
-        tools+=("opencode")
-    fi
-
-    # Cursor
-    if [[ -d "${HOME}/.cursor" ]] || [[ -d "/Applications/Cursor.app" ]]; then
-        tools+=("cursor")
-    fi
-
-    # Copilot (always available - project-level)
-    tools+=("copilot")
-
-    echo "${tools[*]}"
-}
-
-# Clone or update repository
-clone_or_update_repo() {
-    if [[ -d "${INSTALL_DIR}" ]]; then
-        info "Updating existing installation..."
-        cd "${INSTALL_DIR}"
-        git fetch origin
-        git reset --hard origin/main
-        cd - > /dev/null
+clone_or_update() {
+    if [[ -d "${INSTALL_DIR}/.git" ]]; then
+        spinner "Updating repository" git -C "${INSTALL_DIR}" pull --ff-only
     else
-        info "Cloning repository..."
+        rm -rf "${INSTALL_DIR}"
         mkdir -p "$(dirname "${INSTALL_DIR}")"
-        git clone "${REPO_URL}" "${INSTALL_DIR}"
+        spinner "Cloning repository" git clone --depth 1 "${REPO_URL}" "${INSTALL_DIR}"
     fi
 }
 
-# Build distribution
-build_distribution() {
-    local target="${1:-all}"
+build_targets() {
+    local targets=("$@")
 
-    info "Installing dependencies..."
     cd "${INSTALL_DIR}"
-    npm install --silent
 
-    info "Building ${target} distribution..."
-    if [[ "$target" == "all" ]]; then
-        npm run build
-    else
-        npm run "build:${target}"
+    if [[ ! -d "node_modules" ]]; then
+        spinner "Installing dependencies" npm install --silent
     fi
+
+    for target in "${targets[@]}"; do
+        spinner "Building ${target}" npm run "build:${target}" --silent
+    done
+
     cd - > /dev/null
 }
 
-# Install to Claude Code
 install_claude_code() {
-    local dist_dir="${INSTALL_DIR}/dist/claude-code"
-
-    if [[ ! -d "${dist_dir}" ]]; then
-        error "Claude Code distribution not built"
-        return 1
-    fi
-
-    info "Installing Claude Code plugins..."
-
-    # Check if Claude CLI is available
-    if ! command -v claude &> /dev/null; then
-        warn "Claude CLI not found. Manual installation required:"
-        echo "  1. Add marketplace: /plugin marketplace add ${dist_dir}"
-        echo "  2. Install plugins: /plugin install orchestration@levifig"
-        return 0
-    fi
-
-    echo ""
-    echo "Claude Code plugins ready at: ${dist_dir}"
-    echo ""
-    echo "To install, run in Claude Code:"
-    echo "  /plugin marketplace add ${dist_dir}"
-    echo "  /plugin install orchestration@levifig  # PM coordination"
-    echo "  /plugin install foundations@levifig    # Quality gates"
-    echo "  /plugin install python@levifig         # Python projects"
-    echo ""
-
-    success "Claude Code ready for manual plugin installation"
+    local dist="${INSTALL_DIR}/dist/claude-code"
+    print_success "Claude Code plugins ready"
+    print_info "Run in Claude Code:"
+    print_info "  /plugin marketplace add ${dist}"
+    print_info "  /plugin install orchestration@levifig"
 }
 
-# Install to OpenCode
 install_opencode() {
-    local dist_dir="${INSTALL_DIR}/dist/opencode"
-    local opencode_dir="${HOME}/.config/opencode"
+    local dist="${INSTALL_DIR}/dist/opencode"
+    local config="${HOME}/.config/opencode"
 
-    if [[ ! -d "${dist_dir}" ]]; then
-        error "OpenCode distribution not built"
-        return 1
-    fi
+    mkdir -p "${config}"/{skill,agent,command,plugin}
 
-    info "Installing to OpenCode..."
+    cp -r "${dist}/skill/"* "${config}/skill/" 2>/dev/null || true
+    cp -r "${dist}/agent/"* "${config}/agent/" 2>/dev/null || true
+    cp -r "${dist}/command/"* "${config}/command/" 2>/dev/null || true
+    cp -r "${dist}/plugin/"* "${config}/plugin/" 2>/dev/null || true
 
-    mkdir -p "${opencode_dir}/skill"
-    mkdir -p "${opencode_dir}/agent"
-    mkdir -p "${opencode_dir}/command"
-    mkdir -p "${opencode_dir}/plugin"
-
-    # Copy skills
-    if [[ -d "${dist_dir}/skill" ]]; then
-        cp -r "${dist_dir}/skill/"* "${opencode_dir}/skill/"
-    fi
-
-    # Copy agents
-    if [[ -d "${dist_dir}/agent" ]]; then
-        cp -r "${dist_dir}/agent/"* "${opencode_dir}/agent/"
-    fi
-
-    # Copy commands
-    if [[ -d "${dist_dir}/command" ]]; then
-        cp -r "${dist_dir}/command/"* "${opencode_dir}/command/"
-    fi
-
-    # Copy plugin (hooks)
-    if [[ -d "${dist_dir}/plugin" ]]; then
-        cp -r "${dist_dir}/plugin/"* "${opencode_dir}/plugin/"
-    fi
-
-    # Create skill-sync config for future updates
-    local sync_config="${opencode_dir}/skill-sync.json"
-    if [[ ! -f "${sync_config}" ]]; then
-        cat > "${sync_config}" << EOF
-{
-  "sources": [
-    {
-      "local": "${INSTALL_DIR}",
-      "skills": "*",
-      "target": "global"
-    }
-  ]
-}
-EOF
-    fi
-
-    success "OpenCode installation complete"
+    print_success "OpenCode installed to ${config}"
 }
 
-# Install to Cursor
 install_cursor() {
-    local dist_dir="${INSTALL_DIR}/dist/cursor"
-    local cursor_dir="${HOME}/.cursor"
-
-    if [[ ! -d "${dist_dir}" ]]; then
-        error "Cursor distribution not built"
-        return 1
-    fi
-
-    if [[ ! -d "${cursor_dir}" ]]; then
-        warn "Cursor config directory not found at ${cursor_dir}"
-        echo "Copy manually: cp -r ${dist_dir}/.cursor/rules ~/.cursor/"
-        return 0
-    fi
-
-    info "Installing to Cursor..."
-
-    mkdir -p "${cursor_dir}/rules"
-    cp -r "${dist_dir}/.cursor/rules/"* "${cursor_dir}/rules/"
-
-    success "Cursor rules installed to ${cursor_dir}/rules/"
+    local dist="${INSTALL_DIR}/dist/cursor"
+    print_success "Cursor rules ready"
+    print_info "Copy to your project:"
+    print_info "  cp -r ${dist}/.cursor/rules <project>/.cursor/"
 }
 
-# Install to Copilot (instructions only)
 install_copilot() {
-    local dist_dir="${INSTALL_DIR}/dist/copilot"
-
-    if [[ ! -d "${dist_dir}" ]]; then
-        error "Copilot distribution not built"
-        return 1
-    fi
-
-    echo ""
-    echo "Copilot instructions generated at: ${dist_dir}/.github/"
-    echo ""
-    echo "To use in a project, copy to your repository:"
-    echo "  cp ${dist_dir}/.github/copilot-instructions.md <your-repo>/.github/"
-    echo ""
-
-    success "Copilot instructions ready"
+    local dist="${INSTALL_DIR}/dist/copilot"
+    print_success "Copilot instructions ready"
+    print_info "Copy to your repository:"
+    print_info "  cp ${dist}/.github/copilot-instructions.md <repo>/.github/"
 }
 
-# Interactive target selection
+# ─────────────────────────────────────────────────────────────────────────────
+# Target Selection
+# ─────────────────────────────────────────────────────────────────────────────
+
 select_targets() {
-    local detected
-    detected=$(detect_tools)
+    detect_tools
 
-    echo ""
-    echo "Detected AI tools:"
-
-    local options=()
-    local i=1
-    for tool in $detected; do
-        case $tool in
-            claude-code) echo "  ${i}) Claude Code (CLI detected)" ;;
-            opencode) echo "  ${i}) OpenCode (config found)" ;;
-            cursor) echo "  ${i}) Cursor (app/config found)" ;;
-            copilot) echo "  ${i}) Copilot (always available)" ;;
-        esac
-        options+=("$tool")
-        ((i++))
-    done
-
-    echo ""
-    echo "Enter numbers to install (space-separated), 'all', or 'q' to quit:"
-    read -r selection
-
-    if [[ "$selection" == "q" ]]; then
-        echo "Installation cancelled."
-        exit 0
+    if [[ ${#DETECTED_TOOLS[@]} -eq 0 ]]; then
+        print_error "No AI tools detected"
+        exit 1
     fi
 
-    if [[ "$selection" == "all" ]]; then
-        SELECTED_TARGETS=("${options[@]}")
-        return
-    fi
+    echo ""
+    if [[ "$HAS_GUM" == true ]]; then
+        gum style --foreground 255 --bold "Select targets to install:"
+        echo ""
 
-    SELECTED_TARGETS=()
-    for num in $selection; do
-        if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -le "${#options[@]}" ]] && [[ "$num" -gt 0 ]]; then
-            SELECTED_TARGETS+=("${options[$((num-1))]}")
+        local options=()
+        for key in "${!DETECTED_TOOLS[@]}"; do
+            options+=("${key}:${DETECTED_TOOLS[$key]}")
+        done
+
+        local selected
+        selected=$(printf '%s\n' "${options[@]}" | \
+            gum choose --no-limit \
+                --cursor.foreground 99 \
+                --selected.foreground 82 \
+                --header.foreground 244 | \
+            cut -d: -f1)
+
+        if [[ -z "$selected" ]]; then
+            print_error "No targets selected"
+            exit 0
         fi
-    done
+
+        SELECTED_TARGETS=()
+        while IFS= read -r target; do
+            [[ -n "$target" ]] && SELECTED_TARGETS+=("$target")
+        done <<< "$selected"
+    else
+        echo -e "${BOLD}Select targets to install:${NC}"
+        echo ""
+
+        local i=1
+        local keys=()
+        for key in "${!DETECTED_TOOLS[@]}"; do
+            echo -e "  ${MAGENTA}${i})${NC} ${DETECTED_TOOLS[$key]}"
+            keys+=("$key")
+            ((i++))
+        done
+
+        echo ""
+        echo -e "${DIM}Enter numbers (space-separated), 'all', or 'q' to quit:${NC}"
+        read -r selection
+
+        if [[ "$selection" == "q" ]]; then
+            exit 0
+        fi
+
+        SELECTED_TARGETS=()
+        if [[ "$selection" == "all" ]]; then
+            SELECTED_TARGETS=("${keys[@]}")
+        else
+            for num in $selection; do
+                if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -le "${#keys[@]}" ]] && [[ "$num" -gt 0 ]]; then
+                    SELECTED_TARGETS+=("${keys[$((num-1))]}")
+                fi
+            done
+        fi
+
+        if [[ ${#SELECTED_TARGETS[@]} -eq 0 ]]; then
+            print_error "No targets selected"
+            exit 0
+        fi
+    fi
 }
 
-# Main installation flow
+# ─────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────
+
 main() {
     local update_mode=false
     local specific_target=""
     local install_all=false
 
-    # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --update)
-                update_mode=true
-                shift
-                ;;
-            --target)
-                specific_target="$2"
-                shift 2
-                ;;
-            --all)
-                install_all=true
-                shift
-                ;;
+            --update) update_mode=true; shift ;;
+            --target) specific_target="$2"; shift 2 ;;
+            --all) install_all=true; shift ;;
             --help|-h)
                 echo "Usage: install.sh [--update] [--target <target>] [--all]"
-                echo ""
-                echo "Options:"
-                echo "  --update          Update existing installation"
-                echo "  --target <name>   Install specific target (claude-code, opencode, cursor, copilot)"
-                echo "  --all             Install all detected targets non-interactively"
-                echo "  --help            Show this help"
                 exit 0
                 ;;
-            *)
-                error "Unknown option: $1"
-                exit 1
-                ;;
+            *) shift ;;
         esac
     done
 
-    print_banner
+    print_header
+
+    # Step 1: Check requirements
+    print_step "1" "Checking requirements"
     check_requirements
+    print_success "All requirements met"
+    echo ""
 
-    # Clone or update repository
-    clone_or_update_repo
+    # Step 2: Clone/update
+    print_step "2" "Fetching agent-skills"
+    clone_or_update
+    echo ""
 
-    # Determine which targets to install
+    # Step 3: Select targets
+    print_step "3" "Target selection"
     if [[ -n "$specific_target" ]]; then
         SELECTED_TARGETS=("$specific_target")
+        print_info "Target: $specific_target"
     elif [[ "$install_all" == true ]]; then
-        IFS=' ' read -ra SELECTED_TARGETS <<< "$(detect_tools)"
+        detect_tools
+        SELECTED_TARGETS=("${!DETECTED_TOOLS[@]}")
+        print_info "Installing all detected targets"
     else
         select_targets
     fi
+    echo ""
 
-    if [[ ${#SELECTED_TARGETS[@]} -eq 0 ]]; then
-        warn "No targets selected"
-        exit 0
-    fi
+    # Step 4: Build
+    print_step "4" "Building distributions"
+    build_targets "${SELECTED_TARGETS[@]}"
+    echo ""
 
-    # Build distributions
-    for target in "${SELECTED_TARGETS[@]}"; do
-        build_distribution "$target"
-    done
-
-    # Install to each target
+    # Step 5: Install
+    print_step "5" "Installing"
     echo ""
     for target in "${SELECTED_TARGETS[@]}"; do
         case $target in
@@ -382,13 +373,22 @@ main() {
         esac
     done
 
+    # Done
     echo ""
-    success "Installation complete!"
+    if [[ "$HAS_GUM" == true ]]; then
+        gum style \
+            --border rounded \
+            --border-foreground 82 \
+            --padding "0 2" \
+            --margin "1 0" \
+            "$(gum style --foreground 82 --bold '✓ Installation complete!')"
+    else
+        echo -e "${GREEN}${BOLD}✓ Installation complete!${NC}"
+    fi
+
     echo ""
-    echo "To update later, run:"
-    echo "  ${INSTALL_DIR}/install.sh --update"
+    print_info "Update later with: ~/.local/share/agent-skills/install.sh --update"
     echo ""
 }
 
-# Run main
 main "$@"
