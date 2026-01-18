@@ -63,17 +63,13 @@ Task(
 | Work Type | `subagent_type` | Use For |
 |-----------|-----------------|---------|
 | Python/FastAPI/services | `backend-dev` | API endpoints, models, services, pipelines |
+| Rails/Ruby services | `backend-dev` | Rails apps, Ruby services, background jobs |
 | Next.js/React/Tailwind | `frontend-dev` | UI components, pages, styling |
 | Schema/migrations/SQL | `dba` | Database changes, query optimization |
 | Docker/K8s/CI/CD | `devops` | Infrastructure, deployment, CI pipelines |
-| Tests/fixtures/coverage | `testing-qa` | Test implementation, test strategy |
-| Security review | `security` | Security audit, vulnerability assessment |
-| Git operations | `git` | Branching, releases, version control |
-| Technical writing | `docs` | Documentation updates |
-| Requirements/roadmap | `product` | Product planning, requirements gathering |
-| UI/UX design | `design` | Visual design, user experience |
-| Code quality | `code-reviewer` | Code review, architecture review |
-| Electrical/thermal physics | `power-systems` | Domain-specific algorithms, physics models |
+| Tests/review/security | `qa` | Test implementation, code review, security audit |
+| UI/UX design | `design` | Visual design, accessibility, user experience |
+| Git operations | Implementing agent | Whoever made the changes commits them |
 
 ### Spawning Best Practices
 
@@ -91,10 +87,10 @@ Task(subagent_type="dba", prompt="Add user_sessions table with columns...")
 
 # 2. After DBA completes, spawn backend and tests in parallel
 Task(subagent_type="backend-dev", prompt="Implement session management service...")
-Task(subagent_type="testing-qa", prompt="Write tests for session management...")
+Task(subagent_type="qa", prompt="Write tests for session management...")
 
 # 3. After implementation, review
-Task(subagent_type="code-reviewer", prompt="Review the session management implementation...")
+Task(subagent_type="qa", prompt="Review the session management implementation...")
 ```
 
 ---
@@ -155,8 +151,8 @@ Confirm the session file exists and contains valid frontmatter before proceeding
    - Your recommendation
    - **Wait for user approval before proceeding**
 4. **Ensure quality**:
-   - All work must include appropriate tests (spawn `testing-qa`)
-   - Document thoroughly (spawn `docs` for significant changes)
+   - All work must include appropriate tests (spawn `qa`)
+   - Document changes in relevant files
    - Update Linear with progress
 5. **Update session file continuously** (handoff must ALWAYS be current):
    - Log agent spawns in `orchestration.spawned_agents` with task and status
@@ -197,15 +193,58 @@ Is this a code/config/doc change?
 
 1. [ ] Parse the input — is this a Linear issue ID (e.g., PLT-123, PLAT-123) or a description?
 2. [ ] If Linear ID:
-   - Fetch the issue details
+   - Fetch the issue details using `get_issue` (include branch name)
    - Update session frontmatter with `linear_issue` and `linear_url`
    - **Move Linear issue to "In Progress" immediately**
 3. [ ] If description: ask user if a Linear issue should be created
-4. [ ] **Suggest team** based on task context (see Team Routing below)
-5. [ ] Populate session `## Context` section with background
-6. [ ] Break down the work using TodoWrite
-7. [ ] **Identify which specialized agents will be needed** (use mapping table)
-8. [ ] Update session `## Next Steps` with planned agent spawns
+4. [ ] **Create dedicated branch for this work** (see Branch Management below)
+5. [ ] **Suggest team** based on task context (see Team Routing below)
+6. [ ] Populate session `## Context` section with background
+7. [ ] Break down the work using TodoWrite
+8. [ ] **Identify which specialized agents will be needed** (use mapping table)
+9. [ ] Update session `## Next Steps` with planned agent spawns
+
+---
+
+## Branch Management
+
+**All new development work should happen on a dedicated branch.**
+
+### Getting Branch Name
+
+1. **If Linear issue exists**: Use the `branchName` field from `get_issue` response
+   - Linear auto-generates branch names like `username/plt-123-issue-title`
+   - These are pre-formatted and consistent with team conventions
+
+2. **If no Linear issue**: Create branch name from session description
+   - Format: `feature/<session-description>` or `fix/<session-description>`
+   - Use kebab-case, keep it concise
+
+### Branch Workflow
+
+```bash
+# 1. Check current branch status
+git status
+
+# 2. Create and checkout the branch (use Linear's branchName if available)
+git checkout -b <branch-name>
+
+# 3. Confirm branch creation
+git branch --show-current
+```
+
+### Record in Session
+
+Add branch info to session frontmatter:
+
+```yaml
+session:
+  title: "..."
+  branch: "username/plt-123-issue-title"  # Track the working branch
+  linear_issue: "PLT-123"
+```
+
+**Important:** All implementation agents will work on this branch. The branch should be ready for PR when work completes.
 
 ---
 
@@ -281,7 +320,7 @@ Follow your three-phase workflow (BEFORE → DURING → AFTER):
 5. After each agent completes: update session, then spawn next
 
 ### AFTER (Completion)
-1. Spawn `code-reviewer` for final review (if significant changes)
+1. Spawn `qa` for final review (if significant changes)
 2. Update Linear issue status to Done
 3. Complete session file with outcomes
 4. Delete session file (after ensuring knowledge captured elsewhere)
