@@ -3,10 +3,10 @@
  * Build System for Universal Agent Skills
  *
  * Generates tool-specific distributions from canonical structure:
- * - Claude Code: plugins/{name}/ with plugin.json
- * - OpenCode: Flat skill/, agent/, command/, plugin/hooks.js
- * - Cursor: .cursor/rules/*.mdc
- * - Copilot: .github/copilot-instructions.md
+ * - Claude Code: plugins/{name}/ at repo root (for marketplace)
+ * - OpenCode: dist/opencode/ with flat skill/, agent/, command/, plugin/
+ * - Cursor: dist/cursor/.cursor/rules/*.mdc
+ * - Copilot: dist/copilot/.github/copilot-instructions.md
  *
  * Usage:
  *   node build/build.js [target]
@@ -22,7 +22,8 @@ import { parse as parseYaml } from "yaml";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, "..");
-const CONFIG_PATH = join(ROOT_DIR, "config", "hooks.yaml");
+const SRC_DIR = join(ROOT_DIR, "src");
+const CONFIG_PATH = join(SRC_DIR, "config", "hooks.yaml");
 const DIST_DIR = join(ROOT_DIR, "dist");
 
 // Load configuration
@@ -45,11 +46,16 @@ async function build(targetName) {
   const targetModule = await TARGETS[targetName]();
   const config = loadConfig();
 
+  // Claude Code outputs to root, others to dist/
+  const outputDir =
+    targetName === "claude-code" ? ROOT_DIR : join(DIST_DIR, targetName);
+
   try {
     await targetModule.build({
       config,
       rootDir: ROOT_DIR,
-      distDir: join(DIST_DIR, targetName),
+      srcDir: SRC_DIR,
+      distDir: outputDir,
     });
     console.log(`✅ ${targetName} build complete`);
   } catch (error) {
@@ -64,8 +70,9 @@ async function main() {
 
   console.log("🚀 Universal Agent Skills Build System");
   console.log(`   Root: ${ROOT_DIR}`);
+  console.log(`   Source: ${SRC_DIR}`);
   console.log(`   Config: ${CONFIG_PATH}`);
-  console.log(`   Output: ${DIST_DIR}`);
+  console.log(`   Dist: ${DIST_DIR}`);
 
   if (!existsSync(CONFIG_PATH)) {
     console.error("❌ Config file not found:", CONFIG_PATH);

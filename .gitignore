@@ -1,7 +1,10 @@
 # Dependencies
 node_modules/
 
-# Build output (dist/ is committed by CI)
+# Build output (committed by CI)
+# dist/ - tracked (for OpenCode, Cursor, Copilot)
+# plugins/ - tracked (for Claude Code marketplace)
+# .claude-plugin/ - tracked (for Claude Code marketplace)
 
 # OS files
 .DS_Store

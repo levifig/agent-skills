@@ -19,31 +19,31 @@ import { join } from "path";
 /**
  * Build Cursor distribution
  */
-export async function build({ config, rootDir, distDir }) {
+export async function build({ config, rootDir, srcDir, distDir }) {
   const rulesDir = join(distDir, ".cursor", "rules");
   mkdirSync(rulesDir, { recursive: true });
 
   // Generate a rule file for each skill
-  const skillsDir = join(rootDir, "skills");
+  const skillsDir = join(srcDir, "skills");
   if (existsSync(skillsDir)) {
     const skills = readdirSync(skillsDir, { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name);
 
     for (const skill of skills) {
-      generateSkillRule(skill, rootDir, rulesDir, config);
+      generateSkillRule(skill, srcDir, rulesDir, config);
     }
   }
 
   // Generate a combined agents rule
-  generateAgentsRule(rootDir, rulesDir);
+  generateAgentsRule(srcDir, rulesDir);
 }
 
 /**
  * Generate .mdc rule file for a skill
  */
-function generateSkillRule(skillName, rootDir, rulesDir, config) {
-  const skillDir = join(rootDir, "skills", skillName);
+function generateSkillRule(skillName, srcDir, rulesDir, config) {
+  const skillDir = join(srcDir, "skills", skillName);
   const skillMdPath = join(skillDir, "SKILL.md");
 
   if (!existsSync(skillMdPath)) {
@@ -123,8 +123,8 @@ ${referenceContent}
 /**
  * Generate agents rule file
  */
-function generateAgentsRule(rootDir, rulesDir) {
-  const agentsDir = join(rootDir, "agents");
+function generateAgentsRule(srcDir, rulesDir) {
+  const agentsDir = join(srcDir, "agents");
   if (!existsSync(agentsDir)) {
     return;
   }

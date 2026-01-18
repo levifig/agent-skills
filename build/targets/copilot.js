@@ -21,18 +21,18 @@ import { join } from "path";
 /**
  * Build Copilot distribution
  */
-export async function build({ config, rootDir, distDir }) {
+export async function build({ config, rootDir, srcDir, distDir }) {
   const githubDir = join(distDir, ".github");
   mkdirSync(githubDir, { recursive: true });
 
   // Generate combined instructions file
-  generateInstructions(config, rootDir, githubDir);
+  generateInstructions(config, srcDir, githubDir);
 }
 
 /**
  * Generate copilot-instructions.md
  */
-function generateInstructions(config, rootDir, githubDir) {
+function generateInstructions(config, srcDir, githubDir) {
   let content = `# Copilot Instructions
 
 This file provides context and guidelines for GitHub Copilot to generate better code suggestions.
@@ -44,10 +44,10 @@ This project uses the following technologies and patterns. Please follow these g
 `;
 
   // Add agent summaries
-  content += generateAgentSection(rootDir);
+  content += generateAgentSection(srcDir);
 
   // Add skill summaries
-  content += generateSkillsSection(rootDir);
+  content += generateSkillsSection(srcDir);
 
   // Add quality checks (manual since no hooks)
   content += generateQualitySection(config);
@@ -58,8 +58,8 @@ This project uses the following technologies and patterns. Please follow these g
 /**
  * Generate agent section
  */
-function generateAgentSection(rootDir) {
-  const agentsDir = join(rootDir, "agents");
+function generateAgentSection(srcDir) {
+  const agentsDir = join(srcDir, "agents");
   if (!existsSync(agentsDir)) {
     return "";
   }
@@ -95,8 +95,8 @@ When working on different parts of the codebase, consider these specialized pers
 /**
  * Generate skills section
  */
-function generateSkillsSection(rootDir) {
-  const skillsDir = join(rootDir, "skills");
+function generateSkillsSection(srcDir) {
+  const skillsDir = join(srcDir, "skills");
   if (!existsSync(skillsDir)) {
     return "";
   }

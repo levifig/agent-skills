@@ -24,28 +24,28 @@ import { join } from "path";
 /**
  * Build OpenCode distribution
  */
-export async function build({ config, rootDir, distDir }) {
+export async function build({ config, rootDir, srcDir, distDir }) {
   // Clean and create dist directory
   mkdirSync(distDir, { recursive: true });
 
   // Copy skills
-  copySkills(rootDir, distDir);
+  copySkills(srcDir, distDir);
 
   // Copy agents
-  copyAgents(rootDir, distDir);
+  copyAgents(srcDir, distDir);
 
   // Copy commands
-  copyCommands(rootDir, distDir);
+  copyCommands(srcDir, distDir);
 
   // Generate hooks.js
-  generateHooks(config, rootDir, distDir);
+  generateHooks(config, srcDir, distDir);
 }
 
 /**
  * Copy all skills
  */
-function copySkills(rootDir, distDir) {
-  const src = join(rootDir, "skills");
+function copySkills(srcDir, distDir) {
+  const src = join(srcDir, "skills");
   const dest = join(distDir, "skill");
 
   if (existsSync(src)) {
@@ -56,8 +56,8 @@ function copySkills(rootDir, distDir) {
 /**
  * Copy all agents
  */
-function copyAgents(rootDir, distDir) {
-  const src = join(rootDir, "agents");
+function copyAgents(srcDir, distDir) {
+  const src = join(srcDir, "agents");
   const dest = join(distDir, "agent");
 
   if (existsSync(src)) {
@@ -68,8 +68,8 @@ function copyAgents(rootDir, distDir) {
 /**
  * Copy all commands
  */
-function copyCommands(rootDir, distDir) {
-  const src = join(rootDir, "commands");
+function copyCommands(srcDir, distDir) {
+  const src = join(srcDir, "commands");
   const dest = join(distDir, "command");
 
   if (existsSync(src)) {
@@ -86,12 +86,12 @@ function copyCommands(rootDir, distDir) {
  * - session.start
  * - session.end
  */
-function generateHooks(config, rootDir, distDir) {
+function generateHooks(config, srcDir, distDir) {
   const pluginDir = join(distDir, "plugin");
   mkdirSync(pluginDir, { recursive: true });
 
   // Copy hooks lib and scripts
-  const hooksSrc = join(rootDir, "hooks");
+  const hooksSrc = join(srcDir, "hooks");
   const hooksDest = join(pluginDir, "hooks");
   if (existsSync(hooksSrc)) {
     cpSync(hooksSrc, hooksDest, { recursive: true });

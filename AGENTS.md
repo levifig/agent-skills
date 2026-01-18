@@ -44,28 +44,27 @@ Universal skills for AI coding assistants. Skills contain knowledge, agents rout
 ```
 agent-skills/
 ├── AGENTS.md                    # This file - universal instructions
-├── skills/                      # Domain knowledge (canonical)
-│   ├── {skill}/
-│   │   ├── SKILL.md             # Main skill file with frontmatter
-│   │   ├── reference/           # Detailed reference docs
-│   │   │   ├── core.md
-│   │   │   ├── testing.md
-│   │   │   └── ...
-│   │   └── scripts/             # Utility scripts (optional)
-├── agents/                      # Thin routing agents
-│   ├── pm.md
-│   ├── backend-dev.md
-│   └── ...
-├── commands/                    # Portable commands
-│   ├── start-session.md
-│   └── ...
-├── hooks/                       # Hook scripts (canonical)
-│   ├── pre-tool/                # Run BEFORE tool execution
-│   ├── post-tool/               # Run AFTER tool execution
-│   ├── session/                 # Session lifecycle hooks
-│   └── lib/                     # Shared utilities
-├── config/
-│   └── hooks.yaml               # Hook definitions for build
+├── CLAUDE.md -> AGENTS.md       # Symlink for Claude Code
+├── src/                         # Source files (canonical)
+│   ├── skills/                  # Domain knowledge
+│   │   ├── {skill}/
+│   │   │   ├── SKILL.md         # Main skill file with frontmatter
+│   │   │   ├── reference/       # Detailed reference docs
+│   │   │   └── scripts/         # Utility scripts (optional)
+│   ├── agents/                  # Thin routing agents
+│   │   ├── pm.md
+│   │   ├── backend-dev.md
+│   │   └── ...
+│   ├── commands/                # Portable commands
+│   │   ├── start-session.md
+│   │   └── ...
+│   ├── hooks/                   # Hook scripts
+│   │   ├── pre-tool/            # Run BEFORE tool execution
+│   │   ├── post-tool/           # Run AFTER tool execution
+│   │   ├── session/             # Session lifecycle hooks
+│   │   └── lib/                 # Shared utilities
+│   └── config/
+│       └── hooks.yaml           # Hook definitions for build
 ├── build/                       # Build scripts
 │   ├── build.js                 # Main orchestrator
 │   └── targets/                 # Target-specific transformers
@@ -74,10 +73,11 @@ agent-skills/
 │       ├── cursor.js
 │       └── copilot.js
 ├── .github/workflows/
-│   └── build.yml                # CI: builds and commits dist/
+│   └── build.yml                # CI: builds and commits outputs
 ├── install.sh                   # Curl-pipeable installer
-└── dist/                        # Built distributions (committed by CI)
-    ├── claude-code/             # Marketplace plugins
+├── plugins/                     # Claude Code marketplace (at root, committed by CI)
+├── .claude-plugin/              # Claude Code marketplace manifest (at root)
+└── dist/                        # Other distributions (committed by CI)
     ├── opencode/                # Skills, agents, plugins
     ├── cursor/                  # .cursor/rules/*.mdc
     └── copilot/                 # .github/copilot-instructions.md
@@ -105,23 +105,25 @@ npm run build:copilot
 
 ### How Build Works
 
-The build system reads canonical content and transforms it for each target:
+The build system reads canonical content from `src/` and transforms it for each target:
 
-1. **Reads** `config/hooks.yaml` for hook definitions and plugin groups
+1. **Reads** `src/config/hooks.yaml` for hook definitions and plugin groups
 2. **Transforms** canonical structure into target-specific format
-3. **Outputs** to `dist/{target}/`
+3. **Outputs**:
+   - Claude Code: `plugins/` and `.claude-plugin/` at repo root
+   - Others: `dist/{target}/`
 
-| Target | Output Format | Hook Support |
-|--------|---------------|--------------|
-| Claude Code | `plugins/{name}/` with `plugin.json` | Full (PreToolUse, PostToolUse, Session*) |
-| OpenCode | Flat `skill/`, `agent/`, `plugin/hooks.js` | Full (tool.execute.*, session.*) |
-| Cursor | `.cursor/rules/*.mdc` | None (instructions fallback) |
-| Copilot | `.github/copilot-instructions.md` | None (instructions fallback) |
+| Target | Output Location | Hook Support |
+|--------|-----------------|--------------|
+| Claude Code | `plugins/` at root | Full (PreToolUse, PostToolUse, Session*) |
+| OpenCode | `dist/opencode/` | Full (tool.execute.*, session.*) |
+| Cursor | `dist/cursor/` | None (instructions fallback) |
+| Copilot | `dist/copilot/` | None (instructions fallback) |
 
 ### Adding a New Target
 
 1. Create `build/targets/{target}.js`
-2. Export `build({ config, rootDir, distDir })` function
+2. Export `build({ config, rootDir, srcDir, distDir })` function
 3. Add to `TARGETS` in `build/build.js`
 4. Add npm script to `package.json`
 
@@ -132,15 +134,19 @@ The build system reads canonical content and transforms it for each target:
 ### Overview
 
 ```
-Source (skills/, agents/, hooks/)
+Source (src/skills/, src/agents/, src/hooks/)
          │
          ▼
     npm run build
          │
-         ▼
-   dist/ (committed by CI)
+         ├──► Claude Code: plugins/, .claude-plugin/ at repo root
          │
-         ├──► Claude Code: fetches dist/claude-code/ directly from GitHub
+         └──► Others: dist/ (for OpenCode, Cursor, Copilot)
+         │
+         ▼
+   Committed by CI
+         │
+         ├──► Claude Code: fetches plugins/ directly from GitHub
          │
          └──► Others: installer downloads dist/ to local cache, then installs
 ```
@@ -148,19 +154,19 @@ Source (skills/, agents/, hooks/)
 ### CI/CD Pipeline
 
 GitHub Actions (`.github/workflows/build.yml`) automatically:
-1. Triggers on push to `main` (ignores `dist/**` and `*.md` to prevent loops)
+1. Triggers on push to `main` (ignores `dist/**`, `plugins/**`, `.claude-plugin/**`, `*.md`)
 2. Runs `npm ci && npm run build`
-3. Commits and pushes `dist/` if changed
+3. Commits and pushes `plugins/`, `.claude-plugin/`, and `dist/` if changed
 
-This ensures `dist/` in the repo is always up-to-date with source changes.
+This ensures outputs in the repo are always up-to-date with source changes.
 
 ### Target-Specific Behavior
 
 #### Claude Code
 
 - **No local installation needed**
-- Users add the marketplace directly: `/plugin marketplace add github:levifig/agent-skills/dist/claude-code`
-- Claude Code fetches `dist/claude-code/` from GitHub
+- Users add the marketplace directly: `/plugin marketplace add levifig/agent-skills`
+- Claude Code fetches `plugins/` from repo root
 - Claude Code handles its own caching and updates
 - Updates happen automatically when users interact with `/plugin`
 
@@ -197,7 +203,7 @@ curl -fsSL .../install.sh | bash
 ```
 
 1. Requires `git`, `node 18+`, `npm`
-2. Detects it's running from a local repo (has `.git`, `package.json`, `skills/`)
+2. Detects it's running from a local repo (has `.git`, `package.json`, `src/skills/`)
 3. Builds all targets locally first (`npm install && npm run build`)
 4. Syncs `dist/` to `~/.local/share/agent-skills/`
 5. Installs to selected targets
@@ -211,7 +217,6 @@ The local cache at `~/.local/share/agent-skills/` contains only built distributi
 ```
 ~/.local/share/agent-skills/
 ├── .version              # Git commit hash for update detection
-├── claude-code/          # (for local marketplace testing)
 ├── opencode/
 ├── cursor/
 └── copilot/
@@ -221,12 +226,12 @@ No source code, no `node_modules` - just the pre-built output.
 
 ### Design Decisions
 
-1. **dist/ committed to repo**: Enables zero-build installs for end users
-2. **CI builds on push**: Keeps dist/ in sync with source automatically
-3. **Claude Code uses remote**: No local cache needed, simpler UX
-4. **Others use local cache**: Required for tools that don't fetch from GitHub
-5. **Installer detects context**: Same script works for both remote and local dev
-6. **Only dist/ cached**: Minimal footprint, no build tools needed for end users
+1. **Claude Code at root**: Marketplace expects plugins at repo root, not subdirectory
+2. **Source in src/**: Clear separation between source and built outputs
+3. **CI builds on push**: Keeps outputs in sync with source automatically
+4. **Claude Code uses remote**: No local cache needed, simpler UX
+5. **Others use local cache**: Required for tools that don't fetch from GitHub
+6. **Installer detects context**: Same script works for both remote and local dev
 
 ---
 
@@ -235,12 +240,12 @@ No source code, no `node_modules` - just the pre-built output.
 ### 1. Create Skill Directory
 
 ```bash
-mkdir -p skills/{skill-name}/reference
+mkdir -p src/skills/{skill-name}/reference
 ```
 
 ### 2. Create SKILL.md
 
-Create `skills/{skill-name}/SKILL.md` with YAML frontmatter:
+Create `src/skills/{skill-name}/SKILL.md` with YAML frontmatter:
 
 ```markdown
 ---
@@ -278,7 +283,7 @@ Links to external documentation.
 
 ### 3. Add Reference Docs
 
-Create detailed reference files in `skills/{skill-name}/reference/`:
+Create detailed reference files in `src/skills/{skill-name}/reference/`:
 
 ```markdown
 # reference/core.md
@@ -290,16 +295,16 @@ Each file covers one topic. Use consistent heading structure.
 
 ### 4. Add Scripts (Optional)
 
-For validation or utility scripts, add to `skills/{skill-name}/scripts/`:
+For validation or utility scripts, add to `src/skills/{skill-name}/scripts/`:
 
 ```bash
-skills/{skill-name}/scripts/validate.sh
-skills/{skill-name}/scripts/check-style.py
+src/skills/{skill-name}/scripts/validate.sh
+src/skills/{skill-name}/scripts/check-style.py
 ```
 
 ### 5. Register Hooks (If Any)
 
-Add hook definitions to `config/hooks.yaml`:
+Add hook definitions to `src/config/hooks.yaml`:
 
 ```yaml
 hooks:
@@ -315,7 +320,7 @@ hooks:
 
 ### 6. Add to Plugin Group
 
-Add the skill to an appropriate plugin group in `config/hooks.yaml`:
+Add the skill to an appropriate plugin group in `src/config/hooks.yaml`:
 
 ```yaml
 plugin-groups:
@@ -339,7 +344,7 @@ npm run build
 
 ### 1. Create Agent File
 
-Create `agents/{agent-name}.md` with YAML frontmatter:
+Create `src/agents/{agent-name}.md` with YAML frontmatter:
 
 ```markdown
 ---
@@ -400,7 +405,7 @@ Agents should NOT:
 
 ### 3. Add to Plugin Group
 
-In `config/hooks.yaml`:
+In `src/config/hooks.yaml`:
 
 ```yaml
 plugin-groups:
@@ -426,13 +431,13 @@ Create script in appropriate directory:
 
 ```bash
 # Pre-tool (runs before tool execution, can block)
-hooks/pre-tool/{skill}-{action}.sh
+src/hooks/pre-tool/{skill}-{action}.sh
 
 # Post-tool (runs after tool execution, informational)
-hooks/post-tool/{skill}-{action}.sh
+src/hooks/post-tool/{skill}-{action}.sh
 
 # Session (lifecycle hooks)
-hooks/session/{event}.sh
+src/hooks/session/{event}.sh
 ```
 
 ### 2. Script Structure
@@ -460,7 +465,7 @@ FILE_PATH="${FILE_PATH:-}"
 
 ### 3. Use Shared Libraries
 
-Available in `hooks/lib/`:
+Available in `src/hooks/lib/`:
 
 | Library | Purpose |
 |---------|---------|
@@ -471,7 +476,7 @@ Available in `hooks/lib/`:
 
 ### 4. Register in Config
 
-Add to `config/hooks.yaml`:
+Add to `src/config/hooks.yaml`:
 
 ```yaml
 hooks:
@@ -500,28 +505,28 @@ plugin-groups:
 
 ### Skills
 
-1. Edit `skills/{name}/SKILL.md` directly
+1. Edit `src/skills/{name}/SKILL.md` directly
 2. Add/update reference docs in `reference/`
 3. Run `npm run build` to propagate changes
 4. All targets will receive updates on next build
 
 ### Agents
 
-1. Edit `agents/{name}.md` directly
+1. Edit `src/agents/{name}.md` directly
 2. Keep changes consistent with loaded skills
 3. Update frontmatter if tools/skills change
 4. Run build to verify
 
 ### Hooks
 
-1. Edit scripts in `hooks/`
-2. Update `config/hooks.yaml` if behavior changes
+1. Edit scripts in `src/hooks/`
+2. Update `src/config/hooks.yaml` if behavior changes
 3. Test with target tool before committing
 4. Hooks execute in declared order
 
 ### Config
 
-1. Edit `config/hooks.yaml`
+1. Edit `src/config/hooks.yaml`
 2. Validate YAML syntax
 3. Run build to verify changes apply correctly
 
@@ -626,7 +631,7 @@ Before committing changes to this repository:
 ### Structure
 - [ ] Skills have consistent frontmatter (name, description)
 - [ ] Agents reference valid skills
-- [ ] Hooks registered in config/hooks.yaml
+- [ ] Hooks registered in src/config/hooks.yaml
 - [ ] Plugin groups include all necessary components
 
 ### Content
@@ -659,7 +664,7 @@ Before committing changes to this repository:
 No installation needed. Add the marketplace directly:
 
 ```
-/plugin marketplace add github:levifig/agent-skills/dist/claude-code
+/plugin marketplace add levifig/agent-skills
 ```
 
 Then browse and install plugins via `/plugin`. Updates are automatic.
@@ -687,7 +692,25 @@ For contributors testing local changes:
 ```bash
 git clone https://github.com/levifig/agent-skills.git
 cd agent-skills
-./install.sh  # Builds locally, then syncs to cache
+npm install
+./install.sh  # Builds and shows dev-specific instructions
+```
+
+When run from a local clone, the installer:
+1. Shows "DEVELOPMENT MODE" banner
+2. Builds all targets from source
+3. Outputs Claude Code plugins to repo root (`plugins/`)
+4. Syncs other distributions to `~/.local/share/agent-skills/`
+5. Shows how to test with Claude Code using local path
+
+**Testing Claude Code locally:**
+```
+/plugin marketplace add /path/to/agent-skills
+```
+
+**Rebuild after changes:**
+```bash
+npm run build
 ```
 
 ---

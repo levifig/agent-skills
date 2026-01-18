@@ -26,6 +26,7 @@ CYAN='\033[38;5;51m'
 PURPLE='\033[38;5;99m'
 GRAY='\033[38;5;245m'
 WHITE='\033[38;5;255m'
+ORANGE='\033[38;5;208m'
 
 # ─────────────────────────────────────────────────────────────────────────────
 # UI Components
@@ -34,22 +35,19 @@ WHITE='\033[38;5;255m'
 print_header() {
     clear
     echo ""
-    echo -e "${PURPLE}  _   _       _                          _${RESET}"
-    echo -e "${PURPLE} | | | |_ __ (_)_   _____ _ __ ___  __ _| |${RESET}"
-    echo -e "${PURPLE} | | | |  _ \\| \\ \\ / / _ \\  __/ __|/ _\` | |${RESET}"
-    echo -e "${PURPLE} | |_| | | | | |\\ V /  __/ |  \\__ \\ (_| | |${RESET}"
-    echo -e "${PURPLE}  \\___/|_| |_|_| \\_/ \\___|_|  |___/\\__,_|_|${RESET}"
+    echo -e "   \033[38;5;93m▄▀█\033[0m \033[38;5;99m█▀▀\033[0m \033[38;5;105m█▀▀\033[0m \033[38;5;141m█▄░█\033[0m \033[38;5;147m▀█▀\033[0m   \033[38;5;183m█▀\033[0m \033[38;5;189m█▄▀\033[0m \033[38;5;195m█\033[0m \033[38;5;231m█░░\033[0m \033[38;5;231m█░░\033[0m \033[38;5;231m█▀\033[0m"
+    echo -e "   \033[38;5;93m█▀█\033[0m \033[38;5;99m█▄█\033[0m \033[38;5;105m██▄\033[0m \033[38;5;141m█░▀█\033[0m \033[38;5;147m░█░\033[0m   \033[38;5;183m▄█\033[0m \033[38;5;189m█░█\033[0m \033[38;5;195m█\033[0m \033[38;5;231m█▄▄\033[0m \033[38;5;231m█▄▄\033[0m \033[38;5;231m▄█\033[0m"
     echo ""
-    echo -e "${MAGENTA}    _                    _     ____  _    _ _ _${RESET}"
-    echo -e "${MAGENTA}   / \\   __ _  ___ _ __ | |_  / ___|| | _(_) | |___${RESET}"
-    echo -e "${MAGENTA}  / _ \\ / _\` |/ _ \\  _ \\| __| \\___ \\| |/ / | | / __|${RESET}"
-    echo -e "${MAGENTA} / ___ \\ (_| |  __/ | | | |_   ___) |   <| | | \\__ \\${RESET}"
-    echo -e "${MAGENTA}/_/   \\_\\__, |\\___|_| |_|\\__| |____/|_|\\_\\_|_|_|___/${RESET}"
-    echo -e "${MAGENTA}        |___/${RESET}"
+    echo -e "   ${GRAY}Universal skills for AI coding assistants${RESET}  ${GRAY}v${VERSION}${RESET}"
     echo ""
-    echo -e "${GRAY}  v${VERSION}${RESET}"
+    echo -e "${GRAY}   ──────────────────────────────────────────────────${RESET}"
     echo ""
-    echo -e "${GRAY}  ──────────────────────────────────────────────────${RESET}"
+}
+
+print_dev_banner() {
+    echo -e "  ${ORANGE}${BOLD}◆ DEVELOPMENT MODE${RESET}"
+    echo ""
+    print_info "Running from local clone - will build from source"
     echo ""
 }
 
@@ -93,6 +91,24 @@ declare -a TOOL_KEYS=()
 declare -a TOOL_NAMES=()
 declare -a TOOL_INSTALLED=()
 
+# Check if running from a local development repo
+IS_DEV_MODE=false
+LOCAL_REPO_PATH=""
+
+detect_dev_mode() {
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    # Check if script is in a git repo with our expected structure
+    if [[ -d "${script_dir}/.git" ]] && [[ -f "${script_dir}/package.json" ]] && [[ -d "${script_dir}/src/skills" ]]; then
+        # Not running from the install dir itself
+        if [[ "${script_dir}" != "${INSTALL_DIR}" ]]; then
+            IS_DEV_MODE=true
+            LOCAL_REPO_PATH="${script_dir}"
+        fi
+    fi
+}
+
 detect_tools() {
     TOOL_KEYS=()
     TOOL_NAMES=()
@@ -133,7 +149,7 @@ detect_tools() {
 }
 
 check_existing_installation() {
-    [[ -d "${INSTALL_DIR}" ]] && [[ -f "${INSTALL_DIR}/.version" || -d "${INSTALL_DIR}/claude-code" ]]
+    [[ -d "${INSTALL_DIR}" ]] && [[ -f "${INSTALL_DIR}/.version" || -d "${INSTALL_DIR}/opencode" ]]
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -142,20 +158,12 @@ check_existing_installation() {
 
 check_requirements() {
     local missing=()
-    local is_local_dev=false
-
-    # Check if running from local dev repo (needs node/npm for building)
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [[ -d "${script_dir}/.git" ]] && [[ -f "${script_dir}/package.json" ]]; then
-        is_local_dev=true
-    fi
 
     # Git always required
     command -v git &> /dev/null || missing+=("git")
 
     # Node/npm only required for local dev (building)
-    if [[ "$is_local_dev" == true ]]; then
+    if [[ "$IS_DEV_MODE" == true ]]; then
         command -v node &> /dev/null || missing+=("node")
         command -v npm &> /dev/null || missing+=("npm")
     fi
@@ -168,7 +176,7 @@ check_requirements() {
     fi
 
     # Check node version only if node is required
-    if [[ "$is_local_dev" == true ]]; then
+    if [[ "$IS_DEV_MODE" == true ]]; then
         local node_version
         node_version=$(node -v | sed 's/v//' | cut -d. -f1)
         if [[ "$node_version" -lt 18 ]]; then
@@ -222,12 +230,12 @@ select_targets_interactive() {
 
         # Highlight current line with prompt
         echo -en "\033[2K"
-        echo -en "    ${WHITE}▶${RESET} ${BOLD}${label}${RESET}${status}  ${GRAY}[Y/n]${RESET} "
+        echo -en "    ${WHITE}▶${RESET} ${BOLD}${label}${RESET}${status}  ${GRAY}[y/N]${RESET} "
         read -r response
 
         # Rewrite line with result
         echo -en "\033[A\033[2K"
-        if [[ -z "$response" ]] || [[ "$response" =~ ^[Yy] ]]; then
+        if [[ "$response" =~ ^[Yy] ]]; then
             SELECTED_TARGETS+=("${TOOL_KEYS[$i]}")
             echo -e "    ${GREEN}✓${RESET} ${label}${status}"
         else
@@ -241,22 +249,6 @@ select_targets_interactive() {
 # ─────────────────────────────────────────────────────────────────────────────
 # Installation Steps
 # ─────────────────────────────────────────────────────────────────────────────
-
-# Detect if running from a local development repo
-detect_local_repo() {
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-    # Check if script is in a git repo with our expected structure
-    if [[ -d "${script_dir}/.git" ]] && [[ -f "${script_dir}/package.json" ]] && [[ -d "${script_dir}/skills" ]]; then
-        # Not running from the install dir itself
-        if [[ "${script_dir}" != "${INSTALL_DIR}" ]]; then
-            echo "${script_dir}"
-            return 0
-        fi
-    fi
-    return 1
-}
 
 # Build in local dev repo before syncing
 build_local() {
@@ -272,23 +264,20 @@ build_local() {
 }
 
 clone_or_update() {
-    local local_repo
-    local_repo=$(detect_local_repo) || true
-
-    if [[ -n "$local_repo" ]]; then
+    if [[ "$IS_DEV_MODE" == true ]]; then
         # Running from local development repo
-        print_info "Using local development repo: ${local_repo}"
+        print_info "Building from: ${LOCAL_REPO_PATH}"
 
         # Build in the local repo first
-        build_local "${local_repo}"
+        build_local "${LOCAL_REPO_PATH}"
 
-        # Sync only dist/ to cache
+        # Sync only dist/ to cache (not plugins/ - those stay at root for Claude Code)
         rm -rf "${INSTALL_DIR}"
         mkdir -p "${INSTALL_DIR}"
         if command -v rsync &> /dev/null; then
-            spinner "Syncing dist to cache" rsync -a "${local_repo}/dist/" "${INSTALL_DIR}/"
+            spinner "Syncing dist to cache" rsync -a "${LOCAL_REPO_PATH}/dist/" "${INSTALL_DIR}/"
         else
-            spinner "Copying dist to cache" cp -r "${local_repo}/dist/"* "${INSTALL_DIR}/"
+            spinner "Copying dist to cache" cp -r "${LOCAL_REPO_PATH}/dist/"* "${INSTALL_DIR}/"
         fi
     else
         # Remote install - clone to temp, copy dist/ to cache
@@ -311,7 +300,7 @@ clone_or_update() {
             spinner "Cloning repository" git clone --depth 1 "${REPO_URL}" "${temp_dir}"
         fi
 
-        # Copy only dist/ to cache
+        # Copy only dist/ to cache (for OpenCode, Cursor, Copilot)
         rm -rf "${INSTALL_DIR}"
         mkdir -p "${INSTALL_DIR}"
         cp -r "${temp_dir}/dist/"* "${INSTALL_DIR}/"
@@ -323,15 +312,29 @@ clone_or_update() {
     fi
 }
 
-show_claude_code_instructions() {
+show_claude_code_dev_instructions() {
+    echo -e "  ${GREEN}✓${RESET} ${BOLD}Claude Code${RESET} detected"
     echo ""
-    echo -e "  ${CYAN}${BOLD}Claude Code${RESET}"
+    print_info "For development, test your local marketplace:"
+    echo ""
+    echo -e "    ${WHITE}/plugin marketplace add ${LOCAL_REPO_PATH}${RESET}"
+    echo ""
+    print_info "This uses plugins/ built at repo root."
+    print_info "For production, users will use:"
+    echo ""
+    echo -e "    ${GRAY}/plugin marketplace add levifig/agent-skills${RESET}"
+    echo ""
+}
+
+show_claude_code_instructions() {
+    echo -e "  ${GREEN}✓${RESET} ${BOLD}Claude Code${RESET} detected"
     echo ""
     print_info "Add the marketplace in Claude Code:"
     echo ""
-    echo -e "    ${WHITE}/plugin marketplace add github:levifig/agent-skills/dist/claude-code${RESET}"
+    echo -e "    ${WHITE}/plugin marketplace add levifig/agent-skills${RESET}"
     echo ""
     print_info "Then browse and install plugins via ${WHITE}/plugin${RESET}"
+    echo ""
 }
 
 install_opencode() {
@@ -381,6 +384,35 @@ prompt_update() {
     return 0
 }
 
+show_dev_completion() {
+    echo ""
+    echo -e "${GRAY}  ──────────────────────────────────────────────────${RESET}"
+    echo ""
+    echo -e "  ${GREEN}${BOLD}✓ Development build complete!${RESET}"
+    echo ""
+    echo -e "  ${BOLD}What was built:${RESET}"
+    print_info "• Claude Code: plugins/ at repo root"
+    print_info "• Others: dist/ synced to ~/.local/share/agent-skills/"
+    echo ""
+    echo -e "  ${BOLD}Test your changes:${RESET}"
+    print_info "Claude Code:"
+    echo -e "    ${WHITE}/plugin marketplace add ${LOCAL_REPO_PATH}${RESET}"
+    echo ""
+    print_info "Rebuild after changes:"
+    echo -e "    ${WHITE}npm run build${RESET}"
+    echo ""
+}
+
+show_completion() {
+    echo ""
+    echo -e "${GRAY}  ──────────────────────────────────────────────────${RESET}"
+    echo ""
+    echo -e "  ${GREEN}${BOLD}✓ Installation complete!${RESET}"
+    echo ""
+    print_info "Update: curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.sh | bash"
+    echo ""
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
@@ -405,13 +437,25 @@ main() {
                 echo "  --target X  Install specific target only"
                 echo "  --all       Install all detected targets"
                 echo "  --help      Show this help"
+                echo ""
+                echo "Development:"
+                echo "  Run from a cloned repo to build from source."
+                echo "  Requires: git, node 18+, npm"
                 exit 0
                 ;;
             *) shift ;;
         esac
     done
 
+    # Detect development mode early
+    detect_dev_mode
+
     print_header
+
+    # Show dev banner if applicable
+    if [[ "$IS_DEV_MODE" == true ]]; then
+        print_dev_banner
+    fi
 
     # Step 1: Check requirements
     print_step "1" "Checking requirements"
@@ -423,16 +467,13 @@ main() {
     detect_tools
     echo ""
 
-    # Show Claude Code first if detected
+    # Show Claude Code instructions (dev vs production)
     if [[ "$HAS_CLAUDE_CODE" == true ]]; then
-        echo -e "  ${GREEN}✓${RESET} ${BOLD}Claude Code${RESET} detected"
-        echo ""
-        print_info "Add the marketplace in Claude Code:"
-        echo ""
-        echo -e "    ${WHITE}/plugin marketplace add github:levifig/agent-skills/dist/claude-code${RESET}"
-        echo ""
-        print_info "Then browse and install plugins via ${WHITE}/plugin${RESET}"
-        echo ""
+        if [[ "$IS_DEV_MODE" == true ]]; then
+            show_claude_code_dev_instructions
+        else
+            show_claude_code_instructions
+        fi
     fi
 
     # Step 3: Select other targets
@@ -460,7 +501,11 @@ main() {
     fi
 
     # Step 4: Fetch and build
-    print_step "4" "Fetching agent-skills"
+    if [[ "$IS_DEV_MODE" == true ]]; then
+        print_step "4" "Building from source"
+    else
+        print_step "4" "Fetching agent-skills"
+    fi
     clone_or_update
     echo ""
 
@@ -477,14 +522,12 @@ main() {
         done
     fi
 
-    # Done
-    echo ""
-    echo -e "${GRAY}  ──────────────────────────────────────────────────${RESET}"
-    echo ""
-    echo -e "  ${GREEN}${BOLD}✓ Installation complete!${RESET}"
-    echo ""
-    print_info "Update: curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.sh | bash"
-    echo ""
+    # Done - show appropriate completion message
+    if [[ "$IS_DEV_MODE" == true ]]; then
+        show_dev_completion
+    else
+        show_completion
+    fi
 }
 
 main "$@"

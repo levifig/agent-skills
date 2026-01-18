@@ -6,78 +6,64 @@
   },
   "metadata": {
     "description": "Universal agent skills for AI coding assistants. PM orchestration, code foundations, and language-specific plugins.",
-    "version": "2.0.0"
+    "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "orchestration",
       "description": "PM orchestration, session management, Linear workflow integration",
-      "source": "./dist/claude-code/plugins/orchestration",
-      "version": "2.0.0",
+      "source": "./plugins/orchestration",
+      "version": "1.0.0",
       "license": "MIT",
-      "repository": "https://github.com/levifig/agent-skills",
-      "keywords": ["pm", "orchestration", "linear", "sessions"],
-      "category": "workflow"
+      "repository": "https://github.com/levifig/agent-skills"
     },
     {
       "name": "foundations",
-      "description": "Cross-language quality gates: code style, documentation, security, commits",
-      "source": "./dist/claude-code/plugins/foundations",
-      "version": "2.0.0",
+      "description": "Cross-language development fundamentals and quality gates",
+      "source": "./plugins/foundations",
+      "version": "1.0.0",
       "license": "MIT",
-      "repository": "https://github.com/levifig/agent-skills",
-      "keywords": ["code-style", "documentation", "security", "quality"],
-      "category": "development"
+      "repository": "https://github.com/levifig/agent-skills"
     },
     {
       "name": "python",
-      "description": "Python 3.12+ with FastAPI, Pydantic, pytest, and strict typing",
-      "source": "./dist/claude-code/plugins/python",
-      "version": "2.0.0",
+      "description": "Python 3.12+ development with FastAPI, async, and pytest",
+      "source": "./plugins/python",
+      "version": "1.0.0",
       "license": "MIT",
-      "repository": "https://github.com/levifig/agent-skills",
-      "keywords": ["python", "fastapi", "pydantic", "pytest"],
-      "category": "development"
+      "repository": "https://github.com/levifig/agent-skills"
     },
     {
       "name": "typescript",
-      "description": "TypeScript and React with Next.js, type safety, and accessibility",
-      "source": "./dist/claude-code/plugins/typescript",
-      "version": "2.0.0",
+      "description": "TypeScript and React development with Next.js",
+      "source": "./plugins/typescript",
+      "version": "1.0.0",
       "license": "MIT",
-      "repository": "https://github.com/levifig/agent-skills",
-      "keywords": ["typescript", "react", "nextjs", "frontend"],
-      "category": "development"
+      "repository": "https://github.com/levifig/agent-skills"
     },
     {
       "name": "rails",
-      "description": "Rails 8+ following The Rails Way with Hotwire and Minitest",
-      "source": "./dist/claude-code/plugins/rails",
-      "version": "2.0.0",
+      "description": "Rails 8+ development following The Rails Way",
+      "source": "./plugins/rails",
+      "version": "1.0.0",
       "license": "MIT",
-      "repository": "https://github.com/levifig/agent-skills",
-      "keywords": ["rails", "ruby", "hotwire", "minitest"],
-      "category": "development"
+      "repository": "https://github.com/levifig/agent-skills"
     },
     {
       "name": "infrastructure",
-      "description": "DevOps patterns for Docker, Kubernetes, Terraform, and CI/CD",
-      "source": "./dist/claude-code/plugins/infrastructure",
-      "version": "2.0.0",
+      "description": "DevOps and infrastructure patterns",
+      "source": "./plugins/infrastructure",
+      "version": "1.0.0",
       "license": "MIT",
-      "repository": "https://github.com/levifig/agent-skills",
-      "keywords": ["docker", "kubernetes", "terraform", "devops"],
-      "category": "infrastructure"
+      "repository": "https://github.com/levifig/agent-skills"
     },
     {
       "name": "design",
-      "description": "UI/UX design patterns with WCAG 2.1 AA+ accessibility",
-      "source": "./dist/claude-code/plugins/design",
-      "version": "2.0.0",
+      "description": "UI/UX design patterns and accessibility standards",
+      "source": "./plugins/design",
+      "version": "1.0.0",
       "license": "MIT",
-      "repository": "https://github.com/levifig/agent-skills",
-      "keywords": ["design", "ui", "ux", "accessibility"],
-      "category": "design"
+      "repository": "https://github.com/levifig/agent-skills"
     }
   ]
 }
