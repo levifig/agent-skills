@@ -329,7 +329,7 @@ show_claude_code_instructions() {
     echo ""
     print_info "Add the marketplace in Claude Code:"
     echo ""
-    echo -e "    ${WHITE}/plugin marketplace add github:levifig/agent-skills${RESET}"
+    echo -e "    ${WHITE}/plugin marketplace add github:levifig/agent-skills/dist/claude-code${RESET}"
     echo ""
     print_info "Then browse and install plugins via ${WHITE}/plugin${RESET}"
 }
@@ -429,7 +429,7 @@ main() {
         echo ""
         print_info "Add the marketplace in Claude Code:"
         echo ""
-        echo -e "    ${WHITE}/plugin marketplace add github:levifig/agent-skills${RESET}"
+        echo -e "    ${WHITE}/plugin marketplace add github:levifig/agent-skills/dist/claude-code${RESET}"
         echo ""
         print_info "Then browse and install plugins via ${WHITE}/plugin${RESET}"
         echo ""

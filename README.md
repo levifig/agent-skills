@@ -9,7 +9,7 @@ Universal skills for AI coding assistants. One source, multiple targets: Claude 
 Add the marketplace directly in Claude Code:
 
 ```
-/plugin marketplace add github:levifig/agent-skills
+/plugin marketplace add github:levifig/agent-skills/dist/claude-code
 ```
 
 Then browse and install plugins via `/plugin`.

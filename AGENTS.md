@@ -73,14 +73,14 @@ agent-skills/
 │       ├── opencode.js
 │       ├── cursor.js
 │       └── copilot.js
-├── scripts/                     # Installation utilities
-│   └── detect-tools.sh
+├── .github/workflows/
+│   └── build.yml                # CI: builds and commits dist/
 ├── install.sh                   # Curl-pipeable installer
-└── dist/                        # Generated (gitignored)
-    ├── claude-code/
-    ├── opencode/
-    ├── cursor/
-    └── copilot/
+└── dist/                        # Built distributions (committed by CI)
+    ├── claude-code/             # Marketplace plugins
+    ├── opencode/                # Skills, agents, plugins
+    ├── cursor/                  # .cursor/rules/*.mdc
+    └── copilot/                 # .github/copilot-instructions.md
 ```
 
 ---
@@ -124,6 +124,109 @@ The build system reads canonical content and transforms it for each target:
 2. Export `build({ config, rootDir, distDir })` function
 3. Add to `TARGETS` in `build/build.js`
 4. Add npm script to `package.json`
+
+---
+
+## Distribution Architecture
+
+### Overview
+
+```
+Source (skills/, agents/, hooks/)
+         │
+         ▼
+    npm run build
+         │
+         ▼
+   dist/ (committed by CI)
+         │
+         ├──► Claude Code: fetches dist/claude-code/ directly from GitHub
+         │
+         └──► Others: installer downloads dist/ to local cache, then installs
+```
+
+### CI/CD Pipeline
+
+GitHub Actions (`.github/workflows/build.yml`) automatically:
+1. Triggers on push to `main` (ignores `dist/**` and `*.md` to prevent loops)
+2. Runs `npm ci && npm run build`
+3. Commits and pushes `dist/` if changed
+
+This ensures `dist/` in the repo is always up-to-date with source changes.
+
+### Target-Specific Behavior
+
+#### Claude Code
+
+- **No local installation needed**
+- Users add the marketplace directly: `/plugin marketplace add github:levifig/agent-skills/dist/claude-code`
+- Claude Code fetches `dist/claude-code/` from GitHub
+- Claude Code handles its own caching and updates
+- Updates happen automatically when users interact with `/plugin`
+
+#### OpenCode, Cursor, Copilot
+
+- **Requires local cache**
+- Installer downloads pre-built `dist/` from GitHub
+- Caches to `~/.local/share/agent-skills/` (only dist contents, not full repo)
+- Installs to target-specific locations:
+  - OpenCode: `~/.config/opencode/{skill,agent,command,plugin}/`
+  - Cursor: Instructions to copy to project `.cursor/rules/`
+  - Copilot: Instructions to copy to repo `.github/`
+
+### Installer Behavior
+
+The installer (`install.sh`) behaves differently based on context:
+
+#### Remote Install (curl-piped)
+
+```bash
+curl -fsSL .../install.sh | bash
+```
+
+1. Only requires `git` (no node/npm needed)
+2. Clones repo to temp directory
+3. Copies only `dist/` contents to `~/.local/share/agent-skills/`
+4. Stores `.version` file for update detection
+5. Installs to selected targets
+
+#### Local Development Install
+
+```bash
+./install.sh  # Run from cloned repo
+```
+
+1. Requires `git`, `node 18+`, `npm`
+2. Detects it's running from a local repo (has `.git`, `package.json`, `skills/`)
+3. Builds all targets locally first (`npm install && npm run build`)
+4. Syncs `dist/` to `~/.local/share/agent-skills/`
+5. Installs to selected targets
+
+This allows developers to test local changes before pushing.
+
+### Cache Structure
+
+The local cache at `~/.local/share/agent-skills/` contains only built distributions:
+
+```
+~/.local/share/agent-skills/
+├── .version              # Git commit hash for update detection
+├── claude-code/          # (for local marketplace testing)
+├── opencode/
+├── cursor/
+└── copilot/
+```
+
+No source code, no `node_modules` - just the pre-built output.
+
+### Design Decisions
+
+1. **dist/ committed to repo**: Enables zero-build installs for end users
+2. **CI builds on push**: Keeps dist/ in sync with source automatically
+3. **Claude Code uses remote**: No local cache needed, simpler UX
+4. **Others use local cache**: Required for tools that don't fetch from GitHub
+5. **Installer detects context**: Same script works for both remote and local dev
+6. **Only dist/ cached**: Minimal footprint, no build tools needed for end users
 
 ---
 
@@ -551,25 +654,40 @@ Before committing changes to this repository:
 
 ## Installation
 
-### Quick Install (curl)
+### Claude Code
+
+No installation needed. Add the marketplace directly:
+
+```
+/plugin marketplace add github:levifig/agent-skills/dist/claude-code
+```
+
+Then browse and install plugins via `/plugin`. Updates are automatic.
+
+### OpenCode, Cursor, Copilot
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.sh | bash
 ```
 
-### Manual Install
-
-```bash
-git clone https://github.com/levifig/agent-skills.git ~/.local/share/agent-skills
-cd ~/.local/share/agent-skills
-npm install
-npm run build
-```
+The installer detects installed tools and guides you through target selection.
 
 ### Update
 
+Run the installer again:
+
 ```bash
-~/.local/share/agent-skills/install.sh --update
+curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.sh | bash
+```
+
+### Development
+
+For contributors testing local changes:
+
+```bash
+git clone https://github.com/levifig/agent-skills.git
+cd agent-skills
+./install.sh  # Builds locally, then syncs to cache
 ```
 
 ---
