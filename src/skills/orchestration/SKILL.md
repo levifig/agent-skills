@@ -89,7 +89,8 @@ This skill uses paths from `.agents/config.json`:
 - Convene councils for uncertain decisions
 
 ### AFTER (Completion)
-- Run code review (if significant changes)
+- Run code review with backend/frontend devs (if significant changes)
+- Run QA testing and security checks
 - Update external issue to Done
 - Ensure knowledge captured in permanent locations
 - Archive session file (set status, `archived_at`, `archived_by`, move to `.agents/sessions/archive/`, update `.agents/` links)

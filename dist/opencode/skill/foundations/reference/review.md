@@ -1,6 +1,6 @@
 # Code Review Checklist
 
-Comprehensive code review checklist for ensuring code quality, maintainability, and correctness.
+Comprehensive code review checklist for backend/frontend dev reviewers to ensure code quality, maintainability, and correctness.
 
 ## Quick Review (< 5 minutes)
 

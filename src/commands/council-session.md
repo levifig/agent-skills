@@ -32,13 +32,13 @@ Reference `council-workflow` skill, `reference/council-composition.md` for guida
 
 | Decision Type | Suggested 5-Agent Council | Extend to 7 (if needed) |
 |--------------|---------------------------|------------------------|
-| **Database/Schema** | dba, backend-dev, devops, security, code-reviewer | + frontend-dev, docs |
-| **API Design** | backend-dev, frontend-dev, security, docs, code-reviewer | + dba, devops |
-| **UI/UX** | design, frontend-dev, product, backend-dev, code-reviewer | + testing-qa, docs |
-| **Infrastructure** | devops, backend-dev, security, dba, code-reviewer | + frontend-dev, docs |
-| **Security** | security, backend-dev, devops, dba, code-reviewer | + frontend-dev, docs |
-| **Full Architecture** | backend-dev, frontend-dev, dba, devops, security, code-reviewer, docs | (already 7) |
-| **Feature Scope** | product, design, backend-dev, frontend-dev, testing-qa | + security, code-reviewer |
+| **Database/Schema** | dba, backend-dev, devops, security, qa | + frontend-dev, docs |
+| **API Design** | backend-dev, frontend-dev, security, docs, qa | + dba, devops |
+| **UI/UX** | design, frontend-dev, product, backend-dev, qa | + docs |
+| **Infrastructure** | devops, backend-dev, security, dba, qa | + frontend-dev, docs |
+| **Security** | security, backend-dev, devops, dba, qa | + frontend-dev, docs |
+| **Full Architecture** | backend-dev, frontend-dev, dba, devops, security, qa, docs | (already 7) |
+| **Feature Scope** | product, design, backend-dev, frontend-dev, qa | + security |
 
 ### Present to User for Approval
 
@@ -192,12 +192,13 @@ Task(
 | Agent | Domain | Analysis Factors |
 |-------|--------|------------------|
 | **dba** | Database | Data persistence, query patterns, backup/recovery, consistency, scalability |
-| **backend-dev** | Application | Integration complexity, library support, dev velocity, testing, maintainability |
-| **frontend-dev** | Frontend | Client experience, API consumption, state management, UI integration |
+| **backend-dev (implementation)** | Application | Integration complexity, library support, dev velocity, testing, maintainability |
+| **frontend-dev (implementation)** | Frontend | Client experience, API consumption, state management, UI integration |
 | **devops** | Operations | Deployment complexity, monitoring, HA, DR, infrastructure cost, scalability |
 | **security** | Security | Attack surface, data exposure, compliance, encryption, revocation |
-| **code-reviewer** | Maintainability | Code complexity, technical debt, team expertise, migration paths, flexibility |
-| **testing-qa** | Testing | Test complexity, test data, coverage, flakiness, CI integration |
+| **backend-dev (review)** | Backend review | Code complexity, technical debt, backend maintainability, migration paths |
+| **frontend-dev (review)** | Frontend review | UI complexity, frontend maintainability, migration paths |
+| **qa** | Testing | Test complexity, test data, coverage, flakiness, CI integration |
 | **docs** | Documentation | Documentation burden, learning curve, API docs, examples |
 | **product** | Product | User value, prioritization, MVP scope, rollout strategy |
 | **design** | Design | UX implications, visual consistency, accessibility, interaction patterns |

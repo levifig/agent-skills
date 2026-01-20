@@ -35,8 +35,8 @@
 
 | Agent | Focus | Use For |
 |-------|-------|---------|
-| `backend-dev` | Python/FastAPI | REST endpoints, business logic, SQLAlchemy, async patterns |
-| `frontend-dev` | React/Next.js | UI components, state management, TypeScript, API integration |
+| `backend-dev` | Backend | Services, APIs, business logic, backend code review |
+| `frontend-dev` | Frontend | UI components, state management, frontend code review |
 | `rails-dev` | Ruby on Rails | Controllers, models, views, Hotwire/Stimulus, ActiveRecord |
 | `dba` | Database | Schema design, migrations, indexes, query optimization |
 | `devops` | Infrastructure | Docker, Kubernetes, CI/CD, monitoring |
@@ -45,8 +45,7 @@
 
 | Agent | Focus | Use For |
 |-------|-------|---------|
-| `testing-qa` | Tests | Unit tests, integration tests, fixtures, coverage |
-| `code-reviewer` | Quality | Code review, style, maintainability, refactoring |
+| `qa` | Tests | Unit tests, integration tests, fixtures, coverage |
 | `security` | Security | Audits, vulnerabilities, OWASP, secrets, threat modeling |
 
 ### Documentation & Planning
@@ -73,9 +72,12 @@ What type of work is needed?
 |   +-- Database Performance --> dba
 
 |-- Quality Assurance
-|   |-- Test Implementation --> testing-qa
-|   |-- Code Review --> code-reviewer
+|   |-- Test Implementation --> qa
 |   +-- Security Audit --> security
+
+|-- Code Review (Domain Dev)
+|   |-- Backend Review --> backend-dev
+|   +-- Frontend Review --> frontend-dev
 
 |-- Documentation & Design
 |   |-- Technical Documentation --> docs
@@ -106,13 +108,13 @@ Task(subagent_type="backend-dev", prompt="Implement user service...")
 # Wait for completion
 
 # Step 3: Tests use implementation
-Task(subagent_type="testing-qa", prompt="Write user tests...")
+Task(subagent_type="qa", prompt="Write user tests...")
 ```
 
 **Common sequences:**
 - Schema -> Code -> Tests
-- Design -> Implementation -> Review
-- Implementation -> Tests -> Review -> Security
+- Design -> Implementation -> Code review -> Testing -> Security
+- Implementation -> Tests -> Code review -> Security
 
 ### Parallel (Independent)
 
@@ -166,7 +168,7 @@ Task(
 |--------------|-----------------|
 | PM implementing code | PM orchestrates, always delegate |
 | Asking backend-dev for React | Spawn frontend-dev |
-| Single agent for database + backend + tests | Sequential: dba, backend-dev, testing-qa |
+| Single agent for database + backend + tests | Sequential: dba, backend-dev, qa |
 | Parallel spawns with hidden dependencies | Make dependencies explicit, spawn sequentially |
 | Spawning without session context | Create session first, reference in prompts |
 | Council for simple decisions | Single agent or PM judgment |
@@ -177,7 +179,7 @@ Task(
 |------------|----------------------|------------|
 | PM | Read/Write | User |
 | Implementation agents | None | PM (via session) |
-| Review agents | None | PM (via session) |
+| Review agents (backend/frontend devs) | None | PM (via session) |
 | Product agent | Read-only | PM |
 
 **Key**: Only PM writes to external issue trackers. All other agents report through session files.

@@ -1,5 +1,5 @@
 ---
-name: dba
+name: DBA
 description: >-
   Database administrator for schema design, migrations, SQL optimization, and
   database architecture. Use for table changes, indexes, and query optimization.

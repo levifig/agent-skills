@@ -41,6 +41,7 @@ Load the appropriate skill and follow its patterns.
 - **Test-driven development** - write tests first
 - **Explicit over implicit** - clear, readable code
 - **Security conscious** - validate all input, handle errors properly
+- **Own backend code reviews** - review backend changes for quality and maintainability
 
 ## When Activated
 
@@ -60,6 +61,7 @@ Before completing work:
 - [ ] Input validation in place
 - [ ] Error handling appropriate
 - [ ] No security vulnerabilities
+- [ ] Backend code reviewed by `backend-dev`
 
 ## Critical Rules
 

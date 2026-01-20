@@ -32,19 +32,19 @@ Councils are deliberation mechanisms for decisions with multiple valid approache
 
 | Decision Type | 5-Agent Council | Extended (7) |
 |---------------|-----------------|--------------|
-| Database/Data | dba, backend-dev, devops, security, code-reviewer | + frontend-dev, docs |
-| API Design | backend-dev, frontend-dev, security, docs, code-reviewer | + dba, devops |
-| UI/UX | design, frontend-dev, product, backend-dev, code-reviewer | + testing-qa, docs |
-| Infrastructure | devops, backend-dev, security, dba, code-reviewer | + frontend-dev, docs |
-| Security | security, backend-dev, devops, dba, code-reviewer | + frontend-dev, docs |
-| Full Architecture | backend-dev, frontend-dev, dba, devops, security, code-reviewer, docs | N/A |
-| Feature Scope | product, design, backend-dev, frontend-dev, testing-qa | + security, code-reviewer |
+| Database/Data | dba, backend-dev, devops, security, qa | + frontend-dev, docs |
+| API Design | backend-dev, frontend-dev, security, docs, qa | + dba, devops |
+| UI/UX | design, frontend-dev, product, backend-dev, qa | + docs |
+| Infrastructure | devops, backend-dev, security, dba, qa | + frontend-dev, docs |
+| Security | security, backend-dev, devops, dba, qa | + frontend-dev, docs |
+| Full Architecture | backend-dev, frontend-dev, dba, devops, security, qa, docs | N/A |
+| Feature Scope | product, design, backend-dev, frontend-dev, qa | + security |
 
 ### Composition Rules
 
 - **5 or 7 agents** (always odd)
 - Primary domain expert must be included
-- Include `code-reviewer` for maintainability
+- Include domain devs for code review (backend-dev/frontend-dev)
 - Include `security` if security-relevant
 - PM coordinates but does NOT vote
 
@@ -74,7 +74,7 @@ Present to user for approval:
 2. backend-dev - Application integration
 3. devops - Operational complexity
 4. security - Session security
-5. code-reviewer - Long-term maintenance
+5. backend-dev (or frontend-dev) - Long-term maintainability (domain review)
 
 Do you approve this composition?
 ```
@@ -191,7 +191,7 @@ council:
     - backend-dev
     - devops
     - security
-    - code-reviewer             # Min 5, MUST be odd
+    - backend-dev               # Min 5, MUST be odd
   decision: "postgresql"
   linear_issue: "AUTH-45"       # Optional
 ---

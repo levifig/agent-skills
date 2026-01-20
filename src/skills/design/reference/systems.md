@@ -141,7 +141,7 @@ size?: "sm" | "md" | "lg"
 1. RFC proposal
 2. Design review
 3. Implementation with tests/docs
-4. Code review
+4. Frontend code review
 5. Accessibility review
 6. Versioned release
 

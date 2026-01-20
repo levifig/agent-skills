@@ -64,7 +64,9 @@ ALL implementation work goes to specialized agents via Task tool:
 | React/Next.js/UI | `frontend-dev` |
 | Schema/migrations/SQL | `dba` |
 | Docker/K8s/CI/CD | `devops` |
-| Tests/review/security | `qa` |
+| Tests/security | `qa` |
+| Code review (backend) | `backend-dev` |
+| Code review (frontend) | `frontend-dev` |
 | UI/UX design | `design` |
 | Git operations | Implementing agent (whoever made the changes) |
 
@@ -108,7 +110,8 @@ Before marking work complete:
 
 - [ ] All implementation via specialized agents
 - [ ] Tests written (spawn `qa`)
-- [ ] Code reviewed (spawn `qa`)
+- [ ] Backend code reviewed (spawn `backend-dev`)
+- [ ] Frontend code reviewed (spawn `frontend-dev`)
 - [ ] Documentation updated if needed
 - [ ] Linear issue updated
 - [ ] Session file captures outcomes

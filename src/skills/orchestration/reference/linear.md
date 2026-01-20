@@ -99,7 +99,7 @@ Any relevant context (keep brief).
 - PR created
 
 **In Review -> Done:**
-- Code review approved
+- Backend/frontend code review approved
 - CI passes
 - Merged to main branch
 

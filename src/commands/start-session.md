@@ -67,14 +67,16 @@ Task(
 | Next.js/React/Tailwind | `frontend-dev` | UI components, pages, styling |
 | Schema/migrations/SQL | `dba` | Database changes, query optimization |
 | Docker/K8s/CI/CD | `devops` | Infrastructure, deployment, CI pipelines |
-| Tests/review/security | `qa` | Test implementation, code review, security audit |
+| Tests/security | `qa` | Test implementation, security audit |
+| Code review (backend) | `backend-dev` | Backend code review for maintainability |
+| Code review (frontend) | `frontend-dev` | Frontend code review for maintainability |
 | UI/UX design | `design` | Visual design, accessibility, user experience |
 | Git operations | Implementing agent | Whoever made the changes commits them |
 
 ### Spawning Best Practices
 
 1. **Be specific in prompts**: Include file paths, requirements, constraints
-2. **One concern per agent**: Don't ask backend-dev to also write tests (spawn testing-qa)
+2. **One concern per agent**: Don't ask backend-dev to also write tests (spawn `qa`)
 3. **Include context**: Reference the session file, Linear issue, relevant docs
 4. **Parallel when possible**: Spawn independent agents simultaneously
 5. **Sequential when dependent**: Wait for agent A's output before spawning agent B
@@ -90,7 +92,8 @@ Task(subagent_type="backend-dev", prompt="Implement session management service..
 Task(subagent_type="qa", prompt="Write tests for session management...")
 
 # 3. After implementation, review
-Task(subagent_type="qa", prompt="Review the session management implementation...")
+Task(subagent_type="backend-dev", prompt="Review the backend session management implementation...")
+Task(subagent_type="frontend-dev", prompt="Review any frontend session management UI...")
 ```
 
 ---
@@ -153,9 +156,10 @@ Confirm the session file exists and contains valid frontmatter before proceeding
    - Your recommendation
    - **Wait for user approval before proceeding**
 4. **Ensure quality**:
-   - All work must include appropriate tests (spawn `qa`)
-   - Document changes in relevant files
-   - Update Linear with progress
+    - All work must include appropriate tests (spawn `qa`)
+    - Route backend reviews to `backend-dev` and frontend reviews to `frontend-dev`
+    - Document changes in relevant files
+    - Update Linear with progress
 5. **Update session file continuously** (handoff must ALWAYS be current):
    - Log agent spawns in `orchestration.spawned_agents` with task and status
    - Update `current_task` as work progresses between agents
@@ -315,7 +319,7 @@ Follow your three-phase workflow (BEFORE → DURING → AFTER):
        task: "Implement authentication endpoint"
        status: completed
        outcome: "Created /auth/login and /auth/logout endpoints"
-     - type: testing-qa
+     - type: qa
        task: "Write authentication tests"
        status: in_progress
    ```
@@ -324,10 +328,11 @@ Follow your three-phase workflow (BEFORE → DURING → AFTER):
 5. After each agent completes: update session, then spawn next
 
 ### AFTER (Completion)
-1. Spawn `qa` for final review (if significant changes)
-2. Update Linear issue status to Done
-3. Complete session file with outcomes
-4. Archive session file (set status to `archived`, set `archived_at` and `archived_by`, move to `.agents/sessions/archive/` after ensuring knowledge captured elsewhere and council/report summaries are captured, update `.agents/` references)
+1. Spawn `backend-dev`/`frontend-dev` for code review (if significant changes)
+2. Spawn `qa` for final testing and security review
+3. Update Linear issue status to Done
+4. Complete session file with outcomes
+5. Archive session file (set status to `archived`, set `archived_at` and `archived_by`, move to `.agents/sessions/archive/` after ensuring knowledge captured elsewhere and council/report summaries are captured, update `.agents/` references)
 
 ---
 

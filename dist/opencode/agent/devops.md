@@ -1,5 +1,5 @@
 ---
-name: devops
+name: DevOps
 description: >-
   DevOps engineer for Docker, Kubernetes, CI/CD, and infrastructure. Use for
   containerization, deployment pipelines, and infrastructure changes.

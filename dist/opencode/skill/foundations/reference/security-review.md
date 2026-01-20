@@ -1,6 +1,6 @@
 # Security Review Checklist
 
-Security-focused code review checklist aligned with OWASP guidelines.
+Security-focused review checklist aligned with OWASP guidelines (use alongside QA testing and security audits).
 
 ## Quick Security Check
 

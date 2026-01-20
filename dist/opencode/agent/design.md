@@ -1,5 +1,5 @@
 ---
-name: design
+name: Design
 description: >-
   UI/UX designer and accessibility auditor. Use for design systems, component
   design, accessibility compliance, and user experience.

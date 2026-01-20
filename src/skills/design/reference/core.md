@@ -29,8 +29,8 @@
 ### 5. Implement
 - Design handoff with clear specs
 - Component development
-- Code review for design/engineering alignment
-- QA: visual, functional, accessibility
+- Frontend code review for design/engineering alignment
+- QA: visual, functional, accessibility testing
 
 ### 6. Iterate
 - Monitor metrics
