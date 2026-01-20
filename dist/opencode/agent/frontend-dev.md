@@ -14,6 +14,7 @@ tools:
   Bash: true
   Glob: true
   Grep: true
+  TodoRead: true
 mode: subagent
 ---
 

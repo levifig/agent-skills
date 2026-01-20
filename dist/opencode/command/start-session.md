@@ -125,6 +125,8 @@ session:
   status: in_progress
   created: "YYYY-MM-DDTHH:MM:SSZ"
   last_updated: "YYYY-MM-DDTHH:MM:SSZ"
+  archived_at: "YYYY-MM-DDTHH:MM:SSZ"   # Required when archived
+  archived_by: "agent-pm"               # Optional; fill when archived (enforced by /review-sessions)
   linear_issue: "PLT-XXX"           # If applicable
   linear_url: "https://linear.app/{{your-workspace}}/issue/PLT-XXX"
 
@@ -163,7 +165,9 @@ Confirm the session file exists and contains valid frontmatter before proceeding
 6. **Clean up after yourself**:
    - No ephemeral files left behind
    - Session files capture outcomes, not noise
-   - Delete completed sessions (after extracting knowledge)
+- Archive completed sessions (set status, `archived_at`, `archived_by`, move to `.agents/sessions/archive/` after extraction, council summaries, and report processing)
+- Summarize council outcomes and processed reports in the session before archiving
+- Update `.agents/` references to archived paths (no `.agents` links outside `.agents/`)
 7. **When in doubt, ask the user**
 
 ---
@@ -323,7 +327,7 @@ Follow your three-phase workflow (BEFORE → DURING → AFTER):
 1. Spawn `qa` for final review (if significant changes)
 2. Update Linear issue status to Done
 3. Complete session file with outcomes
-4. Delete session file (after ensuring knowledge captured elsewhere)
+4. Archive session file (set status to `archived`, set `archived_at` and `archived_by`, move to `.agents/sessions/archive/` after ensuring knowledge captured elsewhere and council/report summaries are captured, update `.agents/` references)
 
 ---
 

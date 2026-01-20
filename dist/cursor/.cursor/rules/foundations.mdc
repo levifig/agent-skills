@@ -1048,7 +1048,7 @@ Always at the **bottom** of the document:
 ### Never
 
 - Document APIs before they ship
-- Include session/council file references
+- Include session/council file references (no `.agents/` links outside `.agents/` artifacts)
 - Use lengthy code samples in docs
 - Add planning details to docs (use Linear)
 

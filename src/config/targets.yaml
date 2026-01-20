@@ -29,6 +29,9 @@ targets:
             # Remove Task() tools by default (OpenCode uses @ mentions)
             remove:
               - "Task(*)"
+            # Ensure subagents can read delegated tasks
+            add:
+              TodoRead: true
       skills: {}
 
   cursor:

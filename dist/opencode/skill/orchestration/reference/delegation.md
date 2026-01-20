@@ -15,7 +15,8 @@
 | Track tasks | TodoWrite/TodoRead |
 | Manage external issues | Linear, GitHub |
 | Read files for context | Read, Grep, Glob |
-| Ask clarifying questions | AskUserQuestion |
+| Ask clarifying questions | AskUserQuestion (OpenCode: `question`) |
+| Assign subagent work | TodoWrite (subagents read via TodoRead) |
 
 ### PM MUST Delegate
 
@@ -86,6 +87,8 @@ What type of work is needed?
 ```
 
 ## Spawn Patterns
+
+**OpenCode requirement:** Interview the user with the `question` tool before drafting a plan or research strategy.
 
 ### Sequential (Dependencies)
 

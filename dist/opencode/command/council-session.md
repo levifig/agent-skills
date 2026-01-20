@@ -354,7 +354,10 @@ council:
   decision_made_at: "[ISO timestamp]"
 ```
 
-If session file exists, update it with decision reference:
+After the linked session includes the council outcome summary, archive the council (set status to `archived`, set `archived_at` and `archived_by`, and move to `.agents/councils/archive/`).
+Update any `.agents/` references to the archived path after moving (no `.agents` links outside `.agents/`; auto-update after confirmation).
+
+If session file exists, update it with decision reference and council outcome summary:
 
 ```markdown
 ## Decisions
@@ -363,10 +366,17 @@ If session file exists, update it with decision reference:
 
 **Decision**: [Chosen option]
 
-**Council**: .agents/councils/[FILENAME].md
+**Council**: .agents/councils/[FILENAME].md (update to archived path after move)
 
 **Rationale**: [Brief summary]
 
+**Next Steps**: [What happens now]
+
+## Council Outcomes
+
+### Council: [Decision Topic]
+**Outcome**: [Brief summary of council conclusion]
+**Council File**: .agents/councils/[FILENAME].md (update to archived path after move)
 **Next Steps**: [What happens now]
 ```
 
@@ -464,7 +474,8 @@ After user decision:
 - [ ] Decision recorded in council file
 - [ ] User's rationale captured
 - [ ] Action items identified
-- [ ] Session file updated (if applicable)
+- [ ] Session file updated with council outcome summary (if applicable)
+- [ ] Archive council after session summary exists (status + move to `.agents/councils/archive/`)
 - [ ] ADR consideration addressed
 - [ ] Implementation plan proposed (if applicable)
 

@@ -173,13 +173,18 @@ Update council file with:
 ## Council File Format
 
 **Location**: `.agents/councils/YYYYMMDD-HHMMSS-<topic>.md`
+**Archive location:** `.agents/councils/archive/` (move after linked session includes council outcome summary; archive indefinitely).
+**Link policy**: Documents outside `.agents/` must not reference `.agents/` files. Keep `.agents/` links contained within `.agents/` artifacts, and update them when files move to `.agents/<type>/archive/`.
+**Report capture**: If outputs are captured as a report, follow report frontmatter policy, including `archived_at` and `archived_by` when archived (see Sessions → Reports Processed).
 
 ```yaml
 ---
 council:
   topic: "Session storage strategy"
   timestamp: "2025-12-10T15:30:00Z"
-  status: approved              # approved | rejected | deferred
+  status: approved              # approved | rejected | deferred | archived
+  archived_at: "2025-12-10T18:00:00Z"   # Required when archived
+  archived_by: "agent-pm"               # Optional; fill when archived (enforced by /review-sessions)
   session: "20251210-140000-user-auth"  # REQUIRED
   participants:
     - dba
@@ -220,6 +225,12 @@ council:
 
 After council concludes and user decides, PM spawns implementation agents to execute.
 
+## Archiving Guidance
+
+- Archive councils indefinitely (no deletion policy).
+- When moving a council to `.agents/councils/archive/`, update any references inside `.agents/` files to the archived path.
+- Documents outside `.agents/` must not reference `.agents/` files.
+
 ## Anti-Patterns
 
 | Don't | Do Instead |
@@ -231,6 +242,7 @@ After council concludes and user decides, PM spawns implementation agents to exe
 | Proceed without user approval | Wait for explicit decision |
 | Implement during council | Advise only, implement after |
 | Skip documentation | Record decision in council file |
+| Archive council without session summary | Summarize in session before archive (status + move) |
 
 ## Checklist
 
@@ -251,5 +263,8 @@ After council concludes and user decides, PM spawns implementation agents to exe
 - [ ] Options presented to user
 - [ ] Explicit user decision obtained
 - [ ] Council file updated
+- [ ] Archive council after linked session summary exists (set status + `archived_at` + `archived_by`, move)
+- [ ] Update `.agents/` references to archived paths (no `.agents` links outside `.agents/`)
+- [ ] Archive indefinitely (no deletion policy)
 - [ ] Consider ADR if architectural
 - [ ] Implementation spawned (if applicable)

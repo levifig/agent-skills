@@ -92,7 +92,7 @@ This skill uses paths from `.agents/config.json`:
 - Run code review (if significant changes)
 - Update external issue to Done
 - Ensure knowledge captured in permanent locations
-- Delete session file
+- Archive session file (set status, `archived_at`, `archived_by`, move to `.agents/sessions/archive/`, update `.agents/` links)
 
 ## When to Use PM Orchestration
 
@@ -114,8 +114,9 @@ This skill uses paths from `.agents/config.json`:
 ### Sessions
 - Filename: `YYYYMMDD-HHMMSS-description.md`
 - Required fields: title, status, created, last_updated, current_task
+- Archive fields: `archived_at`, `archived_by` (required when archived)
 - Required sections: Context, Current State, Next Steps
-- Delete when complete (don't archive)
+- Archive when complete (set status, `archived_at`, `archived_by`, move to `.agents/sessions/archive/`, update `.agents/` links)
 
 ### Councils
 - Always odd number: 5 or 7 agents

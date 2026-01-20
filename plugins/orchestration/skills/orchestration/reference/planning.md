@@ -6,6 +6,8 @@ Guidelines for product specifications, roadmaps, and feature definition.
 
 **Insist on complete, polished releases - no MVPs or quick hacks.**
 
+**OpenCode requirement:** Interview the user with the `question` tool before drafting any plan or research strategy.
+
 Every release should be:
 - Complete (all planned functionality works)
 - Polished (good UX, no rough edges)

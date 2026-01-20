@@ -99,7 +99,7 @@ This skill uses paths from `.agents/config.json`:
 - Run code review (if significant changes)
 - Update external issue to Done
 - Ensure knowledge captured in permanent locations
-- Delete session file
+- Archive session file (set status, `archived_at`, `archived_by`, move to `.agents/sessions/archive/`, update `.agents/` links)
 
 ## When to Use PM Orchestration
 
@@ -121,8 +121,9 @@ This skill uses paths from `.agents/config.json`:
 ### Sessions
 - Filename: `YYYYMMDD-HHMMSS-description.md`
 - Required fields: title, status, created, last_updated, current_task
+- Archive fields: `archived_at`, `archived_by` (required when archived)
 - Required sections: Context, Current State, Next Steps
-- Delete when complete (don't archive)
+- Archive when complete (set status, `archived_at`, `archived_by`, move to `.agents/sessions/archive/`, update `.agents/` links)
 
 ### Councils
 - Always odd number: 5 or 7 agents
@@ -335,13 +336,18 @@ Update council file with:
 ## Council File Format
 
 **Location**: `.agents/councils/YYYYMMDD-HHMMSS-<topic>.md`
+**Archive location:** `.agents/councils/archive/` (move after linked session includes council outcome summary; archive indefinitely).
+**Link policy**: Documents outside `.agents/` must not reference `.agents/` files. Keep `.agents/` links contained within `.agents/` artifacts, and update them when files move to `.agents/<type>/archive/`.
+**Report capture**: If outputs are captured as a report, follow report frontmatter policy, including `archived_at` and `archived_by` when archived (see Sessions → Reports Processed).
 
 ```yaml
 ---
 council:
   topic: "Session storage strategy"
   timestamp: "2025-12-10T15:30:00Z"
-  status: approved              # approved | rejected | deferred
+  status: approved              # approved | rejected | deferred | archived
+  archived_at: "2025-12-10T18:00:00Z"   # Required when archived
+  archived_by: "agent-pm"               # Optional; fill when archived (enforced by /review-sessions)
   session: "20251210-140000-user-auth"  # REQUIRED
   participants:
     - dba
@@ -382,6 +388,12 @@ council:
 
 After council concludes and user decides, PM spawns implementation agents to execute.
 
+## Archiving Guidance
+
+- Archive councils indefinitely (no deletion policy).
+- When moving a council to `.agents/councils/archive/`, update any references inside `.agents/` files to the archived path.
+- Documents outside `.agents/` must not reference `.agents/` files.
+
 ## Anti-Patterns
 
 | Don't | Do Instead |
@@ -393,6 +405,7 @@ After council concludes and user decides, PM spawns implementation agents to exe
 | Proceed without user approval | Wait for explicit decision |
 | Implement during council | Advise only, implement after |
 | Skip documentation | Record decision in council file |
+| Archive council without session summary | Summarize in session before archive (status + move) |
 
 ## Checklist
 
@@ -413,6 +426,9 @@ After council concludes and user decides, PM spawns implementation agents to exe
 - [ ] Options presented to user
 - [ ] Explicit user decision obtained
 - [ ] Council file updated
+- [ ] Archive council after linked session summary exists (set status + `archived_at` + `archived_by`, move)
+- [ ] Update `.agents/` references to archived paths (no `.agents` links outside `.agents/`)
+- [ ] Archive indefinitely (no deletion policy)
 - [ ] Consider ADR if architectural
 - [ ] Implementation spawned (if applicable)
 
@@ -436,7 +452,8 @@ After council concludes and user decides, PM spawns implementation agents to exe
 | Track tasks | TodoWrite/TodoRead |
 | Manage external issues | Linear, GitHub |
 | Read files for context | Read, Grep, Glob |
-| Ask clarifying questions | AskUserQuestion |
+| Ask clarifying questions | AskUserQuestion (OpenCode: `question`) |
+| Assign subagent work | TodoWrite (subagents read via TodoRead) |
 
 ### PM MUST Delegate
 
@@ -507,6 +524,8 @@ What type of work is needed?
 ```
 
 ## Spawn Patterns
+
+**OpenCode requirement:** Interview the user with the `question` tool before drafting a plan or research strategy.
 
 ### Sequential (Dependencies)
 
@@ -828,6 +847,8 @@ Guidelines for product specifications, roadmaps, and feature definition.
 
 **Insist on complete, polished releases - no MVPs or quick hacks.**
 
+**OpenCode requirement:** Interview the user with the `question` tool before drafting any plan or research strategy.
+
 Every release should be:
 - Complete (all planned functionality works)
 - Polished (good UX, no rough edges)
@@ -1095,7 +1116,7 @@ Document in the file configured in `.agents/config.json` (default: `docs/CONSTRA
 
 # Session Management
 
-Sessions are coordination artifacts for active work. They are ephemeral - deleted when work completes, not archived.
+Sessions are coordination artifacts for active work. They are archived (set status, `archived_at`, `archived_by`, move to `.agents/sessions/archive/`) when work completes to preserve an audit trail.
 
 ## When to Use Sessions
 
@@ -1106,11 +1127,15 @@ Sessions are coordination artifacts for active work. They are ephemeral - delete
 
 ## Session File Format
 
+**Link policy**: Documents outside `.agents/` must not reference `.agents/` files. Keep `.agents/` links contained within `.agents/` artifacts, and update them when files move to `.agents/<type>/archive/`.
+
 ### Location & Naming
 
 ```
 .agents/sessions/YYYYMMDD-HHMMSS-<description>.md
 ```
+
+**Archive location:** `.agents/sessions/archive/`
 
 **Generate timestamps:**
 ```bash
@@ -1131,9 +1156,11 @@ date -u +"%Y-%m-%dT%H:%M:%SZ"
 ---
 session:
   title: "Clear description of work"           # REQUIRED
-  status: in_progress                          # REQUIRED: in_progress|paused|completed
+  status: in_progress                          # REQUIRED: in_progress|paused|completed|archived
   created: "2025-12-04T14:30:00Z"              # REQUIRED: ISO 8601
   last_updated: "2025-12-04T14:30:00Z"         # REQUIRED: ISO 8601
+  archived_at: "2025-12-04T18:10:00Z"          # Required when archived
+  archived_by: "agent-pm"                      # Optional; fill when archived (enforced by /review-sessions)
   linear_issue: "BACK-123"                     # Optional
   linear_url: "https://linear.app/..."         # Optional
 
@@ -1198,6 +1225,24 @@ mypy path/to/code/
 **Decision**: What was decided
 **Rationale**: Why
 
+## Council Outcomes
+
+### Council: [Topic]
+**Outcome**: Decision summary
+**Council File**: `.agents/councils/YYYYMMDD-HHMMSS-topic.md`
+**Next Steps**: Action items captured
+**Archive**: After this summary is captured, set council status to `archived`, set `archived_at`, set `archived_by`, and move to `.agents/councils/archive/` (archive indefinitely).
+
+## Reports Processed
+
+### Report: [Title]
+**Key Conclusions**: Summary of findings
+**Action Items**: What changed or will change
+**Report File**: `.agents/reports/YYYYMMDD-HHMMSS-title.md`
+**Archive**: After report is processed and the linked session is archived, set report status to `archived`, add `archived_at`, add `archived_by`, and move to `.agents/reports/archive/` (archive indefinitely).
+**Frontmatter**: Require `status`, `session_reference`, and `processed_at`; add `archived_at` and `archived_by` when archived.
+**Note**: Reports without frontmatter are treated as unprocessed.
+
 ## Blockers
 - Current blocker (if any)
 
@@ -1215,7 +1260,8 @@ Brief description of what happened.
 |-------|-------------|
 | `in_progress` | Work actively happening |
 | `paused` | Temporarily stopped |
-| `completed` | Ready for cleanup |
+| `completed` | Work finished; ready to archive (set status, `archived_at`, `archived_by`, move) after extraction |
+| `archived` | Closed and preserved for audit (set `archived_at`/`archived_by`, status set + moved to `.agents/sessions/archive/`) |
 
 ## Updating During Work
 
@@ -1224,7 +1270,7 @@ After each significant action:
 1. Update `Current State`
 2. Add to progress checklist
 3. Update `Files Modified` if applicable
-4. Add entry to `Session Log` with timestamp
+4. Add entry to `Session Log` with timestamp (`YYYY-MM-DD HH:MM`)
 5. Update `Next Steps`
 
 ## Handoff Protocol
@@ -1246,7 +1292,9 @@ Each agent:
 
 ## Completing a Session
 
-Sessions are **deleted, not archived** when complete.
+Sessions are **archived, not deleted** when complete to preserve audit trail (set status to `archived`, set `archived_at` and `archived_by`, and move into `.agents/sessions/archive/`). Archive indefinitely (no deletion policy).
+
+**Archive timing:** only after extraction and council/report summaries are captured.
 
 ### Knowledge Extraction Checklist
 
@@ -1257,15 +1305,28 @@ Sessions are **deleted, not archived** when complete.
 | Architectural decisions | ADRs (`docs/decisions/`) |
 | API contracts | API documentation |
 | Remaining work | External issue backlog |
+| Council outcomes | Session summary + council file link |
+| Report conclusions | Session summary + report file link |
+| Archived artifacts | `.agents/<type>/archive/` + status `archived` + `archived_at` + `archived_by` |
 
-### Deletion Checklist
+### Archival Checklist
 
 - [ ] External issue updated with final status
 - [ ] Decisions captured as ADRs (if architectural)
 - [ ] Lessons learned added to relevant docs
 - [ ] Remaining work created as issues
+- [ ] Council outcomes summarized in this session (link council file)
+- [ ] Reports processed and summarized in this session (link report file)
+- [ ] Reports archived only after session is archived (status + move)
 - [ ] No orphaned references to session file
-- [ ] Delete the session file
+- [ ] Set session status to `archived`
+- [ ] Set `archived_at` and `archived_by`
+- [ ] Move file to `.agents/sessions/archive/`
+- [ ] Linked councils moved to `.agents/councils/archive/` after session summary
+- [ ] Linked reports moved to `.agents/reports/archive/` after session archived + conclusions captured
+- [ ] Update `.agents/` references to archived paths (no `.agents` links outside `.agents/`)
+- [ ] Archive indefinitely (no deletion policy)
+- [ ] Use `/review-sessions` for auto-move + link updates after confirmation
 
 ## PM Start Protocol
 
@@ -1297,10 +1358,12 @@ When starting a new orchestration context:
 
 | Don't | Do Instead |
 |-------|------------|
-| Archive sessions indefinitely | Delete after capturing knowledge |
+| Archive without extraction | Extract outcomes before archiving |
 | Use sessions as permanent records | Use proper documentation locations |
-| Reference stale sessions | Keep sessions current or delete |
+| Reference stale sessions | Keep sessions current or archive (status + move) when done |
 | Store decisions only in sessions | Create ADRs for important decisions |
+| Archive without council/report summaries | Summarize outcomes in session before archive |
+| Archive but leave in active folder | Move file to `.agents/sessions/archive/` after setting status |
 | Batch session updates | Update after each significant event |
 | Keep status as `in_progress` when paused | Update status when state changes |
 

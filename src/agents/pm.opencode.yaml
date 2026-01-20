@@ -9,6 +9,8 @@ frontmatter:
     # Remove Task() tools - OpenCode uses @ mentions for subagent delegation
     remove:
       - "Task(*)"
+      - AskUserQuestion
     # Add OpenCode's Task permission (for general background tasks, not subagents)
     add:
       Task: true
+      question: true
