@@ -92,6 +92,30 @@ export function loadAgentSidecar(sourcePath, target) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Commands
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Load optional sidecar for a command file
+ *
+ * @param {string} sourcePath - Path to the command source file (e.g., src/commands/start-session.md)
+ * @param {string} target - Target name (e.g., 'opencode', 'cursor')
+ * @returns {Object} Sidecar frontmatter content (empty object if not found)
+ */
+export function loadCommandSidecar(sourcePath, target) {
+  const dir = dirname(sourcePath);
+  const baseName = basename(sourcePath, ".md");
+  const sidecarPath = join(dir, `${baseName}.${target}.yaml`);
+
+  if (!existsSync(sidecarPath)) {
+    return {};
+  }
+
+  const content = readFileSync(sidecarPath, "utf-8");
+  return parseYaml(content) || {};
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 

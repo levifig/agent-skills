@@ -7,7 +7,7 @@ description: >-
   Tailwind CSS styling, Vitest/Playwright testing, and accessibility. Activate
   when working with .ts/.tsx/.js/.jsx files, package.json, or React/Next.js
   projects.
-version: 1.10.0
+version: 1.11.0
 ---
 
 # TypeScript Development

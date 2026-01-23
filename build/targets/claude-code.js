@@ -37,9 +37,12 @@ import {
   loadSkillFrontmatter,
   loadSkillExtensions,
   mergeSkillFrontmatter,
+  loadCommandSidecar,
 } from "../lib/sidecar.js";
+import { getVersion } from "../lib/version.js";
 
-const VERSION = "1.9.0";
+// Version is loaded dynamically from package.json at build time
+let VERSION = "0.0.0";
 const REPOSITORY = "https://github.com/levifig/loaf";
 const TARGET_NAME = "claude-code";
 const PLUGIN_NAME = "loaf";
@@ -107,6 +110,9 @@ export async function build({
   distDir,
   targetName,
 }) {
+  // Load version from package.json at build time
+  VERSION = getVersion(rootDir);
+
   // distDir is the repo root for claude-code target
   const pluginsDir = join(distDir, "plugins");
   const marketplaceDir = join(distDir, ".claude-plugin");
@@ -450,18 +456,40 @@ function copySkills(skills, srcDir, pluginDir) {
 }
 
 /**
- * Copy command files
+ * Copy command files with optional sidecar frontmatter and version
+ *
+ * Sidecar files: {command}.claude-code.yaml
+ * Version is injected from package.json at build time
  */
 function copyCommands(commands, srcDir, pluginDir) {
   const commandsDir = join(pluginDir, "commands");
   mkdirSync(commandsDir, { recursive: true });
 
   for (const command of commands) {
-    const src = join(srcDir, "commands", `${command}.md`);
-    const dest = join(commandsDir, `${command}.md`);
-    if (existsSync(src)) {
-      cpSync(src, dest);
+    const srcPath = join(srcDir, "commands", `${command}.md`);
+    const destPath = join(commandsDir, `${command}.md`);
+
+    if (!existsSync(srcPath)) {
+      continue;
     }
+
+    // Read source content
+    const content = readFileSync(srcPath, "utf-8");
+    const { content: body, data: frontmatter } = matter(content);
+
+    // Load optional sidecar for Claude Code-specific frontmatter
+    const sidecar = loadCommandSidecar(srcPath, TARGET_NAME);
+
+    // Merge: source frontmatter < sidecar overrides < version
+    const mergedFrontmatter = {
+      ...frontmatter,
+      ...sidecar,
+      version: VERSION,
+    };
+
+    // Write with merged frontmatter
+    const transformed = matter.stringify(body, mergedFrontmatter);
+    writeFileSync(destPath, transformed);
   }
 }
 

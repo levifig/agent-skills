@@ -6,7 +6,7 @@ description: >-
   changelogs), and security patterns (input validation, secrets management,
   OWASP). Activate for code review, commit preparation, documentation writing,
   or security considerations.
-version: 1.10.0
+version: 1.11.0
 ---
 
 # Code Standards

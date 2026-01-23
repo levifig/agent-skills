@@ -5,7 +5,7 @@ description: >-
   deliberation workflows, session file management, Linear issue integration, and
   product planning. Activate when coordinating multi-agent work, running
   councils for decisions, managing work sessions, or integrating with Linear.
-version: 1.10.0
+version: 1.11.0
 ---
 
 # PM Orchestration

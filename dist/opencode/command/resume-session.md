@@ -1,10 +1,8 @@
 ---
 description: Resume an existing session file and sync with Linear
-hooks:
-  Stop:
-    - hooks:
-        - type: command
-          command: "bash ${CLAUDE_PLUGIN_ROOT}/hooks/sessions/validate-session-created.sh"
+agent: pm
+subtask: false
+version: 1.11.0
 ---
 
 # Resume Session

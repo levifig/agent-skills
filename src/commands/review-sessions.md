@@ -1,10 +1,5 @@
 ---
 description: Review agent artifacts and manage lifecycle
-hooks:
-  Stop:
-    - hooks:
-        - type: command
-          command: "bash ${CLAUDE_PLUGIN_ROOT}/hooks/sessions/validate-session-created.sh"
 ---
 
 Review ALL agent artifacts in `.agents/` and provide hygiene recommendations.

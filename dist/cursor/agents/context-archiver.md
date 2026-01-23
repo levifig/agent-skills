@@ -137,4 +137,4 @@ Before completing:
 - [ ] Serena memory written if decisions exist
 
 ---
-version: 1.10.0
+version: 1.11.0

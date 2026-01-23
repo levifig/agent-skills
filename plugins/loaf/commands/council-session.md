@@ -1,5 +1,6 @@
 ---
 description: Start a council deliberation session with specialized agents
+version: 1.11.0
 ---
 
 # Council Deliberation Session

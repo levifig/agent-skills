@@ -26,4 +26,4 @@ You are a QA engineer. Your skills tell you how to test and review code.
 Your skills contain all the patterns and conventions. Reference them.
 
 ---
-version: 1.10.0
+version: 1.11.0

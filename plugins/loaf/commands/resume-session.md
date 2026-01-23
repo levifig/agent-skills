@@ -4,7 +4,10 @@ hooks:
   Stop:
     - hooks:
         - type: command
-          command: "bash ${CLAUDE_PLUGIN_ROOT}/hooks/sessions/validate-session-created.sh"
+          command: >-
+            bash
+            ${CLAUDE_PLUGIN_ROOT}/hooks/sessions/validate-session-created.sh
+version: 1.11.0
 ---
 
 # Resume Session

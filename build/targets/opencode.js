@@ -30,9 +30,13 @@ import {
 } from "fs";
 import matter from "gray-matter";
 import { join } from "path";
-import { loadAgentSidecar, loadSkillFrontmatter } from "../lib/sidecar.js";
+import { loadAgentSidecar, loadSkillFrontmatter, loadCommandSidecar } from "../lib/sidecar.js";
+import { getVersion } from "../lib/version.js";
 
 const TARGET_NAME = "opencode";
+
+// Version is loaded dynamically from package.json at build time
+let VERSION = "0.0.0";
 
 /**
  * Build OpenCode distribution
@@ -45,6 +49,9 @@ export async function build({
   srcDir,
   distDir,
 }) {
+  // Load version from package.json at build time
+  VERSION = getVersion(rootDir);
+
   // Clean and create dist directory
   mkdirSync(distDir, { recursive: true });
 
@@ -146,14 +153,47 @@ function copyAgents(srcDir, distDir) {
 }
 
 /**
- * Copy all commands
+ * Copy commands with optional sidecar frontmatter
+ *
+ * OpenCode supports assigning commands to agents via frontmatter:
+ * - agent: which agent executes the command
+ * - subtask: false to run in main context (not as subagent)
+ *
+ * Sidecar files: {command}.opencode.yaml
  */
 function copyCommands(srcDir, distDir) {
   const src = join(srcDir, "commands");
   const dest = join(distDir, "command");
 
-  if (existsSync(src)) {
-    cpSync(src, dest, { recursive: true });
+  if (!existsSync(src)) {
+    return;
+  }
+
+  mkdirSync(dest, { recursive: true });
+
+  const files = readdirSync(src).filter((f) => f.endsWith(".md"));
+
+  for (const file of files) {
+    const srcPath = join(src, file);
+    const destPath = join(dest, file);
+
+    // Read source content
+    const content = readFileSync(srcPath, "utf-8");
+    const { content: body, data: frontmatter } = matter(content);
+
+    // Load optional sidecar for OpenCode-specific frontmatter
+    const sidecar = loadCommandSidecar(srcPath, TARGET_NAME);
+
+    // Merge: source frontmatter < sidecar overrides < version
+    const mergedFrontmatter = {
+      ...frontmatter,
+      ...sidecar,
+      version: VERSION,
+    };
+
+    // Write with merged frontmatter
+    const transformed = matter.stringify(body, mergedFrontmatter);
+    writeFileSync(destPath, transformed);
   }
 }
 

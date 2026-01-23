@@ -4,7 +4,10 @@ hooks:
   Stop:
     - hooks:
         - type: command
-          command: "bash ${CLAUDE_PLUGIN_ROOT}/hooks/sessions/validate-session-created.sh"
+          command: >-
+            bash
+            ${CLAUDE_PLUGIN_ROOT}/hooks/sessions/validate-session-created.sh
+version: 1.11.0
 ---
 
 # Orchestrated PM Session
@@ -33,6 +36,7 @@ You are the PM agent. Start by understanding the task:
 **ALL code changes, documentation edits, and implementation work MUST be delegated to specialized agents.**
 
 This includes:
+
 - Any file in `backend/`, `frontend/`, `src/`, `tests/`
 - Any file in `docs/` (except reading for context)
 - Configuration files (`.yaml`, `.json`, `.toml`, etc.)
@@ -115,6 +119,7 @@ date -u +"%Y-%m-%dT%H:%M:%SZ"  # For frontmatter
 
 **Location:** `.agents/sessions/`
 **Filename:** `YYYYMMDD-HHMMSS-<description>.md`
+
 - Use the timestamp from Step 1
 - `<description>` is kebab-case, human-readable (e.g., `powerflow-optimization`)
 
@@ -167,27 +172,27 @@ For example: /rename auth-jwt-implementation
 1. **Strict delegation** — ALL implementation via Task tool (see Agent Spawning above)
 2. **Keep this session lean** — focus on planning, coordination, and oversight
 3. **When uncertain**, convene a council of specialized agents per your instructions, then present:
-   - The vote results
-   - Pros and cons of each option
-   - Your recommendation
-   - **Wait for user approval before proceeding**
+    - The vote results
+    - Pros and cons of each option
+    - Your recommendation
+    - **Wait for user approval before proceeding**
 4. **Ensure quality**:
     - All work must include appropriate tests (spawn `qa`)
     - Route backend reviews to `backend-dev` and frontend reviews to `frontend-dev`
     - Document changes in relevant files
     - Update Linear with progress
 5. **Update session file continuously** (handoff must ALWAYS be current):
-   - Log agent spawns in `orchestration.spawned_agents` with task and status
-   - Update `current_task` as work progresses between agents
-   - Keep `last_updated` timestamp current after each significant action
-   - Maintain `## Current State` as handoff-ready — anyone should be able to pick up immediately
-   - After each subagent completes: update session with outcomes before spawning next
+    - Log agent spawns in `orchestration.spawned_agents` with task and status
+    - Update `current_task` as work progresses between agents
+    - Keep `last_updated` timestamp current after each significant action
+    - Maintain `## Current State` as handoff-ready — anyone should be able to pick up immediately
+    - After each subagent completes: update session with outcomes before spawning next
 6. **Clean up after yourself**:
-   - No ephemeral files left behind
-   - Session files capture outcomes, not noise
-- Archive completed sessions (set status, `archived_at`, `archived_by`, move to `.agents/sessions/archive/` after extraction, council summaries, and report processing)
-- Summarize council outcomes and processed reports in the session before archiving
-- Update `.agents/` references to archived paths (no `.agents` links outside `.agents/`)
+    - No ephemeral files left behind
+    - Session files capture outcomes, not noise
+    - Archive completed sessions (set status, `archived_at`, `archived_by`, move to `.agents/sessions/archive/` after extraction, council summaries, and report processing)
+    - Summarize council outcomes and processed reports in the session before archiving
+    - Update `.agents/` references to archived paths (no `.agents` links outside `.agents/`)
 7. **When in doubt, ask the user**
 
 ---
@@ -204,6 +209,7 @@ Is this a code/config/doc change?
 ```
 
 **When multiple valid approaches exist:**
+
 1. Spawn a council (5-7 agents, odd number)
 2. Present deliberation results to user
 3. **WAIT for user approval**
@@ -341,17 +347,21 @@ For complex tasks, use **Plan Mode** to explore before implementing:
 When the Plan agent returns a plan:
 
 1. **Generate plan filename:**
+
    ```bash
    date -u +"%Y%m%d-%H%M%S"  # e.g., 20250123-143500
    ```
+
    Format: `YYYYMMDD-HHMMSS-{plan-slug}.md`
 
 2. **Save plan to `.agents/plans/`:**
+
    ```
    .agents/plans/20250123-143500-auth-api-design.md
    ```
 
 3. **Plan file format:**
+
    ```markdown
    ---
    session: 20250123-140000-feature-auth
@@ -370,6 +380,7 @@ When the Plan agent returns a plan:
    ```
 
 4. **Update session file with plan reference:**
+
    ```yaml
    plans:
      - 20250123-143500-auth-api-design.md
@@ -444,14 +455,17 @@ See `orchestration` skill `reference/context-management.md` for detailed pattern
 Follow your three-phase workflow (BEFORE → DURING → AFTER):
 
 ### BEFORE (Planning)
+
 1. Create session file ✓
 2. Break down work into agent-sized tasks
 3. Identify spawn order (respect dependencies)
 4. Get user approval on plan
 
 ### DURING (Execution)
+
 1. **Spawn specialized agents via Task tool** (NOT direct implementation)
 2. Log each spawn in session file under `orchestration.spawned_agents`:
+
    ```yaml
    spawned_agents:
      - type: backend-dev
@@ -462,11 +476,13 @@ Follow your three-phase workflow (BEFORE → DURING → AFTER):
        task: "Write authentication tests"
        status: in_progress
    ```
+
 3. Update Linear with progress (following style rules — no emoji, no file paths)
 4. Keep session `## Current State` always handoff-ready
 5. After each agent completes: update session, then spawn next
 
 ### AFTER (Completion)
+
 1. Spawn `backend-dev`/`frontend-dev` for code review (if significant changes)
 2. Spawn `qa` for final testing and security review
 3. Update Linear issue status to Done
