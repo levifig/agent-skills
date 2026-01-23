@@ -51,6 +51,7 @@ const preToolHooks = {
     { id: 'check-secrets', script: 'pre-tool/foundations-check-secrets.sh', timeout: 30000 },
     { id: 'validate-changelog', script: 'pre-tool/foundations-validate-changelog.sh', timeout: 30000 },
     { id: 'format-check', script: 'pre-tool/foundations-format-check.sh', timeout: 60000 },
+    { id: 'tdd-advisory', script: 'pre-tool/foundations-tdd-advisory.sh', timeout: 5000 },
     { id: 'python-type-check', script: 'pre-tool/python-type-check.sh', timeout: 60000 },
     { id: 'python-pytest-validation', script: 'pre-tool/python-pytest-validation.sh', timeout: 120000 },
     { id: 'python-type-check-progressive', script: 'pre-tool/python-type-check-progressive.sh', timeout: 120000 },

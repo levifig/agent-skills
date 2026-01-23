@@ -1,0 +1,10 @@
+name: background-runner
+description: >-
+  Lightweight background agent for non-interactive tasks. Use for security audits,
+  coverage analysis, code reviews, and other low-priority work that can run independently.
+is_background: true
+tools:
+  Read: true
+  Edit: true
+  Glob: true
+  Grep: true

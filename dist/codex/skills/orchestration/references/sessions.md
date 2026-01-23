@@ -68,6 +68,7 @@ session:
   branch: "username/back-123-feature"          # Optional: working branch
   transcripts: []                              # Archived Claude Code transcripts (filenames only)
                                                # Example: ["2a244262-8599-4bef-8bb8-3feea33d14e2.jsonl"]
+  referenced_sessions: []                      # Cross-session references (see below)
 
 plans: []  # List of plan files in .agents/plans/ used by this session
            # Example: ["20251204-143500-api-design.md", "20251204-150000-frontend.md"]
@@ -79,8 +80,42 @@ orchestration:
       task: "Brief task description"
       status: completed                        # pending|in_progress|completed
       summary: "Outcome summary"
+
+background_agents:                             # Background work running independently
+  - id: "bg-20260123-143000-security-scan"     # ID: bg-YYYYMMDD-HHMMSS-description
+    agent: background-runner                   # Agent type
+    task: "Full security audit"                # Brief description
+    status: running                            # running|completed|failed
+    result_location: null                      # Path to report when complete
 ---
 ```
+
+### Cross-Session References
+
+Track decisions imported from past sessions via `/reference-session`:
+
+```yaml
+session:
+  # ... other fields ...
+  referenced_sessions:
+    - session: "20250115-140000-auth-jwt.md"     # Source session filename
+      imported_at: "2025-01-23T14:30:00Z"        # When imported
+      content_type: decisions                     # decisions|context|all
+      decisions_imported:                         # List of decision titles
+        - "JWT token rotation strategy"
+        - "Refresh token storage approach"
+    - session: "20250110-090000-auth-oauth.md"
+      imported_at: "2025-01-23T14:35:00Z"
+      content_type: context
+      summary: "OAuth provider integration patterns"
+```
+
+**Why track references:**
+- Audit trail of where context came from
+- Avoids re-importing same decisions
+- Enables tracing decision lineage across sessions
+
+See `references/cross-session.md` for full patterns.
 
 ### Required Sections
 
@@ -160,6 +195,29 @@ Implementation plans for this session (stored in `.agents/plans/`):
 |------|--------|-------------|
 | [api-design](../plans/20251204-143500-api-design.md) | approved | API endpoint structure |
 | [frontend](../plans/20251204-150000-frontend.md) | pending | UI component design |
+
+## Architecture Diagrams
+
+### [Diagram Name]
+
+```mermaid
+[diagram content]
+```
+
+**Purpose**: Why this diagram helps understand the work
+**Files involved**: List of related file paths
+**Created**: When diagram was created (update if modified)
+
+<!--
+When to add diagrams:
+- Multi-service changes: Show interaction points
+- Data flow changes: Trace data through system
+- Schema modifications: Visualize relationships
+- API design: Document request/response flows
+
+For reusable diagrams, store in .agents/diagrams/ instead.
+See foundations skill reference/diagrams.md for Mermaid syntax.
+-->
 
 ## Council Outcomes
 

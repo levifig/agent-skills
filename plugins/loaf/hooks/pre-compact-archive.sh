@@ -99,11 +99,61 @@ if [ -d "$COUNCILS_DIR" ]; then
   fi
 fi
 
+# Check for running background agents
+RUNNING_BG_COUNT=0
+RUNNING_BG_LIST=""
+if [ -n "$RECENT_SESSIONS" ]; then
+  while read -r session; do
+    [ -z "$session" ] && continue
+    # Extract running background agents
+    BG_RUNNING=$(awk '
+      /^---$/ { in_fm = !in_fm; next }
+      in_fm && /^background_agents:/ { in_bg = 1; next }
+      in_fm && in_bg && /^[a-z_]+:/ && !/^[[:space:]]/ { in_bg = 0 }
+      in_fm && in_bg && /^[[:space:]]*- id:/ {
+        gsub(/^[[:space:]]*- id:[[:space:]]*"?|"?$/, "")
+        current_id = $0
+      }
+      in_fm && in_bg && /^[[:space:]]*status:/ {
+        gsub(/^[[:space:]]*status:[[:space:]]*"?|"?$/, "")
+        if ($0 == "running" && current_id != "") {
+          print current_id
+        }
+      }
+    ' "$session" 2>/dev/null)
+
+    if [ -n "$BG_RUNNING" ]; then
+      FILENAME=$(basename "$session")
+      while read -r bg_id; do
+        [ -z "$bg_id" ] && continue
+        RUNNING_BG_COUNT=$((RUNNING_BG_COUNT + 1))
+        RUNNING_BG_LIST="${RUNNING_BG_LIST}- **${bg_id}** (in ${FILENAME})\n"
+      done <<< "$BG_RUNNING"
+    fi
+  done <<< "$RECENT_SESSIONS"
+fi
+
+if [ "$RUNNING_BG_COUNT" -gt 0 ]; then
+  echo "## Background Agents Running"
+  echo ""
+  echo "**$RUNNING_BG_COUNT** background agent(s) still running:"
+  echo ""
+  echo -e "$RUNNING_BG_LIST"
+  echo ""
+  echo "**Note**: Background agent state will be preserved. Include in context-archiver prompt:"
+  echo "- Background agent IDs and their tasks"
+  echo "- Expected completion status"
+  echo ""
+fi
+
 # Summary
 if [ "$SESSION_COUNT" -gt 0 ]; then
   echo "---"
   echo ""
   echo "**Total Active Sessions**: $SESSION_COUNT"
+  if [ "$RUNNING_BG_COUNT" -gt 0 ]; then
+    echo "**Running Background Agents**: $RUNNING_BG_COUNT"
+  fi
   if [ -n "$RECENT_SESSIONS" ]; then
     echo ""
     echo "**Reminder**: The context-archiver agent will generate a Resumption Prompt section"

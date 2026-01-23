@@ -1,0 +1,12 @@
+name: background-runner
+description: >-
+  Lightweight background agent for non-interactive tasks. Use with run_in_background: true
+  for security audits, coverage analysis, code reviews, and other low-priority work.
+model: haiku
+skills:
+  - foundations
+tools:
+  - Read
+  - Edit
+  - Glob
+  - Grep

@@ -41,6 +41,14 @@ hooks:
       timeout: 600000
       description: Run security audit on bash commands
 
+    - id: tdd-advisory
+      skill: foundations
+      script: hooks/pre-tool/foundations-tdd-advisory.sh
+      matcher: "Edit|Write"
+      blocking: false
+      timeout: 5000
+      description: Advisory warning when editing implementation without tests
+
     # Orchestration - Commit and Linear integration
     - id: validate-commit
       skill: orchestration
@@ -267,7 +275,7 @@ plugin-groups:
     description: PM orchestration, session management, Linear workflow integration
     agents: [pm]
     skills: [orchestration]
-    commands: [start-session, resume-session, review-sessions, council-session]
+    commands: [start-session, resume-session, review-sessions, council-session, reference-session]
     related-hooks:
       pre-tool: [validate-commit, detect-linear-magic]
       session: [session-start, session-end, pre-compact-archive]
@@ -276,9 +284,15 @@ plugin-groups:
   foundations:
     description: Cross-language development fundamentals and quality gates
     agents: [qa]
-    skills: [foundations]
+    skills: [foundations, debugging]
     related-hooks:
-      pre-tool: [check-secrets, validate-changelog, format-check, security-audit]
+      pre-tool: [check-secrets, validate-changelog, format-check, security-audit, tdd-advisory]
+
+  # Debugging - Systematic bug investigation
+  debugging:
+    description: Hypothesis-driven debugging workflows and systematic bug investigation
+    agents: [qa, backend-dev, frontend-dev]
+    skills: [debugging, foundations]
 
   # Language-specific groups
   python:

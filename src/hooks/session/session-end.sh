@@ -38,8 +38,16 @@ case "$AGENT_TYPE" in
     echo "- [ ] Linear issues synced with actual progress"
     echo "- [ ] Decisions captured (ADRs if architectural)"
     echo "- [ ] Session file \`## Current State\` is handoff-ready"
+    echo "- [ ] **Code review completed** (run \`pr-review-toolkit:code-reviewer\` if significant changes)"
     echo "- [ ] Completed sessions deleted (knowledge extracted)"
     echo "- [ ] Active sessions have clear next steps"
+    echo ""
+    echo "### Code Review Reminder"
+    echo ""
+    echo "If this session involved significant code changes, consider running:"
+    echo "\`\`\`"
+    echo "Task(subagent_type=\"pr-review-toolkit:code-reviewer\", prompt=\"Review recent changes for this session\")"
+    echo "\`\`\`"
     ;;
 
   backend-dev|frontend-dev|rails-dev|dba|devops)

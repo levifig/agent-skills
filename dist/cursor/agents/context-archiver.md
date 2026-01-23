@@ -99,13 +99,66 @@ The agent resuming work should:
 Pre-compaction archive. Preserved: [brief summary of what was captured].
 ```
 
-## Serena Memory (Optional)
+## Serena Memory for Decisions
 
-Write memory ONLY when session has significant decisions:
+Write decision memory when session has significant decisions for cross-session reference.
 
-- Check if `## Decisions` section has content
-- If yes, write to `session-{session-slug}-decisions.md`
-- Include decision rationale and context
+### 5. Extract and Store Decisions
+
+Check if `## Decisions` section has content. If yes:
+
+**Step A: Extract decisions using the extraction script**
+
+```bash
+python3 plugins/loaf/skills/orchestration/scripts/extract-decisions.py \
+  ".agents/sessions/<session-file>.md"
+```
+
+This outputs formatted memory content to stdout and the memory name to stderr.
+
+**Step B: Write to Serena memory**
+
+Use Serena MCP to store the extracted decisions:
+
+```python
+mcp__serena__write_memory(
+    name="session-<slug>-decisions.md",
+    content=<extracted_content>
+)
+```
+
+**Memory naming convention:**
+- Session: `20250123-100000-auth-feature.md`
+- Memory: `session-auth-feature-decisions.md`
+
+**Memory format:**
+
+```markdown
+# Memory: session-auth-feature-decisions.md
+
+## Session Context
+- **Session**: 20250123-100000-auth-feature.md
+- **Title**: Auth Feature Implementation
+- **Archived**: 2025-01-23T14:30:00Z
+- **Linear Issue**: PLT-123
+
+## Key Decisions
+
+### Decision 1: JWT Token Rotation Strategy
+**Decision**: Rotate tokens every 15 minutes with sliding window
+**Rationale**: Balance between security and user experience
+**Council**: None - backend-dev recommendation accepted
+
+### Decision 2: Refresh Token Storage
+**Decision**: Store in HttpOnly cookies, not localStorage
+**Rationale**: Prevents XSS token theft
+**Council**: Security council (5 agents) - unanimous
+```
+
+**Why store decisions:**
+- Enables `/reference-session` command for cross-session continuity
+- Preserves decision rationale for future work
+- Avoids re-deliberating already-resolved questions
 
 ## Output
 
@@ -134,7 +187,8 @@ Before completing:
 - [ ] `## Resumption Prompt` provides self-contained context
 - [ ] `## Resumption Prompt` includes Transcript Archive instruction
 - [ ] `## Session Log` has timestamped entry
-- [ ] Serena memory written if decisions exist
+- [ ] Decisions extracted and written to Serena memory (if `## Decisions` has content)
+- [ ] Memory name follows convention: `session-<slug>-decisions.md`
 
 ---
 version: 1.11.0

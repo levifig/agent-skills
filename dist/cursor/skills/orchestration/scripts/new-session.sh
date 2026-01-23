@@ -12,6 +12,12 @@ LINEAR_ISSUE="${2:-}"
 TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
 ISO_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+# Auto-detect git branch (if in a git repository)
+GIT_BRANCH=""
+if git rev-parse --is-inside-work-tree &>/dev/null; then
+    GIT_BRANCH=$(git branch --show-current 2>/dev/null || echo "")
+fi
+
 # Read Linear workspace from config (fallback to placeholder)
 CONFIG_FILE=".agents/config.json"
 if [[ -f "$CONFIG_FILE" ]] && command -v jq &> /dev/null; then
@@ -35,11 +41,16 @@ if [[ -f "$FILEPATH" ]]; then
     exit 1
 fi
 
-# Build Linear fields if provided
-LINEAR_FIELDS=""
+# Build optional fields (Linear, branch)
+OPTIONAL_FIELDS=""
 if [[ -n "$LINEAR_ISSUE" ]]; then
-    LINEAR_FIELDS="  linear_issue: \"${LINEAR_ISSUE}\"
-  linear_url: \"https://linear.app/${LINEAR_WORKSPACE}/issue/${LINEAR_ISSUE}\""
+    OPTIONAL_FIELDS+="  linear_issue: \"${LINEAR_ISSUE}\"
+  linear_url: \"https://linear.app/${LINEAR_WORKSPACE}/issue/${LINEAR_ISSUE}\"
+"
+fi
+if [[ -n "$GIT_BRANCH" ]]; then
+    OPTIONAL_FIELDS+="  branch: \"${GIT_BRANCH}\"
+"
 fi
 
 # Generate session file
@@ -50,8 +61,7 @@ session:
   status: in_progress
   created: "${ISO_TIMESTAMP}"
   last_updated: "${ISO_TIMESTAMP}"
-${LINEAR_FIELDS}
-
+${OPTIONAL_FIELDS}
 orchestration:
   current_task: "Initial setup"
   spawned_agents: []

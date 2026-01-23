@@ -60,7 +60,7 @@ def validate_frontmatter(fm: dict) -> list[str]:
             errors.append(f"Empty required field: session.{field}")
 
     # Validate status values
-    valid_statuses = ['in_progress', 'paused', 'completed']
+    valid_statuses = ['in_progress', 'paused', 'completed', 'archived']
     if session.get('status') and session['status'] not in valid_statuses:
         errors.append(f"Invalid session.status: {session['status']} (must be one of: {', '.join(valid_statuses)})")
 
@@ -72,6 +72,20 @@ def validate_frontmatter(fm: dict) -> list[str]:
                 datetime.fromisoformat(value.replace('Z', '+00:00'))
             except ValueError:
                 errors.append(f"Invalid ISO 8601 timestamp in session.{field}: {value}")
+
+    # Validate branch field format if present (optional field)
+    branch = session.get('branch', '')
+    if branch:
+        # Branch names should be non-empty strings without spaces
+        # Common formats: feature/name, username/ticket-desc, bugfix/name, etc.
+        if not isinstance(branch, str):
+            errors.append(f"Invalid session.branch: must be a string, got {type(branch).__name__}")
+        elif ' ' in branch:
+            errors.append(f"Invalid session.branch: '{branch}' contains spaces (branch names cannot have spaces)")
+        elif branch.startswith('/') or branch.endswith('/'):
+            errors.append(f"Invalid session.branch: '{branch}' cannot start or end with '/'")
+        elif '//' in branch:
+            errors.append(f"Invalid session.branch: '{branch}' contains consecutive slashes")
 
     # Check orchestration block
     orch = fm.get('orchestration', {})

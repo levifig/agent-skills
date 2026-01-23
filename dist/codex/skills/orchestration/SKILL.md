@@ -36,12 +36,14 @@ Every release should be complete, polished, and delightful - no MVPs or quick ha
 | Agent selection | Match domain expertise to task |
 | Stuck on task | Check circuit breaker, consider reshaping |
 | Pre-compaction | Spawn context-archiver to preserve state |
+| Low-priority work | Spawn background-runner with run_in_background |
 
 ## Topics
 
 | Topic | Reference | Key Content |
 |-------|-----------|-------------|
 | Agent Delegation | [reference/delegation.md](reference/delegation.md) | Agent capabilities, spawn patterns, decision tree |
+| Background Agents | [reference/background-agents.md](reference/background-agents.md) | Non-interactive work, spawn with run_in_background |
 | Council Workflow | [reference/councils.md](reference/councils.md) | Composition, deliberation, synthesis, user approval |
 | Session Management | [reference/sessions.md](reference/sessions.md) | Lifecycle, file format, handoffs, validation |
 | Session Resume | [reference/session-resume.md](reference/session-resume.md) | CLI flags, checkpoints, context recovery |

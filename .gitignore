@@ -7,10 +7,10 @@ node_modules/
 # .claude-plugin/ - tracked (for Claude Code marketplace)
 
 # Root-level build outputs (deprecated - use dist/)
-skills/
-agents/
-commands/
-hooks.json
+/skills/
+/agents/
+/commands/
+/hooks.json
 
 # OS files
 .DS_Store

@@ -1,0 +1,4 @@
+# OpenCode command configuration
+# Execute as PM agent in main context
+agent: pm
+subtask: false

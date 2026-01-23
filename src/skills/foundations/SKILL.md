@@ -34,6 +34,7 @@ Engineering foundations for consistent, secure, and well-documented code.
 |-------|-----------|---------|
 | Code Style | `reference/code-style.md` | Python/TypeScript conventions, naming, patterns |
 | Commits | `reference/commits.md` | Commit messages, branches, PRs, Linear integration |
+| Diagrams | `reference/diagrams.md` | Mermaid syntax, when to diagram, storage patterns |
 | Documentation | `reference/documentation.md` | ADRs, API docs, changelogs |
 | Security | `reference/security.md` | Threat modeling, secrets, compliance |
 | Permissions | `reference/permissions.md` | Tool allowlists, sandbox config, agent permissions |

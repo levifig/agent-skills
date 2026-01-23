@@ -23,6 +23,11 @@
         "matcher": "Bash"
       },
       {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-tdd-advisory.sh",
+        "timeout": 5,
+        "matcher": "Edit|Write"
+      },
+      {
         "command": "python3 $HOME/.cursor/hooks/pre-tool/orchestration-validate-commit.py",
         "timeout": 30,
         "matcher": "Bash"
