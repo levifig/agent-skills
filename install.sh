@@ -93,25 +93,7 @@ declare -a TOOL_NAMES=()
 declare -a TOOL_INSTALLED=()
 
 # Config directory resolution
-# Use XDG only if: directory exists AND tool's config env var is set
 declare -A TOOL_CONFIG_DIRS=()
-
-# Get config directory for a tool
-# Usage: get_config_dir "cursor" "CURSOR_CONFIG_DIR" -> returns path
-get_config_dir() {
-    local tool="$1"
-    local config_env_var="$2"
-    local xdg_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/${tool}"
-    local dotfile_dir="${HOME}/.${tool}"
-
-    # Use XDG only if BOTH: directory exists AND config env var is set
-    if [[ -d "${xdg_dir}" ]] && [[ -n "${!config_env_var:-}" ]]; then
-        echo "${xdg_dir}"
-    else
-        # Default to dotfile directory
-        echo "${dotfile_dir}"
-    fi
-}
 
 # Check if running from a local development repo
 IS_DEV_MODE=false
@@ -156,40 +138,46 @@ detect_tools() {
         fi
     fi
 
-    # Codex (XDG if dir exists AND CODEX_HOME set, else dotfile)
-    local codex_config
-    codex_config=$(get_config_dir "codex" "CODEX_HOME")
-    if command -v codex &> /dev/null || [[ -d "${codex_config}" ]] || [[ -d "${HOME}/.codex" ]]; then
-        TOOL_KEYS+=("codex")
-        TOOL_NAMES+=("Codex")
-        TOOL_CONFIG_DIRS[codex]="${codex_config}"
-        if [[ -L "${codex_config}/skills/python" ]] || [[ -L "${HOME}/.codex/skills/python" ]]; then
+    # Cursor (uses ~/.cursor/)
+    local cursor_config="${HOME}/.cursor"
+    if command -v cursor &> /dev/null || [[ -d "${cursor_config}" ]]; then
+        TOOL_KEYS+=("cursor")
+        TOOL_NAMES+=("Cursor")
+        TOOL_CONFIG_DIRS[cursor]="${cursor_config}"
+        if [[ -L "${cursor_config}/skills/python" ]] || [[ -d "${cursor_config}/skills/python" ]]; then
             TOOL_INSTALLED+=("yes")
         else
             TOOL_INSTALLED+=("no")
         fi
     fi
 
-    # Copilot (XDG if dir exists AND COPILOT_CONFIG_DIR set, else dotfile)
-    local copilot_config
-    copilot_config=$(get_config_dir "copilot" "COPILOT_CONFIG_DIR")
-    TOOL_KEYS+=("copilot")
-    TOOL_NAMES+=("GitHub Copilot")
-    TOOL_CONFIG_DIRS[copilot]="${copilot_config}"
-    if [[ -L "${copilot_config}/skills/python" ]] || [[ -L "${HOME}/.copilot/skills/python" ]]; then
+    # Codex (uses $CODEX_HOME or ~/.codex/)
+    local codex_config="${CODEX_HOME:-${HOME}/.codex}"
+    if command -v codex &> /dev/null || [[ -d "${codex_config}" ]] || [[ -d "${HOME}/.codex" ]]; then
+        TOOL_KEYS+=("codex")
+        TOOL_NAMES+=("Codex")
+        TOOL_CONFIG_DIRS[codex]="${codex_config}"
+        if [[ -L "${codex_config}/skills/python" ]]; then
+            TOOL_INSTALLED+=("yes")
+        else
+            TOOL_INSTALLED+=("no")
+        fi
+    fi
+
+    # Gemini (uses ~/.gemini/ - no XDG support yet)
+    local gemini_config="${HOME}/.gemini"
+    TOOL_KEYS+=("gemini")
+    TOOL_NAMES+=("Gemini")
+    TOOL_CONFIG_DIRS[gemini]="${gemini_config}"
+    if [[ -L "${gemini_config}/skills/python" ]]; then
         TOOL_INSTALLED+=("yes")
     else
         TOOL_INSTALLED+=("no")
     fi
-
-    # Gemini - always available (project-based)
-    TOOL_KEYS+=("gemini")
-    TOOL_NAMES+=("Gemini")
-    TOOL_INSTALLED+=("no")
 }
 
 check_existing_installation() {
-    [[ -d "${INSTALL_DIR}" ]] && [[ -f "${INSTALL_DIR}/.version" || -d "${INSTALL_DIR}/opencode" || -d "${INSTALL_DIR}/standard" || -d "${INSTALL_DIR}/copilot" || -d "${INSTALL_DIR}/gemini" ]]
+    [[ -d "${INSTALL_DIR}" ]] && [[ -f "${INSTALL_DIR}/.version" || -d "${INSTALL_DIR}/opencode" || -d "${INSTALL_DIR}/cursor" || -d "${INSTALL_DIR}/codex" || -d "${INSTALL_DIR}/gemini" ]]
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -340,7 +328,7 @@ clone_or_update() {
             spinner "Cloning repository" git clone --depth 1 "${REPO_URL}" "${temp_dir}"
         fi
 
-        # Copy only dist/ to cache (for OpenCode, Cursor, Copilot, Codex)
+        # Copy only dist/ to cache
         rm -rf "${INSTALL_DIR}"
         mkdir -p "${INSTALL_DIR}"
         cp -r "${temp_dir}/dist/"* "${INSTALL_DIR}/"
@@ -377,6 +365,38 @@ show_claude_code_instructions() {
     echo ""
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Symlink Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Symlink individual items from source to target
+# NEVER symlinks the root directory - only individual children
+symlink_items() {
+    local source_dir="$1"
+    local target_dir="$2"
+
+    mkdir -p "${target_dir}"
+
+    for item in "${source_dir}"/*; do
+        [[ -e "${item}" ]] || continue  # Skip if no matches
+
+        local name
+        name=$(basename "${item}")
+        local target="${target_dir}/${name}"
+
+        # Remove existing (symlink or file/dir)
+        if [[ -L "${target}" ]] || [[ -e "${target}" ]]; then
+            rm -rf "${target}"
+        fi
+
+        ln -s "${item}" "${target}"
+    done
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tool-specific Installers
+# ─────────────────────────────────────────────────────────────────────────────
+
 install_opencode() {
     local dist="${INSTALL_DIR}/opencode"
     local config="${TOOL_CONFIG_DIRS[opencode]}"
@@ -398,50 +418,66 @@ install_opencode() {
     print_success "OpenCode installed to ${config}"
 }
 
-# Helper: symlink individual skills from standard to target directory
-symlink_standard_skills() {
-    local target_dir="$1"
-    local source_dir="${INSTALL_DIR}/standard/skills"
+install_cursor() {
+    local cache="${INSTALL_DIR}/cursor"
+    local config="${TOOL_CONFIG_DIRS[cursor]}"
 
-    mkdir -p "${target_dir}"
+    # Skills: ~/.cursor/skills/{skill} → cache/skills/{skill}
+    if [[ -d "${cache}/skills" ]]; then
+        symlink_items "${cache}/skills" "${config}/skills"
+    fi
 
-    # Create symlink for each skill
-    for skill in "${source_dir}"/*/; do
-        local skill_name
-        skill_name=$(basename "${skill}")
-        local target_link="${target_dir}/${skill_name}"
+    # Commands: ~/.cursor/commands/{cmd}.md → cache/commands/{cmd}.md
+    if [[ -d "${cache}/commands" ]]; then
+        symlink_items "${cache}/commands" "${config}/commands"
+    fi
 
-        # Remove existing symlink or directory
-        if [[ -L "${target_link}" ]] || [[ -d "${target_link}" ]]; then
-            rm -rf "${target_link}"
+    # Agents: ~/.cursor/agents/{agent}.md → cache/agents/{agent}.md
+    if [[ -d "${cache}/agents" ]]; then
+        symlink_items "${cache}/agents" "${config}/agents"
+    fi
+
+    # Hooks: COPY (not symlink) hooks.json
+    if [[ -f "${cache}/hooks.json" ]]; then
+        mkdir -p "${config}"
+        cp "${cache}/hooks.json" "${config}/hooks.json"
+    fi
+
+    # Hook scripts: symlink entire hooks/ dir (scripts reference each other)
+    if [[ -d "${cache}/hooks" ]]; then
+        local hooks_link="${config}/hooks"
+        if [[ -L "${hooks_link}" ]] || [[ -e "${hooks_link}" ]]; then
+            rm -rf "${hooks_link}"
         fi
+        ln -s "${cache}/hooks" "${hooks_link}"
+    fi
 
-        ln -s "${skill}" "${target_link}"
-    done
+    print_success "Cursor installed to ${config}"
 }
 
 install_codex() {
-    local config="${TOOL_CONFIG_DIRS[codex]}/skills"
-    symlink_standard_skills "${config}"
-    print_success "Codex skills symlinked to ${config}"
-}
+    local cache="${INSTALL_DIR}/codex"
+    local config="${TOOL_CONFIG_DIRS[codex]}"
 
-install_copilot() {
-    local config="${TOOL_CONFIG_DIRS[copilot]}/skills"
-    symlink_standard_skills "${config}"
-    print_success "Copilot skills symlinked to ${config}"
+    # Skills only
+    if [[ -d "${cache}/skills" ]]; then
+        symlink_items "${cache}/skills" "${config}/skills"
+    fi
+
+    print_success "Codex skills symlinked to ${config}/skills"
 }
 
 install_gemini() {
-    local dist="${INSTALL_DIR}/standard/skills"
-    print_success "Gemini skills ready (uses standard format)"
-    print_info "In your project directory, symlink each skill:"
-    echo ""
-    echo -e "    ${WHITE}mkdir -p .gemini/skills${RESET}"
-    echo -e "    ${WHITE}for skill in ${dist}/*/; do${RESET}"
-    echo -e "    ${WHITE}  ln -s \"\$skill\" .gemini/skills/\$(basename \"\$skill\")${RESET}"
-    echo -e "    ${WHITE}done${RESET}"
-    echo ""
+    local cache="${INSTALL_DIR}/gemini"
+    # Gemini doesn't support XDG yet - always use ~/.gemini/
+    local config="${HOME}/.gemini"
+
+    # Skills only
+    if [[ -d "${cache}/skills" ]]; then
+        symlink_items "${cache}/skills" "${config}/skills"
+    fi
+
+    print_success "Gemini skills symlinked to ${config}/skills"
 }
 
 prompt_update() {
@@ -604,8 +640,8 @@ main() {
         for target in "${SELECTED_TARGETS[@]}"; do
             case $target in
                 opencode) install_opencode ;;
+                cursor) install_cursor ;;
                 codex) install_codex ;;
-                copilot) install_copilot ;;
                 gemini) install_gemini ;;
             esac
         done

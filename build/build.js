@@ -5,13 +5,15 @@
  * Generates tool-specific distributions from canonical structure:
  * - Claude Code: plugins/{name}/ at repo root (for marketplace)
  * - OpenCode: dist/opencode/ with flat skill/, agent/, command/, plugin/
- * - Agent Skills: dist/agentskills/skills/ (shared by Codex, Cursor, Copilot, Gemini)
+ * - Cursor: dist/cursor/ with skills/, agents/, commands/, hooks/
+ * - Codex: dist/codex/skills/
+ * - Gemini: dist/gemini/skills/
  *
  * Usage:
  *   node build/build.js [target]
  *
  * Targets:
- *   all (default), claude-code, opencode, agentskills
+ *   all (default), claude-code, opencode, cursor, codex, gemini
  */
 
 import { readFileSync, existsSync } from "fs";
@@ -46,8 +48,9 @@ function loadTargetsConfig() {
 const TARGETS = {
   "claude-code": () => import("./targets/claude-code.js"),
   opencode: () => import("./targets/opencode.js"),
-  agentskills: () => import("./targets/agentskills.js"),
-  remote: () => import("./targets/remote.js"),
+  cursor: () => import("./targets/cursor.js"),
+  codex: () => import("./targets/codex.js"),
+  gemini: () => import("./targets/gemini.js"),
 };
 
 async function build(targetName, hooksConfig, targetsConfig) {
@@ -55,11 +58,9 @@ async function build(targetName, hooksConfig, targetsConfig) {
 
   const targetModule = await TARGETS[targetName]();
 
-  // Claude Code and remote output to root, others to dist/
+  // Claude Code outputs to root, others to dist/
   const outputDir =
-    targetName === "claude-code" || targetName === "remote"
-      ? ROOT_DIR
-      : join(DIST_DIR, targetName);
+    targetName === "claude-code" ? ROOT_DIR : join(DIST_DIR, targetName);
 
   // Get target-specific config
   const targetConfig = targetsConfig.targets?.[targetName] || {};

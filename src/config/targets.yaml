@@ -11,22 +11,24 @@ targets:
     output: dist/opencode/
     # Agents and skills with OpenCode-specific frontmatter
 
-  agentskills:
-    output: dist/agentskills/
-    # Agent Skills format (name + description)
-    # Shared by: Codex, Copilot, Gemini
-    # Skills copied directly from src/skills/ (frontmatter in SKILL.md)
-
-  remote:
-    output: ./
-    # Remote-fetchable skills for Cursor and other tools that fetch from GitHub
-    # Outputs: skills/, agents/, commands/, hooks.json at repo root
+  cursor:
+    output: dist/cursor/
+    # Full Cursor support: skills, commands, agents, hooks
+    # Skills use SKILL.md frontmatter + .cursor.yaml extensions
     # Agents use Cursor-compatible frontmatter (name, description, model, is_background)
+    # Commands keep version in frontmatter only
     defaults:
       agents:
         frontmatter:
           model: inherit
           is_background: true  # Default background for non-PM agents
-      skills:
-        frontmatter:
-          disable-model-invocation: false
+
+  codex:
+    output: dist/codex/
+    # Skills only (no commands, agents, or hooks)
+    # Skills use SKILL.md frontmatter + .codex.yaml extensions (globs)
+
+  gemini:
+    output: dist/gemini/
+    # Skills only (structure TBD, similar to codex)
+    # Gemini doesn't support XDG yet - uses ~/.gemini/ directly

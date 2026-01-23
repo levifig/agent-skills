@@ -2,9 +2,15 @@
 node_modules/
 
 # Build output (committed by CI)
-# dist/ - tracked (for OpenCode, Cursor, Copilot)
+# dist/ - tracked (for OpenCode, Cursor, Codex, Gemini)
 # plugins/ - tracked (for Claude Code marketplace)
 # .claude-plugin/ - tracked (for Claude Code marketplace)
+
+# Root-level build outputs (deprecated - use dist/)
+skills/
+agents/
+commands/
+hooks.json
 
 # OS files
 .DS_Store
