@@ -14,5 +14,19 @@ targets:
   agentskills:
     output: dist/agentskills/
     # Agent Skills format (name + description)
-    # Shared by: Codex, Cursor, Copilot, Gemini
+    # Shared by: Codex, Copilot, Gemini
     # Skills copied directly from src/skills/ (frontmatter in SKILL.md)
+
+  remote:
+    output: ./
+    # Remote-fetchable skills for Cursor and other tools that fetch from GitHub
+    # Outputs: skills/, agents/, commands/, hooks.json at repo root
+    # Agents use Cursor-compatible frontmatter (name, description, model, is_background)
+    defaults:
+      agents:
+        frontmatter:
+          model: inherit
+          is_background: true  # Default background for non-PM agents
+      skills:
+        frontmatter:
+          disable-model-invocation: false

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# APT - Agentic Product Team Installer
+# Loaf - Levi's Opinionated Agentic Framework Installer
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh | bash
 #   ./install.sh [--update] [--target <target>] [--all]
 #
 set -euo pipefail
 
 # Configuration
-REPO_URL="https://github.com/levifig/agent-skills.git"
-INSTALL_DIR="${HOME}/.local/share/agent-skills"
+REPO_URL="https://github.com/levifig/loaf.git"
+INSTALL_DIR="${HOME}/.local/share/loaf"
 VERSION="1.0.0"
 
 # Colors (256-color)
@@ -35,10 +35,11 @@ ORANGE='\033[38;5;208m'
 print_header() {
     clear
     echo ""
-    echo -e "   \033[38;5;93m▄▀█\033[0m \033[38;5;99m█▀█\033[0m \033[38;5;105m▀█▀\033[0m"
-    echo -e "   \033[38;5;93m█▀█\033[0m \033[38;5;99m█▀▀\033[0m \033[38;5;105m░█░\033[0m"
+    echo -e "   \033[38;5;208m█░░\033[0m \033[38;5;214m█▀█\033[0m \033[38;5;220m▄▀█\033[0m \033[38;5;226m█▀▀\033[0m"
+    echo -e "   \033[38;5;208m█▄▄\033[0m \033[38;5;214m█▄█\033[0m \033[38;5;220m█▀█\033[0m \033[38;5;226m█▀░\033[0m"
     echo ""
-    echo -e "   ${GRAY}Agentic Product Team${RESET}  ${GRAY}v${VERSION}${RESET}"
+    echo -e "   ${GRAY}Levi's Opinionated Agentic Framework${RESET}  ${GRAY}v${VERSION}${RESET}"
+    echo -e "   ${GRAY}\"Why have just a slice when you can get the whole loaf?\"${RESET}"
     echo ""
     echo -e "${GRAY}   ──────────────────────────────────────────────────${RESET}"
     echo ""
@@ -91,6 +92,27 @@ declare -a TOOL_KEYS=()
 declare -a TOOL_NAMES=()
 declare -a TOOL_INSTALLED=()
 
+# Config directory resolution
+# Use XDG only if: directory exists AND tool's config env var is set
+declare -A TOOL_CONFIG_DIRS=()
+
+# Get config directory for a tool
+# Usage: get_config_dir "cursor" "CURSOR_CONFIG_DIR" -> returns path
+get_config_dir() {
+    local tool="$1"
+    local config_env_var="$2"
+    local xdg_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/${tool}"
+    local dotfile_dir="${HOME}/.${tool}"
+
+    # Use XDG only if BOTH: directory exists AND config env var is set
+    if [[ -d "${xdg_dir}" ]] && [[ -n "${!config_env_var:-}" ]]; then
+        echo "${xdg_dir}"
+    else
+        # Default to dotfile directory
+        echo "${dotfile_dir}"
+    fi
+}
+
 # Check if running from a local development repo
 IS_DEV_MODE=false
 LOCAL_REPO_PATH=""
@@ -113,6 +135,7 @@ detect_tools() {
     TOOL_KEYS=()
     TOOL_NAMES=()
     TOOL_INSTALLED=()
+    TOOL_CONFIG_DIRS=()
 
     # Claude Code - detected separately (just needs marketplace add)
     HAS_CLAUDE_CODE=false
@@ -120,51 +143,48 @@ detect_tools() {
         HAS_CLAUDE_CODE=true
     fi
 
-    # OpenCode
-    if [[ -d "${HOME}/.config/opencode" ]]; then
+    # OpenCode (always uses XDG)
+    local opencode_config="${XDG_CONFIG_HOME:-${HOME}/.config}/opencode"
+    if [[ -d "${opencode_config}" ]]; then
         TOOL_KEYS+=("opencode")
         TOOL_NAMES+=("OpenCode")
-        if [[ -d "${HOME}/.config/opencode/skill/python" ]]; then
+        TOOL_CONFIG_DIRS[opencode]="${opencode_config}"
+        if [[ -d "${opencode_config}/skill/python" ]]; then
             TOOL_INSTALLED+=("yes")
         else
             TOOL_INSTALLED+=("no")
         fi
     fi
 
-    # Cursor (uses standard skills format)
-    if [[ -d "${HOME}/.cursor" ]] || [[ -d "/Applications/Cursor.app" ]]; then
-        TOOL_KEYS+=("cursor")
-        TOOL_NAMES+=("Cursor")
-        if [[ -L "${HOME}/.cursor/skills/python" ]]; then
-            TOOL_INSTALLED+=("yes")
-        else
-            TOOL_INSTALLED+=("no")
-        fi
-    fi
-
-    # Codex (uses standard skills format)
-    if command -v codex &> /dev/null || [[ -d "${HOME}/.codex" ]]; then
+    # Codex (XDG if dir exists AND CODEX_HOME set, else dotfile)
+    local codex_config
+    codex_config=$(get_config_dir "codex" "CODEX_HOME")
+    if command -v codex &> /dev/null || [[ -d "${codex_config}" ]] || [[ -d "${HOME}/.codex" ]]; then
         TOOL_KEYS+=("codex")
         TOOL_NAMES+=("Codex")
-        if [[ -L "${HOME}/.codex/skills/python" ]]; then
+        TOOL_CONFIG_DIRS[codex]="${codex_config}"
+        if [[ -L "${codex_config}/skills/python" ]] || [[ -L "${HOME}/.codex/skills/python" ]]; then
             TOOL_INSTALLED+=("yes")
         else
             TOOL_INSTALLED+=("no")
         fi
     fi
 
-    # Copilot (uses standard skills format)
+    # Copilot (XDG if dir exists AND COPILOT_CONFIG_DIR set, else dotfile)
+    local copilot_config
+    copilot_config=$(get_config_dir "copilot" "COPILOT_CONFIG_DIR")
     TOOL_KEYS+=("copilot")
     TOOL_NAMES+=("GitHub Copilot")
-    if [[ -L "${HOME}/.copilot/skills/python" ]]; then
+    TOOL_CONFIG_DIRS[copilot]="${copilot_config}"
+    if [[ -L "${copilot_config}/skills/python" ]] || [[ -L "${HOME}/.copilot/skills/python" ]]; then
         TOOL_INSTALLED+=("yes")
     else
         TOOL_INSTALLED+=("no")
     fi
 
-    # Gemini Code Assist - always available (project-based)
+    # Gemini - always available (project-based)
     TOOL_KEYS+=("gemini")
-    TOOL_NAMES+=("Gemini Code Assist")
+    TOOL_NAMES+=("Gemini")
     TOOL_INSTALLED+=("no")
 }
 
@@ -342,7 +362,7 @@ show_claude_code_dev_instructions() {
     print_info "This uses plugins/ built at repo root."
     print_info "For production, users will use:"
     echo ""
-    echo -e "    ${GRAY}/plugin marketplace add levifig/agent-skills${RESET}"
+    echo -e "    ${GRAY}/plugin marketplace add levifig/loaf${RESET}"
     echo ""
 }
 
@@ -351,7 +371,7 @@ show_claude_code_instructions() {
     echo ""
     print_info "Add the marketplace in Claude Code:"
     echo ""
-    echo -e "    ${WHITE}/plugin marketplace add levifig/agent-skills${RESET}"
+    echo -e "    ${WHITE}/plugin marketplace add levifig/loaf${RESET}"
     echo ""
     print_info "Then browse and install plugins via ${WHITE}/plugin${RESET}"
     echo ""
@@ -359,7 +379,7 @@ show_claude_code_instructions() {
 
 install_opencode() {
     local dist="${INSTALL_DIR}/opencode"
-    local config="${HOME}/.config/opencode"
+    local config="${TOOL_CONFIG_DIRS[opencode]}"
 
     mkdir -p "${config}"/{skill,agent,command,plugin}
 
@@ -400,20 +420,14 @@ symlink_standard_skills() {
     done
 }
 
-install_cursor() {
-    local config="${HOME}/.cursor/skills"
-    symlink_standard_skills "${config}"
-    print_success "Cursor skills symlinked to ${config}"
-}
-
 install_codex() {
-    local config="${HOME}/.codex/skills"
+    local config="${TOOL_CONFIG_DIRS[codex]}/skills"
     symlink_standard_skills "${config}"
     print_success "Codex skills symlinked to ${config}"
 }
 
 install_copilot() {
-    local config="${HOME}/.copilot/skills"
+    local config="${TOOL_CONFIG_DIRS[copilot]}/skills"
     symlink_standard_skills "${config}"
     print_success "Copilot skills symlinked to ${config}"
 }
@@ -450,7 +464,7 @@ show_dev_completion() {
     echo ""
     echo -e "  ${BOLD}What was built:${RESET}"
     print_info "• Claude Code: plugins/ at repo root"
-    print_info "• Others: dist/ synced to ~/.local/share/agent-skills/"
+    print_info "• Others: dist/ synced to ~/.local/share/loaf/"
     echo ""
     echo -e "  ${BOLD}Test your changes:${RESET}"
     print_info "Claude Code:"
@@ -467,7 +481,7 @@ show_completion() {
     echo ""
     echo -e "  ${GREEN}${BOLD}✓ Installation complete!${RESET}"
     echo ""
-    print_info "Update: curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.sh | bash"
+    print_info "Update: curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh | bash"
     echo ""
 }
 
@@ -578,7 +592,7 @@ main() {
     if [[ "$IS_DEV_MODE" == true ]]; then
         print_step "4" "Building from source"
     else
-        print_step "4" "Fetching agent-skills"
+        print_step "4" "Fetching loaf"
     fi
     clone_or_update
     echo ""
@@ -590,7 +604,6 @@ main() {
         for target in "${SELECTED_TARGETS[@]}"; do
             case $target in
                 opencode) install_opencode ;;
-                cursor) install_cursor ;;
                 codex) install_codex ;;
                 copilot) install_copilot ;;
                 gemini) install_gemini ;;

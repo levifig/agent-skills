@@ -1,0 +1,6 @@
+# PM Agent - Remote Target Sidecar
+# PM runs foreground (orchestrates other agents in background)
+name: pm
+description: Project manager for orchestrating multi-agent work. Use when coordinating complex tasks, managing sessions, running councils, or delegating to specialized agents.
+model: inherit
+is_background: false

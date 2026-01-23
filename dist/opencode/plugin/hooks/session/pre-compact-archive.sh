@@ -56,7 +56,7 @@ if [ -n "$RECENT_SESSIONS" ]; then
   echo "Use the Task tool to spawn the context-archiver agent:"
   echo ""
   echo '```'
-  echo 'Task(apt:context-archiver, "Preserve session state before compaction.'
+  echo 'Task(loaf:context-archiver, "Preserve session state before compaction.'
   echo ''
   echo 'Sessions to archive:'
   echo -e "$SESSION_LIST"

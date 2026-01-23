@@ -1,6 +1,8 @@
-# APT - Agentic Product Team
+# Loaf - Levi's Opinionated Agentic Framework
 
-Your personal agentic product team for AI coding assistants. Skills contain knowledge, agents route to skills.
+> "Why have just a slice when you can get the whole loaf?"
+
+Your opinionated agentic framework for AI coding assistants. Skills contain knowledge, agents route to skills.
 
 ## Philosophy
 
@@ -71,14 +73,14 @@ Commands and agents use scoped naming to avoid conflicts:
 
 ```bash
 # Commands are scoped to the plugin
-/apt:start-session
-/apt:council-session
-/apt:review-sessions
+/loaf:start-session
+/loaf:council-session
+/loaf:review-sessions
 
 # Agents are scoped when spawning tasks
-Task(apt:backend-dev)
-Task(apt:frontend-dev)
-Task(apt:dba)
+Task(loaf:backend-dev)
+Task(loaf:frontend-dev)
+Task(loaf:dba)
 ```
 
 This allows multiple plugins to coexist without name collisions.
@@ -88,14 +90,14 @@ This allows multiple plugins to coexist without name collisions.
 ## Repository Structure
 
 ```
-agent-skills/
+loaf/
 ├── AGENTS.md                    # This file - universal instructions
 ├── CLAUDE.md -> AGENTS.md       # Symlink for Claude Code
 ├── src/                         # Source files (canonical)
 │   ├── skills/                  # Domain knowledge
 │   │   ├── {skill}/
 │   │   │   ├── SKILL.md         # Main skill file with frontmatter
-│   │   │   ├── reference/       # Detailed reference docs
+│   │   │   ├── references/      # Detailed reference docs
 │   │   │   └── scripts/         # Utility scripts (optional)
 │   ├── agents/                  # Thin routing agents
 │   │   ├── pm.md
@@ -119,15 +121,20 @@ agent-skills/
 │   └── targets/                 # Target-specific transformers
 │       ├── claude-code.js
 │       ├── opencode.js
-│       └── agentskills.js
+│       ├── agentskills.js
+│       └── remote.js
 ├── .github/workflows/
 │   └── build.yml                # CI: builds and commits outputs
 ├── install.sh                   # Curl-pipeable installer
 ├── plugins/                     # Claude Code marketplace (at root, committed by CI)
 ├── .claude-plugin/              # Claude Code marketplace manifest (at root)
+├── skills/                      # Remote-fetchable skills (at root, for Cursor)
+├── agents/                      # Remote-fetchable agents (at root, for Cursor)
+├── commands/                    # Remote-fetchable commands (at root, for Cursor)
+├── hooks.json                   # Cursor-compatible hooks (at root)
 └── dist/                        # Other distributions (committed by CI)
     ├── opencode/                # OpenCode skills, agents, plugins
-    └── agentskills/             # Generic format (Codex, Cursor, Copilot, Gemini)
+    └── agentskills/             # Generic format (Codex, Copilot, Gemini)
 ```
 
 ---
@@ -147,6 +154,7 @@ npm run build
 npm run build:claude-code
 npm run build:opencode
 npm run build:agentskills
+npm run build:remote
 ```
 
 ### How Build Works
@@ -160,15 +168,17 @@ The build system reads canonical content from `src/` and transforms it for each 
 3. **Transforms** canonical structure into target-specific format
 4. **Outputs**:
    - Claude Code: `plugins/` and `.claude-plugin/` at repo root
+   - Remote: `skills/`, `agents/`, `commands/`, `hooks.json` at repo root
    - Others: `dist/{target}/`
 
 | Target | Output Location | Hook Support |
 |--------|-----------------|--------------|
 | Claude Code | `plugins/` at root | Full (PreToolUse, PostToolUse, Session*) |
+| Remote | `skills/`, `agents/`, `commands/` at root | Full (Cursor hooks.json format) |
 | OpenCode | `dist/opencode/` | Full (tool.execute.*, session.*) |
 | Agent Skills | `dist/agentskills/` | None (instructions only) |
 
-The `agentskills` target produces a generic format shared by Codex, Cursor, Copilot, Gemini, and other tools that support simple skills/instructions.
+The `agentskills` target produces a generic format shared by Codex, Copilot, Gemini, and other tools that support simple skills/instructions. Cursor users should use the `remote` target which provides richer Cursor-specific features (subagents, hooks.json).
 
 ### Adding a New Target
 
@@ -272,7 +282,7 @@ This ensures outputs in the repo are always up-to-date with source changes.
 #### Claude Code
 
 - **No local installation needed**
-- Users add the marketplace directly: `/plugin marketplace add levifig/agent-skills`
+- Users add the marketplace directly: `/plugin marketplace add levifig/loaf`
 - Claude Code fetches `plugins/` from repo root
 - Claude Code handles its own caching and updates
 - Updates happen automatically when users interact with `/plugin`
@@ -281,7 +291,7 @@ This ensures outputs in the repo are always up-to-date with source changes.
 
 - **Requires local cache**
 - Installer downloads pre-built `dist/` from GitHub
-- Caches to `~/.local/share/agent-skills/` (only dist contents, not full repo)
+- Caches to `~/.local/share/loaf/` (only dist contents, not full repo)
 - Installs to target-specific locations:
   - OpenCode: `~/.config/opencode/{skill,agent,command,plugin}/`
   - Codex: `~/.codex/skills/`
@@ -300,7 +310,7 @@ curl -fsSL .../install.sh | bash
 
 1. Only requires `git` (no node/npm needed)
 2. Clones repo to temp directory
-3. Copies only `dist/` contents to `~/.local/share/agent-skills/`
+3. Copies only `dist/` contents to `~/.local/share/loaf/`
 4. Stores `.version` file for update detection
 5. Installs to selected targets
 
@@ -313,17 +323,17 @@ curl -fsSL .../install.sh | bash
 1. Requires `git`, `node 18+`, `npm`
 2. Detects it's running from a local repo (has `.git`, `package.json`, `src/skills/`)
 3. Builds all targets locally first (`npm install && npm run build`)
-4. Syncs `dist/` to `~/.local/share/agent-skills/`
+4. Syncs `dist/` to `~/.local/share/loaf/`
 5. Installs to selected targets
 
 This allows developers to test local changes before pushing.
 
 ### Cache Structure
 
-The local cache at `~/.local/share/agent-skills/` contains only built distributions:
+The local cache at `~/.local/share/loaf/` contains only built distributions:
 
 ```
-~/.local/share/agent-skills/
+~/.local/share/loaf/
 ├── .version              # Git commit hash for update detection
 ├── opencode/
 └── agentskills/
@@ -390,12 +400,12 @@ Links to external documentation.
 
 ### 3. Add Reference Docs
 
-Create detailed reference files in `src/skills/{skill-name}/reference/`:
+Create detailed reference files in `src/skills/{skill-name}/references/`:
 
 ```markdown
-# reference/core.md
-# reference/testing.md
-# reference/patterns.md
+# references/core.md
+# references/testing.md
+# references/patterns.md
 ```
 
 Each file covers one topic. Use consistent heading structure.
@@ -613,7 +623,7 @@ plugin-groups:
 ### Skills
 
 1. Edit `src/skills/{name}/SKILL.md` directly
-2. Add/update reference docs in `reference/`
+2. Add/update reference docs in `references/`
 3. Run `npm run build` to propagate changes
 4. All targets will receive updates on next build
 
@@ -831,15 +841,32 @@ Before committing changes to this repository:
 No installation needed. Add the marketplace directly:
 
 ```
-/plugin marketplace add levifig/agent-skills
+/plugin marketplace add levifig/loaf
 ```
 
-Then browse and install the `apt` plugin via `/plugin`. Updates are automatic.
+Then browse and install the `loaf` plugin via `/plugin`. Updates are automatic.
 
-### OpenCode, Agent Skills (Codex, Cursor, Copilot, Gemini)
+### Cursor (Remote Skills)
+
+Cursor can fetch skills and agents directly from GitHub:
+
+```
+# Add a skill
+/skill add https://github.com/levifig/loaf/skills/python
+
+# Add an agent
+/agent add https://github.com/levifig/loaf/agents/backend-dev.md
+
+# Copy hooks.json to your project
+curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/hooks.json > .cursor/hooks.json
+```
+
+The `remote` target outputs Cursor-compatible skills, agents, and hooks at repo root.
+
+### OpenCode, Agent Skills (Codex, Copilot, Gemini)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh | bash
 ```
 
 The installer detects installed tools and guides you through target selection.
@@ -849,7 +876,7 @@ The installer detects installed tools and guides you through target selection.
 Run the installer again:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh | bash
 ```
 
 ### Development
@@ -857,8 +884,8 @@ curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.s
 For contributors testing local changes:
 
 ```bash
-git clone https://github.com/levifig/agent-skills.git
-cd agent-skills
+git clone https://github.com/levifig/loaf.git
+cd loaf
 npm install
 ./install.sh  # Builds and shows dev-specific instructions
 ```
@@ -867,12 +894,12 @@ When run from a local clone, the installer:
 1. Shows "DEVELOPMENT MODE" banner
 2. Builds all targets from source
 3. Outputs Claude Code plugins to repo root (`plugins/`)
-4. Syncs other distributions to `~/.local/share/agent-skills/`
+4. Syncs other distributions to `~/.local/share/loaf/`
 5. Shows how to test with Claude Code using local path
 
 **Testing Claude Code locally:**
 ```
-/plugin marketplace add /path/to/agent-skills
+/plugin marketplace add /path/to/loaf
 ```
 
 **Rebuild after changes:**

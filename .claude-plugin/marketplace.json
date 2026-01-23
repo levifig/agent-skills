@@ -1,21 +1,21 @@
 {
-  "name": "levifig-agent-skills",
+  "name": "levifig-loaf",
   "owner": {
     "name": "Levi Figueira",
     "email": "me@levifig.com"
   },
   "metadata": {
-    "description": "APT - Your Personal Agentic Product Team",
-    "version": "1.7.0"
+    "description": "Loaf - Levi's Opinionated Agentic Framework",
+    "version": "1.9.0"
   },
   "plugins": [
     {
-      "name": "apt",
-      "description": "APT - Your Personal Agentic Product Team",
-      "source": "./plugins/apt",
-      "version": "1.7.0",
+      "name": "loaf",
+      "description": "Loaf - Levi's Opinionated Agentic Framework",
+      "source": "./plugins/loaf",
+      "version": "1.9.0",
       "license": "MIT",
-      "repository": "https://github.com/levifig/agent-skills"
+      "repository": "https://github.com/levifig/loaf"
     }
   ]
 }

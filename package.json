@@ -1,17 +1,18 @@
 {
-  "name": "agent-skills",
-  "version": "1.8.0",
-  "description": "APT - Agentic Product Team for Claude Code, OpenCode, Cursor, and Copilot",
+  "name": "loaf",
+  "version": "1.9.0",
+  "description": "Loaf - Levi's Opinionated Agentic Framework for Claude Code, OpenCode, Cursor, and Copilot",
   "type": "module",
   "scripts": {
     "build": "node build/build.js all",
     "build:claude-code": "node build/build.js claude-code",
     "build:opencode": "node build/build.js opencode",
-    "build:agentskills": "node build/build.js agentskills"
+    "build:agentskills": "node build/build.js agentskills",
+    "build:remote": "node build/build.js remote"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/levifig/agent-skills.git"
+    "url": "git+https://github.com/levifig/loaf.git"
   },
   "author": "Levi Figueira",
   "license": "MIT",

@@ -1,75 +1,77 @@
-# APT - Agentic Product Team
+# Loaf - Levi's Opinionated Agentic Framework
 
-Your personal agentic product team for AI coding assistants. One source, multiple targets: Claude Code, OpenCode, and Agent Skills (Codex, Cursor, Copilot, Gemini).
+> "Why have just a slice when you can get the whole loaf?"
+
+An opinionated agentic framework **built for Claude Code**. Leverages Claude Code's full capabilities: multi-agent orchestration, MCP servers, LSP integration, pre/post-tool hooks, and session management.
+
+Other tools (OpenCode, Cursor, Copilot, Codex, Gemini) receive best-effort skill exports, but Claude Code is the primary target where Loaf's full feature set is available.
 
 ## Installation
 
-### Claude Code
-
-Add the marketplace directly in Claude Code:
-
 ```
-/plugin marketplace add levifig/agent-skills
+/plugin marketplace add levifig/loaf
 ```
 
-Then browse and install the `apt` plugin via `/plugin`.
+Then install the `loaf` plugin via `/plugin`. No local setup needed—Claude Code fetches from GitHub automatically.
 
-No local installation needed - Claude Code fetches from GitHub and handles caching automatically.
+### Other Tools (Best-Effort)
 
-### OpenCode, Agent Skills (Codex, Cursor, Copilot, Gemini)
-
-Run the installer:
+OpenCode, Copilot, Codex, and Gemini receive skill exports via the installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh | bash
 ```
 
 The installer will:
 1. Detect which tools you have installed
 2. Let you select which targets to install
 3. Download pre-built distributions from GitHub
-4. Cache to `~/.local/share/agent-skills/`
+4. Cache to `~/.local/share/loaf/`
 5. Install to each selected target's config location
 
 **What gets installed:**
 
-| Target | Installation Location |
-|--------|----------------------|
-| OpenCode | `~/.config/opencode/{skill,agent,command,plugin}/` |
-| Codex | `~/.codex/skills/` |
-| Cursor | Project `.cursor/rules/` |
-| Copilot | Repo `.github/copilot-instructions.md` |
+| Target | Features | Location |
+|--------|----------|----------|
+| OpenCode | Skills, agents, commands, hooks | `~/.config/opencode/` |
+| Codex | Skills only | `~/.codex/skills/` |
+| Copilot | Skills only | `~/.copilot/skills/` |
+
+Note: Only Claude Code supports the full feature set (agents, hooks, MCP/LSP servers, commands). The installer uses `~/.config/{tool}/` (XDG) if the directory exists AND the tool's config env var is set (e.g., `CODEX_HOME`).
+
+**Cursor**: Install skills directly via Cursor's native GitHub integration—see [Cursor docs](https://cursor.com/docs/context/skills#installing-skills-from-github).
 
 ### Update
 
 Run the installer again:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/levifig/agent-skills/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh | bash
 ```
 
 For Claude Code, updates happen automatically when you use `/plugin`.
 
 ## How It Works
 
+Loaf is designed around Claude Code's plugin architecture. The build system transforms canonical source into:
+
+1. **Claude Code** (primary): Full plugin with agents, skills, commands, hooks, MCP servers, and LSP configs
+2. **OpenCode**: Adapted format with most features
+3. **Agent Skills**: Simplified skill-only exports for other tools
+
 ```
-Source (src/skills/, src/agents/, src/hooks/)
-         │
-         ▼
-    npm run build
-         │
-         ▼
-   Claude Code: plugins/, .claude-plugin/ (at repo root)
-   Others: dist/ (for OpenCode, Agent Skills)
-         │
-         ├──► Claude Code: fetches plugins/ directly from GitHub
-         │
-         └──► Others: installer downloads dist/ to local cache, then installs
+Source (src/)
+    │
+    ├──► Claude Code: plugins/loaf/ (full feature set)
+    │
+    └──► Others: dist/ (degraded feature set)
 ```
 
-GitHub Actions automatically builds and commits `plugins/` and `dist/` on every push to main.
+GitHub Actions automatically builds on every push to main.
 
 ## Agents
+
+*Claude Code only. Other tools receive skills but not multi-agent orchestration.*
 
 **Orchestrator:**
 | Agent | Use For |
@@ -108,15 +110,19 @@ GitHub Actions automatically builds and commits `plugins/` and `dist/` on every 
 
 ## Plugin Scoping
 
+*Claude Code only.*
+
 Commands and agents are scoped to avoid conflicts:
 
 ```bash
-/apt:start-session          # Start a work session
-/apt:council-session        # Run a council deliberation
-Task(apt:backend-dev)       # Spawn backend developer agent
+/loaf:start-session          # Start a work session
+/loaf:council-session        # Run a council deliberation
+Task(loaf:backend-dev)       # Spawn backend developer agent
 ```
 
 ## Integrations
+
+*Claude Code only.*
 
 **MCP Servers** (external tool integrations):
 - **Serena** - Code intelligence and semantic search
@@ -134,8 +140,8 @@ Task(apt:backend-dev)       # Spawn backend developer agent
 For contributors working on the skills themselves:
 
 ```bash
-git clone https://github.com/levifig/agent-skills.git
-cd agent-skills
+git clone https://github.com/levifig/loaf.git
+cd loaf
 npm install
 ```
 
@@ -160,7 +166,7 @@ When run from a local clone, the installer:
 1. Shows "DEVELOPMENT MODE" banner
 2. Builds all targets from source
 3. Outputs Claude Code plugins to repo root (`plugins/`)
-4. Syncs other distributions to `~/.local/share/agent-skills/`
+4. Syncs other distributions to `~/.local/share/loaf/`
 5. Shows development-specific instructions
 
 **Option 2: Manual testing**
@@ -169,7 +175,7 @@ After `npm run build`:
 
 - **Claude Code**: Add local marketplace
   ```
-  /plugin marketplace add /path/to/agent-skills
+  /plugin marketplace add /path/to/loaf
   ```
 - **OpenCode/Codex/Cursor/Copilot**: Copy from `dist/` to target locations
 
@@ -186,7 +192,7 @@ See [AGENTS.md](AGENTS.md) for the full maintenance guide.
 ## Repository Structure
 
 ```
-agent-skills/
+loaf/
 ├── src/                     # Source files
 │   ├── skills/              # Domain knowledge (canonical)
 │   ├── agents/              # Thin routing agents (7 total)

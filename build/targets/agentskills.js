@@ -6,7 +6,7 @@
  * └── skills/
  *     ├── python/
  *     │   ├── SKILL.md (with frontmatter)
- *     │   ├── reference/
+ *     │   ├── references/
  *     │   └── scripts/
  *     └── ...
  *

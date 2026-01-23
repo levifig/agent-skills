@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Build System for APT - Agentic Product Team
+ * Build System for Loaf - Levi's Opinionated Agentic Framework
  *
  * Generates tool-specific distributions from canonical structure:
  * - Claude Code: plugins/{name}/ at repo root (for marketplace)
@@ -47,6 +47,7 @@ const TARGETS = {
   "claude-code": () => import("./targets/claude-code.js"),
   opencode: () => import("./targets/opencode.js"),
   agentskills: () => import("./targets/agentskills.js"),
+  remote: () => import("./targets/remote.js"),
 };
 
 async function build(targetName, hooksConfig, targetsConfig) {
@@ -54,9 +55,11 @@ async function build(targetName, hooksConfig, targetsConfig) {
 
   const targetModule = await TARGETS[targetName]();
 
-  // Claude Code outputs to root, others to dist/
+  // Claude Code and remote output to root, others to dist/
   const outputDir =
-    targetName === "claude-code" ? ROOT_DIR : join(DIST_DIR, targetName);
+    targetName === "claude-code" || targetName === "remote"
+      ? ROOT_DIR
+      : join(DIST_DIR, targetName);
 
   // Get target-specific config
   const targetConfig = targetsConfig.targets?.[targetName] || {};
@@ -82,7 +85,7 @@ async function main() {
   const args = process.argv.slice(2);
   const target = args[0] || "all";
 
-  console.log("🚀 APT Build System");
+  console.log("🍞 Loaf Build System");
   console.log(`   Root: ${ROOT_DIR}`);
   console.log(`   Source: ${SRC_DIR}`);
   console.log(`   Config: ${CONFIG_DIR}`);

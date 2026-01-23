@@ -2,11 +2,11 @@
  * Claude Code Build Target
  *
  * Generates a single unified plugin at repo root:
- * agent-skills/
+ * loaf/
  * ├── .claude-plugin/
  * │   └── marketplace.json
  * └── plugins/
- *     └── apt/
+ *     └── loaf/
  *         ├── .claude-plugin/plugin.json
  *         ├── agents/
  *         ├── skills/
@@ -14,9 +14,9 @@
  *         └── hooks/
  *
  * This allows Claude Code to use:
- *   /plugin marketplace add levifig/agent-skills
+ *   /plugin marketplace add levifig/loaf
  *
- * Scoping: /apt:start-session, Task(apt:backend-dev)
+ * Scoping: /loaf:start-session, Task(loaf:backend-dev)
  *
  * Reads frontmatter from sidecars (e.g., pm.claude-code.yaml, SKILL.claude-code.yaml)
  */
@@ -39,11 +39,11 @@ import {
   mergeSkillFrontmatter,
 } from "../lib/sidecar.js";
 
-const VERSION = "1.7.0";
-const REPOSITORY = "https://github.com/levifig/agent-skills";
+const VERSION = "1.9.0";
+const REPOSITORY = "https://github.com/levifig/loaf";
 const TARGET_NAME = "claude-code";
-const PLUGIN_NAME = "apt";
-const PLUGIN_DESCRIPTION = "APT - Your Personal Agentic Product Team";
+const PLUGIN_NAME = "loaf";
+const PLUGIN_DESCRIPTION = "Loaf - Levi's Opinionated Agentic Framework";
 
 // LSP Servers for code intelligence
 const LSP_SERVERS = {
@@ -135,7 +135,7 @@ export async function build({
  */
 function createMarketplace(marketplaceDir) {
   const marketplace = {
-    name: "levifig-agent-skills",
+    name: "levifig-loaf",
     owner: {
       name: "Levi Figueira",
       email: "me@levifig.com",
@@ -237,7 +237,7 @@ function discoverSkills(srcDir) {
     const skillPath = join(skillsDir, f);
     return (
       existsSync(join(skillPath, "SKILL.md")) ||
-      existsSync(join(skillPath, "reference"))
+      existsSync(join(skillPath, "references"))
     );
   });
 }
@@ -433,9 +433,9 @@ function copySkills(skills, srcDir, pluginDir) {
       writeFileSync(join(skillDest, "SKILL.md"), transformed);
     }
 
-    // Copy reference directory
-    const refSrc = join(skillSrc, "reference");
-    const refDest = join(skillDest, "reference");
+    // Copy references directory
+    const refSrc = join(skillSrc, "references");
+    const refDest = join(skillDest, "references");
     if (existsSync(refSrc)) {
       cpSync(refSrc, refDest, { recursive: true });
     }
