@@ -39,7 +39,7 @@ import {
   mergeSkillFrontmatter,
 } from "../lib/sidecar.js";
 
-const VERSION = "1.6.0";
+const VERSION = "1.7.0";
 const REPOSITORY = "https://github.com/levifig/agent-skills";
 const TARGET_NAME = "claude-code";
 const PLUGIN_NAME = "apt";

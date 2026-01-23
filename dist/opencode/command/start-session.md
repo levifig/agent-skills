@@ -132,6 +132,9 @@ session:
   archived_by: "agent-pm"               # Optional; fill when archived (enforced by /review-sessions)
   linear_issue: "PLT-XXX"           # If applicable
   linear_url: "https://linear.app/{{your-workspace}}/issue/PLT-XXX"
+  branch: "username/plt-xxx-feature"    # Working branch for this session
+
+plans: []  # List of plan files in .agents/plans/ used by this session
 
 orchestration:
   current_task: "Initial planning"
@@ -143,6 +146,19 @@ orchestration:
 Confirm the session file exists and contains valid frontmatter before proceeding.
 
 **DO NOT PROCEED WITHOUT A SESSION FILE.**
+
+### Step 5: Suggest Session Rename
+
+After creating the session file, suggest renaming the Claude Code session for easy identification:
+
+```
+I recommend renaming this session for easier reference:
+/rename {descriptive-session-name}
+
+For example: /rename auth-jwt-implementation
+```
+
+**Why:** Session names persist in history and make it easier to resume work later with `--continue` or `--resume`.
 
 ---
 
@@ -320,22 +336,69 @@ For complex tasks, use **Plan Mode** to explore before implementing:
 4. Document findings in session file
 ```
 
-### Phase 2: Plan (Plan Mode)
+### Phase 2: Plan and Store
+
+When the Plan agent returns a plan:
+
+1. **Generate plan filename:**
+   ```bash
+   date -u +"%Y%m%d-%H%M%S"  # e.g., 20250123-143500
+   ```
+   Format: `YYYYMMDD-HHMMSS-{plan-slug}.md`
+
+2. **Save plan to `.agents/plans/`:**
+   ```
+   .agents/plans/20250123-143500-auth-api-design.md
+   ```
+
+3. **Plan file format:**
+   ```markdown
+   ---
+   session: 20250123-140000-feature-auth
+   created: 2025-01-23T14:35:00Z
+   status: pending  # pending | approved | superseded
+   ---
+
+   # Auth API Design Plan
+
+   ## Overview
+   [Plan content from Plan agent]
+
+   ## Implementation Steps
+   1. ...
+   2. ...
+   ```
+
+4. **Update session file with plan reference:**
+   ```yaml
+   plans:
+     - 20250123-143500-auth-api-design.md
+   ```
+
+5. **Present plan to user for approval**
+
+### Phase 3: Approval and Implementation
 
 ```
-1. Present implementation options to user
-2. Get approval on approach
-3. Document decision in session file
-4. Exit Plan Mode when ready to implement
+1. On user approval, update plan status to "approved"
+2. Spawn implementation agents
+3. Reference plan file in agent prompts
+4. Execute in approved direction
 ```
 
-### Phase 3: Implement
+### Multiple Plans Per Session
 
+Complex work may require multiple plans:
+
+```yaml
+# In session frontmatter
+plans:
+  - 20250123-143500-auth-api-design.md      # approved
+  - 20250123-150000-auth-frontend.md        # approved
+  - 20250123-153000-auth-testing.md         # pending
 ```
-1. Spawn implementation agents
-2. Reference plan from session file
-3. Execute in approved direction
-```
+
+Each plan is a checkpoint that can be referenced, revised, or superseded.
 
 ### Skip Planning When
 

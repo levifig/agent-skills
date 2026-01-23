@@ -420,3 +420,119 @@ Document in the file configured in `.agents/config.json` (default: `docs/CONSTRA
 - [ ] Out of scope explicitly stated
 - [ ] Dependencies identified
 - [ ] Open questions captured
+
+## Plan File Storage
+
+Implementation plans are stored in `.agents/plans/` for persistence across context resets.
+
+### Location & Naming
+
+```
+.agents/plans/YYYYMMDD-HHMMSS-{plan-slug}.md
+```
+
+**Generate timestamps:**
+```bash
+date -u +"%Y%m%d-%H%M%S"  # Filename: 20251204-143500
+date -u +"%Y-%m-%dT%H:%M:%SZ"  # Frontmatter: 2025-12-04T14:35:00Z
+```
+
+**Good**: `20251204-143500-api-auth-design.md`
+**Bad**: `api-auth-design.md` (missing timestamp)
+
+### Plan File Format
+
+```yaml
+---
+session: 20251204-140000-feature-auth       # Parent session ID
+council: 20251204-142000-api-approach       # If plan came from council (optional)
+created: 2025-12-04T14:35:00Z               # When plan was created
+status: pending                              # pending | approved | superseded
+---
+
+# [Plan Title]
+
+## Overview
+
+Brief description of what this plan covers.
+
+## Context
+
+What led to this plan. Reference session, council, or user requirements.
+
+## Implementation Steps
+
+1. **Step 1**: Description
+   - Details
+   - Expected outcome
+
+2. **Step 2**: Description
+   - Details
+   - Expected outcome
+
+## Dependencies
+
+- What must be complete before this plan can execute
+
+## Risks & Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Risk 1 | How to address |
+
+## Acceptance Criteria
+
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## Out of Scope
+
+What this plan explicitly does NOT cover.
+```
+
+### Plan Lifecycle
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Created, awaiting user approval |
+| `approved` | User approved, ready for implementation |
+| `superseded` | Replaced by a newer plan |
+
+### PM Workflow
+
+1. **Receive plan** from Task(Plan) or exploration
+2. **Save to `.agents/plans/`** with proper filename
+3. **Update session** with plan reference in `plans:` array
+4. **Present to user** for approval
+5. **Mark approved** when user confirms
+6. **Reference in agent prompts** during implementation
+
+### Linking Plans
+
+**In session files:**
+```yaml
+plans:
+  - 20251204-143500-api-auth-design.md
+  - 20251204-150000-frontend-components.md
+```
+
+**In council files:**
+```yaml
+council:
+  implementation_plan: "../plans/20251204-143500-api-auth-design.md"
+```
+
+**In agent prompts:**
+```
+Reference the implementation plan at .agents/plans/20251204-143500-api-auth-design.md
+for the approved approach.
+```
+
+### Superseding Plans
+
+When a plan needs revision:
+
+1. Create new plan file with fresh timestamp
+2. Update old plan status to `superseded`
+3. Add note in old plan: `Superseded by: 20251205-100000-revised-approach.md`
+4. Update session `plans:` array with new plan

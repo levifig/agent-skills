@@ -502,6 +502,37 @@ If the council was lengthy or complex:
 2. Consider `/compact` if main context is large
 3. For very long sessions, consider `/clear` + `/resume-session`
 
+### Save Implementation Plans
+
+If the council produces an implementation plan:
+
+1. **Save to `.agents/plans/`:**
+   ```
+   .agents/plans/YYYYMMDD-HHMMSS-{plan-slug}.md
+   ```
+
+2. **Plan frontmatter:**
+   ```yaml
+   ---
+   session: YYYYMMDD-HHMMSS-session-name
+   council: YYYYMMDD-HHMMSS-council-topic
+   created: YYYY-MM-DDTHH:MM:SSZ
+   status: approved  # Council-approved plans start as approved
+   ---
+   ```
+
+3. **Update session file:**
+   ```yaml
+   plans:
+     - YYYYMMDD-HHMMSS-plan-slug.md
+   ```
+
+4. **Reference in council file:**
+   ```yaml
+   council:
+     implementation_plan: "../plans/YYYYMMDD-HHMMSS-plan-slug.md"
+   ```
+
 ### Session File as Anchor
 
 The council file and session file persist across context resets:

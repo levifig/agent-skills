@@ -2,7 +2,7 @@
 
 Your personal agentic product team for AI coding assistants. One source, multiple targets: Claude Code, OpenCode, and Agent Skills (Codex, Cursor, Copilot, Gemini).
 
-**Version:** 1.6.0
+**Version:** 1.7.0
 
 ## Installation
 

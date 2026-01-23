@@ -47,6 +47,10 @@ session:
   archived_by: "agent-pm"                      # Optional; fill when archived (enforced by /review-sessions)
   linear_issue: "BACK-123"                     # Optional
   linear_url: "https://linear.app/..."         # Optional
+  branch: "username/back-123-feature"          # Optional: working branch
+
+plans: []  # List of plan files in .agents/plans/ used by this session
+           # Example: ["20251204-143500-api-design.md", "20251204-150000-frontend.md"]
 
 orchestration:
   current_task: "What's actively being worked" # REQUIRED
@@ -108,6 +112,15 @@ mypy path/to/code/
 ### Decision 1: [Title]
 **Decision**: What was decided
 **Rationale**: Why
+
+## Plans
+
+Implementation plans for this session (stored in `.agents/plans/`):
+
+| Plan | Status | Description |
+|------|--------|-------------|
+| [api-design](../plans/20251204-143500-api-design.md) | approved | API endpoint structure |
+| [frontend](../plans/20251204-150000-frontend.md) | pending | UI component design |
 
 ## Council Outcomes
 
