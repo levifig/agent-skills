@@ -366,31 +366,24 @@ show_claude_code_instructions() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Symlink Helpers
+# Copy Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Symlink individual items from source to target
-# NEVER symlinks the root directory - only individual children
-symlink_items() {
+# Copy directory contents from source to target
+# Uses rsync when available (syncs and removes stale files)
+# Falls back to rm + cp otherwise
+copy_items() {
     local source_dir="$1"
     local target_dir="$2"
 
     mkdir -p "${target_dir}"
 
-    for item in "${source_dir}"/*; do
-        [[ -e "${item}" ]] || continue  # Skip if no matches
-
-        local name
-        name=$(basename "${item}")
-        local target="${target_dir}/${name}"
-
-        # Remove existing (symlink or file/dir)
-        if [[ -L "${target}" ]] || [[ -e "${target}" ]]; then
-            rm -rf "${target}"
-        fi
-
-        ln -s "${item}" "${target}"
-    done
+    if command -v rsync &> /dev/null; then
+        rsync -a --delete "${source_dir}/" "${target_dir}/"
+    else
+        rm -rf "${target_dir:?}"/*
+        cp -r "${source_dir}"/* "${target_dir}/" 2>/dev/null || true
+    fi
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -422,34 +415,30 @@ install_cursor() {
     local cache="${INSTALL_DIR}/cursor"
     local config="${TOOL_CONFIG_DIRS[cursor]}"
 
-    # Skills: ~/.cursor/skills/{skill} → cache/skills/{skill}
+    # Skills
     if [[ -d "${cache}/skills" ]]; then
-        symlink_items "${cache}/skills" "${config}/skills"
+        copy_items "${cache}/skills" "${config}/skills"
     fi
 
-    # Commands: ~/.cursor/commands/{cmd}.md → cache/commands/{cmd}.md
+    # Commands
     if [[ -d "${cache}/commands" ]]; then
-        symlink_items "${cache}/commands" "${config}/commands"
+        copy_items "${cache}/commands" "${config}/commands"
     fi
 
-    # Agents: ~/.cursor/agents/{agent}.md → cache/agents/{agent}.md
+    # Agents (subagents)
     if [[ -d "${cache}/agents" ]]; then
-        symlink_items "${cache}/agents" "${config}/agents"
+        copy_items "${cache}/agents" "${config}/agents"
     fi
 
-    # Hooks: COPY (not symlink) hooks.json
+    # hooks.json config
     if [[ -f "${cache}/hooks.json" ]]; then
         mkdir -p "${config}"
         cp "${cache}/hooks.json" "${config}/hooks.json"
     fi
 
-    # Hook scripts: symlink entire hooks/ dir (scripts reference each other)
+    # Hook scripts
     if [[ -d "${cache}/hooks" ]]; then
-        local hooks_link="${config}/hooks"
-        if [[ -L "${hooks_link}" ]] || [[ -e "${hooks_link}" ]]; then
-            rm -rf "${hooks_link}"
-        fi
-        ln -s "${cache}/hooks" "${hooks_link}"
+        copy_items "${cache}/hooks" "${config}/hooks"
     fi
 
     print_success "Cursor installed to ${config}"
@@ -461,10 +450,10 @@ install_codex() {
 
     # Skills only
     if [[ -d "${cache}/skills" ]]; then
-        symlink_items "${cache}/skills" "${config}/skills"
+        copy_items "${cache}/skills" "${config}/skills"
     fi
 
-    print_success "Codex skills symlinked to ${config}/skills"
+    print_success "Codex installed to ${config}/skills"
 }
 
 install_gemini() {
@@ -474,10 +463,10 @@ install_gemini() {
 
     # Skills only
     if [[ -d "${cache}/skills" ]]; then
-        symlink_items "${cache}/skills" "${config}/skills"
+        copy_items "${cache}/skills" "${config}/skills"
     fi
 
-    print_success "Gemini skills symlinked to ${config}/skills"
+    print_success "Gemini installed to ${config}/skills"
 }
 
 prompt_update() {
@@ -529,6 +518,7 @@ main() {
     local specific_target=""
     local install_all=false
     local force_fresh=false
+    local upgrade_mode=false
 
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -536,10 +526,12 @@ main() {
             --fresh) force_fresh=true; shift ;;
             --target) specific_target="$2"; shift 2 ;;
             --all) install_all=true; shift ;;
+            --upgrade) upgrade_mode=true; shift ;;
             --help|-h)
                 echo "Usage: install.sh [options]"
                 echo ""
                 echo "Options:"
+                echo "  --upgrade   Unattended upgrade of all detected targets"
                 echo "  --update    Update existing installation"
                 echo "  --fresh     Force fresh install (remove existing)"
                 echo "  --target X  Install specific target only"
@@ -602,6 +594,20 @@ main() {
         SELECTED_TARGETS=("$specific_target")
         print_info "Target: $specific_target"
         echo ""
+    elif [[ "$upgrade_mode" == true ]]; then
+        # Upgrade mode: only select already-installed targets
+        SELECTED_TARGETS=()
+        for ((i = 0; i < ${#TOOL_KEYS[@]}; i++)); do
+            if [[ "${TOOL_INSTALLED[$i]}" == "yes" ]]; then
+                SELECTED_TARGETS+=("${TOOL_KEYS[$i]}")
+            fi
+        done
+        if [[ ${#SELECTED_TARGETS[@]} -eq 0 ]]; then
+            print_info "No installed targets to upgrade"
+        else
+            print_info "Upgrading: ${SELECTED_TARGETS[*]}"
+        fi
+        echo ""
     elif [[ "$install_all" == true ]]; then
         SELECTED_TARGETS=("${TOOL_KEYS[@]}")
         print_info "Installing all detected targets"
@@ -615,6 +621,8 @@ main() {
         if [[ "$force_fresh" == true ]]; then
             print_info "Removing existing installation..."
             rm -rf "${INSTALL_DIR}"
+        elif [[ "$upgrade_mode" == true ]]; then
+            print_info "Upgrading existing installation..."
         else
             if ! prompt_update; then
                 print_info "Keeping existing installation."

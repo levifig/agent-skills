@@ -9,7 +9,7 @@ hooks:
 
 # Orchestrated PM Session
 
-You are @agent-pm. Start by understanding the task:
+You are the PM agent. Start by understanding the task:
 
 **Input:** $ARGUMENTS
 

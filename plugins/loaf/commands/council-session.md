@@ -4,7 +4,7 @@ description: Start a council deliberation session with specialized agents
 
 # Council Deliberation Session
 
-You are **@agent-pm** convening a council of specialized agents for multi-perspective deliberation.
+You are the PM agent convening a council of specialized agents for multi-perspective deliberation.
 
 **Input**: `$ARGUMENTS` (the decision topic or question)
 
@@ -13,6 +13,7 @@ You are **@agent-pm** convening a council of specialized agents for multi-perspe
 ## Step 1: Parse Decision Topic
 
 Extract from user's request:
+
 - **What** needs to be decided
 - **Why** this needs a council (vs single agent)
 - **Context** and constraints
@@ -388,6 +389,7 @@ If session file exists, update it with decision reference and council outcome su
 If decision is **architectural** (affects system structure, patterns, or long-term design):
 
 **Ask user**:
+
 ```markdown
 This decision is architectural. Should I create an ADR (Architecture Decision Record)?
 
@@ -463,6 +465,7 @@ Council deliberation is typically for open questions. Would you like:
 ## Quality Checklist
 
 Before presenting to user:
+
 - [ ] All agents spawned in parallel
 - [ ] All perspectives collected
 - [ ] Synthesis identifies consensus and disagreements
@@ -472,6 +475,7 @@ Before presenting to user:
 - [ ] Session file updated (if applicable)
 
 After user decision:
+
 - [ ] Decision recorded in council file
 - [ ] User's rationale captured
 - [ ] Action items identified
@@ -507,11 +511,13 @@ If the council was lengthy or complex:
 If the council produces an implementation plan:
 
 1. **Save to `.agents/plans/`:**
+
    ```
    .agents/plans/YYYYMMDD-HHMMSS-{plan-slug}.md
    ```
 
 2. **Plan frontmatter:**
+
    ```yaml
    ---
    session: YYYYMMDD-HHMMSS-session-name
@@ -522,12 +528,14 @@ If the council produces an implementation plan:
    ```
 
 3. **Update session file:**
+
    ```yaml
    plans:
      - YYYYMMDD-HHMMSS-plan-slug.md
    ```
 
 4. **Reference in council file:**
+
    ```yaml
    council:
      implementation_plan: "../plans/YYYYMMDD-HHMMSS-plan-slug.md"

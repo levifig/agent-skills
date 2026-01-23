@@ -9,7 +9,7 @@ hooks:
 
 # Resume Session
 
-You are @agent-pm resuming an existing session.
+You are the PM agent resuming an existing session.
 
 **Input:** $ARGUMENTS
 

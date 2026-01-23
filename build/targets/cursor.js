@@ -173,7 +173,7 @@ function loadCursorSkillSidecar(skillDir) {
 }
 
 /**
- * Copy and transform all agents with Cursor-compatible frontmatter
+ * Copy and transform all agents with Cursor-compatible frontmatter and version footer
  */
 function copyAgents(srcDir, destDir, targetConfig, version) {
   const src = join(srcDir, "agents");
@@ -202,21 +202,19 @@ function copyAgents(srcDir, destDir, targetConfig, version) {
         ? PM_AGENT_FRONTMATTER
         : targetConfig?.defaults?.agents?.frontmatter || DEFAULT_AGENT_FRONTMATTER;
 
-    // Merge: defaults < source frontmatter < sidecar frontmatter
-    const frontmatter = injectVersion(
-      {
-        ...defaults,
-        name: sourceFrontmatter.name || agentName,
-        description:
-          sourceFrontmatter.description ||
-          `${agentName} agent for specialized tasks`,
-        ...sidecarFrontmatter,
-      },
-      version
-    );
+    // Merge: defaults < source frontmatter < sidecar frontmatter (no version in frontmatter)
+    const frontmatter = {
+      ...defaults,
+      name: sourceFrontmatter.name || agentName,
+      description:
+        sourceFrontmatter.description ||
+        `${agentName} agent for specialized tasks`,
+      ...sidecarFrontmatter,
+    };
 
-    // Reconstruct the file with Cursor-compatible frontmatter
-    const transformed = matter.stringify(body, frontmatter);
+    // Reconstruct the file with Cursor-compatible frontmatter and version footer
+    const bodyWithFooter = body.trim() + `\n\n---\nversion: ${version}\n`;
+    const transformed = matter.stringify(bodyWithFooter, frontmatter);
     writeFileSync(destPath, transformed);
   }
 }
@@ -238,9 +236,9 @@ function loadCursorAgentSidecar(sourcePath) {
 }
 
 /**
- * Copy all commands with version-only frontmatter
+ * Copy all commands with version in footer
  *
- * Cursor strips most frontmatter fields from commands, so we only keep version.
+ * Cursor doesn't use command frontmatter, so we put version in footer.
  */
 function copyCommands(srcDir, destDir, version) {
   const src = join(srcDir, "commands");
@@ -255,19 +253,21 @@ function copyCommands(srcDir, destDir, version) {
     const srcPath = join(src, file);
     const destPath = join(destDir, file);
 
-    // Read source content
+    // Read source content (strip existing frontmatter)
     const content = readFileSync(srcPath, "utf-8");
     const { content: body } = matter(content);
 
-    // Write with version-only frontmatter
-    const frontmatter = { version };
-    const transformed = matter.stringify(body, frontmatter);
+    // Write body with version footer (no frontmatter)
+    const versionFooter = `\n---\nversion: ${version}\n`;
+    const transformed = body.trim() + versionFooter;
     writeFileSync(destPath, transformed);
   }
 }
 
 /**
  * Copy hooks directory structure
+ *
+ * Handles Cursor-specific overrides: files named *.cursor.sh replace *.sh
  */
 function copyHooks(srcDir, destDir) {
   const hooksSrc = join(srcDir, "hooks");
@@ -284,7 +284,8 @@ function copyHooks(srcDir, destDir) {
     const subDest = join(destDir, subdir);
 
     if (existsSync(subSrc)) {
-      cpSync(subSrc, subDest, { recursive: true });
+      mkdirSync(subDest, { recursive: true });
+      copyHookFiles(subSrc, subDest);
     }
   }
 
@@ -293,6 +294,45 @@ function copyHooks(srcDir, destDir) {
   for (const entry of entries) {
     if (entry.isFile()) {
       cpSync(join(hooksSrc, entry.name), join(destDir, entry.name));
+    }
+  }
+}
+
+/**
+ * Copy hook files with Cursor-specific override support
+ *
+ * If foo.cursor.sh exists, it replaces foo.sh in the output
+ */
+function copyHookFiles(srcDir, destDir) {
+  const entries = readdirSync(srcDir, { withFileTypes: true });
+
+  // Find all Cursor-specific overrides
+  const cursorOverrides = new Set();
+  for (const entry of entries) {
+    if (entry.isFile() && entry.name.endsWith(".cursor.sh")) {
+      // Extract base name: "session-start.cursor.sh" -> "session-start.sh"
+      const baseName = entry.name.replace(".cursor.sh", ".sh");
+      cursorOverrides.add(baseName);
+    }
+  }
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      // Recursively copy subdirectories
+      const subSrc = join(srcDir, entry.name);
+      const subDest = join(destDir, entry.name);
+      mkdirSync(subDest, { recursive: true });
+      copyHookFiles(subSrc, subDest);
+    } else if (entry.isFile()) {
+      if (entry.name.endsWith(".cursor.sh")) {
+        // Copy Cursor override with base name
+        const destName = entry.name.replace(".cursor.sh", ".sh");
+        cpSync(join(srcDir, entry.name), join(destDir, destName));
+      } else if (!cursorOverrides.has(entry.name)) {
+        // Copy regular file only if no Cursor override exists
+        cpSync(join(srcDir, entry.name), join(destDir, entry.name));
+      }
+      // Skip files that have Cursor overrides
     }
   }
 }
@@ -327,7 +367,7 @@ function generateHooksJson(config, distDir) {
     hooksJson.hooks.preToolUse = preToolHooks.map((hook) => ({
       command: getHookCommand(hook),
       timeout: Math.floor((hook.timeout || 60000) / 1000), // Cursor uses seconds
-      ...(hook.matcher && { matcher: { tool_name: hook.matcher } }),
+      ...(hook.matcher && { matcher: hook.matcher }), // Cursor expects matcher as string
     }));
   }
 
@@ -336,7 +376,7 @@ function generateHooksJson(config, distDir) {
     hooksJson.hooks.postToolUse = postToolHooks.map((hook) => ({
       command: getHookCommand(hook),
       timeout: 30, // Default 30s for post-tool
-      ...(hook.matcher && { matcher: { tool_name: hook.matcher } }),
+      ...(hook.matcher && { matcher: hook.matcher }), // Cursor expects matcher as string
     }));
   }
 
@@ -372,16 +412,19 @@ function mapSessionEvent(event) {
 
 /**
  * Get hook command for Cursor format
+ *
+ * Uses $HOME/.cursor/hooks/ since hooks are installed to user config.
+ * Cursor doesn't have CLAUDE_PLUGIN_ROOT, so we use absolute paths.
  */
 function getHookCommand(hook) {
-  // Keep the full relative path structure for Cursor
-  const scriptPath = hook.script;
+  const scriptPath = hook.script.replace(/^hooks\//, "");
+  const basePath = "$HOME/.cursor/hooks";
 
-  if (scriptPath.endsWith(".py")) {
-    return `python3 hooks/${scriptPath.replace(/^hooks\//, "")}`;
-  } else if (scriptPath.endsWith(".ts")) {
-    return `bun run hooks/${scriptPath.replace(/^hooks\//, "")}`;
+  if (hook.script.endsWith(".py")) {
+    return `python3 ${basePath}/${scriptPath}`;
+  } else if (hook.script.endsWith(".ts")) {
+    return `bun run ${basePath}/${scriptPath}`;
   } else {
-    return `bash hooks/${scriptPath.replace(/^hooks\//, "")}`;
+    return `bash ${basePath}/${scriptPath}`;
   }
 }

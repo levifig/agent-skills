@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-check-secrets.sh",
+        "timeout": 30,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-validate-changelog.sh",
+        "timeout": 30,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-format-check.sh",
+        "timeout": 60,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-security-audit.sh",
+        "timeout": 600,
+        "matcher": "Bash"
+      },
+      {
+        "command": "python3 $HOME/.cursor/hooks/pre-tool/orchestration-validate-commit.py",
+        "timeout": 30,
+        "matcher": "Bash"
+      },
+      {
+        "command": "python3 $HOME/.cursor/hooks/pre-tool/orchestration-detect-linear-magic.py",
+        "timeout": 30,
+        "matcher": "Bash"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-type-check.sh",
+        "timeout": 60,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-pytest-validation.sh",
+        "timeout": 120,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-type-check-progressive.sh",
+        "timeout": 120,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-ruff-lint.sh",
+        "timeout": 30,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-pytest-execution.sh",
+        "timeout": 480,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-bandit-scan.sh",
+        "timeout": 60,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/typescript-tsc-check.sh",
+        "timeout": 60,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/typescript-bundle-analysis.sh",
+        "timeout": 60,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-migration-safety.sh",
+        "timeout": 60,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-migration-safety-deep.sh",
+        "timeout": 300,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-test-execution.sh",
+        "timeout": 480,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-brakeman-scan.sh",
+        "timeout": 120,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-validate-k8s.sh",
+        "timeout": 60,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-dockerfile-lint.sh",
+        "timeout": 30,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-k8s-dry-run-server.sh",
+        "timeout": 120,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-terraform-plan-cost.sh",
+        "timeout": 300,
+        "matcher": "Edit|Write"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/python-ruff-check.sh",
+        "timeout": 30,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/typescript-eslint-check.sh",
+        "timeout": 30,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/rails-rubocop-check.sh",
+        "timeout": 30,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/design-a11y-validation.sh",
+        "timeout": 30,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/design-token-check.sh",
+        "timeout": 30,
+        "matcher": "Edit|Write"
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/design-a11y-audit.sh",
+        "timeout": 30,
+        "matcher": "Edit|Write"
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "bash $HOME/.cursor/hooks/session/session-start.sh",
+        "timeout": 60
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "bash $HOME/.cursor/hooks/session/session-end.sh",
+        "timeout": 60
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "bash $HOME/.cursor/hooks/session/pre-compact-archive.sh",
+        "timeout": 60
+      }
+    ]
+  }
+}

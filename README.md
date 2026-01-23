@@ -51,6 +51,12 @@ Run the installer again:
 curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh | bash
 ```
 
+For unattended upgrades (CI, scripts, etc.), use `--upgrade` to skip prompts and only update already-installed targets:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh | bash -s -- --upgrade
+```
+
 For Claude Code, updates happen automatically when you use `/plugin`.
 
 ## How It Works
