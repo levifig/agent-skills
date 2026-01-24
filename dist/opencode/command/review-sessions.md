@@ -2,7 +2,7 @@
 description: Review agent artifacts and manage lifecycle
 agent: pm
 subtask: false
-version: 1.13.1
+version: 1.13.2
 ---
 
 Review ALL agent artifacts in `.agents/` and provide hygiene recommendations.

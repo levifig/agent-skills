@@ -26,4 +26,4 @@ You are a database administrator. Your skills tell you how to design schemas and
 Your skills contain all the patterns and conventions. Reference them.
 
 ---
-version: 1.13.1
+version: 1.13.2

@@ -166,9 +166,10 @@ kamal setup && kamal deploy
 | Performance | [performance.md](reference/performance.md) | N+1 prevention, caching, indexing |
 | Deployment | [deployment.md](reference/deployment.md) | Kamal, Docker, zero-downtime |
 | Styling | [styling.md](reference/styling.md) | Tailwind CSS, responsive design |
-| Services | [services.md](reference/services.md) | Service objects, result patterns |
-| Assets | [assets.md](reference/assets.md) | Propshaft, Import Maps |
-| Mobile | [mobile.md](reference/mobile.md) | Hotwire Native, Bridge Components |
+| Services | [services.md](references/services.md) | Service objects, result patterns |
+| Assets | [assets.md](references/assets.md) | Propshaft, Import Maps |
+| Mobile | [mobile.md](references/mobile.md) | Hotwire Native, Bridge Components |
+| Debugging | [debugging.md](references/debugging.md) | binding.irb, byebug, pry-rails, Rails console |
 
 ## Critical Rules
 

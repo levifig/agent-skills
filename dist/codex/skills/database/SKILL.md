@@ -6,7 +6,7 @@ description: >-
   ANALYZE, indexing strategies (B-tree, partial, composite), and normalization
   tradeoffs. Activate when working with SQL files, migrations, or database
   schema decisions.
-version: 1.13.1
+version: 1.13.2
 ---
 
 # Database Skill

@@ -356,4 +356,4 @@ See `/architecture` for ADR format.
 - `/architecture` — Technical decisions (creates ADRs)
 - `/research` — Investigation that may inform reflection
 ---
-version: 1.13.1
+version: 1.13.2

@@ -1,13 +1,3 @@
----
-name: debugging
-description: >-
-  Use for systematic bug investigation and diagnosis. Covers hypothesis-driven
-  debugging workflows, multi-hypothesis tracking, language-specific debugging
-  patterns (Python, TypeScript, Ruby), and test debugging (flaky tests, isolation,
-  state pollution). Activate when investigating failures, debugging production
-  issues, or diagnosing test problems.
----
-
 # Systematic Debugging
 
 Hypothesis-driven investigation for efficient and traceable bug diagnosis.
@@ -31,13 +21,16 @@ Hypothesis-driven investigation for efficient and traceable bug diagnosis.
 | **Test flakiness** | Check state pollution | Run test in isolation, check fixtures |
 | **Production issue** | Preserve evidence | Capture logs/state before attempting fixes |
 
-## Topics
+## Debugging Workflow
 
-| Topic | Reference | Use For |
-|-------|-----------|---------|
-| Hypothesis Tracking | `references/hypothesis-tracking.md` | Multi-hypothesis workflow, session templates, investigation logs |
-| Language Debugging | `references/language-debugging.md` | Python, TypeScript, Ruby debug patterns and tools |
-| Test Debugging | `references/test-debugging.md` | Flaky tests, isolation, state pollution, environment differences |
+```
+1. REPRODUCE: Establish reliable reproduction steps
+2. HYPOTHESIZE: Generate 3-5 possible causes, rank by likelihood
+3. TEST: Design experiment to test highest-likelihood hypothesis
+4. EVALUATE: Analyze results, update hypothesis status
+5. ITERATE: Move to next hypothesis or refine based on evidence
+6. VERIFY: Confirm fix addresses root cause, not just symptoms
+```
 
 ## Critical Rules
 
@@ -61,17 +54,6 @@ Hypothesis-driven investigation for efficient and traceable bug diagnosis.
 - Change multiple variables simultaneously
 - Ignore contradictory evidence
 
-## Debugging Workflow
-
-```
-1. REPRODUCE: Establish reliable reproduction steps
-2. HYPOTHESIZE: Generate 3-5 possible causes, rank by likelihood
-3. TEST: Design experiment to test highest-likelihood hypothesis
-4. EVALUATE: Analyze results, update hypothesis status
-5. ITERATE: Move to next hypothesis or refine based on evidence
-6. VERIFY: Confirm fix addresses root cause, not just symptoms
-```
-
 ## Investigation Log Format
 
 Keep a timestamped log of investigation steps:
@@ -90,9 +72,35 @@ Keep a timestamped log of investigation steps:
         Status: H3 CONFIRMED
 ```
 
-## Related Skills
+## Cross-Language Techniques
 
-- `foundations` - Test patterns, error handling, logging standards
-- `python` - Python-specific debugging tools (pdb, logging)
-- `typescript` - TypeScript debugging (Chrome DevTools, source maps)
-- `ruby` - Ruby debugging (binding.irb, byebug)
+### Binary Search Debugging
+
+When you have a long sequence of operations and don't know where the failure occurs:
+
+1. Add logging/breakpoint at the midpoint
+2. Determine if failure is before or after
+3. Repeat with the relevant half
+4. Continue until you isolate the exact line
+
+### Minimal Reproduction
+
+1. Remove code until bug disappears
+2. Add back the last removed piece
+3. That piece contains or triggers the bug
+4. Create minimal test case that reproduces
+
+### Rubber Duck Debugging
+
+When stuck:
+
+1. Explain the code line-by-line out loud
+2. Explain what you expect vs. what happens
+3. Explain your hypotheses and why each might be wrong
+4. Often, articulating the problem reveals the solution
+
+## Related References
+
+- `hypothesis-tracking.md` - Multi-hypothesis workflow, session templates
+- `test-debugging.md` - Flaky tests, isolation, state pollution
+- Language-specific debugging in respective language skills (python, typescript, ruby)

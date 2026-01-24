@@ -178,8 +178,9 @@ type ButtonProps = VariantProps<typeof button>;
 | [Styling](reference/styling.md) | Tailwind CSS, CVA variants, dark mode, responsive design |
 | [Performance](reference/performance.md) | Bundle analysis, code splitting, memoization, Web Vitals |
 | [Accessibility](reference/a11y.md) | WCAG compliance, ARIA, keyboard navigation, screen readers |
-| [Mobile](reference/mobile.md) | React Native, Expo, navigation, platform-specific code |
-| [ESM](reference/esm.md) | ESM patterns, JSDoc types, JS vs TS decision guide |
+| [Mobile](references/mobile.md) | React Native, Expo, navigation, platform-specific code |
+| [ESM](references/esm.md) | ESM patterns, JSDoc types, JS vs TS decision guide |
+| [Debugging](references/debugging.md) | Console methods, DevTools, source maps, async debugging |
 
 ## Critical Rules
 

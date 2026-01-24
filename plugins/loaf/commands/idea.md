@@ -1,6 +1,6 @@
 ---
 description: Quick capture of ideas into atomic nuggets
-version: 1.13.1
+version: 1.13.2
 ---
 
 # Idea Command

@@ -7,7 +7,7 @@ hooks:
           command: >-
             bash
             ${CLAUDE_PLUGIN_ROOT}/hooks/sessions/validate-session-created.sh
-version: 1.13.1
+version: 1.13.2
 ---
 
 Review ALL agent artifacts in `.agents/` and provide hygiene recommendations.

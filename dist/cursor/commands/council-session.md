@@ -564,4 +564,4 @@ See `orchestration` skill `reference/context-management.md` for detailed pattern
 
 Reference `council-workflow` skill for detailed guidance.
 ---
-version: 1.13.1
+version: 1.13.2

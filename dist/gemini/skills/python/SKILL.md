@@ -6,7 +6,7 @@ description: >-
   pytest testing, SQLAlchemy database operations, Polars data processing, httpx
   API clients, and Docker deployment. Activate when working with .py files,
   pyproject.toml, or Python frameworks.
-version: 1.13.1
+version: 1.13.2
 ---
 
 # Python Development
@@ -148,16 +148,17 @@ async def test_create_user(client: AsyncClient):
 
 | Topic | Use For |
 |-------|---------|
-| [Core](reference/core.md) | Project setup, pyproject.toml, modern Python features |
-| [FastAPI](reference/fastapi.md) | REST APIs, routing, dependency injection, middleware |
-| [Pydantic](reference/pydantic.md) | Data models, validation, settings management |
-| [Async](reference/async.md) | async/await, TaskGroup, context managers |
-| [Types](reference/types.md) | Type hints, mypy, Protocol, generics |
-| [Testing](reference/testing.md) | pytest, fixtures, mocking, async tests |
-| [Database](reference/database.md) | SQLAlchemy 2.0, Alembic migrations, transactions |
-| [Data](reference/data.md) | Polars, ETL pipelines, schema validation |
-| [API Clients](reference/api.md) | httpx, retries, rate limiting, error handling |
-| [Deployment](reference/deployment.md) | Docker, logging, OpenTelemetry, health checks |
+| [Core](references/core.md) | Project setup, pyproject.toml, modern Python features |
+| [FastAPI](references/fastapi.md) | REST APIs, routing, dependency injection, middleware |
+| [Pydantic](references/pydantic.md) | Data models, validation, settings management |
+| [Async](references/async.md) | async/await, TaskGroup, context managers |
+| [Types](references/types.md) | Type hints, mypy, Protocol, generics |
+| [Testing](references/testing.md) | pytest, fixtures, mocking, async tests |
+| [Database](references/database.md) | SQLAlchemy 2.0, Alembic migrations, transactions |
+| [Data](references/data.md) | Polars, ETL pipelines, schema validation |
+| [API Clients](references/api.md) | httpx, retries, rate limiting, error handling |
+| [Deployment](references/deployment.md) | Docker, logging, OpenTelemetry, health checks |
+| [Debugging](references/debugging.md) | pdb, structlog, pytest debugging, remote debugging |
 
 ## Critical Rules
 

@@ -39,6 +39,9 @@ Engineering foundations for consistent, secure, and well-documented code.
 | Diagrams | `references/diagrams.md` | Mermaid syntax, when to diagram, storage patterns |
 | Documentation | `references/documentation.md` | ADRs, API docs, changelogs |
 | Security | `references/security.md` | Threat modeling, secrets, compliance |
+| Debugging | `references/debugging.md` | Hypothesis-driven systematic debugging methodology |
+| Hypothesis Tracking | `references/hypothesis-tracking.md` | Multi-hypothesis workflow, investigation logs |
+| Test Debugging | `references/test-debugging.md` | Flaky tests, isolation, state pollution |
 | TDD | `references/tdd.md` | Test-driven development, red/green/refactor cycle |
 | Verification | `references/verification.md` | Evidence before assertions, verify before claiming done |
 | Code Review | `references/code-review.md` | Request and receive reviews with technical rigor |

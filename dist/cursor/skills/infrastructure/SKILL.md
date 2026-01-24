@@ -6,7 +6,7 @@ description: >-
   CI/CD pipelines, and container security. Activate when working with
   Dockerfile, k8s manifests, helm charts, CI workflows, or deployment
   configuration.
-version: 1.13.1
+version: 1.13.2
 ---
 
 # Infrastructure

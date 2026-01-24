@@ -1,6 +1,6 @@
 ---
 description: Orchestrate unattended execution of specs or task groups
-version: 1.13.1
+version: 1.13.2
 ---
 
 # Orchestrate

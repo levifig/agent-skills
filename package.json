@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "1.13.2",
+  "version": "1.14.0",
   "description": "Loaf - Levi's Opinionated Agentic Framework for Claude Code, OpenCode, Cursor, Codex, and Gemini",
   "type": "module",
   "scripts": {

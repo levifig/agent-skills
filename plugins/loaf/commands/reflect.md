@@ -1,6 +1,6 @@
 ---
 description: Integrate learnings from shipped work into strategic documents
-version: 1.13.1
+version: 1.13.2
 ---
 
 # Reflect Command

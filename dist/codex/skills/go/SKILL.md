@@ -5,7 +5,7 @@ description: >-
   project structure, goroutines and channels for concurrency, explicit error
   handling, table-driven tests, and common idioms (guard clauses, defer,
   embedding). Activate when working with .go files, go.mod, or Go projects.
-version: 1.13.1
+version: 1.13.2
 ---
 
 # Go Skill
