@@ -255,4 +255,4 @@ Consider convening a council when:
 - **orchestration/product-development** - Where architecture fits in hierarchy
 - **foundations** - Documentation standards for ADRs
 ---
-version: 1.13.0
+version: 1.13.1

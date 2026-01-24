@@ -327,4 +327,4 @@ This keeps shaping focused and strategy changes deliberate.
 - `/implement` — Start implementation session
 - `/reflect` — Update strategy after shipping
 ---
-version: 1.13.0
+version: 1.13.1

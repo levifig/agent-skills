@@ -54,4 +54,4 @@ Plans persist across context resets and provide implementation guidance to agent
 Your skills contain all the patterns and conventions. Reference them.
 
 ---
-version: 1.13.0
+version: 1.13.1

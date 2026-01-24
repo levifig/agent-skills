@@ -231,4 +231,4 @@ Research produces **findings**, not decisions.
 - `/architecture` — When you need to make technical decisions
 - `/strategy` — When you need to discover strategic context
 ---
-version: 1.13.0
+version: 1.13.1

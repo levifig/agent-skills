@@ -32,13 +32,15 @@ Engineering foundations for consistent, secure, and well-documented code.
 
 | Topic | Reference | Use For |
 |-------|-----------|---------|
-| Code Style | `reference/code-style.md` | Python/TypeScript conventions, naming, patterns |
-| Commits | `reference/commits.md` | Commit messages, branches, PRs, Linear integration |
-| Diagrams | `reference/diagrams.md` | Mermaid syntax, when to diagram, storage patterns |
-| Documentation | `reference/documentation.md` | ADRs, API docs, changelogs |
-| Security | `reference/security.md` | Threat modeling, secrets, compliance |
-| Verification | `reference/verification.md` | Pre-completion checks, verification commands |
-| Permissions | `reference/permissions.md` | Tool allowlists, sandbox config, agent permissions |
+| Code Style | `references/code-style.md` | Python/TypeScript conventions, naming, patterns |
+| Commits | `references/commits.md` | Commit messages, branches, PRs, Linear integration |
+| Diagrams | `references/diagrams.md` | Mermaid syntax, when to diagram, storage patterns |
+| Documentation | `references/documentation.md` | ADRs, API docs, changelogs |
+| Security | `references/security.md` | Threat modeling, secrets, compliance |
+| TDD | `references/tdd.md` | Test-driven development, red/green/refactor cycle |
+| Verification | `references/verification.md` | Evidence before assertions, verify before claiming done |
+| Code Review | `references/code-review.md` | Request and receive reviews with technical rigor |
+| Permissions | `references/permissions.md` | Tool allowlists, sandbox config, agent permissions |
 
 ## Available Scripts
 

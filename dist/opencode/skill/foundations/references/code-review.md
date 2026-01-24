@@ -1,12 +1,3 @@
----
-name: code-review
-description: >-
-  Request and receive code reviews effectively. Use when preparing work for
-  review or when receiving feedback on your code. Covers creating reviewable
-  PRs, giving constructive feedback, and responding to review comments with
-  technical rigor rather than performative agreement.
----
-
 # Code Review
 
 Give and receive feedback that improves code quality.

@@ -6,7 +6,7 @@ description: >-
   patterns (Python, TypeScript, Ruby), and test debugging (flaky tests,
   isolation, state pollution). Activate when investigating failures, debugging
   production issues, or diagnosing test problems.
-version: 1.13.0
+version: 1.13.1
 ---
 
 # Systematic Debugging

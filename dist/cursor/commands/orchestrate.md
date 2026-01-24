@@ -674,4 +674,4 @@ Wave 2: IN PROGRESS (parallel)
 - **orchestration/references/local-tasks** - Task format and management
 - **orchestration/references/delegation** - Agent spawning patterns
 ---
-version: 1.13.0
+version: 1.13.1

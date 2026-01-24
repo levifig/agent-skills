@@ -321,4 +321,4 @@ Minimum viable STRATEGY.md:
 - `/research` — Investigation that may inform strategy
 - `/brainstorm` — Deep thinking that may surface strategy insights
 ---
-version: 1.13.0
+version: 1.13.1

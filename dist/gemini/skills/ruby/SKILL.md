@@ -6,7 +6,7 @@ description: >-
   convention over configuration, programmer happiness, and the majestic
   monolith. Activate when working with Gemfile, .rb files, or Rails directory
   structure.
-version: 1.13.0
+version: 1.13.1
 ---
 
 # Ruby Development

@@ -39,4 +39,4 @@ See the `debugging` skill for hypothesis tracking templates and language-specifi
 Your skills contain all the patterns and conventions. Reference them.
 
 ---
-version: 1.13.0
+version: 1.13.1

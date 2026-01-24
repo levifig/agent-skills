@@ -7,7 +7,7 @@ description: >-
   standards compliance (CIGRE, IEEE, IEC). Activate when working with
   transmission line calculations, thermal modeling, or conductor physics
   validation.
-version: 1.13.0
+version: 1.13.1
 ---
 
 # Power Systems Reference

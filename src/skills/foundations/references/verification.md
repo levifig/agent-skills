@@ -1,159 +1,153 @@
-# Verification Reference
+# Verification Before Completion
 
-Pre-completion checks to ensure work is actually complete before claiming it.
+Evidence before assertions. Always.
 
-## When to Verify
+## Philosophy
 
-| Trigger | What to Check |
-|---------|---------------|
-| Before claiming "done" | All relevant checks pass |
-| Before creating commits | Tests, types, lint |
-| Before creating PRs | Full verification suite |
-| After making changes | The specific thing changed |
+**Claims require proof.** "It works" means nothing without evidence. Run the tests. Check the output. Verify the behavior. Then make the claim.
 
-## What to Verify
+**Verify what you changed.** If you modified authentication, verify authentication works. If you added an API endpoint, call it. Don't rely on "I think it's right."
 
-| Check | Purpose | Priority |
-|-------|---------|----------|
-| Tests pass | Behavior correctness | Required |
-| Build succeeds | Code compiles/bundles | Required |
-| Type checks pass | Type safety | Required |
-| Linting passes | Code standards | Required |
-| Manual verification | UI/UX correctness | When applicable |
+**Fresh environment, real conditions.** Code that works in your head or with cached state may fail in reality. Test in conditions that match deployment.
 
-## Common Verification Commands
+**False confidence is worse than uncertainty.** Saying "done" when it's not wastes everyone's time. Better to say "I think it's done but haven't verified X" than to ship broken code.
 
-### By Language/Framework
+## Quick Reference
 
-| Stack | Commands |
-|-------|----------|
-| **Python** | `pytest`, `mypy .`, `ruff check .` |
-| **TypeScript/JS** | `npm test`, `npm run build`, `npm run lint`, `tsc --noEmit` |
-| **Ruby** | `rails test`, `rubocop` |
-| **Go** | `go test ./...`, `go vet ./...` |
-| **Rust** | `cargo test`, `cargo clippy` |
-
-### General Commands
-
-```bash
-# Check git status for unexpected changes
-git status
-
-# Build the project
-npm run build    # Node projects
-make build       # Make-based projects
-
-# Run all checks (if available)
-npm run check    # Often combines lint + type + test
-make check
-```
-
-### Project-Specific
-
-Always check `package.json`, `Makefile`, or equivalent for project-specific commands:
-
-```bash
-# Common script names to look for
-npm run test
-npm run lint
-npm run typecheck
-npm run build
-npm run check
-```
-
-## Verification Mindset
-
-### Evidence Before Assertions
-
-```bash
-# Wrong: Claiming without running
-"Tests pass and the build succeeds."
-
-# Right: Run, then report
-npm test && npm run build
-# Output shows success, then claim completion
-```
-
-### Verify What You Changed
-
-If you modified a calculation:
-- Run tests covering that calculation
-- Check edge cases for that calculation
-- Verify output format if applicable
-
-If you modified an API endpoint:
-- Hit the endpoint manually or via tests
-- Check error cases
-- Verify response format
-
-### Check Edge Cases
-
-| Change Type | Edge Cases to Verify |
-|-------------|---------------------|
-| Input validation | Empty, null, malformed, boundary values |
-| Calculations | Zero, negative, very large, precision |
-| String handling | Empty, unicode, injection attempts |
-| Collections | Empty, single item, large sets |
+| Before... | Verify by... |
+|-----------|--------------|
+| Claiming "fixed" | Running the failing test, seeing it pass |
+| Marking task done | Running all related tests |
+| Creating PR | Running full test suite, checking build |
+| Committing | Running affected tests, checking lint |
 
 ## Verification Checklist
 
-Before any "done" claim:
+Before claiming any work is complete:
 
-- [ ] `git status` shows expected changes only
-- [ ] Tests pass (run them, don't assume)
-- [ ] Build succeeds (run it, don't assume)
-- [ ] Type checks pass (if applicable)
-- [ ] Lint passes (if applicable)
-- [ ] Changed functionality manually verified (if applicable)
-
-## Examples
-
-### Completing a Feature
-
-```bash
-# 1. Check what changed
-git status
-git diff
-
-# 2. Run verification suite
-npm test
-npm run build
-npm run lint
-
-# 3. Manual check if UI/behavior change
-# Open the app, test the feature
-
-# 4. Only then claim completion
+```
+□ Tests pass (not just "should pass" — actually ran them)
+□ Build succeeds (compiled, bundled, no errors)
+□ Linting passes (no new warnings introduced)
+□ Manual verification (if applicable, actually clicked/tested)
+□ Edge cases checked (empty inputs, error conditions)
+□ Documentation updated (if behavior changed)
 ```
 
-### Fixing a Bug
+## The Verification Command
+
+Always run verification commands and **read the output**:
 
 ```bash
-# 1. Write/update test that reproduces the bug
-npm test -- --grep "specific test"
-
-# 2. Fix the bug
-
-# 3. Verify the fix
-npm test -- --grep "specific test"  # Should pass now
-npm test                            # Full suite still passes
-
-# 4. Verify no regressions
-npm run build
+# Don't just run — verify the result
+npm test        # Check: "X tests passed, 0 failed"
+npm run build   # Check: "Build completed successfully"
+npm run lint    # Check: No errors or warnings
 ```
+
+**Common trap:** Running the command, not reading the output, assuming success.
+
+## Verification Levels
+
+| Level | When | What to Verify |
+|-------|------|----------------|
+| **Quick** | During development | Affected tests pass |
+| **Standard** | Before commit | Full test suite, lint, build |
+| **Thorough** | Before PR/deploy | E2E tests, manual verification, edge cases |
 
 ## Critical Rules
 
 ### Always
 
-- Run verification commands before any "done" claim
-- Check `git status` for unexpected changes
-- Verify the specific thing you changed works
-- Report actual command output, not assumptions
+- Run tests before claiming they pass
+- Read command output, don't assume success
+- Verify the specific behavior you changed
+- Check edge cases (empty, null, error states)
+- Reproduce bugs before claiming fixed
 
 ### Never
 
-- Claim "tests pass" without running them
-- Assume the build still works after changes
-- Skip verification "because it's a small change"
-- Claim completion based on what should work
+- Say "tests pass" without running them
+- Assume code works because it compiles
+- Skip verification because "it's a small change"
+- Claim completion without evidence
+- Trust cached test results
+
+## Verification Patterns
+
+### Bug Fix Verification
+
+```
+1. Reproduce the bug (see it fail)
+2. Apply the fix
+3. Verify the bug is fixed (see it pass)
+4. Run related tests (no regressions)
+5. Check edge cases (similar scenarios)
+```
+
+### Feature Verification
+
+```
+1. Run new tests (they should pass)
+2. Run existing tests (no regressions)
+3. Manual verification (actually use the feature)
+4. Edge case testing (empty, error, boundary)
+5. Build verification (deploys successfully)
+```
+
+### Refactor Verification
+
+```
+1. Run full test suite BEFORE refactor
+2. Make refactor changes
+3. Run full test suite AFTER refactor
+4. Compare coverage (no decrease)
+5. Behavior unchanged (same inputs → same outputs)
+```
+
+## Integration with Loaf Workflow
+
+| Command | Verification Point |
+|---------|-------------------|
+| `/implement` | Before marking session complete |
+| `/breakdown` | Each task has verification criteria |
+| `/shape` | Test conditions define verification |
+| `/reflect` | Note verification gaps discovered |
+
+## Red Flags
+
+Watch for these anti-patterns:
+
+| Statement | Red Flag |
+|-----------|----------|
+| "Should work" | No evidence provided |
+| "Tests pass" (no output shown) | Might not have run them |
+| "It works on my machine" | Environment-specific success |
+| "I'm pretty sure" | Uncertainty without verification |
+| "Just a small change" | Small changes can have big impacts |
+
+## Verification Output Format
+
+When reporting completion, include evidence:
+
+```markdown
+## Verification
+
+**Tests:**
+✓ `npm test` — 47 passed, 0 failed
+✓ `npm run test:e2e` — 12 passed, 0 failed
+
+**Build:**
+✓ `npm run build` — completed in 23s
+
+**Manual:**
+✓ Logged in with valid credentials
+✓ Login rejected with invalid password
+✓ Session persists across page refresh
+```
+
+## Related Skills
+
+- `tdd` - Tests as verification foundation
+- `debugging` - When verification fails
+- `foundations` - Testing patterns and standards

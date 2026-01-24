@@ -320,7 +320,7 @@ plugin-groups:
   foundations:
     description: Cross-language development fundamentals, quality gates, and coding discipline
     agents: [qa]
-    skills: [foundations, debugging, tdd, verification, code-review]
+    skills: [foundations, debugging]
     related-hooks:
       pre-tool: [check-secrets, validate-changelog, format-check, security-audit, tdd-advisory]
 
