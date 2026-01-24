@@ -39,6 +39,7 @@ Engineering foundations for consistent, secure, and well-documented code.
 | Diagrams | `reference/diagrams.md` | Mermaid syntax, when to diagram, storage patterns |
 | Documentation | `reference/documentation.md` | ADRs, API docs, changelogs |
 | Security | `reference/security.md` | Threat modeling, secrets, compliance |
+| Verification | `reference/verification.md` | Pre-completion checks, verification commands |
 | Permissions | `reference/permissions.md` | Tool allowlists, sandbox config, agent permissions |
 
 ## Available Scripts

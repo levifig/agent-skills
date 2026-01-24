@@ -20,6 +20,7 @@
     "./commands/architecture.md",
     "./commands/council-session.md",
     "./commands/implement.md",
+    "./commands/orchestrate.md",
     "./commands/prd.md",
     "./commands/reference-session.md",
     "./commands/research.md",

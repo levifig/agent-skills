@@ -14,11 +14,43 @@ Break specifications into atomic, implementable tasks.
 ## Purpose
 
 Tasks are the smallest unit of work that can be:
-- Assigned to an agent
-- Completed in a single session
+- Assigned to a single specialized agent
+- Completed within model context limits
 - Verified with a clear done condition
 
 See `orchestration/local-tasks` reference for task format and abstraction layer.
+
+---
+
+## Task Breakdown Philosophy: Separation of Concerns
+
+**The primary principle for task breakdown is separation of concerns.**
+
+### Right-Sizing Rules
+
+| Rule | Guideline |
+|------|-----------|
+| **One agent type** | Task should be completable by ONE agent (backend-dev, frontend-dev, dba, qa, devops) |
+| **One concern** | Task touches one layer, one service, or one component |
+| **Context-appropriate** | Small enough to fit in model context with room for exploration |
+| **Not over-fragmented** | Don't split what naturally belongs together |
+
+### The Right Size Test
+
+Ask these questions:
+1. Can a single specialized agent complete this? → If no, split by agent type
+2. Does it touch multiple unrelated concerns? → If yes, split by concern
+3. Will the agent need to hold too much context? → If yes, split into phases
+4. Am I splitting just to have more tasks? → If yes, merge back
+
+### Anti-Patterns
+
+| Don't | Do Instead |
+|-------|------------|
+| Split backend + tests into separate tasks | Keep tests with the code they test (same agent) |
+| Create a task per file | Group files by concern/feature |
+| Split a single function across tasks | Keep atomic changes together |
+| Separate "implement" and "verify" tasks | Every task includes its own verification |
 
 ---
 
@@ -175,13 +207,13 @@ For each task:
 
 ```bash
 # Create task directory if needed
-mkdir -p .agents/tasks/active
+mkdir -p .agents/tasks
 
 # Generate task ID
 next_id=$(find_next_task_id)
 
 # Create task file
-# .agents/tasks/active/TASK-{id}-{slug}.md
+# .agents/tasks/TASK-{id}-{slug}.md
 ```
 
 ### Step 9: Update Spec Status
@@ -206,7 +238,7 @@ status: implementing
 
 **Spec status:** implementing
 
-**Next:** Use `/start-session TASK-001` to begin work.
+**Next:** Use `{{IMPLEMENT_CMD}} TASK-001` to begin work, or `{{ORCHESTRATE_CMD}} SPEC-001` to run all tasks.
 ```
 
 ---
@@ -222,7 +254,7 @@ Sequential numbering:
 ```bash
 # Find next available number
 find_next_task_id() {
-  local max=$(ls .agents/tasks/active/ .agents/tasks/archive/*/ 2>/dev/null | \
+  local max=$(ls .agents/tasks/ .agents/tasks/archive/*/ 2>/dev/null | \
     grep -oE 'TASK-[0-9]+' | \
     sort -t- -k2 -n | \
     tail -1 | \
@@ -235,13 +267,23 @@ find_next_task_id() {
 
 ## Task Sizing Guide
 
-| Size | Duration | Characteristics |
-|------|----------|-----------------|
-| Small | < 1 day | Single file, clear change |
-| Medium | 1-2 days | Multiple files, one concern |
-| Large | 2-3 days | Complex logic, multiple concerns |
+| Size | Characteristics | Action |
+|------|-----------------|--------|
+| **Right** | One concern, one agent type, fits in context | Good to go |
+| **Too small** | Artificially split, fragment of a concern | Merge with related task |
+| **Too large** | Multiple concerns or agent types | Split by concern |
 
-**If task is large:** Consider splitting into smaller tasks.
+### Sizing by Agent Type
+
+| Agent | Typical Task Scope |
+|-------|-------------------|
+| `backend-dev` | One service/module, its tests, its docs |
+| `frontend-dev` | One component/page, its tests, its styles |
+| `dba` | One migration, related schema changes |
+| `qa` | Test suite for one feature/area |
+| `devops` | One infrastructure concern (CI, deploy, config) |
+
+**If task requires multiple agent types:** Split into separate tasks with dependencies.
 
 ---
 

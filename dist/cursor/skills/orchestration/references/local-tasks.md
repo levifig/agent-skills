@@ -136,14 +136,15 @@ TASK-003: Login UI Components
 
 ```
 .agents/tasks/
-├── active/                    # Current work
-│   ├── TASK-001-oauth-provider.md
-│   ├── TASK-002-session-management.md
-│   └── TASK-003-login-ui.md
-└── archive/                   # Completed work
-    └── 2026-01/              # Organized by month
+├── TASK-001-oauth-provider.md      # Active tasks (root)
+├── TASK-002-session-management.md
+├── TASK-003-login-ui.md
+└── archive/                         # Completed work
+    └── 2026-01/                     # Organized by month
         └── TASK-000-initial-setup.md
 ```
+
+Active tasks live at the root of `.agents/tasks/`. Completed tasks are archived to `.agents/tasks/archive/YYYY-MM/`.
 
 ## Task ID Generation
 
@@ -151,7 +152,7 @@ Format: `TASK-{number}-{slug}`
 
 ```bash
 # Find next available number
-ls .agents/tasks/active/ .agents/tasks/archive/*/ 2>/dev/null | \
+ls .agents/tasks/ .agents/tasks/archive/*/ 2>/dev/null | \
   grep -oE 'TASK-[0-9]+' | \
   sort -t- -k2 -n | \
   tail -1 | \
@@ -168,16 +169,24 @@ When a task is done:
 
 ```bash
 mkdir -p .agents/tasks/archive/$(date +%Y-%m)
-mv .agents/tasks/active/TASK-001-*.md .agents/tasks/archive/$(date +%Y-%m)/
+mv .agents/tasks/TASK-001-*.md .agents/tasks/archive/$(date +%Y-%m)/
 ```
 
 ## Session Integration
 
-When `/implement TASK-001`:
+When `{{IMPLEMENT_CMD}} TASK-001`:
 
 1. Read task file for context
 2. Read linked spec for full picture
-3. Create session with traceability:
+3. Create session automatically (invisible to user)
+4. Update task with session reference:
+
+```yaml
+# Task file gets session field added
+session: 20260124-143000-oauth-provider.md
+```
+
+Session file tracks orchestration:
 
 ```yaml
 session:
@@ -193,6 +202,36 @@ traceability:
   decisions:
     - ADR-001
 ```
+
+## Task Sizing
+
+### Separation of Concerns
+
+**The primary principle for task breakdown is separation of concerns.**
+
+| Rule | Guideline |
+|------|-----------|
+| **One agent type** | Task completable by ONE agent (backend-dev, frontend-dev, dba, qa, devops) |
+| **One concern** | Task touches one layer, one service, or one component |
+| **Context-appropriate** | Fits in model context with room for exploration |
+| **Not over-fragmented** | Don't split what naturally belongs together |
+
+### Right Size Test
+
+1. Can a single specialized agent complete this? → If no, split by agent type
+2. Does it touch multiple unrelated concerns? → If yes, split by concern
+3. Will the agent need too much context? → If yes, split into phases
+4. Am I splitting just to have more tasks? → If yes, merge back
+
+### Agent Scope
+
+| Agent | Typical Task Scope |
+|-------|-------------------|
+| `backend-dev` | One service/module, its tests, its docs |
+| `frontend-dev` | One component/page, its tests, its styles |
+| `dba` | One migration, related schema changes |
+| `qa` | Test suite for one feature/area |
+| `devops` | One infrastructure concern (CI, deploy, config) |
 
 ## Priority Levels
 
