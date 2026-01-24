@@ -316,11 +316,11 @@ plugin-groups:
     skills: []
     commands: [reflect]
 
-  # Quality - Cross-language fundamentals
+  # Quality - Cross-language fundamentals and coding discipline
   foundations:
-    description: Cross-language development fundamentals and quality gates
+    description: Cross-language development fundamentals, quality gates, and coding discipline
     agents: [qa]
-    skills: [foundations, debugging]
+    skills: [foundations, debugging, tdd, verification, code-review, parallel-agents, subagent-development]
     related-hooks:
       pre-tool: [check-secrets, validate-changelog, format-check, security-audit, tdd-advisory]
 

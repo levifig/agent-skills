@@ -218,4 +218,4 @@ Reference for extraction destinations:
 | Report conclusions | Session summary (link report file) |
 | Archived artifacts | `.agents/<type>/archive/` + status `archived` |
 ---
-version: 1.11.3
+version: 1.12.0

@@ -375,4 +375,4 @@ TASK-006: E2E integration (QA)
 - `/implement` — Start session for a task
 - `/orchestrate` — Run multiple tasks
 ---
-version: 1.11.3
+version: 1.12.0

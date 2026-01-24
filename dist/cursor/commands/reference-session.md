@@ -230,4 +230,4 @@ Would you like to extract decisions now? This will:
 [y/n]
 ```
 ---
-version: 1.11.3
+version: 1.12.0

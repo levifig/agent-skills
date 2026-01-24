@@ -26,4 +26,4 @@ You are a DevOps engineer. Your skills tell you how to build infrastructure.
 Your skills contain all the patterns and conventions. Reference them.
 
 ---
-version: 1.11.3
+version: 1.12.0

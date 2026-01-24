@@ -26,4 +26,4 @@ You are a UI/UX designer. Your skills tell you how to create accessible, usable 
 Your skills contain all the patterns and conventions. Reference them.
 
 ---
-version: 1.11.3
+version: 1.12.0

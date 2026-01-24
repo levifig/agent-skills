@@ -5,7 +5,7 @@ description: >-
   assessing project state, exploring problem spaces, generating ideas, and
   evolving strategic direction. Activate when stepping back to think,
   researching topics, or updating VISION.md.
-version: 1.11.3
+version: 1.12.0
 ---
 
 # Research

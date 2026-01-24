@@ -166,4 +166,4 @@ Captured: .agents/ideas/20260124-batch-idea-processing.md
 - `/brainstorm` — Deep thinking on an idea or problem space
 - `/research` — Investigate before capturing
 ---
-version: 1.11.3
+version: 1.12.0

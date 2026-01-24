@@ -1,6 +1,6 @@
 ---
 description: Understand project state or investigate specific topics
-version: 1.11.3
+version: 1.12.0
 ---
 
 # Research Command

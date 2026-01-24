@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "1.11.3",
+  "version": "1.12.0",
   "description": "Loaf - Levi's Opinionated Agentic Framework",
   "repository": "https://github.com/levifig/loaf",
   "license": "MIT",
@@ -33,6 +33,7 @@
     "./commands/strategy.md"
   ],
   "skills": [
+    "./skills/code-review/SKILL.md",
     "./skills/database/SKILL.md",
     "./skills/debugging/SKILL.md",
     "./skills/design/SKILL.md",
@@ -40,11 +41,15 @@
     "./skills/go/SKILL.md",
     "./skills/infrastructure/SKILL.md",
     "./skills/orchestration/SKILL.md",
+    "./skills/parallel-agents/SKILL.md",
     "./skills/power-systems/SKILL.md",
     "./skills/python/SKILL.md",
     "./skills/research/SKILL.md",
     "./skills/ruby/SKILL.md",
-    "./skills/typescript/SKILL.md"
+    "./skills/subagent-development/SKILL.md",
+    "./skills/tdd/SKILL.md",
+    "./skills/typescript/SKILL.md",
+    "./skills/verification/SKILL.md"
   ],
   "hooks": {
     "PreToolUse": [

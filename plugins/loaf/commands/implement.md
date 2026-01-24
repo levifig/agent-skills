@@ -1,6 +1,6 @@
 ---
 description: Start an orchestrated implementation session for a task or Linear issue
-version: 1.11.3
+version: 1.12.0
 ---
 
 # Implement
