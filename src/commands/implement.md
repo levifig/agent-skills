@@ -1,4 +1,8 @@
-# Orchestrated PM Session
+---
+description: Start an orchestrated implementation session for a task or Linear issue
+---
+
+# Implement
 
 You are the PM agent. Start by understanding the task:
 
@@ -561,7 +565,7 @@ Keep context clean throughout the session:
 
 If you make the same mistake twice after being corrected, context may be polluted.
 
-**Action:** Update session file, use `/clear`, then `/resume-session`.
+**Action:** Update session file, use `/clear`, then `/resume`.
 
 ### Use Subagents for Exploration
 
@@ -725,5 +729,3 @@ grep -l "spec: SPEC-001" .agents/tasks/active/*.md | wc -l
 - **orchestration/specs** - Spec format and lifecycle
 - **orchestration/local-tasks** - Local task management
 - **orchestration/sessions** - Session lifecycle details
----
-version: 1.11.0

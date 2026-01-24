@@ -1,8 +1,9 @@
 ---
-description: Start an orchestrated work session for a task or Linear issue
+description: Start an orchestrated implementation session for a task or Linear issue
+version: 1.11.0
 ---
 
-# Orchestrated PM Session
+# Implement
 
 You are the PM agent. Start by understanding the task:
 
@@ -565,7 +566,7 @@ Keep context clean throughout the session:
 
 If you make the same mistake twice after being corrected, context may be polluted.
 
-**Action:** Update session file, use `/clear`, then `/resume-session`.
+**Action:** Update session file, use `/clear`, then `/resume`.
 
 ### Use Subagents for Exploration
 

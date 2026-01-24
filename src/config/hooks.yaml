@@ -275,7 +275,7 @@ plugin-groups:
     description: PM orchestration, session management, Linear workflow integration
     agents: [pm]
     skills: [orchestration, research]
-    commands: [start-session, resume-session, review-sessions, council-session, reference-session, research, architecture, prd, specs, tasks]
+    commands: [implement, resume, review-sessions, council-session, reference-session, research, architecture, prd, specs, tasks]
     related-hooks:
       pre-tool: [validate-commit, detect-linear-magic]
       session: [session-start, session-end, pre-compact-archive]

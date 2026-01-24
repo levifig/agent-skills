@@ -19,13 +19,13 @@
   "commands": [
     "./commands/architecture.md",
     "./commands/council-session.md",
+    "./commands/implement.md",
     "./commands/prd.md",
     "./commands/reference-session.md",
     "./commands/research.md",
-    "./commands/resume-session.md",
+    "./commands/resume.md",
     "./commands/review-sessions.md",
     "./commands/specs.md",
-    "./commands/start-session.md",
     "./commands/tasks.md"
   ],
   "skills": [

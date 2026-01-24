@@ -40,7 +40,7 @@ Every release should be complete, polished, and delightful - no MVPs or quick ha
 | New feature workflow | Research → Architecture → PRD → Specs → Tasks |
 | Create specification | Use `/specs` with requirement reference |
 | Break down spec | Use `/tasks` to generate atomic work items |
-| Task-coupled session | Use `/start-session TASK-XXX` for traceability |
+| Task-coupled session | Use `/implement TASK-XXX` for traceability |
 
 ## Topics
 

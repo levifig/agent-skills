@@ -43,6 +43,7 @@ status: todo  # todo | in_progress | review | done
 priority: P1  # P0 (urgent) | P1 (high) | P2 (normal) | P3 (low)
 created: 2026-01-23T14:30:00Z
 updated: 2026-01-23T14:30:00Z
+session: .agents/sessions/YYYYMMDD-HHMMSS-*.md  # When picked up
 files:
   - src/auth/oauth.py
   - tests/auth/test_oauth.py
@@ -172,7 +173,7 @@ mv .agents/tasks/active/TASK-001-*.md .agents/tasks/archive/$(date +%Y-%m)/
 
 ## Session Integration
 
-When `/start-session TASK-001`:
+When `/implement TASK-001`:
 
 1. Read task file for context
 2. Read linked spec for full picture

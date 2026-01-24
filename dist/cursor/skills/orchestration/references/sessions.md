@@ -63,6 +63,7 @@ session:
   archive_reason: "pre-compact"                # Why archived (pre-compact, manual, etc.)
   archived_at: "2025-12-04T18:10:00Z"          # Required when archived
   archived_by: "agent-pm"                      # Optional; fill when archived (enforced by /review-sessions)
+  task: TASK-001                               # If implementation work (links to .agents/tasks/)
   linear_issue: "BACK-123"                     # Optional
   linear_url: "https://linear.app/..."         # Optional
   branch: "username/back-123-feature"          # Optional: working branch

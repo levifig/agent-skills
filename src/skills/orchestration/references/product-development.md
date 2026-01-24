@@ -11,11 +11,12 @@ docs/                               # Permanent project knowledge
 ├── VISION.md                       # Strategic direction (evolves rarely)
 ├── ARCHITECTURE.md                 # Technical design (evolves with learnings)
 ├── REQUIREMENTS.md                 # Business/product rules (evolves with feedback)
-├── decisions/                      # Architecture Decision Records
-│   └── ADR-001-database-choice.md
-└── specs/                          # Feature specifications (temporary)
-    ├── SPEC-001-user-auth.md
-    └── archive/                    # Completed specs
+└── decisions/                      # Architecture Decision Records
+    └── ADR-001-database-choice.md
+
+.agents/specs/                      # Feature specifications (temporary)
+├── SPEC-001-user-auth.md
+└── archive/                        # Completed specs
 
 .agents/                            # Ephemeral orchestration
 ├── loaf.yaml                       # Project config (task backend, etc.)
@@ -35,7 +36,7 @@ docs/                               # Permanent project knowledge
 ```
 RESEARCH → VISION → ARCHITECTURE → REQUIREMENTS → SPECS → TASKS → SESSION
     │         │          │              │           │        │        │
-/research  (manual)  /architecture    /prd       /specs   /tasks  /start-session
+/research  (manual)  /architecture    /prd       /specs   /tasks  /implement
     │                    │              │           │        │
     └─► evolves ─────────┴──────────────┴───────────┴────────┘
         VISION                                      (feedback loops)
@@ -58,7 +59,7 @@ RESEARCH → VISION → ARCHITECTURE → REQUIREMENTS → SPECS → TASKS → SE
 | `/prd` | Feature area | REQUIREMENTS.md section | Product/business rules |
 | `/specs` | Requirement reference | SPEC-001-*.md | Feature specifications |
 | `/tasks` | Spec reference | TASK-* files/issues | Atomic work items |
-| `/start-session` | TASK-ID | Session file | Execute a task |
+| `/implement` | TASK-ID | Session file | Execute a task |
 
 ## Document Formats
 
@@ -144,7 +145,7 @@ docs:
   architecture: docs/ARCHITECTURE.md
   requirements: docs/REQUIREMENTS.md
   decisions: docs/decisions/
-  specs: docs/specs/
+  specs: .agents/specs/
 ```
 
 ## Workflow Examples
@@ -173,7 +174,7 @@ docs:
 # → TASK-001, TASK-002, TASK-003
 
 # 6. Work on tasks
-/start-session TASK-001
+/implement TASK-001
 # → Session → Implementation → Done
 ```
 
@@ -181,7 +182,7 @@ docs:
 
 ```bash
 # Create task directly (bug report, small fix)
-/start-session TASK-099
+/implement TASK-099
 # PM: "No parent spec. Proceed?"
 # User: "Yes, small fix"
 # → Session → Fix → Done
@@ -229,6 +230,6 @@ This preserves full context for debugging, knowledge extraction, and audit trail
 | `docs/ARCHITECTURE.md` | Technical design |
 | `docs/REQUIREMENTS.md` | Product rules |
 | `docs/decisions/ADR-*.md` | Architecture decisions |
-| `docs/specs/SPEC-*.md` | Feature specifications |
+| `.agents/specs/SPEC-*.md` | Feature specifications |
 | `.agents/tasks/active/TASK-*.md` | Local tasks |
 | `.agents/loaf.yaml` | Project configuration |

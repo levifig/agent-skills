@@ -20,8 +20,8 @@ Session file not found: .agents/sessions/$ARGUMENTS.md
 Available sessions:
 [list files in .agents/sessions/]
 
-Usage: /resume-session <session-filename>
-Example: /resume-session 20251215-115340-sdk-foundation
+Usage: /resume <session-filename>
+Example: /resume 20251215-115340-sdk-foundation
 ```
 
 ---
@@ -97,7 +97,7 @@ You are now the PM orchestrator for this session. Follow the standard PM workflo
 
 ## Guardrails
 
-Same as `/start-session`:
+Same as `/implement`:
 
 - PM can directly: create/edit session files, use Linear MCP, read files, ask questions
 - PM MUST delegate: all code changes, documentation edits, implementation work

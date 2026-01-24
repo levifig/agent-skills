@@ -73,7 +73,7 @@ appetite: "1 week"
 At 50% appetite: if OAuth integration is problematic, simplify to single provider (Google only).
 ```
 
-**Location:** `docs/specs/SPEC-001-feature-name.md`
+**Location:** `.agents/specs/SPEC-001-feature-name.md`
 
 ## Spec Lifecycle
 
@@ -152,10 +152,10 @@ When all tasks for a spec are complete:
 
 1. Update status to `complete`
 2. Add completion date to frontmatter
-3. Move to `docs/specs/archive/`
+3. Move to `.agents/specs/archive/`
 
 ```bash
-mv docs/specs/SPEC-001-user-auth.md docs/specs/archive/
+mv .agents/specs/SPEC-001-user-auth.md .agents/specs/archive/
 ```
 
 ## Spec vs Plan
@@ -163,7 +163,7 @@ mv docs/specs/SPEC-001-user-auth.md docs/specs/archive/
 | Spec | Plan |
 |------|------|
 | **What** to build | **How** to build it |
-| Lives in `docs/specs/` | Lives in `.agents/plans/` |
+| Lives in `.agents/specs/` | Lives in `.agents/plans/` |
 | Survives sessions | Tied to session |
 | User-facing | Implementation detail |
 | Shape Up shaped | Tactical steps |
