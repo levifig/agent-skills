@@ -49,6 +49,14 @@ hooks:
       timeout: 5000
       description: Advisory warning when editing implementation without tests
 
+    - id: validate-push
+      skill: foundations
+      script: hooks/pre-tool/foundations-validate-push.sh
+      matcher: "Bash"
+      blocking: true
+      timeout: 60000
+      description: Validates version bump, CHANGELOG, and build before git push
+
     # Orchestration - Commit and Linear integration
     - id: validate-commit
       skill: orchestration
@@ -322,7 +330,7 @@ plugin-groups:
     agents: [qa]
     skills: [foundations]
     related-hooks:
-      pre-tool: [check-secrets, validate-changelog, format-check, security-audit, tdd-advisory]
+      pre-tool: [check-secrets, validate-changelog, format-check, security-audit, tdd-advisory, validate-push]
 
   # Language-specific groups
   python:

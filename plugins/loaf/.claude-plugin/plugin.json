@@ -183,6 +183,12 @@
           },
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/foundations-validate-push.sh",
+            "timeout": 60000,
+            "description": "Validates version bump, CHANGELOG, and build before git push"
+          },
+          {
+            "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/orchestration-validate-commit.py",
             "timeout": 30000,
             "description": "Validate commit messages follow conventions"

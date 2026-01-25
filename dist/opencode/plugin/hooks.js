@@ -71,6 +71,7 @@ const preToolHooks = {
   ],
   'Bash': [
     { id: 'security-audit', script: 'pre-tool/foundations-security-audit.sh', timeout: 600000 },
+    { id: 'validate-push', script: 'pre-tool/foundations-validate-push.sh', timeout: 60000 },
     { id: 'validate-commit', script: 'pre-tool/orchestration-validate-commit.py', timeout: 30000 },
     { id: 'detect-linear-magic', script: 'pre-tool/orchestration-detect-linear-magic.py', timeout: 30000 },
   ],

@@ -28,6 +28,11 @@
         "matcher": "Edit|Write"
       },
       {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-validate-push.sh",
+        "timeout": 60,
+        "matcher": "Bash"
+      },
+      {
         "command": "python3 $HOME/.cursor/hooks/pre-tool/orchestration-validate-commit.py",
         "timeout": 30,
         "matcher": "Bash"
