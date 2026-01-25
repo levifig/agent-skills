@@ -20,11 +20,13 @@ Review ALL agent artifacts in `.agents/` and provide hygiene recommendations.
 ## 1. Sessions Review (COMPREHENSIVE)
 
 For EACH session file in `.agents/sessions/` and `.agents/sessions/archive/`:
+
 - Require `archived_at` and `archived_by` when status is `archived`
 - Require `archived_by` to be filled when archiving
 - After user confirmation, auto-move archived sessions and update `.agents/` references
 
 ### A. Read and Summarize
+
 - Session title and status
 - Linear issue ID (if any) → Query Linear for current status
 - Created date and last updated
@@ -32,6 +34,7 @@ For EACH session file in `.agents/sessions/` and `.agents/sessions/archive/`:
 - Council/report summaries present?
 
 ### B. Check for Issues
+
 - [ ] References missing files? (reports, handoffs, debt) → **Stale**
 - [ ] Linear issue is closed? → **Ready for archive (status + move)**
 - [ ] Status is "completed" (not archived yet)? → **Ready for archive (status + move)**
@@ -46,6 +49,7 @@ For EACH session file in `.agents/sessions/` and `.agents/sessions/archive/`:
 - [ ] Archived items missing link updates? → **Update `.agents/` references**
 
 ### C. Check for Extraction Needs
+
 - [ ] Contains `lessons_learned`? → Extract to relevant docs
 - [ ] Contains `decisions` not in ADRs? → Suggest ADR creation
 - [ ] Contains `remaining_work` or `next_steps`? → Check if tracked in Linear
@@ -57,7 +61,9 @@ For EACH session file in `.agents/sessions/` and `.agents/sessions/archive/`:
 - [ ] Archived files missing link updates inside `.agents/`? → **Update `.agents/` references to archived paths**
 
 ### D. Present to User (Per Session)
+
 For each session, show:
+
 - Summary (2-3 lines)
 - Issues found (list)
 - Extraction recommendations (specific items with destinations)
@@ -83,6 +89,7 @@ For each session, show:
 ## 3. Councils Review
 
 For EACH council file in `.agents/councils/` and `.agents/councils/archive/`:
+
 - Topic and date
 - Linked session (if any) → Does session still exist?
 - Decision outcome → Is it captured in an ADR?
@@ -103,6 +110,7 @@ Flag if:
 ## 4. Reports Review
 
 For EACH file in `.agents/reports/` and `.agents/reports/archive/`:
+
 - Require frontmatter fields: `status`, `session_reference`, `processed_at`, `archived_at`, `archived_by`
 - Treat missing frontmatter as **unprocessed**
 - Reports may be archived (status + move) only after:
@@ -117,6 +125,7 @@ For EACH file in `.agents/reports/` and `.agents/reports/archive/`:
 - Archived report while linked session not archived → **Move back until session archived**
 - Archived report but session missing conclusions/action points → **Move back until updated**
 - After user confirmation, auto-move archived reports and update `.agents/` references (update links inside `.agents/` only; no manual steps)
+
 ### Report Frontmatter Template
 
 ```yaml
@@ -126,7 +135,6 @@ report:
   session_reference: ".agents/sessions/YYYYMMDD-HHMMSS-title.md"
   processed_at: "YYYY-MM-DDTHH:MM:SSZ"
   archived_at: "YYYY-MM-DDTHH:MM:SSZ"
-  archived_by: "agent-pm"  # Optional; fill when archived (enforced by /loaf:review-sessions)
 ---
 ```
 
@@ -161,6 +169,7 @@ REPORTS (N total):
 For each session with completed or near-complete work:
 
 ### A. Check for CHANGELOG Draft
+
 - [ ] Does session have `## CHANGELOG Draft` section?
 - [ ] If yes, has it been integrated to CHANGELOG.md?
 - [ ] If no draft exists, should one be created?
@@ -177,6 +186,7 @@ CHANGELOG DRAFTS:
 ### C. Pending Draft Actions
 
 For sessions with unintegrated CHANGELOG drafts:
+
 ```
 Session: [session-title]
 Linear: [PLT-XXX]
@@ -186,6 +196,7 @@ Draft status: Not integrated
 ```
 
 For completed sessions without drafts:
+
 ```
 Session: [session-title]
 Linear: [PLT-XXX]

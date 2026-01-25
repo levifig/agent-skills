@@ -27,6 +27,7 @@ Sessions are coordination artifacts for active work. They are archived (set stat
 ### Implementation Sessions (Invisible)
 
 When implementing tasks via `{{IMPLEMENT_CMD}} TASK-XXX`:
+
 - Session created automatically with filename `YYYYMMDD-HHMMSS-task-XXX.md`
 - Task file updated with `session:` field linking to session
 - No user interaction needed for session naming
@@ -37,6 +38,7 @@ Users work with tasks; sessions are an implementation detail.
 ### Explicit Sessions
 
 For non-task work, sessions are still created explicitly:
+
 - Research sessions (`/research`)
 - Architecture decisions (`/architecture`)
 - Council deliberations (`/council-session`)
@@ -72,6 +74,7 @@ Transcripts are Claude Code conversation exports (`.jsonl` files) archived after
 **Why keep original filenames:** The UUID-like hash is unique and matches Claude Code's internal reference, making correlation easier if needed.
 
 **Generate timestamps:**
+
 ```bash
 # Filename timestamp
 date -u +"%Y%m%d-%H%M%S"
@@ -107,7 +110,6 @@ session:
   last_archived: "2025-12-04T16:00:00Z"        # Set by context-archiver before compaction
   archive_reason: "pre-compact"                # Why archived (pre-compact, manual, etc.)
   archived_at: "2025-12-04T18:10:00Z"          # Required when archived
-  archived_by: "agent-pm"                      # Optional; fill when archived (enforced by /review-sessions)
   task: TASK-001                               # If implementation work (links to .agents/tasks/)
   linear_issue: "BACK-123"                     # Optional
   linear_url: "https://linear.app/..."         # Optional
@@ -157,6 +159,7 @@ session:
 ```
 
 **Why track references:**
+
 - Audit trail of where context came from
 - Avoids re-importing same decisions
 - Enables tracing decision lineage across sessions
@@ -224,12 +227,14 @@ mypy path/to/code/
 ```
 
 ## Acceptance Criteria
+
 - [ ] Criterion 1
 - [ ] Criterion 2
 
 ## Decisions
 
 ### Decision 1: [Title]
+
 **Decision**: What was decided
 **Rationale**: Why
 
@@ -268,6 +273,7 @@ See foundations skill reference/diagrams.md for Mermaid syntax.
 ## Council Outcomes
 
 ### Council: [Topic]
+
 **Outcome**: Decision summary
 **Council File**: `.agents/councils/YYYYMMDD-HHMMSS-topic.md`
 **Next Steps**: Action items captured
@@ -276,6 +282,7 @@ See foundations skill reference/diagrams.md for Mermaid syntax.
 ## Reports Processed
 
 ### Report: [Title]
+
 **Key Conclusions**: Summary of findings
 **Action Items**: What changed or will change
 **Report File**: `.agents/reports/YYYYMMDD-HHMMSS-title.md`
@@ -284,6 +291,7 @@ See foundations skill reference/diagrams.md for Mermaid syntax.
 **Note**: Reports without frontmatter are treated as unprocessed.
 
 ## Blockers
+
 - Current blocker (if any)
 
 ---
@@ -291,7 +299,9 @@ See foundations skill reference/diagrams.md for Mermaid syntax.
 ## Session Log
 
 ### YYYY-MM-DD HH:MM - [Agent/Action]
+
 Brief description of what happened.
+
 ```
 
 ## Lifecycle States

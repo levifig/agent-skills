@@ -17,6 +17,7 @@ Councils are deliberation mechanisms for decisions with multiple valid approache
 ## When to Convene a Council
 
 **Use councils for:**
+
 - User explicitly requests it
 - Multiple valid approaches with unclear winner
 - Significant architectural decisions
@@ -24,6 +25,7 @@ Councils are deliberation mechanisms for decisions with multiple valid approache
 - Cross-cutting concerns affecting multiple domains
 
 **Don't use councils for:**
+
 - Simple decisions with clear best practice
 - Routine implementation choices
 - Single-domain decisions (just ask that expert)
@@ -93,10 +95,12 @@ Ad-hoc specialists are spawned as general-purpose agents with a specialized prom
 ### Step 1: Define Decision Question
 
 **Good questions:**
+
 - "Should we use Redis, PostgreSQL, or JWT-only for session storage?"
 - "Which frontend framework: React, Vue, or Svelte?"
 
 **Poor questions:**
+
 - "How should we build this?" (too vague)
 - "Is this a good idea?" (not a choice)
 
@@ -124,6 +128,7 @@ Do you approve this composition?
 **Critical**: Spawn ALL agents simultaneously for independent perspectives.
 
 Each agent receives:
+
 - Same decision question
 - Same options
 - Same context
@@ -149,6 +154,7 @@ Task(
 ### Step 4: Collect Individual Reports
 
 Each agent provides a structured report with:
+
 - **Recommendation**: Their preferred option
 - **Pros**: Benefits from their domain perspective
 - **Cons**: Drawbacks and risks they see
@@ -291,6 +297,7 @@ Based on the council deliberation, here are your options:
 ### Step 8: Record Decision
 
 Update council file with:
+
 - Chosen option
 - Who decided (user)
 - When decided
@@ -311,7 +318,6 @@ council:
   timestamp: "2025-12-10T15:30:00Z"
   status: approved              # approved | rejected | deferred | archived
   archived_at: "2025-12-10T18:00:00Z"   # Required when archived
-  archived_by: "agent-pm"               # Optional; fill when archived (enforced by /review-sessions)
   session: "20251210-140000-user-auth"  # REQUIRED
   participants:
     - dba
@@ -374,18 +380,21 @@ After council concludes and user decides, PM spawns implementation agents to exe
 ## Checklist
 
 **Before convening:**
+
 - [ ] Decision genuinely needs council
 - [ ] Decision question is clear
 - [ ] Composition planned (5-7, odd, relevant)
 - [ ] User approved composition
 
 **During deliberation:**
+
 - [ ] All agents spawned in parallel
 - [ ] Same context provided to all
 - [ ] Each agent focused on their domain
 - [ ] All perspectives collected
 
 **After deliberation:**
+
 - [ ] Synthesis created
 - [ ] Options presented to user
 - [ ] Explicit user decision obtained
