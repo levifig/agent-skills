@@ -391,6 +391,7 @@ npm link                       # Make `loaf` available globally
 - [ ] `loaf build` succeeds
 - [ ] `npm run typecheck` passes
 - [ ] `npm run test` passes
+- [ ] If tracked build artifacts in `dist/` or `plugins/` changed, commit them with the source changes that produced them
 - [ ] Frontmatter has required fields
 - [ ] New skills registered in `hooks.yaml`
 - [ ] Sidecar file for Claude-specific fields
