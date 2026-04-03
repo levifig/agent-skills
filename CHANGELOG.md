@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.9] - 2026-04-03
+
+### Added
+- Amp target (experimental) — skills + runtime plugin for the Amp editor
+- `loaf check` CLI — unified TypeScript enforcement backend replacing ~30 shell hook scripts
+- `loaf session` subcommands — `start`, `end`, `log`, `list`, `archive` replace resume-session/reference-session skills
+- CLI reference skill — non-user-invocable knowledge skill with per-target command substitution
+- `council` skill (renamed from council-session) — user-invocable council workflow
+- Codex Bash-matching enforcement hooks via generated `.codex/hooks.json`
+- Runtime plugins generated for OpenCode (`hooks.ts`) and Amp (`loaf.js`)
+- Self-contained `loaf` binary bundled in Claude Code plugin
+- Fenced-section management for `loaf install` target project files
+- Vulnerability scanner integration in security-audit (trivy, semgrep, npm audit) gated behind VALIDATION_LEVEL
+
+### Changed
+- Shared skill intermediate layer (`dist/skills/`) eliminates duplicated build logic across 7 targets
+- All 25 skills reordered to structural convention (Critical Rules → Verification → Quick Reference → Topics)
+- 16 skills gained Critical Rules sections; all skills now have Verification sections
+- Hook payloads normalize both flat (`tool_input`) and nested (`tool.input`) shapes for cross-harness compatibility
+- `failClosed` enforcement across Claude Code, Cursor, and Codex hooks
+- Signal-killed hook subprocesses now fail closed (`code ?? 1` instead of `code || 0`)
+- Session archival uses atomic rename-first to prevent corruption on crash
+- Journal entries use proper EntryType values (`resume`/`conclude` instead of invalid `context`)
+- Cursor post-tool hook timeouts read from config instead of hardcoded 30s
+
+### Removed
+- ~30 legacy shell hook scripts (`content/hooks/pre-tool/`, `post-tool/`)
+- 4 shared bash libraries (`json-parser.sh`, `config-reader.sh`, `agent-detector.sh`, `timeout-manager.sh`)
+- `resume-session` and `reference-session` skills (absorbed by `loaf session`)
+
 ## [2.0.0-dev.8] - 2026-03-31
 
 ### Changed
