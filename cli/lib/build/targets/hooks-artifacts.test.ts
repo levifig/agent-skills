@@ -61,10 +61,10 @@ interface ClaudePluginJson {
       matcher: string;
       hooks: ClaudeHook[];
     }>;
-    SessionStart?: Array<{ matcher: null; hooks: ClaudeHook[] }>;
-    SessionEnd?: Array<{ matcher: null; hooks: ClaudeHook[] }>;
-    PreCompact?: Array<{ matcher: null; hooks: ClaudeHook[] }>;
-    Stop?: Array<{ matcher: null; hooks: ClaudeHook[] }>;
+    SessionStart?: Array<{ hooks: ClaudeHook[] }>;
+    SessionEnd?: Array<{ hooks: ClaudeHook[] }>;
+    PreCompact?: Array<{ hooks: ClaudeHook[] }>;
+    Stop?: Array<{ hooks: ClaudeHook[] }>;
   };
 }
 

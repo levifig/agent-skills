@@ -16753,7 +16753,7 @@ function createPluginJson(config, pluginDir) {
         hookEntry.command = getClaudeHookCommand(hook);
         if (hook.failClosed) hookEntry.failClosed = hook.failClosed;
       }
-      hooks[eventName].push({ matcher: null, hooks: [hookEntry] });
+      hooks[eventName].push({ hooks: [hookEntry] });
     }
   }
   const pluginJsonDir = join7(pluginDir, ".claude-plugin");
