@@ -86,6 +86,12 @@ Shared authoring stays. Shared runtime is opt-in and must be justified.
 - Always harness-native.
 - These are the main place to exploit harness-specific strengths.
 
+**Task tracking**
+- Two tiers: portable (Loaf tasks — `.agents/tasks/` files) and harness-native (e.g., Claude Code TaskCreate, or equivalent per-harness progress APIs).
+- Loaf tasks are the system of record for spec-driven, cross-session, auditable work. Harness-native tasks are ephemeral single-session progress indicators.
+- Loaf should provide guidance (skill-level heuristic) on when to use which tier. Optionally, Loaf may bridge the two: e.g., `loaf task --ephemeral` creates harness-native tasks where supported, falls back to in-memory otherwise.
+- The heuristic: use Loaf tasks when work spans sessions, is tied to a spec, or needs cross-harness visibility. Use harness-native tasks for single-session execution tracking within a conversation.
+
 ### 4. Immediate target classification
 
 **Claude Code**
@@ -181,6 +187,8 @@ This keeps the build efficient without flattening the runtime model.
 - [ ] Should portable skill-family membership live in `targets.yaml` or in a dedicated surface-model module?
 - [ ] Should Codex, Cursor, Gemini, and Amp remain one portable skill family, or should Gemini split once native agent/hook metadata starts affecting skill packaging?
 - [ ] Should installer cleanup be automatic during `install --upgrade`, or offered as an explicit cleanup step?
+- [ ] Should Loaf bridge harness-native task tracking (e.g., `loaf task --ephemeral` mapping to TaskCreate in Claude Code), or just provide skill-level guidance on when to use which tier?
+- [ ] Which harnesses expose task/progress tracking APIs that Loaf could target? (Claude Code: TaskCreate/TaskUpdate; others: TBD)
 
 ## Test Conditions
 
@@ -194,6 +202,7 @@ This keeps the build efficient without flattening the runtime model.
 - [ ] T8: README install-location documentation matches the actual installer behavior
 - [ ] T9: A multi-target user can install Codex, Cursor, and Gemini without duplicate skill discovery caused by stale Loaf-managed paths
 - [ ] T10: Existing target-specific native capabilities still work after the refactor (Cursor hooks, Codex hook install, OpenCode commands/runtime plugin)
+- [ ] T11: The surface matrix includes task tracking as a surface, with clear portable/native classification per target
 
 ## Circuit Breaker
 

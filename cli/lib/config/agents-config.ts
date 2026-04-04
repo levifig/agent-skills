@@ -1,11 +1,16 @@
 /**
- * Read/write `.agents/config.json` for integration toggles (TASK-088).
+ * Read/write `.agents/loaf.json` for project configuration and integration toggles.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
-export interface AgentsConfig {
+export interface LoafConfig {
+  knowledge?: {
+    local?: string[];
+    staleness_threshold_days?: number;
+    imports?: string[];
+  };
   integrations?: {
     linear?: { enabled: boolean };
     serena?: { enabled: boolean };
@@ -13,24 +18,24 @@ export interface AgentsConfig {
   [key: string]: unknown;
 }
 
-export function readAgentsConfig(projectRoot: string): AgentsConfig {
-  const p = join(projectRoot, ".agents", "config.json");
+export function readLoafConfig(projectRoot: string): LoafConfig {
+  const p = join(projectRoot, ".agents", "loaf.json");
   if (!existsSync(p)) return {};
   try {
     const raw = readFileSync(p, "utf-8");
-    return JSON.parse(raw) as AgentsConfig;
+    return JSON.parse(raw) as LoafConfig;
   } catch {
     return {};
   }
 }
 
-export function mergeAgentsConfigIntegrations(
+export function mergeLoafConfigIntegrations(
   projectRoot: string,
   updates: Partial<{ linear: { enabled: boolean }; serena: { enabled: boolean } }>,
 ): void {
   const agentsDir = join(projectRoot, ".agents");
-  const p = join(agentsDir, "config.json");
-  const existing = readAgentsConfig(projectRoot);
+  const p = join(agentsDir, "loaf.json");
+  const existing = readLoafConfig(projectRoot);
   const integrations = {
     ...existing.integrations,
   };
@@ -40,7 +45,7 @@ export function mergeAgentsConfigIntegrations(
   if (updates.serena !== undefined) {
     integrations.serena = updates.serena;
   }
-  const next: AgentsConfig = {
+  const next: LoafConfig = {
     ...existing,
     integrations,
   };

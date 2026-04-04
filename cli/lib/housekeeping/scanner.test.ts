@@ -56,7 +56,7 @@ function findRec(recs: CleanupRecommendation[], filename: string): CleanupRecomm
 }
 
 beforeEach(() => {
-  tempDir = mkdtempSync(join(tmpdir(), "loaf-cleanup-test-"));
+  tempDir = mkdtempSync(join(tmpdir(), "loaf-housekeeping-test-"));
   setupDir("sessions");
   setupDir("tasks");
   setupDir("specs");

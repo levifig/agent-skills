@@ -9,8 +9,8 @@ import {
   parseClaudeMcpListOutput,
 } from "./mcp.js";
 import {
-  mergeAgentsConfigIntegrations,
-  readAgentsConfig,
+  mergeLoafConfigIntegrations,
+  readLoafConfig,
 } from "../config/agents-config.js";
 
 let TMP: string;
@@ -106,12 +106,12 @@ describe("agents-config merge", () => {
   it("merges integrations without dropping other keys", () => {
     mkdirSync(join(TMP, ".agents"), { recursive: true });
     writeFileSync(
-      join(TMP, ".agents", "config.json"),
+      join(TMP, ".agents", "loaf.json"),
       JSON.stringify({ linear: { workspace: "acme" } }, null, 2),
       "utf-8",
     );
-    mergeAgentsConfigIntegrations(TMP, { linear: { enabled: true } });
-    const cfg = readAgentsConfig(TMP);
+    mergeLoafConfigIntegrations(TMP, { linear: { enabled: true } });
+    const cfg = readLoafConfig(TMP);
     expect(cfg.linear).toEqual({ workspace: "acme" });
     expect(cfg.integrations?.linear).toEqual({ enabled: true });
   });

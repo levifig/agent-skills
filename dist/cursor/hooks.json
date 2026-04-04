@@ -34,7 +34,7 @@
         "loaf-managed": true,
         "timeout": 5,
         "matcher": "Bash",
-        "prompt": "STOP. Before running gh pr merge, follow squash merge conventions:\n1. TITLE: Let GitHub default it — \"PR title (#N)\" format.\n2. BODY: Write a clean, concise summary of the branch's work (2-4 sentences).\n   NEVER use the automatic squash description that dumps all individual commit messages.\n\n3. Use --body flag with a HEREDOC to pass the clean description.\nExample: gh pr merge N --squash --body \"$(cat <<'EOF' Add loaf cleanup CLI command that scans .agents/ directories and recommends cleanup actions. Includes shared prompt helpers, scanner engine, interactive/dry-run modes, and skill update. EOF )\"\nRewrite your gh pr merge command now with a clean --body.",
+        "prompt": "STOP. Before running gh pr merge, follow squash merge conventions:\n1. TITLE: Let GitHub default it — \"PR title (#N)\" format.\n2. BODY: Write a clean, concise summary of the branch's work (2-4 sentences).\n   NEVER use the automatic squash description that dumps all individual commit messages.\n\n3. Use --body flag with a HEREDOC to pass the clean description.\nExample: gh pr merge N --squash --body \"$(cat <<'EOF' Add loaf housekeeping CLI command that scans .agents/ directories and recommends cleanup actions. Includes shared prompt helpers, scanner engine, interactive/dry-run modes, and skill update. EOF )\"\nRewrite your gh pr merge command now with a clean --body.",
         "if": "Bash(gh pr merge:*)"
       },
       {

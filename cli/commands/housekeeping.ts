@@ -1,5 +1,5 @@
 /**
- * loaf cleanup — scan .agents/, recommend actions (dry-run, filters, pipe-safe).
+ * loaf housekeeping — scan .agents/, recommend actions (dry-run, filters, pipe-safe).
  */
 
 import { Command } from "commander";
@@ -10,8 +10,8 @@ import matter from "gray-matter";
 import { isTTY, askYesNo } from "../lib/prompts.js";
 import { findAgentsDir, getOrBuildIndex } from "../lib/tasks/resolve.js";
 import { archiveTasks, archiveSpecs, saveIndex } from "../lib/tasks/migrate.js";
-import { scanArtifacts } from "../lib/cleanup/scanner.js";
-import type { ArtifactType, CleanupRecommendation } from "../lib/cleanup/types.js";
+import { scanArtifacts } from "../lib/housekeeping/scanner.js";
+import type { ArtifactType, CleanupRecommendation } from "../lib/housekeeping/types.js";
 
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
@@ -67,10 +67,10 @@ function archiveGenericArtifact(filePath: string, artifactType: ArtifactType): v
     const block = data[blockKey] as Record<string, unknown>;
     block.status = "archived";
     block.archived_at = now;
-    block.archived_by = "loaf cleanup";
+    block.archived_by = "loaf housekeeping";
   } else {
     data.archived_at = now;
-    data.archived_by = "loaf cleanup";
+    data.archived_by = "loaf housekeeping";
   }
 
   const updated = matter.stringify(content, data);
@@ -83,10 +83,10 @@ function archiveGenericArtifact(filePath: string, artifactType: ArtifactType): v
 // Command
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function registerCleanupCommand(program: Command): void {
+export function registerHousekeepingCommand(program: Command): void {
   program
-    .command("cleanup")
-    .description("Scan .agents/ artifacts and recommend cleanup actions")
+    .command("housekeeping")
+    .description("Scan .agents/ artifacts and recommend housekeeping actions")
     .option("--dry-run", "Show recommendations without prompting for actions")
     .option("--sessions", "Only review sessions")
     .option("--specs", "Only review specs")
@@ -105,7 +105,7 @@ export function registerCleanupCommand(program: Command): void {
         process.exit(1);
       }
 
-      console.log(`\n${bold("loaf cleanup")}\n`);
+      console.log(`\n${bold("loaf housekeeping")}\n`);
 
       const filter: ArtifactType[] | undefined = (() => {
         const types: ArtifactType[] = [];
@@ -255,6 +255,6 @@ export function registerCleanupCommand(program: Command): void {
         saveIndex(join(agentsDir, "TASKS.json"), index);
       }
 
-      console.log(`  ${green("✓")} Cleanup complete — ${actionsPerformed} action(s) performed.\n`);
+      console.log(`  ${green("✓")} Housekeeping complete — ${actionsPerformed} action(s) performed.\n`);
     });
 }

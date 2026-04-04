@@ -44,7 +44,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 - Outcome-focused, self-contained, no local file references
 - Magic words in commit body, not subject
 
-**If `integrations.linear.enabled` is `true` in `.agents/config.json`:** use Linear MCP workflows and [references/linear.md](references/linear.md) for issue updates and status.
+**If `integrations.linear.enabled` is `true` in `.agents/loaf.json`:** use Linear MCP workflows and [references/linear.md](references/linear.md) for issue updates and status.
 
 **Otherwise:** coordinate with local sessions and `loaf task` / file-based tracking only; do not assume Linear MCP tools are available.
 
@@ -107,7 +107,7 @@ Every release should be complete, polished, and delightful.
 
 ## Configuration
 
-This skill uses paths from `.agents/config.json`:
+This skill uses paths from `.agents/loaf.json`:
 
 ```json
 {

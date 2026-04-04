@@ -11,7 +11,7 @@ import { registerSpecCommand } from "./commands/spec.js";
 import { registerKbCommand } from "./commands/kb.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerVersionCommand } from "./commands/version.js";
-import { registerCleanupCommand } from "./commands/cleanup.js";
+import { registerHousekeepingCommand } from "./commands/housekeeping.js";
 import { registerCheckCommand } from "./commands/check.js";
 import { registerSessionCommand } from "./commands/session.js";
 
@@ -44,7 +44,7 @@ registerSpecCommand(program);
 registerKbCommand(program);
 registerSetupCommand(program);
 registerVersionCommand(program);
-registerCleanupCommand(program);
+registerHousekeepingCommand(program);
 registerCheckCommand(program);
 registerSessionCommand(program);
 

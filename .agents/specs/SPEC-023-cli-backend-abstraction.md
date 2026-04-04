@@ -42,7 +42,7 @@ Skills never call external APIs directly. The CLI is the protocol layer that rou
 `loaf task *` commands gain a backend router. Config determines which backend handles each operation:
 
 ```json
-// .agents/config.json
+// .agents/loaf.json
 {
   "integrations": {
     "linear": {
@@ -105,7 +105,7 @@ This also completes the Python → TypeScript migration for all scripts in the t
 
 ### 5. Config Command
 
-New `loaf config` subcommand for reading/writing `.agents/config.json`:
+New `loaf config` subcommand for reading/writing `.agents/loaf.json`:
 
 ```bash
 loaf config get integrations.linear.enabled    # → true

@@ -266,4 +266,4 @@ Do not modify, disable, or skip these hooks.
 - **implement** — Does the work and housekeeping; `/loaf:release` handles the merge afterward
 - **reflect** — Suggested post-merge if session has learnings
 - **git-workflow** — Conventions this skill enforces
-- **cleanup** — Handles artifact hygiene; `/loaf:release` verifies it was done
+- **housekeeping** — Handles artifact hygiene; `/loaf:release` verifies it was done

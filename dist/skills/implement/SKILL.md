@@ -37,7 +37,7 @@ You are the coordinator. Start by understanding the task:
 
 ### Orchestrator Can Do Directly
 - Create/edit session files, council files
-- Use TodoWrite/TodoRead; **if `integrations.linear.enabled` is `true` in `.agents/config.json`**, use Linear MCP tools when helpful
+- Use TodoWrite/TodoRead; **if `integrations.linear.enabled` is `true` in `.agents/loaf.json`**, use Linear MCP tools when helpful
 - Read any file for context
 - Ask clarifying questions
 

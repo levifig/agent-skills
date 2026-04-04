@@ -39,7 +39,7 @@ Loaf's commands form a three-phase workflow that mirrors how good software gets 
 ┌─────────────────────────────────────────────────────────────┐
 │                      PHASE 3: LEARN                         │
 │                                                             │
-│   /cleanup  →  /reflect  →  Updated Strategy                │
+│   /housekeeping  →  /reflect  →  Updated Strategy            │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -71,7 +71,7 @@ Integrate outcomes into strategic knowledge.
 
 | Command | What It Does |
 |---------|--------------|
-| `/cleanup` | Review completed sessions, archive artifacts |
+| `/housekeeping` | Review completed sessions, archive artifacts |
 | `/reflect` | Integrate learnings into strategic documents |
 
 ### Pipeline Commands
@@ -87,7 +87,7 @@ CLI commands that support the workflow pipeline:
 | `loaf spec` | Manage spec lifecycle |
 | `loaf kb` | Knowledge base management |
 | `loaf session` | Session journal management (list, start, end, log) |
-| `loaf cleanup` | Review and archive agent artifacts |
+| `loaf housekeeping` | Review and archive agent artifacts |
 | `loaf release` / `loaf ship` | Orchestrate release ritual |
 
 ## Profiles
@@ -118,7 +118,7 @@ Skills you invoke directly to drive work forward.
 | `strategy` | Discovering or updating strategic direction |
 | `architecture` | Creating Architecture Decision Records |
 | `reflect` | Integrating learnings into strategic docs |
-| `cleanup` | Reviewing and archiving agent artifacts |
+| `housekeeping` | Reviewing and archiving agent artifacts |
 | `bootstrap` | Bootstrapping new or existing projects |
 | `idea` | Quick capture of ideas for later evaluation |
 

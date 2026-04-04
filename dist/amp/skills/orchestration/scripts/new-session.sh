@@ -19,7 +19,7 @@ if git rev-parse --is-inside-work-tree &>/dev/null; then
 fi
 
 # Read Linear workspace from config (fallback to placeholder)
-CONFIG_FILE=".agents/config.json"
+CONFIG_FILE=".agents/loaf.json"
 if [[ -f "$CONFIG_FILE" ]] && command -v jq &> /dev/null; then
     LINEAR_WORKSPACE=$(jq -r '.linear.workspace // empty' "$CONFIG_FILE" 2>/dev/null)
 fi

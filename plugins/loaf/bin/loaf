@@ -2477,8 +2477,8 @@ import { join as join21 } from "path";
 // cli/lib/config/agents-config.ts
 import { existsSync as existsSync14, mkdirSync as mkdirSync13, readFileSync as readFileSync12, writeFileSync as writeFileSync12 } from "fs";
 import { join as join19 } from "path";
-function readAgentsConfig(projectRoot) {
-  const p = join19(projectRoot, ".agents", "config.json");
+function readLoafConfig(projectRoot) {
+  const p = join19(projectRoot, ".agents", "loaf.json");
   if (!existsSync14(p)) return {};
   try {
     const raw = readFileSync12(p, "utf-8");
@@ -2487,10 +2487,10 @@ function readAgentsConfig(projectRoot) {
     return {};
   }
 }
-function mergeAgentsConfigIntegrations(projectRoot, updates) {
+function mergeLoafConfigIntegrations(projectRoot, updates) {
   const agentsDir = join19(projectRoot, ".agents");
-  const p = join19(agentsDir, "config.json");
-  const existing = readAgentsConfig(projectRoot);
+  const p = join19(agentsDir, "loaf.json");
+  const existing = readLoafConfig(projectRoot);
   const integrations = {
     ...existing.integrations
   };
@@ -2659,7 +2659,7 @@ function getMcpDefinition(id) {
   return MCP_REGISTRY.find((d) => d.id === id);
 }
 function isLinearIntegrationDisabled(projectRoot) {
-  const cfg = readAgentsConfig(projectRoot);
+  const cfg = readLoafConfig(projectRoot);
   return cfg.integrations?.linear?.enabled === false;
 }
 
@@ -2737,10 +2737,10 @@ function formatStackLine(label, st) {
 async function runMcpRecommendations(opts) {
   if (opts.upgrade) return;
   if (!process.stdin.isTTY) {
-    const existing = readAgentsConfig(opts.projectRoot);
+    const existing = readLoafConfig(opts.projectRoot);
     for (const def of MCP_REGISTRY) {
       if (existing.integrations?.[def.id] === void 0) {
-        mergeAgentsConfigIntegrations(opts.projectRoot, {
+        mergeLoafConfigIntegrations(opts.projectRoot, {
           [def.id]: { enabled: false }
         });
       }
@@ -2775,7 +2775,7 @@ ${bold2("Recommended MCP servers")}
       cursorTargetThisRun
     );
     if (doneForSession) {
-      mergeAgentsConfigIntegrations(projectRoot, {
+      mergeLoafConfigIntegrations(projectRoot, {
         [def.id]: { enabled: true }
       });
       console.log();
@@ -2785,7 +2785,7 @@ ${bold2("Recommended MCP servers")}
     const needsCursorInstall = cursorTargetThisRun && !st.cursor.configured;
     if (!hasAutoPath) {
       console.log(`    ${gray2("Manual:")} ${white(def.manualHint)}`);
-      mergeAgentsConfigIntegrations(projectRoot, {
+      mergeLoafConfigIntegrations(projectRoot, {
         [def.id]: { enabled: false }
       });
       console.log();
@@ -2795,10 +2795,10 @@ ${bold2("Recommended MCP servers")}
       `    Install missing MCP(s)? [g]lobal / [p]roject / [n]o: `
     );
     if (choice === "no") {
-      mergeAgentsConfigIntegrations(projectRoot, {
+      mergeLoafConfigIntegrations(projectRoot, {
         [def.id]: { enabled: false }
       });
-      console.log(`    ${gray2("\u25CB")} Skipped \u2014 recorded in .agents/config.json`);
+      console.log(`    ${gray2("\u25CB")} Skipped \u2014 recorded in .agents/loaf.json`);
       console.log();
       continue;
     }
@@ -2831,7 +2831,7 @@ ${bold2("Recommended MCP servers")}
       }
     }
     const stacksOk = (!canClaude || st.claude.configured || claudeSuccess) && (!cursorTargetThisRun || st.cursor.configured || cursorSuccess);
-    mergeAgentsConfigIntegrations(projectRoot, {
+    mergeLoafConfigIntegrations(projectRoot, {
       [def.id]: { enabled: stacksOk }
     });
     if (!stacksOk) {
@@ -2851,7 +2851,7 @@ ${bold2("Recommended MCP servers")}
     console.log();
   }
   console.log(
-    `${green2("\u2713")} Integration choices recorded under ${gray2("integrations")} in ${gray2(".agents/config.json")}`
+    `${green2("\u2713")} Integration choices recorded under ${gray2("integrations")} in ${gray2(".agents/loaf.json")}`
   );
   console.log();
 }
@@ -7181,17 +7181,17 @@ ${bold10("Content:")}`);
   });
 }
 
-// cli/commands/cleanup.ts
+// cli/commands/housekeeping.ts
 import { existsSync as existsSync33, mkdirSync as mkdirSync21, readFileSync as readFileSync28, renameSync as renameSync2, rmSync as rmSync5, writeFileSync as writeFileSync20 } from "fs";
 import { join as join38, dirname as dirname11 } from "path";
 import matter12 from "gray-matter";
 
-// cli/lib/cleanup/scanner.ts
+// cli/lib/housekeeping/scanner.ts
 import { existsSync as existsSync32, readFileSync as readFileSync27, readdirSync as readdirSync13, statSync as statSync2 } from "fs";
 import { join as join37 } from "path";
 import matter11 from "gray-matter";
 
-// cli/lib/cleanup/types.ts
+// cli/lib/housekeeping/types.ts
 var ARTIFACT_TYPES = [
   "session",
   "task",
@@ -7211,7 +7211,7 @@ var ARTIFACT_DIRS = [
   { type: "report", dirname: "reports", required: false }
 ];
 
-// cli/lib/cleanup/scanner.ts
+// cli/lib/housekeeping/scanner.ts
 function readMdFiles(dir) {
   if (!existsSync32(dir)) return [];
   const results = [];
@@ -7789,7 +7789,7 @@ function scanArtifacts(options) {
   return { recommendations, summary, warnings };
 }
 
-// cli/commands/cleanup.ts
+// cli/commands/housekeeping.ts
 var bold11 = (s) => `\x1B[1m${s}\x1B[0m`;
 var green10 = (s) => `\x1B[32m${s}\x1B[0m`;
 var red8 = (s) => `\x1B[31m${s}\x1B[0m`;
@@ -7829,24 +7829,24 @@ function archiveGenericArtifact(filePath, artifactType) {
     const block = data[blockKey];
     block.status = "archived";
     block.archived_at = now;
-    block.archived_by = "loaf cleanup";
+    block.archived_by = "loaf housekeeping";
   } else {
     data.archived_at = now;
-    data.archived_by = "loaf cleanup";
+    data.archived_by = "loaf housekeeping";
   }
   const updated = matter12.stringify(content, data);
   writeFileSync20(filePath, updated, "utf-8");
   renameSync2(filePath, destPath);
 }
-function registerCleanupCommand(program2) {
-  program2.command("cleanup").description("Scan .agents/ artifacts and recommend cleanup actions").option("--dry-run", "Show recommendations without prompting for actions").option("--sessions", "Only review sessions").option("--specs", "Only review specs").option("--plans", "Only review plans").option("--drafts", "Only review drafts").action(async (options) => {
+function registerHousekeepingCommand(program2) {
+  program2.command("housekeeping").description("Scan .agents/ artifacts and recommend housekeeping actions").option("--dry-run", "Show recommendations without prompting for actions").option("--sessions", "Only review sessions").option("--specs", "Only review specs").option("--plans", "Only review plans").option("--drafts", "Only review drafts").action(async (options) => {
     const agentsDir = findAgentsDir();
     if (!agentsDir) {
       console.error(`  ${red8("error:")} No .agents/ directory found`);
       process.exit(1);
     }
     console.log(`
-${bold11("loaf cleanup")}
+${bold11("loaf housekeeping")}
 `);
     const filter = (() => {
       const types = [];
@@ -7975,7 +7975,7 @@ ${bold11("loaf cleanup")}
     if (index) {
       saveIndex(join38(agentsDir, "TASKS.json"), index);
     }
-    console.log(`  ${green10("\u2713")} Cleanup complete \u2014 ${actionsPerformed} action(s) performed.
+    console.log(`  ${green10("\u2713")} Housekeeping complete \u2014 ${actionsPerformed} action(s) performed.
 `);
   });
 }
@@ -9608,7 +9608,7 @@ registerSpecCommand(program);
 registerKbCommand(program);
 registerSetupCommand(program);
 registerVersionCommand(program);
-registerCleanupCommand(program);
+registerHousekeepingCommand(program);
 registerCheckCommand(program);
 registerSessionCommand(program);
 if (process.argv.includes("--agent-help")) {

@@ -60,7 +60,7 @@ session:
 When creating Linear issues, suggest the appropriate team:
 
 1. **Analyze task description** for keywords (see `linear-workflow` Skill)
-2. **Check known_teams** in `.agents/config.json`
+2. **Check known_teams** in `.agents/loaf.json`
 3. **If team is new to project**, ask user for confirmation:
    > "This task seems best suited for the **Security** team (matched: 'auth', 'vulnerability').
    > Security hasn't been used in this project yet. Add this team?"

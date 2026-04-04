@@ -18,8 +18,8 @@ import { tmpdir } from "os";
 
 import { buildMcpStatuses } from "../lib/detect/mcp.js";
 import {
-  mergeAgentsConfigIntegrations,
-  readAgentsConfig,
+  mergeLoafConfigIntegrations,
+  readLoafConfig,
 } from "../lib/config/agents-config.js";
 
 const TEST_ROOT = join(process.cwd(), ".test-install-script");
@@ -142,14 +142,14 @@ describe("loaf install: MCP recommendation helpers", () => {
     }
   });
 
-  it("mergeAgentsConfigIntegrations writes integrations under .agents/config.json", () => {
+  it("mergeLoafConfigIntegrations writes integrations under .agents/loaf.json", () => {
     const dir = mkdtempSync(join(tmpdir(), "loaf-install-cfg-"));
     try {
-      mergeAgentsConfigIntegrations(dir, {
+      mergeLoafConfigIntegrations(dir, {
         linear: { enabled: false },
         serena: { enabled: true },
       });
-      const cfg = readAgentsConfig(dir);
+      const cfg = readLoafConfig(dir);
       expect(cfg.integrations?.linear?.enabled).toBe(false);
       expect(cfg.integrations?.serena?.enabled).toBe(true);
     } finally {

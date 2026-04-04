@@ -251,18 +251,18 @@ loaf setup --hooks      # Install git hooks only
 
 ## Utility Commands
 
-### `loaf cleanup`
+### `loaf housekeeping`
 Reviews and archives agent artifacts.
 
 **Use when:**
 - Reviewing completed sessions
-- Cleaning up .agents/ directory
+- Maintaining .agents/ directory
 - Preparing for reflection
 
 **Usage:**
 ```bash
-loaf cleanup            # Interactive review
-loaf cleanup --dry-run  # Show what would be archived
+loaf housekeeping            # Interactive review
+loaf housekeeping --dry-run  # Show what would be archived
 ```
 
 ### `loaf release` / `loaf ship`

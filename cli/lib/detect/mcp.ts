@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "fs";
 import { execFileSync } from "child_process";
 import { join } from "path";
 
-import { readAgentsConfig } from "../config/agents-config.js";
+import { readLoafConfig } from "../config/agents-config.js";
 
 function home(): string {
   return process.env.HOME || process.env.USERPROFILE || "";
@@ -205,6 +205,6 @@ export function getMcpDefinition(id: string): McpDefinition | undefined {
 }
 
 export function isLinearIntegrationDisabled(projectRoot: string): boolean {
-  const cfg = readAgentsConfig(projectRoot);
+  const cfg = readLoafConfig(projectRoot);
   return cfg.integrations?.linear?.enabled === false;
 }

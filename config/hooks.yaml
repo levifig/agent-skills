@@ -65,7 +65,7 @@ hooks:
         3. Use --body flag with a HEREDOC to pass the clean description.
 
         Example: gh pr merge N --squash --body "$(cat <<'EOF'
-        Add loaf cleanup CLI command that scans .agents/ directories and
+        Add loaf housekeeping CLI command that scans .agents/ directories and
         recommends cleanup actions. Includes shared prompt helpers, scanner
         engine, interactive/dry-run modes, and skill update.
         EOF

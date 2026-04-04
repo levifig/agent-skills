@@ -13,11 +13,11 @@ from pathlib import Path
 
 
 def find_config() -> Path:
-    """Find config.json in .agents or .claude directory."""
+    """Find loaf.json in .agents or .claude directory."""
     # Look in current directory and parents
     current = Path.cwd()
     for parent in [current] + list(current.parents):
-        # New location: .agents/config.json
+        # New location: .agents/loaf.json
         config_path = parent / ".agents" / "config.json"
         if config_path.exists():
             return config_path
@@ -26,7 +26,7 @@ def find_config() -> Path:
         if legacy_path.exists():
             return legacy_path
 
-    raise FileNotFoundError("No .agents/config.json found in project hierarchy")
+    raise FileNotFoundError("No .agents/loaf.json found in project hierarchy")
 
 
 def get_value(config: dict, key_path: str):

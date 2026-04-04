@@ -1,15 +1,17 @@
 ---
-name: cleanup
+name: housekeeping
 description: >-
-  Reviews and cleans up agent artifacts in .agents/ — sessions, specs, plans,
-  drafts, councils, and reports. Use when the user asks "clean up," "review
-  sessions," or "tidy up .agents/." Provides hygiene recommendations, archives
-  completed work, and ensures extracted knowledge is preserved. Not for
-  strategic reflection (use reflect) or knowledge management (use
-  knowledge-base).
+  Reviews and maintains agent artifacts in .agents/ — sessions, specs, plans,
+  drafts, councils, and reports. Use when the user asks "housekeeping," "clean
+  up," "review sessions," or "tidy up .agents/." Provides hygiene
+  recommendations, archives completed work, and ensures extracted knowledge is
+  preserved. Not for strategic reflection (use reflect) or knowledge management
+  (use knowledge-base).
+subtask: false
+version: 2.0.0-dev.10
 ---
 
-# Cleanup
+# Housekeeping
 
 Systematic review and archival of all `.agents/` artifacts with Linear-aware checks.
 
@@ -19,7 +21,7 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 - Review EVERY file individually — never sample or average
 - Check Linear issue status before archiving sessions
 - Extract lessons learned and decisions before archiving
-- Use CLI (`loaf cleanup`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
+- Use CLI (`loaf housekeeping`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
 - Verify `TASKS.json` sync after archival with `loaf task sync`
 
 **Never**
@@ -43,9 +45,9 @@ After work completes, verify:
 ### CLI Commands
 
 ```bash
-loaf cleanup --dry-run        # Preview all actions
-loaf cleanup --sessions       # Sessions only
-loaf cleanup --specs          # Specs only
+loaf housekeeping --dry-run        # Preview all actions
+loaf housekeeping --sessions       # Sessions only
+loaf housekeeping --specs          # Specs only
 loaf task archive TASK-XXX    # Archive single task
 loaf spec archive SPEC-XXX    # Archive single spec
 loaf task sync                # Fix TASKS.json drift

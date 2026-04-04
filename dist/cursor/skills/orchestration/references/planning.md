@@ -380,7 +380,7 @@ then a CSV download starts within 2 seconds
 
 ## Project Constraints
 
-Document in the file configured in `.agents/config.json` (default: `docs/CONSTRAINTS.md`):
+Document in the file configured in `.agents/loaf.json` (default: `docs/CONSTRAINTS.md`):
 
 - **Processing model**: Batch vs real-time, latency expectations
 - **Deployment model**: Single/multi-tenant, cloud/on-prem

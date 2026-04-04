@@ -468,7 +468,7 @@ Sessions are **archived, not deleted** when complete to preserve audit trail (se
 - [ ] Linked reports moved to `.agents/reports/archive/` after session archived + conclusions captured
 - [ ] Update `.agents/` references to archived paths (no `.agents` links outside `.agents/`)
 - [ ] Archive indefinitely (no deletion policy)
-- [ ] Use `/cleanup` for auto-move + link updates after confirmation
+- [ ] Use `/housekeeping` for auto-move + link updates after confirmation
 
 ## Start Protocol
 

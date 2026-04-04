@@ -86,7 +86,7 @@ Backend choice in `.agents/loaf.json` or similar project config:
 | `loaf task sync` | Bidirectional push/import | Rebuild cache from .md | N/A (backends handle their own storage) |
 | TASKS.json | Source of truth | Derived cache | Backend-specific detail |
 | `loaf spec archive` | Reads task index | Reads .md files | `TaskBackend.list()` |
-| `loaf cleanup` (SPEC-012) | Scans TASKS.json | Scans .md files | `TaskBackend.list()` |
+| `loaf housekeeping` (SPEC-012) | Scans TASKS.json | Scans .md files | `TaskBackend.list()` |
 | `/breakdown` skill | Writes TASKS.json | Writes .md files | Backend-agnostic |
 | `/implement` skill | Reads from index | Reads .md files | Backend-agnostic |
 
@@ -102,7 +102,7 @@ Backend choice in `.agents/loaf.json` or similar project config:
 
 1. **Part 1 first** — invert to .md-first within the existing filesystem model. This fixes the immediate sync problems and is valuable standalone.
 2. **Part 2 after** — extract the `TaskBackend` interface once Part 1 stabilizes the filesystem implementation.
-3. SPEC-012's `loaf cleanup` should be built against .md files directly where possible, TASKS.json as fallback until Part 1 lands.
+3. SPEC-012's `loaf housekeeping` should be built against .md files directly where possible, TASKS.json as fallback until Part 1 lands.
 
 ### Dependencies
 

@@ -17,7 +17,7 @@ Guidelines for writing Linear issue updates, comments, and commit messages with 
 
 ## Configuration
 
-This skill reads from `.agents/config.json`:
+This skill reads from `.agents/loaf.json`:
 
 ```json
 {

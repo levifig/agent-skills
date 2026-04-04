@@ -133,7 +133,7 @@ can still adjust after creation, but the default is to proceed.
 
 ### Step 7: Create Tasks
 
-**If `integrations.linear.enabled` is `true` in `.agents/config.json`:** create Linear issues with title, description, labels, priority (Linear MCP).
+**If `integrations.linear.enabled` is `true` in `.agents/loaf.json`:** create Linear issues with title, description, labels, priority (Linear MCP).
 
 **Otherwise:** use `loaf task create --spec SPEC-XXX --title "Task title" --priority P1` for each task. The CLI creates the TASKS.json entry and .md skeleton file. Then edit the .md body content (description, acceptance criteria) directly.
 

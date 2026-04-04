@@ -7,7 +7,7 @@ import { createInterface } from "readline";
 import { execFileSync } from "child_process";
 import { join } from "path";
 
-import { mergeAgentsConfigIntegrations, readAgentsConfig } from "../config/agents-config.js";
+import { mergeLoafConfigIntegrations, readLoafConfig } from "../config/agents-config.js";
 import {
   buildMcpStatuses,
   getMcpDefinition,
@@ -134,10 +134,10 @@ export async function runMcpRecommendations(
 ): Promise<void> {
   if (opts.upgrade) return;
   if (!process.stdin.isTTY) {
-    const existing = readAgentsConfig(opts.projectRoot);
+    const existing = readLoafConfig(opts.projectRoot);
     for (const def of MCP_REGISTRY) {
       if (existing.integrations?.[def.id] === undefined) {
-        mergeAgentsConfigIntegrations(opts.projectRoot, {
+        mergeLoafConfigIntegrations(opts.projectRoot, {
           [def.id]: { enabled: false },
         });
       }
@@ -181,7 +181,7 @@ export async function runMcpRecommendations(
     );
 
     if (doneForSession) {
-      mergeAgentsConfigIntegrations(projectRoot, {
+      mergeLoafConfigIntegrations(projectRoot, {
         [def.id]: { enabled: true },
       });
       console.log();
@@ -193,7 +193,7 @@ export async function runMcpRecommendations(
 
     if (!hasAutoPath) {
       console.log(`    ${gray("Manual:")} ${white(def.manualHint)}`);
-      mergeAgentsConfigIntegrations(projectRoot, {
+      mergeLoafConfigIntegrations(projectRoot, {
         [def.id]: { enabled: false },
       });
       console.log();
@@ -205,10 +205,10 @@ export async function runMcpRecommendations(
     );
 
     if (choice === "no") {
-      mergeAgentsConfigIntegrations(projectRoot, {
+      mergeLoafConfigIntegrations(projectRoot, {
         [def.id]: { enabled: false },
       });
-      console.log(`    ${gray("○")} Skipped — recorded in .agents/config.json`);
+      console.log(`    ${gray("○")} Skipped — recorded in .agents/loaf.json`);
       console.log();
       continue;
     }
@@ -248,7 +248,7 @@ export async function runMcpRecommendations(
     const stacksOk =
       (!canClaude || st.claude.configured || claudeSuccess) &&
       (!cursorTargetThisRun || st.cursor.configured || cursorSuccess);
-    mergeAgentsConfigIntegrations(projectRoot, {
+    mergeLoafConfigIntegrations(projectRoot, {
       [def.id]: { enabled: stacksOk },
     });
     if (!stacksOk) {
@@ -271,7 +271,7 @@ export async function runMcpRecommendations(
   }
 
   console.log(
-    `${green("✓")} Integration choices recorded under ${gray("integrations")} in ${gray(".agents/config.json")}`,
+    `${green("✓")} Integration choices recorded under ${gray("integrations")} in ${gray(".agents/loaf.json")}`,
   );
   console.log();
 }
