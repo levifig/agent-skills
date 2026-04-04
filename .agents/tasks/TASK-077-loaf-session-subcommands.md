@@ -3,9 +3,9 @@ id: TASK-077
 title: Implement loaf session subcommands (start/end/log/archive)
 spec: SPEC-020
 status: todo
-priority: p0
-dependencies: []
-track: C
+priority: P0
+created: '2026-04-04T16:41:22.296Z'
+updated: '2026-04-04T16:41:22.296Z'
 ---
 
 # TASK-077: Implement `loaf session` subcommands (start/end/log/archive)

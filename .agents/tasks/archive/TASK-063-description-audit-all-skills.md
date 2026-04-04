@@ -3,9 +3,10 @@ id: TASK-063
 title: Audit and rewrite descriptions for all skills
 spec: SPEC-014
 status: done
-priority: p2
-dependencies: [TASK-057, TASK-058]
-track: C
+priority: P2
+created: '2026-04-04T16:41:22.302Z'
+updated: '2026-04-04T16:41:22.302Z'
+completed_at: '2026-04-04T16:41:22.302Z'
 ---
 
 # TASK-063: Audit and rewrite descriptions for all skills

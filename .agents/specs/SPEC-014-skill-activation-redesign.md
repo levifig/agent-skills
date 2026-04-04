@@ -5,7 +5,6 @@ source: brainstorm
 created: '2026-03-24T23:30:00.000Z'
 status: complete
 appetite: Large (4+ sessions)
-branch: feat/skill-activation-redesign
 ---
 
 # SPEC-014: Harness Redesign — Functional Profiles, Skill Activation, Build Cleanup

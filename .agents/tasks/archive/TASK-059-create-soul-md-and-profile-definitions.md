@@ -1,11 +1,12 @@
 ---
 id: TASK-059
-title: Create SOUL.md, canonical template, and 3 profile definitions
+title: 'Create SOUL.md, canonical template, and 3 profile definitions'
 spec: SPEC-014
 status: done
-priority: p0
-dependencies: []
-track: B
+priority: P0
+created: '2026-04-04T16:41:22.302Z'
+updated: '2026-04-04T16:41:22.302Z'
+completed_at: '2026-04-04T16:41:22.302Z'
 ---
 
 # TASK-059: Create SOUL.md, canonical template, and 3 profile definitions

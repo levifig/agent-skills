@@ -6,7 +6,7 @@ description: >-
   actionable concept crystallizes during conversation. Without args, scans
   brainstorm documents for unprocessed sparks to promote. Not for deep
   exploration (use brainstorm) or shaping (use shape).
-version: 2.0.0-dev.9
+version: 2.0.0-dev.10
 ---
 
 # Idea

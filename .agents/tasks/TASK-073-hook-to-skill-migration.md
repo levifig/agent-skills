@@ -3,9 +3,9 @@ id: TASK-073
 title: Migrate ~20 non-blocking hooks to skill instructions
 spec: SPEC-020
 status: todo
-priority: p1
-dependencies: [TASK-072]
-track: B
+priority: P1
+created: '2026-04-04T16:41:22.295Z'
+updated: '2026-04-04T16:41:22.295Z'
 ---
 
 # TASK-073: Migrate ~20 non-blocking hooks to skill instructions

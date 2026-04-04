@@ -1,13 +1,14 @@
 ---
 id: TASK-088
 title: Add MCP recommendation to loaf install
-status: in_progress
+status: done
 priority: P2
 created: '2026-04-03T15:23:56.470Z'
-updated: '2026-04-03T15:24:13.510Z'
+updated: '2026-04-04T16:47:28.995Z'
 depends_on:
   - TASK-087
 session: 20260403-152358-task-088.md
+completed_at: '2026-04-04T16:47:28.995Z'
 ---
 
 # TASK-088: Add MCP recommendation to loaf install

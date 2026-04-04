@@ -3,9 +3,9 @@ id: TASK-075
 title: CLI reference skill + update README.md / CLAUDE.md
 spec: SPEC-020
 status: todo
-priority: p2
-dependencies: [TASK-071, TASK-072, TASK-073]
-track: B
+priority: P2
+created: '2026-04-04T16:41:22.295Z'
+updated: '2026-04-04T16:41:22.295Z'
 ---
 
 # TASK-075: CLI reference skill + update README.md / CLAUDE.md

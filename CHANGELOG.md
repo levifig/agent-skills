@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.10] - 2026-04-04
+
+### Added
+- MCP detection library — detects Linear and Serena across Claude Code and Cursor configurations
+- Interactive MCP recommendation flow during `loaf install` with scope choice (global/project)
+- `.agents/config.json` integration toggles for runtime feature gating without rebuilding
+
+### Changed
+- Bundled MCP servers (sequential-thinking, Linear, Serena) removed from Claude Code plugin manifest
+- Session magic-word detection gated on `.agents/config.json` integration state
+- `loaf install --upgrade` skips MCP recommendations
+
+### Removed
+- `mcpServers` section from plugin.json and Claude Code build target
+- `linear-mcp.sh` wrapper script
+
 ## [2.0.0-dev.9] - 2026-04-03
 
 ### Added

@@ -2,10 +2,11 @@
 id: TASK-084
 title: Codex hook output + install convergence
 spec: SPEC-020
-status: complete
-priority: p1
-dependencies: [TASK-079, TASK-083]
-track: D
+status: done
+priority: P1
+created: '2026-04-04T16:41:22.296Z'
+updated: '2026-04-04T16:41:22.296Z'
+completed_at: '2026-04-04T16:41:22.296Z'
 ---
 
 # TASK-084: Codex hook output + install convergence

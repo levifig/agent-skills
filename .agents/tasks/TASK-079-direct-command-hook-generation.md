@@ -3,9 +3,9 @@ id: TASK-079
 title: Generate direct loaf check commands in hook configs
 spec: SPEC-020
 status: todo
-priority: p0
-dependencies: [TASK-076, TASK-078]
-track: C
+priority: P0
+created: '2026-04-04T16:41:22.296Z'
+updated: '2026-04-04T16:41:22.296Z'
 ---
 
 # TASK-079: Generate direct `loaf check` commands in hook configs

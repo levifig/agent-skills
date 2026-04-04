@@ -1,11 +1,12 @@
 ---
 id: TASK-082
-title: Remove migrated hooks, shell libs, session skills + bundle binary
+title: 'Remove migrated hooks, shell libs, session skills + bundle binary'
 spec: SPEC-020
-status: complete
-priority: p1
-dependencies: [TASK-079, TASK-080, TASK-081]
-track: C
+status: done
+priority: P1
+created: '2026-04-04T16:41:22.296Z'
+updated: '2026-04-04T16:41:22.296Z'
+completed_at: '2026-04-04T16:41:22.296Z'
 ---
 
 # TASK-082: Remove migrated hooks, shell libs, session skills + bundle binary

@@ -3,9 +3,9 @@ id: TASK-068
 title: Refactor Cursor target + fix prompt hook filter bug
 spec: SPEC-020
 status: todo
-priority: p0
-dependencies: [TASK-066]
-track: A
+priority: P0
+created: '2026-04-04T16:41:22.294Z'
+updated: '2026-04-04T16:41:22.294Z'
 ---
 
 # TASK-068: Refactor Cursor target + fix prompt hook filter bug

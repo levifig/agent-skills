@@ -2,10 +2,11 @@
 id: TASK-087
 title: Remove bundled MCP servers from plugin
 spec: SPEC-020
-status: todo
+status: done
 priority: P1
 created: '2026-04-03T15:23:56.470Z'
-updated: '2026-04-03T15:23:56.470Z'
+updated: '2026-04-04T16:47:26.854Z'
+completed_at: '2026-04-04T16:47:26.853Z'
 ---
 
 # TASK-087: Remove bundled MCP servers from plugin

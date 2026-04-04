@@ -1,11 +1,12 @@
 ---
 id: TASK-061
-title: Update build system — remove substitutions, profile-aware discovery
+title: 'Update build system — remove substitutions, profile-aware discovery'
 spec: SPEC-014
 status: done
-priority: p1
-dependencies: [TASK-059]
-track: D
+priority: P1
+created: '2026-04-04T16:41:22.302Z'
+updated: '2026-04-04T16:41:22.302Z'
+completed_at: '2026-04-04T16:41:22.302Z'
 ---
 
 # TASK-061: Update build system — remove substitutions, profile-aware discovery

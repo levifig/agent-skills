@@ -3,9 +3,9 @@ id: TASK-080
 title: Generate session lifecycle + journal nudge hooks
 spec: SPEC-020
 status: todo
-priority: p1
-dependencies: [TASK-077, TASK-079]
-track: C
+priority: P1
+created: '2026-04-04T16:41:22.296Z'
+updated: '2026-04-04T16:41:22.296Z'
 ---
 
 # TASK-080: Generate session lifecycle + journal nudge hooks

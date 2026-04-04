@@ -3,9 +3,9 @@ id: TASK-066
 title: Build shared skill intermediate at dist/skills/
 spec: SPEC-020
 status: todo
-priority: p0
-dependencies: [TASK-065]
-track: A
+priority: P0
+created: '2026-04-04T16:41:22.293Z'
+updated: '2026-04-04T16:41:22.293Z'
 ---
 
 # TASK-066: Build shared skill intermediate at dist/skills/

@@ -3,9 +3,10 @@ id: TASK-062
 title: Update all skill sidecars and workflow content for profile model
 spec: SPEC-014
 status: done
-priority: p1
-dependencies: [TASK-059, TASK-061]
-track: D
+priority: P1
+created: '2026-04-04T16:41:22.302Z'
+updated: '2026-04-04T16:41:22.302Z'
+completed_at: '2026-04-04T16:41:22.302Z'
 ---
 
 # TASK-062: Update all skill sidecars and workflow content for profile model

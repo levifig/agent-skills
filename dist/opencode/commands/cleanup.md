@@ -7,7 +7,7 @@ description: >-
   strategic reflection (use reflect) or knowledge management (use
   knowledge-base).
 subtask: false
-version: 2.0.0-dev.9
+version: 2.0.0-dev.10
 ---
 
 # Cleanup

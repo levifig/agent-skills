@@ -3,9 +3,9 @@ id: TASK-076
 title: Implement loaf check CLI command
 spec: SPEC-020
 status: todo
-priority: p0
-dependencies: [TASK-073]
-track: C
+priority: P0
+created: '2026-04-04T16:41:22.295Z'
+updated: '2026-04-04T16:41:22.295Z'
 ---
 
 # TASK-076: Implement `loaf check` CLI command

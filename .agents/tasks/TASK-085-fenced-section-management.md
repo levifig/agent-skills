@@ -2,10 +2,11 @@
 id: TASK-085
 title: Fenced-section management for CLAUDE.md/AGENTS.md
 spec: SPEC-020
-status: complete
-priority: p2
-dependencies: [TASK-075, TASK-084]
-track: D
+status: done
+priority: P2
+created: '2026-04-04T16:41:22.296Z'
+updated: '2026-04-04T16:41:22.296Z'
+completed_at: '2026-04-04T16:41:22.296Z'
 ---
 
 # TASK-085: Fenced-section management for CLAUDE.md/AGENTS.md

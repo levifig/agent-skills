@@ -2,10 +2,11 @@
 id: TASK-081
 title: Create shared runtime plugin generator (OpenCode + Amp)
 spec: SPEC-020
-status: complete
-priority: p1
-dependencies: [TASK-076, TASK-077]
-track: C
+status: done
+priority: P1
+created: '2026-04-04T16:41:22.296Z'
+updated: '2026-04-04T16:41:22.296Z'
+completed_at: '2026-04-04T16:41:22.296Z'
 ---
 
 # TASK-081: Create shared runtime plugin generator (OpenCode + Amp)

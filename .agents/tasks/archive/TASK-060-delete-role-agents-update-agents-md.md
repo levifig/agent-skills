@@ -3,9 +3,10 @@ id: TASK-060
 title: Delete 8 role-agent files and update AGENTS.md
 spec: SPEC-014
 status: done
-priority: p1
-dependencies: [TASK-059, TASK-062]
-track: B
+priority: P1
+created: '2026-04-04T16:41:22.302Z'
+updated: '2026-04-04T16:41:22.302Z'
+completed_at: '2026-04-04T16:41:22.302Z'
 ---
 
 # TASK-060: Delete 8 role-agent files and update AGENTS.md

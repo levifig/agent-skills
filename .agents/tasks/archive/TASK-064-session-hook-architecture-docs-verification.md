@@ -1,11 +1,12 @@
 ---
 id: TASK-064
-title: SessionStart hook, ARCHITECTURE.md update, end-to-end verification
+title: 'SessionStart hook, ARCHITECTURE.md update, end-to-end verification'
 spec: SPEC-014
 status: done
-priority: p2
-dependencies: [TASK-060, TASK-061, TASK-062, TASK-063]
-track: D
+priority: P2
+created: '2026-04-04T16:41:22.302Z'
+updated: '2026-04-04T16:41:22.302Z'
+completed_at: '2026-04-04T16:41:22.302Z'
 ---
 
 # TASK-064: SessionStart hook, ARCHITECTURE.md update, end-to-end verification

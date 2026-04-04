@@ -1918,7 +1918,7 @@ import { existsSync as existsSync17, readFileSync as readFileSync15, mkdirSync a
 import { join as join22, dirname as dirname5 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 import { createInterface as createInterface2 } from "readline";
-import { execSync } from "child_process";
+import { execFileSync as execFileSync5, execSync } from "child_process";
 
 // cli/lib/detect/tools.ts
 import { existsSync as existsSync11 } from "fs";
@@ -2515,9 +2515,18 @@ function mergeAgentsConfigIntegrations(projectRoot, updates) {
 import { existsSync as existsSync15, readFileSync as readFileSync13 } from "fs";
 import { execFileSync as execFileSync3 } from "child_process";
 import { join as join20 } from "path";
-function getHome() {
+function home() {
   return process.env.HOME || process.env.USERPROFILE || "";
 }
+var SERENA_BASE_ARGS = [
+  "uvx",
+  "-p",
+  "3.13",
+  "--from",
+  "git+https://github.com/oraios/serena",
+  "serena",
+  "start-mcp-server"
+];
 var MCP_REGISTRY = [
   {
     id: "linear",
@@ -2530,29 +2539,11 @@ var MCP_REGISTRY = [
     id: "serena",
     displayName: "Serena",
     tier: "optional",
-    claudeArgs: [
-      "uvx",
-      "-p",
-      "3.13",
-      "--from",
-      "git+https://github.com/oraios/serena",
-      "serena",
-      "start-mcp-server",
-      "--context",
-      "claude-code",
-      "--project-from-cwd"
-    ],
+    claudeArgs: [...SERENA_BASE_ARGS, "--context", "claude-code", "--project-from-cwd"],
+    cursorArgs: [...SERENA_BASE_ARGS, "--context", "cursor", "--project-from-cwd"],
     manualHint: "claude mcp add [--scope user|project] serena -- uvx -p 3.13 --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code --project-from-cwd"
   }
 ];
-var LINEAR_REMOTE_URL = "https://mcp.linear.app/mcp";
-function linearMcpRemoteArgv() {
-  return ["npx", "-y", "mcp-remote", LINEAR_REMOTE_URL];
-}
-function linearCursorMcpEntry() {
-  const argv = linearMcpRemoteArgv();
-  return { command: argv[0], args: argv.slice(1) };
-}
 function safeJson(path) {
   try {
     if (!existsSync15(path)) return null;
@@ -2574,17 +2565,25 @@ function parseClaudeMcpListOutput(output) {
   for (const line of output.split(/\r?\n/)) {
     const t = line.trim();
     if (!t) continue;
-    const m = t.match(/^(?:[\d.]+\s+|[•*-]\s+)?([a-zA-Z0-9_-]+)\b/);
-    if (m) names.add(m[1].toLowerCase());
+    const m = t.match(/^(?:[\d.]+\s+|[•*-]\s+)?([a-zA-Z0-9_:-]+)\b/);
+    if (!m) continue;
+    const full = m[1].toLowerCase();
+    names.add(full);
+    const parts = full.split(":");
+    if (parts.length > 1) {
+      names.add(parts[parts.length - 1]);
+    }
   }
   return names;
 }
-function scanMcpServers(raw, match) {
+function scanMcpServers(raw, id, match) {
   if (!raw || typeof raw !== "object") return false;
   const o = raw;
   const servers = o.mcpServers;
   if (!servers || typeof servers !== "object") return false;
-  for (const [, spec] of Object.entries(servers)) {
+  const entries = servers;
+  if (id in entries) return true;
+  for (const [, spec] of Object.entries(entries)) {
     if (match(JSON.stringify(spec))) return true;
   }
   return false;
@@ -2610,11 +2609,11 @@ function claudeListNames() {
 }
 function detectClaudeStackMcp(projectRoot, id) {
   const match = id === "linear" ? blobMatchesLinear : blobMatchesSerena;
-  const globalPath = join20(getHome(), ".claude", "settings.json");
-  const globalLocal = join20(getHome(), ".claude", "settings.local.json");
+  const globalPath = join20(home(), ".claude", "settings.json");
+  const globalLocal = join20(home(), ".claude", "settings.local.json");
   for (const p of [globalPath, globalLocal]) {
     const j = safeJson(p);
-    if (scanMcpServers(j, match)) {
+    if (scanMcpServers(j, id, match)) {
       return { configured: true, scope: "global" };
     }
   }
@@ -2624,24 +2623,23 @@ function detectClaudeStackMcp(projectRoot, id) {
     join20(projectRoot, ".mcp.json")
   ]) {
     const j = safeJson(p);
-    if (scanMcpServers(j, match)) {
+    if (scanMcpServers(j, id, match)) {
       return { configured: true, scope: "project" };
     }
   }
-  const want = id === "linear" ? "linear" : "serena";
-  if (claudeListNames().has(want)) {
+  if (claudeListNames().has(id)) {
     return { configured: true, scope: "global" };
   }
   return { configured: false, scope: null };
 }
 function detectCursorStackMcp(projectRoot, id) {
   const match = id === "linear" ? blobMatchesLinear : blobMatchesSerena;
-  const globalPath = join20(getHome(), ".cursor", "mcp.json");
+  const globalPath = join20(home(), ".cursor", "mcp.json");
   const projectPath = join20(projectRoot, ".cursor", "mcp.json");
-  const g = scanMcpServers(safeJson(globalPath), match);
-  const p = scanMcpServers(safeJson(projectPath), match);
-  if (g && !p) return { configured: true, scope: "global" };
-  if (p) return { configured: true, scope: g ? "global" : "project" };
+  const g = scanMcpServers(safeJson(globalPath), id, match);
+  const p = scanMcpServers(safeJson(projectPath), id, match);
+  if (p) return { configured: true, scope: "project" };
+  if (g) return { configured: true, scope: "global" };
   return { configured: false, scope: null };
 }
 function buildMcpStatuses(projectRoot) {
@@ -2670,14 +2668,7 @@ var bold2 = (s) => `\x1B[1m${s}\x1B[0m`;
 var green2 = (s) => `\x1B[32m${s}\x1B[0m`;
 var gray2 = (s) => `\x1B[90m${s}\x1B[0m`;
 var yellow = (s) => `\x1B[33m${s}\x1B[0m`;
-function hasClaudeCli() {
-  try {
-    execFileSync4("which", ["claude"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
+var white = (s) => `\x1B[97m${s}\x1B[0m`;
 function askGpn(question) {
   const rl = createInterface({
     input: process.stdin,
@@ -2697,18 +2688,15 @@ function claudeScopeFlag(scope) {
   return scope === "global" ? "user" : "project";
 }
 function installViaClaude(def, scope) {
-  const scopeFlag = claudeScopeFlag(scope);
-  const argv = def.id === "linear" ? linearMcpRemoteArgv() : def.claudeArgs;
   execFileSync4(
     "claude",
-    ["mcp", "add", "--scope", scopeFlag, def.id, "--", ...argv],
+    ["mcp", "add", "--scope", claudeScopeFlag(scope), def.id, "--", ...def.claudeArgs],
     { stdio: "inherit" }
   );
 }
-var white = (s) => `\x1B[97m${s}\x1B[0m`;
-function mergeCursorMcpServer(projectRoot, serverKey, spec, scope) {
-  const home = process.env.HOME || process.env.USERPROFILE || "";
-  const dir = scope === "global" ? join21(home, ".cursor") : join21(projectRoot, ".cursor");
+function mergeCursorMcpServer(projectRoot, def, scope) {
+  const home2 = process.env.HOME || process.env.USERPROFILE || "";
+  const dir = scope === "global" ? join21(home2, ".cursor") : join21(projectRoot, ".cursor");
   const p = join21(dir, "mcp.json");
   let data = {};
   if (existsSync16(p)) {
@@ -2721,27 +2709,16 @@ function mergeCursorMcpServer(projectRoot, serverKey, spec, scope) {
   if (!data.mcpServers || typeof data.mcpServers !== "object") {
     data.mcpServers = {};
   }
-  data.mcpServers[serverKey] = spec;
+  const argv = def.cursorArgs ?? def.claudeArgs;
+  data.mcpServers[def.id] = {
+    command: argv[0],
+    args: argv.slice(1)
+  };
   if (!existsSync16(dir)) {
     mkdirSync14(dir, { recursive: true });
   }
   writeFileSync13(p, `${JSON.stringify(data, null, 2)}
 `, "utf-8");
-}
-function installLinearCursor(projectRoot, scope) {
-  const { command, args } = linearCursorMcpEntry();
-  mergeCursorMcpServer(projectRoot, "linear", { command, args }, scope);
-}
-function installSerenaCursor(projectRoot, def, scope) {
-  mergeCursorMcpServer(
-    projectRoot,
-    "serena",
-    {
-      command: def.claudeArgs[0],
-      args: def.claudeArgs.slice(1)
-    },
-    scope
-  );
 }
 function mcpIntegrationDoneForSession(st, canClaude, cursorTargetThisRun) {
   const hasAutoPath = canClaude || cursorTargetThisRun;
@@ -2759,13 +2736,23 @@ function formatStackLine(label, st) {
 }
 async function runMcpRecommendations(opts) {
   if (opts.upgrade) return;
-  if (!process.stdin.isTTY) return;
+  if (!process.stdin.isTTY) {
+    const existing = readAgentsConfig(opts.projectRoot);
+    for (const def of MCP_REGISTRY) {
+      if (existing.integrations?.[def.id] === void 0) {
+        mergeAgentsConfigIntegrations(opts.projectRoot, {
+          [def.id]: { enabled: false }
+        });
+      }
+    }
+    return;
+  }
   const { projectRoot, hasClaudeCode, cursorTargetThisRun, hasAnyDetectedTool } = opts;
   const installedTargets = opts.installedTargets ?? [];
   if (!hasAnyDetectedTool && !hasClaudeCode) {
     return;
   }
-  const canClaude = hasClaudeCode && hasClaudeCli();
+  const canClaude = hasClaudeCode && detectClaudeCode();
   const hasAutoPath = canClaude || cursorTargetThisRun;
   console.log(`
 ${bold2("Recommended MCP servers")}
@@ -2796,6 +2783,14 @@ ${bold2("Recommended MCP servers")}
     }
     const needsClaudeInstall = canClaude && !st.claude.configured;
     const needsCursorInstall = cursorTargetThisRun && !st.cursor.configured;
+    if (!hasAutoPath) {
+      console.log(`    ${gray2("Manual:")} ${white(def.manualHint)}`);
+      mergeAgentsConfigIntegrations(projectRoot, {
+        [def.id]: { enabled: false }
+      });
+      console.log();
+      continue;
+    }
     const choice = await askGpn(
       `    Install missing MCP(s)? [g]lobal / [p]roject / [n]o: `
     );
@@ -2809,7 +2804,7 @@ ${bold2("Recommended MCP servers")}
     }
     let claudeSuccess = false;
     let cursorSuccess = false;
-    if (needsClaudeInstall && canClaude) {
+    if (needsClaudeInstall) {
       try {
         installViaClaude(def, choice);
         claudeSuccess = true;
@@ -2824,11 +2819,7 @@ ${bold2("Recommended MCP servers")}
     }
     if (needsCursorInstall) {
       try {
-        if (def.id === "linear") {
-          installLinearCursor(projectRoot, choice);
-        } else {
-          installSerenaCursor(projectRoot, def, choice);
-        }
+        mergeCursorMcpServer(projectRoot, def, choice);
         cursorSuccess = true;
         const loc = choice === "global" ? "~/.cursor/mcp.json" : ".cursor/mcp.json";
         console.log(
@@ -2839,24 +2830,17 @@ ${bold2("Recommended MCP servers")}
         console.log(`    ${yellow("\u26A0")} Cursor mcp.json merge failed: ${msg}`);
       }
     }
-    if (!hasAutoPath) {
-      console.log(`    ${gray2("Manual:")} ${white(def.manualHint)}`);
-      mergeAgentsConfigIntegrations(projectRoot, {
-        [def.id]: { enabled: false }
-      });
-    } else {
-      const stacksOk = (!canClaude || st.claude.configured || claudeSuccess) && (!cursorTargetThisRun || st.cursor.configured || cursorSuccess);
-      mergeAgentsConfigIntegrations(projectRoot, {
-        [def.id]: { enabled: stacksOk }
-      });
-      if (!stacksOk) {
-        console.log(
-          `    ${yellow("\u26A0")} ${gray2(`integrations.${def.id}.enabled remains false until every required stack succeeds.`)}`
-        );
-      }
+    const stacksOk = (!canClaude || st.claude.configured || claudeSuccess) && (!cursorTargetThisRun || st.cursor.configured || cursorSuccess);
+    mergeAgentsConfigIntegrations(projectRoot, {
+      [def.id]: { enabled: stacksOk }
+    });
+    if (!stacksOk) {
+      console.log(
+        `    ${yellow("\u26A0")} ${gray2(`integrations.${def.id}.enabled remains false until every required stack succeeds.`)}`
+      );
     }
     const otherHint = installedTargets.filter(
-      (t) => ["opencode", "codex", "gemini", "amp"].includes(t)
+      (t) => ["opencode", "codex", "amp"].includes(t)
     );
     if (otherHint.length > 0) {
       console.log(
@@ -2873,6 +2857,16 @@ ${bold2("Recommended MCP servers")}
 }
 
 // cli/commands/install.ts
+function findProjectRoot() {
+  try {
+    return execFileSync5("git", ["rev-parse", "--show-toplevel"], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"]
+    }).trim();
+  } catch {
+    return process.cwd();
+  }
+}
 var __dirname2 = dirname5(fileURLToPath4(import.meta.url));
 var bold3 = (s) => `\x1B[1m${s}\x1B[0m`;
 var green3 = (s) => `\x1B[32m${s}\x1B[0m`;
@@ -2895,7 +2889,7 @@ function findRootDir2() {
   }
   throw new Error("Could not find loaf root directory");
 }
-function askYesNo(question) {
+function askYesNo(question, defaultYes = false) {
   const rl = createInterface2({
     input: process.stdin,
     output: process.stdout
@@ -2903,9 +2897,22 @@ function askYesNo(question) {
   return new Promise((resolve2) => {
     rl.question(question, (answer) => {
       rl.close();
-      resolve2(answer.trim().toLowerCase().startsWith("y"));
+      const a = answer.trim().toLowerCase();
+      if (!a) resolve2(defaultYes);
+      else resolve2(a.startsWith("y"));
     });
   });
+}
+var DISPLAY_NAMES = {
+  "claude-code": "Claude Code",
+  opencode: "OpenCode",
+  cursor: "Cursor",
+  codex: "Codex",
+  gemini: "Gemini",
+  amp: "Amp"
+};
+function displayName(target) {
+  return DISPLAY_NAMES[target] ?? target;
 }
 function isLoafOnPath() {
   try {
@@ -2963,6 +2970,7 @@ function registerInstallCommand(program2) {
     const distDir = join22(rootDir, "dist");
     const devMode = isDevMode(rootDir);
     const upgrade = options.upgrade ?? false;
+    const projectRoot = findProjectRoot();
     console.log(`
 ${bold3("loaf install")}
 `);
@@ -3013,16 +3021,15 @@ ${gray3("Valid targets:")} ${VALID_TARGETS.join(", ")}, all`
       selectedTargets = tools.filter((t) => t.installed).map((t) => t.key);
       if (selectedTargets.length === 0) {
         if (hasClaudeCode) {
-          const projectRoot2 = process.cwd();
           const fencedResults2 = installFencedSectionsForTargets(
             ["claude-code"],
-            projectRoot2,
+            projectRoot,
             upgrade
           );
           if (fencedResults2["claude-code"]?.action === "updated") {
-            console.log(`  ${green3("\u2713")} claude-code updated Loaf framework section in project file`);
+            console.log(`  ${green3("\u2713")} Claude Code updated Loaf framework section in project file`);
           } else if (fencedResults2["claude-code"]?.action === "skipped") {
-            console.log(`  ${gray3("\u25CB")} claude-code Loaf framework section already current`);
+            console.log(`  ${gray3("\u25CB")} Claude Code Loaf framework section already current`);
           }
           console.log();
         }
@@ -3036,7 +3043,8 @@ ${gray3("Valid targets:")} ${VALID_TARGETS.join(", ")}, all`
       for (const tool of tools) {
         const status = tool.installed ? ` ${yellow2("(installed)")}` : "";
         const yes = await askYesNo(
-          `  Install to ${bold3(tool.name)}${status}? [y/N] `
+          `  Install to ${bold3(tool.name)}${status}? [Y/n] `,
+          true
         );
         if (yes) {
           selectedTargets.push(tool.key);
@@ -3044,27 +3052,26 @@ ${gray3("Valid targets:")} ${VALID_TARGETS.join(", ")}, all`
       }
     }
     if (selectedTargets.length === 0) {
-      const projectRoot2 = process.cwd();
       if (hasClaudeCode) {
         const fencedResults2 = installFencedSectionsForTargets(
           ["claude-code"],
-          projectRoot2,
+          projectRoot,
           upgrade
         );
         if (fencedResults2["claude-code"]?.action === "created") {
-          console.log(`  ${green3("\u2713")} claude-code created project file with Loaf framework section`);
+          console.log(`  ${green3("\u2713")} Claude Code created project file with Loaf framework section`);
         } else if (fencedResults2["claude-code"]?.action === "appended") {
-          console.log(`  ${green3("\u2713")} claude-code added Loaf framework section to project file`);
+          console.log(`  ${green3("\u2713")} Claude Code added Loaf framework section to project file`);
         } else if (fencedResults2["claude-code"]?.action === "updated") {
-          console.log(`  ${green3("\u2713")} claude-code updated Loaf framework section in project file`);
+          console.log(`  ${green3("\u2713")} Claude Code updated Loaf framework section in project file`);
         } else if (fencedResults2["claude-code"]?.action === "skipped") {
-          console.log(`  ${gray3("\u25CB")} claude-code Loaf framework section already current`);
+          console.log(`  ${gray3("\u25CB")} Claude Code Loaf framework section already current`);
         }
         console.log();
       }
-      if (options.to === "all") {
+      if (hasClaudeCode || options.to === "all") {
         await runMcpRecommendations({
-          projectRoot: projectRoot2,
+          projectRoot,
           upgrade,
           hasClaudeCode,
           cursorTargetThisRun: false,
@@ -3111,26 +3118,25 @@ ${gray3("Valid targets:")} ${VALID_TARGETS.join(", ")}, all`
       const targetDistDir = join22(distDir, target);
       if (!existsSync17(targetDistDir)) {
         console.log(
-          `  ${red2("\u2717")} ${target} \u2014 no build output found. Run ${bold3("loaf build")} first.`
+          `  ${red2("\u2717")} ${displayName(target)} \u2014 no build output found. Run ${bold3("loaf build")} first.`
         );
         continue;
       }
       const installer = INSTALLERS[target];
       if (!installer) {
-        console.log(`  ${red2("\u2717")} ${target} \u2014 no installer available`);
+        console.log(`  ${red2("\u2717")} ${displayName(target)} \u2014 no installer available`);
         continue;
       }
       try {
         installer(targetDistDir, configDir, upgrade);
-        console.log(`  ${green3("\u2713")} ${target} installed to ${gray3(configDir)}`);
+        console.log(`  ${green3("\u2713")} ${displayName(target)} installed to ${gray3(configDir)}`);
         installedTargets.push(target);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        console.log(`  ${red2("\u2717")} ${target} \u2014 ${msg}`);
+        console.log(`  ${red2("\u2717")} ${displayName(target)} \u2014 ${msg}`);
       }
     }
     console.log();
-    const projectRoot = process.cwd();
     const targetsWithFencedSections = installedTargets.filter((t) => t !== "gemini");
     const fencedTargets = hasClaudeCode ? ["claude-code", ...targetsWithFencedSections] : [...targetsWithFencedSections];
     const fencedResults = installFencedSectionsForTargets(
@@ -3140,29 +3146,30 @@ ${gray3("Valid targets:")} ${VALID_TARGETS.join(", ")}, all`
     );
     let hasFencedOutput = false;
     for (const [target, result] of Object.entries(fencedResults)) {
+      const name = displayName(target);
       if (result.action === "error") {
         console.log(
-          `  ${red2("\u2717")} ${target} project file \u2014 ${result.error}`
+          `  ${red2("\u2717")} ${name} project file \u2014 ${result.error}`
         );
         hasFencedOutput = true;
       } else if (result.action === "created") {
         console.log(
-          `  ${green3("\u2713")} ${target} created project file with Loaf framework section`
+          `  ${green3("\u2713")} ${name} created project file with Loaf framework section`
         );
         hasFencedOutput = true;
       } else if (result.action === "appended") {
         console.log(
-          `  ${green3("\u2713")} ${target} added Loaf framework section to project file`
+          `  ${green3("\u2713")} ${name} added Loaf framework section to project file`
         );
         hasFencedOutput = true;
       } else if (result.action === "updated") {
         console.log(
-          `  ${green3("\u2713")} ${target} updated Loaf framework section in project file (v${result.version})`
+          `  ${green3("\u2713")} ${name} updated Loaf framework section in project file (v${result.version})`
         );
         hasFencedOutput = true;
       } else if (result.action === "skipped") {
         console.log(
-          `  ${gray3("\u25CB")} ${target} Loaf framework section already current (v${result.version})`
+          `  ${gray3("\u25CB")} ${name} Loaf framework section already current (v${result.version})`
         );
         hasFencedOutput = true;
       }
@@ -3667,7 +3674,7 @@ ${bold4("loaf init")}
 }
 
 // cli/commands/release.ts
-import { execFileSync as execFileSync7 } from "child_process";
+import { execFileSync as execFileSync8 } from "child_process";
 import {
   existsSync as existsSync21,
   readFileSync as readFileSync18,
@@ -3710,7 +3717,7 @@ function askYesNo3(question) {
 }
 
 // cli/lib/release/commits.ts
-import { execFileSync as execFileSync5 } from "child_process";
+import { execFileSync as execFileSync6 } from "child_process";
 var CONVENTIONAL_RE = /^(\w+)(\(.+?\))?(!)?:\s*(.+)$/;
 var SECTION_MAP = {
   feat: "Added",
@@ -3727,7 +3734,7 @@ var SECTION_MAP = {
 var BREAKING_BODY_RE = /^BREAKING[ -]CHANGE:/m;
 function getLastTag(cwd) {
   try {
-    const tag = execFileSync5("git", ["describe", "--tags", "--abbrev=0"], {
+    const tag = execFileSync6("git", ["describe", "--tags", "--abbrev=0"], {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"]
@@ -3742,7 +3749,7 @@ function getCommitsSince(cwd, tag) {
   const args = tag ? ["log", `${tag}..HEAD`, `--format=${format}`] : ["log", `--format=${format}`];
   let output;
   try {
-    output = execFileSync5("git", args, {
+    output = execFileSync6("git", args, {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -4097,7 +4104,7 @@ function createChangelog(releaseSection) {
 }
 
 // cli/lib/release/options.ts
-import { execFileSync as execFileSync6 } from "child_process";
+import { execFileSync as execFileSync7 } from "child_process";
 var VALID_BUMPS = ["major", "minor", "patch", "prerelease", "release"];
 function validateBumpType(value) {
   if (!VALID_BUMPS.includes(value)) {
@@ -4122,7 +4129,7 @@ function getCandidateRefs(ref) {
 }
 function refResolves(cwd, ref) {
   try {
-    execFileSync6("git", ["rev-parse", "--verify", `${ref}^{commit}`], {
+    execFileSync7("git", ["rev-parse", "--verify", `${ref}^{commit}`], {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"]
@@ -4178,7 +4185,7 @@ async function askChoice(question, options, defaultChoice) {
 }
 function isGitRepo(cwd) {
   try {
-    execFileSync7("git", ["rev-parse", "--is-inside-work-tree"], {
+    execFileSync8("git", ["rev-parse", "--is-inside-work-tree"], {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"]
@@ -4190,7 +4197,7 @@ function isGitRepo(cwd) {
 }
 function isGhAvailable() {
   try {
-    execFileSync7("which", ["gh"], {
+    execFileSync8("which", ["gh"], {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"]
     });
@@ -4329,7 +4336,7 @@ ${bold5("loaf release")}
         const tmpDir = mkdtempSync(join26(tmpdir(), "loaf-release-"));
         const tmpFile = join26(tmpDir, "CHANGELOG_SECTION.md");
         writeFileSync15(tmpFile, changelogSection, "utf-8");
-        execFileSync7(editor, [tmpFile], { stdio: "inherit" });
+        execFileSync8(editor, [tmpFile], { stdio: "inherit" });
         changelogSection = readFileSync18(tmpFile, "utf-8");
         unlinkSync2(tmpFile);
         console.log(`  ${green5("Edited changelog accepted.")}`);
@@ -4443,7 +4450,7 @@ ${bold5("loaf release")}
       process.exit(1);
     }
     try {
-      execFileSync7(process.execPath, [process.argv[1], "build"], {
+      execFileSync8(process.execPath, [process.argv[1], "build"], {
         cwd,
         stdio: "inherit"
       });
@@ -4454,11 +4461,11 @@ ${bold5("loaf release")}
       process.exit(1);
     }
     try {
-      execFileSync7("git", ["add", "-A"], {
+      execFileSync8("git", ["add", "-A"], {
         cwd,
         stdio: ["ignore", "pipe", "ignore"]
       });
-      execFileSync7(
+      execFileSync8(
         "git",
         ["commit", "-m", `release: ${tagName}`],
         { cwd, stdio: ["ignore", "pipe", "ignore"] }
@@ -4473,7 +4480,7 @@ ${bold5("loaf release")}
       console.log(`    ${gray5("-")} Git tag skipped (--no-tag)`);
     } else {
       try {
-        execFileSync7("git", ["tag", "-a", tagName, "-m", `Release ${newVersion}`], {
+        execFileSync8("git", ["tag", "-a", tagName, "-m", `Release ${newVersion}`], {
           cwd,
           stdio: ["ignore", "pipe", "ignore"]
         });
@@ -4488,7 +4495,7 @@ ${bold5("loaf release")}
       console.log(`    ${gray5("-")} GitHub release skipped (--no-gh)`);
     } else if (ghAvailable) {
       try {
-        execFileSync7(
+        execFileSync8(
           "gh",
           [
             "release",
@@ -5782,7 +5789,7 @@ import { join as join34, basename as basename4, relative as relative6, isAbsolut
 import matter10 from "gray-matter";
 
 // cli/lib/kb/resolve.ts
-import { execFileSync as execFileSync8 } from "child_process";
+import { execFileSync as execFileSync9 } from "child_process";
 import { existsSync as existsSync26, readFileSync as readFileSync21 } from "fs";
 import { join as join31 } from "path";
 var DEFAULT_KB_CONFIG = {
@@ -5792,7 +5799,7 @@ var DEFAULT_KB_CONFIG = {
 };
 function findGitRoot() {
   try {
-    const result = execFileSync8("git", ["rev-parse", "--show-toplevel"], {
+    const result = execFileSync9("git", ["rev-parse", "--show-toplevel"], {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -5901,7 +5908,7 @@ function normalizeImplementationStatus(value) {
 }
 
 // cli/lib/kb/validate.ts
-import { execFileSync as execFileSync9 } from "child_process";
+import { execFileSync as execFileSync10 } from "child_process";
 import { existsSync as existsSync28, readdirSync as readdirSync11, readFileSync as readFileSync23 } from "fs";
 import { dirname as dirname8, join as join33, relative as relative5 } from "path";
 import matter9 from "gray-matter";
@@ -6036,7 +6043,7 @@ function validateLoadedFile(gitRoot, file) {
 }
 function globMatchesTrackedFiles(gitRoot, glob) {
   try {
-    const result = execFileSync9("git", ["ls-files", "--", glob], {
+    const result = execFileSync10("git", ["ls-files", "--", glob], {
       cwd: gitRoot,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"]
@@ -6048,7 +6055,7 @@ function globMatchesTrackedFiles(gitRoot, glob) {
 }
 
 // cli/lib/kb/staleness.ts
-import { execFileSync as execFileSync10 } from "child_process";
+import { execFileSync as execFileSync11 } from "child_process";
 import picomatch from "picomatch";
 function checkStaleness(gitRoot, file, _config) {
   const covers = file.frontmatter.covers;
@@ -6076,7 +6083,7 @@ function checkStaleness(gitRoot, file, _config) {
     };
   }
   try {
-    const output = execFileSync10(
+    const output = execFileSync11(
       "git",
       [
         "log",
@@ -6150,10 +6157,10 @@ function parseGitLogOutput(output) {
 }
 
 // cli/lib/kb/qmd.ts
-import { execFileSync as execFileSync11 } from "child_process";
+import { execFileSync as execFileSync12 } from "child_process";
 function isQmdAvailable() {
   try {
-    execFileSync11("which", ["qmd"], { stdio: "pipe" });
+    execFileSync12("which", ["qmd"], { stdio: "pipe" });
     return true;
   } catch {
     return false;
@@ -6161,7 +6168,7 @@ function isQmdAvailable() {
 }
 function registerCollection(name, path) {
   try {
-    execFileSync11("qmd", ["collection", "add", path, "--name", name], {
+    execFileSync12("qmd", ["collection", "add", path, "--name", name], {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -6172,7 +6179,7 @@ function registerCollection(name, path) {
 }
 function listCollections() {
   try {
-    const output = execFileSync11("qmd", ["collection", "list"], {
+    const output = execFileSync12("qmd", ["collection", "list"], {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -9382,10 +9389,10 @@ function registerSessionCommand(program2) {
       }
     }
     if (options.detectLinear) {
-      if (isLinearIntegrationDisabled(findGitRoot())) {
-        process.exit(0);
-      }
       try {
+        if (isLinearIntegrationDisabled(findGitRoot())) {
+          process.exit(0);
+        }
         const commits = getRecentCommits(3);
         const detections = [];
         const magicPattern = /\b(fixe?s?d?|close?s?d?|resolve?s?d?)\s+([A-Z]+-\d+)/gi;
