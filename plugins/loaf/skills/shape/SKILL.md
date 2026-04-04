@@ -7,7 +7,7 @@ description: >-
   acceptance criteria. Not for b...
 user-invocable: true
 argument-hint: '[idea or requirement]'
-version: 2.0.0-dev.8
+version: 2.0.0-dev.9
 ---
 
 # Shape

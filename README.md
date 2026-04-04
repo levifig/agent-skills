@@ -164,13 +164,13 @@ Domain expertise that loads based on project context.
 
 Build once, deploy everywhere. Skills are the universal layer; profiles and hooks adapt per target.
 
-| Target | Profiles | Skills | Hooks | MCP | Amp | Status |
-|--------|:--------:|:------:|:-----:|:---:|:---:|--------|
-| Claude Code | ✓ | ✓ | ✓ | ✓ | ✓ | Primary |
-| OpenCode | ✓ | ✓ | ✓ | — | ✓ | Full support |
-| Cursor | ✓ | ✓ | ✓ | — | — | Full support |
-| Codex | — | ✓ | ✓ | — | — | Skills + hooks |
-| Gemini | — | ✓ | — | — | — | Skills only |
+| Target | Profiles | Skills | Hooks | Status |
+|--------|:--------:|:------:|:-----:|--------|
+| Claude Code | ✓ | ✓ | ✓ | Primary |
+| OpenCode | ✓ | ✓ | ✓ | Full support |
+| Cursor | ✓ | ✓ | ✓ | Full support |
+| Codex | — | ✓ | ✓ | Skills + hooks |
+| Gemini | — | ✓ | — | Skills only |
 
 *Note: `council-session` skill renamed to `council` for consistency. Removed skills: `resume-session`, `reference-session`.*
 
@@ -205,7 +205,7 @@ The installer detects installed tools, lets you select targets, and downloads pr
 
 *Claude Code only.*
 
-**MCP Servers:** Serena (code intelligence), Sequential Thinking (structured reasoning), Linear (issue tracking)
+**Recommended MCP Servers:** Linear (issue tracking). **Optional:** Serena (semantic editing for large codebases — most code intelligence is now built into Claude Code's native LSP). Not bundled — `loaf install` will detect and recommend missing MCPs.
 
 **LSP Servers:** gopls, pyright, typescript-language-server, solargraph
 

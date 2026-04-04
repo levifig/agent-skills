@@ -68,21 +68,6 @@ const LSP_SERVERS: Record<string, unknown> = {
   },
 };
 
-const MCP_SERVERS: Record<string, unknown> = {
-  "sequential-thinking": {
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-  },
-  linear: {
-    command: "bash",
-    args: ["${CLAUDE_PLUGIN_ROOT}/hooks/linear-mcp.sh"],
-  },
-  serena: {
-    command: "uvx",
-    args: ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server"],
-  },
-};
-
 // Hooks that use `${CLAUDE_PLUGIN_ROOT}/bin/loaf` binary path
 const BINARY_PATH_HOOKS = new Set([
   // Enforcement hooks
@@ -322,7 +307,6 @@ function createPluginJson(config: HooksConfig, pluginDir: string): void {
     repository: REPOSITORY,
     license: "MIT",
     hooks: {} as Record<string, unknown>,
-    mcpServers: MCP_SERVERS,
   };
 
   const hooks = pluginJson.hooks as Record<string, unknown>;
@@ -388,7 +372,7 @@ function createPluginJson(config: HooksConfig, pluginDir: string): void {
       
       // Both prompt and command type hooks can have 'if' conditions
       const hookEntry: Record<string, unknown> = {
-        type: hook.type,
+        type: hook.type || "command",
         ...(hook.timeout && { timeout: Math.floor((hook.timeout || 60000) / 1000) }),
         ...(hook.description && { description: hook.description }),
         ...(hook.if && { if: hook.if }),
@@ -452,12 +436,6 @@ function copyAllHooks(config: HooksConfig, srcDir: string, pluginDir: string): v
       const dest = join(hooksDir, filename);
       if (existsSync(src)) cpSync(src, dest);
     }
-  }
-
-  // Copy Linear MCP wrapper
-  const linearMcpSrc = join(srcDir, "hooks", "linear-mcp.sh");
-  if (existsSync(linearMcpSrc)) {
-    cpSync(linearMcpSrc, join(hooksDir, "linear-mcp.sh"));
   }
 
   // Copy subagent hooks as-is

@@ -9,7 +9,7 @@ Patterns for importing decisions and context from past sessions into current wor
 - Session Frontmatter for Tracking
 - Decision Memory Format
 - Workflow
-- Serena MCP Integration
+- Serena MCP Integration (Optional)
 - Anti-Patterns
 - When Decisions Conflict
 - Best Practices
@@ -145,7 +145,9 @@ When sessions are archived, decisions are extracted to Serena memory:
 3. Import into current session
 4. Track in `referenced_sessions` frontmatter
 
-## Serena MCP Integration
+## Serena MCP Integration (Optional)
+
+If Serena MCP is configured, it can store decision memories across sessions.
 
 ### List Available Decision Memories
 
@@ -168,6 +170,8 @@ mcp__serena__write_memory(
     content=extracted_decisions_markdown
 )
 ```
+
+If Serena is not configured, decision memories can be stored as files in `.agents/decisions/` instead.
 
 ## Anti-Patterns
 

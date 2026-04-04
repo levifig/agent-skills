@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.8",
+  "version": "2.0.0-dev.9",
   "description": "Loaf - An Opinionated Agentic Framework",
   "repository": "https://github.com/levifig/loaf",
   "license": "MIT",
@@ -148,6 +148,7 @@
       {
         "hooks": [
           {
+            "type": "command",
             "timeout": 60,
             "description": "Append compact entry to session journal before context compaction",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/compact.sh"
@@ -175,29 +176,5 @@
         ]
       }
     ]
-  },
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-sequential-thinking"
-      ]
-    },
-    "linear": {
-      "command": "bash",
-      "args": [
-        "${CLAUDE_PLUGIN_ROOT}/hooks/linear-mcp.sh"
-      ]
-    },
-    "serena": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/oraios/serena",
-        "serena",
-        "start-mcp-server"
-      ]
-    }
   }
 }

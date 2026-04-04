@@ -6,7 +6,7 @@ description: >-
   Produces ADRs and updates ARCHITECTURE.md with technical constraints. Not for
   strategic direction (use strategy) or multi-perspective deliberation (use
   council).
-version: 2.0.0-dev.8
+version: 2.0.0-dev.9
 ---
 
 # Architecture

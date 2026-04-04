@@ -30,10 +30,22 @@ def find_config() -> Path:
 
 
 def get_value(config: dict, key_path: str):
-    """Get nested value from config using dot notation."""
-    keys = key_path.split(".")
-    value = config.get("linear", {})
+    """Get nested value from config using dot notation.
 
+    Paths under ``linear.*`` default to ``config["linear"]``.
+    Paths starting with ``integrations.`` read from the root config (``loaf install``).
+    """
+    keys = key_path.split(".")
+    if keys[0] == "integrations":
+        value: object = config
+        for key in keys:
+            if isinstance(value, dict):
+                value = value.get(key)
+            else:
+                return None
+        return value
+
+    value = config.get("linear", {})
     for key in keys:
         if isinstance(value, dict):
             value = value.get(key)
@@ -50,10 +62,14 @@ def main():
             config = json.load(f)
 
         linear_config = config.get("linear", {})
+        integrations = config.get("integrations", {}) or {}
 
         if len(sys.argv) == 1:
-            # Print full Linear config
-            print(json.dumps(linear_config, indent=2))
+            # Print full Linear config; include integrations when present (loaf install)
+            out = dict(linear_config)
+            if integrations:
+                out["integrations"] = integrations
+            print(json.dumps(out, indent=2))
         else:
             # Print specific value
             key_path = sys.argv[1]

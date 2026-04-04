@@ -84,7 +84,7 @@ Bash(npm run lint), Bash(pytest --collect-only)
 # Coordination only - no implementation
 Read, Glob, Grep
 TodoWrite, TodoRead
-Linear MCP tools
+Linear MCP tools (if configured)
 Bash(date *), Bash(git status)
 ```
 
@@ -217,12 +217,15 @@ When granting permissions:
 | `Write(src/*)` | Feature implementation | 2025-01-23 | User |
 ```
 
-## MCP Tool Permissions
+## MCP Tool Permissions (When Configured)
+
+MCPs are not bundled with Loaf — users configure them independently.
+Run `loaf install` to see recommendations.
 
 ### Linear MCP
 
 ```
-# Safe for orchestration
+# Safe for orchestration (if user has Linear MCP configured)
 list_issues, get_issue, list_comments
 create_comment, update_issue
 list_initiatives, list_initiative_updates
@@ -232,7 +235,7 @@ list_project_milestones, list_project_updates, list_project_labels
 ### Serena MCP
 
 ```
-# Safe for code intelligence
+# Safe for code intelligence (if user has Serena MCP configured)
 find_symbol, get_symbols_overview
 search_for_pattern, read_file
 ```

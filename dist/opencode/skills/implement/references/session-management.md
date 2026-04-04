@@ -81,7 +81,7 @@ Top suggestions:
 Suggest Security, confirm if new to project
 ```
 
-Use Linear MCP's `list_teams` to get all workspace teams for validation.
+Use Linear MCP's `list_teams` (if configured) to get all workspace teams for validation.
 
 ---
 

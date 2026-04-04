@@ -6,7 +6,7 @@ description: >-
   agents, or coordinating cross-cutting work across multiple agents. Not for
   single-task implementation (use direct tool delegation) or solo research (use
   research).
-version: 2.0.0-dev.8
+version: 2.0.0-dev.9
 ---
 
 # Orchestration
@@ -43,6 +43,10 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 - Checkboxes only (`- [x]`), no emoji
 - Outcome-focused, self-contained, no local file references
 - Magic words in commit body, not subject
+
+**If `integrations.linear.enabled` is `true` in `.agents/config.json`:** use Linear MCP workflows and [references/linear.md](references/linear.md) for issue updates and status.
+
+**Otherwise:** coordinate with local sessions and `loaf task` / file-based tracking only; do not assume Linear MCP tools are available.
 
 ### Planning (Shape Up)
 - Appetite over estimates (decide time, flex scope)

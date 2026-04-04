@@ -28,6 +28,7 @@ import { loadKnowledgeFiles } from "../lib/kb/loader.js";
 import { findGitRoot, loadKbConfig } from "../lib/kb/resolve.js";
 import { checkAllStaleness } from "../lib/kb/staleness.js";
 import { findAgentsDir } from "../lib/tasks/resolve.js";
+import { isLinearIntegrationDisabled } from "../lib/detect/mcp.js";
 import { readStdin } from "./check.js";
 
 // ANSI color helpers
@@ -1199,6 +1200,9 @@ export function registerSessionCommand(program: Command): void {
       // Handle --detect-linear: scan commits for magic words
       if (options.detectLinear) {
         try {
+          if (isLinearIntegrationDisabled(findGitRoot())) {
+            process.exit(0);
+          }
           const commits = getRecentCommits(3);
           const detections: Array<{ issueId: string; action: string; commit: string }> = [];
 

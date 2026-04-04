@@ -10,16 +10,27 @@ import { existsSync, readFileSync, mkdirSync, copyFileSync, chmodSync, unlinkSyn
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createInterface } from "readline";
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import {
   detectTools,
   detectClaudeCode,
   DEFAULT_CONFIG_DIRS,
   isDevMode,
-  type DetectedTool,
 } from "../lib/detect/tools.js";
 import { INSTALLERS } from "../lib/install/installer.js";
 import { installFencedSectionsForTargets } from "../lib/install/fenced-section.js";
+import { runMcpRecommendations } from "../lib/install/mcp-recommendations.js";
+
+function findProjectRoot(): string {
+  try {
+    return execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    return process.cwd();
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -48,7 +59,7 @@ function findRootDir(): string {
   throw new Error("Could not find loaf root directory");
 }
 
-function askYesNo(question: string): Promise<boolean> {
+function askYesNo(question: string, defaultYes = false): Promise<boolean> {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -57,9 +68,24 @@ function askYesNo(question: string): Promise<boolean> {
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
       rl.close();
-      resolve(answer.trim().toLowerCase().startsWith("y"));
+      const a = answer.trim().toLowerCase();
+      if (!a) resolve(defaultYes);
+      else resolve(a.startsWith("y"));
     });
   });
+}
+
+const DISPLAY_NAMES: Record<string, string> = {
+  "claude-code": "Claude Code",
+  opencode: "OpenCode",
+  cursor: "Cursor",
+  codex: "Codex",
+  gemini: "Gemini",
+  amp: "Amp",
+};
+
+function displayName(target: string): string {
+  return DISPLAY_NAMES[target] ?? target;
 }
 
 /** Check if loaf is available on PATH */
@@ -138,6 +164,8 @@ export function registerInstallCommand(program: Command): void {
       const rootDir = findRootDir();
       const distDir = join(rootDir, "dist");
       const devMode = isDevMode(rootDir);
+      const upgrade = options.upgrade ?? false;
+      const projectRoot = findProjectRoot();
 
       console.log(`\n${bold("loaf install")}\n`);
 
@@ -197,7 +225,7 @@ export function registerInstallCommand(program: Command): void {
             `  ${yellow("⚡")} ${options.to} was not auto-detected; installing to ${DEFAULT_CONFIG_DIRS[options.to]}`,
           );
         }
-      } else if (options.upgrade) {
+      } else if (upgrade) {
         selectedTargets = tools
           .filter((t) => t.installed)
           .map((t) => t.key);
@@ -205,16 +233,16 @@ export function registerInstallCommand(program: Command): void {
         if (selectedTargets.length === 0) {
           // Still install fenced sections for Claude Code even if no other targets to upgrade
           if (hasClaudeCode) {
-            const projectRoot = process.cwd();
+    
             const fencedResults = installFencedSectionsForTargets(
               ["claude-code"],
               projectRoot,
-              options.upgrade ?? false
+              upgrade
             );
             if (fencedResults["claude-code"]?.action === "updated") {
-              console.log(`  ${green("✓")} claude-code updated Loaf framework section in project file`);
+              console.log(`  ${green("✓")} Claude Code updated Loaf framework section in project file`);
             } else if (fencedResults["claude-code"]?.action === "skipped") {
-              console.log(`  ${gray("○")} claude-code Loaf framework section already current`);
+              console.log(`  ${gray("○")} Claude Code Loaf framework section already current`);
             }
             console.log();
           }
@@ -229,7 +257,8 @@ export function registerInstallCommand(program: Command): void {
         for (const tool of tools) {
           const status = tool.installed ? ` ${yellow("(installed)")}` : "";
           const yes = await askYesNo(
-            `  Install to ${bold(tool.name)}${status}? [y/N] `,
+            `  Install to ${bold(tool.name)}${status}? [Y/n] `,
+            true,
           );
           if (yes) {
             selectedTargets.push(tool.key);
@@ -238,24 +267,37 @@ export function registerInstallCommand(program: Command): void {
       }
 
       if (selectedTargets.length === 0) {
+
         // Still install fenced sections for Claude Code even if no targets selected
         if (hasClaudeCode) {
-          const projectRoot = process.cwd();
           const fencedResults = installFencedSectionsForTargets(
             ["claude-code"],
             projectRoot,
-            options.upgrade ?? false
+            upgrade
           );
           if (fencedResults["claude-code"]?.action === "created") {
-            console.log(`  ${green("✓")} claude-code created project file with Loaf framework section`);
+            console.log(`  ${green("✓")} Claude Code created project file with Loaf framework section`);
           } else if (fencedResults["claude-code"]?.action === "appended") {
-            console.log(`  ${green("✓")} claude-code added Loaf framework section to project file`);
+            console.log(`  ${green("✓")} Claude Code added Loaf framework section to project file`);
           } else if (fencedResults["claude-code"]?.action === "updated") {
-            console.log(`  ${green("✓")} claude-code updated Loaf framework section in project file`);
+            console.log(`  ${green("✓")} Claude Code updated Loaf framework section in project file`);
           } else if (fencedResults["claude-code"]?.action === "skipped") {
-            console.log(`  ${gray("○")} claude-code Loaf framework section already current`);
+            console.log(`  ${gray("○")} Claude Code Loaf framework section already current`);
           }
           console.log();
+        }
+        // UX: skip MCP prompts when the user declined every target interactively.
+        // Still offer them for Claude Code (MCPs are primarily Claude integrations)
+        // or `loaf install --to all` with no matching tools (explicit intent).
+        if (hasClaudeCode || options.to === "all") {
+          await runMcpRecommendations({
+            projectRoot,
+            upgrade,
+            hasClaudeCode,
+            cursorTargetThisRun: false,
+            hasAnyDetectedTool: tools.length > 0 || hasClaudeCode,
+            installedTargets: [],
+          });
         }
         console.log(`  ${gray("No targets selected")}`);
         console.log();
@@ -310,24 +352,24 @@ export function registerInstallCommand(program: Command): void {
 
         if (!existsSync(targetDistDir)) {
           console.log(
-            `  ${red("✗")} ${target} — no build output found. Run ${bold("loaf build")} first.`,
+            `  ${red("✗")} ${displayName(target)} — no build output found. Run ${bold("loaf build")} first.`,
           );
           continue;
         }
 
         const installer = INSTALLERS[target];
         if (!installer) {
-          console.log(`  ${red("✗")} ${target} — no installer available`);
+          console.log(`  ${red("✗")} ${displayName(target)} — no installer available`);
           continue;
         }
 
         try {
-          installer(targetDistDir, configDir, options.upgrade ?? false);
-          console.log(`  ${green("✓")} ${target} installed to ${gray(configDir)}`);
+          installer(targetDistDir, configDir, upgrade);
+          console.log(`  ${green("✓")} ${displayName(target)} installed to ${gray(configDir)}`);
           installedTargets.push(target);
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error);
-          console.log(`  ${red("✗")} ${target} — ${msg}`);
+          console.log(`  ${red("✗")} ${displayName(target)} — ${msg}`);
         }
       }
 
@@ -337,7 +379,6 @@ export function registerInstallCommand(program: Command): void {
       // Include: (1) successfully installed targets (excluding gemini which has no project file layer),
       // (2) Claude Code if detected
       // Claude Code uses plugin-bundled binary but still needs fenced sections in project
-      const projectRoot = process.cwd();
       const targetsWithFencedSections = installedTargets.filter(t => t !== "gemini");
       const fencedTargets = hasClaudeCode
         ? ["claude-code", ...targetsWithFencedSections]
@@ -345,35 +386,36 @@ export function registerInstallCommand(program: Command): void {
       const fencedResults = installFencedSectionsForTargets(
         fencedTargets,
         projectRoot,
-        options.upgrade ?? false
+        upgrade
       );
 
       // Report fenced section results
       let hasFencedOutput = false;
       for (const [target, result] of Object.entries(fencedResults)) {
+        const name = displayName(target);
         if (result.action === "error") {
           console.log(
-            `  ${red("✗")} ${target} project file — ${result.error}`
+            `  ${red("✗")} ${name} project file — ${result.error}`
           );
           hasFencedOutput = true;
         } else if (result.action === "created") {
           console.log(
-            `  ${green("✓")} ${target} created project file with Loaf framework section`
+            `  ${green("✓")} ${name} created project file with Loaf framework section`
           );
           hasFencedOutput = true;
         } else if (result.action === "appended") {
           console.log(
-            `  ${green("✓")} ${target} added Loaf framework section to project file`
+            `  ${green("✓")} ${name} added Loaf framework section to project file`
           );
           hasFencedOutput = true;
         } else if (result.action === "updated") {
           console.log(
-            `  ${green("✓")} ${target} updated Loaf framework section in project file (v${result.version})`
+            `  ${green("✓")} ${name} updated Loaf framework section in project file (v${result.version})`
           );
           hasFencedOutput = true;
         } else if (result.action === "skipped") {
           console.log(
-            `  ${gray("○")} ${target} Loaf framework section already current (v${result.version})`
+            `  ${gray("○")} ${name} Loaf framework section already current (v${result.version})`
           );
           hasFencedOutput = true;
         }
@@ -382,5 +424,17 @@ export function registerInstallCommand(program: Command): void {
       if (hasFencedOutput) {
         console.log();
       }
+
+      await runMcpRecommendations({
+        projectRoot,
+        upgrade,
+        hasClaudeCode,
+        cursorTargetThisRun:
+          selectedTargets.includes("cursor") ||
+          installedTargets.includes("cursor"),
+        hasAnyDetectedTool:
+          tools.length > 0 || hasClaudeCode || installedTargets.length > 0,
+        installedTargets,
+      });
     });
 }

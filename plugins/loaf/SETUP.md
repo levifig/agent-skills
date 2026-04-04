@@ -43,37 +43,33 @@ gem install solargraph
 gem install solargraph-rails
 ```
 
-## MCP Servers
+## Recommended MCP Servers
 
-MCP servers are automatically started when needed. Prerequisites:
+MCPs are not bundled with Loaf — users configure them independently.
+Run `loaf install` to see recommendations.
 
-### Sequential Thinking
+### Linear (Recommended)
+
+Issue tracking integration. `loaf install` can register the standard remote; authentication (OAuth, API keys, env) is between you, Linear, and your tools — Loaf does not inject secrets.
 
 ```bash
-# Requires Node.js 22+
-# No additional installation - runs via npx
+claude mcp add linear -- npx -y mcp-remote https://mcp.linear.app/mcp
 ```
 
-### Linear
+### Serena (Optional)
+
+Semantic editing operations (`rename_symbol`, `replace_symbol_body`, `insert_after_symbol`) for large codebase refactoring. Most read-only code intelligence (symbol search, go-to-definition, find references) is now covered by Claude Code's native LSP.
+
+Still valuable for non-Claude-Code targets (Cursor, Codex, etc.) that lack native LSP integration.
+
+Requires Python 3.10+ and uv:
 
 ```bash
-# Requires Node.js 22+
-# No additional installation - runs via npx
-# Auth preference: if LINEAR_API_KEY is set, it is used first (supports 1Password refs op:// when op CLI is available)
-# Fallback: if LINEAR_API_KEY is not set, OAuth is used
-# You'll be prompted to authenticate with Linear on first use when API key auth is not active
-# Endpoint: https://mcp.linear.app/mcp (SSE deprecated)
-# New tools: initiatives, initiative updates, project milestones, project updates, project labels
-```
-
-### Serena
-
-```bash
-# Requires Python 3.10+ and uv
 # Install uv if you don't have it:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# No additional installation - runs via uvx
+# Add to Claude Code:
+claude mcp add serena -- uvx -p 3.13 --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code --project-from-cwd
 ```
 
 ## Verification
@@ -113,12 +109,7 @@ uv --version
 
 ### Linear authentication
 
-Linear auth selection happens at runtime when the MCP server starts:
-
-- If `LINEAR_API_KEY` is present in the Claude process environment, Loaf uses API key auth.
-- If `LINEAR_API_KEY` is a 1Password reference (`op://vault/item/field`) and the `op` CLI is installed, Loaf resolves it with `op read` and uses the secret as the Bearer token.
-- If `LINEAR_API_KEY` is missing, Loaf falls back to OAuth.
-- If `direnv` is installed, Loaf also attempts `direnv export` at runtime so per-directory `LINEAR_API_KEY` values can be picked up.
+Configure auth in your environment or follow the browser OAuth flow when the MCP server starts (see Linear’s MCP docs). Loaf does not resolve `op://` references or manage API keys for you.
 
 OAuth flow on first use:
 

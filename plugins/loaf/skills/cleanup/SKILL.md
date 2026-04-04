@@ -7,7 +7,7 @@ description: >-
   completed work, and ...
 user-invocable: true
 argument-hint: '[sessions|specs|plans|drafts]'
-version: 2.0.0-dev.8
+version: 2.0.0-dev.9
 ---
 
 # Cleanup

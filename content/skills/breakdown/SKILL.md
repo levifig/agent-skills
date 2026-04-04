@@ -133,9 +133,9 @@ can still adjust after creation, but the default is to proceed.
 
 ### Step 7: Create Tasks
 
-**Linear backend:** Create issues with title, description, labels, priority.
+**If `integrations.linear.enabled` is `true` in `.agents/config.json`:** create Linear issues with title, description, labels, priority (Linear MCP).
 
-**Local backend:** Use `loaf task create --spec SPEC-XXX --title "Task title" --priority P1` for each task. The CLI creates the TASKS.json entry and .md skeleton file. Then edit the .md body content (description, acceptance criteria) directly.
+**Otherwise:** use `loaf task create --spec SPEC-XXX --title "Task title" --priority P1` for each task. The CLI creates the TASKS.json entry and .md skeleton file. Then edit the .md body content (description, acceptance criteria) directly.
 
 ### Step 8: Update Spec and Announce
 

@@ -37,7 +37,7 @@ You are the coordinator. Start by understanding the task:
 
 ### Orchestrator Can Do Directly
 - Create/edit session files, council files
-- Use TodoWrite/TodoRead, Linear MCP tools
+- Use TodoWrite/TodoRead; **if `integrations.linear.enabled` is `true` in `.agents/config.json`**, use Linear MCP tools when helpful
 - Read any file for context
 - Ask clarifying questions
 
@@ -89,8 +89,8 @@ Parse `$ARGUMENTS` to determine session type:
 | `SPEC-XXX` | Spec orchestration | Resolve all tasks, build dependency waves |
 | `TASK-XXX..YYY` | Task range | Expand range, build dependency waves |
 | `TASK-XXX,YYY,ZZZ` | Task list | Parse list, build dependency waves |
-| `PLT-123`, `PROJ-123` | Linear issue | Fetch from Linear |
-| Description text | Ad-hoc | Create session, ask about Linear |
+| `PLT-123`, `PROJ-123` | Linear issue | **If `integrations.linear.enabled` is `true`:** fetch from Linear. **Otherwise:** treat as label text or create local task |
+| Description text | Ad-hoc | **If Linear enabled:** ask about Linear issue. **Else:** offer `loaf task create` / local session |
 
 ### Task-Coupled Sessions
 

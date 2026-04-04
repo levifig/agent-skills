@@ -51,6 +51,14 @@ def is_hook_enabled():
     return hook_config.get("enabled", True)
 
 
+def is_linear_integration_disabled():
+    """When integrations.linear.enabled is false, skip Linear-specific hook output."""
+    config = load_config()
+    integrations = config.get("integrations", {}) or {}
+    linear = integrations.get("linear", {}) or {}
+    return linear.get("enabled") is False
+
+
 def get_recent_commits(count=5):
     """Get recent commit messages."""
     try:
@@ -123,6 +131,8 @@ def detect_magic_words(text):
 
 def main():
     """Main execution."""
+    if is_linear_integration_disabled():
+        sys.exit(0)
     if not is_hook_enabled():
         sys.exit(0)
 
