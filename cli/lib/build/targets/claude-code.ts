@@ -385,7 +385,7 @@ function createPluginJson(config: HooksConfig, pluginDir: string): void {
         if (hook.failClosed) hookEntry.failClosed = hook.failClosed;
       }
       
-      (hooks[eventName] as unknown[]).push({ hooks: [hookEntry] });
+      (hooks[eventName] as unknown[]).push({ matcher: null, hooks: [hookEntry] });
     }
   }
 

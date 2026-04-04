@@ -124,6 +124,7 @@
     ],
     "SessionStart": [
       {
+        "matcher": null,
         "hooks": [
           {
             "type": "command",
@@ -135,6 +136,7 @@
     ],
     "SessionEnd": [
       {
+        "matcher": null,
         "hooks": [
           {
             "type": "command",
@@ -146,6 +148,7 @@
     ],
     "PreCompact": [
       {
+        "matcher": null,
         "hooks": [
           {
             "type": "command",
@@ -156,6 +159,7 @@
         ]
       },
       {
+        "matcher": null,
         "hooks": [
           {
             "type": "prompt",
@@ -167,6 +171,7 @@
     ],
     "Stop": [
       {
+        "matcher": null,
         "hooks": [
           {
             "type": "prompt",
