@@ -1,11 +1,16 @@
 ---
-topics: [build-system, targets, distribution]
+topics:
+  - build-system
+  - targets
+  - distribution
 covers:
-  - "build/**/*.js"
-  - "src/config/targets.yaml"
-  - "src/config/hooks.yaml"
-consumers: [backend-dev, pm]
-last_reviewed: 2026-03-14
+  - cli/lib/build/**/*.ts
+  - config/targets.yaml
+  - config/hooks.yaml
+consumers:
+  - implementer
+  - reviewer
+last_reviewed: '2026-04-04'
 ---
 
 # Build System
@@ -14,24 +19,38 @@ Loaf compiles skills, agents, and hooks from a single source tree into multiple 
 
 ## Key Rules
 
-- **Single source, multiple outputs.** All content is authored in `src/`. The build system transforms it per-target.
+- **Single source, multiple outputs.** Content is authored in `content/`. The build system transforms it per-target.
+- **Two-phase build.** Skills first compile to a shared intermediate (`dist/skills/`), then each target reads from the intermediate.
 - **Targets are additive.** Each target gets what it supports — Claude Code gets everything, Codex gets skills only.
-- **Sidecars carry target-specific fields.** SKILL.md has standard fields only. `.claude-code.yaml`, `.cursor.yaml`, etc. carry extensions. Build merges them.
-- **Shared templates distribute at build time.** `src/templates/` files are copied to specified skills via `shared-templates` in `targets.yaml`.
+- **Sidecars carry target-specific fields.** SKILL.md has standard fields only. `.claude-code.yaml`, `.opencode.yaml`, etc. carry extensions. Build merges them.
+- **Shared templates distribute at build time.** `content/templates/` files are copied to specified skills via `shared-templates` in `targets.yaml`.
+- **Command substitution.** `{{IMPLEMENT_CMD}}`, `{{ORCHESTRATE_CMD}}` placeholders in skill content are replaced per-target (e.g., `/implement` for Claude Code, OpenCode command name for OpenCode).
 
 ## Build Flow
 
-`npm run build` → `build/build.js` loads `hooks.yaml` + `targets.yaml` → calls each target's transformer in `build/targets/{target}.js` → output to `plugins/` or `dist/{target}/`.
+`loaf build` (or `npm run build`) → CLI at `cli/commands/build.ts` → loads `hooks.yaml` + `targets.yaml` → builds shared skills intermediate to `dist/skills/` → calls each target's transformer in `cli/lib/build/targets/{target}.ts` → output to `plugins/` or `dist/{target}/`.
 
 ## Targets
 
-| Target | Output | Agents | Skills | Hooks | MCP |
-|--------|--------|:------:|:------:|:-----:|:---:|
-| claude-code | `plugins/loaf/` | Yes | Yes | Yes | Yes |
+| Target | Output | Agents | Skills | Hooks | Runtime Plugin |
+|--------|--------|:------:|:------:|:-----:|:--------------:|
+| claude-code | `plugins/loaf/` | Yes | Yes | Yes | No (bundled binary) |
 | cursor | `dist/cursor/` | Yes | Yes | Yes | No |
-| opencode | `dist/opencode/` | Yes | Yes | No | No |
-| codex | `dist/codex/` | No | Yes | No | No |
+| opencode | `dist/opencode/` | Yes | Yes | Yes | Yes (`hooks.ts`) |
+| codex | `dist/codex/` | No | Yes | Yes | No |
 | gemini | `dist/gemini/` | No | Yes | No | No |
+| amp | `dist/amp/` | No | Yes | No | Yes (`loaf.js`) |
+
+### Notes
+
+- **Claude Code** bundles a self-contained `loaf` binary in `plugins/loaf/bin/loaf` for hook execution.
+- **OpenCode and Amp** generate runtime plugins (`hooks.ts` / `loaf.js`) that implement enforcement hooks via subprocess calls to `loaf check`.
+- **Codex** generates `.codex/hooks.json` for Bash-matching enforcement hooks.
+- **MCP servers** are not bundled. `loaf install` detects and recommends MCPs at install time; integration state stored in `.agents/loaf.json`.
+
+## Fenced Sections
+
+`loaf install` writes fenced Loaf sections into project instruction files (CLAUDE.md, .cursorrules, AGENTS.md, etc.) using markers to identify managed content. This is separate from the build — it runs during installation to inject project-level configuration.
 
 ## Cross-References
 

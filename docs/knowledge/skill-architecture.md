@@ -1,11 +1,19 @@
 ---
-topics: [skills, agent-skills-standard, sidecars, references, templates]
+topics:
+  - skills
+  - agent-skills-standard
+  - sidecars
+  - references
+  - templates
+  - profiles
 covers:
-  - "src/skills/**/*.md"
-  - "src/skills/**/*.yaml"
-  - "src/config/hooks.yaml"
-consumers: [backend-dev, pm]
-last_reviewed: 2026-03-14
+  - content/skills/**/*.md
+  - content/skills/**/*.yaml
+  - config/hooks.yaml
+consumers:
+  - implementer
+  - reviewer
+last_reviewed: '2026-04-04'
 ---
 
 # Skill Architecture
@@ -15,29 +23,47 @@ Skills are the primary knowledge delivery mechanism. Each skill is a directory f
 ## Key Rules
 
 - **SKILL.md contains standard fields only.** `name`, `description`, `license`, `compatibility`, `metadata`. No tool-specific fields.
-- **Sidecar files carry extensions.** `.claude-code.yaml` for Claude Code fields (`user-invocable`, `agent`, `context: fork`). `.cursor.yaml` for Cursor.
-- **Descriptions drive routing.** Claude uses the description to choose from 100+ skills. Must start with action verb (third-person), include user-intent phrases, negative routing for confusable skills.
+- **Sidecar files carry extensions.** `.claude-code.yaml` for Claude Code fields (`user-invocable`, `agent`, `context: fork`). `.opencode.yaml` for OpenCode commands. Target-specific sidecars are merged at build time.
+- **Descriptions drive routing.** The model uses the description to choose from 100+ skills. Must start with action verb (third-person), include user-intent phrases, negative routing for confusable skills.
 - **References are one level deep.** All references link from SKILL.md, never from other references. No nested chains.
 - **Templates are structural artifacts.** `templates/` hold format templates (frontmatter schema, section headings). `references/` hold knowledge docs (conventions, patterns).
+- **Command substitution.** `{{IMPLEMENT_CMD}}` and `{{ORCHESTRATE_CMD}}` placeholders are replaced per-target at build time.
 
 ## Skill Structure
 
 ```
-src/skills/{name}/
+content/skills/{name}/
 ├── SKILL.md                  # Standard frontmatter + content
 ├── SKILL.claude-code.yaml    # Claude Code extensions
+├── SKILL.opencode.yaml       # OpenCode extensions (commands)
 ├── references/               # Knowledge docs (loaded on demand)
 └── templates/                # Artifact templates (loaded on demand)
 ```
+
+Skills compile to a shared intermediate at `dist/skills/` (base frontmatter, command substitution, shared templates merged), then each target reads from the intermediate.
+
+## Agent Profiles
+
+SPEC-014 replaced 8 role-based agents with 3 functional profiles and 2 system profiles, defined in `SOUL.md`:
+
+| Profile | Concept | Tool Access | Purpose |
+|---------|---------|-------------|---------|
+| **implementer** | Smith (Dwarf) | Full write | Code, tests, config, docs — specialty via skills |
+| **reviewer** | Sentinel (Elf) | Read-only | Audits, reviews — mechanical independence |
+| **researcher** | Ranger (Human) | Read + web | Research, comparison — structured reports |
+| **background-runner** | System | Read + Edit | Async non-blocking tasks |
+| **context-archiver** | System | Read + Edit + Serena | Session preservation |
+
+Skills load into profiles at spawn time. What an agent *can do* is fixed by profile; what it *knows* comes from skills.
 
 ## Categories
 
 | Category | `user-invocable` | Examples |
 |----------|:-:|---------|
-| Reference/Knowledge | `false` | python-development, database-design |
-| Workflow/Process | `true` (default) | orchestration, research, implement |
+| Reference/Knowledge | `false` | python-development, database-design, cli-reference |
+| Workflow/Process | `true` (default) | orchestration, research, implement, release, housekeeping |
 
 ## Cross-References
 
 - [build-system.md](build-system.md) — how skills get distributed to targets
-- [hook-system.md](hook-system.md) — how skills register hooks via plugin-groups
+- [hook-system.md](hook-system.md) — how skills own hooks via `skill:` field in hooks.yaml
