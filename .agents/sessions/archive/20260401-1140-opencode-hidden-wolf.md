@@ -1,8 +1,10 @@
 ---
 branch: feat/cross-harness-unification
-status: active
+status: archived
 created: '2026-04-01T11:40:47.716Z'
 last_entry: '2026-04-02T18:45:53.344Z'
+archived_at: '2026-04-04T17:27:56.879Z'
+last_updated: '2026-04-04T17:27:56.879Z'
 ---
 
 # Session: feat/cross-harness-unification

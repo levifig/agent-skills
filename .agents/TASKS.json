@@ -258,102 +258,6 @@
       "completed_at": null,
       "file": "TASK-080-session-lifecycle-nudge-hooks.md"
     },
-    "TASK-081": {
-      "title": "Create shared runtime plugin generator (OpenCode + Amp)",
-      "slug": "runtime-plugin-generator",
-      "spec": "SPEC-020",
-      "status": "done",
-      "priority": "P1",
-      "depends_on": [],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-04-04T16:41:22.296Z",
-      "updated": "2026-04-04T16:41:22.296Z",
-      "completed_at": "2026-04-04T16:41:22.296Z",
-      "file": "TASK-081-runtime-plugin-generator.md"
-    },
-    "TASK-082": {
-      "title": "Remove migrated hooks, shell libs, session skills + bundle binary",
-      "slug": "remove-migrated-hooks-bundle-binary",
-      "spec": "SPEC-020",
-      "status": "done",
-      "priority": "P1",
-      "depends_on": [],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-04-04T16:41:22.296Z",
-      "updated": "2026-04-04T16:41:22.296Z",
-      "completed_at": "2026-04-04T16:41:22.296Z",
-      "file": "TASK-082-remove-migrated-hooks-bundle-binary.md"
-    },
-    "TASK-083": {
-      "title": "Amp target",
-      "slug": "amp-target",
-      "spec": "SPEC-020",
-      "status": "done",
-      "priority": "P1",
-      "depends_on": [],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-04-04T16:41:22.296Z",
-      "updated": "2026-04-04T16:41:22.296Z",
-      "completed_at": "2026-04-04T16:41:22.296Z",
-      "file": "TASK-083-amp-target.md"
-    },
-    "TASK-084": {
-      "title": "Codex hook output + install convergence",
-      "slug": "codex-hooks-install-convergence",
-      "spec": "SPEC-020",
-      "status": "done",
-      "priority": "P1",
-      "depends_on": [],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-04-04T16:41:22.296Z",
-      "updated": "2026-04-04T16:41:22.296Z",
-      "completed_at": "2026-04-04T16:41:22.296Z",
-      "file": "TASK-084-codex-hooks-install-convergence.md"
-    },
-    "TASK-085": {
-      "title": "Fenced-section management for CLAUDE.md/AGENTS.md",
-      "slug": "fenced-section-management",
-      "spec": "SPEC-020",
-      "status": "done",
-      "priority": "P2",
-      "depends_on": [],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-04-04T16:41:22.296Z",
-      "updated": "2026-04-04T16:41:22.296Z",
-      "completed_at": "2026-04-04T16:41:22.296Z",
-      "file": "TASK-085-fenced-section-management.md"
-    },
-    "TASK-086": {
-      "title": "Verify loaf binary accessibility from all hook environments",
-      "slug": "verify-binary-accessibility",
-      "spec": "SPEC-020",
-      "status": "done",
-      "priority": "P1",
-      "depends_on": [],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-04-04T16:41:22.296Z",
-      "updated": "2026-04-04T16:41:22.296Z",
-      "completed_at": "2026-04-04T16:41:22.296Z",
-      "file": "TASK-086-verify-binary-accessibility.md"
-    },
     "TASK-001": {
       "title": "Create verification reference",
       "slug": "verification-reference",
@@ -1576,6 +1480,102 @@
       "completed_at": "2026-04-04T16:41:22.302Z",
       "file": "archive/TASK-064-session-hook-architecture-docs-verification.md"
     },
+    "TASK-081": {
+      "title": "Create shared runtime plugin generator (OpenCode + Amp)",
+      "slug": "runtime-plugin-generator",
+      "spec": "SPEC-020",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-04T16:41:22.296Z",
+      "updated": "2026-04-04T16:41:22.296Z",
+      "completed_at": "2026-04-04T16:41:22.296Z",
+      "file": "archive/TASK-081-runtime-plugin-generator.md"
+    },
+    "TASK-082": {
+      "title": "Remove migrated hooks, shell libs, session skills + bundle binary",
+      "slug": "remove-migrated-hooks-bundle-binary",
+      "spec": "SPEC-020",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-04T16:41:22.296Z",
+      "updated": "2026-04-04T16:41:22.296Z",
+      "completed_at": "2026-04-04T16:41:22.296Z",
+      "file": "archive/TASK-082-remove-migrated-hooks-bundle-binary.md"
+    },
+    "TASK-083": {
+      "title": "Amp target",
+      "slug": "amp-target",
+      "spec": "SPEC-020",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-04T16:41:22.296Z",
+      "updated": "2026-04-04T16:41:22.296Z",
+      "completed_at": "2026-04-04T16:41:22.296Z",
+      "file": "archive/TASK-083-amp-target.md"
+    },
+    "TASK-084": {
+      "title": "Codex hook output + install convergence",
+      "slug": "codex-hooks-install-convergence",
+      "spec": "SPEC-020",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-04T16:41:22.296Z",
+      "updated": "2026-04-04T16:41:22.296Z",
+      "completed_at": "2026-04-04T16:41:22.296Z",
+      "file": "archive/TASK-084-codex-hooks-install-convergence.md"
+    },
+    "TASK-085": {
+      "title": "Fenced-section management for CLAUDE.md/AGENTS.md",
+      "slug": "fenced-section-management",
+      "spec": "SPEC-020",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-04T16:41:22.296Z",
+      "updated": "2026-04-04T16:41:22.296Z",
+      "completed_at": "2026-04-04T16:41:22.296Z",
+      "file": "archive/TASK-085-fenced-section-management.md"
+    },
+    "TASK-086": {
+      "title": "Verify loaf binary accessibility from all hook environments",
+      "slug": "verify-binary-accessibility",
+      "spec": "SPEC-020",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-04T16:41:22.296Z",
+      "updated": "2026-04-04T16:41:22.296Z",
+      "completed_at": "2026-04-04T16:41:22.296Z",
+      "file": "archive/TASK-086-verify-binary-accessibility.md"
+    },
     "TASK-087": {
       "title": "Remove bundled MCP servers from plugin",
       "slug": "decouple-mcps-from-plugin",
@@ -1612,15 +1612,6 @@
     }
   },
   "specs": {
-    "SPEC-014": {
-      "title": "Skill Activation Redesign — foundations decomposition + agent elimination",
-      "status": "complete",
-      "appetite": "Large (4+ sessions)",
-      "requirement": null,
-      "source": "brainstorm",
-      "created": "2026-03-24T23:30:00.000Z",
-      "file": "SPEC-014-skill-activation-redesign.md"
-    },
     "SPEC-016": {
       "title": "Council Advisory Redesign — dynamic specialists, structured output",
       "status": "drafting",
@@ -1647,24 +1638,6 @@
       "source": "code-review",
       "created": "2026-03-30T10:50:00.000Z",
       "file": "SPEC-018-opencode-hooks-parity.md"
-    },
-    "SPEC-019": {
-      "title": "Release Skill — orchestrated merge ritual with CLI-backed versioning",
-      "status": "complete",
-      "appetite": "Small (1–2 sessions)",
-      "requirement": null,
-      "source": "idea/20260330-idea-merge-command",
-      "created": "2026-03-30T15:20:00.000Z",
-      "file": "SPEC-019-release-skill.md"
-    },
-    "SPEC-020": {
-      "title": "Cross-Harness Skills, Hook Consolidation & Target Convergence",
-      "status": "complete",
-      "appetite": "XL (unbounded — foundational architecture)",
-      "requirement": null,
-      "source": "brainstorm/amp-target-exploration + brainstorm-session-20260331",
-      "created": "2026-03-30T23:13:00.000Z",
-      "file": "SPEC-020-target-convergence-amp.md"
     },
     "SPEC-021": {
       "title": "Bootstrap Document Hierarchy Redesign",
@@ -1819,6 +1792,15 @@
       "created": "2026-03-22T01:28:01.000Z",
       "file": "archive/SPEC-013-bootstrap-skill.md"
     },
+    "SPEC-014": {
+      "title": "Skill Activation Redesign — foundations decomposition + agent elimination",
+      "status": "complete",
+      "appetite": "Large (4+ sessions)",
+      "requirement": null,
+      "source": "brainstorm",
+      "created": "2026-03-24T23:30:00.000Z",
+      "file": "archive/SPEC-014-skill-activation-redesign.md"
+    },
     "SPEC-015": {
       "title": "Workflow enforcement hooks + CHANGELOG management",
       "status": "complete",
@@ -1827,6 +1809,24 @@
       "source": "direct",
       "created": "2026-03-27T13:32:06.000Z",
       "file": "archive/SPEC-015-workflow-hooks-changelog.md"
+    },
+    "SPEC-019": {
+      "title": "Release Skill — orchestrated merge ritual with CLI-backed versioning",
+      "status": "complete",
+      "appetite": "Small (1–2 sessions)",
+      "requirement": null,
+      "source": "idea/20260330-idea-merge-command",
+      "created": "2026-03-30T15:20:00.000Z",
+      "file": "archive/SPEC-019-release-skill.md"
+    },
+    "SPEC-020": {
+      "title": "Cross-Harness Skills, Hook Consolidation & Target Convergence",
+      "status": "complete",
+      "appetite": "XL (unbounded — foundational architecture)",
+      "requirement": null,
+      "source": "brainstorm/amp-target-exploration + brainstorm-session-20260331",
+      "created": "2026-03-30T23:13:00.000Z",
+      "file": "archive/SPEC-020-target-convergence-amp.md"
     }
   }
 }

@@ -1,57 +1,70 @@
 ---
-session:
-  title: "SPEC-020 Consolidation Sweep: Port Phase 3 behaviors from feat/target-convergence"
-  status: in_progress
-  created: "2026-03-31T22:23:41Z"
-  last_updated: "2026-03-31T22:23:41Z"
-  branch: "opencode/hidden-wolf"
-  spec: "SPEC-020"
-
 traceability:
-  requirement: "Close gaps between feat/target-convergence (Phase 3 behaviors) and opencode/hidden-wolf (Phase 4 + convergence wins)"
+  requirement: >-
+    Close gaps between feat/target-convergence (Phase 3 behaviors) and
+    opencode/hidden-wolf (Phase 4 + convergence wins)
   architecture:
-    - "Hook Consolidation"
-    - "Session Journal Model"
-    - "Target Convergence"
+    - Hook Consolidation
+    - Session Journal Model
+    - Target Convergence
   decisions: []
-
 plans:
-  - "20260331-222122-spec-020-consolidation-sweep.md"
+  - 20260331-222122-spec-020-consolidation-sweep.md
 transcripts: []
-
 orchestration:
-  current_task: "COMPLETE - SPEC-020 Consolidation Sweep finished"
+  current_task: COMPLETE - SPEC-020 Consolidation Sweep finished
   spawned_agents:
-    - task: "Wave 0: Comparison checklist"
-      status: "completed"
-      note: "Detailed comparison checklist saved to session file"
-    - task: "Wave 1: Fix hooks.yaml"
-      status: "completed"
-      note: "Enforcement semantics restored - 11 edits applied"
-    - task: "Wave 2: Fix check.ts"
-      status: "completed"
-      note: "Bash command secret scanning added to checkSecrets()"
-    - task: "Wave 3: Journal auto-entry hooks"
-      status: "completed"
-      note: "Already completed in Wave 1 (journal-post-commit, journal-post-pr, journal-post-merge added)"
-    - task: "Wave 4: Align session.ts"
-      status: "completed"
-      note: "Ported timestamped filenames, flat frontmatter, 19 entry types, branch-based lookup"
-    - task: "Wave 5: Claude binary path"
-      status: "completed"
-      note: "BINARY_PATH_HOOKS set added session/journal hooks - all paths now consistent"
-    - task: "Wave 6: Clean stale docs"
-      status: "completed"
-      note: "Removed resume-session/reference-session references from README.md, AGENTS.md, content/agents/, content/skills/orchestration/"
-    - task: "Wave 7: Amp output naming"
-      status: "completed"
-      note: "DECISION: Keep loaf.js - Amp uses JavaScript, spec .ts was documentation error"
-    - task: "Full verification"
-      status: "completed"
-      note: "TypeScript passes, 440 tests pass, all 7 targets build successfully"
-    - task: "Wave 7: Amp output naming"
-      status: "completed"
-      note: "DECISION: Keep loaf.js - Amp uses JavaScript, spec .ts was documentation error"
+    - task: 'Wave 0: Comparison checklist'
+      status: completed
+      note: Detailed comparison checklist saved to session file
+    - task: 'Wave 1: Fix hooks.yaml'
+      status: completed
+      note: Enforcement semantics restored - 11 edits applied
+    - task: 'Wave 2: Fix check.ts'
+      status: completed
+      note: Bash command secret scanning added to checkSecrets()
+    - task: 'Wave 3: Journal auto-entry hooks'
+      status: completed
+      note: >-
+        Already completed in Wave 1 (journal-post-commit, journal-post-pr,
+        journal-post-merge added)
+    - task: 'Wave 4: Align session.ts'
+      status: completed
+      note: >-
+        Ported timestamped filenames, flat frontmatter, 19 entry types,
+        branch-based lookup
+    - task: 'Wave 5: Claude binary path'
+      status: completed
+      note: >-
+        BINARY_PATH_HOOKS set added session/journal hooks - all paths now
+        consistent
+    - task: 'Wave 6: Clean stale docs'
+      status: completed
+      note: >-
+        Removed resume-session/reference-session references from README.md,
+        AGENTS.md, content/agents/, content/skills/orchestration/
+    - task: 'Wave 7: Amp output naming'
+      status: completed
+      note: >-
+        DECISION: Keep loaf.js - Amp uses JavaScript, spec .ts was documentation
+        error
+    - task: Full verification
+      status: completed
+      note: 'TypeScript passes, 440 tests pass, all 7 targets build successfully'
+    - task: 'Wave 7: Amp output naming'
+      status: completed
+      note: >-
+        DECISION: Keep loaf.js - Amp uses JavaScript, spec .ts was documentation
+        error
+title: >-
+  SPEC-020 Consolidation Sweep: Port Phase 3 behaviors from
+  feat/target-convergence
+status: archived
+created: '2026-03-31T22:23:41Z'
+last_updated: '2026-04-04T17:27:51.184Z'
+branch: opencode/hidden-wolf
+spec: SPEC-020
+archived_at: '2026-04-04T17:27:51.184Z'
 ---
 
 # SPEC-020 Consolidation Sweep Session

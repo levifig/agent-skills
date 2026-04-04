@@ -1,0 +1,10 @@
+{
+  "integrations": {
+    "linear": {
+      "enabled": false
+    },
+    "serena": {
+      "enabled": false
+    }
+  }
+}
