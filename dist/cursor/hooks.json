@@ -123,14 +123,14 @@
       {
         "loaf-managed": true,
         "timeout": 60,
-        "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nBefore compaction, consider flushing important journal entries: - `decide(scope): key decisions made this session` - `discover(scope): important findings` - `conclude(scope): session summary`\nRun `loaf session log \"type(scope): description\"` to capture entries. After compaction, the transcript will be preserved in `.agents/transcripts/`."
+        "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nREQUIRED: Flush all unrecorded journal entries NOW, before responding to the user. Do not defer — entries lost to compaction cannot be recovered.\nEntry types: - `decide(scope): key decisions made this session` - `discover(scope): important findings` - `conclude(scope): session summary`\nRun `loaf session log \"type(scope): description\"` for each entry, then continue."
       }
     ],
     "stop": [
       {
         "loaf-managed": true,
         "timeout": 60,
-        "prompt": "SESSION JOURNAL NUDGE: You have made edits or commits this turn but have not recorded any `decide()`, `discover()`, or `conclude()` entries in the session journal.\nConsider capturing key decisions before ending: - `decide(scope): rationale for decision made` - `discover(scope): insight or finding` - `conclude(scope): final summary or learning`\nRun `loaf session log \"decide(scope): description\"` to capture decisions. See orchestration skill for session management patterns."
+        "prompt": "SESSION JOURNAL NUDGE: You have made edits or commits this turn but have not recorded any `decide()`, `discover()`, or `conclude()` entries in the session journal.\nREQUIRED: Log journal entries NOW, before responding to the user. Do not defer, acknowledge, or treat this as advisory — run the commands first, then respond.\nEntry types: - `decide(scope): rationale for decision made` - `discover(scope): insight or finding` - `conclude(scope): final summary or learning`\nRun `loaf session log \"type(scope): description\"` for each unrecorded decision or finding. Then continue with your response to the user."
       }
     ]
   }

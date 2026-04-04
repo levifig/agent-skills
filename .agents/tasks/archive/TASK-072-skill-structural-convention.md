@@ -2,10 +2,11 @@
 id: TASK-072
 title: Apply SKILL.md structural convention + verb/noun hygiene
 spec: SPEC-020
-status: todo
+status: done
 priority: P1
 created: '2026-04-04T16:41:22.295Z'
-updated: '2026-04-04T16:41:22.295Z'
+updated: '2026-04-04T19:34:13.016Z'
+completed_at: '2026-04-04T19:34:13.016Z'
 ---
 
 # TASK-072: Apply SKILL.md structural convention + verb/noun hygiene

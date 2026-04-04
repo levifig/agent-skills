@@ -2,10 +2,11 @@
 id: TASK-074
 title: 'Sidecar audit, agent profile audit, description truncation'
 spec: SPEC-020
-status: todo
+status: done
 priority: P1
 created: '2026-04-04T16:41:22.295Z'
-updated: '2026-04-04T16:41:22.295Z'
+updated: '2026-04-04T19:34:17.743Z'
+completed_at: '2026-04-04T19:34:17.742Z'
 ---
 
 # TASK-074: Sidecar audit, agent profile audit, description truncation

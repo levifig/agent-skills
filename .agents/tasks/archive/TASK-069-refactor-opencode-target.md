@@ -2,10 +2,11 @@
 id: TASK-069
 title: Refactor OpenCode target to use shared intermediate
 spec: SPEC-020
-status: todo
+status: done
 priority: P0
 created: '2026-04-04T16:41:22.294Z'
-updated: '2026-04-04T16:41:22.294Z'
+updated: '2026-04-04T19:34:04.385Z'
+completed_at: '2026-04-04T19:34:04.384Z'
 ---
 
 # TASK-069: Refactor OpenCode target to use shared intermediate

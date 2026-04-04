@@ -2,10 +2,11 @@
 id: TASK-076
 title: Implement loaf check CLI command
 spec: SPEC-020
-status: todo
+status: done
 priority: P0
 created: '2026-04-04T16:41:22.295Z'
-updated: '2026-04-04T16:41:22.295Z'
+updated: '2026-04-04T19:34:24.129Z'
+completed_at: '2026-04-04T19:34:24.128Z'
 ---
 
 # TASK-076: Implement `loaf check` CLI command

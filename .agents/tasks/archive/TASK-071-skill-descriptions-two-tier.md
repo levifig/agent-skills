@@ -2,10 +2,11 @@
 id: TASK-071
 title: Rework ~30 skill descriptions for two-tier routing
 spec: SPEC-020
-status: todo
+status: done
 priority: P1
 created: '2026-04-04T16:41:22.295Z'
-updated: '2026-04-04T16:41:22.295Z'
+updated: '2026-04-04T19:34:08.947Z'
+completed_at: '2026-04-04T19:34:08.946Z'
 ---
 
 # TASK-071: Rework ~30 skill descriptions for two-tier routing

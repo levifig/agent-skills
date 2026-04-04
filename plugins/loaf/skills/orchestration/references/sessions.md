@@ -41,7 +41,7 @@ For non-task work, sessions are still created explicitly:
 
 - Research sessions (`/loaf:research`)
 - Architecture decisions (`/loaf:architecture`)
-- Council deliberations (`/council-session`)
+- Council deliberations (`/loaf:council`)
 
 These sessions may not have a linked task but still follow standard session format.
 

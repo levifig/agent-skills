@@ -6,7 +6,7 @@
       "title": "Extract shared content modules (skills, agents, commands)",
       "slug": "extract-shared-content-modules",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "depends_on": [],
       "files": [],
@@ -14,15 +14,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.293Z",
-      "updated": "2026-04-04T16:41:22.293Z",
-      "completed_at": null,
-      "file": "TASK-065-extract-shared-content-modules.md"
+      "updated": "2026-04-04T19:33:37.192Z",
+      "completed_at": "2026-04-04T19:33:37.191Z",
+      "file": "archive/TASK-065-extract-shared-content-modules.md"
     },
     "TASK-066": {
       "title": "Build shared skill intermediate at dist/skills/",
       "slug": "shared-skill-intermediate",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "depends_on": [],
       "files": [],
@@ -30,15 +30,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.293Z",
-      "updated": "2026-04-04T16:41:22.293Z",
-      "completed_at": null,
-      "file": "TASK-066-shared-skill-intermediate.md"
+      "updated": "2026-04-04T19:33:57.392Z",
+      "completed_at": "2026-04-04T19:33:57.392Z",
+      "file": "archive/TASK-066-shared-skill-intermediate.md"
     },
     "TASK-067": {
       "title": "Refactor Codex + Gemini targets (byte-identical parity)",
       "slug": "refactor-codex-gemini-targets",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "depends_on": [],
       "files": [],
@@ -46,15 +46,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.294Z",
-      "updated": "2026-04-04T16:41:22.294Z",
-      "completed_at": null,
-      "file": "TASK-067-refactor-codex-gemini-targets.md"
+      "updated": "2026-04-04T19:33:59.798Z",
+      "completed_at": "2026-04-04T19:33:59.797Z",
+      "file": "archive/TASK-067-refactor-codex-gemini-targets.md"
     },
     "TASK-068": {
       "title": "Refactor Cursor target + fix prompt hook filter bug",
       "slug": "refactor-cursor-target",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "depends_on": [],
       "files": [],
@@ -62,15 +62,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.294Z",
-      "updated": "2026-04-04T16:41:22.294Z",
-      "completed_at": null,
-      "file": "TASK-068-refactor-cursor-target.md"
+      "updated": "2026-04-04T19:34:02.255Z",
+      "completed_at": "2026-04-04T19:34:02.254Z",
+      "file": "archive/TASK-068-refactor-cursor-target.md"
     },
     "TASK-069": {
       "title": "Refactor OpenCode target to use shared intermediate",
       "slug": "refactor-opencode-target",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "depends_on": [],
       "files": [],
@@ -78,15 +78,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.294Z",
-      "updated": "2026-04-04T16:41:22.294Z",
-      "completed_at": null,
-      "file": "TASK-069-refactor-opencode-target.md"
+      "updated": "2026-04-04T19:34:04.385Z",
+      "completed_at": "2026-04-04T19:34:04.384Z",
+      "file": "archive/TASK-069-refactor-opencode-target.md"
     },
     "TASK-070": {
       "title": "Refactor Claude Code target to use shared intermediate",
       "slug": "refactor-claude-code-target",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "files": [],
@@ -94,15 +94,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.295Z",
-      "updated": "2026-04-04T16:41:22.295Z",
-      "completed_at": null,
-      "file": "TASK-070-refactor-claude-code-target.md"
+      "updated": "2026-04-04T19:34:06.891Z",
+      "completed_at": "2026-04-04T19:34:06.891Z",
+      "file": "archive/TASK-070-refactor-claude-code-target.md"
     },
     "TASK-071": {
       "title": "Rework ~30 skill descriptions for two-tier routing",
       "slug": "skill-descriptions-two-tier",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "files": [],
@@ -110,15 +110,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.295Z",
-      "updated": "2026-04-04T16:41:22.295Z",
-      "completed_at": null,
-      "file": "TASK-071-skill-descriptions-two-tier.md"
+      "updated": "2026-04-04T19:34:08.947Z",
+      "completed_at": "2026-04-04T19:34:08.946Z",
+      "file": "archive/TASK-071-skill-descriptions-two-tier.md"
     },
     "TASK-072": {
       "title": "Apply SKILL.md structural convention + verb/noun hygiene",
       "slug": "skill-structural-convention",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "files": [],
@@ -126,15 +126,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.295Z",
-      "updated": "2026-04-04T16:41:22.295Z",
-      "completed_at": null,
-      "file": "TASK-072-skill-structural-convention.md"
+      "updated": "2026-04-04T19:34:13.016Z",
+      "completed_at": "2026-04-04T19:34:13.016Z",
+      "file": "archive/TASK-072-skill-structural-convention.md"
     },
     "TASK-073": {
       "title": "Migrate ~20 non-blocking hooks to skill instructions",
       "slug": "hook-to-skill-migration",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "files": [],
@@ -142,15 +142,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.295Z",
-      "updated": "2026-04-04T16:41:22.295Z",
-      "completed_at": null,
-      "file": "TASK-073-hook-to-skill-migration.md"
+      "updated": "2026-04-04T19:34:15.297Z",
+      "completed_at": "2026-04-04T19:34:15.296Z",
+      "file": "archive/TASK-073-hook-to-skill-migration.md"
     },
     "TASK-074": {
       "title": "Sidecar audit, agent profile audit, description truncation",
       "slug": "sidecar-agent-audit-truncation",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "files": [],
@@ -158,15 +158,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.295Z",
-      "updated": "2026-04-04T16:41:22.295Z",
-      "completed_at": null,
-      "file": "TASK-074-sidecar-agent-audit-truncation.md"
+      "updated": "2026-04-04T19:34:17.743Z",
+      "completed_at": "2026-04-04T19:34:17.742Z",
+      "file": "archive/TASK-074-sidecar-agent-audit-truncation.md"
     },
     "TASK-075": {
       "title": "CLI reference skill + update README.md / CLAUDE.md",
       "slug": "cli-reference-skill-docs",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P2",
       "depends_on": [],
       "files": [],
@@ -174,15 +174,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.295Z",
-      "updated": "2026-04-04T16:41:22.295Z",
-      "completed_at": null,
-      "file": "TASK-075-cli-reference-skill-docs.md"
+      "updated": "2026-04-04T19:34:19.992Z",
+      "completed_at": "2026-04-04T19:34:19.991Z",
+      "file": "archive/TASK-075-cli-reference-skill-docs.md"
     },
     "TASK-076": {
       "title": "Implement loaf check CLI command",
       "slug": "loaf-check-cli",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "depends_on": [],
       "files": [],
@@ -190,15 +190,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.295Z",
-      "updated": "2026-04-04T16:41:22.295Z",
-      "completed_at": null,
-      "file": "TASK-076-loaf-check-cli.md"
+      "updated": "2026-04-04T19:34:24.129Z",
+      "completed_at": "2026-04-04T19:34:24.128Z",
+      "file": "archive/TASK-076-loaf-check-cli.md"
     },
     "TASK-077": {
       "title": "Implement loaf session subcommands (start/end/log/archive)",
       "slug": "loaf-session-subcommands",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "depends_on": [],
       "files": [],
@@ -206,15 +206,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.296Z",
-      "updated": "2026-04-04T16:41:22.296Z",
-      "completed_at": null,
-      "file": "TASK-077-loaf-session-subcommands.md"
+      "updated": "2026-04-04T19:34:26.384Z",
+      "completed_at": "2026-04-04T19:34:26.383Z",
+      "file": "archive/TASK-077-loaf-session-subcommands.md"
     },
     "TASK-078": {
       "title": "Add failClosed to hook schema and build output",
       "slug": "failclosed-hook-schema",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "files": [],
@@ -222,15 +222,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.296Z",
-      "updated": "2026-04-04T16:41:22.296Z",
-      "completed_at": null,
-      "file": "TASK-078-failclosed-hook-schema.md"
+      "updated": "2026-04-04T19:34:29.161Z",
+      "completed_at": "2026-04-04T19:34:29.160Z",
+      "file": "archive/TASK-078-failclosed-hook-schema.md"
     },
     "TASK-079": {
       "title": "Generate direct loaf check commands in hook configs",
       "slug": "direct-command-hook-generation",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P0",
       "depends_on": [],
       "files": [],
@@ -238,15 +238,15 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.296Z",
-      "updated": "2026-04-04T16:41:22.296Z",
-      "completed_at": null,
-      "file": "TASK-079-direct-command-hook-generation.md"
+      "updated": "2026-04-04T19:34:31.274Z",
+      "completed_at": "2026-04-04T19:34:31.274Z",
+      "file": "archive/TASK-079-direct-command-hook-generation.md"
     },
     "TASK-080": {
       "title": "Generate session lifecycle + journal nudge hooks",
       "slug": "session-lifecycle-nudge-hooks",
       "spec": "SPEC-020",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "files": [],
@@ -254,9 +254,9 @@
       "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22.296Z",
-      "updated": "2026-04-04T16:41:22.296Z",
-      "completed_at": null,
-      "file": "TASK-080-session-lifecycle-nudge-hooks.md"
+      "updated": "2026-04-04T19:34:33.742Z",
+      "completed_at": "2026-04-04T19:34:33.742Z",
+      "file": "archive/TASK-080-session-lifecycle-nudge-hooks.md"
     },
     "TASK-001": {
       "title": "Create verification reference",

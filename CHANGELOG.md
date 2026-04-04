@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.0-dev.10] - 2026-04-04
+## [2.0.0-dev.11] - 2026-04-04
 
 ### Added
 - MCP detection library — detects Linear and Serena across Claude Code and Cursor configurations
@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration config merged from `.agents/config.json` into `.agents/loaf.json` per ADR-007
 - `AgentsConfig`/`readAgentsConfig` renamed to `LoafConfig`/`readLoafConfig`
 - `/cleanup` skill and `loaf cleanup` CLI command renamed to `/housekeeping` and `loaf housekeeping`
+- Session journal nudge hooks changed from advisory to imperative ("REQUIRED" before responding)
+- 4 knowledge base files rewritten for post-SPEC-020 architecture (hook-system, build-system, task-system, skill-architecture)
 
 ### Removed
 - `mcpServers` section from plugin.json and Claude Code build target

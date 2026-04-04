@@ -2,10 +2,11 @@
 id: TASK-065
 title: 'Extract shared content modules (skills, agents, commands)'
 spec: SPEC-020
-status: todo
+status: done
 priority: P0
 created: '2026-04-04T16:41:22.293Z'
-updated: '2026-04-04T16:41:22.293Z'
+updated: '2026-04-04T19:33:37.192Z'
+completed_at: '2026-04-04T19:33:37.191Z'
 ---
 
 # TASK-065: Extract shared content modules (skills, agents, commands)

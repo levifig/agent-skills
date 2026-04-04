@@ -7,7 +7,7 @@ description: >-
   brainstorm documents f...
 user-invocable: true
 argument-hint: '[idea description]'
-version: 2.0.0-dev.10
+version: 2.0.0-dev.11
 ---
 
 # Idea

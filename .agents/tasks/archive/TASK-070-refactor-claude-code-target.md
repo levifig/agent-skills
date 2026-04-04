@@ -2,10 +2,11 @@
 id: TASK-070
 title: Refactor Claude Code target to use shared intermediate
 spec: SPEC-020
-status: todo
+status: done
 priority: P1
 created: '2026-04-04T16:41:22.295Z'
-updated: '2026-04-04T16:41:22.295Z'
+updated: '2026-04-04T19:34:06.891Z'
+completed_at: '2026-04-04T19:34:06.891Z'
 ---
 
 # TASK-070: Refactor Claude Code target to use shared intermediate

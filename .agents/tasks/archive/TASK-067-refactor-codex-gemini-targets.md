@@ -2,10 +2,11 @@
 id: TASK-067
 title: Refactor Codex + Gemini targets (byte-identical parity)
 spec: SPEC-020
-status: todo
+status: done
 priority: P0
 created: '2026-04-04T16:41:22.294Z'
-updated: '2026-04-04T16:41:22.294Z'
+updated: '2026-04-04T19:33:59.798Z'
+completed_at: '2026-04-04T19:33:59.797Z'
 ---
 
 # TASK-067: Refactor Codex + Gemini targets (byte-identical parity)

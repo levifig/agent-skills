@@ -2,10 +2,11 @@
 id: TASK-078
 title: Add failClosed to hook schema and build output
 spec: SPEC-020
-status: todo
+status: done
 priority: P1
 created: '2026-04-04T16:41:22.296Z'
-updated: '2026-04-04T16:41:22.296Z'
+updated: '2026-04-04T19:34:29.161Z'
+completed_at: '2026-04-04T19:34:29.160Z'
 ---
 
 # TASK-078: Add `failClosed` to hook schema and build output
