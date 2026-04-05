@@ -498,11 +498,9 @@ Configure target-specific behavior and sidecars.
 - [Claude Code Skills Best Practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
 - [Claude Code Skills Documentation](https://code.claude.com/docs/en/skills)
 
-<!-- loaf:managed:start v2.0.0-dev.8 -->
+<!-- loaf:managed:start v2.0.0-dev.11 -->
 <!-- Maintained by loaf install/upgrade — do not edit manually -->
 ## Loaf Framework
-
-**Session Journal Format:** Compact inline journal — `- YYYY-MM-DD HH:MM type(scope): description`. Blank lines separate bursts. `--- PAUSE YYYY-MM-DD HH:MM ---` separates sessions.
 
 **Session Journal Entry Types:**
 - `decide(scope)`: Key decisions with rationale
@@ -510,14 +508,14 @@ Configure target-specific behavior and sidecars.
 - `block(scope)` / `unblock(scope)`: Blockers and resolutions
 - `spark(scope)`: Ideas to promote via `/idea`
 - `todo(scope)`: Action items to promote to tasks
-- `resume(scope)`: Session started/resumed (auto)
-- `pause`: Session ended (auto)
-- `commit(SHA)`: Code committed (auto)
 
 **CLI Commands:**
 - `loaf session start/end/log/archive` — Session management
 - `loaf check` — Run enforcement hooks
 - `loaf task/spec/kb` — Task and knowledge management
+
+**Journal Discipline:**
+Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log "type(scope): description"`. Entry types: `decide`, `discover`, `conclude`. Do not defer journaling — log before responding.
 
 See [orchestration skill](skills/orchestration/SKILL.md) for full details.
 <!-- loaf:managed:end -->
