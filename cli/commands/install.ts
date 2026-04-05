@@ -287,16 +287,13 @@ export function registerInstallCommand(program: Command): void {
           console.log();
         }
         // UX: skip MCP prompts when the user declined every target interactively.
-        // Still offer them for Claude Code (MCPs are primarily Claude integrations)
-        // or `loaf install --to all` with no matching tools (explicit intent).
+        // Still offer them for Claude Code or `loaf install --to all` (explicit intent).
         if (hasClaudeCode || options.to === "all") {
+          const mcpTargets = hasClaudeCode ? ["claude-code"] : [];
           await runMcpRecommendations({
             projectRoot,
             upgrade,
-            hasClaudeCode,
-            cursorTargetThisRun: false,
-            hasAnyDetectedTool: tools.length > 0 || hasClaudeCode,
-            installedTargets: [],
+            availableTargets: mcpTargets,
           });
         }
         console.log(`  ${gray("No targets selected")}`);
@@ -425,16 +422,16 @@ export function registerInstallCommand(program: Command): void {
         console.log();
       }
 
+      // Collect all available targets for MCP recommendations
+      const mcpTargets = [...new Set([
+        ...(hasClaudeCode ? ["claude-code"] : []),
+        ...installedTargets,
+        ...selectedTargets,
+      ])];
       await runMcpRecommendations({
         projectRoot,
         upgrade,
-        hasClaudeCode,
-        cursorTargetThisRun:
-          selectedTargets.includes("cursor") ||
-          installedTargets.includes("cursor"),
-        hasAnyDetectedTool:
-          tools.length > 0 || hasClaudeCode || installedTargets.length > 0,
-        installedTargets,
+        availableTargets: mcpTargets,
       });
     });
 }

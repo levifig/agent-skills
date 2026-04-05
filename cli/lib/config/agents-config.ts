@@ -11,10 +11,7 @@ export interface LoafConfig {
     staleness_threshold_days?: number;
     imports?: string[];
   };
-  integrations?: {
-    linear?: { enabled: boolean };
-    serena?: { enabled: boolean };
-  };
+  integrations?: Record<string, { enabled: boolean }>;
   [key: string]: unknown;
 }
 

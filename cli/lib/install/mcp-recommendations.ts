@@ -1,5 +1,10 @@
 /**
  * Post-install MCP recommendation flow.
+ *
+ * For each registered MCP:
+ *   1. Ask once: install? [n]o / [g]lobal / [p]roject (default: no)
+ *   2. If yes: which targets? [a]ll / comma-separated list
+ *   3. Install for selected targets, record in loaf.json
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -10,7 +15,9 @@ import { join } from "path";
 import { mergeLoafConfigIntegrations, readLoafConfig } from "../config/agents-config.js";
 import {
   buildMcpStatuses,
+  getMcpArgs,
   getMcpDefinition,
+  getTargetMcpConfig,
   MCP_REGISTRY,
   type McpDefinition,
   type McpStatus,
@@ -21,18 +28,16 @@ const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const gray = (s: string) => `\x1b[90m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
-const white = (s: string) => `\x1b[97m${s}\x1b[0m`;
 
 export interface McpRecommendationOptions {
   projectRoot: string;
   upgrade: boolean;
-  hasClaudeCode: boolean;
-  cursorTargetThisRun: boolean;
-  hasAnyDetectedTool: boolean;
-  installedTargets?: string[];
+  availableTargets: string[];
 }
 
-function askGpn(question: string): Promise<"global" | "project" | "no"> {
+/* ── Prompts ────────────────────────────────────────────────────────── */
+
+function ask(question: string): Promise<string> {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -40,90 +45,191 @@ function askGpn(question: string): Promise<"global" | "project" | "no"> {
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
       rl.close();
-      const a = answer.trim().toLowerCase();
-      if (a.startsWith("g")) resolve("global");
-      else if (a.startsWith("p")) resolve("project");
-      else resolve("no");
+      resolve(answer.trim().toLowerCase());
     });
   });
 }
 
-function claudeScopeFlag(scope: "global" | "project"): string {
-  return scope === "global" ? "user" : "project";
+function parseScope(answer: string): "global" | "project" | "no" {
+  if (answer.startsWith("g")) return "global";
+  if (answer.startsWith("p")) return "project";
+  return "no";
 }
+
+/* ── Target installation dispatch ───────────────────────────────────── */
 
 function installViaClaude(
   def: McpDefinition,
   scope: "global" | "project",
 ): void {
+  const scopeFlag = scope === "global" ? "user" : "project";
+  const args = getMcpArgs(def, "claude-code");
   execFileSync(
     "claude",
-    ["mcp", "add", "--scope", claudeScopeFlag(scope), def.id, "--", ...def.claudeArgs],
+    ["mcp", "add", "--scope", scopeFlag, def.id, "--", ...args],
     { stdio: "inherit" },
   );
 }
 
-function mergeCursorMcpServer(
-  projectRoot: string,
-  def: McpDefinition,
-  scope: "global" | "project",
+function mergeJsonMcpConfig(
+  filePath: string,
+  mcpKey: string,
+  serverId: string,
+  args: string[],
 ): void {
-  const home = process.env.HOME || process.env.USERPROFILE || "";
-  const dir =
-    scope === "global" ? join(home, ".cursor") : join(projectRoot, ".cursor");
-  const p = join(dir, "mcp.json");
+  const dir = join(filePath, "..");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
   let data: Record<string, unknown> = {};
-  if (existsSync(p)) {
+  if (existsSync(filePath)) {
     try {
-      data = JSON.parse(readFileSync(p, "utf-8")) as Record<string, unknown>;
+      data = JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
     } catch {
       data = {};
     }
   }
-  if (!data.mcpServers || typeof data.mcpServers !== "object") {
-    data.mcpServers = {};
+
+  // Resolve dot-key (e.g., "amp.mcpServers") — use literal key for top-level
+  let servers: Record<string, unknown>;
+  if (mcpKey in data && typeof data[mcpKey] === "object" && data[mcpKey] !== null) {
+    servers = data[mcpKey] as Record<string, unknown>;
+  } else if (mcpKey.includes(".")) {
+    // Also check nested path
+    const parts = mcpKey.split(".");
+    let current = data;
+    for (const part of parts.slice(0, -1)) {
+      if (!current[part] || typeof current[part] !== "object") {
+        current[part] = {};
+      }
+      current = current[part] as Record<string, unknown>;
+    }
+    const lastPart = parts[parts.length - 1];
+    if (!current[lastPart] || typeof current[lastPart] !== "object") {
+      current[lastPart] = {};
+    }
+    servers = current[lastPart] as Record<string, unknown>;
+  } else {
+    data[mcpKey] = {};
+    servers = data[mcpKey] as Record<string, unknown>;
   }
-  const argv = def.cursorArgs ?? def.claudeArgs;
-  (data.mcpServers as Record<string, unknown>)[def.id] = {
-    command: argv[0],
-    args: argv.slice(1),
+
+  servers[serverId] = {
+    command: args[0],
+    args: args.slice(1),
   };
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-  writeFileSync(p, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
+
+  writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
 }
 
-export function mcpIntegrationDoneForSession(
-  st: McpStatus,
-  canClaude: boolean,
-  cursorTargetThisRun: boolean,
-): boolean {
-  const hasAutoPath = canClaude || cursorTargetThisRun;
-  if (!hasAutoPath) {
-    return false;
+function mergeOpencodeMcpConfig(
+  filePath: string,
+  serverId: string,
+  args: string[],
+): void {
+  const dir = join(filePath, "..");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+  let data: Record<string, unknown> = {};
+  if (existsSync(filePath)) {
+    try {
+      data = JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
+    } catch {
+      data = {};
+    }
   }
-  return (
-    (!canClaude || st.claude.configured) &&
-    (!cursorTargetThisRun || st.cursor.configured)
-  );
+
+  if (!data.mcp || typeof data.mcp !== "object") {
+    data.mcp = {};
+  }
+  const servers = data.mcp as Record<string, unknown>;
+  // OpenCode uses command as array, requires type field
+  servers[serverId] = {
+    type: "local",
+    command: args,
+    enabled: true,
+  };
+
+  writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
 }
 
-function formatStackLine(
-  label: string,
+function installMcpForTarget(
+  target: string,
+  def: McpDefinition,
+  scope: "global" | "project",
+  projectRoot: string,
+): { ok: boolean; message: string } {
+  const args = getMcpArgs(def, target);
+  const config = getTargetMcpConfig(target);
+  if (!config) return { ok: false, message: `Unknown target: ${target}` };
+
+  try {
+    if (target === "claude-code") {
+      // Use Claude CLI for native installation
+      if (!detectClaudeCode()) {
+        return { ok: false, message: "Claude Code CLI not found" };
+      }
+      installViaClaude(def, scope);
+      return { ok: true, message: `${scope} scope` };
+    }
+
+    if (target === "codex") {
+      // Codex uses CLI; fall back to manual hint for project scope
+      try {
+        execFileSync("codex", ["mcp", "add", def.id, "--", ...args], {
+          stdio: "inherit",
+        });
+        return { ok: true, message: scope === "global" ? "global (via CLI)" : "project (via CLI)" };
+      } catch {
+        return { ok: false, message: "Codex CLI failed — configure manually in .codex/config.toml" };
+      }
+    }
+
+    // All other JSON targets: file merge
+    const filePath = scope === "global"
+      ? join(process.env.HOME || "", config.globalPaths[0].replace("~/", ""))
+      : join(projectRoot, config.projectPaths[0]);
+
+    if (target === "opencode") {
+      mergeOpencodeMcpConfig(filePath, def.id, args);
+    } else {
+      mergeJsonMcpConfig(filePath, config.mcpKey, def.id, args);
+    }
+
+    const loc = scope === "global" ? config.globalPaths[0] : config.projectPaths[0];
+    return { ok: true, message: `merged into ${loc}` };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: msg };
+  }
+}
+
+/* ── Status display ─────────────────────────────────────────────────── */
+
+function formatTargetLine(
+  target: string,
   st: { configured: boolean; scope: string | null },
 ): string {
   if (st.configured) {
-    const where =
-      st.scope === "global"
-        ? "global"
-        : st.scope === "project"
-          ? "project"
-          : "";
-    return `    ${green("✓")} ${label}${where ? ` (${where})` : ""}`;
+    const where = st.scope === "global" ? "global" : st.scope === "project" ? "project" : "";
+    return `    ${green("✓")} ${target}${where ? ` (${where})` : ""}`;
   }
-  return `    ${yellow("⚡")} ${label}: not configured`;
+  return `    ${yellow("⚡")} ${target}: not configured`;
 }
+
+/* ── Integration-done check ─────────────────────────────────────────── */
+
+/**
+ * Returns true when an MCP is already configured on all available targets.
+ */
+export function mcpIntegrationDoneForSession(
+  st: McpStatus,
+  availableTargets: string[],
+): boolean {
+  if (availableTargets.length === 0) return false;
+  return availableTargets.every((t) => st.targets[t]?.configured);
+}
+
+/* ── Main flow ──────────────────────────────────────────────────────── */
 
 /**
  * Run after target installation. Skipped when --upgrade.
@@ -145,42 +251,28 @@ export async function runMcpRecommendations(
     return;
   }
 
-  const { projectRoot, hasClaudeCode, cursorTargetThisRun, hasAnyDetectedTool } =
-    opts;
-  const installedTargets = opts.installedTargets ?? [];
-  if (!hasAnyDetectedTool && !hasClaudeCode) {
-    return;
-  }
-
-  const canClaude = hasClaudeCode && detectClaudeCode();
-  const hasAutoPath = canClaude || cursorTargetThisRun;
+  const { projectRoot, availableTargets } = opts;
+  if (availableTargets.length === 0) return;
 
   console.log(`\n${bold("Recommended MCP servers")}\n`);
 
-  const statuses = buildMcpStatuses(projectRoot);
+  const statuses = buildMcpStatuses(projectRoot, availableTargets);
 
   for (const st of statuses) {
     const def = getMcpDefinition(st.id);
     if (!def) continue;
 
-    const tierLabel =
-      def.tier === "optional" ? `${gray("Optional — ")}` : "";
+    const tierLabel = def.tier === "optional" ? `${gray("Optional — ")}` : "";
     console.log(`  ${tierLabel}${bold(def.displayName)}`);
 
-    if (canClaude) {
-      console.log(formatStackLine("Claude Code", st.claude));
-    }
-    if (cursorTargetThisRun) {
-      console.log(formatStackLine("Cursor", st.cursor));
+    // Show current status across all available targets
+    for (const t of availableTargets) {
+      const ts = st.targets[t];
+      if (ts) console.log(formatTargetLine(t, ts));
     }
 
-    const doneForSession = mcpIntegrationDoneForSession(
-      st,
-      canClaude,
-      cursorTargetThisRun,
-    );
-
-    if (doneForSession) {
+    // Already configured everywhere?
+    if (mcpIntegrationDoneForSession(st, availableTargets)) {
       mergeLoafConfigIntegrations(projectRoot, {
         [def.id]: { enabled: true },
       });
@@ -188,23 +280,13 @@ export async function runMcpRecommendations(
       continue;
     }
 
-    const needsClaudeInstall = canClaude && !st.claude.configured;
-    const needsCursorInstall = cursorTargetThisRun && !st.cursor.configured;
-
-    if (!hasAutoPath) {
-      console.log(`    ${gray("Manual:")} ${white(def.manualHint)}`);
-      mergeLoafConfigIntegrations(projectRoot, {
-        [def.id]: { enabled: false },
-      });
-      console.log();
-      continue;
-    }
-
-    const choice = await askGpn(
-      `    Install missing MCP(s)? [g]lobal / [p]roject / [n]o: `,
+    // Ask once: scope (combines yes/no + scope selection)
+    const scopeAnswer = await ask(
+      `    Install? [n]o / [g]lobal / [p]roject (default: no): `,
     );
+    const scope = parseScope(scopeAnswer);
 
-    if (choice === "no") {
+    if (scope === "no") {
       mergeLoafConfigIntegrations(projectRoot, {
         [def.id]: { enabled: false },
       });
@@ -213,58 +295,63 @@ export async function runMcpRecommendations(
       continue;
     }
 
-    let claudeSuccess = false;
-    let cursorSuccess = false;
-
-    if (needsClaudeInstall) {
-      try {
-        installViaClaude(def, choice);
-        claudeSuccess = true;
-        console.log(
-          `    ${green("✓")} ${def.displayName} added for Claude Code (${claudeScopeFlag(choice)} scope)`,
-        );
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.log(`    ${yellow("⚠")} Claude CLI failed: ${msg}`);
-        console.log(`    ${gray("Manual:")} ${def.manualHint}`);
-      }
-    }
-
-    if (needsCursorInstall) {
-      try {
-        mergeCursorMcpServer(projectRoot, def, choice);
-        cursorSuccess = true;
-        const loc =
-          choice === "global" ? "~/.cursor/mcp.json" : ".cursor/mcp.json";
-        console.log(
-          `    ${green("✓")} ${def.displayName} merged into ${gray(loc)}`,
-        );
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.log(`    ${yellow("⚠")} Cursor mcp.json merge failed: ${msg}`);
-      }
-    }
-
-    const stacksOk =
-      (!canClaude || st.claude.configured || claudeSuccess) &&
-      (!cursorTargetThisRun || st.cursor.configured || cursorSuccess);
-    mergeLoafConfigIntegrations(projectRoot, {
-      [def.id]: { enabled: stacksOk },
-    });
-    if (!stacksOk) {
-      console.log(
-        `    ${yellow("⚠")} ${gray(`integrations.${def.id}.enabled remains false until every required stack succeeds.`)}`,
-      );
-    }
-
-    const otherHint = installedTargets.filter((t) =>
-      ["opencode", "codex", "amp"].includes(t),
+    // Find targets that need installation
+    const unconfigured = availableTargets.filter(
+      (t) => !st.targets[t]?.configured,
     );
-    if (otherHint.length > 0) {
-      console.log(
-        `    ${gray(`Also configure this MCP in ${otherHint.join(", ")} via each tool's MCP settings.`)}`,
+
+    // Ask which targets (only if multiple unconfigured)
+    let selectedTargets: string[];
+    if (unconfigured.length === 1) {
+      selectedTargets = unconfigured;
+    } else {
+      console.log(`\n    Unconfigured targets:`);
+      unconfigured.forEach((t, i) => {
+        console.log(`      ${i + 1}. ${t}`);
+      });
+      const targetAnswer = await ask(
+        `    Which targets? [a]ll / comma-separated numbers: `,
       );
-      console.log(`    ${gray("Reference:")} ${white(def.manualHint)}`);
+      if (targetAnswer.startsWith("a") || targetAnswer === "") {
+        selectedTargets = unconfigured;
+      } else {
+        const indices = targetAnswer
+          .split(",")
+          .map((s) => parseInt(s.trim(), 10) - 1)
+          .filter((i) => i >= 0 && i < unconfigured.length);
+        selectedTargets = indices.length > 0
+          ? indices.map((i) => unconfigured[i])
+          : unconfigured;
+      }
+    }
+
+    // Install for each selected target
+    let allOk = true;
+    for (const target of selectedTargets) {
+      const result = installMcpForTarget(target, def, scope, projectRoot);
+      if (result.ok) {
+        console.log(`    ${green("✓")} ${target}: ${result.message}`);
+      } else {
+        console.log(`    ${yellow("⚠")} ${target}: ${result.message}`);
+        allOk = false;
+      }
+    }
+
+    // Check final state: all available targets configured?
+    const alreadyConfigured = availableTargets.filter(
+      (t) => st.targets[t]?.configured,
+    );
+    const totalOk = alreadyConfigured.length + (allOk ? selectedTargets.length : 0);
+    const enabled = totalOk === availableTargets.length;
+
+    mergeLoafConfigIntegrations(projectRoot, {
+      [def.id]: { enabled },
+    });
+
+    if (!enabled) {
+      console.log(
+        `    ${yellow("⚠")} ${gray(`integrations.${def.id}.enabled remains false until all targets succeed.`)}`,
+      );
     }
 
     console.log();

@@ -29,6 +29,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 ### Sessions
 - Create following [session template](templates/session.md) — compact inline journal format
 - Use `loaf session log` for journal entries: `decide(scope)`, `discover(scope)`, `block(scope)`, `spark(scope)`, `todo(scope)`
+- **SESSION JOURNAL NUDGE**: When you see this hook trigger, log unrecorded decisions or findings before responding. Use `loaf session log "type(scope): description"`. Only log actions (decisions made, things discovered, conclusions reached) — not thoughts or read-only work.
 - Archive when complete (status + `archived_at` + `archived_by` + move to `.agents/sessions/archive/`)
 - PreCompact hook: appends `compact` entry with context summary
 - Post-compaction: `loaf session start` outputs recent journal entries for recovery

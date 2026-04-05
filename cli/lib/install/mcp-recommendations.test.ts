@@ -1,50 +1,48 @@
 import { describe, it, expect } from "vitest";
 import { mcpIntegrationDoneForSession } from "./mcp-recommendations.js";
-import type { McpStatus } from "../detect/mcp.js";
+import type { McpStackStatus, McpStatus } from "../detect/mcp.js";
 
 function linearStatus(
-  claude: McpStatus["claude"],
-  cursor: McpStatus["cursor"],
+  targets: Record<string, McpStackStatus>,
 ): McpStatus {
   return {
     id: "linear",
     displayName: "Linear",
     tier: "recommended",
-    claude,
-    cursor,
+    targets,
   };
 }
 
+const G: McpStackStatus = { configured: true, scope: "global" };
+const P: McpStackStatus = { configured: true, scope: "project" };
+const N: McpStackStatus = { configured: false, scope: null };
+
 describe("mcpIntegrationDoneForSession", () => {
-  it("treats integration as done when Claude is configured and Cursor was not a target this run (even if Cursor stack is empty)", () => {
-    const st = linearStatus(
-      { configured: true, scope: "global" },
-      { configured: false, scope: null },
-    );
-    expect(mcpIntegrationDoneForSession(st, true, false)).toBe(true);
+  it("returns true when all available targets are configured", () => {
+    const st = linearStatus({ "claude-code": G, cursor: P });
+    expect(mcpIntegrationDoneForSession(st, ["claude-code", "cursor"])).toBe(true);
   });
 
-  it("requires Cursor stack when Cursor was a target this run and Linear is missing there", () => {
-    const st = linearStatus(
-      { configured: true, scope: "global" },
-      { configured: false, scope: null },
-    );
-    expect(mcpIntegrationDoneForSession(st, true, true)).toBe(false);
+  it("returns false when any available target is unconfigured", () => {
+    const st = linearStatus({ "claude-code": G, cursor: N });
+    expect(mcpIntegrationDoneForSession(st, ["claude-code", "cursor"])).toBe(false);
   });
 
-  it("is done when both stacks are configured and Cursor was targeted", () => {
-    const st = linearStatus(
-      { configured: true, scope: "global" },
-      { configured: true, scope: "project" },
-    );
-    expect(mcpIntegrationDoneForSession(st, true, true)).toBe(true);
+  it("returns true when checking a subset of configured targets", () => {
+    const st = linearStatus({ "claude-code": G, cursor: N });
+    expect(mcpIntegrationDoneForSession(st, ["claude-code"])).toBe(true);
   });
 
-  it("does not inherit Claude/Cursor file state when install is manual-only (e.g. Codex only)", () => {
-    const st = linearStatus(
-      { configured: true, scope: "global" },
-      { configured: true, scope: "project" },
-    );
-    expect(mcpIntegrationDoneForSession(st, false, false)).toBe(false);
+  it("returns false when no targets are available", () => {
+    const st = linearStatus({ "claude-code": G });
+    expect(mcpIntegrationDoneForSession(st, [])).toBe(false);
+  });
+
+  it("works with all 6 targets", () => {
+    const st = linearStatus({
+      "claude-code": G, cursor: P, opencode: G, codex: G, gemini: P, amp: N,
+    });
+    expect(mcpIntegrationDoneForSession(st, ["claude-code", "cursor", "opencode", "codex", "gemini", "amp"])).toBe(false);
+    expect(mcpIntegrationDoneForSession(st, ["claude-code", "cursor", "opencode", "codex", "gemini"])).toBe(true);
   });
 });

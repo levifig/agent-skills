@@ -89,6 +89,9 @@ function generateFencedContent(version: string): string {
     "- `loaf check` — Run enforcement hooks",
     "- `loaf task/spec/kb` — Task and knowledge management",
     "",
+    "**Journal Discipline:**",
+    "Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log \"type(scope): description\"`. Entry types: `decide`, `discover`, `conclude`. Do not defer journaling — log before responding.",
+    "",
     "See [orchestration skill](skills/orchestration/SKILL.md) for full details.",
     "<!-- loaf:managed:end -->",
   ].join("\n");

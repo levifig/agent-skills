@@ -1,5 +1,8 @@
 /**
- * MCP detection for Linear and Serena across Claude Code and Cursor.
+ * MCP detection and registry for all supported targets.
+ *
+ * Supports: Claude Code, Cursor, OpenCode, Codex, Gemini, Amp.
+ * Each target has its own config format and file paths.
  */
 
 import { existsSync, readFileSync } from "fs";
@@ -25,18 +28,83 @@ export interface McpStatus {
   id: string;
   displayName: string;
   tier: McpTier;
-  claude: McpStackStatus;
-  cursor: McpStackStatus;
+  targets: Record<string, McpStackStatus>;
 }
 
 export interface McpDefinition {
-  id: "linear" | "serena";
+  id: string;
   displayName: string;
   tier: McpTier;
-  claudeArgs: string[];
-  cursorArgs?: string[];
+  defaultArgs: string[];
+  targetArgs?: Partial<Record<string, string[]>>;
   manualHint: string;
 }
+
+/* ── Target MCP config paths ────────────────────────────────────────── */
+
+interface TargetMcpConfig {
+  /** Absolute paths (after ~ expansion) to scan for global MCP config */
+  globalPaths: string[];
+  /** Paths relative to project root to scan for project MCP config */
+  projectPaths: string[];
+  /** JSON key where MCP servers live (dot-separated for nested keys) */
+  mcpKey: string;
+  /** Config file format */
+  format: "json" | "toml";
+}
+
+function expandHome(p: string): string {
+  return p.startsWith("~/") ? join(home(), p.slice(2)) : p;
+}
+
+const TARGET_MCP_CONFIGS: Record<string, TargetMcpConfig> = {
+  "claude-code": {
+    globalPaths: ["~/.claude/settings.json", "~/.claude/settings.local.json"],
+    projectPaths: [".claude/settings.json", ".claude/settings.local.json", ".mcp.json"],
+    mcpKey: "mcpServers",
+    format: "json",
+  },
+  cursor: {
+    globalPaths: ["~/.cursor/mcp.json"],
+    projectPaths: [".cursor/mcp.json"],
+    mcpKey: "mcpServers",
+    format: "json",
+  },
+  opencode: {
+    globalPaths: ["~/.config/opencode/opencode.json"],
+    projectPaths: ["opencode.json"],
+    mcpKey: "mcp",
+    format: "json",
+  },
+  codex: {
+    globalPaths: ["~/.codex/config.toml"],
+    projectPaths: [".codex/config.toml"],
+    mcpKey: "mcp_servers",
+    format: "toml",
+  },
+  gemini: {
+    globalPaths: ["~/.gemini/settings.json"],
+    projectPaths: [".gemini/settings.json"],
+    mcpKey: "mcpServers",
+    format: "json",
+  },
+  amp: {
+    globalPaths: ["~/.config/amp/settings.json"],
+    projectPaths: [".amp/settings.json"],
+    mcpKey: "amp.mcpServers",
+    format: "json",
+  },
+};
+
+export function getTargetMcpConfig(target: string): TargetMcpConfig | undefined {
+  return TARGET_MCP_CONFIGS[target];
+}
+
+export function mcpSupportedTargets(): string[] {
+  return Object.keys(TARGET_MCP_CONFIGS);
+}
+
+/* ── MCP registry ───────────────────────────────────────────────────── */
 
 const SERENA_BASE_ARGS = [
   "uvx", "-p", "3.13", "--from",
@@ -49,29 +117,25 @@ export const MCP_REGISTRY: McpDefinition[] = [
     id: "linear",
     displayName: "Linear",
     tier: "recommended",
-    claudeArgs: ["npx", "-y", "mcp-remote", "https://mcp.linear.app/mcp"],
+    defaultArgs: ["npx", "-y", "mcp-remote", "https://mcp.linear.app/mcp"],
     manualHint:
-      "claude mcp add [--scope user|project] linear -- npx -y mcp-remote https://mcp.linear.app/mcp",
+      "npx -y mcp-remote https://mcp.linear.app/mcp",
   },
   {
     id: "serena",
     displayName: "Serena",
     tier: "optional",
-    claudeArgs: [...SERENA_BASE_ARGS, "--context", "claude-code", "--project-from-cwd"],
-    cursorArgs: [...SERENA_BASE_ARGS, "--context", "cursor", "--project-from-cwd"],
+    defaultArgs: [...SERENA_BASE_ARGS, "--project-from-cwd"],
+    targetArgs: {
+      "claude-code": [...SERENA_BASE_ARGS, "--context", "claude-code", "--project-from-cwd"],
+      cursor: [...SERENA_BASE_ARGS, "--context", "cursor", "--project-from-cwd"],
+    },
     manualHint:
-      "claude mcp add [--scope user|project] serena -- uvx -p 3.13 --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code --project-from-cwd",
+      "uvx -p 3.13 --from git+https://github.com/oraios/serena serena start-mcp-server --project-from-cwd",
   },
 ];
 
-function safeJson(path: string): unknown {
-  try {
-    if (!existsSync(path)) return null;
-    return JSON.parse(readFileSync(path, "utf-8"));
-  } catch {
-    return null;
-  }
-}
+/* ── Blob matchers (MCP-specific content detection) ─────────────────── */
 
 function blobMatchesLinear(blob: string): boolean {
   const b = blob.toLowerCase();
@@ -87,6 +151,14 @@ function blobMatchesSerena(blob: string): boolean {
   );
 }
 
+function getMatcher(mcpId: string): ((blob: string) => boolean) | null {
+  if (mcpId === "linear") return blobMatchesLinear;
+  if (mcpId === "serena") return blobMatchesSerena;
+  return null;
+}
+
+/* ── Claude CLI detection (special case) ────────────────────────────── */
+
 export function parseClaudeMcpListOutput(output: string): Set<string> {
   const names = new Set<string>();
   for (const line of output.split(/\r?\n/)) {
@@ -96,30 +168,12 @@ export function parseClaudeMcpListOutput(output: string): Set<string> {
     if (!m) continue;
     const full = m[1].toLowerCase();
     names.add(full);
-    // Plugin MCPs use plugin:<plugin>:<server> format -- extract the server name
     const parts = full.split(":");
     if (parts.length > 1) {
       names.add(parts[parts.length - 1]);
     }
   }
   return names;
-}
-
-function scanMcpServers(
-  raw: unknown,
-  id: string,
-  match: (blob: string) => boolean,
-): boolean {
-  if (!raw || typeof raw !== "object") return false;
-  const o = raw as Record<string, unknown>;
-  const servers = o.mcpServers;
-  if (!servers || typeof servers !== "object") return false;
-  const entries = servers as Record<string, unknown>;
-  if (id in entries) return true;
-  for (const [, spec] of Object.entries(entries)) {
-    if (match(JSON.stringify(spec))) return true;
-  }
-  return false;
 }
 
 let claudeListCache: Set<string> | null = null;
@@ -143,65 +197,170 @@ function claudeListNames(): Set<string> {
   return claudeListCache;
 }
 
+/* ── Generic JSON scanner ───────────────────────────────────────────── */
+
+function safeJson(path: string): unknown {
+  try {
+    if (!existsSync(path)) return null;
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a potentially dot-separated key (e.g. "amp.mcpServers") into
+ * the nested object value.
+ */
+function resolveKey(obj: unknown, key: string): unknown {
+  if (!obj || typeof obj !== "object") return undefined;
+  // Try direct key first (handles "amp.mcpServers" as a literal key)
+  const o = obj as Record<string, unknown>;
+  if (key in o) return o[key];
+  // Try dot-path traversal
+  const parts = key.split(".");
+  let current: unknown = obj;
+  for (const part of parts) {
+    if (!current || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+function scanMcpServersGeneric(
+  raw: unknown,
+  mcpKey: string,
+  id: string,
+  match: (blob: string) => boolean,
+): boolean {
+  const servers = resolveKey(raw, mcpKey);
+  if (!servers || typeof servers !== "object") return false;
+  const entries = servers as Record<string, unknown>;
+  if (id in entries) return true;
+  for (const [, spec] of Object.entries(entries)) {
+    if (match(JSON.stringify(spec))) return true;
+  }
+  return false;
+}
+
+/**
+ * Scan a TOML config file for MCP server presence.
+ * Uses simple string matching — avoids needing a TOML parser.
+ */
+function scanTomlForMcp(
+  path: string,
+  id: string,
+  match: (blob: string) => boolean,
+): boolean {
+  try {
+    if (!existsSync(path)) return false;
+    const content = readFileSync(path, "utf-8");
+    // Check for [mcp_servers.{id}] section header
+    if (content.includes(`[mcp_servers.${id}]`)) return true;
+    // Fall back to blob matching
+    return match(content);
+  } catch {
+    return false;
+  }
+}
+
+/* ── Per-target detection ───────────────────────────────────────────── */
+
+export function detectMcpForTarget(
+  projectRoot: string,
+  target: string,
+  mcpId: string,
+): McpStackStatus {
+  const config = TARGET_MCP_CONFIGS[target];
+  if (!config) return { configured: false, scope: null };
+
+  const match = getMatcher(mcpId);
+  if (!match) return { configured: false, scope: null };
+
+  if (config.format === "toml") {
+    // TOML targets: simple string scan (avoids parser dependency)
+    for (const p of config.globalPaths) {
+      if (scanTomlForMcp(expandHome(p), mcpId, match)) {
+        return { configured: true, scope: "global" };
+      }
+    }
+    for (const p of config.projectPaths) {
+      if (scanTomlForMcp(join(projectRoot, p), mcpId, match)) {
+        return { configured: true, scope: "project" };
+      }
+    }
+  } else {
+    // JSON targets: structured scan
+    for (const p of config.globalPaths) {
+      const j = safeJson(expandHome(p));
+      if (scanMcpServersGeneric(j, config.mcpKey, mcpId, match)) {
+        return { configured: true, scope: "global" };
+      }
+    }
+    for (const p of config.projectPaths) {
+      const j = safeJson(join(projectRoot, p));
+      if (scanMcpServersGeneric(j, config.mcpKey, mcpId, match)) {
+        return { configured: true, scope: "project" };
+      }
+    }
+  }
+
+  // Claude Code special case: check `claude mcp list` output
+  if (target === "claude-code") {
+    if (claudeListNames().has(mcpId)) {
+      return { configured: true, scope: "global" };
+    }
+  }
+
+  return { configured: false, scope: null };
+}
+
+/* ── Backward-compatible wrappers ───────────────────────────────────── */
+
 export function detectClaudeStackMcp(
   projectRoot: string,
   id: "linear" | "serena",
 ): McpStackStatus {
-  const match = id === "linear" ? blobMatchesLinear : blobMatchesSerena;
-  const globalPath = join(home(), ".claude", "settings.json");
-  const globalLocal = join(home(), ".claude", "settings.local.json");
-  for (const p of [globalPath, globalLocal]) {
-    const j = safeJson(p);
-    if (scanMcpServers(j, id, match)) {
-      return { configured: true, scope: "global" };
-    }
-  }
-  for (const p of [
-    join(projectRoot, ".claude", "settings.json"),
-    join(projectRoot, ".claude", "settings.local.json"),
-    join(projectRoot, ".mcp.json"),
-  ]) {
-    const j = safeJson(p);
-    if (scanMcpServers(j, id, match)) {
-      return { configured: true, scope: "project" };
-    }
-  }
-  if (claudeListNames().has(id)) {
-    return { configured: true, scope: "global" };
-  }
-  return { configured: false, scope: null };
+  return detectMcpForTarget(projectRoot, "claude-code", id);
 }
 
 export function detectCursorStackMcp(
   projectRoot: string,
   id: "linear" | "serena",
 ): McpStackStatus {
-  const match = id === "linear" ? blobMatchesLinear : blobMatchesSerena;
-  const globalPath = join(home(), ".cursor", "mcp.json");
-  const projectPath = join(projectRoot, ".cursor", "mcp.json");
-  const g = scanMcpServers(safeJson(globalPath), id, match);
-  const p = scanMcpServers(safeJson(projectPath), id, match);
-  if (p) return { configured: true, scope: "project" };
-  if (g) return { configured: true, scope: "global" };
-  return { configured: false, scope: null };
+  return detectMcpForTarget(projectRoot, "cursor", id);
 }
 
-export function buildMcpStatuses(projectRoot: string): McpStatus[] {
+/* ── Status builders ────────────────────────────────────────────────── */
+
+export function buildMcpStatuses(
+  projectRoot: string,
+  targets?: string[],
+): McpStatus[] {
+  const targetList = targets ?? Object.keys(TARGET_MCP_CONFIGS);
   return MCP_REGISTRY.map((def) => {
-    const claude = detectClaudeStackMcp(projectRoot, def.id);
-    const cursor = detectCursorStackMcp(projectRoot, def.id);
+    const targetStatuses: Record<string, McpStackStatus> = {};
+    for (const t of targetList) {
+      targetStatuses[t] = detectMcpForTarget(projectRoot, t, def.id);
+    }
     return {
       id: def.id,
       displayName: def.displayName,
       tier: def.tier,
-      claude,
-      cursor,
+      targets: targetStatuses,
     };
   });
 }
 
 export function getMcpDefinition(id: string): McpDefinition | undefined {
   return MCP_REGISTRY.find((d) => d.id === id);
+}
+
+/**
+ * Get the effective args for an MCP on a specific target.
+ */
+export function getMcpArgs(def: McpDefinition, target: string): string[] {
+  return def.targetArgs?.[target] ?? def.defaultArgs;
 }
 
 export function isLinearIntegrationDisabled(projectRoot: string): boolean {

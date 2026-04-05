@@ -177,6 +177,25 @@ hooks:
       timeout: 30000
       description: Auto-log merge entry to session journal
 
+    # Journal nudge — fires after actual file changes or commits only
+    # Full instructions in orchestration skill; hook is just a trigger
+    - id: journal-nudge-edits
+      skill: orchestration
+      type: prompt
+      prompt: "SESSION JOURNAL NUDGE: file changes made"
+      matcher: "Edit|Write"
+      timeout: 5000
+      description: Nudge journal entries after file edits
+
+    - id: journal-nudge-commit
+      skill: orchestration
+      type: prompt
+      prompt: "SESSION JOURNAL NUDGE: code committed"
+      matcher: "Bash"
+      if: "Bash(git commit:*)"
+      timeout: 5000
+      description: Nudge journal entries after git commits
+
   session:
     - id: session-start-loaf
       skill: orchestration
@@ -199,27 +218,7 @@ hooks:
       timeout: 60000
       description: Append compact entry to session journal before context compaction
 
-    # Journal nudge hooks (prompt type)
-    - id: session-stop-nudge
-      skill: orchestration
-      type: prompt
-      prompt: >-
-        SESSION JOURNAL NUDGE: You have made edits or commits this turn but have not
-        recorded any `decide()`, `discover()`, or `conclude()` entries in the session journal.
-
-        REQUIRED: Log journal entries NOW, before responding to the user.
-        Do not defer, acknowledge, or treat this as advisory — run the commands first, then respond.
-
-        Entry types:
-        - `decide(scope): rationale for decision made`
-        - `discover(scope): insight or finding`
-        - `conclude(scope): final summary or learning`
-
-        Run `loaf session log "type(scope): description"` for each unrecorded decision or finding.
-        Then continue with your response to the user.
-      event: Stop
-      description: Require journal entries when edits/commits exist without decision entries
-
+    # PreCompact nudge (event-specific, valuable at compaction time)
     - id: session-pre-compact-nudge
       skill: orchestration
       type: prompt

@@ -85,6 +85,12 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/kb-staleness-nudge.sh",
             "description": "Track covered edits and nudge when covered knowledge is stale",
             "timeout": 5
+          },
+          {
+            "type": "prompt",
+            "prompt": "SESSION JOURNAL NUDGE: file changes made",
+            "timeout": 5,
+            "description": "Nudge journal entries after file edits"
           }
         ]
       },
@@ -118,6 +124,13 @@
             "if": "Bash(gh pr merge:*)",
             "description": "Auto-log merge entry to session journal",
             "timeout": 30
+          },
+          {
+            "type": "prompt",
+            "prompt": "SESSION JOURNAL NUDGE: code committed",
+            "if": "Bash(git commit:*)",
+            "timeout": 5,
+            "description": "Nudge journal entries after git commits"
           }
         ]
       }
@@ -161,17 +174,6 @@
             "type": "prompt",
             "description": "Require journal flush before context compaction",
             "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nREQUIRED: Flush all unrecorded journal entries NOW, before responding to the user. Do not defer — entries lost to compaction cannot be recovered.\nEntry types: - `decide(scope): key decisions made this session` - `discover(scope): important findings` - `conclude(scope): session summary`\nRun `loaf session log \"type(scope): description\"` for each entry, then continue."
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "prompt",
-            "description": "Require journal entries when edits/commits exist without decision entries",
-            "prompt": "SESSION JOURNAL NUDGE: You have made edits or commits this turn but have not recorded any `decide()`, `discover()`, or `conclude()` entries in the session journal.\nREQUIRED: Log journal entries NOW, before responding to the user. Do not defer, acknowledge, or treat this as advisory — run the commands first, then respond.\nEntry types: - `decide(scope): rationale for decision made` - `discover(scope): insight or finding` - `conclude(scope): final summary or learning`\nRun `loaf session log \"type(scope): description\"` for each unrecorded decision or finding. Then continue with your response to the user."
           }
         ]
       }

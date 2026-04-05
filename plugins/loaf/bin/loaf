@@ -18405,6 +18405,9 @@ function generateFencedContent(version) {
     "- `loaf check` \u2014 Run enforcement hooks",
     "- `loaf task/spec/kb` \u2014 Task and knowledge management",
     "",
+    "**Journal Discipline:**",
+    'Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log "type(scope): description"`. Entry types: `decide`, `discover`, `conclude`. Do not defer journaling \u2014 log before responding.',
+    "",
     "See [orchestration skill](skills/orchestration/SKILL.md) for full details.",
     "<!-- loaf:managed:end -->"
   ].join("\n");
@@ -18521,6 +18524,50 @@ import { join as join20 } from "path";
 function home() {
   return process.env.HOME || process.env.USERPROFILE || "";
 }
+function expandHome(p) {
+  return p.startsWith("~/") ? join20(home(), p.slice(2)) : p;
+}
+var TARGET_MCP_CONFIGS = {
+  "claude-code": {
+    globalPaths: ["~/.claude/settings.json", "~/.claude/settings.local.json"],
+    projectPaths: [".claude/settings.json", ".claude/settings.local.json", ".mcp.json"],
+    mcpKey: "mcpServers",
+    format: "json"
+  },
+  cursor: {
+    globalPaths: ["~/.cursor/mcp.json"],
+    projectPaths: [".cursor/mcp.json"],
+    mcpKey: "mcpServers",
+    format: "json"
+  },
+  opencode: {
+    globalPaths: ["~/.config/opencode/opencode.json"],
+    projectPaths: ["opencode.json"],
+    mcpKey: "mcp",
+    format: "json"
+  },
+  codex: {
+    globalPaths: ["~/.codex/config.toml"],
+    projectPaths: [".codex/config.toml"],
+    mcpKey: "mcp_servers",
+    format: "toml"
+  },
+  gemini: {
+    globalPaths: ["~/.gemini/settings.json"],
+    projectPaths: [".gemini/settings.json"],
+    mcpKey: "mcpServers",
+    format: "json"
+  },
+  amp: {
+    globalPaths: ["~/.config/amp/settings.json"],
+    projectPaths: [".amp/settings.json"],
+    mcpKey: "amp.mcpServers",
+    format: "json"
+  }
+};
+function getTargetMcpConfig(target) {
+  return TARGET_MCP_CONFIGS[target];
+}
 var SERENA_BASE_ARGS = [
   "uvx",
   "-p",
@@ -18535,26 +18582,21 @@ var MCP_REGISTRY = [
     id: "linear",
     displayName: "Linear",
     tier: "recommended",
-    claudeArgs: ["npx", "-y", "mcp-remote", "https://mcp.linear.app/mcp"],
-    manualHint: "claude mcp add [--scope user|project] linear -- npx -y mcp-remote https://mcp.linear.app/mcp"
+    defaultArgs: ["npx", "-y", "mcp-remote", "https://mcp.linear.app/mcp"],
+    manualHint: "npx -y mcp-remote https://mcp.linear.app/mcp"
   },
   {
     id: "serena",
     displayName: "Serena",
     tier: "optional",
-    claudeArgs: [...SERENA_BASE_ARGS, "--context", "claude-code", "--project-from-cwd"],
-    cursorArgs: [...SERENA_BASE_ARGS, "--context", "cursor", "--project-from-cwd"],
-    manualHint: "claude mcp add [--scope user|project] serena -- uvx -p 3.13 --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code --project-from-cwd"
+    defaultArgs: [...SERENA_BASE_ARGS, "--project-from-cwd"],
+    targetArgs: {
+      "claude-code": [...SERENA_BASE_ARGS, "--context", "claude-code", "--project-from-cwd"],
+      cursor: [...SERENA_BASE_ARGS, "--context", "cursor", "--project-from-cwd"]
+    },
+    manualHint: "uvx -p 3.13 --from git+https://github.com/oraios/serena serena start-mcp-server --project-from-cwd"
   }
 ];
-function safeJson(path) {
-  try {
-    if (!existsSync15(path)) return null;
-    return JSON.parse(readFileSync13(path, "utf-8"));
-  } catch {
-    return null;
-  }
-}
 function blobMatchesLinear(blob) {
   const b = blob.toLowerCase();
   return b.includes("mcp.linear.app") || /\blinear\b/.test(b);
@@ -18562,6 +18604,11 @@ function blobMatchesLinear(blob) {
 function blobMatchesSerena(blob) {
   const b = blob.toLowerCase();
   return b.includes("oraios/serena") || b.includes("serena start-mcp-server") || b.includes("serena") && b.includes("uvx");
+}
+function getMatcher(mcpId) {
+  if (mcpId === "linear") return blobMatchesLinear;
+  if (mcpId === "serena") return blobMatchesSerena;
+  return null;
 }
 function parseClaudeMcpListOutput(output) {
   const names = /* @__PURE__ */ new Set();
@@ -18578,18 +18625,6 @@ function parseClaudeMcpListOutput(output) {
     }
   }
   return names;
-}
-function scanMcpServers(raw, id, match) {
-  if (!raw || typeof raw !== "object") return false;
-  const o = raw;
-  const servers = o.mcpServers;
-  if (!servers || typeof servers !== "object") return false;
-  const entries = servers;
-  if (id in entries) return true;
-  for (const [, spec] of Object.entries(entries)) {
-    if (match(JSON.stringify(spec))) return true;
-  }
-  return false;
 }
 var claudeListCache = null;
 function claudeListNames() {
@@ -18610,56 +18645,103 @@ function claudeListNames() {
   }
   return claudeListCache;
 }
-function detectClaudeStackMcp(projectRoot, id) {
-  const match = id === "linear" ? blobMatchesLinear : blobMatchesSerena;
-  const globalPath = join20(home(), ".claude", "settings.json");
-  const globalLocal = join20(home(), ".claude", "settings.local.json");
-  for (const p of [globalPath, globalLocal]) {
-    const j = safeJson(p);
-    if (scanMcpServers(j, id, match)) {
+function safeJson(path) {
+  try {
+    if (!existsSync15(path)) return null;
+    return JSON.parse(readFileSync13(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function resolveKey(obj, key) {
+  if (!obj || typeof obj !== "object") return void 0;
+  const o = obj;
+  if (key in o) return o[key];
+  const parts = key.split(".");
+  let current = obj;
+  for (const part of parts) {
+    if (!current || typeof current !== "object") return void 0;
+    current = current[part];
+  }
+  return current;
+}
+function scanMcpServersGeneric(raw, mcpKey, id, match) {
+  const servers = resolveKey(raw, mcpKey);
+  if (!servers || typeof servers !== "object") return false;
+  const entries = servers;
+  if (id in entries) return true;
+  for (const [, spec] of Object.entries(entries)) {
+    if (match(JSON.stringify(spec))) return true;
+  }
+  return false;
+}
+function scanTomlForMcp(path, id, match) {
+  try {
+    if (!existsSync15(path)) return false;
+    const content = readFileSync13(path, "utf-8");
+    if (content.includes(`[mcp_servers.${id}]`)) return true;
+    return match(content);
+  } catch {
+    return false;
+  }
+}
+function detectMcpForTarget(projectRoot, target, mcpId) {
+  const config = TARGET_MCP_CONFIGS[target];
+  if (!config) return { configured: false, scope: null };
+  const match = getMatcher(mcpId);
+  if (!match) return { configured: false, scope: null };
+  if (config.format === "toml") {
+    for (const p of config.globalPaths) {
+      if (scanTomlForMcp(expandHome(p), mcpId, match)) {
+        return { configured: true, scope: "global" };
+      }
+    }
+    for (const p of config.projectPaths) {
+      if (scanTomlForMcp(join20(projectRoot, p), mcpId, match)) {
+        return { configured: true, scope: "project" };
+      }
+    }
+  } else {
+    for (const p of config.globalPaths) {
+      const j = safeJson(expandHome(p));
+      if (scanMcpServersGeneric(j, config.mcpKey, mcpId, match)) {
+        return { configured: true, scope: "global" };
+      }
+    }
+    for (const p of config.projectPaths) {
+      const j = safeJson(join20(projectRoot, p));
+      if (scanMcpServersGeneric(j, config.mcpKey, mcpId, match)) {
+        return { configured: true, scope: "project" };
+      }
+    }
+  }
+  if (target === "claude-code") {
+    if (claudeListNames().has(mcpId)) {
       return { configured: true, scope: "global" };
     }
   }
-  for (const p of [
-    join20(projectRoot, ".claude", "settings.json"),
-    join20(projectRoot, ".claude", "settings.local.json"),
-    join20(projectRoot, ".mcp.json")
-  ]) {
-    const j = safeJson(p);
-    if (scanMcpServers(j, id, match)) {
-      return { configured: true, scope: "project" };
-    }
-  }
-  if (claudeListNames().has(id)) {
-    return { configured: true, scope: "global" };
-  }
   return { configured: false, scope: null };
 }
-function detectCursorStackMcp(projectRoot, id) {
-  const match = id === "linear" ? blobMatchesLinear : blobMatchesSerena;
-  const globalPath = join20(home(), ".cursor", "mcp.json");
-  const projectPath = join20(projectRoot, ".cursor", "mcp.json");
-  const g = scanMcpServers(safeJson(globalPath), id, match);
-  const p = scanMcpServers(safeJson(projectPath), id, match);
-  if (p) return { configured: true, scope: "project" };
-  if (g) return { configured: true, scope: "global" };
-  return { configured: false, scope: null };
-}
-function buildMcpStatuses(projectRoot) {
+function buildMcpStatuses(projectRoot, targets) {
+  const targetList = targets ?? Object.keys(TARGET_MCP_CONFIGS);
   return MCP_REGISTRY.map((def) => {
-    const claude = detectClaudeStackMcp(projectRoot, def.id);
-    const cursor = detectCursorStackMcp(projectRoot, def.id);
+    const targetStatuses = {};
+    for (const t of targetList) {
+      targetStatuses[t] = detectMcpForTarget(projectRoot, t, def.id);
+    }
     return {
       id: def.id,
       displayName: def.displayName,
       tier: def.tier,
-      claude,
-      cursor
+      targets: targetStatuses
     };
   });
 }
 function getMcpDefinition(id) {
   return MCP_REGISTRY.find((d) => d.id === id);
+}
+function getMcpArgs(def, target) {
+  return def.targetArgs?.[target] ?? def.defaultArgs;
 }
 function isLinearIntegrationDisabled(projectRoot) {
   const cfg = readLoafConfig(projectRoot);
@@ -18671,8 +18753,7 @@ var bold2 = (s) => `\x1B[1m${s}\x1B[0m`;
 var green2 = (s) => `\x1B[32m${s}\x1B[0m`;
 var gray2 = (s) => `\x1B[90m${s}\x1B[0m`;
 var yellow = (s) => `\x1B[33m${s}\x1B[0m`;
-var white = (s) => `\x1B[97m${s}\x1B[0m`;
-function askGpn(question) {
+function ask(question) {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout
@@ -18680,62 +18761,131 @@ function askGpn(question) {
   return new Promise((resolve2) => {
     rl.question(question, (answer) => {
       rl.close();
-      const a = answer.trim().toLowerCase();
-      if (a.startsWith("g")) resolve2("global");
-      else if (a.startsWith("p")) resolve2("project");
-      else resolve2("no");
+      resolve2(answer.trim().toLowerCase());
     });
   });
 }
-function claudeScopeFlag(scope) {
-  return scope === "global" ? "user" : "project";
+function parseScope(answer) {
+  if (answer.startsWith("g")) return "global";
+  if (answer.startsWith("p")) return "project";
+  return "no";
 }
 function installViaClaude(def, scope) {
+  const scopeFlag = scope === "global" ? "user" : "project";
+  const args = getMcpArgs(def, "claude-code");
   execFileSync4(
     "claude",
-    ["mcp", "add", "--scope", claudeScopeFlag(scope), def.id, "--", ...def.claudeArgs],
+    ["mcp", "add", "--scope", scopeFlag, def.id, "--", ...args],
     { stdio: "inherit" }
   );
 }
-function mergeCursorMcpServer(projectRoot, def, scope) {
-  const home2 = process.env.HOME || process.env.USERPROFILE || "";
-  const dir = scope === "global" ? join21(home2, ".cursor") : join21(projectRoot, ".cursor");
-  const p = join21(dir, "mcp.json");
+function mergeJsonMcpConfig(filePath, mcpKey, serverId, args) {
+  const dir = join21(filePath, "..");
+  if (!existsSync16(dir)) mkdirSync14(dir, { recursive: true });
   let data = {};
-  if (existsSync16(p)) {
+  if (existsSync16(filePath)) {
     try {
-      data = JSON.parse(readFileSync14(p, "utf-8"));
+      data = JSON.parse(readFileSync14(filePath, "utf-8"));
     } catch {
       data = {};
     }
   }
-  if (!data.mcpServers || typeof data.mcpServers !== "object") {
-    data.mcpServers = {};
+  let servers;
+  if (mcpKey in data && typeof data[mcpKey] === "object" && data[mcpKey] !== null) {
+    servers = data[mcpKey];
+  } else if (mcpKey.includes(".")) {
+    const parts = mcpKey.split(".");
+    let current = data;
+    for (const part of parts.slice(0, -1)) {
+      if (!current[part] || typeof current[part] !== "object") {
+        current[part] = {};
+      }
+      current = current[part];
+    }
+    const lastPart = parts[parts.length - 1];
+    if (!current[lastPart] || typeof current[lastPart] !== "object") {
+      current[lastPart] = {};
+    }
+    servers = current[lastPart];
+  } else {
+    data[mcpKey] = {};
+    servers = data[mcpKey];
   }
-  const argv = def.cursorArgs ?? def.claudeArgs;
-  data.mcpServers[def.id] = {
-    command: argv[0],
-    args: argv.slice(1)
+  servers[serverId] = {
+    command: args[0],
+    args: args.slice(1)
   };
-  if (!existsSync16(dir)) {
-    mkdirSync14(dir, { recursive: true });
-  }
-  writeFileSync13(p, `${JSON.stringify(data, null, 2)}
+  writeFileSync13(filePath, `${JSON.stringify(data, null, 2)}
 `, "utf-8");
 }
-function mcpIntegrationDoneForSession(st, canClaude, cursorTargetThisRun) {
-  const hasAutoPath = canClaude || cursorTargetThisRun;
-  if (!hasAutoPath) {
-    return false;
+function mergeOpencodeMcpConfig(filePath, serverId, args) {
+  const dir = join21(filePath, "..");
+  if (!existsSync16(dir)) mkdirSync14(dir, { recursive: true });
+  let data = {};
+  if (existsSync16(filePath)) {
+    try {
+      data = JSON.parse(readFileSync14(filePath, "utf-8"));
+    } catch {
+      data = {};
+    }
   }
-  return (!canClaude || st.claude.configured) && (!cursorTargetThisRun || st.cursor.configured);
+  if (!data.mcp || typeof data.mcp !== "object") {
+    data.mcp = {};
+  }
+  const servers = data.mcp;
+  servers[serverId] = {
+    type: "local",
+    command: args,
+    enabled: true
+  };
+  writeFileSync13(filePath, `${JSON.stringify(data, null, 2)}
+`, "utf-8");
 }
-function formatStackLine(label, st) {
+function installMcpForTarget(target, def, scope, projectRoot) {
+  const args = getMcpArgs(def, target);
+  const config = getTargetMcpConfig(target);
+  if (!config) return { ok: false, message: `Unknown target: ${target}` };
+  try {
+    if (target === "claude-code") {
+      if (!detectClaudeCode()) {
+        return { ok: false, message: "Claude Code CLI not found" };
+      }
+      installViaClaude(def, scope);
+      return { ok: true, message: `${scope} scope` };
+    }
+    if (target === "codex") {
+      try {
+        execFileSync4("codex", ["mcp", "add", def.id, "--", ...args], {
+          stdio: "inherit"
+        });
+        return { ok: true, message: scope === "global" ? "global (via CLI)" : "project (via CLI)" };
+      } catch {
+        return { ok: false, message: "Codex CLI failed \u2014 configure manually in .codex/config.toml" };
+      }
+    }
+    const filePath = scope === "global" ? join21(process.env.HOME || "", config.globalPaths[0].replace("~/", "")) : join21(projectRoot, config.projectPaths[0]);
+    if (target === "opencode") {
+      mergeOpencodeMcpConfig(filePath, def.id, args);
+    } else {
+      mergeJsonMcpConfig(filePath, config.mcpKey, def.id, args);
+    }
+    const loc = scope === "global" ? config.globalPaths[0] : config.projectPaths[0];
+    return { ok: true, message: `merged into ${loc}` };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: msg };
+  }
+}
+function formatTargetLine(target, st) {
   if (st.configured) {
     const where = st.scope === "global" ? "global" : st.scope === "project" ? "project" : "";
-    return `    ${green2("\u2713")} ${label}${where ? ` (${where})` : ""}`;
+    return `    ${green2("\u2713")} ${target}${where ? ` (${where})` : ""}`;
   }
-  return `    ${yellow("\u26A1")} ${label}: not configured`;
+  return `    ${yellow("\u26A1")} ${target}: not configured`;
+}
+function mcpIntegrationDoneForSession(st, availableTargets) {
+  if (availableTargets.length === 0) return false;
+  return availableTargets.every((t) => st.targets[t]?.configured);
 }
 async function runMcpRecommendations(opts) {
   if (opts.upgrade) return;
@@ -18750,54 +18900,33 @@ async function runMcpRecommendations(opts) {
     }
     return;
   }
-  const { projectRoot, hasClaudeCode, cursorTargetThisRun, hasAnyDetectedTool } = opts;
-  const installedTargets = opts.installedTargets ?? [];
-  if (!hasAnyDetectedTool && !hasClaudeCode) {
-    return;
-  }
-  const canClaude = hasClaudeCode && detectClaudeCode();
-  const hasAutoPath = canClaude || cursorTargetThisRun;
+  const { projectRoot, availableTargets } = opts;
+  if (availableTargets.length === 0) return;
   console.log(`
 ${bold2("Recommended MCP servers")}
 `);
-  const statuses = buildMcpStatuses(projectRoot);
+  const statuses = buildMcpStatuses(projectRoot, availableTargets);
   for (const st of statuses) {
     const def = getMcpDefinition(st.id);
     if (!def) continue;
     const tierLabel = def.tier === "optional" ? `${gray2("Optional \u2014 ")}` : "";
     console.log(`  ${tierLabel}${bold2(def.displayName)}`);
-    if (canClaude) {
-      console.log(formatStackLine("Claude Code", st.claude));
+    for (const t of availableTargets) {
+      const ts = st.targets[t];
+      if (ts) console.log(formatTargetLine(t, ts));
     }
-    if (cursorTargetThisRun) {
-      console.log(formatStackLine("Cursor", st.cursor));
-    }
-    const doneForSession = mcpIntegrationDoneForSession(
-      st,
-      canClaude,
-      cursorTargetThisRun
-    );
-    if (doneForSession) {
+    if (mcpIntegrationDoneForSession(st, availableTargets)) {
       mergeLoafConfigIntegrations(projectRoot, {
         [def.id]: { enabled: true }
       });
       console.log();
       continue;
     }
-    const needsClaudeInstall = canClaude && !st.claude.configured;
-    const needsCursorInstall = cursorTargetThisRun && !st.cursor.configured;
-    if (!hasAutoPath) {
-      console.log(`    ${gray2("Manual:")} ${white(def.manualHint)}`);
-      mergeLoafConfigIntegrations(projectRoot, {
-        [def.id]: { enabled: false }
-      });
-      console.log();
-      continue;
-    }
-    const choice = await askGpn(
-      `    Install missing MCP(s)? [g]lobal / [p]roject / [n]o: `
+    const scopeAnswer = await ask(
+      `    Install? [n]o / [g]lobal / [p]roject (default: no): `
     );
-    if (choice === "no") {
+    const scope = parseScope(scopeAnswer);
+    if (scope === "no") {
       mergeLoafConfigIntegrations(projectRoot, {
         [def.id]: { enabled: false }
       });
@@ -18805,51 +18934,50 @@ ${bold2("Recommended MCP servers")}
       console.log();
       continue;
     }
-    let claudeSuccess = false;
-    let cursorSuccess = false;
-    if (needsClaudeInstall) {
-      try {
-        installViaClaude(def, choice);
-        claudeSuccess = true;
-        console.log(
-          `    ${green2("\u2713")} ${def.displayName} added for Claude Code (${claudeScopeFlag(choice)} scope)`
-        );
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.log(`    ${yellow("\u26A0")} Claude CLI failed: ${msg}`);
-        console.log(`    ${gray2("Manual:")} ${def.manualHint}`);
-      }
-    }
-    if (needsCursorInstall) {
-      try {
-        mergeCursorMcpServer(projectRoot, def, choice);
-        cursorSuccess = true;
-        const loc = choice === "global" ? "~/.cursor/mcp.json" : ".cursor/mcp.json";
-        console.log(
-          `    ${green2("\u2713")} ${def.displayName} merged into ${gray2(loc)}`
-        );
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.log(`    ${yellow("\u26A0")} Cursor mcp.json merge failed: ${msg}`);
-      }
-    }
-    const stacksOk = (!canClaude || st.claude.configured || claudeSuccess) && (!cursorTargetThisRun || st.cursor.configured || cursorSuccess);
-    mergeLoafConfigIntegrations(projectRoot, {
-      [def.id]: { enabled: stacksOk }
-    });
-    if (!stacksOk) {
-      console.log(
-        `    ${yellow("\u26A0")} ${gray2(`integrations.${def.id}.enabled remains false until every required stack succeeds.`)}`
-      );
-    }
-    const otherHint = installedTargets.filter(
-      (t) => ["opencode", "codex", "amp"].includes(t)
+    const unconfigured = availableTargets.filter(
+      (t) => !st.targets[t]?.configured
     );
-    if (otherHint.length > 0) {
-      console.log(
-        `    ${gray2(`Also configure this MCP in ${otherHint.join(", ")} via each tool's MCP settings.`)}`
+    let selectedTargets;
+    if (unconfigured.length === 1) {
+      selectedTargets = unconfigured;
+    } else {
+      console.log(`
+    Unconfigured targets:`);
+      unconfigured.forEach((t, i) => {
+        console.log(`      ${i + 1}. ${t}`);
+      });
+      const targetAnswer = await ask(
+        `    Which targets? [a]ll / comma-separated numbers: `
       );
-      console.log(`    ${gray2("Reference:")} ${white(def.manualHint)}`);
+      if (targetAnswer.startsWith("a") || targetAnswer === "") {
+        selectedTargets = unconfigured;
+      } else {
+        const indices = targetAnswer.split(",").map((s) => parseInt(s.trim(), 10) - 1).filter((i) => i >= 0 && i < unconfigured.length);
+        selectedTargets = indices.length > 0 ? indices.map((i) => unconfigured[i]) : unconfigured;
+      }
+    }
+    let allOk = true;
+    for (const target of selectedTargets) {
+      const result = installMcpForTarget(target, def, scope, projectRoot);
+      if (result.ok) {
+        console.log(`    ${green2("\u2713")} ${target}: ${result.message}`);
+      } else {
+        console.log(`    ${yellow("\u26A0")} ${target}: ${result.message}`);
+        allOk = false;
+      }
+    }
+    const alreadyConfigured = availableTargets.filter(
+      (t) => st.targets[t]?.configured
+    );
+    const totalOk = alreadyConfigured.length + (allOk ? selectedTargets.length : 0);
+    const enabled = totalOk === availableTargets.length;
+    mergeLoafConfigIntegrations(projectRoot, {
+      [def.id]: { enabled }
+    });
+    if (!enabled) {
+      console.log(
+        `    ${yellow("\u26A0")} ${gray2(`integrations.${def.id}.enabled remains false until all targets succeed.`)}`
+      );
     }
     console.log();
   }
@@ -18876,7 +19004,7 @@ var green3 = (s) => `\x1B[32m${s}\x1B[0m`;
 var red2 = (s) => `\x1B[31m${s}\x1B[0m`;
 var yellow2 = (s) => `\x1B[33m${s}\x1B[0m`;
 var gray3 = (s) => `\x1B[90m${s}\x1B[0m`;
-var white2 = (s) => `\x1B[97m${s}\x1B[0m`;
+var white = (s) => `\x1B[97m${s}\x1B[0m`;
 function findRootDir2() {
   let dir = __dirname2;
   for (let i = 0; i < 10; i++) {
@@ -18983,11 +19111,11 @@ ${bold3("loaf install")}
       console.log(`  ${green3("\u2713")} Claude Code detected`);
       if (devMode) {
         console.log(
-          `    ${gray3("Test locally:")} ${white2(`/plugin marketplace add ${rootDir}`)}`
+          `    ${gray3("Test locally:")} ${white(`/plugin marketplace add ${rootDir}`)}`
         );
       } else {
         console.log(
-          `    ${gray3("Install via:")} ${white2("/plugin marketplace add levifig/loaf")}`
+          `    ${gray3("Install via:")} ${white("/plugin marketplace add levifig/loaf")}`
         );
       }
       console.log();
@@ -19073,13 +19201,11 @@ ${gray3("Valid targets:")} ${VALID_TARGETS.join(", ")}, all`
         console.log();
       }
       if (hasClaudeCode || options2.to === "all") {
+        const mcpTargets2 = hasClaudeCode ? ["claude-code"] : [];
         await runMcpRecommendations({
           projectRoot,
           upgrade,
-          hasClaudeCode,
-          cursorTargetThisRun: false,
-          hasAnyDetectedTool: tools.length > 0 || hasClaudeCode,
-          installedTargets: []
+          availableTargets: mcpTargets2
         });
       }
       console.log(`  ${gray3("No targets selected")}`);
@@ -19180,13 +19306,15 @@ ${gray3("Valid targets:")} ${VALID_TARGETS.join(", ")}, all`
     if (hasFencedOutput) {
       console.log();
     }
+    const mcpTargets = [.../* @__PURE__ */ new Set([
+      ...hasClaudeCode ? ["claude-code"] : [],
+      ...installedTargets,
+      ...selectedTargets
+    ])];
     await runMcpRecommendations({
       projectRoot,
       upgrade,
-      hasClaudeCode,
-      cursorTargetThisRun: selectedTargets.includes("cursor") || installedTargets.includes("cursor"),
-      hasAnyDetectedTool: tools.length > 0 || hasClaudeCode || installedTargets.length > 0,
-      installedTargets
+      availableTargets: mcpTargets
     });
   });
 }
@@ -22703,7 +22831,7 @@ var red7 = (s) => `\x1B[31m${s}\x1B[0m`;
 var yellow11 = (s) => `\x1B[33m${s}\x1B[0m`;
 var gray10 = (s) => `\x1B[90m${s}\x1B[0m`;
 var cyan7 = (s) => `\x1B[36m${s}\x1B[0m`;
-var white3 = (s) => `\x1B[97m${s}\x1B[0m`;
+var white2 = (s) => `\x1B[97m${s}\x1B[0m`;
 function findRootDir3() {
   let dir = __dirname3;
   for (let i = 0; i < 10; i++) {
@@ -22922,11 +23050,11 @@ function runInstall(rootDir) {
   if (hasClaudeCode) {
     if (devMode) {
       console.log(
-        `  ${green9("\u2713")} Claude Code detected ${gray10("(test via")} ${white3(`/plugin marketplace add ${rootDir}`)}${gray10(")")}`
+        `  ${green9("\u2713")} Claude Code detected ${gray10("(test via")} ${white2(`/plugin marketplace add ${rootDir}`)}${gray10(")")}`
       );
     } else {
       console.log(
-        `  ${green9("\u2713")} Claude Code detected ${gray10("(install via")} ${white3("/plugin marketplace add levifig/loaf")}${gray10(")")}`
+        `  ${green9("\u2713")} Claude Code detected ${gray10("(install via")} ${white2("/plugin marketplace add levifig/loaf")}${gray10(")")}`
       );
     }
   }
