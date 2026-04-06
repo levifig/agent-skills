@@ -456,7 +456,25 @@ async function workflowPrePr(context: HookContext): Promise<CheckResult> {
     result.errors.push("CHANGELOG.md not found");
   }
 
-  // Check 2: PR title and body requirements
+  // Check 2: Base branch has unpushed commits (would be absorbed into PR)
+  try {
+    const branch = execSync("git branch --show-current", { encoding: "utf-8" }).trim();
+    const baseRef = execSync("gh repo view --json defaultBranchRef -q .defaultBranchRef.name", { encoding: "utf-8" }).trim();
+    if (branch !== baseRef) {
+      const unpushed = execSync(`git rev-list --count origin/${baseRef}..${baseRef}`, { encoding: "utf-8" }).trim();
+      const count = parseInt(unpushed, 10);
+      if (count > 0) {
+        result.warnings.push(
+          `${baseRef} has ${count} unpushed commit(s) that will be absorbed into this PR's squash merge`,
+          `Fix: git checkout ${baseRef} && git push && git checkout ${branch} — then create the PR`
+        );
+      }
+    }
+  } catch {
+    // Non-critical — skip if git/gh commands fail
+  }
+
+  // Check 3: PR title and body requirements
   // Allow --fill or --body-file as alternatives to --title/--body
   // Interactive mode (no flags at all) is also allowed
   const hasFillFlag = /--fill/.test(command);
