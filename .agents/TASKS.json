@@ -1630,15 +1630,6 @@
       "created": "2026-03-28T15:45:00.000Z",
       "file": "SPEC-017-tdd-harness.md"
     },
-    "SPEC-018": {
-      "title": "OpenCode Hooks Parity — stdin piping, blocking, config, and docs",
-      "status": "drafting",
-      "appetite": "Small (1–2 sessions)",
-      "requirement": null,
-      "source": "code-review",
-      "created": "2026-03-30T10:50:00.000Z",
-      "file": "SPEC-018-opencode-hooks-parity.md"
-    },
     "SPEC-021": {
       "title": "Bootstrap Document Hierarchy Redesign",
       "status": "drafting",
@@ -1809,6 +1800,15 @@
       "source": "direct",
       "created": "2026-03-27T13:32:06.000Z",
       "file": "archive/SPEC-015-workflow-hooks-changelog.md"
+    },
+    "SPEC-018": {
+      "title": "OpenCode Hooks Parity — verification",
+      "status": "complete",
+      "appetite": "Micro (< 1 session)",
+      "requirement": null,
+      "source": "code-review",
+      "created": "2026-03-30T10:50:00.000Z",
+      "file": "archive/SPEC-018-opencode-hooks-parity.md"
     },
     "SPEC-019": {
       "title": "Release Skill — orchestrated merge ritual with CLI-backed versioning",
