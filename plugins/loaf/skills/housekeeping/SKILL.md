@@ -7,7 +7,7 @@ description: >-
   recommendations, archives comp...
 user-invocable: true
 argument-hint: '[sessions|specs|plans|drafts]'
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Housekeeping
@@ -61,6 +61,10 @@ loaf task sync                # Fix TASKS.json drift
 | Specs | `.agents/specs/` | `archive/` | `loaf spec archive` |
 | Plans | `.agents/plans/` | N/A | Delete when done |
 | Drafts | `.agents/drafts/` | `archive/` | User decision |
+
+## Suggests Next
+
+After housekeeping, suggest `/loaf:reflect` if the session produced key decisions or learnings worth integrating into strategic docs.
 
 ## Topics
 

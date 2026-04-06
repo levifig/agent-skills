@@ -20,13 +20,15 @@
         "loaf-managed": true,
         "timeout": 60,
         "matcher": "Bash",
-        "command": "loaf check --hook validate-push"
+        "command": "loaf check --hook validate-push",
+        "if": "Bash(git push:*)"
       },
       {
         "loaf-managed": true,
         "timeout": 5,
         "matcher": "Bash",
-        "command": "loaf check --hook workflow-pre-pr"
+        "command": "loaf check --hook workflow-pre-pr",
+        "if": "Bash(gh pr create:*)"
       },
       {
         "loaf-managed": true,
@@ -47,13 +49,15 @@
         "timeout": 30,
         "matcher": "Bash",
         "failClosed": true,
-        "command": "loaf check --hook validate-commit"
+        "command": "loaf check --hook validate-commit",
+        "if": "Bash(git commit:*)"
       },
       {
         "loaf-managed": true,
         "timeout": 30,
         "matcher": "Bash",
-        "command": "loaf session log --detect-linear"
+        "command": "loaf session log --detect-linear",
+        "if": "Bash(git commit:*)"
       }
     ],
     "postToolUse": [

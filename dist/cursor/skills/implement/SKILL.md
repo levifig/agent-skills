@@ -6,7 +6,7 @@ description: >-
   TASK-XXX." Produces session files, agent spawn plans, and progress tracking.
   Not for shaping (use shape), breakdown (use breakdown), or single-file edits
   (use direct tools).
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Implement
@@ -231,6 +231,10 @@ After creating session AND plan files:
 | Session Management | [session-management.md](references/session-management.md) | Branch management, team routing, diagrams, plan mode, Linear sync, handoff, archival |
 
 ---
+
+## Suggests Next
+
+After all tasks are complete, suggest `/release` to merge the work.
 
 ## Related Skills
 

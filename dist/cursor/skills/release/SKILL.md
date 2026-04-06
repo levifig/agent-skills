@@ -6,7 +6,7 @@ description: >-
   "merge this PR," "ready to merge," or "ship it." Produces version bumps,
   changelog updates, and merged code. Not for creating PRs (use git-workflow) or
   reflection (use reflect).
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Release
@@ -275,6 +275,10 @@ This skill coexists with existing hooks. Git workflow hooks are **advisory** (wa
 Do not modify, disable, or skip these hooks.
 
 ---
+
+## Suggests Next
+
+After a successful release, suggest `/wrap` to summarize the session.
 
 ## Related Skills
 

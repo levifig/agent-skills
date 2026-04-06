@@ -6,7 +6,7 @@ description: >-
   idea has accumulated enough constraints to bound. Produces specs with
   acceptance criteria. Not for brainstorming (use brainstorm) or task breakdown
   (use breakdown).
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Shape
@@ -147,6 +147,10 @@ When too big for appetite, split into sub-specs. Each has its own appetite, can 
 8. **Note tensions, don't fix** -- strategy evolves via /reflect
 
 ---
+
+## Suggests Next
+
+After a spec is approved, suggest `/breakdown` to decompose it into tasks.
 
 ## Related Skills
 

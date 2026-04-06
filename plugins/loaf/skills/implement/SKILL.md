@@ -7,7 +7,7 @@ description: >-
   Not for shaping (use shape...
 user-invocable: true
 argument-hint: '[TASK-XXX | SPEC-XXX | TASK-XXX..YYY | TASK-XXX,YYY | description]'
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Implement
@@ -232,6 +232,10 @@ After creating session AND plan files:
 | Session Management | [session-management.md](references/session-management.md) | Branch management, team routing, diagrams, plan mode, Linear sync, handoff, archival |
 
 ---
+
+## Suggests Next
+
+After all tasks are complete, suggest `/loaf:release` to merge the work.
 
 ## Related Skills
 

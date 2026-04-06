@@ -6,7 +6,7 @@ description: >-
   Produces task files with estimates, dependencies, and acceptance criteria. Not
   for shaping ideas (use shape) or implementation work (use implement).
 subtask: false
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Breakdown
@@ -155,6 +155,10 @@ Set spec status to `implementing`. Announce created tasks with next steps.
 6. **Update spec status** -- mark as implementing
 
 ---
+
+## Suggests Next
+
+After breakdown completes, suggest `/implement` to start working on the tasks.
 
 ## Related Skills
 

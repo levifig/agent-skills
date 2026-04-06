@@ -6,7 +6,7 @@ description: >-
   Not for shaping (use shape), breakdown (use breakdown), or single-file edits
   (use direct tools).
 subtask: false
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Implement
@@ -231,6 +231,10 @@ After creating session AND plan files:
 | Session Management | [session-management.md](../skills/implement/references/session-management.md) | Branch management, team routing, diagrams, plan mode, Linear sync, handoff, archival |
 
 ---
+
+## Suggests Next
+
+After all tasks are complete, suggest `/release` to merge the work.
 
 ## Related Skills
 

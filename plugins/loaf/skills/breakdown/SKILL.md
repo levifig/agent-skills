@@ -7,7 +7,7 @@ description: >-
   for shaping idea...
 user-invocable: true
 argument-hint: '[spec-file or topic]'
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Breakdown
@@ -156,6 +156,10 @@ Set spec status to `implementing`. Announce created tasks with next steps.
 6. **Update spec status** -- mark as implementing
 
 ---
+
+## Suggests Next
+
+After breakdown completes, suggest `/loaf:implement` to start working on the tasks.
 
 ## Related Skills
 

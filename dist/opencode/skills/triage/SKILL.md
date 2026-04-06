@@ -8,7 +8,7 @@ description: >-
   resolve(spark) journal entries. Not for capturing new ideas (use idea) or
   shaping (use shape).
 user-invocable: true
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Triage
@@ -154,6 +154,10 @@ Update frontmatter `status:` field:
 4. **Deferred items resurface** -- they'll appear again next `/triage`
 
 ---
+
+## Suggests Next
+
+After triage completes, suggest `/shape` for any ideas promoted to shaping.
 
 ## Related Skills
 

@@ -7,7 +7,7 @@ description: >-
   recommendations, archives completed work, and ensures extracted knowledge is
   preserved. Not for strategic reflection (use reflect) or knowledge management
   (use knowledge-base).
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Housekeeping
@@ -61,6 +61,10 @@ loaf task sync                # Fix TASKS.json drift
 | Specs | `.agents/specs/` | `archive/` | `loaf spec archive` |
 | Plans | `.agents/plans/` | N/A | Delete when done |
 | Drafts | `.agents/drafts/` | `archive/` | User decision |
+
+## Suggests Next
+
+After housekeeping, suggest `/reflect` if the session produced key decisions or learnings worth integrating into strategic docs.
 
 ## Topics
 

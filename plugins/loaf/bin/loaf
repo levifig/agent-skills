@@ -24720,9 +24720,8 @@ function registerCheckCommand(program3) {
     try {
       const stdinData = await readStdin();
       context = parseContext(stdinData);
-    } catch (err) {
-      console.error(`${red9("error:")} Failed to read stdin: ${err}`);
-      process.exit(1);
+    } catch {
+      context = {};
     }
     let result;
     try {
@@ -25008,10 +25007,8 @@ function updateSpecSessionField(agentsDir, specId, sessionFileName) {
     }
   }
 }
-function getSessionFilePath(agentsDir, branch) {
-  const ts = getTimestampForFilename();
-  const slug = branch.replace(/^feat\//, "").replace(/[^a-zA-Z0-9-_]/g, "-").replace(/-+/g, "-");
-  return join40(agentsDir, "sessions", `${ts}-${slug}.md`);
+function getSessionFilePath(agentsDir) {
+  return join40(agentsDir, "sessions", `${getTimestampForFilename()}-session.md`);
 }
 function getTimestampForFilename() {
   const now = /* @__PURE__ */ new Date();
@@ -25106,7 +25103,7 @@ async function getOrCreateSession(agentsDir, branch, specInfo) {
     if (existing) {
       return { ...existing, isNew: false };
     }
-    const filePath = getSessionFilePath(agentsDir, branch);
+    const filePath = getSessionFilePath(agentsDir);
     createSessionFile(filePath, branch, specInfo);
     const session = readSessionFile(filePath);
     return { filePath, data: session.data, content: session.content, isNew: true };

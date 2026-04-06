@@ -147,6 +147,10 @@ When too big for appetite, split into sub-specs. Each has its own appetite, can 
 
 ---
 
+## Suggests Next
+
+After a spec is approved, suggest `/breakdown` to decompose it into tasks.
+
 ## Related Skills
 
 - **idea** -- Quick capture (feeds into /shape)

@@ -839,22 +839,16 @@ describe("check: context parsing", () => {
     }
   });
 
-  it("handles invalid JSON gracefully", () => {
-    try {
-      execSync(
-        `echo 'not valid json' | node ${process.cwd()}/dist-cli/index.js check --hook check-secrets`,
-        {
-          encoding: "utf-8",
-          cwd: TEST_ROOT,
-          timeout: 10000,
-        }
-      );
-      expect(false).toBe(true);
-    } catch (error: unknown) {
-      const err = error as { status?: number; stderr?: string };
-      // Should exit 1 on parse failure
-      expect(err.status).toBe(1);
-    }
+  it("handles invalid JSON gracefully by passing with empty context", () => {
+    const result = execSync(
+      `echo 'not valid json' | node ${process.cwd()}/dist-cli/index.js check --hook check-secrets`,
+      {
+        encoding: "utf-8",
+        cwd: TEST_ROOT,
+        timeout: 10000,
+      }
+    );
+    expect(result).toContain("check-secrets");
   });
 
   it("accepts both flat and nested payload formats", () => {

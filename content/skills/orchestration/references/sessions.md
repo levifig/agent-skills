@@ -28,7 +28,7 @@ Sessions are coordination artifacts for active work. They are archived (set stat
 
 When implementing tasks via `{{IMPLEMENT_CMD}} TASK-XXX`:
 
-- Session created automatically with filename `YYYYMMDD-HHMMSS-task-XXX.md`
+- Session created automatically with filename `YYYYMMDD-HHMMSS-session.md`
 - Task file updated with `session:` field linking to session
 - No user interaction needed for session naming
 - Resume via `loaf session start` then `{{IMPLEMENT_CMD}} TASK-XXX`
@@ -52,7 +52,7 @@ These sessions may not have a linked task but still follow standard session form
 ### Location & Naming
 
 ```
-.agents/sessions/YYYYMMDD-HHMMSS-<description>.md
+.agents/sessions/YYYYMMDD-HHMMSS-session.md
 ```
 
 **Archive location:** `.agents/sessions/archive/`
@@ -64,7 +64,7 @@ Transcripts are Claude Code conversation exports (`.jsonl` files) archived after
 ```
 .agents/
 ├── sessions/
-│   ├── YYYYMMDD-HHMMSS-auth-feature.md
+│   ├── YYYYMMDD-HHMMSS-session.md
 │   └── archive/
 └── transcripts/              # Claude Code transcripts
     ├── 2a244262-8599-4bef-8bb8-3feea33d14e2.jsonl
@@ -83,20 +83,11 @@ date -u +"%Y%m%d-%H%M%S"
 date -u +"%Y-%m-%dT%H:%M:%SZ"
 ```
 
-### Naming Guidelines
+### Naming Convention
 
-- **Don't include IDs in slugs** - Use descriptive names
-  - Bad: `20260124-143000-spec-002.md`
-  - Good: `20260124-143000-invisible-sessions-task-board.md`
-- **Don't prefix with session type** - Type is in frontmatter
-  - Bad: `20260124-143000-orchestration-auth-feature.md`
-  - Good: `20260124-143000-auth-feature.md`
-- IDs (TASK-XXX, SPEC-XXX) belong in frontmatter fields, not filenames
+All session files use the fixed format: `YYYYMMDD-HHMMSS-session.md`
 
-**Good**: `20251204-143000-weather-fallback.md`
-**Bad**: `weather-fallback.md` (missing timestamp)
-**Bad**: `PLT-123-weather-fallback.md` (Linear ID in filename)
-**Bad**: `SPEC-002-invisible-sessions.md` (ID in filename)
+The timestamp is the unique identifier. Descriptions, spec links, and branch names belong in frontmatter and the `# Session:` heading, not the filename. This keeps references stable — spec and task files can point to session filenames without them ever breaking.
 
 ### Required Frontmatter
 

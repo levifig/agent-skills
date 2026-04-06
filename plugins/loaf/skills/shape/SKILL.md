@@ -7,7 +7,7 @@ description: >-
   acceptance criteria. Not for b...
 user-invocable: true
 argument-hint: '[idea or requirement]'
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Shape
@@ -148,6 +148,10 @@ When too big for appetite, split into sub-specs. Each has its own appetite, can 
 8. **Note tensions, don't fix** -- strategy evolves via /loaf:reflect
 
 ---
+
+## Suggests Next
+
+After a spec is approved, suggest `/loaf:breakdown` to decompose it into tasks.
 
 ## Related Skills
 

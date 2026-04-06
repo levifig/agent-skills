@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.15] - 2026-04-07
+
+### Added
+- `Suggests Next` section in 8 pipeline skills for workflow continuity (triage→shape→breakdown→implement→release→wrap→housekeeping→reflect)
+
+### Fixed
+- 4 pre-tool hooks (`validate-commit`, `validate-push`, `workflow-pre-pr`, `detect-linear-magic`) fired on every Bash command — added `if:` conditions
+- Hooks errored on unparseable stdin instead of passing silently
+
+### Changed
+- Session filenames simplified to fixed `YYYYMMDD-HHMMSS-session.md` — descriptions in frontmatter, not filenames
+
 ## [2.0.0-dev.14] - 2026-04-07
 
 ### Added

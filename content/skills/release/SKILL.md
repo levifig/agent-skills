@@ -275,6 +275,10 @@ Do not modify, disable, or skip these hooks.
 
 ---
 
+## Suggests Next
+
+After a successful release, suggest `/wrap` to summarize the session.
+
 ## Related Skills
 
 - **implement** — Does the work and housekeeping; `/release` handles the merge afterward

@@ -6,7 +6,7 @@ description: >-
   options," or is exploring tradeoffs. Produces docs with sparks. Not for quick
   ideas or shaping.
 subtask: false
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Brainstorm
@@ -56,6 +56,10 @@ After work completes, verify:
 ```
 
 Sparks are: lightweight, byproducts, worth remembering. Mark as `*(promoted)*` or `*(abandoned)*` after processing.
+
+## Suggests Next
+
+After brainstorming, suggest `/shape` if a clear idea emerged, or `/idea` to capture sparks for later.
 
 ## Topics
 

@@ -7,7 +7,7 @@ description: >-
   ideas or shaping.
 user-invocable: true
 argument-hint: '[idea or problem]'
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Brainstorm
@@ -57,6 +57,10 @@ After work completes, verify:
 ```
 
 Sparks are: lightweight, byproducts, worth remembering. Mark as `*(promoted)*` or `*(abandoned)*` after processing.
+
+## Suggests Next
+
+After brainstorming, suggest `/loaf:shape` if a clear idea emerged, or `/loaf:idea` to capture sparks for later.
 
 ## Topics
 

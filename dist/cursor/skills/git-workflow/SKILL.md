@@ -6,7 +6,7 @@ description: >-
   PRs, or managing git history. Provides patterns for collaborative git
   workflows. Not for code style (use foundations) or CI/CD pipelines (use
   infrastructure-management).
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Git Workflow

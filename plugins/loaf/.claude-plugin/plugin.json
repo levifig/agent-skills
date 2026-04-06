@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.14",
+  "version": "2.0.0-dev.15",
   "description": "Loaf - An Opinionated Agentic Framework",
   "repository": "https://github.com/levifig/loaf",
   "license": "MIT",
@@ -31,12 +31,14 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook validate-push",
+            "if": "Bash(git push:*)",
             "timeout": 60,
             "description": "Validates version bump, CHANGELOG, and build before git push"
           },
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook workflow-pre-pr",
+            "if": "Bash(gh pr create:*)",
             "timeout": 5,
             "description": "Remind about PR format and CHANGELOG entry before gh pr create"
           },
@@ -57,6 +59,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook validate-commit",
+            "if": "Bash(git commit:*)",
             "timeout": 30,
             "description": "Validate commit messages follow conventions",
             "failClosed": true
@@ -64,6 +67,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" session log --detect-linear",
+            "if": "Bash(git commit:*)",
             "timeout": 30,
             "description": "Detect Linear magic words for auto-status updates"
           }

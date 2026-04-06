@@ -40,6 +40,7 @@ hooks:
     - id: validate-push
       skill: git-workflow
       matcher: "Bash"
+      if: "Bash(git push:*)"
       blocking: false
       timeout: 60000
       description: Validates version bump, CHANGELOG, and build before git push
@@ -47,6 +48,7 @@ hooks:
     - id: workflow-pre-pr
       skill: git-workflow
       matcher: "Bash"
+      if: "Bash(gh pr create:*)"
       blocking: false
       timeout: 5000
       description: "Remind about PR format and CHANGELOG entry before gh pr create"
@@ -75,6 +77,7 @@ hooks:
     - id: validate-commit
       skill: orchestration
       matcher: "Bash"
+      if: "Bash(git commit:*)"
       blocking: true
       timeout: 30000
       failClosed: true
@@ -85,6 +88,7 @@ hooks:
       type: command
       command: 'loaf session log --detect-linear'
       matcher: "Bash"
+      if: "Bash(git commit:*)"
       blocking: false
       timeout: 30000
       description: Detect Linear magic words for auto-status updates

@@ -61,6 +61,10 @@ loaf task sync                # Fix TASKS.json drift
 | Plans | `.agents/plans/` | N/A | Delete when done |
 | Drafts | `.agents/drafts/` | `archive/` | User decision |
 
+## Suggests Next
+
+After housekeeping, suggest `/reflect` if the session produced key decisions or learnings worth integrating into strategic docs.
+
 ## Topics
 
 | Topic | Reference | Use When |

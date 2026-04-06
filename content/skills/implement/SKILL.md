@@ -230,6 +230,10 @@ After creating session AND plan files:
 
 ---
 
+## Suggests Next
+
+After all tasks are complete, suggest `/release` to merge the work.
+
 ## Related Skills
 
 - **orchestration/product-development** - Full workflow hierarchy

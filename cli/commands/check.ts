@@ -860,14 +860,13 @@ export function registerCheckCommand(program: Command): void {
         process.exit(1);
       }
 
-      // Read stdin
+      // Read stdin — if unavailable or unparseable, treat as empty context (pass)
       let context: HookContext;
       try {
         const stdinData = await readStdin();
         context = parseContext(stdinData);
-      } catch (err) {
-        console.error(`${red("error:")} Failed to read stdin: ${err}`);
-        process.exit(1);
+      } catch {
+        context = {};
       }
 
       // Run appropriate check

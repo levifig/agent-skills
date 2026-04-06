@@ -1,6 +1,6 @@
 # Session File Template
 
-**Location:** `.agents/sessions/YYYYMMDD-HHMMSS-<description>.md`
+**Location:** `.agents/sessions/YYYYMMDD-HHMMSS-session.md`
 
 ```yaml
 ---
@@ -54,11 +54,9 @@ last_entry: "YYYY-MM-DDTHH:MM:SSZ"
 4. **PAUSE header:** `--- PAUSE YYYY-MM-DD HH:MM ---` (auto-generated, never manual)
 5. **Resume after pause:** Always starts new section after `--- PAUSE ---`
 
-## Filename Conventions
+## Filename Convention
 
-- **Task-coupled:** `YYYYMMDD-HHMMSS-task-XXX.md` (auto-generated)
-- **Ad-hoc:** `YYYYMMDD-HHMMSS-<description>.md` (kebab-case)
-- **No IDs in slugs:** Use descriptive names, not `SPEC-002` or `PLT-123`
+All session files: `YYYYMMDD-HHMMSS-session.md` — descriptions belong in frontmatter, not filenames.
 
 ## CLI Commands
 

@@ -89,6 +89,10 @@ To check if housekeeping ran, scan the session journal for a `skill(housekeeping
 
 Assemble the report per the format below. Omit empty sections — don't show "None" placeholders.
 
+## Suggests Next
+
+After the wrap-up report, suggest `/housekeeping` if it wasn't run this session and artifacts need attention.
+
 ## Report Format
 
 ```markdown

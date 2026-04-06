@@ -6,7 +6,7 @@ description: >-
   summary. Use at the end of a work session or when the user asks "wrap up." Not
   for archiving (use housekeeping) or capturing ideas (use idea).
 user-invocable: true
-version: 2.0.0-dev.14
+version: 2.0.0-dev.15
 ---
 
 # Wrap
@@ -90,6 +90,10 @@ To check if housekeeping ran, scan the session journal for a `skill(housekeeping
 ### Step 4: Generate Report
 
 Assemble the report per the format below. Omit empty sections — don't show "None" placeholders.
+
+## Suggests Next
+
+After the wrap-up report, suggest `/housekeeping` if it wasn't run this session and artifacts need attention.
 
 ## Report Format
 

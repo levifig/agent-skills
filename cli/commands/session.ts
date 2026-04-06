@@ -406,10 +406,8 @@ function updateSpecSessionField(agentsDir: string, specId: string, sessionFileNa
 }
 
 /** Get session file path (timestamped filename per SPEC-020) */
-function getSessionFilePath(agentsDir: string, branch: string): string {
-  const ts = getTimestampForFilename();
-  const slug = branch.replace(/^feat\//, "").replace(/[^a-zA-Z0-9-_]/g, "-").replace(/-+/g, "-");
-  return join(agentsDir, "sessions", `${ts}-${slug}.md`);
+function getSessionFilePath(agentsDir: string): string {
+  return join(agentsDir, "sessions", `${getTimestampForFilename()}-session.md`);
 }
 
 /** Get timestamp in filename format: YYYYMMDD-HHMMSS */
@@ -552,7 +550,7 @@ async function getOrCreateSession(
       return { ...existing, isNew: false };
     }
 
-    const filePath = getSessionFilePath(agentsDir, branch);
+    const filePath = getSessionFilePath(agentsDir);
     createSessionFile(filePath, branch, specInfo);
     const session = readSessionFile(filePath)!;
     return { filePath, data: session.data, content: session.content, isNew: true };

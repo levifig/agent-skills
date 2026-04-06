@@ -153,6 +153,10 @@ Update frontmatter `status:` field:
 
 ---
 
+## Suggests Next
+
+After triage completes, suggest `/shape` for any ideas promoted to shaping.
+
 ## Related Skills
 
 - **idea** -- Capture a new idea (fast, minimal friction)
