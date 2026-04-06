@@ -20,27 +20,27 @@
         "loaf-managed": true,
         "timeout": 60,
         "matcher": "Bash",
-        "failClosed": true,
         "command": "loaf check --hook validate-push"
       },
       {
         "loaf-managed": true,
         "timeout": 5,
         "matcher": "Bash",
-        "failClosed": true,
         "command": "loaf check --hook workflow-pre-pr"
       },
       {
         "loaf-managed": true,
         "timeout": 5,
         "matcher": "Bash",
-        "command": "bash $HOME/.cursor/hooks/pre-tool/workflow-pre-merge.sh"
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-merge.md\"",
+        "if": "Bash(gh pr merge:*)"
       },
       {
         "loaf-managed": true,
         "timeout": 5,
         "matcher": "Bash",
-        "command": "bash $HOME/.cursor/hooks/pre-tool/workflow-pre-push.sh"
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-push.md\"",
+        "if": "Bash(git push:*)"
       },
       {
         "loaf-managed": true,
@@ -73,7 +73,8 @@
         "loaf-managed": true,
         "timeout": 5,
         "matcher": "Bash",
-        "command": "bash $HOME/.cursor/hooks/post-tool/workflow-post-merge.sh"
+        "command": "cat \"$HOME/.cursor/hooks/instructions/post-merge.md\"",
+        "if": "Bash(gh pr merge:*)"
       },
       {
         "loaf-managed": true,

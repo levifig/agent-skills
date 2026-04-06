@@ -6,7 +6,7 @@ description: >-
   "merge this PR," "ready to merge," or "ship it." Produces version bumps,
   changelog updates, and merged code. Not for creating PRs (use git-workflow) or
   reflection (use reflect).
-version: 2.0.0-dev.11
+version: 2.0.0-dev.12
 ---
 
 # Release
@@ -22,6 +22,7 @@ Orchestrate a squash merge with correct version ordering, documentation checks, 
 - Step 1: Pre-Flight Checks
 - Step 2: Documentation Freshness
 - Step 3: Housekeeping Verification
+- Step 3b: Create PR (if needed)
 - Step 4: Version Bump + Changelog
 - Step 5: Squash Merge
 - Step 6: Post-Merge Cleanup
@@ -56,6 +57,7 @@ Orchestrate a squash merge with correct version ordering, documentation checks, 
 | Pre-Flight | typecheck + test + build pass | Yes |
 | Doc Freshness | User reviews stale docs | No (user decides) |
 | Housekeeping | Spec/tasks archived, CHANGELOG ready | No (user decides) |
+| PR Creation | Only if no PR exists yet | Yes (if needed) |
 | Version Bump | User confirms bump type | Yes |
 | Squash Merge | User approves body text | Yes |
 | Post-Merge | Branch cleanup | Yes |
@@ -84,9 +86,9 @@ Before anything, detect where we are:
    ```bash
    gh pr view --json number,title,url,headRefName,baseRefName
    ```
-5. If no PR exists for this branch, STOP — suggest creating one first.
-6. **Save `baseRefName`** from the PR metadata (e.g., `main`, `release/1.0`, `develop`). All subsequent steps use this as the base reference for diffs and changelog scoping. Do NOT hardcode `main`.
-7. Confirm the PR identity with the user before proceeding: show PR title, number, branch, and target base.
+5. If no PR exists for this branch, note `pr_exists = false` and set `baseRefName` to the repo default branch. Continue — the PR will be created in Step 3b.
+6. If PR exists, **save `baseRefName`** from the PR metadata (e.g., `main`, `release/1.0`, `develop`). All subsequent steps use this as the base reference for diffs and changelog scoping. Do NOT hardcode `main`.
+7. Confirm the PR identity (or intent to create one) with the user before proceeding.
 
 ---
 
@@ -140,6 +142,18 @@ Present findings to the user. They decide whether to fix now or note for later. 
 4. **Session file**: If a session file exists, check that its status reflects completion.
 
 On gaps: present them to the user. Offer to fix (delegate to `loaf task archive`, `loaf spec archive`). The user decides. Do NOT silently fix or silently skip.
+
+---
+
+## Step 3b: Create PR (if needed)
+
+**Only run this step if `pr_exists = false` from Context Detection.**
+
+The PR must be created BEFORE the version bump so that `[Unreleased]` changelog entries are still present (advisory hooks check for this).
+
+1. Push the branch if not already pushed.
+2. Create the PR following the format in [git-workflow/references/commits.md](../git-workflow/references/commits.md) (Pull Request Format section).
+3. Save the PR number and `baseRefName` for subsequent steps.
 
 ---
 
@@ -248,13 +262,15 @@ After successful merge:
 
 ## Hook Interaction
 
-This skill coexists with existing hooks. They remain as safety nets for manual merges:
+This skill coexists with existing hooks. Git workflow hooks are **advisory** (warn but don't block); security hooks remain blocking.
 
-| Hook | When `/release` Runs |
-|------|---------------------|
-| `workflow-pre-merge` (prompt) | Fires on `gh pr merge`. Redundant — body already crafted. Harmless. |
-| `workflow-post-merge` (bash) | Fires after merge. Outputs checklist the skill already handled. Informational. |
-| `validate-push` (bash) | Fires on push. Cross-validates version bump — should pass since Step 4 did both. |
+| Hook | Type | When `/release` Runs |
+|------|------|---------------------|
+| `workflow-pre-pr` (command) | Advisory | Fires on `gh pr create`. Reminds about CHANGELOG — redundant when release skill manages entries. |
+| `workflow-pre-merge` (instruction) | Advisory | Fires on `gh pr merge`. Reminds about squash conventions — redundant since body is already crafted. |
+| `workflow-post-merge` (instruction) | Advisory | Fires after merge. Outputs checklist the skill already handled. |
+| `validate-push` (command) | Advisory | Fires on push. Cross-validates version bump — should pass since Step 4 did both. |
+| `check-secrets` (command) | **Blocking** | Security gate. Always fires, always respected. |
 
 Do not modify, disable, or skip these hooks.
 

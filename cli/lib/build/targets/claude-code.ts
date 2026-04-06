@@ -273,6 +273,11 @@ function groupByMatcher(hooks: HookDefinition[]): Record<string, HookDefinition[
 }
 
 function getClaudeHookCommand(hook: HookDefinition): string {
+  // Instruction hooks: cat the instruction file from the plugin root
+  if (hook.instruction) {
+    return `cat "\${CLAUDE_PLUGIN_ROOT}/hooks/${hook.instruction}"`;
+  }
+
   // For binary path hooks (enforcement + session + journal), handle specially
   if (BINARY_PATH_HOOKS.has(hook.id)) {
     // Enforcement hooks don't have a command field - construct it

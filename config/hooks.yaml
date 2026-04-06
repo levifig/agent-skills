@@ -34,35 +34,39 @@ hooks:
       failClosed: true
       description: Run security audit on bash commands
 
-    # Git Workflow - Push, PR, merge, and commit guards (ENFORCEMENT)
+    # Git Workflow - Push and PR guards (ADVISORY)
+    # These are safety nets, not gates — the release skill orchestrates the same checks.
+    # Security hooks (above) stay blocking; workflow hooks warn but don't block.
     - id: validate-push
       skill: git-workflow
       matcher: "Bash"
-      blocking: true
+      blocking: false
       timeout: 60000
-      failClosed: true
       description: Validates version bump, CHANGELOG, and build before git push
 
     - id: workflow-pre-pr
       skill: git-workflow
       matcher: "Bash"
-      blocking: true
+      blocking: false
       timeout: 5000
-      failClosed: true
-      description: "Enforce PR format and CHANGELOG entry before gh pr create"
+      description: "Remind about PR format and CHANGELOG entry before gh pr create"
 
     - id: workflow-pre-merge
       skill: git-workflow
-      script: hooks/pre-tool/workflow-pre-merge.sh
+      type: command
+      instruction: instructions/pre-merge.md
       matcher: "Bash"
+      if: "Bash(gh pr merge:*)"
       blocking: false
       timeout: 5000
       description: Remind about squash merge conventions before gh pr merge
 
     - id: workflow-pre-push
       skill: git-workflow
-      script: hooks/pre-tool/workflow-pre-push.sh
+      type: command
+      instruction: instructions/pre-push.md
       matcher: "Bash"
+      if: "Bash(git push:*)"
       blocking: false
       timeout: 5000
       description: Advisory reminders before git push
@@ -106,8 +110,10 @@ hooks:
     # Git Workflow - Post-merge housekeeping (side-effect)
     - id: workflow-post-merge
       skill: git-workflow
-      script: hooks/post-tool/workflow-post-merge.sh
+      type: command
+      instruction: instructions/post-merge.md
       matcher: "Bash"
+      if: "Bash(gh pr merge:*)"
       timeout: 5000
       description: Inject housekeeping checklist after successful gh pr merge
 

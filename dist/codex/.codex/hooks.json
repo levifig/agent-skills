@@ -32,7 +32,7 @@
         "command": "loaf check --hook workflow-pre-pr",
         "timeout": 5,
         "failClosed": true,
-        "description": "Enforce PR format and CHANGELOG entry before gh pr create"
+        "description": "Remind about PR format and CHANGELOG entry before gh pr create"
       },
       {
         "loaf-managed": true,

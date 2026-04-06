@@ -87,30 +87,30 @@ describe("cursor hooks.json", () => {
     expect(hooksJson.version).toBe(1);
   });
 
-  it("preserves 'if' on pre-tool prompt hooks", () => {
+  it("preserves 'if' on pre-tool instruction hooks", () => {
     const preToolUse = hooksJson.hooks.preToolUse || [];
-    
-    // Find workflow-pre-merge hook (should have if: Bash(gh pr merge:*))
+
+    // Find workflow-pre-merge hook (instruction hook with if: Bash(gh pr merge:*))
     const workflowPreMerge = preToolUse.find(
-      h => h.prompt && h.prompt.includes("squash merge")
+      h => h.command?.includes("instructions/pre-merge.md")
     );
     expect(workflowPreMerge).toBeDefined();
     expect(workflowPreMerge?.if).toBe("Bash(gh pr merge:*)");
-    
-    // Find workflow-pre-push hook (should have if: Bash(git push:*))
+
+    // Find workflow-pre-push hook (instruction hook with if: Bash(git push:*))
     const workflowPrePush = preToolUse.find(
-      h => h.prompt && h.prompt.includes("git push")
+      h => h.command?.includes("instructions/pre-push.md")
     );
     expect(workflowPrePush).toBeDefined();
     expect(workflowPrePush?.if).toBe("Bash(git push:*)");
   });
 
-  it("preserves 'if' on post-tool prompt hooks", () => {
+  it("preserves 'if' on post-tool instruction hooks", () => {
     const postToolUse = hooksJson.hooks.postToolUse || [];
-    
-    // Find workflow-post-merge hook (should have if: Bash(gh pr merge:*))
+
+    // Find workflow-post-merge hook (instruction hook with if: Bash(gh pr merge:*))
     const workflowPostMerge = postToolUse.find(
-      h => h.prompt && h.prompt.includes("POST-MERGE HOUSEKEEPING")
+      h => h.command?.includes("instructions/post-merge.md")
     );
     expect(workflowPostMerge).toBeDefined();
     expect(workflowPostMerge?.if).toBe("Bash(gh pr merge:*)");
@@ -215,15 +215,15 @@ describe("claude-code plugin.json", () => {
     expect(pluginJson.hooks).toBeDefined();
   });
 
-  it("preserves 'if' on pre-tool prompt hooks", () => {
+  it("preserves 'if' on pre-tool instruction hooks", () => {
     const preToolUse = pluginJson.hooks.PreToolUse || [];
-    
-    // Find workflow-pre-merge hook
+
+    // Find workflow-pre-merge hook (instruction hook with cat command)
     const bashMatcher = preToolUse.find(m => m.matcher === "Bash");
     expect(bashMatcher).toBeDefined();
-    
+
     const workflowPreMerge = bashMatcher?.hooks.find(
-      h => h.type === "prompt" && h.prompt?.includes("squash merge")
+      h => h.type === "command" && h.command?.includes("instructions/pre-merge.md")
     );
     expect(workflowPreMerge).toBeDefined();
     expect(workflowPreMerge?.if).toBe("Bash(gh pr merge:*)");

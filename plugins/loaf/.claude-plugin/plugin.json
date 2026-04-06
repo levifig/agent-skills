@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.11",
+  "version": "2.0.0-dev.12",
   "description": "Loaf - An Opinionated Agentic Framework",
   "repository": "https://github.com/levifig/loaf",
   "license": "MIT",
@@ -32,25 +32,25 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook validate-push",
             "timeout": 60,
-            "description": "Validates version bump, CHANGELOG, and build before git push",
-            "failClosed": true
+            "description": "Validates version bump, CHANGELOG, and build before git push"
           },
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook workflow-pre-pr",
             "timeout": 5,
-            "description": "Enforce PR format and CHANGELOG entry before gh pr create",
-            "failClosed": true
+            "description": "Remind about PR format and CHANGELOG entry before gh pr create"
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/workflow-pre-merge.sh",
+            "command": "cat \"${CLAUDE_PLUGIN_ROOT}/hooks/instructions/pre-merge.md\"",
+            "if": "Bash(gh pr merge:*)",
             "timeout": 5,
             "description": "Remind about squash merge conventions before gh pr merge"
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/workflow-pre-push.sh",
+            "command": "cat \"${CLAUDE_PLUGIN_ROOT}/hooks/instructions/pre-push.md\"",
+            "if": "Bash(git push:*)",
             "timeout": 5,
             "description": "Advisory reminders before git push"
           },
@@ -99,7 +99,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/workflow-post-merge.sh",
+            "command": "cat \"${CLAUDE_PLUGIN_ROOT}/hooks/instructions/post-merge.md\"",
+            "if": "Bash(gh pr merge:*)",
             "description": "Inject housekeeping checklist after successful gh pr merge",
             "timeout": 5
           },

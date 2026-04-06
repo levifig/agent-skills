@@ -177,6 +177,11 @@ function mapSessionEvent(event: string): string {
 }
 
 function getCursorHookCommand(hook: HookDefinition): string {
+  // Instruction hooks: cat the instruction file from the Cursor hooks directory
+  if (hook.instruction) {
+    return `cat "$HOME/.cursor/hooks/${hook.instruction}"`;
+  }
+
   // For binary path hooks (enforcement + session + journal), handle specially
   if (BINARY_PATH_HOOKS.has(hook.id)) {
     // Enforcement hooks don't have a command field - construct it

@@ -198,6 +198,7 @@ async function runHook(
     LOAF_HOOK_TYPE: hookType,
     LOAF_HOOK_ID: hookId,
     LOAF_TOOL_NAME: toolName || '',
+    LOAF_PLUGIN_DIR: __dirname,
   };
 
   try {
@@ -519,6 +520,18 @@ function groupHooksByMatcher(hooks: HookDefinition[]): Record<string, HookEntry[
     const matcher = hook.matcher || "Edit|Write";
     if (!grouped[matcher]) grouped[matcher] = [];
 
+    // Instruction hooks: generate a cat command targeting the plugin directory
+    if (hook.instruction) {
+      grouped[matcher].push({
+        id: hook.id,
+        command: `cat "$LOAF_PLUGIN_DIR/hooks/${hook.instruction}"`,
+        timeout: hook.timeout || 60000,
+        failClosed: hook.failClosed || false,
+        if: hook.if,
+      });
+      continue;
+    }
+
     // Synthesize command for enforcement hooks that don't have explicit command/script
     let command = hook.command;
     if (!command && !hook.script && ENFORCEMENT_HOOKS.has(hook.id)) {
@@ -546,6 +559,18 @@ function groupSessionHooksByEvent(hooks: HookDefinition[]): Record<string, HookE
     if (!event) continue;
 
     if (!grouped[event]) grouped[event] = [];
+
+    // Instruction hooks: generate a cat command targeting the plugin directory
+    if (hook.instruction) {
+      grouped[event].push({
+        id: hook.id,
+        command: `cat "$LOAF_PLUGIN_DIR/hooks/${hook.instruction}"`,
+        timeout: hook.timeout || 60000,
+        failClosed: hook.failClosed || false,
+        if: hook.if,
+      });
+      continue;
+    }
 
     // Synthesize command for enforcement hooks that don't have explicit command/script
     let command = hook.command;

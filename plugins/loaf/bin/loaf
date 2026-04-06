@@ -16658,6 +16658,9 @@ function groupByMatcher(hooks) {
   return groups;
 }
 function getClaudeHookCommand(hook) {
+  if (hook.instruction) {
+    return `cat "\${CLAUDE_PLUGIN_ROOT}/hooks/${hook.instruction}"`;
+  }
   if (BINARY_PATH_HOOKS.has(hook.id)) {
     if (!hook.command) {
       return `"\${CLAUDE_PLUGIN_ROOT}/bin/loaf" check --hook ${hook.id}`;
@@ -16983,6 +16986,7 @@ async function runHook(
     LOAF_HOOK_TYPE: hookType,
     LOAF_HOOK_ID: hookId,
     LOAF_TOOL_NAME: toolName || '',
+    LOAF_PLUGIN_DIR: __dirname,
   };
 
   try {
@@ -17274,6 +17278,16 @@ function groupHooksByMatcher(hooks) {
   for (const hook of hooks) {
     const matcher = hook.matcher || "Edit|Write";
     if (!grouped[matcher]) grouped[matcher] = [];
+    if (hook.instruction) {
+      grouped[matcher].push({
+        id: hook.id,
+        command: `cat "$LOAF_PLUGIN_DIR/hooks/${hook.instruction}"`,
+        timeout: hook.timeout || 6e4,
+        failClosed: hook.failClosed || false,
+        if: hook.if
+      });
+      continue;
+    }
     let command = hook.command;
     if (!command && !hook.script && ENFORCEMENT_HOOKS.has(hook.id)) {
       command = `loaf check --hook ${hook.id}`;
@@ -17295,6 +17309,16 @@ function groupSessionHooksByEvent(hooks) {
     const event = (hook.event || "").toLowerCase().replace(/\s+/g, "");
     if (!event) continue;
     if (!grouped[event]) grouped[event] = [];
+    if (hook.instruction) {
+      grouped[event].push({
+        id: hook.id,
+        command: `cat "$LOAF_PLUGIN_DIR/hooks/${hook.instruction}"`,
+        timeout: hook.timeout || 6e4,
+        failClosed: hook.failClosed || false,
+        if: hook.if
+      });
+      continue;
+    }
     let command = hook.command;
     if (!command && !hook.script && ENFORCEMENT_HOOKS.has(hook.id)) {
       command = `loaf check --hook ${hook.id}`;
@@ -17547,6 +17571,9 @@ function mapSessionEvent(event) {
   return mapping[event] || event.toLowerCase();
 }
 function getCursorHookCommand(hook) {
+  if (hook.instruction) {
+    return `cat "$HOME/.cursor/hooks/${hook.instruction}"`;
+  }
   if (BINARY_PATH_HOOKS2.has(hook.id)) {
     if (!hook.command) {
       return `loaf check --hook ${hook.id}`;

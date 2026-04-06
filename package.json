@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.11",
+  "version": "2.0.0-dev.12",
   "description": "Loaf - An Opinionated Agentic Framework for Claude Code, OpenCode, Cursor, Codex, and Gemini",
   "type": "module",
   "bin": {
@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "build:cli": "tsup",
-    "build:cli-ref": "tsx cli/scripts/generate-cli-ref.ts",
+    "build:cli-ref": "bun cli/scripts/generate-cli-ref.ts",
     "build:content": "node dist-cli/index.js build",
     "build": "npm run build:cli-ref && tsup && node dist-cli/index.js build",
     "typecheck": "tsc --noEmit",
@@ -55,7 +55,6 @@
     "@types/node": "^25.5.0",
     "@types/picomatch": "^4.0.2",
     "tsup": "^8.5.1",
-    "tsx": "^4.19.3",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
   }

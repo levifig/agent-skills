@@ -44,6 +44,8 @@ export interface HookDefinition {
   script?: string;
   /** Direct command to execute (alternative to script, for simple commands) */
   command?: string;
+  /** Path to an instruction file relative to hooks output dir (e.g., "instructions/pre-merge.md") */
+  instruction?: string;
   /** Hook type: "command" (default) or "prompt" */
   type?: "command" | "prompt";
   /** Prompt text (required for prompt hooks) */
