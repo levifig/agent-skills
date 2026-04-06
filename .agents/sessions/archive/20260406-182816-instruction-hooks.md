@@ -1,6 +1,8 @@
 ---
 branch: feat/instruction-hooks
-status: active
+status: complete
+archived_at: '2026-04-06T19:35:00Z'
+archived_by: warden
 created: '2026-04-06T17:28:16.520Z'
 last_entry: '2026-04-06T18:01:47.000Z'
 last_updated: '2026-04-06T18:01:47.000Z'

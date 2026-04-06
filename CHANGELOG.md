@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.13] - 2026-04-06
+
+### Fixed
+- Session journal blank line between every entry — `trimEnd()` made separator condition unreachable
+- Session resume replaying commits already logged in journal
+
+### Changed
+- `session start` archives paused sessions and creates fresh ones by default; `--resume` flag for explicit continuation
+- `session end` writes `--- PAUSE ---` separator header between sessions
+- Journal entry format: `[YYYY-MM-DD HH:MM]` brackets replace `- YYYY-MM-DD HH:MM` prefix
+- `decide` entry type renamed to `decision`
+
+### Removed
+- Dead `formatEntry` function, unused `timestamp` parameter, filesystem sync retry loop
+- Unnecessary `lockAcquired` flags, session variable aliases, multiline entry display handling
+
 ## [2.0.0-dev.12] - 2026-04-06
 
 ### Fixed

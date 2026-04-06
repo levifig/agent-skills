@@ -217,38 +217,72 @@ describe("session: start", () => {
     expect(startMatches?.length ?? 0).toBe(1);
   }, 30000); // Higher timeout for concurrent operations
 
-  it("resuming a paused session adds resume entry and updates status", async () => {
-    const repoPath = createTempRepo("resume-test");
-    
+  it("starting after pause archives old session and creates new one", async () => {
+    const repoPath = createTempRepo("new-after-pause-test");
+
     // Start session
     const startResult = await runLoaf(["start"], { cwd: repoPath });
     expect(startResult.exitCode).toBe(0);
-    
+
     // End session (pauses it)
     const endResult = await runLoaf(["end"], { cwd: repoPath });
     expect(endResult.exitCode).toBe(0);
-    
-    // Resume session
-    const resumeResult = await runLoaf(["start"], { cwd: repoPath });
-    expect(resumeResult.exitCode).toBe(0);
-    expect(resumeResult.stdout).toContain("Resuming existing session");
-    
-    // Verify session file
+
+    // Start again — should archive old and create new
+    const newResult = await runLoaf(["start"], { cwd: repoPath });
+    expect(newResult.exitCode).toBe(0);
+    expect(newResult.stdout).toContain("Closed previous session");
+    expect(newResult.stdout).toContain("Creating new session file");
+
+    // Only one active session file (old one archived)
     const sessionFiles = getSessionFiles(repoPath);
     expect(sessionFiles.length).toBe(1);
-    
+
+    // Old session should be in archive
+    const archiveDir = join(repoPath, ".agents/sessions/archive");
+    expect(existsSync(archiveDir)).toBe(true);
+    const archiveFiles = readdirSync(archiveDir).filter((f: string) => f.endsWith(".md"));
+    expect(archiveFiles.length).toBe(1);
+
+    // New session should have fresh start entry
     const content = readFileSync(
       join(repoPath, ".agents/sessions", sessionFiles[0]),
       "utf-8"
     );
-    
-    // Should have inline journal entries (new format per SPEC-020)
-    expect(content).toContain("resume(");
     expect(content).toContain("session started");
-    expect(content).toContain("session resumed");
-    
-    // Status should be active (updated from paused)
     expect(content).toContain("status: active");
+  });
+
+  it("--resume flag resumes a paused session instead of creating new", async () => {
+    const repoPath = createTempRepo("resume-flag-test");
+
+    // Start session
+    await runLoaf(["start"], { cwd: repoPath });
+
+    // End session (pauses it)
+    await runLoaf(["end"], { cwd: repoPath });
+
+    // Resume with --resume flag
+    const resumeResult = await runLoaf(["start", "--resume"], { cwd: repoPath });
+    expect(resumeResult.exitCode).toBe(0);
+    expect(resumeResult.stdout).toContain("Resuming existing session");
+
+    // Still only one session file (same one, resumed)
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1);
+
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+
+    // Should have resume entry and still be active
+    expect(content).toContain("session resumed");
+    expect(content).toContain("status: active");
+
+    // No archive directory should exist (session was resumed, not archived)
+    const archiveDir = join(repoPath, ".agents/sessions/archive");
+    expect(existsSync(archiveDir)).toBe(false);
   });
 
   it("surfaces stale knowledge count from configured knowledge files", async () => {
@@ -421,5 +455,21 @@ describe("session: end", () => {
     expect(result.stdout).toContain("Knowledge consolidation recommended for 1 file");
     expect(result.stdout).toContain("docs/knowledge/stale.md");
     expect(existsSync(nudgeFile)).toBe(false);
+  });
+
+  it("adds PAUSE separator header to journal on end", async () => {
+    const repoPath = createTempRepo("pause-header-test");
+
+    await runLoaf(["start"], { cwd: repoPath });
+    await runLoaf(["end"], { cwd: repoPath });
+
+    const sessionFiles = getSessionFiles(repoPath);
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+
+    // Should contain PAUSE separator header
+    expect(content).toMatch(/--- PAUSE \d{4}-\d{2}-\d{2} \d{2}:\d{2} ---/);
   });
 });

@@ -3,11 +3,11 @@ name: idea
 description: >-
   Captures ideas into structured nuggets for later evaluation. Use when the user
   says "I have an idea" or "note this down." Also activate when a specific
-  actionable concept crystallizes during conversation. Without args, scans
-  brainstorm documents f...
+  actionable concept crystallizes during conversation. For reviewing and
+  processing the intake qu...
 user-invocable: true
 argument-hint: '[idea description]'
-version: 2.0.0-dev.12
+version: 2.0.0-dev.13
 ---
 
 # Idea
@@ -65,13 +65,7 @@ Ideas are raw nuggets -- unprocessed, unshaped, but worth remembering. The goal 
 
 If `$ARGUMENTS` contains the idea, capture directly.
 
-If `$ARGUMENTS` is empty, **scan for sparks** in brainstorm documents:
-1. Search `.agents/drafts/*brainstorm*.md` for `## Sparks` sections
-2. List unprocessed sparks (not marked as promoted or abandoned)
-3. Present the list and let the user pick one to promote
-4. When promoting: create idea file with `origin:` field (relative to `.agents/`, e.g. `drafts/YYYYMMDD-brainstorm-slug.md`), mark spark as `*(promoted)*` in source document
-
-If no sparks found and no arguments, ask **at most 2-3 questions**: core idea, problem/opportunity, immediate constraints.
+If `$ARGUMENTS` is empty, ask **at most 2-3 questions**: core idea, problem/opportunity, immediate constraints.
 
 ### Step 2: Generate Idea File
 
@@ -114,6 +108,7 @@ raw -> shaping -> shaped (becomes SPEC) -> archived
 
 ## Related Skills
 
+- **triage** -- Review and process the intake queue (sparks + raw ideas)
 - **shape** -- Develop an idea into a SPEC
-- **brainstorm** -- Deep thinking on an idea or problem space (sparks from brainstorms can be promoted to ideas)
+- **brainstorm** -- Deep thinking on an idea or problem space
 - **research** -- Investigate before capturing

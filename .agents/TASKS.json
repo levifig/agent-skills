@@ -1675,15 +1675,6 @@
       "created": "2026-04-06T17:04:15.000Z",
       "file": "SPEC-025-remove-appetite.md"
     },
-    "SPEC-026": {
-      "title": "Instruction-file hooks with native if-filtering",
-      "status": "complete",
-      "appetite": null,
-      "requirement": null,
-      "source": "direct — SPEC-020 incomplete migration, json-parser.sh deletion broke 3 advisory hooks",
-      "created": "2026-04-06T17:25:27.000Z",
-      "file": "archive/SPEC-026-instruction-hooks.md"
-    },
     "SPEC-001": {
       "title": "Loaf Self-Sufficiency",
       "status": "complete",
@@ -1845,6 +1836,15 @@
       "source": "brainstorm/amp-target-exploration + brainstorm-session-20260331",
       "created": "2026-03-30T23:13:00.000Z",
       "file": "archive/SPEC-020-target-convergence-amp.md"
+    },
+    "SPEC-026": {
+      "title": "Instruction-file hooks with native if-filtering",
+      "status": "complete",
+      "appetite": null,
+      "requirement": null,
+      "source": "direct — SPEC-020 incomplete migration, json-parser.sh deletion broke 3 advisory hooks",
+      "created": "2026-04-06T17:25:27.000Z",
+      "file": "archive/SPEC-026-instruction-hooks.md"
     }
   }
 }

@@ -65,7 +65,7 @@ type EntryType =
   | "commit"
   | "pr"
   | "merge"
-  | "decide"
+  | "decision"
   | "discover"
   | "conclude"
   | "block"
@@ -73,7 +73,6 @@ type EntryType =
   | "spark"
   | "todo"
   | "assume"
-  // New types from SPEC-020
   | "branch"
   | "task"
   | "linear"
@@ -98,7 +97,7 @@ interface SpecFrontmatterWithBranch {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Session Lifecycle Helpers (SPEC-020 compliance)
+// Session Lifecycle Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getProjectRoot(agentsDir: string): string {
@@ -406,9 +405,8 @@ function updateSpecSessionField(agentsDir: string, specId: string, sessionFileNa
 }
 
 /** Get session file path (timestamped filename per SPEC-020) */
-function getSessionFilePath(agentsDir: string, branch: string, timestamp?: string): string {
-  // Use timestamped filename: YYYYMMDD-HHMMSS-slug.md
-  const ts = timestamp || getTimestampForFilename();
+function getSessionFilePath(agentsDir: string, branch: string): string {
+  const ts = getTimestampForFilename();
   const slug = branch.replace(/^feat\//, "").replace(/[^a-zA-Z0-9-_]/g, "-").replace(/-+/g, "-");
   return join(agentsDir, "sessions", `${ts}-${slug}.md`);
 }
@@ -544,54 +542,21 @@ async function getOrCreateSession(
   specInfo: { id: string; title: string } | null
 ): Promise<{ filePath: string; data: SessionFrontmatter; content: string; isNew: boolean }> {
   const sessionsDir = join(agentsDir, "sessions");
-  // Use a branch-level lock for session creation
   const lockPath = join(sessionsDir, `.create-${branch.replace(/[^a-zA-Z0-9-]/g, '-')}.lock`);
-  let lockAcquired = false;
-  
+
+  await acquireLock(lockPath, 100, 50);
   try {
-    // Acquire creation lock
-    await acquireLock(lockPath, 100, 50);
-    lockAcquired = true;
-    
-    // Re-check for existing session under lock with retry for filesystem sync
-    // This handles the race condition where another process just created the file
-    let existing: { filePath: string; data: SessionFrontmatter; content: string } | null = null;
-    for (let i = 0; i < 10; i++) {
-      await new Promise(resolve => setTimeout(resolve, 20));
-      existing = findActiveSessionForBranch(agentsDir, branch);
-      if (existing) break;
-    }
-    
+    const existing = findActiveSessionForBranch(agentsDir, branch);
     if (existing) {
       return { ...existing, isNew: false };
     }
-    
-    // Create new session file (or detect if another process created it)
+
     const filePath = getSessionFilePath(agentsDir, branch);
-    const created = createSessionFile(filePath, branch, specInfo);
-    
-    if (!created) {
-      // Another process created the file while we were waiting for the lock
-      // Read the existing session
-      const existingSession = readSessionFile(filePath);
-      if (existingSession) {
-        return { filePath, data: existingSession.data, content: existingSession.content, isNew: false };
-      }
-      // File was created but we couldn't read it - try to create anyway
-      const fallbackSession = readSessionFile(filePath);
-      if (fallbackSession) {
-        return { filePath, data: fallbackSession.data, content: fallbackSession.content, isNew: false };
-      }
-      // This shouldn't happen, but fall back to treating as new
-    }
-    
+    createSessionFile(filePath, branch, specInfo);
     const session = readSessionFile(filePath)!;
-    
     return { filePath, data: session.data, content: session.content, isNew: true };
   } finally {
-    if (lockAcquired) {
-      releaseLock(lockPath);
-    }
+    releaseLock(lockPath);
   }
 }
 
@@ -642,7 +607,7 @@ function parseEntry(entry: string): JournalEntry | null {
   const [, type, scope, description] = match;
   const validTypes: EntryType[] = [
     "resume", "pause", "progress", "commit", "pr", "merge",
-    "decide", "discover", "conclude", "block", "unblock",
+    "decision", "discover", "conclude", "block", "unblock",
     "spark", "todo", "assume",
     // New types
     "branch", "task", "linear", "hypothesis", "try", "reject", "compact"
@@ -655,12 +620,6 @@ function parseEntry(entry: string): JournalEntry | null {
     scope,
     description,
   };
-}
-
-/** Format entry for journal */
-function formatEntry(entry: JournalEntry): string {
-  const scope = entry.scope ? `(${entry.scope})` : "";
-  return `- ${entry.type}${scope}: ${entry.description}`;
 }
 
 /** Get current timestamp in ISO format */
@@ -701,7 +660,7 @@ function createSessionFile(
   }
 
   const title = specInfo ? `${specInfo.id}: ${specInfo.title}` : branch;
-  const entry = `- ${getDateTimeString()} resume(${branch}): session started`;
+  const entry = `[${getDateTimeString()}] resume(${branch}): session started`;
   
   const body = `# Session: ${title}\n\n## Journal\n\n${entry}\n`;
 
@@ -720,54 +679,53 @@ function createSessionFile(
   return frontmatter;
 }
 
-/** Append inline journal entry to session file (atomic with file locking) */
+/** Append journal entries to session file (atomic with file locking) */
 async function appendEntry(
   filePath: string,
   entryLines: string[],
   updateFrontmatter: (data: SessionFrontmatter) => void
 ): Promise<void> {
   const lockPath = `${filePath}.lock`;
-  let lockAcquired = false;
-  
+  await acquireLock(lockPath);
   try {
-    // Acquire exclusive lock
-    await acquireLock(lockPath);
-    lockAcquired = true;
-    
-    // Read fresh state under lock
     const session = readSessionFile(filePath);
     if (!session) {
       throw new Error("Session file not found");
     }
 
-    // Update frontmatter
     updateFrontmatter(session.data);
 
-    // Build new content: add blank line before entry if needed
+    // Blank line when gap ≥ 5 minutes or on state transitions (block/unblock/pause/resume)
     const trimmedContent = session.content.trimEnd();
-    const separator = trimmedContent.endsWith('\n') ? '\n' : '\n\n';
+    const lastTimestamp = extractLastEntryTimestamp(trimmedContent);
+    const STATE_TRANSITION_TYPES = ['block', 'unblock', 'pause', 'resume'];
+    const hasStateTransition = entryLines.some(line =>
+      STATE_TRANSITION_TYPES.some(type => new RegExp(`\\] ${type}[:(]`).test(line))
+    );
+
+    let needsBlankLine = hasStateTransition;
+    if (!needsBlankLine && lastTimestamp) {
+      needsBlankLine = (Date.now() - lastTimestamp.getTime()) >= 5 * 60 * 1000;
+    } else if (!lastTimestamp) {
+      needsBlankLine = true;
+    }
+
+    const separator = needsBlankLine ? '\n\n' : '\n';
     const newContent = matter.stringify(
       trimmedContent + separator + entryLines.join("\n") + "\n",
       session.data as unknown as Record<string, unknown>
     );
 
-    // Atomic write
     writeFileAtomic(filePath, newContent);
   } finally {
-    // Only release lock if we acquired it
-    if (lockAcquired) {
-      releaseLock(lockPath);
-    }
+    releaseLock(lockPath);
   }
 }
 
-/** Extract recent journal entries for context display (compact inline format) */
 function extractRecentEntries(content: string, count = 15): string[] {
   const lines = content.split("\n");
   const entries: string[] = [];
-
-  // Match inline journal entries: "- YYYY-MM-DD HH:MM type(scope): description"
-  const entryPattern = /^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} /;
+  const entryPattern = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] /;
 
   for (const line of lines) {
     if (entryPattern.test(line)) {
@@ -779,26 +737,37 @@ function extractRecentEntries(content: string, count = 15): string[] {
   return entries.slice(-count);
 }
 
-/** Extract decide entries from session (compact inline format) */
-function extractDecideEntries(content: string): string[] {
-  const decideEntries: string[] = [];
+function extractLastEntryTimestamp(content: string): Date | null {
+  const lines = content.split('\n');
+  const pattern = /^\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})\]/;
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const match = lines[i].trim().match(pattern);
+    if (match) {
+      return new Date(`${match[1]}T${match[2]}:00`);
+    }
+  }
+  return null;
+}
+
+function extractDecisionEntries(content: string): string[] {
+  const entries: string[] = [];
   const lines = content.split("\n");
 
-  // Match inline format: "- YYYY-MM-DD HH:MM decide(scope): description"
   for (const line of lines) {
-    if (line.match(/^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} decide\([^)]+\):/)) {
-      decideEntries.push(line.trim());
+    if (line.match(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] decision\([^)]+\):/)) {
+      entries.push(line.trim());
     }
   }
 
-  return decideEntries;
+  return entries;
 }
 
 /** Persist decisions to spec changelog */
 function persistDecisionsToSpec(
   agentsDir: string,
   specId: string,
-  decideEntries: string[],
+  decisionEntries: string[],
   sessionBranch: string
 ): { success: boolean; message: string } {
   // Find spec file
@@ -821,19 +790,19 @@ function persistDecisionsToSpec(
   // Find or create Changelog section
   const changelogMatch = specContent.match(/\n## Changelog\n/);
   const dateStr = new Date().toISOString().split("T")[0];
-  const entryHeader = `- ${dateStr} — Session ${sessionBranch} archived: ${decideEntries.length} decision(s) extracted`;
+  const entryHeader = `- ${dateStr} — Session ${sessionBranch} archived: ${decisionEntries.length} decision(s) extracted`;
   
   let updatedContent: string;
   
   if (changelogMatch) {
     // Insert after "## Changelog\n"
     const insertPos = changelogMatch.index! + changelogMatch[0].length;
-    const decisionsList = decideEntries.map((e) => `  ${e}`).join("\n");
+    const decisionsList = decisionEntries.map((e) => `  ${e}`).join("\n");
     const entry = `${entryHeader}\n${decisionsList}\n\n`;
     updatedContent = specContent.slice(0, insertPos) + entry + specContent.slice(insertPos);
   } else {
     // Append Changelog section at end
-    const decisionsList = decideEntries.map((e) => `  ${e}`).join("\n");
+    const decisionsList = decisionEntries.map((e) => `  ${e}`).join("\n");
     const entry = `\n## Changelog\n\n${entryHeader}\n${decisionsList}\n`;
     updatedContent = specContent + entry;
   }
@@ -847,6 +816,26 @@ function countTasksInSession(content: string): { completed: number; total: numbe
   const completed = (content.match(/- \[x\]/gi) || []).length;
   const total = (content.match(/- \[[ x]\]/gi) || []).length;
   return { completed, total };
+}
+
+function quickArchiveSession(filePath: string, agentsDir: string): void {
+  const archiveDir = join(agentsDir, "sessions", "archive");
+  if (!existsSync(archiveDir)) {
+    mkdirSync(archiveDir, { recursive: true });
+  }
+
+  try {
+    const session = readSessionFile(filePath);
+    if (session) {
+      session.data.status = "archived";
+      session.data.archived_at = getTimestamp();
+      const content = matter.stringify(session.content, session.data as unknown as Record<string, unknown>);
+      writeFileSync(filePath, content, "utf-8");
+    }
+    renameSync(filePath, join(archiveDir, basename(filePath)));
+  } catch {
+    // Concurrent process may have already archived this session
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -863,20 +852,19 @@ export function registerSessionCommand(program: Command): void {
   session
     .command("start")
     .description("Start/resume session for current branch")
-    .action(async () => {
+    .option("--resume", "Resume existing paused session instead of creating new")
+    .action(async (options: { resume?: boolean }) => {
       const agentsDir = findAgentsDir();
       if (!agentsDir) {
         console.error(`  ${red("error:")} Could not find .agents/ directory`);
         process.exit(1);
       }
 
-      // Ensure sessions directory exists
       const sessionsDir = join(agentsDir, "sessions");
       if (!existsSync(sessionsDir)) {
         mkdirSync(sessionsDir, { recursive: true });
       }
 
-      // Detect current branch
       const branch = getCurrentBranch();
       if (branch === "unknown") {
         console.error(`  ${red("error:")} Not in a git repository`);
@@ -891,7 +879,6 @@ export function registerSessionCommand(program: Command): void {
       console.log(`\n  ${bold("loaf session start")}\n`);
       console.log(`  Branch: ${cyan(branch)}`);
 
-      // Find linked spec
       const specInfo = findSpecForBranch(agentsDir, branch);
       if (specInfo) {
         console.log(`  Linked to: ${bold(specInfo.id)} — ${specInfo.title}`);
@@ -899,51 +886,66 @@ export function registerSessionCommand(program: Command): void {
         console.log(`  ${yellow("!")} No linked spec found — creating ad-hoc session`);
       }
 
-      // Atomically get existing session or create new one
-      const { filePath: sessionFilePath, data: sessionData, content: sessionContent, isNew } = 
-        await getOrCreateSession(agentsDir, branch, specInfo);
-      
-      if (isNew) {
-        console.log(`  ${green("+")} Creating new session file`);
-        
-        // Update linked spec with session filename (for branch rename recovery)
-        if (specInfo) {
-          const sessionFileName = basename(sessionFilePath);
-          updateSpecSessionField(agentsDir, specInfo.id, sessionFileName);
-        }
-      } else {
+      const existingSession = findActiveSessionForBranch(agentsDir, branch);
+
+      let sessionFilePath: string;
+      let sessionData: SessionFrontmatter;
+      let sessionContent: string;
+      let isResume = false;
+
+      if (existingSession && (options.resume || existingSession.data.status === "active")) {
+        // --resume flag, or session is active (wasn't properly closed)
+        sessionFilePath = existingSession.filePath;
+        sessionData = existingSession.data;
+        sessionContent = existingSession.content;
+        isResume = existingSession.data.status !== "active";
         console.log(`  ${green("✓")} Resuming existing session`);
+      } else {
+        if (existingSession) {
+          quickArchiveSession(existingSession.filePath, agentsDir);
+          console.log(`  ${yellow("!")} Closed previous session`);
+        }
+
+        const result = await getOrCreateSession(agentsDir, branch, specInfo);
+        sessionFilePath = result.filePath;
+        sessionData = result.data;
+        sessionContent = result.content;
+
+        if (result.isNew) {
+          console.log(`  ${green("+")} Creating new session file`);
+          if (specInfo) {
+            const sessionFileName = basename(sessionFilePath);
+            updateSpecSessionField(agentsDir, specInfo.id, sessionFileName);
+          }
+        } else {
+          console.log(`  ${green("✓")} Resuming existing session`);
+          isResume = true;
+        }
       }
 
-      // Compute state
       const lastCommit = getLastCommitSha();
       const commits = getRecentCommits(3);
       const { completed, total } = countTasksInSession(sessionContent);
-
-      // Build journal entries (inline format per SPEC-020)
-      // For NEW sessions: createSessionFile() already added initial resume entry
-      // For EXISTING sessions: only add resume entry if the session was not already active
       const timestamp = getDateTimeString();
       const journalLines: string[] = [];
-      
-      const shouldAppendResume = !isNew && sessionData.status !== "active";
-      
-      if (shouldAppendResume) {
-        journalLines.push(`- ${timestamp} resume(${branch}): session resumed`);
+
+      if (isResume) {
+        journalLines.push(`[${timestamp}] resume(${branch}): session resumed`);
         if (lastCommit !== "unknown") {
-          journalLines.push(`- ${timestamp} resume(${branch}): from commit ${lastCommit}`);
+          journalLines.push(`[${timestamp}] resume(${branch}): from commit ${lastCommit}`);
         }
         if (completed > 0 || total > 0) {
-          journalLines.push(`- ${timestamp} progress: ${completed}/${total} tasks completed`);
+          journalLines.push(`[${timestamp}] progress: ${completed}/${total} tasks completed`);
         }
         if (commits.length > 0) {
           for (const commit of commits.slice(0, 3)) {
-            journalLines.push(`- ${timestamp} commit(${commit.hash}): "${commit.message}"`);
+            if (!sessionContent.includes(`commit(${commit.hash})`)) {
+              journalLines.push(`[${timestamp}] commit(${commit.hash}): ${commit.message}`);
+            }
           }
         }
       }
 
-      // Append entries to journal (only if we built some)
       if (journalLines.length > 0) {
         await appendEntry(
           sessionFilePath,
@@ -954,9 +956,7 @@ export function registerSessionCommand(program: Command): void {
             data.last_entry = getTimestamp();
           }
         );
-      } else if (sessionData.status !== "active" || isNew) {
-        // If we didn't append anything, we still might need to update the status for new sessions
-        // (Though if it's new, it's already set to active, but we'll update timestamps)
+      } else if (sessionData.status !== "active") {
         sessionData.status = "active";
         sessionData.last_updated = getTimestamp();
         sessionData.last_entry = getTimestamp();
@@ -978,19 +978,12 @@ export function registerSessionCommand(program: Command): void {
         console.log(`  ${yellow("⚠")} ${staleKbCount} stale knowledge file(s) — run 'loaf kb review'`);
       }
 
-      // Output recent entries for context
-      const currentSessionContent = readSessionFile(sessionFilePath)?.content || sessionContent;
-      const recentEntries = extractRecentEntries(currentSessionContent, 15);
+      const currentContent = readSessionFile(sessionFilePath)?.content || sessionContent;
+      const recentEntries = extractRecentEntries(currentContent, 15);
       if (recentEntries.length > 0) {
         console.log(`\n  ${bold("Recent journal entries:")}\n`);
-        for (const entry of recentEntries.slice(0, 20)) {
-          const lines = entry.split("\n");
-          for (const line of lines.slice(0, 5)) {
-            console.log(`    ${line}`);
-          }
-          if (lines.length > 5) {
-            console.log(`    ${gray("...")}`);
-          }
+        for (const entry of recentEntries) {
+          console.log(`    ${entry}`);
         }
       }
 
@@ -1016,8 +1009,7 @@ export function registerSessionCommand(program: Command): void {
         process.exit(1);
       }
 
-      // Find active session by branch lookup
-      let existingSession = findActiveSessionForBranch(agentsDir, branch);
+      const existingSession = findActiveSessionForBranch(agentsDir, branch);
       if (!existingSession) {
         if (options.ifActive) {
           process.exit(0);
@@ -1028,38 +1020,32 @@ export function registerSessionCommand(program: Command): void {
       if (options.ifActive && existingSession.data.status !== "active") {
         process.exit(0);
       }
-      
-      const sessionFilePath = existingSession.filePath;
-      const session = existingSession;
 
       console.log(`\n  ${bold("loaf session end")}\n`);
 
-      // Compute progress
       const lastCommit = getLastCommitSha();
       const commits = getRecentCommits(5);
-      const { completed, total } = countTasksInSession(session.content);
-      const commitCount = commits.length;
-
-      // Build pause entries (inline format per SPEC-020)
+      const { completed, total } = countTasksInSession(existingSession.content);
       const timestamp = getDateTimeString();
       const journalLines: string[] = [
-        `- ${timestamp} pause(${branch}): session paused`,
-        `- ${timestamp} progress: ${completed}/${total} tasks completed, ${commitCount} commits`,
+        `[${timestamp}] pause(${branch}): session paused`,
+        `[${timestamp}] progress: ${completed}/${total} tasks completed, ${commits.length} commits`,
       ];
       if (lastCommit !== "unknown") {
-        journalLines.push(`- ${timestamp} conclude(${branch}): at commit ${lastCommit}`);
+        journalLines.push(`[${timestamp}] conclude(${branch}): at commit ${lastCommit}`);
       }
 
-      // Prompt for final entries
+      // PAUSE separator (visual boundary between sessions)
+      journalLines.push('');
+      journalLines.push(`--- PAUSE ${timestamp} ---`);
       console.log(`  ${yellow("?")} Consider adding final entries:`);
-      console.log(`    ${gray("loaf session log \"decide(scope): key decision\"")}`);
+      console.log(`    ${gray("loaf session log \"decision(scope): key decision\"")}`);
       console.log(`    ${gray("loaf session log \"conclude(scope): final notes\"")}`);
       console.log(`    ${gray("loaf session log \"todo(next): follow-up task\"")}`);
       console.log();
 
-      // Append pause entries
       await appendEntry(
-        sessionFilePath,
+        existingSession.filePath,
         journalLines,
         (data: SessionFrontmatter) => {
           data.status = "paused";
@@ -1078,7 +1064,7 @@ export function registerSessionCommand(program: Command): void {
         console.log();
       }
 
-      console.log(`  ${green("✓")} Session paused: ${gray(sessionFilePath.replace(agentsDir, ".agents"))}`);
+      console.log(`  ${green("✓")} Session paused: ${gray(existingSession.filePath.replace(agentsDir, ".agents"))}`);
       console.log();
     });
 
@@ -1106,20 +1092,14 @@ export function registerSessionCommand(program: Command): void {
         console.error(`  ${yellow("⚠")} Warning: In detached HEAD state (${branch})`);
       }
 
-      // Find active session by branch lookup
-      let existingSession = findActiveSessionForBranch(agentsDir, branch);
+      const existingSession = findActiveSessionForBranch(agentsDir, branch);
       if (!existingSession) {
-        // For hook calls, no-op gracefully instead of erroring
-        // This prevents hooks from failing when no session exists
         if (options.fromHook) {
           process.exit(0);
         }
         console.error(`  ${red("error:")} No active session found for branch ${branch}. Run 'loaf session start' first.`);
         process.exit(1);
       }
-      
-      const sessionFilePath = existingSession.filePath;
-      const session = existingSession;
 
       let entryText = entry;
 
@@ -1238,7 +1218,7 @@ export function registerSessionCommand(program: Command): void {
       if (!entryText) {
         console.error(`  ${red("error:")} Entry text is required. Use: loaf session log "type(scope): description"`);
         console.error(`  ${gray("Examples:")}`);
-        console.error(`    ${gray("loaf session log \"decide(hooks): remove bash wrappers\"")}`);
+        console.error(`    ${gray("loaf session log \"decision(hooks): remove bash wrappers\"")}`);
         console.error(`    ${gray("loaf session log \"todo(next): implement tests\"")}`);
         process.exit(1);
       }
@@ -1248,17 +1228,15 @@ export function registerSessionCommand(program: Command): void {
       if (!parsedEntry) {
         console.error(`  ${red("error:")} Invalid entry format. Use: type(scope): description`);
         console.error(`  ${gray("Examples:")}`);
-        console.error(`    ${gray("loaf session log \"decide(hooks): remove bash wrappers\"")}`);
+        console.error(`    ${gray("loaf session log \"decision(hooks): remove bash wrappers\"")}`);
         console.error(`    ${gray("loaf session log \"todo(next): implement tests\"")}`);
         process.exit(1);
       }
 
-      // Append entry (inline format with timestamp)
       const timestamp = getDateTimeString();
-      const formattedEntry = `- ${timestamp} ${entryText}`;
-      
+      const formattedEntry = `[${timestamp}] ${entryText}`;
       await appendEntry(
-        sessionFilePath,
+        existingSession.filePath,
         [formattedEntry],
         (data: SessionFrontmatter) => {
           data.last_updated = getTimestamp();
@@ -1288,15 +1266,11 @@ export function registerSessionCommand(program: Command): void {
         process.exit(1);
       }
 
-      // Find active session by branch lookup
-      let existingSession = findActiveSessionForBranch(agentsDir, branch);
+      const existingSession = findActiveSessionForBranch(agentsDir, branch);
       if (!existingSession) {
         console.error(`  ${red("error:")} No active session found for branch ${branch}`);
         process.exit(1);
       }
-      
-      const sessionFilePath = existingSession.filePath;
-      const session = existingSession;
 
       console.log(`\n  ${bold("loaf session archive")}\n`);
 
@@ -1306,25 +1280,23 @@ export function registerSessionCommand(program: Command): void {
         mkdirSync(archiveDir, { recursive: true });
       }
 
-      // Extract key decisions
-      const decideEntries = extractDecideEntries(session.content);
-      if (decideEntries.length > 0) {
+      const decisionEntries = extractDecisionEntries(existingSession.content);
+      if (decisionEntries.length > 0) {
         console.log(`  ${bold("Key decisions extracted:")}`);
-        for (const entry of decideEntries.slice(0, 10)) {
+        for (const entry of decisionEntries.slice(0, 10)) {
           console.log(`    ${entry}`);
         }
-        if (decideEntries.length > 10) {
-          console.log(`    ${gray(`... and ${decideEntries.length - 10} more`)}`);
+        if (decisionEntries.length > 10) {
+          console.log(`    ${gray(`... and ${decisionEntries.length - 10} more`)}`);
         }
         console.log();
 
-        // Persist to spec changelog if linked
-        if (session.data.spec && decideEntries.length > 0) {
+        if (existingSession.data.spec && decisionEntries.length > 0) {
           const result = persistDecisionsToSpec(
             agentsDir,
-            session.data.spec,
-            decideEntries,
-            session.data.branch || branch
+            existingSession.data.spec,
+            decisionEntries,
+            existingSession.data.branch || branch
           );
           if (result.success) {
             console.log(`  ${green("✓")} ${result.message}`);
@@ -1335,21 +1307,17 @@ export function registerSessionCommand(program: Command): void {
         }
       }
 
-      // Move to archive first (atomic on same filesystem), then update frontmatter.
-      // This avoids a corruption window where the file has status: archived but is
-      // still in sessions/ — if the process crashes between write and rename the
-      // session becomes invisible to both `session list` and the archive directory.
-      const fileName = basename(sessionFilePath);
-      const archivePath = join(archiveDir, fileName);
+      // Move first, then update frontmatter — avoids a window where status is
+      // archived but the file is still in sessions/
+      const archivePath = join(archiveDir, basename(existingSession.filePath));
 
       try {
-        renameSync(sessionFilePath, archivePath);
+        renameSync(existingSession.filePath, archivePath);
       } catch (err) {
         console.error(`  ${red("error:")} Failed to move file: ${err}`);
         process.exit(1);
       }
 
-      // Now update frontmatter in the already-archived file
       const now = getTimestamp();
       const archivedSession = readSessionFile(archivePath);
       if (archivedSession) {

@@ -24983,8 +24983,8 @@ function updateSpecSessionField(agentsDir, specId, sessionFileName) {
     }
   }
 }
-function getSessionFilePath(agentsDir, branch, timestamp) {
-  const ts = timestamp || getTimestampForFilename();
+function getSessionFilePath(agentsDir, branch) {
+  const ts = getTimestampForFilename();
   const slug = branch.replace(/^feat\//, "").replace(/[^a-zA-Z0-9-_]/g, "-").replace(/-+/g, "-");
   return join40(agentsDir, "sessions", `${ts}-${slug}.md`);
 }
@@ -25075,37 +25075,18 @@ function findActiveSessionForBranch(agentsDir, branch) {
 async function getOrCreateSession(agentsDir, branch, specInfo) {
   const sessionsDir = join40(agentsDir, "sessions");
   const lockPath = join40(sessionsDir, `.create-${branch.replace(/[^a-zA-Z0-9-]/g, "-")}.lock`);
-  let lockAcquired = false;
+  await acquireLock(lockPath, 100, 50);
   try {
-    await acquireLock(lockPath, 100, 50);
-    lockAcquired = true;
-    let existing = null;
-    for (let i = 0; i < 10; i++) {
-      await new Promise((resolve2) => setTimeout(resolve2, 20));
-      existing = findActiveSessionForBranch(agentsDir, branch);
-      if (existing) break;
-    }
+    const existing = findActiveSessionForBranch(agentsDir, branch);
     if (existing) {
       return { ...existing, isNew: false };
     }
     const filePath = getSessionFilePath(agentsDir, branch);
-    const created = createSessionFile(filePath, branch, specInfo);
-    if (!created) {
-      const existingSession = readSessionFile(filePath);
-      if (existingSession) {
-        return { filePath, data: existingSession.data, content: existingSession.content, isNew: false };
-      }
-      const fallbackSession = readSessionFile(filePath);
-      if (fallbackSession) {
-        return { filePath, data: fallbackSession.data, content: fallbackSession.content, isNew: false };
-      }
-    }
+    createSessionFile(filePath, branch, specInfo);
     const session = readSessionFile(filePath);
     return { filePath, data: session.data, content: session.content, isNew: true };
   } finally {
-    if (lockAcquired) {
-      releaseLock(lockPath);
-    }
+    releaseLock(lockPath);
   }
 }
 function readSessionFile(filePath) {
@@ -25145,7 +25126,7 @@ function parseEntry(entry) {
     "commit",
     "pr",
     "merge",
-    "decide",
+    "decision",
     "discover",
     "conclude",
     "block",
@@ -25193,7 +25174,7 @@ function createSessionFile(filePath, branch, specInfo) {
     frontmatter.spec = specInfo.id;
   }
   const title = specInfo ? `${specInfo.id}: ${specInfo.title}` : branch;
-  const entry = `- ${getDateTimeString()} resume(${branch}): session started`;
+  const entry = `[${getDateTimeString()}] resume(${branch}): session started`;
   const body = `# Session: ${title}
 
 ## Journal
@@ -25212,32 +25193,39 @@ ${entry}
 }
 async function appendEntry(filePath, entryLines, updateFrontmatter) {
   const lockPath = `${filePath}.lock`;
-  let lockAcquired = false;
+  await acquireLock(lockPath);
   try {
-    await acquireLock(lockPath);
-    lockAcquired = true;
     const session = readSessionFile(filePath);
     if (!session) {
       throw new Error("Session file not found");
     }
     updateFrontmatter(session.data);
     const trimmedContent = session.content.trimEnd();
-    const separator = trimmedContent.endsWith("\n") ? "\n" : "\n\n";
+    const lastTimestamp = extractLastEntryTimestamp(trimmedContent);
+    const STATE_TRANSITION_TYPES = ["block", "unblock", "pause", "resume"];
+    const hasStateTransition = entryLines.some(
+      (line) => STATE_TRANSITION_TYPES.some((type) => new RegExp(`\\] ${type}[:(]`).test(line))
+    );
+    let needsBlankLine = hasStateTransition;
+    if (!needsBlankLine && lastTimestamp) {
+      needsBlankLine = Date.now() - lastTimestamp.getTime() >= 5 * 60 * 1e3;
+    } else if (!lastTimestamp) {
+      needsBlankLine = true;
+    }
+    const separator = needsBlankLine ? "\n\n" : "\n";
     const newContent = import_gray_matter13.default.stringify(
       trimmedContent + separator + entryLines.join("\n") + "\n",
       session.data
     );
     writeFileAtomic(filePath, newContent);
   } finally {
-    if (lockAcquired) {
-      releaseLock(lockPath);
-    }
+    releaseLock(lockPath);
   }
 }
 function extractRecentEntries(content, count = 15) {
   const lines = content.split("\n");
   const entries = [];
-  const entryPattern = /^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} /;
+  const entryPattern = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] /;
   for (const line of lines) {
     if (entryPattern.test(line)) {
       entries.push(line.trim());
@@ -25245,17 +25233,28 @@ function extractRecentEntries(content, count = 15) {
   }
   return entries.slice(-count);
 }
-function extractDecideEntries(content) {
-  const decideEntries = [];
+function extractLastEntryTimestamp(content) {
   const lines = content.split("\n");
-  for (const line of lines) {
-    if (line.match(/^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} decide\([^)]+\):/)) {
-      decideEntries.push(line.trim());
+  const pattern = /^\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})\]/;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const match = lines[i].trim().match(pattern);
+    if (match) {
+      return /* @__PURE__ */ new Date(`${match[1]}T${match[2]}:00`);
     }
   }
-  return decideEntries;
+  return null;
 }
-function persistDecisionsToSpec(agentsDir, specId, decideEntries, sessionBranch) {
+function extractDecisionEntries(content) {
+  const entries = [];
+  const lines = content.split("\n");
+  for (const line of lines) {
+    if (line.match(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] decision\([^)]+\):/)) {
+      entries.push(line.trim());
+    }
+  }
+  return entries;
+}
+function persistDecisionsToSpec(agentsDir, specId, decisionEntries, sessionBranch) {
   const specsDir = join40(agentsDir, "specs");
   if (!existsSync35(specsDir)) {
     return { success: false, message: "No specs directory found" };
@@ -25269,18 +25268,18 @@ function persistDecisionsToSpec(agentsDir, specId, decideEntries, sessionBranch)
   const specContent = readFileSync30(specPath, "utf-8");
   const changelogMatch = specContent.match(/\n## Changelog\n/);
   const dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-  const entryHeader = `- ${dateStr} \u2014 Session ${sessionBranch} archived: ${decideEntries.length} decision(s) extracted`;
+  const entryHeader = `- ${dateStr} \u2014 Session ${sessionBranch} archived: ${decisionEntries.length} decision(s) extracted`;
   let updatedContent;
   if (changelogMatch) {
     const insertPos = changelogMatch.index + changelogMatch[0].length;
-    const decisionsList = decideEntries.map((e) => `  ${e}`).join("\n");
+    const decisionsList = decisionEntries.map((e) => `  ${e}`).join("\n");
     const entry = `${entryHeader}
 ${decisionsList}
 
 `;
     updatedContent = specContent.slice(0, insertPos) + entry + specContent.slice(insertPos);
   } else {
-    const decisionsList = decideEntries.map((e) => `  ${e}`).join("\n");
+    const decisionsList = decisionEntries.map((e) => `  ${e}`).join("\n");
     const entry = `
 ## Changelog
 
@@ -25297,9 +25296,26 @@ function countTasksInSession(content) {
   const total = (content.match(/- \[[ x]\]/gi) || []).length;
   return { completed, total };
 }
+function quickArchiveSession(filePath, agentsDir) {
+  const archiveDir = join40(agentsDir, "sessions", "archive");
+  if (!existsSync35(archiveDir)) {
+    mkdirSync22(archiveDir, { recursive: true });
+  }
+  try {
+    const session = readSessionFile(filePath);
+    if (session) {
+      session.data.status = "archived";
+      session.data.archived_at = getTimestamp();
+      const content = import_gray_matter13.default.stringify(session.content, session.data);
+      writeFileSync21(filePath, content, "utf-8");
+    }
+    renameSync3(filePath, join40(archiveDir, basename5(filePath)));
+  } catch {
+  }
+}
 function registerSessionCommand(program3) {
   const session = program3.command("session").description("Manage session journals");
-  session.command("start").description("Start/resume session for current branch").action(async () => {
+  session.command("start").description("Start/resume session for current branch").option("--resume", "Resume existing paused session instead of creating new").action(async (options2) => {
     const agentsDir = findAgentsDir();
     if (!agentsDir) {
       console.error(`  ${red10("error:")} Could not find .agents/ directory`);
@@ -25328,33 +25344,55 @@ function registerSessionCommand(program3) {
     } else {
       console.log(`  ${yellow14("!")} No linked spec found \u2014 creating ad-hoc session`);
     }
-    const { filePath: sessionFilePath, data: sessionData, content: sessionContent, isNew } = await getOrCreateSession(agentsDir, branch, specInfo);
-    if (isNew) {
-      console.log(`  ${green12("+")} Creating new session file`);
-      if (specInfo) {
-        const sessionFileName = basename5(sessionFilePath);
-        updateSpecSessionField(agentsDir, specInfo.id, sessionFileName);
-      }
-    } else {
+    const existingSession = findActiveSessionForBranch(agentsDir, branch);
+    let sessionFilePath;
+    let sessionData;
+    let sessionContent;
+    let isResume = false;
+    if (existingSession && (options2.resume || existingSession.data.status === "active")) {
+      sessionFilePath = existingSession.filePath;
+      sessionData = existingSession.data;
+      sessionContent = existingSession.content;
+      isResume = existingSession.data.status !== "active";
       console.log(`  ${green12("\u2713")} Resuming existing session`);
+    } else {
+      if (existingSession) {
+        quickArchiveSession(existingSession.filePath, agentsDir);
+        console.log(`  ${yellow14("!")} Closed previous session`);
+      }
+      const result = await getOrCreateSession(agentsDir, branch, specInfo);
+      sessionFilePath = result.filePath;
+      sessionData = result.data;
+      sessionContent = result.content;
+      if (result.isNew) {
+        console.log(`  ${green12("+")} Creating new session file`);
+        if (specInfo) {
+          const sessionFileName = basename5(sessionFilePath);
+          updateSpecSessionField(agentsDir, specInfo.id, sessionFileName);
+        }
+      } else {
+        console.log(`  ${green12("\u2713")} Resuming existing session`);
+        isResume = true;
+      }
     }
     const lastCommit = getLastCommitSha();
     const commits = getRecentCommits(3);
     const { completed, total } = countTasksInSession(sessionContent);
     const timestamp = getDateTimeString();
     const journalLines = [];
-    const shouldAppendResume = !isNew && sessionData.status !== "active";
-    if (shouldAppendResume) {
-      journalLines.push(`- ${timestamp} resume(${branch}): session resumed`);
+    if (isResume) {
+      journalLines.push(`[${timestamp}] resume(${branch}): session resumed`);
       if (lastCommit !== "unknown") {
-        journalLines.push(`- ${timestamp} resume(${branch}): from commit ${lastCommit}`);
+        journalLines.push(`[${timestamp}] resume(${branch}): from commit ${lastCommit}`);
       }
       if (completed > 0 || total > 0) {
-        journalLines.push(`- ${timestamp} progress: ${completed}/${total} tasks completed`);
+        journalLines.push(`[${timestamp}] progress: ${completed}/${total} tasks completed`);
       }
       if (commits.length > 0) {
         for (const commit of commits.slice(0, 3)) {
-          journalLines.push(`- ${timestamp} commit(${commit.hash}): "${commit.message}"`);
+          if (!sessionContent.includes(`commit(${commit.hash})`)) {
+            journalLines.push(`[${timestamp}] commit(${commit.hash}): ${commit.message}`);
+          }
         }
       }
     }
@@ -25368,7 +25406,7 @@ function registerSessionCommand(program3) {
           data.last_entry = getTimestamp();
         }
       );
-    } else if (sessionData.status !== "active" || isNew) {
+    } else if (sessionData.status !== "active") {
       sessionData.status = "active";
       sessionData.last_updated = getTimestamp();
       sessionData.last_entry = getTimestamp();
@@ -25386,20 +25424,14 @@ function registerSessionCommand(program3) {
     if (staleKbCount > 0) {
       console.log(`  ${yellow14("\u26A0")} ${staleKbCount} stale knowledge file(s) \u2014 run 'loaf kb review'`);
     }
-    const currentSessionContent = readSessionFile(sessionFilePath)?.content || sessionContent;
-    const recentEntries = extractRecentEntries(currentSessionContent, 15);
+    const currentContent = readSessionFile(sessionFilePath)?.content || sessionContent;
+    const recentEntries = extractRecentEntries(currentContent, 15);
     if (recentEntries.length > 0) {
       console.log(`
   ${bold13("Recent journal entries:")}
 `);
-      for (const entry of recentEntries.slice(0, 20)) {
-        const lines = entry.split("\n");
-        for (const line of lines.slice(0, 5)) {
-          console.log(`    ${line}`);
-        }
-        if (lines.length > 5) {
-          console.log(`    ${gray14("...")}`);
-        }
+      for (const entry of recentEntries) {
+        console.log(`    ${entry}`);
       }
     }
     console.log();
@@ -25415,7 +25447,7 @@ function registerSessionCommand(program3) {
       console.error(`  ${red10("error:")} Not in a git repository`);
       process.exit(1);
     }
-    let existingSession = findActiveSessionForBranch(agentsDir, branch);
+    const existingSession = findActiveSessionForBranch(agentsDir, branch);
     if (!existingSession) {
       if (options2.ifActive) {
         process.exit(0);
@@ -25426,30 +25458,29 @@ function registerSessionCommand(program3) {
     if (options2.ifActive && existingSession.data.status !== "active") {
       process.exit(0);
     }
-    const sessionFilePath = existingSession.filePath;
-    const session2 = existingSession;
     console.log(`
   ${bold13("loaf session end")}
 `);
     const lastCommit = getLastCommitSha();
     const commits = getRecentCommits(5);
-    const { completed, total } = countTasksInSession(session2.content);
-    const commitCount = commits.length;
+    const { completed, total } = countTasksInSession(existingSession.content);
     const timestamp = getDateTimeString();
     const journalLines = [
-      `- ${timestamp} pause(${branch}): session paused`,
-      `- ${timestamp} progress: ${completed}/${total} tasks completed, ${commitCount} commits`
+      `[${timestamp}] pause(${branch}): session paused`,
+      `[${timestamp}] progress: ${completed}/${total} tasks completed, ${commits.length} commits`
     ];
     if (lastCommit !== "unknown") {
-      journalLines.push(`- ${timestamp} conclude(${branch}): at commit ${lastCommit}`);
+      journalLines.push(`[${timestamp}] conclude(${branch}): at commit ${lastCommit}`);
     }
+    journalLines.push("");
+    journalLines.push(`--- PAUSE ${timestamp} ---`);
     console.log(`  ${yellow14("?")} Consider adding final entries:`);
-    console.log(`    ${gray14('loaf session log "decide(scope): key decision"')}`);
+    console.log(`    ${gray14('loaf session log "decision(scope): key decision"')}`);
     console.log(`    ${gray14('loaf session log "conclude(scope): final notes"')}`);
     console.log(`    ${gray14('loaf session log "todo(next): follow-up task"')}`);
     console.log();
     await appendEntry(
-      sessionFilePath,
+      existingSession.filePath,
       journalLines,
       (data) => {
         data.status = "paused";
@@ -25466,7 +25497,7 @@ function registerSessionCommand(program3) {
       console.log(`    ${gray14("Run 'loaf kb review <file>' before ending.")}`);
       console.log();
     }
-    console.log(`  ${green12("\u2713")} Session paused: ${gray14(sessionFilePath.replace(agentsDir, ".agents"))}`);
+    console.log(`  ${green12("\u2713")} Session paused: ${gray14(existingSession.filePath.replace(agentsDir, ".agents"))}`);
     console.log();
   });
   session.command("log [entry]").description("Log entry to session journal").option("--from-hook", "Parse entry from hook stdin").option("--detect-linear", "Detect Linear magic words in recent commits").action(async (entry, options2) => {
@@ -25483,7 +25514,7 @@ function registerSessionCommand(program3) {
     if (branch.startsWith("detached-")) {
       console.error(`  ${yellow14("\u26A0")} Warning: In detached HEAD state (${branch})`);
     }
-    let existingSession = findActiveSessionForBranch(agentsDir, branch);
+    const existingSession = findActiveSessionForBranch(agentsDir, branch);
     if (!existingSession) {
       if (options2.fromHook) {
         process.exit(0);
@@ -25491,8 +25522,6 @@ function registerSessionCommand(program3) {
       console.error(`  ${red10("error:")} No active session found for branch ${branch}. Run 'loaf session start' first.`);
       process.exit(1);
     }
-    const sessionFilePath = existingSession.filePath;
-    const session2 = existingSession;
     let entryText = entry;
     if (options2.fromHook) {
       try {
@@ -25578,7 +25607,7 @@ function registerSessionCommand(program3) {
     if (!entryText) {
       console.error(`  ${red10("error:")} Entry text is required. Use: loaf session log "type(scope): description"`);
       console.error(`  ${gray14("Examples:")}`);
-      console.error(`    ${gray14('loaf session log "decide(hooks): remove bash wrappers"')}`);
+      console.error(`    ${gray14('loaf session log "decision(hooks): remove bash wrappers"')}`);
       console.error(`    ${gray14('loaf session log "todo(next): implement tests"')}`);
       process.exit(1);
     }
@@ -25586,14 +25615,14 @@ function registerSessionCommand(program3) {
     if (!parsedEntry) {
       console.error(`  ${red10("error:")} Invalid entry format. Use: type(scope): description`);
       console.error(`  ${gray14("Examples:")}`);
-      console.error(`    ${gray14('loaf session log "decide(hooks): remove bash wrappers"')}`);
+      console.error(`    ${gray14('loaf session log "decision(hooks): remove bash wrappers"')}`);
       console.error(`    ${gray14('loaf session log "todo(next): implement tests"')}`);
       process.exit(1);
     }
     const timestamp = getDateTimeString();
-    const formattedEntry = `- ${timestamp} ${entryText}`;
+    const formattedEntry = `[${timestamp}] ${entryText}`;
     await appendEntry(
-      sessionFilePath,
+      existingSession.filePath,
       [formattedEntry],
       (data) => {
         data.last_updated = getTimestamp();
@@ -25613,13 +25642,11 @@ function registerSessionCommand(program3) {
       console.error(`  ${red10("error:")} Not in a git repository. Use --branch <branch>`);
       process.exit(1);
     }
-    let existingSession = findActiveSessionForBranch(agentsDir, branch);
+    const existingSession = findActiveSessionForBranch(agentsDir, branch);
     if (!existingSession) {
       console.error(`  ${red10("error:")} No active session found for branch ${branch}`);
       process.exit(1);
     }
-    const sessionFilePath = existingSession.filePath;
-    const session2 = existingSession;
     console.log(`
   ${bold13("loaf session archive")}
 `);
@@ -25627,22 +25654,22 @@ function registerSessionCommand(program3) {
     if (!existsSync35(archiveDir)) {
       mkdirSync22(archiveDir, { recursive: true });
     }
-    const decideEntries = extractDecideEntries(session2.content);
-    if (decideEntries.length > 0) {
+    const decisionEntries = extractDecisionEntries(existingSession.content);
+    if (decisionEntries.length > 0) {
       console.log(`  ${bold13("Key decisions extracted:")}`);
-      for (const entry of decideEntries.slice(0, 10)) {
+      for (const entry of decisionEntries.slice(0, 10)) {
         console.log(`    ${entry}`);
       }
-      if (decideEntries.length > 10) {
-        console.log(`    ${gray14(`... and ${decideEntries.length - 10} more`)}`);
+      if (decisionEntries.length > 10) {
+        console.log(`    ${gray14(`... and ${decisionEntries.length - 10} more`)}`);
       }
       console.log();
-      if (session2.data.spec && decideEntries.length > 0) {
+      if (existingSession.data.spec && decisionEntries.length > 0) {
         const result = persistDecisionsToSpec(
           agentsDir,
-          session2.data.spec,
-          decideEntries,
-          session2.data.branch || branch
+          existingSession.data.spec,
+          decisionEntries,
+          existingSession.data.branch || branch
         );
         if (result.success) {
           console.log(`  ${green12("\u2713")} ${result.message}`);
@@ -25652,10 +25679,9 @@ function registerSessionCommand(program3) {
         console.log();
       }
     }
-    const fileName = basename5(sessionFilePath);
-    const archivePath = join40(archiveDir, fileName);
+    const archivePath = join40(archiveDir, basename5(existingSession.filePath));
     try {
-      renameSync3(sessionFilePath, archivePath);
+      renameSync3(existingSession.filePath, archivePath);
     } catch (err) {
       console.error(`  ${red10("error:")} Failed to move file: ${err}`);
       process.exit(1);
