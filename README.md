@@ -39,7 +39,7 @@ Loaf's commands form a three-phase workflow that mirrors how good software gets 
 ┌─────────────────────────────────────────────────────────────┐
 │                      PHASE 3: LEARN                         │
 │                                                             │
-│   /housekeeping  →  /reflect  →  Updated Strategy         │
+│   /wrap  →  /housekeeping  →  /reflect  →  Updated Strategy│
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -71,6 +71,7 @@ Integrate outcomes into strategic knowledge.
 
 | Command | What It Does |
 |---------|--------------|
+| `/wrap` | Session summary: what shipped, what's pending, what's next |
 | `/housekeeping` | Review completed sessions, archive artifacts |
 | `/reflect` | Integrate learnings into strategic documents |
 
@@ -121,6 +122,8 @@ Skills you invoke directly to drive work forward.
 | `housekeeping` | Reviewing and archiving agent artifacts |
 | `bootstrap` | Bootstrapping new or existing projects |
 | `idea` | Quick capture of ideas for later evaluation |
+| `triage` | Review and process intake queue (sparks + raw ideas) |
+| `wrap` | End-of-session summary: shipped, pending, next |
 
 ### Orchestration & Knowledge
 

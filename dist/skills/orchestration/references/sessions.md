@@ -305,19 +305,19 @@ Sessions use an **append-only structured journal** format — a running log of w
 ```markdown
 ## Journal
 
-- YYYY-MM-DD HH:MM resume(branch-name): from commit abc1234, context summary
-- YYYY-MM-DD HH:MM decide(scope): description of decision
-- YYYY-MM-DD HH:MM discover(scope): something learned
+[YYYY-MM-DD HH:MM] resume(branch-name): from commit abc1234, context summary
+[YYYY-MM-DD HH:MM] decision(scope): description of decision
+[YYYY-MM-DD HH:MM] discover(scope): something learned
 
-- YYYY-MM-DD HH:MM block(scope): what is blocked
-- YYYY-MM-DD HH:MM hypothesis: theory being tested
+[YYYY-MM-DD HH:MM] block(scope): what is blocked
+[YYYY-MM-DD HH:MM] hypothesis: theory being tested
 
-- YYYY-MM-DD HH:MM unblock(scope): how it was resolved
-- YYYY-MM-DD HH:MM commit(abc1234): "commit message"
+[YYYY-MM-DD HH:MM] unblock(scope): how it was resolved
+[YYYY-MM-DD HH:MM] commit(abc1234): commit message
 
 --- PAUSE YYYY-MM-DD HH:MM ---
 
-- YYYY-MM-DD HH:MM resume(branch-name): duration paused, last action summary
+[YYYY-MM-DD HH:MM] resume(branch-name): duration paused, last action summary
 ```
 
 ### Entry Types
@@ -329,7 +329,7 @@ Sessions use an **append-only structured journal** format — a running log of w
 | `commit(SHA)` | Code committed | Hook (auto) | Short SHA |
 | `pr(#N)` | PR created/updated | Hook (auto) | PR number |
 | `merge(#N)` | PR merged | Hook (auto) | PR number |
-| `decide(scope)` | Key decisions | Agent | Topic |
+| `decision(scope)` | Key decisions | Agent | Topic |
 | `discover(scope)` | Something learned | Agent | Topic |
 | `block(scope)` | Blocker encountered | Agent | Topic |
 | `unblock(scope)` | Blocker resolved | Agent | Topic |
@@ -340,11 +340,12 @@ Sessions use an **append-only structured journal** format — a running log of w
 | `hypothesis` | Theory being tested | Agent | — |
 | `try` | Approach attempted | Agent | — |
 | `reject` | Approach abandoned | Agent | — |
+| `skill(name)` | Skill invoked with context | Skill (self-log) | Skill name |
 
 ### Format Rules
 
 1. **Timestamp:** `YYYY-MM-DD HH:MM` (no seconds)
-2. **Entry format:** `- <timestamp> <type>(<scope>): <description>`
+2. **Entry format:** `[<timestamp>] <type>(<scope>): <description>`
 3. **Blank line separator:** Insert when:
    - Gap ≥ 5 minutes since last entry, OR
    - State transition (block/unblock/pause/resume)
@@ -366,19 +367,19 @@ last_entry: 2026-04-02T09:15:00Z
 
 ## Journal
 
-- 2026-03-31 14:30 resume(feat/target-convergence): from commit abc1234, 3 tasks pending
-- 2026-03-31 14:30 decide(hooks): remove bash wrappers, go direct
-- 2026-03-31 14:32 discover(cursor): prompt hooks filtered at line 269
+[2026-03-31 14:30] resume(feat/target-convergence): from commit abc1234, 3 tasks pending
+[2026-03-31 14:30] decision(hooks): remove bash wrappers, go direct
+[2026-03-31 14:32] discover(cursor): prompt hooks filtered at line 269
 
-- 2026-03-31 15:10 block(parity): Codex output differs by trailing newline
-- 2026-03-31 15:11 hypothesis: gray-matter serialization adds trailing \n
+[2026-03-31 15:10] block(parity): Codex output differs by trailing newline
+[2026-03-31 15:11] hypothesis: gray-matter serialization adds trailing \n
 
-- 2026-03-31 16:45 unblock(parity): confirmed gray-matter quirk, fixed with trim
-- 2026-03-31 16:46 commit(def5678): "fix: trim frontmatter for Codex byte parity"
+[2026-03-31 16:45] unblock(parity): confirmed gray-matter quirk, fixed with trim
+[2026-03-31 16:46] commit(def5678): fix: trim frontmatter for Codex byte parity
 
 --- PAUSE 2026-03-31 17:00 ---
 
-- 2026-04-02 09:15 resume(feat/target-convergence): 16 hours paused, last: verification
+[2026-04-02 09:15] resume(feat/target-convergence): 16 hours paused, last: verification
 ```
 
 ### CLI Commands

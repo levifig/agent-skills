@@ -18421,7 +18421,7 @@ function generateFencedContent(version) {
     "## Loaf Framework",
     "",
     "**Session Journal Entry Types:**",
-    "- `decide(scope)`: Key decisions with rationale",
+    "- `decision(scope)`: Key decisions with rationale",
     "- `discover(scope)`: Something learned",
     "- `block(scope)` / `unblock(scope)`: Blockers and resolutions",
     "- `spark(scope)`: Ideas to promote via `/idea`",
@@ -18433,7 +18433,7 @@ function generateFencedContent(version) {
     "- `loaf task/spec/kb` \u2014 Task and knowledge management",
     "",
     "**Journal Discipline:**",
-    'Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log "type(scope): description"`. Entry types: `decide`, `discover`, `conclude`. Do not defer journaling \u2014 log before responding.',
+    'Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log "type(scope): description"`. Entry types: `decision`, `discover`, `conclude`. Do not defer journaling \u2014 log before responding.',
     "",
     "See [orchestration skill](skills/orchestration/SKILL.md) for full details.",
     "<!-- loaf:managed:end -->"
@@ -20105,6 +20105,11 @@ var CANDIDATES = [
     relativePath: ".agents/loaf.json",
     format: "json",
     source: { type: "json" }
+  },
+  {
+    relativePath: ".claude-plugin/marketplace.json",
+    format: "json",
+    source: { type: "json", versionPath: "metadata.version" }
   }
 ];
 function detectVersionFiles(cwd) {
@@ -20118,7 +20123,11 @@ function detectVersionFiles(cwd) {
       let version;
       if (candidate.source.type === "json") {
         const parsed = JSON.parse(content);
-        version = parsed.version;
+        if (candidate.source.versionPath) {
+          version = candidate.source.versionPath.split(".").reduce((obj, key) => obj?.[key], parsed);
+        } else {
+          version = parsed.version;
+        }
       } else {
         const result = readTomlVersion(content, candidate.source.section);
         if (result) version = result;
@@ -20151,9 +20160,10 @@ function prepareVersionUpdates(files, newVersion) {
       const content = readFileSync17(file.path, "utf-8");
       let updated;
       if (file.format === "json") {
-        const parsed = JSON.parse(content);
-        parsed.version = newVersion;
-        updated = JSON.stringify(parsed, null, 2) + "\n";
+        updated = content.replace(
+          new RegExp(`"version"(\\s*:\\s*)"${escapeRegex(file.currentVersion)}"`, "g"),
+          `"version"$1"${newVersion}"`
+        );
       } else {
         const section = tomlSectionForPath(file.relativePath);
         if (!section) continue;
@@ -24411,6 +24421,21 @@ async function workflowPrePr(context) {
     result.blocked = true;
     result.errors.push("CHANGELOG.md not found");
   }
+  try {
+    const branch = execSync2("git branch --show-current", { encoding: "utf-8" }).trim();
+    const baseRef = execSync2("gh repo view --json defaultBranchRef -q .defaultBranchRef.name", { encoding: "utf-8" }).trim();
+    if (branch !== baseRef) {
+      const unpushed = execSync2(`git rev-list --count origin/${baseRef}..${baseRef}`, { encoding: "utf-8" }).trim();
+      const count = parseInt(unpushed, 10);
+      if (count > 0) {
+        result.warnings.push(
+          `${baseRef} has ${count} unpushed commit(s) that will be absorbed into this PR's squash merge`,
+          `Fix: git checkout ${baseRef} && git push && git checkout ${branch} \u2014 then create the PR`
+        );
+      }
+    }
+  } catch {
+  }
   const hasFillFlag = /--fill/.test(command);
   const hasBodyFileFlag = /--body-file/.test(command);
   const hasAnyExplicitFlag = /--(title|body|fill|body-file)/.test(command);
@@ -25141,7 +25166,8 @@ function parseEntry(entry) {
     "hypothesis",
     "try",
     "reject",
-    "compact"
+    "compact",
+    "skill"
   ];
   if (!validTypes.includes(type)) return null;
   return {

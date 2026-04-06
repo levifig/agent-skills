@@ -79,7 +79,8 @@ type EntryType =
   | "hypothesis"
   | "try"
   | "reject"
-  | "compact";
+  | "compact"
+  | "skill";
 
 interface JournalEntry {
   type: EntryType;
@@ -610,7 +611,8 @@ function parseEntry(entry: string): JournalEntry | null {
     "decision", "discover", "conclude", "block", "unblock",
     "spark", "todo", "assume",
     // New types
-    "branch", "task", "linear", "hypothesis", "try", "reject", "compact"
+    "branch", "task", "linear", "hypothesis", "try", "reject", "compact",
+    "skill"
   ];
 
   if (!validTypes.includes(type as EntryType)) return null;

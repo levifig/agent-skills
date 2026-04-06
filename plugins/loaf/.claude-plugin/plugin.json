@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.13",
+  "version": "2.0.0-dev.14",
   "description": "Loaf - An Opinionated Agentic Framework",
   "repository": "https://github.com/levifig/loaf",
   "license": "MIT",
@@ -173,7 +173,7 @@
           {
             "type": "prompt",
             "description": "Require journal flush before context compaction",
-            "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nREQUIRED: Flush all unrecorded journal entries NOW, before responding to the user. Do not defer — entries lost to compaction cannot be recovered.\nEntry types: - `decide(scope): key decisions made this session` - `discover(scope): important findings` - `conclude(scope): session summary`\nRun `loaf session log \"type(scope): description\"` for each entry, then continue."
+            "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nREQUIRED: Flush all unrecorded journal entries NOW, before responding to the user. Do not defer — entries lost to compaction cannot be recovered.\nEntry types: - `decision(scope): key decisions made this session` - `discover(scope): important findings` - `conclude(scope): session summary`\nRun `loaf session log \"type(scope): description\"` for each entry, then continue."
           }
         ]
       }

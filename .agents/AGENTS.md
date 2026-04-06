@@ -77,6 +77,19 @@ See [SOUL.md](../SOUL.md) for the Warden identity and fellowship conventions.
 
 ## Skill Development
 
+### Session Journal Self-Logging
+
+User-invocable workflow skills must log their invocation to the session journal as their first action. Include context — arguments, intent, or what triggered the invocation:
+
+```bash
+loaf session log "skill(shape): shaping auth token rotation idea into spec"
+loaf session log "skill(housekeeping): routine cleanup, no specific trigger"
+loaf session log "skill(wrap): end-of-session summary"
+loaf session log "skill(implement): TASK-042 — add PAUSE headers to session end"
+```
+
+This creates an audit trail of which skills ran during a session. `/wrap` uses these entries to check whether housekeeping or other periodic skills were run.
+
 ### Naming Conventions
 
 Use domain-focused names in gerund or noun-phrase form:
@@ -321,8 +334,8 @@ Session journals in `.agents/sessions/` use a **compact inline format** — appe
 | **Session** | A markdown file with compact inline journal entries |
 | **Session File** | Named `YYYYMMDD-HHMMSS-description.md` in `.agents/sessions/` |
 | **Frontmatter** | YAML header with `spec`, `branch`, `status`, `created`, `last_entry` |
-| **Journal Entry** | `- YYYY-MM-DD HH:MM type(scope): description` |
-| **Entry Type** | `resume`, `pause`, `commit`, `decide`, `discover`, `block`, `unblock`, `spark`, `todo`, `conclude`, etc. |
+| **Journal Entry** | `[YYYY-MM-DD HH:MM] type(scope): description` |
+| **Entry Type** | `resume`, `pause`, `commit`, `decision`, `discover`, `block`, `unblock`, `spark`, `todo`, `conclude`, etc. |
 | **PAUSE Header** | `--- PAUSE YYYY-MM-DD HH:MM ---` separator between sessions |
 | **Burst** | Entries grouped without blank lines (within 5 min or same state) |
 | **Archive** | Completed sessions moved to `.agents/sessions/archive/` |
@@ -331,13 +344,13 @@ Session journals in `.agents/sessions/` use a **compact inline format** — appe
 
 **Entry Format:**
 ```markdown
-- YYYY-MM-DD HH:MM resume(branch-name): from commit abc1234
-- YYYY-MM-DD HH:MM decide(scope): description
+[YYYY-MM-DD HH:MM] resume(branch-name): from commit abc1234
+[YYYY-MM-DD HH:MM] decision(scope): description
 
-- YYYY-MM-DD HH:MM block(scope): what is blocked
+[YYYY-MM-DD HH:MM] block(scope): what is blocked
 
-- YYYY-MM-DD HH:MM unblock(scope): how resolved
-- YYYY-MM-DD HH:MM commit(abc1234): "message"
+[YYYY-MM-DD HH:MM] unblock(scope): how resolved
+[YYYY-MM-DD HH:MM] commit(abc1234): message
 
 --- PAUSE YYYY-MM-DD HH:MM ---
 ```
@@ -503,7 +516,7 @@ Configure target-specific behavior and sidecars.
 ## Loaf Framework
 
 **Session Journal Entry Types:**
-- `decide(scope)`: Key decisions with rationale
+- `decision(scope)`: Key decisions with rationale
 - `discover(scope)`: Something learned
 - `block(scope)` / `unblock(scope)`: Blockers and resolutions
 - `spark(scope)`: Ideas to promote via `/idea`

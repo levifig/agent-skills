@@ -134,7 +134,7 @@
       {
         "loaf-managed": true,
         "timeout": 60,
-        "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nREQUIRED: Flush all unrecorded journal entries NOW, before responding to the user. Do not defer — entries lost to compaction cannot be recovered.\nEntry types: - `decide(scope): key decisions made this session` - `discover(scope): important findings` - `conclude(scope): session summary`\nRun `loaf session log \"type(scope): description\"` for each entry, then continue."
+        "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nREQUIRED: Flush all unrecorded journal entries NOW, before responding to the user. Do not defer — entries lost to compaction cannot be recovered.\nEntry types: - `decision(scope): key decisions made this session` - `discover(scope): important findings` - `conclude(scope): session summary`\nRun `loaf session log \"type(scope): description\"` for each entry, then continue."
       }
     ]
   }

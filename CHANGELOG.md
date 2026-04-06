@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.14] - 2026-04-07
+
+### Added
+- `/wrap` skill — responsible session shutdown with journal flush, loose end prompts, and housekeeping check
+- `/triage` skill added to README pipeline
+- `skill()` journal entry type for self-logging skill invocations
+- Skill self-logging convention in CLAUDE.md
+
+### Fixed
+- `decide` keyword references in source-of-truth templates (`fenced-section.ts`, `session.md`, `hooks.yaml`) not updated to `decision`
+- Session template still using old `- TIMESTAMP` format instead of `[TIMESTAMP]`
+
+### Changed
+- `workflow-pre-pr` hook warns when base branch has unpushed commits that would be absorbed into squash merge
+- `loaf release` now auto-detects `.claude-plugin/marketplace.json` as a version file
+
 ## [2.0.0-dev.13] - 2026-04-06
 
 ### Fixed

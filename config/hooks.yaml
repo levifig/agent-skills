@@ -197,7 +197,7 @@ hooks:
         Do not defer — entries lost to compaction cannot be recovered.
 
         Entry types:
-        - `decide(scope): key decisions made this session`
+        - `decision(scope): key decisions made this session`
         - `discover(scope): important findings`
         - `conclude(scope): session summary`
 
