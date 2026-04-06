@@ -210,8 +210,7 @@ function escapeRegex(str: string): string {
 interface VersionCandidate {
   relativePath: string;
   format: "json" | "toml-regex";
-  /** JSON key or TOML section to look in */
-  source: { type: "json" } | { type: "toml"; section: string };
+  source: { type: "json"; versionPath?: string } | { type: "toml"; section: string };
 }
 
 /** Ordered by priority — ecosystem files first, loaf.json as fallback. */
@@ -236,6 +235,11 @@ const CANDIDATES: VersionCandidate[] = [
     format: "json",
     source: { type: "json" },
   },
+  {
+    relativePath: ".claude-plugin/marketplace.json",
+    format: "json",
+    source: { type: "json", versionPath: "metadata.version" },
+  },
 ];
 
 /** Auto-detect version files in the project root. Returns all found, ordered by priority. */
@@ -253,7 +257,11 @@ export function detectVersionFiles(cwd: string): VersionFile[] {
 
       if (candidate.source.type === "json") {
         const parsed = JSON.parse(content);
-        version = parsed.version;
+        if (candidate.source.versionPath) {
+          version = candidate.source.versionPath.split(".").reduce((obj: Record<string, unknown>, key) => obj?.[key] as Record<string, unknown>, parsed) as unknown as string;
+        } else {
+          version = parsed.version;
+        }
       } else {
         const result = readTomlVersion(content, candidate.source.section);
         if (result) version = result;
@@ -304,9 +312,11 @@ export function prepareVersionUpdates(
       let updated: string;
 
       if (file.format === "json") {
-        const parsed = JSON.parse(content);
-        parsed.version = newVersion;
-        updated = JSON.stringify(parsed, null, 2) + "\n";
+        // Regex replacement handles both top-level and nested version fields
+        updated = content.replace(
+          new RegExp(`"version"(\\s*:\\s*)"${escapeRegex(file.currentVersion)}"`, "g"),
+          `"version"$1"${newVersion}"`
+        );
       } else {
         // Determine the TOML section from the candidate list
         const section = tomlSectionForPath(file.relativePath);
