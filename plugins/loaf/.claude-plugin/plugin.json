@@ -43,16 +43,16 @@
             "failClosed": true
           },
           {
-            "type": "prompt",
-            "prompt": "STOP. Before running gh pr merge, follow squash merge conventions:\n1. TITLE: Let GitHub default it — \"PR title (#N)\" format.\n2. BODY: Write a clean, concise summary of the branch's work (2-4 sentences).\n   NEVER use the automatic squash description that dumps all individual commit messages.\n\n3. Use --body flag with a HEREDOC to pass the clean description.\nExample: gh pr merge N --squash --body \"$(cat <<'EOF' Add loaf housekeeping CLI command that scans .agents/ directories and recommends cleanup actions. Includes shared prompt helpers, scanner engine, interactive/dry-run modes, and skill update. EOF )\"\nRewrite your gh pr merge command now with a clean --body.",
-            "if": "Bash(gh pr merge:*)",
-            "timeout": 5
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/workflow-pre-merge.sh",
+            "timeout": 5,
+            "description": "Remind about squash merge conventions before gh pr merge"
           },
           {
-            "type": "prompt",
-            "prompt": "ADVISORY: You are about to run `git push`. \nConfirm the following before proceeding: - All tests pass locally - CHANGELOG.md has been updated - Version has been bumped if releasing\nType 'yes' to proceed with the push.",
-            "if": "Bash(git push:*)",
-            "timeout": 5
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/workflow-pre-push.sh",
+            "timeout": 5,
+            "description": "Advisory reminders before git push"
           },
           {
             "type": "command",
@@ -98,11 +98,10 @@
         "matcher": "Bash",
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "POST-MERGE HOUSEKEEPING:\n1. Delete local branch: git branch -d <branch-name> 2. Update main: git checkout main && git pull 3. Archive session: loaf session archive\nConsider running these commands now.",
-            "if": "Bash(gh pr merge:*)",
-            "timeout": 5,
-            "description": "Inject housekeeping checklist after successful gh pr merge"
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/workflow-post-merge.sh",
+            "description": "Inject housekeeping checklist after successful gh pr merge",
+            "timeout": 5
           },
           {
             "type": "command",

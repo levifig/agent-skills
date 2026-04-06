@@ -251,6 +251,18 @@ const preToolHooks: Record<string, HookEntry[]> = {
       "failClosed": true
     },
     {
+      "id": "workflow-pre-merge",
+      "script": "pre-tool/workflow-pre-merge.sh",
+      "timeout": 5000,
+      "failClosed": false
+    },
+    {
+      "id": "workflow-pre-push",
+      "script": "pre-tool/workflow-pre-push.sh",
+      "timeout": 5000,
+      "failClosed": false
+    },
+    {
       "id": "validate-commit",
       "command": "loaf check --hook validate-commit",
       "timeout": 30000,
@@ -281,6 +293,12 @@ const postToolHooks: Record<string, HookEntry[]> = {
     }
   ],
   "Bash": [
+    {
+      "id": "workflow-post-merge",
+      "script": "post-tool/workflow-post-merge.sh",
+      "timeout": 5000,
+      "failClosed": false
+    },
     {
       "id": "journal-post-commit",
       "command": "loaf session log --from-hook",
