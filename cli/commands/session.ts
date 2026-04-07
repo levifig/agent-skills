@@ -1228,12 +1228,17 @@ export function registerSessionCommand(program: Command): void {
             if (command.includes("git commit")) {
               const hash = getLastCommitSha();
               // Read actual commit message from git (works for -m, --amend, editor commits)
-              let message = "commit";
+              let message = "";
               try {
                 message = execSync("git log -1 --format=%s", {
                   encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"],
                 }).trim();
-              } catch { /* fallback */ }
+              } catch { /* fallback to command parsing */ }
+              // Fall back to parsing -m flag if git log didn't produce a useful message
+              if (!message) {
+                const msgMatch = command.match(/-m\s+['"]([^'"]+)['"]/) || command.match(/-m\s+(\S+)/);
+                message = msgMatch ? msgMatch[1] : "commit";
+              }
               entryText = `commit(${hash}): ${message}`;
             } else if (command.includes("gh pr create")) {
               // Extract PR title from command

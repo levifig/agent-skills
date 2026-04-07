@@ -13,7 +13,7 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-04-04'
+last_reviewed: '2026-04-07'
 ---
 
 # Skill Architecture
@@ -42,6 +42,28 @@ content/skills/{name}/
 
 Skills compile to a shared intermediate at `dist/skills/` (base frontmatter, command substitution, shared templates merged), then each target reads from the intermediate.
 
+## Session Journal Self-Logging
+
+User-invocable workflow skills must log their invocation to the session journal as their first action. This creates an audit trail of which skills ran during a session:
+
+```bash
+loaf session log "skill(shape): shaping auth token rotation idea into spec"
+loaf session log "skill(wrap): end-of-session summary"
+```
+
+The `/wrap` skill uses these entries to check whether housekeeping or other periodic skills were run.
+
+## Shared Templates
+
+`content/templates/` files are distributed to skills at build time via the `shared-templates` config in `targets.yaml`:
+
+| Template | Distributed To |
+|----------|---------------|
+| `session.md` | implement, orchestration, housekeeping, bootstrap |
+| `adr.md` | architecture, reflect |
+
+Skill-specific templates live in `content/skills/{name}/templates/` and are not shared. SKILL.md references templates with links: `[templates/session.md](templates/session.md)`.
+
 ## Agent Profiles
 
 SPEC-014 replaced 8 role-based agents with 3 functional profiles and 2 system profiles, defined in `SOUL.md`:
@@ -60,8 +82,10 @@ Skills load into profiles at spawn time. What an agent *can do* is fixed by prof
 
 | Category | `user-invocable` | Examples |
 |----------|:-:|---------|
-| Reference/Knowledge | `false` | python-development, database-design, cli-reference |
-| Workflow/Process | `true` (default) | orchestration, research, implement, release, housekeeping |
+| Reference/Knowledge | `false` | python-development, database-design, foundations, git-workflow, orchestration |
+| Workflow/Process | `true` (default) | implement, research, shape, breakdown, release, housekeeping, wrap |
+
+31 skills total (as of dev.15): 15 workflow, 16 reference/knowledge.
 
 ## Cross-References
 

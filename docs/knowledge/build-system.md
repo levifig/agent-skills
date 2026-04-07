@@ -10,7 +10,7 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-04-04'
+last_reviewed: '2026-04-07'
 ---
 
 # Build System
@@ -23,7 +23,7 @@ Loaf compiles skills, agents, and hooks from a single source tree into multiple 
 - **Two-phase build.** Skills first compile to a shared intermediate (`dist/skills/`), then each target reads from the intermediate.
 - **Targets are additive.** Each target gets what it supports — Claude Code gets everything, Codex gets skills only.
 - **Sidecars carry target-specific fields.** SKILL.md has standard fields only. `.claude-code.yaml`, `.opencode.yaml`, etc. carry extensions. Build merges them.
-- **Shared templates distribute at build time.** `content/templates/` files are copied to specified skills via `shared-templates` in `targets.yaml`.
+- **Shared templates distribute at build time.** `content/templates/` files (`session.md`, `adr.md`) are copied to specified skills via `shared-templates` in `targets.yaml`. Other templates (e.g., `soul.md`) are distributed by install/session commands, not the build.
 - **Command substitution.** `{{IMPLEMENT_CMD}}`, `{{ORCHESTRATE_CMD}}` placeholders in skill content are replaced per-target (e.g., `/implement` for Claude Code, OpenCode command name for OpenCode).
 
 ## Build Flow

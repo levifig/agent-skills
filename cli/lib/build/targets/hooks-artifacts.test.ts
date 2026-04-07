@@ -143,15 +143,15 @@ describe("cursor hooks.json", () => {
 
   it("preserves 'failClosed' on enforcement hooks", () => {
     const preToolUse = hooksJson.hooks.preToolUse || [];
-    
-    // Find validate-push hook
+
+    // validate-push is advisory (no failClosed) — downgraded in dev.12
     const validatePush = preToolUse.find(
       h => h.command?.includes("validate-push")
     );
     expect(validatePush).toBeDefined();
-    expect(validatePush?.failClosed).toBe(true);
-    
-    // Find check-secrets hook
+    expect(validatePush?.failClosed).toBeUndefined();
+
+    // check-secrets is blocking (failClosed: true)
     const checkSecrets = preToolUse.find(
       h => h.command?.includes("check-secrets")
     );
@@ -256,16 +256,16 @@ describe("claude-code plugin.json", () => {
 
   it("preserves 'failClosed' on enforcement hooks", () => {
     const preToolUse = pluginJson.hooks.PreToolUse || [];
-    
+
     const bashMatcher = preToolUse.find(m => m.matcher === "Bash");
     expect(bashMatcher).toBeDefined();
-    
-    // Find validate-push hook
+
+    // validate-push is advisory (no failClosed) — downgraded in dev.12
     const validatePush = bashMatcher?.hooks.find(
       h => h.type === "command" && h.command?.includes("validate-push")
     );
     expect(validatePush).toBeDefined();
-    expect(validatePush?.failClosed).toBe(true);
+    expect(validatePush?.failClosed).toBeUndefined();
   });
 
   it("preserves 'matcher' on PreToolUse hooks", () => {

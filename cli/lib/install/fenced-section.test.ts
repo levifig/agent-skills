@@ -370,7 +370,7 @@ describe("fenced content format", () => {
     // Required sections
     expect(content).toContain("## Loaf Framework");
     expect(content).toContain("**Session Journal Entry Types:**");
-    expect(content).toContain("`decide(scope)`");
+    expect(content).toContain("`decision(scope)`");
     expect(content).toContain("`discover(scope)`");
     expect(content).toContain("`block(scope)`");
     expect(content).toContain("`unblock(scope)`");

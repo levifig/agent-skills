@@ -15,7 +15,7 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-04-04'
+last_reviewed: '2026-04-07'
 ---
 
 # Task System
@@ -61,8 +61,12 @@ Programmatic index alongside individual task .md files. CLI reads/writes it.
       "status": "todo",
       "priority": "P0",
       "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
       "session": null,
       "created": "2026-04-04T16:41:22Z",
+      "updated": "2026-04-04T16:41:22Z",
       "completed_at": null,
       "file": "TASK-065-extract-shared-content-modules.md"
     }
@@ -71,6 +75,9 @@ Programmatic index alongside individual task .md files. CLI reads/writes it.
     "SPEC-020": {
       "title": "Cross-Harness Skills, Hook Consolidation & Target Convergence",
       "status": "complete",
+      "requirement": null,
+      "source": null,
+      "created": "2026-04-04T00:00:00Z",
       "file": "archive/SPEC-020-target-convergence-amp.md"
     }
   }
@@ -78,6 +85,25 @@ Programmatic index alongside individual task .md files. CLI reads/writes it.
 ```
 
 Tasks keyed by ID (Record, not array). Specs section tracks spec lifecycle. `next_id` ensures unique IDs across creates.
+
+### Task Entry Fields
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `title` | string | Task description |
+| `slug` | string | Derived from filename |
+| `spec` | string\|null | Associated spec ID |
+| `status` | enum | `todo`, `in_progress`, `blocked`, `review`, `done` |
+| `priority` | enum | `P0` (critical) through `P3` (nice-to-have) |
+| `depends_on` | string[] | Task IDs this depends on |
+| `files` | string[] | Hint files relevant to task |
+| `verify` | string\|null | Shell command to verify completion |
+| `done` | string\|null | Observable done condition |
+| `session` | string\|null | Session filename when picked up |
+| `created` | ISO 8601 | Creation timestamp |
+| `updated` | ISO 8601 | Last-updated timestamp |
+| `completed_at` | ISO 8601\|null | Set when status becomes `done` |
+| `file` | string | Relative path to task .md file |
 
 ## CLI Commands
 
@@ -110,6 +136,27 @@ Tasks keyed by ID (Record, not array). Specs section tracks spec lifecycle. `nex
 | `log [entry]` | Log entry to session journal |
 | `archive` | Archive completed session |
 | `list` | List all active and archived sessions |
+
+## Session Lifecycle
+
+Sessions track execution context per branch. Key behaviors:
+
+- **One session per branch.** `loaf session start` finds existing or creates new. Atomic creation via file locking prevents concurrent duplicates.
+- **New-conversation detection.** `claude_session_id` in frontmatter tracks the Claude session. When a new session starts on a branch with an existing session, the ID mismatch triggers a resume with PAUSE header.
+- **Subagent detection.** `agent_id` in hook JSON is only present for subagents. `session start` exits early when `agent_id` is set, preventing subagent sessions from polluting the parent journal.
+- **Branch rename recovery.** If a branch is renamed via `git branch -m`, session start detects the rename via reflog and updates both session and spec frontmatter.
+- **Session status values:** `active`, `paused`, `blocked`, `complete`, `archived`
+
+### Session Frontmatter Fields
+
+| Field | Purpose |
+|-------|---------|
+| `branch` | Git branch name |
+| `status` | Session lifecycle state |
+| `spec` | Linked spec ID |
+| `claude_session_id` | Harness session ID for new-conversation detection |
+| `created`, `last_updated`, `last_entry` | Timestamps |
+| `archived_at`, `archived_by` | Archive metadata |
 
 ## Linear Integration
 

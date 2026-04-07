@@ -324,30 +324,35 @@ describe("session: log", () => {
 
   it("accepts nested tool.input format from hooks", async () => {
     const repoPath = createTempRepo("nested-payload-test");
-    
+
     // Start a session
     await runLoaf(["start"], { cwd: repoPath });
-    
+
+    // Make an actual commit so git log returns the right message
+    writeFileSync(join(repoPath, "feature.ts"), "export const x = 1;\n", "utf-8");
+    execFileSync("git", ["add", "."], { cwd: repoPath });
+    execFileSync("git", ["commit", "-m", "feat: add feature"], { cwd: repoPath });
+
     // Log with nested format (tool.input instead of tool_input)
-    const result = await runLoaf(["log", "--from-hook"], { 
+    const result = await runLoaf(["log", "--from-hook"], {
       cwd: repoPath,
-      input: JSON.stringify({ 
-        tool: { 
+      input: JSON.stringify({
+        tool: {
           name: "Bash",
-          input: { command: "git commit -m 'feat: add feature'" } 
-        } 
+          input: { command: "git commit -m 'feat: add feature'" }
+        }
       })
     });
-    
+
     expect(result.exitCode).toBe(0);
-    
+
     // Verify the commit was logged
     const sessionFiles = getSessionFiles(repoPath);
     const content = readFileSync(
       join(repoPath, ".agents/sessions", sessionFiles[0]),
       "utf-8"
     );
-    
+
     expect(content).toContain("commit(");
     expect(content).toContain("feat: add feature");
   }, 10000);
