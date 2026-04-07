@@ -25266,7 +25266,7 @@ async function appendEntry(filePath, entryLines, updateFrontmatter) {
     updateFrontmatter(session.data);
     const trimmedContent = session.content.trimEnd();
     const hasNewSession = entryLines.some(
-      (line) => /\] (?:start|resume)[:(]/.test(line)
+      (line) => /^--- RESUME /.test(line) || /\] (?:start|resume)[:(]/.test(line)
     );
     const separator = hasNewSession ? "\n\n" : "\n";
     const newContent = import_gray_matter13.default.stringify(
@@ -25462,6 +25462,7 @@ function registerSessionCommand(program3) {
     const timestamp = getDateTimeString();
     const journalLines = [];
     if (isResume) {
+      journalLines.push(`--- RESUME ${timestamp} ---`);
       journalLines.push(`[${timestamp}] resume: SESSION RESUMED`);
       if (lastCommit !== "unknown") {
         journalLines.push(`[${timestamp}] resume: from commit ${lastCommit}`);
@@ -25564,15 +25565,15 @@ function registerSessionCommand(program3) {
       decisions: activity.decisions,
       entries: activity.entries
     });
+    const concludeParts = [];
+    if (lastCommit !== "unknown") concludeParts.push(`at commit ${lastCommit}`);
+    if (progressText !== "no activity logged") concludeParts.push(progressText);
+    const concludeText = concludeParts.length > 0 ? concludeParts.join(", ") : "session ended";
     const journalLines = [
-      `[${timestamp}] pause: SESSION PAUSED`,
-      `[${timestamp}] progress: ${progressText}`
+      `[${timestamp}] conclude: ${concludeText}`,
+      `--- STOP ${timestamp} ---`,
+      ""
     ];
-    if (lastCommit !== "unknown") {
-      journalLines.push(`[${timestamp}] conclude: at commit ${lastCommit}`);
-    }
-    journalLines.push(`--- PAUSE ${timestamp} ---`);
-    journalLines.push("");
     console.log(`  ${yellow14("?")} Consider adding final entries:`);
     console.log(`    ${gray14('loaf session log "decision(scope): key decision"')}`);
     console.log(`    ${gray14('loaf session log "conclude(scope): final notes"')}`);
@@ -25596,7 +25597,7 @@ function registerSessionCommand(program3) {
       console.log(`    ${gray14("Run 'loaf kb review <file>' before ending.")}`);
       console.log();
     }
-    console.log(`  ${green12("\u2713")} Session paused: ${gray14(existingSession.filePath.replace(agentsDir, ".agents"))}`);
+    console.log(`  ${green12("\u2713")} Session stopped: ${gray14(existingSession.filePath.replace(agentsDir, ".agents"))}`);
     console.log();
   });
   session.command("log [entry]").description("Log entry to session journal").option("--from-hook", "Parse entry from hook stdin").option("--detect-linear", "Detect Linear magic words in recent commits").action(async (entry, options2) => {

@@ -335,9 +335,9 @@ Session journals in `.agents/sessions/` use a **compact inline format** — appe
 | **Session File** | Named `YYYYMMDD-HHMMSS-description.md` in `.agents/sessions/` |
 | **Frontmatter** | YAML header with `spec`, `branch`, `status`, `created`, `last_entry` |
 | **Journal Entry** | `[YYYY-MM-DD HH:MM] type(scope): description` |
-| **Entry Type** | `start`, `resume`, `pause`, `commit`, `decision`, `discover`, `block`, `unblock`, `spark`, `todo`, `conclude`, etc. |
-| **PAUSE Header** | `--- PAUSE YYYY-MM-DD HH:MM ---` separator between sessions |
-| **Burst** | Entries grouped without blank lines (within 5 min or same state) |
+| **Entry Type** | `start`, `resume`, `commit`, `decision`, `discover`, `block`, `unblock`, `spark`, `todo`, `conclude`, etc. |
+| **STOP Header** | `--- STOP YYYY-MM-DD HH:MM ---` separator between sessions |
+| **Burst** | Entries grouped without blank lines |
 | **Archive** | Completed sessions moved to `.agents/sessions/archive/` |
 
 **Session Status Values:** `active`, `paused`, `blocked`, `complete`, `archived`
@@ -347,20 +347,18 @@ Session journals in `.agents/sessions/` use a **compact inline format** — appe
 [YYYY-MM-DD HH:MM] start: SESSION STARTED
 [YYYY-MM-DD HH:MM] decision(scope): description
 [YYYY-MM-DD HH:MM] commit(abc1234): message
-[YYYY-MM-DD HH:MM] pause: SESSION PAUSED
-[YYYY-MM-DD HH:MM] conclude: at commit abc1234
---- PAUSE YYYY-MM-DD HH:MM ---
+[YYYY-MM-DD HH:MM] conclude: at commit abc1234, 3 commits, 1 decision
+--- STOP YYYY-MM-DD HH:MM ---
 
+--- RESUME YYYY-MM-DD HH:MM ---
 [YYYY-MM-DD HH:MM] resume: SESSION RESUMED
 [YYYY-MM-DD HH:MM] resume: from commit abc1234
 ```
 
 **Blank line rules:**
-- `--- PAUSE ---` has blank line after, not before
-- `start` / `resume` entries have blank line before, not after
+- `--- STOP ---` has blank line after, not before
+- `--- RESUME ---` has blank line before (provided by STOP), not after
 - No other automatic blank lines
-
-**Session Status Values:** `active`, `paused`, `blocked`, `complete`, `archived`
 
 ## Build System
 

@@ -747,10 +747,10 @@ async function appendEntry(
 
     updateFrontmatter(session.data);
 
-    // Blank line before start/resume entries only (visual separation for new conversations)
+    // Blank line before RESUME separator or start entries (visual separation between sessions)
     const trimmedContent = session.content.trimEnd();
     const hasNewSession = entryLines.some(line =>
-      /\] (?:start|resume)[:(]/.test(line)
+      /^--- RESUME /.test(line) || /\] (?:start|resume)[:(]/.test(line)
     );
 
     const separator = hasNewSession ? '\n\n' : '\n';
@@ -1019,6 +1019,7 @@ export function registerSessionCommand(program: Command): void {
       const journalLines: string[] = [];
 
       if (isResume) {
+        journalLines.push(`--- RESUME ${timestamp} ---`);
         journalLines.push(`[${timestamp}] resume: SESSION RESUMED`);
         if (lastCommit !== "unknown") {
           journalLines.push(`[${timestamp}] resume: from commit ${lastCommit}`);
@@ -1135,17 +1136,18 @@ export function registerSessionCommand(program: Command): void {
         decisions: activity.decisions,
         entries: activity.entries,
       });
-      const journalLines: string[] = [
-        `[${timestamp}] pause: SESSION PAUSED`,
-        `[${timestamp}] progress: ${progressText}`,
-      ];
-      if (lastCommit !== "unknown") {
-        journalLines.push(`[${timestamp}] conclude: at commit ${lastCommit}`);
-      }
 
-      // PAUSE separator — no blank before, blank after (resume adds blank before itself)
-      journalLines.push(`--- PAUSE ${timestamp} ---`);
-      journalLines.push('');
+      // Build conclude line: commit + progress stats
+      const concludeParts: string[] = [];
+      if (lastCommit !== "unknown") concludeParts.push(`at commit ${lastCommit}`);
+      if (progressText !== "no activity logged") concludeParts.push(progressText);
+      const concludeText = concludeParts.length > 0 ? concludeParts.join(", ") : "session ended";
+
+      const journalLines: string[] = [
+        `[${timestamp}] conclude: ${concludeText}`,
+        `--- STOP ${timestamp} ---`,
+        '',
+      ];
       console.log(`  ${yellow("?")} Consider adding final entries:`);
       console.log(`    ${gray("loaf session log \"decision(scope): key decision\"")}`);
       console.log(`    ${gray("loaf session log \"conclude(scope): final notes\"")}`);
@@ -1172,7 +1174,7 @@ export function registerSessionCommand(program: Command): void {
         console.log();
       }
 
-      console.log(`  ${green("✓")} Session paused: ${gray(existingSession.filePath.replace(agentsDir, ".agents"))}`);
+      console.log(`  ${green("✓")} Session stopped: ${gray(existingSession.filePath.replace(agentsDir, ".agents"))}`);
       console.log();
     });
 

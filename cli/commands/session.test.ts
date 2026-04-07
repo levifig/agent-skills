@@ -529,9 +529,9 @@ describe("session: end", () => {
       join(repoPath, ".agents/sessions", sessionFiles[0]),
       "utf-8"
     );
-    // PAUSE is written by session end, not session start
-    // But resume entries should appear with updated session_id
+    // STOP is written by session end; RESUME separator written by session start
     expect(content).toContain("claude_session_id: sess-second");
+    expect(content).toMatch(/--- RESUME \d{4}-\d{2}-\d{2} \d{2}:\d{2} ---/);
     expect(content).toContain("SESSION RESUMED");
   });
 
@@ -550,13 +550,14 @@ describe("session: end", () => {
       "utf-8"
     );
     // No PAUSE header — same conversation
-    expect(content).not.toMatch(/--- PAUSE/);
+    expect(content).not.toMatch(/--- STOP/);
+    expect(content).not.toMatch(/--- RESUME/);
     // No resume entry — same conversation, session still active
     expect(content).not.toContain("SESSION RESUMED");
   });
 
-  it("adds PAUSE separator header to journal on end", async () => {
-    const repoPath = createTempRepo("pause-header-test");
+  it("adds STOP separator header to journal on end", async () => {
+    const repoPath = createTempRepo("stop-header-test");
 
     await runLoaf(["start"], { cwd: repoPath });
     await runLoaf(["end"], { cwd: repoPath });
@@ -567,7 +568,10 @@ describe("session: end", () => {
       "utf-8"
     );
 
-    // Should contain PAUSE separator header
-    expect(content).toMatch(/--- PAUSE \d{4}-\d{2}-\d{2} \d{2}:\d{2} ---/);
+    // Should contain STOP separator header and conclude entry
+    expect(content).toMatch(/--- STOP \d{4}-\d{2}-\d{2} \d{2}:\d{2} ---/);
+    expect(content).toContain("conclude:");
+    // Should NOT contain redundant pause entry
+    expect(content).not.toContain("SESSION PAUSED");
   });
 });
