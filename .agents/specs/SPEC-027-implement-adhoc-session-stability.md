@@ -71,6 +71,12 @@ The session journal already captures decisions, discoveries, blockers, and progr
 2. The model reads the session file's `## Journal` section to reconstruct context.
 3. Recent journal entries (decisions, progress, current task) provide the resumption state.
 
+**PreCompact wrap-up and post-compaction resume:**
+
+1. Expand the PreCompact prompt nudge to request a condensed wrap-up: flush journal entries AND write a state summary to the session file's `## Current State` section.
+2. Consider a command hook (`loaf wrap --pre-compact`) as a harder guarantee — generates a machine-readable summary written to the session file before compaction.
+3. Post-compaction: a `PostCompact` prompt nudge tells the model to re-read the session file. The summary it wrote minutes ago becomes the resumption context.
+
 **Cleanup:**
 
 1. Remove or retire `archive-context.sh` — it references stale `.work/` paths and the `.context-snapshots/` approach is superseded by the journal-as-resumption model.
@@ -158,6 +164,9 @@ The session journal already captures decisions, discoveries, blockers, and progr
 - [ ] `compact(session)` marker appears in journal after compaction
 - [ ] `archive-context.sh` removed; no `.context-snapshots/` created on compaction
 - [ ] PreCompact nudge references journal entries as compaction insurance
+- [ ] PreCompact triggers condensed wrap-up (journal flush + state summary written to session file)
+- [ ] `PostCompact` nudge tells model to re-read session file for resumption context
+- [ ] Post-compaction, model has sufficient context to continue without asking "where were we?"
 - [ ] Orchestration session management reference includes compact-vs-new-session policy
 - [ ] `/implement` suggests `/rename` with a meaningful name after session creation
 - [ ] SessionStart output includes suggested `/rename` when spec is linked to branch
