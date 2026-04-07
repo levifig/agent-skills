@@ -5,7 +5,7 @@ description: >-
   summary. Use at the end of a work session or when the user asks "wrap up." Not
   for archiving (use housekeeping) or capturing ideas (use idea).
 user-invocable: true
-version: 2.0.0-dev.18
+version: 2.0.0-dev.19
 ---
 
 # Wrap
@@ -83,9 +83,11 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 | No version bump | "This session shipped work but no release was run — bump version now?" |
 | Stale KB files | "N stale knowledge file(s) — address now or defer?" |
 | Unresolved blocks | "Block on <scope> still open — note for next session?" |
+| No changelog entries | "N commit(s) on branch but `[Unreleased]` is empty — add changelog entries?" |
 | No `/loaf:housekeeping` this session | "No housekeeping run this session — run `/loaf:housekeeping` now?" |
 
 **Detection logic:**
+- **Changelog entries:** check if the current branch has commits vs the base branch (e.g., `git rev-list --count origin/main..HEAD`) AND `CHANGELOG.md` `[Unreleased]` section has no list items (`^[-*]\s`). If both are true, prompt — the `workflow-pre-pr` hook would catch this at PR time, but catching it now gives the user time to write thoughtful entries. **Skip when HEAD is tagged** (post-release state where entries were moved to a version header by `loaf release`).
 - **Housekeeping:** scan session journal for `skill(housekeeping)` entry. If absent and the session had significant work, suggest it.
 - **Version bump:** scan session journal for `decision(release)` entry. If absent and the session has commits, offer to run `loaf release --bump prerelease --no-gh --yes`. This bumps the version, generates changelog from commits, rebuilds, commits, and tags — handling both CHANGELOG and version in one step.
 

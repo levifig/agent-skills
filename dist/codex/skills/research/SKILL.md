@@ -6,7 +6,7 @@ description: >-
   Produces state assessments, research findings with ranked options, or vision
   change proposals. Not for multi-agent coordination (use orchestration) or
   implementation.
-version: 2.0.0-dev.18
+version: 2.0.0-dev.19
 ---
 
 # Research
@@ -62,7 +62,8 @@ Patterns for zooming out, investigating topics, and evolving project direction.
 | Topic | Template | Use When |
 |-------|----------|----------|
 | State Assessment | [state-assessment.md](templates/state-assessment.md) | Producing a project state overview |
-| Topic Investigation | [findings.md](templates/findings.md) | Documenting research findings |
+| Topic Investigation | [findings.md](templates/findings.md) | In-progress research (drafts) |
+| Final Report | [report.md](templates/report.md) | Promoting completed findings to `.agents/reports/` |
 
 ## Input Parsing
 
@@ -107,7 +108,9 @@ Always check project context first. Rate findings: **High** (official/verified),
 3. Apply confidence hierarchy for external sources
 4. Create findings document following [findings template](templates/findings.md)
 
-**Output file:** `.agents/drafts/{YYYYMMDD}-{HHMMSS}-research-{slug}.md`
+**Draft output:** `.agents/drafts/{YYYYMMDD}-{HHMMSS}-research-{slug}.md`
+
+When research is complete and findings are validated, promote to a final report in `.agents/reports/` using the [report template](templates/report.md). Set `status: final` and add the `source:` field if the research originated from a spec or task.
 
 ### Brainstorming
 

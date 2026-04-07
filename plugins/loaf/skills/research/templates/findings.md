@@ -1,4 +1,6 @@
-# Research Findings Template
+# Research Findings Template (Draft)
+
+Working document for in-progress research. Promote to `.agents/reports/` using the [report template](report.md) when findings are complete.
 
 **Location:** `.agents/drafts/{YYYYMMDD}-{HHMMSS}-research-{slug}.md`
 

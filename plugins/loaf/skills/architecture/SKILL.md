@@ -7,7 +7,7 @@ description: >-
   strategic directio...
 user-invocable: true
 argument-hint: '[topic or decision]'
-version: 2.0.0-dev.18
+version: 2.0.0-dev.19
 ---
 
 # Architecture

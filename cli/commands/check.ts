@@ -301,78 +301,82 @@ async function validatePush(context: HookContext): Promise<CheckResult> {
     // No package.json in HEAD
   }
 
-  // Check 1: Version bump since last tag
+  // Resolve last tag once for checks 1 and 2
+  let lastTag = "";
+  let isReleaseCommit = false;
   try {
-    const lastTag = execSync("git describe --tags --abbrev=0 2>/dev/null", {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "ignore"],
-    }).trim();
-
-    if (lastTag && hasPackageJson) {
-      try {
-        // Read version from HEAD (committed), not disk (may have uncommitted changes)
-        const headPkgContent = execSync(
-          "git show HEAD:package.json 2>/dev/null",
-          { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
-        );
-        const headPkg = JSON.parse(headPkgContent);
-        const currentVersion = headPkg.version;
-        
-        const tagPkgContent = execSync(
-          `git show ${lastTag}:package.json 2>/dev/null`,
-          { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
-        );
-        const tagPkg = JSON.parse(tagPkgContent);
-        const tagVersion = tagPkg.version;
-
-        if (currentVersion && currentVersion === tagVersion) {
-          errors.push(`Version not bumped since ${lastTag} (still ${currentVersion})`);
-        }
-      } catch {
-        // ignore errors reading tag version
-      }
-    }
-  } catch {
-    // No tags yet, skip version check
-  }
-
-  // Check 2: CHANGELOG exists and is updated since last tag
-  try {
-    const lastTag = execSync("git describe --tags --abbrev=0 2>/dev/null", {
+    lastTag = execSync("git describe --tags --abbrev=0 2>/dev/null", {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "ignore"],
     }).trim();
 
     if (lastTag) {
-      // Check from HEAD (committed), not disk (may have uncommitted changes)
-      let hasChangelogInHead = false;
-      try {
-        execSync("git show HEAD:CHANGELOG.md 2>/dev/null", { stdio: "pipe" });
-        hasChangelogInHead = true;
-      } catch {
-        // No CHANGELOG.md in HEAD
-      }
-      
-      if (!hasChangelogInHead) {
-        errors.push("CHANGELOG.md not found in HEAD (required for tagged releases)");
-      } else {
-          try {
-            // Check only committed changes between lastTag and HEAD (not unstaged edits)
-            const changedFiles = execSync(
-              `git diff ${lastTag} HEAD --name-only -- CHANGELOG.md 2>/dev/null`,
-              { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
-            ).trim();
-
-            if (!changedFiles) {
-              errors.push(`CHANGELOG.md not updated since ${lastTag}`);
-            }
-          } catch {
-            // ignore
-          }
-        }
-      }
+      // If HEAD is the tagged commit itself, this is a release push — skip pre-release checks
+      const tagSha = execSync(`git rev-list -1 ${lastTag} 2>/dev/null`, {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "ignore"],
+      }).trim();
+      const headSha = execSync("git rev-parse HEAD 2>/dev/null", {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "ignore"],
+      }).trim();
+      isReleaseCommit = tagSha === headSha;
+    }
   } catch {
-    // No tags yet, skip changelog check
+    // No tags yet
+  }
+
+  // Check 1: Version bump since last tag (skip for release commits)
+  if (lastTag && hasPackageJson && !isReleaseCommit) {
+    try {
+      const headPkgContent = execSync(
+        "git show HEAD:package.json 2>/dev/null",
+        { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
+      );
+      const headPkg = JSON.parse(headPkgContent);
+      const currentVersion = headPkg.version;
+
+      const tagPkgContent = execSync(
+        `git show ${lastTag}:package.json 2>/dev/null`,
+        { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
+      );
+      const tagPkg = JSON.parse(tagPkgContent);
+      const tagVersion = tagPkg.version;
+
+      if (currentVersion && currentVersion === tagVersion) {
+        errors.push(`Version not bumped since ${lastTag} (still ${currentVersion})`);
+      }
+    } catch {
+      // ignore errors reading tag version
+    }
+  }
+
+  // Check 2: CHANGELOG exists and is updated since last tag (skip for release commits)
+  if (lastTag && !isReleaseCommit) {
+    let hasChangelogInHead = false;
+    try {
+      execSync("git show HEAD:CHANGELOG.md 2>/dev/null", { stdio: "pipe" });
+      hasChangelogInHead = true;
+    } catch {
+      // No CHANGELOG.md in HEAD
+    }
+
+    if (!hasChangelogInHead) {
+      errors.push("CHANGELOG.md not found in HEAD (required for tagged releases)");
+    } else {
+      try {
+        const changedFiles = execSync(
+          `git diff ${lastTag} HEAD --name-only -- CHANGELOG.md 2>/dev/null`,
+          { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
+        ).trim();
+
+        if (!changedFiles) {
+          errors.push(`CHANGELOG.md not updated since ${lastTag}`);
+        }
+      } catch {
+        // ignore
+      }
+    }
   }
 
   // Check 3: Build validation (SPEC-020 compliance)
@@ -433,12 +437,26 @@ async function workflowPrePr(context: HookContext): Promise<CheckResult> {
         const unreleasedSection = unreleasedMatch[1];
         // Check for list items (lines starting with - or *)
         const hasEntries = /^[-*]\s/m.test(unreleasedSection);
-        
+
         if (!hasEntries) {
-          result.passed = false;
-          result.blocked = true;
-          result.errors.push("CHANGELOG.md [Unreleased] section is empty (no entries found)");
-          result.errors.push("Add changelog entries before creating a PR");
+          // If HEAD is tagged, entries were moved to a version header by the release flow — OK
+          let isRelease = false;
+          try {
+            const tags = execSync("git tag --points-at HEAD 2>/dev/null", {
+              encoding: "utf-8",
+              stdio: ["pipe", "pipe", "ignore"],
+            }).trim();
+            isRelease = tags.length > 0;
+          } catch {
+            // ignore
+          }
+
+          if (!isRelease) {
+            result.passed = false;
+            result.blocked = true;
+            result.errors.push("CHANGELOG.md [Unreleased] section is empty (no entries found)");
+            result.errors.push("Add changelog entries before creating a PR");
+          }
         }
       } else {
         result.passed = false;

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.19] - 2026-04-07
+
+### Fixed
+- `validate-push` no longer false-positives when pushing a release commit (tag at HEAD)
+- `workflow-pre-pr` no longer blocks when `[Unreleased]` is empty after release flow moved entries to a version header
+- Existing `validate-push` tests fixed to place tag on prior commit (release detection was masking the checks)
+
+### Added
+- Report template with frontmatter for `.agents/reports/` (title, type, status, source)
+- Research skill promotion path: drafts/ for in-progress, reports/ for final findings
+- Wrap skill prompts for missing changelog entries on branches with commits
+- 3 new hook tests: release-push pass, tagged-PR pass, spoofed-commit-message block
+
 ## [2.0.0-dev.18] - 2026-04-07
 
 ### Fixed

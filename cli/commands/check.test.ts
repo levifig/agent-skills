@@ -511,6 +511,64 @@ describe("check: workflow-pre-pr", () => {
     expect(result.stderr).toContain("empty");
   });
 
+  it("passes when Unreleased is empty but HEAD is tagged (release flow)", () => {
+    // After release skill Step 4: entries moved from [Unreleased] to version header, tag created
+    const changelog = `# Changelog
+
+## [Unreleased]
+
+## [1.1.0] - 2024-02-01
+
+- Added new feature
+- Fixed bug
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    // Create a release commit at HEAD with a tag (as loaf release does)
+    writeFileSync(join(TEST_ROOT, "file.txt"), "content");
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "release: v1.1.0"', { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git tag v1.1.0", { cwd: TEST_ROOT, stdio: "ignore" });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'gh pr create --title "feat: release v1.1.0" --body "Release"' },
+    });
+
+    // Should pass — HEAD is tagged, entries are under the version header
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("blocks when Unreleased is empty and commit says release but no tag", () => {
+    // A commit message alone shouldn't bypass the check
+    const changelog = `# Changelog
+
+## [Unreleased]
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    writeFileSync(join(TEST_ROOT, "file.txt"), "content");
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "release: prep docs"', { cwd: TEST_ROOT, stdio: "ignore" });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'gh pr create --title "release: prep docs" --body "Prep"' },
+    });
+
+    // Should block — no tag means this isn't a real release
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("empty");
+  });
+
   it("skips non-gh-pr-create commands", () => {
     const result = runCheck("workflow-pre-pr", {
       tool: { name: "Bash" },
@@ -667,6 +725,11 @@ describe("check: validate-push", () => {
     execSync('git commit -m "initial"', { cwd: TEST_ROOT, stdio: "ignore" });
     execSync("git tag v1.0.0", { cwd: TEST_ROOT, stdio: "ignore" });
 
+    // Make a new commit WITHOUT bumping version — tag is now behind HEAD
+    writeFileSync(join(TEST_ROOT, "file.txt"), "updated content");
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "feat: add feature"', { cwd: TEST_ROOT, stdio: "ignore" });
+
     const result = runCheck("validate-push", {
       tool: { name: "Bash" },
       tool_input: { command: "git push origin main" },
@@ -681,7 +744,7 @@ describe("check: validate-push", () => {
     // Create package.json and CHANGELOG
     const pkg = { name: "test", version: "1.1.0" };
     writeFileSync(join(TEST_ROOT, "package.json"), JSON.stringify(pkg, null, 2));
-    
+
     const changelog = `# Changelog
 ## [Unreleased]
 ## [1.0.0] - 2024-01-01
@@ -695,6 +758,11 @@ describe("check: validate-push", () => {
     execSync('git commit -m "initial"', { cwd: TEST_ROOT, stdio: "ignore" });
     execSync("git tag v1.0.0", { cwd: TEST_ROOT, stdio: "ignore" });
 
+    // Make a new commit WITHOUT updating CHANGELOG — tag is now behind HEAD
+    writeFileSync(join(TEST_ROOT, "file.txt"), "updated content");
+    execSync("git add file.txt", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "feat: add feature"', { cwd: TEST_ROOT, stdio: "ignore" });
+
     const result = runCheck("validate-push", {
       tool: { name: "Bash" },
       tool_input: { command: "git push origin main" },
@@ -704,7 +772,36 @@ describe("check: validate-push", () => {
     expect(result.exitCode).toBe(2);
   });
 
-  // New build validation test
+  it("passes when HEAD is the tagged commit (release push)", () => {
+    // Create package.json with matching version
+    const pkg = { name: "test", version: "1.1.0" };
+    writeFileSync(join(TEST_ROOT, "package.json"), JSON.stringify(pkg, null, 2));
+
+    const changelog = `# Changelog
+## [Unreleased]
+## [1.1.0] - 2024-02-01
+- New feature
+## [1.0.0] - 2024-01-01
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    // Create initial commit, then a release commit tagged at HEAD
+    writeFileSync(join(TEST_ROOT, "file.txt"), "content");
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "release: v1.1.0"', { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git tag v1.1.0", { cwd: TEST_ROOT, stdio: "ignore" });
+
+    const result = runCheck("validate-push", {
+      tool: { name: "Bash" },
+      tool_input: { command: "git push origin main" },
+    });
+
+    // Should pass — HEAD is the tag itself, no version/changelog delta expected
+    expect(result.exitCode).toBe(0);
+  });
+
+  // Build validation test
   it("blocks when build script fails", () => {
     // Create package.json with a failing build script
     const pkg = { 

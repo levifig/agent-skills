@@ -24304,61 +24304,67 @@ async function validatePush(context) {
     hasBuildScript = !!pkg.scripts?.build;
   } catch {
   }
+  let lastTag = "";
+  let isReleaseCommit = false;
   try {
-    const lastTag = execSync2("git describe --tags --abbrev=0 2>/dev/null", {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "ignore"]
-    }).trim();
-    if (lastTag && hasPackageJson) {
-      try {
-        const headPkgContent = execSync2(
-          "git show HEAD:package.json 2>/dev/null",
-          { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
-        );
-        const headPkg = JSON.parse(headPkgContent);
-        const currentVersion = headPkg.version;
-        const tagPkgContent = execSync2(
-          `git show ${lastTag}:package.json 2>/dev/null`,
-          { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
-        );
-        const tagPkg = JSON.parse(tagPkgContent);
-        const tagVersion = tagPkg.version;
-        if (currentVersion && currentVersion === tagVersion) {
-          errors.push(`Version not bumped since ${lastTag} (still ${currentVersion})`);
-        }
-      } catch {
-      }
-    }
-  } catch {
-  }
-  try {
-    const lastTag = execSync2("git describe --tags --abbrev=0 2>/dev/null", {
+    lastTag = execSync2("git describe --tags --abbrev=0 2>/dev/null", {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "ignore"]
     }).trim();
     if (lastTag) {
-      let hasChangelogInHead = false;
-      try {
-        execSync2("git show HEAD:CHANGELOG.md 2>/dev/null", { stdio: "pipe" });
-        hasChangelogInHead = true;
-      } catch {
-      }
-      if (!hasChangelogInHead) {
-        errors.push("CHANGELOG.md not found in HEAD (required for tagged releases)");
-      } else {
-        try {
-          const changedFiles = execSync2(
-            `git diff ${lastTag} HEAD --name-only -- CHANGELOG.md 2>/dev/null`,
-            { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
-          ).trim();
-          if (!changedFiles) {
-            errors.push(`CHANGELOG.md not updated since ${lastTag}`);
-          }
-        } catch {
-        }
-      }
+      const tagSha = execSync2(`git rev-list -1 ${lastTag} 2>/dev/null`, {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "ignore"]
+      }).trim();
+      const headSha = execSync2("git rev-parse HEAD 2>/dev/null", {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "ignore"]
+      }).trim();
+      isReleaseCommit = tagSha === headSha;
     }
   } catch {
+  }
+  if (lastTag && hasPackageJson && !isReleaseCommit) {
+    try {
+      const headPkgContent = execSync2(
+        "git show HEAD:package.json 2>/dev/null",
+        { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
+      );
+      const headPkg = JSON.parse(headPkgContent);
+      const currentVersion = headPkg.version;
+      const tagPkgContent = execSync2(
+        `git show ${lastTag}:package.json 2>/dev/null`,
+        { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
+      );
+      const tagPkg = JSON.parse(tagPkgContent);
+      const tagVersion = tagPkg.version;
+      if (currentVersion && currentVersion === tagVersion) {
+        errors.push(`Version not bumped since ${lastTag} (still ${currentVersion})`);
+      }
+    } catch {
+    }
+  }
+  if (lastTag && !isReleaseCommit) {
+    let hasChangelogInHead = false;
+    try {
+      execSync2("git show HEAD:CHANGELOG.md 2>/dev/null", { stdio: "pipe" });
+      hasChangelogInHead = true;
+    } catch {
+    }
+    if (!hasChangelogInHead) {
+      errors.push("CHANGELOG.md not found in HEAD (required for tagged releases)");
+    } else {
+      try {
+        const changedFiles = execSync2(
+          `git diff ${lastTag} HEAD --name-only -- CHANGELOG.md 2>/dev/null`,
+          { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
+        ).trim();
+        if (!changedFiles) {
+          errors.push(`CHANGELOG.md not updated since ${lastTag}`);
+        }
+      } catch {
+      }
+    }
   }
   if (hasBuildScript) {
     try {
@@ -24399,10 +24405,21 @@ async function workflowPrePr(context) {
         const unreleasedSection = unreleasedMatch[1];
         const hasEntries = /^[-*]\s/m.test(unreleasedSection);
         if (!hasEntries) {
-          result.passed = false;
-          result.blocked = true;
-          result.errors.push("CHANGELOG.md [Unreleased] section is empty (no entries found)");
-          result.errors.push("Add changelog entries before creating a PR");
+          let isRelease = false;
+          try {
+            const tags = execSync2("git tag --points-at HEAD 2>/dev/null", {
+              encoding: "utf-8",
+              stdio: ["pipe", "pipe", "ignore"]
+            }).trim();
+            isRelease = tags.length > 0;
+          } catch {
+          }
+          if (!isRelease) {
+            result.passed = false;
+            result.blocked = true;
+            result.errors.push("CHANGELOG.md [Unreleased] section is empty (no entries found)");
+            result.errors.push("Add changelog entries before creating a PR");
+          }
         }
       } else {
         result.passed = false;
