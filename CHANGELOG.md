@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - `install.sh`, `scripts/detect-tools.sh`, `scripts/generate-task-board.sh` (replaced by CLI)
+- `TASKS.md` generated board — `loaf task list` is now the canonical task view
 - `journal-nudge-commit` prompt+if hook (fired on all Bash calls)
 - 12 tracked `.claude/plans/*.md`, scratch test files, stale CI paths
 
