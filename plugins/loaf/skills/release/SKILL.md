@@ -226,11 +226,10 @@ The `/loaf:release` skill bumps version so the squash commit carries it. Tagging
 
 ## Step 5: Squash Merge
 
-1. Draft a clean squash body from the branch's commit history and PR description. Structure:
-   - One-line summary of what shipped and why
-   - Bullet points grouped by feature area (if the PR covers multiple areas)
-   - Keep it scannable — no bold, no headings, no formatting beyond backticks for code
-   - Total length: 5-15 lines. Not a paragraph dump, not a commit log
+1. Draft a clean squash body from the branch's commit history and PR description. Descriptive, not verbose:
+   - One-line summary, then bullet points grouped by feature area
+   - Plain text — no bold, no headings, only backticks for `code`
+   - Not a paragraph dump, not a commit log
 2. Present the draft to the user for review. They may edit it.
 3. Execute (after user confirms):
    ```bash
