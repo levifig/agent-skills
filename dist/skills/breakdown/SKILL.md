@@ -33,6 +33,7 @@ Decompose specifications into atomic, implementable tasks.
 - **Own the decisions** -- decide granularity and priorities autonomously; only ask the user when two equally valid orderings have genuinely different trade-offs
 - **Keep tests with the code they test** -- never split implementation and tests into separate tasks
 - **Update spec status** -- mark the spec as `implementing` after tasks are created
+- **Log outcome** -- log breakdown to session journal: `loaf session log "decision(breakdown): SPEC-NNN → N tasks created"`
 
 ---
 

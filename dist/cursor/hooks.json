@@ -104,8 +104,8 @@
       {
         "loaf-managed": true,
         "timeout": 5,
-        "matcher": "Edit|Write",
-        "prompt": "SESSION JOURNAL NUDGE: file changes made"
+        "matcher": "Bash|Agent",
+        "prompt": "JOURNAL CHECK: If this completed significant work (review, decision, discovery, milestone), log it to the session journal before responding."
       }
     ],
     "sessionStart": [

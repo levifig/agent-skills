@@ -89,12 +89,6 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/kb-staleness-nudge.sh",
             "description": "Track covered edits and nudge when covered knowledge is stale",
             "timeout": 5
-          },
-          {
-            "type": "prompt",
-            "prompt": "SESSION JOURNAL NUDGE: file changes made",
-            "timeout": 5,
-            "description": "Nudge journal entries after file edits"
           }
         ]
       },
@@ -128,6 +122,17 @@
             "if": "Bash(gh pr merge:*)",
             "description": "Auto-log merge entry to session journal",
             "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Agent",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "JOURNAL CHECK: If this completed significant work (review, decision, discovery, milestone), log it to the session journal before responding.",
+            "timeout": 5,
+            "description": "Nudge journal entries after significant tool use"
           }
         ]
       }

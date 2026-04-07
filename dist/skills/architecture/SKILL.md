@@ -19,6 +19,7 @@ Guides technical decision-making through structured interviews, options analysis
 - Read existing VISION.md, ARCHITECTURE.md, and ADRs before proposing changes
 - Present multiple options with pros/cons and "fits when" context
 - Wait for explicit user decision before proceeding with documentation
+- Log decision to session journal: `loaf session log "decision(architecture): ADR-NNN adopted for X"`
 
 **Never**
 - Make architectural decisions without user input

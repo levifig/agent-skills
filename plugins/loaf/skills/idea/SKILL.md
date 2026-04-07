@@ -35,6 +35,7 @@ Capture ideas quickly with minimal friction.
 - Infer metadata automatically -- don't ask for tags, title, or links
 - One idea per file -- keep them atomic
 - No shaping here -- that's what `/loaf:shape` is for
+- Log capture to session journal: `loaf session log "spark(scope): idea slug captured"`
 
 ## Verification
 

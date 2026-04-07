@@ -43,6 +43,7 @@ Orchestrate a squash merge with correct version ordering, documentation checks, 
 - **Verify, don't do** -- housekeeping is the implementer's job; this skill only verifies it was done
 - **Detect-first** -- auto-detect PR from branch before asking for a number
 - **Never push without confirmation** -- even after successful version bump
+- **Log release** -- log to session journal after merge: `loaf session log "decision(release): vX.Y.Z shipped via PR #N"`
 
 ## Verification
 

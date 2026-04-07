@@ -20,6 +20,7 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 - Extract lessons learned and decisions before archiving
 - Use CLI (`loaf housekeeping`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
 - Verify `TASKS.json` sync after archival with `loaf task sync`
+- Log outcome to session journal: `loaf session log "decision(housekeeping): archived N specs, M sessions"`
 
 **Never**
 - Auto-archive without user confirmation for each artifact

@@ -24,6 +24,7 @@ Convene multi-agent councils for complex decisions requiring diverse expert pers
 - Document each perspective and create synthesis with consensus/disagreements
 - Wait for explicit user decision — council advises, user decides
 - Archive council after decision recorded in session
+- Log decision to session journal: `loaf session log "decision(scope): council outcome and user's choice"`
 
 **Never**
 - Use even number of agents (risks ties)

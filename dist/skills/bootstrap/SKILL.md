@@ -39,6 +39,7 @@ First-contact project setup: detect state, interview the builder, populate proje
 - **Always interview** -- even with a rich brief, confirm understanding through structured questions using `AskUserQuestion`
 - **Persist the brief** -- every bootstrap must produce a `docs/BRIEF.md`
 - **Suggest, don't execute** -- recommend next skills at the end, never auto-run them
+- **Log outcome** -- log bootstrap completion to session journal: `loaf session log "decision(bootstrap): project bootstrapped, mode detected"`
 
 ---
 

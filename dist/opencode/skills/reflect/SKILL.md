@@ -35,6 +35,7 @@ Update VISION, STRATEGY, and ARCHITECTURE based on proven implementation.
 - **Get explicit approval** -- never update strategic docs (VISION.md, STRATEGY.md, ARCHITECTURE.md) without user confirmation
 - **Consolidate** -- batch related learnings into coherent updates, avoid micro-updates
 - **Link back** -- always reference the specs/sessions that informed each update
+- **Log updates** -- log each strategic document update to session journal: `loaf session log "decision(scope): updated STRATEGY.md with learning"`
 
 ## Verification
 

@@ -20,6 +20,7 @@ Generative thinking — expanding possibilities before narrowing through structu
 - Document discarded options — they hold valuable reasoning
 - Capture sparks (speculative byproducts) in a dedicated section
 - Set boundaries on exploration time
+- Log outcome to session journal: `loaf session log "decision(scope): direction chosen and rationale"`
 
 **Never**
 - Prematurely commit to an option before full exploration

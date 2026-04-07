@@ -31,6 +31,7 @@ Deep discovery for personas, market landscape, and problem space.
 - **Get approval** -- do NOT update STRATEGY.md without explicit user confirmation
 - **Define anti-personas** -- who we are NOT building for is as important as who we are
 - **Keep it current** -- outdated strategy is worse than no strategy
+- **Log updates** -- log strategic changes to session journal: `loaf session log "decision(strategy): updated personas/landscape/problem space"`
 
 ---
 

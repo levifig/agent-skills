@@ -37,6 +37,7 @@ Unlike `/idea` (quick capture), shaping requires **deep understanding**. Ask abo
 5. **Priority order** -- for multi-part specs, define track order and go/no-go gates
 6. **Get approval** -- don't create spec file without explicit confirmation
 7. **Note tensions, don't fix** -- strategy evolves via /reflect
+8. **Log outcome** -- log spec creation to session journal: `loaf session log "decision(shape): SPEC-NNN created for feature"`
 
 ---
 

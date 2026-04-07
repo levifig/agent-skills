@@ -34,6 +34,7 @@ Patterns for zooming out, investigating topics, and evolving project direction.
 - Cite sources with confidence levels
 - Present options, let user decide
 - Get approval before editing VISION
+- Log findings to session journal: `loaf session log "discover(scope): summary of finding"`
 
 ### Never
 - Edit VISION without explicit approval
