@@ -818,6 +818,45 @@ function countTasksInSession(content: string): { completed: number; total: numbe
   return { completed, total };
 }
 
+/** Count meaningful journal activity from session content */
+function countJournalActivity(content: string): {
+  commits: number;
+  decisions: number;
+  entries: number;
+} {
+  const systemTypes = new Set(["resume", "pause", "progress", "conclude"]);
+  const pattern = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] (\w+)\(/gm;
+  let commits = 0;
+  let decisions = 0;
+  let entries = 0;
+  let match;
+  while ((match = pattern.exec(content)) !== null) {
+    const type = match[1];
+    if (systemTypes.has(type)) continue;
+    entries++;
+    if (type === "commit") commits++;
+    if (type === "decision") decisions++;
+  }
+  return { commits, decisions, entries };
+}
+
+/** Build progress summary string, omitting zero-value segments */
+function buildProgressLine(stats: {
+  completed: number;
+  total: number;
+  commits: number;
+  decisions: number;
+  entries: number;
+}): string {
+  const parts: string[] = [];
+  if (stats.total > 0) parts.push(`${stats.completed}/${stats.total} tasks`);
+  if (stats.commits > 0) parts.push(`${stats.commits} commits`);
+  if (stats.decisions > 0) parts.push(`${stats.decisions} decisions`);
+  const other = stats.entries - stats.commits - stats.decisions;
+  if (other > 0) parts.push(`${other} entries`);
+  return parts.length > 0 ? parts.join(", ") : "no activity logged";
+}
+
 function quickArchiveSession(filePath: string, agentsDir: string): void {
   const archiveDir = join(agentsDir, "sessions", "archive");
   if (!existsSync(archiveDir)) {
@@ -1024,12 +1063,19 @@ export function registerSessionCommand(program: Command): void {
       console.log(`\n  ${bold("loaf session end")}\n`);
 
       const lastCommit = getLastCommitSha();
-      const commits = getRecentCommits(5);
       const { completed, total } = countTasksInSession(existingSession.content);
+      const activity = countJournalActivity(existingSession.content);
       const timestamp = getDateTimeString();
+      const progressText = buildProgressLine({
+        completed,
+        total,
+        commits: activity.commits,
+        decisions: activity.decisions,
+        entries: activity.entries,
+      });
       const journalLines: string[] = [
         `[${timestamp}] pause(${branch}): session paused`,
-        `[${timestamp}] progress: ${completed}/${total} tasks completed, ${commits.length} commits`,
+        `[${timestamp}] progress: ${progressText}`,
       ];
       if (lastCommit !== "unknown") {
         journalLines.push(`[${timestamp}] conclude(${branch}): at commit ${lastCommit}`);
