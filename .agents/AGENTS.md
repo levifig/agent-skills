@@ -335,8 +335,7 @@ Session journals in `.agents/sessions/` use a **compact inline format** — appe
 | **Session File** | Named `YYYYMMDD-HHMMSS-description.md` in `.agents/sessions/` |
 | **Frontmatter** | YAML header with `spec`, `branch`, `status`, `created`, `last_entry` |
 | **Journal Entry** | `[YYYY-MM-DD HH:MM] type(scope): description` |
-| **Entry Type** | `start`, `resume`, `commit`, `decision`, `discover`, `block`, `unblock`, `spark`, `todo`, `conclude`, etc. |
-| **STOP Header** | `--- STOP YYYY-MM-DD HH:MM ---` separator between sessions |
+| **Entry Type** | `session`, `commit`, `decision`, `discover`, `block`, `unblock`, `spark`, `todo`, etc. |
 | **Burst** | Entries grouped without blank lines |
 | **Archive** | Completed sessions moved to `.agents/sessions/archive/` |
 
@@ -344,20 +343,19 @@ Session journals in `.agents/sessions/` use a **compact inline format** — appe
 
 **Entry Format:**
 ```markdown
-[YYYY-MM-DD HH:MM] start: SESSION STARTED
+[YYYY-MM-DD HH:MM] session(start):  === SESSION STARTED ===
 [YYYY-MM-DD HH:MM] decision(scope): description
 [YYYY-MM-DD HH:MM] commit(abc1234): message
-[YYYY-MM-DD HH:MM] conclude: at commit abc1234, 3 commits, 1 decision
---- STOP YYYY-MM-DD HH:MM ---
+[YYYY-MM-DD HH:MM] session(conclude): at commit abc1234, 3 commits, 1 decision
+[YYYY-MM-DD HH:MM] session(stop):   === SESSION STOPPED ===
 
---- RESUME YYYY-MM-DD HH:MM ---
-[YYYY-MM-DD HH:MM] resume: SESSION RESUMED
-[YYYY-MM-DD HH:MM] resume: from commit abc1234
+[YYYY-MM-DD HH:MM] session(resume): === SESSION RESUMED ===
+[YYYY-MM-DD HH:MM] session(context): from commit abc1234
 ```
 
 **Blank line rules:**
-- `--- STOP ---` has blank line after, not before
-- `--- RESUME ---` has blank line before (provided by STOP), not after
+- `session(stop)` has one blank line after, not before
+- `session(start)` and `session(resume)` have no blank line after
 - No other automatic blank lines
 
 ## Build System
@@ -509,7 +507,7 @@ Configure target-specific behavior and sidecars.
 - [Claude Code Skills Best Practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
 - [Claude Code Skills Documentation](https://code.claude.com/docs/en/skills)
 
-<!-- loaf:managed:start v2.0.0-dev.11 -->
+<!-- loaf:managed:start v2.0.0-dev.16 -->
 <!-- Maintained by loaf install/upgrade — do not edit manually -->
 ## Loaf Framework
 
@@ -526,7 +524,7 @@ Configure target-specific behavior and sidecars.
 - `loaf task/spec/kb` — Task and knowledge management
 
 **Journal Discipline:**
-Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log "type(scope): description"`. Entry types: `decide`, `discover`, `conclude`. Do not defer journaling — log before responding.
+Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log "type(scope): description"`. Entry types: `decision`, `discover`, `conclude`. Do not defer journaling — log before responding.
 
 See [orchestration skill](skills/orchestration/SKILL.md) for full details.
 <!-- loaf:managed:end -->

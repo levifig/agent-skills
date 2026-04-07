@@ -163,7 +163,7 @@ describe("session: start", () => {
     );
     // New compact inline format (SPEC-020)
     expect(content).toContain("## Journal");
-    expect(content).toContain("start: SESSION STARTED");
+    expect(content).toContain("session(start):  === SESSION STARTED ===");
     expect(content).toContain("status: active");
   });
 
@@ -208,7 +208,7 @@ describe("session: start", () => {
     const sessionFiles = getSessionFiles(repoPath);
     expect(sessionFiles.length).toBe(1);
     
-    // Verify there's only ONE "session started" entry (not duplicate starts)
+    // Verify there's only ONE session start entry (not duplicate starts)
     const content = readFileSync(
       join(repoPath, ".agents/sessions", sessionFiles[0]),
       "utf-8"
@@ -529,10 +529,9 @@ describe("session: end", () => {
       join(repoPath, ".agents/sessions", sessionFiles[0]),
       "utf-8"
     );
-    // STOP is written by session end; RESUME separator written by session start
+    // STOPPED is written by session end; RESUMED written by session start
     expect(content).toContain("claude_session_id: sess-second");
-    expect(content).toMatch(/--- RESUME \d{4}-\d{2}-\d{2} \d{2}:\d{2} ---/);
-    expect(content).toContain("SESSION RESUMED");
+    expect(content).toContain("=== SESSION RESUMED ===");
   });
 
   it("does not write PAUSE when same session_id reconnects", async () => {
@@ -549,10 +548,8 @@ describe("session: end", () => {
       join(repoPath, ".agents/sessions", sessionFiles[0]),
       "utf-8"
     );
-    // No PAUSE header — same conversation
-    expect(content).not.toMatch(/--- STOP/);
-    expect(content).not.toMatch(/--- RESUME/);
-    // No resume entry — same conversation, session still active
+    // No stop/resume — same conversation, session still active
+    expect(content).not.toContain("SESSION STOPPED");
     expect(content).not.toContain("SESSION RESUMED");
   });
 
@@ -568,9 +565,9 @@ describe("session: end", () => {
       "utf-8"
     );
 
-    // Should contain STOP separator header and conclude entry
-    expect(content).toMatch(/--- STOP \d{4}-\d{2}-\d{2} \d{2}:\d{2} ---/);
-    expect(content).toContain("conclude:");
+    // Should contain session stop entry and conclude entry
+    expect(content).toContain("=== SESSION STOPPED ===");
+    expect(content).toContain("session(conclude):");
     // Should NOT contain redundant pause entry
     expect(content).not.toContain("SESSION PAUSED");
   });

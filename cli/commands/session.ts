@@ -712,7 +712,7 @@ function createSessionFile(
   }
 
   const title = specInfo ? `${specInfo.id}: ${specInfo.title}` : "Ad-hoc";
-  const entry = `[${getDateTimeString()}] start: SESSION STARTED`;
+  const entry = `[${getDateTimeString()}] session(start):  === SESSION STARTED ===`;
 
   const body = `# Session: ${title}\n\n## Journal\n\n${entry}\n`;
 
@@ -747,10 +747,10 @@ async function appendEntry(
 
     updateFrontmatter(session.data);
 
-    // Blank line before RESUME separator or start entries (visual separation between sessions)
+    // Blank line before session(resume) entries (visual separation — STOPPED always has trailing blank line)
     const trimmedContent = session.content.trimEnd();
     const hasNewSession = entryLines.some(line =>
-      /^--- RESUME /.test(line) || /\] (?:start|resume)[:(]/.test(line)
+      /session\(resume\):/.test(line)
     );
 
     const separator = hasNewSession ? '\n\n' : '\n';
@@ -854,7 +854,7 @@ function countJournalActivity(content: string): {
   decisions: number;
   entries: number;
 } {
-  const systemTypes = new Set(["start", "resume", "pause", "progress", "conclude"]);
+  const systemTypes = new Set(["session"]);
   const pattern = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] (\w+)\(/gm;
   let commits = 0;
   let decisions = 0;
@@ -1019,13 +1019,12 @@ export function registerSessionCommand(program: Command): void {
       const journalLines: string[] = [];
 
       if (isResume) {
-        journalLines.push(`--- RESUME ${timestamp} ---`);
-        journalLines.push(`[${timestamp}] resume: SESSION RESUMED`);
+        journalLines.push(`[${timestamp}] session(resume): === SESSION RESUMED ===`);
         if (lastCommit !== "unknown") {
-          journalLines.push(`[${timestamp}] resume: from commit ${lastCommit}`);
+          journalLines.push(`[${timestamp}] session(context): from commit ${lastCommit}`);
         }
         if (completed > 0 || total > 0) {
-          journalLines.push(`[${timestamp}] progress: ${completed}/${total} tasks completed`);
+          journalLines.push(`[${timestamp}] session(progress): ${completed}/${total} tasks completed`);
         }
         if (commits.length > 0) {
           for (const commit of commits.slice(0, 3)) {
@@ -1144,8 +1143,8 @@ export function registerSessionCommand(program: Command): void {
       const concludeText = concludeParts.length > 0 ? concludeParts.join(", ") : "session ended";
 
       const journalLines: string[] = [
-        `[${timestamp}] conclude: ${concludeText}`,
-        `--- STOP ${timestamp} ---`,
+        `[${timestamp}] session(conclude): ${concludeText}`,
+        `[${timestamp}] session(stop):   === SESSION STOPPED ===`,
         '',
       ];
       console.log(`  ${yellow("?")} Consider adding final entries:`);
