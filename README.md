@@ -24,22 +24,23 @@ Loaf's commands form a three-phase workflow that mirrors how good software gets 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      PHASE 1: SHAPE                         │
+│                       PHASE 1: SHAPE                        │
 │                                                             │
-│   /idea  →  /brainstorm  →  /shape  →  Bounded Spec      │
+│   /idea  →  /brainstorm  →  /shape  →  Bounded Spec        │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                      PHASE 2: BUILD                         │
+│                       PHASE 2: BUILD                        │
 │                                                             │
-│   /breakdown  →  /implement                                │
+│   /breakdown  →  /implement  →  /release                    │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                      PHASE 3: LEARN                         │
+│                       PHASE 3: LEARN                        │
 │                                                             │
-│   /wrap  →  /housekeeping  →  /reflect  →  Updated Strategy│
+│   /housekeeping  →  /reflect  →  /wrap  →  Updated Strategy │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -71,9 +72,9 @@ Integrate outcomes into strategic knowledge.
 
 | Command | What It Does |
 |---------|--------------|
-| `/wrap` | Session summary: what shipped, what's pending, what's next |
 | `/housekeeping` | Review completed sessions, archive artifacts |
 | `/reflect` | Integrate learnings into strategic documents |
+| `/wrap` | Session summary: what shipped, what's pending, what's next |
 
 ### Pipeline Commands
 
