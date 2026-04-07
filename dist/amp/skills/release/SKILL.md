@@ -225,9 +225,13 @@ The `/release` skill bumps version so the squash commit carries it. Tagging happ
 
 ## Step 5: Squash Merge
 
-1. **Draft a clean squash body**: Read the branch's commit history and PR description. Write a 2–4 sentence summary focusing on *what shipped and why* — not individual commits.
-2. **Present the draft** to the user for review. They may edit it.
-3. **Execute** (after user confirms):
+1. Draft a clean squash body from the branch's commit history and PR description. Structure:
+   - One-line summary of what shipped and why
+   - Bullet points grouped by feature area (if the PR covers multiple areas)
+   - Keep it scannable — no bold, no headings, no formatting beyond backticks for code
+   - Total length: 5-15 lines. Not a paragraph dump, not a commit log
+2. Present the draft to the user for review. They may edit it.
+3. Execute (after user confirms):
    ```bash
    gh pr merge <N> --squash --body "$(cat <<'EOF'
    <body>
@@ -235,7 +239,7 @@ The `/release` skill bumps version so the squash commit carries it. Tagging happ
    )"
    ```
 4. Let GitHub default the title (`PR title (#N)`).
-5. **NEVER** use `--auto` or the automatic squash description that dumps all commits.
+5. NEVER use `--auto` or the automatic squash description that dumps all commits.
 
 ---
 
