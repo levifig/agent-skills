@@ -1667,13 +1667,22 @@
       "file": "SPEC-024-harness-native-surface-model.md"
     },
     "SPEC-025": {
-      "title": "Remove appetite from spec system",
+      "title": "Remove appetite and replace circuit breaker with go/no-go gates",
       "status": "drafting",
       "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-04-06T17:04:15.000Z",
       "file": "SPEC-025-remove-appetite.md"
+    },
+    "SPEC-027": {
+      "title": "Implement ad-hoc task creation and session stability",
+      "status": "drafting",
+      "appetite": null,
+      "requirement": null,
+      "source": "direct",
+      "created": "2026-04-07T00:01:56.000Z",
+      "file": "SPEC-027-implement-adhoc-session-stability.md"
     },
     "SPEC-001": {
       "title": "Loaf Self-Sufficiency",
