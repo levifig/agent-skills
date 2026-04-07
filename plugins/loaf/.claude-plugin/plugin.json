@@ -128,13 +128,6 @@
             "if": "Bash(gh pr merge:*)",
             "description": "Auto-log merge entry to session journal",
             "timeout": 30
-          },
-          {
-            "type": "prompt",
-            "prompt": "SESSION JOURNAL NUDGE: code committed. The commit is already auto-logged — no need to log it again. Instead, log any related decisions or observations that aren't captured by the commit message.",
-            "if": "Bash(git commit:*)",
-            "timeout": 5,
-            "description": "Nudge decisions/observations after commits (commit itself is auto-logged)"
           }
         ]
       }

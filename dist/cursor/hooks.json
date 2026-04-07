@@ -106,13 +106,6 @@
         "timeout": 5,
         "matcher": "Edit|Write",
         "prompt": "SESSION JOURNAL NUDGE: file changes made"
-      },
-      {
-        "loaf-managed": true,
-        "timeout": 5,
-        "matcher": "Bash",
-        "prompt": "SESSION JOURNAL NUDGE: code committed. The commit is already auto-logged — no need to log it again. Instead, log any related decisions or observations that aren't captured by the commit message.",
-        "if": "Bash(git commit:*)"
       }
     ],
     "sessionStart": [

@@ -1229,19 +1229,29 @@ export function registerSessionCommand(program: Command): void {
             // Parse Bash command to detect entry type
             if (command.includes("git commit")) {
               const hash = getLastCommitSha();
-              // Read actual commit message from git (works for -m, --amend, editor commits)
-              let message = "";
-              try {
-                message = execSync("git log -1 --format=%s", {
-                  encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"],
-                }).trim();
-              } catch { /* fallback to command parsing */ }
-              // Fall back to parsing -m flag if git log didn't produce a useful message
-              if (!message) {
-                const msgMatch = command.match(/-m\s+['"]([^'"]+)['"]/) || command.match(/-m\s+(\S+)/);
-                message = msgMatch ? msgMatch[1] : "commit";
+              const isAmend = command.includes("--amend");
+
+              if (isAmend) {
+                // Find previous commit entry in session to get the old hash
+                const prevMatch = existingSession.content.match(/\[.*?\] commit\(([a-f0-9]+)\):/g);
+                const lastEntry = prevMatch?.[prevMatch.length - 1];
+                const oldHash = lastEntry?.match(/commit\(([a-f0-9]+)\)/)?.[1] || "unknown";
+                entryText = `commit(${hash}): amended commit(${oldHash})`;
+              } else {
+                // Read actual commit message from git (works for -m, editor commits)
+                let message = "";
+                try {
+                  message = execSync("git log -1 --format=%s", {
+                    encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"],
+                  }).trim();
+                } catch { /* fallback to command parsing */ }
+                // Fall back to parsing -m flag if git log didn't produce a useful message
+                if (!message) {
+                  const msgMatch = command.match(/-m\s+['"]([^'"]+)['"]/) || command.match(/-m\s+(\S+)/);
+                  message = msgMatch ? msgMatch[1] : "commit";
+                }
+                entryText = `commit(${hash}): ${message}`;
               }
-              entryText = `commit(${hash}): ${message}`;
             } else if (command.includes("gh pr create")) {
               // Extract PR title from command
               const titleMatch = command.match(/--title\s+["']([^"']+)["']/);

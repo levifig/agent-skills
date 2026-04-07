@@ -159,14 +159,6 @@ hooks:
       timeout: 5000
       description: Nudge journal entries after file edits
 
-    - id: journal-nudge-commit
-      skill: orchestration
-      type: prompt
-      prompt: "SESSION JOURNAL NUDGE: code committed. The commit is already auto-logged — no need to log it again. Instead, log any related decisions or observations that aren't captured by the commit message."
-      matcher: "Bash"
-      if: "Bash(git commit:*)"
-      timeout: 5000
-      description: Nudge decisions/observations after commits (commit itself is auto-logged)
 
   session:
     - id: session-start-loaf
