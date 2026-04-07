@@ -29,9 +29,22 @@ if [ -n "$agents_dir" ]; then
     if grep -q "No state summary yet" "$session_file" 2>/dev/null; then
       echo "WARNING: ## Current State has not been written — still contains placeholder."
       echo "Write a state summary NOW before compaction loses your context."
-    elif ! grep -q "## Current State (.*)" "$session_file" 2>/dev/null; then
-      echo "WARNING: ## Current State has no timestamp — may be stale from a previous compaction."
-      echo "Update it NOW with current state before compaction."
+    else
+      # Check if timestamp exists and is older than 5 minutes
+      ts=$(grep -oE '## Current State \(([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2})\)' "$session_file" 2>/dev/null | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}')
+      if [ -z "$ts" ]; then
+        echo "WARNING: ## Current State has no timestamp — may be stale."
+        echo "Update it NOW with current state before compaction."
+      else
+        # Compare timestamp age (>5 min = stale)
+        ts_epoch=$(date -j -f "%Y-%m-%d %H:%M" "$ts" "+%s" 2>/dev/null || date -d "$ts" "+%s" 2>/dev/null || echo "0")
+        now_epoch=$(date "+%s")
+        age=$(( now_epoch - ts_epoch ))
+        if [ "$age" -gt 300 ]; then
+          echo "WARNING: ## Current State is $(( age / 60 ))m old — likely stale."
+          echo "Update it NOW with current state before compaction."
+        fi
+      fi
     fi
   fi
 fi
