@@ -100,7 +100,6 @@ function specEntry(overrides: Partial<SpecEntry> = {}): SpecEntry {
   return {
     title: "Test spec",
     status: "drafting",
-    appetite: null,
     requirement: null,
     source: null,
     created: "2026-03-01T00:00:00Z",
@@ -310,7 +309,6 @@ describe("loadIndex / saveIndex", () => {
       specs: {
         "SPEC-001": specEntry({
           status: "implementing",
-          appetite: "Small (1-2 days)",
           requirement: "Must work",
           source: "direct",
           file: "SPEC-001-test-spec.md",

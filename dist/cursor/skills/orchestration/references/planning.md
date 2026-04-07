@@ -14,7 +14,6 @@ Guidelines for product specifications, roadmaps, and feature definition. Inspire
 - Critical Rules
 - Roadmap Updates
 - Validation Checklist
-- Plan File Storage
 
 ## Core Principle
 
@@ -31,30 +30,17 @@ Every release should be:
 
 Adapted from [Shape Up](https://basecamp.com/shapeup) for AI agent orchestration.
 
-### Appetite Over Estimates
+### Complexity-Based Sizing
 
-**Don't estimate how long work will take. Decide how much time it's worth.**
+**Size work by complexity, not time. Agents don't have time budgets.**
 
-```markdown
-# Bad (estimate-driven)
-"How long will this feature take?"
-→ "About 2 weeks"
-→ Scope creeps → Takes 4 weeks
+| Size | Complexity | Suitable For |
+|------|-----------|--------------|
+| Small | Single concern, clear approach | Bug fixes, minor enhancements |
+| Medium | Multiple concerns, known patterns | Feature additions, refactors |
+| Large | Cross-cutting, needs exploration | Major features (should be split) |
 
-# Good (appetite-driven)
-"We're willing to invest 2 days on this."
-→ Shape to fit the appetite
-→ Cut scope if needed, not time
-```
-
-**Appetite levels:**
-| Appetite | Size | Suitable For |
-|----------|------|--------------|
-| Small | 1-2 days | Bug fixes, minor enhancements |
-| Medium | 3-5 days | Feature additions, refactors |
-| Large | 1-2 weeks | Major features (rare) |
-
-If work can't be shaped to fit the appetite, it's not ready - needs more shaping or should be broken down.
+If work is too complex for its size, it needs more shaping or should be split.
 
 ### Shaping Before Building
 
@@ -63,7 +49,7 @@ If work can't be shaped to fit the appetite, it's not ready - needs more shaping
 Orchestrator shapes before delegating to implementation agents:
 
 1. **Problem**: What are we solving? (not "build feature X")
-2. **Appetite**: How much is it worth?
+2. **Complexity**: Small / medium / large?
 3. **Solution sketch**: Rough direction, not detailed design
 4. **Rabbit holes**: What to avoid (explicitly list pitfalls)
 5. **No-gos**: What's out of scope (be specific)
@@ -72,7 +58,7 @@ Orchestrator shapes before delegating to implementation agents:
 ## Shaped Task: Improve Export Performance
 
 **Problem**: CSV exports timeout on large datasets (>10k rows)
-**Appetite**: 1 day (small batch)
+**Complexity**: Small (single concern, clear approach)
 **Solution sketch**: Stream to temp file, return async download link
 **Rabbit holes**:
 - Don't rewrite the export format
@@ -82,35 +68,35 @@ Orchestrator shapes before delegating to implementation agents:
 - Scheduled exports
 ```
 
-### Fixed Time, Variable Scope
+### Priority Ordering
 
-**Time is fixed. Scope flexes.**
+**Ship tracks in priority order. Drop from the end, not the middle.**
 
-When running out of appetite:
-1. **Cut scope** - Remove nice-to-haves, keep must-haves
-2. **Simplify** - Reduce complexity, accept rougher edges
-3. **Document what's left** - Create follow-up issues for cut scope
+When scope exceeds complexity sizing:
+1. **Ship in order** - Deliver the highest-priority tracks first
+2. **Go/no-go gates** - Binary check between tracks (does the previous track pass its test conditions?)
+3. **Drop from end** - If later tracks won't fit, drop them into follow-up specs
 
-Never extend time. If it doesn't fit, the shaping was wrong.
+If the core tracks don't fit, the shaping was wrong.
 
-### Circuit Breakers
+### Go/No-Go Gates
 
 **Know when to stop.**
 
-Set explicit checkpoints for re-evaluation:
+Set explicit gates between priority tracks:
 
 ```markdown
-## Circuit Breaker Points
+## Go/No-Go Gates
 
-After 50% of appetite spent:
-- [ ] Is the core approach working?
+After each priority track completes:
+- [ ] Does this track pass its test conditions?
 - [ ] Are we still solving the right problem?
-- [ ] Should we stop and reshape?
+- [ ] Is the next track still worth pursuing?
 
-If two "no" answers → STOP, reassess with user
+If any "no" answer → STOP, reassess with user before continuing
 ```
 
-Circuit breakers prevent sunk cost fallacy. Stopping early to reshape is not failure.
+Go/no-go gates prevent sunk cost fallacy. Stopping to reshape is not failure.
 
 ### Hill Charts
 
@@ -152,9 +138,9 @@ Each cycle, review what to bet on:
 ## Betting Table
 
 **Shaped and ready:**
-1. Export performance fix (1 day appetite) ✅ Bet
-2. Dashboard redesign (1 week appetite) ✅ Bet
-3. API v2 migration (2 week appetite) ❌ Too big, re-shape
+1. Export performance fix (small) ✅ Bet
+2. Dashboard redesign (medium) ✅ Bet
+3. API v2 migration (large) ❌ Too big, re-shape
 
 **Not ready (needs shaping):**
 - "Improve search" - too vague
@@ -434,119 +420,3 @@ Document in the file configured in `.agents/loaf.json` (default: `docs/CONSTRAIN
 - [ ] Out of scope explicitly stated
 - [ ] Dependencies identified
 - [ ] Open questions captured
-
-## Plan File Storage
-
-Implementation plans are stored in `.agents/plans/` for persistence across context resets.
-
-### Location & Naming
-
-```
-.agents/plans/YYYYMMDD-HHMMSS-{plan-slug}.md
-```
-
-**Generate timestamps:**
-```bash
-date -u +"%Y%m%d-%H%M%S"  # Filename: 20251204-143500
-date -u +"%Y-%m-%dT%H:%M:%SZ"  # Frontmatter: 2025-12-04T14:35:00Z
-```
-
-**Good**: `20251204-143500-api-auth-design.md`
-**Bad**: `api-auth-design.md` (missing timestamp)
-
-### Plan File Format
-
-```yaml
----
-session: 20251204-140000-feature-auth       # Parent session ID
-council: 20251204-142000-api-approach       # If plan came from council (optional)
-created: 2025-12-04T14:35:00Z               # When plan was created
-status: pending                              # pending | approved | superseded
----
-
-# [Plan Title]
-
-## Overview
-
-Brief description of what this plan covers.
-
-## Context
-
-What led to this plan. Reference session, council, or user requirements.
-
-## Implementation Steps
-
-1. **Step 1**: Description
-   - Details
-   - Expected outcome
-
-2. **Step 2**: Description
-   - Details
-   - Expected outcome
-
-## Dependencies
-
-- What must be complete before this plan can execute
-
-## Risks & Mitigations
-
-| Risk | Mitigation |
-|------|------------|
-| Risk 1 | How to address |
-
-## Acceptance Criteria
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-
-## Out of Scope
-
-What this plan explicitly does NOT cover.
-```
-
-### Plan Lifecycle
-
-| Status | Description |
-|--------|-------------|
-| `pending` | Created, awaiting user approval |
-| `approved` | User approved, ready for implementation |
-| `superseded` | Replaced by a newer plan |
-
-### Orchestrator Workflow
-
-1. **Receive plan** from Task(Plan) or exploration
-2. **Save to `.agents/plans/`** with proper filename
-3. **Update session** with plan reference in `plans:` array
-4. **Present to user** for approval
-5. **Mark approved** when user confirms
-6. **Reference in agent prompts** during implementation
-
-### Linking Plans
-
-**In session files:**
-```yaml
-plans:
-  - 20251204-143500-api-auth-design.md
-  - 20251204-150000-frontend-components.md
-```
-
-**In council files:**
-```yaml
-council:
-  implementation_plan: "../plans/20251204-143500-api-auth-design.md"
-```
-
-**In agent prompts:**
-```
-Reference the implementation plan at .agents/plans/20251204-143500-api-auth-design.md
-for the approved approach.
-```
-
-### Superseding Plans
-
-When a plan needs revision:
-
-1. Create new plan file with fresh timestamp
-2. Update old plan status to `superseded`
-3. Add note in old plan: `Superseded by: 20251205-100000-revised-approach.md`
-4. Update session `plans:` array with new plan

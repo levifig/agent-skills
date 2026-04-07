@@ -4,7 +4,6 @@ title: 'Council Advisory Redesign — dynamic specialists, structured output'
 source: direct
 created: '2026-03-27T20:50:19.000Z'
 status: drafting
-appetite: Medium (3-5 sessions)
 ---
 
 # SPEC-016: Council Advisory Redesign — Racial Composition, Structured Output
@@ -157,8 +156,8 @@ Persist every council to `.agents/councils/` for future reference. Archive via `
 - [ ] Each member provides a take (✅/❌, ranked pick, or position) alongside confidence
 - [ ] All council members receive VISION.md + STRATEGY.md + ARCHITECTURE.md context
 
-## Circuit Breaker
+## Priority Order
 
-At 50% appetite: If council composition or round structure proves complex, simplify to single-round with prompt-only members. Add round 2 and skill-backing as follow-up.
-
-At 75% appetite: Ship single-round advisory model. Round 2 deliberation becomes a follow-up spec.
+1. **Single-round advisory model** — core council flow with prompt-only members. Go/no-go: council produces actionable output.
+2. **Round 2 deliberation** — can be dropped if single-round is sufficient.
+3. **Skill-backed members** — follow-up if prompt-only members prove inadequate.

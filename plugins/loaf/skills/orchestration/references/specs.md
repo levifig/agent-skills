@@ -8,7 +8,6 @@ Break VISION + ARCHITECTURE + REQUIREMENTS into specific, implementable specs.
 - Spec Format
 - Spec Lifecycle
 - Creating Specs
-- Appetite Levels
 - Splitting Large Specs
 - Archiving Specs
 - Spec vs Plan
@@ -39,7 +38,6 @@ title: "User Authentication with OAuth"
 requirement: "2.1 User Authentication"
 created: 2026-01-23T14:30:00Z
 status: drafting  # drafting | approved | implementing | complete
-appetite: "1 week"
 ---
 
 # SPEC-001: User Authentication with OAuth
@@ -81,9 +79,11 @@ appetite: "1 week"
 
 [Architecture references, technical constraints, relevant ADRs]
 
-## Circuit Breaker
+## Priority Order
 
-At 50% appetite: if OAuth integration is problematic, simplify to single provider (Google only).
+Ship in order: Google OAuth -> GitHub OAuth -> session management. If blocked, drop from end.
+
+**Go/no-go gate** after Google OAuth: does the auth flow work end-to-end? If no, stop and reshape.
 ```
 
 **Create with:** `loaf spec create` or manually in `.agents/specs/`
@@ -109,7 +109,7 @@ drafting → approved → implementing → complete
 ### Input Required
 
 1. **Requirement reference** - Which section of REQUIREMENTS.md
-2. **Appetite** - How much time is it worth (from Shape Up)
+2. **Complexity size** - Small, medium, or large (see Splitting Large Specs)
 
 ### Interview Questions
 
@@ -130,32 +130,22 @@ Before drafting, clarify:
 2. **Shape the solution** - Direction, not blueprint
 3. **Define boundaries explicitly** - In/out/no-gos
 4. **Write test conditions** - Observable outcomes
-5. **Set circuit breaker** - When to stop and reassess
-
-## Appetite Levels
-
-| Appetite | Size | Suitable For |
-|----------|------|--------------|
-| Small | 1-2 days | Bug fixes, minor enhancements |
-| Medium | 3-5 days | Feature additions, refactors |
-| Large | 1-2 weeks | Major features (rare) |
-
-If a spec can't fit the appetite, it needs more shaping or should be split.
+5. **Set priority order** - Ship order A->B->C with go/no-go gates
 
 ## Splitting Large Specs
 
 When a spec is too big:
 
 ```
-SPEC-001-user-auth.md (large, 2 weeks)
+SPEC-001-user-auth.md (large)
         ↓ split into
-SPEC-001a-oauth-integration.md (medium, 3 days)
-SPEC-001b-session-management.md (small, 2 days)
-SPEC-001c-login-ui.md (medium, 3 days)
+SPEC-001a-oauth-integration.md (medium)
+SPEC-001b-session-management.md (small)
+SPEC-001c-login-ui.md (medium)
 ```
 
 Each sub-spec:
-- Has its own appetite
+- Has its own complexity size
 - Can be worked independently
 - References the original requirement
 
@@ -170,18 +160,6 @@ When all tasks for a spec are complete:
 loaf spec archive SPEC-001
 ```
 
-## Spec vs Plan
-
-| Spec | Plan |
-|------|------|
-| **What** to build | **How** to build it |
-| Lives in `.agents/specs/` | Lives in `.agents/plans/` |
-| Survives sessions | Tied to session |
-| User-facing | Implementation detail |
-| Shape Up shaped | Tactical steps |
-
-Specs define the target. Plans define the route to get there.
-
 ## Validation Checklist
 
 Before approving a spec:
@@ -189,8 +167,7 @@ Before approving a spec:
 - [ ] Problem statement is clear and user-focused
 - [ ] Scope boundaries are explicit (in/out/no-gos)
 - [ ] Test conditions are observable and testable
-- [ ] Appetite is realistic for the scope
-- [ ] Circuit breaker is defined
+- [ ] Priority order is defined with go/no-go gates
 - [ ] Requirement reference is valid
 - [ ] No implementation details (those go in plans)
 
@@ -213,7 +190,7 @@ Problems:
 - No problem statement
 - No scope boundaries
 - No test conditions
-- No appetite
+- No priority order
 - Too vague to implement
 
 ### Good Spec
@@ -260,8 +237,9 @@ Store session in secure HTTP-only cookies. Provide clear login/logout UI.
 - [ ] Logout clears all session data
 - [ ] Expired sessions redirect to login
 
-## Circuit Breaker
+## Priority Order
 
-At 50% appetite: if both providers are problematic, ship with Google only.
-GitHub can be a follow-up spec.
+Ship in order: Google OAuth -> GitHub OAuth -> session UI. Drop from end if scope exceeds complexity.
+
+**Go/no-go gate** after Google OAuth: does the auth flow work end-to-end? If no, stop and reshape.
 ```

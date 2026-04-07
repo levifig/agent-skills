@@ -1,9 +1,9 @@
 ---
 id: SPEC-025
-title: "Remove appetite and replace circuit breaker with go/no-go gates"
-source: "direct"
-created: 2026-04-06T17:04:15Z
-status: drafting
+title: Remove appetite and replace circuit breaker with go/no-go gates
+source: direct
+created: '2026-04-06T17:04:15.000Z'
+status: complete
 ---
 
 # SPEC-025: Remove Appetite and Replace Circuit Breaker with Go/No-Go Gates
@@ -36,7 +36,11 @@ This eliminates the `## Circuit Breaker` section from spec/plan templates and re
 
 ### In Scope
 - Remove `appetite` field from `SpecEntry`/`SpecFrontmatter` types and parser/migrate/display code
-- Replace `## Circuit Breaker` with `## Priority Order` in spec and plan templates
+- Replace `## Circuit Breaker` with `## Priority Order` in spec template
+- Delete `content/templates/plan.md` entirely (dead concept — no plan files have ever been created)
+- Remove plan file references from implement skill (`SKILL.md` and `references/session-management.md`)
+- Remove `plan.md` from `shared-templates` in `targets.yaml`
+- Delete empty `.agents/plans/` directory
 - Update shape skill (remove appetite from interview, replace circuit breaker guidance with priority ordering)
 - Update orchestration, breakdown, and bootstrap skills
 - Update docs (ARCHITECTURE.md, task-system.md)
@@ -76,6 +80,9 @@ None — scope is well-defined.
 - [ ] `grep -r "appetite" content/ cli/ docs/` returns zero matches
 - [ ] `grep -r "Circuit Breaker" content/skills/ content/templates/` returns zero matches (excluding software pattern refs)
 - [ ] Spec template has `## Priority Order` section instead of `## Circuit Breaker`
+- [ ] `content/templates/plan.md` does not exist
+- [ ] No plan file references in implement skill
+- [ ] `.agents/plans/` directory removed
 - [ ] `npm run typecheck` passes
 - [ ] `npm run test` passes
 - [ ] `loaf build` succeeds
@@ -93,7 +100,10 @@ None — scope is well-defined.
 |------|-------|
 | Types/CLI | `cli/lib/tasks/types.ts`, `parser.ts`, `migrate.ts`, `cli/commands/spec.ts` |
 | Tests | `parser.test.ts`, `migrate.test.ts`, `archive.test.ts`, `scanner.test.ts` |
-| Templates | `content/skills/shape/templates/spec.md`, `content/templates/plan.md` |
+| Templates | `content/skills/shape/templates/spec.md`, `content/templates/plan.md` (DELETE) |
+| Implement | `content/skills/implement/SKILL.md`, `content/skills/implement/references/session-management.md` (remove plan file refs) |
+| Config | `config/targets.yaml` (remove plan.md from shared-templates) |
+| Cleanup | `.agents/plans/` (DELETE empty directory) |
 | Skills | shape `SKILL.md`, orchestration `SKILL.md` + `refs/planning.md` + `refs/specs.md` + `refs/product-development.md`, breakdown `SKILL.md`, bootstrap `SKILL.md` + `refs/interview-guide.md` |
 | CLAUDE.md | `.claude/CLAUDE.md` (circuit breaker references in spec template docs) |
 | Docs | `docs/ARCHITECTURE.md`, `docs/knowledge/task-system.md` |

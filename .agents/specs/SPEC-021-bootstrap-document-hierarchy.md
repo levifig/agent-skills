@@ -4,7 +4,6 @@ title: Bootstrap Document Hierarchy Redesign
 source: conversation — bootstrap skill gap analysis
 created: '2026-04-01T00:00:00.000Z'
 status: drafting
-appetite: M (focused skill rewrite)
 ---
 
 # SPEC-021: Bootstrap Document Hierarchy Redesign

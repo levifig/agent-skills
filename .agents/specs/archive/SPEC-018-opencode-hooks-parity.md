@@ -4,7 +4,6 @@ title: OpenCode Hooks Parity — verification
 source: code-review
 created: '2026-03-30T10:50:00.000Z'
 status: complete
-appetite: Micro (< 1 session)
 ---
 
 # SPEC-018: OpenCode Hooks Parity

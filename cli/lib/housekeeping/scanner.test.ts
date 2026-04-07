@@ -186,7 +186,7 @@ describe("specs", () => {
       {},
       {
         "SPEC-001": {
-          title: "Done spec", status: "complete", appetite: null,
+          title: "Done spec", status: "complete",
           requirement: null, source: null, created: "2026-03-01",
           file: "SPEC-001-done.md",
         },
@@ -204,7 +204,7 @@ describe("specs", () => {
       {},
       {
         "SPEC-002": {
-          title: "Stale spec", status: "drafting", appetite: null,
+          title: "Stale spec", status: "drafting",
           requirement: null, source: null, created: staleDate,
           file: "SPEC-002-stale.md",
         },
@@ -290,7 +290,7 @@ describe("drafts", () => {
       {},
       {
         "SPEC-009": {
-          title: "Knowledge Management", status: "complete", appetite: null,
+          title: "Knowledge Management", status: "complete",
           requirement: null, source: ".agents/drafts/brainstorm-loaf-cli.md",
           created: "2026-03-01", file: "archive/SPEC-009-knowledge.md",
         },

@@ -1,6 +1,7 @@
 ---
 captured: 2026-03-28T15:32:34Z
-status: raw
+status: absorbed
+absorbed_by: SPEC-025
 tags: [methodology, shape-up, specs, agentic-development]
 related: [SPEC-014]
 ---

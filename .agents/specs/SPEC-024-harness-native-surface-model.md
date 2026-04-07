@@ -6,7 +6,6 @@ source: >-
   native subagent/hook capabilities
 created: '2026-04-04T12:13:54Z'
 status: drafting
-appetite: 4-6 days
 ---
 
 # SPEC-024: Harness-Native Surface Model
@@ -163,7 +162,7 @@ This keeps the build efficient without flattening the runtime model.
 
 - **Per-harness skill forking.** Do not fork skill content per harness unless a real behavior difference requires it. Shared source remains the default.
 - **Universal runtime abstraction.** Do not invent a meta-hook or meta-agent runtime that hides harness semantics. The whole point is to expose them.
-- **Perfect migration coverage.** Do not spend the appetite reconstructing every past install layout. Clean up the current known legacy roots and move on.
+- **Perfect migration coverage.** Do not spend effort reconstructing every past install layout. Clean up the current known legacy roots and move on.
 
 ### No-Gos
 
@@ -204,8 +203,8 @@ This keeps the build efficient without flattening the runtime model.
 - [ ] T10: Existing target-specific native capabilities still work after the refactor (Cursor hooks, Codex hook install, OpenCode commands/runtime plugin)
 - [ ] T11: The surface matrix includes task tracking as a surface, with clear portable/native classification per target
 
-## Circuit Breaker
+## Priority Order
 
-At 50% appetite: If Gemini native agents and hooks both prove too large, ship the surface-model refactor plus Gemini hook/settings support first. Do not keep the old “skills only” language.
-
-At 75% appetite: If legacy cleanup logic is slowing the core refactor, scope cleanup down to detection plus warning output and finish the target model, builder changes, parity tests, and doc alignment first.
+1. **Surface-model refactor** + Gemini hook/settings support. Go/no-go: “skills only” language eliminated.
+2. **Gemini native agents** — drop if hooks alone provide sufficient parity.
+3. **Legacy cleanup** — scope down to detection + warning if it slows the core refactor.

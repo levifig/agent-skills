@@ -171,6 +171,7 @@ function mapSessionEvent(event: string): string {
     SessionStart: "sessionStart",
     SessionEnd: "sessionEnd",
     PreCompact: "preCompact",
+    PostCompact: "postCompact",
     Stop: "stop",
   };
   return mapping[event] || event.toLowerCase();

@@ -6,7 +6,6 @@ source: >-
   definitions and usage
 created: '2026-04-03T12:23:18.000Z'
 status: drafting
-appetite: 1-2 days
 ---
 
 # SPEC-022: Native Agent Profile Routing
@@ -108,8 +107,8 @@ Three complementary layers:
 - [ ] T9: Targets without agent support (Codex, Gemini, Amp) build clean with no profile artifacts
 - [ ] T10: Hook emits valid JSON response (not blocked, passed with profile context)
 
-## Circuit Breaker
+## Priority Order
 
-At 50% appetite: If Cursor Agent-event integration proves complex, defer Cursor to instruction-only and ship Claude Code + skill updates.
-
-At 75% appetite: If hook injection architecture requires runtime-plugin.ts changes beyond the profile manifest, ship with manifest + SessionStart + skill updates only. The hook can follow as a fast-follow.
+1. **Claude Code + skill updates** — profile manifest + SessionStart routing. Go/no-go: profiles route correctly in Claude Code.
+2. **Cursor Agent-event integration** — defer to instruction-only if complex. Drop if Claude Code delivers full value.
+3. **Hook injection architecture** — ship manifest-only if runtime-plugin.ts changes prove too large.

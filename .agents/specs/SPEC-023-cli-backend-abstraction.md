@@ -6,7 +6,6 @@ source: >-
   operations behind a backend router
 created: '2026-04-03T15:30:00Z'
 status: drafting
-appetite: 'M (bounded — plumbing, not product)'
 ---
 
 # SPEC-023: CLI Backend Abstraction — Linear/Local Task Routing

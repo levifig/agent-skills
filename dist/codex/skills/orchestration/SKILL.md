@@ -6,7 +6,7 @@ description: >-
   agents, or coordinating cross-cutting work across multiple agents. Not for
   single-task implementation (use direct tool delegation) or solo research (use
   research).
-version: 2.0.0-dev.15
+version: 2.0.0-dev.16
 ---
 
 # Orchestration
@@ -50,9 +50,9 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 **Otherwise:** coordinate with local sessions and `loaf task` / file-based tracking only; do not assume Linear MCP tools are available.
 
 ### Planning (Shape Up)
-- Appetite over estimates (decide time, flex scope)
+- Complexity-based sizing (small / medium / large)
 - Shape before building (boundaries, not tasks)
-- Circuit breakers at 50% to reassess
+- Priority ordering with go/no-go gates between tracks
 - No backlogs -- bet or let go
 
 ## Verification
@@ -68,9 +68,9 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 | Multi-step work | Create session file, spawn agents |
 | Complex decision | Convene council (5-7 agents, odd) |
 | Linear update | Checkboxes, no emoji, no local paths |
-| Feature planning | Define appetite, shape before building |
+| Feature planning | Size by complexity, shape before building |
 | Agent selection | Match domain expertise to task |
-| Stuck on task | Check circuit breaker, consider reshaping |
+| Stuck on task | Check priority order, consider reshaping |
 | Pre-compaction | Spawn context-archiver to preserve state |
 | Low-priority work | Spawn background-runner with run_in_background |
 | New feature workflow | Research -> Architecture -> Shape -> Breakdown -> Implement |
@@ -91,7 +91,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 | Session Resume | [references/session-resume.md](references/session-resume.md) | Resuming sessions, checkpoints, context recovery |
 | Context Management | [references/context-management.md](references/context-management.md) | Using /clear, /compact, managing context limits |
 | Linear Integration | [references/linear.md](references/linear.md) | Updating Linear issues, magic words, status conventions |
-| Product Planning | [references/planning.md](references/planning.md) | Shape Up methodology, setting appetite, roadmaps |
+| Product Planning | [references/planning.md](references/planning.md) | Shape Up methodology, complexity sizing, roadmaps |
 
 ## Philosophy
 

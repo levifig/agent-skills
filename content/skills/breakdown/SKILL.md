@@ -106,7 +106,7 @@ If no config exists, ask user.
 
 ### Step 2: Read the Spec
 
-Extract: test conditions, scope, implementation notes, appetite.
+Extract: test conditions, scope, implementation notes, complexity size.
 
 ### Step 3: Identify Task Boundaries
 
@@ -115,7 +115,7 @@ Break down by concern (data layer, backend, frontend, infrastructure, etc.). One
 ### Step 4: Decide Priorities and Granularity
 
 Own the granularity and priority decisions. Apply the Right Size Test, assign priorities
-based on dependencies and circuit breaker alignment, and do a self-review pass. Do not
+based on dependencies, priority order, and go/no-go gates, and do a self-review pass. Do not
 defer these decisions to the user — they trust agent judgment here.
 
 If genuinely uncertain (e.g., two equally valid orderings with different trade-offs),

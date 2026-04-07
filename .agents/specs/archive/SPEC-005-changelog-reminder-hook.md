@@ -1,10 +1,9 @@
 ---
 id: SPEC-005
-title: "Changelog reminder hook after git commits"
+title: Changelog reminder hook after git commits
 source: direct
-created: 2026-01-24T22:25:35Z
+created: '2026-01-24T22:25:35.000Z'
 status: complete
-appetite: Small (1-2 days)
 ---
 
 # SPEC-005: Changelog reminder hook after git commits

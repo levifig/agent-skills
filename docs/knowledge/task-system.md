@@ -24,9 +24,9 @@ Loaf implements a Shape Up-inspired task management system: specs define bounded
 
 ## Key Rules
 
-- **Appetite over estimates.** Decide how much time work is worth, not how long it'll take.
-- **Fixed time, variable scope.** Time is fixed; scope flexes when needed.
-- **Circuit breakers.** Checkpoint at 50% appetite to re-evaluate.
+- **Complexity-based sizing.** Size by complexity (small/medium/large), not time. Agents don't have time budgets.
+- **Priority ordering.** Ship tracks in order; drop from the end if scope tightens.
+- **Go/no-go gates.** Binary checks between priority tracks using test conditions.
 - **One concern per task.** One agent type, one concern, fits in context with room for exploration.
 - **Tasks are agent-authored, human-reviewed.** Agents create tasks via `/breakdown`, humans approve.
 
@@ -40,7 +40,7 @@ Loaf implements a Shape Up-inspired task management system: specs define bounded
 
 | Artifact | Location | Purpose |
 |----------|----------|---------|
-| Specs | `.agents/specs/SPEC-XXX-slug.md` | Bounded work definitions (appetite, scope, test conditions) |
+| Specs | `.agents/specs/SPEC-XXX-slug.md` | Bounded work definitions (scope, test conditions, priority order) |
 | Tasks | `.agents/tasks/TASK-XXX-slug.md` | Individual work items (acceptance criteria, verification) |
 | Task index | `.agents/tasks/TASKS.json` | Programmatic index (CLI readable) |
 | Sessions | `.agents/sessions/YYYYMMDD-HHMMSS-slug.md` | Execution context (linked to branch/spec) |

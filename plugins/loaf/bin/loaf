@@ -17566,6 +17566,7 @@ function mapSessionEvent(event) {
     SessionStart: "sessionStart",
     SessionEnd: "sessionEnd",
     PreCompact: "preCompact",
+    PostCompact: "postCompact",
     Stop: "stop"
   };
   return mapping[event] || event.toLowerCase();
@@ -20855,7 +20856,6 @@ function parseSpecFile(filePath, content) {
     const entry = {
       title: fm.title || basename2(filePath, ".md"),
       status: normalizeSpecStatus(fm.status),
-      appetite: fm.appetite || null,
       requirement: fm.requirement || null,
       source: fm.source || null,
       created: normalizeDate(fm.created),
@@ -21007,7 +21007,6 @@ function specEntryToFrontmatter(id, entry) {
   if (entry.source) fm.source = entry.source;
   if (entry.created) fm.created = entry.created;
   fm.status = entry.status;
-  if (entry.appetite) fm.appetite = entry.appetite;
   if (entry.requirement) fm.requirement = entry.requirement;
   return fm;
 }
@@ -21902,8 +21901,7 @@ ${bold7("  loaf spec list")}
       const label = STATUS_LABELS2[status];
       console.log(`  ${bold7(colorFn(`${label} (${entries.length})`))}`);
       for (const [id, entry] of entries) {
-        const appetite = entry.appetite ? gray8(entry.appetite) : gray8("TBD");
-        console.log(`    ${bold7(id)}  ${entry.title}  ${appetite}`);
+        console.log(`    ${bold7(id)}  ${entry.title}`);
         console.log(`              Tasks: ${formatTaskCounts(taskCounts[id])}`);
       }
       console.log();
@@ -24787,6 +24785,44 @@ var red10 = (s) => `\x1B[31m${s}\x1B[0m`;
 var yellow14 = (s) => `\x1B[33m${s}\x1B[0m`;
 var cyan9 = (s) => `\x1B[36m${s}\x1B[0m`;
 var gray14 = (s) => `\x1B[90m${s}\x1B[0m`;
+async function parseHookInput() {
+  if (process.stdin.isTTY) return {};
+  let data = "";
+  return new Promise((resolve2) => {
+    const timer = setTimeout(() => {
+      finish({});
+    }, 100);
+    const onData = (chunk) => {
+      data += chunk;
+    };
+    const onEnd = () => {
+      clearTimeout(timer);
+      try {
+        finish(data.trim() ? JSON.parse(data) : {});
+      } catch {
+        finish({});
+      }
+    };
+    const onError = () => {
+      finish({});
+    };
+    let finished = false;
+    function finish(result) {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      process.stdin.removeListener("data", onData);
+      process.stdin.removeListener("end", onEnd);
+      process.stdin.removeListener("error", onError);
+      if (typeof process.stdin.unref === "function") process.stdin.unref();
+      resolve2(result);
+    }
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", onData);
+    process.stdin.on("end", onEnd);
+    process.stdin.on("error", onError);
+  });
+}
 function getProjectRoot(agentsDir) {
   return dirname13(agentsDir);
 }
@@ -25142,6 +25178,7 @@ function parseEntry(entry) {
   if (!match) return null;
   const [, type, scope, description] = match;
   const validTypes = [
+    "start",
     "resume",
     "pause",
     "progress",
@@ -25197,8 +25234,12 @@ function createSessionFile(filePath, branch, specInfo) {
     frontmatter.spec = specInfo.id;
   }
   const title = specInfo ? `${specInfo.id}: ${specInfo.title}` : branch;
-  const entry = `[${getDateTimeString()}] resume(${branch}): session started`;
+  const entry = `[${getDateTimeString()}] start: SESSION STARTED`;
   const body = `# Session: ${title}
+
+## Current State
+
+*No state summary yet \u2014 updated by PreCompact or /wrap.*
 
 ## Journal
 
@@ -25224,18 +25265,10 @@ async function appendEntry(filePath, entryLines, updateFrontmatter) {
     }
     updateFrontmatter(session.data);
     const trimmedContent = session.content.trimEnd();
-    const lastTimestamp = extractLastEntryTimestamp(trimmedContent);
-    const STATE_TRANSITION_TYPES = ["block", "unblock", "pause", "resume"];
-    const hasStateTransition = entryLines.some(
-      (line) => STATE_TRANSITION_TYPES.some((type) => new RegExp(`\\] ${type}[:(]`).test(line))
+    const hasNewSession = entryLines.some(
+      (line) => /\] (?:start|resume)[:(]/.test(line)
     );
-    let needsBlankLine = hasStateTransition;
-    if (!needsBlankLine && lastTimestamp) {
-      needsBlankLine = Date.now() - lastTimestamp.getTime() >= 5 * 60 * 1e3;
-    } else if (!lastTimestamp) {
-      needsBlankLine = true;
-    }
-    const separator = needsBlankLine ? "\n\n" : "\n";
+    const separator = hasNewSession ? "\n\n" : "\n";
     const newContent = import_gray_matter13.default.stringify(
       trimmedContent + separator + entryLines.join("\n") + "\n",
       session.data
@@ -25255,17 +25288,6 @@ function extractRecentEntries(content, count = 15) {
     }
   }
   return entries.slice(-count);
-}
-function extractLastEntryTimestamp(content) {
-  const lines = content.split("\n");
-  const pattern = /^\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})\]/;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const match = lines[i].trim().match(pattern);
-    if (match) {
-      return /* @__PURE__ */ new Date(`${match[1]}T${match[2]}:00`);
-    }
-  }
-  return null;
 }
 function extractDecisionEntries(content) {
   const entries = [];
@@ -25320,7 +25342,7 @@ function countTasksInSession(content) {
   return { completed, total };
 }
 function countJournalActivity(content) {
-  const systemTypes = /* @__PURE__ */ new Set(["resume", "pause", "progress", "conclude"]);
+  const systemTypes = /* @__PURE__ */ new Set(["start", "resume", "pause", "progress", "conclude"]);
   const pattern = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] (\w+)\(/gm;
   let commits = 0;
   let decisions = 0;
@@ -25363,7 +25385,11 @@ function quickArchiveSession(filePath, agentsDir) {
 }
 function registerSessionCommand(program3) {
   const session = program3.command("session").description("Manage session journals");
-  session.command("start").description("Start/resume session for current branch").option("--resume", "Resume existing paused session instead of creating new").action(async (options2) => {
+  session.command("start").description("Start/resume session for current branch").option("--resume", "Resume existing paused session instead of creating new").option("--force", "Force session creation, bypassing subagent detection").action(async (options2) => {
+    const hookInput = await parseHookInput();
+    if (hookInput.agent_id && !options2.force) {
+      process.exit(0);
+    }
     const agentsDir = findAgentsDir();
     if (!agentsDir) {
       console.error(`  ${red10("error:")} Could not find .agents/ directory`);
@@ -25397,11 +25423,18 @@ function registerSessionCommand(program3) {
     let sessionData;
     let sessionContent;
     let isResume = false;
+    let isNewConversation = false;
     if (existingSession && (options2.resume || existingSession.data.status === "active")) {
       sessionFilePath = existingSession.filePath;
       sessionData = existingSession.data;
       sessionContent = existingSession.content;
-      isResume = existingSession.data.status !== "active";
+      const storedSessionId = existingSession.data.claude_session_id;
+      if (hookInput.session_id && storedSessionId && hookInput.session_id !== storedSessionId) {
+        isNewConversation = true;
+        isResume = true;
+      } else {
+        isResume = existingSession.data.status !== "active";
+      }
       console.log(`  ${green12("\u2713")} Resuming existing session`);
     } else {
       if (existingSession) {
@@ -25429,9 +25462,9 @@ function registerSessionCommand(program3) {
     const timestamp = getDateTimeString();
     const journalLines = [];
     if (isResume) {
-      journalLines.push(`[${timestamp}] resume(${branch}): session resumed`);
+      journalLines.push(`[${timestamp}] resume: SESSION RESUMED`);
       if (lastCommit !== "unknown") {
-        journalLines.push(`[${timestamp}] resume(${branch}): from commit ${lastCommit}`);
+        journalLines.push(`[${timestamp}] resume: from commit ${lastCommit}`);
       }
       if (completed > 0 || total > 0) {
         journalLines.push(`[${timestamp}] progress: ${completed}/${total} tasks completed`);
@@ -25452,12 +25485,18 @@ function registerSessionCommand(program3) {
           data.status = "active";
           data.last_updated = getTimestamp();
           data.last_entry = getTimestamp();
+          if (hookInput.session_id) {
+            data.claude_session_id = hookInput.session_id;
+          }
         }
       );
-    } else if (sessionData.status !== "active") {
+    } else if (sessionData.status !== "active" || hookInput.session_id) {
       sessionData.status = "active";
       sessionData.last_updated = getTimestamp();
       sessionData.last_entry = getTimestamp();
+      if (hookInput.session_id) {
+        sessionData.claude_session_id = hookInput.session_id;
+      }
       const newContent = import_gray_matter13.default.stringify(sessionContent, sessionData);
       writeFileSync21(sessionFilePath, newContent, "utf-8");
     }
@@ -25481,6 +25520,11 @@ function registerSessionCommand(program3) {
       for (const entry of recentEntries) {
         console.log(`    ${entry}`);
       }
+    }
+    if (specInfo) {
+      const slug = specInfo.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 30);
+      console.log(`
+  ${gray14(`Suggestion: /rename ${specInfo.id}-${slug}`)}`);
     }
     console.log();
   });
@@ -25521,14 +25565,14 @@ function registerSessionCommand(program3) {
       entries: activity.entries
     });
     const journalLines = [
-      `[${timestamp}] pause(${branch}): session paused`,
+      `[${timestamp}] pause: SESSION PAUSED`,
       `[${timestamp}] progress: ${progressText}`
     ];
     if (lastCommit !== "unknown") {
-      journalLines.push(`[${timestamp}] conclude(${branch}): at commit ${lastCommit}`);
+      journalLines.push(`[${timestamp}] conclude: at commit ${lastCommit}`);
     }
-    journalLines.push("");
     journalLines.push(`--- PAUSE ${timestamp} ---`);
+    journalLines.push("");
     console.log(`  ${yellow14("?")} Consider adding final entries:`);
     console.log(`    ${gray14('loaf session log "decision(scope): key decision"')}`);
     console.log(`    ${gray14('loaf session log "conclude(scope): final notes"')}`);
@@ -25585,42 +25629,45 @@ function registerSessionCommand(program3) {
         const command = hookData.tool_input?.command || hookData.tool?.input?.command || hookData.input?.command;
         if (command && typeof command === "string") {
           if (command.includes("git commit")) {
-            const msgMatch = command.match(/-m\s+['"]([^'"]+)['"]/) || command.match(/-m\s+(\S+)/);
-            const message = msgMatch ? msgMatch[1] : "commit";
             const hash = getLastCommitSha();
+            let message = "commit";
+            try {
+              message = execSync3("git log -1 --format=%s", {
+                encoding: "utf-8",
+                stdio: ["pipe", "pipe", "pipe"]
+              }).trim();
+            } catch {
+            }
             entryText = `commit(${hash}): ${message}`;
           } else if (command.includes("gh pr create")) {
             const titleMatch = command.match(/--title\s+["']([^"']+)["']/);
-            const title = titleMatch ? titleMatch[1] : "";
-            const raw = hookData.raw;
-            let prNum = "";
-            if (raw && typeof raw === "string") {
-              const prUrlMatch = raw.match(/https:\/\/github\.com\/[^\/]+\/[^\/]+\/pull\/(\d+)/);
-              if (prUrlMatch) {
-                prNum = prUrlMatch[1];
+            const title = titleMatch ? titleMatch[1] : "PR created";
+            let prSuffix = "";
+            const response = hookData.tool_response;
+            if (response) {
+              const stdout = typeof response === "string" ? response : response.stdout;
+              if (stdout && typeof stdout === "string") {
+                const prUrlMatch = stdout.match(/https:\/\/github\.com\/[^\/]+\/[^\/]+\/pull\/(\d+)/);
+                if (prUrlMatch) {
+                  prSuffix = ` (#${prUrlMatch[1]})`;
+                }
               }
             }
-            if (prNum && title) {
-              entryText = `pr(#${prNum}): ${title}`;
-            } else if (title) {
-              entryText = `pr: ${title}`;
-            } else {
-              entryText = `pr: PR created`;
-            }
+            entryText = `pr(create): ${title}${prSuffix}`;
           } else if (command.includes("gh pr merge")) {
             const prMatch = command.match(/merge\s+https:\/\/github\.com\/[^\/]+\/[^\/]+\/pull\/(\d+)/) || command.match(/pr\s+merge\s+(\d+)/);
             const prNum = prMatch ? prMatch[1] : "unknown";
-            entryText = `merge(#${prNum}): merged`;
+            entryText = `pr(merge): #${prNum} merged`;
           } else {
-            entryText = `progress(hook): ${command.slice(0, 100)}${command.length > 100 ? "..." : ""}`;
+            process.exit(0);
           }
         } else {
           if (hookData.commit) {
             entryText = `commit(${hookData.commit}): ${hookData.message || "commit"}`;
           } else if (hookData.pr) {
-            entryText = `pr(#${hookData.pr}): ${hookData.title || "PR created"}`;
+            entryText = `pr(create): ${hookData.title || "PR created"} (#${hookData.pr})`;
           } else if (hookData.merge) {
-            entryText = `merge(#${hookData.merge}): merged`;
+            entryText = `pr(merge): #${hookData.merge}`;
           } else {
             process.exit(0);
           }

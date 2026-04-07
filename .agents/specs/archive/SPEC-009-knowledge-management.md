@@ -4,7 +4,6 @@ title: Knowledge Management
 source: .agents/drafts/brainstorm-loaf-cli-knowledge-harness.md
 created: '2026-03-14T19:48:00.000Z'
 status: complete
-appetite: 3 weeks (big batch)
 ---
 
 # SPEC-009: Knowledge Management

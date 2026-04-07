@@ -9,7 +9,6 @@ title: "[Clear, descriptive title]"
 source: "[idea file or 'direct']"
 created: YYYY-MM-DDTHH:MM:SSZ
 status: drafting
-appetite: "[time budget]"
 ---
 
 # SPEC-XXX: [Title]
@@ -63,9 +62,13 @@ appetite: "[time budget]"
 - [ ] [Observable outcome 2]
 - [ ] [Observable outcome 3]
 
-## Circuit Breaker
+## Priority Order
 
-At 50% appetite: [What to do if not on track]
+[For multi-part specs only. Omit for single-track work.]
 
-At 75% appetite: [Hard decision point]
+Tracks ship in this order. If scope needs cutting, drop from the end.
+
+1. **Part A** — [description]. Go/no-go: verify test conditions for Part A pass before starting Part B.
+2. **Part B** — [description]. Go/no-go: verify Part B tests pass before starting Part C.
+3. **Part C** — [description]. Can be dropped if scope tightens.
 ```

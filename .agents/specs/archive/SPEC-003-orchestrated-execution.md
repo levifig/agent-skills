@@ -3,7 +3,6 @@ id: SPEC-003
 title: Orchestrated Multi-Task Execution
 created: '2026-01-24T03:00:00.000Z'
 status: complete
-appetite: 2-3 sessions
 requirement: Enable unattended execution of specs or task groups with PM coordination
 ---
 

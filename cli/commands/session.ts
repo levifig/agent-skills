@@ -56,9 +56,61 @@ interface SessionFrontmatter {
   task?: string;
   spec?: string;
   title?: string;
+  claude_session_id?: string;
+}
+
+/** Hook JSON input from Claude Code stdin */
+interface HookInput {
+  session_id?: string;
+  agent_id?: string;
+  agent_type?: string;
+  transcript_path?: string;
+  cwd?: string;
+  permission_mode?: string;
+}
+
+/** Parse hook JSON from stdin (returns empty object if stdin is TTY or invalid) */
+async function parseHookInput(): Promise<HookInput> {
+  if (process.stdin.isTTY) return {};
+
+  let data = "";
+  return new Promise<HookInput>((resolve) => {
+    const timer = setTimeout(() => {
+      finish({});
+    }, 100);
+
+    const onData = (chunk: string) => { data += chunk; };
+    const onEnd = () => {
+      clearTimeout(timer);
+      try {
+        finish(data.trim() ? JSON.parse(data) as HookInput : {});
+      } catch {
+        finish({});
+      }
+    };
+    const onError = () => { finish({}); };
+
+    let finished = false;
+    function finish(result: HookInput) {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      process.stdin.removeListener("data", onData);
+      process.stdin.removeListener("end", onEnd);
+      process.stdin.removeListener("error", onError);
+      if (typeof process.stdin.unref === "function") process.stdin.unref();
+      resolve(result);
+    }
+
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", onData);
+    process.stdin.on("end", onEnd);
+    process.stdin.on("error", onError);
+  });
 }
 
 type EntryType =
+  | "start"
   | "resume"
   | "pause"
   | "progress"
@@ -605,7 +657,7 @@ function parseEntry(entry: string): JournalEntry | null {
 
   const [, type, scope, description] = match;
   const validTypes: EntryType[] = [
-    "resume", "pause", "progress", "commit", "pr", "merge",
+    "start", "resume", "pause", "progress", "commit", "pr", "merge",
     "decision", "discover", "conclude", "block", "unblock",
     "spark", "todo", "assume",
     // New types
@@ -660,9 +712,9 @@ function createSessionFile(
   }
 
   const title = specInfo ? `${specInfo.id}: ${specInfo.title}` : branch;
-  const entry = `[${getDateTimeString()}] resume(${branch}): session started`;
+  const entry = `[${getDateTimeString()}] start: SESSION STARTED`;
   
-  const body = `# Session: ${title}\n\n## Journal\n\n${entry}\n`;
+  const body = `# Session: ${title}\n\n## Current State\n\n*No state summary yet — updated by PreCompact or /wrap.*\n\n## Journal\n\n${entry}\n`;
 
   const content = matter.stringify(body, frontmatter as unknown as Record<string, unknown>);
   
@@ -695,22 +747,13 @@ async function appendEntry(
 
     updateFrontmatter(session.data);
 
-    // Blank line when gap ≥ 5 minutes or on state transitions (block/unblock/pause/resume)
+    // Blank line before start/resume entries only (visual separation for new conversations)
     const trimmedContent = session.content.trimEnd();
-    const lastTimestamp = extractLastEntryTimestamp(trimmedContent);
-    const STATE_TRANSITION_TYPES = ['block', 'unblock', 'pause', 'resume'];
-    const hasStateTransition = entryLines.some(line =>
-      STATE_TRANSITION_TYPES.some(type => new RegExp(`\\] ${type}[:(]`).test(line))
+    const hasNewSession = entryLines.some(line =>
+      /\] (?:start|resume)[:(]/.test(line)
     );
 
-    let needsBlankLine = hasStateTransition;
-    if (!needsBlankLine && lastTimestamp) {
-      needsBlankLine = (Date.now() - lastTimestamp.getTime()) >= 5 * 60 * 1000;
-    } else if (!lastTimestamp) {
-      needsBlankLine = true;
-    }
-
-    const separator = needsBlankLine ? '\n\n' : '\n';
+    const separator = hasNewSession ? '\n\n' : '\n';
     const newContent = matter.stringify(
       trimmedContent + separator + entryLines.join("\n") + "\n",
       session.data as unknown as Record<string, unknown>
@@ -735,19 +778,6 @@ function extractRecentEntries(content: string, count = 15): string[] {
 
   // Return last 'count' entries
   return entries.slice(-count);
-}
-
-function extractLastEntryTimestamp(content: string): Date | null {
-  const lines = content.split('\n');
-  const pattern = /^\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})\]/;
-
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const match = lines[i].trim().match(pattern);
-    if (match) {
-      return new Date(`${match[1]}T${match[2]}:00`);
-    }
-  }
-  return null;
 }
 
 function extractDecisionEntries(content: string): string[] {
@@ -824,7 +854,7 @@ function countJournalActivity(content: string): {
   decisions: number;
   entries: number;
 } {
-  const systemTypes = new Set(["resume", "pause", "progress", "conclude"]);
+  const systemTypes = new Set(["start", "resume", "pause", "progress", "conclude"]);
   const pattern = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] (\w+)\(/gm;
   let commits = 0;
   let decisions = 0;
@@ -892,7 +922,16 @@ export function registerSessionCommand(program: Command): void {
     .command("start")
     .description("Start/resume session for current branch")
     .option("--resume", "Resume existing paused session instead of creating new")
-    .action(async (options: { resume?: boolean }) => {
+    .option("--force", "Force session creation, bypassing subagent detection")
+    .action(async (options: { resume?: boolean; force?: boolean }) => {
+      // Parse hook JSON from stdin (when invoked as a hook by Claude Code)
+      const hookInput = await parseHookInput();
+
+      // Subagent detection: agent_id is only present for subagents
+      if (hookInput.agent_id && !options.force) {
+        process.exit(0);
+      }
+
       const agentsDir = findAgentsDir();
       if (!agentsDir) {
         console.error(`  ${red("error:")} Could not find .agents/ directory`);
@@ -909,7 +948,7 @@ export function registerSessionCommand(program: Command): void {
         console.error(`  ${red("error:")} Not in a git repository`);
         process.exit(1);
       }
-      
+
       if (branch.startsWith("detached-")) {
         console.error(`  ${yellow("⚠")} Warning: In detached HEAD state (${branch})`);
         console.error(`  ${gray("Sessions in detached HEAD state are isolated to the specific commit.")}`);
@@ -931,13 +970,24 @@ export function registerSessionCommand(program: Command): void {
       let sessionData: SessionFrontmatter;
       let sessionContent: string;
       let isResume = false;
+      let isNewConversation = false;
 
       if (existingSession && (options.resume || existingSession.data.status === "active")) {
         // --resume flag, or session is active (wasn't properly closed)
         sessionFilePath = existingSession.filePath;
         sessionData = existingSession.data;
         sessionContent = existingSession.content;
-        isResume = existingSession.data.status !== "active";
+
+        // Detect new conversation via claude_session_id comparison
+        const storedSessionId = existingSession.data.claude_session_id;
+        if (hookInput.session_id && storedSessionId && hookInput.session_id !== storedSessionId) {
+          // Different session_id = new conversation on same branch
+          isNewConversation = true;
+          isResume = true;
+        } else {
+          isResume = existingSession.data.status !== "active";
+        }
+
         console.log(`  ${green("✓")} Resuming existing session`);
       } else {
         if (existingSession) {
@@ -969,9 +1019,9 @@ export function registerSessionCommand(program: Command): void {
       const journalLines: string[] = [];
 
       if (isResume) {
-        journalLines.push(`[${timestamp}] resume(${branch}): session resumed`);
+        journalLines.push(`[${timestamp}] resume: SESSION RESUMED`);
         if (lastCommit !== "unknown") {
-          journalLines.push(`[${timestamp}] resume(${branch}): from commit ${lastCommit}`);
+          journalLines.push(`[${timestamp}] resume: from commit ${lastCommit}`);
         }
         if (completed > 0 || total > 0) {
           journalLines.push(`[${timestamp}] progress: ${completed}/${total} tasks completed`);
@@ -993,12 +1043,18 @@ export function registerSessionCommand(program: Command): void {
             data.status = "active";
             data.last_updated = getTimestamp();
             data.last_entry = getTimestamp();
+            if (hookInput.session_id) {
+              data.claude_session_id = hookInput.session_id;
+            }
           }
         );
-      } else if (sessionData.status !== "active") {
+      } else if (sessionData.status !== "active" || hookInput.session_id) {
         sessionData.status = "active";
         sessionData.last_updated = getTimestamp();
         sessionData.last_entry = getTimestamp();
+        if (hookInput.session_id) {
+          sessionData.claude_session_id = hookInput.session_id;
+        }
         const newContent = matter.stringify(sessionContent, sessionData as unknown as Record<string, unknown>);
         writeFileSync(sessionFilePath, newContent, "utf-8");
       }
@@ -1024,6 +1080,12 @@ export function registerSessionCommand(program: Command): void {
         for (const entry of recentEntries) {
           console.log(`    ${entry}`);
         }
+      }
+
+      // Suggest /rename when a spec is linked to the branch
+      if (specInfo) {
+        const slug = specInfo.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 30);
+        console.log(`\n  ${gray(`Suggestion: /rename ${specInfo.id}-${slug}`)}`);
       }
 
       console.log();
@@ -1074,16 +1136,16 @@ export function registerSessionCommand(program: Command): void {
         entries: activity.entries,
       });
       const journalLines: string[] = [
-        `[${timestamp}] pause(${branch}): session paused`,
+        `[${timestamp}] pause: SESSION PAUSED`,
         `[${timestamp}] progress: ${progressText}`,
       ];
       if (lastCommit !== "unknown") {
-        journalLines.push(`[${timestamp}] conclude(${branch}): at commit ${lastCommit}`);
+        journalLines.push(`[${timestamp}] conclude: at commit ${lastCommit}`);
       }
 
-      // PAUSE separator (visual boundary between sessions)
-      journalLines.push('');
+      // PAUSE separator — no blank before, blank after (resume adds blank before itself)
       journalLines.push(`--- PAUSE ${timestamp} ---`);
+      journalLines.push('');
       console.log(`  ${yellow("?")} Consider adding final entries:`);
       console.log(`    ${gray("loaf session log \"decision(scope): key decision\"")}`);
       console.log(`    ${gray("loaf session log \"conclude(scope): final notes\"")}`);
@@ -1164,53 +1226,52 @@ export function registerSessionCommand(program: Command): void {
           if (command && typeof command === "string") {
             // Parse Bash command to detect entry type
             if (command.includes("git commit")) {
-              // Extract commit message if available
-              const msgMatch = command.match(/-m\s+['"]([^'"]+)['"]/) || command.match(/-m\s+(\S+)/);
-              const message = msgMatch ? msgMatch[1] : "commit";
               const hash = getLastCommitSha();
+              // Read actual commit message from git (works for -m, --amend, editor commits)
+              let message = "commit";
+              try {
+                message = execSync("git log -1 --format=%s", {
+                  encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"],
+                }).trim();
+              } catch { /* fallback */ }
               entryText = `commit(${hash}): ${message}`;
             } else if (command.includes("gh pr create")) {
               // Extract PR title from command
               const titleMatch = command.match(/--title\s+["']([^"']+)["']/);
-              const title = titleMatch ? titleMatch[1] : "";
-              
-              // Try to extract PR number from hook output (if available)
-              // The raw field may contain tool output with PR URL
-              const raw = hookData.raw;
-              let prNum = "";
-              if (raw && typeof raw === "string") {
-                // Match PR URL patterns like https://github.com/owner/repo/pull/123
-                const prUrlMatch = raw.match(/https:\/\/github\.com\/[^\/]+\/[^\/]+\/pull\/(\d+)/);
-                if (prUrlMatch) {
-                  prNum = prUrlMatch[1];
+              const title = titleMatch ? titleMatch[1] : "PR created";
+
+              // Try to extract PR number from tool_response (post-tool hook output)
+              let prSuffix = "";
+              const response = hookData.tool_response;
+              if (response) {
+                const stdout = typeof response === "string" ? response : response.stdout;
+                if (stdout && typeof stdout === "string") {
+                  const prUrlMatch = stdout.match(/https:\/\/github\.com\/[^\/]+\/[^\/]+\/pull\/(\d+)/);
+                  if (prUrlMatch) {
+                    prSuffix = ` (#${prUrlMatch[1]})`;
+                  }
                 }
               }
-              
-              if (prNum && title) {
-                entryText = `pr(#${prNum}): ${title}`;
-              } else if (title) {
-                entryText = `pr: ${title}`;
-              } else {
-                entryText = `pr: PR created`;
-              }
+
+              entryText = `pr(create): ${title}${prSuffix}`;
             } else if (command.includes("gh pr merge")) {
-              // Try to extract PR number from URL or direct argument
+              // Extract PR number from URL or direct argument
               const prMatch = command.match(/merge\s+https:\/\/github\.com\/[^\/]+\/[^\/]+\/pull\/(\d+)/) ||
                                command.match(/pr\s+merge\s+(\d+)/);
               const prNum = prMatch ? prMatch[1] : "unknown";
-              entryText = `merge(#${prNum}): merged`;
+              entryText = `pr(merge): #${prNum} merged`;
             } else {
-              // Generic entry for unrecognized command
-              entryText = `progress(hook): ${command.slice(0, 100)}${command.length > 100 ? "..." : ""}`;
+              // Unrecognized command — skip silently (only log known patterns)
+              process.exit(0);
             }
           } else {
             // Fallback: try legacy fields for backward compatibility
             if (hookData.commit) {
               entryText = `commit(${hookData.commit}): ${hookData.message || "commit"}`;
             } else if (hookData.pr) {
-              entryText = `pr(#${hookData.pr}): ${hookData.title || "PR created"}`;
+              entryText = `pr(create): ${hookData.title || "PR created"} (#${hookData.pr})`;
             } else if (hookData.merge) {
-              entryText = `merge(#${hookData.merge}): merged`;
+              entryText = `pr(merge): #${hookData.merge}`;
             } else {
               // No command found - this is a hook-safe no-op for when session doesn't exist
               // Exit 0 so hooks don't fail, but don't log anything

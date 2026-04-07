@@ -4,7 +4,6 @@ title: 'TDD Harness — spec-driven testing, eval accumulation, reviewer-to-R ma
 source: SPEC-014
 created: '2026-03-28T15:45:00.000Z'
 status: drafting
-appetite: Medium (3-5 sessions)
 ---
 
 # SPEC-017: TDD Harness — Spec-Driven Testing and Eval Accumulation
@@ -210,10 +209,8 @@ Binary — each passes (✅) or fails (❌).
 - [ ] R9: `loaf build` succeeds with updated implement and shape skills
 - [ ] R10: Existing specs are not broken by template evolution (backwards compatible)
 
-## Circuit Breaker
+## Priority Order
 
-**At 50%:** Ship the TDD orchestration pattern in `/implement` only (Phases 1-4 + loop). No spec template changes, no R-tag convention, no reviewer protocol. Coordinator follows the flow; quality improvements come from the sequencing alone.
-
-**At 75%:** Add reviewer audit protocol (per-R verdicts) and R-tag convention. Spec template evolution deferred.
-
-**At 100%:** Full spec including spec template evolution, `/shape` updates, and eval accumulation documentation.
+1. **TDD orchestration in `/implement`** (Phases 1-4 + loop) — core value. Go/no-go: coordinator follows the TDD flow.
+2. **Reviewer audit protocol** (per-R verdicts) + R-tag convention. Go/no-go: reviews produce actionable verdicts.
+3. **Spec template evolution** + `/shape` updates + eval accumulation. Drop if earlier tracks deliver sufficient quality.

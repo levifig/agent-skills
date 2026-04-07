@@ -77,8 +77,6 @@ export interface TaskEntry {
 export interface SpecEntry {
   title: string;
   status: SpecStatus;
-  /** Appetite label, e.g. "Large (1-2 weeks)" */
-  appetite: string | null;
   /** Requirement or constraint summary */
   requirement: string | null;
   /** Origin: "direct" or reference to an idea file */
@@ -139,7 +137,6 @@ export interface SpecFrontmatter {
   id: string;
   title: string;
   status?: string;
-  appetite?: string;
   requirement?: string;
   source?: string;
   created?: string;

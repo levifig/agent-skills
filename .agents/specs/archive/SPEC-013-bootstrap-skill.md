@@ -4,7 +4,6 @@ title: /bootstrap — Interactive project bootstrapping skill
 source: direct
 created: '2026-03-22T01:28:01.000Z'
 status: complete
-appetite: Large (4+ sessions)
 ---
 
 # SPEC-013: /bootstrap — Interactive project bootstrapping skill

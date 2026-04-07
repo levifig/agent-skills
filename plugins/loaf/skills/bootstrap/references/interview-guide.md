@@ -22,7 +22,7 @@ The interview flows through four phases, each producing progressively sharper ar
 | Phase | Focus | Primary Output | Frameworks |
 |-------|-------|----------------|------------|
 | 1. Excavation | What exists, why it matters | Raw problem + context | Mom Test, JTBD, First Principles |
-| 2. Sharpening | Who, what, boundaries | Bounded scope + appetite | Shape Up, Lean Canvas, Design Sprint |
+| 2. Sharpening | Who, what, boundaries | Bounded scope + complexity | Shape Up, Lean Canvas, Design Sprint |
 | 3. Grounding | How, where, what evolves | Technical direction + landscape | Wardley Mapping, First Principles |
 | 4. Synthesis | Drafting documents | BRIEF, VISION, STRATEGY, ARCHITECTURE | All, integrated |
 
@@ -37,14 +37,14 @@ What each framework contributes and what to skip.
 ### Shape Up (Basecamp / Ryan Singer)
 
 **What to use:**
-- **Appetite** -- "How much time is this worth?" flips estimation on its head. Instead of "how long will it take," ask "how much are you willing to invest before walking away?" This is the single most clarifying question for scope.
+- **Complexity sizing** -- Size work by complexity (small / medium / large), not time. Agents don't have time budgets; complexity determines whether to split or reshape.
 - **Fat marker sketches** -- Solutions at the right altitude: rough enough to leave room, specific enough to be buildable. Not wireframes, not words -- the space in between.
 - **Rabbit holes and no-gos** -- Explicitly naming what NOT to build and where complexity lurks. Forces the builder to confront scope honestly.
-- **Pitch format** -- Problem, Appetite, Solution, Rabbit Holes, No-Gos. A proven structure for packaging shaped work.
+- **Pitch format** -- Problem, Complexity, Solution, Rabbit Holes, No-Gos. A proven structure for packaging shaped work.
 
 **What to skip:** Betting tables, cool-down cycles, hill charts. These are team process mechanics, not 0-to-1 discovery tools.
 
-**Connection to documents:** Appetite and boundaries flow directly into the spec format that `/loaf:shape` produces. The pitch format IS the spec.
+**Connection to documents:** Complexity sizing and boundaries flow directly into the spec format that `/loaf:shape` produces. The pitch format IS the spec.
 
 ### Jobs to Be Done (Christensen, Ulwick, Klement)
 
@@ -169,7 +169,7 @@ The builder's own experience with the problem is the richest source of insight. 
 
 ## Phase 2: Sharpening (The Shape)
 
-**Goal:** Define who this is for, what it does, and -- critically -- what it does NOT do. Set appetite and boundaries.
+**Goal:** Define who this is for, what it does, and -- critically -- what it does NOT do. Set complexity and boundaries.
 
 **Mood:** Constructive pressure. Phase 1 was expansive; Phase 2 is reductive. The builder will want to include everything. Your job is to help them cut.
 
@@ -192,10 +192,10 @@ Not a tagline -- a value proposition. "Unlike [existing alternative], this [key 
 
 This question relieves enormous pressure. Builders carry anxiety about everything the product "should" eventually do. Naming the no-gos creates freedom to focus. Push for at least 3 concrete no-gos.
 
-**8. "How much time is this worth? If you had to set a fixed budget of time before deciding it's not working, what would it be?"**
-*(Shape Up: appetite.)*
+**8. "How complex is this? If you had to rate it small, medium, or large, where does it land?"**
+*(Shape Up: complexity sizing.)*
 
-This is appetite. Not an estimate ("how long will it take?") but a budget ("how much is it worth?"). The answer shapes everything downstream: a 2-week appetite produces a fundamentally different product than a 6-month appetite.
+This is complexity sizing. A small project (single concern, clear approach) produces a fundamentally different spec than a large one (cross-cutting, needs exploration). If the builder says large, it probably needs splitting.
 
 **9. "What questions do we need to answer before we're confident this is worth building?"**
 *(Design Sprint: sprint questions.)*
@@ -212,7 +212,7 @@ Surface the riskiest assumptions. "Will users actually switch from their current
 
 ### Phase 2 Signals
 
-**Strong signal (move to Phase 3):** Builder can state the job, the differentiator, and at least 3 no-gos. Appetite is set.
+**Strong signal (move to Phase 3):** Builder can state the job, the differentiator, and at least 3 no-gos. Complexity is sized.
 
 **Weak signal (iterate):** Builder keeps expanding scope. "It should also..." is a signal to tighten. Ask: "If you could only do ONE thing, what would it be?"
 
@@ -254,7 +254,7 @@ These become the rabbit holes in the spec. The builder often knows where the dra
 
 - "What constraints are non-negotiable? Performance, privacy, cost, platform, licensing?" *(First Principles: real vs. perceived constraints)*
 - "What's the deployment story? Where does this run?" *(Wardley: value chain, infrastructure layer)*
-- "If you had to ship something in one week, what would you cut?" *(Shape Up: appetite pressure test)*
+- "If you had to ship something in one week, what would you cut?" *(Shape Up: scope pressure test)*
 - "Are there regulatory, legal, or compliance considerations?" *(Often forgotten at 0-to-1)*
 
 ### Phase 3 Signals
@@ -288,7 +288,7 @@ The interview ends when you have enough to draft. Don't announce "the interview 
 | No-gos + boundaries | VISION.md | Non-goals |
 | Existing alternatives + market | STRATEGY.md | Landscape, positioning |
 | Unfair advantage | STRATEGY.md | Competitive advantage |
-| Appetite | STRATEGY.md | Current focus, priorities |
+| Complexity sizing | STRATEGY.md | Current focus, priorities |
 | Key metrics | STRATEGY.md | Success criteria |
 | Value chain + build vs. buy | ARCHITECTURE.md | Components, technology choices |
 | Novel vs. commodity | ARCHITECTURE.md | Build vs. buy decisions |
@@ -379,7 +379,7 @@ The transition from interview to drafting should be seamless, not announced. Her
 - Builder can state the problem in one sentence
 - At least one specific user persona exists
 - No-gos have been named
-- Appetite is set (even roughly)
+- Complexity is sized (even roughly)
 - The builder isn't generating new information with each question
 
 ### The Pivot
@@ -412,7 +412,7 @@ The bootstrap interview creates the foundation. Other skills deepen specific are
 
 | Framework | Primary Contribution | Phase(s) |
 |-----------|---------------------|----------|
-| Shape Up | Appetite, no-gos, rabbit holes, pitch format | 2, 3 |
+| Shape Up | Complexity sizing, no-gos, rabbit holes, pitch format | 2, 3 |
 | Jobs to Be Done | Job statements, switching forces, competing with non-consumption | 1, 2 |
 | Lean Canvas | Problem/UVP/unfair advantage triangle, existing alternatives | 1, 2 |
 | The Mom Test | Question quality lens, evidence of pain, past behavior over future prediction | All phases |

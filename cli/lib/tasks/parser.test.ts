@@ -491,7 +491,6 @@ describe("parseSpecFile", () => {
 id: SPEC-010
 title: Task management CLI
 status: implementing
-appetite: "Large (1-2 weeks)"
 requirement: Must support CRUD operations
 source: direct
 created: "2026-03-01T09:00:00Z"
@@ -505,7 +504,6 @@ created: "2026-03-01T09:00:00Z"
       expect(result!.id).toBe("SPEC-010");
       expect(result!.entry.title).toBe("Task management CLI");
       expect(result!.entry.status).toBe("implementing");
-      expect(result!.entry.appetite).toBe("Large (1-2 weeks)");
       expect(result!.entry.requirement).toBe("Must support CRUD operations");
       expect(result!.entry.source).toBe("direct");
       expect(result!.entry.created).toBe("2026-03-01T09:00:00Z");
@@ -519,7 +517,6 @@ created: "2026-03-01T09:00:00Z"
       expect(result).not.toBeNull();
       expect(result!.id).toBe("SPEC-005");
       expect(result!.entry.status).toBe("drafting");
-      expect(result!.entry.appetite).toBeNull();
       expect(result!.entry.requirement).toBeNull();
       expect(result!.entry.source).toBeNull();
       expectRecentTimestamp(result!.entry.created);

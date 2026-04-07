@@ -163,7 +163,7 @@ describe("session: start", () => {
     );
     // New compact inline format (SPEC-020)
     expect(content).toContain("## Journal");
-    expect(content).toContain("resume(");
+    expect(content).toContain("start: SESSION STARTED");
     expect(content).toContain("status: active");
   });
 
@@ -213,7 +213,7 @@ describe("session: start", () => {
       join(repoPath, ".agents/sessions", sessionFiles[0]),
       "utf-8"
     );
-    const startMatches = content.match(/session started/g);
+    const startMatches = content.match(/SESSION STARTED/g);
     expect(startMatches?.length ?? 0).toBe(1);
   }, 30000); // Higher timeout for concurrent operations
 
@@ -249,7 +249,7 @@ describe("session: start", () => {
       join(repoPath, ".agents/sessions", sessionFiles[0]),
       "utf-8"
     );
-    expect(content).toContain("session started");
+    expect(content).toContain("SESSION STARTED");
     expect(content).toContain("status: active");
   });
 
@@ -277,7 +277,7 @@ describe("session: start", () => {
     );
 
     // Should have resume entry and still be active
-    expect(content).toContain("session resumed");
+    expect(content).toContain("SESSION RESUMED");
     expect(content).toContain("status: active");
 
     // No archive directory should exist (session was resumed, not archived)
@@ -455,6 +455,99 @@ describe("session: end", () => {
     expect(result.stdout).toContain("Knowledge consolidation recommended for 1 file");
     expect(result.stdout).toContain("docs/knowledge/stale.md");
     expect(existsSync(nudgeFile)).toBe(false);
+  });
+
+  it("skips session management when agent_id is present in stdin", async () => {
+    const repoPath = createTempRepo("subagent-skip-test");
+
+    // Simulate hook JSON with agent_id (subagent)
+    const hookJson = JSON.stringify({
+      session_id: "sess-123",
+      agent_id: "agent-abc",
+      agent_type: "general-purpose",
+    });
+
+    const result = await runLoaf(["start"], { cwd: repoPath, input: hookJson });
+
+    // Should exit 0 without creating a session
+    expect(result.exitCode).toBe(0);
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(0);
+  });
+
+  it("creates session with --force even when agent_id is present", async () => {
+    const repoPath = createTempRepo("force-subagent-test");
+
+    const hookJson = JSON.stringify({
+      session_id: "sess-123",
+      agent_id: "agent-abc",
+    });
+
+    const result = await runLoaf(["start", "--force"], { cwd: repoPath, input: hookJson });
+
+    expect(result.exitCode).toBe(0);
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1);
+  });
+
+  it("writes claude_session_id to frontmatter from hook JSON", async () => {
+    const repoPath = createTempRepo("session-id-tag-test");
+
+    const hookJson = JSON.stringify({ session_id: "sess-unique-456" });
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson });
+
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1);
+
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+    expect(content).toContain("claude_session_id: sess-unique-456");
+  });
+
+  it("writes resume entries when session_id changes between conversations", async () => {
+    const repoPath = createTempRepo("session-id-change-test");
+
+    // First conversation
+    const hookJson1 = JSON.stringify({ session_id: "sess-first" });
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson1 });
+
+    // Second conversation (different session_id)
+    const hookJson2 = JSON.stringify({ session_id: "sess-second" });
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson2 });
+
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1); // Same file, not a new one
+
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+    // PAUSE is written by session end, not session start
+    // But resume entries should appear with updated session_id
+    expect(content).toContain("claude_session_id: sess-second");
+    expect(content).toContain("SESSION RESUMED");
+  });
+
+  it("does not write PAUSE when same session_id reconnects", async () => {
+    const repoPath = createTempRepo("same-session-test");
+
+    const hookJson = JSON.stringify({ session_id: "sess-same" });
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson });
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson });
+
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1);
+
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+    // No PAUSE header — same conversation
+    expect(content).not.toMatch(/--- PAUSE/);
+    // No resume entry — same conversation, session still active
+    expect(content).not.toContain("SESSION RESUMED");
   });
 
   it("adds PAUSE separator header to journal on end", async () => {

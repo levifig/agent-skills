@@ -127,96 +127,28 @@ See `foundations` skill `reference/diagrams.md` for Mermaid syntax and best prac
 
 ---
 
-## Plan Mode Integration
+## Exploration Before Implementation
 
-For complex tasks, use **Plan Mode** to explore before implementing:
+For complex tasks, explore before implementing:
 
-### When to Use Plan Mode
+### When to Explore First
 
 - Task requires exploring unfamiliar codebase areas
 - Multiple valid implementation approaches exist
 - Dependencies between tasks need mapping
 - User should approve approach before work begins
 
-### Phase 1: Explore (Plan Mode)
+### Exploration Pattern
 
 ```
 1. Use Task(Explore) or Task(Plan) to investigate codebase
 2. Map existing patterns and conventions
 3. Identify integration points
 4. Document findings in session file
+5. Present approach to user for approval before spawning
 ```
 
-### Phase 2: Plan and Store
-
-When the Plan agent returns a plan:
-
-1. **Generate plan filename:**
-
-   ```bash
-   date -u +"%Y%m%d-%H%M%S"  # e.g., 20250123-143500
-   ```
-
-   Format: `YYYYMMDD-HHMMSS-{plan-slug}.md`
-
-2. **Save plan to `.agents/plans/`:**
-
-   ```
-   .agents/plans/20250123-143500-auth-api-design.md
-   ```
-
-3. **Plan file format:**
-
-   ```markdown
-   ---
-   session: 20250123-140000-feature-auth
-   created: 2025-01-23T14:35:00Z
-   status: pending  # pending | approved | superseded
-   ---
-
-   # Auth API Design Plan
-
-   ## Overview
-   [Plan content from Plan agent]
-
-   ## Implementation Steps
-   1. ...
-   2. ...
-   ```
-
-4. **Update session file with plan reference:**
-
-   ```yaml
-   plans:
-     - 20250123-143500-auth-api-design.md
-   ```
-
-5. **Present plan to user for approval**
-
-### Phase 3: Approval and Implementation
-
-```
-1. On user approval, update plan status to "approved"
-2. Spawn implementation agents
-3. Reference plan file in agent prompts
-4. Execute in approved direction
-```
-
-### Multiple Plans Per Session
-
-Complex work may require multiple plans:
-
-```yaml
-# In session frontmatter
-plans:
-  - 20250123-143500-auth-api-design.md      # approved
-  - 20250123-150000-auth-frontend.md        # approved
-  - 20250123-153000-auth-testing.md         # pending
-```
-
-Each plan is a checkpoint that can be referenced, revised, or superseded.
-
-### Skip Planning When
+### Skip Exploration When
 
 - Task is straightforward (single file, clear change)
 - User has provided explicit detailed instructions

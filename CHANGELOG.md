@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.16] - 2026-04-07
+
+### Added
+- Session stability: subagent detection via `agent_id` in hook JSON — subagent spawns no longer create session churn
+- `claude_session_id` tagging in session frontmatter for cross-conversation PAUSE/resume detection
+- Ad-hoc task auto-creation: `/implement "free text"` creates a task and proceeds without user interaction
+- Compaction-aware sessions: PreCompact requires state summary, PostCompact nudges session file re-read
+- `## Current State` section seeded in new session files for compaction resilience
+- PostCompact prompt nudge in hooks.yaml
+- Session management policy (compact vs new session) in orchestration reference
+- `/rename` prompt nudge in `/implement` and `loaf session start` output
+- `start` journal entry type for new sessions (distinct from `resume`)
+- Priority ordering + go/no-go gates as replacement for circuit breaker in spec template and skills
+
+### Removed
+- `appetite` field from `SpecEntry`/`SpecFrontmatter` types, parser, CLI display
+- `## Circuit Breaker` sections from spec template, shape skill, and all active specs
+- `archive-context.sh` hook (referenced stale `.work/` paths, superseded by journal-as-resumption)
+- Plan file concept: deleted `content/templates/plan.md`, removed all references from implement, orchestration, housekeeping skills and config
+- 5-minute gap heuristic for journal blank lines
+
+### Fixed
+- Duplicate commit journal entries: nudge now says "commit auto-logged, log decisions instead"
+- Unrecognized Bash commands in `--from-hook` silently exit instead of logging noise
+- `process.stdin.unref()` guarded for file-backed stdin (prevents crash on `< hook.json`)
+- Cursor PostCompact event mapping added to `mapSessionEvent()`
+- `start` entry excluded from `countJournalActivity` system types
+
+### Changed
+- Journal markers now all-caps: `SESSION STARTED`, `SESSION RESUMED`, `SESSION PAUSED`
+- PAUSE separator written by `session end` only (correct timestamp), not `session start`
+- Blank line rules simplified: after PAUSE, before start/resume, nothing else
+- Session entry scopes removed from system entries (`pause:` not `pause(branch):`)
+
 ## [2.0.0-dev.15] - 2026-04-07
 
 ### Added

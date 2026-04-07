@@ -5,7 +5,7 @@ description: >-
   Use when the user asks "break this down" or "create tasks for this spec."
   Produces task files with estimates, dependencies, and acceptance criteria. Not
   for shaping ideas (use shape) or implementation work (use implement).
-version: 2.0.0-dev.15
+version: 2.0.0-dev.16
 ---
 
 # Breakdown
@@ -107,7 +107,7 @@ If no config exists, ask user.
 
 ### Step 2: Read the Spec
 
-Extract: test conditions, scope, implementation notes, appetite.
+Extract: test conditions, scope, implementation notes, complexity size.
 
 ### Step 3: Identify Task Boundaries
 
@@ -116,7 +116,7 @@ Break down by concern (data layer, backend, frontend, infrastructure, etc.). One
 ### Step 4: Decide Priorities and Granularity
 
 Own the granularity and priority decisions. Apply the Right Size Test, assign priorities
-based on dependencies and circuit breaker alignment, and do a self-review pass. Do not
+based on dependencies, priority order, and go/no-go gates, and do a self-review pass. Do not
 defer these decisions to the user — they trust agent judgment here.
 
 If genuinely uncertain (e.g., two equally valid orderings with different trade-offs),

@@ -114,7 +114,7 @@ Loaf (lifecycle layer):
 ### Task System
 
 ```
-.agents/specs/SPEC-XXX.md       # Shape Up specs (appetite, scope, test conditions)
+.agents/specs/SPEC-XXX.md       # Shape Up specs (scope, test conditions, priority order)
 .agents/tasks/TASK-XXX-slug.md  # Task details (criteria, context, verification)
 .agents/tasks/TASKS.json        # Programmatic index (CLI/TUI readable)
 ```

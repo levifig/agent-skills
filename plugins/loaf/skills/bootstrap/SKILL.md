@@ -8,7 +8,7 @@ description: >-
 user-invocable: true
 argument-hint: '[brief or path]'
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion'
-version: 2.0.0-dev.15
+version: 2.0.0-dev.16
 ---
 
 # Bootstrap
@@ -224,7 +224,7 @@ No code, no brief, just a person with an idea. Deepest interview.
 **Run all four phases from [references/interview-guide.md](references/interview-guide.md):**
 
 1. **Excavation (The Spark)** -- understand the problem, who has it, what they do today
-2. **Sharpening (The Shape)** -- define scope, boundaries, no-gos, appetite
+2. **Sharpening (The Shape)** -- define scope, boundaries, no-gos, complexity
 3. **Grounding (The Architecture)** -- technical direction, build vs. buy, hard problems
 4. **Synthesis (The Documents)** -- transition to drafting
 

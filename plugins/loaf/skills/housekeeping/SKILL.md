@@ -7,7 +7,7 @@ description: >-
   recommendations, archives comp...
 user-invocable: true
 argument-hint: '[sessions|specs|plans|drafts]'
-version: 2.0.0-dev.15
+version: 2.0.0-dev.16
 ---
 
 # Housekeeping
@@ -25,7 +25,6 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 
 **Never**
 - Auto-archive without user confirmation for each artifact
-- Delete plans — they are ephemeral and should be deleted, not archived
 - Skip spark extraction before deleting brainstorm drafts
 - Leave `archived_at` or `archived_by` fields empty in archived files
 
@@ -36,7 +35,6 @@ After work completes, verify:
 - Tasks archived via `loaf task archive` (updates TASKS.json)
 - Specs archived via `loaf spec archive` (updates TASKS.json)
 - Drafts checked for unprocessed sparks before deletion
-- Plans deleted (not archived) when linked sessions are archived
 - Summary table presented showing all actions taken
 
 ## Quick Reference
@@ -59,7 +57,6 @@ loaf task sync                # Fix TASKS.json drift
 | Sessions | `.agents/sessions/` | `archive/` | Move with metadata |
 | Tasks | `.agents/tasks/` | `archive/` | `loaf task archive` |
 | Specs | `.agents/specs/` | `archive/` | `loaf spec archive` |
-| Plans | `.agents/plans/` | N/A | Delete when done |
 | Drafts | `.agents/drafts/` | `archive/` | User decision |
 
 ## Suggests Next

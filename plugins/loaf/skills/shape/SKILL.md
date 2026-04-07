@@ -7,7 +7,7 @@ description: >-
   acceptance criteria. Not for b...
 user-invocable: true
 argument-hint: '[idea or requirement]'
-version: 2.0.0-dev.15
+version: 2.0.0-dev.16
 ---
 
 # Shape
@@ -34,12 +34,11 @@ Unlike `/loaf:idea` (quick capture), shaping requires **deep understanding**. As
 
 1. **Interview extensively** -- not quick capture
 2. **Evaluate strategic fit** -- don't shape in a vacuum
-3. **Respect appetite** -- fixed time, variable scope
-4. **Document rabbit holes** -- prevent scope creep
-5. **Clear test conditions** -- observable outcomes
-6. **Circuit breaker** -- plan for running out of time
-7. **Get approval** -- don't create spec file without explicit confirmation
-8. **Note tensions, don't fix** -- strategy evolves via /loaf:reflect
+3. **Document rabbit holes** -- prevent scope creep
+4. **Clear test conditions** -- observable outcomes
+5. **Priority order** -- for multi-part specs, define track order and go/no-go gates
+6. **Get approval** -- don't create spec file without explicit confirmation
+7. **Note tensions, don't fix** -- strategy evolves via /loaf:reflect
 
 ---
 
@@ -84,8 +83,8 @@ If misaligned: surface the tension, adjust idea, or note for `/loaf:reflect` lat
 
 Define boundaries, not tasks:
 - Core problem, in/out scope, rabbit holes, no-gos
-- Test conditions, appetite, circuit breaker
-- Risks and open questions
+- Test conditions, risks, open questions
+- For multi-part specs: priority ordering and go/no-go gates between tracks
 
 ### Step 5: Draft the Spec
 
@@ -102,7 +101,7 @@ If none exist, start with `SPEC-001`.
 
 ### Step 7: Present for Approval
 
-Present full spec. **Do NOT create spec file without explicit approval.** User may adjust scope, change appetite, add constraints, request splitting, or decide not to proceed.
+Present full spec. **Do NOT create spec file without explicit approval.** User may adjust scope, add constraints, request splitting, or decide not to proceed.
 
 ### Step 8: Create Spec File
 
@@ -122,7 +121,7 @@ drafting -> approved -> implementing -> complete -> archived
 
 ### Splitting Large Specs
 
-When too big for appetite, split into sub-specs. Each has its own appetite, can be worked independently, and references the parent.
+When scope exceeds a single track, split into sub-specs or use priority ordering within the spec. Each sub-spec can be worked independently and references the parent.
 
 ---
 
@@ -140,12 +139,11 @@ When too big for appetite, split into sub-specs. Each has its own appetite, can 
 
 1. **Interview extensively** -- not quick capture
 2. **Evaluate strategic fit** -- don't shape in a vacuum
-3. **Respect appetite** -- fixed time, variable scope
-4. **Document rabbit holes** -- prevent scope creep
-5. **Clear test conditions** -- observable outcomes
-6. **Circuit breaker** -- plan for running out of time
-7. **Get approval** -- don't create without confirmation
-8. **Note tensions, don't fix** -- strategy evolves via /loaf:reflect
+3. **Document rabbit holes** -- prevent scope creep
+4. **Clear test conditions** -- observable outcomes
+5. **Priority order** -- for multi-part specs, define track order and go/no-go gates
+6. **Get approval** -- don't create without confirmation
+7. **Note tensions, don't fix** -- strategy evolves via /loaf:reflect
 
 ---
 

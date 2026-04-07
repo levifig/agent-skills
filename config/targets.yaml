@@ -7,7 +7,6 @@
 # Format: template-filename: [list of skill names that receive it]
 shared-templates:
   session.md: [implement, orchestration, housekeeping, bootstrap]
-  plan.md: [implement, council]
   adr.md: [architecture, reflect]
 
 targets:

@@ -208,7 +208,7 @@ The workflow is not rigid. Each level can feed back to higher levels:
 |-----------|--------|
 | Implementation reveals design flaw | Update ARCHITECTURE.md |
 | Edge case invalidates requirement | Update REQUIREMENTS.md |
-| Spec too ambitious for appetite | Re-scope or split |
+| Spec too complex for its size | Re-scope or split |
 | Task reveals missing requirement | Add to REQUIREMENTS.md |
 
 ## Transcript Archival

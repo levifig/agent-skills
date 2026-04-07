@@ -257,7 +257,6 @@ export function parseSpecFile(
     const entry: SpecEntry = {
       title: fm.title || basename(filePath, ".md"),
       status: normalizeSpecStatus(fm.status),
-      appetite: fm.appetite || null,
       requirement: fm.requirement || null,
       source: fm.source || null,
       created: normalizeDate(fm.created),

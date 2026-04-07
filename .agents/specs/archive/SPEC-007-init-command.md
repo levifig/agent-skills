@@ -4,7 +4,6 @@ title: loaf init — project bootstrapping
 source: direct
 created: '2026-01-24T22:47:04.000Z'
 status: complete
-appetite: Medium (3-5 days)
 ---
 
 # SPEC-007: loaf init

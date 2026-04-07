@@ -3,7 +3,6 @@ id: SPEC-004
 title: Frictionless Task Handoff
 created: '2026-01-24T16:00:00.000Z'
 status: complete
-appetite: 2-3 sessions
 requirement: >-
   Eliminate copy/paste friction when switching sessions by making task files
   self-contained handoff artifacts

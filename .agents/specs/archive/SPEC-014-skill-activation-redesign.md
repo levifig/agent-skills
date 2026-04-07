@@ -4,7 +4,6 @@ title: Skill Activation Redesign — foundations decomposition + agent eliminati
 source: brainstorm
 created: '2026-03-24T23:30:00.000Z'
 status: complete
-appetite: Large (4+ sessions)
 ---
 
 # SPEC-014: Harness Redesign — Functional Profiles, Skill Activation, Build Cleanup

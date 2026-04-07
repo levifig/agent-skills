@@ -3,7 +3,6 @@ id: SPEC-002
 title: Invisible Sessions and Task Board
 created: '2026-01-24T02:30:00.000Z'
 status: complete
-appetite: 2-3 sessions
 requirement: >-
   Simplify user workflow by making sessions invisible and adding a generated
   task board

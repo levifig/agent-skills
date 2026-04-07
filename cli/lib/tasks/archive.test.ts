@@ -68,7 +68,6 @@ function specEntry(overrides: Partial<SpecEntry> = {}): SpecEntry {
   return {
     title: "Test spec",
     status: "drafting",
-    appetite: null,
     requirement: null,
     source: null,
     created: "2026-03-01T00:00:00Z",

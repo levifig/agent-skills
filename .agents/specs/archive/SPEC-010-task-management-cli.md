@@ -4,7 +4,6 @@ title: Task & Spec Management CLI
 source: direct
 created: '2026-03-14T19:48:00.000Z'
 status: complete
-appetite: Large (1-2 weeks)
 ---
 
 # SPEC-010: Task & Spec Management CLI

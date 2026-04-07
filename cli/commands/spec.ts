@@ -197,8 +197,7 @@ export function registerSpecCommand(program: Command): void {
         console.log(`  ${bold(colorFn(`${label} (${entries.length})`))}`)
 
         for (const [id, entry] of entries) {
-          const appetite = entry.appetite ? gray(entry.appetite) : gray("TBD");
-          console.log(`    ${bold(id)}  ${entry.title}  ${appetite}`);
+          console.log(`    ${bold(id)}  ${entry.title}`);
           console.log(`              Tasks: ${formatTaskCounts(taskCounts[id])}`);
         }
 

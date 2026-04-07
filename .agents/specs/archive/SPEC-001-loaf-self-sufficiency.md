@@ -3,7 +3,6 @@ id: SPEC-001
 title: Loaf Self-Sufficiency
 created: '2026-01-24T00:51:55.000Z'
 status: complete
-appetite: 3-4 sessions
 requirement: Loaf should be independent of superpowers plugin
 ---
 

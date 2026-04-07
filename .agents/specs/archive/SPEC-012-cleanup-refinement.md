@@ -4,7 +4,6 @@ title: Cleanup Refinement — differentiated processes + CLI
 source: direct
 created: '2026-03-16T23:50:30.000Z'
 status: complete
-appetite: Medium (3-5 days)
 ---
 
 # SPEC-012: Cleanup Refinement

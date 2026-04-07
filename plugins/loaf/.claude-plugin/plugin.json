@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.15",
+  "version": "2.0.0-dev.16",
   "description": "Loaf - An Opinionated Agentic Framework",
   "repository": "https://github.com/levifig/loaf",
   "license": "MIT",
@@ -131,10 +131,10 @@
           },
           {
             "type": "prompt",
-            "prompt": "SESSION JOURNAL NUDGE: code committed",
+            "prompt": "SESSION JOURNAL NUDGE: code committed. The commit is already auto-logged — no need to log it again. Instead, log any related decisions or observations that aren't captured by the commit message.",
             "if": "Bash(git commit:*)",
             "timeout": 5,
-            "description": "Nudge journal entries after git commits"
+            "description": "Nudge decisions/observations after commits (commit itself is auto-logged)"
           }
         ]
       }
@@ -176,8 +176,19 @@
         "hooks": [
           {
             "type": "prompt",
-            "description": "Require journal flush before context compaction",
-            "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nREQUIRED: Flush all unrecorded journal entries NOW, before responding to the user. Do not defer — entries lost to compaction cannot be recovered.\nEntry types: - `decision(scope): key decisions made this session` - `discover(scope): important findings` - `conclude(scope): session summary`\nRun `loaf session log \"type(scope): description\"` for each entry, then continue."
+            "description": "Require journal flush and state summary before context compaction",
+            "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nREQUIRED — two actions before the model responds:\n1. **Flush journal entries.** Log all unrecorded decisions, discoveries, and progress:\n   - `decision(scope): key decisions made this session`\n   - `discover(scope): important findings`\n   - `conclude(scope): session summary`\n   Run `loaf session log \"type(scope): description\"` for each.\n\n2. **Write state summary.** Update the session file's `## Current State` section\n   with a condensed summary of: what was accomplished, current work state,\n   key decisions, git state, and next steps. This section is the resumption\n   context after compaction — write it as if briefing a colleague who just\n   walked in.\n\nThe journal IS your external memory. Entries not flushed now are lost forever."
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "description": "Resume from session file after context compaction",
+            "prompt": "POST-COMPACTION RESUMPTION: Context was just compacted.\nRead the active session file to restore working context. The `## Current State` section contains the state summary written before compaction. The `## Journal` section contains the full decision/discovery trail.\nRun `loaf session start` output for the session file path, then read it. Resume work from where the summary left off — do not ask \"where were we?\""
           }
         ]
       }

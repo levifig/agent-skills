@@ -24,22 +24,27 @@ Compaction is a normal part of long workflows, not an emergency measure. Any wor
 
 ### Compaction-First Principles
 
-1. **Session files are the recovery point** - Write the session file as if compaction could happen at any moment. Keep "Current State" always handoff-ready.
-2. **Pre-write the Resumption Prompt** - Add the `## Resumption Prompt` section to the session file at creation time, not as a last resort. Update it as work progresses.
-3. **Decisions go to disk, not context** - Record key decisions in the session file immediately. Context may be compressed; files persist.
-4. **Subagents absorb exploration** - Investigation and exploration should happen in subagents. Only the summary returns to the main context.
+1. **The journal IS external memory** — Session journal entries (decisions, discoveries, progress) survive compaction. Compaction can be lossy because all important state is already on disk.
+2. **`## Current State` is the resumption context** — Keep this section handoff-ready at all times. The PreCompact hook requires writing a state summary here before compaction.
+3. **Decisions go to disk, not context** — Record key decisions in the session journal immediately via `loaf session log`. Context may be compressed; journal entries persist.
+4. **Subagents absorb exploration** — Investigation and exploration should happen in subagents. Only the summary returns to the main context.
 
-### Pattern: Compaction-Resilient Session
+### Compaction Lifecycle
 
 ```
-1. Create session file with Resumption Prompt section (even if empty)
-2. After each significant decision, update session file
-3. After each subagent completes, record outcome in session
-4. If compaction occurs: read session, continue from Resumption Prompt
-5. If /clear needed: same recovery path via /resume
+PreCompact:
+  1. Flush all unrecorded journal entries (decisions, discoveries, progress)
+  2. Write condensed state summary to session file's ## Current State
+  3. compact.sh writes compact(session) marker to journal
+
+PostCompact:
+  1. PostCompact nudge fires — tells model to read session file
+  2. Model reads ## Current State for resumption context
+  3. Model reads ## Journal for decision trail
+  4. Work resumes without "where were we?"
 ```
 
-This makes compaction invisible to workflow continuity. Whether context is compressed automatically or cleared manually, the session file provides the same recovery path.
+This makes compaction invisible to workflow continuity. The session file's `## Current State` section is the resumption prompt — written by the model before compaction, read by the model after.
 
 ## Overview
 
@@ -89,12 +94,13 @@ Use `/compact` when:
 - Need to preserve key decisions while reducing noise
 - Approaching context limits
 
-### What Compaction Preserves
+**Journal entries are compaction insurance.** Every `loaf session log` call writes state to disk that survives compaction. Don't defer journaling — entries not flushed before compaction are lost.
 
-- Key decisions made
-- Current task state
-- Important file references
-- User preferences stated in conversation
+### What Compaction Preserves (via session file)
+
+- Journal entries: decisions, discoveries, progress, commits
+- `## Current State` summary (written by PreCompact)
+- All externalized artifacts: specs, tasks, ideas, code
 
 ### What Compaction Discards
 

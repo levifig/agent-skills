@@ -4,7 +4,6 @@ title: loaf release — version management workflow
 source: direct
 created: '2026-01-24T22:25:35.000Z'
 status: complete
-appetite: Medium (3-5 days)
 ---
 
 # SPEC-006: loaf release

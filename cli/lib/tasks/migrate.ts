@@ -253,7 +253,6 @@ function specEntryToFrontmatter(
   if (entry.source) fm.source = entry.source;
   if (entry.created) fm.created = entry.created;
   fm.status = entry.status;
-  if (entry.appetite) fm.appetite = entry.appetite;
   if (entry.requirement) fm.requirement = entry.requirement;
 
   return fm;

@@ -162,11 +162,11 @@ hooks:
     - id: journal-nudge-commit
       skill: orchestration
       type: prompt
-      prompt: "SESSION JOURNAL NUDGE: code committed"
+      prompt: "SESSION JOURNAL NUDGE: code committed. The commit is already auto-logged — no need to log it again. Instead, log any related decisions or observations that aren't captured by the commit message."
       matcher: "Bash"
       if: "Bash(git commit:*)"
       timeout: 5000
-      description: Nudge journal entries after git commits
+      description: Nudge decisions/observations after commits (commit itself is auto-logged)
 
   session:
     - id: session-start-loaf
@@ -190,21 +190,43 @@ hooks:
       timeout: 60000
       description: Append compact entry to session journal before context compaction
 
-    # PreCompact nudge (event-specific, valuable at compaction time)
+    # PreCompact nudge — journal is compaction insurance
     - id: session-pre-compact-nudge
       skill: orchestration
       type: prompt
       prompt: >-
         CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.
 
-        REQUIRED: Flush all unrecorded journal entries NOW, before responding to the user.
-        Do not defer — entries lost to compaction cannot be recovered.
+        REQUIRED — two actions before the model responds:
 
-        Entry types:
-        - `decision(scope): key decisions made this session`
-        - `discover(scope): important findings`
-        - `conclude(scope): session summary`
+        1. **Flush journal entries.** Log all unrecorded decisions, discoveries, and progress:
+           - `decision(scope): key decisions made this session`
+           - `discover(scope): important findings`
+           - `conclude(scope): session summary`
+           Run `loaf session log "type(scope): description"` for each.
 
-        Run `loaf session log "type(scope): description"` for each entry, then continue.
+        2. **Write state summary.** Update the session file's `## Current State` section
+           with a condensed summary of: what was accomplished, current work state,
+           key decisions, git state, and next steps. This section is the resumption
+           context after compaction — write it as if briefing a colleague who just
+           walked in.
+
+        The journal IS your external memory. Entries not flushed now are lost forever.
       event: PreCompact
-      description: Require journal flush before context compaction
+      description: Require journal flush and state summary before context compaction
+
+    # PostCompact nudge — resume from session file
+    - id: session-post-compact-nudge
+      skill: orchestration
+      type: prompt
+      prompt: >-
+        POST-COMPACTION RESUMPTION: Context was just compacted.
+
+        Read the active session file to restore working context. The `## Current State`
+        section contains the state summary written before compaction. The `## Journal`
+        section contains the full decision/discovery trail.
+
+        Run `loaf session start` output for the session file path, then read it.
+        Resume work from where the summary left off — do not ask "where were we?"
+      event: PostCompact
+      description: Resume from session file after context compaction

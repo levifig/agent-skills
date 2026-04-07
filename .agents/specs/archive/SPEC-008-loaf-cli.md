@@ -3,7 +3,6 @@ id: SPEC-008
 title: Loaf CLI
 created: '2026-03-14T19:48:00.000Z'
 status: complete
-appetite: Large (2-3 weeks)
 requirement: Loaf should be a proper CLI tool with clean content/tooling separation
 ---
 
