@@ -52,6 +52,15 @@ Loaf compiles skills, agents, and hooks from a single source tree into multiple 
 
 `loaf install` writes fenced Loaf sections into project instruction files (CLAUDE.md, .cursorrules, AGENTS.md, etc.) using markers to identify managed content. This is separate from the build — it runs during installation to inject project-level configuration.
 
+## Dev Tooling
+
+| Script | Command | Purpose |
+|--------|---------|---------|
+| `cli/scripts/smoke-test.js` | `npm run test:smoke` | Validates built hook artifacts across all 6 targets (structure, `if` conditions, `failClosed` flags). Run after build changes. |
+| `cli/scripts/eval-skill-routing.mjs` | `npm run eval:routing` | Tests whether Claude routes prompts to correct skills. Requires `ANTHROPIC_API_KEY`. Use `--model` for cheaper runs, `--skill` to test one skill. |
+
+**Smoke test** is a build output integration test — should eventually be converted to a vitest suite. **Routing eval** is a non-deterministic quality tool for tuning skill descriptions; test cases need updating when skills are added/removed/renamed.
+
 ## Cross-References
 
 - [skill-architecture.md](skill-architecture.md) — how skills are structured

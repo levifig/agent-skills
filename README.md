@@ -1,4 +1,4 @@
-# Loaf
+# 🍞 Loaf
 
 > "Why have just a slice when you can get the whole loaf?"
 
@@ -111,18 +111,19 @@ Skills you invoke directly to drive work forward.
 
 | Skill | Activates When |
 |-------|----------------|
-| `implement` | Starting task or spec implementation |
-| `breakdown` | Decomposing specs into atomic tasks |
 | `shape` | Shaping ideas into bounded specs |
+| `breakdown` | Decomposing specs into atomic tasks |
+| `implement` | Starting task or spec implementation |
+| `release` | Orchestrating the release ritual (version bump, squash merge) |
 | `brainstorm` | Deep exploration of a problem space |
 | `research` | Investigating questions, comparing options |
 | `strategy` | Discovering or updating strategic direction |
 | `architecture` | Creating Architecture Decision Records |
+| `idea` | Quick capture of ideas for later evaluation |
+| `triage` | Review and process intake queue (sparks + raw ideas) |
 | `reflect` | Integrating learnings into strategic docs |
 | `housekeeping` | Reviewing and archiving agent artifacts |
 | `bootstrap` | Bootstrapping new or existing projects |
-| `idea` | Quick capture of ideas for later evaluation |
-| `triage` | Review and process intake queue (sparks + raw ideas) |
 | `wrap` | End-of-session summary: shipped, pending, next |
 
 ### Orchestration & Knowledge
@@ -190,10 +191,10 @@ Updates happen automatically via plugin marketplace. Commands are scoped under `
 ### OpenCode, Cursor, Codex, Gemini
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/levifig/loaf/main/install.sh | bash
+npx github:levifig/loaf install
 ```
 
-The installer detects installed tools, lets you select targets, and downloads pre-built distributions. Re-run with `--upgrade` to update.
+Detects installed tools, lets you select targets, and installs pre-built distributions. Re-run with `--upgrade` to update.
 
 **Install locations:**
 
@@ -233,7 +234,7 @@ loaf install --to all  # Install to detected tools
 **Testing locally:**
 
 - Claude Code: `/plugin marketplace add /path/to/loaf`
-- Others: `./install.sh` (detects dev mode, builds first)
+- Others: `loaf install --to all` (after `npm link`)
 
 ## License
 

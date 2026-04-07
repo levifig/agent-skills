@@ -24,6 +24,9 @@
     "build": "npm run build:cli-ref && tsup && node dist-cli/index.js build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:smoke": "node cli/scripts/smoke-test.js",
+    "eval:routing": "node cli/scripts/eval-skill-routing.mjs",
+    "prepare": "npm run build:cli",
     "prepublishOnly": "npm run build"
   },
   "repository": {

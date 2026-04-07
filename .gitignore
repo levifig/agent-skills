@@ -9,12 +9,6 @@ node_modules/
 # CLI build output
 dist-cli/
 
-# Root-level build outputs (deprecated - use dist/)
-/skills/
-/agents/
-/commands/
-/hooks.json
-
 # Temporary backups
 dist-backup/
 plugins-backup/
@@ -30,10 +24,10 @@ Thumbs.db
 *.swo
 
 # Claude Code ephemeral plans
-.claude/plans/
+.claude/
+!.claude/CLAUDE.md
 
 # Agent work — track everything except ephemeral state
-.agents/plans/
 .agents/transcripts/
 
 # Environment files
