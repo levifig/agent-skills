@@ -19,6 +19,7 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 - Check Linear issue status before archiving sessions
 - Extract lessons learned and decisions before archiving
 - Use CLI (`loaf housekeeping`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
+- Check report `status` is `processed` and linked session is archived before archiving reports (see [templates/report.md](templates/report.md))
 - Verify `TASKS.json` sync after archival with `loaf task sync`
 - Log outcome to session journal: `loaf session log "decision(housekeeping): archived N specs, M sessions"`
 
@@ -57,6 +58,7 @@ loaf task sync                # Fix TASKS.json drift
 | Tasks | `.agents/tasks/` | `archive/` | `loaf task archive` |
 | Specs | `.agents/specs/` | `archive/` | `loaf spec archive` |
 | Drafts | `.agents/drafts/` | `archive/` | User decision |
+| Reports | `.agents/reports/` | `archive/` | Archive after processing + linked session archived |
 
 ## Suggests Next
 
