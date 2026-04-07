@@ -205,11 +205,12 @@ hooks:
            - `conclude(scope): session summary`
            Run `loaf session log "type(scope): description"` for each.
 
-        2. **Write state summary.** Update the session file's `## Current State` section
-           with a condensed summary of: what was accomplished, current work state,
+        2. **Write state summary.** Replace the session file's `## Current State` heading
+           with `## Current State (YYYY-MM-DD HH:MM)` (current timestamp) and write
+           a condensed summary of: what was accomplished, current work state,
            key decisions, git state, and next steps. This section is the resumption
            context after compaction — write it as if briefing a colleague who just
-           walked in.
+           walked in. The timestamp lets future compactions detect stale summaries.
 
         The journal IS your external memory. Entries not flushed now are lost forever.
       event: PreCompact
