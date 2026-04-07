@@ -3,7 +3,7 @@ id: SPEC-027
 title: "Implement ad-hoc task creation and session stability"
 source: direct
 created: 2026-04-07T00:01:56Z
-status: drafting
+status: approved
 ---
 
 # SPEC-027: Implement Ad-hoc Task Creation and Session Stability
