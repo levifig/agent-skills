@@ -355,6 +355,14 @@ const sessionHooks: Record<string, HookEntry[]> = {
       "timeout": 60000,
       "failClosed": false
     }
+  ],
+  "postcompact": [
+    {
+      "id": "post-compact",
+      "script": "session/post-compact.sh",
+      "timeout": 60000,
+      "failClosed": false
+    }
   ]
 };
 

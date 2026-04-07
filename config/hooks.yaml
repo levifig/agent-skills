@@ -215,18 +215,10 @@ hooks:
       event: PreCompact
       description: Require journal flush and state summary before context compaction
 
-    # PostCompact nudge — resume from session file
-    - id: session-post-compact-nudge
+    # PostCompact — print Current State and instruct journal read
+    - id: post-compact
       skill: orchestration
-      type: prompt
-      prompt: >-
-        POST-COMPACTION RESUMPTION: Context was just compacted.
-
-        Read the active session file to restore working context. The `## Current State`
-        section contains the state summary written before compaction. The `## Journal`
-        section contains the full decision/discovery trail.
-
-        Run `loaf session start` output for the session file path, then read it.
-        Resume work from where the summary left off — do not ask "where were we?"
+      script: hooks/session/post-compact.sh
       event: PostCompact
-      description: Resume from session file after context compaction
+      timeout: 60000
+      description: Print session Current State and instruct model to read journal for resumption

@@ -145,7 +145,7 @@
       {
         "loaf-managed": true,
         "timeout": 60,
-        "prompt": "POST-COMPACTION RESUMPTION: Context was just compacted.\nRead the active session file to restore working context. The `## Current State` section contains the state summary written before compaction. The `## Journal` section contains the full decision/discovery trail.\nRun `loaf session start` output for the session file path, then read it. Resume work from where the summary left off — do not ask \"where were we?\""
+        "command": "bash $HOME/.cursor/hooks/session/post-compact.sh"
       }
     ]
   }
