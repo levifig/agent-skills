@@ -153,7 +153,7 @@ hooks:
     - id: journal-nudge
       skill: orchestration
       type: prompt
-      prompt: "JOURNAL CHECK: If this completed significant work (review, decision, discovery, milestone), log it to the session journal before responding."
+      prompt: "SILENT journal check — if this tool use completed significant work (a review, decision, discovery, or milestone), log it via `loaf session log` before responding. If not, continue your response without commenting on this check. Never stop your response to explain why something is or isn't significant."
       matcher: "Bash|Agent"
       timeout: 5000
       description: Nudge journal entries after significant tool use
@@ -193,7 +193,7 @@ hooks:
         1. **Flush journal entries.** Log all unrecorded decisions, discoveries, and progress:
            - `decision(scope): key decisions made this session`
            - `discover(scope): important findings`
-           - `conclude(scope): session summary`
+           - `finding(scope): analysis result`
            Run `loaf session log "type(scope): description"` for each.
 
         2. **Write state summary.** Replace the session file's `## Current State` heading

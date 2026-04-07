@@ -339,14 +339,14 @@ Session journals in `.agents/sessions/` use a **compact inline format** — appe
 | **Burst** | Entries grouped without blank lines |
 | **Archive** | Completed sessions moved to `.agents/sessions/archive/` |
 
-**Session Status Values:** `active`, `paused`, `blocked`, `complete`, `archived`
+**Session Status Values:** `active`, `paused`, `stopped`, `blocked`, `complete`, `archived`
 
 **Entry Format:**
 ```markdown
 [YYYY-MM-DD HH:MM] session(start):  === SESSION STARTED ===
 [YYYY-MM-DD HH:MM] decision(scope): description
 [YYYY-MM-DD HH:MM] commit(abc1234): message
-[YYYY-MM-DD HH:MM] session(conclude): at commit abc1234, 3 commits, 1 decision
+[YYYY-MM-DD HH:MM] session(end): at commit abc1234, 3 commits, 1 decision
 [YYYY-MM-DD HH:MM] session(stop):   === SESSION STOPPED ===
 
 [YYYY-MM-DD HH:MM] session(resume): === SESSION RESUMED ===
@@ -524,7 +524,7 @@ Configure target-specific behavior and sidecars.
 - `loaf task/spec/kb` — Task and knowledge management
 
 **Journal Discipline:**
-Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log "type(scope): description"`. Entry types: `decision`, `discover`, `conclude`. Do not defer journaling — log before responding.
+Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log "type(scope): description"`. Entry types: `decision`, `discover`, `finding`. Do not defer journaling — log before responding.
 
 See [orchestration skill](skills/orchestration/SKILL.md) for full details.
 <!-- loaf:managed:end -->

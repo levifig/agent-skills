@@ -45,7 +45,7 @@ const gray = (s: string) => `\x1b[90m${s}\x1b[0m`;
 
 interface SessionFrontmatter {
   branch: string;
-  status: "active" | "paused" | "blocked" | "complete" | "archived";
+  status: "active" | "paused" | "stopped" | "blocked" | "complete" | "archived";
   created: string;
   last_updated?: string;
   last_entry?: string;
@@ -119,7 +119,7 @@ type EntryType =
   | "merge"
   | "decision"
   | "discover"
-  | "conclude"
+  | "finding"
   | "block"
   | "unblock"
   | "spark"
@@ -362,11 +362,12 @@ function getCurrentBranch(): string {
 interface Commit {
   hash: string;
   message: string;
+  timestamp: number;
 }
 
 function getRecentCommits(count = 5): Commit[] {
   try {
-    const output = execSync(`git log --pretty=format:"%H %s" -${count}`, {
+    const output = execSync(`git log --pretty=format:"%H %ct %s" -${count}`, {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     }).trim();
@@ -374,10 +375,12 @@ function getRecentCommits(count = 5): Commit[] {
     if (!output) return [];
 
     return output.split("\n").map((line) => {
-      const spaceIndex = line.indexOf(" ");
+      const firstSpace = line.indexOf(" ");
+      const secondSpace = line.indexOf(" ", firstSpace + 1);
       return {
-        hash: line.substring(0, 7), // Short hash
-        message: line.substring(spaceIndex + 1),
+        hash: line.substring(0, 7),
+        timestamp: parseInt(line.substring(firstSpace + 1, secondSpace), 10) * 1000,
+        message: line.substring(secondSpace + 1),
       };
     });
   } catch {
@@ -557,13 +560,36 @@ function findActiveSessionForBranch(agentsDir: string, branch: string): { filePa
     }
   }
   
+  // Branch switch detection: if no session matches the current branch,
+  // but exactly one active session exists, adopt it (common flow: start on main, then branch)
+  if (candidates.length === 0) {
+    const allSessions: Array<{ filePath: string; data: SessionFrontmatter; content: string }> = [];
+    for (const file of files) {
+      const filePath = join(sessionsDir, file);
+      const session = readSessionFile(filePath);
+      if (session && session.data.status === "active") {
+        allSessions.push({ filePath, data: session.data, content: session.content });
+      }
+    }
+
+    if (allSessions.length === 1) {
+      const session = allSessions[0];
+      const oldBranch = session.data.branch;
+      session.data.branch = branch;
+      const newContent = matter.stringify(session.content, session.data as unknown as Record<string, unknown>);
+      writeFileSync(session.filePath, newContent, "utf-8");
+      candidates.push(session);
+    }
+  }
+
   if (candidates.length === 0) return null;
-  
+
   // Prioritize: active > paused/blocked/complete > others
   // Sort by status priority (lower number = higher priority)
   const statusPriority: Record<string, number> = {
     active: 1,
     paused: 2,
+    stopped: 2,
     blocked: 2,
     complete: 2,
   };
@@ -658,7 +684,7 @@ function parseEntry(entry: string): JournalEntry | null {
   const [, type, scope, description] = match;
   const validTypes: EntryType[] = [
     "start", "resume", "pause", "progress", "commit", "pr", "merge",
-    "decision", "discover", "conclude", "block", "unblock",
+    "decision", "discover", "finding", "block", "unblock",
     "spark", "todo", "assume",
     // New types
     "branch", "task", "linear", "hypothesis", "try", "reject", "compact",
@@ -972,8 +998,18 @@ export function registerSessionCommand(program: Command): void {
       let isResume = false;
       let isNewConversation = false;
 
-      if (existingSession && (options.resume || existingSession.data.status === "active")) {
-        // --resume flag, or session is active (wasn't properly closed)
+      const sameConversation = existingSession && hookInput.session_id && existingSession.data.claude_session_id === hookInput.session_id;
+
+      if (existingSession && sameConversation) {
+        // Same claude_session_id — always resume, strongest signal
+        sessionFilePath = existingSession.filePath;
+        sessionData = existingSession.data;
+        sessionContent = existingSession.content;
+        isResume = existingSession.data.status !== "active";
+
+        console.log(`  ${green("✓")} Resuming existing session`);
+      } else if (existingSession && (options.resume || existingSession.data.status === "active")) {
+        // --resume flag or session still active
         sessionFilePath = existingSession.filePath;
         sessionData = existingSession.data;
         sessionContent = existingSession.content;
@@ -1026,9 +1062,11 @@ export function registerSessionCommand(program: Command): void {
         if (completed > 0 || total > 0) {
           journalLines.push(`[${timestamp}] session(progress): ${completed}/${total} tasks completed`);
         }
+        // Backfill commits made AFTER the last session entry (e.g., manual git work between sessions)
         if (commits.length > 0) {
+          const lastEntryTime = sessionData.last_entry ? new Date(sessionData.last_entry).getTime() : 0;
           for (const commit of commits.slice(0, 3)) {
-            if (!sessionContent.includes(`commit(${commit.hash})`)) {
+            if (!sessionContent.includes(`commit(${commit.hash})`) && commit.timestamp > lastEntryTime) {
               journalLines.push(`[${timestamp}] commit(${commit.hash}): ${commit.message}`);
             }
           }
@@ -1143,13 +1181,13 @@ export function registerSessionCommand(program: Command): void {
       const concludeText = concludeParts.length > 0 ? concludeParts.join(", ") : "session ended";
 
       const journalLines: string[] = [
-        `[${timestamp}] session(conclude): ${concludeText}`,
+        `[${timestamp}] session(end): ${concludeText}`,
         `[${timestamp}] session(stop):   === SESSION STOPPED ===`,
         '',
       ];
       console.log(`  ${yellow("?")} Consider adding final entries:`);
       console.log(`    ${gray("loaf session log \"decision(scope): key decision\"")}`);
-      console.log(`    ${gray("loaf session log \"conclude(scope): final notes\"")}`);
+      console.log(`    ${gray("loaf session log \"finding(scope): final notes\"")}`);
       console.log(`    ${gray("loaf session log \"todo(next): follow-up task\"")}`);
       console.log();
 
@@ -1157,7 +1195,7 @@ export function registerSessionCommand(program: Command): void {
         existingSession.filePath,
         journalLines,
         (data: SessionFrontmatter) => {
-          data.status = "paused";
+          data.status = "stopped";
           data.last_updated = getTimestamp();
           data.last_entry = getTimestamp();
         }

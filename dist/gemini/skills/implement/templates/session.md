@@ -44,7 +44,7 @@ last_entry: "YYYY-MM-DDTHH:MM:SSZ"
 | `unblock(scope)` | Blocker resolved | Agent |
 | `spark(scope)` | Ideas to promote | Agent |
 | `todo(scope)` | Action items | Agent |
-| `conclude(scope)` | Conclusions reached | Agent |
+| `finding(scope)` | Findings from analysis | Agent |
 
 ## Format Rules
 

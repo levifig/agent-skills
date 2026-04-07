@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.17",
+  "version": "2.0.0-dev.18",
   "description": "Loaf - An Opinionated Agentic Framework",
   "repository": "https://github.com/levifig/loaf",
   "license": "MIT",
@@ -130,7 +130,7 @@
         "hooks": [
           {
             "type": "prompt",
-            "prompt": "JOURNAL CHECK: If this completed significant work (review, decision, discovery, milestone), log it to the session journal before responding.",
+            "prompt": "SILENT journal check — if this tool use completed significant work (a review, decision, discovery, or milestone), log it via `loaf session log` before responding. If not, continue your response without commenting on this check. Never stop your response to explain why something is or isn't significant.",
             "timeout": 5,
             "description": "Nudge journal entries after significant tool use"
           }
@@ -175,7 +175,7 @@
           {
             "type": "prompt",
             "description": "Require journal flush and state summary before context compaction",
-            "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nREQUIRED — two actions before the model responds:\n1. **Flush journal entries.** Log all unrecorded decisions, discoveries, and progress:\n   - `decision(scope): key decisions made this session`\n   - `discover(scope): important findings`\n   - `conclude(scope): session summary`\n   Run `loaf session log \"type(scope): description\"` for each.\n\n2. **Write state summary.** Replace the session file's `## Current State` heading\n   with `## Current State (YYYY-MM-DD HH:MM)` (current timestamp) and write\n   a condensed summary of: what was accomplished, current work state,\n   key decisions, git state, and next steps. This section is the resumption\n   context after compaction — write it as if briefing a colleague who just\n   walked in. The timestamp lets future compactions detect stale summaries.\n\nThe journal IS your external memory. Entries not flushed now are lost forever."
+            "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nREQUIRED — two actions before the model responds:\n1. **Flush journal entries.** Log all unrecorded decisions, discoveries, and progress:\n   - `decision(scope): key decisions made this session`\n   - `discover(scope): important findings`\n   - `finding(scope): analysis result`\n   Run `loaf session log \"type(scope): description\"` for each.\n\n2. **Write state summary.** Replace the session file's `## Current State` heading\n   with `## Current State (YYYY-MM-DD HH:MM)` (current timestamp) and write\n   a condensed summary of: what was accomplished, current work state,\n   key decisions, git state, and next steps. This section is the resumption\n   context after compaction — write it as if briefing a colleague who just\n   walked in. The timestamp lets future compactions detect stale summaries.\n\nThe journal IS your external memory. Entries not flushed now are lost forever."
           }
         ]
       }

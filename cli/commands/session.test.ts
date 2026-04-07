@@ -565,10 +565,59 @@ describe("session: end", () => {
       "utf-8"
     );
 
-    // Should contain session stop entry and conclude entry
+    // Should contain session stop entry and end entry
     expect(content).toContain("=== SESSION STOPPED ===");
-    expect(content).toContain("session(conclude):");
+    expect(content).toContain("session(end):");
     // Should NOT contain redundant pause entry
     expect(content).not.toContain("SESSION PAUSED");
+  });
+
+  it("resumes stopped session when same claude_session_id reconnects", async () => {
+    const repoPath = createTempRepo("same-id-stopped-test");
+
+    const hookJson = JSON.stringify({ session_id: "sess-persist" });
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson });
+    await runLoaf(["end"], { cwd: repoPath });
+
+    // Same session_id reconnects after stop
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson });
+
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1); // Same file, not a new one
+
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+    expect(content).toContain("=== SESSION RESUMED ===");
+    expect(content).toContain("status: active");
+  });
+
+  it("adopts session when branch switches mid-session", async () => {
+    const repoPath = createTempRepo("branch-switch-test");
+
+    await runLoaf(["start"], { cwd: repoPath });
+
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1);
+
+    const contentBefore = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+    expect(contentBefore).toContain("branch: main");
+
+    // Switch to a new branch
+    execFileSync("git", ["checkout", "-b", "feat/new-feature"], { cwd: repoPath });
+
+    // Log an entry — triggers findActiveSessionForBranch which should adopt
+    await runLoaf(["log", "decision(test): testing branch adoption"], { cwd: repoPath });
+
+    const contentAfter = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+    expect(contentAfter).toContain("branch: feat/new-feature");
+    expect(contentAfter).toContain("decision(test): testing branch adoption");
   });
 });

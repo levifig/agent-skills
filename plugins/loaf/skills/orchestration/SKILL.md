@@ -7,7 +7,7 @@ description: >-
   single-task impleme...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep, TodoWrite, TodoRead'
-version: 2.0.0-dev.17
+version: 2.0.0-dev.18
 ---
 
 # Orchestration

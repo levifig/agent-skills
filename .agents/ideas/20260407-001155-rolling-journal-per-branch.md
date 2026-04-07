@@ -1,6 +1,6 @@
 ---
 captured: 2026-04-07T00:11:55Z
-status: raw
+status: rejected
 tags: [sessions, concurrency, journal, architecture]
 related: [SPEC-027]
 ---

@@ -66,7 +66,7 @@ def validate_frontmatter(fm: dict) -> list[str]:
             errors.append(f"Empty required field: {field}")
 
     # Validate status values
-    valid_statuses = ["active", "paused", "blocked", "complete", "archived"]
+    valid_statuses = ["active", "paused", "stopped", "blocked", "complete", "archived"]
     if fm.get("status") and fm["status"] not in valid_statuses:
         errors.append(
             f"Invalid status: {fm['status']} (must be one of: {', '.join(valid_statuses)})"
@@ -149,7 +149,7 @@ def validate_journal_entries(body: str) -> list[str]:
                 "unblock",
                 "spark",
                 "todo",
-                "conclude",
+                "finding",
                 "hypothesis",
                 "try",
                 "reject",

@@ -5,7 +5,7 @@ description: >-
   prompts for action on uncommitted/unpushed work, and generates a structured
   summary. Use at the end of a work session or when the user asks "wrap up." Not
   for archiving (use housekeeping) or capturing ideas (use idea).
-version: 2.0.0-dev.17
+version: 2.0.0-dev.18
 ---
 
 # Wrap

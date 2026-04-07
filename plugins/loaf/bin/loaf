@@ -24497,13 +24497,13 @@ async function validateCommit(context) {
   if (!message) {
     return result;
   }
-  const conventionalCommitRegex = /^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)!?: .+/;
+  const conventionalCommitRegex = /^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert|release)!?: .+/;
   if (!conventionalCommitRegex.test(message)) {
     result.passed = false;
     result.blocked = true;
     result.errors.push("Commit message does not follow Conventional Commits format");
     result.errors.push("Expected format: <type>: <description> (scoped commits not allowed)");
-    result.errors.push("Valid types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert");
+    result.errors.push("Valid types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert, release");
     result.errors.push(`Your message: "${message}"`);
   }
   const aiAttributionPattern = /\b(claude|gpt|copilot|chatgpt|gemini|anthropic)\b/i;
@@ -24973,17 +24973,18 @@ function getCurrentBranch() {
 }
 function getRecentCommits(count = 5) {
   try {
-    const output = execSync3(`git log --pretty=format:"%H %s" -${count}`, {
+    const output = execSync3(`git log --pretty=format:"%H %ct %s" -${count}`, {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"]
     }).trim();
     if (!output) return [];
     return output.split("\n").map((line) => {
-      const spaceIndex = line.indexOf(" ");
+      const firstSpace = line.indexOf(" ");
+      const secondSpace = line.indexOf(" ", firstSpace + 1);
       return {
         hash: line.substring(0, 7),
-        // Short hash
-        message: line.substring(spaceIndex + 1)
+        timestamp: parseInt(line.substring(firstSpace + 1, secondSpace), 10) * 1e3,
+        message: line.substring(secondSpace + 1)
       };
     });
   } catch {
@@ -25111,10 +25112,29 @@ function findActiveSessionForBranch(agentsDir, branch) {
       }
     }
   }
+  if (candidates.length === 0) {
+    const allSessions = [];
+    for (const file of files) {
+      const filePath = join40(sessionsDir, file);
+      const session = readSessionFile(filePath);
+      if (session && session.data.status === "active") {
+        allSessions.push({ filePath, data: session.data, content: session.content });
+      }
+    }
+    if (allSessions.length === 1) {
+      const session = allSessions[0];
+      const oldBranch = session.data.branch;
+      session.data.branch = branch;
+      const newContent = import_gray_matter13.default.stringify(session.content, session.data);
+      writeFileSync21(session.filePath, newContent, "utf-8");
+      candidates.push(session);
+    }
+  }
   if (candidates.length === 0) return null;
   const statusPriority = {
     active: 1,
     paused: 2,
+    stopped: 2,
     blocked: 2,
     complete: 2
   };
@@ -25187,7 +25207,7 @@ function parseEntry(entry) {
     "merge",
     "decision",
     "discover",
-    "conclude",
+    "finding",
     "block",
     "unblock",
     "spark",
@@ -25420,7 +25440,14 @@ function registerSessionCommand(program3) {
     let sessionContent;
     let isResume = false;
     let isNewConversation = false;
-    if (existingSession && (options2.resume || existingSession.data.status === "active")) {
+    const sameConversation = existingSession && hookInput.session_id && existingSession.data.claude_session_id === hookInput.session_id;
+    if (existingSession && sameConversation) {
+      sessionFilePath = existingSession.filePath;
+      sessionData = existingSession.data;
+      sessionContent = existingSession.content;
+      isResume = existingSession.data.status !== "active";
+      console.log(`  ${green12("\u2713")} Resuming existing session`);
+    } else if (existingSession && (options2.resume || existingSession.data.status === "active")) {
       sessionFilePath = existingSession.filePath;
       sessionData = existingSession.data;
       sessionContent = existingSession.content;
@@ -25466,8 +25493,9 @@ function registerSessionCommand(program3) {
         journalLines.push(`[${timestamp}] session(progress): ${completed}/${total} tasks completed`);
       }
       if (commits.length > 0) {
+        const lastEntryTime = sessionData.last_entry ? new Date(sessionData.last_entry).getTime() : 0;
         for (const commit of commits.slice(0, 3)) {
-          if (!sessionContent.includes(`commit(${commit.hash})`)) {
+          if (!sessionContent.includes(`commit(${commit.hash})`) && commit.timestamp > lastEntryTime) {
             journalLines.push(`[${timestamp}] commit(${commit.hash}): ${commit.message}`);
           }
         }
@@ -25565,20 +25593,20 @@ function registerSessionCommand(program3) {
     if (progressText !== "no activity logged") concludeParts.push(progressText);
     const concludeText = concludeParts.length > 0 ? concludeParts.join(", ") : "session ended";
     const journalLines = [
-      `[${timestamp}] session(conclude): ${concludeText}`,
+      `[${timestamp}] session(end): ${concludeText}`,
       `[${timestamp}] session(stop):   === SESSION STOPPED ===`,
       ""
     ];
     console.log(`  ${yellow14("?")} Consider adding final entries:`);
     console.log(`    ${gray14('loaf session log "decision(scope): key decision"')}`);
-    console.log(`    ${gray14('loaf session log "conclude(scope): final notes"')}`);
+    console.log(`    ${gray14('loaf session log "finding(scope): final notes"')}`);
     console.log(`    ${gray14('loaf session log "todo(next): follow-up task"')}`);
     console.log();
     await appendEntry(
       existingSession.filePath,
       journalLines,
       (data) => {
-        data.status = "paused";
+        data.status = "stopped";
         data.last_updated = getTimestamp();
         data.last_entry = getTimestamp();
       }

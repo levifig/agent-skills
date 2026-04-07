@@ -6,7 +6,7 @@ description: >-
   "merge this PR," "ready to merge," or "ship it." Produces version bumps,
   changelog updates, and merged code. Not for creating PRs (use git-workflow) or
   reflection (use reflect).
-version: 2.0.0-dev.17
+version: 2.0.0-dev.18
 ---
 
 # Release
@@ -247,16 +247,21 @@ Tags are created on every version bump (including prereleases) so that future `l
 
 After successful merge:
 
-1. Switch to the base branch and pull:
+1. **End the session** for the merged branch (before switching branches):
+   ```bash
+   loaf session end
+   ```
+   This marks the session as `stopped` and writes the final journal entry. The session can then be archived by `/housekeeping`.
+2. Switch to the base branch and pull:
    ```bash
    git checkout <baseRefName> && git pull --rebase
    ```
-2. Delete the merged feature branch locally and remotely:
+3. Delete the merged feature branch locally and remotely:
    ```bash
    git branch -d <branch>
    git push origin --delete <branch>
    ```
-3. **Suggest `/reflect`** if the session has extractable learnings:
+4. **Suggest `/reflect`** if the session has extractable learnings:
    - Check session file for `## Key Decisions` with content
    - Check `traceability.decisions` for ADR entries
    - If signal present: *"This session produced key decisions. Consider running `/reflect` to update strategic docs."*

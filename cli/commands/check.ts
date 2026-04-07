@@ -577,14 +577,14 @@ async function validateCommit(context: HookContext): Promise<CheckResult> {
 
   // Validate Conventional Commits format (scoped commits not allowed)
   // Format: <type>[!]: <description>
-  const conventionalCommitRegex = /^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)!?: .+/;
+  const conventionalCommitRegex = /^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert|release)!?: .+/;
 
   if (!conventionalCommitRegex.test(message)) {
     result.passed = false;
     result.blocked = true;
     result.errors.push("Commit message does not follow Conventional Commits format");
     result.errors.push("Expected format: <type>: <description> (scoped commits not allowed)");
-    result.errors.push("Valid types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert");
+    result.errors.push("Valid types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert, release");
     result.errors.push(`Your message: "${message}"`);
   }
 

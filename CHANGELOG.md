@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.18] - 2026-04-07
+
+### Fixed
+- Session end now sets status to `stopped` instead of `paused`
+- Same `claude_session_id` always resumes the session (fixes `claude -c` creating duplicate session files)
+- Session branch tracking: adopts lone active session when switching branches mid-session
+- Commit backfill on resume only includes commits made after the last session entry (no more pre-session noise)
+- Journal nudge hook reworded to not hijack model responses
+
+### Changed
+- Rename `session(conclude)` entry type to `session(end)` for lifecycle marker
+- Rename `conclude(scope)` entry type to `finding(scope)` for analysis results
+- Update `EntryType` union and validation script to match new vocabulary
+- Release skill post-merge cleanup now ends the session before switching branches
+
+### Added
+- Test coverage for branch adoption and same-session-id resume
+
 ## [2.0.0-dev.17] - 2026-04-07
 
 ### Added

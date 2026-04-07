@@ -328,7 +328,7 @@ Sessions use an **append-only structured journal** format — a running log of w
 | `spark(scope)` | Ideas to promote | Agent | Topic |
 | `resolve(spark)` | Spark triaged via `/loaf:idea` | Agent/User | Spark slug → disposition [timestamp] |
 | `todo(scope)` | Action items | Agent | Topic |
-| `conclude(scope)` | Conclusions reached | Agent | Topic |
+| `finding(scope)` | Findings from analysis | Agent | Topic |
 | `hypothesis` | Theory being tested | Agent | — |
 | `try` | Approach attempted | Agent | — |
 | `reject` | Approach abandoned | Agent | — |
