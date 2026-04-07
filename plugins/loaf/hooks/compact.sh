@@ -26,9 +26,9 @@ done
 if [ -n "$agents_dir" ]; then
   session_file=$(grep -rl "branch: $branch" "$agents_dir/sessions/"*.md 2>/dev/null | head -1)
   if [ -n "$session_file" ]; then
-    if grep -q "No state summary yet" "$session_file" 2>/dev/null; then
-      echo "WARNING: ## Current State has not been written — still contains placeholder."
-      echo "Write a state summary NOW before compaction loses your context."
+    if ! grep -q "^## Current State" "$session_file" 2>/dev/null; then
+      echo "WARNING: ## Current State section does not exist yet."
+      echo "Write a state summary NOW (between # Session and ## Journal) before compaction loses your context."
     else
       # Check if timestamp exists and is older than 5 minutes
       ts=$(grep -oE '## Current State \(([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2})\)' "$session_file" 2>/dev/null | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}')

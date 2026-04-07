@@ -37,7 +37,7 @@ echo ""
 echo "Session file: $session_file"
 echo ""
 
-if [ -n "$current_state" ] && ! echo "$current_state" | grep -q "No state summary yet"; then
+if [ -n "$current_state" ]; then
   echo "## Current State (from session file)"
   echo ""
   echo "$current_state"

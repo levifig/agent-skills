@@ -25233,13 +25233,9 @@ function createSessionFile(filePath, branch, specInfo) {
   if (specInfo?.id) {
     frontmatter.spec = specInfo.id;
   }
-  const title = specInfo ? `${specInfo.id}: ${specInfo.title}` : branch;
+  const title = specInfo ? `${specInfo.id}: ${specInfo.title}` : "Ad-hoc";
   const entry = `[${getDateTimeString()}] start: SESSION STARTED`;
   const body = `# Session: ${title}
-
-## Current State
-
-*No state summary yet \u2014 updated by PreCompact or /wrap.*
 
 ## Journal
 

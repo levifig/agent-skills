@@ -711,10 +711,10 @@ function createSessionFile(
     frontmatter.spec = specInfo.id;
   }
 
-  const title = specInfo ? `${specInfo.id}: ${specInfo.title}` : branch;
+  const title = specInfo ? `${specInfo.id}: ${specInfo.title}` : "Ad-hoc";
   const entry = `[${getDateTimeString()}] start: SESSION STARTED`;
-  
-  const body = `# Session: ${title}\n\n## Current State\n\n*No state summary yet — updated by PreCompact or /wrap.*\n\n## Journal\n\n${entry}\n`;
+
+  const body = `# Session: ${title}\n\n## Journal\n\n${entry}\n`;
 
   const content = matter.stringify(body, frontmatter as unknown as Record<string, unknown>);
   
