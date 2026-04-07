@@ -7,26 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.17] - 2026-04-07
+
 ### Added
-- Journal logging as Critical Rule in 12 workflow skills
-- `prepare` script for `npx github:levifig/loaf install` support
-- `/wrap` prompts for CHANGELOG update when `/release` wasn't run
+- Add journal logging to workflow skills, broaden nudge hook (0beac80)
+- STOP/RESUME separators, merge progress into conclude, remove redundant pause entry (5ab1464)
+- PreCompact warns on placeholder Current State, PostCompact prints section content (b1478f6)
 
 ### Changed
-- Session journal entries unified under `session()` type with aligned `===` markers
-- Ad-hoc sessions titled "Ad-hoc" instead of raw branch name; no `## Current State` placeholder
-- Journal amend detection: `commit(new): amended commit(old)`
-- Journal nudge broadened from Edit|Write to Bash|Agent
-- README: `npx` install, workflow pipeline reordered, `/release` added
-
-### Removed
-- `install.sh`, `scripts/detect-tools.sh`, `scripts/generate-task-board.sh` (replaced by CLI)
-- `TASKS.md` generated board — `loaf task list` is now the canonical task view
-- `journal-nudge-commit` prompt+if hook (fired on all Bash calls)
-- 12 tracked `.claude/plans/*.md`, scratch test files, stale CI paths
+- Unify session journal entries under session() type (b80fc86)
 
 ### Fixed
-- PreCompact/PostCompact hooks updated for missing `## Current State` detection
+- Ad-hoc session title and remove Current State placeholder (6a90672)
+- Journal amend detection and remove noisy post-commit nudge (bda0074)
+- PreCompact warns when Current State timestamp is older than 5 minutes (1da7064)
+- PreCompact detects stale Current State via timestamp, nudge requests timestamped heading (e720ca5)
+- Resolve all test failures, update 4 stale KB files (e75372b)
 
 ## [2.0.0-dev.16] - 2026-04-07
 

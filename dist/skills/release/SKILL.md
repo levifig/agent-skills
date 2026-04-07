@@ -199,7 +199,7 @@ When `[Unreleased]` is empty, use `loaf release` to auto-generate changelog entr
 
 3. Once the user confirms, run:
    ```bash
-   loaf release --base <baseRefName> --bump <type> --no-tag --no-gh --yes
+   loaf release --base <baseRefName> --bump <type> --no-gh --yes
    ```
 
    This will:
@@ -207,19 +207,19 @@ When `[Unreleased]` is empty, use `loaf release` to auto-generate changelog entr
    2. Generate and insert changelog section from branch commits (adding fresh `[Unreleased]`)
    3. Run `loaf build` to rebuild all targets with new version
    4. Commit: `release: vX.Y.Z`
+   5. Create git tag `vX.Y.Z`
 
 ### After either path
 
-Push to the feature branch (**with user confirmation**).
+Push to the feature branch (**with user confirmation**). Push tags with `git push --tags`.
 
 ### Why these flags?
 
 - `--base <baseRefName>` — Scopes changelog and bump suggestion to this PR's work, not everything since the last tag
-- `--no-tag` — Tags belong to stable releases, not pre-merge bumps (also implies `--no-gh`)
-- `--no-gh` — GitHub release drafts belong to stable releases
+- `--no-gh` — GitHub release drafts belong to stable releases, not pre-merge bumps
 - `--yes` — Skip the CLI confirmation prompt (the skill already confirmed with the user conversationally)
 
-The `/release` skill bumps version so the squash commit carries it. Tagging happens later via `loaf release` (without these flags) when cutting a stable release.
+Tags are created on every version bump (including prereleases) so that future `loaf release` runs can auto-scope to the previous version.
 
 ---
 
