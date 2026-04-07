@@ -175,12 +175,14 @@ Refs BACK-124
 ### Always
 
 - Write atomic commits (one logical change)
+- Commit complete units of work — finish the change, review it, then commit once
 - Use imperative mood in messages
 - Reference issue numbers when applicable
 - Test before committing
 
 ### Never
 
+- Commit partial or in-progress work — if feedback is likely, wait for it before committing
 - Skip commit signing (wait for user if it fails)
 - Push without explicit user confirmation
 - Use scoped commits (`feat(scope):` - use `feat:` instead)

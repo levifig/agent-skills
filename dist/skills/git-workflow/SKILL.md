@@ -21,6 +21,7 @@ Git conventions for branching, commits, PRs, and merge workflow.
 ## Critical Rules
 
 - Use Conventional Commits format for all commit messages
+- Commit complete units of work -- don't commit partial or in-progress changes
 - Squash merge feature branches -- never merge commits directly
 - One branch per spec/feature; branch name format: `feat/{slug}`
 - Never force-push to `main` or shared branches
