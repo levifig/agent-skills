@@ -1743,7 +1743,6 @@
     "SPEC-016": {
       "title": "Council Advisory Redesign — dynamic specialists, structured output",
       "status": "drafting",
-      "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-03-27T20:50:19.000Z",
@@ -1752,7 +1751,6 @@
     "SPEC-017": {
       "title": "TDD Harness — spec-driven testing, eval accumulation, reviewer-to-R mapping",
       "status": "drafting",
-      "appetite": null,
       "requirement": null,
       "source": "SPEC-014",
       "created": "2026-03-28T15:45:00.000Z",
@@ -1761,7 +1759,6 @@
     "SPEC-021": {
       "title": "Bootstrap Document Hierarchy Redesign",
       "status": "drafting",
-      "appetite": null,
       "requirement": null,
       "source": "conversation — bootstrap skill gap analysis",
       "created": "2026-04-01T00:00:00.000Z",
@@ -1770,7 +1767,6 @@
     "SPEC-022": {
       "title": "Native Agent Profile Routing",
       "status": "drafting",
-      "appetite": null,
       "requirement": null,
       "source": "direct — conversation about PR #15 review revealing gap between profile definitions and usage",
       "created": "2026-04-03T12:23:18.000Z",
@@ -1779,7 +1775,6 @@
     "SPEC-023": {
       "title": "CLI Backend Abstraction — Linear/Local Task Routing",
       "status": "drafting",
-      "appetite": null,
       "requirement": null,
       "source": "direct — branch-local draft from feat/decouple-mcps promoting Loaf task operations behind a backend router",
       "created": "2026-04-03T15:30:00Z",
@@ -1788,7 +1783,6 @@
     "SPEC-024": {
       "title": "Harness-Native Surface Model",
       "status": "drafting",
-      "appetite": null,
       "requirement": null,
       "source": "direct — audit of target convergence, duplicate skill discovery, and Gemini native subagent/hook capabilities",
       "created": "2026-04-04T12:13:54Z",
@@ -1797,7 +1791,6 @@
     "SPEC-001": {
       "title": "Loaf Self-Sufficiency",
       "status": "complete",
-      "appetite": null,
       "requirement": "Loaf should be independent of superpowers plugin",
       "source": null,
       "created": "2026-01-24T00:51:55.000Z",
@@ -1806,7 +1799,6 @@
     "SPEC-002": {
       "title": "Invisible Sessions and Task Board",
       "status": "complete",
-      "appetite": null,
       "requirement": "Simplify user workflow by making sessions invisible and adding a generated task board",
       "source": null,
       "created": "2026-01-24T02:30:00.000Z",
@@ -1815,7 +1807,6 @@
     "SPEC-003": {
       "title": "Orchestrated Multi-Task Execution",
       "status": "complete",
-      "appetite": null,
       "requirement": "Enable unattended execution of specs or task groups with PM coordination",
       "source": null,
       "created": "2026-01-24T03:00:00.000Z",
@@ -1824,7 +1815,6 @@
     "SPEC-004": {
       "title": "Frictionless Task Handoff",
       "status": "complete",
-      "appetite": null,
       "requirement": "Eliminate copy/paste friction when switching sessions by making task files self-contained handoff artifacts",
       "source": null,
       "created": "2026-01-24T16:00:00.000Z",
@@ -1833,7 +1823,6 @@
     "SPEC-005": {
       "title": "Changelog reminder hook after git commits",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-01-24T22:25:35.000Z",
@@ -1842,7 +1831,6 @@
     "SPEC-006": {
       "title": "loaf release — version management workflow",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-01-24T22:25:35.000Z",
@@ -1851,7 +1839,6 @@
     "SPEC-007": {
       "title": "loaf init — project bootstrapping",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-01-24T22:47:04.000Z",
@@ -1860,7 +1847,6 @@
     "SPEC-008": {
       "title": "Loaf CLI",
       "status": "complete",
-      "appetite": null,
       "requirement": "Loaf should be a proper CLI tool with clean content/tooling separation",
       "source": null,
       "created": "2026-03-14T19:48:00.000Z",
@@ -1869,7 +1855,6 @@
     "SPEC-009": {
       "title": "Knowledge Management",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": ".agents/drafts/brainstorm-loaf-cli-knowledge-harness.md",
       "created": "2026-03-14T19:48:00.000Z",
@@ -1878,7 +1863,6 @@
     "SPEC-010": {
       "title": "Task & Spec Management CLI",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-03-14T19:48:00.000Z",
@@ -1887,7 +1871,6 @@
     "SPEC-011": {
       "title": "Enhance /reflect with workflow-integrated suggestions",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-03-16T23:50:30.000Z",
@@ -1896,7 +1879,6 @@
     "SPEC-012": {
       "title": "Cleanup Refinement — differentiated processes + CLI",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-03-16T23:50:30.000Z",
@@ -1905,7 +1887,6 @@
     "SPEC-013": {
       "title": "/bootstrap — Interactive project bootstrapping skill",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-03-22T01:28:01.000Z",
@@ -1914,7 +1895,6 @@
     "SPEC-014": {
       "title": "Skill Activation Redesign — foundations decomposition + agent elimination",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "brainstorm",
       "created": "2026-03-24T23:30:00.000Z",
@@ -1923,7 +1903,6 @@
     "SPEC-015": {
       "title": "Workflow enforcement hooks + CHANGELOG management",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-03-27T13:32:06.000Z",
@@ -1932,7 +1911,6 @@
     "SPEC-018": {
       "title": "OpenCode Hooks Parity — verification",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "code-review",
       "created": "2026-03-30T10:50:00.000Z",
@@ -1941,7 +1919,6 @@
     "SPEC-019": {
       "title": "Release Skill — orchestrated merge ritual with CLI-backed versioning",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "idea/20260330-idea-merge-command",
       "created": "2026-03-30T15:20:00.000Z",
@@ -1950,7 +1927,6 @@
     "SPEC-020": {
       "title": "Cross-Harness Skills, Hook Consolidation & Target Convergence",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "brainstorm/amp-target-exploration + brainstorm-session-20260331",
       "created": "2026-03-30T23:13:00.000Z",
@@ -1959,7 +1935,6 @@
     "SPEC-025": {
       "title": "Remove appetite and replace circuit breaker with go/no-go gates",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-04-06T17:04:15.000Z",
@@ -1968,7 +1943,6 @@
     "SPEC-026": {
       "title": "Instruction-file hooks with native if-filtering",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "direct — SPEC-020 incomplete migration, json-parser.sh deletion broke 3 advisory hooks",
       "created": "2026-04-06T17:25:27.000Z",
@@ -1977,7 +1951,6 @@
     "SPEC-027": {
       "title": "Implement ad-hoc task creation and session stability",
       "status": "complete",
-      "appetite": null,
       "requirement": null,
       "source": "direct",
       "created": "2026-04-07T00:01:56.000Z",

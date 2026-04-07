@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Journal logging as Critical Rule in 12 workflow skills
+- `prepare` script for `npx github:levifig/loaf install` support
+- `/wrap` prompts for CHANGELOG update when `/release` wasn't run
+
+### Changed
+- Session journal entries unified under `session()` type with aligned `===` markers
+- Ad-hoc sessions titled "Ad-hoc" instead of raw branch name; no `## Current State` placeholder
+- Journal amend detection: `commit(new): amended commit(old)`
+- Journal nudge broadened from Edit|Write to Bash|Agent
+- README: `npx` install, workflow pipeline reordered, `/release` added
+
+### Removed
+- `install.sh`, `scripts/detect-tools.sh`, `scripts/generate-task-board.sh` (replaced by CLI)
+- `journal-nudge-commit` prompt+if hook (fired on all Bash calls)
+- 12 tracked `.claude/plans/*.md`, scratch test files, stale CI paths
+
+### Fixed
+- PreCompact/PostCompact hooks updated for missing `## Current State` detection
+
 ## [2.0.0-dev.16] - 2026-04-07
 
 ### Added

@@ -81,11 +81,14 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 |-----------|--------|
 | Uncommitted changes | "N file(s) uncommitted — commit, stash, or leave for next session?" |
 | Unpushed commits | "N commit(s) on <branch> not pushed — push now?" |
+| No CHANGELOG update | "This session shipped work but CHANGELOG [Unreleased] wasn't updated — update now?" |
 | Stale KB files | "N stale knowledge file(s) — address now or defer?" |
 | Unresolved blocks | "Block on <scope> still open — note for next session?" |
 | No `/loaf:housekeeping` this session | "No housekeeping run this session — run `/loaf:housekeeping` now?" |
 
-To check if housekeeping ran, scan the session journal for a `skill(housekeeping)` entry. If absent and the session had significant work (commits, archived specs, etc.), suggest it.
+**Detection logic:**
+- **Housekeeping:** scan session journal for `skill(housekeeping)` entry. If absent and the session had significant work, suggest it.
+- **CHANGELOG:** scan session journal for `decision(release)` entry. If absent and the session has commits, the CHANGELOG [Unreleased] section likely needs updating. Offer to update it and commit with session artifacts. Keep entries succinct — `/loaf:wrap` CHANGELOG updates are summaries, not release notes. One line per logical change, group related items.
 
 ### Step 4: Generate Report
 
