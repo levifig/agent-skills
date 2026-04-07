@@ -7,29 +7,36 @@ cli/                            # CLI tool (TypeScript, bundled by tsup)
 ├── index.ts                    # Commander.js entry point
 ├── commands/
 │   ├── build.ts                # loaf build
-│   └── install.ts              # loaf install
+│   ├── check.ts                # loaf check (enforcement backend)
+│   ├── install.ts              # loaf install
+│   ├── session.ts              # loaf session (start/end/log/list/archive)
+│   └── spec.ts                 # loaf spec (list/archive)
 └── lib/
     ├── build/
     │   ├── types.ts            # Shared types (BuildContext, HooksConfig, etc.)
-    │   ├── targets/            # Target transformers (*.ts)
-    │   └── lib/                # Utilities (version, sidecar, substitutions, etc.)
-    ├── detect/tools.ts         # AI tool detection
-    └── install/installer.ts    # Target-specific installers
+    │   ├── targets/            # Target transformers (claude-code, cursor, opencode, codex, gemini, amp)
+    │   └── lib/                # Utilities (version, sidecar, shared-templates, etc.)
+    ├── detect/                 # AI tool + MCP detection
+    ├── install/                # Target-specific installers + fenced-section management
+    ├── tasks/                  # Task/spec types, parser, migration, archival
+    ├── release/                # Version bump, changelog generation
+    ├── housekeeping/           # Artifact scanning, stale detection
+    └── kb/                     # Knowledge base loader, staleness, resolution
 
 content/                        # Distributable content (separated from tooling)
 ├── skills/{name}/SKILL.md      # Domain knowledge (Agent Skills standard)
-├── agents/{name}.md            # Agent definitions (frontmatter: model, skills, tools)
-├── hooks/{pre,post}-tool/      # Lifecycle hooks (shell/Python scripts)
+├── agents/{name}.md            # Functional profiles (tool boundaries + behavioral contracts)
+├── hooks/session/              # Session lifecycle scripts (compact.sh)
 └── templates/                  # Shared templates (distributed at build time)
 
 config/
-├── hooks.yaml                  # Hook definitions + plugin-groups
+├── hooks.yaml                  # Hook definitions (enforcement, instruction, session lifecycle)
 └── targets.yaml                # Target defaults + shared-templates mapping
 
 Output:
 ├── dist-cli/                   # Bundled CLI (single JS file via tsup)
-├── plugins/loaf/               # Claude Code plugin (with hooks, MCP servers)
-└── dist/{target}/              # Other targets (cursor, opencode, codex, gemini)
+├── plugins/loaf/               # Claude Code plugin (hooks, skills, agents, binary)
+└── dist/{target}/              # Other targets (cursor, opencode, codex, gemini, amp)
 ```
 
 ### Build Flow
@@ -41,17 +48,18 @@ content/ + config/ → loaf build → dist/ + plugins/
 
 Each target transformer reads content (skills/agents/hooks) and config, then produces target-specific output. Skills get sidecar files merged. Hooks get registered in plugin manifests. Shared templates get distributed to specified skills.
 
-All TypeScript, bundled into a single file by tsup. No dynamic imports.
+All TypeScript, bundled into a single file by tsup. No dynamic imports. The `loaf` binary in `plugins/loaf/bin/` is a self-contained copy of the bundled CLI with all npm dependencies inlined.
 
 ### Targets
 
-| Target | Output | Agents | Skills | Hooks | MCP |
-|--------|--------|:------:|:------:|:-----:|:---:|
-| claude-code | plugins/loaf/ | Yes | Yes | Yes | Yes |
-| cursor | dist/cursor/ | Yes | Yes | Yes | No |
-| opencode | dist/opencode/ | Yes | Yes | No | No |
-| codex | dist/codex/ | No | Yes | No | No |
-| gemini | dist/gemini/ | No | Yes | No | No |
+| Target | Output | Agents | Skills | Hooks | Runtime Plugin |
+|--------|--------|:------:|:------:|:-----:|:--------------:|
+| claude-code | plugins/loaf/ | Yes | Yes | Yes | plugin.json |
+| cursor | dist/cursor/ | Yes | Yes | Yes | hooks.json |
+| opencode | dist/opencode/ | Yes | Yes | Yes | hooks.ts |
+| codex | dist/codex/ | No | Yes | Yes | hooks.json |
+| gemini | dist/gemini/ | No | Yes | No | — |
+| amp | dist/amp/ | No | Yes | No | loaf.js |
 
 ### Agent Model: Functional Profiles
 
@@ -84,45 +92,103 @@ Councils convene Smiths and Rangers for deliberation. Rangers advocate for users
 
 **Skills as Universal Knowledge Layer:**
 
-Skills are the only knowledge mechanism that works across all targets (Claude Code, Cursor, Codex, Gemini). Profiles are Claude Code infrastructure — other targets activate knowledge through skills alone. This makes skills the primary investment surface: better skill descriptions and organization improve all targets simultaneously.
+Skills are the only knowledge mechanism that works across all targets (Claude Code, Cursor, Codex, Gemini, Amp). Profiles are Claude Code infrastructure — other targets activate knowledge through skills alone. This makes skills the primary investment surface: better skill descriptions and organization improve all targets simultaneously.
 
-## Planned Architecture
+## Execution Model
 
-### Loaf CLI
-
-A unified `loaf` command that wraps build operations, knowledge management, task management, and multi-harness distribution. Language TBD (Node.js likely, same runtime as build system).
-
-### Knowledge Management Layer
+The execution model is a three-artifact pipeline. No separate "plan" artifact — the journal serves as both execution trace and resumption protocol.
 
 ```
-docs/knowledge/          # Knowledge files with frontmatter (covers:, topics:, etc.)
-docs/decisions/          # ADRs (immutable decision records)
-.agents/loaf.json        # Project config (local KB dirs, imports, settings)
-
-QMD (retrieval backend):
-  Collections → indexed directories
-  Context → semantic metadata
-  Search → BM25 + optional vector + reranking
-  MCP server → agent access
-
-Loaf (lifecycle layer):
-  Skill → agent guidance (when to create, update, search)
-  Hooks → staleness detection, growth prompts
-  CLI → loaf kb check, validate, status, review
+/shape → SPEC file → /breakdown → TASK files → /implement → Session/Journal → Done
 ```
 
 ### Task System
 
 ```
-.agents/specs/SPEC-XXX.md       # Shape Up specs (scope, test conditions, priority order)
-.agents/tasks/TASK-XXX-slug.md  # Task details (criteria, context, verification)
-.agents/tasks/TASKS.json        # Programmatic index (CLI/TUI readable)
+.agents/specs/SPEC-XXX.md       # Bounded work definitions (scope, test conditions, priority order)
+.agents/tasks/TASK-XXX-slug.md  # Individual work items (criteria, file hints, verification)
+.agents/tasks/TASKS.json        # Programmatic index (CLI readable)
+.agents/sessions/               # Active session journals
+.agents/sessions/archive/       # Completed sessions
 ```
 
-### Config
+**Specs** define *what* to build — problem, solution direction, boundaries, test conditions. Multi-part specs use priority ordering with go/no-go gates between tracks (ship in order, drop from end). Sized by complexity (small/medium/large), not time.
+
+**Tasks** define *what to do* — one concern per task, file hints, verification command, observable done condition. Created by `/breakdown`, worked by `/implement`.
+
+**Sessions** capture *what happened* — the journal records decisions, discoveries, commits, and progress as structured entries. The `## Current State` section provides handoff-ready context for compaction recovery and cross-conversation resumption.
+
+### Session Lifecycle
+
+Sessions are branch-scoped and managed programmatically by `loaf session start` (SessionStart hook) and `loaf session end` (SessionEnd hook).
+
+**Subagent detection:** Hook JSON from Claude Code includes `agent_id` only for subagents. `loaf session start` checks for this and exits silently — subagents are session-unaware, preventing the session churn that occurs when Task tool spawns trigger SessionStart.
+
+**Cross-conversation continuity:** `session_id` from hook JSON is stored as `claude_session_id` in session frontmatter. On SessionStart, if the incoming session_id differs from the stored one, the session knows it's a new conversation and writes resume entries. `loaf session end` writes the `--- PAUSE ---` separator with the correct timestamp.
+
+**Compaction resilience:** The session journal is external memory that survives context compaction. PreCompact requires flushing unrecorded entries and writing a state summary to `## Current State`. PostCompact nudges the model to re-read the session file for resumption context. No separate snapshot mechanism needed.
+
+**Session management policy:**
+
+| Scenario | Action |
+|----------|--------|
+| Same scope, continuing work | Compact (journal survives) |
+| Different scope entirely | New conversation (new session) |
+| Finished and archived a spec | New conversation |
+| Context full mid-task | Auto-compact |
+| Quick unrelated question | New conversation |
+
+## Hook Architecture
+
+Hooks are defined in `config/hooks.yaml` and distributed to target-specific formats at build time.
+
+### Dispatch Types
+
+| Type | Field | Behavior |
+|------|-------|----------|
+| script | `script:` | Runs a shell script |
+| command | `command:` | Runs a CLI command (e.g., `loaf check --hook <id>`) |
+| prompt | `prompt:` | Injects text directly to the AI model |
+
+### Hook Categories
+
+**Enforcement hooks** — quality gates that block bad actions. Run by `loaf check` as a unified TypeScript backend. Exit non-zero to block. `failClosed: true` means failures block the action.
+
+**Instruction hooks** — context injection at tool invocation. Triggered by `matcher` patterns (tool name) and optionally filtered by `if` conditions (tool input). Inject relevant skill instructions or nudges.
+
+**Session lifecycle hooks** — tied to events (`SessionStart`, `SessionEnd`, `PreCompact`, `PostCompact`, `Stop`). Manage session journals, compaction, and SOUL.md validation.
+
+### Hook JSON Data Model
+
+Claude Code passes JSON to hooks via stdin. Key fields for post-tool hooks:
+
+| Field | Description |
+|-------|-------------|
+| `session_id` | Current Claude conversation ID |
+| `agent_id` | Present only for subagents — the discriminator for session-aware hooks |
+| `tool_name` | Name of the tool invoked (e.g., `"Bash"`) |
+| `tool_input` | Arguments sent to the tool |
+| `tool_response` | Result/output returned by the tool (post-tool only) |
+| `cwd` | Working directory |
+
+`loaf session log --from-hook` uses `tool_input.command` to detect commit/PR/merge patterns and `tool_response` to extract PR numbers from output.
+
+## Knowledge Management
 
 ```
-.agents/loaf.json               # Project-level (knowledge, implementation settings)
+docs/knowledge/          # Knowledge files with frontmatter (covers:, topics:, etc.)
+docs/decisions/          # ADRs (immutable decision records)
+.agents/loaf.json        # Project config (local KB dirs, imports, integration toggles)
+```
+
+Knowledge files are managed by `loaf kb` — staleness detection compares file modification time against configurable thresholds. SessionStart surfaces stale file counts. The `/housekeeping` skill flags stale files for review.
+
+## Config
+
+```
+.agents/loaf.json               # Project-level (knowledge dirs, integration toggles, settings)
 ~/.local/state/loaf/            # User-level (registered KBs, default settings)
 ~/.config/loaf/                 # User preferences
 ```
+
+Integration toggles in `loaf.json` gate runtime features (Linear magic-word detection, MCP recommendations) without rebuilding.
