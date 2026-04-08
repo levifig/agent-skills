@@ -24556,13 +24556,16 @@ async function validateCommit(context) {
     return result;
   }
   let message = null;
-  const msgMatch = command.match(/-m(?:\s+|=)(?:"([^"]+)"|'([^']+)'|([^\s"']+))/);
-  if (msgMatch) {
-    message = msgMatch[1] || msgMatch[2] || msgMatch[3];
+  if (/-F\s/.test(command) || /--file\s/.test(command)) {
+    return result;
+  }
+  const heredocMatch = command.match(/<<'?(\w+)'?\s*\n([\s\S]+?)\n\s*\1/);
+  if (heredocMatch) {
+    message = heredocMatch[2].trim();
   } else {
-    const heredocMatch = command.match(/<<'?EOF'?\s*\n(.+?)\n\s*EOF/s);
-    if (heredocMatch) {
-      message = heredocMatch[1].trim();
+    const msgMatch = command.match(/-m(?:\s+|=)(?:"([^"]+)"|'([^']+)'|([^\s"']+))/);
+    if (msgMatch) {
+      message = msgMatch[1] || msgMatch[2] || msgMatch[3];
     }
   }
   if (!message) {

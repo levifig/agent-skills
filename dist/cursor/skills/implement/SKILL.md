@@ -6,7 +6,7 @@ description: >-
   TASK-XXX." Produces session files, agent spawn plans, and progress tracking.
   Not for shaping (use shape), breakdown (use breakdown), or single-file edits
   (use direct tools).
-version: 2.0.0-dev.20
+version: 2.0.0-dev.22
 ---
 
 # Implement

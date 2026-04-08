@@ -13,6 +13,9 @@ dist-cli/
 dist-backup/
 plugins-backup/
 
+# Test artifacts
+.test-check-command/
+
 # OS files
 .DS_Store
 Thumbs.db

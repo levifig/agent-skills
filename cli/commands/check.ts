@@ -575,16 +575,21 @@ async function validateCommit(context: HookContext): Promise<CheckResult> {
   // Extract commit message from command
   let message: string | null = null;
 
-  // Match -m "message" or -m 'message' or -m message
-  const msgMatch = command.match(/-m(?:\s+|=)(?:"([^"]+)"|'([^']+)'|([^\s"']+))/);
-  
-  if (msgMatch) {
-    message = msgMatch[1] || msgMatch[2] || msgMatch[3];
+  // Skip -F (file-based commit) — can't validate what we can't read
+  if (/-F\s/.test(command) || /--file\s/.test(command)) {
+    return result;
+  }
+
+  // Try HEREDOC first: -m "$(cat <<'EOF' ... EOF )"
+  // Must check before simple -m because the outer quotes capture the raw heredoc syntax
+  const heredocMatch = command.match(/<<'?(\w+)'?\s*\n([\s\S]+?)\n\s*\1/);
+  if (heredocMatch) {
+    message = heredocMatch[2].trim();
   } else {
-    // Match HEREDOC: -m "$(cat <<'EOF' ... EOF )"
-    const heredocMatch = command.match(/<<'?EOF'?\s*\n(.+?)\n\s*EOF/s);
-    if (heredocMatch) {
-      message = heredocMatch[1].trim();
+    // Match -m "message" or -m 'message' or -m message
+    const msgMatch = command.match(/-m(?:\s+|=)(?:"([^"]+)"|'([^']+)'|([^\s"']+))/);
+    if (msgMatch) {
+      message = msgMatch[1] || msgMatch[2] || msgMatch[3];
     }
   }
 

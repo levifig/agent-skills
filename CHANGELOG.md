@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.22] - 2026-04-08
+
+### Fixed
+- Journal-nudge hook moved from Stop event to PostToolUse(Agent|WebFetch|WebSearch) — Stop forced full-turn retrospection that degraded to only logging commits; PostToolUse gives fresh context per tool result
+- Removed Bash from journal-nudge matcher to eliminate noise from routine shell commands
+- `validate-commit` hook now correctly parses heredoc-style commit messages instead of capturing raw shell syntax
+- `validate-commit` hook skips `-F`/`--file` commits (can't validate file contents from command text)
+
 ## [2.0.0-dev.20] - 2026-04-08
 
 ### Added

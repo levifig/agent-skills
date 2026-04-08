@@ -6,7 +6,7 @@ description: >-
   summary. Use at the end of a work session or when the user asks "wrap up." Not
   for archiving (u...
 user-invocable: true
-version: 2.0.0-dev.20
+version: 2.0.0-dev.22
 ---
 
 # Wrap

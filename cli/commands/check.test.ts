@@ -367,6 +367,45 @@ describe("check: validate-commit", () => {
 
     expect(result.exitCode).toBe(0);
   });
+
+  it("extracts message from heredoc format", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nfix: resolve issue with hook parsing\n\nThe heredoc format was not being parsed correctly.\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("blocks invalid message in heredoc format", () => {
+    const command = `git commit -m "$(cat <<'EOF'\njust a random message in heredoc\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("Conventional Commits");
+  });
+
+  it("skips -F (file-based commit)", () => {
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: "git commit -F /tmp/commit-msg.txt" },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("skips --file (file-based commit)", () => {
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: "git commit --file /tmp/commit-msg.txt" },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

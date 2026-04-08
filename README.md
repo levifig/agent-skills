@@ -26,21 +26,21 @@ Loaf's commands form a three-phase workflow that mirrors how good software gets 
 ┌─────────────────────────────────────────────────────────────┐
 │                       PHASE 1: SHAPE                        │
 │                                                             │
-│        /idea  →  /brainstorm  →  /shape  →  SPEC         │
+│         /idea  →  /brainstorm  →  /shape  →  SPEC          │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                       PHASE 2: BUILD                        │
 │                                                             │
-│          /breakdown  →  /implement  →  /release           │
+│           /breakdown  →  /implement  →  /release            │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                       PHASE 3: LEARN                        │
 │                                                             │
-│          /housekeeping  →  /reflect  →  /wrap             │
+│           /housekeeping  →  /reflect  →  /wrap              │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
