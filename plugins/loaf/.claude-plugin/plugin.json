@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.22",
+  "version": "2.0.0-dev.23",
   "description": "Loaf - An Opinionated Agentic Framework",
   "repository": "https://github.com/levifig/loaf",
   "license": "MIT",
@@ -155,6 +155,18 @@
             "type": "command",
             "description": "End session with progress summary and KB follow-up",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" session end --if-active"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 5,
+            "description": "Update Current State section in session file after each turn",
+            "command": "loaf session state update"
           }
         ]
       }

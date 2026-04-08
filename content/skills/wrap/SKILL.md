@@ -94,6 +94,25 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 
 Assemble the report per the format below. Omit empty sections — don't show "None" placeholders.
 
+### Step 5: Write Report to Session File
+
+Write the `## Session Wrap-Up` section into the active session file, directly above `## Current State`. The `## Current State` section is always present (updated on every Stop event), so use it as the insertion anchor.
+
+Use the Edit tool to insert the wrap-up section. The session file layout after wrap should be:
+
+```
+# Session: Title
+
+## Session Wrap-Up        ← you write this
+...
+
+## Current State (...)    ← already exists (Stop hook)
+
+## Journal                ← append-only log
+```
+
+This persists the wrap-up in the session file so it survives archival and can be read by future sessions or `/reflect`.
+
 ## Suggests Next
 
 After the wrap-up report, suggest `/housekeeping` if it wasn't run this session and artifacts need attention.

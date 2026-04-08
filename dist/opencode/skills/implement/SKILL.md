@@ -7,7 +7,7 @@ description: >-
   Not for shaping (use shape), breakdown (use breakdown), or single-file edits
   (use direct tools).
 subtask: false
-version: 2.0.0-dev.22
+version: 2.0.0-dev.23
 ---
 
 # Implement

@@ -593,6 +593,127 @@ describe("session: end", () => {
     expect(content).toContain("status: active");
   });
 
+  it("session end with reason=clear logs session(clear) and keeps status active", async () => {
+    const repoPath = createTempRepo("clear-end-test");
+
+    await runLoaf(["start"], { cwd: repoPath });
+
+    // End session with reason=clear (simulates /clear hook)
+    const hookJson = JSON.stringify({ reason: "clear" });
+    const result = await runLoaf(["end"], { cwd: repoPath, input: hookJson });
+    expect(result.exitCode).toBe(0);
+
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1);
+
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+
+    // Should contain clear marker
+    expect(content).toContain("session(clear):  === CONTEXT CLEARED ===");
+    // Should NOT contain normal stop/end entries
+    expect(content).not.toContain("SESSION STOPPED");
+    expect(content).not.toContain("session(end):");
+    // Status should still be active
+    expect(content).toContain("status: active");
+  });
+
+  it("session start with source=clear resumes existing session", async () => {
+    const repoPath = createTempRepo("clear-resume-test");
+
+    // Start session with initial session_id
+    const hookJson1 = JSON.stringify({ session_id: "sess-old" });
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson1 });
+
+    // End with reason=clear (keeps status active)
+    const hookJsonEnd = JSON.stringify({ reason: "clear" });
+    await runLoaf(["end"], { cwd: repoPath, input: hookJsonEnd });
+
+    // Start with source=clear and new session_id
+    const hookJson2 = JSON.stringify({ session_id: "sess-new", source: "clear" });
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson2 });
+
+    // Still only 1 session file (no archive, no new file)
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1);
+
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+
+    // Frontmatter should have the new session_id
+    expect(content).toContain("claude_session_id: sess-new");
+    // Should contain clear marker from end and resume from start
+    expect(content).toContain("session(clear)");
+    expect(content).toContain("SESSION RESUMED");
+    // No archive should exist
+    const archiveDir = join(repoPath, ".agents/sessions/archive");
+    expect(existsSync(archiveDir)).toBe(false);
+  });
+
+  it("session(start) entry includes session_id when provided", async () => {
+    const repoPath = createTempRepo("start-id-test");
+
+    const hookJson = JSON.stringify({ session_id: "sess-with-id" });
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson });
+
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1);
+
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+
+    // First 8 chars of "sess-with-id" is "sess-wit"
+    expect(content).toContain("SESSION STARTED === (session sess-wit");
+  });
+
+  it("full clear cycle preserves session continuity", async () => {
+    const repoPath = createTempRepo("clear-cycle-test");
+
+    // Start session
+    const hookJson1 = JSON.stringify({ session_id: "sess-before" });
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson1 });
+
+    // Log a decision
+    await runLoaf(["log", "decision(test): first decision"], { cwd: repoPath });
+
+    // End with reason=clear
+    const hookJsonEnd = JSON.stringify({ reason: "clear" });
+    await runLoaf(["end"], { cwd: repoPath, input: hookJsonEnd });
+
+    // Start with source=clear and new session_id
+    const hookJson2 = JSON.stringify({ session_id: "sess-after", source: "clear" });
+    await runLoaf(["start"], { cwd: repoPath, input: hookJson2 });
+
+    // Log another decision
+    await runLoaf(["log", "decision(test): second decision"], { cwd: repoPath });
+
+    // Verify single session file with full history
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1);
+
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+
+    // Both decisions preserved
+    expect(content).toContain("decision(test): first decision");
+    expect(content).toContain("decision(test): second decision");
+    // Clear marker present
+    expect(content).toContain("session(clear):  === CONTEXT CLEARED ===");
+    // Resume present
+    expect(content).toContain("SESSION RESUMED");
+    // No archive
+    const archiveDir = join(repoPath, ".agents/sessions/archive");
+    expect(existsSync(archiveDir)).toBe(false);
+  });
+
   it("adopts session when branch switches mid-session", async () => {
     const repoPath = createTempRepo("branch-switch-test");
 
@@ -619,5 +740,94 @@ describe("session: end", () => {
     );
     expect(contentAfter).toContain("branch: feat/new-feature");
     expect(contentAfter).toContain("decision(test): testing branch adoption");
+  });
+});
+
+describe("session: state", () => {
+  it("state update writes Current State section to session file", async () => {
+    const repoPath = createTempRepo("state-write-test");
+
+    await runLoaf(["start"], { cwd: repoPath });
+    await runLoaf(["log", "decision(test): initial design choice"], { cwd: repoPath });
+
+    const result = await runLoaf(["state", "update"], { cwd: repoPath });
+    expect(result.exitCode).toBe(0);
+
+    const sessionFiles = getSessionFiles(repoPath);
+    expect(sessionFiles.length).toBe(1);
+
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+
+    // Verify section exists with expected content
+    expect(content).toContain("## Current State (");
+    expect(content).toContain("Branch: main");
+    expect(content).toContain("Recent:");
+
+    // Verify section placement: Current State before Journal
+    const stateIdx = content.indexOf("## Current State (");
+    const journalIdx = content.indexOf("## Journal");
+    expect(stateIdx).toBeGreaterThan(-1);
+    expect(journalIdx).toBeGreaterThan(-1);
+    expect(stateIdx).toBeLessThan(journalIdx);
+  });
+
+  it("state update replaces existing Current State section", async () => {
+    const repoPath = createTempRepo("state-replace-test");
+
+    await runLoaf(["start"], { cwd: repoPath });
+
+    // First update
+    const result1 = await runLoaf(["state", "update"], { cwd: repoPath });
+    expect(result1.exitCode).toBe(0);
+
+    // Log a new entry
+    await runLoaf(["log", "decision(test): second decision after state"], { cwd: repoPath });
+
+    // Second update
+    const result2 = await runLoaf(["state", "update"], { cwd: repoPath });
+    expect(result2.exitCode).toBe(0);
+
+    const sessionFiles = getSessionFiles(repoPath);
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+
+    // Only ONE Current State section
+    const matches = content.match(/## Current State \(/g);
+    expect(matches?.length).toBe(1);
+
+    // The new decision should appear in Recent
+    expect(content).toContain("second decision after state");
+  });
+
+  it("state update skips silently for subagents", async () => {
+    const repoPath = createTempRepo("state-subagent-test");
+
+    await runLoaf(["start"], { cwd: repoPath });
+
+    const hookJson = JSON.stringify({ agent_id: "agent-123" });
+    const result = await runLoaf(["state", "update"], { cwd: repoPath, input: hookJson });
+
+    expect(result.exitCode).toBe(0);
+
+    const sessionFiles = getSessionFiles(repoPath);
+    const content = readFileSync(
+      join(repoPath, ".agents/sessions", sessionFiles[0]),
+      "utf-8"
+    );
+
+    // No Current State section should have been added
+    expect(content).not.toContain("## Current State (");
+  });
+
+  it("state update is hook-safe when no session exists", async () => {
+    const repoPath = createTempRepo("state-no-session-test");
+
+    const result = await runLoaf(["state", "update"], { cwd: repoPath });
+    expect(result.exitCode).toBe(0);
   });
 });

@@ -6,7 +6,7 @@ description: >-
   summary. Use at the end of a work session or when the user asks "wrap up." Not
   for archiving (use housekeeping) or capturing ideas (use idea).
 user-invocable: true
-version: 2.0.0-dev.22
+version: 2.0.0-dev.23
 ---
 
 # Wrap
@@ -95,6 +95,25 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 ### Step 4: Generate Report
 
 Assemble the report per the format below. Omit empty sections — don't show "None" placeholders.
+
+### Step 5: Write Report to Session File
+
+Write the `## Session Wrap-Up` section into the active session file, directly above `## Current State`. The `## Current State` section is always present (updated on every Stop event), so use it as the insertion anchor.
+
+Use the Edit tool to insert the wrap-up section. The session file layout after wrap should be:
+
+```
+# Session: Title
+
+## Session Wrap-Up        ← you write this
+...
+
+## Current State (...)    ← already exists (Stop hook)
+
+## Journal                ← append-only log
+```
+
+This persists the wrap-up in the session file so it survives archival and can be read by future sessions or `/reflect`.
 
 ## Suggests Next
 

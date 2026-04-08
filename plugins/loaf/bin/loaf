@@ -25224,7 +25224,7 @@ function findActiveSessionForBranch(agentsDir, branch) {
   });
   return candidates[0];
 }
-async function getOrCreateSession(agentsDir, branch, specInfo) {
+async function getOrCreateSession(agentsDir, branch, specInfo, claudeSessionId) {
   const sessionsDir = join40(agentsDir, "sessions");
   const lockPath = join40(sessionsDir, `.create-${branch.replace(/[^a-zA-Z0-9-]/g, "-")}.lock`);
   await acquireLock(lockPath, 100, 50);
@@ -25234,7 +25234,7 @@ async function getOrCreateSession(agentsDir, branch, specInfo) {
       return { ...existing, isNew: false };
     }
     const filePath = getSessionFilePath(agentsDir);
-    createSessionFile(filePath, branch, specInfo);
+    createSessionFile(filePath, branch, specInfo, claudeSessionId);
     const session = readSessionFile(filePath);
     return { filePath, data: session.data, content: session.content, isNew: true };
   } finally {
@@ -25275,6 +25275,7 @@ function parseEntry(entry) {
     "start",
     "resume",
     "pause",
+    "clear",
     "progress",
     "commit",
     "pr",
@@ -25313,7 +25314,7 @@ function getDateTimeString() {
   const time = now.toTimeString().split(":")[0] + ":" + now.toTimeString().split(":")[1];
   return `${date} ${time}`;
 }
-function createSessionFile(filePath, branch, specInfo) {
+function createSessionFile(filePath, branch, specInfo, claudeSessionId) {
   if (existsSync35(filePath)) {
     return null;
   }
@@ -25327,8 +25328,12 @@ function createSessionFile(filePath, branch, specInfo) {
   if (specInfo?.id) {
     frontmatter.spec = specInfo.id;
   }
+  if (claudeSessionId) {
+    frontmatter.claude_session_id = claudeSessionId;
+  }
   const title = specInfo ? `${specInfo.id}: ${specInfo.title}` : "Ad-hoc";
-  const entry = `[${getDateTimeString()}] session(start):  === SESSION STARTED ===`;
+  const sessionIdSuffix = claudeSessionId ? ` (session ${claudeSessionId.slice(0, 8)})` : "";
+  const entry = `[${getDateTimeString()}] session(start):  === SESSION STARTED ===${sessionIdSuffix}`;
   const body = `# Session: ${title}
 
 ## Journal
@@ -25456,6 +25461,70 @@ function buildProgressLine(stats) {
   if (other > 0) parts.push(`${other} entries`);
   return parts.length > 0 ? parts.join(", ") : "no activity logged";
 }
+function buildCurrentStateSection(sessionContent) {
+  const timestamp = getDateTimeString();
+  const branch = getCurrentBranch();
+  const commits = getRecentCommits(1);
+  const { completed, total } = countTasksInSession(sessionContent);
+  const activity = countJournalActivity(sessionContent);
+  const recentEntries = extractRecentEntries(sessionContent, 5);
+  const lines = [];
+  lines.push(`## Current State (${timestamp})`);
+  lines.push("");
+  lines.push(`Branch: ${branch}`);
+  if (commits.length > 0 && commits[0].hash !== "unknown") {
+    lines.push(`Last commit: ${commits[0].hash} \u2014 ${commits[0].message}`);
+  }
+  if (total > 0) {
+    lines.push(`Tasks: ${completed}/${total}`);
+  }
+  const activityLine = buildProgressLine({
+    completed: 0,
+    total: 0,
+    commits: activity.commits,
+    decisions: activity.decisions,
+    entries: activity.entries
+  });
+  lines.push(`Activity: ${activityLine}`);
+  if (recentEntries.length > 0) {
+    lines.push("Recent:");
+    for (const entry of recentEntries) {
+      const compactEntry = entry.replace(/^\[\d{4}-\d{2}-\d{2} (\d{2}:\d{2})\]/, "[$1]");
+      lines.push(`  ${compactEntry}`);
+    }
+  }
+  return lines.join("\n");
+}
+function extractCurrentState(content) {
+  const stateMatch = content.match(/## Current State \([^)]+\)\n([\s\S]*?)(?=\n## |\n*$)/);
+  if (!stateMatch) return null;
+  return stateMatch[0].trim();
+}
+async function writeCurrentState(filePath, stateSection) {
+  const lockPath = `${filePath}.lock`;
+  await acquireLock(lockPath);
+  try {
+    const session = readSessionFile(filePath);
+    if (!session) {
+      throw new Error("Session file not found");
+    }
+    let body = session.content;
+    const currentStatePattern = /## Current State \([^)]*\)[\s\S]*?(?=## Journal)/;
+    const journalPattern = /## Journal/;
+    if (currentStatePattern.test(body)) {
+      body = body.replace(currentStatePattern, stateSection + "\n\n");
+    } else if (journalPattern.test(body)) {
+      body = body.replace(journalPattern, stateSection + "\n\n## Journal");
+    } else {
+      body = body.trimEnd() + "\n\n" + stateSection + "\n";
+    }
+    session.data.last_updated = getTimestamp();
+    const newContent = import_gray_matter13.default.stringify(body, session.data);
+    writeFileAtomic(filePath, newContent);
+  } finally {
+    releaseLock(lockPath);
+  }
+}
 function quickArchiveSession(filePath, agentsDir) {
   const archiveDir = join40(agentsDir, "sessions", "archive");
   if (!existsSync35(archiveDir)) {
@@ -25513,21 +25582,26 @@ function registerSessionCommand(program3) {
     let sessionData;
     let sessionContent;
     let isResume = false;
-    let isNewConversation = false;
     const sameConversation = existingSession && hookInput.session_id && existingSession.data.claude_session_id === hookInput.session_id;
+    const isClearResume = existingSession && hookInput.source === "clear";
     if (existingSession && sameConversation) {
       sessionFilePath = existingSession.filePath;
       sessionData = existingSession.data;
       sessionContent = existingSession.content;
       isResume = existingSession.data.status !== "active";
       console.log(`  ${green12("\u2713")} Resuming existing session`);
+    } else if (isClearResume) {
+      sessionFilePath = existingSession.filePath;
+      sessionData = existingSession.data;
+      sessionContent = existingSession.content;
+      isResume = true;
+      console.log(`  ${green12("\u2713")} Resuming existing session (after /clear)`);
     } else if (existingSession && (options2.resume || existingSession.data.status === "active")) {
       sessionFilePath = existingSession.filePath;
       sessionData = existingSession.data;
       sessionContent = existingSession.content;
       const storedSessionId = existingSession.data.claude_session_id;
       if (hookInput.session_id && storedSessionId && hookInput.session_id !== storedSessionId) {
-        isNewConversation = true;
         isResume = true;
       } else {
         isResume = existingSession.data.status !== "active";
@@ -25538,7 +25612,7 @@ function registerSessionCommand(program3) {
         quickArchiveSession(existingSession.filePath, agentsDir);
         console.log(`  ${yellow14("!")} Closed previous session`);
       }
-      const result = await getOrCreateSession(agentsDir, branch, specInfo);
+      const result = await getOrCreateSession(agentsDir, branch, specInfo, hookInput.session_id);
       sessionFilePath = result.filePath;
       sessionData = result.data;
       sessionContent = result.content;
@@ -25559,7 +25633,8 @@ function registerSessionCommand(program3) {
     const timestamp = getDateTimeString();
     const journalLines = [];
     if (isResume) {
-      journalLines.push(`[${timestamp}] session(resume): === SESSION RESUMED ===`);
+      const resumeIdSuffix = hookInput.session_id ? ` (session ${hookInput.session_id.slice(0, 8)})` : "";
+      journalLines.push(`[${timestamp}] session(resume): === SESSION RESUMED ===${resumeIdSuffix}`);
       if (lastCommit !== "unknown") {
         journalLines.push(`[${timestamp}] session(context): from commit ${lastCommit}`);
       }
@@ -25610,6 +25685,22 @@ function registerSessionCommand(program3) {
       console.log(`  ${yellow14("\u26A0")} ${staleKbCount} stale knowledge file(s) \u2014 run 'loaf kb review'`);
     }
     const currentContent = readSessionFile(sessionFilePath)?.content || sessionContent;
+    if (isResume) {
+      const currentState = extractCurrentState(currentContent);
+      if (currentState) {
+        const stateLines = currentState.split("\n");
+        const heading = stateLines[0];
+        const headingMatch = heading.match(/## Current State \(([^)]+)\)/);
+        const headingTimestamp = headingMatch ? headingMatch[1] : "";
+        const bodyLines = stateLines.slice(1).filter((line) => line.trim() !== "");
+        console.log(`
+  ${bold13(`Current State (${headingTimestamp}):`)}
+`);
+        for (const line of bodyLines) {
+          console.log(`    ${line}`);
+        }
+      }
+    }
     const recentEntries = extractRecentEntries(currentContent, 15);
     if (recentEntries.length > 0) {
       console.log(`
@@ -25627,6 +25718,7 @@ function registerSessionCommand(program3) {
     console.log();
   });
   session.command("end").description("End session with progress summary").option("--if-active", "Exit successfully when no active session exists").action(async (options2) => {
+    const hookInput = await parseHookInput();
     const agentsDir = findAgentsDir();
     if (!agentsDir) {
       console.error(`  ${red10("error:")} Could not find .agents/ directory`);
@@ -25651,6 +25743,20 @@ function registerSessionCommand(program3) {
     console.log(`
   ${bold13("loaf session end")}
 `);
+    if (hookInput.reason === "clear") {
+      const timestamp2 = getDateTimeString();
+      await appendEntry(
+        existingSession.filePath,
+        [`[${timestamp2}] session(clear):  === CONTEXT CLEARED ===`],
+        (data) => {
+          data.last_updated = getTimestamp();
+          data.last_entry = getTimestamp();
+        }
+      );
+      console.log(`  ${green12("\u2713")} Context cleared: ${gray14(existingSession.filePath.replace(agentsDir, ".agents"))}`);
+      console.log();
+      return;
+    }
     const lastCommit = getLastCommitSha();
     const { completed, total } = countTasksInSession(existingSession.content);
     const activity = countJournalActivity(existingSession.content);
@@ -25977,6 +26083,31 @@ function registerSessionCommand(program3) {
     console.log();
     console.log(`  ${activeSessions.length} active${options2.all ? `, ${archivedSessions.length} archived` : ""}`);
     console.log();
+  });
+  const state = session.command("state").description("Manage session state snapshot");
+  state.command("update").alias("--update").description("Update Current State section in active session file").action(async () => {
+    const hookInput = await parseHookInput();
+    if (hookInput.agent_id) {
+      process.exit(0);
+    }
+    const agentsDir = findAgentsDir();
+    if (!agentsDir) {
+      process.exit(0);
+    }
+    const branch = getCurrentBranch();
+    if (branch === "unknown") {
+      process.exit(0);
+    }
+    const existingSession = findActiveSessionForBranch(agentsDir, branch);
+    if (!existingSession) {
+      process.exit(0);
+    }
+    const freshSession = readSessionFile(existingSession.filePath);
+    if (!freshSession) {
+      process.exit(0);
+    }
+    const stateSection = buildCurrentStateSection(freshSession.content);
+    await writeCurrentState(existingSession.filePath, stateSection);
   });
 }
 

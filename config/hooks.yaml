@@ -173,6 +173,14 @@ hooks:
       event: SessionEnd
       description: End session with progress summary and KB follow-up
 
+    - id: session-state-update
+      skill: orchestration
+      type: command
+      command: 'loaf session state update'
+      event: Stop
+      timeout: 5000
+      description: Update Current State section in session file after each turn
+
     - id: pre-compact
       skill: orchestration
       script: hooks/session/compact.sh

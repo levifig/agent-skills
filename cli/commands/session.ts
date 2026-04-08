@@ -67,6 +67,8 @@ interface HookInput {
   transcript_path?: string;
   cwd?: string;
   permission_mode?: string;
+  source?: string;  // "clear", "resume", etc.
+  reason?: string;  // "clear", "prompt_input_exit", etc.
 }
 
 /** Parse hook JSON from stdin (returns empty object if stdin is TTY or invalid) */
@@ -113,6 +115,7 @@ type EntryType =
   | "start"
   | "resume"
   | "pause"
+  | "clear"
   | "progress"
   | "commit"
   | "pr"
@@ -616,7 +619,8 @@ function findActiveSessionForBranch(agentsDir: string, branch: string): { filePa
 async function getOrCreateSession(
   agentsDir: string,
   branch: string,
-  specInfo: { id: string; title: string } | null
+  specInfo: { id: string; title: string } | null,
+  claudeSessionId?: string
 ): Promise<{ filePath: string; data: SessionFrontmatter; content: string; isNew: boolean }> {
   const sessionsDir = join(agentsDir, "sessions");
   const lockPath = join(sessionsDir, `.create-${branch.replace(/[^a-zA-Z0-9-]/g, '-')}.lock`);
@@ -629,7 +633,7 @@ async function getOrCreateSession(
     }
 
     const filePath = getSessionFilePath(agentsDir);
-    createSessionFile(filePath, branch, specInfo);
+    createSessionFile(filePath, branch, specInfo, claudeSessionId);
     const session = readSessionFile(filePath)!;
     return { filePath, data: session.data, content: session.content, isNew: true };
   } finally {
@@ -683,7 +687,7 @@ function parseEntry(entry: string): JournalEntry | null {
 
   const [, type, scope, description] = match;
   const validTypes: EntryType[] = [
-    "start", "resume", "pause", "progress", "commit", "pr", "merge",
+    "start", "resume", "pause", "clear", "progress", "commit", "pr", "merge",
     "decision", "discover", "finding", "block", "unblock",
     "spark", "todo", "assume",
     // New types
@@ -717,13 +721,14 @@ function getDateTimeString(): string {
 function createSessionFile(
   filePath: string,
   branch: string,
-  specInfo: { id: string; title: string } | null
+  specInfo: { id: string; title: string } | null,
+  claudeSessionId?: string
 ): SessionFrontmatter | null {
   // Check if file already exists (from concurrent process)
   if (existsSync(filePath)) {
     return null;
   }
-  
+
   const now = getTimestamp();
   const frontmatter: SessionFrontmatter = {
     branch,
@@ -737,13 +742,19 @@ function createSessionFile(
     frontmatter.spec = specInfo.id;
   }
 
+  // Store claude_session_id if provided
+  if (claudeSessionId) {
+    frontmatter.claude_session_id = claudeSessionId;
+  }
+
   const title = specInfo ? `${specInfo.id}: ${specInfo.title}` : "Ad-hoc";
-  const entry = `[${getDateTimeString()}] session(start):  === SESSION STARTED ===`;
+  const sessionIdSuffix = claudeSessionId ? ` (session ${claudeSessionId.slice(0, 8)})` : "";
+  const entry = `[${getDateTimeString()}] session(start):  === SESSION STARTED ===${sessionIdSuffix}`;
 
   const body = `# Session: ${title}\n\n## Journal\n\n${entry}\n`;
 
   const content = matter.stringify(body, frontmatter as unknown as Record<string, unknown>);
-  
+
   // Use atomic write with 'wx' flag to prevent race conditions
   try {
     const fd = openSync(filePath, 'wx');
@@ -913,6 +924,92 @@ function buildProgressLine(stats: {
   return parts.length > 0 ? parts.join(", ") : "no activity logged";
 }
 
+/** Build the ## Current State section content (reusable by state --update and session start) */
+function buildCurrentStateSection(sessionContent: string): string {
+  const timestamp = getDateTimeString();
+  const branch = getCurrentBranch();
+  const commits = getRecentCommits(1);
+  const { completed, total } = countTasksInSession(sessionContent);
+  const activity = countJournalActivity(sessionContent);
+  const recentEntries = extractRecentEntries(sessionContent, 5);
+
+  const lines: string[] = [];
+  lines.push(`## Current State (${timestamp})`);
+  lines.push("");
+
+  lines.push(`Branch: ${branch}`);
+
+  if (commits.length > 0 && commits[0].hash !== "unknown") {
+    lines.push(`Last commit: ${commits[0].hash} — ${commits[0].message}`);
+  }
+
+  if (total > 0) {
+    lines.push(`Tasks: ${completed}/${total}`);
+  }
+
+  const activityLine = buildProgressLine({
+    completed: 0,
+    total: 0,
+    commits: activity.commits,
+    decisions: activity.decisions,
+    entries: activity.entries,
+  });
+  lines.push(`Activity: ${activityLine}`);
+
+  if (recentEntries.length > 0) {
+    lines.push("Recent:");
+    for (const entry of recentEntries) {
+      // Strip date portion: "[2026-04-08 15:41] ..." -> "[15:41] ..."
+      const compactEntry = entry.replace(/^\[\d{4}-\d{2}-\d{2} (\d{2}:\d{2})\]/, "[$1]");
+      lines.push(`  ${compactEntry}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/** Extract the Current State section text from session content, or null if absent */
+function extractCurrentState(content: string): string | null {
+  const stateMatch = content.match(/## Current State \([^)]+\)\n([\s\S]*?)(?=\n## |\n*$)/);
+  if (!stateMatch) return null;
+  return stateMatch[0].trim();
+}
+
+/** Write/replace the ## Current State section in a session file (locked, atomic) */
+async function writeCurrentState(filePath: string, stateSection: string): Promise<void> {
+  const lockPath = `${filePath}.lock`;
+  await acquireLock(lockPath);
+  try {
+    const session = readSessionFile(filePath);
+    if (!session) {
+      throw new Error("Session file not found");
+    }
+
+    let body = session.content;
+
+    // Check for existing ## Current State section
+    const currentStatePattern = /## Current State \([^)]*\)[\s\S]*?(?=## Journal)/;
+    const journalPattern = /## Journal/;
+
+    if (currentStatePattern.test(body)) {
+      // Replace existing section
+      body = body.replace(currentStatePattern, stateSection + "\n\n");
+    } else if (journalPattern.test(body)) {
+      // Insert before ## Journal
+      body = body.replace(journalPattern, stateSection + "\n\n## Journal");
+    } else {
+      // Defensive: no ## Journal heading, append at end
+      body = body.trimEnd() + "\n\n" + stateSection + "\n";
+    }
+
+    session.data.last_updated = getTimestamp();
+    const newContent = matter.stringify(body, session.data as unknown as Record<string, unknown>);
+    writeFileAtomic(filePath, newContent);
+  } finally {
+    releaseLock(lockPath);
+  }
+}
+
 function quickArchiveSession(filePath: string, agentsDir: string): void {
   const archiveDir = join(agentsDir, "sessions", "archive");
   if (!existsSync(archiveDir)) {
@@ -996,9 +1093,9 @@ export function registerSessionCommand(program: Command): void {
       let sessionData: SessionFrontmatter;
       let sessionContent: string;
       let isResume = false;
-      let isNewConversation = false;
 
       const sameConversation = existingSession && hookInput.session_id && existingSession.data.claude_session_id === hookInput.session_id;
+      const isClearResume = existingSession && hookInput.source === "clear";
 
       if (existingSession && sameConversation) {
         // Same claude_session_id — always resume, strongest signal
@@ -1008,6 +1105,14 @@ export function registerSessionCommand(program: Command): void {
         isResume = existingSession.data.status !== "active";
 
         console.log(`  ${green("✓")} Resuming existing session`);
+      } else if (isClearResume) {
+        // Context cleared (/clear) — new session_id but same work; treat as resume
+        sessionFilePath = existingSession.filePath;
+        sessionData = existingSession.data;
+        sessionContent = existingSession.content;
+        isResume = true;
+
+        console.log(`  ${green("✓")} Resuming existing session (after /clear)`);
       } else if (existingSession && (options.resume || existingSession.data.status === "active")) {
         // --resume flag or session still active
         sessionFilePath = existingSession.filePath;
@@ -1018,7 +1123,6 @@ export function registerSessionCommand(program: Command): void {
         const storedSessionId = existingSession.data.claude_session_id;
         if (hookInput.session_id && storedSessionId && hookInput.session_id !== storedSessionId) {
           // Different session_id = new conversation on same branch
-          isNewConversation = true;
           isResume = true;
         } else {
           isResume = existingSession.data.status !== "active";
@@ -1031,7 +1135,7 @@ export function registerSessionCommand(program: Command): void {
           console.log(`  ${yellow("!")} Closed previous session`);
         }
 
-        const result = await getOrCreateSession(agentsDir, branch, specInfo);
+        const result = await getOrCreateSession(agentsDir, branch, specInfo, hookInput.session_id);
         sessionFilePath = result.filePath;
         sessionData = result.data;
         sessionContent = result.content;
@@ -1055,7 +1159,8 @@ export function registerSessionCommand(program: Command): void {
       const journalLines: string[] = [];
 
       if (isResume) {
-        journalLines.push(`[${timestamp}] session(resume): === SESSION RESUMED ===`);
+        const resumeIdSuffix = hookInput.session_id ? ` (session ${hookInput.session_id.slice(0, 8)})` : "";
+        journalLines.push(`[${timestamp}] session(resume): === SESSION RESUMED ===${resumeIdSuffix}`);
         if (lastCommit !== "unknown") {
           journalLines.push(`[${timestamp}] session(context): from commit ${lastCommit}`);
         }
@@ -1112,6 +1217,25 @@ export function registerSessionCommand(program: Command): void {
       }
 
       const currentContent = readSessionFile(sessionFilePath)?.content || sessionContent;
+
+      // Surface Current State section on resume (higher-level overview before entries)
+      if (isResume) {
+        const currentState = extractCurrentState(currentContent);
+        if (currentState) {
+          // Extract heading timestamp and body lines
+          const stateLines = currentState.split("\n");
+          const heading = stateLines[0]; // "## Current State (timestamp)"
+          const headingMatch = heading.match(/## Current State \(([^)]+)\)/);
+          const headingTimestamp = headingMatch ? headingMatch[1] : "";
+          const bodyLines = stateLines.slice(1).filter(line => line.trim() !== "");
+
+          console.log(`\n  ${bold(`Current State (${headingTimestamp}):`)}\n`);
+          for (const line of bodyLines) {
+            console.log(`    ${line}`);
+          }
+        }
+      }
+
       const recentEntries = extractRecentEntries(currentContent, 15);
       if (recentEntries.length > 0) {
         console.log(`\n  ${bold("Recent journal entries:")}\n`);
@@ -1136,6 +1260,9 @@ export function registerSessionCommand(program: Command): void {
     .description("End session with progress summary")
     .option("--if-active", "Exit successfully when no active session exists")
     .action(async (options: { ifActive?: boolean }) => {
+      // Parse hook JSON from stdin (when invoked as a hook by Claude Code)
+      const hookInput = await parseHookInput();
+
       const agentsDir = findAgentsDir();
       if (!agentsDir) {
         console.error(`  ${red("error:")} Could not find .agents/ directory`);
@@ -1161,6 +1288,23 @@ export function registerSessionCommand(program: Command): void {
       }
 
       console.log(`\n  ${bold("loaf session end")}\n`);
+
+      // Handle context clear: log marker and keep session active
+      if (hookInput.reason === "clear") {
+        const timestamp = getDateTimeString();
+        await appendEntry(
+          existingSession.filePath,
+          [`[${timestamp}] session(clear):  === CONTEXT CLEARED ===`],
+          (data: SessionFrontmatter) => {
+            data.last_updated = getTimestamp();
+            data.last_entry = getTimestamp();
+          }
+        );
+
+        console.log(`  ${green("✓")} Context cleared: ${gray(existingSession.filePath.replace(agentsDir, ".agents"))}`);
+        console.log();
+        return;
+      }
 
       const lastCommit = getLastCommitSha();
       const { completed, total } = countTasksInSession(existingSession.content);
@@ -1586,5 +1730,51 @@ export function registerSessionCommand(program: Command): void {
       console.log();
       console.log(`  ${activeSessions.length} active${options.all ? `, ${archivedSessions.length} archived` : ""}`);
       console.log();
+    });
+
+  // ── loaf session state ───────────────────────────────────────────────────
+
+  const state = session
+    .command("state")
+    .description("Manage session state snapshot");
+
+  state
+    .command("update")
+    .alias("--update")
+    .description("Update Current State section in active session file")
+    .action(async () => {
+      // Parse hook JSON from stdin (for agent_id detection)
+      const hookInput = await parseHookInput();
+
+      // Skip for subagents (same pattern as session start)
+      if (hookInput.agent_id) {
+        process.exit(0);
+      }
+
+      const agentsDir = findAgentsDir();
+      if (!agentsDir) {
+        // Hook-safe: no .agents/ directory
+        process.exit(0);
+      }
+
+      const branch = getCurrentBranch();
+      if (branch === "unknown") {
+        process.exit(0);
+      }
+
+      const existingSession = findActiveSessionForBranch(agentsDir, branch);
+      if (!existingSession) {
+        // Hook-safe: no active session
+        process.exit(0);
+      }
+
+      // Re-read session to get latest content (may have been updated by other hooks)
+      const freshSession = readSessionFile(existingSession.filePath);
+      if (!freshSession) {
+        process.exit(0);
+      }
+
+      const stateSection = buildCurrentStateSection(freshSession.content);
+      await writeCurrentState(existingSession.filePath, stateSection);
     });
 }

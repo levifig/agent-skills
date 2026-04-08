@@ -122,6 +122,13 @@
         "command": "loaf session end --if-active"
       }
     ],
+    "stop": [
+      {
+        "loaf-managed": true,
+        "timeout": 5,
+        "command": "loaf session state update"
+      }
+    ],
     "preCompact": [
       {
         "loaf-managed": true,

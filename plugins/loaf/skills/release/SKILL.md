@@ -7,7 +7,7 @@ description: >-
   changelog updates, and...
 user-invocable: true
 argument-hint: '[PR number or URL]'
-version: 2.0.0-dev.22
+version: 2.0.0-dev.23
 ---
 
 # Release
@@ -142,6 +142,8 @@ Present findings to the user. They decide whether to fix now or note for later. 
 2. **Tasks archived**: Check `.agents/tasks/` for tasks related to the spec that aren't archived.
 3. **CHANGELOG ready**: Verify `CHANGELOG.md` exists and has the `[Unreleased]` marker (Step 4 will generate the actual entries).
 4. **Session file**: If a session file exists, check that its status reflects completion.
+5. **Wrap-up done**: Scan the session journal for a `skill(wrap)` entry. If absent and the session has meaningful work (commits, decisions), prompt: *"No wrap-up found — run `/loaf:wrap` before merging to capture the session summary."* The wrap-up persists in the session file and should be done before merge.
+6. **Reflection done**: Scan the session journal for a `skill(reflect)` entry. If absent and the session produced key decisions (check for `decision()` entries), suggest: *"This session has key decisions — consider `/loaf:reflect` to update strategic docs before merging."* Unlike wrap, reflection is advisory — the user may skip it.
 
 On gaps: present them to the user. Offer to fix (delegate to `loaf task archive`, `loaf spec archive`). The user decides. Do NOT silently fix or silently skip.
 
