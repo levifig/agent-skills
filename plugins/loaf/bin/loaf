@@ -14034,10 +14034,10 @@ var require_stringify2 = __commonJS({
       data = Object.assign({}, file.data, data);
       const open = opts.delimiters[0];
       const close = opts.delimiters[1];
-      const matter14 = engine.stringify(data, options2).trim();
+      const matter15 = engine.stringify(data, options2).trim();
       let buf = "";
-      if (matter14 !== "{}") {
-        buf = newline(open) + newline(matter14) + newline(close);
+      if (matter15 !== "{}") {
+        buf = newline(open) + newline(matter15) + newline(close);
       }
       if (typeof file.excerpt === "string" && file.excerpt !== "") {
         if (str2.indexOf(file.excerpt.trim()) === -1) {
@@ -14143,19 +14143,19 @@ var require_gray_matter = __commonJS({
     var toFile = require_to_file();
     var parse2 = require_parse();
     var utils = require_utils();
-    function matter14(input, options2) {
+    function matter15(input, options2) {
       if (input === "") {
         return { data: {}, content: input, excerpt: "", orig: input };
       }
       let file = toFile(input);
-      const cached = matter14.cache[file.content];
+      const cached = matter15.cache[file.content];
       if (!options2) {
         if (cached) {
           file = Object.assign({}, cached);
           file.orig = cached.orig;
           return file;
         }
-        matter14.cache[file.content] = file;
+        matter15.cache[file.content] = file;
       }
       return parseMatter(file, options2);
     }
@@ -14177,7 +14177,7 @@ var require_gray_matter = __commonJS({
       }
       str2 = str2.slice(openLen);
       const len = str2.length;
-      const language = matter14.language(str2, opts);
+      const language = matter15.language(str2, opts);
       if (language.name) {
         file.language = language.name;
         str2 = str2.slice(language.raw.length);
@@ -14212,24 +14212,24 @@ var require_gray_matter = __commonJS({
       }
       return file;
     }
-    matter14.engines = engines2;
-    matter14.stringify = function(file, data, options2) {
-      if (typeof file === "string") file = matter14(file, options2);
+    matter15.engines = engines2;
+    matter15.stringify = function(file, data, options2) {
+      if (typeof file === "string") file = matter15(file, options2);
       return stringify(file, data, options2);
     };
-    matter14.read = function(filepath, options2) {
+    matter15.read = function(filepath, options2) {
       const str2 = fs.readFileSync(filepath, "utf8");
-      const file = matter14(str2, options2);
+      const file = matter15(str2, options2);
       file.path = filepath;
       return file;
     };
-    matter14.test = function(str2, options2) {
+    matter15.test = function(str2, options2) {
       return utils.startsWith(str2, defaults(options2).delimiters[0]);
     };
-    matter14.language = function(str2, options2) {
+    matter15.language = function(str2, options2) {
       const opts = defaults(options2);
       const open = opts.delimiters[0];
-      if (matter14.test(str2)) {
+      if (matter15.test(str2)) {
         str2 = str2.slice(open.length);
       }
       const language = str2.slice(0, str2.search(/\r?\n/));
@@ -14238,11 +14238,11 @@ var require_gray_matter = __commonJS({
         name: language ? language.trim() : ""
       };
     };
-    matter14.cache = {};
-    matter14.clearCache = function() {
-      matter14.cache = {};
+    matter15.cache = {};
+    matter15.clearCache = function() {
+      matter15.cache = {};
     };
-    module2.exports = matter14;
+    module2.exports = matter15;
   }
 });
 
@@ -16200,8 +16200,8 @@ var {
 } = import_index.default;
 
 // cli/index.ts
-import { readFileSync as readFileSync31 } from "fs";
-import { join as join41, dirname as dirname14 } from "path";
+import { readFileSync as readFileSync32 } from "fs";
+import { join as join42, dirname as dirname14 } from "path";
 import { fileURLToPath as fileURLToPath9 } from "url";
 
 // cli/commands/build.ts
@@ -18786,10 +18786,10 @@ function ask(question) {
     input: process.stdin,
     output: process.stdout
   });
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     rl.question(question, (answer) => {
       rl.close();
-      resolve2(answer.trim().toLowerCase());
+      resolve3(answer.trim().toLowerCase());
     });
   });
 }
@@ -19053,12 +19053,12 @@ function askYesNo(question, defaultYes = false) {
     input: process.stdin,
     output: process.stdout
   });
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     rl.question(question, (answer) => {
       rl.close();
       const a = answer.trim().toLowerCase();
-      if (!a) resolve2(defaultYes);
-      else resolve2(a.startsWith("y"));
+      if (!a) resolve3(defaultYes);
+      else resolve3(a.startsWith("y"));
     });
   });
 }
@@ -19630,18 +19630,18 @@ function askYesNo2(question) {
     input: process.stdin,
     output: process.stdout
   });
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     let resolved = false;
     rl.on("close", () => {
       if (!resolved) {
         resolved = true;
-        resolve2(false);
+        resolve3(false);
       }
     });
     rl.question(question, (answer) => {
       resolved = true;
       rl.close();
-      resolve2(answer.trim().toLowerCase().startsWith("y"));
+      resolve3(answer.trim().toLowerCase().startsWith("y"));
     });
   });
 }
@@ -19859,18 +19859,18 @@ function askYesNo3(question) {
     input: process.stdin,
     output: process.stdout
   });
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     let resolved = false;
     rl.on("close", () => {
       if (!resolved) {
         resolved = true;
-        resolve2(false);
+        resolve3(false);
       }
     });
     rl.question(question, (answer) => {
       resolved = true;
       rl.close();
-      resolve2(answer.trim().toLowerCase().startsWith("y"));
+      resolve3(answer.trim().toLowerCase().startsWith("y"));
     });
   });
 }
@@ -20332,12 +20332,12 @@ async function askChoice(question, options2, defaultChoice) {
     input: process.stdin,
     output: process.stdout
   });
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     let resolved = false;
     rl.on("close", () => {
       if (!resolved) {
         resolved = true;
-        resolve2(defaultChoice);
+        resolve3(defaultChoice);
       }
     });
     rl.question(question, (answer) => {
@@ -20345,9 +20345,9 @@ async function askChoice(question, options2, defaultChoice) {
       rl.close();
       const num = parseInt(answer.trim(), 10);
       if (num >= 1 && num <= options2.length) {
-        resolve2(options2[num - 1]);
+        resolve3(options2[num - 1]);
       } else {
-        resolve2(defaultChoice);
+        resolve3(defaultChoice);
       }
     });
   });
@@ -23691,6 +23691,38 @@ function scanDrafts(agentsDir, index) {
   const dir = join37(agentsDir, "drafts");
   const files = readMdFiles(dir);
   const recs = [];
+  const archivedSessionFiles = [];
+  const sessionArchiveDir = join37(agentsDir, "sessions", "archive");
+  if (existsSync32(sessionArchiveDir)) {
+    try {
+      for (const name of readdirSync13(sessionArchiveDir)) {
+        if (name.endsWith(".md")) archivedSessionFiles.push(name);
+      }
+    } catch {
+    }
+  }
+  const sessionsDir = join37(agentsDir, "sessions");
+  if (existsSync32(sessionsDir)) {
+    for (const name of readdirSync13(sessionsDir)) {
+      if (name === "archive" || !name.endsWith(".md")) continue;
+      try {
+        const raw = readFileSync27(join37(sessionsDir, name), "utf-8");
+        const { data } = (0, import_gray_matter11.default)(raw);
+        const status = getStatus(data);
+        if (["completed", "complete", "archived", "stopped"].includes(status)) {
+          archivedSessionFiles.push(name);
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+  const sessionIsArchived = (ref) => {
+    const normalized = normalizeSessionRef(ref);
+    if (archivedSessionFiles.includes(normalized)) return true;
+    const stem = normalized.replace(/\.md$/, "");
+    return archivedSessionFiles.some((f) => f.startsWith(stem));
+  };
   const promotedDrafts = /* @__PURE__ */ new Set();
   for (const entry of Object.values(index.specs)) {
     if (entry.source && entry.source.includes("/drafts/")) {
@@ -23701,6 +23733,8 @@ function scanDrafts(agentsDir, index) {
   for (const file of files) {
     const fm = file.frontmatter;
     const days = daysSince(lastActivity(fm) || fm.created);
+    const draftType = (fm.type || "").toLowerCase();
+    const sessionRef = fm.session;
     if (promotedDrafts.has(file.filename)) {
       const hasSparks = file.raw.includes("## Sparks");
       recs.push({
@@ -23710,6 +23744,15 @@ function scanDrafts(agentsDir, index) {
         action: "delete",
         reason: "Draft promoted to spec \u2014 served its purpose",
         hint: hasSparks ? "Contains ## Sparks section \u2014 review before deletion" : void 0,
+        frontmatter: fm
+      });
+    } else if (draftType === "state-assessment" && sessionRef && sessionIsArchived(sessionRef)) {
+      recs.push({
+        type: "draft",
+        path: file.path,
+        filename: file.filename,
+        action: "delete",
+        reason: "State assessment \u2014 linked session is archived",
         frontmatter: fm
       });
     } else if (days !== null && days > 30) {
@@ -23851,11 +23894,10 @@ function scanReports(agentsDir) {
   for (const file of files) {
     const fm = file.frontmatter;
     const reportBlock = fm.report;
-    const archivedAt = reportBlock?.archived_at || fm.archived_at;
-    const reportStatus = reportBlock?.status;
-    const processedAt = reportBlock?.processed_at;
+    const archivedAt = fm.archived_at || reportBlock?.archived_at;
+    const status = (fm.status || reportBlock?.status || "").toLowerCase();
     const sessionRef = reportBlock?.session_reference;
-    if (archivedAt) {
+    if (archivedAt || status === "archived") {
       recs.push({
         type: "report",
         path: file.path,
@@ -23864,23 +23906,14 @@ function scanReports(agentsDir) {
         reason: "Already archived",
         frontmatter: fm
       });
-    } else if (reportStatus === "processed" || processedAt) {
-      if (!sessionRef) {
-        recs.push({
-          type: "report",
-          path: file.path,
-          filename: file.filename,
-          action: "flag",
-          reason: "Report is processed but missing session_reference \u2014 repair metadata",
-          frontmatter: fm
-        });
-      } else if (!sessionIsArchived(normalizeSessionRef(sessionRef))) {
+    } else if (status === "final" || status === "processed" || reportBlock?.processed_at) {
+      if (sessionRef && !sessionIsArchived(normalizeSessionRef(sessionRef))) {
         recs.push({
           type: "report",
           path: file.path,
           filename: file.filename,
           action: "skip",
-          reason: "Report is processed but linked session is not yet archived",
+          reason: "Report is finalized but linked session is not yet archived",
           frontmatter: fm
         });
       } else {
@@ -23889,7 +23922,28 @@ function scanReports(agentsDir) {
           path: file.path,
           filename: file.filename,
           action: "archive",
-          reason: "Report is processed and prerequisites met \u2014 ready for archive",
+          reason: "Report is finalized and prerequisites met \u2014 ready for archive",
+          frontmatter: fm
+        });
+      }
+    } else if (status === "draft") {
+      const days = daysSince(lastActivity(fm));
+      if (days !== null && days > 14) {
+        recs.push({
+          type: "report",
+          path: file.path,
+          filename: file.filename,
+          action: "flag",
+          reason: `Draft report is ${days} days old \u2014 consider finalizing or deleting`,
+          frontmatter: fm
+        });
+      } else {
+        recs.push({
+          type: "report",
+          path: file.path,
+          filename: file.filename,
+          action: "skip",
+          reason: "Recent draft report",
           frontmatter: fm
         });
       }
@@ -23901,7 +23955,7 @@ function scanReports(agentsDir) {
           path: file.path,
           filename: file.filename,
           action: "flag",
-          reason: `Report is ${days} days old but not yet processed`,
+          reason: `Report is ${days} days old with unknown status "${status || "(none)"}"`,
           frontmatter: fm
         });
       } else {
@@ -24158,20 +24212,20 @@ var red9 = (s) => `\x1B[31m${s}\x1B[0m`;
 var yellow13 = (s) => `\x1B[33m${s}\x1B[0m`;
 var gray13 = (s) => `\x1B[90m${s}\x1B[0m`;
 async function readStdin() {
-  return new Promise((resolve2, reject) => {
+  return new Promise((resolve3, reject) => {
     let data = "";
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", (chunk) => {
       data += chunk;
     });
     process.stdin.on("end", () => {
-      resolve2(data);
+      resolve3(data);
     });
     process.stdin.on("error", (err) => {
       reject(err);
     });
     if (process.stdin.isTTY) {
-      resolve2("");
+      resolve3("");
     }
   });
 }
@@ -24805,7 +24859,7 @@ var gray14 = (s) => `\x1B[90m${s}\x1B[0m`;
 async function parseHookInput() {
   if (process.stdin.isTTY) return {};
   let data = "";
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     const timer = setTimeout(() => {
       finish({});
     }, 100);
@@ -24832,7 +24886,7 @@ async function parseHookInput() {
       process.stdin.removeListener("end", onEnd);
       process.stdin.removeListener("error", onError);
       if (typeof process.stdin.unref === "function") process.stdin.unref();
-      resolve2(result);
+      resolve3(result);
     }
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", onData);
@@ -24946,7 +25000,7 @@ async function acquireLock(lockPath, maxRetries = 50, retryDelay = 100) {
       closeSync(fd);
       return;
     } catch {
-      await new Promise((resolve2) => setTimeout(resolve2, retryDelay));
+      await new Promise((resolve3) => setTimeout(resolve3, retryDelay));
     }
   }
   throw new Error(`Could not acquire lock after ${maxRetries} retries: ${lockPath}`);
@@ -25923,12 +25977,353 @@ function registerSessionCommand(program3) {
   });
 }
 
+// cli/commands/report.ts
+var import_gray_matter14 = __toESM(require_gray_matter(), 1);
+import {
+  existsSync as existsSync36,
+  mkdirSync as mkdirSync23,
+  readFileSync as readFileSync31,
+  writeFileSync as writeFileSync22,
+  readdirSync as readdirSync15,
+  unlinkSync as unlinkSync4
+} from "fs";
+import { join as join41, basename as basename6, resolve as resolve2 } from "path";
+var bold14 = (s) => `\x1B[1m${s}\x1B[0m`;
+var green13 = (s) => `\x1B[32m${s}\x1B[0m`;
+var red11 = (s) => `\x1B[31m${s}\x1B[0m`;
+var yellow15 = (s) => `\x1B[33m${s}\x1B[0m`;
+var cyan10 = (s) => `\x1B[36m${s}\x1B[0m`;
+var gray15 = (s) => `\x1B[90m${s}\x1B[0m`;
+function slugToTitleCase(slug) {
+  return slug.split("-").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+}
+function getTimestampForFilename2() {
+  const now = /* @__PURE__ */ new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hour = String(now.getHours()).padStart(2, "0");
+  const minute = String(now.getMinutes()).padStart(2, "0");
+  const second = String(now.getSeconds()).padStart(2, "0");
+  return `${year}${month}${day}-${hour}${minute}${second}`;
+}
+function sanitizePathSegment(input) {
+  return input.replace(/[/\\:*?"<>|]/g, "-").replace(/^\.+/, "");
+}
+function isInsideDir(filePath, dir) {
+  const resolved = resolve2(filePath);
+  const resolvedDir = resolve2(dir);
+  return resolved.startsWith(resolvedDir + "/") || resolved === resolvedDir;
+}
+function resolveReportFile(reportsDir, fileArg) {
+  if (existsSync36(fileArg) && isInsideDir(fileArg, reportsDir)) {
+    return fileArg;
+  }
+  const directPath = join41(reportsDir, fileArg);
+  if (existsSync36(directPath) && isInsideDir(directPath, reportsDir)) {
+    return directPath;
+  }
+  if (existsSync36(reportsDir)) {
+    const files = readdirSync15(reportsDir).filter(
+      (f) => f.endsWith(".md") && f !== "archive"
+    );
+    const matches = files.filter((f) => f.includes(fileArg));
+    if (matches.length === 1) {
+      return join41(reportsDir, matches[0]);
+    }
+    if (matches.length > 1) {
+      console.error(`  ${red11("error:")} Ambiguous match for "${fileArg}" \u2014 ${matches.length} reports match:`);
+      for (const m of matches) {
+        console.error(`    ${gray15(m)}`);
+      }
+      console.error(`  Provide a more specific name or the full filename.`);
+      process.exit(1);
+    }
+  }
+  return null;
+}
+function registerReportCommand(program3) {
+  const report = program3.command("report").description("Manage durable reports (research, audits, investigations)");
+  report.command("list").description("List reports").option("--type <type>", "Filter by report type").option("--status <status>", "Filter by status (draft, final, archived)").option("--json", "Output as JSON").action(
+    (options2) => {
+      const agentsDir = findAgentsDir();
+      if (!agentsDir) {
+        console.error(`  ${red11("error:")} Could not find .agents/ directory`);
+        process.exit(1);
+      }
+      const reportsDir = join41(agentsDir, "reports");
+      if (!existsSync36(reportsDir)) {
+        if (options2.json) {
+          console.log(JSON.stringify([]));
+          return;
+        }
+        console.log(`
+  ${gray15("No reports found.")}`);
+        console.log(
+          `  Run ${cyan10("loaf report create <slug>")} to create your first report.
+`
+        );
+        return;
+      }
+      const reports = [];
+      const files = readdirSync15(reportsDir).filter(
+        (f) => f.endsWith(".md")
+      );
+      for (const file of files) {
+        try {
+          const raw = readFileSync31(join41(reportsDir, file), "utf-8");
+          const parsed = (0, import_gray_matter14.default)(raw);
+          const data = parsed.data;
+          if (options2.type && data.type !== options2.type) continue;
+          if (options2.status && data.status !== options2.status) continue;
+          reports.push({ file, data });
+        } catch {
+          continue;
+        }
+      }
+      const archiveDir = join41(reportsDir, "archive");
+      if (existsSync36(archiveDir)) {
+        const archivedFiles = readdirSync15(archiveDir).filter(
+          (f) => f.endsWith(".md")
+        );
+        for (const file of archivedFiles) {
+          try {
+            const raw = readFileSync31(join41(archiveDir, file), "utf-8");
+            const parsed = (0, import_gray_matter14.default)(raw);
+            const data = parsed.data;
+            if (options2.type && data.type !== options2.type) continue;
+            if (options2.status && data.status !== options2.status) continue;
+            reports.push({ file: `archive/${file}`, data });
+          } catch {
+            continue;
+          }
+        }
+      }
+      if (options2.json) {
+        console.log(JSON.stringify(reports, null, 2));
+        return;
+      }
+      if (reports.length === 0) {
+        console.log(`
+  ${gray15("No reports found.")}`);
+        if (options2.type || options2.status) {
+          console.log(`  ${gray15("Try removing filters to see all reports.")}`);
+        }
+        console.log();
+        return;
+      }
+      console.log(`
+  ${bold14("loaf report list")}
+`);
+      const drafts = reports.filter((r) => r.data.status === "draft");
+      const finals = reports.filter((r) => r.data.status === "final");
+      const archived = reports.filter((r) => r.data.status === "archived");
+      if (drafts.length > 0) {
+        console.log(`  ${yellow15("Drafts")}:`);
+        for (const r of drafts) {
+          const created = r.data.created ? gray15(` -- ${new Date(r.data.created).toLocaleDateString()}`) : "";
+          console.log(
+            `    ${yellow15("*")} ${r.data.title} ${gray15(`[${r.data.type}]`)} ${gray15(`(${r.data.source})`)}${created}`
+          );
+          console.log(`      ${gray15(r.file)}`);
+        }
+        console.log();
+      }
+      if (finals.length > 0) {
+        console.log(`  ${green13("Final")}:`);
+        for (const r of finals) {
+          const created = r.data.created ? gray15(` -- ${new Date(r.data.created).toLocaleDateString()}`) : "";
+          console.log(
+            `    ${green13("*")} ${r.data.title} ${gray15(`[${r.data.type}]`)} ${gray15(`(${r.data.source})`)}${created}`
+          );
+          console.log(`      ${gray15(r.file)}`);
+        }
+        console.log();
+      }
+      if (archived.length > 0) {
+        console.log(`  ${gray15("Archived")}:`);
+        for (const r of archived) {
+          console.log(
+            `    ${gray15("*")} ${r.data.title} ${gray15(`[${r.data.type}]`)} ${gray15(`(${r.data.source})`)}`
+          );
+          console.log(`      ${gray15(r.file)}`);
+        }
+        console.log();
+      }
+      console.log(
+        `  ${reports.length} report(s) total
+`
+      );
+    }
+  );
+  report.command("create <slug>").description("Create a new report").option("--type <type>", "Report type", "research").option("--source <source>", "Report source", "ad-hoc").action((slug, options2) => {
+    const agentsDir = findAgentsDir();
+    if (!agentsDir) {
+      console.error(`  ${red11("error:")} Could not find .agents/ directory`);
+      process.exit(1);
+    }
+    const reportsDir = join41(agentsDir, "reports");
+    if (!existsSync36(reportsDir)) {
+      mkdirSync23(reportsDir, { recursive: true });
+    }
+    const timestamp = getTimestampForFilename2();
+    const safeType = sanitizePathSegment(options2.type);
+    const safeSlug = sanitizePathSegment(slug);
+    const filename = `${timestamp}-${safeType}-${safeSlug}.md`;
+    const filePath = join41(reportsDir, filename);
+    const title = slugToTitleCase(slug);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const frontmatter = {
+      title,
+      type: options2.type,
+      created: now,
+      status: "draft",
+      source: options2.source,
+      tags: []
+    };
+    const body = `# ${title}
+
+## Question
+
+_What question does this report answer?_
+
+## Summary
+
+_Executive summary of findings._
+
+## Key Findings
+
+- _Finding 1_
+- _Finding 2_
+- _Finding 3_
+
+## Methodology
+
+_How was this research conducted?_
+
+## Detailed Analysis
+
+_Full analysis goes here._
+
+## Recommendations
+
+- _Recommendation 1_
+- _Recommendation 2_
+
+## Sources
+
+- _Source 1_
+
+## Open Questions
+
+- _Question 1_
+`;
+    const content = import_gray_matter14.default.stringify(
+      body,
+      frontmatter
+    );
+    writeFileSync22(filePath, content, "utf-8");
+    console.log(`
+  ${bold14("loaf report create")}
+`);
+    console.log(`  ${green13("+")} Created: ${cyan10(filename)}`);
+    console.log(`  Type: ${options2.type}`);
+    console.log(`  Source: ${options2.source}`);
+    console.log(`  Path: ${gray15(filePath)}`);
+    console.log();
+  });
+  report.command("finalize <file>").description("Mark a draft report as final").action((fileArg) => {
+    const agentsDir = findAgentsDir();
+    if (!agentsDir) {
+      console.error(`  ${red11("error:")} Could not find .agents/ directory`);
+      process.exit(1);
+    }
+    const reportsDir = join41(agentsDir, "reports");
+    const filePath = resolveReportFile(reportsDir, fileArg);
+    if (!filePath) {
+      console.error(
+        `  ${red11("error:")} Report not found: ${fileArg}`
+      );
+      process.exit(1);
+    }
+    const raw = readFileSync31(filePath, "utf-8");
+    const parsed = (0, import_gray_matter14.default)(raw);
+    const data = parsed.data;
+    if (data.status !== "draft") {
+      console.error(
+        `  ${red11("error:")} Report is not a draft (status: ${data.status}). Only draft reports can be finalized.`
+      );
+      process.exit(1);
+    }
+    data.status = "final";
+    data.finalized_at = (/* @__PURE__ */ new Date()).toISOString();
+    const updated = import_gray_matter14.default.stringify(
+      parsed.content,
+      data
+    );
+    writeFileSync22(filePath, updated, "utf-8");
+    console.log(`
+  ${bold14("loaf report finalize")}
+`);
+    console.log(
+      `  ${green13("+")} Finalized: ${cyan10(basename6(filePath))}`
+    );
+    console.log();
+  });
+  report.command("archive <file>").description("Archive a finalized report").action((fileArg) => {
+    const agentsDir = findAgentsDir();
+    if (!agentsDir) {
+      console.error(`  ${red11("error:")} Could not find .agents/ directory`);
+      process.exit(1);
+    }
+    const reportsDir = join41(agentsDir, "reports");
+    const filePath = resolveReportFile(reportsDir, fileArg);
+    if (!filePath) {
+      console.error(
+        `  ${red11("error:")} Report not found: ${fileArg}`
+      );
+      process.exit(1);
+    }
+    const raw = readFileSync31(filePath, "utf-8");
+    const parsed = (0, import_gray_matter14.default)(raw);
+    const data = parsed.data;
+    if (data.status !== "final") {
+      console.error(
+        `  ${red11("error:")} Report is not finalized (status: ${data.status}). Only final reports can be archived.`
+      );
+      process.exit(1);
+    }
+    data.status = "archived";
+    data.archived_at = (/* @__PURE__ */ new Date()).toISOString();
+    data.archived_by = "cli";
+    const archiveDir = join41(reportsDir, "archive");
+    if (!existsSync36(archiveDir)) {
+      mkdirSync23(archiveDir, { recursive: true });
+    }
+    const updated = import_gray_matter14.default.stringify(
+      parsed.content,
+      data
+    );
+    const archivePath = join41(archiveDir, basename6(filePath));
+    writeFileSync22(archivePath, updated, "utf-8");
+    unlinkSync4(filePath);
+    console.log(`
+  ${bold14("loaf report archive")}
+`);
+    console.log(
+      `  ${green13("+")} Archived: ${cyan10(basename6(filePath))}`
+    );
+    console.log(`  Path: ${gray15(archivePath)}`);
+    console.log();
+  });
+}
+
 // cli/index.ts
 var __dirname6 = dirname14(fileURLToPath9(import.meta.url));
 function getVersion5() {
-  for (const candidate of [join41(__dirname6, "..", "package.json"), join41(__dirname6, "..", "..", "package.json")]) {
+  for (const candidate of [join42(__dirname6, "..", "package.json"), join42(__dirname6, "..", "..", "package.json")]) {
     try {
-      const pkg = JSON.parse(readFileSync31(candidate, "utf-8"));
+      const pkg = JSON.parse(readFileSync32(candidate, "utf-8"));
       if (pkg.name === "loaf") return pkg.version;
     } catch {
       continue;
@@ -25950,6 +26345,7 @@ registerVersionCommand(program2);
 registerHousekeepingCommand(program2);
 registerCheckCommand(program2);
 registerSessionCommand(program2);
+registerReportCommand(program2);
 if (process.argv.includes("--agent-help")) {
   const { generateCliJson: generateCliJson2 } = await Promise.resolve().then(() => (init_cli_reference_generator(), cli_reference_generator_exports));
   console.log(generateCliJson2(program2));

@@ -389,6 +389,39 @@ function scanDrafts(agentsDir: string, index: TaskIndex): CleanupRecommendation[
   const files = readMdFiles(dir);
   const recs: CleanupRecommendation[] = [];
 
+  // Build set of archived session filenames for session-linked cleanup
+  const archivedSessionFiles: string[] = [];
+  const sessionArchiveDir = join(agentsDir, "sessions", "archive");
+  if (existsSync(sessionArchiveDir)) {
+    try {
+      for (const name of readdirSync(sessionArchiveDir)) {
+        if (name.endsWith(".md")) archivedSessionFiles.push(name);
+      }
+    } catch { /* skip */ }
+  }
+  // Also check sessions with archived/complete status in main dir
+  const sessionsDir = join(agentsDir, "sessions");
+  if (existsSync(sessionsDir)) {
+    for (const name of readdirSync(sessionsDir)) {
+      if (name === "archive" || !name.endsWith(".md")) continue;
+      try {
+        const raw = readFileSync(join(sessionsDir, name), "utf-8");
+        const { data } = matter(raw);
+        const status = getStatus(data);
+        if (["completed", "complete", "archived", "stopped"].includes(status)) {
+          archivedSessionFiles.push(name);
+        }
+      } catch { continue; }
+    }
+  }
+
+  const sessionIsArchived = (ref: string): boolean => {
+    const normalized = normalizeSessionRef(ref);
+    if (archivedSessionFiles.includes(normalized)) return true;
+    const stem = normalized.replace(/\.md$/, "");
+    return archivedSessionFiles.some((f) => f.startsWith(stem));
+  };
+
   const promotedDrafts = new Set<string>();
   for (const entry of Object.values(index.specs)) {
     if (entry.source && entry.source.includes("/drafts/")) {
@@ -400,6 +433,8 @@ function scanDrafts(agentsDir: string, index: TaskIndex): CleanupRecommendation[
   for (const file of files) {
     const fm = file.frontmatter;
     const days = daysSince(lastActivity(fm) || fm.created as string);
+    const draftType = (fm.type as string || "").toLowerCase();
+    const sessionRef = fm.session as string | undefined;
 
     if (promotedDrafts.has(file.filename)) {
       const hasSparks = file.raw.includes("## Sparks");
@@ -410,6 +445,16 @@ function scanDrafts(agentsDir: string, index: TaskIndex): CleanupRecommendation[
         action: "delete",
         reason: "Draft promoted to spec — served its purpose",
         hint: hasSparks ? "Contains ## Sparks section — review before deletion" : undefined,
+        frontmatter: fm,
+      });
+    } else if (draftType === "state-assessment" && sessionRef && sessionIsArchived(sessionRef)) {
+      // Session-linked cleanup: state assessments whose linked session is archived
+      recs.push({
+        type: "draft",
+        path: file.path,
+        filename: file.filename,
+        action: "delete",
+        reason: "State assessment — linked session is archived",
         frontmatter: fm,
       });
     } else if (days !== null && days > 30) {
@@ -565,13 +610,14 @@ function scanReports(agentsDir: string): CleanupRecommendation[] {
   for (const file of files) {
     const fm = file.frontmatter;
 
+    // Support both flat frontmatter (new: status, archived_at) and
+    // nested report: block (legacy: report.status, report.processed_at)
     const reportBlock = fm.report as Record<string, unknown> | undefined;
-    const archivedAt = reportBlock?.archived_at || fm.archived_at;
-    const reportStatus = reportBlock?.status as string | undefined;
-    const processedAt = reportBlock?.processed_at as string | undefined;
-    const sessionRef = reportBlock?.session_reference as string | undefined;
+    const archivedAt = fm.archived_at || reportBlock?.archived_at;
+    const status = (fm.status as string || reportBlock?.status as string || "").toLowerCase();
+    const sessionRef = (reportBlock?.session_reference as string | undefined);
 
-    if (archivedAt) {
+    if (archivedAt || status === "archived") {
       recs.push({
         type: "report",
         path: file.path,
@@ -580,23 +626,15 @@ function scanReports(agentsDir: string): CleanupRecommendation[] {
         reason: "Already archived",
         frontmatter: fm,
       });
-    } else if (reportStatus === "processed" || processedAt) {
-      if (!sessionRef) {
-        recs.push({
-          type: "report",
-          path: file.path,
-          filename: file.filename,
-          action: "flag",
-          reason: "Report is processed but missing session_reference — repair metadata",
-          frontmatter: fm,
-        });
-      } else if (!sessionIsArchived(normalizeSessionRef(sessionRef))) {
+    } else if (status === "final" || status === "processed" || reportBlock?.processed_at) {
+      // "final" (new schema) and "processed" (legacy) are both archive-ready
+      if (sessionRef && !sessionIsArchived(normalizeSessionRef(sessionRef))) {
         recs.push({
           type: "report",
           path: file.path,
           filename: file.filename,
           action: "skip",
-          reason: "Report is processed but linked session is not yet archived",
+          reason: "Report is finalized but linked session is not yet archived",
           frontmatter: fm,
         });
       } else {
@@ -605,7 +643,28 @@ function scanReports(agentsDir: string): CleanupRecommendation[] {
           path: file.path,
           filename: file.filename,
           action: "archive",
-          reason: "Report is processed and prerequisites met — ready for archive",
+          reason: "Report is finalized and prerequisites met — ready for archive",
+          frontmatter: fm,
+        });
+      }
+    } else if (status === "draft") {
+      const days = daysSince(lastActivity(fm));
+      if (days !== null && days > 14) {
+        recs.push({
+          type: "report",
+          path: file.path,
+          filename: file.filename,
+          action: "flag",
+          reason: `Draft report is ${days} days old — consider finalizing or deleting`,
+          frontmatter: fm,
+        });
+      } else {
+        recs.push({
+          type: "report",
+          path: file.path,
+          filename: file.filename,
+          action: "skip",
+          reason: "Recent draft report",
           frontmatter: fm,
         });
       }
@@ -617,7 +676,7 @@ function scanReports(agentsDir: string): CleanupRecommendation[] {
           path: file.path,
           filename: file.filename,
           action: "flag",
-          reason: `Report is ${days} days old but not yet processed`,
+          reason: `Report is ${days} days old with unknown status "${status || "(none)"}"`,
           frontmatter: fm,
         });
       } else {

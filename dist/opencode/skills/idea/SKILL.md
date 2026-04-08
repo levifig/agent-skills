@@ -7,7 +7,7 @@ description: >-
   processing the intake queue (sparks + raw ideas), use triage instead. Not for
   deep exploration (use brainstorm) or shaping (use shape).
 subtask: false
-version: 2.0.0-dev.19
+version: 2.0.0-dev.20
 ---
 
 # Idea

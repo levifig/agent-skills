@@ -1,11 +1,12 @@
 ---
 id: TASK-097
 title: Unified report template and research skill updates
-status: todo
+spec: SPEC-028
+status: done
 priority: P1
 created: '2026-04-07T22:05:27.033Z'
-updated: '2026-04-07T22:05:27.033Z'
-spec: SPEC-028
+updated: '2026-04-07T22:16:30.195Z'
+completed_at: '2026-04-07T22:16:30.195Z'
 ---
 
 # TASK-097: Unified report template and research skill updates

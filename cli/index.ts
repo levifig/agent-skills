@@ -14,6 +14,7 @@ import { registerVersionCommand } from "./commands/version.js";
 import { registerHousekeepingCommand } from "./commands/housekeeping.js";
 import { registerCheckCommand } from "./commands/check.js";
 import { registerSessionCommand } from "./commands/session.js";
+import { registerReportCommand } from "./commands/report.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -47,6 +48,7 @@ registerVersionCommand(program);
 registerHousekeepingCommand(program);
 registerCheckCommand(program);
 registerSessionCommand(program);
+registerReportCommand(program);
 
 // Check for --agent-help before parsing (needs commands registered first)
 if (process.argv.includes("--agent-help")) {

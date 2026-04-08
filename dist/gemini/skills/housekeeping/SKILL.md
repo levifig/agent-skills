@@ -7,7 +7,7 @@ description: >-
   recommendations, archives completed work, and ensures extracted knowledge is
   preserved. Not for strategic reflection (use reflect) or knowledge management
   (use knowledge-base).
-version: 2.0.0-dev.19
+version: 2.0.0-dev.20
 ---
 
 # Housekeeping
@@ -22,6 +22,7 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 - Extract lessons learned and decisions before archiving
 - Use CLI (`loaf housekeeping`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
 - Check report `status` is `processed` and linked session is archived before archiving reports (see [templates/report.md](templates/report.md))
+- Check state assessment `session:` field before flagging for cleanup — only flag when linked session is archived
 - Verify `TASKS.json` sync after archival with `loaf task sync`
 - Log outcome to session journal: `loaf session log "decision(housekeeping): archived N specs, M sessions"`
 
@@ -59,7 +60,8 @@ loaf task sync                # Fix TASKS.json drift
 | Sessions | `.agents/sessions/` | `archive/` | Move with metadata |
 | Tasks | `.agents/tasks/` | `archive/` | `loaf task archive` |
 | Specs | `.agents/specs/` | `archive/` | `loaf spec archive` |
-| Drafts | `.agents/drafts/` | `archive/` | User decision |
+| Drafts (state assessments) | `.agents/drafts/` | delete | Flag for cleanup when linked session is archived |
+| Drafts (brainstorms) | `.agents/drafts/` | `archive/` | User decision (spark extraction first) |
 | Reports | `.agents/reports/` | `archive/` | Archive after processing + linked session archived |
 
 ## Suggests Next

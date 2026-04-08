@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.20] - 2026-04-08
+
+### Added
+- `loaf report` CLI with `list`, `create`, `finalize`, `archive` subcommands
+- Unified report template with status lifecycle (draft → final → archived) and multi-type support (research, audit, analysis, council)
+- Drafts lifecycle policy — housekeeping flags state assessments for cleanup when linked session is archived
+- `session:` field in state-assessment frontmatter for session linking
+
+### Changed
+- Research skill Topic Investigation writes directly to `.agents/reports/` instead of `.agents/drafts/`
+- Housekeeping artifact lifecycle table split into state-assessments (session-linked) and brainstorms (user decision)
+
+### Removed
+- Findings template (`content/skills/research/templates/findings.md`) — replaced by unified report template
+
+### Fixed
+- Report CLI sanitizes path traversal in slug and type arguments
+- Report CLI `list --status archived` now scans `archive/` directory
+- Report CLI rejects ambiguous substring matches with candidate list
+
 ## [2.0.0-dev.19] - 2026-04-07
 
 ### Fixed

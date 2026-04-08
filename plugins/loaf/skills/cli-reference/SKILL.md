@@ -6,7 +6,7 @@ description: >-
   which CLI command to invoke. Not for skill documentation (use the skill's own
   SKILL.md) or for understa...
 user-invocable: false
-version: 2.0.0-dev.19
+version: 2.0.0-dev.20
 ---
 
 # Loaf CLI Reference

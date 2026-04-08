@@ -47,7 +47,7 @@ Orchestrate a squash merge with correct version ordering, documentation checks, 
 
 - Pre-flight checks (typecheck, test, build) all pass before proceeding
 - Version bump commit exists on the feature branch before merge
-- Squash merge body is a clean 2-4 sentence summary, not a commit dump
+- Squash merge body is a one-line summary followed by bullet points grouped by feature area, not a commit dump
 - Post-merge cleanup completed: base branch pulled, feature branch deleted
 
 ## Quick Reference

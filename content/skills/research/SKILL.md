@@ -60,8 +60,7 @@ Patterns for zooming out, investigating topics, and evolving project direction.
 | Topic | Template | Use When |
 |-------|----------|----------|
 | State Assessment | [state-assessment.md](templates/state-assessment.md) | Producing a project state overview |
-| Topic Investigation | [findings.md](templates/findings.md) | In-progress research (drafts) |
-| Final Report | [report.md](templates/report.md) | Promoting completed findings to `.agents/reports/` |
+| Report | [report.md](templates/report.md) | Writing research, audit, analysis, or council output |
 
 ## Input Parsing
 
@@ -104,11 +103,11 @@ Always check project context first. Rate findings: **High** (official/verified),
 1. **Interview** with AskUserQuestion: what are you trying to understand? What context do you have? What decision will this inform?
 2. Check project context first (ADRs, ARCHITECTURE, sessions)
 3. Apply confidence hierarchy for external sources
-4. Create findings document following [findings template](templates/findings.md)
+4. Create report following the [report template](templates/report.md)
 
-**Draft output:** `.agents/drafts/{YYYYMMDD}-{HHMMSS}-research-{slug}.md`
+**Output:** `.agents/reports/{YYYYMMDD}-{HHMMSS}-research-{slug}.md`
 
-When research is complete and findings are validated, promote to a final report in `.agents/reports/` using the [report template](templates/report.md). Set `status: final` and add the `source:` field if the research originated from a spec or task.
+Status starts as `draft`. Set to `final` when research concludes and findings are validated.
 
 ### Brainstorming
 

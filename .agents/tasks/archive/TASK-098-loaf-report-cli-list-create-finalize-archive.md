@@ -1,11 +1,12 @@
 ---
 id: TASK-098
 title: 'loaf report CLI — list, create, finalize, archive'
-status: todo
+spec: SPEC-028
+status: done
 priority: P1
 created: '2026-04-07T22:05:30.601Z'
-updated: '2026-04-07T22:05:30.601Z'
-spec: SPEC-028
+updated: '2026-04-07T22:21:54.789Z'
+completed_at: '2026-04-07T22:21:54.789Z'
 ---
 
 # TASK-098: loaf report CLI — list, create, finalize, archive

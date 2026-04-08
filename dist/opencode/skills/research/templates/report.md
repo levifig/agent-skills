@@ -4,12 +4,12 @@
 
 **Filename timestamp:** `date -u +"%Y%m%d-%H%M%S"`
 
-**Type slugs:** `research`, `audit`, `analysis`
+**Type slugs:** `research`, `audit`, `analysis`, `council`
 
 ```yaml
 ---
 title: "Report: [Topic]"
-type: research | audit | analysis
+type: research | audit | analysis | council
 created: YYYY-MM-DDTHH:MM:SSZ
 status: draft | final | archived
 source: SPEC-XXX | TASK-XXX | ad-hoc
@@ -50,10 +50,8 @@ tags: []
 - [What remains unclear or needs follow-up]
 ```
 
-## Promotion from Draft
+## Status Lifecycle
 
-When research is complete and findings are validated:
-
-1. Copy the draft from `.agents/drafts/` to `.agents/reports/` using this template
-2. Update frontmatter: set `status: final`, add `source:` if applicable
-3. Remove or archive the original draft
+- **draft** — Work in progress. Findings are being gathered and have not been fully validated.
+- **final** — Research concludes and findings are validated. Conclusions are ready for consumption.
+- **archived** — Report has been processed and moved to `.agents/reports/archive/`.

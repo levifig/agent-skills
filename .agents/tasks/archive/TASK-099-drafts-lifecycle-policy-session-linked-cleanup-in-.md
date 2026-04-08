@@ -1,11 +1,12 @@
 ---
 id: TASK-099
 title: Drafts lifecycle policy — session-linked cleanup in housekeeping
-status: todo
+spec: SPEC-028
+status: done
 priority: P2
 created: '2026-04-07T22:05:33.575Z'
-updated: '2026-04-07T22:05:33.575Z'
-spec: SPEC-028
+updated: '2026-04-07T22:16:30.267Z'
+completed_at: '2026-04-07T22:16:30.267Z'
 ---
 
 # TASK-099: Drafts lifecycle policy — session-linked cleanup in housekeeping

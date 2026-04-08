@@ -447,7 +447,9 @@ describe("reports", () => {
     expect(rec?.reason).toContain("prerequisites met");
   });
 
-  it("flags processed reports missing session_reference", () => {
+  it("archives processed reports without session_reference", () => {
+    // In the new flat schema, session_reference is optional — processed/final
+    // reports without one are still archive-ready
     writeNestedArtifact("reports", "report-004.md", "report", {
       status: "processed",
       processed_at: "2026-03-01T00:00:00Z",
@@ -455,23 +457,20 @@ describe("reports", () => {
     writeIndex();
     const result = scanArtifacts({ agentsDir: agentsDir() });
     const rec = findRec(result.recommendations, "report-004.md");
-    expect(rec?.action).toBe("flag");
-    expect(rec?.reason).toContain("missing session_reference");
+    expect(rec?.action).toBe("archive");
+    expect(rec?.reason).toContain("prerequisites met");
   });
 
-  it("flags old unprocessed reports instead of archiving them", () => {
+  it("flags old reports with unknown status", () => {
     const staleDate = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
-    writeNestedArtifact("reports", "report-005.md", "report", {
-      status: "pending",
-    });
-    // Need to write with a stale date — use flat frontmatter for created
+    // Write with a stale date and a non-standard status
     const dir = setupDir("reports");
-    writeFileSync(join(dir, "report-005.md"), `---\nreport:\n  status: "pending"\ncreated: ${JSON.stringify(staleDate)}\n---\n`, "utf-8");
+    writeFileSync(join(dir, "report-005.md"), `---\nstatus: "pending"\ncreated: ${JSON.stringify(staleDate)}\n---\n`, "utf-8");
     writeIndex();
     const result = scanArtifacts({ agentsDir: agentsDir() });
     const rec = findRec(result.recommendations, "report-005.md");
     expect(rec?.action).toBe("flag");
-    expect(rec?.reason).toContain("not yet processed");
+    expect(rec?.reason).toContain("unknown status");
   });
 
   it("skips processed reports when linked session is not yet archived", () => {

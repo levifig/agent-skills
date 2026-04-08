@@ -165,7 +165,7 @@ Refs BACK-124
 
 - **Prefer squash merge** unless explicitly told otherwise
 - GitHub defaults the merge title to `PR title (#N)` — this is the desired format
-- **Write a clean extended description** for the squash merge commit — a concise summary of the branch's work (2-4 lines)
+- **Write a clean extended description** for the squash merge commit — a one-line summary followed by bullet points grouped by feature area
 - **Never use the automatic squash description** that dumps all individual commit messages — it's noisy and unhelpful in git history
 - Don't push or merge without explicit request
 - The `/release` skill automates this workflow, including version bump on the feature branch before merge — use it when ready to squash merge a PR

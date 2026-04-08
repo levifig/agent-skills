@@ -2,54 +2,6 @@
   "version": 1,
   "next_id": 100,
   "tasks": {
-    "TASK-097": {
-      "title": "Unified report template and research skill updates",
-      "slug": "unified-report-template-and-research-skill-updates",
-      "spec": "SPEC-028",
-      "status": "todo",
-      "priority": "P1",
-      "depends_on": [],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-04-07T22:05:27.033Z",
-      "updated": "2026-04-07T22:05:27.033Z",
-      "completed_at": null,
-      "file": "TASK-097-unified-report-template-and-research-skill-updates.md"
-    },
-    "TASK-098": {
-      "title": "loaf report CLI — list, create, finalize, archive",
-      "slug": "loaf-report-cli-list-create-finalize-archive",
-      "spec": "SPEC-028",
-      "status": "todo",
-      "priority": "P1",
-      "depends_on": [],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-04-07T22:05:30.601Z",
-      "updated": "2026-04-07T22:05:30.601Z",
-      "completed_at": null,
-      "file": "TASK-098-loaf-report-cli-list-create-finalize-archive.md"
-    },
-    "TASK-099": {
-      "title": "Drafts lifecycle policy — session-linked cleanup in housekeeping",
-      "slug": "drafts-lifecycle-policy-session-linked-cleanup-in-",
-      "spec": "SPEC-028",
-      "status": "todo",
-      "priority": "P2",
-      "depends_on": [],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-04-07T22:05:33.575Z",
-      "updated": "2026-04-07T22:05:33.575Z",
-      "completed_at": null,
-      "file": "TASK-099-drafts-lifecycle-policy-session-linked-cleanup-in-.md"
-    },
     "TASK-001": {
       "title": "Create verification reference",
       "slug": "verification-reference",
@@ -1785,6 +1737,54 @@
       "updated": "2026-04-07T11:03:21.619Z",
       "completed_at": "2026-04-07T11:03:21.618Z",
       "file": "archive/TASK-096-update-remaining-skills-docs-claude-md-and-clean-u.md"
+    },
+    "TASK-097": {
+      "title": "Unified report template and research skill updates",
+      "slug": "unified-report-template-and-research-skill-updates",
+      "spec": "SPEC-028",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-07T22:05:27.033Z",
+      "updated": "2026-04-07T22:16:30.195Z",
+      "completed_at": "2026-04-07T22:16:30.195Z",
+      "file": "archive/TASK-097-unified-report-template-and-research-skill-updates.md"
+    },
+    "TASK-098": {
+      "title": "loaf report CLI — list, create, finalize, archive",
+      "slug": "loaf-report-cli-list-create-finalize-archive",
+      "spec": "SPEC-028",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-07T22:05:30.601Z",
+      "updated": "2026-04-07T22:21:54.789Z",
+      "completed_at": "2026-04-07T22:21:54.789Z",
+      "file": "archive/TASK-098-loaf-report-cli-list-create-finalize-archive.md"
+    },
+    "TASK-099": {
+      "title": "Drafts lifecycle policy — session-linked cleanup in housekeeping",
+      "slug": "drafts-lifecycle-policy-session-linked-cleanup-in-",
+      "spec": "SPEC-028",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-07T22:05:33.575Z",
+      "updated": "2026-04-07T22:16:30.267Z",
+      "completed_at": "2026-04-07T22:16:30.267Z",
+      "file": "archive/TASK-099-drafts-lifecycle-policy-session-linked-cleanup-in-.md"
     }
   },
   "specs": {
@@ -1835,14 +1835,6 @@
       "source": "direct — audit of target convergence, duplicate skill discovery, and Gemini native subagent/hook capabilities",
       "created": "2026-04-04T12:13:54Z",
       "file": "SPEC-024-harness-native-surface-model.md"
-    },
-    "SPEC-028": {
-      "title": "Durable Reports — reports/ as concluded artifact store",
-      "status": "implementing",
-      "requirement": null,
-      "source": null,
-      "created": "2026-04-07T00:00:00.000Z",
-      "file": "SPEC-028-durable-reports.md"
     },
     "SPEC-001": {
       "title": "Loaf Self-Sufficiency",
@@ -2011,6 +2003,14 @@
       "source": "direct",
       "created": "2026-04-07T00:01:56.000Z",
       "file": "archive/SPEC-027-implement-adhoc-session-stability.md"
+    },
+    "SPEC-028": {
+      "title": "Durable Reports — reports/ as concluded artifact store",
+      "status": "complete",
+      "requirement": null,
+      "source": null,
+      "created": "2026-04-07T00:00:00.000Z",
+      "file": "archive/SPEC-028-durable-reports.md"
     }
   }
 }
