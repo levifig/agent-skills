@@ -25065,6 +25065,18 @@ function getRecentCommits(count = 5) {
     return [];
   }
 }
+function getUncommittedCount() {
+  try {
+    const output = execSync3("git status --porcelain", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"]
+    }).trim();
+    if (!output) return 0;
+    return output.split("\n").length;
+  } catch {
+    return 0;
+  }
+}
 function getLastCommitSha() {
   try {
     return execSync3("git rev-parse --short HEAD", {
@@ -25461,13 +25473,11 @@ function buildProgressLine(stats) {
   if (other > 0) parts.push(`${other} entries`);
   return parts.length > 0 ? parts.join(", ") : "no activity logged";
 }
-function buildCurrentStateSection(sessionContent) {
+function buildCurrentStateSection(_sessionContent) {
   const timestamp = getDateTimeString();
   const branch = getCurrentBranch();
   const commits = getRecentCommits(1);
-  const { completed, total } = countTasksInSession(sessionContent);
-  const activity = countJournalActivity(sessionContent);
-  const recentEntries = extractRecentEntries(sessionContent, 5);
+  const uncommitted = getUncommittedCount();
   const lines = [];
   lines.push(`## Current State (${timestamp})`);
   lines.push("");
@@ -25475,23 +25485,8 @@ function buildCurrentStateSection(sessionContent) {
   if (commits.length > 0 && commits[0].hash !== "unknown") {
     lines.push(`Last commit: ${commits[0].hash} \u2014 ${commits[0].message}`);
   }
-  if (total > 0) {
-    lines.push(`Tasks: ${completed}/${total}`);
-  }
-  const activityLine = buildProgressLine({
-    completed: 0,
-    total: 0,
-    commits: activity.commits,
-    decisions: activity.decisions,
-    entries: activity.entries
-  });
-  lines.push(`Activity: ${activityLine}`);
-  if (recentEntries.length > 0) {
-    lines.push("Recent:");
-    for (const entry of recentEntries) {
-      const compactEntry = entry.replace(/^\[\d{4}-\d{2}-\d{2} (\d{2}:\d{2})\]/, "[$1]");
-      lines.push(`  ${compactEntry}`);
-    }
+  if (uncommitted > 0) {
+    lines.push(`Uncommitted: ${uncommitted} file${uncommitted === 1 ? "" : "s"}`);
   }
   return lines.join("\n");
 }

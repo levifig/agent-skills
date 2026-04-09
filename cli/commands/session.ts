@@ -391,6 +391,20 @@ function getRecentCommits(count = 5): Commit[] {
   }
 }
 
+/** Count uncommitted (modified/staged/untracked) files */
+function getUncommittedCount(): number {
+  try {
+    const output = execSync("git status --porcelain", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    if (!output) return 0;
+    return output.split("\n").length;
+  } catch {
+    return 0;
+  }
+}
+
 /** Get last commit SHA */
 function getLastCommitSha(): string {
   try {
@@ -924,45 +938,24 @@ function buildProgressLine(stats: {
   return parts.length > 0 ? parts.join(", ") : "no activity logged";
 }
 
-/** Build the ## Current State section content (reusable by state --update and session start) */
-function buildCurrentStateSection(sessionContent: string): string {
+/** Build the ## Current State section content (startup/programmatic use only — agent writes richer state on Stop) */
+function buildCurrentStateSection(_sessionContent: string): string {
   const timestamp = getDateTimeString();
   const branch = getCurrentBranch();
   const commits = getRecentCommits(1);
-  const { completed, total } = countTasksInSession(sessionContent);
-  const activity = countJournalActivity(sessionContent);
-  const recentEntries = extractRecentEntries(sessionContent, 5);
+  const uncommitted = getUncommittedCount();
 
   const lines: string[] = [];
   lines.push(`## Current State (${timestamp})`);
   lines.push("");
-
   lines.push(`Branch: ${branch}`);
 
   if (commits.length > 0 && commits[0].hash !== "unknown") {
     lines.push(`Last commit: ${commits[0].hash} — ${commits[0].message}`);
   }
 
-  if (total > 0) {
-    lines.push(`Tasks: ${completed}/${total}`);
-  }
-
-  const activityLine = buildProgressLine({
-    completed: 0,
-    total: 0,
-    commits: activity.commits,
-    decisions: activity.decisions,
-    entries: activity.entries,
-  });
-  lines.push(`Activity: ${activityLine}`);
-
-  if (recentEntries.length > 0) {
-    lines.push("Recent:");
-    for (const entry of recentEntries) {
-      // Strip date portion: "[2026-04-08 15:41] ..." -> "[15:41] ..."
-      const compactEntry = entry.replace(/^\[\d{4}-\d{2}-\d{2} (\d{2}:\d{2})\]/, "[$1]");
-      lines.push(`  ${compactEntry}`);
-    }
+  if (uncommitted > 0) {
+    lines.push(`Uncommitted: ${uncommitted} file${uncommitted === 1 ? "" : "s"}`);
   }
 
   return lines.join("\n");

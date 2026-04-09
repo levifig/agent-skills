@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.23",
+  "version": "2.0.0-dev.24",
   "description": "Loaf - An Opinionated Agentic Framework",
   "repository": "https://github.com/levifig/loaf",
   "license": "MIT",
@@ -70,6 +70,16 @@
             "if": "Bash(git commit:*)",
             "timeout": 30,
             "description": "Detect Linear magic words for auto-status updates"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "If you're the main conversation agent (not a spawned subagent) and about to make code changes for implementation work, use /implement to orchestrate the work through agent delegation. Skip if /implement is already active or if this is a config/doc/skill edit rather than implementation.",
+            "timeout": 5
           }
         ]
       }
@@ -163,10 +173,9 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "timeout": 5,
-            "description": "Update Current State section in session file after each turn",
-            "command": "loaf session state update"
+            "type": "prompt",
+            "description": "Prompt agent to write contextual state summary after meaningful turns",
+            "prompt": "If this turn involved meaningful work (edits, commits, decisions, task progress), update the active session file's `## Current State` section with a 2-4 line contextual summary. Focus on: current task, pending items, blockers, uncommitted work. Don't rehash journal entries — the journal is right below. Skip silently if this was just a question/answer with no state change."
           }
         ]
       }

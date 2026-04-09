@@ -10,6 +10,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   mkdirSync,
+  mkdtempSync,
+  realpathSync,
   writeFileSync,
   readFileSync,
   existsSync,
@@ -17,16 +19,17 @@ import {
   readdirSync,
 } from "fs";
 import { join } from "path";
+import { tmpdir } from "os";
 import { execFileSync } from "child_process";
 import matter from "gray-matter";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test Fixtures
+// Test Fixtures — unique per test to avoid cross-file interference
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TEST_ROOT = join(process.cwd(), ".test-report-command");
-const AGENTS_DIR = join(TEST_ROOT, ".agents");
-const REPORTS_DIR = join(AGENTS_DIR, "reports");
+let TEST_ROOT: string;
+let AGENTS_DIR: string;
+let REPORTS_DIR: string;
 const CLI_PATH = join(process.cwd(), "dist-cli", "index.js");
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,7 +101,9 @@ function createTestReport(
 // ─────────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  rmSync(TEST_ROOT, { recursive: true, force: true });
+  TEST_ROOT = realpathSync(mkdtempSync(join(tmpdir(), "loaf-test-report-")));
+  AGENTS_DIR = join(TEST_ROOT, ".agents");
+  REPORTS_DIR = join(AGENTS_DIR, "reports");
   mkdirSync(REPORTS_DIR, { recursive: true });
 });
 

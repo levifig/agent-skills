@@ -168,4 +168,4 @@ Background Agent ID: bg-20260123-143000-auth-security
 4. Update `.agents/sessions/20260123-140000-auth-feature.md` frontmatter
 
 ---
-version: 2.0.0-dev.23
+version: 2.0.0-dev.24

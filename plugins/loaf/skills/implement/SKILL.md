@@ -2,12 +2,12 @@
 name: implement
 description: >-
   Orchestrates implementation sessions through agent delegation and batch
-  execution. Use when the user asks "implement this" or "start working on
-  TASK-XXX." Produces session files, agent spawn plans, and progress tracking.
-  Not for shaping (use shape...
+  execution. Use for all implementation work — features, bug fixes, refactors,
+  and code changes. Produces session files, agent spawn plans, and progress
+  tracking. Not for shapin...
 user-invocable: true
 argument-hint: '[TASK-XXX | SPEC-XXX | TASK-XXX..YYY | TASK-XXX,YYY | description]'
-version: 2.0.0-dev.23
+version: 2.0.0-dev.24
 ---
 
 # Implement

@@ -2,12 +2,12 @@
 name: implement
 description: >-
   Orchestrates implementation sessions through agent delegation and batch
-  execution. Use when the user asks "implement this" or "start working on
-  TASK-XXX." Produces session files, agent spawn plans, and progress tracking.
-  Not for shaping (use shape), breakdown (use breakdown), or single-file edits
-  (use direct tools).
+  execution. Use for all implementation work — features, bug fixes, refactors,
+  and code changes. Produces session files, agent spawn plans, and progress
+  tracking. Not for shaping (use shape), breakdown (use breakdown), research, or
+  review.
 subtask: false
-version: 2.0.0-dev.23
+version: 2.0.0-dev.24
 ---
 
 # Implement

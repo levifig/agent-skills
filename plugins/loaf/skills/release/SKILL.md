@@ -7,7 +7,7 @@ description: >-
   changelog updates, and...
 user-invocable: true
 argument-hint: '[PR number or URL]'
-version: 2.0.0-dev.23
+version: 2.0.0-dev.24
 ---
 
 # Release
@@ -40,7 +40,7 @@ Orchestrate a squash merge with correct version ordering, documentation checks, 
 - **User confirms every destructive action** -- version bump commit, push, merge, branch deletion
 - **Version bump before merge** -- this is the skill's reason for existing; never defer to post-merge
 - **Clean squash body** -- never use the auto-generated commit dump
-- **Verify, don't do** -- housekeeping is the implementer's job; this skill only verifies it was done
+- **Orchestrate the full lifecycle** -- if wrap, housekeeping, or reflect haven't been run, trigger them (with user confirmation) rather than just flagging gaps
 - **Detect-first** -- auto-detect PR from branch before asking for a number
 - **Never push without confirmation** -- even after successful version bump
 - **Log release** -- log to session journal after merge: `loaf session log "decision(release): vX.Y.Z shipped via PR #N"`
@@ -50,6 +50,8 @@ Orchestrate a squash merge with correct version ordering, documentation checks, 
 - Pre-flight checks (typecheck, test, build) all pass before proceeding
 - Version bump commit exists on the feature branch before merge
 - Squash merge body is a one-line summary followed by bullet points grouped by feature area, not a commit dump
+- Git tag points to the squash merge commit on the base branch, not a branch commit
+- GitHub Release exists with changelog body (not auto-generated notes)
 - Post-merge cleanup completed: base branch pulled, feature branch deleted
 
 ## Quick Reference
@@ -60,9 +62,9 @@ Orchestrate a squash merge with correct version ordering, documentation checks, 
 | Doc Freshness | User reviews stale docs | No (user decides) |
 | Housekeeping | Spec/tasks archived, CHANGELOG ready | No (user decides) |
 | PR Creation | Only if no PR exists yet | Yes (if needed) |
-| Version Bump | User confirms bump type | Yes |
+| Version Bump | User confirms bump type (no tag yet) | Yes |
 | Squash Merge | User approves body text | Yes |
-| Post-Merge | Branch cleanup | Yes |
+| Post-Merge | Tag on main, GH Release, branch cleanup | Yes |
 
 ## Topics
 
@@ -134,18 +136,18 @@ Present findings to the user. They decide whether to fix now or note for later. 
 
 ---
 
-## Step 3: Housekeeping Verification
+## Step 3: Housekeeping
 
-**Verify** that implementation housekeeping was done. Do NOT do it — that's the implement skill's job. Each check produces pass/fail:
+Check each item. If missing, **offer to run it** (with user confirmation) rather than just flagging it.
 
-1. **Spec archived**: If a spec is associated with this branch (check `.agents/specs/` for matching spec), verify its status is `complete`.
-2. **Tasks archived**: Check `.agents/tasks/` for tasks related to the spec that aren't archived.
+1. **Spec archived**: If a spec is associated with this branch (check `.agents/specs/` for matching spec), verify its status is `complete`. If not, offer to run `loaf spec archive`.
+2. **Tasks archived**: Check `.agents/tasks/` for tasks related to the spec that aren't archived. If found, offer to run `loaf task archive`.
 3. **CHANGELOG ready**: Verify `CHANGELOG.md` exists and has the `[Unreleased]` marker (Step 4 will generate the actual entries).
 4. **Session file**: If a session file exists, check that its status reflects completion.
-5. **Wrap-up done**: Scan the session journal for a `skill(wrap)` entry. If absent and the session has meaningful work (commits, decisions), prompt: *"No wrap-up found — run `/loaf:wrap` before merging to capture the session summary."* The wrap-up persists in the session file and should be done before merge.
-6. **Reflection done**: Scan the session journal for a `skill(reflect)` entry. If absent and the session produced key decisions (check for `decision()` entries), suggest: *"This session has key decisions — consider `/loaf:reflect` to update strategic docs before merging."* Unlike wrap, reflection is advisory — the user may skip it.
+5. **Wrap-up**: Scan the session journal for a `skill(wrap)` entry. If absent and the session has meaningful work (commits, decisions), run `/loaf:wrap` to capture the session summary before proceeding.
+6. **Reflection**: Scan the session journal for a `skill(reflect)` entry. If absent and the session produced key decisions (check for `decision()` entries), offer to run `/loaf:reflect` to update strategic docs. Advisory — the user may skip.
 
-On gaps: present them to the user. Offer to fix (delegate to `loaf task archive`, `loaf spec archive`). The user decides. Do NOT silently fix or silently skip.
+Present the results as a checklist. Run what the user approves, skip what they decline.
 
 ---
 
@@ -203,7 +205,7 @@ When `[Unreleased]` is empty, use `loaf release` to auto-generate changelog entr
 
 3. Once the user confirms, run:
    ```bash
-   loaf release --base <baseRefName> --bump <type> --no-gh --yes
+   loaf release --base <baseRefName> --bump <type> --no-tag --no-gh --yes
    ```
 
    This will:
@@ -211,19 +213,17 @@ When `[Unreleased]` is empty, use `loaf release` to auto-generate changelog entr
    2. Generate and insert changelog section from branch commits (adding fresh `[Unreleased]`)
    3. Run `loaf build` to rebuild all targets with new version
    4. Commit: `release: vX.Y.Z`
-   5. Create git tag `vX.Y.Z`
 
 ### After either path
 
-Push to the feature branch (**with user confirmation**). Push tags with `git push --tags`.
+Push to the feature branch (**with user confirmation**).
 
 ### Why these flags?
 
 - `--base <baseRefName>` — Scopes changelog and bump suggestion to this PR's work, not everything since the last tag
-- `--no-gh` — GitHub release drafts belong to stable releases, not pre-merge bumps
+- `--no-tag` — Tags belong on the squash merge commit on `main`, not on the feature branch commit that gets squashed away
+- `--no-gh` — GitHub Release is created post-merge from the changelog body, not pre-merge
 - `--yes` — Skip the CLI confirmation prompt (the skill already confirmed with the user conversationally)
-
-Tags are created on every version bump (including prereleases) so that future `loaf release` runs can auto-scope to the previous version.
 
 ---
 
@@ -259,15 +259,28 @@ After successful merge:
    ```bash
    git checkout <baseRefName> && git pull --rebase
    ```
-3. Delete the merged feature branch locally and remotely:
+3. **Tag the squash merge commit** — this is now HEAD on the base branch:
+   ```bash
+   git tag -a vX.Y.Z -m "Release X.Y.Z"
+   git push --tags
+   ```
+   The tag lands on the actual merge commit that exists in `main` history, not a branch commit that was squashed away.
+4. **Create GitHub Release** from the changelog body:
+   - Read `CHANGELOG.md` and extract the section for `[X.Y.Z]`
+   - Create the release:
+     ```bash
+     gh release create vX.Y.Z --title "vX.Y.Z" --notes "<changelog section>"
+     ```
+   - If `gh` is unavailable, skip and inform the user.
+5. Delete the merged feature branch locally and remotely:
    ```bash
    git branch -d <branch>
    git push origin --delete <branch>
    ```
-4. **Suggest `/loaf:reflect`** if the session has extractable learnings:
+6. **Run `/loaf:reflect`** if the session has extractable learnings:
    - Check session file for `## Key Decisions` with content
    - Check `traceability.decisions` for ADR entries
-   - If signal present: *"This session produced key decisions. Consider running `/loaf:reflect` to update strategic docs."*
+   - If signal present: offer to run `/loaf:reflect` to update strategic docs.
    - If none: stay silent.
 
 ---
@@ -290,7 +303,7 @@ Do not modify, disable, or skip these hooks.
 
 ## Suggests Next
 
-After a successful release, suggest `/loaf:wrap` to summarize the session.
+After a successful release, suggest `/loaf:housekeeping` if session artifacts need archiving.
 
 ## Related Skills
 

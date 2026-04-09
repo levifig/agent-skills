@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.24] - 2026-04-09
+
+### Changed
+- Release skill: tags and GH Releases now created post-merge on `main` instead of pre-merge on feature branch, fixing dangling tag references after squash merge
+- Release skill: housekeeping step orchestrates `/wrap`, `/reflect`, and archive instead of just verifying they were done
+- Session state: Stop hook changed from CLI command (`loaf session state update`) to agent-written prompt hook — drops redundant journal rehash, writes contextual summary
+- Implement skill: description updated to cover all implementation work, not just multi-file tasks
+
+### Added
+- `implement-routing` PreToolUse prompt hook on `Edit|Write` — auto-activates `/implement` for implementation work
+- `getUncommittedCount()` helper for session state display at startup
+
+### Fixed
+- Report and session tests use isolated temp directories (`mkdtempSync` + `realpathSync`) to eliminate flaky failures from cross-file interference in parallel vitest runs
+- Session test timeout increased to 15s to accommodate temp directory operations
+
 ## [2.0.0-dev.23] - 2026-04-08
 
 ### Added

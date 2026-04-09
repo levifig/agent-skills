@@ -73,6 +73,19 @@ hooks:
       timeout: 5000
       description: Advisory reminders before git push
 
+    # Implementation routing — nudge main agent to use /implement for code changes
+    - id: implement-routing
+      skill: implement
+      type: prompt
+      prompt: >-
+        If you're the main conversation agent (not a spawned subagent) and about
+        to make code changes for implementation work, use /implement to orchestrate
+        the work through agent delegation. Skip if /implement is already active
+        or if this is a config/doc/skill edit rather than implementation.
+      matcher: "Edit|Write"
+      timeout: 5000
+      description: Route implementation work through the implement skill
+
     # Orchestration - Commit validation (ENFORCEMENT)
     - id: validate-commit
       skill: orchestration
@@ -175,11 +188,15 @@ hooks:
 
     - id: session-state-update
       skill: orchestration
-      type: command
-      command: 'loaf session state update'
+      type: prompt
+      prompt: >-
+        If this turn involved meaningful work (edits, commits, decisions, task progress),
+        update the active session file's `## Current State` section with a 2-4 line
+        contextual summary. Focus on: current task, pending items, blockers, uncommitted work.
+        Don't rehash journal entries — the journal is right below.
+        Skip silently if this was just a question/answer with no state change.
       event: Stop
-      timeout: 5000
-      description: Update Current State section in session file after each turn
+      description: Prompt agent to write contextual state summary after meaningful turns
 
     - id: pre-compact
       skill: orchestration

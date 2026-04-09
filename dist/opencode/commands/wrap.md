@@ -5,7 +5,7 @@ description: >-
   summary. Use at the end of a work session or when the user asks "wrap up." Not
   for archiving (use housekeeping) or capturing ideas (use idea).
 user-invocable: true
-version: 2.0.0-dev.23
+version: 2.0.0-dev.24
 ---
 
 # Wrap
