@@ -25362,13 +25362,20 @@ ${entry}
   }
   return frontmatter;
 }
-async function appendEntry(filePath, entryLines, updateFrontmatter) {
+async function appendEntry(filePath, entryLines, updateFrontmatter, autoResume) {
   const lockPath = `${filePath}.lock`;
   await acquireLock(lockPath);
+  let didResume = false;
   try {
     const session = readSessionFile(filePath);
     if (!session) {
       throw new Error("Session file not found");
+    }
+    if (autoResume && session.data.status === "stopped") {
+      const ts = getDateTimeString();
+      entryLines = [`[${ts}] session(resume): === SESSION RESUMED ===`, ...entryLines];
+      session.data.status = "active";
+      didResume = true;
     }
     updateFrontmatter(session.data);
     const trimmedContent = session.content.trimEnd();
@@ -25384,6 +25391,7 @@ async function appendEntry(filePath, entryLines, updateFrontmatter) {
   } finally {
     releaseLock(lockPath);
   }
+  return didResume;
 }
 function extractRecentEntries(content, count = 15) {
   const lines = content.split("\n");
@@ -25934,14 +25942,19 @@ function registerSessionCommand(program3) {
     }
     const timestamp = getDateTimeString();
     const formattedEntry = `[${timestamp}] ${entryText}`;
-    await appendEntry(
+    const mayNeedResume = existingSession.data.status === "stopped";
+    const didResume = await appendEntry(
       existingSession.filePath,
       [formattedEntry],
       (data) => {
         data.last_updated = getTimestamp();
         data.last_entry = getTimestamp();
-      }
+      },
+      mayNeedResume
     );
+    if (didResume) {
+      console.log(`  ${green12("\u2713")} Auto-resumed stopped session`);
+    }
     console.log(`  ${green12("\u2713")} Logged: ${cyan9(entryText)}`);
   });
   session.command("archive").description("Archive completed session").option("--branch <branch>", "Archive session for specific branch (default: current)").action(async (options2) => {

@@ -6,7 +6,7 @@ description: >-
   summary. Use at the end of a work session or when the user asks "wrap up." Not
   for archiving (use housekeeping) or capturing ideas (use idea).
 user-invocable: true
-version: 2.0.0-dev.24
+version: 2.0.0-dev.25
 ---
 
 # Wrap
@@ -26,7 +26,7 @@ Responsible session shutdown — everything that needs a conscious model before 
 
 ## Critical Rules
 
-- Log `skill(wrap): <context>` to the session journal as the first action (e.g. "end-of-session summary" or "user requested wrap-up")
+- Log `skill(wrap): <context>` to the session journal as the first action (e.g. "processing end-of-session wrap-up" or "user-requested wrap-up")
 - Never commit, push, or archive without explicit user confirmation
 - Flush journal entries BEFORE generating the report — unrecorded decisions are lost after this conversation
 - Pull from live data (git, filesystem), not memory or assumptions

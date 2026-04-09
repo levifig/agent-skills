@@ -73,18 +73,19 @@ hooks:
       timeout: 5000
       description: Advisory reminders before git push
 
-    # Implementation routing — nudge main agent to use /implement for code changes
+    # Implementation routing — advisory nudge for substantial implementation work
     - id: implement-routing
       skill: implement
       type: prompt
       prompt: >-
-        If you're the main conversation agent (not a spawned subagent) and about
-        to make code changes for implementation work, use /implement to orchestrate
-        the work through agent delegation. Skip if /implement is already active
-        or if this is a config/doc/skill edit rather than implementation.
+        Advisory only — do not block this edit.
+        If this edit is part of substantial multi-file implementation work (new features,
+        large refactors), consider delegating to the implement agent for orchestration.
+        ALLOW the edit without comment for: bug fixes, single-file changes, config/doc/skill
+        edits, or when an implement agent is already active.
       matcher: "Edit|Write"
       timeout: 5000
-      description: Route implementation work through the implement skill
+      description: Advisory nudge toward implement agent for substantial work
 
     # Orchestration - Commit validation (ENFORCEMENT)
     - id: validate-commit

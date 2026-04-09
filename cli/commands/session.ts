@@ -786,14 +786,25 @@ function createSessionFile(
 async function appendEntry(
   filePath: string,
   entryLines: string[],
-  updateFrontmatter: (data: SessionFrontmatter) => void
-): Promise<void> {
+  updateFrontmatter: (data: SessionFrontmatter) => void,
+  autoResume?: boolean
+): Promise<boolean> {
   const lockPath = `${filePath}.lock`;
   await acquireLock(lockPath);
+  let didResume = false;
   try {
     const session = readSessionFile(filePath);
     if (!session) {
       throw new Error("Session file not found");
+    }
+
+    // Auto-resume: re-check status under lock with fresh data to avoid
+    // duplicate RESUMED markers from concurrent loaf session log calls.
+    if (autoResume && session.data.status === "stopped") {
+      const ts = getDateTimeString();
+      entryLines = [`[${ts}] session(resume): === SESSION RESUMED ===`, ...entryLines];
+      session.data.status = "active";
+      didResume = true;
     }
 
     updateFrontmatter(session.data);
@@ -814,6 +825,7 @@ async function appendEntry(
   } finally {
     releaseLock(lockPath);
   }
+  return didResume;
 }
 
 function extractRecentEntries(content: string, count = 15): string[] {
@@ -1533,16 +1545,23 @@ export function registerSessionCommand(program: Command): void {
 
       const timestamp = getDateTimeString();
       const formattedEntry = `[${timestamp}] ${entryText}`;
-      await appendEntry(
+
+      const mayNeedResume = existingSession.data.status === "stopped";
+
+      const didResume = await appendEntry(
         existingSession.filePath,
         [formattedEntry],
         (data: SessionFrontmatter) => {
           data.last_updated = getTimestamp();
           data.last_entry = getTimestamp();
-        }
+        },
+        mayNeedResume
       );
 
-      console.log(`  ${green("✓")} Logged: ${cyan(entryText)}`);
+      if (didResume) {
+        console.log(`  ${green("\u2713")} Auto-resumed stopped session`);
+      }
+      console.log(`  ${green("\u2713")} Logged: ${cyan(entryText)}`);
     });
 
   // ── loaf session archive ───────────────────────────────────────────────────

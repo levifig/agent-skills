@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.25] - 2026-04-09
+
+### Fixed
+- Race condition in auto-resume — check status inside lock (3d539e5)
+- Session auto-resume on log to stopped session, soften implement-routing hook (64b3b2a)
+
 ## [2.0.0-dev.24] - 2026-04-09
 
 ### Changed

@@ -1836,6 +1836,14 @@
       "created": "2026-04-04T12:13:54Z",
       "file": "SPEC-024-harness-native-surface-model.md"
     },
+    "SPEC-029": {
+      "title": "JSONL-Driven Journal Sync",
+      "status": "approved",
+      "requirement": null,
+      "source": "spark — session 20260409-110153",
+      "created": "2026-04-09T12:30:00.000Z",
+      "file": "SPEC-029-jsonl-journal-sync.md"
+    },
     "SPEC-001": {
       "title": "Loaf Self-Sufficiency",
       "status": "complete",
