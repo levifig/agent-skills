@@ -13,7 +13,7 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-04-07'
+last_reviewed: '2026-04-10'
 ---
 
 # Skill Architecture

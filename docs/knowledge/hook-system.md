@@ -8,10 +8,11 @@ covers:
   - config/hooks.yaml
   - cli/commands/check.ts
   - content/hooks/**/*
+  - content/hooks/instructions/**/*
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-04-07'
+last_reviewed: '2026-04-10'
 ---
 
 # Hook System
@@ -39,6 +40,9 @@ Enforcement hooks without explicit `type:` auto-dispatch as `loaf check --hook <
 | SessionEnd | Session ends | No | End session with progress summary |
 | PreCompact | Before context archival | No | State preservation, journal flush |
 | PostCompact | After context compaction | No | Resume from session file, restore working context |
+| UserPromptSubmit | Every user message | No | Context injection, orchestration conventions |
+| TaskCompleted | Task marked complete | No | Journal auto-entry for task events |
+| Stop | Session stops | No | Session state cleanup (caution: circularity risk) |
 
 ### Hook JSON Context
 
@@ -51,10 +55,12 @@ Harnesses pass JSON on stdin to hooks. Key fields:
 | `tool_response` | post-tool only | Tool output (stdout/stderr); used by `--from-hook` to extract PR URLs |
 | `session_id` | session hooks | Claude session identifier; used for new-conversation detection |
 | `agent_id` | session hooks | Present only for subagents; `session start` skips when set (prevents subagent session creation) |
+| `hook_event_name` | session events (TaskCompleted, etc.) | Event type identifier — session events use this instead of `tool_name` |
+| `task_subject`, `task_description` | TaskCompleted | Task details for journal logging |
 
 ## Registration
 
-Hooks are defined in `config/hooks.yaml` grouped under `pre-tool`, `post-tool`, or `session`.
+Hooks are defined in `config/hooks.yaml` grouped under `pre-tool`, `post-tool`, or `session`. For Claude Code, hooks are registered in `hooks/hooks.json` inside the plugin directory — `plugin.json` silently drops non-matcher lifecycle events. See [build-system.md](build-system.md) for details on how hooks are distributed to targets.
 
 ### Fields
 
@@ -98,27 +104,24 @@ Instruction files live in `content/hooks/instructions/` and are rendered into ho
 
 ## Prompt Hooks
 
-Inject inline text into the model's context:
+Inject inline text into the model's context. Prompt hooks are binary gates — any non-empty LLM response blocks the action. Use only for validation that returns empty on success, never for advisory nudges. See [ARCHITECTURE.md](../ARCHITECTURE.md#hook-type-behavioral-constraints) for full behavioral constraints.
 
 | Hook | Event/Condition | Purpose |
 |------|-----------------|---------|
-| `journal-nudge-edits` | PostToolUse (Edit\|Write) | Nudge journal entries after file edits |
-| `journal-nudge-commit` | `Bash(git commit:*)` | Nudge decisions/observations after commits (commit auto-logged separately) |
 | `session-pre-compact-nudge` | PreCompact | Require journal flush and state summary before compaction |
 | `session-post-compact-nudge` | PostCompact | Resume from session file after compaction |
 
 ## Journal Auto-Entry Hooks
 
-Four post-tool command hooks auto-log to the session journal:
+Command hooks that auto-log to the session journal via `loaf session log --from-hook`, which parses the hook JSON (including `tool_response` for PR URLs) to determine entry type:
 
 | Hook | Condition | Logs |
 |------|-----------|------|
-| `journal-post-commit` | `Bash(git commit:*)` | `commit(SHA): message` |
-| `journal-post-pr` | `Bash(gh pr create:*)` | `pr(create): title (#N)` — extracts PR URL from `tool_response` |
-| `journal-post-merge` | `Bash(gh pr merge:*)` | `pr(merge): #N merged` |
-| `detect-linear-magic` | `Bash(git commit:*)` | `discover(linear): found magic words for ISSUE-ID` |
+| `journal-git-events` | `Bash(git commit:*)` | Commits and merges — `commit(SHA): message` |
+| `journal-gh-events` | `Bash(gh pr:*)` | PR creation and merges — `pr(create): title (#N)`, `pr(merge): #N merged` |
+| `journal-task-completed` | TaskCompleted event | Task completions — `task(complete): subject` |
 
-The first three run `loaf session log --from-hook` which parses the hook JSON (including `tool_response` for PR URLs). The Linear hook runs `loaf session log --detect-linear` and only fires when Linear integration is enabled in `.agents/loaf.json`.
+The `detect-linear-magic` hook runs as a pre-tool command (`loaf session log --detect-linear`) and only fires when Linear integration is enabled in `.agents/loaf.json`.
 
 ## Session Lifecycle Hooks
 
@@ -128,9 +131,12 @@ Registered under `session:` in hooks.yaml with an `event:` field:
 |------|-------|----------|---------|
 | `session-start-loaf` | SessionStart | command (`loaf session start`) | Create/resume session, surface context, validate SOUL.md |
 | `session-end-loaf` | SessionEnd | command (`loaf session end --if-active`) | End session with progress summary and KB follow-up |
-| `pre-compact` | PreCompact | script (`hooks/session/compact.sh`) | Append compact entry to journal before compaction |
+| `session-context-inject` | UserPromptSubmit | command (`loaf session context for-prompt`) | Injects session state and orchestration conventions on every user message |
+| `pre-compact` | PreCompact | command (`loaf session context for-compact`) | Log compact marker and inject journal flush instructions before compaction |
+| `post-compact` | PostCompact | command (`loaf session context for-resumption`) | Print session state, spec, journal, and git context for post-compaction resumption |
 | `session-pre-compact-nudge` | PreCompact | prompt | Require journal flush + state summary (see Prompt Hooks) |
 | `session-post-compact-nudge` | PostCompact | prompt | Resume from session file (see Prompt Hooks) |
+| `journal-task-completed` | TaskCompleted | command (`loaf session log --from-hook`) | Auto-logs task completions to journal |
 
 The `session start` command uses `agent_id` from hook JSON to detect subagents -- subagents skip session creation to avoid polluting the parent session.
 
@@ -152,6 +158,16 @@ As of SPEC-020, ~30 shell hooks were migrated to skill instructions (Verificatio
 - Quality hooks (format-check, tdd-advisory, validate-changelog)
 
 The 4 shared bash libraries (`json-parser.sh`, `config-reader.sh`, `agent-detector.sh`, `timeout-manager.sh`) were also removed.
+
+## Hook Type Behavioral Constraints
+
+Hook types have hard behavioral limits discovered through SPEC-026 and SPEC-030. See [ARCHITECTURE.md](../ARCHITECTURE.md#hook-type-behavioral-constraints) for the full list. Key constraints:
+
+- **Prompt hooks** are binary gates — any non-empty LLM response blocks. Never use for advisory guidance.
+- **Agent hooks** are read-only (no Edit/Write/Bash). Max 50 turns.
+- **Command hooks** are the correct primitive for context injection and side effects.
+- **Stop hooks** risk circular re-triggers when writing to monitored files.
+- **PreCompact prompt hooks** don't work outside REPL sessions.
 
 ## Cross-References
 
