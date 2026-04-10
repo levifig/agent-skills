@@ -1,6 +1,9 @@
 ---
 topics: [knowledge, staleness, qmd, covers, growth-loops]
-last_reviewed: 2026-03-14
+covers:
+  - cli/lib/kb/**/*.ts
+  - docs/knowledge/**/*.md
+last_reviewed: '2026-04-10'
 ---
 
 # Knowledge Management Design
