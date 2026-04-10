@@ -32,6 +32,7 @@ Thumbs.db
 
 # Agent work — track everything except ephemeral state
 .agents/transcripts/
+.agents/.loaf-state
 
 # Environment files
 .env

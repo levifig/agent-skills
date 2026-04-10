@@ -131,19 +131,17 @@ When sessions are archived, decisions are extracted to Serena memory:
 
 ## Workflow
 
-### At Archive Time (context-archiver)
+### At Wrap Time (CLI)
 
-1. Read session file
-2. Check for `## Decisions` section
-3. If present, run `extract-decisions.py`
-4. Write output to Serena memory via MCP
+1. `loaf session end --wrap` persists decisions to spec changelog
+2. Session stays in `sessions/` with `status: complete` — no immediate archive
+3. `loaf session housekeeping` archives complete sessions after 7-day age threshold
 
-### At Reference Time (Serena memory)
+### At Reference Time (spec changelog)
 
-1. Search Serena memories for matching sessions
-2. Read selected decision memory
-3. Import into current session
-4. Track in `referenced_sessions` frontmatter
+1. Read linked spec's `## Changelog` section for archived decisions
+2. Decisions are extracted with session branch + timestamp context
+3. Track in `referenced_sessions` frontmatter if importing into current session
 
 ## Serena MCP Integration (Optional)
 

@@ -118,27 +118,20 @@ describe("cursor hooks.json", () => {
 
   it("preserves 'if' on post-tool command hooks (journal auto-entry)", () => {
     const postToolUse = hooksJson.hooks.postToolUse || [];
-    
-    // Find journal-post-commit hook
-    const journalCommit = postToolUse.find(
+
+    // Find journal-git-events hook (git commit)
+    const journalGit = postToolUse.find(
       h => h.command === "loaf session log --from-hook" && h.if?.includes("git commit")
     );
-    expect(journalCommit).toBeDefined();
-    expect(journalCommit?.if).toBe("Bash(git commit:*)");
-    
-    // Find journal-post-pr hook
-    const journalPr = postToolUse.find(
-      h => h.command === "loaf session log --from-hook" && h.if?.includes("gh pr create")
+    expect(journalGit).toBeDefined();
+    expect(journalGit?.if).toBe("Bash(git commit:*)");
+
+    // Find journal-gh-events hook (gh pr create + merge)
+    const journalGh = postToolUse.find(
+      h => h.command === "loaf session log --from-hook" && h.if?.includes("gh pr")
     );
-    expect(journalPr).toBeDefined();
-    expect(journalPr?.if).toBe("Bash(gh pr create:*)");
-    
-    // Find journal-post-merge hook
-    const journalMerge = postToolUse.find(
-      h => h.command === "loaf session log --from-hook" && h.if?.includes("gh pr merge")
-    );
-    expect(journalMerge).toBeDefined();
-    expect(journalMerge?.if).toBe("Bash(gh pr merge:*)");
+    expect(journalGh).toBeDefined();
+    expect(journalGh?.if).toBe("Bash(gh pr:*)");
   });
 
   it("preserves 'failClosed' on enforcement hooks", () => {
@@ -198,27 +191,30 @@ describe("cursor hooks.json", () => {
 // Claude Code Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("claude-code plugin.json", () => {
-  let pluginJson: ClaudePluginJson;
+describe("claude-code hooks.json", () => {
+  let ccHooks: ClaudePluginJson;
 
   beforeAll(() => {
-    const pluginPath = join(PLUGINS_DIR, "loaf", ".claude-plugin", "plugin.json");
-    if (!existsSync(pluginPath)) {
-      throw new Error("plugin.json not found. Run `npm run build` first.");
+    const hooksPath = join(PLUGINS_DIR, "loaf", "hooks", "hooks.json");
+    if (!existsSync(hooksPath)) {
+      throw new Error("hooks/hooks.json not found. Run `npm run build` first.");
     }
-    pluginJson = JSON.parse(readFileSync(pluginPath, "utf-8")) as ClaudePluginJson;
+    ccHooks = JSON.parse(readFileSync(hooksPath, "utf-8")) as ClaudePluginJson;
   });
 
-  it("has required top-level fields", () => {
-    expect(pluginJson.name).toBe("loaf");
-    expect(pluginJson.version).toBeDefined();
-    expect(pluginJson.hooks).toBeDefined();
+  it("has hooks top-level key", () => {
+    expect(ccHooks.hooks).toBeDefined();
+  });
+
+  it("plugin.json has no hooks key (all hooks in hooks.json)", () => {
+    const pluginPath = join(PLUGINS_DIR, "loaf", ".claude-plugin", "plugin.json");
+    const pluginJson = JSON.parse(readFileSync(pluginPath, "utf-8"));
+    expect(pluginJson.hooks).toBeUndefined();
   });
 
   it("preserves 'if' on pre-tool instruction hooks", () => {
-    const preToolUse = pluginJson.hooks.PreToolUse || [];
+    const preToolUse = ccHooks.hooks.PreToolUse || [];
 
-    // Find workflow-pre-merge hook (instruction hook with cat command)
     const bashMatcher = preToolUse.find(m => m.matcher === "Bash");
     expect(bashMatcher).toBeDefined();
 
@@ -230,32 +226,23 @@ describe("claude-code plugin.json", () => {
   });
 
   it("preserves 'if' on post-tool command hooks (journal auto-entry)", () => {
-    const postToolUse = pluginJson.hooks.PostToolUse || [];
-    
+    const postToolUse = ccHooks.hooks.PostToolUse || [];
+
     const bashMatcher = postToolUse.find(m => m.matcher === "Bash");
     expect(bashMatcher).toBeDefined();
-    
-    // Find journal-post-pr hook
-    const journalPr = bashMatcher?.hooks.find(
-      h => h.type === "command" && 
+
+    // Find journal-gh-events hook (gh pr create + merge)
+    const journalGh = bashMatcher?.hooks.find(
+      h => h.type === "command" &&
            h.command?.includes("session log --from-hook") &&
-           h.if?.includes("gh pr create")
+           h.if?.includes("gh pr")
     );
-    expect(journalPr).toBeDefined();
-    expect(journalPr?.if).toBe("Bash(gh pr create:*)");
-    
-    // Find journal-post-merge hook
-    const journalMerge = bashMatcher?.hooks.find(
-      h => h.type === "command" && 
-           h.command?.includes("session log --from-hook") &&
-           h.if?.includes("gh pr merge")
-    );
-    expect(journalMerge).toBeDefined();
-    expect(journalMerge?.if).toBe("Bash(gh pr merge:*)");
+    expect(journalGh).toBeDefined();
+    expect(journalGh?.if).toBe("Bash(gh pr:*)");
   });
 
   it("preserves 'failClosed' on enforcement hooks", () => {
-    const preToolUse = pluginJson.hooks.PreToolUse || [];
+    const preToolUse = ccHooks.hooks.PreToolUse || [];
 
     const bashMatcher = preToolUse.find(m => m.matcher === "Bash");
     expect(bashMatcher).toBeDefined();
@@ -269,16 +256,16 @@ describe("claude-code plugin.json", () => {
   });
 
   it("preserves 'matcher' on PreToolUse hooks", () => {
-    const preToolUse = pluginJson.hooks.PreToolUse || [];
-    
+    const preToolUse = ccHooks.hooks.PreToolUse || [];
+
     for (const matcherGroup of preToolUse) {
       expect(matcherGroup.matcher).toBeDefined();
     }
   });
 
   it("preserves 'timeout' on hooks", () => {
-    const preToolUse = pluginJson.hooks.PreToolUse || [];
-    
+    const preToolUse = ccHooks.hooks.PreToolUse || [];
+
     for (const matcherGroup of preToolUse) {
       for (const hook of matcherGroup.hooks) {
         expect(hook.timeout).toBeDefined();
@@ -288,12 +275,11 @@ describe("claude-code plugin.json", () => {
   });
 
   it("preserves 'description' on hooks", () => {
-    const preToolUse = pluginJson.hooks.PreToolUse || [];
-    
+    const preToolUse = ccHooks.hooks.PreToolUse || [];
+
     const bashMatcher = preToolUse.find(m => m.matcher === "Bash");
     expect(bashMatcher).toBeDefined();
-    
-    // validate-push should have a description
+
     const validatePush = bashMatcher?.hooks.find(
       h => h.type === "command" && h.command?.includes("validate-push")
     );
@@ -337,8 +323,7 @@ describe("runtime if matching behavior", () => {
     
     // Should include journal hooks with if conditions
     expect(postToolHooksData).toContain('"Bash(git commit:*)"');
-    expect(postToolHooksData).toContain('"Bash(gh pr create:*)"');
-    expect(postToolHooksData).toContain('"Bash(gh pr merge:*)"');
+    expect(postToolHooksData).toContain('"Bash(gh pr:*)"');
   });
 
   it("runtime checks if condition before executing hook", () => {

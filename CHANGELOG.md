@@ -7,11 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.0-dev.25] - 2026-04-09
+## [2.0.0-dev.26] - 2026-04-10
+
+### Added
+- `loaf session housekeeping` command — orphan detection, split consolidation, age-based archival, spec linkage repair
+- `.loaf-state` trigger mechanism — `SessionEnd` flags housekeeping due, `SessionStart` surfaces nudge
+- `/wrap` skill — interactive+scripted session close with `loaf session end --wrap`
+- `loaf session context for-compact` — PreCompact journal flush + nudge instructions (replaces `compact.sh`)
+- `loaf session context for-resumption` — PostCompact rich resumption context
+- Librarian agent profile — Ent lore, behavioral contract, `Read + Edit (.agents/)` tool scope
+- `TaskCompleted` session hook — auto-logs task completions to session journal
+- `UserPromptSubmit` hook — injects Implementation Principles on every prompt
+- `claude_session_id`-first session lookup with split consolidation on start
+
+### Changed
+- All hooks moved from `plugin.json` to `hooks/hooks.json` (`plugin.json` silently drops non-matcher events)
+- Absorb `context-archiver` agent into Librarian profile (decisions persist to spec changelog)
+- Journal `PostToolUse` hooks consolidated: `git commit` + `gh pr` (specific `if` conditions)
+- `UserPromptSubmit` hook uses `type: command` (not `type: prompt` — prompt type acts as gate/validator)
+- Implementation Principles: question-guard, task-before-tool rule
+- Journal Discipline: git events auto-logged by hooks, manual logging removed
+- Release skill: `/wrap` runs after version bump, `AskUserQuestion` for all decisions, `/reflect` always post-merge
 
 ### Fixed
-- Race condition in auto-resume — check status inside lock (3d539e5)
-- Session auto-resume on log to stopped session, soften implement-routing hook (64b3b2a)
+- `TaskCompleted` hook handler — uses `hook_event_name` (not `tool_name`), logs `task_description` for richer context
+- `claude_session_id` priority over branch for session lookup
+- `appendEntry` blank line handling after `session(stop)` markers
 
 ## [2.0.0-dev.24] - 2026-04-09
 

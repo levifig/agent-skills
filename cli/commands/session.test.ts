@@ -516,7 +516,7 @@ describe("session: end", () => {
     expect(content).toContain("claude_session_id: sess-unique-456");
   });
 
-  it("writes resume entries when session_id changes between conversations", async () => {
+  it("creates new session file when session_id changes between conversations", async () => {
     const repoPath = createTempRepo("session-id-change-test");
 
     // First conversation
@@ -528,15 +528,24 @@ describe("session: end", () => {
     await runLoaf(["start"], { cwd: repoPath, input: hookJson2 });
 
     const sessionFiles = getSessionFiles(repoPath);
-    expect(sessionFiles.length).toBe(1); // Same file, not a new one
+    expect(sessionFiles.length).toBe(2); // New file for new conversation
 
-    const content = readFileSync(
-      join(repoPath, ".agents/sessions", sessionFiles[0]),
-      "utf-8"
+    // Identify old vs new by content (ordering may vary due to collision suffix)
+    const contents = sessionFiles.map(f =>
+      readFileSync(join(repoPath, ".agents/sessions", f), "utf-8")
     );
-    // STOPPED is written by session end; RESUMED written by session start
-    expect(content).toContain("claude_session_id: sess-second");
-    expect(content).toContain("=== SESSION RESUMED ===");
+    const oldContent = contents.find(c => c.includes("claude_session_id: sess-first"))!;
+    const newContent = contents.find(c => c.includes("claude_session_id: sess-second"))!;
+
+    expect(oldContent).toBeDefined();
+    expect(newContent).toBeDefined();
+
+    // Old session should be stopped
+    expect(oldContent).toContain("status: stopped");
+    expect(oldContent).toContain("closed by new conversation");
+
+    // New session should be active
+    expect(newContent).toContain("status: active");
   });
 
   it("does not write PAUSE when same session_id reconnects", async () => {
@@ -830,5 +839,166 @@ describe("session: state", () => {
 
     const result = await runLoaf(["state", "update"], { cwd: repoPath });
     expect(result.exitCode).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Housekeeping Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("session housekeeping", () => {
+  it("runs with no sessions without error", async () => {
+    const repoPath = createTempRepo("housekeeping-empty");
+
+    const result = await runLoaf(["housekeeping", "--dry-run"], { cwd: repoPath });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("No sessions");
+  });
+
+  it("detects orphaned sessions (branch deleted)", async () => {
+    const repoPath = createTempRepo("housekeeping-orphan");
+    const sessionsDir = join(repoPath, ".agents/sessions");
+    mkdirSync(sessionsDir, { recursive: true });
+
+    // Create a session for a branch that doesn't exist
+    writeFileSync(
+      join(sessionsDir, "20260401-120000-session.md"),
+      [
+        "---",
+        "branch: feat/deleted-branch",
+        "status: stopped",
+        `created: '2026-04-01T12:00:00.000Z'`,
+        "---",
+        "# Session: Test",
+        "",
+        "## Journal",
+        "",
+        "[2026-04-01 12:00] session(start):  === SESSION STARTED ===",
+        "[2026-04-01 12:05] decision(test): some decision",
+        "",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    const result = await runLoaf(["housekeeping", "--dry-run"], { cwd: repoPath });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Orphan needs review");
+    expect(result.stdout).toContain("feat/deleted-branch");
+  });
+
+  it("archives empty orphans (no journal activity)", async () => {
+    const repoPath = createTempRepo("housekeeping-empty-orphan");
+    const sessionsDir = join(repoPath, ".agents/sessions");
+    mkdirSync(sessionsDir, { recursive: true });
+
+    // Create an empty session for a deleted branch
+    writeFileSync(
+      join(sessionsDir, "20260401-120000-session.md"),
+      [
+        "---",
+        "branch: feat/gone-branch",
+        "status: stopped",
+        `created: '2026-04-01T12:00:00.000Z'`,
+        "---",
+        "# Session: Test",
+        "",
+        "## Journal",
+        "",
+        "[2026-04-01 12:00] session(start):  === SESSION STARTED ===",
+        "",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    const result = await runLoaf(["housekeeping"], { cwd: repoPath });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Archived empty orphan");
+
+    // Should have moved to archive
+    const archiveDir = join(sessionsDir, "archive");
+    expect(existsSync(archiveDir)).toBe(true);
+    const archived = readdirSync(archiveDir).filter(f => f.endsWith(".md"));
+    expect(archived.length).toBe(1);
+  });
+
+  it("archives complete sessions older than 7 days", async () => {
+    const repoPath = createTempRepo("housekeeping-age");
+    const sessionsDir = join(repoPath, ".agents/sessions");
+    mkdirSync(sessionsDir, { recursive: true });
+
+    const oldDate = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Create a complete session that's 10 days old
+    writeFileSync(
+      join(sessionsDir, "20260330-120000-session.md"),
+      [
+        "---",
+        "branch: main",
+        "status: complete",
+        `created: '${oldDate}'`,
+        `last_updated: '${oldDate}'`,
+        "---",
+        "# Session: Old Complete",
+        "",
+        "## Journal",
+        "",
+        "[2026-03-30 12:00] session(start):  === SESSION STARTED ===",
+        "",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    const result = await runLoaf(["housekeeping"], { cwd: repoPath });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Archived:");
+    expect(result.stdout).toContain("complete, 10d old");
+  });
+
+  it("writes .loaf-state after housekeeping run", async () => {
+    const repoPath = createTempRepo("housekeeping-state");
+    const agentsDir = join(repoPath, ".agents");
+
+    const result = await runLoaf(["housekeeping"], { cwd: repoPath });
+    expect(result.exitCode).toBe(0);
+
+    const statePath = join(agentsDir, ".loaf-state");
+    expect(existsSync(statePath)).toBe(true);
+
+    const state = JSON.parse(readFileSync(statePath, "utf-8"));
+    expect(state.last_housekeeping).toBeDefined();
+    expect(state.housekeeping_pending).toBe(false);
+  });
+
+  it("dry run does not modify files", async () => {
+    const repoPath = createTempRepo("housekeeping-dry");
+    const sessionsDir = join(repoPath, ".agents/sessions");
+    mkdirSync(sessionsDir, { recursive: true });
+
+    const oldDate = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+    writeFileSync(
+      join(sessionsDir, "20260330-120000-session.md"),
+      [
+        "---",
+        "branch: main",
+        "status: complete",
+        `created: '${oldDate}'`,
+        `last_updated: '${oldDate}'`,
+        "---",
+        "# Session: Test",
+        "",
+        "## Journal",
+        "",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    const result = await runLoaf(["housekeeping", "--dry-run"], { cwd: repoPath });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("dry run");
+
+    // Session should still be in place (not archived)
+    expect(existsSync(join(sessionsDir, "20260330-120000-session.md"))).toBe(true);
+    const archiveDir = join(sessionsDir, "archive");
+    expect(existsSync(archiveDir)).toBe(false);
   });
 });

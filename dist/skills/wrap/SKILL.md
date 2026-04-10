@@ -3,8 +3,10 @@ name: wrap
 description: >-
   Responsible session shutdown: flushes journal entries, surfaces loose ends,
   prompts for action on uncommitted/unpushed work, and generates a structured
-  summary. Use at the end of a work session or when the user asks "wrap up." Not
-  for archiving (use housekeeping) or capturing ideas (use idea).
+  summary that replaces Current State. Use at the end of a work session or when
+  the user asks "wrap up." Not for archiving (use housekeeping) or capturing
+  ideas (use idea). Produces a Session Wrap-Up section and closes the session
+  with complete status.
 ---
 
 # Wrap
@@ -19,24 +21,29 @@ Responsible session shutdown — everything that needs a conscious model before 
 - Critical Rules
 - Verification
 - Quick Reference
-- Process
+- Interactive Steps
+- Scripted Close
 - Report Format
 
 ## Critical Rules
 
-- Log `skill(wrap): <context>` to the session journal as the first action (e.g. "processing end-of-session wrap-up" or "user-requested wrap-up")
+- Log `skill(wrap): <context>` to the session journal as the first action (e.g. "end-of-session summary" or "user requested wrap-up")
+- **Use `AskUserQuestion` for all decisions and confirmations** — commit, push, stash, or skip choices. Never use inline text questions for permission prompts
 - Never commit, push, or archive without explicit user confirmation
 - Flush journal entries BEFORE generating the report — unrecorded decisions are lost after this conversation
 - Pull from live data (git, filesystem), not memory or assumptions
 - Keep the report concise — one screen, not a wall of text
 - Scope to THIS session, not the full backlog
+- Do NOT archive — session stays with `complete` status. Archival is housekeeping's job
 
 ## Verification
 
 - All decisions and discoveries from this session are in the journal
 - Uncommitted/unpushed state is surfaced with clear action prompts
 - Stale KB files are flagged if any
-- Report covers all non-empty sections
+- `## Session Wrap-Up` section written to session file (replaces `## Current State`)
+- `loaf session end --wrap` run after writing the summary
+- Session status is `complete` (session stays open for further journal entries until `SessionEnd` fires)
 
 ## Quick Reference
 
@@ -48,7 +55,9 @@ Responsible session shutdown — everything that needs a conscious model before 
 | Ideas | Session journal `spark()` entries + new `.agents/ideas/` files |
 | Loose ends | Unresolved `todo()`/`block()`, stale KB |
 
-## Process
+## Interactive Steps
+
+These steps require conversation context — only the model can do them.
 
 ### Step 1: Flush Journal
 
@@ -58,7 +67,7 @@ Before anything else, review the conversation for unrecorded work:
 2. **Discoveries** — anything learned that future sessions would benefit from
 3. **Todos** — action items that came up but weren't captured
 
-Log each via `loaf session log` before proceeding. This is the last chance — SessionEnd fires after the model is gone.
+Log each via `loaf session log` before proceeding. This is the last chance — the journal IS the external memory.
 
 ### Step 2: Gather Data
 
@@ -86,32 +95,51 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 | No `/loaf:housekeeping` this session | "No housekeeping run this session — run `/loaf:housekeeping` now?" |
 
 **Detection logic:**
-- **Changelog entries:** check if the current branch has commits vs the base branch (e.g., `git rev-list --count origin/main..HEAD`) AND `CHANGELOG.md` `[Unreleased]` section has no list items (`^[-*]\s`). If both are true, prompt — the `workflow-pre-pr` hook would catch this at PR time, but catching it now gives the user time to write thoughtful entries. **Skip when HEAD is tagged** (post-release state where entries were moved to a version header by `loaf release`).
+- **Changelog entries:** check if the current branch has commits vs the base branch (e.g., `git rev-list --count origin/main..HEAD`) AND `CHANGELOG.md` `[Unreleased]` section has no list items (`^[-*]\s`). If both are true, prompt. **Skip when HEAD is tagged** (post-release state).
 - **Housekeeping:** scan session journal for `skill(housekeeping)` entry. If absent and the session had significant work, suggest it.
-- **Version bump:** scan session journal for `decision(release)` entry. If absent and the session has commits, offer to run `loaf release --bump prerelease --no-gh --yes`. This bumps the version, generates changelog from commits, rebuilds, commits, and tags — handling both CHANGELOG and version in one step.
+- **Version bump:** scan session journal for `decision(release)` entry. If absent and the session has commits, offer to run `loaf release --bump prerelease --no-gh --yes`.
 
 ### Step 4: Generate Report
 
 Assemble the report per the format below. Omit empty sections — don't show "None" placeholders.
 
-### Step 5: Write Report to Session File
+### Step 5: Write Wrap Summary to Session File
 
-Write the `## Session Wrap-Up` section into the active session file, directly above `## Current State`. The `## Current State` section is always present (updated on every Stop event), so use it as the insertion anchor.
+Write the `## Session Wrap-Up` section into the active session file, **replacing** `## Current State`. The wrap summary IS the final state — it's a superset that includes everything Current State had plus the structured report.
 
-Use the Edit tool to insert the wrap-up section. The session file layout after wrap should be:
+Use the Edit tool to replace `## Current State (...)` and everything below it (up to `## Journal`) with the wrap-up section. The session file layout after wrap should be:
 
 ```
 # Session: Title
 
-## Session Wrap-Up        ← you write this
+## Session Wrap-Up        ← you write this (replaces Current State)
 ...
-
-## Current State (...)    ← already exists (Stop hook)
 
 ## Journal                ← append-only log
 ```
 
-This persists the wrap-up in the session file so it survives archival and can be read by future sessions or `/reflect`.
+## Scripted Close
+
+After writing the wrap summary, run:
+
+```bash
+loaf session end --wrap
+```
+
+This handles the mechanical bookkeeping:
+- Appends `session(wrap)` marker to the journal (NOT `session(end)` or `session(stop)`)
+- Sets session status to `complete`
+- Persists decisions to linked spec changelog
+- Strips any remaining `## Current State` section (if the Edit didn't fully replace it)
+- Flags stale knowledge files
+
+**The session stays open for further work** (merge commits, changelog fixes, etc.). The `SessionEnd` hook writes the actual `session(stop)` marker when the conversation ends. This prevents journal entries appearing after stop markers.
+
+**Do not archive.** The session stays in `sessions/` with `complete` status. Archival is housekeeping's job.
+
+## Composability
+
+When called from `/release`, wrap runs the same steps but skips the version bump prompt (release already handles it). The `/release` skill should invoke `/wrap` first, then proceed with release steps.
 
 ## Suggests Next
 

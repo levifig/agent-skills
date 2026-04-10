@@ -5,7 +5,7 @@ description: >-
   /implement, /implement, and all loaf subcommands. Use when you need to know
   which CLI command to invoke. Not for skill documentation (use the skill's own
   SKILL.md) or for understanding build internals.
-version: 2.0.0-dev.25
+version: 2.0.0-dev.26
 ---
 
 # Loaf CLI Reference

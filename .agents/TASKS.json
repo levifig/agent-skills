@@ -1836,13 +1836,13 @@
       "created": "2026-04-04T12:13:54Z",
       "file": "SPEC-024-harness-native-surface-model.md"
     },
-    "SPEC-029": {
-      "title": "JSONL-Driven Journal Sync",
-      "status": "approved",
+    "SPEC-030": {
+      "title": "Librarian agent — session lifecycle management via task-driven journaling",
+      "status": "complete",
       "requirement": null,
-      "source": "spark — session 20260409-110153",
-      "created": "2026-04-09T12:30:00.000Z",
-      "file": "SPEC-029-jsonl-journal-sync.md"
+      "source": "20260409-140251-session-lifecycle-states.md",
+      "created": "2026-04-09T15:30:00.000Z",
+      "file": "SPEC-030-keeper-agent-session-lifecycle.md"
     },
     "SPEC-001": {
       "title": "Loaf Self-Sufficiency",

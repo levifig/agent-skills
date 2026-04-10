@@ -73,20 +73,6 @@ hooks:
       timeout: 5000
       description: Advisory reminders before git push
 
-    # Implementation routing — advisory nudge for substantial implementation work
-    - id: implement-routing
-      skill: implement
-      type: prompt
-      prompt: >-
-        Advisory only — do not block this edit.
-        If this edit is part of substantial multi-file implementation work (new features,
-        large refactors), consider delegating to the implement agent for orchestration.
-        ALLOW the edit without comment for: bug fixes, single-file changes, config/doc/skill
-        edits, or when an implement agent is already active.
-      matcher: "Edit|Write"
-      timeout: 5000
-      description: Advisory nudge toward implement agent for substantial work
-
     # Orchestration - Commit validation (ENFORCEMENT)
     - id: validate-commit
       skill: orchestration
@@ -135,42 +121,26 @@ hooks:
       timeout: 5000
       description: Inject housekeeping checklist after successful gh pr merge
 
-    # Session Journal Auto-Entry Hooks
-    - id: journal-post-commit
+    # Session Journal Auto-Entry — Git Events
+    # --from-hook parses stdin JSON to determine entry type (commit, PR, merge),
+    # exits silently for unrecognized commands. Split into git/gh for efficient matching.
+    - id: journal-git-events
       skill: orchestration
       type: command
       command: 'loaf session log --from-hook'
       matcher: "Bash"
       if: "Bash(git commit:*)"
       timeout: 30000
-      description: Auto-log commit entry to session journal
+      description: Auto-log git commits to session journal
 
-    - id: journal-post-pr
+    - id: journal-gh-events
       skill: orchestration
       type: command
       command: 'loaf session log --from-hook'
       matcher: "Bash"
-      if: "Bash(gh pr create:*)"
+      if: "Bash(gh pr:*)"
       timeout: 30000
-      description: Auto-log PR creation entry to session journal
-
-    - id: journal-post-merge
-      skill: orchestration
-      type: command
-      command: 'loaf session log --from-hook'
-      matcher: "Bash"
-      if: "Bash(gh pr merge:*)"
-      timeout: 30000
-      description: Auto-log merge entry to session journal
-
-    # Journal nudge — best-effort catch for unlogged significant work
-    - id: journal-nudge
-      skill: orchestration
-      type: prompt
-      prompt: "SILENT journal check — if this tool use completed significant work (a review, decision, discovery, or milestone), log it via `loaf session log` before responding. If not, continue your response without commenting on this check. Never stop your response to explain why something is or isn't significant."
-      matcher: "Agent|WebFetch|WebSearch"
-      timeout: 5000
-      description: Nudge journal entries after significant tool use
+      description: Auto-log GitHub PR events (create, merge) to session journal
 
   session:
     - id: session-start-loaf
@@ -187,56 +157,43 @@ hooks:
       event: SessionEnd
       description: End session with progress summary and KB follow-up
 
-    - id: session-state-update
+    # Task lifecycle — auto-log completions and cancellations
+    - id: journal-task-completed
       skill: orchestration
-      type: prompt
-      prompt: >-
-        If this turn involved meaningful work (edits, commits, decisions, task progress),
-        update the active session file's `## Current State` section with a 2-4 line
-        contextual summary. Focus on: current task, pending items, blockers, uncommitted work.
-        Don't rehash journal entries — the journal is right below.
-        Skip silently if this was just a question/answer with no state change.
-      event: Stop
-      description: Prompt agent to write contextual state summary after meaningful turns
+      type: command
+      command: 'loaf session log --from-hook'
+      event: TaskCompleted
+      timeout: 30000
+      description: Auto-log task completion or cancellation to session journal
 
+    # Context injection — implementation principles on every user prompt
+    # Must be type: command (exit 0 = inject stdout as context).
+    # type: prompt on UserPromptSubmit acts as a gate/validator, not context injection.
+    - id: session-context-inject
+      skill: orchestration
+      type: command
+      command: 'loaf session context for-prompt'
+      event: UserPromptSubmit
+      timeout: 5000
+      description: Inject session context and implementation conventions on prompt submit
+
+    # PreCompact — log compact marker + inject journal flush instructions
+    # Single command replaces compact.sh + prompt nudge. Must be type: command,
+    # not prompt (prompt stop hooks not supported outside REPL).
     - id: pre-compact
       skill: orchestration
-      script: hooks/session/compact.sh
+      type: command
+      command: 'loaf session context for-compact'
       event: PreCompact
       timeout: 60000
-      description: Append compact entry to session journal before context compaction
-
-    # PreCompact nudge — journal is compaction insurance
-    - id: session-pre-compact-nudge
-      skill: orchestration
-      type: prompt
-      prompt: >-
-        CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.
-
-        REQUIRED — two actions before the model responds:
-
-        1. **Flush journal entries.** Log all unrecorded decisions, discoveries, and progress:
-           - `decision(scope): key decisions made this session`
-           - `discover(scope): important findings`
-           - `finding(scope): analysis result`
-           Run `loaf session log "type(scope): description"` for each.
-
-        2. **Write state summary.** Replace the session file's `## Current State` heading
-           with `## Current State (YYYY-MM-DD HH:MM)` (current timestamp) and write
-           a condensed summary of: what was accomplished, current work state,
-           key decisions, git state, and next steps. This section is the resumption
-           context after compaction — write it as if briefing a colleague who just
-           walked in. The timestamp lets future compactions detect stale summaries.
-
-        The journal IS your external memory. Entries not flushed now are lost forever.
-      event: PreCompact
-      description: Require journal flush and state summary before context compaction
+      description: Log compact marker and inject journal flush instructions before compaction
 
 
-    # PostCompact — print Current State and instruct journal read
+    # PostCompact — print rich resumption context for model and user
     - id: post-compact
       skill: orchestration
-      script: hooks/session/post-compact.sh
+      type: command
+      command: 'loaf session context for-resumption'
       event: PostCompact
       timeout: 60000
-      description: Print session Current State and instruct model to read journal for resumption
+      description: Print session state, spec, journal, and git context for post-compaction resumption

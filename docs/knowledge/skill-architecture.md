@@ -73,8 +73,8 @@ SPEC-014 replaced 8 role-based agents with 3 functional profiles and 2 system pr
 | **implementer** | Smith (Dwarf) | Full write | Code, tests, config, docs — specialty via skills |
 | **reviewer** | Sentinel (Elf) | Read-only | Audits, reviews — mechanical independence |
 | **researcher** | Ranger (Human) | Read + web | Research, comparison — structured reports |
+| **librarian** | Librarian (Ent) | Read + Edit (.agents/) | Session lifecycle, state, wrap, pre-compaction preservation |
 | **background-runner** | System | Read + Edit | Async non-blocking tasks |
-| **context-archiver** | System | Read + Edit + Serena | Session preservation |
 
 Skills load into profiles at spawn time. What an agent *can do* is fixed by profile; what it *knows* comes from skills.
 

@@ -79,12 +79,11 @@ The main session is the Warden — a persistent coordinator identity defined in 
 
 Each profile is defined in `content/agents/{implementer,reviewer,researcher}.md` — a minimal behavioral contract and tool boundary, not domain knowledge. A spawned Smith becomes a backend engineer, DBA, or devops engineer depending entirely on the skills loaded at spawn time.
 
-**2 System Agents (unchanged):**
+**1 System Agent:**
 
 | Agent | Purpose |
 |-------|---------|
 | background-runner | Async non-blocking tasks (haiku model) |
-| context-archiver | Session preservation before context compaction |
 
 **Council Composition:**
 

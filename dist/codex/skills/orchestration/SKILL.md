@@ -6,7 +6,7 @@ description: >-
   agents, or coordinating cross-cutting work across multiple agents. Not for
   single-task implementation (use direct tool delegation) or solo research (use
   research).
-version: 2.0.0-dev.25
+version: 2.0.0-dev.26
 ---
 
 # Orchestration
@@ -71,7 +71,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 | Feature planning | Size by complexity, shape before building |
 | Agent selection | Match domain expertise to task |
 | Stuck on task | Check priority order, consider reshaping |
-| Pre-compaction | Spawn context-archiver to preserve state |
+| Pre-compaction | CLI hooks handle journal flush + resumption context |
 | Low-priority work | Spawn background-runner with run_in_background |
 | New feature workflow | Research -> Architecture -> Shape -> Breakdown -> Implement |
 

@@ -135,7 +135,8 @@ type EntryType =
   | "try"
   | "reject"
   | "compact"
-  | "skill";
+  | "skill"
+  | "wrap";
 
 interface JournalEntry {
   type: EntryType;
@@ -150,6 +151,62 @@ interface SpecFrontmatterWithBranch {
   status?: string;
   session?: string;
   [key: string]: unknown;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// .loaf-state — Local Machine State (gitignored)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface LoafState {
+  last_housekeeping?: string;  // ISO timestamp
+  housekeeping_pending?: boolean;
+}
+
+/** 24 hours in milliseconds */
+const HOUSEKEEPING_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+function getLoafStatePath(agentsDir: string): string {
+  return join(agentsDir, ".loaf-state");
+}
+
+function readLoafState(agentsDir: string): LoafState {
+  const statePath = getLoafStatePath(agentsDir);
+  if (!existsSync(statePath)) return {};
+  try {
+    return JSON.parse(readFileSync(statePath, "utf-8")) as LoafState;
+  } catch {
+    return {};
+  }
+}
+
+function writeLoafState(agentsDir: string, state: LoafState): void {
+  writeFileSync(getLoafStatePath(agentsDir), JSON.stringify(state, null, 2) + "\n", "utf-8");
+}
+
+/** Check if housekeeping is due (>24h since last run) and set pending flag */
+function checkHousekeepingDue(agentsDir: string): void {
+  const state = readLoafState(agentsDir);
+  const lastRun = state.last_housekeeping ? new Date(state.last_housekeeping).getTime() : 0;
+  const age = Date.now() - lastRun;
+
+  if (age > HOUSEKEEPING_INTERVAL_MS) {
+    state.housekeeping_pending = true;
+    writeLoafState(agentsDir, state);
+  }
+}
+
+/** Mark housekeeping as completed */
+function markHousekeepingDone(agentsDir: string): void {
+  const state = readLoafState(agentsDir);
+  state.last_housekeeping = new Date().toISOString();
+  state.housekeeping_pending = false;
+  writeLoafState(agentsDir, state);
+}
+
+/** Check if housekeeping is pending and should run */
+function isHousekeepingPending(agentsDir: string): boolean {
+  const state = readLoafState(agentsDir);
+  return !!state.housekeeping_pending;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -477,9 +534,17 @@ function updateSpecSessionField(agentsDir: string, specId: string, sessionFileNa
   }
 }
 
-/** Get session file path (timestamped filename per SPEC-020) */
+/** Get session file path (timestamped filename per SPEC-020, with collision avoidance) */
 function getSessionFilePath(agentsDir: string): string {
-  return join(agentsDir, "sessions", `${getTimestampForFilename()}-session.md`);
+  const sessionsDir = join(agentsDir, "sessions");
+  const base = getTimestampForFilename();
+  let path = join(sessionsDir, `${base}-session.md`);
+  let counter = 1;
+  while (existsSync(path)) {
+    path = join(sessionsDir, `${base}-${counter}-session.md`);
+    counter++;
+  }
+  return path;
 }
 
 /** Get timestamp in filename format: YYYYMMDD-HHMMSS */
@@ -492,6 +557,119 @@ function getTimestampForFilename(): string {
   const minute = String(now.getMinutes()).padStart(2, '0');
   const second = String(now.getSeconds()).padStart(2, '0');
   return `${year}${month}${day}-${hour}${minute}${second}`;
+}
+
+/** Extract journal entries from session content (lines matching [YYYY-MM-DD HH:MM] pattern) */
+function extractJournalLines(content: string): string[] {
+  return content.split("\n").filter(line => /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] /.test(line));
+}
+
+/** Merge journal entries from a secondary session into a primary session file */
+function consolidateSession(primaryPath: string, secondary: { filePath: string; data: SessionFrontmatter; content: string }, agentsDir: string): void {
+  const primary = readSessionFile(primaryPath);
+  if (!primary) return;
+
+  // Extract journal entries from secondary that aren't already in primary
+  const primaryEntries = new Set(extractJournalLines(primary.content));
+  const secondaryEntries = extractJournalLines(secondary.content);
+  const newEntries = secondaryEntries.filter(e => !primaryEntries.has(e));
+
+  if (newEntries.length > 0) {
+    // Append new entries before the last line of the journal
+    const timestamp = getDateTimeString();
+    const mergeMarker = `[${timestamp}] session(merge): consolidated from ${basename(secondary.filePath)}`;
+    const entriesToAdd = [mergeMarker, ...newEntries];
+
+    // Use appendEntry synchronously via direct file manipulation
+    const trimmedContent = primary.content.trimEnd();
+    const newContent = matter.stringify(
+      trimmedContent + "\n" + entriesToAdd.join("\n") + "\n",
+      { ...primary.data, last_updated: getTimestamp(), last_entry: getTimestamp() } as unknown as Record<string, unknown>
+    );
+    writeFileAtomic(primaryPath, newContent);
+  }
+
+  // Delete the duplicate — its content is now in the primary
+  try { unlinkSync(secondary.filePath); } catch { /* already gone */ }
+}
+
+/** Find session by claude_session_id — scans active AND archived sessions, consolidates splits */
+function findSessionByClaudeId(agentsDir: string, claudeSessionId: string, currentBranch?: string): { filePath: string; data: SessionFrontmatter; content: string } | null {
+  const sessionsDir = join(agentsDir, "sessions");
+  if (!existsSync(sessionsDir)) return null;
+
+  type SessionMatch = { filePath: string; data: SessionFrontmatter; content: string; isArchived: boolean };
+  const matches: SessionMatch[] = [];
+
+  // Scan active sessions
+  const activeFiles = readdirSync(sessionsDir).filter(f => f.endsWith(".md") && !f.startsWith("archive"));
+  for (const file of activeFiles) {
+    const filePath = join(sessionsDir, file);
+    const session = readSessionFile(filePath);
+    if (session && session.data.claude_session_id === claudeSessionId) {
+      matches.push({ filePath, data: session.data, content: session.content, isArchived: false });
+    }
+  }
+
+  // Scan archive
+  const archiveDir = join(sessionsDir, "archive");
+  if (existsSync(archiveDir)) {
+    const archiveFiles = readdirSync(archiveDir).filter(f => f.endsWith(".md"));
+    for (const file of archiveFiles) {
+      const filePath = join(archiveDir, file);
+      const session = readSessionFile(filePath);
+      if (session && session.data.claude_session_id === claudeSessionId) {
+        matches.push({ filePath, data: session.data, content: session.content, isArchived: true });
+      }
+    }
+  }
+
+  if (matches.length === 0) return null;
+
+  // Pick primary: prefer current branch match, then most recent
+  matches.sort((a, b) => {
+    // Current branch wins
+    if (currentBranch) {
+      const aMatch = a.data.branch === currentBranch ? 0 : 1;
+      const bMatch = b.data.branch === currentBranch ? 0 : 1;
+      if (aMatch !== bMatch) return aMatch - bMatch;
+    }
+    // Active over archived
+    if (a.isArchived !== b.isArchived) return a.isArchived ? 1 : -1;
+    // Most recent wins
+    const aTime = a.data.last_updated || a.data.last_entry || "0";
+    const bTime = b.data.last_updated || b.data.last_entry || "0";
+    return bTime.localeCompare(aTime);
+  });
+
+  const primary = matches[0];
+
+  // Restore from archive if needed
+  if (primary.isArchived) {
+    const restoredPath = join(sessionsDir, basename(primary.filePath));
+    try {
+      renameSync(primary.filePath, restoredPath);
+      primary.filePath = restoredPath;
+      primary.isArchived = false;
+    } catch {
+      // Use in place if move fails
+    }
+  }
+
+  // Consolidate duplicates into primary
+  for (const secondary of matches.slice(1)) {
+    consolidateSession(primary.filePath, secondary, agentsDir);
+  }
+
+  // Re-read primary after consolidation
+  if (matches.length > 1) {
+    const refreshed = readSessionFile(primary.filePath);
+    if (refreshed) {
+      return { filePath: primary.filePath, data: refreshed.data, content: refreshed.content };
+    }
+  }
+
+  return { filePath: primary.filePath, data: primary.data, content: primary.content };
 }
 
 /** Find active session for a branch by scanning files */
@@ -706,7 +884,7 @@ function parseEntry(entry: string): JournalEntry | null {
     "spark", "todo", "assume",
     // New types
     "branch", "task", "linear", "hypothesis", "try", "reject", "compact",
-    "skill"
+    "skill", "wrap"
   ];
 
   if (!validTypes.includes(type as EntryType)) return null;
@@ -809,13 +987,19 @@ async function appendEntry(
 
     updateFrontmatter(session.data);
 
-    // Blank line before session(resume) entries (visual separation — STOPPED always has trailing blank line)
+    // Blank line rules:
+    // - session(stop) always has one blank line after it
+    // - session(start)/session(resume) always have one blank line before them
+    // trimEnd() strips trailing blank lines, so we reconstruct the separator
     const trimmedContent = session.content.trimEnd();
     const hasNewSession = entryLines.some(line =>
-      /session\(resume\):/.test(line)
+      /session\((resume|start)\):/.test(line)
+    );
+    const endsWithStop = /session\(stop\):/.test(
+      trimmedContent.split('\n').filter(l => l.trim()).pop() || ''
     );
 
-    const separator = hasNewSession ? '\n\n' : '\n';
+    const separator = (hasNewSession || endsWithStop) ? '\n\n' : '\n';
     const newContent = matter.stringify(
       trimmedContent + separator + entryLines.join("\n") + "\n",
       session.data as unknown as Record<string, unknown>
@@ -1092,22 +1276,40 @@ export function registerSessionCommand(program: Command): void {
         console.log(`  ${yellow("!")} No linked spec found — creating ad-hoc session`);
       }
 
-      const existingSession = findActiveSessionForBranch(agentsDir, branch);
+      // Session ID-first lookup: strongest continuity signal, searches active + archive
+      const sessionByClaudeId = hookInput.session_id
+        ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch)
+        : null;
+
+      // Branch-based fallback
+      const existingSession = sessionByClaudeId || findActiveSessionForBranch(agentsDir, branch);
 
       let sessionFilePath: string;
       let sessionData: SessionFrontmatter;
       let sessionContent: string;
       let isResume = false;
 
-      const sameConversation = existingSession && hookInput.session_id && existingSession.data.claude_session_id === hookInput.session_id;
+      const sameConversation = sessionByClaudeId != null;
       const isClearResume = existingSession && hookInput.source === "clear";
 
+      // Determine if this is a new conversation vs same conversation
+      const isNewConversation = existingSession
+        && hookInput.session_id
+        && existingSession.data.claude_session_id
+        && hookInput.session_id !== existingSession.data.claude_session_id
+        && hookInput.source !== "clear";
+
       if (existingSession && sameConversation) {
-        // Same claude_session_id — always resume, strongest signal
+        // Same claude_session_id — always resume, strongest signal (even from archive)
         sessionFilePath = existingSession.filePath;
         sessionData = existingSession.data;
         sessionContent = existingSession.content;
         isResume = existingSession.data.status !== "active";
+
+        // Update branch if it changed (e.g., git checkout while in same conversation)
+        if (existingSession.data.branch !== branch) {
+          existingSession.data.branch = branch;
+        }
 
         console.log(`  ${green("✓")} Resuming existing session`);
       } else if (isClearResume) {
@@ -1118,20 +1320,43 @@ export function registerSessionCommand(program: Command): void {
         isResume = true;
 
         console.log(`  ${green("✓")} Resuming existing session (after /clear)`);
+      } else if (isNewConversation) {
+        // Different claude_session_id = new conversation on same branch
+        // Close the stale session and create a fresh file
+        const timestamp = getDateTimeString();
+        await appendEntry(
+          existingSession.filePath,
+          [
+            `[${timestamp}] session(end): closed by new conversation`,
+            `[${timestamp}] session(stop):   === SESSION STOPPED ===`,
+            '',
+          ],
+          (data: SessionFrontmatter) => {
+            data.status = "stopped";
+            data.last_updated = getTimestamp();
+            data.last_entry = getTimestamp();
+          }
+        );
+        console.log(`  ${yellow("!")} Closed stale session (different conversation)`);
+
+        // Create new file directly (getOrCreateSession would find the just-stopped session)
+        sessionFilePath = getSessionFilePath(agentsDir);
+        createSessionFile(sessionFilePath, branch, specInfo, hookInput.session_id);
+        const newSession = readSessionFile(sessionFilePath)!;
+        sessionData = newSession.data;
+        sessionContent = newSession.content;
+
+        console.log(`  ${green("+")} Creating new session file`);
+        if (specInfo) {
+          const sessionFileName = basename(sessionFilePath);
+          updateSpecSessionField(agentsDir, specInfo.id, sessionFileName);
+        }
       } else if (existingSession && (options.resume || existingSession.data.status === "active")) {
-        // --resume flag or session still active
+        // --resume flag or session still active (no session_id available for comparison)
         sessionFilePath = existingSession.filePath;
         sessionData = existingSession.data;
         sessionContent = existingSession.content;
-
-        // Detect new conversation via claude_session_id comparison
-        const storedSessionId = existingSession.data.claude_session_id;
-        if (hookInput.session_id && storedSessionId && hookInput.session_id !== storedSessionId) {
-          // Different session_id = new conversation on same branch
-          isResume = true;
-        } else {
-          isResume = existingSession.data.status !== "active";
-        }
+        isResume = existingSession.data.status !== "active";
 
         console.log(`  ${green("✓")} Resuming existing session`);
       } else {
@@ -1255,6 +1480,11 @@ export function registerSessionCommand(program: Command): void {
         console.log(`\n  ${gray(`Suggestion: /rename ${specInfo.id}-${slug}`)}`);
       }
 
+      // Check if housekeeping is pending (flagged by previous session end)
+      if (isHousekeepingPending(agentsDir)) {
+        console.log(`\n  ${yellow("⚠")} Housekeeping pending — run ${cyan("loaf session housekeeping")} or ${cyan("/housekeeping")}`);
+      }
+
       console.log();
     });
 
@@ -1264,7 +1494,8 @@ export function registerSessionCommand(program: Command): void {
     .command("end")
     .description("End session with progress summary")
     .option("--if-active", "Exit successfully when no active session exists")
-    .action(async (options: { ifActive?: boolean }) => {
+    .option("--wrap", "Close session as complete (used after /wrap writes summary)")
+    .action(async (options: { ifActive?: boolean; wrap?: boolean }) => {
       // Parse hook JSON from stdin (when invoked as a hook by Claude Code)
       const hookInput = await parseHookInput();
 
@@ -1280,7 +1511,10 @@ export function registerSessionCommand(program: Command): void {
         process.exit(1);
       }
 
-      const existingSession = findActiveSessionForBranch(agentsDir, branch);
+      // Session ID-first lookup, then branch fallback
+      const existingSession = (hookInput.session_id
+        ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch)
+        : null) || findActiveSessionForBranch(agentsDir, branch);
       if (!existingSession) {
         if (options.ifActive) {
           process.exit(0);
@@ -1329,26 +1563,89 @@ export function registerSessionCommand(program: Command): void {
       if (progressText !== "no activity logged") concludeParts.push(progressText);
       const concludeText = concludeParts.length > 0 ? concludeParts.join(", ") : "session ended";
 
-      const journalLines: string[] = [
-        `[${timestamp}] session(end): ${concludeText}`,
-        `[${timestamp}] session(stop):   === SESSION STOPPED ===`,
-        '',
-      ];
-      console.log(`  ${yellow("?")} Consider adding final entries:`);
-      console.log(`    ${gray("loaf session log \"decision(scope): key decision\"")}`);
-      console.log(`    ${gray("loaf session log \"finding(scope): final notes\"")}`);
-      console.log(`    ${gray("loaf session log \"todo(next): follow-up task\"")}`);
-      console.log();
+      const isWrap = !!options.wrap;
 
-      await appendEntry(
-        existingSession.filePath,
-        journalLines,
-        (data: SessionFrontmatter) => {
-          data.status = "stopped";
-          data.last_updated = getTimestamp();
-          data.last_entry = getTimestamp();
+      if (isWrap) {
+        // Wrap: log wrap marker, set status to complete, but do NOT write
+        // session(end)/session(stop) — the SessionEnd hook handles stop
+        // when the conversation actually ends. This prevents journal entries
+        // (merge commits, etc.) appearing after stop markers.
+        const journalLines: string[] = [
+          `[${timestamp}] session(wrap): ${concludeText}`,
+        ];
+
+        await appendEntry(
+          existingSession.filePath,
+          journalLines,
+          (data: SessionFrontmatter) => {
+            data.status = "complete";
+            data.last_updated = getTimestamp();
+            data.last_entry = getTimestamp();
+          }
+        );
+      } else {
+        // Normal end: write stop markers
+        const journalLines: string[] = [
+          `[${timestamp}] session(end): ${concludeText}`,
+          `[${timestamp}] session(stop):   === SESSION STOPPED ===`,
+          '',
+        ];
+
+        console.log(`  ${yellow("?")} Consider adding final entries:`);
+        console.log(`    ${gray("loaf session log \"decision(scope): key decision\"")}`);
+        console.log(`    ${gray("loaf session log \"finding(scope): final notes\"")}`);
+        console.log(`    ${gray("loaf session log \"todo(next): follow-up task\"")}`);
+        console.log();
+
+        await appendEntry(
+          existingSession.filePath,
+          journalLines,
+          (data: SessionFrontmatter) => {
+            data.status = "stopped";
+            data.last_updated = getTimestamp();
+            data.last_entry = getTimestamp();
+          }
+        );
+      }
+
+      // Wrap-specific: persist decisions to spec changelog and clean up Current State
+      if (isWrap) {
+        // Re-read session content after journal append
+        const freshSession = readSessionFile(existingSession.filePath);
+        const sessionContent = freshSession?.content || existingSession.content;
+
+        // Persist decisions to spec changelog
+        if (existingSession.data.spec) {
+          const decisionEntries = extractDecisionEntries(sessionContent);
+          if (decisionEntries.length > 0) {
+            const result = persistDecisionsToSpec(
+              agentsDir,
+              existingSession.data.spec,
+              decisionEntries,
+              existingSession.data.branch || branch
+            );
+            if (result.success) {
+              console.log(`  ${green("✓")} Decisions persisted: ${result.message}`);
+            } else {
+              console.log(`  ${yellow("⚠")} Could not persist decisions: ${result.message}`);
+            }
+          }
         }
-      );
+
+        // Strip ## Current State if ## Session Wrap-Up exists (wrap summary replaces it)
+        if (sessionContent.includes("## Session Wrap-Up")) {
+          const currentStatePattern = /\n## Current State \([^)]*\)[\s\S]*?(?=\n## |\n*$)/;
+          if (currentStatePattern.test(sessionContent)) {
+            const cleanedContent = sessionContent.replace(currentStatePattern, "");
+            const newFileContent = matter.stringify(
+              cleanedContent,
+              (freshSession?.data || existingSession.data) as unknown as Record<string, unknown>
+            );
+            writeFileAtomic(existingSession.filePath, newFileContent);
+            console.log(`  ${green("✓")} Replaced Current State with wrap summary`);
+          }
+        }
+      }
 
       const knowledgeFiles = consumeKnowledgeNudges(findGitRoot(), branch);
       if (knowledgeFiles.length > 0) {
@@ -1360,7 +1657,11 @@ export function registerSessionCommand(program: Command): void {
         console.log();
       }
 
-      console.log(`  ${green("✓")} Session stopped: ${gray(existingSession.filePath.replace(agentsDir, ".agents"))}`);
+      // Check if housekeeping is due (sets pending flag for next session start)
+      checkHousekeepingDue(agentsDir);
+
+      const statusLabel = isWrap ? "complete" : "stopped";
+      console.log(`  ${green("✓")} Session ${statusLabel}: ${gray(existingSession.filePath.replace(agentsDir, ".agents"))}`);
       console.log();
     });
 
@@ -1404,14 +1705,25 @@ export function registerSessionCommand(program: Command): void {
         try {
           const stdin = await readStdin(); // Read from fd 0 (stdin)
           const hookData = JSON.parse(stdin);
-          
-          // Extract command from generic tool payload
+
+          // Detect hook event type — TaskCompleted uses hook_event_name, not tool_name
+          const hookEventName = hookData.hook_event_name;
+          const toolName = hookData.tool_name || hookData.tool?.name;
+
+          if (hookEventName === "TaskCompleted" || toolName === "TaskCompleted") {
+            // TaskCompleted hook event — payload has task_id, task_subject, task_description
+            // Prefer description (richer context for compaction recovery and wrap summaries)
+            const description = hookData.task_description || hookData.task_subject || "task";
+            entryText = `task(completed): ${description}`;
+          }
+
+          // Extract command from generic tool payload (Bash tools)
           // Support both flat (tool_input) and nested (tool.input) formats for cross-harness compatibility
-          const command = hookData.tool_input?.command || 
-                          hookData.tool?.input?.command || 
+          const command = hookData.tool_input?.command ||
+                          hookData.tool?.input?.command ||
                           hookData.input?.command;
-          
-          if (command && typeof command === "string") {
+
+          if (!entryText && command && typeof command === "string") {
             // Parse Bash command to detect entry type
             if (command.includes("git commit")) {
               const hash = getLastCommitSha();
@@ -1467,7 +1779,7 @@ export function registerSessionCommand(program: Command): void {
               // Unrecognized command — skip silently (only log known patterns)
               process.exit(0);
             }
-          } else {
+          } else if (!entryText) {
             // Fallback: try legacy fields for backward compatibility
             if (hookData.commit) {
               entryText = `commit(${hookData.commit}): ${hookData.message || "commit"}`;
@@ -1476,8 +1788,7 @@ export function registerSessionCommand(program: Command): void {
             } else if (hookData.merge) {
               entryText = `pr(merge): #${hookData.merge}`;
             } else {
-              // No command found - this is a hook-safe no-op for when session doesn't exist
-              // Exit 0 so hooks don't fail, but don't log anything
+              // No recognized tool or command — exit silently
               process.exit(0);
             }
           }
@@ -1654,6 +1965,225 @@ export function registerSessionCommand(program: Command): void {
       console.log();
     });
 
+  // ── loaf session housekeeping ─────────────────────────────────────────────
+
+  session
+    .command("housekeeping")
+    .description("Run session housekeeping: orphans, splits, archival, linkage repair")
+    .option("--dry-run", "Report what would be done without making changes")
+    .action(async (options: { dryRun?: boolean }) => {
+      const agentsDir = findAgentsDir();
+      if (!agentsDir) {
+        console.error(`  ${red("error:")} Could not find .agents/ directory`);
+        process.exit(1);
+      }
+
+      const sessionsDir = join(agentsDir, "sessions");
+      if (!existsSync(sessionsDir)) {
+        console.log(`  ${gray("No sessions directory. Nothing to do.")}`);
+        markHousekeepingDone(agentsDir);
+        return;
+      }
+
+      const dryRun = !!options.dryRun;
+      console.log(`\n  ${bold("loaf session housekeeping")}${dryRun ? gray(" (dry run)") : ""}\n`);
+
+      // Collect all sessions
+      const files = readdirSync(sessionsDir).filter(f => f.endsWith(".md"));
+      const sessions: Array<{ filePath: string; fileName: string; data: SessionFrontmatter; content: string }> = [];
+      for (const file of files) {
+        const filePath = join(sessionsDir, file);
+        const s = readSessionFile(filePath);
+        if (s) {
+          sessions.push({ filePath, fileName: file, data: s.data, content: s.content });
+        }
+      }
+
+      if (sessions.length === 0) {
+        console.log(`  ${gray("No sessions found.")}`);
+        markHousekeepingDone(agentsDir);
+        return;
+      }
+
+      // Get list of existing git branches
+      let gitBranches: Set<string>;
+      try {
+        const branchOutput = execSync("git branch --list --format='%(refname:short)'", {
+          encoding: "utf-8",
+          stdio: ["pipe", "pipe", "pipe"],
+        }).trim();
+        gitBranches = new Set(branchOutput.split("\n").map(b => b.trim()).filter(Boolean));
+      } catch {
+        gitBranches = new Set();
+      }
+
+      const report = {
+        orphansArchived: 0,
+        orphansFlagged: 0,
+        splitsConsolidated: 0,
+        ageArchived: 0,
+        linkageFixed: 0,
+        total: sessions.length,
+      };
+
+      // 1. Detect orphans — sessions whose branch no longer exists
+      console.log(`  ${bold("Orphan detection")}`);
+      const orphans = sessions.filter(s =>
+        s.data.status !== "archived" &&
+        s.data.status !== "complete" &&
+        s.data.branch &&
+        !s.data.branch.startsWith("detached-") &&
+        !gitBranches.has(s.data.branch)
+      );
+
+      if (orphans.length === 0) {
+        console.log(`    ${green("✓")} No orphaned sessions`);
+      } else {
+        for (const orphan of orphans) {
+          const activity = countJournalActivity(orphan.content);
+          const isEmpty = activity.entries === 0 && activity.commits === 0;
+
+          if (isEmpty) {
+            if (!dryRun) {
+              quickArchiveSession(orphan.filePath, agentsDir);
+            }
+            console.log(`    ${yellow("→")} Archived empty orphan: ${gray(orphan.fileName)} (branch ${orphan.data.branch} deleted)`);
+            report.orphansArchived++;
+          } else {
+            console.log(`    ${yellow("⚠")} Orphan needs review: ${orphan.fileName} (branch ${orphan.data.branch} deleted, ${activity.entries} entries)`);
+            report.orphansFlagged++;
+          }
+        }
+      }
+
+      // 2. Detect and consolidate splits (same claude_session_id, multiple files)
+      console.log(`\n  ${bold("Split detection")}`);
+      const bySessionId = new Map<string, typeof sessions>();
+      for (const s of sessions) {
+        if (s.data.claude_session_id && s.data.status !== "archived") {
+          const existing = bySessionId.get(s.data.claude_session_id) || [];
+          existing.push(s);
+          bySessionId.set(s.data.claude_session_id, existing);
+        }
+      }
+
+      const splits = [...bySessionId.entries()].filter(([, group]) => group.length > 1);
+      if (splits.length === 0) {
+        console.log(`    ${green("✓")} No split sessions`);
+      } else {
+        for (const [sessionId, group] of splits) {
+          console.log(`    ${yellow("→")} Consolidating ${group.length} files for session ${sessionId.slice(0, 8)}`);
+          if (!dryRun) {
+            group.sort((a, b) => {
+              if (a.data.status === "active" && b.data.status !== "active") return -1;
+              if (b.data.status === "active" && a.data.status !== "active") return 1;
+              const aTime = a.data.last_updated || a.data.last_entry || "0";
+              const bTime = b.data.last_updated || b.data.last_entry || "0";
+              return bTime.localeCompare(aTime);
+            });
+            for (const secondary of group.slice(1)) {
+              consolidateSession(group[0].filePath, secondary, agentsDir);
+            }
+          }
+          report.splitsConsolidated++;
+        }
+      }
+
+      // 3. Age-based archival — complete sessions older than 7 days
+      console.log(`\n  ${bold("Age-based archival")}`);
+      const AGE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
+      const completeSessions = sessions.filter(s => s.data.status === "complete");
+      let ageArchived = 0;
+
+      for (const s of completeSessions) {
+        const completedAt = s.data.last_updated || s.data.last_entry;
+        if (!completedAt) continue;
+        const age = Date.now() - new Date(completedAt).getTime();
+        if (age > AGE_THRESHOLD_MS) {
+          if (!dryRun) {
+            quickArchiveSession(s.filePath, agentsDir);
+          }
+          const days = Math.floor(age / (24 * 60 * 60 * 1000));
+          console.log(`    ${yellow("→")} Archived: ${gray(s.fileName)} (complete, ${days}d old)`);
+          ageArchived++;
+        }
+      }
+      report.ageArchived = ageArchived;
+
+      if (ageArchived === 0) {
+        console.log(`    ${green("✓")} No sessions past age threshold`);
+      }
+
+      // 4. Session/spec linkage repair
+      console.log(`\n  ${bold("Spec linkage")}`);
+      const specsDir = join(agentsDir, "specs");
+      let linkageFixed = 0;
+
+      if (existsSync(specsDir)) {
+        const specFiles = readdirSync(specsDir).filter(f => f.endsWith(".md"));
+        for (const specFile of specFiles) {
+          try {
+            const specPath = join(specsDir, specFile);
+            const specContent = readFileSync(specPath, "utf-8");
+            const specParsed = matter(specContent);
+            const specFm = specParsed.data as SpecFrontmatterWithBranch;
+
+            if (specFm.session) {
+              const sessionPath = join(sessionsDir, specFm.session);
+              const archivePath = join(sessionsDir, "archive", specFm.session);
+
+              if (!existsSync(sessionPath) && !existsSync(archivePath)) {
+                const matchingSession = sessions.find(s =>
+                  s.data.spec === specFm.id || s.data.branch === specFm.branch
+                );
+                if (matchingSession) {
+                  const correctFileName = basename(matchingSession.filePath);
+                  if (!dryRun) {
+                    specFm.session = correctFileName;
+                    const newContent = matter.stringify(specParsed.content, specFm as Record<string, unknown>);
+                    writeFileSync(specPath, newContent, "utf-8");
+                  }
+                  console.log(`    ${yellow("→")} Fixed: ${specFile} → ${correctFileName}`);
+                  linkageFixed++;
+                } else {
+                  console.log(`    ${yellow("⚠")} Broken link: ${specFile} references missing ${specFm.session}`);
+                }
+              }
+            }
+          } catch {
+            continue;
+          }
+        }
+      }
+      report.linkageFixed = linkageFixed;
+
+      if (linkageFixed === 0) {
+        console.log(`    ${green("✓")} All spec links valid`);
+      }
+
+      // 5. KB staleness
+      console.log(`\n  ${bold("Knowledge base")}`);
+      const staleCount = countStaleKnowledge();
+      if (staleCount > 0) {
+        console.log(`    ${yellow("⚠")} ${staleCount} stale knowledge file(s) — run ${cyan("loaf kb review")}`);
+      } else {
+        console.log(`    ${green("✓")} All knowledge files current`);
+      }
+
+      // Mark housekeeping done
+      if (!dryRun) {
+        markHousekeepingDone(agentsDir);
+      }
+
+      // Summary
+      const actions = report.orphansArchived + report.splitsConsolidated + report.ageArchived + report.linkageFixed;
+      console.log(`\n  ${bold("Summary:")} ${report.total} sessions scanned, ${actions} action(s)${dryRun ? " (dry run)" : ""}`);
+      if (report.orphansFlagged > 0) {
+        console.log(`  ${yellow("⚠")} ${report.orphansFlagged} orphan(s) need manual review`);
+      }
+      console.log();
+    });
+
   // ── loaf session list ────────────────────────────────────────────────────
 
   session
@@ -1774,7 +2304,10 @@ export function registerSessionCommand(program: Command): void {
         process.exit(0);
       }
 
-      const existingSession = findActiveSessionForBranch(agentsDir, branch);
+      // Session ID-first lookup, then branch fallback
+      const existingSession = (hookInput.session_id
+        ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch)
+        : null) || findActiveSessionForBranch(agentsDir, branch);
       if (!existingSession) {
         // Hook-safe: no active session
         process.exit(0);
@@ -1788,5 +2321,226 @@ export function registerSessionCommand(program: Command): void {
 
       const stateSection = buildCurrentStateSection(freshSession.content);
       await writeCurrentState(existingSession.filePath, stateSection);
+    });
+
+  // ── loaf session context ──────────────────────────────────────────────────
+
+  const context = session
+    .command("context")
+    .description("Session context for hooks and agents");
+
+  context
+    .command("for-prompt")
+    .alias("--for-prompt")
+    .description("Print implementation principles for UserPromptSubmit hook injection")
+    .action(async () => {
+      const hookInput = await parseHookInput();
+
+      // Skip for subagents — they have their own instructions
+      if (hookInput.agent_id) {
+        process.exit(0);
+      }
+
+      // Static implementation principles — cached after first injection
+      const lines: string[] = [];
+      lines.push("[Implementation Principles]");
+      lines.push("- When the user's message is a QUESTION, answer it and STOP. Do not implement anything.");
+      lines.push("  Wait for explicit instructions before taking action.");
+      lines.push("- Create a Task BEFORE any tool use that changes something (Edit, Write, Bash, etc.).");
+      lines.push("  No threshold — if it mutates, track it. TaskCompleted events auto-log to the session journal.");
+      lines.push("  Create tasks before starting work, update status as you go, mark complete when done.");
+      lines.push("- Delegate code changes to agents — orchestrator coordinates, doesn't implement");
+      lines.push("- Log decisions: loaf session log \"decision(scope): description\"");
+      lines.push("- One concern per agent, parallel when independent");
+      lines.push("- Keep session file handoff-ready");
+
+      // Print to stdout — exit 0 means this becomes model context
+      console.log(lines.join("\n"));
+    });
+
+  context
+    .command("for-resumption")
+    .alias("--for-resumption")
+    .description("Print rich resumption context after compaction (PostCompact hook)")
+    .action(async () => {
+      const hookInput = await parseHookInput();
+
+      const agentsDir = findAgentsDir();
+      if (!agentsDir) {
+        process.exit(0);
+      }
+
+      const branch = getCurrentBranch();
+      if (branch === "unknown") {
+        process.exit(0);
+      }
+
+      // Session ID-first lookup, then branch fallback
+      const existingSession = (hookInput.session_id
+        ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch)
+        : null) || findActiveSessionForBranch(agentsDir, branch);
+      if (!existingSession) {
+        console.log("=== POST-COMPACTION RESUMPTION ===");
+        console.log("");
+        console.log("WARNING: No active session found. Read .agents/sessions/ manually.");
+        process.exit(0);
+      }
+
+      const freshSession = readSessionFile(existingSession.filePath);
+      const sessionContent = freshSession?.content || existingSession.content;
+      const sessionPath = existingSession.filePath.replace(agentsDir, ".agents");
+
+      // Header
+      console.log("=== POST-COMPACTION RESUMPTION ===");
+      console.log("");
+      console.log(`Session: ${sessionPath}`);
+      console.log(`Branch: ${branch}`);
+
+      // Spec linkage
+      if (existingSession.data.spec) {
+        const specInfo = findSpecForBranch(agentsDir, branch);
+        if (specInfo) {
+          console.log(`Spec: ${specInfo.id} — ${specInfo.title}`);
+        } else {
+          console.log(`Spec: ${existingSession.data.spec}`);
+        }
+      }
+
+      // Git state
+      const lastCommit = getLastCommitSha();
+      const uncommitted = getUncommittedCount();
+      if (lastCommit !== "unknown") {
+        const commits = getRecentCommits(1);
+        console.log(`Last commit: ${commits[0]?.hash || lastCommit} — ${commits[0]?.message || ""}`);
+      }
+      if (uncommitted > 0) {
+        console.log(`Uncommitted: ${uncommitted} file${uncommitted === 1 ? "" : "s"}`);
+      }
+
+      // Current State (the rich summary written by the model before compaction)
+      console.log("");
+      const currentState = extractCurrentState(sessionContent);
+      if (currentState) {
+        console.log(currentState);
+      } else {
+        console.log("WARNING: No ## Current State was written before compaction.");
+        console.log("Read the session file's ## Journal section for context.");
+      }
+
+      // Recent journal entries (last 20 for resumption context)
+      console.log("");
+      console.log("## Recent Journal");
+      console.log("");
+      const recentEntries = extractRecentEntries(sessionContent, 20);
+      if (recentEntries.length > 0) {
+        for (const entry of recentEntries) {
+          console.log(entry);
+        }
+      } else {
+        console.log("(no journal entries)");
+      }
+
+      // Instructions for the model
+      console.log("");
+      console.log("---");
+      console.log("Resume work from where the state summary left off.");
+      console.log("Do not ask 'where were we?' — the context above tells you.");
+      console.log(`If you need more detail, read the full session file: ${sessionPath}`);
+    });
+
+  context
+    .command("for-compact")
+    .alias("--for-compact")
+    .description("Log compact marker and print journal flush instructions (PreCompact hook)")
+    .action(async () => {
+      const hookInput = await parseHookInput();
+
+      // Skip for subagents
+      if (hookInput.agent_id) {
+        process.exit(0);
+      }
+
+      const agentsDir = findAgentsDir();
+      const branch = getCurrentBranch();
+
+      // 1. Log compact marker to session journal (absorbs compact.sh)
+      if (agentsDir && branch !== "unknown") {
+        const existingSession = (hookInput.session_id
+          ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch)
+          : null) || findActiveSessionForBranch(agentsDir, branch);
+
+        if (existingSession) {
+          const timestamp = getDateTimeString();
+          await appendEntry(
+            existingSession.filePath,
+            [`[${timestamp}] compact(session): context compaction triggered`],
+            (data: SessionFrontmatter) => {
+              data.last_updated = getTimestamp();
+              data.last_entry = getTimestamp();
+            }
+          );
+
+          // 2. Check Current State staleness
+          const freshSession = readSessionFile(existingSession.filePath);
+          const content = freshSession?.content || existingSession.content;
+          const stateMatch = content.match(/## Current State \((\d{4}-\d{2}-\d{2} \d{2}:\d{2})\)/);
+
+          if (!stateMatch) {
+            // No Current State section at all
+          } else {
+            const tsStr = stateMatch[1];
+            const tsParts = tsStr.split(/[-: ]/);
+            const tsDate = new Date(
+              parseInt(tsParts[0]), parseInt(tsParts[1]) - 1, parseInt(tsParts[2]),
+              parseInt(tsParts[3]), parseInt(tsParts[4])
+            );
+            const ageMinutes = Math.floor((Date.now() - tsDate.getTime()) / 60000);
+            if (ageMinutes > 5) {
+              // Stale state will be caught by the nudge instructions below
+            }
+          }
+        }
+      }
+
+      // 3. Print nudge instructions (injected as context via exit 0)
+      const lines: string[] = [];
+      lines.push("CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.");
+      lines.push("");
+      lines.push("REQUIRED — two actions before the model responds:");
+      lines.push("");
+      lines.push("1. **Flush journal entries.** Log all unrecorded decisions, discoveries, and progress:");
+      lines.push("   - `decision(scope): key decisions made this session`");
+      lines.push("   - `discover(scope): important findings`");
+      lines.push("   - `finding(scope): analysis result`");
+      lines.push('   Run `loaf session log "type(scope): description"` for each.');
+      lines.push("");
+      lines.push("2. **Write state summary.** Replace the session file's `## Current State` heading");
+      lines.push("   with `## Current State (YYYY-MM-DD HH:MM)` (current timestamp) and write");
+      lines.push("   a structured summary using this format:");
+      lines.push("");
+      lines.push("   ```");
+      lines.push("   ## Current State (YYYY-MM-DD HH:MM)");
+      lines.push("");
+      lines.push("   **Working on:** spec/task — brief description");
+      lines.push("   **Status:** one-line build/test/progress status");
+      lines.push("");
+      lines.push("   **Done this session:**");
+      lines.push("   - bullet per significant change");
+      lines.push("");
+      lines.push("   **Blocked:** (omit if none)");
+      lines.push("   - blockers with context");
+      lines.push("");
+      lines.push("   **Next:**");
+      lines.push("   - immediate follow-ups");
+      lines.push("   ```");
+      lines.push("");
+      lines.push("   This is the resumption context after compaction — write it as if briefing");
+      lines.push("   a colleague who just walked in. Be specific (file names, commit hashes,");
+      lines.push("   flag names), not vague. The timestamp lets future compactions detect stale");
+      lines.push("   summaries. Update `last_updated` frontmatter via `loaf session state update`.");
+      lines.push("");
+      lines.push("The journal IS your external memory. Entries not flushed now are lost forever.");
+
+      console.log(lines.join("\n"));
     });
 }

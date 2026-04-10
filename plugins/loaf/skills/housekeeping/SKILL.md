@@ -7,7 +7,7 @@ description: >-
   recommendations, archives comp...
 user-invocable: true
 argument-hint: '[sessions|specs|plans|drafts]'
-version: 2.0.0-dev.25
+version: 2.0.0-dev.26
 ---
 
 # Housekeeping
@@ -20,7 +20,7 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 - Review EVERY file individually — never sample or average
 - Check Linear issue status before archiving sessions
 - Extract lessons learned and decisions before archiving
-- Use CLI (`loaf housekeeping`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
+- Use CLI (`loaf session housekeeping`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
 - Check report `status` is `processed` and linked session is archived before archiving reports (see [templates/report.md](templates/report.md))
 - Check state assessment `session:` field before flagging for cleanup — only flag when linked session is archived
 - Verify `TASKS.json` sync after archival with `loaf task sync`
@@ -45,12 +45,12 @@ After work completes, verify:
 ### CLI Commands
 
 ```bash
-loaf housekeeping --dry-run        # Preview all actions
-loaf housekeeping --sessions       # Sessions only
-loaf housekeeping --specs          # Specs only
-loaf task archive TASK-XXX    # Archive single task
-loaf spec archive SPEC-XXX    # Archive single spec
-loaf task sync                # Fix TASKS.json drift
+loaf session housekeeping --dry-run  # Preview all actions
+loaf session housekeeping            # Run all checks and fixes
+loaf session archive                 # Archive single session
+loaf task archive TASK-XXX           # Archive single task
+loaf spec archive SPEC-XXX           # Archive single spec
+loaf task sync                       # Fix TASKS.json drift
 ```
 
 ### Artifact Lifecycle

@@ -1,0 +1,13 @@
+name: librarian
+description: >-
+  Tends session lifecycle: Current State updates, journal quality, wrap summaries,
+  and status transitions. Use for session housekeeping, state snapshots, and
+  end-of-session summaries. Scoped to .agents/ artifacts only.
+model: sonnet
+skills:
+  - orchestration
+tools:
+  - Read
+  - Edit
+  - Glob
+  - Grep

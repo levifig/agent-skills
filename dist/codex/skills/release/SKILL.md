@@ -6,7 +6,7 @@ description: >-
   "merge this PR," "ready to merge," or "ship it." Produces version bumps,
   changelog updates, and merged code. Not for creating PRs (use git-workflow) or
   reflection (use reflect).
-version: 2.0.0-dev.25
+version: 2.0.0-dev.26
 ---
 
 # Release
@@ -36,10 +36,11 @@ Orchestrate a squash merge with correct version ordering, documentation checks, 
 ## Critical Rules
 
 - **Block on pre-flight failure** -- do not offer to skip any failing check
-- **User confirms every destructive action** -- version bump commit, push, merge, branch deletion
+- **Use `AskUserQuestion` for all decisions and confirmations** -- version bump type, push approval, merge approval, branch deletion. Never use inline text questions for permission/decision prompts
 - **Version bump before merge** -- this is the skill's reason for existing; never defer to post-merge
+- **Wrap after version bump** -- wrap needs PR# and version to produce a complete session summary
 - **Clean squash body** -- never use the auto-generated commit dump
-- **Orchestrate the full lifecycle** -- if wrap, housekeeping, or reflect haven't been run, trigger them (with user confirmation) rather than just flagging gaps
+- **Orchestrate the full lifecycle** -- if housekeeping or reflect haven't been run, trigger them (with user confirmation via `AskUserQuestion`) rather than just flagging gaps
 - **Detect-first** -- auto-detect PR from branch before asking for a number
 - **Never push without confirmation** -- even after successful version bump
 - **Log release** -- log to session journal after merge: `loaf session log "decision(release): vX.Y.Z shipped via PR #N"`
@@ -62,6 +63,7 @@ Orchestrate a squash merge with correct version ordering, documentation checks, 
 | Housekeeping | Spec/tasks archived, CHANGELOG ready | No (user decides) |
 | PR Creation | Only if no PR exists yet | Yes (if needed) |
 | Version Bump | User confirms bump type (no tag yet) | Yes |
+| Wrap | Session summary (after version bump, has PR# + version) | Yes |
 | Squash Merge | User approves body text | Yes |
 | Post-Merge | Tag on main, GH Release, branch cleanup | Yes |
 
@@ -139,14 +141,14 @@ Present findings to the user. They decide whether to fix now or note for later. 
 
 Check each item. If missing, **offer to run it** (with user confirmation) rather than just flagging it.
 
-1. **Spec archived**: If a spec is associated with this branch (check `.agents/specs/` for matching spec), verify its status is `complete`. If not, offer to run `loaf spec archive`.
+1. **Spec status**: If a spec is associated with this branch (check `.agents/specs/` for matching spec), verify its status is `complete`. If not, offer to update it.
 2. **Tasks archived**: Check `.agents/tasks/` for tasks related to the spec that aren't archived. If found, offer to run `loaf task archive`.
 3. **CHANGELOG ready**: Verify `CHANGELOG.md` exists and has the `[Unreleased]` marker (Step 4 will generate the actual entries).
-4. **Session file**: If a session file exists, check that its status reflects completion.
-5. **Wrap-up**: Scan the session journal for a `skill(wrap)` entry. If absent and the session has meaningful work (commits, decisions), run `/wrap` to capture the session summary before proceeding.
-6. **Reflection**: Scan the session journal for a `skill(reflect)` entry. If absent and the session produced key decisions (check for `decision()` entries), offer to run `/reflect` to update strategic docs. Advisory — the user may skip.
+4. **Journal flushed**: Review conversation for unrecorded decisions/discoveries. Log them now — this is the last chance before wrap.
 
-Present the results as a checklist. Run what the user approves, skip what they decline.
+Present the results as a checklist. Use `AskUserQuestion` for any decisions or approvals.
+
+**Note:** Wrap (`/wrap`) runs AFTER version bump (Step 4b) so it can reference the PR# and version in the session summary. Reflection runs post-merge (Step 6).
 
 ---
 
@@ -177,6 +179,11 @@ Read `CHANGELOG.md` and check if `[Unreleased]` has content (entries written dur
 
 The pre-PR workflow requires writing CHANGELOG entries before creating a PR. These curated entries are typically better than auto-generated ones (grouped by category, human-written descriptions). Preserve them.
 
+**Review curated entries for quality before bumping:**
+- Use backticks for code references (file names, commands, config keys, hook names)
+- Remove internal tracking terms (tracks, phases, stages, task IDs, spec IDs)
+- Write from the user's perspective — what changed, not how it was tracked
+
 1. Run `loaf release --base <baseRefName> --dry-run` to get the **suggested bump type** and **current version**
 2. Present the bump suggestion to the user. They may accept or override.
 3. Once confirmed, perform the version bump manually:
@@ -189,6 +196,12 @@ The pre-PR workflow requires writing CHANGELOG entries before creating a PR. The
 ### Generated path (when no entries exist)
 
 When `[Unreleased]` is empty, use `loaf release` to auto-generate changelog entries from branch commits.
+
+**After generation, review and rewrite entries before committing:**
+- Use backticks for code references (file names, commands, config keys, hook names)
+- Remove internal tracking terms (tracks, phases, stages, task IDs, spec IDs)
+- Write from the user's perspective — what changed, not how it was tracked
+- Keep entries concise but descriptive enough to understand the change without reading the diff
 
 1. Run `loaf release --base <baseRefName> --dry-run` to preview:
    - Current version and suggested bump type
@@ -226,6 +239,21 @@ Push to the feature branch (**with user confirmation**).
 
 ---
 
+## Step 4b: Wrap Session
+
+Run `/wrap` AFTER version bump so the session summary can reference the PR# and final version.
+
+The wrap skill will:
+1. Flush any remaining journal entries
+2. Gather git state (commits, working tree, unpushed)
+3. Generate the `## Session Wrap-Up` report
+4. Write it to the session file (replaces `## Current State`)
+5. Run `loaf session end --wrap` to set status to `complete`
+
+When called from `/release`, wrap skips the version bump and changelog prompts (already handled).
+
+---
+
 ## Step 5: Squash Merge
 
 1. Draft a clean squash body from the branch's commit history and PR description. Descriptive, not verbose:
@@ -249,38 +277,29 @@ Push to the feature branch (**with user confirmation**).
 
 After successful merge:
 
-1. **End the session** for the merged branch (before switching branches):
-   ```bash
-   loaf session end
-   ```
-   This marks the session as `stopped` and writes the final journal entry. The session can then be archived by `/housekeeping`.
-2. Switch to the base branch and pull:
+1. Switch to the base branch and pull (session already closed by `/wrap` in Step 4b):
    ```bash
    git checkout <baseRefName> && git pull --rebase
    ```
-3. **Tag the squash merge commit** — this is now HEAD on the base branch:
+2. **Tag the squash merge commit** — this is now HEAD on the base branch:
    ```bash
    git tag -a vX.Y.Z -m "Release X.Y.Z"
    git push --tags
    ```
    The tag lands on the actual merge commit that exists in `main` history, not a branch commit that was squashed away.
-4. **Create GitHub Release** from the changelog body:
+3. **Create GitHub Release** from the changelog body:
    - Read `CHANGELOG.md` and extract the section for `[X.Y.Z]`
    - Create the release:
      ```bash
      gh release create vX.Y.Z --title "vX.Y.Z" --notes "<changelog section>"
      ```
    - If `gh` is unavailable, skip and inform the user.
-5. Delete the merged feature branch locally and remotely:
+4. Delete the merged feature branch locally and remotely:
    ```bash
    git branch -d <branch>
    git push origin --delete <branch>
    ```
-6. **Run `/reflect`** if the session has extractable learnings:
-   - Check session file for `## Key Decisions` with content
-   - Check `traceability.decisions` for ADR entries
-   - If signal present: offer to run `/reflect` to update strategic docs.
-   - If none: stay silent.
+5. **Run `/reflect`** — always run after merge, already on the base branch. Reflect looks back at the shipped work and updates strategic docs (VISION.md, STRATEGY.md, ARCHITECTURE.md) with learnings. Use `AskUserQuestion` to confirm before running.
 
 ---
 

@@ -46,12 +46,6 @@
       },
       {
         "loaf-managed": true,
-        "timeout": 5,
-        "matcher": "Edit|Write",
-        "prompt": "Advisory only — do not block this edit. If this edit is part of substantial multi-file implementation work (new features, large refactors), consider delegating to the implement agent for orchestration. ALLOW the edit without comment for: bug fixes, single-file changes, config/doc/skill edits, or when an implement agent is already active."
-      },
-      {
-        "loaf-managed": true,
         "timeout": 30,
         "matcher": "Bash",
         "failClosed": true,
@@ -98,20 +92,7 @@
         "timeout": 30,
         "matcher": "Bash",
         "command": "loaf session log --from-hook",
-        "if": "Bash(gh pr create:*)"
-      },
-      {
-        "loaf-managed": true,
-        "timeout": 30,
-        "matcher": "Bash",
-        "command": "loaf session log --from-hook",
-        "if": "Bash(gh pr merge:*)"
-      },
-      {
-        "loaf-managed": true,
-        "timeout": 5,
-        "matcher": "Agent|WebFetch|WebSearch",
-        "prompt": "SILENT journal check — if this tool use completed significant work (a review, decision, discovery, or milestone), log it via `loaf session log` before responding. If not, continue your response without commenting on this check. Never stop your response to explain why something is or isn't significant."
+        "if": "Bash(gh pr:*)"
       }
     ],
     "sessionStart": [
@@ -128,30 +109,32 @@
         "command": "loaf session end --if-active"
       }
     ],
-    "stop": [
+    "taskcompleted": [
       {
         "loaf-managed": true,
-        "timeout": 60,
-        "prompt": "If this turn involved meaningful work (edits, commits, decisions, task progress), update the active session file's `## Current State` section with a 2-4 line contextual summary. Focus on: current task, pending items, blockers, uncommitted work. Don't rehash journal entries — the journal is right below. Skip silently if this was just a question/answer with no state change."
+        "timeout": 30,
+        "command": "loaf session log --from-hook"
+      }
+    ],
+    "userpromptsubmit": [
+      {
+        "loaf-managed": true,
+        "timeout": 5,
+        "command": "loaf session context for-prompt"
       }
     ],
     "preCompact": [
       {
         "loaf-managed": true,
         "timeout": 60,
-        "command": "bash $HOME/.cursor/hooks/session/compact.sh"
-      },
-      {
-        "loaf-managed": true,
-        "timeout": 60,
-        "prompt": "CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.\nREQUIRED — two actions before the model responds:\n1. **Flush journal entries.** Log all unrecorded decisions, discoveries, and progress:\n   - `decision(scope): key decisions made this session`\n   - `discover(scope): important findings`\n   - `finding(scope): analysis result`\n   Run `loaf session log \"type(scope): description\"` for each.\n\n2. **Write state summary.** Replace the session file's `## Current State` heading\n   with `## Current State (YYYY-MM-DD HH:MM)` (current timestamp) and write\n   a condensed summary of: what was accomplished, current work state,\n   key decisions, git state, and next steps. This section is the resumption\n   context after compaction — write it as if briefing a colleague who just\n   walked in. The timestamp lets future compactions detect stale summaries.\n\nThe journal IS your external memory. Entries not flushed now are lost forever."
+        "command": "loaf session context for-compact"
       }
     ],
     "postCompact": [
       {
         "loaf-managed": true,
         "timeout": 60,
-        "command": "bash $HOME/.cursor/hooks/session/post-compact.sh"
+        "command": "loaf session context for-resumption"
       }
     ]
   }

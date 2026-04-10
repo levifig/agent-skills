@@ -16514,12 +16514,16 @@ var BINARY_PATH_HOOKS = /* @__PURE__ */ new Set([
   // Session lifecycle hooks
   "session-start-loaf",
   "session-end-loaf",
+  "session-context-inject",
+  "post-compact",
   // Journal auto-entry hooks
   "journal-post-commit",
   "journal-post-pr",
   "journal-post-merge",
   // Task management hooks
   "generate-task-board",
+  // Task journal hooks
+  "journal-task-completed",
   // Linear integration hooks
   "detect-linear-magic"
 ]);
@@ -16684,16 +16688,15 @@ function createPluginJson(config, pluginDir) {
     version: VERSION,
     description: PLUGIN_DESCRIPTION,
     repository: REPOSITORY,
-    license: "MIT",
-    hooks: {}
+    license: "MIT"
   };
-  const hooks = pluginJson.hooks;
   const allPreToolHooks = config.hooks["pre-tool"] || [];
   const allPostToolHooks = config.hooks["post-tool"] || [];
   const allSessionHooks = config.hooks.session || [];
+  const allHooks = {};
   if (allPreToolHooks.length > 0) {
     const preToolByMatcher = groupByMatcher(allPreToolHooks);
-    hooks.PreToolUse = Object.entries(preToolByMatcher).map(([matcher, hookList]) => ({
+    allHooks.PreToolUse = Object.entries(preToolByMatcher).map(([matcher, hookList]) => ({
       matcher,
       hooks: hookList.map((h) => {
         if (h.type === "prompt") {
@@ -16717,7 +16720,7 @@ function createPluginJson(config, pluginDir) {
   }
   if (allPostToolHooks.length > 0) {
     const postToolByMatcher = groupByMatcher(allPostToolHooks);
-    hooks.PostToolUse = Object.entries(postToolByMatcher).map(([matcher, hookList]) => ({
+    allHooks.PostToolUse = Object.entries(postToolByMatcher).map(([matcher, hookList]) => ({
       matcher,
       hooks: hookList.map((h) => {
         if (h.type === "prompt") {
@@ -16740,25 +16743,29 @@ function createPluginJson(config, pluginDir) {
       })
     }));
   }
-  if (allSessionHooks.length > 0) {
-    for (const hook of allSessionHooks) {
-      const eventName = hook.event;
-      if (!hooks[eventName]) hooks[eventName] = [];
-      const hookEntry = {
-        type: hook.type || "command",
-        ...hook.timeout && { timeout: Math.floor((hook.timeout || 6e4) / 1e3) },
-        ...hook.description && { description: hook.description },
-        ...hook.if && { if: hook.if }
-      };
-      if (hook.type === "prompt") {
-        hookEntry.prompt = hook.prompt;
-      } else {
-        hookEntry.command = getClaudeHookCommand(hook);
-        if (hook.failClosed) hookEntry.failClosed = hook.failClosed;
-      }
-      hooks[eventName].push({ hooks: [hookEntry] });
+  for (const hook of allSessionHooks) {
+    const eventName = hook.event;
+    if (!allHooks[eventName]) allHooks[eventName] = [];
+    const hookEntry = {
+      type: hook.type || "command",
+      ...hook.timeout && { timeout: Math.floor((hook.timeout || 6e4) / 1e3) },
+      ...hook.description && { description: hook.description },
+      ...hook.if && { if: hook.if }
+    };
+    if (hook.type === "prompt") {
+      hookEntry.prompt = hook.prompt;
+    } else {
+      hookEntry.command = getClaudeHookCommand(hook);
+      if (hook.failClosed) hookEntry.failClosed = hook.failClosed;
     }
+    allHooks[eventName].push({ hooks: [hookEntry] });
   }
+  const hooksJsonDir = join7(pluginDir, "hooks");
+  mkdirSync5(hooksJsonDir, { recursive: true });
+  writeFileSync5(
+    join7(hooksJsonDir, "hooks.json"),
+    JSON.stringify({ hooks: allHooks }, null, 2)
+  );
   const pluginJsonDir = join7(pluginDir, ".claude-plugin");
   mkdirSync5(pluginJsonDir, { recursive: true });
   writeFileSync5(join7(pluginJsonDir, "plugin.json"), JSON.stringify(pluginJson, null, 2));
@@ -24897,6 +24904,41 @@ async function parseHookInput() {
     process.stdin.on("error", onError);
   });
 }
+var HOUSEKEEPING_INTERVAL_MS = 24 * 60 * 60 * 1e3;
+function getLoafStatePath(agentsDir) {
+  return join40(agentsDir, ".loaf-state");
+}
+function readLoafState(agentsDir) {
+  const statePath = getLoafStatePath(agentsDir);
+  if (!existsSync35(statePath)) return {};
+  try {
+    return JSON.parse(readFileSync30(statePath, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+function writeLoafState(agentsDir, state) {
+  writeFileSync21(getLoafStatePath(agentsDir), JSON.stringify(state, null, 2) + "\n", "utf-8");
+}
+function checkHousekeepingDue(agentsDir) {
+  const state = readLoafState(agentsDir);
+  const lastRun = state.last_housekeeping ? new Date(state.last_housekeeping).getTime() : 0;
+  const age = Date.now() - lastRun;
+  if (age > HOUSEKEEPING_INTERVAL_MS) {
+    state.housekeeping_pending = true;
+    writeLoafState(agentsDir, state);
+  }
+}
+function markHousekeepingDone(agentsDir) {
+  const state = readLoafState(agentsDir);
+  state.last_housekeeping = (/* @__PURE__ */ new Date()).toISOString();
+  state.housekeeping_pending = false;
+  writeLoafState(agentsDir, state);
+}
+function isHousekeepingPending(agentsDir) {
+  const state = readLoafState(agentsDir);
+  return !!state.housekeeping_pending;
+}
 function getProjectRoot(agentsDir) {
   return dirname13(agentsDir);
 }
@@ -25131,7 +25173,15 @@ function updateSpecSessionField(agentsDir, specId, sessionFileName) {
   }
 }
 function getSessionFilePath(agentsDir) {
-  return join40(agentsDir, "sessions", `${getTimestampForFilename()}-session.md`);
+  const sessionsDir = join40(agentsDir, "sessions");
+  const base = getTimestampForFilename();
+  let path = join40(sessionsDir, `${base}-session.md`);
+  let counter = 1;
+  while (existsSync35(path)) {
+    path = join40(sessionsDir, `${base}-${counter}-session.md`);
+    counter++;
+  }
+  return path;
 }
 function getTimestampForFilename() {
   const now = /* @__PURE__ */ new Date();
@@ -25142,6 +25192,87 @@ function getTimestampForFilename() {
   const minute = String(now.getMinutes()).padStart(2, "0");
   const second = String(now.getSeconds()).padStart(2, "0");
   return `${year}${month}${day}-${hour}${minute}${second}`;
+}
+function extractJournalLines(content) {
+  return content.split("\n").filter((line) => /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] /.test(line));
+}
+function consolidateSession(primaryPath, secondary, agentsDir) {
+  const primary = readSessionFile(primaryPath);
+  if (!primary) return;
+  const primaryEntries = new Set(extractJournalLines(primary.content));
+  const secondaryEntries = extractJournalLines(secondary.content);
+  const newEntries = secondaryEntries.filter((e) => !primaryEntries.has(e));
+  if (newEntries.length > 0) {
+    const timestamp = getDateTimeString();
+    const mergeMarker = `[${timestamp}] session(merge): consolidated from ${basename5(secondary.filePath)}`;
+    const entriesToAdd = [mergeMarker, ...newEntries];
+    const trimmedContent = primary.content.trimEnd();
+    const newContent = import_gray_matter13.default.stringify(
+      trimmedContent + "\n" + entriesToAdd.join("\n") + "\n",
+      { ...primary.data, last_updated: getTimestamp(), last_entry: getTimestamp() }
+    );
+    writeFileAtomic(primaryPath, newContent);
+  }
+  try {
+    unlinkSync3(secondary.filePath);
+  } catch {
+  }
+}
+function findSessionByClaudeId(agentsDir, claudeSessionId, currentBranch) {
+  const sessionsDir = join40(agentsDir, "sessions");
+  if (!existsSync35(sessionsDir)) return null;
+  const matches = [];
+  const activeFiles = readdirSync14(sessionsDir).filter((f) => f.endsWith(".md") && !f.startsWith("archive"));
+  for (const file of activeFiles) {
+    const filePath = join40(sessionsDir, file);
+    const session = readSessionFile(filePath);
+    if (session && session.data.claude_session_id === claudeSessionId) {
+      matches.push({ filePath, data: session.data, content: session.content, isArchived: false });
+    }
+  }
+  const archiveDir = join40(sessionsDir, "archive");
+  if (existsSync35(archiveDir)) {
+    const archiveFiles = readdirSync14(archiveDir).filter((f) => f.endsWith(".md"));
+    for (const file of archiveFiles) {
+      const filePath = join40(archiveDir, file);
+      const session = readSessionFile(filePath);
+      if (session && session.data.claude_session_id === claudeSessionId) {
+        matches.push({ filePath, data: session.data, content: session.content, isArchived: true });
+      }
+    }
+  }
+  if (matches.length === 0) return null;
+  matches.sort((a, b) => {
+    if (currentBranch) {
+      const aMatch = a.data.branch === currentBranch ? 0 : 1;
+      const bMatch = b.data.branch === currentBranch ? 0 : 1;
+      if (aMatch !== bMatch) return aMatch - bMatch;
+    }
+    if (a.isArchived !== b.isArchived) return a.isArchived ? 1 : -1;
+    const aTime = a.data.last_updated || a.data.last_entry || "0";
+    const bTime = b.data.last_updated || b.data.last_entry || "0";
+    return bTime.localeCompare(aTime);
+  });
+  const primary = matches[0];
+  if (primary.isArchived) {
+    const restoredPath = join40(sessionsDir, basename5(primary.filePath));
+    try {
+      renameSync3(primary.filePath, restoredPath);
+      primary.filePath = restoredPath;
+      primary.isArchived = false;
+    } catch {
+    }
+  }
+  for (const secondary of matches.slice(1)) {
+    consolidateSession(primary.filePath, secondary, agentsDir);
+  }
+  if (matches.length > 1) {
+    const refreshed = readSessionFile(primary.filePath);
+    if (refreshed) {
+      return { filePath: primary.filePath, data: refreshed.data, content: refreshed.content };
+    }
+  }
+  return { filePath: primary.filePath, data: primary.data, content: primary.content };
 }
 function findActiveSessionForBranch(agentsDir, branch) {
   const sessionsDir = join40(agentsDir, "sessions");
@@ -25308,7 +25439,8 @@ function parseEntry(entry) {
     "try",
     "reject",
     "compact",
-    "skill"
+    "skill",
+    "wrap"
   ];
   if (!validTypes.includes(type)) return null;
   return {
@@ -25380,9 +25512,12 @@ async function appendEntry(filePath, entryLines, updateFrontmatter, autoResume) 
     updateFrontmatter(session.data);
     const trimmedContent = session.content.trimEnd();
     const hasNewSession = entryLines.some(
-      (line) => /session\(resume\):/.test(line)
+      (line) => /session\((resume|start)\):/.test(line)
     );
-    const separator = hasNewSession ? "\n\n" : "\n";
+    const endsWithStop = /session\(stop\):/.test(
+      trimmedContent.split("\n").filter((l) => l.trim()).pop() || ""
+    );
+    const separator = hasNewSession || endsWithStop ? "\n\n" : "\n";
     const newContent = import_gray_matter13.default.stringify(
       trimmedContent + separator + entryLines.join("\n") + "\n",
       session.data
@@ -25580,18 +25715,23 @@ function registerSessionCommand(program3) {
     } else {
       console.log(`  ${yellow14("!")} No linked spec found \u2014 creating ad-hoc session`);
     }
-    const existingSession = findActiveSessionForBranch(agentsDir, branch);
+    const sessionByClaudeId = hookInput.session_id ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch) : null;
+    const existingSession = sessionByClaudeId || findActiveSessionForBranch(agentsDir, branch);
     let sessionFilePath;
     let sessionData;
     let sessionContent;
     let isResume = false;
-    const sameConversation = existingSession && hookInput.session_id && existingSession.data.claude_session_id === hookInput.session_id;
+    const sameConversation = sessionByClaudeId != null;
     const isClearResume = existingSession && hookInput.source === "clear";
+    const isNewConversation = existingSession && hookInput.session_id && existingSession.data.claude_session_id && hookInput.session_id !== existingSession.data.claude_session_id && hookInput.source !== "clear";
     if (existingSession && sameConversation) {
       sessionFilePath = existingSession.filePath;
       sessionData = existingSession.data;
       sessionContent = existingSession.content;
       isResume = existingSession.data.status !== "active";
+      if (existingSession.data.branch !== branch) {
+        existingSession.data.branch = branch;
+      }
       console.log(`  ${green12("\u2713")} Resuming existing session`);
     } else if (isClearResume) {
       sessionFilePath = existingSession.filePath;
@@ -25599,16 +25739,37 @@ function registerSessionCommand(program3) {
       sessionContent = existingSession.content;
       isResume = true;
       console.log(`  ${green12("\u2713")} Resuming existing session (after /clear)`);
+    } else if (isNewConversation) {
+      const timestamp2 = getDateTimeString();
+      await appendEntry(
+        existingSession.filePath,
+        [
+          `[${timestamp2}] session(end): closed by new conversation`,
+          `[${timestamp2}] session(stop):   === SESSION STOPPED ===`,
+          ""
+        ],
+        (data) => {
+          data.status = "stopped";
+          data.last_updated = getTimestamp();
+          data.last_entry = getTimestamp();
+        }
+      );
+      console.log(`  ${yellow14("!")} Closed stale session (different conversation)`);
+      sessionFilePath = getSessionFilePath(agentsDir);
+      createSessionFile(sessionFilePath, branch, specInfo, hookInput.session_id);
+      const newSession = readSessionFile(sessionFilePath);
+      sessionData = newSession.data;
+      sessionContent = newSession.content;
+      console.log(`  ${green12("+")} Creating new session file`);
+      if (specInfo) {
+        const sessionFileName = basename5(sessionFilePath);
+        updateSpecSessionField(agentsDir, specInfo.id, sessionFileName);
+      }
     } else if (existingSession && (options2.resume || existingSession.data.status === "active")) {
       sessionFilePath = existingSession.filePath;
       sessionData = existingSession.data;
       sessionContent = existingSession.content;
-      const storedSessionId = existingSession.data.claude_session_id;
-      if (hookInput.session_id && storedSessionId && hookInput.session_id !== storedSessionId) {
-        isResume = true;
-      } else {
-        isResume = existingSession.data.status !== "active";
-      }
+      isResume = existingSession.data.status !== "active";
       console.log(`  ${green12("\u2713")} Resuming existing session`);
     } else {
       if (existingSession) {
@@ -25718,9 +25879,13 @@ function registerSessionCommand(program3) {
       console.log(`
   ${gray14(`Suggestion: /rename ${specInfo.id}-${slug}`)}`);
     }
+    if (isHousekeepingPending(agentsDir)) {
+      console.log(`
+  ${yellow14("\u26A0")} Housekeeping pending \u2014 run ${cyan9("loaf session housekeeping")} or ${cyan9("/housekeeping")}`);
+    }
     console.log();
   });
-  session.command("end").description("End session with progress summary").option("--if-active", "Exit successfully when no active session exists").action(async (options2) => {
+  session.command("end").description("End session with progress summary").option("--if-active", "Exit successfully when no active session exists").option("--wrap", "Close session as complete (used after /wrap writes summary)").action(async (options2) => {
     const hookInput = await parseHookInput();
     const agentsDir = findAgentsDir();
     if (!agentsDir) {
@@ -25732,7 +25897,7 @@ function registerSessionCommand(program3) {
       console.error(`  ${red10("error:")} Not in a git repository`);
       process.exit(1);
     }
-    const existingSession = findActiveSessionForBranch(agentsDir, branch);
+    const existingSession = (hookInput.session_id ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch) : null) || findActiveSessionForBranch(agentsDir, branch);
     if (!existingSession) {
       if (options2.ifActive) {
         process.exit(0);
@@ -25775,25 +25940,73 @@ function registerSessionCommand(program3) {
     if (lastCommit !== "unknown") concludeParts.push(`at commit ${lastCommit}`);
     if (progressText !== "no activity logged") concludeParts.push(progressText);
     const concludeText = concludeParts.length > 0 ? concludeParts.join(", ") : "session ended";
-    const journalLines = [
-      `[${timestamp}] session(end): ${concludeText}`,
-      `[${timestamp}] session(stop):   === SESSION STOPPED ===`,
-      ""
-    ];
-    console.log(`  ${yellow14("?")} Consider adding final entries:`);
-    console.log(`    ${gray14('loaf session log "decision(scope): key decision"')}`);
-    console.log(`    ${gray14('loaf session log "finding(scope): final notes"')}`);
-    console.log(`    ${gray14('loaf session log "todo(next): follow-up task"')}`);
-    console.log();
-    await appendEntry(
-      existingSession.filePath,
-      journalLines,
-      (data) => {
-        data.status = "stopped";
-        data.last_updated = getTimestamp();
-        data.last_entry = getTimestamp();
+    const isWrap = !!options2.wrap;
+    if (isWrap) {
+      const journalLines = [
+        `[${timestamp}] session(wrap): ${concludeText}`
+      ];
+      await appendEntry(
+        existingSession.filePath,
+        journalLines,
+        (data) => {
+          data.status = "complete";
+          data.last_updated = getTimestamp();
+          data.last_entry = getTimestamp();
+        }
+      );
+    } else {
+      const journalLines = [
+        `[${timestamp}] session(end): ${concludeText}`,
+        `[${timestamp}] session(stop):   === SESSION STOPPED ===`,
+        ""
+      ];
+      console.log(`  ${yellow14("?")} Consider adding final entries:`);
+      console.log(`    ${gray14('loaf session log "decision(scope): key decision"')}`);
+      console.log(`    ${gray14('loaf session log "finding(scope): final notes"')}`);
+      console.log(`    ${gray14('loaf session log "todo(next): follow-up task"')}`);
+      console.log();
+      await appendEntry(
+        existingSession.filePath,
+        journalLines,
+        (data) => {
+          data.status = "stopped";
+          data.last_updated = getTimestamp();
+          data.last_entry = getTimestamp();
+        }
+      );
+    }
+    if (isWrap) {
+      const freshSession = readSessionFile(existingSession.filePath);
+      const sessionContent = freshSession?.content || existingSession.content;
+      if (existingSession.data.spec) {
+        const decisionEntries = extractDecisionEntries(sessionContent);
+        if (decisionEntries.length > 0) {
+          const result = persistDecisionsToSpec(
+            agentsDir,
+            existingSession.data.spec,
+            decisionEntries,
+            existingSession.data.branch || branch
+          );
+          if (result.success) {
+            console.log(`  ${green12("\u2713")} Decisions persisted: ${result.message}`);
+          } else {
+            console.log(`  ${yellow14("\u26A0")} Could not persist decisions: ${result.message}`);
+          }
+        }
       }
-    );
+      if (sessionContent.includes("## Session Wrap-Up")) {
+        const currentStatePattern = /\n## Current State \([^)]*\)[\s\S]*?(?=\n## |\n*$)/;
+        if (currentStatePattern.test(sessionContent)) {
+          const cleanedContent = sessionContent.replace(currentStatePattern, "");
+          const newFileContent = import_gray_matter13.default.stringify(
+            cleanedContent,
+            freshSession?.data || existingSession.data
+          );
+          writeFileAtomic(existingSession.filePath, newFileContent);
+          console.log(`  ${green12("\u2713")} Replaced Current State with wrap summary`);
+        }
+      }
+    }
     const knowledgeFiles = consumeKnowledgeNudges(findGitRoot(), branch);
     if (knowledgeFiles.length > 0) {
       console.log(`  ${yellow14("\u26A0")} Knowledge consolidation recommended for ${knowledgeFiles.length} file(s):`);
@@ -25803,7 +26016,9 @@ function registerSessionCommand(program3) {
       console.log(`    ${gray14("Run 'loaf kb review <file>' before ending.")}`);
       console.log();
     }
-    console.log(`  ${green12("\u2713")} Session stopped: ${gray14(existingSession.filePath.replace(agentsDir, ".agents"))}`);
+    checkHousekeepingDue(agentsDir);
+    const statusLabel = isWrap ? "complete" : "stopped";
+    console.log(`  ${green12("\u2713")} Session ${statusLabel}: ${gray14(existingSession.filePath.replace(agentsDir, ".agents"))}`);
     console.log();
   });
   session.command("log [entry]").description("Log entry to session journal").option("--from-hook", "Parse entry from hook stdin").option("--detect-linear", "Detect Linear magic words in recent commits").action(async (entry, options2) => {
@@ -25833,8 +26048,14 @@ function registerSessionCommand(program3) {
       try {
         const stdin = await readStdin();
         const hookData = JSON.parse(stdin);
+        const hookEventName = hookData.hook_event_name;
+        const toolName = hookData.tool_name || hookData.tool?.name;
+        if (hookEventName === "TaskCompleted" || toolName === "TaskCompleted") {
+          const description = hookData.task_description || hookData.task_subject || "task";
+          entryText = `task(completed): ${description}`;
+        }
         const command = hookData.tool_input?.command || hookData.tool?.input?.command || hookData.input?.command;
-        if (command && typeof command === "string") {
+        if (!entryText && command && typeof command === "string") {
           if (command.includes("git commit")) {
             const hash = getLastCommitSha();
             const isAmend = command.includes("--amend");
@@ -25880,7 +26101,7 @@ function registerSessionCommand(program3) {
           } else {
             process.exit(0);
           }
-        } else {
+        } else if (!entryText) {
           if (hookData.commit) {
             entryText = `commit(${hookData.commit}): ${hookData.message || "commit"}`;
           } else if (hookData.pr) {
@@ -26027,6 +26248,190 @@ function registerSessionCommand(program3) {
     console.log(`  ${green12("\u2713")} Archived: ${gray14(archivePath.replace(agentsDir, ".agents"))}`);
     console.log();
   });
+  session.command("housekeeping").description("Run session housekeeping: orphans, splits, archival, linkage repair").option("--dry-run", "Report what would be done without making changes").action(async (options2) => {
+    const agentsDir = findAgentsDir();
+    if (!agentsDir) {
+      console.error(`  ${red10("error:")} Could not find .agents/ directory`);
+      process.exit(1);
+    }
+    const sessionsDir = join40(agentsDir, "sessions");
+    if (!existsSync35(sessionsDir)) {
+      console.log(`  ${gray14("No sessions directory. Nothing to do.")}`);
+      markHousekeepingDone(agentsDir);
+      return;
+    }
+    const dryRun = !!options2.dryRun;
+    console.log(`
+  ${bold13("loaf session housekeeping")}${dryRun ? gray14(" (dry run)") : ""}
+`);
+    const files = readdirSync14(sessionsDir).filter((f) => f.endsWith(".md"));
+    const sessions = [];
+    for (const file of files) {
+      const filePath = join40(sessionsDir, file);
+      const s = readSessionFile(filePath);
+      if (s) {
+        sessions.push({ filePath, fileName: file, data: s.data, content: s.content });
+      }
+    }
+    if (sessions.length === 0) {
+      console.log(`  ${gray14("No sessions found.")}`);
+      markHousekeepingDone(agentsDir);
+      return;
+    }
+    let gitBranches;
+    try {
+      const branchOutput = execSync3("git branch --list --format='%(refname:short)'", {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"]
+      }).trim();
+      gitBranches = new Set(branchOutput.split("\n").map((b) => b.trim()).filter(Boolean));
+    } catch {
+      gitBranches = /* @__PURE__ */ new Set();
+    }
+    const report = {
+      orphansArchived: 0,
+      orphansFlagged: 0,
+      splitsConsolidated: 0,
+      ageArchived: 0,
+      linkageFixed: 0,
+      total: sessions.length
+    };
+    console.log(`  ${bold13("Orphan detection")}`);
+    const orphans = sessions.filter(
+      (s) => s.data.status !== "archived" && s.data.status !== "complete" && s.data.branch && !s.data.branch.startsWith("detached-") && !gitBranches.has(s.data.branch)
+    );
+    if (orphans.length === 0) {
+      console.log(`    ${green12("\u2713")} No orphaned sessions`);
+    } else {
+      for (const orphan of orphans) {
+        const activity = countJournalActivity(orphan.content);
+        const isEmpty = activity.entries === 0 && activity.commits === 0;
+        if (isEmpty) {
+          if (!dryRun) {
+            quickArchiveSession(orphan.filePath, agentsDir);
+          }
+          console.log(`    ${yellow14("\u2192")} Archived empty orphan: ${gray14(orphan.fileName)} (branch ${orphan.data.branch} deleted)`);
+          report.orphansArchived++;
+        } else {
+          console.log(`    ${yellow14("\u26A0")} Orphan needs review: ${orphan.fileName} (branch ${orphan.data.branch} deleted, ${activity.entries} entries)`);
+          report.orphansFlagged++;
+        }
+      }
+    }
+    console.log(`
+  ${bold13("Split detection")}`);
+    const bySessionId = /* @__PURE__ */ new Map();
+    for (const s of sessions) {
+      if (s.data.claude_session_id && s.data.status !== "archived") {
+        const existing = bySessionId.get(s.data.claude_session_id) || [];
+        existing.push(s);
+        bySessionId.set(s.data.claude_session_id, existing);
+      }
+    }
+    const splits = [...bySessionId.entries()].filter(([, group]) => group.length > 1);
+    if (splits.length === 0) {
+      console.log(`    ${green12("\u2713")} No split sessions`);
+    } else {
+      for (const [sessionId, group] of splits) {
+        console.log(`    ${yellow14("\u2192")} Consolidating ${group.length} files for session ${sessionId.slice(0, 8)}`);
+        if (!dryRun) {
+          group.sort((a, b) => {
+            if (a.data.status === "active" && b.data.status !== "active") return -1;
+            if (b.data.status === "active" && a.data.status !== "active") return 1;
+            const aTime = a.data.last_updated || a.data.last_entry || "0";
+            const bTime = b.data.last_updated || b.data.last_entry || "0";
+            return bTime.localeCompare(aTime);
+          });
+          for (const secondary of group.slice(1)) {
+            consolidateSession(group[0].filePath, secondary, agentsDir);
+          }
+        }
+        report.splitsConsolidated++;
+      }
+    }
+    console.log(`
+  ${bold13("Age-based archival")}`);
+    const AGE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1e3;
+    const completeSessions = sessions.filter((s) => s.data.status === "complete");
+    let ageArchived = 0;
+    for (const s of completeSessions) {
+      const completedAt = s.data.last_updated || s.data.last_entry;
+      if (!completedAt) continue;
+      const age = Date.now() - new Date(completedAt).getTime();
+      if (age > AGE_THRESHOLD_MS) {
+        if (!dryRun) {
+          quickArchiveSession(s.filePath, agentsDir);
+        }
+        const days = Math.floor(age / (24 * 60 * 60 * 1e3));
+        console.log(`    ${yellow14("\u2192")} Archived: ${gray14(s.fileName)} (complete, ${days}d old)`);
+        ageArchived++;
+      }
+    }
+    report.ageArchived = ageArchived;
+    if (ageArchived === 0) {
+      console.log(`    ${green12("\u2713")} No sessions past age threshold`);
+    }
+    console.log(`
+  ${bold13("Spec linkage")}`);
+    const specsDir = join40(agentsDir, "specs");
+    let linkageFixed = 0;
+    if (existsSync35(specsDir)) {
+      const specFiles = readdirSync14(specsDir).filter((f) => f.endsWith(".md"));
+      for (const specFile of specFiles) {
+        try {
+          const specPath = join40(specsDir, specFile);
+          const specContent = readFileSync30(specPath, "utf-8");
+          const specParsed = (0, import_gray_matter13.default)(specContent);
+          const specFm = specParsed.data;
+          if (specFm.session) {
+            const sessionPath = join40(sessionsDir, specFm.session);
+            const archivePath = join40(sessionsDir, "archive", specFm.session);
+            if (!existsSync35(sessionPath) && !existsSync35(archivePath)) {
+              const matchingSession = sessions.find(
+                (s) => s.data.spec === specFm.id || s.data.branch === specFm.branch
+              );
+              if (matchingSession) {
+                const correctFileName = basename5(matchingSession.filePath);
+                if (!dryRun) {
+                  specFm.session = correctFileName;
+                  const newContent = import_gray_matter13.default.stringify(specParsed.content, specFm);
+                  writeFileSync21(specPath, newContent, "utf-8");
+                }
+                console.log(`    ${yellow14("\u2192")} Fixed: ${specFile} \u2192 ${correctFileName}`);
+                linkageFixed++;
+              } else {
+                console.log(`    ${yellow14("\u26A0")} Broken link: ${specFile} references missing ${specFm.session}`);
+              }
+            }
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+    report.linkageFixed = linkageFixed;
+    if (linkageFixed === 0) {
+      console.log(`    ${green12("\u2713")} All spec links valid`);
+    }
+    console.log(`
+  ${bold13("Knowledge base")}`);
+    const staleCount = countStaleKnowledge();
+    if (staleCount > 0) {
+      console.log(`    ${yellow14("\u26A0")} ${staleCount} stale knowledge file(s) \u2014 run ${cyan9("loaf kb review")}`);
+    } else {
+      console.log(`    ${green12("\u2713")} All knowledge files current`);
+    }
+    if (!dryRun) {
+      markHousekeepingDone(agentsDir);
+    }
+    const actions = report.orphansArchived + report.splitsConsolidated + report.ageArchived + report.linkageFixed;
+    console.log(`
+  ${bold13("Summary:")} ${report.total} sessions scanned, ${actions} action(s)${dryRun ? " (dry run)" : ""}`);
+    if (report.orphansFlagged > 0) {
+      console.log(`  ${yellow14("\u26A0")} ${report.orphansFlagged} orphan(s) need manual review`);
+    }
+    console.log();
+  });
   session.command("list").description("List all active and archived sessions").option("--all", "Include archived sessions").action(async (options2) => {
     const agentsDir = findAgentsDir();
     if (!agentsDir) {
@@ -26106,7 +26511,7 @@ function registerSessionCommand(program3) {
     if (branch === "unknown") {
       process.exit(0);
     }
-    const existingSession = findActiveSessionForBranch(agentsDir, branch);
+    const existingSession = (hookInput.session_id ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch) : null) || findActiveSessionForBranch(agentsDir, branch);
     if (!existingSession) {
       process.exit(0);
     }
@@ -26116,6 +26521,169 @@ function registerSessionCommand(program3) {
     }
     const stateSection = buildCurrentStateSection(freshSession.content);
     await writeCurrentState(existingSession.filePath, stateSection);
+  });
+  const context = session.command("context").description("Session context for hooks and agents");
+  context.command("for-prompt").alias("--for-prompt").description("Print implementation principles for UserPromptSubmit hook injection").action(async () => {
+    const hookInput = await parseHookInput();
+    if (hookInput.agent_id) {
+      process.exit(0);
+    }
+    const lines = [];
+    lines.push("[Implementation Principles]");
+    lines.push("- When the user's message is a QUESTION, answer it and STOP. Do not implement anything.");
+    lines.push("  Wait for explicit instructions before taking action.");
+    lines.push("- Create a Task BEFORE any tool use that changes something (Edit, Write, Bash, etc.).");
+    lines.push("  No threshold \u2014 if it mutates, track it. TaskCompleted events auto-log to the session journal.");
+    lines.push("  Create tasks before starting work, update status as you go, mark complete when done.");
+    lines.push("- Delegate code changes to agents \u2014 orchestrator coordinates, doesn't implement");
+    lines.push('- Log decisions: loaf session log "decision(scope): description"');
+    lines.push("- One concern per agent, parallel when independent");
+    lines.push("- Keep session file handoff-ready");
+    console.log(lines.join("\n"));
+  });
+  context.command("for-resumption").alias("--for-resumption").description("Print rich resumption context after compaction (PostCompact hook)").action(async () => {
+    const hookInput = await parseHookInput();
+    const agentsDir = findAgentsDir();
+    if (!agentsDir) {
+      process.exit(0);
+    }
+    const branch = getCurrentBranch();
+    if (branch === "unknown") {
+      process.exit(0);
+    }
+    const existingSession = (hookInput.session_id ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch) : null) || findActiveSessionForBranch(agentsDir, branch);
+    if (!existingSession) {
+      console.log("=== POST-COMPACTION RESUMPTION ===");
+      console.log("");
+      console.log("WARNING: No active session found. Read .agents/sessions/ manually.");
+      process.exit(0);
+    }
+    const freshSession = readSessionFile(existingSession.filePath);
+    const sessionContent = freshSession?.content || existingSession.content;
+    const sessionPath = existingSession.filePath.replace(agentsDir, ".agents");
+    console.log("=== POST-COMPACTION RESUMPTION ===");
+    console.log("");
+    console.log(`Session: ${sessionPath}`);
+    console.log(`Branch: ${branch}`);
+    if (existingSession.data.spec) {
+      const specInfo = findSpecForBranch(agentsDir, branch);
+      if (specInfo) {
+        console.log(`Spec: ${specInfo.id} \u2014 ${specInfo.title}`);
+      } else {
+        console.log(`Spec: ${existingSession.data.spec}`);
+      }
+    }
+    const lastCommit = getLastCommitSha();
+    const uncommitted = getUncommittedCount();
+    if (lastCommit !== "unknown") {
+      const commits = getRecentCommits(1);
+      console.log(`Last commit: ${commits[0]?.hash || lastCommit} \u2014 ${commits[0]?.message || ""}`);
+    }
+    if (uncommitted > 0) {
+      console.log(`Uncommitted: ${uncommitted} file${uncommitted === 1 ? "" : "s"}`);
+    }
+    console.log("");
+    const currentState = extractCurrentState(sessionContent);
+    if (currentState) {
+      console.log(currentState);
+    } else {
+      console.log("WARNING: No ## Current State was written before compaction.");
+      console.log("Read the session file's ## Journal section for context.");
+    }
+    console.log("");
+    console.log("## Recent Journal");
+    console.log("");
+    const recentEntries = extractRecentEntries(sessionContent, 20);
+    if (recentEntries.length > 0) {
+      for (const entry of recentEntries) {
+        console.log(entry);
+      }
+    } else {
+      console.log("(no journal entries)");
+    }
+    console.log("");
+    console.log("---");
+    console.log("Resume work from where the state summary left off.");
+    console.log("Do not ask 'where were we?' \u2014 the context above tells you.");
+    console.log(`If you need more detail, read the full session file: ${sessionPath}`);
+  });
+  context.command("for-compact").alias("--for-compact").description("Log compact marker and print journal flush instructions (PreCompact hook)").action(async () => {
+    const hookInput = await parseHookInput();
+    if (hookInput.agent_id) {
+      process.exit(0);
+    }
+    const agentsDir = findAgentsDir();
+    const branch = getCurrentBranch();
+    if (agentsDir && branch !== "unknown") {
+      const existingSession = (hookInput.session_id ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch) : null) || findActiveSessionForBranch(agentsDir, branch);
+      if (existingSession) {
+        const timestamp = getDateTimeString();
+        await appendEntry(
+          existingSession.filePath,
+          [`[${timestamp}] compact(session): context compaction triggered`],
+          (data) => {
+            data.last_updated = getTimestamp();
+            data.last_entry = getTimestamp();
+          }
+        );
+        const freshSession = readSessionFile(existingSession.filePath);
+        const content = freshSession?.content || existingSession.content;
+        const stateMatch = content.match(/## Current State \((\d{4}-\d{2}-\d{2} \d{2}:\d{2})\)/);
+        if (!stateMatch) {
+        } else {
+          const tsStr = stateMatch[1];
+          const tsParts = tsStr.split(/[-: ]/);
+          const tsDate = new Date(
+            parseInt(tsParts[0]),
+            parseInt(tsParts[1]) - 1,
+            parseInt(tsParts[2]),
+            parseInt(tsParts[3]),
+            parseInt(tsParts[4])
+          );
+          const ageMinutes = Math.floor((Date.now() - tsDate.getTime()) / 6e4);
+          if (ageMinutes > 5) {
+          }
+        }
+      }
+    }
+    const lines = [];
+    lines.push("CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.");
+    lines.push("");
+    lines.push("REQUIRED \u2014 two actions before the model responds:");
+    lines.push("");
+    lines.push("1. **Flush journal entries.** Log all unrecorded decisions, discoveries, and progress:");
+    lines.push("   - `decision(scope): key decisions made this session`");
+    lines.push("   - `discover(scope): important findings`");
+    lines.push("   - `finding(scope): analysis result`");
+    lines.push('   Run `loaf session log "type(scope): description"` for each.');
+    lines.push("");
+    lines.push("2. **Write state summary.** Replace the session file's `## Current State` heading");
+    lines.push("   with `## Current State (YYYY-MM-DD HH:MM)` (current timestamp) and write");
+    lines.push("   a structured summary using this format:");
+    lines.push("");
+    lines.push("   ```");
+    lines.push("   ## Current State (YYYY-MM-DD HH:MM)");
+    lines.push("");
+    lines.push("   **Working on:** spec/task \u2014 brief description");
+    lines.push("   **Status:** one-line build/test/progress status");
+    lines.push("");
+    lines.push("   **Done this session:**");
+    lines.push("   - bullet per significant change");
+    lines.push("");
+    lines.push("   **Blocked:** (omit if none)");
+    lines.push("   - blockers with context");
+    lines.push("");
+    lines.push("   **Next:**");
+    lines.push("   - immediate follow-ups");
+    lines.push("   ```");
+    lines.push("");
+    lines.push("   This is the resumption context after compaction \u2014 write it as if briefing");
+    lines.push("   a colleague who just walked in. Be specific (file names, commit hashes,");
+    lines.push("   flag names), not vague. The timestamp lets future compactions detect stale");
+    lines.push("   summaries. Update `last_updated` frontmatter via `loaf session state update`.");
+    lines.push("");
+    lines.push("The journal IS your external memory. Entries not flushed now are lost forever.");
+    console.log(lines.join("\n"));
   });
 }
 

@@ -79,12 +79,16 @@ const BINARY_PATH_HOOKS = new Set([
   // Session lifecycle hooks
   "session-start-loaf",
   "session-end-loaf",
+  "session-context-inject",
+  "post-compact",
   // Journal auto-entry hooks
   "journal-post-commit",
   "journal-post-pr",
   "journal-post-merge",
   // Task management hooks
   "generate-task-board",
+  // Task journal hooks
+  "journal-task-completed",
   // Linear integration hooks
   "detect-linear-magic",
 ]);
@@ -305,23 +309,24 @@ function getClaudeHookCommand(hook: HookDefinition): string {
 }
 
 function createPluginJson(config: HooksConfig, pluginDir: string): void {
+  // plugin.json — metadata only, no hooks (all hooks go to hooks/hooks.json)
   const pluginJson: Record<string, unknown> = {
     name: PLUGIN_NAME,
     version: VERSION,
     description: PLUGIN_DESCRIPTION,
     repository: REPOSITORY,
     license: "MIT",
-    hooks: {} as Record<string, unknown>,
   };
 
-  const hooks = pluginJson.hooks as Record<string, unknown>;
+  // All hooks go to hooks/hooks.json for consistent loading
   const allPreToolHooks = config.hooks["pre-tool"] || [];
   const allPostToolHooks = config.hooks["post-tool"] || [];
   const allSessionHooks = config.hooks.session || [];
+  const allHooks: Record<string, unknown[]> = {};
 
   if (allPreToolHooks.length > 0) {
     const preToolByMatcher = groupByMatcher(allPreToolHooks);
-    hooks.PreToolUse = Object.entries(preToolByMatcher).map(([matcher, hookList]) => ({
+    allHooks.PreToolUse = Object.entries(preToolByMatcher).map(([matcher, hookList]) => ({
       matcher,
       hooks: hookList.map((h) => {
         if (h.type === "prompt") {
@@ -346,7 +351,7 @@ function createPluginJson(config: HooksConfig, pluginDir: string): void {
 
   if (allPostToolHooks.length > 0) {
     const postToolByMatcher = groupByMatcher(allPostToolHooks);
-    hooks.PostToolUse = Object.entries(postToolByMatcher).map(([matcher, hookList]) => ({
+    allHooks.PostToolUse = Object.entries(postToolByMatcher).map(([matcher, hookList]) => ({
       matcher,
       hooks: hookList.map((h) => {
         if (h.type === "prompt") {
@@ -370,29 +375,34 @@ function createPluginJson(config: HooksConfig, pluginDir: string): void {
     }));
   }
 
-  if (allSessionHooks.length > 0) {
-    for (const hook of allSessionHooks) {
-      const eventName = hook.event!;
-      if (!hooks[eventName]) hooks[eventName] = [];
-      
-      // Both prompt and command type hooks can have 'if' conditions
-      const hookEntry: Record<string, unknown> = {
-        type: hook.type || "command",
-        ...(hook.timeout && { timeout: Math.floor((hook.timeout || 60000) / 1000) }),
-        ...(hook.description && { description: hook.description }),
-        ...(hook.if && { if: hook.if }),
-      };
-      
-      if (hook.type === "prompt") {
-        hookEntry.prompt = hook.prompt!;
-      } else {
-        hookEntry.command = getClaudeHookCommand(hook);
-        if (hook.failClosed) hookEntry.failClosed = hook.failClosed;
-      }
-      
-      (hooks[eventName] as unknown[]).push({ hooks: [hookEntry] });
+  for (const hook of allSessionHooks) {
+    const eventName = hook.event!;
+    if (!allHooks[eventName]) allHooks[eventName] = [];
+
+    const hookEntry: Record<string, unknown> = {
+      type: hook.type || "command",
+      ...(hook.timeout && { timeout: Math.floor((hook.timeout || 60000) / 1000) }),
+      ...(hook.description && { description: hook.description }),
+      ...(hook.if && { if: hook.if }),
+    };
+
+    if (hook.type === "prompt") {
+      hookEntry.prompt = hook.prompt!;
+    } else {
+      hookEntry.command = getClaudeHookCommand(hook);
+      if (hook.failClosed) hookEntry.failClosed = hook.failClosed;
     }
+
+    allHooks[eventName].push({ hooks: [hookEntry] });
   }
+
+  // Write hooks/hooks.json
+  const hooksJsonDir = join(pluginDir, "hooks");
+  mkdirSync(hooksJsonDir, { recursive: true });
+  writeFileSync(
+    join(hooksJsonDir, "hooks.json"),
+    JSON.stringify({ hooks: allHooks }, null, 2)
+  );
 
   const pluginJsonDir = join(pluginDir, ".claude-plugin");
   mkdirSync(pluginJsonDir, { recursive: true });
