@@ -69,15 +69,16 @@ Loaf uses **functional profiles** defined by tool access boundaries, not role-ba
 
 The main session is the Warden — a persistent coordinator identity defined in `SOUL.md`. The Warden orchestrates, advises, and delegates but does not forge, review, or scout directly. `SOUL.md` lives at the project root; a SessionStart hook validates its presence and restores it from the canonical template (`content/templates/soul.md`) if missing.
 
-**3 Functional Profiles:**
+**4 Functional Profiles:**
 
 | Profile | Concept | Race | Tool Access | Purpose |
 |---------|---------|------|-------------|---------|
 | Smith | Implementer | Dwarf | Full write | Forges code, tests, config, docs. Speciality via skills at spawn time. |
 | Sentinel | Reviewer | Elf | Read-only | Watches, guards, verifies. Cannot modify what it reviews. |
 | Ranger | Researcher | Human | Read + Web | Scouts far, gathers intelligence, reports back. No write or execute. |
+| Keeper | Librarian | Ent | Read + Edit (.agents/) | Tends session lifecycle, state, wrap summaries. Does not forge code or scout. |
 
-Each profile is defined in `content/agents/{implementer,reviewer,researcher}.md` — a minimal behavioral contract and tool boundary, not domain knowledge. A spawned Smith becomes a backend engineer, DBA, or devops engineer depending entirely on the skills loaded at spawn time.
+Each profile is defined in `content/agents/{implementer,reviewer,researcher,librarian}.md` — a minimal behavioral contract and tool boundary, not domain knowledge. A spawned Smith becomes a backend engineer, DBA, or devops engineer depending entirely on the skills loaded at spawn time.
 
 **1 System Agent:**
 
@@ -127,6 +128,20 @@ Sessions are branch-scoped and managed programmatically by `loaf session start` 
 
 **Compaction resilience:** The session journal is external memory that survives context compaction. PreCompact requires flushing unrecorded entries and writing a state summary to `## Current State`. PostCompact nudges the model to re-read the session file for resumption context. No separate snapshot mechanism needed.
 
+### Journal Entry Sources
+
+Session journals receive entries from multiple layered sources:
+
+| Source | Mechanism | When |
+|--------|-----------|------|
+| Skills | `loaf session log` in skill Critical Rules | Self-logging on invocation |
+| Git events | PostToolUse command hooks | Commits, PRs, merges (automatic) |
+| Task events | TaskCompleted session hook | Task completed/cancelled (automatic) |
+| Context | UserPromptSubmit command hook | Every user prompt |
+| Compaction | PreCompact prompt hook | Emergency journal flush |
+
+Skills self-log as their first action. Git and task events are captured automatically by hooks. The UserPromptSubmit hook injects session context and orchestration conventions on every prompt.
+
 **Session management policy:**
 
 | Scenario | Action |
@@ -139,7 +154,7 @@ Sessions are branch-scoped and managed programmatically by `loaf session start` 
 
 ## Hook Architecture
 
-Hooks are defined in `config/hooks.yaml` and distributed to target-specific formats at build time.
+Hooks are defined in `config/hooks.yaml` and distributed to target-specific formats at build time. For Claude Code, the canonical hook registration file is `hooks/hooks.json` (inside the plugin output directory). `plugin.json` silently drops non-matcher session lifecycle events — all hooks should be registered in `hooks.json`.
 
 ### Dispatch Types
 
@@ -149,9 +164,23 @@ Hooks are defined in `config/hooks.yaml` and distributed to target-specific form
 | command | `command:` | Runs a CLI command (e.g., `loaf check --hook <id>`) |
 | prompt | `prompt:` | Injects text directly to the AI model |
 
+### Hook Type Behavioral Constraints
+
+Hard-won constraints validated during SPEC-030 implementation:
+
+- **`type: prompt`** — Binary gate. Any non-empty LLM response is treated as rejection (`ok: false`). Cannot express "this looks fine, proceed" — the response itself blocks. Unusable for advisory hooks or hooks requiring LLM judgment. Use only for validation that returns empty on success.
+- **`type: agent`** — Read-only tool access (Read, Grep, Glob, WebFetch, WebSearch). No Edit, Write, or Bash. Max 50 turns. Useful for observation, not mutation.
+- **`type: command`** — Correct primitive for context injection and side effects. Exit 0 with stdout for context injection. Exit 1 for non-blocking warning. Exit 2 to block the action.
+- **Stop event circularity** — Writing to session files from a Stop hook can re-trigger the hook chain. State writes must be idempotent or guarded against re-entry.
+- **PreCompact prompt hooks** — Not supported outside REPL sessions. Use `type: command` for PreCompact context injection.
+- **`plugin.json` drops non-matcher events** — Session lifecycle events (SessionStart, SessionEnd, TaskCompleted) must be registered in `hooks/hooks.json`, not `plugin.json`.
+- **UserPromptSubmit has no matcher** — Fires on every user message, cannot be filtered by tool name or input.
+- **Session events use different JSON shape** — `hook_event_name` field instead of `tool_name`. TaskCompleted passes `task_subject` and `task_description`.
+- **Plugin caching** — Cached plugin versions serve stale hook handlers during development. Marketplace remove/re-add is the reliable cache-busting path.
+
 ### Hook Categories
 
-**Enforcement hooks** — quality gates that block bad actions. Run by `loaf check` as a unified TypeScript backend. Exit non-zero to block. `failClosed: true` means failures block the action.
+**Enforcement hooks** — quality gates that block bad actions. Run by `loaf check` as a unified TypeScript backend. Exit non-zero to block. `failClosed: true` means failures block the action. `validate-push` (pre-push) restricts direct pushes to the default branch to `.agents/` and `docs/` files only. Code changes require a feature branch and pull request.
 
 **Instruction hooks** — context injection at tool invocation. Triggered by `matcher` patterns (tool name) and optionally filtered by `if` conditions (tool input). Inject relevant skill instructions or nudges.
 
