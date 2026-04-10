@@ -2,10 +2,8 @@
 id: SPEC-030
 title: Librarian agent — session lifecycle management via task-driven journaling
 source: 20260409-140251-session-lifecycle-states.md
-created: 2026-04-09T15:30:00.000Z
+created: '2026-04-09T15:30:00.000Z'
 status: complete
-branch: feat/librarian-session-lifecycle
-session: 20260409-200731-session.md
 ---
 
 # SPEC-030: Librarian Agent — Session Lifecycle Management via Task-Driven Journaling

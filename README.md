@@ -94,15 +94,16 @@ CLI commands that support the workflow pipeline:
 
 ## Profiles
 
-Loaf uses three functional profiles defined by mechanically enforced tool boundaries — not role titles, not domain labels. What an agent *can do* is fixed by its profile. What it *knows* comes from skills loaded at spawn time.
+Loaf uses four functional profiles defined by mechanically enforced tool boundaries — not role titles, not domain labels. What an agent *can do* is fixed by its profile. What it *knows* comes from skills loaded at spawn time.
 
 | Profile | Role | Tool Access | What It Does |
 |---------|------|-------------|--------------|
 | **Smith** | Implementer | Full write | Forges code, tests, config, and docs. Speciality determined by skills. |
 | **Sentinel** | Reviewer | Read-only | Watches, guards, and verifies. Cannot modify what it reviews — by design. |
 | **Ranger** | Researcher | Read + web | Scouts far, gathers intelligence, reports structured findings. |
+| **Keeper** | Librarian | Read + Edit (.agents/) | Tends session lifecycle, state, and wrap summaries. Does not forge code or scout. |
 
-The main session is the **Warden** — it coordinates and delegates but never implements directly. See [SOUL.md](SOUL.md) for the full fellowship identity.
+The main session is the **Warden** — it coordinates and delegates but never implements directly. See [SOUL.md](.agents/SOUL.md) for the full fellowship identity.
 
 ## Skills
 
