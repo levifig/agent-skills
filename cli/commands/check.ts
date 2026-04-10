@@ -286,6 +286,45 @@ async function validatePush(context: HookContext): Promise<CheckResult> {
 
   const errors: string[] = [];
 
+  // Check 0: Direct push to main — only allow .agents/ and docs/ changes
+  const allowedMainPrefixes = [".agents/", "docs/"];
+  try {
+    const currentBranch = execSync("git branch --show-current", {
+      encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"],
+    }).trim();
+    const defaultBranch = execSync(
+      "git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || echo refs/remotes/origin/main",
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
+    ).trim().replace("refs/remotes/origin/", "");
+
+    if (currentBranch === defaultBranch) {
+      const changedFiles = execSync(
+        "git diff origin/" + currentBranch + "..HEAD --name-only",
+        { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] }
+      ).trim();
+      if (changedFiles) {
+        const files = changedFiles.split("\n").filter(Boolean);
+        const disallowed = files.filter(
+          f => !allowedMainPrefixes.some(prefix => f.startsWith(prefix))
+        );
+        if (disallowed.length > 0) {
+          result.passed = false;
+          result.blocked = true;
+          result.errors.push(
+            "Direct push to " + currentBranch + " only allowed for .agents/ and docs/. " +
+            "Use a feature branch + PR for: " + disallowed.slice(0, 5).join(", ") +
+            (disallowed.length > 5 ? " (and " + (disallowed.length - 5) + " more)" : "")
+          );
+          return result;
+        }
+      }
+      // Operational-only push to main — skip version/changelog/build checks
+      return result;
+    }
+  } catch {
+    // Can't determine branch — proceed with normal checks
+  }
+
   // Detect project type - check from HEAD (committed), not disk (may have uncommitted changes)
   let hasPackageJson = false;
   let hasBuildScript = false;
