@@ -47,6 +47,7 @@ After work completes, verify:
 loaf session housekeeping --dry-run  # Preview all actions
 loaf session housekeeping            # Run all checks and fixes
 loaf session archive                 # Archive single session
+loaf session enrich <file>           # Enrich a session's journal from JSONL
 loaf task archive TASK-XXX           # Archive single task
 loaf spec archive SPEC-XXX           # Archive single spec
 loaf task sync                       # Fix TASKS.json drift
@@ -62,6 +63,18 @@ loaf task sync                       # Fix TASKS.json drift
 | Drafts (state assessments) | `.agents/drafts/` | delete | Flag for cleanup when linked session is archived |
 | Drafts (brainstorms) | `.agents/drafts/` | `archive/` | User decision (spark extraction first) |
 | Reports | `.agents/reports/` | `archive/` | Archive after processing + linked session archived |
+
+## Session Enrichment
+
+For each session with status `stopped` or `done` that has a `claude_session_id` in frontmatter, run `loaf session enrich <file>` to catch up on journal entries that weren't logged during the session.
+
+Do NOT enrich `active` sessions — those are handled by the wrap skill when the session ends.
+
+Treat enrichment failures as non-fatal — log a warning and continue with other housekeeping tasks.
+
+## Archival Cleanup
+
+When archiving a session, delete its enrichment temp file if one exists at `.agents/tmp/<session-id>-enrichment.txt`. This prevents stale temp files from accumulating across sessions.
 
 ## Suggests Next
 

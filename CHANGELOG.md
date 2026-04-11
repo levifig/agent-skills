@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-dev.27] - 2026-04-11
+
+### Added
+- `loaf session enrich` CLI command — reviews JSONL conversation logs via librarian agent, fills in missing journal entries (decisions, discoveries, context)
+- JSONL extractor module (`cli/lib/journal/extractor.ts`) — filters conversation logs, discovers subagent transcripts, enforces 100KB summary cap
+- `LOAF_ENRICHMENT` hook isolation — prevents enrichment agent from creating spurious session files
+- Wrap skill Step 0: enrichment before wrap-up generation
+- Housekeeping enrichment pass for stopped/done sessions + `.agents/tmp/` cleanup
+
+### Changed
+- Session status `complete` renamed to `done`, `paused` removed (stopped covers it)
+- Session statuses: `active | stopped | done | blocked | archived`
+
 ## [2.0.0-dev.26] - 2026-04-10
 
 ### Added

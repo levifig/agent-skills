@@ -16200,8 +16200,8 @@ var {
 } = import_index.default;
 
 // cli/index.ts
-import { readFileSync as readFileSync32 } from "fs";
-import { join as join42, dirname as dirname14 } from "path";
+import { readFileSync as readFileSync33 } from "fs";
+import { join as join43, dirname as dirname14 } from "path";
 import { fileURLToPath as fileURLToPath9 } from "url";
 
 // cli/commands/build.ts
@@ -24876,14 +24876,14 @@ function registerCheckCommand(program3) {
 
 // cli/commands/session.ts
 var import_gray_matter13 = __toESM(require_gray_matter(), 1);
-import { execSync as execSync3 } from "child_process";
+import { execSync as execSync3, spawn as nodeSpawn } from "child_process";
 import { createHash } from "crypto";
 import {
-  existsSync as existsSync35,
-  mkdirSync as mkdirSync22,
-  readdirSync as readdirSync14,
-  readFileSync as readFileSync30,
-  writeFileSync as writeFileSync21,
+  existsSync as existsSync36,
+  mkdirSync as mkdirSync23,
+  readdirSync as readdirSync15,
+  readFileSync as readFileSync31,
+  writeFileSync as writeFileSync22,
   renameSync as renameSync3,
   unlinkSync as unlinkSync3,
   openSync,
@@ -24891,8 +24891,260 @@ import {
   statSync as statSync3,
   copyFileSync as copyFileSync3
 } from "fs";
-import { join as join40, dirname as dirname13, basename as basename5 } from "path";
+import { join as join41, dirname as dirname13, basename as basename6 } from "path";
 import { fileURLToPath as fileURLToPath8 } from "url";
+
+// cli/lib/journal/extractor.ts
+import { readFileSync as readFileSync30, writeFileSync as writeFileSync21, existsSync as existsSync35, mkdirSync as mkdirSync22, readdirSync as readdirSync14 } from "fs";
+import { join as join40, basename as basename5 } from "path";
+var MAX_SUMMARY_BYTES = 100 * 1024;
+var KEPT_TYPES = /* @__PURE__ */ new Set(["user", "assistant"]);
+var FILE_PATH_TOOLS = /* @__PURE__ */ new Set(["Read", "Edit", "Write"]);
+async function extractSummary(jsonlPath, projectDir, sessionId, agentsDir, since) {
+  const tmpDir = join40(agentsDir, "tmp");
+  const summaryPath = join40(tmpDir, `${sessionId}-enrichment.txt`);
+  const mainLines = extractFromJsonl(jsonlPath, since);
+  const subagentLines = extractSubagents(projectDir, sessionId, since);
+  const allLines = [...mainLines, ...subagentLines];
+  if (allLines.length === 0) {
+    return { summaryPath, latestTimestamp: null, isEmpty: true };
+  }
+  const summaryResult = buildSummary(mainLines, subagentLines);
+  mkdirSync22(tmpDir, { recursive: true });
+  writeFileSync21(summaryPath, summaryResult.text, "utf-8");
+  return { summaryPath, latestTimestamp: summaryResult.latestTimestamp, isEmpty: false };
+}
+function extractFromJsonl(filePath, since) {
+  if (!existsSync35(filePath)) {
+    return [];
+  }
+  const raw = readFileSync30(filePath, "utf-8");
+  const lines = raw.split("\n");
+  const result = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line === "") continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      process.stderr.write(
+        `Warning: malformed JSONL at line ${i + 1} in ${filePath}, skipping
+`
+      );
+      continue;
+    }
+    const type = entry.type;
+    if (!type || !KEPT_TYPES.has(type)) continue;
+    const timestamp = entry.timestamp;
+    if (!timestamp) continue;
+    if (since && timestamp <= since) continue;
+    const formatted = formatEntry2(entry, timestamp);
+    result.push(...formatted);
+  }
+  return result;
+}
+function formatEntry2(entry, timestamp) {
+  const ts = formatTimestamp(timestamp);
+  const type = entry.type;
+  const message = entry.message;
+  if (!message) return [];
+  if (type === "user") {
+    return formatUserEntry(ts, timestamp, message);
+  }
+  if (type === "assistant") {
+    return formatAssistantEntry(ts, timestamp, message);
+  }
+  return [];
+}
+function formatUserEntry(ts, rawTimestamp, message) {
+  const content = message.content;
+  if (typeof content === "string") {
+    return [{ timestamp: rawTimestamp, text: `[${ts}] User: ${content}` }];
+  }
+  if (Array.isArray(content)) {
+    const texts = content.filter((b) => {
+      const block = b;
+      return block.type === "text";
+    }).map((b) => b.text);
+    if (texts.length > 0) {
+      return [{ timestamp: rawTimestamp, text: `[${ts}] User: ${texts.join("\n")}` }];
+    }
+  }
+  return [];
+}
+function formatAssistantEntry(ts, rawTimestamp, message) {
+  const content = message.content;
+  if (!Array.isArray(content)) return [];
+  const result = [];
+  for (const block of content) {
+    const b = block;
+    const blockType = b.type;
+    if (blockType === "thinking") {
+      continue;
+    }
+    if (blockType === "text") {
+      const text = b.text;
+      if (text) {
+        result.push({ timestamp: rawTimestamp, text: `[${ts}] Assistant: ${text}` });
+      }
+      continue;
+    }
+    if (blockType === "tool_use") {
+      const toolName = b.name;
+      const input = b.input;
+      const toolLine = formatToolUse(ts, toolName, input);
+      result.push({ timestamp: rawTimestamp, text: toolLine });
+      continue;
+    }
+  }
+  return result;
+}
+function formatToolUse(ts, toolName, input) {
+  if (toolName === "Bash" && input?.command) {
+    return `[${ts}] Tool: Bash \u2014 ${input.command}`;
+  }
+  if (FILE_PATH_TOOLS.has(toolName) && input?.file_path) {
+    return `[${ts}] Tool: ${toolName} ${input.file_path}`;
+  }
+  return `[${ts}] Tool: ${toolName}`;
+}
+function extractSubagents(projectDir, sessionId, since) {
+  const subagentDir = join40(projectDir, sessionId, "subagents");
+  if (!existsSync35(subagentDir)) {
+    return [];
+  }
+  let files;
+  try {
+    files = readdirSync14(subagentDir).filter(
+      (f) => f.startsWith("agent-") && f.endsWith(".jsonl")
+    );
+  } catch {
+    return [];
+  }
+  files.sort();
+  const result = [];
+  for (const file of files) {
+    const jsonlPath = join40(subagentDir, file);
+    const agentId = basename5(file, ".jsonl");
+    const description = readSubagentDescription(subagentDir, agentId);
+    const lines = extractFromJsonl(jsonlPath, since);
+    if (lines.length === 0) continue;
+    const markerTimestamp = lines[0].timestamp;
+    result.push({
+      timestamp: markerTimestamp,
+      text: `
+--- Subagent: ${description} ---`
+    });
+    result.push(...lines);
+  }
+  return result;
+}
+function readSubagentDescription(subagentDir, agentId) {
+  const metaPath = join40(subagentDir, `${agentId}.meta.json`);
+  if (!existsSync35(metaPath)) {
+    return agentId;
+  }
+  try {
+    const raw = readFileSync30(metaPath, "utf-8");
+    const meta = JSON.parse(raw);
+    if (typeof meta.description === "string" && meta.description) {
+      return meta.description;
+    }
+    if (typeof meta.agentType === "string" && meta.agentType) {
+      return meta.agentType;
+    }
+  } catch {
+  }
+  return agentId;
+}
+function buildSummary(mainLines, subagentLines) {
+  const allLines = [...mainLines, ...subagentLines];
+  const allText = allLines.map((l) => l.text).join("\n");
+  const byteSize = Buffer.byteLength(allText, "utf-8");
+  if (byteSize <= MAX_SUMMARY_BYTES) {
+    return {
+      text: allText + "\n",
+      latestTimestamp: findLatestTimestamp(allLines)
+    };
+  }
+  process.stderr.write(
+    `Warning: summary exceeds 100KB (${Math.round(byteSize / 1024)}KB), truncating oldest entries
+`
+  );
+  return truncateToFit(mainLines, subagentLines);
+}
+function truncateToFit(mainLines, subagentLines) {
+  const subagentText = subagentLines.map((l) => l.text).join("\n");
+  const subagentSize = Buffer.byteLength(subagentText, "utf-8");
+  if (subagentSize > MAX_SUMMARY_BYTES) {
+    const allCombined = [...mainLines, ...subagentLines];
+    const surviving = truncateLines(allCombined);
+    return {
+      text: surviving.text + "\n",
+      latestTimestamp: surviving.latestTimestamp
+    };
+  }
+  const mainBudget = MAX_SUMMARY_BYTES - subagentSize - (subagentLines.length > 0 ? 1 : 0);
+  let startIdx = 0;
+  while (startIdx < mainLines.length) {
+    const candidateText = mainLines.slice(startIdx).map((l) => l.text).join("\n");
+    const candidateSize = Buffer.byteLength(candidateText, "utf-8");
+    if (candidateSize <= mainBudget) {
+      const survivingMain = mainLines.slice(startIdx);
+      const survivingAll = [...survivingMain, ...subagentLines];
+      const parts = [];
+      if (startIdx < mainLines.length) {
+        parts.push(candidateText);
+      }
+      if (subagentLines.length > 0) {
+        parts.push(subagentText);
+      }
+      return {
+        text: parts.join("\n") + "\n",
+        latestTimestamp: findLatestTimestamp(survivingAll)
+      };
+    }
+    startIdx++;
+  }
+  return {
+    text: subagentText + "\n",
+    latestTimestamp: findLatestTimestamp(subagentLines)
+  };
+}
+function truncateLines(lines) {
+  let startIdx = 0;
+  while (startIdx < lines.length) {
+    const surviving = lines.slice(startIdx);
+    const text = surviving.map((l) => l.text).join("\n");
+    if (Buffer.byteLength(text + "\n", "utf-8") <= MAX_SUMMARY_BYTES) {
+      return { text, latestTimestamp: findLatestTimestamp(surviving) };
+    }
+    startIdx++;
+  }
+  return { text: "", latestTimestamp: null };
+}
+function findLatestTimestamp(lines) {
+  let latest = null;
+  for (const line of lines) {
+    if (!line.timestamp) continue;
+    if (!latest || line.timestamp > latest) {
+      latest = line.timestamp;
+    }
+  }
+  return latest;
+}
+function formatTimestamp(iso) {
+  const d = new Date(iso);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const hours = String(d.getUTCHours()).padStart(2, "0");
+  const minutes = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
+}
+
+// cli/commands/session.ts
 var bold13 = (s) => `\x1B[1m${s}\x1B[0m`;
 var green12 = (s) => `\x1B[32m${s}\x1B[0m`;
 var red10 = (s) => `\x1B[31m${s}\x1B[0m`;
@@ -24939,19 +25191,19 @@ async function parseHookInput() {
 }
 var HOUSEKEEPING_INTERVAL_MS = 24 * 60 * 60 * 1e3;
 function getLoafStatePath(agentsDir) {
-  return join40(agentsDir, ".loaf-state");
+  return join41(agentsDir, ".loaf-state");
 }
 function readLoafState(agentsDir) {
   const statePath = getLoafStatePath(agentsDir);
-  if (!existsSync35(statePath)) return {};
+  if (!existsSync36(statePath)) return {};
   try {
-    return JSON.parse(readFileSync30(statePath, "utf-8"));
+    return JSON.parse(readFileSync31(statePath, "utf-8"));
   } catch {
     return {};
   }
 }
 function writeLoafState(agentsDir, state) {
-  writeFileSync21(getLoafStatePath(agentsDir), JSON.stringify(state, null, 2) + "\n", "utf-8");
+  writeFileSync22(getLoafStatePath(agentsDir), JSON.stringify(state, null, 2) + "\n", "utf-8");
 }
 function checkHousekeepingDue(agentsDir) {
   const state = readLoafState(agentsDir);
@@ -24977,38 +25229,38 @@ function getProjectRoot(agentsDir) {
 }
 function getInstalledTemplateCandidates() {
   const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-  const configHome = process.env.XDG_CONFIG_HOME || join40(homeDir, ".config");
+  const configHome = process.env.XDG_CONFIG_HOME || join41(homeDir, ".config");
   return [
-    join40(configHome, "opencode", "templates", "soul.md"),
-    join40(homeDir, ".cursor", "templates", "soul.md"),
-    join40(process.env.CODEX_HOME || join40(homeDir, ".codex"), "templates", "soul.md"),
-    join40(homeDir, ".amp", "templates", "soul.md"),
-    process.env.CLAUDE_PLUGIN_ROOT ? join40(process.env.CLAUDE_PLUGIN_ROOT, "templates", "soul.md") : ""
+    join41(configHome, "opencode", "templates", "soul.md"),
+    join41(homeDir, ".cursor", "templates", "soul.md"),
+    join41(process.env.CODEX_HOME || join41(homeDir, ".codex"), "templates", "soul.md"),
+    join41(homeDir, ".amp", "templates", "soul.md"),
+    process.env.CLAUDE_PLUGIN_ROOT ? join41(process.env.CLAUDE_PLUGIN_ROOT, "templates", "soul.md") : ""
   ].filter(Boolean);
 }
 function resolveSoulTemplate(agentsDir) {
   const projectRoot = getProjectRoot(agentsDir);
   const moduleDir = dirname13(fileURLToPath8(import.meta.url));
   for (const candidate of [
-    join40(agentsDir, "templates", "soul.md"),
-    join40(projectRoot, "templates", "soul.md"),
-    join40(projectRoot, "content", "templates", "soul.md"),
-    join40(moduleDir, "..", "templates", "soul.md"),
-    join40(moduleDir, "..", "..", "templates", "soul.md"),
-    join40(moduleDir, "..", "content", "templates", "soul.md"),
-    join40(moduleDir, "..", "..", "content", "templates", "soul.md"),
-    join40(projectRoot, "SOUL.md"),
+    join41(agentsDir, "templates", "soul.md"),
+    join41(projectRoot, "templates", "soul.md"),
+    join41(projectRoot, "content", "templates", "soul.md"),
+    join41(moduleDir, "..", "templates", "soul.md"),
+    join41(moduleDir, "..", "..", "templates", "soul.md"),
+    join41(moduleDir, "..", "content", "templates", "soul.md"),
+    join41(moduleDir, "..", "..", "content", "templates", "soul.md"),
+    join41(projectRoot, "SOUL.md"),
     ...getInstalledTemplateCandidates()
   ]) {
-    if (existsSync35(candidate)) {
+    if (existsSync36(candidate)) {
       return candidate;
     }
   }
   return null;
 }
 function validateSoulMd(agentsDir) {
-  const soulPath = join40(agentsDir, "SOUL.md");
-  if (existsSync35(soulPath)) {
+  const soulPath = join41(agentsDir, "SOUL.md");
+  if (existsSync36(soulPath)) {
     return { exists: true, restored: false };
   }
   const templatePath = resolveSoulTemplate(agentsDir);
@@ -25025,7 +25277,7 @@ function validateSoulMd(agentsDir) {
 function countStaleKnowledge() {
   const gitRoot = findGitRoot();
   const config = loadKbConfig(gitRoot);
-  const local = config.local.filter((dir) => existsSync35(join40(gitRoot, dir)));
+  const local = config.local.filter((dir) => existsSync36(join41(gitRoot, dir)));
   if (local.length === 0) {
     return 0;
   }
@@ -25035,14 +25287,14 @@ function countStaleKnowledge() {
 }
 function getKnowledgeNudgeFilePath(projectRoot, branch) {
   const hash = createHash("md5").update(`${projectRoot}:${branch}`).digest("hex").slice(0, 8);
-  return join40("/tmp", `loaf-kb-nudged-${hash}`);
+  return join41("/tmp", `loaf-kb-nudged-${hash}`);
 }
 function consumeKnowledgeNudges(projectRoot, branch) {
   const nudgeFile = getKnowledgeNudgeFilePath(projectRoot, branch);
-  if (!existsSync35(nudgeFile)) {
+  if (!existsSync36(nudgeFile)) {
     return [];
   }
-  const files = readFileSync30(nudgeFile, "utf-8").split("\n").map((line) => line.trim()).filter(Boolean);
+  const files = readFileSync31(nudgeFile, "utf-8").split("\n").map((line) => line.trim()).filter(Boolean);
   unlinkSync3(nudgeFile);
   return [...new Set(files)];
 }
@@ -25066,7 +25318,7 @@ function forceReleaseLock(lockPath) {
 async function acquireLock(lockPath, maxRetries = 50, retryDelay = 100) {
   for (let i = 0; i < maxRetries; i++) {
     try {
-      if (existsSync35(lockPath) && isLockStale(lockPath)) {
+      if (existsSync36(lockPath) && isLockStale(lockPath)) {
         forceReleaseLock(lockPath);
       }
       const fd = openSync(lockPath, "wx");
@@ -25074,7 +25326,7 @@ async function acquireLock(lockPath, maxRetries = 50, retryDelay = 100) {
         pid: process.pid,
         timestamp: Date.now()
       };
-      writeFileSync21(fd, JSON.stringify(lockContent), "utf-8");
+      writeFileSync22(fd, JSON.stringify(lockContent), "utf-8");
       closeSync(fd);
       return;
     } catch {
@@ -25092,7 +25344,7 @@ function releaseLock(lockPath) {
 function writeFileAtomic(filePath, content) {
   const tempPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 11)}`;
   try {
-    writeFileSync21(tempPath, content, "utf-8");
+    writeFileSync22(tempPath, content, "utf-8");
     renameSync3(tempPath, filePath);
   } catch (err) {
     try {
@@ -25163,12 +25415,12 @@ function getLastCommitSha() {
   }
 }
 function findSpecForBranch(agentsDir, branch) {
-  const specsDir = join40(agentsDir, "specs");
-  if (!existsSync35(specsDir)) return null;
-  const files = readdirSync14(specsDir).filter((f) => f.endsWith(".md"));
+  const specsDir = join41(agentsDir, "specs");
+  if (!existsSync36(specsDir)) return null;
+  const files = readdirSync15(specsDir).filter((f) => f.endsWith(".md"));
   for (const file of files) {
     try {
-      const content = readFileSync30(join40(specsDir, file), "utf-8");
+      const content = readFileSync31(join41(specsDir, file), "utf-8");
       const parsed = (0, import_gray_matter13.default)(content);
       const fm = parsed.data;
       if (fm.branch === branch) {
@@ -25185,19 +25437,19 @@ function findSpecForBranch(agentsDir, branch) {
   return null;
 }
 function updateSpecSessionField(agentsDir, specId, sessionFileName) {
-  const specsDir = join40(agentsDir, "specs");
-  if (!existsSync35(specsDir)) return;
-  const files = readdirSync14(specsDir).filter((f) => f.endsWith(".md"));
+  const specsDir = join41(agentsDir, "specs");
+  if (!existsSync36(specsDir)) return;
+  const files = readdirSync15(specsDir).filter((f) => f.endsWith(".md"));
   for (const file of files) {
     if (file.includes(specId)) {
-      const filePath = join40(specsDir, file);
+      const filePath = join41(specsDir, file);
       try {
-        const content = readFileSync30(filePath, "utf-8");
+        const content = readFileSync31(filePath, "utf-8");
         const parsed = (0, import_gray_matter13.default)(content);
         if (parsed.data.session !== sessionFileName) {
           parsed.data.session = sessionFileName;
           const newContent = import_gray_matter13.default.stringify(parsed.content, parsed.data);
-          writeFileSync21(filePath, newContent, "utf-8");
+          writeFileSync22(filePath, newContent, "utf-8");
         }
       } catch {
       }
@@ -25206,12 +25458,12 @@ function updateSpecSessionField(agentsDir, specId, sessionFileName) {
   }
 }
 function getSessionFilePath(agentsDir) {
-  const sessionsDir = join40(agentsDir, "sessions");
+  const sessionsDir = join41(agentsDir, "sessions");
   const base = getTimestampForFilename();
-  let path = join40(sessionsDir, `${base}-session.md`);
+  let path = join41(sessionsDir, `${base}-session.md`);
   let counter = 1;
-  while (existsSync35(path)) {
-    path = join40(sessionsDir, `${base}-${counter}-session.md`);
+  while (existsSync36(path)) {
+    path = join41(sessionsDir, `${base}-${counter}-session.md`);
     counter++;
   }
   return path;
@@ -25237,7 +25489,7 @@ function consolidateSession(primaryPath, secondary, agentsDir) {
   const newEntries = secondaryEntries.filter((e) => !primaryEntries.has(e));
   if (newEntries.length > 0) {
     const timestamp = getDateTimeString();
-    const mergeMarker = `[${timestamp}] session(merge): consolidated from ${basename5(secondary.filePath)}`;
+    const mergeMarker = `[${timestamp}] session(merge): consolidated from ${basename6(secondary.filePath)}`;
     const entriesToAdd = [mergeMarker, ...newEntries];
     const trimmedContent = primary.content.trimEnd();
     const newContent = import_gray_matter13.default.stringify(
@@ -25252,22 +25504,22 @@ function consolidateSession(primaryPath, secondary, agentsDir) {
   }
 }
 function findSessionByClaudeId(agentsDir, claudeSessionId, currentBranch) {
-  const sessionsDir = join40(agentsDir, "sessions");
-  if (!existsSync35(sessionsDir)) return null;
+  const sessionsDir = join41(agentsDir, "sessions");
+  if (!existsSync36(sessionsDir)) return null;
   const matches = [];
-  const activeFiles = readdirSync14(sessionsDir).filter((f) => f.endsWith(".md") && !f.startsWith("archive"));
+  const activeFiles = readdirSync15(sessionsDir).filter((f) => f.endsWith(".md") && !f.startsWith("archive"));
   for (const file of activeFiles) {
-    const filePath = join40(sessionsDir, file);
+    const filePath = join41(sessionsDir, file);
     const session = readSessionFile(filePath);
     if (session && session.data.claude_session_id === claudeSessionId) {
       matches.push({ filePath, data: session.data, content: session.content, isArchived: false });
     }
   }
-  const archiveDir = join40(sessionsDir, "archive");
-  if (existsSync35(archiveDir)) {
-    const archiveFiles = readdirSync14(archiveDir).filter((f) => f.endsWith(".md"));
+  const archiveDir = join41(sessionsDir, "archive");
+  if (existsSync36(archiveDir)) {
+    const archiveFiles = readdirSync15(archiveDir).filter((f) => f.endsWith(".md"));
     for (const file of archiveFiles) {
-      const filePath = join40(archiveDir, file);
+      const filePath = join41(archiveDir, file);
       const session = readSessionFile(filePath);
       if (session && session.data.claude_session_id === claudeSessionId) {
         matches.push({ filePath, data: session.data, content: session.content, isArchived: true });
@@ -25288,7 +25540,7 @@ function findSessionByClaudeId(agentsDir, claudeSessionId, currentBranch) {
   });
   const primary = matches[0];
   if (primary.isArchived) {
-    const restoredPath = join40(sessionsDir, basename5(primary.filePath));
+    const restoredPath = join41(sessionsDir, basename6(primary.filePath));
     try {
       renameSync3(primary.filePath, restoredPath);
       primary.filePath = restoredPath;
@@ -25308,12 +25560,12 @@ function findSessionByClaudeId(agentsDir, claudeSessionId, currentBranch) {
   return { filePath: primary.filePath, data: primary.data, content: primary.content };
 }
 function findActiveSessionForBranch(agentsDir, branch) {
-  const sessionsDir = join40(agentsDir, "sessions");
-  if (!existsSync35(sessionsDir)) return null;
-  const files = readdirSync14(sessionsDir).filter((f) => f.endsWith(".md") && !f.startsWith("archive"));
+  const sessionsDir = join41(agentsDir, "sessions");
+  if (!existsSync36(sessionsDir)) return null;
+  const files = readdirSync15(sessionsDir).filter((f) => f.endsWith(".md") && !f.startsWith("archive"));
   const candidates = [];
   for (const file of files) {
-    const filePath = join40(sessionsDir, file);
+    const filePath = join41(sessionsDir, file);
     const session = readSessionFile(filePath);
     if (session && session.data.branch === branch && session.data.status !== "archived") {
       candidates.push({ filePath, data: session.data, content: session.content });
@@ -25330,26 +25582,26 @@ function findActiveSessionForBranch(agentsDir, branch) {
     } catch {
     }
     if (parentBranch) {
-      const specsDir = join40(agentsDir, "specs");
-      if (existsSync35(specsDir)) {
-        const specFiles = readdirSync14(specsDir).filter((f) => f.endsWith(".md"));
+      const specsDir = join41(agentsDir, "specs");
+      if (existsSync36(specsDir)) {
+        const specFiles = readdirSync15(specsDir).filter((f) => f.endsWith(".md"));
         for (const specFile of specFiles) {
           try {
-            const specPath = join40(specsDir, specFile);
-            const specContent = readFileSync30(specPath, "utf-8");
+            const specPath = join41(specsDir, specFile);
+            const specContent = readFileSync31(specPath, "utf-8");
             const specParsed = (0, import_gray_matter13.default)(specContent);
             const specFm = specParsed.data;
             if (specFm.branch === parentBranch && specFm.session) {
-              const sessionPath = join40(agentsDir, "sessions", specFm.session);
-              if (existsSync35(sessionPath)) {
+              const sessionPath = join41(agentsDir, "sessions", specFm.session);
+              if (existsSync36(sessionPath)) {
                 const session = readSessionFile(sessionPath);
                 if (session && session.data.branch === parentBranch && session.data.status !== "archived") {
                   session.data.branch = branch;
                   const newSessionContent = import_gray_matter13.default.stringify(session.content, session.data);
-                  writeFileSync21(sessionPath, newSessionContent, "utf-8");
+                  writeFileSync22(sessionPath, newSessionContent, "utf-8");
                   specFm.branch = branch;
                   const newSpecContent = import_gray_matter13.default.stringify(specParsed.content, specFm);
-                  writeFileSync21(specPath, newSpecContent, "utf-8");
+                  writeFileSync22(specPath, newSpecContent, "utf-8");
                   candidates.push({ filePath: sessionPath, data: session.data, content: session.content });
                   break;
                 }
@@ -25365,7 +25617,7 @@ function findActiveSessionForBranch(agentsDir, branch) {
   if (candidates.length === 0) {
     const allSessions = [];
     for (const file of files) {
-      const filePath = join40(sessionsDir, file);
+      const filePath = join41(sessionsDir, file);
       const session = readSessionFile(filePath);
       if (session && session.data.status === "active") {
         allSessions.push({ filePath, data: session.data, content: session.content });
@@ -25376,17 +25628,16 @@ function findActiveSessionForBranch(agentsDir, branch) {
       const oldBranch = session.data.branch;
       session.data.branch = branch;
       const newContent = import_gray_matter13.default.stringify(session.content, session.data);
-      writeFileSync21(session.filePath, newContent, "utf-8");
+      writeFileSync22(session.filePath, newContent, "utf-8");
       candidates.push(session);
     }
   }
   if (candidates.length === 0) return null;
   const statusPriority = {
     active: 1,
-    paused: 2,
     stopped: 2,
     blocked: 2,
-    complete: 2
+    done: 2
   };
   candidates.sort((a, b) => {
     const priorityA = statusPriority[a.data.status] ?? 3;
@@ -25401,8 +25652,8 @@ function findActiveSessionForBranch(agentsDir, branch) {
   return candidates[0];
 }
 async function getOrCreateSession(agentsDir, branch, specInfo, claudeSessionId) {
-  const sessionsDir = join40(agentsDir, "sessions");
-  const lockPath = join40(sessionsDir, `.create-${branch.replace(/[^a-zA-Z0-9-]/g, "-")}.lock`);
+  const sessionsDir = join41(agentsDir, "sessions");
+  const lockPath = join41(sessionsDir, `.create-${branch.replace(/[^a-zA-Z0-9-]/g, "-")}.lock`);
   await acquireLock(lockPath, 100, 50);
   try {
     const existing = findActiveSessionForBranch(agentsDir, branch);
@@ -25418,9 +25669,9 @@ async function getOrCreateSession(agentsDir, branch, specInfo, claudeSessionId) 
   }
 }
 function readSessionFile(filePath) {
-  if (!existsSync35(filePath)) return null;
+  if (!existsSync36(filePath)) return null;
   try {
-    const raw = readFileSync30(filePath, "utf-8");
+    const raw = readFileSync31(filePath, "utf-8");
     const parsed = (0, import_gray_matter13.default)(raw);
     const rawData = parsed.data;
     if (rawData.session && typeof rawData.session === "object") {
@@ -25492,7 +25743,7 @@ function getDateTimeString() {
   return `${date} ${time}`;
 }
 function createSessionFile(filePath, branch, specInfo, claudeSessionId) {
-  if (existsSync35(filePath)) {
+  if (existsSync36(filePath)) {
     return null;
   }
   const now = getTimestamp();
@@ -25520,7 +25771,7 @@ ${entry}
   const content = import_gray_matter13.default.stringify(body, frontmatter);
   try {
     const fd = openSync(filePath, "wx");
-    writeFileSync21(fd, content, "utf-8");
+    writeFileSync22(fd, content, "utf-8");
     closeSync(fd);
   } catch {
     return null;
@@ -25583,17 +25834,17 @@ function extractDecisionEntries(content) {
   return entries;
 }
 function persistDecisionsToSpec(agentsDir, specId, decisionEntries, sessionBranch) {
-  const specsDir = join40(agentsDir, "specs");
-  if (!existsSync35(specsDir)) {
+  const specsDir = join41(agentsDir, "specs");
+  if (!existsSync36(specsDir)) {
     return { success: false, message: "No specs directory found" };
   }
-  const specFiles = readdirSync14(specsDir).filter((f) => f.endsWith(".md"));
+  const specFiles = readdirSync15(specsDir).filter((f) => f.endsWith(".md"));
   const specFile = specFiles.find((f) => f.includes(specId));
   if (!specFile) {
     return { success: false, message: `Spec ${specId} not found` };
   }
-  const specPath = join40(specsDir, specFile);
-  const specContent = readFileSync30(specPath, "utf-8");
+  const specPath = join41(specsDir, specFile);
+  const specContent = readFileSync31(specPath, "utf-8");
   const changelogMatch = specContent.match(/\n## Changelog\n/);
   const dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
   const entryHeader = `- ${dateStr} \u2014 Session ${sessionBranch} archived: ${decisionEntries.length} decision(s) extracted`;
@@ -25616,7 +25867,7 @@ ${decisionsList}
 `;
     updatedContent = specContent + entry;
   }
-  writeFileSync21(specPath, updatedContent, "utf-8");
+  writeFileSync22(specPath, updatedContent, "utf-8");
   return { success: true, message: `Appended to ${specFile}` };
 }
 function countTasksInSession(content) {
@@ -25697,26 +25948,66 @@ async function writeCurrentState(filePath, stateSection) {
   }
 }
 function quickArchiveSession(filePath, agentsDir) {
-  const archiveDir = join40(agentsDir, "sessions", "archive");
-  if (!existsSync35(archiveDir)) {
-    mkdirSync22(archiveDir, { recursive: true });
+  const archiveDir = join41(agentsDir, "sessions", "archive");
+  if (!existsSync36(archiveDir)) {
+    mkdirSync23(archiveDir, { recursive: true });
   }
   try {
     const session = readSessionFile(filePath);
     if (session) {
+      if (session.data.claude_session_id) {
+        const tmpFile = join41(agentsDir, "tmp", `${session.data.claude_session_id}-enrichment.txt`);
+        try {
+          unlinkSync3(tmpFile);
+        } catch {
+        }
+      }
       session.data.status = "archived";
       session.data.archived_at = getTimestamp();
       const content = import_gray_matter13.default.stringify(session.content, session.data);
-      writeFileSync21(filePath, content, "utf-8");
+      writeFileSync22(filePath, content, "utf-8");
     }
-    renameSync3(filePath, join40(archiveDir, basename5(filePath)));
+    renameSync3(filePath, join41(archiveDir, basename6(filePath)));
   } catch {
   }
+}
+function deriveClaudeProjectDir() {
+  const configDir = process.env.CLAUDE_CONFIG_DIR || join41(process.env.HOME || "", ".config", "claude");
+  const cwd = process.cwd();
+  const hash = cwd.replace(/\//g, "-");
+  return join41(configDir, "projects", hash);
+}
+function buildEnrichmentPrompt(sessionPath, summaryPath, dryRun) {
+  let prompt = `Enrich the session journal at ${sessionPath}.
+
+Conversation summary (pre-filtered from JSONL log): ${summaryPath}
+
+Read both files. Compare the conversation summary against existing journal entries.
+Identify semantic events that are NOT already captured in the journal:
+- Decisions with rationale (decision)
+- Discoveries or things learned (discover)
+- Blockers encountered or resolved (block/unblock)
+- Important context that would help someone understand this session
+
+Skip: commits, PRs, skill invocations \u2014 those are already logged by hooks.
+Skip: routine tool calls, file reads \u2014 not journal-worthy.
+
+Append missing entries to the ## Journal section using the format:
+[YYYY-MM-DD HH:MM] type(scope): description
+
+Do not edit the frontmatter. Do not create new sections.`;
+  if (dryRun) {
+    prompt += "\n\nOutput the entries you would add as plain text. Do NOT edit any files.";
+  }
+  return prompt;
 }
 function registerSessionCommand(program3) {
   const session = program3.command("session").description("Manage session journals");
   session.command("start").description("Start/resume session for current branch").option("--resume", "Resume existing paused session instead of creating new").option("--force", "Force session creation, bypassing subagent detection").action(async (options2) => {
     const hookInput = await parseHookInput();
+    if (process.env.LOAF_ENRICHMENT === "1") {
+      process.exit(0);
+    }
     if (hookInput.agent_id && !options2.force) {
       process.exit(0);
     }
@@ -25725,9 +26016,9 @@ function registerSessionCommand(program3) {
       console.error(`  ${red10("error:")} Could not find .agents/ directory`);
       process.exit(1);
     }
-    const sessionsDir = join40(agentsDir, "sessions");
-    if (!existsSync35(sessionsDir)) {
-      mkdirSync22(sessionsDir, { recursive: true });
+    const sessionsDir = join41(agentsDir, "sessions");
+    if (!existsSync36(sessionsDir)) {
+      mkdirSync23(sessionsDir, { recursive: true });
     }
     const branch = getCurrentBranch();
     if (branch === "unknown") {
@@ -25795,7 +26086,7 @@ function registerSessionCommand(program3) {
       sessionContent = newSession.content;
       console.log(`  ${green12("+")} Creating new session file`);
       if (specInfo) {
-        const sessionFileName = basename5(sessionFilePath);
+        const sessionFileName = basename6(sessionFilePath);
         updateSpecSessionField(agentsDir, specInfo.id, sessionFileName);
       }
     } else if (existingSession && (options2.resume || existingSession.data.status === "active")) {
@@ -25816,7 +26107,7 @@ function registerSessionCommand(program3) {
       if (result.isNew) {
         console.log(`  ${green12("+")} Creating new session file`);
         if (specInfo) {
-          const sessionFileName = basename5(sessionFilePath);
+          const sessionFileName = basename6(sessionFilePath);
           updateSpecSessionField(agentsDir, specInfo.id, sessionFileName);
         }
       } else {
@@ -25868,7 +26159,7 @@ function registerSessionCommand(program3) {
         sessionData.claude_session_id = hookInput.session_id;
       }
       const newContent = import_gray_matter13.default.stringify(sessionContent, sessionData);
-      writeFileSync21(sessionFilePath, newContent, "utf-8");
+      writeFileSync22(sessionFilePath, newContent, "utf-8");
     }
     console.log(`  ${green12("\u2713")} Session active: ${gray14(sessionFilePath.replace(agentsDir, ".agents"))}`);
     const soulStatus = validateSoulMd(agentsDir);
@@ -25918,8 +26209,11 @@ function registerSessionCommand(program3) {
     }
     console.log();
   });
-  session.command("end").description("End session with progress summary").option("--if-active", "Exit successfully when no active session exists").option("--wrap", "Close session as complete (used after /wrap writes summary)").action(async (options2) => {
+  session.command("end").description("End session with progress summary").option("--if-active", "Exit successfully when no active session exists").option("--wrap", "Close session as done (used after /wrap writes summary)").action(async (options2) => {
     const hookInput = await parseHookInput();
+    if (process.env.LOAF_ENRICHMENT === "1") {
+      process.exit(0);
+    }
     const agentsDir = findAgentsDir();
     if (!agentsDir) {
       console.error(`  ${red10("error:")} Could not find .agents/ directory`);
@@ -25982,7 +26276,7 @@ function registerSessionCommand(program3) {
         existingSession.filePath,
         journalLines,
         (data) => {
-          data.status = "complete";
+          data.status = "done";
           data.last_updated = getTimestamp();
           data.last_entry = getTimestamp();
         }
@@ -26050,7 +26344,7 @@ function registerSessionCommand(program3) {
       console.log();
     }
     checkHousekeepingDue(agentsDir);
-    const statusLabel = isWrap ? "complete" : "stopped";
+    const statusLabel = isWrap ? "done" : "stopped";
     console.log(`  ${green12("\u2713")} Session ${statusLabel}: ${gray14(existingSession.filePath.replace(agentsDir, ".agents"))}`);
     console.log();
   });
@@ -26230,9 +26524,9 @@ function registerSessionCommand(program3) {
     console.log(`
   ${bold13("loaf session archive")}
 `);
-    const archiveDir = join40(agentsDir, "sessions", "archive");
-    if (!existsSync35(archiveDir)) {
-      mkdirSync22(archiveDir, { recursive: true });
+    const archiveDir = join41(agentsDir, "sessions", "archive");
+    if (!existsSync36(archiveDir)) {
+      mkdirSync23(archiveDir, { recursive: true });
     }
     const decisionEntries = extractDecisionEntries(existingSession.content);
     if (decisionEntries.length > 0) {
@@ -26259,7 +26553,14 @@ function registerSessionCommand(program3) {
         console.log();
       }
     }
-    const archivePath = join40(archiveDir, basename5(existingSession.filePath));
+    if (existingSession.data.claude_session_id) {
+      const tmpFile = join41(agentsDir, "tmp", `${existingSession.data.claude_session_id}-enrichment.txt`);
+      try {
+        unlinkSync3(tmpFile);
+      } catch {
+      }
+    }
+    const archivePath = join41(archiveDir, basename6(existingSession.filePath));
     try {
       renameSync3(existingSession.filePath, archivePath);
     } catch (err) {
@@ -26276,7 +26577,7 @@ function registerSessionCommand(program3) {
         archivedSession.content,
         archivedSession.data
       );
-      writeFileSync21(archivePath, newContent, "utf-8");
+      writeFileSync22(archivePath, newContent, "utf-8");
     }
     console.log(`  ${green12("\u2713")} Archived: ${gray14(archivePath.replace(agentsDir, ".agents"))}`);
     console.log();
@@ -26287,8 +26588,8 @@ function registerSessionCommand(program3) {
       console.error(`  ${red10("error:")} Could not find .agents/ directory`);
       process.exit(1);
     }
-    const sessionsDir = join40(agentsDir, "sessions");
-    if (!existsSync35(sessionsDir)) {
+    const sessionsDir = join41(agentsDir, "sessions");
+    if (!existsSync36(sessionsDir)) {
       console.log(`  ${gray14("No sessions directory. Nothing to do.")}`);
       markHousekeepingDone(agentsDir);
       return;
@@ -26297,10 +26598,10 @@ function registerSessionCommand(program3) {
     console.log(`
   ${bold13("loaf session housekeeping")}${dryRun ? gray14(" (dry run)") : ""}
 `);
-    const files = readdirSync14(sessionsDir).filter((f) => f.endsWith(".md"));
+    const files = readdirSync15(sessionsDir).filter((f) => f.endsWith(".md"));
     const sessions = [];
     for (const file of files) {
-      const filePath = join40(sessionsDir, file);
+      const filePath = join41(sessionsDir, file);
       const s = readSessionFile(filePath);
       if (s) {
         sessions.push({ filePath, fileName: file, data: s.data, content: s.content });
@@ -26331,7 +26632,7 @@ function registerSessionCommand(program3) {
     };
     console.log(`  ${bold13("Orphan detection")}`);
     const orphans = sessions.filter(
-      (s) => s.data.status !== "archived" && s.data.status !== "complete" && s.data.branch && !s.data.branch.startsWith("detached-") && !gitBranches.has(s.data.branch)
+      (s) => s.data.status !== "archived" && s.data.status !== "done" && s.data.branch && !s.data.branch.startsWith("detached-") && !gitBranches.has(s.data.branch)
     );
     if (orphans.length === 0) {
       console.log(`    ${green12("\u2713")} No orphaned sessions`);
@@ -26385,7 +26686,7 @@ function registerSessionCommand(program3) {
     console.log(`
   ${bold13("Age-based archival")}`);
     const AGE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1e3;
-    const completeSessions = sessions.filter((s) => s.data.status === "complete");
+    const completeSessions = sessions.filter((s) => s.data.status === "done");
     let ageArchived = 0;
     for (const s of completeSessions) {
       const completedAt = s.data.last_updated || s.data.last_entry;
@@ -26396,7 +26697,7 @@ function registerSessionCommand(program3) {
           quickArchiveSession(s.filePath, agentsDir);
         }
         const days = Math.floor(age / (24 * 60 * 60 * 1e3));
-        console.log(`    ${yellow14("\u2192")} Archived: ${gray14(s.fileName)} (complete, ${days}d old)`);
+        console.log(`    ${yellow14("\u2192")} Archived: ${gray14(s.fileName)} (done, ${days}d old)`);
         ageArchived++;
       }
     }
@@ -26406,29 +26707,29 @@ function registerSessionCommand(program3) {
     }
     console.log(`
   ${bold13("Spec linkage")}`);
-    const specsDir = join40(agentsDir, "specs");
+    const specsDir = join41(agentsDir, "specs");
     let linkageFixed = 0;
-    if (existsSync35(specsDir)) {
-      const specFiles = readdirSync14(specsDir).filter((f) => f.endsWith(".md"));
+    if (existsSync36(specsDir)) {
+      const specFiles = readdirSync15(specsDir).filter((f) => f.endsWith(".md"));
       for (const specFile of specFiles) {
         try {
-          const specPath = join40(specsDir, specFile);
-          const specContent = readFileSync30(specPath, "utf-8");
+          const specPath = join41(specsDir, specFile);
+          const specContent = readFileSync31(specPath, "utf-8");
           const specParsed = (0, import_gray_matter13.default)(specContent);
           const specFm = specParsed.data;
           if (specFm.session) {
-            const sessionPath = join40(sessionsDir, specFm.session);
-            const archivePath = join40(sessionsDir, "archive", specFm.session);
-            if (!existsSync35(sessionPath) && !existsSync35(archivePath)) {
+            const sessionPath = join41(sessionsDir, specFm.session);
+            const archivePath = join41(sessionsDir, "archive", specFm.session);
+            if (!existsSync36(sessionPath) && !existsSync36(archivePath)) {
               const matchingSession = sessions.find(
                 (s) => s.data.spec === specFm.id || s.data.branch === specFm.branch
               );
               if (matchingSession) {
-                const correctFileName = basename5(matchingSession.filePath);
+                const correctFileName = basename6(matchingSession.filePath);
                 if (!dryRun) {
                   specFm.session = correctFileName;
                   const newContent = import_gray_matter13.default.stringify(specParsed.content, specFm);
-                  writeFileSync21(specPath, newContent, "utf-8");
+                  writeFileSync22(specPath, newContent, "utf-8");
                 }
                 console.log(`    ${yellow14("\u2192")} Fixed: ${specFile} \u2192 ${correctFileName}`);
                 linkageFixed++;
@@ -26465,14 +26766,201 @@ function registerSessionCommand(program3) {
     }
     console.log();
   });
+  session.command("enrich [file]").description("Enrich session journal from JSONL conversation log").option("--dry-run", "Show what would be added without writing").option("--model <model>", "Override model for the librarian call").action(async (file, options2) => {
+    const agentsDir = findAgentsDir();
+    if (!agentsDir) {
+      console.error(`  ${red10("error:")} Could not find .agents/ directory`);
+      process.exit(1);
+    }
+    let sessionPath;
+    let sessionData;
+    if (file) {
+      const candidates = [
+        file,
+        join41(agentsDir, "sessions", file)
+      ];
+      const resolved = candidates.find((c) => existsSync36(c));
+      if (!resolved) {
+        console.error(`  ${red10("error:")} Session file not found: ${file}`);
+        process.exit(1);
+      }
+      sessionPath = resolved;
+      const parsed = readSessionFile(sessionPath);
+      if (!parsed) {
+        console.error(`  ${red10("error:")} Could not parse session file: ${sessionPath}`);
+        process.exit(1);
+      }
+      sessionData = parsed.data;
+    } else {
+      const branch = getCurrentBranch();
+      if (branch === "unknown") {
+        console.error(`  ${red10("error:")} Not in a git repository`);
+        process.exit(1);
+      }
+      const existing = findActiveSessionForBranch(agentsDir, branch);
+      if (!existing) {
+        console.error(`  ${red10("error:")} No active session found for branch ${branch}`);
+        process.exit(1);
+      }
+      sessionPath = existing.filePath;
+      sessionData = existing.data;
+    }
+    const claudeSessionId = sessionData.claude_session_id;
+    if (!claudeSessionId) {
+      console.error(`  ${red10("error:")} Session has no claude_session_id in frontmatter. Enrichment requires a linked Claude Code session.`);
+      console.error(`  ${gray14("Session file:")} ${sessionPath}`);
+      process.exit(1);
+    }
+    const projectDir = deriveClaudeProjectDir();
+    const jsonlPath = join41(projectDir, `${claudeSessionId}.jsonl`);
+    let resolvedJsonlPath = null;
+    if (existsSync36(jsonlPath)) {
+      resolvedJsonlPath = jsonlPath;
+    } else {
+      const targetName = `${claudeSessionId}.jsonl`;
+      if (existsSync36(projectDir)) {
+        try {
+          const files = readdirSync15(projectDir);
+          if (files.includes(targetName)) {
+            resolvedJsonlPath = join41(projectDir, targetName);
+          }
+        } catch {
+        }
+      }
+    }
+    if (!resolvedJsonlPath) {
+      console.error(`  ${red10("error:")} JSONL not found at ${jsonlPath}`);
+      console.error(`  ${gray14("Claude session ID:")} ${claudeSessionId}`);
+      console.error(`  ${gray14("Project directory:")} ${projectDir}`);
+      process.exit(1);
+    }
+    console.log(`
+  ${bold13("loaf session enrich")}${options2.dryRun ? gray14(" (dry run)") : ""}
+`);
+    console.log(`  Session: ${gray14(sessionPath.replace(agentsDir, ".agents"))}`);
+    console.log(`  Claude session: ${gray14(claudeSessionId.slice(0, 8))}`);
+    const enrichedAt = sessionData.enriched_at;
+    const extractionResult = await extractSummary(
+      resolvedJsonlPath,
+      projectDir,
+      claudeSessionId,
+      agentsDir,
+      enrichedAt
+    );
+    if (extractionResult.isEmpty) {
+      console.log(`  ${green12("\u2713")} No new entries since last enrichment \u2014 nothing to do`);
+      console.log();
+      process.exit(0);
+    }
+    try {
+      execSync3("command -v claude", { stdio: "pipe" });
+    } catch {
+      console.error(`  ${red10("error:")} claude binary not found. Install Claude Code CLI to use enrichment.`);
+      process.exit(1);
+    }
+    console.log(`  Summary: ${gray14(extractionResult.summaryPath.replace(agentsDir, ".agents"))}`);
+    if (extractionResult.latestTimestamp) {
+      console.log(`  Latest entry: ${gray14(extractionResult.latestTimestamp)}`);
+    }
+    const prompt = buildEnrichmentPrompt(sessionPath, extractionResult.summaryPath, !!options2.dryRun);
+    const agentArgs = [
+      "--agent",
+      "librarian",
+      "-p",
+      "--no-session-persistence",
+      "--permission-mode",
+      "acceptEdits",
+      "--max-turns",
+      "10"
+    ];
+    if (options2.model) {
+      agentArgs.push("--model", options2.model);
+    }
+    if (options2.dryRun) {
+      agentArgs.push("--disallowedTools", "Edit,Write");
+    }
+    console.log(`  ${gray14("Spawning librarian agent...")}`);
+    const exitCode = await new Promise((resolve3) => {
+      const childEnv = { ...process.env, LOAF_ENRICHMENT: "1" };
+      const childStdio = [
+        "pipe",
+        options2.dryRun ? "pipe" : "ignore",
+        "pipe"
+      ];
+      const child = nodeSpawn("claude", agentArgs, {
+        env: childEnv,
+        stdio: childStdio
+      });
+      child.stdin?.write(prompt);
+      child.stdin?.end();
+      let stderr = "";
+      child.stdout?.on("data", (data) => {
+        if (options2.dryRun) {
+          process.stdout.write(data);
+        }
+      });
+      child.stderr?.on("data", (data) => {
+        stderr += data.toString();
+      });
+      child.on("close", (code) => {
+        if (code !== 0 && stderr) {
+          if (stderr.includes("agent") && (stderr.includes("not found") || stderr.includes("No such"))) {
+            console.error(`  ${red10("error:")} Librarian agent not found. Ensure Loaf is installed (loaf install --to claude-code)`);
+          } else {
+            console.error(`  ${red10("error:")} Librarian agent exited with code ${code}`);
+            if (stderr.trim()) {
+              console.error(`  ${gray14(stderr.trim())}`);
+            }
+          }
+        }
+        resolve3(code ?? 1);
+      });
+      child.on("error", (err) => {
+        if (err.code === "ENOENT") {
+          console.error(`  ${red10("error:")} claude binary not found. Install Claude Code CLI to use enrichment.`);
+        } else {
+          console.error(`  ${red10("error:")} Failed to spawn librarian agent: ${err.message}`);
+        }
+        resolve3(1);
+      });
+    });
+    if (exitCode !== 0) {
+      console.error(`  ${red10("error:")} Enrichment failed \u2014 watermark NOT advanced`);
+      console.log();
+      process.exit(1);
+    }
+    if (!options2.dryRun && extractionResult.latestTimestamp) {
+      const lockPath = `${sessionPath}.lock`;
+      await acquireLock(lockPath);
+      try {
+        const freshSession = readSessionFile(sessionPath);
+        if (freshSession) {
+          freshSession.data.enriched_at = extractionResult.latestTimestamp;
+          freshSession.data.last_updated = getTimestamp();
+          const newContent = import_gray_matter13.default.stringify(
+            freshSession.content,
+            freshSession.data
+          );
+          writeFileAtomic(sessionPath, newContent);
+        }
+      } finally {
+        releaseLock(lockPath);
+      }
+      console.log(`  ${green12("\u2713")} Watermark advanced to ${extractionResult.latestTimestamp}`);
+    } else if (options2.dryRun) {
+      console.log(`  ${gray14("Dry run \u2014 watermark NOT advanced")}`);
+    }
+    console.log(`  ${green12("\u2713")} Enrichment complete`);
+    console.log();
+  });
   session.command("list").description("List all active and archived sessions").option("--all", "Include archived sessions").action(async (options2) => {
     const agentsDir = findAgentsDir();
     if (!agentsDir) {
       console.error(`  ${red10("error:")} Could not find .agents/ directory`);
       process.exit(1);
     }
-    const sessionsDir = join40(agentsDir, "sessions");
-    if (!existsSync35(sessionsDir)) {
+    const sessionsDir = join41(agentsDir, "sessions");
+    if (!existsSync36(sessionsDir)) {
       console.log(`
   ${gray14("No sessions directory found.")}`);
       console.log(`  Run ${cyan9("loaf session start")} to create your first session.
@@ -26483,9 +26971,9 @@ function registerSessionCommand(program3) {
   ${bold13("loaf session list")}
 `);
     const activeSessions = [];
-    const files = readdirSync14(sessionsDir).filter((f) => f.endsWith(".md"));
+    const files = readdirSync15(sessionsDir).filter((f) => f.endsWith(".md"));
     for (const file of files) {
-      const filePath = join40(sessionsDir, file);
+      const filePath = join41(sessionsDir, file);
       const session2 = readSessionFile(filePath);
       if (session2 && session2.data.status !== "archived") {
         activeSessions.push({ ...session2, filePath, isArchived: false });
@@ -26493,11 +26981,11 @@ function registerSessionCommand(program3) {
     }
     const archivedSessions = [];
     if (options2.all) {
-      const archiveDir = join40(sessionsDir, "archive");
-      if (existsSync35(archiveDir)) {
-        const archiveFiles = readdirSync14(archiveDir).filter((f) => f.endsWith(".md"));
+      const archiveDir = join41(sessionsDir, "archive");
+      if (existsSync36(archiveDir)) {
+        const archiveFiles = readdirSync15(archiveDir).filter((f) => f.endsWith(".md"));
         for (const file of archiveFiles) {
-          const filePath = join40(archiveDir, file);
+          const filePath = join41(archiveDir, file);
           const session2 = readSessionFile(filePath);
           if (session2) {
             archivedSessions.push({ ...session2, filePath, isArchived: true });
@@ -26723,14 +27211,14 @@ function registerSessionCommand(program3) {
 // cli/commands/report.ts
 var import_gray_matter14 = __toESM(require_gray_matter(), 1);
 import {
-  existsSync as existsSync36,
-  mkdirSync as mkdirSync23,
-  readFileSync as readFileSync31,
-  writeFileSync as writeFileSync22,
-  readdirSync as readdirSync15,
+  existsSync as existsSync37,
+  mkdirSync as mkdirSync24,
+  readFileSync as readFileSync32,
+  writeFileSync as writeFileSync23,
+  readdirSync as readdirSync16,
   unlinkSync as unlinkSync4
 } from "fs";
-import { join as join41, basename as basename6, resolve as resolve2 } from "path";
+import { join as join42, basename as basename7, resolve as resolve2 } from "path";
 var bold14 = (s) => `\x1B[1m${s}\x1B[0m`;
 var green13 = (s) => `\x1B[32m${s}\x1B[0m`;
 var red11 = (s) => `\x1B[31m${s}\x1B[0m`;
@@ -26759,20 +27247,20 @@ function isInsideDir(filePath, dir) {
   return resolved.startsWith(resolvedDir + "/") || resolved === resolvedDir;
 }
 function resolveReportFile(reportsDir, fileArg) {
-  if (existsSync36(fileArg) && isInsideDir(fileArg, reportsDir)) {
+  if (existsSync37(fileArg) && isInsideDir(fileArg, reportsDir)) {
     return fileArg;
   }
-  const directPath = join41(reportsDir, fileArg);
-  if (existsSync36(directPath) && isInsideDir(directPath, reportsDir)) {
+  const directPath = join42(reportsDir, fileArg);
+  if (existsSync37(directPath) && isInsideDir(directPath, reportsDir)) {
     return directPath;
   }
-  if (existsSync36(reportsDir)) {
-    const files = readdirSync15(reportsDir).filter(
+  if (existsSync37(reportsDir)) {
+    const files = readdirSync16(reportsDir).filter(
       (f) => f.endsWith(".md") && f !== "archive"
     );
     const matches = files.filter((f) => f.includes(fileArg));
     if (matches.length === 1) {
-      return join41(reportsDir, matches[0]);
+      return join42(reportsDir, matches[0]);
     }
     if (matches.length > 1) {
       console.error(`  ${red11("error:")} Ambiguous match for "${fileArg}" \u2014 ${matches.length} reports match:`);
@@ -26794,8 +27282,8 @@ function registerReportCommand(program3) {
         console.error(`  ${red11("error:")} Could not find .agents/ directory`);
         process.exit(1);
       }
-      const reportsDir = join41(agentsDir, "reports");
-      if (!existsSync36(reportsDir)) {
+      const reportsDir = join42(agentsDir, "reports");
+      if (!existsSync37(reportsDir)) {
         if (options2.json) {
           console.log(JSON.stringify([]));
           return;
@@ -26809,12 +27297,12 @@ function registerReportCommand(program3) {
         return;
       }
       const reports = [];
-      const files = readdirSync15(reportsDir).filter(
+      const files = readdirSync16(reportsDir).filter(
         (f) => f.endsWith(".md")
       );
       for (const file of files) {
         try {
-          const raw = readFileSync31(join41(reportsDir, file), "utf-8");
+          const raw = readFileSync32(join42(reportsDir, file), "utf-8");
           const parsed = (0, import_gray_matter14.default)(raw);
           const data = parsed.data;
           if (options2.type && data.type !== options2.type) continue;
@@ -26824,14 +27312,14 @@ function registerReportCommand(program3) {
           continue;
         }
       }
-      const archiveDir = join41(reportsDir, "archive");
-      if (existsSync36(archiveDir)) {
-        const archivedFiles = readdirSync15(archiveDir).filter(
+      const archiveDir = join42(reportsDir, "archive");
+      if (existsSync37(archiveDir)) {
+        const archivedFiles = readdirSync16(archiveDir).filter(
           (f) => f.endsWith(".md")
         );
         for (const file of archivedFiles) {
           try {
-            const raw = readFileSync31(join41(archiveDir, file), "utf-8");
+            const raw = readFileSync32(join42(archiveDir, file), "utf-8");
             const parsed = (0, import_gray_matter14.default)(raw);
             const data = parsed.data;
             if (options2.type && data.type !== options2.type) continue;
@@ -26905,15 +27393,15 @@ function registerReportCommand(program3) {
       console.error(`  ${red11("error:")} Could not find .agents/ directory`);
       process.exit(1);
     }
-    const reportsDir = join41(agentsDir, "reports");
-    if (!existsSync36(reportsDir)) {
-      mkdirSync23(reportsDir, { recursive: true });
+    const reportsDir = join42(agentsDir, "reports");
+    if (!existsSync37(reportsDir)) {
+      mkdirSync24(reportsDir, { recursive: true });
     }
     const timestamp = getTimestampForFilename2();
     const safeType = sanitizePathSegment(options2.type);
     const safeSlug = sanitizePathSegment(slug);
     const filename = `${timestamp}-${safeType}-${safeSlug}.md`;
-    const filePath = join41(reportsDir, filename);
+    const filePath = join42(reportsDir, filename);
     const title = slugToTitleCase(slug);
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const frontmatter = {
@@ -26965,7 +27453,7 @@ _Full analysis goes here._
       body,
       frontmatter
     );
-    writeFileSync22(filePath, content, "utf-8");
+    writeFileSync23(filePath, content, "utf-8");
     console.log(`
   ${bold14("loaf report create")}
 `);
@@ -26981,7 +27469,7 @@ _Full analysis goes here._
       console.error(`  ${red11("error:")} Could not find .agents/ directory`);
       process.exit(1);
     }
-    const reportsDir = join41(agentsDir, "reports");
+    const reportsDir = join42(agentsDir, "reports");
     const filePath = resolveReportFile(reportsDir, fileArg);
     if (!filePath) {
       console.error(
@@ -26989,7 +27477,7 @@ _Full analysis goes here._
       );
       process.exit(1);
     }
-    const raw = readFileSync31(filePath, "utf-8");
+    const raw = readFileSync32(filePath, "utf-8");
     const parsed = (0, import_gray_matter14.default)(raw);
     const data = parsed.data;
     if (data.status !== "draft") {
@@ -27004,12 +27492,12 @@ _Full analysis goes here._
       parsed.content,
       data
     );
-    writeFileSync22(filePath, updated, "utf-8");
+    writeFileSync23(filePath, updated, "utf-8");
     console.log(`
   ${bold14("loaf report finalize")}
 `);
     console.log(
-      `  ${green13("+")} Finalized: ${cyan10(basename6(filePath))}`
+      `  ${green13("+")} Finalized: ${cyan10(basename7(filePath))}`
     );
     console.log();
   });
@@ -27019,7 +27507,7 @@ _Full analysis goes here._
       console.error(`  ${red11("error:")} Could not find .agents/ directory`);
       process.exit(1);
     }
-    const reportsDir = join41(agentsDir, "reports");
+    const reportsDir = join42(agentsDir, "reports");
     const filePath = resolveReportFile(reportsDir, fileArg);
     if (!filePath) {
       console.error(
@@ -27027,7 +27515,7 @@ _Full analysis goes here._
       );
       process.exit(1);
     }
-    const raw = readFileSync31(filePath, "utf-8");
+    const raw = readFileSync32(filePath, "utf-8");
     const parsed = (0, import_gray_matter14.default)(raw);
     const data = parsed.data;
     if (data.status !== "final") {
@@ -27039,22 +27527,22 @@ _Full analysis goes here._
     data.status = "archived";
     data.archived_at = (/* @__PURE__ */ new Date()).toISOString();
     data.archived_by = "cli";
-    const archiveDir = join41(reportsDir, "archive");
-    if (!existsSync36(archiveDir)) {
-      mkdirSync23(archiveDir, { recursive: true });
+    const archiveDir = join42(reportsDir, "archive");
+    if (!existsSync37(archiveDir)) {
+      mkdirSync24(archiveDir, { recursive: true });
     }
     const updated = import_gray_matter14.default.stringify(
       parsed.content,
       data
     );
-    const archivePath = join41(archiveDir, basename6(filePath));
-    writeFileSync22(archivePath, updated, "utf-8");
+    const archivePath = join42(archiveDir, basename7(filePath));
+    writeFileSync23(archivePath, updated, "utf-8");
     unlinkSync4(filePath);
     console.log(`
   ${bold14("loaf report archive")}
 `);
     console.log(
-      `  ${green13("+")} Archived: ${cyan10(basename6(filePath))}`
+      `  ${green13("+")} Archived: ${cyan10(basename7(filePath))}`
     );
     console.log(`  Path: ${gray15(archivePath)}`);
     console.log();
@@ -27064,9 +27552,9 @@ _Full analysis goes here._
 // cli/index.ts
 var __dirname6 = dirname14(fileURLToPath9(import.meta.url));
 function getVersion5() {
-  for (const candidate of [join42(__dirname6, "..", "package.json"), join42(__dirname6, "..", "..", "package.json")]) {
+  for (const candidate of [join43(__dirname6, "..", "package.json"), join43(__dirname6, "..", "..", "package.json")]) {
     try {
-      const pkg = JSON.parse(readFileSync32(candidate, "utf-8"));
+      const pkg = JSON.parse(readFileSync33(candidate, "utf-8"));
       if (pkg.name === "loaf") return pkg.version;
     } catch {
       continue;

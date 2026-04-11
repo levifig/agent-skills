@@ -1,7 +1,23 @@
 {
   "version": 1,
-  "next_id": 100,
+  "next_id": 104,
   "tasks": {
+    "TASK-103": {
+      "title": "Add missing journal entry types for all artifact types",
+      "slug": "add-missing-journal-entry-types-for-all-artifact-t",
+      "spec": null,
+      "status": "todo",
+      "priority": "P2",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-10T20:53:48.695Z",
+      "updated": "2026-04-10T20:53:48.695Z",
+      "completed_at": null,
+      "file": "TASK-103-add-missing-journal-entry-types-for-all-artifact-t.md"
+    },
     "TASK-001": {
       "title": "Create verification reference",
       "slug": "verification-reference",
@@ -1785,6 +1801,54 @@
       "updated": "2026-04-07T22:16:30.267Z",
       "completed_at": "2026-04-07T22:16:30.267Z",
       "file": "archive/TASK-099-drafts-lifecycle-policy-session-linked-cleanup-in-.md"
+    },
+    "TASK-100": {
+      "title": "JSONL extractor and .agents/tmp/ infrastructure",
+      "slug": "jsonl-reader-summary-extractor",
+      "spec": "SPEC-029",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-10T23:32:34.422Z",
+      "updated": "2026-04-10T23:32:34.422Z",
+      "completed_at": "2026-04-10T23:32:34.422Z",
+      "file": "archive/TASK-100-jsonl-reader-summary-extractor.md"
+    },
+    "TASK-101": {
+      "title": "loaf session enrich CLI command + hook isolation + librarian update",
+      "slug": "enrich-command",
+      "spec": "SPEC-029",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-10T23:32:34.423Z",
+      "updated": "2026-04-10T23:32:34.423Z",
+      "completed_at": "2026-04-10T23:32:34.423Z",
+      "file": "archive/TASK-101-enrich-command.md"
+    },
+    "TASK-102": {
+      "title": "Lifecycle integration (wrap + housekeeping)",
+      "slug": "lifecycle-integration",
+      "spec": "SPEC-029",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-10T23:32:34.423Z",
+      "updated": "2026-04-10T23:32:34.423Z",
+      "completed_at": "2026-04-10T23:32:34.423Z",
+      "file": "archive/TASK-102-lifecycle-integration.md"
     }
   },
   "specs": {
@@ -1835,14 +1899,6 @@
       "source": "direct — audit of target convergence, duplicate skill discovery, and Gemini native subagent/hook capabilities",
       "created": "2026-04-04T12:13:54Z",
       "file": "SPEC-024-harness-native-surface-model.md"
-    },
-    "SPEC-030": {
-      "title": "Librarian agent — session lifecycle management via task-driven journaling",
-      "status": "complete",
-      "requirement": null,
-      "source": "20260409-140251-session-lifecycle-states.md",
-      "created": "2026-04-09T15:30:00.000Z",
-      "file": "SPEC-030-keeper-agent-session-lifecycle.md"
     },
     "SPEC-001": {
       "title": "Loaf Self-Sufficiency",
@@ -2019,6 +2075,22 @@
       "source": null,
       "created": "2026-04-07T00:00:00.000Z",
       "file": "archive/SPEC-028-durable-reports.md"
+    },
+    "SPEC-029": {
+      "title": "JSONL-Driven Journal Enrichment",
+      "status": "complete",
+      "requirement": null,
+      "source": "spark — session 20260409-110153",
+      "created": "2026-04-09T12:30:00.000Z",
+      "file": "archive/SPEC-029-jsonl-journal-sync.md"
+    },
+    "SPEC-030": {
+      "title": "Librarian agent — session lifecycle management via task-driven journaling",
+      "status": "complete",
+      "requirement": null,
+      "source": "20260409-140251-session-lifecycle-states.md",
+      "created": "2026-04-09T15:30:00.000Z",
+      "file": "archive/SPEC-030-keeper-agent-session-lifecycle.md"
     }
   }
 }

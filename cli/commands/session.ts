@@ -5,7 +5,7 @@
  */
 
 import { Command } from "commander";
-import { execSync } from "child_process";
+import { execSync, spawn as nodeSpawn } from "child_process";
 import { createHash } from "crypto";
 import {
   existsSync,
@@ -29,6 +29,7 @@ import { findGitRoot, loadKbConfig } from "../lib/kb/resolve.js";
 import { checkAllStaleness } from "../lib/kb/staleness.js";
 import { findAgentsDir } from "../lib/tasks/resolve.js";
 import { isLinearIntegrationDisabled } from "../lib/detect/mcp.js";
+import { extractSummary } from "../lib/journal/extractor.js";
 import { readStdin } from "./check.js";
 
 // ANSI color helpers
@@ -45,7 +46,7 @@ const gray = (s: string) => `\x1b[90m${s}\x1b[0m`;
 
 interface SessionFrontmatter {
   branch: string;
-  status: "active" | "paused" | "stopped" | "blocked" | "complete" | "archived";
+  status: "active" | "stopped" | "done" | "blocked" | "archived";
   created: string;
   last_updated?: string;
   last_entry?: string;
@@ -57,6 +58,7 @@ interface SessionFrontmatter {
   spec?: string;
   title?: string;
   claude_session_id?: string;
+  enriched_at?: string;
 }
 
 /** Hook JSON input from Claude Code stdin */
@@ -779,14 +781,13 @@ function findActiveSessionForBranch(agentsDir: string, branch: string): { filePa
 
   if (candidates.length === 0) return null;
 
-  // Prioritize: active > paused/blocked/complete > others
+  // Prioritize: active > stopped/blocked/done > others
   // Sort by status priority (lower number = higher priority)
   const statusPriority: Record<string, number> = {
     active: 1,
-    paused: 2,
     stopped: 2,
     blocked: 2,
-    complete: 2,
+    done: 2,
   };
   
   candidates.sort((a, b) => {
@@ -1208,6 +1209,12 @@ function quickArchiveSession(filePath: string, agentsDir: string): void {
   try {
     const session = readSessionFile(filePath);
     if (session) {
+      // Clean up enrichment temp file if it exists
+      if (session.data.claude_session_id) {
+        const tmpFile = join(agentsDir, "tmp", `${session.data.claude_session_id}-enrichment.txt`);
+        try { unlinkSync(tmpFile); } catch { /* file may not exist */ }
+      }
+
       session.data.status = "archived";
       session.data.archived_at = getTimestamp();
       const content = matter.stringify(session.content, session.data as unknown as Record<string, unknown>);
@@ -1222,6 +1229,47 @@ function quickArchiveSession(filePath: string, agentsDir: string): void {
 // ─────────────────────────────────────────────────────────────────────────────
 // Command
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enrichment Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Derive the Claude Code project config directory for the current working directory */
+function deriveClaudeProjectDir(): string {
+  const configDir = process.env.CLAUDE_CONFIG_DIR
+    || join(process.env.HOME || '', '.config', 'claude');
+  const cwd = process.cwd();
+  const hash = cwd.replace(/\//g, '-');  // /Users/foo → -Users-foo
+  return join(configDir, 'projects', hash);
+}
+
+/** Build the enrichment prompt for the librarian agent */
+function buildEnrichmentPrompt(sessionPath: string, summaryPath: string, dryRun: boolean): string {
+  let prompt = `Enrich the session journal at ${sessionPath}.
+
+Conversation summary (pre-filtered from JSONL log): ${summaryPath}
+
+Read both files. Compare the conversation summary against existing journal entries.
+Identify semantic events that are NOT already captured in the journal:
+- Decisions with rationale (decision)
+- Discoveries or things learned (discover)
+- Blockers encountered or resolved (block/unblock)
+- Important context that would help someone understand this session
+
+Skip: commits, PRs, skill invocations — those are already logged by hooks.
+Skip: routine tool calls, file reads — not journal-worthy.
+
+Append missing entries to the ## Journal section using the format:
+[YYYY-MM-DD HH:MM] type(scope): description
+
+Do not edit the frontmatter. Do not create new sections.`;
+
+  if (dryRun) {
+    prompt += '\n\nOutput the entries you would add as plain text. Do NOT edit any files.';
+  }
+
+  return prompt;
+}
 
 export function registerSessionCommand(program: Command): void {
   const session = program
@@ -1238,6 +1286,11 @@ export function registerSessionCommand(program: Command): void {
     .action(async (options: { resume?: boolean; force?: boolean }) => {
       // Parse hook JSON from stdin (when invoked as a hook by Claude Code)
       const hookInput = await parseHookInput();
+
+      // Enrichment isolation: suppress session creation during enrichment agent runs
+      if (process.env.LOAF_ENRICHMENT === '1') {
+        process.exit(0);
+      }
 
       // Subagent detection: agent_id is only present for subagents
       if (hookInput.agent_id && !options.force) {
@@ -1494,10 +1547,15 @@ export function registerSessionCommand(program: Command): void {
     .command("end")
     .description("End session with progress summary")
     .option("--if-active", "Exit successfully when no active session exists")
-    .option("--wrap", "Close session as complete (used after /wrap writes summary)")
+    .option("--wrap", "Close session as done (used after /wrap writes summary)")
     .action(async (options: { ifActive?: boolean; wrap?: boolean }) => {
       // Parse hook JSON from stdin (when invoked as a hook by Claude Code)
       const hookInput = await parseHookInput();
+
+      // Enrichment isolation: suppress session end during enrichment agent runs
+      if (process.env.LOAF_ENRICHMENT === '1') {
+        process.exit(0);
+      }
 
       const agentsDir = findAgentsDir();
       if (!agentsDir) {
@@ -1566,7 +1624,7 @@ export function registerSessionCommand(program: Command): void {
       const isWrap = !!options.wrap;
 
       if (isWrap) {
-        // Wrap: log wrap marker, set status to complete, but do NOT write
+        // Wrap: log wrap marker, set status to done, but do NOT write
         // session(end)/session(stop) — the SessionEnd hook handles stop
         // when the conversation actually ends. This prevents journal entries
         // (merge commits, etc.) appearing after stop markers.
@@ -1578,7 +1636,7 @@ export function registerSessionCommand(program: Command): void {
           existingSession.filePath,
           journalLines,
           (data: SessionFrontmatter) => {
-            data.status = "complete";
+            data.status = "done";
             data.last_updated = getTimestamp();
             data.last_entry = getTimestamp();
           }
@@ -1660,7 +1718,7 @@ export function registerSessionCommand(program: Command): void {
       // Check if housekeeping is due (sets pending flag for next session start)
       checkHousekeepingDue(agentsDir);
 
-      const statusLabel = isWrap ? "complete" : "stopped";
+      const statusLabel = isWrap ? "done" : "stopped";
       console.log(`  ${green("✓")} Session ${statusLabel}: ${gray(existingSession.filePath.replace(agentsDir, ".agents"))}`);
       console.log();
     });
@@ -1935,6 +1993,12 @@ export function registerSessionCommand(program: Command): void {
         }
       }
 
+      // Clean up enrichment temp file before archiving
+      if (existingSession.data.claude_session_id) {
+        const tmpFile = join(agentsDir, "tmp", `${existingSession.data.claude_session_id}-enrichment.txt`);
+        try { unlinkSync(tmpFile); } catch { /* file may not exist */ }
+      }
+
       // Move first, then update frontmatter — avoids a window where status is
       // archived but the file is still in sessions/
       const archivePath = join(archiveDir, basename(existingSession.filePath));
@@ -2030,7 +2094,7 @@ export function registerSessionCommand(program: Command): void {
       console.log(`  ${bold("Orphan detection")}`);
       const orphans = sessions.filter(s =>
         s.data.status !== "archived" &&
-        s.data.status !== "complete" &&
+        s.data.status !== "done" &&
         s.data.branch &&
         !s.data.branch.startsWith("detached-") &&
         !gitBranches.has(s.data.branch)
@@ -2089,10 +2153,10 @@ export function registerSessionCommand(program: Command): void {
         }
       }
 
-      // 3. Age-based archival — complete sessions older than 7 days
+      // 3. Age-based archival — done sessions older than 7 days
       console.log(`\n  ${bold("Age-based archival")}`);
       const AGE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
-      const completeSessions = sessions.filter(s => s.data.status === "complete");
+      const completeSessions = sessions.filter(s => s.data.status === "done");
       let ageArchived = 0;
 
       for (const s of completeSessions) {
@@ -2104,7 +2168,7 @@ export function registerSessionCommand(program: Command): void {
             quickArchiveSession(s.filePath, agentsDir);
           }
           const days = Math.floor(age / (24 * 60 * 60 * 1000));
-          console.log(`    ${yellow("→")} Archived: ${gray(s.fileName)} (complete, ${days}d old)`);
+          console.log(`    ${yellow("→")} Archived: ${gray(s.fileName)} (done, ${days}d old)`);
           ageArchived++;
         }
       }
@@ -2181,6 +2245,244 @@ export function registerSessionCommand(program: Command): void {
       if (report.orphansFlagged > 0) {
         console.log(`  ${yellow("⚠")} ${report.orphansFlagged} orphan(s) need manual review`);
       }
+      console.log();
+    });
+
+  // ── loaf session enrich ──────────────────────────────────────────────────
+
+  session
+    .command("enrich [file]")
+    .description("Enrich session journal from JSONL conversation log")
+    .option("--dry-run", "Show what would be added without writing")
+    .option("--model <model>", "Override model for the librarian call")
+    .action(async (file: string | undefined, options: { dryRun?: boolean; model?: string }) => {
+      const agentsDir = findAgentsDir();
+      if (!agentsDir) {
+        console.error(`  ${red("error:")} Could not find .agents/ directory`);
+        process.exit(1);
+      }
+
+      // Resolve session file — explicit path or active session
+      let sessionPath: string;
+      let sessionData: SessionFrontmatter;
+
+      if (file) {
+        // Explicit file path — resolve relative to cwd or .agents/sessions/
+        const candidates = [
+          file,
+          join(agentsDir, "sessions", file),
+        ];
+        const resolved = candidates.find(c => existsSync(c));
+        if (!resolved) {
+          console.error(`  ${red("error:")} Session file not found: ${file}`);
+          process.exit(1);
+        }
+        sessionPath = resolved;
+        const parsed = readSessionFile(sessionPath);
+        if (!parsed) {
+          console.error(`  ${red("error:")} Could not parse session file: ${sessionPath}`);
+          process.exit(1);
+        }
+        sessionData = parsed.data;
+      } else {
+        // Find active session for current branch
+        const branch = getCurrentBranch();
+        if (branch === "unknown") {
+          console.error(`  ${red("error:")} Not in a git repository`);
+          process.exit(1);
+        }
+        const existing = findActiveSessionForBranch(agentsDir, branch);
+        if (!existing) {
+          console.error(`  ${red("error:")} No active session found for branch ${branch}`);
+          process.exit(1);
+        }
+        sessionPath = existing.filePath;
+        sessionData = existing.data;
+      }
+
+      // Validate claude_session_id
+      const claudeSessionId = sessionData.claude_session_id;
+      if (!claudeSessionId) {
+        console.error(`  ${red("error:")} Session has no claude_session_id in frontmatter. Enrichment requires a linked Claude Code session.`);
+        console.error(`  ${gray("Session file:")} ${sessionPath}`);
+        process.exit(1);
+      }
+
+      // Derive JSONL path
+      const projectDir = deriveClaudeProjectDir();
+      const jsonlPath = join(projectDir, `${claudeSessionId}.jsonl`);
+
+      // Primary path check, then fallback scan
+      let resolvedJsonlPath: string | null = null;
+      if (existsSync(jsonlPath)) {
+        resolvedJsonlPath = jsonlPath;
+      } else {
+        // Fallback: scan project directory for <session_id>.jsonl
+        const targetName = `${claudeSessionId}.jsonl`;
+        if (existsSync(projectDir)) {
+          try {
+            const files = readdirSync(projectDir);
+            if (files.includes(targetName)) {
+              resolvedJsonlPath = join(projectDir, targetName);
+            }
+          } catch {
+            // Directory not readable — fall through to error
+          }
+        }
+      }
+
+      if (!resolvedJsonlPath) {
+        console.error(`  ${red("error:")} JSONL not found at ${jsonlPath}`);
+        console.error(`  ${gray("Claude session ID:")} ${claudeSessionId}`);
+        console.error(`  ${gray("Project directory:")} ${projectDir}`);
+        process.exit(1);
+      }
+
+      console.log(`\n  ${bold("loaf session enrich")}${options.dryRun ? gray(" (dry run)") : ""}\n`);
+      console.log(`  Session: ${gray(sessionPath.replace(agentsDir, ".agents"))}`);
+      console.log(`  Claude session: ${gray(claudeSessionId.slice(0, 8))}`);
+
+      // Extract conversation summary
+      const enrichedAt = sessionData.enriched_at;
+      const extractionResult = await extractSummary(
+        resolvedJsonlPath,
+        projectDir,
+        claudeSessionId,
+        agentsDir,
+        enrichedAt,
+      );
+
+      if (extractionResult.isEmpty) {
+        console.log(`  ${green("✓")} No new entries since last enrichment — nothing to do`);
+        console.log();
+        process.exit(0);
+      }
+
+      // Check claude binary availability (after no-op exit so we don't
+      // fail unnecessarily when there's nothing to enrich)
+      try {
+        execSync('command -v claude', { stdio: 'pipe' });
+      } catch {
+        console.error(`  ${red("error:")} claude binary not found. Install Claude Code CLI to use enrichment.`);
+        process.exit(1);
+      }
+
+      console.log(`  Summary: ${gray(extractionResult.summaryPath.replace(agentsDir, ".agents"))}`);
+      if (extractionResult.latestTimestamp) {
+        console.log(`  Latest entry: ${gray(extractionResult.latestTimestamp)}`);
+      }
+
+      // Build enrichment prompt
+      const prompt = buildEnrichmentPrompt(sessionPath, extractionResult.summaryPath, !!options.dryRun);
+
+      // Build agent args
+      const agentArgs: string[] = [
+        '--agent', 'librarian',
+        '-p',
+        '--no-session-persistence',
+        '--permission-mode', 'acceptEdits',
+        '--max-turns', '10',
+      ];
+
+      if (options.model) {
+        agentArgs.push('--model', options.model);
+      }
+
+      if (options.dryRun) {
+        agentArgs.push('--disallowedTools', 'Edit,Write');
+      }
+
+      // Spawn librarian agent with LOAF_ENRICHMENT isolation
+      // Prompt is piped via stdin (not positional arg) to handle multi-line
+      // content and avoid shell argument length limits.
+      console.log(`  ${gray("Spawning librarian agent...")}`);
+
+      const exitCode = await new Promise<number>((resolve) => {
+        const childEnv = { ...process.env, LOAF_ENRICHMENT: '1' };
+        // In normal mode, ignore stdout to prevent pipe buffer deadlock if the
+        // librarian produces >64KB of output. In dry-run mode, pipe stdout so
+        // we can echo it to the terminal.
+        const childStdio: ['pipe', 'pipe' | 'ignore', 'pipe'] = [
+          'pipe',
+          options.dryRun ? 'pipe' : 'ignore',
+          'pipe',
+        ];
+        const child = nodeSpawn('claude', agentArgs, {
+          env: childEnv,
+          stdio: childStdio,
+        });
+
+        // Write prompt to stdin and close it
+        child.stdin?.write(prompt);
+        child.stdin?.end();
+
+        let stderr = '';
+
+        child.stdout?.on('data', (data: Buffer) => {
+          if (options.dryRun) {
+            process.stdout.write(data);
+          }
+        });
+
+        child.stderr?.on('data', (data: Buffer) => {
+          stderr += data.toString();
+        });
+
+        child.on('close', (code) => {
+          if (code !== 0 && stderr) {
+            // Check for agent-not-found patterns
+            if (stderr.includes('agent') && (stderr.includes('not found') || stderr.includes('No such'))) {
+              console.error(`  ${red("error:")} Librarian agent not found. Ensure Loaf is installed (loaf install --to claude-code)`);
+            } else {
+              console.error(`  ${red("error:")} Librarian agent exited with code ${code}`);
+              if (stderr.trim()) {
+                console.error(`  ${gray(stderr.trim())}`);
+              }
+            }
+          }
+          resolve(code ?? 1);
+        });
+
+        child.on('error', (err) => {
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+            console.error(`  ${red("error:")} claude binary not found. Install Claude Code CLI to use enrichment.`);
+          } else {
+            console.error(`  ${red("error:")} Failed to spawn librarian agent: ${err.message}`);
+          }
+          resolve(1);
+        });
+      });
+
+      if (exitCode !== 0) {
+        console.error(`  ${red("error:")} Enrichment failed — watermark NOT advanced`);
+        console.log();
+        process.exit(1);
+      }
+
+      // Advance enriched_at watermark on success
+      if (!options.dryRun && extractionResult.latestTimestamp) {
+        const lockPath = `${sessionPath}.lock`;
+        await acquireLock(lockPath);
+        try {
+          const freshSession = readSessionFile(sessionPath);
+          if (freshSession) {
+            freshSession.data.enriched_at = extractionResult.latestTimestamp;
+            freshSession.data.last_updated = getTimestamp();
+            const newContent = matter.stringify(
+              freshSession.content,
+              freshSession.data as unknown as Record<string, unknown>,
+            );
+            writeFileAtomic(sessionPath, newContent);
+          }
+        } finally {
+          releaseLock(lockPath);
+        }
+        console.log(`  ${green("✓")} Watermark advanced to ${extractionResult.latestTimestamp}`);
+      } else if (options.dryRun) {
+        console.log(`  ${gray("Dry run — watermark NOT advanced")}`);
+      }
+
+      console.log(`  ${green("✓")} Enrichment complete`);
       console.log();
     });
 

@@ -339,7 +339,7 @@ Session journals in `.agents/sessions/` use a **compact inline format** — appe
 | **Burst** | Entries grouped without blank lines |
 | **Archive** | Completed sessions moved to `.agents/sessions/archive/` |
 
-**Session Status Values:** `active`, `paused`, `stopped`, `blocked`, `complete`, `archived`
+**Session Status Values:** `active`, `stopped`, `done`, `blocked`, `archived`
 
 **Entry Format:**
 ```markdown

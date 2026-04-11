@@ -10,7 +10,7 @@ Complete these steps on the feature branch before creating the PR.
    loaf task archive --spec SPEC-XXX
    loaf spec archive SPEC-XXX
    ```
-   Archive session file (status: complete, `archived_at`, `archived_by`, move to archive/).
+   Archive session file (status: done, `archived_at`, `archived_by`, move to archive/).
 
 2. **Update CHANGELOG.md:**
    Add entries under `[Unreleased]` describing what the PR ships.

@@ -229,7 +229,7 @@ After creating session file:
    - `loaf task update TASK-XXX --status done` (for each task)
    - `loaf task archive --spec SPEC-XXX`
    - Mark spec complete and archive: `loaf spec archive SPEC-XXX`
-   - Update session file (status: complete, `archived_at`, `archived_by`)
+   - Update session file (status: done, `archived_at`, `archived_by`)
    - Commit: `chore: close SPEC-XXX — archive tasks, spec, and session`
 4. If on a feature branch: push and create PR (`gh pr create`). Follow PR format and squash merge conventions in [commits reference](../git-workflow/references/commits.md).
 5. After PR is created and approved, use `/release` to orchestrate the squash merge with correct version ordering, documentation freshness check, and post-merge cleanup.

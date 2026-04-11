@@ -7,7 +7,7 @@ description: >-
   schema design (use database-...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 2.0.0-dev.26
+version: 2.0.0-dev.27
 ---
 
 # Python Development

@@ -89,6 +89,7 @@ CLI commands that support the workflow pipeline:
 | `loaf spec` | Manage spec lifecycle |
 | `loaf kb` | Knowledge base management |
 | `loaf session` | Session journal management (list, start, end, log) |
+| `loaf session enrich` | Enrich session journal from JSONL conversation logs |
 | `loaf session housekeeping` | Review and archive agent artifacts |
 | `loaf release` / `loaf ship` | Orchestrate release ritual |
 

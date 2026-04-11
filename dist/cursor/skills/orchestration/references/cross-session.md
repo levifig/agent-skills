@@ -134,7 +134,7 @@ When sessions are archived, decisions are extracted to Serena memory:
 ### At Wrap Time (CLI)
 
 1. `loaf session end --wrap` persists decisions to spec changelog
-2. Session stays in `sessions/` with `status: complete` — no immediate archive
+2. Session stays in `sessions/` with `status: done` — no immediate archive
 3. `loaf session housekeeping` archives complete sessions after 7-day age threshold
 
 ### At Reference Time (spec changelog)
