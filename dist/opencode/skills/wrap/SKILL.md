@@ -61,23 +61,16 @@ Responsible session shutdown — everything that needs a conscious model before 
 
 These steps require conversation context — only the model can do them.
 
-### Step 0: Enrich Journal
-
-Before any manual review, run `loaf session enrich` to fill in missing journal entries from the JSONL conversation log. This reviews the conversation log and appends decisions, discoveries, and context that weren't manually logged during the session.
-
-The enrichment must happen BEFORE the manual flush (Step 1) so the model sees both its own logged entries and any machine-extracted entries when reviewing for gaps.
-
-If enrichment fails, warn and continue — it is non-fatal. The manual flush in Step 1 serves as a fallback.
-
 ### Step 1: Flush Journal
 
-Before anything else, review the conversation for unrecorded work:
+Before anything else, complete the session journal:
 
-1. **Decisions** — any design choices, trade-offs, or direction changes not yet logged as `decision()` entries
-2. **Discoveries** — anything learned that future sessions would benefit from
-3. **Todos** — action items that came up but weren't captured
-
-Log each via `loaf session log` before proceeding. This is the last chance — the journal IS the external memory.
+1. **Enrich from conversation log** — run `loaf session enrich` to fill in gaps from the JSONL conversation log. This catches decisions, discoveries, and context that weren't manually logged. If enrichment fails, continue — manual flush is the fallback.
+2. **Manual review** — review the conversation for anything enrichment missed:
+   - Decisions — design choices, trade-offs, direction changes not yet logged as `decision()` entries
+   - Discoveries — anything learned that future sessions would benefit from
+   - Todos — action items that came up but weren't captured
+3. **Log each** via `loaf session log` before proceeding. This is the last chance — the journal IS the external memory.
 
 ### Step 2: Gather Data
 

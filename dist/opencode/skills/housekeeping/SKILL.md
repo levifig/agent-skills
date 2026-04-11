@@ -72,6 +72,8 @@ For each session with status `stopped` or `done` that has a `claude_session_id` 
 
 Do NOT enrich `active` sessions — those are handled by the wrap skill when the session ends.
 
+**Never enrich or archive the current conversation's session** — it is actively being written to. The current session's enrichment is handled by the wrap skill, not housekeeping.
+
 Treat enrichment failures as non-fatal — log a warning and continue with other housekeeping tasks.
 
 ## Archival Cleanup
