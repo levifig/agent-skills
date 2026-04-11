@@ -149,28 +149,30 @@ After the wrap-up report, suggest `/housekeeping` if it wasn't run this session 
 
 ## Report Format
 
+Use backtick formatting for code identifiers, file paths, spec/task IDs, version numbers, status values, and CLI commands. Use uppercase for spec and task IDs (`SPEC-029`, not `spec-029`).
+
 ```markdown
 ## Session Wrap-Up
 
-**Shipped**
-- commit-hash message (PR #N if merged)
-- commit-hash message
+**Shipped** (`vX.Y.Z`, PR #N squash-merged to main)
+- `abc1234` feat: description (`SPEC-NNN`) (#N)
 
 **Pending**
 - N uncommitted file(s): list key ones
 - N unpushed commit(s) on branch
 
 **Decisions**
-- scope: decision description
+- `SPEC-NNN`: decision description
+- Scope: decision description
 
 **Ideas Captured**
-- idea-slug — one-line description
+- `idea-slug` — one-line description
 
 **Loose Ends**
-- unresolved todo/block items
-- stale KB files
+- `TASK-NNN` (description) still in backlog
+- Stale KB files
 
 **What's Next**
-- natural follow-ups from this session's work
-- backlog items surfaced during work
+- Run `/triage` to process ideas
+- Follow-ups from this session's work
 ```
