@@ -9,7 +9,7 @@ cli/                            # CLI tool (TypeScript, bundled by tsup)
 │   ├── build.ts                # loaf build
 │   ├── check.ts                # loaf check (enforcement backend)
 │   ├── install.ts              # loaf install
-│   ├── session.ts              # loaf session (start/end/log/list/archive)
+│   ├── session.ts              # loaf session (start/end/log/enrich/list/archive)
 │   └── spec.ts                 # loaf spec (list/archive)
 └── lib/
     ├── build/
@@ -21,6 +21,7 @@ cli/                            # CLI tool (TypeScript, bundled by tsup)
     ├── tasks/                  # Task/spec types, parser, migration, archival
     ├── release/                # Version bump, changelog generation
     ├── housekeeping/           # Artifact scanning, stale detection
+    ├── journal/                # JSONL extraction for session enrichment
     └── kb/                     # Knowledge base loader, staleness, resolution
 
 content/                        # Distributable content (separated from tooling)
@@ -126,6 +127,8 @@ Sessions are branch-scoped and managed programmatically by `loaf session start` 
 
 **Cross-conversation continuity:** `session_id` from hook JSON is stored as `claude_session_id` in session frontmatter. On SessionStart, if the incoming session_id differs from the stored one, the session knows it's a new conversation and writes resume entries. `loaf session end` writes the `--- PAUSE ---` separator with the correct timestamp.
 
+**Session enrichment:** `loaf session enrich` reviews JSONL conversation logs and fills in missing journal entries via the librarian agent. The CLI extracts a deterministic summary (filtering noise types, applying timestamp cutoffs, discovering subagent transcripts), writes it to `.agents/tmp/`, and spawns `claude --agent librarian -p` with `LOAF_ENRICHMENT=1` for hook isolation. The librarian reads the summary and session file, identifies gaps, and appends entries. `enriched_at` in session frontmatter tracks the watermark.
+
 **Compaction resilience:** The session journal is external memory that survives context compaction. PreCompact requires flushing unrecorded entries and writing a state summary to `## Current State`. PostCompact nudges the model to re-read the session file for resumption context. No separate snapshot mechanism needed.
 
 ### Journal Entry Sources
@@ -139,6 +142,7 @@ Session journals receive entries from multiple layered sources:
 | Task events | TaskCompleted session hook | Task completed/cancelled (automatic) |
 | Context | UserPromptSubmit command hook | Every user prompt |
 | Compaction | PreCompact prompt hook | Emergency journal flush |
+| Enrichment | `loaf session enrich` → librarian agent | Lifecycle points (wrap, housekeeping) |
 
 Skills self-log as their first action. Git and task events are captured automatically by hooks. The UserPromptSubmit hook injects session context and orchestration conventions on every prompt.
 
@@ -177,6 +181,8 @@ Hard-won constraints validated during SPEC-030 implementation:
 - **UserPromptSubmit has no matcher** — Fires on every user message, cannot be filtered by tool name or input.
 - **Session events use different JSON shape** — `hook_event_name` field instead of `tool_name`. TaskCompleted passes `task_subject` and `task_description`.
 - **Plugin caching** — Cached plugin versions serve stale hook handlers during development. Marketplace remove/re-add is the reliable cache-busting path.
+- **CLI-spawned agents need hook isolation** — When the CLI spawns `claude --agent <name> -p`, the child process triggers SessionStart/SessionEnd hooks. Set `LOAF_ENRICHMENT=1` (or similar) in the child env to suppress Loaf hooks. Do NOT use `--bare` — it breaks OAuth for subscription users.
+- **`--bare` skips OAuth** — `--bare` mode requires API key auth (`ANTHROPIC_API_KEY`). Subscription users on OAuth cannot use `--bare`. Use env var isolation instead.
 
 ### Hook Categories
 

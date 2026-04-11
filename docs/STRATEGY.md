@@ -10,7 +10,7 @@ Loaf is an opinionated agentic framework for AI coding assistants. It ships skil
 
 ## What Has Been Proven
 
-22 specs shipped, 7 in progress. The evidence clusters into four themes.
+24 specs shipped, 6 in progress. The evidence clusters into four themes.
 
 **Skills are the highest-leverage investment.** They work across all six targets. Better skill descriptions and organization improve every target simultaneously. Profiles and hooks are Claude Code infrastructure that other targets cannot use.
 
@@ -19,6 +19,8 @@ This was proven by SPEC-014 (skill activation redesign) and SPEC-020 (target con
 **Sessions must survive everything.** Context compaction, `/clear`, tool restarts, and cross-conversation handoffs all create new Claude session IDs pointing at the same logical session. Any architecture that assumes 1 session = 1 conversation fails in practice.
 
 SPEC-027 (session stability), SPEC-023 (session continuity on `/clear`), and SPEC-030 (Librarian agent) addressed this incrementally. Session splits are now detected and consolidated on start. The `## Current State` section provides handoff context that survives compaction. The model is stabilizing but remains the most failure-prone surface -- it touches every other feature.
+
+SPEC-029 (journal enrichment) extended session completeness by adding post-hoc JSONL review. The first real test revealed a new session routing tension: `loaf session log` routes by branch, but `loaf session enrich` routes by `claude_session_id`. When multiple conversations contribute to one session, these routing mechanisms can disagree. This is the next session reliability challenge.
 
 **Hook primitives have hard behavioral constraints.** These are platform limits discovered through SPEC-026 and SPEC-030, not design choices. They constrain every future hook design:
 
@@ -41,6 +43,7 @@ Ordered by evidence strength -- what has been proven most urgent by shipping.
 1. **Session reliability** (proven: SPEC-027, 028, 030). The foundation everything else builds on. Session splits, compaction, and `/clear` are handled. Housekeeping and archival are automated via `loaf session housekeeping`. The Librarian agent manages session lifecycle within `.agents/`.
    - Remaining gap: session state is still occasionally lost during rapid compaction cycles.
    - The PreCompact flush depends on the model actually writing the state summary before compaction completes -- a race condition Loaf cannot fully control.
+   - Session routing inconsistency: `session log` routes by branch, `session enrich` routes by `claude_session_id`. Multi-conversation sessions expose the mismatch.
 
 2. **Hook correctness** (proven: SPEC-026, 030). Hooks must use the right primitive for the job. The behavioral constraint documentation is now in ARCHITECTURE.md and tested.
    - Remaining gap: new hooks are still occasionally authored with the wrong type because the failure mode is silent.
@@ -66,7 +69,7 @@ These are not problems to solve -- they are tradeoffs to manage. Each has surfac
 
 **Automation vs. explainability.** Hooks that "just work" are invisible, but invisible behavior is hard to debug when it breaks. Plugin caching is the canonical example: the framework cached a stale hook handler, the hook silently misbehaved, and the failure was indistinguishable from a logic error. The `validate-push` hook going from blocking to advisory (SPEC-015 to dev.12) is another -- it blocked valid pushes silently until the behavior was observed and corrected. Every automation decision must weigh the cost of silent failure against the cost of manual intervention. The solo developer can tolerate more automation (they can debug it). The team lead cannot (their developers will file bugs).
 
-**Convention vs. flexibility.** The framework is opinionated about workflow (spec, tasks, code, learn), but projects vary enormously. Too rigid and users fight the framework; too flexible and the opinions do not hold. The current balance -- strict pipeline, flexible domain skills -- has held through 22 shipped specs. But all of that usage has been on Loaf itself, a project that was designed around the pipeline. The first real test is when someone installs Loaf on a project with an existing workflow and existing conventions that conflict with Loaf's opinions.
+**Convention vs. flexibility.** The framework is opinionated about workflow (spec, tasks, code, learn), but projects vary enormously. Too rigid and users fight the framework; too flexible and the opinions do not hold. The current balance -- strict pipeline, flexible domain skills -- has held through 24 shipped specs. But all of that usage has been on Loaf itself, a project that was designed around the pipeline. The first real test is when someone installs Loaf on a project with an existing workflow and existing conventions that conflict with Loaf's opinions.
 
 **Skill depth vs. skill breadth.** 31 skills across 8 languages, 6 workflow phases, and 5 engineering domains. Each skill competes for context window space. Claude's 250-character description truncation means routing quality depends on the first sentence of every skill description. Adding more skills improves coverage but degrades routing accuracy. The SPEC-014 description rewrite improved routing, but the fundamental constraint -- finite context, growing skill count -- remains.
 
@@ -77,5 +80,6 @@ These are not problems to solve -- they are tradeoffs to manage. Each has surfac
 - Whether harness-native leverage (SPEC-024) is worth the maintenance cost. Six targets is already a wide surface. Adding native hooks, agents, and settings per target multiplies the test matrix.
 - Whether backend abstraction (SPEC-023) is the right scope -- should it be narrower (just remove Linear references) or wider (full plugin system with arbitrary backends)?
 - Whether plugin caching is a solvable development friction or an inherent platform constraint that Loaf must design around permanently.
+- Whether enrichment quality (librarian-written journal entries) matches hand-written entries in practice. First test showed scope filtering and entry conciseness issues. Prompt iteration and multi-JSONL discovery are the likely levers.
 
 These are questions that can only be answered by shipping the next round of specs and observing what breaks.

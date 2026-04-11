@@ -145,7 +145,7 @@ Sessions track execution context per branch. Key behaviors:
 - **New-conversation detection.** `claude_session_id` in frontmatter tracks the Claude session. When a new session starts on a branch with an existing session, the ID mismatch triggers a resume with PAUSE header.
 - **Subagent detection.** `agent_id` in hook JSON is only present for subagents. `session start` exits early when `agent_id` is set, preventing subagent sessions from polluting the parent journal.
 - **Branch rename recovery.** If a branch is renamed via `git branch -m`, session start detects the rename via reflog and updates both session and spec frontmatter.
-- **Session status values:** `active`, `paused`, `blocked`, `complete`, `archived`
+- **Session status values:** `active`, `stopped`, `done`, `blocked`, `archived`
 
 ### Session Frontmatter Fields
 
