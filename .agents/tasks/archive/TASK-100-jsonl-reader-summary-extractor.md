@@ -1,9 +1,12 @@
 ---
 id: TASK-100
-spec: SPEC-029
 title: JSONL extractor and .agents/tmp/ infrastructure
-priority: P1
+spec: SPEC-029
 status: done
+priority: P1
+created: '2026-04-21T09:39:49.344Z'
+updated: '2026-04-21T09:39:49.344Z'
+completed_at: '2026-04-21T09:39:49.344Z'
 ---
 
 # TASK-100: JSONL extractor and `.agents/tmp/` infrastructure

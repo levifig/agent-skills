@@ -8,7 +8,7 @@ description: >-
 user-invocable: true
 argument-hint: '[issue or error]'
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 2.0.0-dev.27
+version: 2.0.0-dev.28
 ---
 
 # Debugging

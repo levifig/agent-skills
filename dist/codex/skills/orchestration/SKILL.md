@@ -6,7 +6,7 @@ description: >-
   agents, or coordinating cross-cutting work across multiple agents. Not for
   single-task implementation (use direct tool delegation) or solo research (use
   research).
-version: 2.0.0-dev.27
+version: 2.0.0-dev.28
 ---
 
 # Orchestration

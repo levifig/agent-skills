@@ -1,9 +1,12 @@
 ---
 id: TASK-102
-spec: SPEC-029
 title: Lifecycle integration (wrap + housekeeping)
-priority: P2
+spec: SPEC-029
 status: done
+priority: P2
+created: '2026-04-21T09:39:49.344Z'
+updated: '2026-04-21T09:39:49.344Z'
+completed_at: '2026-04-21T09:39:49.344Z'
 ---
 
 # TASK-102: Lifecycle integration (wrap + housekeeping)

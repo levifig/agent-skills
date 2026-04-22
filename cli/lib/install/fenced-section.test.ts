@@ -232,7 +232,12 @@ describe("getTargetFile", () => {
 
   it("returns correct path for cursor", () => {
     const result = getTargetFile("cursor", TEST_ROOT);
-    expect(result).toBe(join(TEST_ROOT, ".cursor", "rules", "loaf.mdc"));
+    expect(result).toBe(join(TEST_ROOT, ".agents", "AGENTS.md"));
+  });
+
+  it("returns correct path for gemini", () => {
+    const result = getTargetFile("gemini", TEST_ROOT);
+    expect(result).toBe(join(TEST_ROOT, ".agents", "AGENTS.md"));
   });
 
   it("returns null for unknown target", () => {
@@ -339,13 +344,77 @@ describe("installFencedSectionsForTargets", () => {
 
     // First creates the file
     expect(results["opencode"].action).toBe("created");
-    // Second updates the existing fence (same file)
-    expect(results["codex"].action).toBe("updated");
+    // Second target shares the resolved path — dedup skips it
+    expect(results["codex"].action).toBe("skipped");
+    expect(results["codex"].version).toBe(results["opencode"].version);
 
     // File should exist with one fence
     const content = readTestFile(".agents/AGENTS.md");
     expect(content).toContain("<!-- loaf:managed:start");
     expect(content).toContain("<!-- loaf:managed:end -->");
+    // And only one fence (the managed-start marker appears exactly once)
+    const startMatches = content.match(/<!-- loaf:managed:start/g) ?? [];
+    expect(startMatches.length).toBe(1);
+  });
+
+  it("dedupes all five AGENTS.md targets via single write", () => {
+    // cursor, codex, opencode, amp, gemini all resolve to .agents/AGENTS.md.
+    // Only the first target should actually write; the rest should be skipped.
+    const results = installFencedSectionsForTargets(
+      ["cursor", "codex", "opencode", "amp", "gemini"],
+      TEST_ROOT,
+      false
+    );
+
+    expect(results["cursor"].action).toBe("created");
+    expect(results["codex"].action).toBe("skipped");
+    expect(results["opencode"].action).toBe("skipped");
+    expect(results["amp"].action).toBe("skipped");
+    expect(results["gemini"].action).toBe("skipped");
+
+    // All report the same version
+    const version = results["cursor"].version;
+    expect(results["codex"].version).toBe(version);
+    expect(results["opencode"].version).toBe(version);
+    expect(results["amp"].version).toBe(version);
+    expect(results["gemini"].version).toBe(version);
+
+    // Exactly one managed-start marker in the shared file.
+    const content = readTestFile(".agents/AGENTS.md");
+    const startMatches = content.match(/<!-- loaf:managed:start/g) ?? [];
+    expect(startMatches.length).toBe(1);
+  });
+
+  it("dedupes via realpath when one target's path is a symlink to another", async () => {
+    // Set up a scenario where .claude/CLAUDE.md is a symlink to .agents/AGENTS.md.
+    // Installing to both claude-code and opencode should only write once.
+    const { symlinkSync } = await import("fs");
+
+    // Create .agents/AGENTS.md with existing fence first, plus the symlink.
+    mkdirSync(join(TEST_ROOT, ".agents"), { recursive: true });
+    mkdirSync(join(TEST_ROOT, ".claude"), { recursive: true });
+    writeFileSync(join(TEST_ROOT, ".agents", "AGENTS.md"), "# existing\n");
+    symlinkSync(
+      join(TEST_ROOT, ".agents", "AGENTS.md"),
+      join(TEST_ROOT, ".claude", "CLAUDE.md")
+    );
+
+    const results = installFencedSectionsForTargets(
+      ["claude-code", "opencode"],
+      TEST_ROOT,
+      false
+    );
+
+    // First target appends to the symlinked file; second is a dedup skip.
+    expect(results["claude-code"].action).toBe("appended");
+    expect(results["opencode"].action).toBe("skipped");
+
+    // Only one managed block, reachable via both paths.
+    const claudeContent = readTestFile(".claude/CLAUDE.md");
+    const agentsContent = readTestFile(".agents/AGENTS.md");
+    expect(claudeContent).toBe(agentsContent);
+    const startMatches = agentsContent.match(/<!-- loaf:managed:start/g) ?? [];
+    expect(startMatches.length).toBe(1);
   });
 });
 
@@ -397,20 +466,6 @@ describe("fenced content format", () => {
     // The fenced section should be approximately 20-30 lines
     expect(lines.length).toBeGreaterThanOrEqual(15);
     expect(lines.length).toBeLessThanOrEqual(30);
-  });
-
-  it("adds Cursor frontmatter for new .mdc files", () => {
-    const targetFile = join(TEST_ROOT, ".cursor", "rules", "loaf.mdc");
-    const result = installFencedSection(targetFile, false);
-
-    expect(result.action).toBe("created");
-
-    const content = readFileSync(targetFile, "utf-8");
-    // Should have Cursor frontmatter
-    expect(content).toMatch(/^---\n/);
-    expect(content).toContain("description: Loaf framework conventions");
-    expect(content).toContain("alwaysApply: true");
-    expect(content).toContain("<!-- loaf:managed:start");
   });
 
   it("does not add frontmatter for new .md files", () => {

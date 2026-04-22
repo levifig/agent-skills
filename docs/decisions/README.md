@@ -13,5 +13,6 @@ Immutable records of significant architectural decisions.
 | [ADR-007](ADR-007-project-config-location.md) | Project Config in .agents/loaf.json | Proposed | 2026-03-14 |
 | [ADR-008](ADR-008-serena-memory-deprecation.md) | Deprecate Serena Memory for Knowledge | Proposed | 2026-03-14 |
 | [ADR-009](ADR-009-sparks-convention.md) | Sparks Convention in Brainstorm Documents | Accepted | 2026-03-14 |
+| [ADR-010](ADR-010-agents-md-consolidation.md) | Consolidate Prompt Overlay Around AGENTS.md | Accepted | 2026-04-17 |
 
 See [../knowledge/](../knowledge/) for domain knowledge files.

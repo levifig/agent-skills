@@ -14,18 +14,21 @@ import { execSync } from "child_process";
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
+  realpathSync,
   rmSync,
   writeFileSync,
   readFileSync,
 } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Fixtures
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TEST_ROOT = join(process.cwd(), ".test-check-command");
-const MOCK_GIT_DIR = join(TEST_ROOT, ".git");
+let TEST_ROOT: string;
+let MOCK_GIT_DIR: string;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -67,14 +70,10 @@ function runCheck(
 // ─────────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  // Clean up and recreate test directory
-  try {
-    rmSync(TEST_ROOT, { recursive: true, force: true });
-  } catch {
-    // ignore cleanup errors
-  }
-  mkdirSync(TEST_ROOT, { recursive: true });
-  
+  // Create a fresh OS tmpdir for each test to avoid cross-file pollution
+  TEST_ROOT = realpathSync(mkdtempSync(join(tmpdir(), "loaf-check-")));
+  MOCK_GIT_DIR = join(TEST_ROOT, ".git");
+
   // Initialize git repo if not already
   try {
     execSync("git init", { cwd: TEST_ROOT, stdio: "ignore" });

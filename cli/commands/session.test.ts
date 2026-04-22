@@ -196,6 +196,32 @@ describe("session: start", () => {
     expect(content).toContain(`branch: detached-${commitSha}`);
   });
 
+  it("clears a dead detached-head create lock before starting", async () => {
+    const repoPath = createTempRepo("dead-create-lock-test");
+
+    const commitSha = require("child_process")
+      .execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: repoPath, encoding: "utf-8" })
+      .trim();
+    require("child_process").execFileSync("git", ["checkout", "--detach"], { cwd: repoPath });
+
+    const branchKey = `detached-${commitSha}`.replace(/[^a-zA-Z0-9-]/g, "-");
+    const sessionsDir = join(repoPath, ".agents/sessions");
+    mkdirSync(sessionsDir, { recursive: true });
+
+    const lockPath = join(sessionsDir, `.create-${branchKey}.lock`);
+    writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: 999999, timestamp: Date.now() }),
+      "utf-8"
+    );
+
+    const result = await runLoaf(["start"], { cwd: repoPath });
+
+    expect(result.exitCode).toBe(0);
+    expect(getSessionFiles(repoPath)).toHaveLength(1);
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
   it.skip("two concurrent session start processes leave exactly one session file", async () => {
     const repoPath = createTempRepo("concurrent-test");
     
@@ -390,6 +416,28 @@ describe("session: log", () => {
     expect(content).toContain("discover(test): finding one");
     expect(content).toContain("discover(test): finding two");
   }, 30000);
+
+  it("clears a dead session file lock before appending a log entry", async () => {
+    const repoPath = createTempRepo("dead-log-lock-test");
+
+    await runLoaf(["start"], { cwd: repoPath });
+
+    const [sessionFile] = getSessionFiles(repoPath);
+    const filePath = join(repoPath, ".agents/sessions", sessionFile);
+    const lockPath = `${filePath}.lock`;
+
+    writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: 999999, timestamp: Date.now() }),
+      "utf-8"
+    );
+
+    const result = await runLoaf(["log", "discover(test): recovered from dead lock"], { cwd: repoPath });
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(lockPath)).toBe(false);
+    expect(readFileSync(filePath, "utf-8")).toContain("discover(test): recovered from dead lock");
+  });
 });
 
 describe("session: list", () => {

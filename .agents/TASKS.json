@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 104,
+  "next_id": 109,
   "tasks": {
     "TASK-103": {
       "title": "Add missing journal entry types for all artifact types",
@@ -17,6 +17,54 @@
       "updated": "2026-04-10T20:53:48.695Z",
       "completed_at": null,
       "file": "TASK-103-add-missing-journal-entry-types-for-all-artifact-t.md"
+    },
+    "TASK-104": {
+      "title": "Add loaf doctor command for alignment checks",
+      "slug": "add-loaf-doctor-command-for-alignment-checks",
+      "spec": null,
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-21T09:42:10.306Z",
+      "updated": "2026-04-21T09:42:20.239Z",
+      "completed_at": "2026-04-21T09:42:20.238Z",
+      "file": "TASK-104-add-loaf-doctor-command-for-alignment-checks.md"
+    },
+    "TASK-107": {
+      "title": "Branch split: move linear-native + agents-md work off main to feature branches",
+      "slug": "branch-split-move-linear-native-agents-md-work-off",
+      "spec": null,
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-21T22:52:13.070Z",
+      "updated": "2026-04-21T23:18:30.764Z",
+      "completed_at": "2026-04-21T23:18:30.764Z",
+      "file": "TASK-107-branch-split-move-linear-native-agents-md-work-off.md"
+    },
+    "TASK-108": {
+      "title": "Isolate check.test.ts fixtures to eliminate cross-file test pollution",
+      "slug": "isolate-check-test-ts-fixtures-to-eliminate-cross-",
+      "spec": null,
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-22T00:24:18.152Z",
+      "updated": "2026-04-22T00:35:02.488Z",
+      "completed_at": "2026-04-22T00:35:02.488Z",
+      "file": "TASK-108-isolate-check-test-ts-fixtures-to-eliminate-cross-.md"
     },
     "TASK-001": {
       "title": "Create verification reference",
@@ -1813,9 +1861,9 @@
       "verify": null,
       "done": null,
       "session": null,
-      "created": "2026-04-10T23:32:34.422Z",
-      "updated": "2026-04-10T23:32:34.422Z",
-      "completed_at": "2026-04-10T23:32:34.422Z",
+      "created": "2026-04-21T09:39:49.344Z",
+      "updated": "2026-04-21T09:39:49.344Z",
+      "completed_at": "2026-04-21T09:39:49.344Z",
       "file": "archive/TASK-100-jsonl-reader-summary-extractor.md"
     },
     "TASK-101": {
@@ -1829,9 +1877,9 @@
       "verify": null,
       "done": null,
       "session": null,
-      "created": "2026-04-10T23:32:34.423Z",
-      "updated": "2026-04-10T23:32:34.423Z",
-      "completed_at": "2026-04-10T23:32:34.423Z",
+      "created": "2026-04-21T09:39:49.344Z",
+      "updated": "2026-04-21T09:39:49.344Z",
+      "completed_at": "2026-04-21T09:39:49.344Z",
       "file": "archive/TASK-101-enrich-command.md"
     },
     "TASK-102": {
@@ -1845,9 +1893,9 @@
       "verify": null,
       "done": null,
       "session": null,
-      "created": "2026-04-10T23:32:34.423Z",
-      "updated": "2026-04-10T23:32:34.423Z",
-      "completed_at": "2026-04-10T23:32:34.423Z",
+      "created": "2026-04-21T09:39:49.344Z",
+      "updated": "2026-04-21T09:39:49.344Z",
+      "completed_at": "2026-04-21T09:39:49.344Z",
       "file": "archive/TASK-102-lifecycle-integration.md"
     }
   },

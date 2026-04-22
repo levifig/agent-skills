@@ -1,9 +1,12 @@
 ---
 id: TASK-101
-spec: SPEC-029
 title: loaf session enrich CLI command + hook isolation + librarian update
-priority: P1
+spec: SPEC-029
 status: done
+priority: P1
+created: '2026-04-21T09:39:49.344Z'
+updated: '2026-04-21T09:39:49.344Z'
+completed_at: '2026-04-21T09:39:49.344Z'
 ---
 
 # TASK-101: `loaf session enrich` CLI command + hook isolation + librarian update

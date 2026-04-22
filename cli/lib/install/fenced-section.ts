@@ -5,25 +5,31 @@
  * Uses HTML comment markers to delimit managed content.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync } from "fs";
+import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 
 const FENCED_START = "<!-- loaf:managed:start";
 const FENCED_END = "<!-- loaf:managed:end -->";
 const FENCED_WARNING = "<!-- Maintained by loaf install/upgrade — do not edit manually -->";
 
-/** Per-target file paths relative to project root */
+/** Per-target file paths relative to project root.
+ *
+ * Five of six targets map to `.agents/AGENTS.md` (the emerging open standard,
+ * supported by 23+ tools per agents.md). Claude Code is the exception — it
+ * keeps `.claude/CLAUDE.md`, which a separate install step symlinks to
+ * `.agents/AGENTS.md` to avoid duplicated fenced sections.
+ */
 const TARGET_FILES: Record<string, string> = {
   "claude-code": ".claude/CLAUDE.md",
-  cursor: ".cursor/rules/loaf.mdc",  // Always use .mdc for Cursor rules
+  cursor: ".agents/AGENTS.md",
   codex: ".agents/AGENTS.md",
   opencode: ".agents/AGENTS.md",
   amp: ".agents/AGENTS.md",
-  // NOTE: gemini excluded - per SPEC-020, Gemini has no prompt overlay/project-file layer
+  gemini: ".agents/AGENTS.md",
 };
 
-interface FencedSection {
+export interface FencedSection {
   startIndex: number;
   endIndex: number;
   version: string | null;
@@ -47,7 +53,7 @@ function getVersion(): string {
   return "0.0.0";
 }
 
-function findFencedSection(content: string): FencedSection | null {
+export function findFencedSection(content: string): FencedSection | null {
   const startIdx = content.indexOf(FENCED_START);
   if (startIdx === -1) return null;
 
@@ -90,7 +96,7 @@ function generateFencedContent(version: string): string {
     "- `loaf task/spec/kb` — Task and knowledge management",
     "",
     "**Journal Discipline:**",
-    "Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log \"type(scope): description\"`. Entry types: `decision`, `discover`, `conclude`. Do not defer journaling — log before responding.",
+    "Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log \"type(scope): description\"`. Entry types: `decision`, `discover`, `wrap`. Do not defer journaling — log before responding.",
     "",
     "See [orchestration skill](skills/orchestration/SKILL.md) for full details.",
     "<!-- loaf:managed:end -->",
@@ -167,14 +173,8 @@ export function installFencedSection(
         // Create new file with fenced section
         // Ensure directory exists
         mkdirSync(dirname(targetFile), { recursive: true });
-        
-        // Add frontmatter for .mdc files (Cursor rules format)
-        const isMdc = targetFile.endsWith(".mdc");
-        const prefix = isMdc
-          ? "---\ndescription: Loaf framework conventions\nalwaysApply: true\n---\n\n"
-          : "";
-        
-        writeFileSync(targetFile, prefix + newContent + "\n");
+
+        writeFileSync(targetFile, newContent + "\n");
         return { action: "created", version: currentVersion };
       }
     }
@@ -209,7 +209,26 @@ export function getFencedVersion(targetFile: string): string | null {
 }
 
 /**
+ * Resolve a file path to its canonical form, following symlinks if the file
+ * exists. For non-existent files, fall back to an absolute path so freshly
+ * created files still dedupe correctly on the next write.
+ */
+function canonicalizePath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+/**
  * Install fenced sections for all applicable targets in a project.
+ *
+ * Multiple targets can resolve to the same file (five of six targets map to
+ * `.agents/AGENTS.md`, and Claude Code may be symlinked to it). We dedupe by
+ * canonical path — installing once, then reporting `skipped` for subsequent
+ * targets that share the file — so the fenced block isn't rewritten N times.
+ *
  * @param targets - List of target keys to install
  * @param projectRoot - Project root directory (default: process.cwd())
  * @param upgrade - Whether to run in upgrade mode
@@ -228,6 +247,11 @@ export function installFencedSectionsForTargets(
     { action: "created" | "updated" | "skipped" | "appended" | "error"; version?: string; error?: string }
   > = {};
 
+  // Track which canonical paths have already been written during this call so
+  // shared files (e.g., AGENTS.md across cursor/codex/opencode/amp/gemini, or a
+  // symlinked CLAUDE.md) get a single write.
+  const writtenPaths = new Map<string, { version: string }>();
+
   for (const target of targets) {
     const targetFile = resolveTargetFile(target, projectRoot);
 
@@ -236,9 +260,19 @@ export function installFencedSectionsForTargets(
       continue;
     }
 
+    const canonical = canonicalizePath(targetFile);
+    const alreadyWritten = writtenPaths.get(canonical);
+    if (alreadyWritten) {
+      results[target] = { action: "skipped", version: alreadyWritten.version };
+      continue;
+    }
+
     try {
       const result = installFencedSection(targetFile, upgrade);
       results[target] = result;
+      // Re-canonicalize after the write — for newly created files, realpath now
+      // resolves where it couldn't before.
+      writtenPaths.set(canonicalizePath(targetFile), { version: result.version });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       results[target] = { action: "error", error: msg };

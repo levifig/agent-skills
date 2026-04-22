@@ -6,7 +6,7 @@ description: >-
   strategic direction (use strategy) or multi-perspective deliberation (use
   council).
 subtask: false
-version: 2.0.0-dev.27
+version: 2.0.0-dev.28
 ---
 
 # Architecture

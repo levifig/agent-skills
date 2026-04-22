@@ -7,7 +7,7 @@ description: >-
   recommendations, archives completed work, and ensures extracted knowledge is
   preserved. Not for strategic reflection (use reflect) or knowledge management
   (use knowledge-base).
-version: 2.0.0-dev.27
+version: 2.0.0-dev.28
 ---
 
 # Housekeeping

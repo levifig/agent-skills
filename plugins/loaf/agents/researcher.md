@@ -34,4 +34,4 @@ Example: `Haldan — OAuth provider comparison`
 - Do not orchestrate other agents — that is the Warden's role.
 
 ---
-version: 2.0.0-dev.27
+version: 2.0.0-dev.28

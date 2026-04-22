@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-dev.28] - 2026-04-22
+
+### Added
+- Enforce project symlinks and migrate user content on loaf install (0abf44bd)
+- Add loaf doctor command for alignment checks (23b787e0)
+
+### Changed
+- Remap fenced-section targets to canonical .agents/AGENTS.md (4ff26006)
+
+### Fixed
+- Isolate check.test.ts fixtures and serialize vitest file runs (89f62d5d)
+
 ## [2.0.0-dev.27] - 2026-04-11
 
 ### Added

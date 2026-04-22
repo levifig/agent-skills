@@ -403,7 +403,7 @@ loaf session archive  # Move to archive when branch merges
 After each significant action, append entries to the session journal:
 
 1. **Use `loaf session log`** to append entries in the correct format
-2. **Add `decide`, `discover`, `block`, `spark`, `conclude` entries** during normal work
+2. **Add `decision`, `discover`, `block`, `spark`, `wrap` entries** during normal work
 3. **Hooks auto-append:** `resume`, `commit(SHA)`, `pr(#N)`, `merge(#N)`, `pause`
 4. **Blank line rules:** Inserted automatically by `loaf session log` based on time gaps and state transitions
 

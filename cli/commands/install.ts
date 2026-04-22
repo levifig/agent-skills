@@ -20,6 +20,7 @@ import {
 import { INSTALLERS } from "../lib/install/installer.js";
 import { installFencedSectionsForTargets } from "../lib/install/fenced-section.js";
 import { runMcpRecommendations } from "../lib/install/mcp-recommendations.js";
+import { ensureProjectSymlinks } from "../lib/install/symlinks.js";
 
 function findProjectRoot(): string {
   try {
@@ -154,18 +155,107 @@ async function installLoafBinary(rootDir: string): Promise<boolean> {
 
 const VALID_TARGETS = Object.keys(DEFAULT_CONFIG_DIRS);
 
+/**
+ * Run canonical-symlink enforcement and render its results in the standard
+ * install output style. Returns true if any line was printed, so callers can
+ * manage surrounding blank lines consistently.
+ *
+ * `assumeYes` is plumbed in from the `--yes` / `-y` flag and implicit
+ * non-TTY detection. When true, the symlinks helper skips every prompt and
+ * runs the safe migration path (strip fence → merge content into canonical
+ * → back up → symlink).
+ */
+async function enforceAndReportSymlinks(params: {
+  projectRoot: string;
+  targetsInScope: Iterable<string>;
+  hasClaudeCode: boolean;
+  assumeYes: boolean;
+}): Promise<boolean> {
+  const symlinkResults = await ensureProjectSymlinks({
+    projectRoot: params.projectRoot,
+    selectedTargets: params.targetsInScope,
+    hasClaudeCode: params.hasClaudeCode,
+    assumeYes: params.assumeYes,
+  });
+
+  let hasOutput = false;
+  let anySkippedNoTty = false;
+  for (const result of Object.values(symlinkResults)) {
+    switch (result.action) {
+      case "created":
+      case "relinked":
+      case "replaced-file":
+        console.log(`  ${green("✓")} ${result.message}`);
+        hasOutput = true;
+        break;
+      case "already-correct":
+        // Silent by design — no noise when everything is already aligned.
+        break;
+      case "declined-relink":
+      case "declined-replace":
+        console.log(`  ${yellow("⚠")} ${result.message}`);
+        hasOutput = true;
+        break;
+      case "skipped-no-tty":
+        // Should not happen now that assumeYes is set automatically in
+        // non-TTY mode, but keep the branch for defensive UX.
+        anySkippedNoTty = true;
+        break;
+      case "error":
+        console.log(`  ${red("✗")} ${result.message}`);
+        hasOutput = true;
+        break;
+    }
+  }
+  if (anySkippedNoTty) {
+    const note =
+      gray("Note: symlinks not enforced (non-interactive); run ") +
+      white("loaf doctor") +
+      gray(" to check.");
+    console.log(`  ${note}`);
+    hasOutput = true;
+  }
+  return hasOutput;
+}
+
 export function registerInstallCommand(program: Command): void {
   program
     .command("install")
     .description("Install Loaf to detected AI tool configurations")
     .option("--to <target>", 'Target to install to (or "all")')
     .option("--upgrade", "Update only already-installed targets")
-    .action(async (options: { to?: string; upgrade?: boolean }) => {
+    .option(
+      "-y, --yes",
+      "Assume 'yes' to safe migrations (merge content, back up, and replace real files with symlinks)",
+    )
+    .option(
+      "--no-yes",
+      "Force interactive prompts even when stdin is not a TTY (testing)",
+    )
+    .action(
+      async (options: {
+        to?: string;
+        upgrade?: boolean;
+        yes?: boolean;
+      }) => {
       const rootDir = findRootDir();
       const distDir = join(rootDir, "dist");
       const devMode = isDevMode(rootDir);
       const upgrade = options.upgrade ?? false;
       const projectRoot = findProjectRoot();
+
+      // Resolve the assumeYes policy once and reuse it across every
+      // symlink-enforcement call site. Explicit flags override detection:
+      //   --yes       → true
+      //   --no-yes    → false (commander sets options.yes = false)
+      //   (unset)     → auto-detect from TTY (false means non-interactive
+      //                 stdin, so we safely opt in to migration)
+      const assumeYes =
+        options.yes === true
+          ? true
+          : options.yes === false
+            ? false
+            : !process.stdin.isTTY;
 
       console.log(`\n${bold("loaf install")}\n`);
 
@@ -233,7 +323,17 @@ export function registerInstallCommand(program: Command): void {
         if (selectedTargets.length === 0) {
           // Still install fenced sections for Claude Code even if no other targets to upgrade
           if (hasClaudeCode) {
-    
+            // Enforce the .claude/CLAUDE.md symlink first, so a fresh write
+            // below lands through the symlink in .agents/AGENTS.md rather
+            // than creating a drifting sibling file.
+            const symlinked = await enforceAndReportSymlinks({
+              projectRoot,
+              targetsInScope: [],
+              hasClaudeCode,
+              assumeYes,
+            });
+            if (symlinked) console.log();
+
             const fencedResults = installFencedSectionsForTargets(
               ["claude-code"],
               projectRoot,
@@ -270,6 +370,16 @@ export function registerInstallCommand(program: Command): void {
 
         // Still install fenced sections for Claude Code even if no targets selected
         if (hasClaudeCode) {
+          // Enforce the .claude/CLAUDE.md symlink first — see the upgrade
+          // path above for rationale.
+          const symlinked = await enforceAndReportSymlinks({
+            projectRoot,
+            targetsInScope: [],
+            hasClaudeCode,
+            assumeYes,
+          });
+          if (symlinked) console.log();
+
           const fencedResults = installFencedSectionsForTargets(
             ["claude-code"],
             projectRoot,
@@ -372,14 +482,40 @@ export function registerInstallCommand(program: Command): void {
 
       console.log();
 
-      // Install fenced sections to project files
-      // Include: (1) successfully installed targets (excluding gemini which has no project file layer),
-      // (2) Claude Code if detected
-      // Claude Code uses plugin-bundled binary but still needs fenced sections in project
-      const targetsWithFencedSections = installedTargets.filter(t => t !== "gemini");
+      // Enforce canonical symlinks BEFORE writing fenced sections, so a
+      // fresh install writes directly to .agents/AGENTS.md through the
+      // symlink rather than creating a sibling real file at .claude/CLAUDE.md
+      // that would then drift. This also gives the user a chance to see a
+      // prompt to back up an existing real file before we add more content
+      // to it.
+      //
+      // .claude/CLAUDE.md is enforced when Claude Code is in the install set
+      // (either detected or explicitly selected). ./AGENTS.md is enforced
+      // when any target that writes AGENTS.md (cursor/codex/opencode/amp/
+      // gemini) is installed — tools following the agents.md spec scan the
+      // project root for AGENTS.md and would otherwise see the wrong file.
+      const hasSymlinkOutput = await enforceAndReportSymlinks({
+        projectRoot,
+        targetsInScope: new Set<string>([
+          ...installedTargets,
+          ...selectedTargets,
+        ]),
+        hasClaudeCode,
+        assumeYes,
+      });
+      if (hasSymlinkOutput) {
+        console.log();
+      }
+
+      // Install fenced sections for all installed targets. Writes are
+      // deduped by realpath in installFencedSectionsForTargets, so targets
+      // that share the canonical file (cursor/codex/opencode/amp/gemini →
+      // .agents/AGENTS.md) only write once.
+      // Claude Code uses the plugin-bundled binary but still needs a
+      // fenced section in the project file (.claude/CLAUDE.md → canonical).
       const fencedTargets = hasClaudeCode
-        ? ["claude-code", ...targetsWithFencedSections]
-        : [...targetsWithFencedSections];
+        ? ["claude-code", ...installedTargets]
+        : [...installedTargets];
       const fencedResults = installFencedSectionsForTargets(
         fencedTargets,
         projectRoot,
@@ -433,5 +569,6 @@ export function registerInstallCommand(program: Command): void {
         upgrade,
         availableTargets: mcpTargets,
       });
-    });
+    },
+    );
 }

@@ -322,12 +322,38 @@ interface LockFileContent {
   timestamp: number;
 }
 
-/** Check if lock file is stale (older than threshold) */
+/** Check if a process is still running (signal 0 = existence check) */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Read lock file content safely */
+function readLockContent(lockPath: string): LockFileContent | null {
+  try {
+    const raw = readFileSync(lockPath, 'utf-8');
+    return JSON.parse(raw) as LockFileContent;
+  } catch {
+    return null;
+  }
+}
+
+/** Check if lock file is stale (older than threshold OR owning process is dead) */
 function isLockStale(lockPath: string): boolean {
   try {
     const stats = statSync(lockPath);
     const age = Date.now() - stats.mtimeMs;
-    return age > LOCK_STALENESS_THRESHOLD;
+    if (age > LOCK_STALENESS_THRESHOLD) return true;
+
+    // Young lock — check if the owning process is still alive
+    const content = readLockContent(lockPath);
+    if (content?.pid && !isProcessAlive(content.pid)) return true;
+
+    return false;
   } catch {
     // If we can't read the lock file, assume it's stale
     return true;
@@ -338,9 +364,8 @@ function isLockStale(lockPath: string): boolean {
 function forceReleaseLock(lockPath: string): void {
   try {
     unlinkSync(lockPath);
-    console.log(`  Released stale lock: ${lockPath}`);
   } catch {
-    // Ignore errors
+    // Lock may already be gone (removed by another process) — not an error
   }
 }
 
@@ -352,7 +377,7 @@ async function acquireLock(lockPath: string, maxRetries = 50, retryDelay = 100):
       if (existsSync(lockPath) && isLockStale(lockPath)) {
         forceReleaseLock(lockPath);
       }
-      
+
       // Try to create lock file atomically with O_EXCL
       const fd = openSync(lockPath, 'wx');
       // Write PID and timestamp to lock file
@@ -363,12 +388,47 @@ async function acquireLock(lockPath: string, maxRetries = 50, retryDelay = 100):
       writeFileSync(fd, JSON.stringify(lockContent), 'utf-8');
       closeSync(fd);
       return; // Lock acquired
-    } catch {
-      // Lock file exists (and is not stale), wait and retry
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+
+      if (code === 'EEXIST') {
+        // Lock file exists and wasn't stale (or couldn't be removed) — retry
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        continue;
+      }
+
+      // Non-contention errors — fail immediately, retrying won't help
+      if (code === 'ENOENT') {
+        throw new Error(
+          `Lock directory does not exist: ${dirname(lockPath)}\n` +
+          `  Ensure .agents/sessions/ exists in your working directory.`
+        );
+      }
+      if (code === 'EACCES' || code === 'EPERM') {
+        throw new Error(
+          `Permission denied creating lock file: ${lockPath}\n` +
+          `  Check directory permissions for: ${dirname(lockPath)}`
+        );
+      }
+      throw err;
     }
   }
-  throw new Error(`Could not acquire lock after ${maxRetries} retries: ${lockPath}`);
+
+  // Exhausted retries — provide diagnostic info to help the user self-service
+  let diagnostic = '';
+  try {
+    const content = readLockContent(lockPath);
+    const stats = statSync(lockPath);
+    const ageSeconds = Math.round((Date.now() - stats.mtimeMs) / 1000);
+    const alive = content?.pid ? isProcessAlive(content.pid) : false;
+    diagnostic =
+      `\n  Lock age: ${ageSeconds}s, PID: ${content?.pid ?? 'unknown'}, process alive: ${alive}` +
+      `\n  Remove manually: rm "${lockPath}"`;
+  } catch { /* ignore diagnostic failures */ }
+
+  throw new Error(
+    `Could not acquire lock after ${maxRetries} retries: ${lockPath}${diagnostic}`
+  );
 }
 
 function releaseLock(lockPath: string): void {

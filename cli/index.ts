@@ -13,6 +13,7 @@ import { registerSetupCommand } from "./commands/setup.js";
 import { registerVersionCommand } from "./commands/version.js";
 import { registerHousekeepingCommand } from "./commands/housekeeping.js";
 import { registerCheckCommand } from "./commands/check.js";
+import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerSessionCommand } from "./commands/session.js";
 import { registerReportCommand } from "./commands/report.js";
 
@@ -47,6 +48,7 @@ registerSetupCommand(program);
 registerVersionCommand(program);
 registerHousekeepingCommand(program);
 registerCheckCommand(program);
+registerDoctorCommand(program);
 registerSessionCommand(program);
 registerReportCommand(program);
 
