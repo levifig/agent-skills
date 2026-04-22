@@ -7,7 +7,7 @@ description: >-
   recommendations, archives completed work, and ensures extracted knowledge is
   preserved. Not for strategic reflection (use reflect) or knowledge management
   (use knowledge-base).
-version: 2.0.0-dev.28
+version: 2.0.0-dev.29
 ---
 
 # Housekeeping
@@ -59,11 +59,18 @@ loaf task sync                       # Fix TASKS.json drift
 | Artifact | Active Location | Archive | Action |
 |----------|-----------------|---------|--------|
 | Sessions | `.agents/sessions/` | `archive/` | Move with metadata |
-| Tasks | `.agents/tasks/` | `archive/` | `loaf task archive` |
+| Tasks (local mode only) | `.agents/tasks/` | `archive/` | `loaf task archive` |
 | Specs | `.agents/specs/` | `archive/` | `loaf spec archive` |
 | Drafts (state assessments) | `.agents/drafts/` | delete | Flag for cleanup when linked session is archived |
 | Drafts (brainstorms) | `.agents/drafts/` | `archive/` | User decision (spark extraction first) |
 | Reports | `.agents/reports/` | `archive/` | Archive after processing + linked session archived |
+
+**Linear-native mode** (when `integrations.linear.enabled` is `true` in
+`.agents/loaf.json`): local `TASK-NNN.md` files do not exist for new specs —
+Linear issues are the task record. The "Tasks" row above is inert unless the
+project has pre-Linear local tasks lingering (see [Mode-Aware Checks](#mode-aware-checks)).
+Specs still archive locally — they are the canonical deliberation artifact in
+every mode.
 
 ## Session Enrichment
 
@@ -78,6 +85,38 @@ Treat enrichment failures as non-fatal — log a warning and continue with other
 ## Archival Cleanup
 
 When archiving a session, delete its enrichment temp file if one exists at `.agents/tmp/<session-id>-enrichment.txt`. This prevents stale temp files from accumulating across sessions.
+
+## Mode-Aware Checks
+
+When `integrations.linear.enabled` is `true` in `.agents/loaf.json`, apply
+these additional checks:
+
+### Spec / Linear parent reconciliation
+
+For each spec file (active and archive) with a `linear_parent:` frontmatter key:
+
+1. Call `get_issue` with the issue identifier. If it 404s or returns
+   archived/deleted, flag as **orphaned linear_parent** — the local spec
+   references a Linear issue that no longer exists.
+2. If the spec's local status is `complete` or `archived`, verify the Linear
+   parent issue is in a `completed`-type state. If not (e.g., still "In
+   Progress"), flag as **status mismatch** — "Spec marked complete locally
+   but Linear parent ENG-198 is still 'In Progress'."
+3. If the spec's local status is `implementing` and the Linear parent is
+   already `completed`, flag the inverse — spec likely needs to be moved to
+   `complete` and archived.
+
+Treat all three as **warnings**, not auto-fixes. The user decides resolution.
+
+### Pre-Linear local task detection
+
+If Linear is enabled but local `TASK-NNN.md` files exist in `.agents/tasks/`,
+surface them with context: "Pre-Linear local tasks detected. These aren't
+auto-migrated. Either continue using them, run a manual migration, or
+archive if superseded by Linear issues."
+
+Do NOT auto-migrate. Migration is user-initiated and out of scope for
+housekeeping.
 
 ## Suggests Next
 

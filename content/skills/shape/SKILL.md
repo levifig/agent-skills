@@ -101,9 +101,18 @@ If none exist, start with `SPEC-001`.
 
 Present full spec. **Do NOT create spec file without explicit approval.** User may adjust scope, add constraints, request splitting, or decide not to proceed.
 
+After approval, remind the user: *"Next, run `/breakdown SPEC-NNN` to
+decompose this. If Linear is enabled, breakdown will also mint a parent
+rollup issue and sub-issues; the spec file itself stays local."*
+
 ### Step 8: Create Spec File
 
 After approval: create `.agents/specs/SPEC-{id}-{slug}.md`, update idea file status if applicable.
+
+The spec file is **always local**, whether or not Linear is enabled. Breakdown
+may later add `linear_parent` and `linear_parent_url` keys to the spec's
+frontmatter when it mints the parent issue — shape does not populate those
+fields.
 
 ### Step 9: Flag for Post-Implementation Reflection
 

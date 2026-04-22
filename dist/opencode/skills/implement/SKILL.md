@@ -7,7 +7,7 @@ description: >-
   tracking. Not for shaping (use shape), breakdown (use breakdown), research, or
   review.
 subtask: false
-version: 2.0.0-dev.28
+version: 2.0.0-dev.29
 ---
 
 # Implement
@@ -20,6 +20,7 @@ You are the coordinator. Start by understanding the task:
 - Quick Reference
 - Step 0: Context Check
 - Input Detection
+- Linear-Native Routing
 - Agent Spawning
 - Session and Plan Creation
 - Session Guardrails
@@ -52,6 +53,7 @@ You are the coordinator. Start by understanding the task:
 - All code changes delegated via Task tool -- no direct edits by orchestrator
 - Session file is continuously updated with spawns, progress, and current state
 - Spec artifacts closed out on branch before PR creation
+- **Linear-native mode:** `blockedBy` of the target sub-issue is fully `completed` before any session file is created; parent rollup is auto-closed only when all sub-issues are `completed`
 
 ## Quick Reference
 
@@ -88,10 +90,10 @@ Parse `$ARGUMENTS` to determine session type:
 | Input Pattern | Type | Action |
 |---------------|------|--------|
 | `TASK-XXX` | Local task | Load from TASKS.json via CLI, auto-create session |
-| `SPEC-XXX` | Spec orchestration | Resolve all tasks, build dependency waves |
+| `SPEC-XXX` | Spec orchestration | If spec frontmatter has `linear_parent`, resolve to that Linear parent and follow Linear-Native Routing. Otherwise resolve local tasks and build dependency waves |
 | `TASK-XXX..YYY` | Task range | Expand range, build dependency waves |
 | `TASK-XXX,YYY,ZZZ` | Task list | Parse list, build dependency waves |
-| `PLT-123`, `PROJ-123` | Linear issue | **If `integrations.linear.enabled` is `true`:** fetch from Linear. **Otherwise:** treat as label text or create local task |
+| `PLT-123`, `ENG-198`, `PROJ-123` | Linear issue | **If `integrations.linear.enabled` is `true`:** fetch via `get_issue`, then branch on parent vs sub-issue — see [Linear-Native Routing](#linear-native-routing). **Otherwise:** treat as label text or create local task |
 | Description text | Ad-hoc | Auto-create local task from description, then fall through to task-coupled flow |
 
 ### Task-Coupled Sessions
@@ -126,6 +128,97 @@ If input matches `TASK-XXX` pattern but the task doesn't exist in TASKS.json:
 1. Show error: `"TASK-XXX not found in TASKS.json"`
 2. Ask the user: `"Did you mean to create a new task? You can re-run with the description as free text."`
 3. **Do not silently create** — the user likely has a typo
+
+---
+
+## Linear-Native Routing
+
+Applies when `integrations.linear.enabled` is `true` AND `$ARGUMENTS`
+resolves to a Linear issue (direct Linear ID, or a `SPEC-XXX` whose
+frontmatter has `linear_parent`).
+
+Fetch the issue once via `get_issue` and branch on its shape:
+
+### Parent rollup issue (has `spec` label)
+
+The issue represents a spec. Do **not** implement it directly — spec-level
+"work" is always done via sub-issues.
+
+1. List sub-issues via `list_issues` with `parent: <parent-id>`.
+2. Classify each by state:
+   - `in_progress` — active work
+   - `unstarted` + no open `blockedBy` — ready to start
+   - `unstarted` + open `blockedBy` — blocked
+   - `completed` — done, skip
+3. Select the next work item:
+   - If one or more sub-issues are `in_progress`, pick the **lowest-ID**
+     in-progress sub-issue. Resume that.
+   - Else, if one unblocked `unstarted` sub-issue exists, pick it.
+   - Else, if multiple unblocked `unstarted` sub-issues exist, use
+     `AskUserQuestion` to let the user choose: pick one, or delegate N in
+     parallel via parallel agents. List each sub-issue's title + ID.
+   - Else (all remaining sub-issues are blocked), refuse with a summary:
+     "All remaining sub-issues under <parent-id> are blocked. Blockers:
+     <list>."
+4. Once a sub-issue is selected, recurse into the sub-issue flow below
+   with that ID. The parent itself is never the implementation target.
+
+### Sub-issue (has `parentId`, no `spec` label)
+
+The issue is an actual task. Implement it directly — with a pre-flight gate.
+
+1. **Pre-flight: verify `blockedBy` is clear.** For each issue in the
+   sub-issue's `blockedBy` field, call `get_issue` and confirm its state is
+   `completed`-type. If any blocker is not Done:
+   - **Refuse to start.** Do not create a session. Do not move the issue.
+   - Show the blockers: `"Cannot start <sub-issue-id>. Blocked by: <list
+     with IDs, titles, and current states>."`
+   - Suggest: `"Complete the blocker(s) first, or ask to override if the
+     blockedBy link is stale."`
+2. If blockers are clear:
+   - Move the sub-issue to `in_progress` state via `update_issue`.
+   - Resolve branch name from the sub-issue's `branchName` field (Linear
+     auto-generates one) — see
+     [session-management.md](references/session-management.md).
+   - Create session file, continue with the standard Startup Checklist.
+
+### Completion (after implementer + reviewer finish cleanly)
+
+When the sub-issue's implementation passes review and tests:
+
+1. Move the sub-issue to the team's `completed`-type state via
+   `update_issue` (look up via `list_issue_statuses`, filter
+   `type: "completed"`).
+2. Query the parent's sub-issues again:
+   - If **all** sub-issues are now `completed`-type, move the parent
+     rollup to `completed` as well. Also mark the local spec as
+     `complete` (see [Then Execute → AFTER](#then-execute)).
+   - If **some** remain, list them as "next available" for the user,
+     applying the same classification as step 2 of the parent flow above.
+     Offer to continue with the next one in this session, or stop here.
+3. **Do not** close the parent while any sub-issue is open — not even if
+   only `blocked` ones remain. Blocked sub-issues are still in-flight
+   work from the spec's perspective.
+
+### Status flow summary
+
+| Moment | Sub-issue state | Parent state |
+|--------|----------------|--------------|
+| Implementation starts | `in_progress` | unchanged |
+| Implementation + review pass | `completed` | check: close only if all sibs completed |
+| Blocker discovered mid-work | `in_progress` + blocker comment | unchanged |
+
+### What Linear-native routing does NOT do
+
+- Does not pull down the full spec text. The parent's description already
+  links to `.agents/specs/SPEC-NNN-*.md`. Read the local file for shape,
+  rabbit holes, and strategic tensions.
+- Does not create or rewrite sub-issues. That's `/breakdown`'s job. If
+  implementation reveals a missing task, surface it to the user; they
+  decide whether to run `/breakdown` again or add an ad-hoc sub-issue.
+- Does not sync in-progress state bidirectionally. Source of truth at any
+  moment: Linear for issue state, local files for spec content, session
+  file for current handoff.
 
 ---
 
@@ -196,7 +289,7 @@ After creating session file:
 
 1. [ ] Parse input (task, Linear ID, or description)
 2. [ ] If TASK-XXX: load task via `loaf task show TASK-XXX`, update with `loaf task update TASK-XXX --session <session-file>`, load parent spec
-3. [ ] If Linear ID: fetch issue, update session, move to "In Progress"
+3. [ ] If Linear ID (or `SPEC-XXX` with `linear_parent`): follow [Linear-Native Routing](#linear-native-routing). Parent → walk sub-issues and select next. Sub-issue → verify `blockedBy` is clear, then move to In Progress and continue
 4. [ ] If description: auto-create task (see Ad-hoc Task Auto-Creation above)
 5. [ ] Create dedicated branch (see [session-management.md](references/session-management.md))
 6. [ ] Suggest team based on task context
@@ -228,9 +321,9 @@ After creating session file:
 1. Code review pass (spawn `reviewer` agent)
 2. Spawn implementer (with foundations + language skill) for final testing
 3. **Close out spec artifacts on the branch** (included in the squash merge):
-   - `loaf task update TASK-XXX --status done` (for each task)
-   - `loaf task archive --spec SPEC-XXX`
-   - Mark spec complete and archive: `loaf spec archive SPEC-XXX`
+   - **Local-tasks mode:** `loaf task update TASK-XXX --status done` (per task), then `loaf task archive --spec SPEC-XXX`
+   - **Linear-native mode:** `update_issue` the sub-issue to `completed`-type state. Then query the parent's sub-issues; if all are `completed`, also close the parent. If some remain, list them for the user (see [Linear-Native Routing → Completion](#completion-after-implementer--reviewer-finish-cleanly))
+   - Mark spec complete and archive: `loaf spec archive SPEC-XXX` (both modes)
    - Update session file (status: done, `archived_at`, `archived_by`)
    - Commit: `chore: close SPEC-XXX — archive tasks, spec, and session`
 4. If on a feature branch: push and create PR (`gh pr create`). Follow PR format and squash merge conventions in [commits reference](../git-workflow/references/commits.md).

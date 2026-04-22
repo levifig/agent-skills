@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.29] - 2026-04-22
+
+### Added
+- Linear-native routing in implement skill (parent + sub-issue) (1c12a442)
+- Mode-aware linear reconciliation checks in housekeeping (ae130564)
+- Linear-native mode in breakdown skill (parent + sub-issues) (2ad67e30)
+
 ## [2.0.0-dev.28] - 2026-04-22
 
 ### Added

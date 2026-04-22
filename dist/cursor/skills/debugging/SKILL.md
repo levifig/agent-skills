@@ -6,7 +6,7 @@ description: >-
   flaky tests. Provides methodology for root cause analysis and issue
   resolution. Not for writing new tests (use development skills) or security
   analysis (use security-compliance).
-version: 2.0.0-dev.28
+version: 2.0.0-dev.29
 ---
 
 # Debugging

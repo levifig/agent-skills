@@ -9,6 +9,9 @@ title: "[Clear, descriptive title]"
 source: "[idea file or 'direct']"
 created: YYYY-MM-DDTHH:MM:SSZ
 status: drafting
+# Optional — populated by /loaf:breakdown when Linear is enabled:
+# linear_parent: ENG-198
+# linear_parent_url: https://linear.app/<workspace>/issue/ENG-198
 ---
 
 # SPEC-XXX: [Title]

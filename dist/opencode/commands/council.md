@@ -7,7 +7,7 @@ description: >-
   single-perspective research (use research) or architectural decisions that
   don't need multi-agent deliberation (use architecture).
 subtask: false
-version: 2.0.0-dev.28
+version: 2.0.0-dev.29
 ---
 
 # Council
@@ -70,6 +70,24 @@ Each agent receives:
 3. Trade-off analysis per option
 4. Overall recommendation with confidence level
 5. Explicit deferral if genuinely ambiguous
+
+## Spec and Linear Parent Linkage
+
+Councils stay **local**. Even when the workspace uses Linear-native mode,
+council files live in `.agents/councils/` — they are deliberation artifacts,
+not executable work, and belong with specs in git.
+
+When a council resolves a spec's open questions:
+
+- Include the spec ID in council frontmatter (e.g., `spec: SPEC-024`). This
+  is already the common pattern.
+- If the spec's `linear_parent` has been populated by `/breakdown`, also
+  include `linear_parent: ENG-198` in council frontmatter so a reader on
+  Linear can trace back to the deliberation.
+- Do not post council content to the Linear parent issue. A brief one-line
+  reference ("Resolved via council 2026-04-21 — see .agents/councils/…") in
+  a sub-issue comment is sufficient if the council drove a specific task
+  decision.
 
 ## Topics
 

@@ -5,6 +5,10 @@ Guidelines for writing Linear issue updates, comments, and commit messages with 
 ## Contents
 
 - Configuration
+- MCP Server Naming
+- Multi-Workspace Guidance
+- Linear-Native Mode (Parent + Sub-Issues)
+- The `spec` Label Convention
 - Progress Update Format
 - Issue Description Format
 - Status Conventions
@@ -21,8 +25,12 @@ This skill reads from `.agents/loaf.json`:
 
 ```json
 {
+  "integrations": {
+    "linear": { "enabled": true }
+  },
   "linear": {
     "workspace": "your-workspace-slug",
+    "mcp_server_name": "linear-enline",
     "project": { "id": "...", "name": "..." },
     "known_teams": [{ "name": "Backend", "id": "..." }],
     "default_team": "Platform",
@@ -34,9 +42,145 @@ This skill reads from `.agents/loaf.json`:
 }
 ```
 
-**Required**: Check that `linear.workspace` is configured before using Linear features. Ask user if missing.
+**Required**: Check that `integrations.linear.enabled` is `true` and that
+`linear.workspace` is configured before using Linear features. Ask user if missing.
 
 Linear MCP uses `https://mcp.linear.app/mcp` (SSE deprecated) and includes tools for initiatives, initiative updates, project milestones, project updates, and project labels.
+
+## MCP Server Naming
+
+Skills invoke Linear MCP tools via a configured server name rather than a
+hard-coded one. Set `linear.mcp_server_name` in `.agents/loaf.json` (e.g.,
+`"linear-enline"`). Skills reference this when looking up MCP tools so the
+same skill content works across workspaces without edits.
+
+If `linear.mcp_server_name` is unset, default to `"linear"` and warn the user
+once per session that an explicit name is recommended for multi-workspace
+setups.
+
+## Multi-Workspace Guidance
+
+Users with multiple Linear workspaces (e.g., employer + personal) should
+configure **project-scoped** MCP entries with distinct names rather than
+user-scoped entries:
+
+```jsonc
+// <project>/.mcp.json
+{
+  "mcpServers": {
+    "linear-enline": {
+      "url": "https://mcp.linear.app/mcp",
+      "workspace_hint": "enline"
+    }
+  }
+}
+
+// <another-project>/.mcp.json
+{
+  "mcpServers": {
+    "linear-personal": {
+      "url": "https://mcp.linear.app/mcp",
+      "workspace_hint": "personal"
+    }
+  }
+}
+```
+
+| Trade-off | Project-scoped (recommended) | User-scoped |
+|-----------|------------------------------|-------------|
+| Cross-project leakage | No — each project only sees its own workspace | Yes — any project can hit any workspace |
+| Auth per workspace | Each project authenticates independently | One auth for all |
+| Config discoverability | Lives with the project in version control | Hidden in user config |
+| Setup overhead | Per-project (small) | Once (but conflates workspaces) |
+
+Match the `linear.mcp_server_name` in each project's `.agents/loaf.json` to
+the name used in that project's `.mcp.json`. That way the Loaf skills invoke
+the right workspace automatically.
+
+## Linear-Native Mode (Parent + Sub-Issues)
+
+In Linear-native mode (`integrations.linear.enabled: true`), each spec
+produces one parent **rollup issue** and N sub-issues under it.
+
+```
+[SPEC-024] Agent framework alignment      ← parent, label: `spec`
+├── Split reviewer into sentinel/auditor  ← sub-issue, label: type/refactor
+├── Harden MCP fallback path               ← sub-issue, label: type/feature
+└── Migrate legacy task references         ← sub-issue, label: type/refactor
+```
+
+### Parent issue — what it is and isn't
+
+The parent issue is a **dashboard anchor**, not a re-hosting of the spec.
+
+- **Is:** a short summary (1–3 paragraphs) of the problem and solution
+  direction + a link to the canonical spec file in the repo.
+- **Is not:** a copy of the spec's Scope / Rabbit Holes / Open Questions /
+  Risks sections. Those live in the local spec file and evolve there.
+
+### Sample parent description
+
+```markdown
+## Summary
+Align Loaf's agent profiles with the three-role model (implementer, reviewer, 
+researcher). Consolidate historical profile variants and add tool-boundary 
+tests so profiles can't drift without a test failing.
+
+## Context
+See `.agents/specs/SPEC-024-agent-framework-alignment.md` for full text,
+council references, rabbit holes, and strategic tensions.
+
+## Progress
+Sub-issues track execution.
+```
+
+### Sub-issues
+
+- Each sub-issue has `parentId` set to the parent issue ID.
+- Cross-task dependencies use Linear's `blockedBy` field referencing sibling
+  sub-issue IDs.
+- Sub-issue labels describe the task itself (type, team, area), not the
+  parent — don't label sub-issues with `spec`.
+
+### Spec file remains canonical
+
+Even with the parent in Linear, the local spec file is the source of truth
+for:
+
+- Problem statement and solution direction
+- Scope / in-scope / out-of-scope / rabbit holes / no-gos
+- Risks and open questions
+- Council references and strategic tensions
+
+When the spec evolves, edit the file and let git track it. The parent
+issue's summary is a frozen entry point; only refresh it if the summary
+itself (not the rabbit holes or risks) changes meaningfully.
+
+## The `spec` Label Convention
+
+Every spec-parent rollup issue carries a Linear label named `spec`. This lets
+anyone in Linear filter for "all spec roots" across projects without having to
+know which issues happen to be parents.
+
+| Field | Value |
+|-------|-------|
+| Name | `spec` |
+| Color | `#5e6ad2` (suggested; implementer may adjust) |
+| Description | `Parent rollup issue representing a design spec tracked in the repo at .agents/specs/` |
+| Scope | Workspace-scoped preferred; fall back to team-scoped if the MCP requires it |
+
+### Who creates it
+
+`/breakdown` creates the `spec` label on first Linear-native breakdown in a
+workspace that doesn't already have it. Subsequent breakdowns reuse the
+existing label. Log whether the label was created this run or already
+existed — this matters for first-time setup.
+
+### Sub-issues never carry `spec`
+
+`spec` applies only to parents. A sub-issue describing a task uses its own
+labels (type groups like `feature`/`bug`/`refactor`, team labels, area
+labels) — never `spec`. This keeps the "filter for spec roots" query clean.
 
 ## Progress Update Format
 

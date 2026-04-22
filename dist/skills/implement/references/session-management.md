@@ -160,11 +160,34 @@ For complex tasks, explore before implementing:
 
 **Keep Linear status synchronized with actual work state:**
 
-| Work State | Linear Status |
-|------------|---------------|
+| Work State | Linear Status (sub-issue) |
+|------------|---------------------------|
 | Session started | In Progress |
 | Blocked/waiting for user | In Progress (add blocker comment) |
 | Work completed | Done (or In Review if PR pending) |
+
+### Parent rollup auto-close
+
+In Linear-native mode, the **parent** rollup issue (labeled `spec`) is not
+moved manually during sub-issue work. It flips to Done automatically when
+the last sub-issue flips to Done, and only then. Procedure:
+
+1. After moving a sub-issue to a `completed`-type state, call
+   `list_issues` with `parent: <parent-id>`.
+2. If every sub-issue is in a `completed`-type state, move the parent to
+   `completed` via `update_issue`.
+3. If any sub-issue is still in an open state (including `blocked`), the
+   parent stays where it is — the spec is not done.
+
+Never set the parent to In Progress manually — a parent in Linear-native
+mode reflects a rollup of its sub-issues, not its own work.
+
+### BlockedBy pre-flight
+
+Before moving a sub-issue to In Progress, confirm every issue in its
+`blockedBy` field is in a `completed`-type state. If not, refuse to start
+and report the blockers. This is a hard gate in Linear-native mode —
+never implement through open `blockedBy`.
 
 ---
 
@@ -236,20 +259,26 @@ After `/compact` or `/clear`, archive conversation transcripts for future refere
 
 When a task-coupled session completes:
 
-1. **Update task status** (local file or Linear)
+1. **Update task status** (local file or Linear sub-issue)
 2. **Check spec progress:**
-   - List all tasks for the spec
-   - If all done -> mark spec as `complete`
-   - If tasks remain -> spec stays `implementing`
+   - Local-tasks mode: list all tasks for the spec; if all done → mark
+     spec `complete`, else spec stays `implementing`
+   - Linear-native mode: query the parent rollup's sub-issues via
+     `list_issues` with `parent: <parent-id>`; if all are `completed`-type,
+     close the parent and mark the local spec `complete`, else both stay
+     in flight
 3. **Archive session** (standard process)
 
 ### Spec Completion Check
 
 ```bash
-# For local tasks
-grep -l "spec: SPEC-001" .agents/tasks/*.md | wc -l
-# If 0, all tasks done
+# Local-tasks mode: any open tasks for this spec?
+loaf task list --spec SPEC-001 --status open --json
 
-# For Linear
-# Check all issues with spec label
+# Linear-native mode: query the Linear parent's sub-issues
+# (via get_issue + list_issues with parent filter)
+# The parent itself only flips to Done when every sub-issue is Done.
 ```
+
+Never mark the local spec `complete` while its Linear parent still has
+open sub-issues — the two sources of truth should agree on "done."

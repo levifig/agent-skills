@@ -34,6 +34,38 @@
       "completed_at": "2026-04-21T09:42:20.238Z",
       "file": "TASK-104-add-loaf-doctor-command-for-alignment-checks.md"
     },
+    "TASK-105": {
+      "title": "Linear-native mode: specs local, tasks Linear-only (skill refactor)",
+      "slug": "linear-native-mode-specs-local-tasks-linear-only-s",
+      "spec": null,
+      "status": "review",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-21T18:49:03.893Z",
+      "updated": "2026-04-21T18:54:35.735Z",
+      "completed_at": null,
+      "file": "TASK-105-linear-native-mode-specs-local-tasks-linear-only-s.md"
+    },
+    "TASK-106": {
+      "title": "/loaf:implement: Linear-native sub-issue routing",
+      "slug": "loaf-implement-linear-native-sub-issue-routing",
+      "spec": null,
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-21T19:10:59.288Z",
+      "updated": "2026-04-21T19:13:49.686Z",
+      "completed_at": "2026-04-21T19:13:49.685Z",
+      "file": "TASK-106-loaf-implement-linear-native-sub-issue-routing.md"
+    },
     "TASK-107": {
       "title": "Branch split: move linear-native + agents-md work off main to feature branches",
       "slug": "branch-split-move-linear-native-agents-md-work-off",
