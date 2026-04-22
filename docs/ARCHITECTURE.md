@@ -8,6 +8,7 @@ cli/                            # CLI tool (TypeScript, bundled by tsup)
 ├── commands/
 │   ├── build.ts                # loaf build
 │   ├── check.ts                # loaf check (enforcement backend)
+│   ├── doctor.ts               # loaf doctor (alignment diagnostics, --fix)
 │   ├── install.ts              # loaf install
 │   ├── session.ts              # loaf session (start/end/log/enrich/list/archive)
 │   └── spec.ts                 # loaf spec (list/archive)
@@ -17,7 +18,9 @@ cli/                            # CLI tool (TypeScript, bundled by tsup)
     │   ├── targets/            # Target transformers (claude-code, cursor, opencode, codex, gemini, amp)
     │   └── lib/                # Utilities (version, sidecar, shared-templates, etc.)
     ├── detect/                 # AI tool + MCP detection
-    ├── install/                # Target-specific installers + fenced-section management
+    ├── install/                # Target installers, fenced-section management, symlink helper
+    │   ├── fenced-section.ts   # Managed-section writer (realpath dedup)
+    │   └── symlinks.ts         # ensureProjectSymlinks, 4-state ensureSymlink + content migration
     ├── tasks/                  # Task/spec types, parser, migration, archival
     ├── release/                # Version bump, changelog generation
     ├── housekeeping/           # Artifact scanning, stale detection
@@ -61,6 +64,31 @@ All TypeScript, bundled into a single file by tsup. No dynamic imports. The `loa
 | codex | dist/codex/ | No | Yes | Yes | hooks.json |
 | gemini | dist/gemini/ | No | Yes | No | — |
 | amp | dist/amp/ | No | Yes | No | loaf.js |
+
+### Prompt Overlay Consolidation (ADR-010)
+
+The managed fenced section is written once to a canonical file (`.agents/AGENTS.md`). Per-harness paths are symlinks to it.
+
+```
+.agents/AGENTS.md                         # Canonical (source of truth, committed)
+.claude/CLAUDE.md        → symlink →      .agents/AGENTS.md
+./AGENTS.md              → symlink →      .agents/AGENTS.md  (agents.md spec)
+```
+
+**Write path (`loaf install`):** `installFencedSectionsForTargets` resolves each target's destination via `realpath` and groups writes by canonical path. Five of six targets share `.agents/AGENTS.md`, so they produce a single write. Before writing, `ensureProjectSymlinks` runs the 4-state machine per link:
+
+| State | Action |
+|-------|--------|
+| nothing at linkPath | Create symlink |
+| correct symlink | No-op (silent) |
+| wrong symlink | Prompt to relink (auto-yes under `--yes`) |
+| regular file | Prompt to merge content into canonical under `## Migrated from <path>`, back up as `.bak`, then symlink |
+
+Fresh installs pre-create an empty canonical shell so symlinks are never dangling. `--yes` flag and non-TTY auto-detection allow the flow to run under CI/skills without interactive prompts.
+
+**Drift detection (`loaf doctor`):** Six checks — canonical presence, per-harness symlink target, stale `.cursor/rules/loaf.mdc`, fenced-section version match, duplicate-resolved writes, and target coverage. `loaf doctor --fix` applies safe repairs non-interactively.
+
+This extends the "CLI is the correct protocol layer" principle to filesystem convention enforcement: the CLI owns the on-disk overlay state, not the skills or the user. When ADR-010 shipped, five harnesses went from "each writes its own file" to "each resolves to the same file" without any skill edits.
 
 ### Agent Model: Functional Profiles
 
@@ -226,3 +254,26 @@ Knowledge files are managed by `loaf kb` — staleness detection compares file m
 ```
 
 Integration toggles in `loaf.json` gate runtime features (Linear magic-word detection, MCP recommendations) without rebuilding.
+
+## Test Fixture Hygiene
+
+Any test that spawns a CLI subprocess must use OS-tmp isolation for its fixtures:
+
+```ts
+import { mkdtempSync, realpathSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+
+let TEST_ROOT: string;
+
+beforeEach(() => {
+  TEST_ROOT = realpathSync(mkdtempSync(join(tmpdir(), "loaf-<suite>-")));
+  // ...
+});
+```
+
+CWD-relative fixtures (`join(process.cwd(), ".test-..."`)) are forbidden for subprocess tests. Under vitest's default file parallelism, workers share the filesystem and cwd — CWD-relative paths race against other test files' subprocesses. The failure mode is silent under per-file runs (where pollution cannot occur) and non-deterministic under full-suite runs. One such leak in `cli/commands/check.test.ts` silently failed `cli/commands/report.test.ts` for 17+ commits before v2.0.0-dev.28 bisected it.
+
+`realpathSync` is required on macOS because the system tmpdir (`/var/folders/...`) is reached through a `/private/var/folders/...` symlink; without realpath, subprocess cwd comparisons can fail.
+
+Until every test file is migrated, `vitest.config.ts` sets `fileParallelism: false` as a defensive default — ~20% slower but deterministic. The plan is to migrate remaining cwd-relative fixtures and re-enable parallelism once the pattern is enforced throughout.

@@ -16,6 +16,8 @@ Loaf is an opinionated agentic framework for AI coding assistants. It ships skil
 
 This was proven by SPEC-014 (skill activation redesign) and SPEC-020 (target convergence) -- the same 31 skills now deploy to Claude Code, Cursor, OpenCode, Codex, Gemini, and Amp from a single source tree. The implication for both personas: invest in skill quality first, harness-specific features second.
 
+ADR-010 (prompt-overlay consolidation, shipped v2.0.0-dev.28) extended target convergence to the project overlay file itself: five of six targets now write to `.agents/AGENTS.md` directly; the sixth target's native path is a symlink to it. A single managed fenced section replaces six. For the team lead persona, this means onboarding additional harnesses adds no duplicated content-maintenance overhead; for the solo developer, the file they edit and the file every harness reads are the same file.
+
 **Sessions must survive everything.** Context compaction, `/clear`, tool restarts, and cross-conversation handoffs all create new Claude session IDs pointing at the same logical session. Any architecture that assumes 1 session = 1 conversation fails in practice.
 
 SPEC-027 (session stability), SPEC-023 (session continuity on `/clear`), and SPEC-030 (Librarian agent) addressed this incrementally. Session splits are now detected and consolidated on start. The `## Current State` section provides handoff context that survives compaction. The model is stabilizing but remains the most failure-prone surface -- it touches every other feature.
@@ -48,16 +50,19 @@ Ordered by evidence strength -- what has been proven most urgent by shipping.
 2. **Hook correctness** (proven: SPEC-026, 030). Hooks must use the right primitive for the job. The behavioral constraint documentation is now in ARCHITECTURE.md and tested.
    - Remaining gap: new hooks are still occasionally authored with the wrong type because the failure mode is silent.
    - A prompt hook that should be advisory becomes an accidental gate, and nothing in the build warns about it.
+   - v2.0.0-dev.28 surfaced a parallel mismatch: `workflow-pre-pr`'s escape hatch for a consumed `[Unreleased]` section only covered tagged HEAD, but `/loaf:release` uses `--no-tag` (tags land on main post-merge). The hook blocked a legitimate release-commit PR. Worked around with a `[Unreleased]` placeholder line, but the root problem is that hook contracts drift from skill assumptions without any cross-layer validation.
 
-3. **Agent routing enforcement** (next: SPEC-022). Profiles exist and build to all targets, but nothing makes the harness use them. A developer spawning a generic agent gets no tool boundaries, no naming convention, no behavioral contract.
+3. **Release flow hardening** (new, exposed by v2.0.0-dev.28 release). The release skill's step order does not match hook contracts in practice. `validate-push` blocks any push without a version bump + CHANGELOG update; `workflow-pre-pr` blocks any PR whose `[Unreleased]` is empty. `/loaf:release` as currently written pushes before bumping (blocked) OR bumps before pushing and consumes `[Unreleased]` (blocked at PR creation). Path forward: rewrite the release skill's step order to bump → push → PR, and extend `workflow-pre-pr` to accept a `release:` HEAD commit as an escape hatch the way tagged HEAD is accepted today.
+
+4. **Agent routing enforcement** (next: SPEC-022). Profiles exist and build to all targets, but nothing makes the harness use them. A developer spawning a generic agent gets no tool boundaries, no naming convention, no behavioral contract.
    - The spec proposes hook-assisted routing: a PreToolUse hook on Agent that enriches profile-based spawns and warns on generic ones. Nudge-based, never blocking.
    - For the team lead persona, this is the difference between "we have agent profiles" and "agents actually behave consistently."
 
-4. **Backend abstraction** (next: SPEC-023). Skills reference Linear MCP tools directly (~80 references across 12+ files). The CLI should be the protocol layer with pluggable backends -- same `loaf task` commands, different storage (local files, Linear, eventually GitHub Issues).
+5. **Backend abstraction** (next: SPEC-023). Skills reference Linear MCP tools directly (~80 references across 12+ files). The CLI should be the protocol layer with pluggable backends -- same `loaf task` commands, different storage (local files, Linear, eventually GitHub Issues).
    - This also completes the Python/Bash to TypeScript migration (38 scripts remaining), eliminating Python and Bash as runtime dependencies.
    - For the solo developer, this means Loaf works without Linear. For the team lead, the tool choice is a config toggle, not a skill rewrite.
 
-5. **Harness-native surface leverage** (next: SPEC-024). Each harness has unique runtime capabilities (Cursor native agents, Gemini subagents and hooks, OpenCode runtime plugins). Loaf currently deploys skills as the lowest common denominator.
+6. **Harness-native surface leverage** (next: SPEC-024). Each harness has unique runtime capabilities (Cursor native agents, Gemini subagents and hooks, OpenCode runtime plugins). Loaf currently deploys skills as the lowest common denominator.
    - Gemini is still modeled as "skills only" despite now supporting a richer native surface.
    - SPEC-024 proposes a surface-first target model: shared source, per-target native delivery. The payoff is that each target feels native rather than aliased through another tool's layout.
 
@@ -72,6 +77,8 @@ These are not problems to solve -- they are tradeoffs to manage. Each has surfac
 **Convention vs. flexibility.** The framework is opinionated about workflow (spec, tasks, code, learn), but projects vary enormously. Too rigid and users fight the framework; too flexible and the opinions do not hold. The current balance -- strict pipeline, flexible domain skills -- has held through 24 shipped specs. But all of that usage has been on Loaf itself, a project that was designed around the pipeline. The first real test is when someone installs Loaf on a project with an existing workflow and existing conventions that conflict with Loaf's opinions.
 
 **Skill depth vs. skill breadth.** 31 skills across 8 languages, 6 workflow phases, and 5 engineering domains. Each skill competes for context window space. Claude's 250-character description truncation means routing quality depends on the first sentence of every skill description. Adding more skills improves coverage but degrades routing accuracy. The SPEC-014 description rewrite improved routing, but the fundamental constraint -- finite context, growing skill count -- remains.
+
+**Test-fixture isolation vs. development speed.** `cli/commands/report.test.ts > "scaffolds a report"` was silently broken for 17+ commits because `cli/commands/check.test.ts` used a cwd-relative fixture (`join(process.cwd(), ".test-check-command")`) that raced against report's subprocesses under vitest's default file parallelism. Per-file runs passed; full-suite runs failed non-deterministically. The current response (v2.0.0-dev.28) migrates `check.test.ts` to `mkdtempSync` and sets `fileParallelism: false` as a defensive default. The tension: parallel test execution is fast, but subprocess-spawning tests must use OS-tmp isolation to prevent cross-file pollution, and nothing in the test authoring path forces this. Options to consider: a lint rule that flags `join(process.cwd(), ...)` in test files; a shared test helper that creates isolated tmpdirs; or a per-file-only default in vitest with opt-in parallelism for pure tests.
 
 ## What We Do Not Know Yet
 
