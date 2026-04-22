@@ -46,6 +46,7 @@ Ordered by evidence strength -- what has been proven most urgent by shipping.
    - Remaining gap: session state is still occasionally lost during rapid compaction cycles.
    - The PreCompact flush depends on the model actually writing the state summary before compaction completes -- a race condition Loaf cannot fully control.
    - Session routing inconsistency: `session log` routes by branch, `session enrich` routes by `claude_session_id`. Multi-conversation sessions expose the mismatch.
+   - v2.0.0-dev.29 release surfaced the mismatch concretely: two session files for the same branch accumulated entries in parallel — one keyed by the current conversation's `claude_session_id`, and a branch-keyed "ghost" that got resurrected by every `loaf session log` call with a matching branch. `loaf session end --wrap` then targeted the wrong file. The architectural rule must be explicit: **session files are keyed by `claude_session_id`; branch is a property of the session, not its identity.** `loaf session log` should route by `claude_session_id` with branch-matching as a fallback only when the incoming `session_id` is missing. Priority elevated — this is no longer a "remaining gap," it is actively corrupting session state during routine releases.
 
 2. **Hook correctness** (proven: SPEC-026, 030). Hooks must use the right primitive for the job. The behavioral constraint documentation is now in ARCHITECTURE.md and tested.
    - Remaining gap: new hooks are still occasionally authored with the wrong type because the failure mode is silent.
@@ -61,6 +62,7 @@ Ordered by evidence strength -- what has been proven most urgent by shipping.
 5. **Backend abstraction** (next: SPEC-023). Skills reference Linear MCP tools directly (~80 references across 12+ files). The CLI should be the protocol layer with pluggable backends -- same `loaf task` commands, different storage (local files, Linear, eventually GitHub Issues).
    - This also completes the Python/Bash to TypeScript migration (38 scripts remaining), eliminating Python and Bash as runtime dependencies.
    - For the solo developer, this means Loaf works without Linear. For the team lead, the tool choice is a config toggle, not a skill rewrite.
+   - **Significant progress from v2.0.0-dev.29 (Linear-native mode, ADR-011):** skills no longer hard-code Linear MCP tool names in every branch — they branch explicitly on `integrations.linear.enabled` in `.agents/loaf.json`. Same skills, two modes (local-tasks and Linear-native). The full abstraction is still ahead, but the skills' mode-awareness is now the contract to extend. SPEC-023's scope narrows: mostly "extract the Linear calls into a `tracker` CLI subcommand" rather than "rewrite N skills to remove MCP coupling."
 
 6. **Harness-native surface leverage** (next: SPEC-024). Each harness has unique runtime capabilities (Cursor native agents, Gemini subagents and hooks, OpenCode runtime plugins). Loaf currently deploys skills as the lowest common denominator.
    - Gemini is still modeled as "skills only" despite now supporting a richer native surface.

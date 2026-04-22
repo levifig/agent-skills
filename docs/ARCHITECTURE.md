@@ -90,6 +90,32 @@ Fresh installs pre-create an empty canonical shell so symlinks are never danglin
 
 This extends the "CLI is the correct protocol layer" principle to filesystem convention enforcement: the CLI owns the on-disk overlay state, not the skills or the user. When ADR-010 shipped, five harnesses went from "each writes its own file" to "each resolves to the same file" without any skill edits.
 
+### Mode-Aware Skills (Linear-Native Mode, ADR-011)
+
+Skills that orchestrate specs and tasks (`/breakdown`, `/implement`, `/housekeeping`, `/shape`, `/council`) branch on `integrations.linear.enabled` in `.agents/loaf.json`:
+
+- **Local-tasks mode** (default): specs in `.agents/specs/`, tasks in `.agents/tasks/`, `TASKS.json` as the programmatic index.
+- **Linear-native mode**: specs stay in `.agents/specs/` (canonical, deliberation layer); tasks move to Linear as sub-issues under a `spec`-labeled parent rollup issue (execution layer).
+
+The split reflects an architectural principle from ADR-010's consolidation pattern extended to the spec/task artifact model:
+
+- **Deliberation artifacts belong with code.** Specs, ADRs, councils. Need git history, code-adjacent visibility, travel with the branch, survive the tracker being down or switched.
+- **Execution artifacts belong in the tracker.** Tasks, blockers, comments, assignees. Need real-time state, dashboards, blocking graphs, notifications.
+
+In Linear-native mode, the parent Linear issue is a **canonical-elsewhere rollup** — summary + link to the local spec file, not a re-host. Parallels the `.agents/AGENTS.md` → per-harness symlink pattern from ADR-010: the canonical artifact exists in exactly one place; the other surface is a thin pointer.
+
+Skills detect the mode and branch accordingly. No skill edits are required to switch modes — same skill content, different backend. This sets up SPEC-023's backend abstraction as a narrower refactor than originally scoped: the contract is already mode-aware; SPEC-023 just extracts the Linear MCP calls into a shared `tracker` CLI subcommand with pluggable implementations.
+
+### Pre-Flight Dependency Gate
+
+`/implement`'s Linear-native routing enforces `blockedBy` as a **hard pre-flight gate**: before moving a sub-issue to `in_progress` or creating a session, every issue in its `blockedBy` field must be in a `completed`-type state. If not, the skill refuses to start — no session created, no issue moved.
+
+This is different from advisory dependency ordering: the dependency graph becomes a runtime invariant, not a suggestion. The orchestrator cannot implement through open blockers even by accident.
+
+The local-tasks equivalent (dependencies in `TASKS.json`) is still advisory. Pre-flight gating requires a system of record that can be queried reliably for all blockers' current state; Linear provides that, local files do not without a separate polling layer. This asymmetry is intentional: teams that care about strict dependency enforcement get Linear's gate for free; solo developers on local tasks trade enforcement for simplicity.
+
+Parent-issue completion follows from the same contract: when the last sub-issue flips to `completed`, `/implement` auto-closes the parent. A parent with any open sub-issue (including `blocked`) stays open — the spec is not done until its execution tree is.
+
 ### Agent Model: Functional Profiles
 
 Loaf uses **functional profiles** defined by tool access boundaries, not role-based agents defined by domain identity. Skills provide all domain knowledge; profiles provide the tool sandbox.
@@ -149,7 +175,9 @@ The execution model is a three-artifact pipeline. No separate "plan" artifact �
 
 ### Session Lifecycle
 
-Sessions are branch-scoped and managed programmatically by `loaf session start` (SessionStart hook) and `loaf session end` (SessionEnd hook).
+Sessions are keyed by `claude_session_id` (the JSONL identity), **not** by branch. A session file's `branch:` frontmatter is a property recorded at start, not its identifier. One Claude conversation = one session file, regardless of how many branches that conversation visits; multiple Claude conversations on the same branch produce multiple session files. `loaf session start` routes on `claude_session_id`, consolidating splits when the same id appears across branch contexts.
+
+`loaf session start` (SessionStart hook) and `loaf session end` (SessionEnd hook) manage the lifecycle programmatically.
 
 **Subagent detection:** Hook JSON from Claude Code includes `agent_id` only for subagents. `loaf session start` checks for this and exits silently — subagents are session-unaware, preventing the session churn that occurs when Task tool spawns trigger SessionStart.
 
