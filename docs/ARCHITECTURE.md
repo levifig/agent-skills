@@ -305,3 +305,19 @@ CWD-relative fixtures (`join(process.cwd(), ".test-..."`)) are forbidden for sub
 `realpathSync` is required on macOS because the system tmpdir (`/var/folders/...`) is reached through a `/private/var/folders/...` symlink; without realpath, subprocess cwd comparisons can fail.
 
 Until every test file is migrated, `vitest.config.ts` sets `fileParallelism: false` as a defensive default — ~20% slower but deterministic. The plan is to migrate remaining cwd-relative fixtures and re-enable parallelism once the pattern is enforced throughout.
+
+## Cross-Cutting Patterns
+
+Patterns that apply across multiple subsystems and emerged from specific post-release followups. Captured here so they inform future work rather than being re-discovered.
+
+### Single-Source Runtime Versioning via Build-Time Injection
+
+The CLI version must report the same value in every runtime mode: dev (`tsx`), source-built (`npm run`), and bundled-binary (`dist-cli/index.js` on PATH). `cli/lib/version.ts` exposes `LOAF_VERSION`, sourced from tsup's `define: { __LOAF_VERSION__: JSON.stringify(pkg.version) }`, with a `package.json` walk-up fallback for dev/test contexts where the define is not applied. Consumers: `cli/index.ts` (Commander `.version()`), `cli/lib/install/fenced-section.ts` (fenced-section version marker), `cli/commands/doctor.ts` (`fenced-version` check).
+
+Before PR #35 (v2.0.0-dev.30), three separate runtime `package.json` walkers in those same files diverged and all fell back to `"0.0.0"` from the bundled binary — a false-positive factory for every version-comparison check in the CLI. The lesson generalizes: any value that must be identical across runtime modes should be injected at build time, not resolved at runtime.
+
+### Generated Runtime Plugin Artifacts Parsed From Emitted Output
+
+Files the build emits for downstream runtimes to execute — OpenCode `hooks.ts`, Amp `loaf.js`, and any future per-target runtime plugin — must have a test that parses the **actual emitted file** via a real parser (TypeScript compiler API, Acorn), not just the generator's input string.
+
+Template-literal escape bugs are invisible at the string level: `cli/lib/build/lib/hooks/runtime-plugin.ts` emitted invalid regex (`/*/g`) into `dist/opencode/plugins/hooks.ts` for multiple versions because the broken code path was unreachable at runtime. The syntactic breakage was dormant until OpenCode's plugin loader tightened its validation and rejected the file on load. `cli/lib/build/targets/runtime-logic.test.ts` now parses both OpenCode's and Amp's emitted output via the TypeScript compiler API as a regression fence for the entire class of escape/interpolation bugs.

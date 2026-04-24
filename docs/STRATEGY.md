@@ -38,6 +38,10 @@ SPEC-029 (journal enrichment) extended session completeness by adding post-hoc J
 
 Every time a skill tried to call an external tool directly -- Linear MCP, raw git commands, file operations -- reliability dropped. The CLI absorbs that complexity and presents a stable interface to skills. For the team lead persona, this is critical: the CLI is the enforcement layer that makes agent behavior deterministic regardless of which LLM or harness is running.
 
+**Diagnosis and repair must share the same state taxonomy.** Sharing repair helpers is not enough; the detection branches in a diagnostic tool must consult the same classification logic as the repair path, or they will drift apart.
+
+`loaf doctor` v1 (shipped v2.0.0-dev.28, PR #33) silently skipped legacy-layout states (real `./AGENTS.md` or `.claude/CLAUDE.md` without a canonical `.agents/AGENTS.md`) even though `migrateRealFileToSymlink` -- the very helper that repairs those states -- was already written and invocable from the fix path. The diagnostic and repair code paths had diverged: the repair path knew about legacy layouts; the detection path did not. External review caught this in PR #35 (v2.0.0-dev.30); the fix rebuilt detection to surface legacy states as fixable `fail`, and the fix paths to lazily create canonical before delegating to the shared helper. For both personas, this means `loaf doctor --fix` can be trusted to heal every state the diagnostic surfaces as fixable -- because the same state definitions drive both halves of the state machine.
+
 ## Current Priorities
 
 Ordered by evidence strength -- what has been proven most urgent by shipping.

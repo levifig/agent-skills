@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 109,
+  "next_id": 111,
   "tasks": {
     "TASK-103": {
       "title": "Add missing journal entry types for all artifact types",
@@ -97,6 +97,38 @@
       "updated": "2026-04-22T00:35:02.488Z",
       "completed_at": "2026-04-22T00:35:02.488Z",
       "file": "TASK-108-isolate-check-test-ts-fixtures-to-eliminate-cross-.md"
+    },
+    "TASK-109": {
+      "title": "Fix validate-commit hook regex false-positives on .claude/ paths",
+      "slug": "fix-validate-commit-hook-regex-false-positives-on-",
+      "spec": "SPEC-031",
+      "status": "todo",
+      "priority": "P3",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-24T18:00:16.070Z",
+      "updated": "2026-04-24T18:47:41.759Z",
+      "completed_at": null,
+      "file": "TASK-109-fix-validate-commit-hook-regex-false-positives-on-.md"
+    },
+    "TASK-110": {
+      "title": "Fix loaf release to auto-restore [Unreleased] CHANGELOG stub after version bump",
+      "slug": "fix-loaf-release-to-auto-restore-unreleased-change",
+      "spec": "SPEC-031",
+      "status": "todo",
+      "priority": "P3",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-24T18:00:16.120Z",
+      "updated": "2026-04-24T18:47:41.821Z",
+      "completed_at": null,
+      "file": "TASK-110-fix-loaf-release-to-auto-restore-unreleased-change.md"
     },
     "TASK-001": {
       "title": "Create verification reference",
@@ -1979,6 +2011,14 @@
       "source": "direct — audit of target convergence, duplicate skill discovery, and Gemini native subagent/hook capabilities",
       "created": "2026-04-04T12:13:54Z",
       "file": "SPEC-024-harness-native-surface-model.md"
+    },
+    "SPEC-031": {
+      "title": "Release Flow Hardening",
+      "status": "drafting",
+      "requirement": null,
+      "source": "direct",
+      "created": "2026-04-24T21:30:00.000Z",
+      "file": "SPEC-031-release-flow-hardening.md"
     },
     "SPEC-001": {
       "title": "Loaf Self-Sufficiency",
