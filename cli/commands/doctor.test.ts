@@ -156,9 +156,46 @@ describe("doctor: agents-symlink", () => {
     expect(result.fixable).toBe(true);
   });
 
-  it("skips when canonical .agents/AGENTS.md does not exist", () => {
+  it("skips when canonical .agents/AGENTS.md does not exist and no ./AGENTS.md present", () => {
     const { result } = runSingle("agents-symlink");
     expect(result.status).toBe("skip");
+  });
+
+  // ── Legacy-layout cases ──────────────────────────────────────────────────
+
+  it("fails with fixable when ./AGENTS.md is a real file and canonical is absent (legacy layout)", () => {
+    write("AGENTS.md", "# My old project instructions\n\ncontent here\n");
+    // No .agents/AGENTS.md
+
+    const { result } = runSingle("agents-symlink");
+    expect(result.status).toBe("fail");
+    expect(result.fixable).toBe(true);
+    expect(result.message).toContain("Legacy layout");
+  });
+
+  it("fix lazily creates canonical, migrates content, creates .bak, and places symlink (agents-symlink)", () => {
+    write("AGENTS.md", "# My old project instructions\n\ncontent here\n");
+    // No .agents/AGENTS.md
+
+    const check = CHECKS.find((c) => c.name === "agents-symlink")!;
+    const ctx: CheckContext = { projectRoot: TEST_ROOT };
+    const runResult = check.run(ctx);
+    expect(runResult.status).toBe("fail");
+
+    const fixResult = check.fix!(ctx, runResult);
+    expect(fixResult.fixed).toBe(true);
+
+    // Canonical was created and contains migrated content.
+    const canonical = readFileSync(join(TEST_ROOT, ".agents", "AGENTS.md"), "utf-8");
+    expect(canonical).toContain("My old project instructions");
+    expect(canonical).toContain("content here");
+
+    // Backup exists.
+    const backup = readFileSync(join(TEST_ROOT, "AGENTS.md.bak"), "utf-8");
+    expect(backup).toContain("My old project instructions");
+
+    // Symlink is in place.
+    expect(lstatSync(join(TEST_ROOT, "AGENTS.md")).isSymbolicLink()).toBe(true);
   });
 });
 
@@ -192,9 +229,46 @@ describe("doctor: claude-symlink", () => {
     expect(result.fixable).toBe(true);
   });
 
-  it("skips when canonical .agents/AGENTS.md does not exist", () => {
+  it("skips when canonical .agents/AGENTS.md does not exist and no .claude/CLAUDE.md present", () => {
     const { result } = runSingle("claude-symlink");
     expect(result.status).toBe("skip");
+  });
+
+  // ── Legacy-layout cases ──────────────────────────────────────────────────
+
+  it("fails with fixable when .claude/CLAUDE.md is a real file and canonical is absent (legacy layout)", () => {
+    write(".claude/CLAUDE.md", "# My Claude instructions\n\nclaude content here\n");
+    // No .agents/AGENTS.md
+
+    const { result } = runSingle("claude-symlink");
+    expect(result.status).toBe("fail");
+    expect(result.fixable).toBe(true);
+    expect(result.message).toContain("Legacy layout");
+  });
+
+  it("fix lazily creates canonical, migrates content, creates .bak, and places symlink (claude-symlink)", () => {
+    write(".claude/CLAUDE.md", "# My Claude instructions\n\nclaude content here\n");
+    // No .agents/AGENTS.md
+
+    const check = CHECKS.find((c) => c.name === "claude-symlink")!;
+    const ctx: CheckContext = { projectRoot: TEST_ROOT };
+    const runResult = check.run(ctx);
+    expect(runResult.status).toBe("fail");
+
+    const fixResult = check.fix!(ctx, runResult);
+    expect(fixResult.fixed).toBe(true);
+
+    // Canonical was created and contains migrated content.
+    const canonical = readFileSync(join(TEST_ROOT, ".agents", "AGENTS.md"), "utf-8");
+    expect(canonical).toContain("My Claude instructions");
+    expect(canonical).toContain("claude content here");
+
+    // Backup exists.
+    const backup = readFileSync(join(TEST_ROOT, ".claude", "CLAUDE.md.bak"), "utf-8");
+    expect(backup).toContain("My Claude instructions");
+
+    // Symlink is in place.
+    expect(lstatSync(join(TEST_ROOT, ".claude", "CLAUDE.md")).isSymbolicLink()).toBe(true);
   });
 });
 
@@ -219,10 +293,60 @@ describe("doctor: canonical-agents-file", () => {
     expect(result.status).toBe("fail");
   });
 
-  it("skips when no symlinks reference .agents/AGENTS.md", () => {
-    // No symlinks, no canonical file.
+  it("skips when no symlinks reference .agents/AGENTS.md and no real files present", () => {
+    // No symlinks, no canonical file, no real files.
     const { result } = runSingle("canonical-agents-file");
     expect(result.status).toBe("skip");
+  });
+
+  // ── Legacy-layout cases ──────────────────────────────────────────────────
+
+  it("fails with fixable when legacy real ./AGENTS.md exists without canonical", () => {
+    write("AGENTS.md", "# old project instructions\n");
+    // No .agents/AGENTS.md, no symlinks
+
+    const { result } = runSingle("canonical-agents-file");
+    expect(result.status).toBe("fail");
+    expect(result.fixable).toBe(true);
+    expect(result.message).toContain("Legacy layout");
+  });
+
+  it("fails with fixable when legacy real .claude/CLAUDE.md exists without canonical", () => {
+    write(".claude/CLAUDE.md", "# claude instructions\n");
+    // No .agents/AGENTS.md, no symlinks
+
+    const { result } = runSingle("canonical-agents-file");
+    expect(result.status).toBe("fail");
+    expect(result.fixable).toBe(true);
+    expect(result.message).toContain("Legacy layout");
+  });
+
+  it("fix migrates both real files into canonical on a fully-legacy project", () => {
+    write("AGENTS.md", "# My old project instructions\n\nagents content\n");
+    write(".claude/CLAUDE.md", "# Claude instructions\n\nclaude content\n");
+    // No .agents/AGENTS.md, no symlinks
+
+    const check = CHECKS.find((c) => c.name === "canonical-agents-file")!;
+    const ctx: CheckContext = { projectRoot: TEST_ROOT };
+    const runResult = check.run(ctx);
+    expect(runResult.status).toBe("fail");
+    expect(runResult.fixable).toBe(true);
+
+    const fixResult = check.fix!(ctx, runResult);
+    expect(fixResult.fixed).toBe(true);
+
+    // Canonical now contains both files' contents.
+    const canonical = readFileSync(join(TEST_ROOT, ".agents", "AGENTS.md"), "utf-8");
+    expect(canonical).toContain("agents content");
+    expect(canonical).toContain("claude content");
+
+    // Both original files now symlinks.
+    expect(lstatSync(join(TEST_ROOT, "AGENTS.md")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(TEST_ROOT, ".claude", "CLAUDE.md")).isSymbolicLink()).toBe(true);
+
+    // Both backups exist.
+    expect(existsSync(join(TEST_ROOT, "AGENTS.md.bak"))).toBe(true);
+    expect(existsSync(join(TEST_ROOT, ".claude", "CLAUDE.md.bak"))).toBe(true);
   });
 });
 
@@ -452,6 +576,31 @@ describe("doctor: --fix", () => {
 
     const linkPath = join(TEST_ROOT, "AGENTS.md");
     expect(readlinkSync(linkPath)).toBe(".agents/AGENTS.md");
+  });
+
+  it("fully migrates a legacy project with both real ./AGENTS.md and .claude/CLAUDE.md to exit 0", () => {
+    // Fully-legacy layout: real files, no canonical, no symlinks.
+    write("AGENTS.md", "# My old project instructions\n\nold agents content\n");
+    write(".claude/CLAUDE.md", "# My Claude setup\n\nclaude content\n");
+    // No .agents/AGENTS.md
+
+    const { outcome } = captureDoctor({ fix: true });
+
+    // Canonical exists and contains both files' content.
+    const canonical = readFileSync(join(TEST_ROOT, ".agents", "AGENTS.md"), "utf-8");
+    expect(canonical).toContain("old agents content");
+    expect(canonical).toContain("claude content");
+
+    // Both paths are now symlinks.
+    expect(lstatSync(join(TEST_ROOT, "AGENTS.md")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(TEST_ROOT, ".claude", "CLAUDE.md")).isSymbolicLink()).toBe(true);
+
+    // Backups created.
+    expect(existsSync(join(TEST_ROOT, "AGENTS.md.bak"))).toBe(true);
+    expect(existsSync(join(TEST_ROOT, ".claude", "CLAUDE.md.bak"))).toBe(true);
+
+    // Doctor exits 0 (fenced version warnings are allowed).
+    expect(outcome.exitCode).toBe(0);
   });
 });
 

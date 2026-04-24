@@ -26,15 +26,16 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from "fs";
 import { dirname, join, relative } from "path";
-import { fileURLToPath } from "url";
 
 import { getFencedVersion } from "../lib/install/fenced-section.js";
 import {
   mergeContentIntoCanonical,
   stripLoafFence,
 } from "../lib/install/symlinks.js";
+import { LOAF_VERSION } from "../lib/version.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ANSI color helpers
@@ -97,24 +98,6 @@ export interface Check {
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Resolve the loaf CLI's own version from its bundled package.json. */
-function getCliVersion(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  for (const candidate of [
-    join(here, "..", "package.json"),
-    join(here, "..", "..", "package.json"),
-    join(here, "..", "..", "..", "package.json"),
-  ]) {
-    try {
-      const pkg = JSON.parse(readFileSync(candidate, "utf-8"));
-      if (pkg.name === "loaf") return pkg.version;
-    } catch {
-      continue;
-    }
-  }
-  return "0.0.0";
-}
 
 /** True if `path` is a symlink. Returns false for missing paths. */
 function isSymlink(path: string): boolean {
@@ -264,6 +247,18 @@ const checkAgentsSymlink: Check = {
     const canonical = join(ctx.projectRoot, ".agents", "AGENTS.md");
 
     if (!existsSync(canonical)) {
+      // Legacy case: a real ./AGENTS.md with user content but no canonical.
+      // Surface as a fixable fail so --fix can migrate content into canonical.
+      if (pathExists(linkPath) && !isSymlink(linkPath)) {
+        return {
+          status: "fail",
+          message: "Legacy layout — ./AGENTS.md exists as a real file, canonical .agents/AGENTS.md missing",
+          detail:
+            `${linkPath} has content but .agents/AGENTS.md doesn't exist yet. ` +
+            `Run \`loaf doctor --fix\` to migrate content into canonical, back up as ./AGENTS.md.bak, and replace with a symlink.`,
+          fixable: true,
+        };
+      }
       // Nothing to link to — skip (a separate check flags missing canonical).
       return {
         status: "skip",
@@ -314,7 +309,14 @@ const checkAgentsSymlink: Check = {
     const canonical = join(ctx.projectRoot, ".agents", "AGENTS.md");
 
     if (!existsSync(canonical)) {
-      return { fixed: false, message: "Cannot fix — canonical .agents/AGENTS.md missing" };
+      // Lazily create canonical so migration can proceed.
+      try {
+        mkdirSync(dirname(canonical), { recursive: true });
+        writeFileSync(canonical, "");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { fixed: false, message: `Could not create .agents/AGENTS.md: ${msg}` };
+      }
     }
 
     // Real-file path: safe migration (strip fence → merge → .bak → symlink).
@@ -360,6 +362,18 @@ const checkClaudeSymlink: Check = {
     const canonical = join(ctx.projectRoot, ".agents", "AGENTS.md");
 
     if (!existsSync(canonical)) {
+      // Legacy case: a real .claude/CLAUDE.md with user content but no canonical.
+      // Surface as a fixable fail so --fix can migrate content into canonical.
+      if (pathExists(linkPath) && !isSymlink(linkPath)) {
+        return {
+          status: "fail",
+          message: "Legacy layout — .claude/CLAUDE.md exists as a real file, canonical .agents/AGENTS.md missing",
+          detail:
+            `${linkPath} has content but .agents/AGENTS.md doesn't exist yet. ` +
+            `Run \`loaf doctor --fix\` to migrate content into canonical, back up as .claude/CLAUDE.md.bak, and replace with a symlink.`,
+          fixable: true,
+        };
+      }
       return {
         status: "skip",
         message: "No .agents/AGENTS.md to link to",
@@ -408,7 +422,14 @@ const checkClaudeSymlink: Check = {
     const canonical = join(ctx.projectRoot, ".agents", "AGENTS.md");
 
     if (!existsSync(canonical)) {
-      return { fixed: false, message: "Cannot fix — canonical .agents/AGENTS.md missing" };
+      // Lazily create canonical so migration can proceed.
+      try {
+        mkdirSync(dirname(canonical), { recursive: true });
+        writeFileSync(canonical, "");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { fixed: false, message: `Could not create .agents/AGENTS.md: ${msg}` };
+      }
     }
 
     // Real-file path: safe migration (strip fence → merge → .bak → symlink).
@@ -446,7 +467,7 @@ const checkClaudeSymlink: Check = {
 
 const checkCanonicalAgentsFile: Check = {
   name: "canonical-agents-file",
-  description: ".agents/AGENTS.md exists when referenced by symlinks",
+  description: ".agents/AGENTS.md exists when referenced by symlinks or when legacy real files are present",
 
   run(ctx): CheckResult {
     const canonical = join(ctx.projectRoot, ".agents", "AGENTS.md");
@@ -455,7 +476,7 @@ const checkCanonicalAgentsFile: Check = {
 
     const canonicalExists = existsSync(canonical);
 
-    // We only care when something is pointing at .agents/AGENTS.md.
+    // We only care when something is pointing at .agents/AGENTS.md (via symlink).
     const referenced =
       (isSymlink(agentsLink) &&
         symlinkPointsTo(agentsLink, canonical)) ||
@@ -463,6 +484,25 @@ const checkCanonicalAgentsFile: Check = {
         symlinkPointsTo(claudeLink, canonical));
 
     if (!referenced) {
+      // Legacy case: canonical missing but real files exist — Loaf not yet set up.
+      // Surface as fixable so --fix can lazily create canonical and migrate content.
+      if (!canonicalExists) {
+        const agentsIsRealFile = pathExists(agentsLink) && !isSymlink(agentsLink);
+        const claudeIsRealFile = pathExists(claudeLink) && !isSymlink(claudeLink);
+        if (agentsIsRealFile || claudeIsRealFile) {
+          const found: string[] = [];
+          if (agentsIsRealFile) found.push("./AGENTS.md");
+          if (claudeIsRealFile) found.push(".claude/CLAUDE.md");
+          return {
+            status: "fail",
+            message: "Legacy layout — real files exist but .agents/AGENTS.md is not set up",
+            detail:
+              `Found real files: ${found.join(", ")}. ` +
+              `Run \`loaf doctor --fix\` to create .agents/AGENTS.md and migrate content into it.`,
+            fixable: true,
+          };
+        }
+      }
       return {
         status: "skip",
         message: "No symlinks reference .agents/AGENTS.md",
@@ -480,6 +520,68 @@ const checkCanonicalAgentsFile: Check = {
     return {
       status: "pass",
       message: ".agents/AGENTS.md is present",
+    };
+  },
+
+  fix(ctx): FixResult {
+    const canonical = join(ctx.projectRoot, ".agents", "AGENTS.md");
+    const agentsLink = join(ctx.projectRoot, "AGENTS.md");
+    const claudeLink = join(ctx.projectRoot, ".claude", "CLAUDE.md");
+
+    const canonicalExists = existsSync(canonical);
+
+    // Only handle the legacy-layout case: canonical absent, real files present.
+    // Dangling symlinks (canonical absent but symlinks exist) are not fixable here
+    // since re-creating the canonical file requires content we don't have.
+    if (canonicalExists) {
+      return { fixed: false, message: "State no longer matches — re-run doctor" };
+    }
+
+    const agentsIsRealFile = pathExists(agentsLink) && !isSymlink(agentsLink);
+    const claudeIsRealFile = pathExists(claudeLink) && !isSymlink(claudeLink);
+
+    if (!agentsIsRealFile && !claudeIsRealFile) {
+      return { fixed: false, message: "No legacy real files to migrate" };
+    }
+
+    // Lazily create canonical.
+    try {
+      mkdirSync(dirname(canonical), { recursive: true });
+      writeFileSync(canonical, "");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { fixed: false, message: `Could not create .agents/AGENTS.md: ${msg}` };
+    }
+
+    const results: string[] = [];
+
+    // Migrate ./AGENTS.md first.
+    if (agentsIsRealFile) {
+      const relTarget = relative(dirname(agentsLink), canonical);
+      const r = migrateRealFileToSymlink({
+        linkPath: agentsLink,
+        canonicalPath: canonical,
+        relativeTarget: relTarget,
+        projectRoot: ctx.projectRoot,
+      });
+      results.push(r.message);
+    }
+
+    // Migrate .claude/CLAUDE.md.
+    if (claudeIsRealFile) {
+      const relTarget = relative(dirname(claudeLink), canonical);
+      const r = migrateRealFileToSymlink({
+        linkPath: claudeLink,
+        canonicalPath: canonical,
+        relativeTarget: relTarget,
+        projectRoot: ctx.projectRoot,
+      });
+      results.push(r.message);
+    }
+
+    return {
+      fixed: true,
+      message: `Created .agents/AGENTS.md and migrated: ${results.join("; ")}`,
     };
   },
 };
@@ -553,7 +655,7 @@ const checkFencedVersion: Check = {
       };
     }
 
-    const cliVersion = getCliVersion();
+    const cliVersion = LOAF_VERSION;
     if (fencedVersion !== cliVersion) {
       return {
         status: "warn",

@@ -323,9 +323,9 @@ function matchesIfCondition(toolName: string, toolInput: unknown, ifCondition: s
   // For other patterns, convert glob to regex
   // Escape regex special characters then convert * to .* and ? to .
   let regexPattern = commandPattern
-    .replace(/[.+^\$"{}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*')
-    .replace(/\?/g, '.');
+    .replace(/[.+^$"{}()|[\\]\\\\]/g, '\\\\$&')
+    .replace(/\\*/g, '.*')
+    .replace(/\\?/g, '.');
   
   const regex = new RegExp('^' + regexPattern + '$');
   return regex.test(command);

@@ -7,7 +7,8 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync } from "fs";
 import { join, dirname, resolve } from "path";
-import { fileURLToPath } from "url";
+
+import { LOAF_VERSION } from "../version.js";
 
 const FENCED_START = "<!-- loaf:managed:start";
 const FENCED_END = "<!-- loaf:managed:end -->";
@@ -34,23 +35,6 @@ export interface FencedSection {
   endIndex: number;
   version: string | null;
   content: string;
-}
-
-function getVersion(): string {
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  for (const candidate of [
-    join(__dirname, "..", "..", "..", "package.json"),
-    join(__dirname, "..", "..", "package.json"),
-    join(__dirname, "..", "package.json"),
-  ]) {
-    try {
-      const pkg = JSON.parse(readFileSync(candidate, "utf-8"));
-      if (pkg.name === "loaf") return pkg.version;
-    } catch {
-      continue;
-    }
-  }
-  return "0.0.0";
 }
 
 export function findFencedSection(content: string): FencedSection | null {
@@ -122,7 +106,7 @@ export function installFencedSection(
   targetFile: string,
   upgrade: boolean = false
 ): { action: "created" | "updated" | "skipped" | "appended"; version: string } {
-  const currentVersion = getVersion();
+  const currentVersion = LOAF_VERSION;
   let fileContent = "";
   let fileExisted = false;
 

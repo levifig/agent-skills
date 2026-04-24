@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.30] - 2026-04-24
+
+### Fixed
+- Escape regex literals in opencode runtime plugin (b9357605)
+- Post-ADR-010 doctor + version followups (7ef8ab1b)
+
 ## [2.0.0-dev.29] - 2026-04-22
 
 ### Added

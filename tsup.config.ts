@@ -1,4 +1,7 @@
+import { readFileSync } from "fs";
 import { defineConfig } from "tsup";
+
+const pkg = JSON.parse(readFileSync("./package.json", "utf-8"));
 
 export default defineConfig({
   entry: ["cli/index.ts"],
@@ -11,6 +14,9 @@ export default defineConfig({
   shims: false,
   splitting: false,
   noExternal: ["commander", "gray-matter", "yaml", "picomatch"],
+  define: {
+    __LOAF_VERSION__: JSON.stringify(pkg.version),
+  },
   esbuildOptions(options) {
     // When bundling CJS packages (commander) into ESM, esbuild's __require shim
     // can't resolve Node builtins. Mark them as external so Node resolves them at runtime.

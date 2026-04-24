@@ -7,7 +7,10 @@
  * @vitest-environment node
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
+import ts from "typescript";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Runtime Functions (copied from generated plugin for testing)
@@ -206,4 +209,75 @@ describe("command-scoped hook routing matrix", () => {
     expect(result).not.toContain("journal-post-pr");
     expect(result).not.toContain("journal-post-merge");
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Generated Plugin Syntax Validity Tests
+//
+// Catch template-literal escape regressions in runtime-plugin.ts.
+// The generator embeds regex literals inside a template string — any
+// unrecognised escape sequence (e.g. \* → *, \? → ?) silently drops
+// the backslash, producing invalid regex like /*/g or /?/g that break
+// the entire generated file at parse time.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("generated plugin syntax validity", () => {
+  const TARGETS = [
+    { name: "opencode hooks.ts", path: join(process.cwd(), "dist", "opencode", "plugins", "hooks.ts") },
+    { name: "amp loaf.js", path: join(process.cwd(), "dist", "amp", "plugins", "loaf.js") },
+  ];
+
+  for (const target of TARGETS) {
+    describe(target.name, () => {
+      let content: string;
+
+      beforeAll(() => {
+        if (!existsSync(target.path)) {
+          throw new Error(`${target.path} not found — run \`npm run build\` first.`);
+        }
+        content = readFileSync(target.path, "utf-8");
+      });
+
+      it("parses without TypeScript syntax errors", () => {
+        const sourceFile = ts.createSourceFile(
+          target.path,
+          content,
+          ts.ScriptTarget.ES2022,
+          /* setParentNodes */ false,
+        );
+
+        // TypeScript parser reports diagnostics on the source file itself
+        const diagnostics = (sourceFile as ts.SourceFile & { parseDiagnostics?: ts.Diagnostic[] })
+          .parseDiagnostics ?? [];
+
+        const errors = diagnostics.filter(d => d.category === ts.DiagnosticCategory.Error);
+        const messages = errors.map(d =>
+          `Line ${sourceFile.getLineAndCharacterOfPosition(d.start ?? 0).line + 1}: ${
+            typeof d.messageText === "string" ? d.messageText : d.messageText.messageText
+          }`
+        );
+
+        expect(errors.length, `Syntax errors in ${target.name}:\n${messages.join("\n")}`).toBe(0);
+      });
+
+      it("contains correctly-escaped glob-to-regex pattern (no bare /*/g or /?/g)", () => {
+        // These patterns are the broken forms produced by the template-literal escape bug.
+        // A bare /*/g is parsed as a block comment start; /?/g is an invalid quantifier.
+        expect(content).not.toMatch(/\.replace\(\/\*\/g/);
+        expect(content).not.toMatch(/\.replace\(\/\?\/g/);
+      });
+
+      it("contains properly-escaped \\* and \\? in replace calls", () => {
+        // The correct generated output uses /\*/g and /\?/g (backslash preserved).
+        expect(content).toContain(".replace(/\\*/g");
+        expect(content).toContain(".replace(/\\?/g");
+      });
+
+      it("contains properly-escaped character class in first replace", () => {
+        // Generated replace should contain the correctly escaped character class.
+        // The class must include [\]\\] (escaped ] and \) not the malformed []\].
+        expect(content).toContain(".replace(/[.+^$\"{}()|[\\]\\\\]/g");
+      });
+    });
+  }
 });

@@ -1,7 +1,4 @@
 import { Command } from "commander";
-import { readFileSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 import { registerBuildCommand } from "./commands/build.js";
 import { registerInstallCommand } from "./commands/install.js";
 import { registerInitCommand } from "./commands/init.js";
@@ -16,25 +13,11 @@ import { registerCheckCommand } from "./commands/check.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerSessionCommand } from "./commands/session.js";
 import { registerReportCommand } from "./commands/report.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function getVersion(): string {
-  // Walk up to find package.json (works from both source and bundled output)
-  for (const candidate of [join(__dirname, "..", "package.json"), join(__dirname, "..", "..", "package.json")]) {
-    try {
-      const pkg = JSON.parse(readFileSync(candidate, "utf-8"));
-      if (pkg.name === "loaf") return pkg.version;
-    } catch {
-      continue;
-    }
-  }
-  return "0.0.0";
-}
+import { LOAF_VERSION } from "./lib/version.js";
 
 const program = new Command();
 
-program.name("loaf").description("Loaf — An Opinionated Agentic Framework").version(getVersion(), "-v, --version");
+program.name("loaf").description("Loaf — An Opinionated Agentic Framework").version(LOAF_VERSION, "-v, --version");
 
 // Register all commands first
 registerBuildCommand(program);
