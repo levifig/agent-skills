@@ -1,3 +1,13 @@
+---
+title: 'Report: TASK-074 Sidecar Audit (SPEC-020)'
+type: audit
+created: '2025-03-31T00:00:00Z'
+source: TASK-074
+status: archived
+finalized_at: '2025-03-31T00:00:00Z'
+archived_at: '2026-04-24T22:21:19.833Z'
+archived_by: loaf housekeeping
+---
 # TASK-074: Sidecar Audit Report
 
 **Date**: 2025-03-31  
