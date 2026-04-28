@@ -9,13 +9,14 @@ covers:
   - .agents/specs/**/*.md
   - .agents/tasks/**/*.md
   - .agents/sessions/**/*.md
+  - cli/lib/session/**/*.ts
   - content/skills/breakdown/**/*
   - content/skills/implement/**/*
   - content/skills/orchestration/**/*
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-04-10'
+last_reviewed: '2026-04-28'
 ---
 
 # Task System
@@ -141,8 +142,9 @@ Tasks keyed by ID (Record, not array). Specs section tracks spec lifecycle. `nex
 
 Sessions track execution context per branch. Key behaviors:
 
-- **One session per branch.** `loaf session start` finds existing or creates new. Atomic creation via file locking prevents concurrent duplicates.
-- **New-conversation detection.** `claude_session_id` in frontmatter tracks the Claude session. When a new session starts on a branch with an existing session, the ID mismatch triggers a resume with PAUSE header.
+- **One session per `claude_session_id`, not per branch.** `loaf session start` routes on the Claude conversation id from the SessionStart hook. One conversation = one session file, regardless of branches visited.
+- **3-tier session routing (SPEC-032).** Session-mutating commands (`loaf session log`, `archive`, `enrich`, `end --wrap`) resolve their target via `resolveCurrentSession` in `cli/lib/session/resolve.ts`: `--session-id <id>` flag → hook stdin payload (`--from-hook` opt-in only) → branch-fallback (Tier 3 emits a visible stderr WARN so misroutes surface immediately).
+- **New-conversation detection.** When a new session starts with an id differing from the stored `claude_session_id`, the session writes resume entries. `loaf session end` writes the `--- PAUSE ---` separator with the correct timestamp.
 - **Subagent detection.** `agent_id` in hook JSON is only present for subagents. `session start` exits early when `agent_id` is set, preventing subagent sessions from polluting the parent journal.
 - **Branch rename recovery.** If a branch is renamed via `git branch -m`, session start detects the rename via reflog and updates both session and spec frontmatter.
 - **Session status values:** `active`, `stopped`, `done`, `blocked`, `archived`

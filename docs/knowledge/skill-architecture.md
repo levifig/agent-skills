@@ -13,7 +13,7 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-04-10'
+last_reviewed: '2026-04-28'
 ---
 
 # Skill Architecture
@@ -85,7 +85,7 @@ Skills load into profiles at spawn time. What an agent *can do* is fixed by prof
 | Reference/Knowledge | `false` | python-development, database-design, foundations, git-workflow, orchestration |
 | Workflow/Process | `true` (default) | implement, research, shape, breakdown, release, housekeeping, wrap |
 
-31 skills total (as of dev.15): 15 workflow, 16 reference/knowledge.
+31 skills total: 15 workflow, 16 reference/knowledge.
 
 ## Cross-References
 
