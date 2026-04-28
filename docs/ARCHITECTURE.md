@@ -25,7 +25,8 @@ cli/                            # CLI tool (TypeScript, bundled by tsup)
     ├── release/                # Version bump, changelog generation
     ├── housekeeping/           # Artifact scanning, stale detection
     ├── journal/                # JSONL extraction for session enrichment
-    └── kb/                     # Knowledge base loader, staleness, resolution
+    ├── kb/                     # Knowledge base loader, staleness, resolution
+    └── session/                # Session routing helpers (store, find, resolve)
 
 content/                        # Distributable content (separated from tooling)
 ├── skills/{name}/SKILL.md      # Domain knowledge (Agent Skills standard)
@@ -187,6 +188,10 @@ Sessions are keyed by `claude_session_id` (the JSONL identity), **not** by branc
 
 **Compaction resilience:** The session journal is external memory that survives context compaction. PreCompact requires flushing unrecorded entries and writing a state summary to `## Current State`. PostCompact nudges the model to re-read the session file for resumption context. No separate snapshot mechanism needed.
 
+**Session routing (SPEC-032, v2.0.0-dev.31):** User-facing session-mutating commands (`loaf session log`, `archive`, `enrich`, `end --wrap`) resolve their target via `resolveCurrentSession` in `cli/lib/session/resolve.ts` — a 3-tier priority chain: `--session-id <id>` flag → hook stdin payload (`--from-hook` opt-in only) → branch-fallback. Tier 3 emits a stderr WARN naming the branch and the silencing flag, so misroutes are visible in real time instead of corrupting state silently.
+
+Hook-aware code paths (Stop event handlers, SessionStart resumption, PreCompact context, internal create-lock re-checks) keep the older inline pattern (`findSessionByClaudeId(...) || findActiveSessionForBranch(...)`) and exit silently on no-match — they fire frequently and silent failure is correct hook behavior. The asymmetry is documented in a block comment near the helpers in `cli/commands/session.ts`. Modules: `cli/lib/session/store.ts` (persistence primitives), `find.ts` (the two finders), `resolve.ts` (the chain helper), `index.ts` (public re-exports).
+
 ### Journal Entry Sources
 
 Session journals receive entries from multiple layered sources:
@@ -321,3 +326,11 @@ Before PR #35 (v2.0.0-dev.30), three separate runtime `package.json` walkers in 
 Files the build emits for downstream runtimes to execute — OpenCode `hooks.ts`, Amp `loaf.js`, and any future per-target runtime plugin — must have a test that parses the **actual emitted file** via a real parser (TypeScript compiler API, Acorn), not just the generator's input string.
 
 Template-literal escape bugs are invisible at the string level: `cli/lib/build/lib/hooks/runtime-plugin.ts` emitted invalid regex (`/*/g`) into `dist/opencode/plugins/hooks.ts` for multiple versions because the broken code path was unreachable at runtime. The syntactic breakage was dormant until OpenCode's plugin loader tightened its validation and rejected the file on load. `cli/lib/build/targets/runtime-logic.test.ts` now parses both OpenCode's and Amp's emitted output via the TypeScript compiler API as a regression fence for the entire class of escape/interpolation bugs.
+
+### Visible-Degraded Fallback with Stderr WARN
+
+When strict invariant enforcement would break existing callers but silent fallback corrupts data, emit a stderr WARN naming the missing signal and the silencing flag. The action proceeds (preserving compatibility) but the WARN makes the misroute visible in real time and provides a regression-testable surface for the eventual cutover.
+
+SPEC-032 used this pattern for branch-fallback session routing in `loaf session log`, `archive`, `enrich`, and `end --wrap`. The 3-tier resolution chain emits `WARN: no session_id signal — falling back to branch routing for branch '<branch>'. Pass --session-id <id> to silence.` only when neither the `--session-id` flag nor the hook stdin payload provided a session id. Skill self-logging trips this WARN today; a future skill refactor will source `session_id` per-process and remove the branch tier, with the WARN serving as the cutover's regression gate.
+
+The pattern generalizes: any compatibility carve-out that violates a stated invariant should be observable in real time, not invisible. The cost (one extra stderr line for legacy callers) is paid once per invocation; the benefit (every misroute surfaces immediately) is paid forward to whoever next opens an issue saying "my entry didn't land where I expected."

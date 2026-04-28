@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 128,
+  "next_id": 129,
   "tasks": {
     "TASK-103": {
       "title": "Add missing journal entry types for all artifact types",
@@ -273,6 +273,22 @@
       "updated": "2026-04-28T13:47:17.013Z",
       "completed_at": "2026-04-28T13:47:17.006Z",
       "file": "TASK-127-pr-39-follow-up-bundle-eval-skill-routing-mjs-path.md"
+    },
+    "TASK-128": {
+      "title": "Reflect SPEC-032 + release-flow learnings into STRATEGY.md and ARCHITECTURE.md",
+      "slug": "reflect-spec-032-release-flow-learnings-into-strat",
+      "spec": null,
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T14:01:57.919Z",
+      "updated": "2026-04-28T14:03:49.649Z",
+      "completed_at": "2026-04-28T14:03:49.649Z",
+      "file": "TASK-128-reflect-spec-032-release-flow-learnings-into-strat.md"
     },
     "TASK-001": {
       "title": "Create verification reference",
