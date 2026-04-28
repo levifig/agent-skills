@@ -9,7 +9,6 @@
 import { Command } from "commander";
 import { writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 
 // Import all command modules to register them
 import { registerBuildCommand } from "../commands/build.js";
@@ -28,10 +27,10 @@ import { registerSessionCommand } from "../commands/session.js";
 // Import the generator
 import { generateCliReferenceSkill, extractCliStructure } from "../lib/cli-reference-generator.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// Get project root (3 levels up from cli/scripts/)
-const rootDir = join(__dirname, "..", "..", "..");
+// Resolve project root from the current working directory. npm scripts
+// always invoke this from the package root, and using cwd keeps the
+// output inside the active worktree instead of resolving up past it.
+const rootDir = process.cwd();
 
 async function main() {
   // Create a temporary CLI instance to introspect

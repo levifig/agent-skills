@@ -45,10 +45,11 @@ if (!API_KEY) {
 
 // ── Load skills ─────────────────────────────────────────────────────────────
 
-import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SKILLS_DIR = join(__dirname, "..", "content", "skills");
+// Resolve project root from the current working directory. npm scripts
+// always invoke this from the package root, and using cwd keeps the
+// resolution inside the active worktree instead of pointing at a sibling
+// dir (the previous __dirname-based path resolved to cli/content/skills).
+const SKILLS_DIR = join(process.cwd(), "content", "skills");
 
 function loadSkills() {
   const skills = [];
