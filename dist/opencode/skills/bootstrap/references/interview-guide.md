@@ -279,10 +279,12 @@ The interview ends when you have enough to draft. Don't announce "the interview 
 
 ### Document Mapping
 
+Interview content lands in the *operating documents* (VISION/STRATEGY/ARCHITECTURE). The BRIEF is captured as a historical snapshot only -- it is not the destination for refined content.
+
 | Interview Insight | Document | Section |
 |-------------------|----------|---------|
-| Problem + why it matters | BRIEF.md | Problem statement |
-| User persona + their current world | BRIEF.md, STRATEGY.md | Target users, personas |
+| Problem + why it matters | VISION.md | Problem statement |
+| User persona + their current world | VISION.md, STRATEGY.md | Target users, personas |
 | Job statement + switching forces | VISION.md | Purpose, what makes this unique |
 | Long-term goal + differentiator | VISION.md | Where we're going |
 | No-gos + boundaries | VISION.md | Non-goals |
@@ -297,10 +299,11 @@ The interview ends when you have enough to draft. Don't announce "the interview 
 
 ### Draft Order
 
-1. **BRIEF.md** -- Synthesize the interview into a canonical brief. Present for review first. This is the "what are we doing and why" document that everything else derives from.
-2. **VISION.md** -- Purpose, target users, success criteria, non-goals. Draft from BRIEF + interview.
-3. **STRATEGY.md** -- Only if enough signal exists. Personas, landscape, positioning. If the builder is still figuring this out, note it as an open area and suggest `/strategy` or `/research` later.
-4. **ARCHITECTURE.md** -- Only if technical decisions were made. If the builder hasn't decided on a stack yet, don't force it. Capture constraints and known decisions only.
+The BRIEF was captured at intake as a historical snapshot. The job here is to draft the *operating documents* using the BRIEF and interview as inputs.
+
+1. **VISION.md** -- Purpose, target users, success criteria, non-goals. Draft first -- this is the load-bearing operating doc that downstream work derives from. Synthesize from the intake BRIEF and the interview.
+2. **STRATEGY.md** -- Only if enough signal exists. Personas, landscape, positioning. If the builder is still figuring this out, note it as an open area and suggest `/strategy` or `/research` later.
+3. **ARCHITECTURE.md** -- Only if technical decisions were made. If the builder hasn't decided on a stack yet, don't force it. Capture constraints and known decisions only.
 
 ### Structured Review
 
@@ -386,15 +389,15 @@ The transition from interview to drafting should be seamless, not announced. Her
 
 Don't say: "The interview is complete. I will now generate documents."
 
-Do say: "I think I have a solid picture. Let me draft the brief and you can tell me what I got wrong."
+Do say: "I think I have a solid picture. Let me draft the vision and you can tell me what I got wrong."
 
 ### Iterative Drafting
 
-Draft BRIEF.md first. It's the smallest, most concrete document. If the brief is wrong, everything downstream will be wrong too. Get it right, then expand.
+Draft VISION.md first. It's the load-bearing operating doc -- if the vision is wrong, everything downstream will be wrong too. Get it right, then expand.
 
-After BRIEF.md is approved, draft VISION.md. Then conditionally draft STRATEGY.md and ARCHITECTURE.md based on available signal.
+After VISION.md is approved, conditionally draft STRATEGY.md and ARCHITECTURE.md based on available signal.
 
-Each document gets section-by-section review. Don't dump 4 documents at once.
+Each document gets section-by-section review. Don't dump 3 documents at once.
 
 ### When the Builder Wants to Keep Talking
 

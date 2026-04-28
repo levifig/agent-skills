@@ -2,11 +2,14 @@
 
 **Location:** `docs/BRIEF.md`
 
+The BRIEF is a *historical snapshot* of project intake. It is written once during bootstrap and is not a living document. After bootstrap, the useful content from the BRIEF lives in VISION.md, STRATEGY.md, ARCHITECTURE.md, and AGENTS.md -- readers should consult those operating documents, not this file. The BRIEF stands as a frozen record of how the project entered Loaf.
+
 ```yaml
 ---
 source: file | text | folder | interview
 original_path: ""       # Path to external source file, if copied into project
 created: YYYY-MM-DDTHH:MM:SSZ
+archived: true          # Always true -- BRIEF is a historical snapshot, not a working doc
 ---
 
 # Project Brief
@@ -57,6 +60,7 @@ or deferrable (can resolve during implementation).]
 | `source` | Yes | `file`, `text`, `folder`, `interview` | How the brief entered the project |
 | `original_path` | No | File path string | Only when copied from an external location |
 | `created` | Yes | ISO 8601 timestamp | When the brief was persisted |
+| `archived` | Yes | `true` | Marks the BRIEF as a historical snapshot, not a working doc. Always `true` -- the BRIEF is archeological by design. |
 
 ## Source Behaviors
 

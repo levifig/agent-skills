@@ -38,7 +38,8 @@ First-contact project setup: detect state, interview the builder, populate proje
 - **Detect, don't ask** -- auto-classify project mode (brownfield/greenfield+brief/greenfield+empty), confirm briefly, let the user correct
 - **Never overwrite existing documents** without explicit confirmation -- read first, note what exists, ask before changing
 - **Always interview** -- even with a rich brief, confirm understanding through structured questions using `AskUserQuestion`
-- **Persist the brief** -- every bootstrap must produce a `docs/BRIEF.md`
+- **BRIEF is input, not output** -- the BRIEF is raw intake. Extract every useful fact into VISION/STRATEGY/ARCHITECTURE/AGENTS during bootstrap.
+- **BRIEF is archeological after bootstrap** -- once extraction completes, the BRIEF is a frozen historical snapshot. No skill, agent, command, or template should reference `docs/BRIEF.md` post-bootstrap. Operating documents must stand on their own.
 - **Suggest, don't execute** -- recommend next skills at the end, never auto-run them
 - **Log outcome** -- log bootstrap completion to session journal: `loaf session log "decision(bootstrap): project bootstrapped, mode detected"`
 
@@ -46,7 +47,8 @@ First-contact project setup: detect state, interview the builder, populate proje
 
 ## Verification
 
-- All expected documents (`docs/BRIEF.md`, `docs/VISION.md`, `.agents/AGENTS.md` at minimum) exist and contain populated content
+- All expected operating documents (`docs/VISION.md`, `.agents/AGENTS.md` at minimum) exist and contain populated content
+- Useful BRIEF content has been extracted into operating documents (no future reader should need to open the BRIEF)
 - Symlinks are correct: `.claude/CLAUDE.md -> .agents/AGENTS.md` and `./AGENTS.md -> .agents/AGENTS.md`
 - A session file was saved in `.agents/sessions/` capturing key decisions and interview exchanges
 
@@ -64,7 +66,7 @@ First-contact project setup: detect state, interview the builder, populate proje
 
 Bootstrap is the **intelligent half** of the 0-to-1 experience. The mechanical half (`loaf setup`) handles scaffolding, building, and installing. Bootstrap handles everything that requires understanding: reading briefs, interviewing the builder, populating project documents, and recording decisions.
 
-The goal is to go from "I have an idea" (or "I have a codebase") to a populated set of project documents -- BRIEF.md, VISION.md, STRATEGY.md, ARCHITECTURE.md, and AGENTS.md -- through a structured but conversational process.
+The goal is to go from "I have an idea" (or "I have a codebase") to a populated set of operating documents -- VISION.md, STRATEGY.md, ARCHITECTURE.md, and AGENTS.md -- through a structured but conversational process. The BRIEF is captured as an *intake snapshot* (raw, historical) and its content is then extracted into the *living operating docs*. The pipeline is explicit: BRIEF (raw intake) -> VISION/STRATEGY/ARCHITECTURE/AGENTS (refined operating docs).
 
 ---
 
@@ -119,13 +121,15 @@ If the user corrects the detection, adjust and proceed.
 
 ## Brief Intake
 
+The BRIEF is captured at intake time as a *historical snapshot* of how the project entered Loaf. After this section, the skill's job is to extract its content into the operating docs (VISION/STRATEGY/ARCHITECTURE/AGENTS). The BRIEF is never updated again -- it stands as a frozen artifact of the original framing.
+
 The canonical brief location is `docs/BRIEF.md`. Handle each intake form:
 
 ### Inline Text
 
 When `$ARGUMENTS` contains a text description (not a file or folder path):
 
-1. Persist to `docs/BRIEF.md` with frontmatter
+1. Snapshot to `docs/BRIEF.md` (historical record of intake) with frontmatter
 2. Analyze the text for themes and gaps
 3. Proceed to interview about gaps
 
@@ -135,7 +139,7 @@ When `$ARGUMENTS` is a path to a file:
 
 1. Read the file
 2. If the file IS `docs/BRIEF.md` -- use in place, add frontmatter if missing
-3. If the file is external -- copy content to `docs/BRIEF.md` with `original_path` in frontmatter
+3. If the file is external -- snapshot content to `docs/BRIEF.md` (historical record of intake) with `original_path` in frontmatter
 4. Analyze and proceed to interview
 
 ### Folder Path
@@ -144,7 +148,7 @@ When `$ARGUMENTS` is a path to a directory:
 
 1. Read all markdown files in the folder
 2. Synthesize into a single brief
-3. Persist to `docs/BRIEF.md` with `source: folder`
+3. Snapshot to `docs/BRIEF.md` (historical record of intake) with `source: folder`
 4. Analyze and proceed to interview
 
 ### No Input
@@ -152,7 +156,7 @@ When `$ARGUMENTS` is a path to a directory:
 When `$ARGUMENTS` is empty and no `docs/BRIEF.md` exists:
 
 1. Skip directly to interview
-2. After interview, synthesize responses into `docs/BRIEF.md` with `source: interview`
+2. After interview, snapshot responses to `docs/BRIEF.md` (historical record of intake) with `source: interview`
 
 ### Brief Frontmatter Schema
 
@@ -163,6 +167,7 @@ Follow [templates/brief.md](templates/brief.md) for the full brief template. Fro
 source: file | text | folder | interview
 original_path: ~/Desktop/project-brief.md  # only if copied from external source
 created: 2026-03-27T01:54:00Z              # use actual timestamp
+archived: true                             # always true -- BRIEF is a historical snapshot
 ---
 ```
 
@@ -173,6 +178,7 @@ If `docs/BRIEF.md` already exists and no new brief was provided:
 1. Read and analyze the existing brief
 2. Treat as greenfield+brief mode
 3. Do NOT overwrite -- use it as-is, add frontmatter if missing
+4. The existing BRIEF is read once for extraction into operating docs and is not consulted again afterward
 
 ---
 
@@ -250,9 +256,10 @@ Avoid these across all modes:
 
 Draft documents in this order. Each document gets a structured review before moving to the next.
 
+These are the *operating documents*. The BRIEF was captured during intake and is no longer modified.
+
 | Document | When | Content Source |
 |----------|------|----------------|
-| `docs/BRIEF.md` | Always (if not already present) | Intake text, external file, or synthesized interview |
 | `docs/VISION.md` | Always | Brief + interview (purpose, target users, success criteria, non-goals) |
 | `docs/STRATEGY.md` | When enough info available | Interview (current focus, priorities, constraints, open questions) |
 | `docs/ARCHITECTURE.md` | When technical choices stated | Brief + detected stack (overview, components, technology choices) |
@@ -304,8 +311,8 @@ For each document:
 
 | Document | Section | Prompt |
 |----------|---------|--------|
-| BRIEF.md | Problem | "Is this problem statement accurate?" |
-| BRIEF.md | Users | "Did I capture the right target users?" |
+| VISION.md | Problem | "Is this problem statement accurate?" |
+| VISION.md | Target users | "Did I capture the right target users?" |
 | VISION.md | Purpose | "Does this capture why this project exists?" |
 | VISION.md | Non-goals | "Are these the right non-goals?" |
 | VISION.md | Success criteria | "Anything missing from success criteria?" |
@@ -397,9 +404,9 @@ Suggest at least 2 relevant paths. Don't auto-run any of them.
 This skill is designed for Claude Code (uses `AskUserQuestion`, Write/Edit tools). For other harnesses, the equivalent workflow is:
 
 1. Run `loaf setup` (or `loaf init && loaf build && loaf install --to all` manually)
-2. Create `docs/BRIEF.md` manually with project description
-3. Create `docs/VISION.md`, `docs/STRATEGY.md`, `docs/ARCHITECTURE.md` manually
-4. Populate `.agents/AGENTS.md` with build commands, test commands, and project structure
+2. Create `docs/VISION.md`, `docs/STRATEGY.md`, `docs/ARCHITECTURE.md` manually -- these are the load-bearing operating documents
+3. Populate `.agents/AGENTS.md` with build commands, test commands, and project structure
+4. Optionally snapshot intake (problem, users, constraints) to `docs/BRIEF.md` as a historical record -- not referenced again after bootstrap
 5. Create symlinks: `.claude/CLAUDE.md -> .agents/AGENTS.md` and `./AGENTS.md -> .agents/AGENTS.md`
 6. Run `loaf kb init` if available, or create `docs/knowledge/` with a README
 
@@ -411,7 +418,7 @@ This skill is designed for Claude Code (uses `AskUserQuestion`, Write/Edit tools
 2. **Always interview** -- even with a rich brief, confirm understanding
 3. **Never overwrite** -- existing documents require explicit confirmation
 4. **Draft, then review** -- present documents section-by-section
-5. **Persist the brief** -- every bootstrap produces a `docs/BRIEF.md`
+5. **Extract, don't preserve** -- pull every useful fact from the BRIEF into operating docs. The BRIEF is archeological after bootstrap; nothing should reference it again.
 6. **Record the session** -- decisions and rationale are preserved
 7. **Suggest, don't execute** -- recommend next skills, don't auto-run them
 8. **Use AskUserQuestion** -- structured, conversational interaction throughout
