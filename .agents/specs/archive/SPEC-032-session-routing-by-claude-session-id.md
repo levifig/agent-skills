@@ -3,7 +3,7 @@ id: SPEC-032
 title: Session Routing by claude_session_id
 source: direct
 created: '2026-04-27T22:55:00.000Z'
-status: implementing
+status: complete
 ---
 
 # SPEC-032: Session Routing by claude_session_id

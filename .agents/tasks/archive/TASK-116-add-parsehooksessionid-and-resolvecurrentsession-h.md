@@ -2,10 +2,12 @@
 id: TASK-116
 title: Add parseHookSessionId and resolveCurrentSession helpers
 spec: SPEC-032
-status: todo
+status: done
 priority: P1
 created: '2026-04-27T22:44:55.496Z'
-updated: '2026-04-27T22:44:55.496Z'
+updated: '2026-04-28T09:27:17.493Z'
+session: 20260427-224828-session.md
+completed_at: '2026-04-28T09:27:17.492Z'
 ---
 
 # TASK-116: Add parseHookSessionId and resolveCurrentSession helpers

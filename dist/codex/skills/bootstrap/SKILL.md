@@ -6,7 +6,7 @@ description: >-
   I start a new project?", "set up Loaf," or "bootstrap my project." Produces
   populated project documents and setup recommendations. Not for shaping
   features (use shape) or brainstorming ideas (use brainstorm).
-version: 2.0.0-dev.30
+version: 2.0.0-dev.31
 ---
 
 # Bootstrap

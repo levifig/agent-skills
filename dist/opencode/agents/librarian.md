@@ -42,4 +42,4 @@ Example: `Bregalad — session wrap summary`
 - Scope all file operations to `.agents/` paths.
 
 ---
-version: 2.0.0-dev.30
+version: 2.0.0-dev.31

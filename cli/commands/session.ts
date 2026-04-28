@@ -30,6 +30,18 @@ import { checkAllStaleness } from "../lib/kb/staleness.js";
 import { findAgentsDir } from "../lib/tasks/resolve.js";
 import { isLinearIntegrationDisabled } from "../lib/detect/mcp.js";
 import { extractSummary } from "../lib/journal/extractor.js";
+import {
+  consolidateSession,
+  findActiveSessionForBranch,
+  findSessionByClaudeId,
+  getDateTimeString,
+  getTimestamp,
+  readSessionFile,
+  resolveCurrentSession,
+  writeFileAtomic,
+  type SessionFrontmatter,
+  type SpecFrontmatterWithBranch,
+} from "../lib/session/index.js";
 import { readStdin } from "./check.js";
 
 // ANSI color helpers
@@ -44,22 +56,9 @@ const gray = (s: string) => `\x1b[90m${s}\x1b[0m`;
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface SessionFrontmatter {
-  branch: string;
-  status: "active" | "stopped" | "done" | "blocked" | "archived";
-  created: string;
-  last_updated?: string;
-  last_entry?: string;
-  archived_at?: string;
-  archived_by?: string;
-  linear_issue?: string;
-  linear_url?: string;
-  task?: string;
-  spec?: string;
-  title?: string;
-  claude_session_id?: string;
-  enriched_at?: string;
-}
+// SessionFrontmatter and SpecFrontmatterWithBranch are imported from
+// ../lib/session/index.js — moved per SPEC-032 to share the types between
+// command-side and lib-side resolution helpers.
 
 /** Hook JSON input from Claude Code stdin */
 interface HookInput {
@@ -144,15 +143,6 @@ interface JournalEntry {
   type: EntryType;
   scope?: string;
   description: string;
-}
-
-interface SpecFrontmatterWithBranch {
-  id: string;
-  title: string;
-  branch?: string;
-  status?: string;
-  session?: string;
-  [key: string]: unknown;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -439,18 +429,9 @@ function releaseLock(lockPath: string): void {
   }
 }
 
-/** Atomic write using temp file + rename */
-function writeFileAtomic(filePath: string, content: string): void {
-  const tempPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 11)}`;
-  try {
-    writeFileSync(tempPath, content, 'utf-8');
-    renameSync(tempPath, filePath);
-  } catch (err) {
-    // Cleanup temp file on failure
-    try { unlinkSync(tempPath); } catch { /* ignore */ }
-    throw err;
-  }
-}
+// writeFileAtomic, readSessionFile, getTimestamp, getDateTimeString,
+// extractJournalLines, consolidateSession are imported from
+// ../lib/session/index.js — moved per SPEC-032.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -621,252 +602,37 @@ function getTimestampForFilename(): string {
   return `${year}${month}${day}-${hour}${minute}${second}`;
 }
 
-/** Extract journal entries from session content (lines matching [YYYY-MM-DD HH:MM] pattern) */
-function extractJournalLines(content: string): string[] {
-  return content.split("\n").filter(line => /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] /.test(line));
-}
-
-/** Merge journal entries from a secondary session into a primary session file */
-function consolidateSession(primaryPath: string, secondary: { filePath: string; data: SessionFrontmatter; content: string }, agentsDir: string): void {
-  const primary = readSessionFile(primaryPath);
-  if (!primary) return;
-
-  // Extract journal entries from secondary that aren't already in primary
-  const primaryEntries = new Set(extractJournalLines(primary.content));
-  const secondaryEntries = extractJournalLines(secondary.content);
-  const newEntries = secondaryEntries.filter(e => !primaryEntries.has(e));
-
-  if (newEntries.length > 0) {
-    // Append new entries before the last line of the journal
-    const timestamp = getDateTimeString();
-    const mergeMarker = `[${timestamp}] session(merge): consolidated from ${basename(secondary.filePath)}`;
-    const entriesToAdd = [mergeMarker, ...newEntries];
-
-    // Use appendEntry synchronously via direct file manipulation
-    const trimmedContent = primary.content.trimEnd();
-    const newContent = matter.stringify(
-      trimmedContent + "\n" + entriesToAdd.join("\n") + "\n",
-      { ...primary.data, last_updated: getTimestamp(), last_entry: getTimestamp() } as unknown as Record<string, unknown>
-    );
-    writeFileAtomic(primaryPath, newContent);
-  }
-
-  // Delete the duplicate — its content is now in the primary
-  try { unlinkSync(secondary.filePath); } catch { /* already gone */ }
-}
-
-/** Find session by claude_session_id — scans active AND archived sessions, consolidates splits */
-function findSessionByClaudeId(agentsDir: string, claudeSessionId: string, currentBranch?: string): { filePath: string; data: SessionFrontmatter; content: string } | null {
-  const sessionsDir = join(agentsDir, "sessions");
-  if (!existsSync(sessionsDir)) return null;
-
-  type SessionMatch = { filePath: string; data: SessionFrontmatter; content: string; isArchived: boolean };
-  const matches: SessionMatch[] = [];
-
-  // Scan active sessions
-  const activeFiles = readdirSync(sessionsDir).filter(f => f.endsWith(".md") && !f.startsWith("archive"));
-  for (const file of activeFiles) {
-    const filePath = join(sessionsDir, file);
-    const session = readSessionFile(filePath);
-    if (session && session.data.claude_session_id === claudeSessionId) {
-      matches.push({ filePath, data: session.data, content: session.content, isArchived: false });
-    }
-  }
-
-  // Scan archive
-  const archiveDir = join(sessionsDir, "archive");
-  if (existsSync(archiveDir)) {
-    const archiveFiles = readdirSync(archiveDir).filter(f => f.endsWith(".md"));
-    for (const file of archiveFiles) {
-      const filePath = join(archiveDir, file);
-      const session = readSessionFile(filePath);
-      if (session && session.data.claude_session_id === claudeSessionId) {
-        matches.push({ filePath, data: session.data, content: session.content, isArchived: true });
-      }
-    }
-  }
-
-  if (matches.length === 0) return null;
-
-  // Pick primary: prefer current branch match, then most recent
-  matches.sort((a, b) => {
-    // Current branch wins
-    if (currentBranch) {
-      const aMatch = a.data.branch === currentBranch ? 0 : 1;
-      const bMatch = b.data.branch === currentBranch ? 0 : 1;
-      if (aMatch !== bMatch) return aMatch - bMatch;
-    }
-    // Active over archived
-    if (a.isArchived !== b.isArchived) return a.isArchived ? 1 : -1;
-    // Most recent wins
-    const aTime = a.data.last_updated || a.data.last_entry || "0";
-    const bTime = b.data.last_updated || b.data.last_entry || "0";
-    return bTime.localeCompare(aTime);
-  });
-
-  const primary = matches[0];
-
-  // Restore from archive if needed
-  if (primary.isArchived) {
-    const restoredPath = join(sessionsDir, basename(primary.filePath));
-    try {
-      renameSync(primary.filePath, restoredPath);
-      primary.filePath = restoredPath;
-      primary.isArchived = false;
-    } catch {
-      // Use in place if move fails
-    }
-  }
-
-  // Consolidate duplicates into primary
-  for (const secondary of matches.slice(1)) {
-    consolidateSession(primary.filePath, secondary, agentsDir);
-  }
-
-  // Re-read primary after consolidation
-  if (matches.length > 1) {
-    const refreshed = readSessionFile(primary.filePath);
-    if (refreshed) {
-      return { filePath: primary.filePath, data: refreshed.data, content: refreshed.content };
-    }
-  }
-
-  return { filePath: primary.filePath, data: primary.data, content: primary.content };
-}
-
-/** Find active session for a branch by scanning files */
-function findActiveSessionForBranch(agentsDir: string, branch: string): { filePath: string; data: SessionFrontmatter; content: string } | null {
-  const sessionsDir = join(agentsDir, "sessions");
-  if (!existsSync(sessionsDir)) return null;
-  
-  const files = readdirSync(sessionsDir).filter(f => f.endsWith(".md") && !f.startsWith("archive"));
-  
-  // Collect all candidate sessions for this branch
-  const candidates: Array<{ filePath: string; data: SessionFrontmatter; content: string }> = [];
-  
-  for (const file of files) {
-    const filePath = join(sessionsDir, file);
-    const session = readSessionFile(filePath);
-    if (session && session.data.branch === branch && session.data.status !== "archived") {
-      candidates.push({ filePath, data: session.data, content: session.content });
-    }
-  }
-  
-  // If no session found by branch name, check for renamed branch via spec linkage
-  // This handles: git branch -m old-name new-name (explicit rename only)
-  // We verify the rename by checking git reflog for the explicit "Branch: renamed" pattern
-  if (candidates.length === 0) {
-    // Get current branch's creation info from reflog
-    let parentBranch: string | null = null;
-    try {
-      // Check reflog for explicit rename pattern from "git branch -m old new"
-      const reflogOutput = execSync(`git reflog show --format='%H %gs' ${branch} 2>/dev/null | head -10`, { encoding: "utf-8" });
-      
-      // ONLY match explicit rename: "Branch: renamed refs/heads/old-branch to refs/heads/new-branch"
-      // Do NOT match "branch: Created from ..." (that's normal branch creation)
-      // Do NOT match "checkout: moving from ..." (that's branch switching)
-      const renamedMatch = reflogOutput.match(/Branch: renamed refs\/heads\/([^\s]+) to/);
-      
-      if (renamedMatch) {
-        parentBranch = renamedMatch[1];
-      }
-    } catch {
-      // Git command failed, skip rename detection
-    }
-    
-    // If we found a parent branch, look for sessions that were on that branch
-    if (parentBranch) {
-      const specsDir = join(agentsDir, "specs");
-      if (existsSync(specsDir)) {
-        const specFiles = readdirSync(specsDir).filter(f => f.endsWith(".md"));
-        
-        for (const specFile of specFiles) {
-          try {
-            const specPath = join(specsDir, specFile);
-            const specContent = readFileSync(specPath, "utf-8");
-            const specParsed = matter(specContent);
-            const specFm = specParsed.data as SpecFrontmatterWithBranch;
-            
-            // Only consider specs linked to the PARENT branch (the one we came from)
-            if (specFm.branch === parentBranch && specFm.session) {
-              const sessionPath = join(agentsDir, "sessions", specFm.session);
-              if (existsSync(sessionPath)) {
-                const session = readSessionFile(sessionPath);
-                // Verify this session was indeed on the parent branch and is non-archived
-                if (session && session.data.branch === parentBranch && session.data.status !== "archived") {
-                  // RENAME CONFIRMED: Update both session and spec to new branch name
-                  session.data.branch = branch;
-                  const newSessionContent = matter.stringify(session.content, session.data as unknown as Record<string, unknown>);
-                  writeFileSync(sessionPath, newSessionContent, "utf-8");
-                  
-                  specFm.branch = branch;
-                  const newSpecContent = matter.stringify(specParsed.content, specFm as Record<string, unknown>);
-                  writeFileSync(specPath, newSpecContent, "utf-8");
-                  
-                  candidates.push({ filePath: sessionPath, data: session.data, content: session.content });
-                  break; // Found it
-                }
-              }
-            }
-          } catch {
-            // Continue to next spec
-            continue;
-          }
-        }
-      }
-    }
-  }
-  
-  // Branch switch detection: if no session matches the current branch,
-  // but exactly one active session exists, adopt it (common flow: start on main, then branch)
-  if (candidates.length === 0) {
-    const allSessions: Array<{ filePath: string; data: SessionFrontmatter; content: string }> = [];
-    for (const file of files) {
-      const filePath = join(sessionsDir, file);
-      const session = readSessionFile(filePath);
-      if (session && session.data.status === "active") {
-        allSessions.push({ filePath, data: session.data, content: session.content });
-      }
-    }
-
-    if (allSessions.length === 1) {
-      const session = allSessions[0];
-      const oldBranch = session.data.branch;
-      session.data.branch = branch;
-      const newContent = matter.stringify(session.content, session.data as unknown as Record<string, unknown>);
-      writeFileSync(session.filePath, newContent, "utf-8");
-      candidates.push(session);
-    }
-  }
-
-  if (candidates.length === 0) return null;
-
-  // Prioritize: active > stopped/blocked/done > others
-  // Sort by status priority (lower number = higher priority)
-  const statusPriority: Record<string, number> = {
-    active: 1,
-    stopped: 2,
-    blocked: 2,
-    done: 2,
-  };
-  
-  candidates.sort((a, b) => {
-    // First: sort by status priority
-    const priorityA = statusPriority[a.data.status] ?? 3;
-    const priorityB = statusPriority[b.data.status] ?? 3;
-    if (priorityA !== priorityB) {
-      return priorityA - priorityB;
-    }
-    
-    // Second: tie-break by recency (newer wins)
-    // Use last_updated from frontmatter, or fall back to last_entry, or 0
-    const timeA = a.data.last_updated || a.data.last_entry || "0";
-    const timeB = b.data.last_updated || b.data.last_entry || "0";
-    return timeB.localeCompare(timeA); // descending (newer first)
-  });
-  
-  return candidates[0];
-}
+// extractJournalLines, consolidateSession, findSessionByClaudeId,
+// and findActiveSessionForBranch were moved to ../lib/session/ per SPEC-032
+// (TASK-116). They are imported from ../lib/session/index.js at the top of
+// this file.
+//
+// SPEC-032 routing migration — asymmetric coverage:
+//
+//   Migrated through resolveCurrentSession (3-tier chain, Tier 3 emits WARN):
+//     - loaf session log            (Tier 1/2/3 — TASK-117)
+//     - loaf session archive        (Tier 1/2/3 — TASK-118)
+//     - loaf session enrich         (default-branch path; Tier 1/2/3 — TASK-118)
+//     - loaf session end --wrap     (direct-CLI path only; Tier 1/3 — TASK-121)
+//
+//   Intentionally inline-chain (hook-safe, silent on no-match):
+//     - loaf session end (bare / --if-active / --from-hook — Stop event)
+//     - loaf session start                       (SessionStart event)
+//     - loaf session state update                (Stop event)
+//     - loaf session context for-resumption      (PostStart event)
+//     - loaf session context for-compact         (PreCompact event)
+//   These paths:
+//     1. always have parsed `hookInput` already in scope (so the same JSON
+//        feeds both the session_id lookup and any tool-payload extraction),
+//     2. exit silently (hook-safe) when no session is found, NOT with a WARN.
+//   Routing those through `resolveCurrentSession` would either re-read stdin
+//   (already consumed) or emit spurious WARNs on every hook firing. They're
+//   correct as-is; the asymmetry is intentional.
+//
+//   Defensively bare-branch (concurrency re-check inside create lock):
+//     - getOrCreateSession internal helper (see the inline comment there).
+//
+//   See TASK-118 / TASK-121 notes for the migration history.
 
 /** Atomically get existing session or create new one (prevents concurrent creation) */
 async function getOrCreateSession(
@@ -880,6 +646,14 @@ async function getOrCreateSession(
 
   await acquireLock(lockPath, 100, 50);
   try {
+    // SPEC-032: bare-branch lookup is intentional here. This is a
+    // concurrency-safe re-check inside the create lock, NOT user-facing
+    // routing. The caller (`loaf session start`) has already run the
+    // hook-aware `findSessionByClaudeId(...) || findActiveSessionForBranch(...)`
+    // chain and decided to create. We re-check under lock to handle the
+    // race where another process created a session between the chain check
+    // and the lock acquisition. Routing the chain through `resolveCurrentSession`
+    // here would emit a spurious WARN every time a new session is created.
     const existing = findActiveSessionForBranch(agentsDir, branch);
     if (existing) {
       return { ...existing, isNew: false };
@@ -891,44 +665,6 @@ async function getOrCreateSession(
     return { filePath, data: session.data, content: session.content, isNew: true };
   } finally {
     releaseLock(lockPath);
-  }
-}
-
-/** Read session file or return null */
-function readSessionFile(filePath: string): { data: SessionFrontmatter; content: string } | null {
-  if (!existsSync(filePath)) return null;
-
-  try {
-    const raw = readFileSync(filePath, "utf-8");
-    const parsed = matter(raw);
-    const rawData = parsed.data as unknown as Record<string, unknown>;
-    
-    // Handle legacy nested frontmatter migration (SPEC-020 format change)
-    // Old format: { session: { branch, status, created, ... }, otherFields... }
-    // New format: { branch, status, created, ... }
-    // Migration strategy: nested fields take precedence over top-level fields on collision
-    if (rawData.session && typeof rawData.session === "object") {
-      const nested = rawData.session as Record<string, unknown>;
-      // Start with all existing top-level fields
-      const migratedData: Record<string, unknown> = { ...rawData };
-      // Remove the nested session object itself
-      delete migratedData.session;
-      // Add/replace fields from nested session data
-      for (const [key, value] of Object.entries(nested)) {
-        migratedData[key] = value;
-      }
-      return {
-        data: migratedData as unknown as SessionFrontmatter,
-        content: parsed.content,
-      };
-    }
-    
-    return { 
-      data: rawData as unknown as SessionFrontmatter, 
-      content: parsed.content 
-    };
-  } catch {
-    return null;
   }
 }
 
@@ -955,19 +691,6 @@ function parseEntry(entry: string): JournalEntry | null {
     scope,
     description,
   };
-}
-
-/** Get current timestamp in ISO format */
-function getTimestamp(): string {
-  return new Date().toISOString();
-}
-
-/** Get date-time string for journal entries (YYYY-MM-DD HH:MM) */
-function getDateTimeString(): string {
-  const now = new Date();
-  const date = now.toISOString().split("T")[0];
-  const time = now.toTimeString().split(":")[0] + ":" + now.toTimeString().split(":")[1];
-  return `${date} ${time}`;
 }
 
 /** Create new session file with compact inline journal format */
@@ -1608,7 +1331,9 @@ export function registerSessionCommand(program: Command): void {
     .description("End session with progress summary")
     .option("--if-active", "Exit successfully when no active session exists")
     .option("--wrap", "Close session as done (used after /wrap writes summary)")
-    .action(async (options: { ifActive?: boolean; wrap?: boolean }) => {
+    .option("--from-hook", "Invoked from a Stop hook — keep inline chain, silent on no-match")
+    .option("--session-id <id>", "Route to session with this claude_session_id (Tier 1 override)")
+    .action(async (options: { ifActive?: boolean; wrap?: boolean; fromHook?: boolean; sessionId?: string }) => {
       // Parse hook JSON from stdin (when invoked as a hook by Claude Code)
       const hookInput = await parseHookInput();
 
@@ -1629,10 +1354,33 @@ export function registerSessionCommand(program: Command): void {
         process.exit(1);
       }
 
-      // Session ID-first lookup, then branch fallback
-      const existingSession = (hookInput.session_id
-        ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch)
-        : null) || findActiveSessionForBranch(agentsDir, branch);
+      // SPEC-032 routing — `loaf session end` has two sub-paths:
+      //
+      //   1. `--wrap` direct-CLI (from /wrap skill, no --from-hook):
+      //      → use the 3-tier chain helper. Tier 1 honours --session-id;
+      //        Tier 3 emits the stderr WARN that surfaces silent misroutes.
+      //        Tier 2 (parseStdin) is intentionally false: the wrap skill
+      //        invokes from a TTY and parseHookInput() above has already
+      //        consumed any incidental stdin payload.
+      //
+      //   2. Hook-driven path (Stop event, --if-active, --from-hook, or any
+      //      bare `loaf session end` invocation): keep the inline
+      //      findSessionByClaudeId(...) || findActiveSessionForBranch(...)
+      //      chain. Hook-safe: silent on no-match, no WARN.
+      //
+      // The dev.30 misroute (commit 81b1808a, recorded as #misrouted) was a
+      // post-wrap log against the wrong session — exactly the class of bug
+      // SPEC-032 closes. Routing the --wrap path through the chain helper
+      // makes that class of misroute impossible.
+      const useChainHelper = !!options.wrap && !options.fromHook;
+      const existingSession = useChainHelper
+        ? await resolveCurrentSession(agentsDir, branch, {
+            sessionIdFlag: options.sessionId,
+            parseStdin: false,
+          })
+        : (hookInput.session_id
+            ? findSessionByClaudeId(agentsDir, hookInput.session_id, branch)
+            : null) || findActiveSessionForBranch(agentsDir, branch);
       if (!existingSession) {
         if (options.ifActive) {
           process.exit(0);
@@ -1789,8 +1537,9 @@ export function registerSessionCommand(program: Command): void {
     .command("log [entry]")
     .description("Log entry to session journal")
     .option("--from-hook", "Parse entry from hook stdin")
+    .option("--session-id <id>", "Route to session with this claude_session_id (Tier 1 override)")
     .option("--detect-linear", "Detect Linear magic words in recent commits")
-    .action(async (entry: string, options: { fromHook?: boolean; detectLinear?: boolean }) => {
+    .action(async (entry: string, options: { fromHook?: boolean; sessionId?: string; detectLinear?: boolean }) => {
       const agentsDir = findAgentsDir();
       if (!agentsDir) {
         console.error(`  ${red("error:")} Could not find .agents/ directory`);
@@ -1802,12 +1551,66 @@ export function registerSessionCommand(program: Command): void {
         console.error(`  ${red("error:")} Not in a git repository`);
         process.exit(1);
       }
-      
+
       if (branch.startsWith("detached-")) {
         console.error(`  ${yellow("⚠")} Warning: In detached HEAD state (${branch})`);
       }
 
-      const existingSession = findActiveSessionForBranch(agentsDir, branch);
+      // Read stdin once when --from-hook is set, so the same payload feeds
+      // both session resolution (session_id) and entry-text extraction below.
+      // Auto-detection without --from-hook is rejected per SPEC-032 A5.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let hookData: any = null;
+      let hookStdinError: unknown = null;
+      if (options.fromHook) {
+        try {
+          const stdin = await readStdin();
+          if (stdin && stdin.trim()) {
+            hookData = JSON.parse(stdin);
+          }
+        } catch (err) {
+          hookStdinError = err;
+        }
+      }
+
+      // No-op exit when --from-hook fires with empty stdin AND no explicit
+      // override is set: the hook ran with no payload, there's nothing to
+      // route, and resolving via Tier 3 here would emit a misleading WARN
+      // about a session we never intend to write to. Exit silently before
+      // the chain runs.
+      //
+      // BUT: an explicit `--session-id <id>` is the Tier 1 override the spec
+      // built to protect parallel sessions. If it's set, fall through to the
+      // chain regardless of empty stdin — Tier 1 will resolve cleanly without
+      // a WARN, and the entry-text path below handles the (rare) "flag set,
+      // entry omitted, hook stdin empty" case explicitly. Codex review of
+      // commit 763bb393 caught the unconditional bypass.
+      if (
+        options.fromHook &&
+        !hookData &&
+        !hookStdinError &&
+        !options.sessionId
+      ) {
+        process.exit(0);
+      }
+
+      // SPEC-032 3-tier chain. Pass `options.sessionId` as Tier 1 and the
+      // already-parsed stdin id (if any) as the Tier 2 hint — keeping the
+      // chain inside the helper preserves the spec's documented order:
+      // a present-but-bogus `--session-id` falls through to a valid stdin
+      // id BEFORE collapsing to branch routing. Earlier code coalesced both
+      // into a single `sessionIdFlag`, which silently demoted the chain to
+      // 2-tier (TASK-117 review finding).
+      const stdinSessionId =
+        hookData && typeof hookData.session_id === "string" && hookData.session_id.length > 0
+          ? (hookData.session_id as string)
+          : undefined;
+
+      const existingSession = await resolveCurrentSession(agentsDir, branch, {
+        sessionIdFlag: options.sessionId,
+        stdinSessionIdHint: stdinSessionId,
+        parseStdin: false,
+      });
       if (!existingSession) {
         if (options.fromHook) {
           process.exit(0);
@@ -1818,12 +1621,24 @@ export function registerSessionCommand(program: Command): void {
 
       let entryText = entry;
 
-      // Handle --from-hook: parse JSON from stdin
-      if (options.fromHook) {
-        try {
-          const stdin = await readStdin(); // Read from fd 0 (stdin)
-          const hookData = JSON.parse(stdin);
+      // Surface a stdin parse failure now that session resolution has
+      // completed. This was previously deferred until the entry-extraction
+      // try/catch below; pulling it forward keeps error reporting in one
+      // place and lets the extraction block precondition on `hookData`.
+      if (options.fromHook && hookStdinError) {
+        console.error(`  ${red("error:")} Failed to parse stdin JSON: ${hookStdinError}`);
+        process.exit(1);
+      }
 
+      // Handle --from-hook: derive entry text from the already-parsed payload
+      //
+      // Reachable hookData states here:
+      //   - hookData populated → extract entry text below
+      //   - hookData null + no error → only possible when --session-id is
+      //     also set (upstream guard exits otherwise). Skip extraction; the
+      //     `entry` positional argument carries through to validation.
+      if (options.fromHook && hookData) {
+        try {
           // Detect hook event type — TaskCompleted uses hook_event_name, not tool_name
           const hookEventName = hookData.hook_event_name;
           const toolName = hookData.tool_name || hookData.tool?.name;
@@ -1911,7 +1726,10 @@ export function registerSessionCommand(program: Command): void {
             }
           }
         } catch (err) {
-          console.error(`  ${red("error:")} Failed to parse stdin JSON: ${err}`);
+          // Safety net for unexpected failures during entry-text extraction
+          // (e.g., git subprocess failures). Stdin parsing errors are now
+          // surfaced upstream via hookStdinError.
+          console.error(`  ${red("error:")} Failed to derive entry from hook payload: ${err}`);
           process.exit(1);
         }
       }
@@ -1999,7 +1817,8 @@ export function registerSessionCommand(program: Command): void {
     .command("archive")
     .description("Archive completed session")
     .option("--branch <branch>", "Archive session for specific branch (default: current)")
-    .action(async (options: { branch?: string }) => {
+    .option("--session-id <id>", "Route to session with this claude_session_id (Tier 1 override)")
+    .action(async (options: { branch?: string; sessionId?: string }) => {
       const agentsDir = findAgentsDir();
       if (!agentsDir) {
         console.error(`  ${red("error:")} Could not find .agents/ directory`);
@@ -2012,9 +1831,16 @@ export function registerSessionCommand(program: Command): void {
         process.exit(1);
       }
 
-      const existingSession = findActiveSessionForBranch(agentsDir, branch);
+      // Route via SPEC-032 chain. `loaf session archive` is invoked from a TTY,
+      // not a hook — `parseStdin` stays false. Tier 3 emits a stderr WARN; pass
+      // `--session-id <id>` to silence it when targeting a specific session.
+      const existingSession = await resolveCurrentSession(agentsDir, branch, {
+        sessionIdFlag: options.sessionId,
+        parseStdin: false,
+      });
       if (!existingSession) {
         console.error(`  ${red("error:")} No active session found for branch ${branch}`);
+        console.error(`  ${gray("Pass --session-id <id> to target a specific session, or run 'loaf session start' to create one.")}`);
         process.exit(1);
       }
 
@@ -2315,7 +2141,8 @@ export function registerSessionCommand(program: Command): void {
     .description("Enrich session journal from JSONL conversation log")
     .option("--dry-run", "Show what would be added without writing")
     .option("--model <model>", "Override model for the librarian call")
-    .action(async (file: string | undefined, options: { dryRun?: boolean; model?: string }) => {
+    .option("--session-id <id>", "Route to session with this claude_session_id (Tier 1 override)")
+    .action(async (file: string | undefined, options: { dryRun?: boolean; model?: string; sessionId?: string }) => {
       const agentsDir = findAgentsDir();
       if (!agentsDir) {
         console.error(`  ${red("error:")} Could not find .agents/ directory`);
@@ -2345,15 +2172,22 @@ export function registerSessionCommand(program: Command): void {
         }
         sessionData = parsed.data;
       } else {
-        // Find active session for current branch
+        // Find active session for current branch via SPEC-032 chain.
+        // `loaf session enrich` is invoked from a TTY, not a hook —
+        // `parseStdin` stays false. Tier 3 emits stderr WARN; pass
+        // `--session-id <id>` to silence and target a specific session.
         const branch = getCurrentBranch();
         if (branch === "unknown") {
           console.error(`  ${red("error:")} Not in a git repository`);
           process.exit(1);
         }
-        const existing = findActiveSessionForBranch(agentsDir, branch);
+        const existing = await resolveCurrentSession(agentsDir, branch, {
+          sessionIdFlag: options.sessionId,
+          parseStdin: false,
+        });
         if (!existing) {
           console.error(`  ${red("error:")} No active session found for branch ${branch}`);
+          console.error(`  ${gray("Pass --session-id <id> to target a specific session, or pass an explicit [file] argument.")}`);
           process.exit(1);
         }
         sessionPath = existing.filePath;

@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Loaf - An Opinionated Agentic Framework",
-    "version": "2.0.0-dev.30"
+    "version": "2.0.0-dev.31"
   },
   "plugins": [
     {
       "name": "loaf",
       "description": "Loaf - An Opinionated Agentic Framework",
       "source": "./plugins/loaf",
-      "version": "2.0.0-dev.30",
+      "version": "2.0.0-dev.31",
       "license": "MIT",
       "repository": "https://github.com/levifig/loaf"
     }

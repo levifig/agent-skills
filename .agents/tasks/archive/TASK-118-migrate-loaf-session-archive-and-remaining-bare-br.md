@@ -2,12 +2,13 @@
 id: TASK-118
 title: Migrate loaf session archive and remaining bare-branch call sites
 spec: SPEC-032
-status: todo
+status: done
 priority: P1
 created: '2026-04-27T22:45:03.139Z'
-updated: '2026-04-27T22:45:03.139Z'
+updated: '2026-04-28T09:27:17.647Z'
 depends_on:
   - TASK-116
+completed_at: '2026-04-28T09:27:17.646Z'
 ---
 
 # TASK-118: Migrate loaf session archive and remaining bare-branch call sites

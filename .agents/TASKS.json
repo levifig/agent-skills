@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 121,
+  "next_id": 128,
   "tasks": {
     "TASK-103": {
       "title": "Add missing journal entry types for all artifact types",
@@ -146,76 +146,133 @@
       "completed_at": "2026-04-27T22:25:24.546Z",
       "file": "TASK-115-shape-spec-032-session-routing-by-claude-session-i.md"
     },
-    "TASK-116": {
-      "title": "Add parseHookSessionId and resolveCurrentSession helpers",
-      "slug": "add-parsehooksessionid-and-resolvecurrentsession-h",
-      "spec": "SPEC-032",
-      "status": "todo",
+    "TASK-120": {
+      "title": "Git ceremony: ship bootstrap, housekeeping, shape+breakdown, cut feat/session-routing",
+      "slug": "git-ceremony-ship-bootstrap-housekeeping-shape-bre",
+      "spec": null,
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "files": [],
       "verify": null,
       "done": null,
       "session": null,
-      "created": "2026-04-27T22:44:55.496Z",
-      "updated": "2026-04-27T22:44:55.496Z",
-      "completed_at": null,
-      "file": "TASK-116-add-parsehooksessionid-and-resolvecurrentsession-h.md"
+      "created": "2026-04-27T22:58:09.050Z",
+      "updated": "2026-04-27T23:01:25.054Z",
+      "completed_at": "2026-04-27T23:01:25.054Z",
+      "file": "TASK-120-git-ceremony-ship-bootstrap-housekeeping-shape-bre.md"
     },
-    "TASK-117": {
-      "title": "Migrate loaf session log to resolveCurrentSession + --session-id flag + stderr WARN",
-      "slug": "migrate-loaf-session-log-to-resolvecurrentsession-",
-      "spec": "SPEC-032",
-      "status": "todo",
+    "TASK-121": {
+      "title": "PR #37 fix: migrate loaf session end --wrap to resolveCurrentSession + --session-id flag",
+      "slug": "pr-37-fix-migrate-loaf-session-end-wrap-to-resolve",
+      "spec": null,
+      "status": "review",
       "priority": "P1",
-      "depends_on": [
-        "TASK-116"
-      ],
+      "depends_on": [],
       "files": [],
       "verify": null,
       "done": null,
       "session": null,
-      "created": "2026-04-27T22:45:01.572Z",
-      "updated": "2026-04-27T22:45:01.572Z",
+      "created": "2026-04-28T13:01:52.619Z",
+      "updated": "2026-04-28T13:14:28.777Z",
       "completed_at": null,
-      "file": "TASK-117-migrate-loaf-session-log-to-resolvecurrentsession-.md"
+      "file": "TASK-121-pr-37-fix-migrate-loaf-session-end-wrap-to-resolve.md"
     },
-    "TASK-118": {
-      "title": "Migrate loaf session archive and remaining bare-branch call sites",
-      "slug": "migrate-loaf-session-archive-and-remaining-bare-br",
-      "spec": "SPEC-032",
-      "status": "todo",
-      "priority": "P1",
-      "depends_on": [
-        "TASK-116"
-      ],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-04-27T22:45:03.139Z",
-      "updated": "2026-04-27T22:45:03.139Z",
-      "completed_at": null,
-      "file": "TASK-118-migrate-loaf-session-archive-and-remaining-bare-br.md"
-    },
-    "TASK-119": {
-      "title": "E2E smoke test: dev.30 misrouting repro + stderr WARN assertion",
-      "slug": "e2e-smoke-test-dev-30-misrouting-repro-stderr-warn",
-      "spec": "SPEC-032",
-      "status": "todo",
+    "TASK-122": {
+      "title": "PR #36 fix: add archived field to bootstrap SKILL.md frontmatter example",
+      "slug": "pr-36-fix-add-archived-field-to-bootstrap-skill-md",
+      "spec": null,
+      "status": "review",
       "priority": "P2",
-      "depends_on": [
-        "TASK-117",
-        "TASK-118"
-      ],
+      "depends_on": [],
       "files": [],
       "verify": null,
       "done": null,
       "session": null,
-      "created": "2026-04-27T22:45:08.084Z",
-      "updated": "2026-04-27T22:45:08.084Z",
+      "created": "2026-04-28T13:01:52.680Z",
+      "updated": "2026-04-28T13:07:04.013Z",
       "completed_at": null,
-      "file": "TASK-119-e2e-smoke-test-dev-30-misrouting-repro-stderr-warn.md"
+      "file": "TASK-122-pr-36-fix-add-archived-field-to-bootstrap-skill-md.md"
+    },
+    "TASK-123": {
+      "title": "PR #36 cleanup: revert lockfile + gitignore (split into chore PR)",
+      "slug": "pr-36-cleanup-revert-lockfile-gitignore-split-into",
+      "spec": null,
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T13:22:33.570Z",
+      "updated": "2026-04-28T13:25:48.276Z",
+      "completed_at": null,
+      "file": "TASK-123-pr-36-cleanup-revert-lockfile-gitignore-split-into.md"
+    },
+    "TASK-124": {
+      "title": "Chore: catch lockfile up to package.json (dev.30, drop tsx) + add Stakpak gitignore",
+      "slug": "chore-catch-lockfile-up-to-package-json-dev-30-dro",
+      "spec": null,
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T13:22:33.642Z",
+      "updated": "2026-04-28T13:25:08.241Z",
+      "completed_at": null,
+      "file": "TASK-124-chore-catch-lockfile-up-to-package-json-dev-30-dro.md"
+    },
+    "TASK-125": {
+      "title": "Fix: build:cli-ref writes outside worktree (path resolution bug)",
+      "slug": "fix-build-cli-ref-writes-outside-worktree-path-res",
+      "spec": null,
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T13:22:33.696Z",
+      "updated": "2026-04-28T13:30:03.576Z",
+      "completed_at": null,
+      "file": "TASK-125-fix-build-cli-ref-writes-outside-worktree-path-res.md"
+    },
+    "TASK-126": {
+      "title": "PR #36 fix: strip plugins/loaf/bin/loaf bundled artifact from 13ce968d",
+      "slug": "pr-36-fix-strip-plugins-loaf-bin-loaf-bundled-arti",
+      "spec": null,
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T13:36:45.555Z",
+      "updated": "2026-04-28T13:38:11.982Z",
+      "completed_at": null,
+      "file": "TASK-126-pr-36-fix-strip-plugins-loaf-bin-loaf-bundled-arti.md"
+    },
+    "TASK-127": {
+      "title": "PR #39 follow-up: bundle eval-skill-routing.mjs path fix",
+      "slug": "pr-39-follow-up-bundle-eval-skill-routing-mjs-path",
+      "spec": null,
+      "status": "review",
+      "priority": "P2",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T13:36:45.609Z",
+      "updated": "2026-04-28T13:39:16.842Z",
+      "completed_at": null,
+      "file": "TASK-127-pr-39-follow-up-bundle-eval-skill-routing-mjs-path.md"
     },
     "TASK-001": {
       "title": "Create verification reference",
@@ -2113,21 +2170,76 @@
       "completed_at": "2026-04-22T00:35:02.488Z",
       "file": "archive/TASK-108-isolate-check-test-ts-fixtures-to-eliminate-cross-.md"
     },
-    "TASK-120": {
-      "title": "Git ceremony: ship bootstrap, housekeeping, shape+breakdown, cut feat/session-routing",
-      "slug": "git-ceremony-ship-bootstrap-housekeeping-shape-bre",
-      "spec": null,
-      "status": "in_progress",
+    "TASK-116": {
+      "title": "Add parseHookSessionId and resolveCurrentSession helpers",
+      "slug": "add-parsehooksessionid-and-resolvecurrentsession-h",
+      "spec": "SPEC-032",
+      "status": "done",
       "priority": "P1",
       "depends_on": [],
       "files": [],
       "verify": null,
       "done": null,
+      "session": "20260427-224828-session.md",
+      "created": "2026-04-27T22:44:55.496Z",
+      "updated": "2026-04-28T09:27:17.493Z",
+      "completed_at": "2026-04-28T09:27:17.492Z",
+      "file": "archive/TASK-116-add-parsehooksessionid-and-resolvecurrentsession-h.md"
+    },
+    "TASK-117": {
+      "title": "Migrate loaf session log to resolveCurrentSession + --session-id flag + stderr WARN",
+      "slug": "migrate-loaf-session-log-to-resolvecurrentsession-",
+      "spec": "SPEC-032",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-116"
+      ],
+      "files": [],
+      "verify": null,
+      "done": null,
       "session": null,
-      "created": "2026-04-27T22:58:09.050Z",
-      "updated": "2026-04-27T22:58:13.645Z",
-      "completed_at": null,
-      "file": "TASK-120-git-ceremony-ship-bootstrap-housekeeping-shape-bre.md"
+      "created": "2026-04-27T22:45:01.572Z",
+      "updated": "2026-04-28T09:27:17.579Z",
+      "completed_at": "2026-04-28T09:27:17.578Z",
+      "file": "archive/TASK-117-migrate-loaf-session-log-to-resolvecurrentsession-.md"
+    },
+    "TASK-118": {
+      "title": "Migrate loaf session archive and remaining bare-branch call sites",
+      "slug": "migrate-loaf-session-archive-and-remaining-bare-br",
+      "spec": "SPEC-032",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-116"
+      ],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-27T22:45:03.139Z",
+      "updated": "2026-04-28T09:27:17.647Z",
+      "completed_at": "2026-04-28T09:27:17.646Z",
+      "file": "archive/TASK-118-migrate-loaf-session-archive-and-remaining-bare-br.md"
+    },
+    "TASK-119": {
+      "title": "E2E smoke test: dev.30 misrouting repro + stderr WARN assertion",
+      "slug": "e2e-smoke-test-dev-30-misrouting-repro-stderr-warn",
+      "spec": "SPEC-032",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "TASK-117",
+        "TASK-118"
+      ],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-27T22:45:08.084Z",
+      "updated": "2026-04-28T09:27:17.723Z",
+      "completed_at": "2026-04-28T09:27:17.722Z",
+      "file": "archive/TASK-119-e2e-smoke-test-dev-30-misrouting-repro-stderr-warn.md"
     }
   },
   "specs": {
@@ -2186,14 +2298,6 @@
       "source": "direct",
       "created": "2026-04-24T21:30:00.000Z",
       "file": "SPEC-031-release-flow-hardening.md"
-    },
-    "SPEC-032": {
-      "title": "Session Routing by claude_session_id",
-      "status": "implementing",
-      "requirement": null,
-      "source": "direct",
-      "created": "2026-04-27T22:55:00.000Z",
-      "file": "SPEC-032-session-routing-by-claude-session-id.md"
     },
     "SPEC-001": {
       "title": "Loaf Self-Sufficiency",
@@ -2386,6 +2490,14 @@
       "source": "20260409-140251-session-lifecycle-states.md",
       "created": "2026-04-09T15:30:00.000Z",
       "file": "archive/SPEC-030-keeper-agent-session-lifecycle.md"
+    },
+    "SPEC-032": {
+      "title": "Session Routing by claude_session_id",
+      "status": "complete",
+      "requirement": null,
+      "source": "direct",
+      "created": "2026-04-27T22:55:00.000Z",
+      "file": "archive/SPEC-032-session-routing-by-claude-session-id.md"
     }
   }
 }

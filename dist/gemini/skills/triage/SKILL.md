@@ -7,7 +7,7 @@ description: >-
   "what's in my backlog?" Produces promoted ideas, archived discards, and
   resolve(spark) journal entries. Not for capturing new ideas (use idea) or
   shaping (use shape).
-version: 2.0.0-dev.30
+version: 2.0.0-dev.31
 ---
 
 # Triage
