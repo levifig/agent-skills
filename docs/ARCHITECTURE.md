@@ -66,6 +66,19 @@ All TypeScript, bundled into a single file by tsup. No dynamic imports. The `loa
 | gemini | dist/gemini/ | No | Yes | No | — |
 | amp | dist/amp/ | No | Yes | No | loaf.js |
 
+### Amp Plugin API Constraints
+
+Amp's plugin API is intentionally minimal. Plugin handlers are dispatched via `handleRequest()` for exactly four event names:
+
+- `tool.call` — before a tool is invoked
+- `tool.result` — after a tool returns
+- `agent.start` — when an agent begins a turn
+- `agent.end` — when an agent finishes a turn
+
+There is no session-lifecycle dispatch. Amp's binary internally emits `emitEvent("session.start", ...)` for telemetry purposes, but this is not exposed to plugins. Features that require session-start or session-end hooks (SOUL.md self-healing, PreCompact flushes, etc.) are not viable on Amp without upstream support. Loaf's Amp target is scoped to tool events only; session lifecycle features that other targets ship are intentionally absent here.
+
+This was discovered during SPEC-033 review (PR #40). An earlier wiring attempted to map `sessionEnd` to `agent.end` (turn-end) — semantically wrong and now reverted.
+
 ### Prompt Overlay Consolidation (ADR-010)
 
 The managed fenced section is written once to a canonical file (`.agents/AGENTS.md`). Per-harness paths are symlinks to it.
@@ -216,6 +229,18 @@ Skills self-log as their first action. Git and task events are captured automati
 | Finished and archived a spec | New conversation |
 | Context full mid-task | Auto-compact |
 | Quick unrelated question | New conversation |
+
+### Forward-Only In-Flight Pivots
+
+When a PR is reviewed, approved-with-findings, and the findings reveal that a feature shouldn't ship as designed, the project favors **forward removal commits over history rewriting**.
+
+Three reasons:
+
+1. The squash merge nets the diff regardless — main only sees the final change.
+2. Force-push invalidates review thread context (Codex citations, reviewer line refs) and is generally blocked on shared branches.
+3. The PR's commit history becomes honest archeology — "we shipped, then reviewed, then pivoted" is more useful than a tidy linear story that hides the deliberation.
+
+SPEC-033 (PR #40, v2.0.0-dev.32) is the canonical example: 13 feature commits + 2 forward-removal commits + 1 cleanup. The squash on main is clean; the PR thread shows the pivot. Future PRs that need to pivot mid-flight should follow the same pattern.
 
 ## Hook Architecture
 
