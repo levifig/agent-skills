@@ -16634,12 +16634,6 @@ function buildUnifiedPlugin(config, rootDir, srcDir, pluginsDir, targetsConfig) 
   });
   copyAllHooks(config, srcDir, pluginDir);
   writeFileSync5(join7(pluginDir, ".lsp.json"), JSON.stringify(LSP_SERVERS, null, 2));
-  const pluginTemplatesDir = join7(pluginDir, "templates");
-  const soulTemplateSrc = join7(srcDir, "templates", "soul.md");
-  if (existsSync6(soulTemplateSrc)) {
-    mkdirSync5(pluginTemplatesDir, { recursive: true });
-    cpSync3(soulTemplateSrc, join7(pluginTemplatesDir, "soul.md"));
-  }
   const setupSrc = join7(srcDir, "SETUP.md");
   if (existsSync6(setupSrc)) {
     cpSync3(setupSrc, join7(pluginDir, "SETUP.md"));
@@ -17378,12 +17372,6 @@ async function build2({
     OpenCodePlatform,
     version
   );
-  const soulTemplateSrc = join10(srcDir, "templates", "soul.md");
-  if (existsSync8(soulTemplateSrc)) {
-    const templatesDir = join10(distDir, "templates");
-    mkdirSync8(templatesDir, { recursive: true });
-    cpSync4(soulTemplateSrc, join10(templatesDir, "soul.md"));
-  }
   const hooksSrc = join10(srcDir, "hooks");
   if (existsSync8(hooksSrc)) {
     const hooksDest = join10(distDir, "plugins", "hooks");
@@ -17526,12 +17514,6 @@ async function build3({
   });
   copyHooks(srcDir, hooksDir);
   generateHooksJson(config, distDir);
-  const soulTemplateSrc = join11(srcDir, "templates", "soul.md");
-  if (existsSync9(soulTemplateSrc)) {
-    const templatesDir = join11(distDir, "templates");
-    mkdirSync9(templatesDir, { recursive: true });
-    cpSync5(soulTemplateSrc, join11(templatesDir, "soul.md"));
-  }
 }
 function copyHooks(srcDir, destDir) {
   const hooksSrc = join11(srcDir, "hooks");
@@ -17792,6 +17774,7 @@ var TARGET_NAME5 = "amp";
 async function build6({
   config,
   rootDir,
+  srcDir,
   distDir,
   targetsConfig
 }) {
@@ -18388,7 +18371,7 @@ import { join as join19, dirname as dirname5, resolve } from "path";
 import { readFileSync as readFileSync11 } from "fs";
 import { dirname as dirname4, join as join18 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
-var LOAF_VERSION = "2.0.0-dev.31" ? "2.0.0-dev.31" : readPackageVersion();
+var LOAF_VERSION = "2.0.0-dev.32" ? "2.0.0-dev.32" : readPackageVersion();
 
 // cli/lib/install/fenced-section.ts
 var FENCED_START = "<!-- loaf:managed:start";
@@ -18538,8 +18521,11 @@ import { join as join22 } from "path";
 // cli/lib/config/agents-config.ts
 import { existsSync as existsSync14, mkdirSync as mkdirSync13, readFileSync as readFileSync13, writeFileSync as writeFileSync12 } from "fs";
 import { join as join20 } from "path";
+function loafConfigPath(projectRoot) {
+  return join20(projectRoot, ".agents", "loaf.json");
+}
 function readLoafConfig(projectRoot) {
-  const p = join20(projectRoot, ".agents", "loaf.json");
+  const p = loafConfigPath(projectRoot);
   if (!existsSync14(p)) return {};
   try {
     const raw = readFileSync13(p, "utf-8");
@@ -18548,9 +18534,19 @@ function readLoafConfig(projectRoot) {
     return {};
   }
 }
-function mergeLoafConfigIntegrations(projectRoot, updates) {
+function writeLoafConfigRaw(projectRoot, next) {
   const agentsDir = join20(projectRoot, ".agents");
-  const p = join20(agentsDir, "loaf.json");
+  if (!existsSync14(agentsDir)) {
+    mkdirSync13(agentsDir, { recursive: true });
+  }
+  writeFileSync12(
+    loafConfigPath(projectRoot),
+    `${JSON.stringify(next, null, 2)}
+`,
+    "utf-8"
+  );
+}
+function mergeLoafConfigIntegrations(projectRoot, updates) {
   const existing = readLoafConfig(projectRoot);
   const integrations = {
     ...existing.integrations
@@ -18565,11 +18561,7 @@ function mergeLoafConfigIntegrations(projectRoot, updates) {
     ...existing,
     integrations
   };
-  if (!existsSync14(agentsDir)) {
-    mkdirSync13(agentsDir, { recursive: true });
-  }
-  writeFileSync12(p, `${JSON.stringify(next, null, 2)}
-`, "utf-8");
+  writeLoafConfigRaw(projectRoot, next);
 }
 
 // cli/lib/detect/mcp.ts
@@ -25865,11 +25857,9 @@ import {
   unlinkSync as unlinkSync4,
   openSync,
   closeSync,
-  statSync as statSync3,
-  copyFileSync as copyFileSync3
+  statSync as statSync3
 } from "fs";
 import { join as join45, dirname as dirname16, basename as basename8 } from "path";
-import { fileURLToPath as fileURLToPath8 } from "url";
 
 // cli/lib/journal/extractor.ts
 import { readFileSync as readFileSync33, writeFileSync as writeFileSync23, existsSync as existsSync37, mkdirSync as mkdirSync24, readdirSync as readdirSync14 } from "fs";
@@ -26522,56 +26512,6 @@ function markHousekeepingDone(agentsDir) {
 function isHousekeepingPending(agentsDir) {
   const state = readLoafState(agentsDir);
   return !!state.housekeeping_pending;
-}
-function getProjectRoot(agentsDir) {
-  return dirname16(agentsDir);
-}
-function getInstalledTemplateCandidates() {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-  const configHome = process.env.XDG_CONFIG_HOME || join45(homeDir, ".config");
-  return [
-    join45(configHome, "opencode", "templates", "soul.md"),
-    join45(homeDir, ".cursor", "templates", "soul.md"),
-    join45(process.env.CODEX_HOME || join45(homeDir, ".codex"), "templates", "soul.md"),
-    join45(homeDir, ".amp", "templates", "soul.md"),
-    process.env.CLAUDE_PLUGIN_ROOT ? join45(process.env.CLAUDE_PLUGIN_ROOT, "templates", "soul.md") : ""
-  ].filter(Boolean);
-}
-function resolveSoulTemplate(agentsDir) {
-  const projectRoot = getProjectRoot(agentsDir);
-  const moduleDir = dirname16(fileURLToPath8(import.meta.url));
-  for (const candidate of [
-    join45(agentsDir, "templates", "soul.md"),
-    join45(projectRoot, "templates", "soul.md"),
-    join45(projectRoot, "content", "templates", "soul.md"),
-    join45(moduleDir, "..", "templates", "soul.md"),
-    join45(moduleDir, "..", "..", "templates", "soul.md"),
-    join45(moduleDir, "..", "content", "templates", "soul.md"),
-    join45(moduleDir, "..", "..", "content", "templates", "soul.md"),
-    join45(projectRoot, "SOUL.md"),
-    ...getInstalledTemplateCandidates()
-  ]) {
-    if (existsSync40(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-function validateSoulMd(agentsDir) {
-  const soulPath = join45(agentsDir, "SOUL.md");
-  if (existsSync40(soulPath)) {
-    return { exists: true, restored: false };
-  }
-  const templatePath = resolveSoulTemplate(agentsDir);
-  if (!templatePath) {
-    return { exists: false, restored: false };
-  }
-  try {
-    copyFileSync3(templatePath, soulPath);
-    return { exists: true, restored: true };
-  } catch {
-    return { exists: false, restored: false };
-  }
 }
 function countStaleKnowledge() {
   const gitRoot = findGitRoot();
@@ -27288,12 +27228,6 @@ function registerSessionCommand(program3) {
       writeFileSync26(sessionFilePath, newContent, "utf-8");
     }
     console.log(`  ${green13("\u2713")} Session active: ${gray15(sessionFilePath.replace(agentsDir, ".agents"))}`);
-    const soulStatus = validateSoulMd(agentsDir);
-    if (soulStatus.restored) {
-      console.log(`  ${yellow15("\u26A0")} SOUL.md was missing \u2014 restored from template`);
-    } else if (!soulStatus.exists) {
-      console.log(`  ${yellow15("\u26A0")} SOUL.md not found \u2014 run 'loaf install' to set up project`);
-    }
     const staleKbCount = countStaleKnowledge();
     if (staleKbCount > 0) {
       console.log(`  ${yellow15("\u26A0")} ${staleKbCount} stale knowledge file(s) \u2014 run 'loaf kb review'`);

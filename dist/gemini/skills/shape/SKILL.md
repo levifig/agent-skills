@@ -6,7 +6,7 @@ description: >-
   idea has accumulated enough constraints to bound. Produces specs with
   acceptance criteria. Not for brainstorming (use brainstorm) or task breakdown
   (use breakdown).
-version: 2.0.0-dev.31
+version: 2.0.0-dev.32
 ---
 
 # Shape

@@ -1,5 +1,9 @@
 /**
  * Read/write `.agents/loaf.json` for project configuration and integration toggles.
+ *
+ * This is the single typed surface for `loaf.json`. Format conventions
+ * (2-space indent, trailing newline, key preservation) live here so every
+ * writer agrees.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -15,8 +19,13 @@ export interface LoafConfig {
   [key: string]: unknown;
 }
 
+/** Absolute path to `.agents/loaf.json` for a project root. */
+export function loafConfigPath(projectRoot: string): string {
+  return join(projectRoot, ".agents", "loaf.json");
+}
+
 export function readLoafConfig(projectRoot: string): LoafConfig {
-  const p = join(projectRoot, ".agents", "loaf.json");
+  const p = loafConfigPath(projectRoot);
   if (!existsSync(p)) return {};
   try {
     const raw = readFileSync(p, "utf-8");
@@ -26,12 +35,30 @@ export function readLoafConfig(projectRoot: string): LoafConfig {
   }
 }
 
+/**
+ * Write `loaf.json`, ensuring the `.agents/` directory exists. Format:
+ * 2-space indent + trailing newline. Single source of truth for the file
+ * format — every writer in the codebase delegates here.
+ */
+function writeLoafConfigRaw(
+  projectRoot: string,
+  next: Record<string, unknown>,
+): void {
+  const agentsDir = join(projectRoot, ".agents");
+  if (!existsSync(agentsDir)) {
+    mkdirSync(agentsDir, { recursive: true });
+  }
+  writeFileSync(
+    loafConfigPath(projectRoot),
+    `${JSON.stringify(next, null, 2)}\n`,
+    "utf-8",
+  );
+}
+
 export function mergeLoafConfigIntegrations(
   projectRoot: string,
   updates: Partial<{ linear: { enabled: boolean }; serena: { enabled: boolean } }>,
 ): void {
-  const agentsDir = join(projectRoot, ".agents");
-  const p = join(agentsDir, "loaf.json");
   const existing = readLoafConfig(projectRoot);
   const integrations = {
     ...existing.integrations,
@@ -46,8 +73,5 @@ export function mergeLoafConfigIntegrations(
     ...existing,
     integrations,
   };
-  if (!existsSync(agentsDir)) {
-    mkdirSync(agentsDir, { recursive: true });
-  }
-  writeFileSync(p, `${JSON.stringify(next, null, 2)}\n`, "utf-8");
+  writeLoafConfigRaw(projectRoot, next as Record<string, unknown>);
 }

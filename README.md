@@ -102,7 +102,7 @@ Loaf uses four functional profiles defined by mechanically enforced tool boundar
 | **Smith** | Implementer | Full write | Forges code, tests, config, and docs. Speciality determined by skills. |
 | **Sentinel** | Reviewer | Read-only | Watches, guards, and verifies. Cannot modify what it reviews — by design. |
 | **Ranger** | Researcher | Read + web | Scouts far, gathers intelligence, reports structured findings. |
-| **Keeper** | Librarian | Read + Edit (.agents/) | Tends session lifecycle, state, and wrap summaries. Does not forge code or scout. |
+| **Librarian** | Librarian | Read + Edit (.agents/) | Tends session lifecycle, state, and wrap summaries. Does not forge code or scout. |
 
 The main session is the **Warden** — it coordinates and delegates but never implements directly. See [SOUL.md](.agents/SOUL.md) for the full fellowship identity.
 

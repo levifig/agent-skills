@@ -1,6 +1,6 @@
 name: reviewer
 description: >-
-  Sentinel (Reviewer) — watches, guards, and verifies. Read-only access.
+  Reviewer — audits and verifies existing work. Read-only access.
 tools:
   Read: true
   Glob: true

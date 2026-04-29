@@ -23,6 +23,7 @@ const TARGET_NAME = "amp";
 export async function build({
   config,
   rootDir,
+  srcDir,
   distDir,
   targetsConfig,
 }: BuildContext): Promise<void> {

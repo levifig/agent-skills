@@ -233,14 +233,6 @@ function buildUnifiedPlugin(
 
   writeFileSync(join(pluginDir, ".lsp.json"), JSON.stringify(LSP_SERVERS, null, 2));
 
-  // Copy plugin-root templates (e.g. soul.md for SessionStart hook self-healing)
-  const pluginTemplatesDir = join(pluginDir, "templates");
-  const soulTemplateSrc = join(srcDir, "templates", "soul.md");
-  if (existsSync(soulTemplateSrc)) {
-    mkdirSync(pluginTemplatesDir, { recursive: true });
-    cpSync(soulTemplateSrc, join(pluginTemplatesDir, "soul.md"));
-  }
-
   const setupSrc = join(srcDir, "SETUP.md");
   if (existsSync(setupSrc)) {
     cpSync(setupSrc, join(pluginDir, "SETUP.md"));

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 129,
+  "next_id": 136,
   "tasks": {
     "TASK-103": {
       "title": "Add missing journal entry types for all artifact types",
@@ -2256,6 +2256,132 @@
       "updated": "2026-04-28T09:27:17.723Z",
       "completed_at": "2026-04-28T09:27:17.722Z",
       "file": "archive/TASK-119-e2e-smoke-test-dev-30-misrouting-repro-stderr-warn.md"
+    },
+    "TASK-129": {
+      "title": "Build souls catalog (content/souls/{fellowship,none}/SOUL.md)",
+      "slug": "build-souls-catalog-content-souls-fellowship-none-",
+      "spec": "SPEC-033",
+      "status": "done",
+      "priority": "P0",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T22:39:12.399Z",
+      "updated": "2026-04-28T22:56:10.943Z",
+      "completed_at": "2026-04-28T22:56:10.942Z",
+      "file": "archive/TASK-129-build-souls-catalog-content-souls-fellowship-none-.md"
+    },
+    "TASK-130": {
+      "title": "Implement loaf soul command + cli/lib/souls library (list/current/show/use)",
+      "slug": "implement-loaf-soul-command-cli-lib-souls-library-",
+      "spec": "SPEC-033",
+      "status": "done",
+      "priority": "P0",
+      "depends_on": [
+        "TASK-129"
+      ],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T22:39:12.450Z",
+      "updated": "2026-04-28T23:05:49.836Z",
+      "completed_at": "2026-04-28T23:05:49.835Z",
+      "file": "archive/TASK-130-implement-loaf-soul-command-cli-lib-souls-library-.md"
+    },
+    "TASK-131": {
+      "title": "Add soul: field to loaf.json schema and integrate into loaf install",
+      "slug": "add-soul-field-to-loaf-json-schema-and-integrate-i",
+      "spec": "SPEC-033",
+      "status": "done",
+      "priority": "P0",
+      "depends_on": [
+        "TASK-129",
+        "TASK-130"
+      ],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T22:39:12.502Z",
+      "updated": "2026-04-28T23:25:36.318Z",
+      "completed_at": "2026-04-28T23:25:36.318Z",
+      "file": "archive/TASK-131-add-soul-field-to-loaf-json-schema-and-integrate-i.md"
+    },
+    "TASK-132": {
+      "title": "Neutralize agent profile prompts and add SOUL.md-read directive",
+      "slug": "neutralize-agent-profile-prompts-and-add-soul-md-r",
+      "spec": "SPEC-033",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-129"
+      ],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T22:39:12.553Z",
+      "updated": "2026-04-28T23:05:49.914Z",
+      "completed_at": "2026-04-28T23:05:49.914Z",
+      "file": "archive/TASK-132-neutralize-agent-profile-prompts-and-add-soul-md-r.md"
+    },
+    "TASK-133": {
+      "title": "Update SessionStart hook to restore .agents/SOUL.md from configured soul",
+      "slug": "update-sessionstart-hook-to-restore-agents-soul-md",
+      "spec": "SPEC-033",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-131",
+        "TASK-132"
+      ],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T22:39:12.619Z",
+      "updated": "2026-04-28T23:42:47.792Z",
+      "completed_at": "2026-04-28T23:42:47.792Z",
+      "file": "archive/TASK-133-update-sessionstart-hook-to-restore-agents-soul-md.md"
+    },
+    "TASK-134": {
+      "title": "Skill prose audit + ARCHITECTURE.md rewrite (strip fellowship vocab)",
+      "slug": "skill-prose-audit-architecture-md-rewrite-strip-fe",
+      "spec": "SPEC-033",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-132"
+      ],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T22:39:12.670Z",
+      "updated": "2026-04-28T23:25:36.397Z",
+      "completed_at": "2026-04-28T23:25:36.397Z",
+      "file": "archive/TASK-134-skill-prose-audit-architecture-md-rewrite-strip-fe.md"
+    },
+    "TASK-135": {
+      "title": "Add interactive soul selection prompt to loaf install",
+      "slug": "add-interactive-soul-selection-prompt-to-loaf-inst",
+      "spec": "SPEC-033",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "TASK-130"
+      ],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-28T22:39:12.730Z",
+      "updated": "2026-04-28T23:25:36.461Z",
+      "completed_at": "2026-04-29T00:25:00.000Z",
+      "file": "archive/TASK-135-add-interactive-soul-selection-prompt-to-loaf-inst.md"
     }
   },
   "specs": {
@@ -2514,6 +2640,14 @@
       "source": "direct",
       "created": "2026-04-27T22:55:00.000Z",
       "file": "archive/SPEC-032-session-routing-by-claude-session-id.md"
+    },
+    "SPEC-033": {
+      "title": "Configurable Agent Soul (Lore Decoupling)",
+      "status": "complete",
+      "requirement": null,
+      "source": "direct — conversation about decoupling Warden lore from agent profile mechanics",
+      "created": "2026-04-28T15:30:00.000Z",
+      "file": "archive/SPEC-033-configurable-agent-soul.md"
     }
   }
 }

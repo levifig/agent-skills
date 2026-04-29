@@ -334,7 +334,7 @@ export function installGemini(distDir: string, configDir: string, _upgrade: bool
 
 export function installAmp(distDir: string, configDir: string, _upgrade: boolean = false): void {
   const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-  
+
   // Skills → .agents/skills/ or ~/.config/agents/skills/
   const skillsDest = process.env.AMP_SKILLS_HOME || join(homeDir, ".config/agents/skills");
   const skillsSrc = join(distDir, "skills");

@@ -121,20 +121,20 @@ Parent-issue completion follows from the same contract: when the last sub-issue 
 
 Loaf uses **functional profiles** defined by tool access boundaries, not role-based agents defined by domain identity. Skills provide all domain knowledge; profiles provide the tool sandbox.
 
-**The Warden (Coordinator):**
+**The Orchestrator:**
 
-The main session is the Warden — a persistent coordinator identity defined in `SOUL.md`. The Warden orchestrates, advises, and delegates but does not forge, review, or scout directly. `SOUL.md` lives at the project root; a SessionStart hook validates its presence and restores it from the canonical template (`content/templates/soul.md`) if missing.
+The main session is the **orchestrator** — the coordinator that plans and delegates but does not directly implement, review, research, or curate session state.
 
 **4 Functional Profiles:**
 
-| Profile | Concept | Race | Tool Access | Purpose |
-|---------|---------|------|-------------|---------|
-| Smith | Implementer | Dwarf | Full write | Forges code, tests, config, docs. Speciality via skills at spawn time. |
-| Sentinel | Reviewer | Elf | Read-only | Watches, guards, verifies. Cannot modify what it reviews. |
-| Ranger | Researcher | Human | Read + Web | Scouts far, gathers intelligence, reports back. No write or execute. |
-| Keeper | Librarian | Ent | Read + Edit (.agents/) | Tends session lifecycle, state, wrap summaries. Does not forge code or scout. |
+| Profile | Tool Access | Purpose |
+|---------|-------------|---------|
+| implementer | Full write | Writes code, tests, config, docs. Speciality via skills at spawn time. |
+| reviewer | Read-only | Audits and verifies. Cannot modify what it reviews — independence is structural. |
+| researcher | Read + Web | Investigates options, compares approaches, returns structured reports. No write or execute. |
+| librarian | Read + Edit (.agents/) | Tends session lifecycle, state, wrap summaries. Does not implement or research. |
 
-Each profile is defined in `content/agents/{implementer,reviewer,researcher,librarian}.md` — a minimal behavioral contract and tool boundary, not domain knowledge. A spawned Smith becomes a backend engineer, DBA, or devops engineer depending entirely on the skills loaded at spawn time.
+Each profile is defined in `content/agents/{implementer,reviewer,researcher,librarian}.md` — a minimal behavioral contract and tool boundary, not domain knowledge. A spawned implementer becomes a backend engineer, DBA, or devops engineer depending entirely on the skills loaded at spawn time.
 
 **1 System Agent:**
 
@@ -144,7 +144,7 @@ Each profile is defined in `content/agents/{implementer,reviewer,researcher,libr
 
 **Council Composition:**
 
-Councils convene Smiths and Rangers for deliberation. Rangers advocate for users, informed by their scouting. Sentinels come after, not during — they verify the outcome. The Warden orchestrates but never votes.
+Councils convene implementers and researchers for deliberation; reviewers join only after, to verify the outcome. The orchestrator runs the council but never votes — the team decides, the orchestrator integrates.
 
 **Skills as Universal Knowledge Layer:**
 
@@ -251,7 +251,7 @@ Hard-won constraints validated during SPEC-030 implementation:
 
 **Instruction hooks** — context injection at tool invocation. Triggered by `matcher` patterns (tool name) and optionally filtered by `if` conditions (tool input). Inject relevant skill instructions or nudges.
 
-**Session lifecycle hooks** — tied to events (`SessionStart`, `SessionEnd`, `PreCompact`, `PostCompact`, `Stop`). Manage session journals, compaction, and SOUL.md validation.
+**Session lifecycle hooks** — tied to events (`SessionStart`, `SessionEnd`, `PreCompact`, `PostCompact`, `Stop`). Manage session journals and compaction.
 
 ### Hook JSON Data Model
 

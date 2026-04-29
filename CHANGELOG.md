@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+- _No unreleased changes since v2.0.0-dev.32._
+
+## [2.0.0-dev.32] - 2026-04-29
+
+Note: An earlier iteration of this release explored a configurable soul catalog with a `loaf soul` CLI; that work was reviewed in-flight and pivoted away from before merge — the lore decoupling stands, the soul layer does not. See the SPEC-033 archive for the full exploration.
+
+### Changed
+- Agent profile prompts (`implementer`, `reviewer`, `researcher`, `librarian`) describe themselves functionally — no Warden/Fellowship lore in profile bodies.
+- Council references and skill prose now use profile types (`implementer`/`reviewer`/`researcher`/`librarian`/`orchestrator`); fellowship vocabulary is stripped from agent-facing skill content.
+- `ARCHITECTURE.md` and `docs/knowledge/skill-architecture.md` reframed around the two-layer model: profiles for mechanics, skills for knowledge.
+
+### Removed
+- The deprecated `content/templates/soul.md` template.
 
 ## [2.0.0-dev.31] - 2026-04-28
 

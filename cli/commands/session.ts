@@ -18,10 +18,8 @@ import {
   openSync,
   closeSync,
   statSync,
-  copyFileSync,
 } from "fs";
 import { join, dirname, basename } from "path";
-import { fileURLToPath } from "url";
 import matter from "gray-matter";
 
 import { loadKnowledgeFiles } from "../lib/kb/loader.js";
@@ -204,66 +202,6 @@ function isHousekeepingPending(agentsDir: string): boolean {
 // ─────────────────────────────────────────────────────────────────────────────
 // Session Lifecycle Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-function getProjectRoot(agentsDir: string): string {
-  return dirname(agentsDir);
-}
-
-function getInstalledTemplateCandidates(): string[] {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-  const configHome = process.env.XDG_CONFIG_HOME || join(homeDir, ".config");
-
-  return [
-    join(configHome, "opencode", "templates", "soul.md"),
-    join(homeDir, ".cursor", "templates", "soul.md"),
-    join(process.env.CODEX_HOME || join(homeDir, ".codex"), "templates", "soul.md"),
-    join(homeDir, ".amp", "templates", "soul.md"),
-    process.env.CLAUDE_PLUGIN_ROOT ? join(process.env.CLAUDE_PLUGIN_ROOT, "templates", "soul.md") : "",
-  ].filter(Boolean);
-}
-
-function resolveSoulTemplate(agentsDir: string): string | null {
-  const projectRoot = getProjectRoot(agentsDir);
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
-
-  for (const candidate of [
-    join(agentsDir, "templates", "soul.md"),
-    join(projectRoot, "templates", "soul.md"),
-    join(projectRoot, "content", "templates", "soul.md"),
-    join(moduleDir, "..", "templates", "soul.md"),
-    join(moduleDir, "..", "..", "templates", "soul.md"),
-    join(moduleDir, "..", "content", "templates", "soul.md"),
-    join(moduleDir, "..", "..", "content", "templates", "soul.md"),
-    join(projectRoot, "SOUL.md"),
-    ...getInstalledTemplateCandidates(),
-  ]) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
-}
-
-function validateSoulMd(agentsDir: string): { exists: boolean; restored: boolean } {
-  const soulPath = join(agentsDir, "SOUL.md");
-
-  if (existsSync(soulPath)) {
-    return { exists: true, restored: false };
-  }
-
-  const templatePath = resolveSoulTemplate(agentsDir);
-  if (!templatePath) {
-    return { exists: false, restored: false };
-  }
-
-  try {
-    copyFileSync(templatePath, soulPath);
-    return { exists: true, restored: true };
-  } catch {
-    return { exists: false, restored: false };
-  }
-}
 
 function countStaleKnowledge(): number {
   const gitRoot = findGitRoot();
@@ -1269,13 +1207,6 @@ export function registerSessionCommand(program: Command): void {
       }
 
       console.log(`  ${green("✓")} Session active: ${gray(sessionFilePath.replace(agentsDir, ".agents"))}`);
-
-      const soulStatus = validateSoulMd(agentsDir);
-      if (soulStatus.restored) {
-        console.log(`  ${yellow("⚠")} SOUL.md was missing — restored from template`);
-      } else if (!soulStatus.exists) {
-        console.log(`  ${yellow("⚠")} SOUL.md not found — run 'loaf install' to set up project`);
-      }
 
       const staleKbCount = countStaleKnowledge();
       if (staleKbCount > 0) {

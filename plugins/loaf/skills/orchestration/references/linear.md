@@ -104,7 +104,7 @@ produces one parent **rollup issue** and N sub-issues under it.
 
 ```
 [SPEC-024] Agent framework alignment      ← parent, label: `spec`
-├── Split reviewer into sentinel/auditor  ← sub-issue, label: type/refactor
+├── Split reviewer profile into reviewer/auditor  ← sub-issue, label: type/refactor
 ├── Harden MCP fallback path               ← sub-issue, label: type/feature
 └── Migrate legacy task references         ← sub-issue, label: type/refactor
 ```

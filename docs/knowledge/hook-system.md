@@ -129,7 +129,7 @@ Registered under `session:` in hooks.yaml with an `event:` field:
 
 | Hook | Event | Dispatch | Purpose |
 |------|-------|----------|---------|
-| `session-start-loaf` | SessionStart | command (`loaf session start`) | Create/resume session, surface context, validate SOUL.md |
+| `session-start-loaf` | SessionStart | command (`loaf session start`) | Create/resume session, surface context |
 | `session-end-loaf` | SessionEnd | command (`loaf session end --if-active`) | End session with progress summary and KB follow-up |
 | `session-context-inject` | UserPromptSubmit | command (`loaf session context for-prompt`) | Injects session state and orchestration conventions on every user message |
 | `pre-compact` | PreCompact | command (`loaf session context for-compact`) | Log compact marker and inject journal flush instructions before compaction |

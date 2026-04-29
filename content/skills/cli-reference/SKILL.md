@@ -12,50 +12,7 @@ description: >-
 
 Quick reference for all Loaf CLI commands. Each command includes its purpose, common usage patterns, and when to use it.
 
-## Contents
-- Critical Rules
-- Verification
-- Quick Decision Guide
-- Global Commands
-- Build Commands
-- Task Management
-- Spec Management
-- Knowledge Base
-- Session Management
-- Project Setup
-- Utility Commands
-- Command Substitution Reference
-
-## Critical Rules
-
-- **Always run `loaf build`** after modifying skills, agents, or hooks before installing
-- **Always run `loaf install`** after building to propagate changes to target tools
-- **Use `loaf task refresh`** after manually editing task files to keep the TASKS.json index in sync
-- **Never skip `loaf check`** before committing -- it runs enforcement hooks (secrets scanning, linting)
-
-## Verification
-
-- `loaf build` exits cleanly with no errors for all targets
-- `loaf check` passes all enforcement hooks before committing
-- `loaf task list` reflects the expected state after task updates
-
-## Quick Decision Guide
-
-**Need to start working?** → `{{IMPLEMENT_CMD}} TASK-XXX`
-
-**Need to continue after restart?** → `loaf session start` then `{{IMPLEMENT_CMD}}`
-
-**Need to coordinate agents?** → `{{ORCHESTRATE_CMD}}`
-
-**Made changes to skills?** → `loaf build && loaf install --to <target>`
-
-**Want to see what's in progress?** → `loaf task list --active`
-
-**Ready to archive completed work?** → `loaf task archive TASK-XXX`
-
-**Need to check knowledge freshness?** → `loaf kb check`
-
----
+**Note:** This file is auto-generated from the CLI source code. Do not edit manually.
 
 ## Global Commands
 
@@ -83,38 +40,50 @@ Coordinates multi-agent work: agent delegation, session management, Linear integ
 
 ---
 
-## Build Commands
+## Build Management
 
 ### `loaf build`
-Builds all distribution targets from content source.
-
-**Use when:**
-- After modifying skills, agents, or hooks
-- Before installing to tools
-- Testing changes locally
+Build skill distributions for agent harnesses
 
 **Usage:**
 ```bash
-loaf build                      # Build all targets
-loaf build --target claude-code # Specific target only
+loaf build
 ```
 
-**Targets:** claude-code, opencode, cursor, codex, gemini
+---
+
+## Install Management
 
 ### `loaf install`
-Installs Loaf distribution to detected AI tools.
-
-**Use when:**
-- First-time setup
-- Updating existing installations
-- Installing to new tools
+Install Loaf to detected AI tool configurations
 
 **Usage:**
 ```bash
-loaf install                   # Interactive install to detected tools
-loaf install --to all          # Install to all detected tools
-loaf install --to cursor       # Install to specific target
-loaf install --upgrade         # Update only already-installed
+loaf install
+```
+
+---
+
+## Init Management
+
+### `loaf init`
+Initialize a project with Loaf structure
+
+**Usage:**
+```bash
+loaf init
+```
+
+---
+
+## Release Management
+
+### `loaf release`
+Create a new release with changelog, version bump, and tag
+
+**Usage:**
+```bash
+loaf release
 ```
 
 ---
@@ -122,26 +91,55 @@ loaf install --upgrade         # Update only already-installed
 ## Task Management
 
 ### `loaf task`
-Manages project tasks from TASKS.json index.
+Manage project tasks
 
 **Subcommands:**
 
 | Subcommand | Purpose |
 |------------|---------|
 | `loaf task list` | Show task board grouped by status |
-| `loaf task show TASK-XXX` | Display single task details |
-| `loaf task status` | Show task statistics and overview |
-| `loaf task create --id TASK-XXX` | Create new task file |
-| `loaf task update TASK-XXX` | Update task status, priority, or session |
-| `loaf task archive TASK-XXX` | Archive completed task |
-| `loaf task refresh` | Regenerate TASKS.json index from files |
-| `loaf task sync` | Sync frontmatter with TASKS.json index |
+| `loaf task show` | Display a single task's details |
+| `loaf task status` | Show task summary counts |
+| `loaf task create` | Create a new task |
+| `loaf task update` | Update a task's metadata |
+| `loaf task archive` | Move completed tasks to archive and update TASKS.json |
+| `loaf task refresh` | Rebuild TASKS.json from task and spec files |
+| `loaf task sync` | Sync between TASKS.json and .md files |
+
+**Options:**
+
+- `loaf task list`:
+  - `--json` — Output raw JSON
+  - `--active` — Hide completed tasks
+
+- `loaf task show`:
+  - `--json` — Output task entry as JSON
+
+- `loaf task create`:
+  - `--title <title>` — Task title
+  - `--spec <id>` — Associated spec ID (e.g., SPEC-010)
+  - `--priority <level>` — Priority level (P0/P1/P2/P3)
+  - `--depends-on <ids>` — Comma-separated task IDs
+
+- `loaf task update`:
+  - `--status <status>` — New status: todo, in_progress, blocked, review, done
+  - `--priority <level>` — New priority: P0, P1, P2, P3
+  - `--depends-on <ids>` — Replace depends_on (comma-separated task IDs)
+  - `--session <file>` — Set or clear session reference (use "none" to clear)
+  - `--spec <id>` — Set or change associated spec
+
+- `loaf task archive`:
+  - `--spec <id>` — Archive all done tasks for a spec
+
+- `loaf task sync`:
+  - `--import` — Import orphan .md files not in the index
+  - `--push` — Push TASKS.json metadata into .md frontmatter
 
 **Usage:**
 ```bash
-loaf task list --active        # Hide completed
-loaf task update TASK-075 --status in_progress
-loaf task update TASK-075 --session 20250331-120000-cli-ref.md
+loaf task list
+loaf task show
+loaf task status
 ```
 
 ---
@@ -149,27 +147,32 @@ loaf task update TASK-075 --session 20250331-120000-cli-ref.md
 ## Spec Management
 
 ### `loaf spec`
-Manages specification lifecycle and task relationships.
+Manage project specs
 
 **Subcommands:**
 
 | Subcommand | Purpose |
 |------------|---------|
-| `loaf spec list` | Show all specs with status |
-| `loaf spec archive SPEC-XXX` | Archive completed spec |
+| `loaf spec list` | Show specs with status and task counts |
+| `loaf spec archive` | Move completed specs to archive and update TASKS.json |
+
+**Options:**
+
+- `loaf spec list`:
+  - `--json` — Output raw JSON
 
 **Usage:**
 ```bash
 loaf spec list
-loaf spec archive SPEC-020
+loaf spec archive
 ```
 
 ---
 
-## Knowledge Base
+## Kb Management
 
 ### `loaf kb`
-Manages project knowledge files.
+Knowledge base management
 
 **Subcommands:**
 
@@ -177,17 +180,86 @@ Manages project knowledge files.
 |------------|---------|
 | `loaf kb validate` | Validate knowledge file frontmatter |
 | `loaf kb status` | Show knowledge base overview |
-| `loaf kb check` | Check for stale knowledge |
-| `loaf kb review <file>` | Review specific knowledge file |
-| `loaf kb init` | Initialize knowledge base for project |
-| `loaf kb import <url>` | Import knowledge from external source |
+| `loaf kb check` | Check knowledge file staleness against git history |
+| `loaf kb review` | Mark a knowledge file as reviewed today |
+| `loaf kb init` | Initialize knowledge base directories and QMD collections |
+| `loaf kb import` | Import external project knowledge via QMD collection |
+
+**Options:**
+
+- `loaf kb validate`:
+  - `--json` — Output results as JSON
+
+- `loaf kb status`:
+  - `--json` — Output status as JSON
+
+- `loaf kb check`:
+  - `--file <path>` — Reverse lookup: find knowledge files covering this path
+  - `--json` — Output results as JSON
+
+- `loaf kb review`:
+  - `--json` — Output updated frontmatter as JSON
+
+- `loaf kb init`:
+  - `--json` — Output results as JSON
+
+- `loaf kb import`:
+  - `--path <path>` — Path to the external project's knowledge directory
+  - `--json` — Output results as JSON
 
 **Usage:**
 ```bash
 loaf kb validate
 loaf kb status
 loaf kb check
-loaf kb review docs/knowledge/hooks.md
+```
+
+---
+
+## Setup Management
+
+### `loaf setup`
+One-step bootstrap: init + build + install
+
+**Usage:**
+```bash
+loaf setup
+```
+
+---
+
+## Version Management
+
+### `loaf version`
+Show version info and project statistics
+
+**Usage:**
+```bash
+loaf version
+```
+
+---
+
+## Housekeeping Management
+
+### `loaf housekeeping`
+Scan .agents/ artifacts and recommend housekeeping actions
+
+**Usage:**
+```bash
+loaf housekeeping
+```
+
+---
+
+## Check Management
+
+### `loaf check`
+Run enforcement hook checks
+
+**Usage:**
+```bash
+loaf check
 ```
 
 ---
@@ -195,7 +267,7 @@ loaf kb review docs/knowledge/hooks.md
 ## Session Management
 
 ### `loaf session`
-Manages session journals.
+Manage session journals
 
 **Subcommands:**
 
@@ -203,90 +275,51 @@ Manages session journals.
 |------------|---------|
 | `loaf session start` | Start/resume session for current branch |
 | `loaf session end` | End session with progress summary |
-| `loaf session log [entry]` | Log entry to session journal |
+| `loaf session log` | Log entry to session journal |
 | `loaf session archive` | Archive completed session |
+| `loaf session housekeeping` | Run session housekeeping: orphans, splits, archival, linkage repair |
+| `loaf session enrich` | Enrich session journal from JSONL conversation log |
+| `loaf session list` | List all active and archived sessions |
+| `loaf session state` | Manage session state snapshot |
+| `loaf session context` | Session context for hooks and agents |
+
+**Options:**
+
+- `loaf session start`:
+  - `--resume` — Resume existing paused session instead of creating new
+  - `--force` — Force session creation, bypassing subagent detection
+
+- `loaf session end`:
+  - `--if-active` — Exit successfully when no active session exists
+  - `--wrap` — Close session as done (used after /wrap writes summary)
+  - `--from-hook` — Invoked from a Stop hook — keep inline chain, silent on no-match
+  - `--session-id <id>` — Route to session with this claude_session_id (Tier 1 override)
+
+- `loaf session log`:
+  - `--from-hook` — Parse entry from hook stdin
+  - `--session-id <id>` — Route to session with this claude_session_id (Tier 1 override)
+  - `--detect-linear` — Detect Linear magic words in recent commits
+
+- `loaf session archive`:
+  - `--branch <branch>` — Archive session for specific branch (default: current)
+  - `--session-id <id>` — Route to session with this claude_session_id (Tier 1 override)
+
+- `loaf session housekeeping`:
+  - `--dry-run` — Report what would be done without making changes
+
+- `loaf session enrich`:
+  - `--dry-run` — Show what would be added without writing
+  - `--model <model>` — Override model for the librarian call
+  - `--session-id <id>` — Route to session with this claude_session_id (Tier 1 override)
+
+- `loaf session list`:
+  - `--all` — Include archived sessions
 
 **Usage:**
 ```bash
-loaf session start              # Start or resume session for current branch
-loaf session log "decide(scope): description"
-loaf session end                # Pause session with summary
-loaf session archive            # Archive session
-```
-
----
-
-## Project Setup
-
-### `loaf init`
-Initializes a new Loaf project structure.
-
-**Use when:**
-- Starting a new project with Loaf
-- Setting up .agents/ directory structure
-
-**Usage:**
-```bash
-loaf init
-```
-
-**Creates:**
-- `.agents/` directory
-- `TASKS.json` index
-- Default configuration
-
-### `loaf setup`
-Sets up Loaf development environment.
-
-**Use when:**
-- Setting up for Loaf framework development
-- Installing pre-commit hooks
-
-**Usage:**
-```bash
-loaf setup              # Interactive setup
-loaf setup --hooks      # Install git hooks only
-```
-
----
-
-## Utility Commands
-
-### `loaf housekeeping`
-Reviews and archives agent artifacts.
-
-**Use when:**
-- Reviewing completed sessions
-- Maintaining .agents/ directory
-- Preparing for reflection
-
-**Usage:**
-```bash
-loaf housekeeping            # Interactive review
-loaf housekeeping --dry-run  # Show what would be archived
-```
-
-### `loaf release` / `loaf ship`
-Orchestrates release ritual.
-
-**Use when:**
-- Preparing a release
-- Running pre-flight checks
-- Creating changelog
-
-**Usage:**
-```bash
-loaf release            # Interactive release
-loaf ship --dry-run     # Test release flow
-```
-
-### `loaf version`
-Shows version and target info.
-
-**Usage:**
-```bash
-loaf version            # Show CLI version
-loaf version --targets  # Show available targets
+loaf session start
+loaf session end
+loaf session log
 ```
 
 ---
@@ -299,3 +332,21 @@ The following placeholders are substituted at build time per target:
 |-------------|-------------|----------|--------|
 | `{{IMPLEMENT_CMD}}` | `/implement` | `/implement` | `@loaf/implement` |
 | `{{ORCHESTRATE_CMD}}` | `/implement` | `/implement` | `@loaf/implement` |
+
+---
+
+## Quick Decision Guide
+
+**Need to start working?** → `{{IMPLEMENT_CMD}} TASK-XXX`
+
+**Need to continue after restart?** → `loaf session start` then `{{IMPLEMENT_CMD}}`
+
+**Need to coordinate agents?** → `{{ORCHESTRATE_CMD}}`
+
+**Made changes to skills?** → `loaf build && loaf install --to <target>`
+
+**Want to see what's in progress?** → `loaf task list --active`
+
+**Ready to archive completed work?** → `loaf task archive TASK-XXX`
+
+**Need to check knowledge freshness?** → `loaf kb check`

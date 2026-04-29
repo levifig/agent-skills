@@ -1,6 +1,6 @@
 name: researcher
 description: >-
-  Ranger (Researcher) — scouts far and gathers intelligence.
+  Researcher — investigates options and gathers external information.
 tools:
   Read: true
   Glob: true

@@ -6,7 +6,7 @@ description: >-
   and code changes. Produces session files, agent spawn plans, and progress
   tracking. Not for shaping (use shape), breakdown (use breakdown), research, or
   review.
-version: 2.0.0-dev.31
+version: 2.0.0-dev.32
 ---
 
 # Implement
