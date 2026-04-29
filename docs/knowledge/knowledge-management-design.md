@@ -8,7 +8,7 @@ topics:
 covers:
   - cli/lib/kb/**/*.ts
   - docs/knowledge/**/*.md
-last_reviewed: '2026-04-28'
+last_reviewed: '2026-04-29'
 ---
 
 # Knowledge Management Design
