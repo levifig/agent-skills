@@ -319,6 +319,66 @@ describe("check: validate-commit", () => {
     expect(result.exitCode).toBe(2);
   });
 
+  it("blocks Co-authored-by trailer with AI tool", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nfeat: add feature\n\nCo-authored-by: Claude <noreply@anthropic.com>\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("AI attribution");
+  });
+
+  it("blocks robot emoji bot footer", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nfeat: add feature\n\n🤖 Generated with [Claude Code]\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("AI attribution");
+  });
+
+  it("blocks 'Authored by Anthropic' attribution", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nfeat: add feature\n\nAuthored by Anthropic\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("AI attribution");
+  });
+
+  it("allows legitimate references to AI tools by name", () => {
+    // These reference AI tools as harness/target names, not attribution
+    const legitimateCommits = [
+      'git commit -m "feat: add Gemini hook support"',
+      'git commit -m "feat: route to Claude target by default"',
+      'git commit -m "chore: bump GPT model version"',
+    ];
+
+    for (const command of legitimateCommits) {
+      const result = runCheck("validate-commit", {
+        tool: { name: "Bash" },
+        tool_input: { command },
+      });
+      expect(result.exitCode).toBe(0);
+    }
+  });
+
+  it("allows changelog-style references to AI tools in body", () => {
+    const command = `git commit -m "$(cat <<'EOF'\ndocs: update target priority list\n\npriority 6 — Gemini > Codex > Cursor\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
   it("warns on long subject lines", () => {
     const longMessage = "feat: " + "a".repeat(70); // 76 chars total
     const result = runCheck("validate-commit", {
