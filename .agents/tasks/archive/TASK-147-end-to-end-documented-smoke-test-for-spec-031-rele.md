@@ -2,10 +2,10 @@
 id: TASK-147
 title: End-to-end documented smoke test for SPEC-031 release flow
 spec: SPEC-031
-status: todo
+status: done
 priority: P3
 created: '2026-04-29T17:28:14.960Z'
-updated: '2026-04-29T17:28:14.960Z'
+updated: '2026-04-30T14:47:49.737Z'
 depends_on:
   - TASK-137
   - TASK-138
@@ -17,6 +17,7 @@ depends_on:
   - TASK-144
   - TASK-145
   - TASK-146
+completed_at: '2026-04-30T14:47:49.736Z'
 ---
 
 # TASK-147: End-to-end documented smoke test for SPEC-031 release flow

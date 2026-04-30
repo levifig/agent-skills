@@ -3,8 +3,7 @@ id: SPEC-031
 title: Release Flow Hardening
 source: direct
 created: '2026-04-24T21:30:00.000Z'
-status: implementing
-branch: feat/release-flow-hardening
+status: complete
 ---
 
 # SPEC-031: Release Flow Hardening
