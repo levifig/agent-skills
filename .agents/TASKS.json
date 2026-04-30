@@ -6,7 +6,7 @@
       "title": "Add missing journal entry types for all artifact types",
       "slug": "add-missing-journal-entry-types-for-all-artifact-t",
       "spec": null,
-      "status": "todo",
+      "status": "done",
       "priority": "P2",
       "depends_on": [],
       "files": [],
@@ -14,8 +14,8 @@
       "done": null,
       "session": null,
       "created": "2026-04-10T20:53:48.695Z",
-      "updated": "2026-04-10T20:53:48.695Z",
-      "completed_at": null,
+      "updated": "2026-04-30T16:55:20.640Z",
+      "completed_at": "2026-04-30T16:55:20.639Z",
       "file": "TASK-103-add-missing-journal-entry-types-for-all-artifact-t.md"
     },
     "TASK-105": {

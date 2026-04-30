@@ -1,10 +1,11 @@
 ---
 id: TASK-103
 title: Add missing journal entry types for all artifact types
-status: todo
+status: done
 priority: P2
 created: '2026-04-10T20:53:48.695Z'
-updated: '2026-04-10T20:53:48.695Z'
+updated: '2026-04-30T16:55:20.640Z'
+completed_at: '2026-04-30T16:55:20.639Z'
 ---
 
 # TASK-103: Add missing journal entry types for all artifact types
@@ -46,13 +47,13 @@ Defined in `cli/commands/session.ts` at line 114 (`EntryType` union) and line 88
 
 ## Acceptance Criteria
 
-- [ ] All artifact types have corresponding `EntryType` values
-- [ ] `EntryType` union and `validTypes` array are in sync
-- [ ] `loaf session log "idea(scratchpad): test"` succeeds
-- [ ] `loaf session log "spec(029): approved"` succeeds
-- [ ] Documentation updated to reflect new types
-- [ ] `loaf build` succeeds
-- [ ] `npm run typecheck` passes
+- [x] All artifact types have corresponding `EntryType` values
+- [x] `EntryType` union and `validTypes` array are in sync
+- [x] `loaf session log "idea(scratchpad): test"` succeeds
+- [x] `loaf session log "spec(029): approved"` succeeds
+- [x] Documentation updated to reflect new types
+- [x] `loaf build` succeeds
+- [x] `npm run typecheck` passes
 
 ## Verification
 

@@ -18358,7 +18358,7 @@ import { join as join19, dirname as dirname5, resolve } from "path";
 import { readFileSync as readFileSync11 } from "fs";
 import { dirname as dirname4, join as join18 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
-var LOAF_VERSION = "2.0.0-dev.34" ? "2.0.0-dev.34" : readPackageVersion();
+var LOAF_VERSION = "2.0.0-dev.35" ? "2.0.0-dev.35" : readPackageVersion();
 
 // cli/lib/install/fenced-section.ts
 var FENCED_START = "<!-- loaf:managed:start";
@@ -27757,6 +27757,7 @@ function parseEntry(entry) {
   if (!match) return null;
   const [, type, scope, description] = match;
   const validTypes = [
+    "session",
     "start",
     "resume",
     "pause",
@@ -27773,7 +27774,6 @@ function parseEntry(entry) {
     "spark",
     "todo",
     "assume",
-    // New types
     "branch",
     "task",
     "linear",
@@ -27782,7 +27782,14 @@ function parseEntry(entry) {
     "reject",
     "compact",
     "skill",
-    "wrap"
+    "wrap",
+    "idea",
+    "spec",
+    "report",
+    "council",
+    "brainstorm",
+    "plan",
+    "draft"
   ];
   if (!validTypes.includes(type)) return null;
   return {

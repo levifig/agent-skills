@@ -333,6 +333,13 @@ Sessions use an **append-only structured journal** format — a running log of w
 | `try` | Approach attempted | Agent | — |
 | `reject` | Approach abandoned | Agent | — |
 | `skill(name)` | Skill invoked with context | Skill (self-log) | Skill name |
+| `idea(slug)` | Idea captured or promoted | Agent/Skill | Idea slug or `.agents/ideas/` ref |
+| `spec(id)` | Spec created, updated, or approved | Agent/Skill | Spec ID (e.g. `SPEC-024`) |
+| `report(slug)` | Report generated | Agent/Skill | Report slug or `.agents/reports/` ref |
+| `council(slug)` | Council convened or concluded | Agent/Skill | Council slug or `.agents/councils/` ref |
+| `brainstorm(slug)` | Brainstorm session held | Agent/Skill | Draft slug or topic |
+| `plan(slug)` | Plan created or updated | Agent/Skill | Plan slug or topic |
+| `draft(slug)` | Draft document created | Agent/Skill | Draft slug or `.agents/drafts/` ref |
 
 ### Format Rules
 

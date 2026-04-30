@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.35] - 2026-04-30
+
+### Added
+- Add artifact journal entry types (TASK-103) (9443c355)
+
 ## [2.0.0-dev.34] - 2026-04-30
 
 ### Added

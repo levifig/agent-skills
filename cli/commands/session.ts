@@ -111,6 +111,7 @@ async function parseHookInput(): Promise<HookInput> {
 }
 
 type EntryType =
+  | "session"
   | "start"
   | "resume"
   | "pause"
@@ -135,7 +136,14 @@ type EntryType =
   | "reject"
   | "compact"
   | "skill"
-  | "wrap";
+  | "wrap"
+  | "idea"
+  | "spec"
+  | "report"
+  | "council"
+  | "brainstorm"
+  | "plan"
+  | "draft";
 
 interface JournalEntry {
   type: EntryType;
@@ -614,12 +622,13 @@ function parseEntry(entry: string): JournalEntry | null {
 
   const [, type, scope, description] = match;
   const validTypes: EntryType[] = [
+    "session",
     "start", "resume", "pause", "clear", "progress", "commit", "pr", "merge",
     "decision", "discover", "finding", "block", "unblock",
     "spark", "todo", "assume",
-    // New types
     "branch", "task", "linear", "hypothesis", "try", "reject", "compact",
-    "skill", "wrap"
+    "skill", "wrap",
+    "idea", "spec", "report", "council", "brainstorm", "plan", "draft",
   ];
 
   if (!validTypes.includes(type as EntryType)) return null;

@@ -7,7 +7,7 @@ description: >-
   schema design (u...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 2.0.0-dev.34
+version: 2.0.0-dev.35
 ---
 
 # Ruby Development

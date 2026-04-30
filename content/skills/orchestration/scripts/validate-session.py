@@ -138,24 +138,41 @@ def validate_journal_entries(body: str) -> list[str]:
             except ValueError:
                 errors.append(f"Line {i}: Invalid timestamp format: {timestamp_str}")
 
-            # Validate entry type
+            # Validate entry type — keep in sync with cli/commands/session.ts EntryType
             valid_types = [
+                "session",
+                "start",
                 "resume",
                 "pause",
+                "clear",
+                "progress",
                 "commit",
-                "decide",
+                "pr",
+                "merge",
+                "decision",
                 "discover",
+                "finding",
                 "block",
                 "unblock",
                 "spark",
                 "todo",
-                "finding",
+                "assume",
+                "branch",
+                "task",
+                "linear",
                 "hypothesis",
                 "try",
                 "reject",
-                "pr",
-                "merge",
                 "compact",
+                "skill",
+                "wrap",
+                "idea",
+                "spec",
+                "report",
+                "council",
+                "brainstorm",
+                "plan",
+                "draft",
             ]
             if entry_type not in valid_types:
                 errors.append(f"Line {i}: Unknown entry type: {entry_type}")
