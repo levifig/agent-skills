@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 148,
+  "next_id": 150,
   "tasks": {
     "TASK-103": {
       "title": "Add missing journal entry types for all artifact types",
@@ -505,6 +505,38 @@
       "updated": "2026-04-29T17:28:14.960Z",
       "completed_at": null,
       "file": "TASK-147-end-to-end-documented-smoke-test-for-spec-031-rele.md"
+    },
+    "TASK-148": {
+      "title": "extractUnreleasedEntries should preserve subsection headers (### Added, ### Changed, etc.) for verbatim curated-entry preservation",
+      "slug": "extractunreleasedentries-should-preserve-subsectio",
+      "spec": null,
+      "status": "todo",
+      "priority": "P2",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-30T00:51:31.814Z",
+      "updated": "2026-04-30T00:51:31.814Z",
+      "completed_at": null,
+      "file": "TASK-148-extractunreleasedentries-should-preserve-subsectio.md"
+    },
+    "TASK-149": {
+      "title": "loaf release should run full build (npm run build) not just content build (loaf build) to refresh CLI bundle",
+      "slug": "loaf-release-should-run-full-build-npm-run-build-n",
+      "spec": null,
+      "status": "todo",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-04-30T01:01:03.657Z",
+      "updated": "2026-04-30T01:01:03.657Z",
+      "completed_at": null,
+      "file": "TASK-149-loaf-release-should-run-full-build-npm-run-build-n.md"
     },
     "TASK-001": {
       "title": "Create verification reference",
