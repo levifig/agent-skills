@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.34] - 2026-04-30
+
+### Added
+
+- Pre-commit `validate-commit` guard against bundled build-artifact leakage. Detects when staged paths include `plugins/`, `dist/`, `.claude-plugin/`, or root lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock`, `bun.lockb`) on commits whose subject does not indicate a build/release/deps/lockfile scope. Block message names the offending paths and shows the exact `git reset` + split-commit recipe. Bypass with `git commit --no-verify` when intentional.
+
+### Changed
+
+- `loaf release` now runs the project's full build script (`npm run build` for Node projects with a `build` script in `package.json`) instead of the content-only `loaf build`. Refreshes the bundled CLI (`plugins/loaf/bin/loaf`) so the version baked into the bundle matches the version in `package.json` after a release commit. Falls back to `loaf build` for non-Node projects.
+
+### Fixed
+
+- `extractUnreleasedEntries` (renamed to `extractUnreleasedBody`) preserves curated `[Unreleased]` body verbatim — including `### Added`, `### Changed`, `### Removed`, `### Fixed`, `### Internal` subsection headers — under the new versioned section. Previously filtered to list-item lines only, flattening the categorical structure. Caught when the comprehensive 6-section CHANGELOG drafted for v2.0.0-dev.33 was reduced to a single bulleted list.
+
 ## [2.0.0-dev.33] - 2026-04-30
 
 - `loaf release --pre-merge` flag bundling `--no-tag --no-gh --base <auto-detected>` with 4-step base detection (explicit `--base` → open-PR base via `gh pr view` → `git config loaf.release.base` → default branch).

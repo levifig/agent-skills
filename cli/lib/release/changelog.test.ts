@@ -10,7 +10,7 @@ import {
   groupBySection,
   generateChangelogSection,
   buildChangelogSectionFromEntries,
-  extractUnreleasedEntries,
+  extractUnreleasedBody,
   insertIntoChangelog,
   createChangelog,
   UNRELEASED_STUB,
@@ -244,8 +244,8 @@ describe("insertIntoChangelog stub re-insertion (TASK-138)", () => {
   });
 });
 
-describe("extractUnreleasedEntries (TASK-139)", () => {
-  it("returns an empty array when [Unreleased] is empty", () => {
+describe("extractUnreleasedBody (TASK-139, TASK-148)", () => {
+  it("returns null when [Unreleased] is empty", () => {
     const existing = [
       "# Changelog",
       "",
@@ -253,10 +253,10 @@ describe("extractUnreleasedEntries (TASK-139)", () => {
       "",
       "## [1.0.0] - 2026-01-01",
     ].join("\n");
-    expect(extractUnreleasedEntries(existing)).toEqual([]);
+    expect(extractUnreleasedBody(existing)).toBeNull();
   });
 
-  it("returns an empty array when [Unreleased] contains only the stub", () => {
+  it("returns null when [Unreleased] contains only the stub", () => {
     const existing = [
       "# Changelog",
       "",
@@ -266,7 +266,7 @@ describe("extractUnreleasedEntries (TASK-139)", () => {
       "",
       "## [1.0.0] - 2026-01-01",
     ].join("\n");
-    expect(extractUnreleasedEntries(existing)).toEqual([]);
+    expect(extractUnreleasedBody(existing)).toBeNull();
   });
 
   it('treats the "since vX.Y.Z" stub variant as a non-entry', () => {
@@ -279,7 +279,7 @@ describe("extractUnreleasedEntries (TASK-139)", () => {
       "",
       "## [1.0.0] - 2026-01-01",
     ].join("\n");
-    expect(extractUnreleasedEntries(existing)).toEqual([]);
+    expect(extractUnreleasedBody(existing)).toBeNull();
   });
 
   it("returns curated list-item entries verbatim", () => {
@@ -293,13 +293,10 @@ describe("extractUnreleasedEntries (TASK-139)", () => {
       "",
       "## [1.0.0] - 2026-01-01",
     ].join("\n");
-    expect(extractUnreleasedEntries(existing)).toEqual([
-      "- Added X",
-      "- Fixed Y",
-    ]);
+    expect(extractUnreleasedBody(existing)).toBe(["- Added X", "- Fixed Y"].join("\n"));
   });
 
-  it("returns curated entries when both stub and list items are present (entries win)", () => {
+  it("returns curated entries when both stub and list items are present (entries win, stub stripped)", () => {
     const existing = [
       "# Changelog",
       "",
@@ -310,12 +307,12 @@ describe("extractUnreleasedEntries (TASK-139)", () => {
       "",
       "## [1.0.0] - 2026-01-01",
     ].join("\n");
-    expect(extractUnreleasedEntries(existing)).toEqual([
+    expect(extractUnreleasedBody(existing)).toBe(
       "- Added something the user actually wrote",
-    ]);
+    );
   });
 
-  it("ignores prose, sub-headings, and whitespace lines", () => {
+  it("preserves prose and sub-headings alongside list items", () => {
     const existing = [
       "# Changelog",
       "",
@@ -328,24 +325,137 @@ describe("extractUnreleasedEntries (TASK-139)", () => {
       "",
       "## [1.0.0] - 2026-01-01",
     ].join("\n");
-    expect(extractUnreleasedEntries(existing)).toEqual([
-      "- A real curated entry",
-    ]);
+    expect(extractUnreleasedBody(existing)).toBe(
+      [
+        "Some prose talking about the upcoming release.",
+        "",
+        "### Added",
+        "- A real curated entry",
+      ].join("\n"),
+    );
   });
 
-  it("returns empty when there is no [Unreleased] section", () => {
+  it("returns null when there is no [Unreleased] section", () => {
     const existing = "# Changelog\n\n## [1.0.0] - 2026-01-01\n";
-    expect(extractUnreleasedEntries(existing)).toEqual([]);
+    expect(extractUnreleasedBody(existing)).toBeNull();
+  });
+
+  it("preserves ### Added / ### Changed / ### Removed / ### Fixed / ### Internal subsection headers (TASK-148)", () => {
+    const existing = [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      "### Added",
+      "- foo",
+      "- bar",
+      "",
+      "### Changed",
+      "- baz",
+      "",
+      "### Removed",
+      "- qux",
+      "",
+      "### Fixed",
+      "- a fix",
+      "",
+      "### Internal",
+      "- a chore",
+      "",
+      "## [1.0.0] - 2026-01-01",
+    ].join("\n");
+
+    const body = extractUnreleasedBody(existing);
+    expect(body).not.toBeNull();
+    expect(body).toBe(
+      [
+        "### Added",
+        "- foo",
+        "- bar",
+        "",
+        "### Changed",
+        "- baz",
+        "",
+        "### Removed",
+        "- qux",
+        "",
+        "### Fixed",
+        "- a fix",
+        "",
+        "### Internal",
+        "- a chore",
+      ].join("\n"),
+    );
+    // Each subsection header is present, in order.
+    expect(body).toContain("### Added");
+    expect(body).toContain("### Changed");
+    expect(body).toContain("### Removed");
+    expect(body).toContain("### Fixed");
+    expect(body).toContain("### Internal");
+  });
+
+  it("strips the stub line but preserves subsection headers around it (TASK-148)", () => {
+    const existing = [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      UNRELEASED_STUB,
+      "",
+      "### Added",
+      "- new auth flow",
+      "",
+      "### Fixed",
+      "- crash on startup",
+      "",
+      "## [1.0.0] - 2026-01-01",
+    ].join("\n");
+
+    expect(extractUnreleasedBody(existing)).toBe(
+      [
+        "### Added",
+        "- new auth flow",
+        "",
+        "### Fixed",
+        "- crash on startup",
+      ].join("\n"),
+    );
+  });
+
+  it("preserves arbitrary subsection headers (e.g. ### Security, ### Deprecated)", () => {
+    const existing = [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      "### Security",
+      "- patched CVE-1234",
+      "",
+      "### Deprecated",
+      "- legacy endpoint",
+      "",
+      "## [1.0.0] - 2026-01-01",
+    ].join("\n");
+
+    expect(extractUnreleasedBody(existing)).toBe(
+      [
+        "### Security",
+        "- patched CVE-1234",
+        "",
+        "### Deprecated",
+        "- legacy endpoint",
+      ].join("\n"),
+    );
   });
 });
 
-describe("buildChangelogSectionFromEntries (TASK-139)", () => {
-  it("preserves curated entries verbatim under the new version header", () => {
-    const entries = ["- Added X", "- Fixed Y"];
+describe("buildChangelogSectionFromEntries (TASK-139, TASK-148)", () => {
+  it("preserves curated body verbatim under the new version header", () => {
+    const body = ["- Added X", "- Fixed Y"].join("\n");
     const result = buildChangelogSectionFromEntries(
       "1.2.0",
       "2026-04-29",
-      entries,
+      body,
     );
 
     expect(result).toBe(
@@ -353,20 +463,87 @@ describe("buildChangelogSectionFromEntries (TASK-139)", () => {
     );
   });
 
-  it("emits no auto-generated jargon (no '###' subsections, no commit hashes)", () => {
-    const entries = ["- Added something specific"];
+  it("does not invent its own '###' subsections or commit hashes (only emits what is in body)", () => {
+    const body = "- Added something specific";
     const result = buildChangelogSectionFromEntries(
       "1.2.0",
       "2026-04-29",
-      entries,
+      body,
     );
     expect(result).not.toContain("### Added");
     expect(result).not.toContain("### Fixed");
     expect(result).not.toMatch(/\([a-f0-9]{7,}\)/);
   });
+
+  it("preserves subsection headers in the curated body verbatim (TASK-148)", () => {
+    const body = [
+      "### Added",
+      "- foo",
+      "- bar",
+      "",
+      "### Changed",
+      "- baz",
+    ].join("\n");
+
+    const result = buildChangelogSectionFromEntries(
+      "2.0.0-dev.33",
+      "2026-04-29",
+      body,
+    );
+
+    expect(result).toBe(
+      [
+        "## [2.0.0-dev.33] - 2026-04-29",
+        "",
+        "### Added",
+        "- foo",
+        "- bar",
+        "",
+        "### Changed",
+        "- baz",
+      ].join("\n"),
+    );
+  });
+
+  it("trims leading/trailing blank lines but preserves internal whitespace", () => {
+    const body = ["", "", "### Added", "- foo", "", "### Fixed", "- bar", "", ""].join("\n");
+
+    const result = buildChangelogSectionFromEntries(
+      "1.0.0",
+      "2026-04-29",
+      body,
+    );
+
+    expect(result).toBe(
+      [
+        "## [1.0.0] - 2026-04-29",
+        "",
+        "### Added",
+        "- foo",
+        "",
+        "### Fixed",
+        "- bar",
+      ].join("\n"),
+    );
+  });
+
+  it("keeps a leading subsection header as the first line under the version heading", () => {
+    const body = "### Added\n- only thing";
+    const result = buildChangelogSectionFromEntries(
+      "1.0.0",
+      "2026-04-29",
+      body,
+    );
+
+    const lines = result.split("\n");
+    expect(lines[0]).toBe("## [1.0.0] - 2026-04-29");
+    expect(lines[1]).toBe("");
+    expect(lines[2]).toBe("### Added");
+    expect(lines[3]).toBe("- only thing");
+  });
 });
 
-describe("end-to-end: curated [Unreleased] preservation across release (TASK-138 + TASK-139)", () => {
+describe("end-to-end: curated [Unreleased] preservation across release (TASK-138, TASK-139, TASK-148)", () => {
   it("preserves curated entries verbatim AND re-inserts the stub", () => {
     const existing = [
       "# Changelog",
@@ -383,16 +560,15 @@ describe("end-to-end: curated [Unreleased] preservation across release (TASK-138
     ].join("\n");
 
     // Simulate what release.ts does: read curated, build section, insert.
-    const curated = extractUnreleasedEntries(existing);
-    expect(curated).toEqual([
-      "- Added authentication flow",
-      "- Fixed race condition in worker",
-    ]);
+    const curated = extractUnreleasedBody(existing);
+    expect(curated).toBe(
+      ["- Added authentication flow", "- Fixed race condition in worker"].join("\n"),
+    );
 
     const section = buildChangelogSectionFromEntries(
       "1.1.0",
       "2026-04-29",
-      curated,
+      curated!,
     );
     const result = insertIntoChangelog(existing, section);
     expect(result).not.toBeNull();
@@ -424,8 +600,8 @@ describe("end-to-end: curated [Unreleased] preservation across release (TASK-138
       "## [1.0.0] - 2026-01-01",
     ].join("\n");
 
-    const curated = extractUnreleasedEntries(existing);
-    expect(curated).toEqual([]);
+    const curated = extractUnreleasedBody(existing);
+    expect(curated).toBeNull();
 
     // Caller would call generateChangelogSection here. Verify the empty
     // detection routes to that path.
@@ -462,7 +638,109 @@ describe("end-to-end: curated [Unreleased] preservation across release (TASK-138
       "## [1.0.0] - 2026-01-01",
     ].join("\n");
 
-    const curated = extractUnreleasedEntries(existing);
-    expect(curated).toEqual([]);
+    const curated = extractUnreleasedBody(existing);
+    expect(curated).toBeNull();
+  });
+
+  // SPEC-031 v2.0.0-dev.33 ship: the user wrote a comprehensive [Unreleased]
+  // section grouped by ### Added / ### Changed / ### Removed / ### Fixed /
+  // ### Internal. Pre-fix, the release flow flattened it to a bare list of
+  // bullets. Post-fix, the structure is preserved verbatim under the new
+  // ## [X.Y.Z] header.
+  it("preserves the full SPEC-031 v2.0.0-dev.33 6-section CHANGELOG structure (TASK-148)", () => {
+    const existing = [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      "### Added",
+      "- New release flow hardening",
+      "- Stub re-insertion after release",
+      "- Curated [Unreleased] preservation",
+      "",
+      "### Changed",
+      "- `loaf release` now runs `npm run build` for Node projects",
+      "- Pre-merge guardrails refined",
+      "",
+      "### Removed",
+      "- Legacy release script",
+      "",
+      "### Fixed",
+      "- Race condition in version-file detection",
+      "- CLI bundle drift on release",
+      "",
+      "### Internal",
+      "- Refactored release pipeline into discrete steps",
+      "- Documented release flow in SPEC-031",
+      "",
+      "## [2.0.0-dev.32] - 2026-04-25",
+      "",
+      "### Added",
+      "- Earlier work",
+    ].join("\n");
+
+    const curated = extractUnreleasedBody(existing);
+    expect(curated).not.toBeNull();
+
+    const section = buildChangelogSectionFromEntries(
+      "2.0.0-dev.33",
+      "2026-04-29",
+      curated!,
+    );
+    const result = insertIntoChangelog(existing, section);
+    expect(result).not.toBeNull();
+
+    // All 5 subsection headers appear under the new version block.
+    expect(result).toContain("## [2.0.0-dev.33] - 2026-04-29");
+
+    const lines = result!.split("\n");
+    const newVersionIdx = lines.findIndex((l) =>
+      l.includes("[2.0.0-dev.33]"),
+    );
+    const oldVersionIdx = lines.findIndex((l) =>
+      l.includes("[2.0.0-dev.32]"),
+    );
+    const newBlock = lines.slice(newVersionIdx, oldVersionIdx).join("\n");
+
+    expect(newBlock).toContain("### Added");
+    expect(newBlock).toContain("### Changed");
+    expect(newBlock).toContain("### Removed");
+    expect(newBlock).toContain("### Fixed");
+    expect(newBlock).toContain("### Internal");
+
+    // All curated entries appear under the new version block.
+    expect(newBlock).toContain("- New release flow hardening");
+    expect(newBlock).toContain("- Stub re-insertion after release");
+    expect(newBlock).toContain("- Curated [Unreleased] preservation");
+    expect(newBlock).toContain(
+      "- `loaf release` now runs `npm run build` for Node projects",
+    );
+    expect(newBlock).toContain("- Pre-merge guardrails refined");
+    expect(newBlock).toContain("- Legacy release script");
+    expect(newBlock).toContain(
+      "- Race condition in version-file detection",
+    );
+    expect(newBlock).toContain("- CLI bundle drift on release");
+    expect(newBlock).toContain(
+      "- Refactored release pipeline into discrete steps",
+    );
+    expect(newBlock).toContain("- Documented release flow in SPEC-031");
+
+    // The order of subsection headers is preserved (Added → Changed →
+    // Removed → Fixed → Internal).
+    const blockLines = newBlock.split("\n");
+    const addedIdx = blockLines.findIndex((l) => l === "### Added");
+    const changedIdx = blockLines.findIndex((l) => l === "### Changed");
+    const removedIdx = blockLines.findIndex((l) => l === "### Removed");
+    const fixedIdx = blockLines.findIndex((l) => l === "### Fixed");
+    const internalIdx = blockLines.findIndex((l) => l === "### Internal");
+    expect(addedIdx).toBeGreaterThan(-1);
+    expect(addedIdx).toBeLessThan(changedIdx);
+    expect(changedIdx).toBeLessThan(removedIdx);
+    expect(removedIdx).toBeLessThan(fixedIdx);
+    expect(fixedIdx).toBeLessThan(internalIdx);
+
+    // The fresh [Unreleased] block contains the stub.
+    expect(result).toContain(UNRELEASED_STUB);
   });
 });

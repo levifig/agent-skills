@@ -294,6 +294,109 @@ function headSubjectMatchesReleaseShape(): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Bundled-artifact leak detection
+//
+// Build outputs (`plugins/`, `dist/`, `.claude-plugin/`) and lockfiles
+// (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock`,
+// `bun.lockb`) periodically leak into commits whose primary scope is
+// unrelated to the build (`feat:`, `fix:`, `docs:`, …). The CI verifier
+// (ADR-012) catches this post-push; this guard catches it pre-commit so
+// the dev splits before pushing instead of after.
+//
+// Exempt commit subjects:
+//   - `chore: release v<semver>`           (release commit, shape-validated)
+//   - `chore[(scope)]: build …`            (explicit build commit)
+//   - `chore[(scope)]: deps …`             (dependency bump)
+//   - `chore[(scope)]: lockfile …`         (lockfile catch-up)
+//
+// Bypass via `git commit --no-verify` when the leak is intentional.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BUILD_OUTPUT_PATH_PREFIXES = [
+  "plugins/",
+  "dist/",
+  ".claude-plugin/",
+];
+
+const ROOT_LOCKFILES = new Set([
+  "package-lock.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "bun.lock",
+  "bun.lockb",
+]);
+
+const EXEMPT_BUILD_SUBJECT_PATTERNS: RegExp[] = [
+  RELEASE_COMMIT_SUBJECT_REGEX,
+  /^chore(?:\(.+\))?: build\b/,
+  /^chore(?:\(.+\))?: deps\b/,
+  /^chore(?:\(.+\))?: lockfile\b/,
+];
+
+function isBuildOutputPath(path: string): boolean {
+  if (BUILD_OUTPUT_PATH_PREFIXES.some((prefix) => path.startsWith(prefix))) {
+    return true;
+  }
+  return ROOT_LOCKFILES.has(path);
+}
+
+function getStagedFiles(cwd: string): string[] {
+  try {
+    const out = execSync("git diff --cached --name-only", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+    return out.split("\n").map((s) => s.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function detectBundledArtifactLeak(opts: {
+  cwd: string;
+  subject: string;
+  stagedFiles?: string[];
+}): { leaked: boolean; paths: string[] } {
+  // Only the first line of the message counts as the subject for exemption.
+  const subjectLine = (opts.subject || "").split("\n")[0].trim();
+
+  if (EXEMPT_BUILD_SUBJECT_PATTERNS.some((re) => re.test(subjectLine))) {
+    return { leaked: false, paths: [] };
+  }
+
+  const staged = opts.stagedFiles ?? getStagedFiles(opts.cwd);
+  const matched = staged.filter(isBuildOutputPath);
+
+  if (matched.length === 0) {
+    return { leaked: false, paths: [] };
+  }
+
+  return { leaked: true, paths: matched };
+}
+
+function buildLeakBlockMessage(paths: string[]): string[] {
+  const list = paths.map((p) => `  - ${p}`).join("\n");
+  const resetArgs = paths.join(" ");
+  return [
+    "Commit includes build-output paths, but subject does not indicate a build/release commit:",
+    list,
+    "",
+    "Build-output paths leak into feature commits when the dev forgets to split. To fix:",
+    "",
+    `  1. Unstage the build outputs:`,
+    `       git reset HEAD ${resetArgs}`,
+    "  2. Commit the source changes alone with the original subject.",
+    "  3. Stage and commit the build outputs separately:",
+    `       git add ${resetArgs}`,
+    `       git commit -m "chore: build update bundled CLI"`,
+    "",
+    "If the leak is intentional (e.g., adding a new file under plugins/), bypass with:",
+    "  git commit --no-verify",
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Check: validate-push
 // Verify version bump, CHANGELOG entry, and successful build
 // ─────────────────────────────────────────────────────────────────────────────
@@ -753,6 +856,22 @@ async function validateCommit(context: HookContext): Promise<CheckResult> {
   const subjectLine = message.split("\n")[0];
   if (subjectLine.length > 72) {
     result.warnings.push(`Subject line is ${subjectLine.length} characters (recommended: ≤72)`);
+  }
+
+  // Bundled-artifact leak detection — only when prior checks passed. If the
+  // commit message format already failed, leak detection is irrelevant
+  // (the dev has to fix the format first anyway). Likewise, an AI-attribution
+  // block already short-circuits the commit.
+  if (!result.blocked) {
+    const leak = detectBundledArtifactLeak({
+      cwd: process.cwd(),
+      subject: subjectLine,
+    });
+    if (leak.leaked) {
+      result.passed = false;
+      result.blocked = true;
+      result.errors.push(...buildLeakBlockMessage(leak.paths));
+    }
   }
 
   return result;

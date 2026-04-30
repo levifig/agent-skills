@@ -18358,7 +18358,7 @@ import { join as join19, dirname as dirname5, resolve } from "path";
 import { readFileSync as readFileSync11 } from "fs";
 import { dirname as dirname4, join as join18 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
-var LOAF_VERSION = "2.0.0-dev.33" ? "2.0.0-dev.33" : readPackageVersion();
+var LOAF_VERSION = "2.0.0-dev.34" ? "2.0.0-dev.34" : readPackageVersion();
 
 // cli/lib/install/fenced-section.ts
 var FENCED_START = "<!-- loaf:managed:start";
@@ -20674,14 +20674,11 @@ function generateChangelogSection(version, date, commits) {
   }
   return lines.join("\n");
 }
-function buildChangelogSectionFromEntries(version, date, entries) {
-  const lines = [];
-  lines.push(`## [${version}] - ${date}`);
-  lines.push("");
-  for (const entry of entries) {
-    lines.push(entry);
-  }
-  return lines.join("\n");
+function buildChangelogSectionFromEntries(version, date, body) {
+  const trimmed = body.replace(/^(?:[ \t]*\n)+/, "").replace(/(?:\n[ \t]*)+$/, "");
+  return `## [${version}] - ${date}
+
+${trimmed}`;
 }
 function getUnreleasedBody(existingContent) {
   const lines = existingContent.split("\n");
@@ -20702,17 +20699,17 @@ function getUnreleasedBody(existingContent) {
   }
   return lines.slice(unreleasedIndex + 1, nextReleaseIndex);
 }
-function extractUnreleasedEntries(existingContent) {
+function extractUnreleasedBody(existingContent) {
   const body = getUnreleasedBody(existingContent);
-  if (body === null) return [];
-  const entries = [];
-  for (const line of body) {
-    if (UNRELEASED_STUB_RE.test(line)) continue;
-    if (/^[-*]\s/.test(line)) {
-      entries.push(line);
-    }
-  }
-  return entries;
+  if (body === null) return null;
+  const filtered = body.filter((line) => !UNRELEASED_STUB_RE.test(line));
+  const hasContent = filtered.some((line) => line.trim().length > 0);
+  if (!hasContent) return null;
+  let start = 0;
+  let end = filtered.length;
+  while (start < end && filtered[start].trim().length === 0) start++;
+  while (end > start && filtered[end - 1].trim().length === 0) end--;
+  return filtered.slice(start, end).join("\n");
 }
 function insertIntoChangelog(existingContent, newSection) {
   const lines = existingContent.split("\n");
@@ -21600,13 +21597,13 @@ ${bold5("loaf release")}
     }
     const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const existingChangelogPath = join29(cwd, "CHANGELOG.md");
-    const curatedEntries = existsSync23(existingChangelogPath) ? extractUnreleasedEntries(readFileSync21(existingChangelogPath, "utf-8")) : [];
+    const curatedBody = existsSync23(existingChangelogPath) ? extractUnreleasedBody(readFileSync21(existingChangelogPath, "utf-8")) : null;
     let changelogSection;
-    if (curatedEntries.length > 0) {
+    if (curatedBody !== null) {
       changelogSection = buildChangelogSectionFromEntries(
         newVersion,
         today,
-        curatedEntries
+        curatedBody
       );
     } else {
       changelogSection = generateChangelogSection(newVersion, today, commits);
@@ -21663,9 +21660,20 @@ ${bold5("loaf release")}
     const { skipTag, skipGh } = normalizeSkipFlags(options2);
     console.log(`  ${bold5("Actions:")}`);
     let actionNum = 1;
+    const buildPkgPathPreview = join29(cwd, "package.json");
+    let buildCommandLabel = "loaf build";
+    if (existsSync23(buildPkgPathPreview)) {
+      try {
+        const pkg = JSON.parse(readFileSync21(buildPkgPathPreview, "utf-8"));
+        if (pkg.scripts && typeof pkg.scripts.build === "string") {
+          buildCommandLabel = "npm run build";
+        }
+      } catch {
+      }
+    }
     console.log(`    ${actionNum++}. Update version in ${versionFiles.length} file(s)`);
     console.log(`    ${actionNum++}. Update CHANGELOG.md`);
-    console.log(`    ${actionNum++}. Run loaf build`);
+    console.log(`    ${actionNum++}. Run ${buildCommandLabel}`);
     console.log(`    ${actionNum++}. Commit release artifacts`);
     if (skipTag) {
       console.log(`    ${gray5(`${actionNum++}. Create git tag ${tagName} (--no-tag \u2014 skipped)`)}`);
@@ -21731,11 +21739,30 @@ ${bold5("loaf release")}
       process.exit(1);
     }
     try {
-      execFileSync9(process.execPath, [process.argv[1], "build"], {
-        cwd,
-        stdio: "inherit"
-      });
-      console.log(`    ${green5("\u2713")} Built all targets`);
+      const buildPkgPath = join29(cwd, "package.json");
+      let useNpmBuild = false;
+      if (existsSync23(buildPkgPath)) {
+        try {
+          const pkg = JSON.parse(readFileSync21(buildPkgPath, "utf-8"));
+          if (pkg.scripts && typeof pkg.scripts.build === "string") {
+            useNpmBuild = true;
+          }
+        } catch {
+        }
+      }
+      if (useNpmBuild) {
+        execFileSync9("npm", ["run", "build"], {
+          cwd,
+          stdio: "inherit"
+        });
+        console.log(`    ${green5("\u2713")} Ran npm run build`);
+      } else {
+        execFileSync9(process.execPath, [process.argv[1], "build"], {
+          cwd,
+          stdio: "inherit"
+        });
+        console.log(`    ${green5("\u2713")} Built all targets`);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`    ${red3("\u2717")} Build failed: ${message}`);
@@ -25538,6 +25565,74 @@ function headSubjectMatchesReleaseShape() {
     return false;
   }
 }
+var BUILD_OUTPUT_PATH_PREFIXES = [
+  "plugins/",
+  "dist/",
+  ".claude-plugin/"
+];
+var ROOT_LOCKFILES = /* @__PURE__ */ new Set([
+  "package-lock.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "bun.lock",
+  "bun.lockb"
+]);
+var EXEMPT_BUILD_SUBJECT_PATTERNS = [
+  RELEASE_COMMIT_SUBJECT_REGEX,
+  /^chore(?:\(.+\))?: build\b/,
+  /^chore(?:\(.+\))?: deps\b/,
+  /^chore(?:\(.+\))?: lockfile\b/
+];
+function isBuildOutputPath(path) {
+  if (BUILD_OUTPUT_PATH_PREFIXES.some((prefix) => path.startsWith(prefix))) {
+    return true;
+  }
+  return ROOT_LOCKFILES.has(path);
+}
+function getStagedFiles(cwd) {
+  try {
+    const out = execSync2("git diff --cached --name-only", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "ignore"]
+    });
+    return out.split("\n").map((s) => s.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+function detectBundledArtifactLeak(opts) {
+  const subjectLine = (opts.subject || "").split("\n")[0].trim();
+  if (EXEMPT_BUILD_SUBJECT_PATTERNS.some((re) => re.test(subjectLine))) {
+    return { leaked: false, paths: [] };
+  }
+  const staged = opts.stagedFiles ?? getStagedFiles(opts.cwd);
+  const matched = staged.filter(isBuildOutputPath);
+  if (matched.length === 0) {
+    return { leaked: false, paths: [] };
+  }
+  return { leaked: true, paths: matched };
+}
+function buildLeakBlockMessage(paths) {
+  const list = paths.map((p) => `  - ${p}`).join("\n");
+  const resetArgs = paths.join(" ");
+  return [
+    "Commit includes build-output paths, but subject does not indicate a build/release commit:",
+    list,
+    "",
+    "Build-output paths leak into feature commits when the dev forgets to split. To fix:",
+    "",
+    `  1. Unstage the build outputs:`,
+    `       git reset HEAD ${resetArgs}`,
+    "  2. Commit the source changes alone with the original subject.",
+    "  3. Stage and commit the build outputs separately:",
+    `       git add ${resetArgs}`,
+    `       git commit -m "chore: build update bundled CLI"`,
+    "",
+    "If the leak is intentional (e.g., adding a new file under plugins/), bypass with:",
+    "  git commit --no-verify"
+  ];
+}
 async function validatePush(context) {
   const result = {
     passed: true,
@@ -25860,6 +25955,17 @@ async function validateCommit(context) {
   const subjectLine = message.split("\n")[0];
   if (subjectLine.length > 72) {
     result.warnings.push(`Subject line is ${subjectLine.length} characters (recommended: \u226472)`);
+  }
+  if (!result.blocked) {
+    const leak = detectBundledArtifactLeak({
+      cwd: process.cwd(),
+      subject: subjectLine
+    });
+    if (leak.leaked) {
+      result.passed = false;
+      result.blocked = true;
+      result.errors.push(...buildLeakBlockMessage(leak.paths));
+    }
   }
   return result;
 }

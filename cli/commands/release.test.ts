@@ -474,3 +474,240 @@ describe("release commit subject", () => {
     90_000,
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Build step (TASK-149): release runs `npm run build` for Node projects
+//
+// Background: prior to this fix, Step 3 of the release flow always invoked
+// `loaf build` (content-only). For projects that bundle their own CLI
+// (loaf itself does — `plugins/loaf/bin/loaf` is bundled by tsup), this left
+// the bundled binary with the previous version baked in. The fix detects
+// Node projects via `package.json` with a `build` script and runs
+// `npm run build` instead.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("release runs npm run build for Node projects (TASK-149)", () => {
+  it(
+    "invokes the package.json build script during the release commit",
+    () => {
+      const repoRoot = realpathSync(
+        mkdtempSync(join(tmpdir(), "loaf-release-build-")),
+      );
+      try {
+        execFileSync("git", ["init", "-b", "main"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync("git", ["config", "user.email", "test@test.com"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync("git", ["config", "user.name", "Test"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+
+        // package.json with a `build` script that writes a marker file.
+        // The marker captures the current package.json version at build
+        // time, so we can prove the build ran AFTER the version bump.
+        writeFileSync(
+          join(repoRoot, "package.json"),
+          JSON.stringify(
+            {
+              name: "fixture",
+              version: "1.0.0",
+              scripts: {
+                build:
+                  "node -e \"const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf-8'));fs.writeFileSync('build-marker.txt','built v'+p.version+'\\n');\"",
+              },
+            },
+            null,
+            2,
+          ) + "\n",
+        );
+        writeFileSync(
+          join(repoRoot, "CHANGELOG.md"),
+          [
+            "# Changelog",
+            "",
+            "## [Unreleased]",
+            "",
+            "- Initial change",
+            "",
+            "## [1.0.0] - 2024-01-01",
+            "",
+            "- Initial release",
+            "",
+          ].join("\n"),
+        );
+        execFileSync("git", ["add", "."], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync("git", ["commit", "-m", "chore: initial"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        const baseSha = execFileSync("git", ["rev-parse", "HEAD"], {
+          cwd: repoRoot,
+          encoding: "utf-8",
+        }).trim();
+
+        // Add a feat commit so commits.length > 0
+        writeFileSync(join(repoRoot, "src.txt"), "v1\n");
+        execFileSync("git", ["add", "."], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync("git", ["commit", "-m", "feat: add src.txt"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+
+        const result = spawnSync(
+          "node",
+          [
+            CLI_PATH,
+            "release",
+            "--bump",
+            "patch",
+            "--yes",
+            "--no-tag",
+            "--no-gh",
+            "--base",
+            baseSha,
+          ],
+          {
+            cwd: repoRoot,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 60_000,
+          },
+        );
+
+        expect(result.status).toBe(0);
+        // Action-list preview should advertise `npm run build`, not `loaf build`
+        expect(result.stdout).toContain("Run npm run build");
+        // Execution log should confirm npm was invoked
+        expect(result.stdout).toContain("Ran npm run build");
+
+        // Marker file must exist and reflect the BUMPED version (1.0.1)
+        const markerPath = join(repoRoot, "build-marker.txt");
+        const marker = execFileSync("cat", [markerPath], {
+          encoding: "utf-8",
+        }).trim();
+        expect(marker).toBe("built v1.0.1");
+
+        // Marker file must be part of the release commit
+        const filesInCommit = execFileSync(
+          "git",
+          ["show", "HEAD", "--name-only", "--pretty=format:"],
+          {
+            cwd: repoRoot,
+            encoding: "utf-8",
+          },
+        ).trim();
+        expect(filesInCommit.split("\n")).toContain("build-marker.txt");
+      } finally {
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+    90_000,
+  );
+
+  it(
+    "falls back to `loaf build` when package.json has no build script",
+    () => {
+      const repoRoot = realpathSync(
+        mkdtempSync(join(tmpdir(), "loaf-release-no-build-")),
+      );
+      try {
+        execFileSync("git", ["init", "-b", "main"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync("git", ["config", "user.email", "test@test.com"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync("git", ["config", "user.name", "Test"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+
+        // package.json WITHOUT a build script → should use `loaf build`
+        writeFileSync(
+          join(repoRoot, "package.json"),
+          JSON.stringify({ name: "fixture", version: "1.0.0" }, null, 2) +
+            "\n",
+        );
+        writeFileSync(
+          join(repoRoot, "CHANGELOG.md"),
+          [
+            "# Changelog",
+            "",
+            "## [Unreleased]",
+            "",
+            "- Initial change",
+            "",
+            "## [1.0.0] - 2024-01-01",
+            "",
+            "- Initial release",
+            "",
+          ].join("\n"),
+        );
+        execFileSync("git", ["add", "."], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync("git", ["commit", "-m", "chore: initial"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        const baseSha = execFileSync("git", ["rev-parse", "HEAD"], {
+          cwd: repoRoot,
+          encoding: "utf-8",
+        }).trim();
+
+        writeFileSync(join(repoRoot, "src.txt"), "v1\n");
+        execFileSync("git", ["add", "."], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync("git", ["commit", "-m", "feat: add src.txt"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+
+        const result = spawnSync(
+          "node",
+          [
+            CLI_PATH,
+            "release",
+            "--bump",
+            "patch",
+            "--yes",
+            "--no-tag",
+            "--no-gh",
+            "--base",
+            baseSha,
+          ],
+          {
+            cwd: repoRoot,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 60_000,
+          },
+        );
+
+        expect(result.status).toBe(0);
+        // Action list should still say "Run loaf build" (fallback path)
+        expect(result.stdout).toContain("Run loaf build");
+        expect(result.stdout).not.toContain("Run npm run build");
+      } finally {
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+    90_000,
+  );
+});

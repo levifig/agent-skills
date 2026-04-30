@@ -628,6 +628,245 @@ describe("check: validate-commit AI-attribution regression", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tests: validate-commit bundled-artifact leak detection (TASK-136)
+//
+// Build outputs (`plugins/`, `dist/`, `.claude-plugin/`) and root lockfiles
+// (`package-lock.json`, etc.) leaking into commits whose subject does not
+// indicate a build/release/deps/lockfile scope must be blocked at commit
+// time so the dev splits the commit before pushing instead of after.
+// CI verifier (ADR-012) is the post-push safety net; this is the pre-commit
+// guard.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("check: validate-commit bundled-artifact leak detection", () => {
+  /**
+   * Stage a set of files in the test git repo. Each entry is a relative path;
+   * the file is created (with parent dirs) and added to the index. An initial
+   * commit is created first if the repo has no HEAD, so that
+   * `git diff --cached` returns the staged paths.
+   */
+  function stageFiles(paths: string[]): void {
+    // Ensure HEAD exists so `git diff --cached` reports staged files.
+    try {
+      execSync("git rev-parse HEAD", {
+        cwd: TEST_ROOT,
+        stdio: "ignore",
+      });
+    } catch {
+      writeFileSync(join(TEST_ROOT, ".seed"), "seed\n");
+      execSync("git add .seed", { cwd: TEST_ROOT, stdio: "ignore" });
+      execSync('git commit -m "chore: seed"', {
+        cwd: TEST_ROOT,
+        stdio: "ignore",
+      });
+    }
+
+    for (const rel of paths) {
+      const target = join(TEST_ROOT, rel);
+      const parent = target.substring(0, target.lastIndexOf("/"));
+      if (parent && parent !== TEST_ROOT) {
+        mkdirSync(parent, { recursive: true });
+      }
+      writeFileSync(target, "stub\n");
+      execSync(`git add ${JSON.stringify(rel)}`, {
+        cwd: TEST_ROOT,
+        stdio: "ignore",
+      });
+    }
+  }
+
+  it("passes for clean non-build commit (only source files staged)", () => {
+    stageFiles(["cli/foo.ts"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'git commit -m "feat: add feature"' },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("blocks feat: commit with plugins/loaf/bin/loaf leaked", () => {
+    stageFiles(["cli/foo.ts", "plugins/loaf/bin/loaf"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'git commit -m "feat: add feature"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("plugins/loaf/bin/loaf");
+    expect(result.stderr).toContain("build-output paths");
+  });
+
+  it("blocks fix: commit with package-lock.json leaked", () => {
+    stageFiles(["cli/foo.ts", "package-lock.json"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'git commit -m "fix: bug"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("package-lock.json");
+  });
+
+  it("passes chore: release v<semver> commit with plugins/loaf/bin/loaf staged", () => {
+    stageFiles(["plugins/loaf/bin/loaf"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command: 'git commit -m "chore: release v2.0.0-dev.33"',
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("passes chore: release v<semver> with PR-number suffix and build outputs", () => {
+    stageFiles(["plugins/loaf/bin/loaf", "dist/codex/skills/foo.md"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command: 'git commit -m "chore: release v2.0.0-dev.33 (#41)"',
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("passes chore: build commit with plugins/loaf/bin/loaf staged", () => {
+    stageFiles(["plugins/loaf/bin/loaf"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command: 'git commit -m "chore: build update distributions"',
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("passes chore: deps commit with package-lock.json staged", () => {
+    stageFiles(["package-lock.json"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command: 'git commit -m "chore: deps bump yaml to 2.8.3"',
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("passes chore: lockfile commit with package-lock.json staged", () => {
+    stageFiles(["package-lock.json"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command: 'git commit -m "chore: lockfile catch-up to package.json"',
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("blocks docs: commit with dist/ build output", () => {
+    stageFiles(["docs/foo.md", "dist/codex/skills/release/SKILL.md"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'git commit -m "docs: update README"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("dist/codex/skills/release/SKILL.md");
+  });
+
+  it("blocks feat: commit with .claude-plugin/ build output", () => {
+    stageFiles([".claude-plugin/marketplace.json"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'git commit -m "feat: add feature"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain(".claude-plugin/marketplace.json");
+  });
+
+  it("block message names ONLY build-output paths, not source files", () => {
+    stageFiles([
+      "cli/source.ts",
+      "content/skills/foo/SKILL.md",
+      "plugins/loaf/bin/loaf",
+      "package-lock.json",
+    ]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'git commit -m "feat: add feature"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("plugins/loaf/bin/loaf");
+    expect(result.stderr).toContain("package-lock.json");
+    // Source files must NOT appear in the leaked-paths list (they are the
+    // legitimate part of the commit).
+    expect(result.stderr).not.toContain("cli/source.ts");
+    expect(result.stderr).not.toContain("content/skills/foo/SKILL.md");
+  });
+
+  it("blocks bare chore: notes commit with plugins/loaf/bin/loaf — chore alone is not exempt", () => {
+    stageFiles(["plugins/loaf/bin/loaf"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'git commit -m "chore: notes"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("plugins/loaf/bin/loaf");
+  });
+
+  it("blocks multi-line commit when subject is feat: but body says chore: build", () => {
+    // Body content must not influence the exemption — only the first line
+    // (the subject) is checked against the exempt patterns.
+    stageFiles(["plugins/loaf/bin/loaf"]);
+
+    const command = `git commit -m "$(cat <<'EOF'\nfeat: add feature\n\nchore: build refresh\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("plugins/loaf/bin/loaf");
+  });
+
+  it("Conventional-Commits failure short-circuits leak check (format error wins)", () => {
+    // When the subject doesn't match Conventional Commits at all, the format
+    // check blocks first and the leak detector should not run (its message
+    // is irrelevant noise on top of a format error the dev must fix anyway).
+    stageFiles(["plugins/loaf/bin/loaf"]);
+
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'git commit -m "not conventional"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("Conventional Commits");
+    expect(result.stderr).not.toContain("build-output paths");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Tests: security-audit
 // ─────────────────────────────────────────────────────────────────────────────
 

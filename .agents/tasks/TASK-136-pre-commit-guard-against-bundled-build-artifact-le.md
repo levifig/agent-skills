@@ -1,10 +1,11 @@
 ---
 id: TASK-136
 title: Pre-commit guard against bundled build-artifact leakage in unrelated commits
-status: todo
+status: done
 priority: P2
 created: '2026-04-29T15:00:01.123Z'
-updated: '2026-04-29T15:00:01.123Z'
+updated: '2026-04-30T15:40:25.423Z'
+completed_at: '2026-04-30T15:40:25.423Z'
 ---
 
 # TASK-136: Pre-commit guard against bundled build-artifact leakage in unrelated commits

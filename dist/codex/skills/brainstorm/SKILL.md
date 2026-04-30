@@ -5,7 +5,7 @@ description: >-
   analysis. Use when the user asks "help me think through this," "what are the
   options," or is exploring tradeoffs. Produces docs with sparks. Not for quick
   ideas or shaping.
-version: 2.0.0-dev.33
+version: 2.0.0-dev.34
 ---
 
 # Brainstorm

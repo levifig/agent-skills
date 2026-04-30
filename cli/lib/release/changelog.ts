@@ -104,24 +104,26 @@ export function generateChangelogSection(
 }
 
 /**
- * Build a versioned changelog section from already-curated entries.
+ * Build a versioned changelog section from a curated `[Unreleased]` body.
  *
- * Used when the user wrote their own list items under `[Unreleased]` before
+ * Used when the user wrote their own content under `[Unreleased]` before
  * running `loaf release`. Auto-generation from commit subjects is skipped
- * and the curated lines are preserved verbatim under the new version header.
+ * and the curated body is preserved verbatim — including any subsection
+ * headers (`### Added`, `### Changed`, `### Removed`, `### Fixed`,
+ * `### Internal`, …), prose, list items, and blank lines between them —
+ * under the new version header.
+ *
+ * The `body` is emitted as-is; only leading and trailing blank lines are
+ * trimmed so the section starts and ends cleanly. Internal whitespace is
+ * preserved.
  */
 export function buildChangelogSectionFromEntries(
   version: string,
   date: string,
-  entries: string[],
+  body: string,
 ): string {
-  const lines: string[] = [];
-  lines.push(`## [${version}] - ${date}`);
-  lines.push("");
-  for (const entry of entries) {
-    lines.push(entry);
-  }
-  return lines.join("\n");
+  const trimmed = body.replace(/^(?:[ \t]*\n)+/, "").replace(/(?:\n[ \t]*)+$/, "");
+  return `## [${version}] - ${date}\n\n${trimmed}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -158,30 +160,45 @@ function getUnreleasedBody(existingContent: string): string[] | null {
 }
 
 /**
- * Extract curated list-item entries from the `[Unreleased]` section.
+ * Extract the curated body of the `[Unreleased]` section, preserving
+ * structure verbatim.
  *
- * Returns the list-item lines (those starting with `- ` or `* `) excluding
- * the stub line (`- _No unreleased changes ..._`). Whitespace-only lines and
- * non-list markdown (prose, sub-headings) are ignored — they are not entries.
+ * Returns the body between `## [Unreleased]` and the next `## [` heading
+ * with the stub line (`- _No unreleased changes ..._`) removed. All other
+ * content — subsection headers (`### Added`, `### Changed`, `### Removed`,
+ * `### Fixed`, `### Internal`, etc.), list items, prose, and the blank
+ * lines between them — is preserved exactly as written.
  *
- * Returns an empty array when:
- *   - There is no `[Unreleased]` section (the caller treats that as "fall through")
- *   - The section contains only the stub, blank lines, or non-list content
+ * Returns `null` (signalling "no curated content; fall through to
+ * auto-generation") when:
+ *   - There is no `[Unreleased]` section.
+ *   - The section is empty or contains only the stub and/or whitespace.
  *
- * Returns the curated lines verbatim (no trim) when they are present.
+ * Otherwise returns the body as a single string. Leading and trailing
+ * blank lines are trimmed; the consuming builder will re-add the single
+ * blank line that separates the body from the `## [X.Y.Z]` header.
  */
-export function extractUnreleasedEntries(existingContent: string): string[] {
+export function extractUnreleasedBody(existingContent: string): string | null {
   const body = getUnreleasedBody(existingContent);
-  if (body === null) return [];
+  if (body === null) return null;
 
-  const entries: string[] = [];
-  for (const line of body) {
-    if (UNRELEASED_STUB_RE.test(line)) continue;
-    if (/^[-*]\s/.test(line)) {
-      entries.push(line);
-    }
-  }
-  return entries;
+  // Strip stub lines but keep everything else verbatim (including blank
+  // lines, sub-headings, prose, list items).
+  const filtered = body.filter((line) => !UNRELEASED_STUB_RE.test(line));
+
+  // After stub removal, decide whether this counts as "curated content"
+  // worth preserving. Whitespace-only is treated as empty so the caller
+  // routes to the auto-generation path.
+  const hasContent = filtered.some((line) => line.trim().length > 0);
+  if (!hasContent) return null;
+
+  // Trim leading/trailing blank lines but keep internal structure intact.
+  let start = 0;
+  let end = filtered.length;
+  while (start < end && filtered[start].trim().length === 0) start++;
+  while (end > start && filtered[end - 1].trim().length === 0) end--;
+
+  return filtered.slice(start, end).join("\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
