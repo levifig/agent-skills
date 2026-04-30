@@ -310,6 +310,38 @@ describe("check: validate-commit", () => {
     expect(result.exitCode).toBe(2);
   });
 
+  it("blocks legacy release: type as an unknown Conventional Commits type", () => {
+    // Post-SPEC-031 cutover: `release` is no longer an accepted type. The
+    // canonical release commit subject is `chore: release v<semver>`.
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'git commit -m "release: v1.2.3"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("Conventional Commits");
+    // Error message must NOT advertise `release` as a valid type any longer.
+    expect(result.stderr).not.toMatch(/Valid types:[^\n]*\brelease\b/);
+  });
+
+  it("accepts the canonical chore: release v<semver> commit subject", () => {
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'git commit -m "chore: release v1.2.3"' },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("accepts chore: release v<semver> with prerelease tag", () => {
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'git commit -m "chore: release v2.0.0-dev.30"' },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
   it("blocks AI attribution in commit messages", () => {
     const result = runCheck("validate-commit", {
       tool: { name: "Bash" },
@@ -468,6 +500,134 @@ describe("check: validate-commit", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tests: validate-commit AI-attribution regression (SPEC-031 / TASK-137)
+//
+// Locks in the regex change shipped in `ccc265e8` (2026-04-29). The regex
+// matches three structured attribution surfaces — `Co-authored-by:` trailers,
+// attribution verbs (generated/created/authored/written/produced) near AI
+// names, and bot-emoji footers — instead of bare AI-tool names. Bare names
+// like `claude`, `gpt`, `gemini` must remain legal in non-attribution
+// contexts (path tokens, target identifiers, model references).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("check: validate-commit AI-attribution regression", () => {
+  // Pass cases — path tokens and in-context AI-tool name mentions
+
+  it("passes commit body referencing .claude/CLAUDE.md path token", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nfeat: add AGENTS.md consolidation for claude-code target\n\nWires .claude/CLAUDE.md to symlink against .agents/AGENTS.md so the\nclaude-code target stays aligned with the canonical instructions file.\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("AI attribution");
+  });
+
+  it("passes commit body referencing dist/codex/ path token", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nbuild: refresh dist/codex/ output for the codex target\n\nRegenerates dist/codex/ skills after the latest content/skills/ updates.\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("AI attribution");
+  });
+
+  it("passes commit body referencing .agents/AGENTS.md path token", () => {
+    const command = `git commit -m "$(cat <<'EOF'\ndocs: point .agents/AGENTS.md at the new orchestration skill\n\nRefreshes .agents/AGENTS.md to reflect the current agent profile set.\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("AI attribution");
+  });
+
+  it("passes path-like commit subject mentioning claude-code target", () => {
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command: 'git commit -m "feat: add AGENTS.md consolidation for claude-code target"',
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("AI attribution");
+  });
+
+  it("passes commit mentioning GPT in a model-selection sentence", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nchore: update GPT-5.4 prompt template\n\nRefines the prompt used when GPT-5.4 is selected as the routing model.\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("AI attribution");
+  });
+
+  // Reject cases — real attribution surfaces
+
+  it("rejects Co-Authored-By trailer with Claude (anthropic)", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nfeat: add new feature\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("AI attribution");
+  });
+
+  it("rejects 'Generated by Claude Code' attribution-verb body", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nfeat: ship new module\n\nGenerated by Claude Code during the spec-031 session.\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("AI attribution");
+  });
+
+  it("rejects bot-emoji footer with Claude Code attribution", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nfeat: ship new module\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("AI attribution");
+  });
+
+  it("rejects Co-authored-by trailer with GPT-4 (openai)", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nfeat: add new feature\n\nCo-authored-by: GPT-4 <ai@openai.com>\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("AI attribution");
+  });
+
+  it("rejects 'Authored by Anthropic Claude' attribution-verb body", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nfeat: ship new module\n\nAuthored by Anthropic Claude in collaboration with the team.\nEOF\n)"`;
+    const result = runCheck("validate-commit", {
+      tool: { name: "Bash" },
+      tool_input: { command },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("AI attribution");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Tests: security-audit
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -609,8 +769,62 @@ describe("check: workflow-pre-pr", () => {
     expect(result.stderr).toContain("empty");
   });
 
-  it("passes when Unreleased is empty but HEAD is tagged (release flow)", () => {
-    // After release skill Step 4: entries moved from [Unreleased] to version header, tag created
+  it("blocks when Unreleased section contains only the stub (stub != entry)", () => {
+    // The stub line emitted by `loaf release` is shaped as a markdown list
+    // item (`- _No unreleased changes yet._`) so the section is not empty
+    // by raw markdown, but semantically there are no curated entries. The
+    // empty-section detector must mirror `extractUnreleasedEntries` and
+    // discard the stub before checking for entries — otherwise feature
+    // PRs that forget to add changelog entries would silently pass.
+    const changelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'gh pr create --title "feat: add new feature" --body "Description"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("empty");
+  });
+
+  it("blocks when Unreleased contains the alternate 'since vX.Y.Z' stub form", () => {
+    // The stub regex covers both shapes — `_No unreleased changes yet._`
+    // and `_No unreleased changes since v<version>._` — so the alternate
+    // form must also be discarded before the entry check.
+    const changelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes since v1.0.0._
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'gh pr create --title "feat: add new feature" --body "Description"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("empty");
+  });
+
+  it("passes when Unreleased is empty but HEAD is tagged (post-merge release flow)", () => {
+    // After release skill Step 6 (post-merge): entries moved from [Unreleased] to version
+    // header, base branch tagged at the squash-merge commit.
     const changelog = `# Changelog
 
 ## [Unreleased]
@@ -626,23 +840,161 @@ describe("check: workflow-pre-pr", () => {
 `;
     writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
 
-    // Create a release commit at HEAD with a tag (as loaf release does)
+    // Create a release commit at HEAD with a tag (post-merge state)
     writeFileSync(join(TEST_ROOT, "file.txt"), "content");
     execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
-    execSync('git commit -m "release: v1.1.0"', { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: release v1.1.0"', { cwd: TEST_ROOT, stdio: "ignore" });
     execSync("git tag v1.1.0", { cwd: TEST_ROOT, stdio: "ignore" });
 
     const result = runCheck("workflow-pre-pr", {
       tool: { name: "Bash" },
-      tool_input: { command: 'gh pr create --title "feat: release v1.1.0" --body "Release"' },
+      tool_input: { command: 'gh pr create --title "chore: release v1.1.0" --body "Release"' },
     });
 
     // Should pass — HEAD is tagged, entries are under the version header
     expect(result.exitCode).toBe(0);
   });
 
-  it("blocks when Unreleased is empty and commit says release but no tag", () => {
-    // A commit message alone shouldn't bypass the check
+  it("passes when Unreleased is empty and HEAD subject matches chore: release shape (pre-merge)", () => {
+    // After release skill Step 4 (pre-merge): entries moved from [Unreleased] to version
+    // header, but no tag yet — tags land on the squash-merge commit on the base branch.
+    const changelog = `# Changelog
+
+## [Unreleased]
+
+## [1.1.0] - 2024-02-01
+
+- Added new feature
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    writeFileSync(join(TEST_ROOT, "file.txt"), "content");
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: release v1.1.0"', { cwd: TEST_ROOT, stdio: "ignore" });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'gh pr create --title "chore: release v1.1.0" --body "Release"' },
+    });
+
+    // Should pass — HEAD subject matches the pre-merge release shape
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("passes when HEAD subject is chore: release v<semver> with PR-number suffix", () => {
+    const changelog = `# Changelog
+
+## [Unreleased]
+
+## [1.2.3] - 2024-03-01
+
+- New feature
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    writeFileSync(join(TEST_ROOT, "file.txt"), "content");
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: release v1.2.3 (#42)"', { cwd: TEST_ROOT, stdio: "ignore" });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'gh pr create --title "chore: release v1.2.3" --body "Release"' },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("passes when HEAD subject is chore: release v<semver> with prerelease tag", () => {
+    // Loaf itself uses prerelease versions like v2.0.0-dev.30
+    const changelog = `# Changelog
+
+## [Unreleased]
+
+## [2.0.0-dev.30] - 2026-04-01
+
+- New feature
+
+## [2.0.0-dev.29] - 2026-03-15
+
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    writeFileSync(join(TEST_ROOT, "file.txt"), "content");
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: release v2.0.0-dev.30"', { cwd: TEST_ROOT, stdio: "ignore" });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'gh pr create --title "chore: release v2.0.0-dev.30" --body "Release"' },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("blocks when HEAD subject is chore: release notes draft (shape, not prefix)", () => {
+    // Shape-validated escape hatch: a `chore: release` prefix without a valid
+    // semver tail must NOT bypass the empty-[Unreleased] gate.
+    const changelog = `# Changelog
+
+## [Unreleased]
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    writeFileSync(join(TEST_ROOT, "file.txt"), "content");
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: release notes draft"', { cwd: TEST_ROOT, stdio: "ignore" });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'gh pr create --title "chore: release notes draft" --body "WIP"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("empty");
+  });
+
+  it("blocks when HEAD subject has trailing tail beyond version + PR suffix", () => {
+    const changelog = `# Changelog
+
+## [Unreleased]
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    writeFileSync(join(TEST_ROOT, "file.txt"), "content");
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    // Tail content beyond the optional PR suffix breaks the shape match.
+    execSync('git commit -m "chore: release v1.2.3 - hotfix branch"', { cwd: TEST_ROOT, stdio: "ignore" });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'gh pr create --title "chore: release v1.2.3" --body "Release"' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("empty");
+  });
+
+  it("blocks when Unreleased is empty and HEAD subject is the legacy release: prefix (now an unknown type)", () => {
+    // Regression: the legacy `release: ...` shape no longer bypasses anything —
+    // it's an unknown Conventional Commits type post-cutover, and the empty
+    // [Unreleased] gate still catches it at the workflow-pre-pr layer.
     const changelog = `# Changelog
 
 ## [Unreleased]
@@ -659,10 +1011,10 @@ describe("check: workflow-pre-pr", () => {
 
     const result = runCheck("workflow-pre-pr", {
       tool: { name: "Bash" },
-      tool_input: { command: 'gh pr create --title "release: prep docs" --body "Prep"' },
+      tool_input: { command: 'gh pr create --title "chore: prep docs" --body "Prep"' },
     });
 
-    // Should block — no tag means this isn't a real release
+    // Should block — `release:` is no longer a recognized escape hatch
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("empty");
   });
@@ -787,6 +1139,528 @@ describe("check: workflow-pre-pr", () => {
 
     expect(result.exitCode).toBe(0);
   });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Tests: workflow-pre-pr — release-only PR classifier (TASK-145)
+  //
+  // Strict diff allowlist: branch whose only diff vs base is `CHANGELOG.md`
+  // + known version-file paths AND a non-empty `## [<version>]` matching
+  // the version files. Bypasses the empty-`[Unreleased]` block.
+  //
+  // Tests use `git config loaf.release.base main` so base resolution lands
+  // at step 3 (config) without requiring gh.
+  // ───────────────────────────────────────────────────────────────────────
+
+  /**
+   * Set up a fixture repo with `main` containing initial CHANGELOG/package.json
+   * and a feature branch whose diff against main matches a chosen shape.
+   * The base is configured via `git config loaf.release.base main` so the
+   * resolver short-circuits at step 3 without needing gh.
+   */
+  function setUpReleaseOnlyFixture(opts: {
+    initialChangelog: string;
+    initialPackageVersion: string;
+    branchPackageVersion: string;
+    branchChangelog: string;
+    extraBranchFile?: { path: string; content: string };
+    skipVersionFileBump?: boolean;
+    loafJson?: string;
+    extraBranchVersionFile?: { path: string; content: string };
+  }): void {
+    // Tests use --initial-branch via `git -c init.defaultBranch=main` was
+    // an option, but we reuse the repo from beforeEach. Rename current branch
+    // to main so the base ref is canonical.
+    try {
+      execSync("git checkout -B main", { cwd: TEST_ROOT, stdio: "ignore" });
+    } catch {
+      /* ignore */
+    }
+
+    // ── main branch state ─────────────────────────────────────────────
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), opts.initialChangelog);
+    writeFileSync(
+      join(TEST_ROOT, "package.json"),
+      JSON.stringify(
+        { name: "fixture", version: opts.initialPackageVersion },
+        null,
+        2,
+      ) + "\n",
+    );
+    if (opts.loafJson) {
+      mkdirSync(join(TEST_ROOT, ".agents"), { recursive: true });
+      writeFileSync(join(TEST_ROOT, ".agents/loaf.json"), opts.loafJson);
+    }
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: initial"', {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+
+    // ── feature branch state ──────────────────────────────────────────
+    execSync("git checkout -b release/branch", {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), opts.branchChangelog);
+    if (!opts.skipVersionFileBump) {
+      writeFileSync(
+        join(TEST_ROOT, "package.json"),
+        JSON.stringify(
+          { name: "fixture", version: opts.branchPackageVersion },
+          null,
+          2,
+        ) + "\n",
+      );
+    }
+    if (opts.extraBranchFile) {
+      const target = join(TEST_ROOT, opts.extraBranchFile.path);
+      const parent = target.substring(0, target.lastIndexOf("/"));
+      if (parent && parent !== TEST_ROOT) {
+        mkdirSync(parent, { recursive: true });
+      }
+      writeFileSync(target, opts.extraBranchFile.content);
+    }
+    if (opts.extraBranchVersionFile) {
+      const target = join(TEST_ROOT, opts.extraBranchVersionFile.path);
+      mkdirSync(join(target, ".."), { recursive: true });
+      writeFileSync(target, opts.extraBranchVersionFile.content);
+    }
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: release v1.2.3"', {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+
+    // Configure base resolver to use `main` without gh.
+    execSync("git config loaf.release.base main", {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+  }
+
+  it("release-only PR with chore: release commit passes despite empty [Unreleased]", () => {
+    const initialChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    const branchChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.2.3] - 2026-04-29
+
+- Added new feature
+- Fixed a bug
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    setUpReleaseOnlyFixture({
+      initialChangelog,
+      initialPackageVersion: "1.0.0",
+      branchPackageVersion: "1.2.3",
+      branchChangelog,
+    });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command:
+          'gh pr create --title "chore: release v1.2.3" --body "Release"',
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("release-only PR with monorepo .agents/loaf.json declarations passes", () => {
+    const initialChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    const branchChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.2.3] - 2026-04-29
+
+- Bumped backend
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    const loafJson = JSON.stringify(
+      {
+        release: {
+          versionFiles: ["backend/pyproject.toml"],
+        },
+      },
+      null,
+      2,
+    ) + "\n";
+
+    // Initial state: main has `backend/pyproject.toml` at 1.0.0.
+    try {
+      execSync("git checkout -B main", { cwd: TEST_ROOT, stdio: "ignore" });
+    } catch {
+      /* ignore */
+    }
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), initialChangelog);
+    mkdirSync(join(TEST_ROOT, ".agents"), { recursive: true });
+    writeFileSync(join(TEST_ROOT, ".agents/loaf.json"), loafJson);
+    mkdirSync(join(TEST_ROOT, "backend"), { recursive: true });
+    writeFileSync(
+      join(TEST_ROOT, "backend/pyproject.toml"),
+      `[project]\nname = "fixture"\nversion = "1.0.0"\n`,
+    );
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: initial"', {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+
+    // Branch: bump backend version + move changelog block.
+    execSync("git checkout -b release/backend", {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), branchChangelog);
+    writeFileSync(
+      join(TEST_ROOT, "backend/pyproject.toml"),
+      `[project]\nname = "fixture"\nversion = "1.2.3"\n`,
+    );
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: release v1.2.3"', {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+    execSync("git config loaf.release.base main", {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command:
+          'gh pr create --title "chore: release v1.2.3" --body "Release"',
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("mixed PR with release files + extra source file falls through to empty-[Unreleased] block", () => {
+    const initialChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    const branchChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.2.3] - 2026-04-29
+
+- Added new feature
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    setUpReleaseOnlyFixture({
+      initialChangelog,
+      initialPackageVersion: "1.0.0",
+      branchPackageVersion: "1.2.3",
+      branchChangelog,
+      // Extra non-allowlist file disqualifies the classification.
+      extraBranchFile: { path: "src/foo.ts", content: "export const x = 1;\n" },
+    });
+
+    // The HEAD subject is `chore: release v1.2.3`, which would normally trip
+    // the existing pre-merge escape hatch, so use a different subject for this
+    // test to isolate the classifier path.
+    execSync('git commit --amend -m "chore: bump deps"', {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command:
+          'gh pr create --title "chore: bump deps" --body "Routine bump"',
+      },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("empty");
+  });
+
+  it("PR with diff missing version file falls through (CHANGELOG-only diff)", () => {
+    const initialChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    const branchChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.2.3] - 2026-04-29
+
+- Some entry
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    setUpReleaseOnlyFixture({
+      initialChangelog,
+      initialPackageVersion: "1.0.0",
+      branchPackageVersion: "1.0.0",
+      branchChangelog,
+      skipVersionFileBump: true,
+    });
+
+    // Use a non-release HEAD subject so the existing pre-merge shape escape
+    // hatch doesn't kick in — isolate the classifier path.
+    execSync('git commit --amend -m "docs: update changelog"', {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command:
+          'gh pr create --title "docs: update changelog" --body "Curate"',
+      },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("empty");
+  });
+
+  it("release-only diff with empty [<version>] section falls through to block", () => {
+    const initialChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    // [1.2.3] section exists but contains no list items.
+    const branchChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.2.3] - 2026-04-29
+
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    setUpReleaseOnlyFixture({
+      initialChangelog,
+      initialPackageVersion: "1.0.0",
+      branchPackageVersion: "1.2.3",
+      branchChangelog,
+    });
+
+    // Use a non-release HEAD subject so the existing pre-merge shape escape
+    // hatch doesn't kick in.
+    execSync('git commit --amend -m "chore: prep release"', {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command:
+          'gh pr create --title "chore: prep release" --body "Empty section"',
+      },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("empty");
+  });
+
+  it("release-only diff with version-file mismatch falls through to block", () => {
+    const initialChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    // CHANGELOG declares 1.2.3 but package.json bumps to 1.2.4 → mismatch.
+    const branchChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.2.3] - 2026-04-29
+
+- Some entry
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    setUpReleaseOnlyFixture({
+      initialChangelog,
+      initialPackageVersion: "1.0.0",
+      branchPackageVersion: "1.2.4",
+      branchChangelog,
+    });
+
+    // Non-release subject so the existing chore: release shape escape hatch
+    // doesn't kick in.
+    execSync('git commit --amend -m "chore: cut release"', {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command:
+          'gh pr create --title "chore: cut release" --body "Mismatch"',
+      },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("empty");
+  });
+
+  it("feature PR with curated [Unreleased] entries passes (classifier not consulted)", () => {
+    const initialChangelog = `# Changelog
+
+## [Unreleased]
+
+- _No unreleased changes yet._
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    setUpReleaseOnlyFixture({
+      initialChangelog,
+      initialPackageVersion: "1.0.0",
+      branchPackageVersion: "1.0.0",
+      // Curated [Unreleased] entries → existing pass-through path is taken
+      // before the classifier is even relevant.
+      branchChangelog: `# Changelog
+
+## [Unreleased]
+
+- New API for users
+- Fixed pagination bug
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`,
+      skipVersionFileBump: true,
+    });
+
+    execSync('git commit --amend -m "feat: add new API"', {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command: 'gh pr create --title "feat: add new API" --body "Feature work"',
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("classifier-error fallthrough: no base ref configured does not falsely allow", () => {
+    // Empty [Unreleased] block + no chore: release subject + no
+    // loaf.release.base config → base resolution must fall through to gh,
+    // which is not available in the test sandbox. The classifier swallows
+    // the error and returns false; existing block applies.
+    const initialChangelog = `# Changelog
+
+## [Unreleased]
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), initialChangelog);
+    writeFileSync(
+      join(TEST_ROOT, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0" }, null, 2) + "\n",
+    );
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: initial"', {
+      cwd: TEST_ROOT,
+      stdio: "ignore",
+    });
+    // No second commit, no branch — and no loaf.release.base config. Base
+    // detection has nothing to anchor on.
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: {
+        command:
+          'gh pr create --title "chore: cut release" --body "Try to skip"',
+      },
+    });
+
+    // Expect block — classifier-error path must NOT auto-pass.
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("empty");
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -870,7 +1744,7 @@ describe("check: validate-push", () => {
     expect(result.exitCode).toBe(2);
   });
 
-  it("passes when HEAD is the tagged commit (release push)", () => {
+  it("passes when HEAD is the tagged commit (post-merge release push)", () => {
     // Create package.json with matching version
     const pkg = { name: "test", version: "1.1.0" };
     writeFileSync(join(TEST_ROOT, "package.json"), JSON.stringify(pkg, null, 2));
@@ -887,7 +1761,7 @@ describe("check: validate-push", () => {
     // Create initial commit, then a release commit tagged at HEAD
     writeFileSync(join(TEST_ROOT, "file.txt"), "content");
     execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
-    execSync('git commit -m "release: v1.1.0"', { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: release v1.1.0"', { cwd: TEST_ROOT, stdio: "ignore" });
     execSync("git tag v1.1.0", { cwd: TEST_ROOT, stdio: "ignore" });
 
     const result = runCheck("validate-push", {
@@ -896,6 +1770,40 @@ describe("check: validate-push", () => {
     });
 
     // Should pass — HEAD is the tag itself, no version/changelog delta expected
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("passes when HEAD subject matches chore: release shape but no tag yet (pre-merge push)", () => {
+    // Pre-merge state: feature branch has the release commit produced by
+    // `loaf release --pre-merge` but the tag hasn't been created yet.
+    const pkg = { name: "test", version: "1.2.0" };
+    writeFileSync(join(TEST_ROOT, "package.json"), JSON.stringify(pkg, null, 2));
+
+    const changelog = `# Changelog
+## [Unreleased]
+## [1.2.0] - 2024-03-01
+- New feature
+## [1.1.0] - 2024-02-01
+- Old feature
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    // Establish a prior tag so validate-push's pre-release checks would otherwise run.
+    writeFileSync(join(TEST_ROOT, "seed.txt"), "seed");
+    execSync("git add seed.txt", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: seed"', { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git tag v1.1.0", { cwd: TEST_ROOT, stdio: "ignore" });
+
+    // Now produce the pre-merge release commit (tag v1.2.0 NOT created yet).
+    writeFileSync(join(TEST_ROOT, "file.txt"), "content");
+    execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync('git commit -m "chore: release v1.2.0"', { cwd: TEST_ROOT, stdio: "ignore" });
+
+    const result = runCheck("validate-push", {
+      tool: { name: "Bash" },
+      tool_input: { command: "git push origin feat/release" },
+    });
+
     expect(result.exitCode).toBe(0);
   });
 

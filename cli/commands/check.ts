@@ -20,6 +20,9 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
 
+import { isReleaseOnlyPR } from "../lib/release/release-only-pr.js";
+import { UNRELEASED_STUB_RE } from "../lib/release/changelog.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,6 +267,33 @@ async function checkSecrets(context: HookContext): Promise<CheckResult> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Release-commit shape detection
+//
+// The `loaf release` CLI produces a commit with the subject
+// `chore: release v<semver>` (optionally with a ` (#NNN)` PR-number suffix
+// appended by GitHub squash-merge). Hooks (`validate-push`, `workflow-pre-pr`)
+// recognize this shape as a legitimate pre-merge release escape hatch
+// alongside the existing tagged-HEAD logic.
+//
+// Shape-validated, not prefix-only — `chore: release notes draft` is rejected.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RELEASE_COMMIT_SUBJECT_REGEX =
+  /^chore: release v\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?(?:\+[a-zA-Z0-9.-]+)?(?:\s+\(#\d+\))?$/;
+
+function headSubjectMatchesReleaseShape(): boolean {
+  try {
+    const subject = execSync("git log -1 --pretty=%s", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "ignore"],
+    }).trim();
+    return RELEASE_COMMIT_SUBJECT_REGEX.test(subject);
+  } catch {
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Check: validate-push
 // Verify version bump, CHANGELOG entry, and successful build
 // ─────────────────────────────────────────────────────────────────────────────
@@ -363,6 +393,13 @@ async function validatePush(context: HookContext): Promise<CheckResult> {
     }
   } catch {
     // No tags yet
+  }
+
+  // Pre-merge release escape hatch: HEAD subject matches `chore: release v<semver>`.
+  // This recognizes the artifact `loaf release` produces before the squash merge,
+  // when there is no tag yet (tags land post-merge on the base branch).
+  if (!isReleaseCommit && headSubjectMatchesReleaseShape()) {
+    isReleaseCommit = true;
   }
 
   // Check 1: Version bump since last tag (skip for release commits)
@@ -474,8 +511,16 @@ async function workflowPrePr(context: HookContext): Promise<CheckResult> {
       
       if (unreleasedMatch) {
         const unreleasedSection = unreleasedMatch[1];
-        // Check for list items (lines starting with - or *)
-        const hasEntries = /^[-*]\s/m.test(unreleasedSection);
+        // Check for list items (lines starting with - or *), excluding the
+        // stub line emitted by `loaf release` (`- _No unreleased changes ..._`).
+        // The stub is shaped as a list item so the section is never markdown-
+        // empty between releases (see UNRELEASED_STUB in changelog.ts), but
+        // semantically it is NOT a curated entry — mirror the same
+        // discard-then-detect logic used by `extractUnreleasedEntries`.
+        const hasEntries = unreleasedSection
+          .split("\n")
+          .filter((line) => !UNRELEASED_STUB_RE.test(line))
+          .some((line) => /^[-*]\s/.test(line));
 
         if (!hasEntries) {
           // If HEAD is tagged, entries were moved to a version header by the release flow — OK
@@ -488,6 +533,38 @@ async function workflowPrePr(context: HookContext): Promise<CheckResult> {
             isRelease = tags.length > 0;
           } catch {
             // ignore
+          }
+
+          // Pre-merge release escape hatch: HEAD subject matches
+          // `chore: release v<semver>`. The squash merge will land on the base
+          // branch; tags happen post-merge. Recognize the pre-merge artifact
+          // shape so PR creation isn't blocked by the now-empty `[Unreleased]`.
+          if (!isRelease && headSubjectMatchesReleaseShape()) {
+            isRelease = true;
+          }
+
+          // Release-only PR escape hatch (TASK-145): branch whose only diff
+          // against the base is a version bump + `[Unreleased]` → `[X.Y.Z]`
+          // move in CHANGELOG.md. Strict diff allowlist + version match.
+          // Errors fall through to existing behavior — never auto-pass.
+          if (!isRelease) {
+            try {
+              const currentBranch = execSync("git branch --show-current", {
+                encoding: "utf-8",
+                stdio: ["pipe", "pipe", "ignore"],
+              }).trim();
+              if (currentBranch.length > 0) {
+                const classified = await isReleaseOnlyPR({
+                  cwd: process.cwd(),
+                  currentBranch,
+                });
+                if (classified) {
+                  isRelease = true;
+                }
+              }
+            } catch {
+              // Classifier-error fallthrough — never falsely allow.
+            }
           }
 
           if (!isRelease) {
@@ -639,14 +716,14 @@ async function validateCommit(context: HookContext): Promise<CheckResult> {
 
   // Validate Conventional Commits format (scoped commits not allowed)
   // Format: <type>[!]: <description>
-  const conventionalCommitRegex = /^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert|release)!?: .+/;
+  const conventionalCommitRegex = /^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)!?: .+/;
 
   if (!conventionalCommitRegex.test(message)) {
     result.passed = false;
     result.blocked = true;
     result.errors.push("Commit message does not follow Conventional Commits format");
     result.errors.push("Expected format: <type>: <description> (scoped commits not allowed)");
-    result.errors.push("Valid types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert, release");
+    result.errors.push("Valid types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert");
     result.errors.push(`Your message: "${message}"`);
   }
 

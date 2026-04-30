@@ -6,7 +6,7 @@ description: >-
   "merge this PR," "ready to merge," or "ship it." Produces version bumps,
   changelog updates, and merged code. Not for creating PRs (use git-workflow) or
   reflection (use reflect).
-version: 2.0.0-dev.32
+version: 2.0.0-dev.33
 ---
 
 # Release
@@ -62,10 +62,10 @@ Orchestrate a squash merge with correct version ordering, documentation checks, 
 | Doc Freshness | User reviews stale docs | No (user decides) |
 | Housekeeping | Spec/tasks archived, CHANGELOG ready | No (user decides) |
 | PR Creation | Only if no PR exists yet | Yes (if needed) |
-| Version Bump | User confirms bump type (no tag yet) | Yes |
+| Version Bump | User confirms bump type; `loaf release --pre-merge` | Yes |
 | Wrap | Session summary (after version bump, has PR# + version) | Yes |
 | Squash Merge | User approves body text | Yes |
-| Post-Merge | Tag on main, GH Release, branch cleanup | Yes |
+| Post-Merge | `loaf release --post-merge` (tag, GH Release, cleanup) | Yes |
 
 ## Topics
 
@@ -184,14 +184,18 @@ The pre-PR workflow requires writing CHANGELOG entries before creating a PR. The
 - Remove internal tracking terms (tracks, phases, stages, task IDs, spec IDs)
 - Write from the user's perspective — what changed, not how it was tracked
 
-1. Run `loaf release --base <baseRefName> --dry-run` to get the **suggested bump type** and **current version**
+1. Run `loaf release --pre-merge --dry-run` to get the **suggested bump type** and **current version** (the `--pre-merge` flag auto-detects the base branch — see [Why `--pre-merge`?](#why---pre-merge) below).
 2. Present the bump suggestion to the user. They may accept or override.
-3. Once confirmed, perform the version bump manually:
-   - Bump version in `package.json` (or other version files)
-   - Convert the `[Unreleased]` header to `## [X.Y.Z] - YYYY-MM-DD` (preserving the curated entries beneath it)
-   - Add a fresh empty `## [Unreleased]` section above it
-   - Run the project's build command (e.g., `npm run build` or `loaf build`)
-   - Commit: `release: vX.Y.Z`
+3. Once confirmed, run:
+   ```bash
+   loaf release --pre-merge --bump <type> --yes
+   ```
+
+   This will:
+   1. Bump version in all detected files (package.json, pyproject.toml, etc.)
+   2. Convert the `[Unreleased]` header to `## [X.Y.Z] - YYYY-MM-DD` (preserving the curated entries beneath it) and re-insert a fresh empty `## [Unreleased]` section above
+   3. Run `loaf build` to rebuild all targets with the new version
+   4. Commit: `chore: release vX.Y.Z`
 
 ### Generated path (when no entries exist)
 
@@ -203,12 +207,12 @@ When `[Unreleased]` is empty, use `loaf release` to auto-generate changelog entr
 - Write from the user's perspective — what changed, not how it was tracked
 - Keep entries concise but descriptive enough to understand the change without reading the diff
 
-1. Run `loaf release --base <baseRefName> --dry-run` to preview:
+1. Run `loaf release --pre-merge --dry-run` to preview:
    - Current version and suggested bump type
    - Generated changelog section from **this branch's commits only**
    - Which version files will be updated
 
-   The `--base` flag scopes the commit analysis to `<baseRefName>..HEAD`, so only commits on the feature branch are considered.
+   The `--pre-merge` flag scopes the commit analysis to `<auto-detected base>..HEAD`, so only commits on the feature branch are considered.
 
 2. Present the preview to the user. They may:
    - Accept the suggested bump type
@@ -217,25 +221,27 @@ When `[Unreleased]` is empty, use `loaf release` to auto-generate changelog entr
 
 3. Once the user confirms, run:
    ```bash
-   loaf release --base <baseRefName> --bump <type> --no-tag --no-gh --yes
+   loaf release --pre-merge --bump <type> --yes
    ```
 
    This will:
    1. Bump version in all detected files (package.json, pyproject.toml, etc.)
-   2. Generate and insert changelog section from branch commits (adding fresh `[Unreleased]`)
-   3. Run `loaf build` to rebuild all targets with new version
-   4. Commit: `release: vX.Y.Z`
+   2. Generate and insert changelog section from branch commits (adding a fresh `[Unreleased]`)
+   3. Run `loaf build` to rebuild all targets with the new version
+   4. Commit: `chore: release vX.Y.Z`
 
 ### After either path
 
 Push to the feature branch (**with user confirmation**).
 
-### Why these flags?
+### Why `--pre-merge`?
 
-- `--base <baseRefName>` — Scopes changelog and bump suggestion to this PR's work, not everything since the last tag
-- `--no-tag` — Tags belong on the squash merge commit on `main`, not on the feature branch commit that gets squashed away
-- `--no-gh` — GitHub Release is created post-merge from the changelog body, not pre-merge
-- `--yes` — Skip the CLI confirmation prompt (the skill already confirmed with the user conversationally)
+`--pre-merge` bundles the canonical pre-merge flag set so the skill no longer needs to spell each one out:
+
+- Equivalent to `--no-tag --no-gh --base <auto-detected>` (tag and GH release land post-merge in Step 6, not on the soon-to-be-squashed feature commit).
+- Auto-detects the base ref via a 4-step priority: explicit `--base <ref>` → open PR's `baseRefName` → `git config loaf.release.base` → repo default branch. Run `loaf release --help` to see the full priority order.
+- Pass `--base <ref>` explicitly to override auto-detection (useful for non-default base branches like `release/1.0` when no PR exists yet).
+- `--yes` skips the CLI confirmation prompt — the skill already confirmed with the user conversationally.
 
 ---
 
@@ -275,31 +281,21 @@ When called from `/release`, wrap skips the version bump and changelog prompts (
 
 ## Step 6: Post-Merge Cleanup
 
-After successful merge:
+After successful merge, run a single command:
 
-1. Switch to the base branch and pull (session already closed by `/wrap` in Step 4b):
-   ```bash
-   git checkout <baseRefName> && git pull --rebase
-   ```
-2. **Tag the squash merge commit** — this is now HEAD on the base branch:
-   ```bash
-   git tag -a vX.Y.Z -m "Release X.Y.Z"
-   git push --tags
-   ```
-   The tag lands on the actual merge commit that exists in `main` history, not a branch commit that was squashed away.
-3. **Create GitHub Release** from the changelog body:
-   - Read `CHANGELOG.md` and extract the section for `[X.Y.Z]`
-   - Create the release:
-     ```bash
-     gh release create vX.Y.Z --title "vX.Y.Z" --notes "<changelog section>"
-     ```
-   - If `gh` is unavailable, skip and inform the user.
-4. Delete the merged feature branch locally and remotely:
-   ```bash
-   git branch -d <branch>
-   git push origin --delete <branch>
-   ```
-5. **Run `/reflect`** — always run after merge, already on the base branch. Reflect looks back at the shipped work and updates strategic docs (VISION.md, STRATEGY.md, ARCHITECTURE.md) with learnings. Use `AskUserQuestion` to confirm before running.
+```bash
+loaf release --post-merge
+```
+
+This verifies HEAD state against an 8-point guardrail checklist (clean worktree, on the base branch with the merge commit at HEAD, `chore: release v<semver>` subject shape, version-file agreement, CHANGELOG section present, no pre-existing tag or GH release, HEAD untagged). Once all guardrails pass it tags the squash merge commit, pushes the tag, creates the GitHub Release from the matching `## [X.Y.Z]` CHANGELOG section, pulls the base branch, and best-effort deletes the local + remote feature branch. Manual `git tag`, `git push --tags`, `gh release create`, `git checkout`, `git pull --rebase`, and `git branch -d` are no longer needed — the flag subsumes them.
+
+If anything aborts:
+
+1. Read the actionable error message — each guardrail failure names the exact manual fix (e.g., "tag v1.2.3 already exists locally — run `git tag -d v1.2.3` and rerun").
+2. Perform the named fix.
+3. Rerun `loaf release --post-merge`. The command is idempotent on stateless reads, so reruns after a transient `gh` failure or a half-completed prior run pick up exactly where they left off.
+
+After the release finalizes, **run `/reflect`** — already on the base branch. Reflect looks back at the shipped work and updates strategic docs (VISION.md, STRATEGY.md, ARCHITECTURE.md) with learnings. Use `AskUserQuestion` to confirm before running.
 
 ---
 

@@ -23,6 +23,22 @@ const SECTION_ORDER: ChangelogSection[] = [
 
 const UNRELEASED_RE = /^## \[unreleased\]/i;
 
+/**
+ * Stub line re-inserted under [Unreleased] after a release. Wrapped as a
+ * markdown list item so that workflow-pre-pr's `^[-*]\s` entry-detection
+ * does not flag the section as empty between releases.
+ */
+export const UNRELEASED_STUB = "- _No unreleased changes yet._";
+
+/**
+ * Matches the stub regardless of the trailing "yet." vs "since vX.Y.Z." form.
+ *
+ * Exported so consumers (e.g. workflow-pre-pr's empty-section detector) can
+ * recognize the stub as non-entry content and not mistakenly treat it as a
+ * curated changelog entry just because it happens to be a markdown list item.
+ */
+export const UNRELEASED_STUB_RE = /^[-*]\s+_No unreleased changes.*_\.?\s*$/;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Grouping
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,6 +103,87 @@ export function generateChangelogSection(
   return lines.join("\n");
 }
 
+/**
+ * Build a versioned changelog section from already-curated entries.
+ *
+ * Used when the user wrote their own list items under `[Unreleased]` before
+ * running `loaf release`. Auto-generation from commit subjects is skipped
+ * and the curated lines are preserved verbatim under the new version header.
+ */
+export function buildChangelogSectionFromEntries(
+  version: string,
+  date: string,
+  entries: string[],
+): string {
+  const lines: string[] = [];
+  lines.push(`## [${version}] - ${date}`);
+  lines.push("");
+  for (const entry of entries) {
+    lines.push(entry);
+  }
+  return lines.join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unreleased section inspection
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Extract the body of the `[Unreleased]` section from a CHANGELOG.md.
+ *
+ * Returns the lines between `## [Unreleased]` and the next `## [` heading,
+ * or `null` when no `[Unreleased]` marker exists.
+ */
+function getUnreleasedBody(existingContent: string): string[] | null {
+  const lines = existingContent.split("\n");
+
+  let unreleasedIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (UNRELEASED_RE.test(lines[i].trim())) {
+      unreleasedIndex = i;
+      break;
+    }
+  }
+  if (unreleasedIndex === -1) return null;
+
+  let nextReleaseIndex = lines.length;
+  for (let i = unreleasedIndex + 1; i < lines.length; i++) {
+    if (/^## \[/.test(lines[i].trim())) {
+      nextReleaseIndex = i;
+      break;
+    }
+  }
+
+  return lines.slice(unreleasedIndex + 1, nextReleaseIndex);
+}
+
+/**
+ * Extract curated list-item entries from the `[Unreleased]` section.
+ *
+ * Returns the list-item lines (those starting with `- ` or `* `) excluding
+ * the stub line (`- _No unreleased changes ..._`). Whitespace-only lines and
+ * non-list markdown (prose, sub-headings) are ignored — they are not entries.
+ *
+ * Returns an empty array when:
+ *   - There is no `[Unreleased]` section (the caller treats that as "fall through")
+ *   - The section contains only the stub, blank lines, or non-list content
+ *
+ * Returns the curated lines verbatim (no trim) when they are present.
+ */
+export function extractUnreleasedEntries(existingContent: string): string[] {
+  const body = getUnreleasedBody(existingContent);
+  if (body === null) return [];
+
+  const entries: string[] = [];
+  for (const line of body) {
+    if (UNRELEASED_STUB_RE.test(line)) continue;
+    if (/^[-*]\s/.test(line)) {
+      entries.push(line);
+    }
+  }
+  return entries;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Changelog File Operations
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,8 +191,10 @@ export function generateChangelogSection(
 /**
  * Insert a new release section into an existing CHANGELOG.md content.
  *
- * Replaces [Unreleased] content with empty, adds versioned section below it.
- * Returns null if no [Unreleased] marker found.
+ * Replaces the `[Unreleased]` body with the stub line so the section is no
+ * longer empty (workflow-pre-pr requires at least one list item there) and
+ * adds the new versioned section below it. Returns null if no `[Unreleased]`
+ * marker is found.
  */
 export function insertIntoChangelog(
   existingContent: string,
@@ -126,6 +225,8 @@ export function insertIntoChangelog(
   // Build the replacement:
   //   ## [Unreleased]
   //   <blank>
+  //   {UNRELEASED_STUB}
+  //   <blank>
   //   {newSection}
   //   <blank>
   //   {rest of file from next release onward}
@@ -135,6 +236,8 @@ export function insertIntoChangelog(
 
   const result = [
     ...before,
+    "",
+    UNRELEASED_STUB,
     "",
     newSection,
     "",
@@ -157,6 +260,8 @@ export function createChangelog(releaseSection: string): string {
     "The format is based on [Keep a Changelog](https://keepachangelog.com/).",
     "",
     "## [Unreleased]",
+    "",
+    UNRELEASED_STUB,
     "",
     releaseSection,
     "",

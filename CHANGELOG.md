@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- _No unreleased changes since v2.0.0-dev.32._
+- _No unreleased changes yet._
+
+## [2.0.0-dev.33] - 2026-04-30
+
+- `loaf release --pre-merge` flag bundling `--no-tag --no-gh --base <auto-detected>` with 4-step base detection (explicit `--base` → open-PR base via `gh pr view` → `git config loaf.release.base` → default branch).
+- `loaf release --post-merge` flag with 8-point guardrail checklist that finalizes a release after squash-merge: tag → push tag → GH release from CHANGELOG section → pull base → best-effort feature-branch cleanup. Light idempotency: each guardrail is rerun-safe; partial-failure aborts produce actionable manual-fix messages naming the exact recovery command.
+- `loaf release --version-file <path>` repeatable CLI flag for ad-hoc version-file selection, complementing declared `release.versionFiles` in `.agents/loaf.json` for monorepo layouts (e.g., `["backend/pyproject.toml", "frontend/package.json"]`).
+- Release-only PR classifier in `workflow-pre-pr`: a PR whose diff is exactly version-file paths + `CHANGELOG.md` with a non-empty `## [<version>]` section bypasses the empty-`[Unreleased]` block. Enables release-only PRs on repos with protected default branches.
+- `loaf release` commit subject is now `chore: release v<semver>` (was `release: vX.Y.Z`). Conventional-Commits compliant; passes `@commitlint/config-conventional` without rewording. `workflow-pre-pr` and `validate-push` accept the new shape as a pre-merge escape hatch (shape-validated, not prefix-only — `chore: release notes draft` is still rejected).
+- `loaf release` preserves curated `[Unreleased]` entries when present: existing list items are copied verbatim under the new `## [X.Y.Z]` header and auto-generation does not run. Resolves the recurring overwrite/jargon friction observed in dev.31 and dev.32.
+- `loaf release` re-inserts the `- _No unreleased changes yet._` stub under fresh `[Unreleased]` after each release, so subsequent `gh pr create` does not block on an "empty" section.
+- `/loaf:release` skill collapses Step 4 to `loaf release --pre-merge --bump <type> --yes` and Step 6 to `loaf release --post-merge`. Replaces the prior manual `git tag` / `git push --tags` / `gh release create` / `git checkout` / `git pull` / `git branch -d` sequence.
+- CI `Build Distributions` workflow now verifies build-artifact freshness instead of auto-committing to `main`. Fails loudly when `dist/`, `plugins/`, or `.claude-plugin/` are out of sync with source. Also runs on `pull_request` so drift is caught during PR review, not only after merge. Removes the `GH013` auto-push rejection that had been failing every push to `main`.
+- `release` from the accepted Conventional Commits types in `validate-commit` (Loaf-specific extension; not commitlint-compatible). The `chore: release v<semver>` shape replaces it cleanly.
+- Orphan `content/hooks/pre-tool/workflow-pre-pr.sh` — no longer wired; `loaf check --hook workflow-pre-pr` auto-dispatches to the TS path.
+- `loaf check workflow-pre-pr`: empty-section detector under `[Unreleased]` now mirrors `extractUnreleasedEntries` and discards the `- _No unreleased changes yet._` stub before checking for curated entries. Previously, the stub (a markdown list item by design) was counted as a real entry, which would have allowed feature PRs that forget to add changelog entries to silently pass.
+- Unified base-branch resolver via `skipPRLookup?` option in `cli/lib/release/base.ts`. Replaces the divergent `resolveBaseForPostMerge` that had drifted into `post-merge.ts`. One resolver now serves `--pre-merge`, `--post-merge` (skips PR tier — the PR is closed/merged at that point), and the release-only PR classifier.
+- Regression coverage added across the spec: `validate-commit` AI-attribution path-token pass cases + structured-attribution reject cases, `loaf release` end-to-end commit subject assertion (real commit, not `--dry-run`), post-merge guardrails 4/5/7/8 + idempotency rerun, base-detection 4-step precedence, monorepo declared-file resolution, release-only PR classifier mixed-diff disqualification.
 
 ## [2.0.0-dev.32] - 2026-04-29
 

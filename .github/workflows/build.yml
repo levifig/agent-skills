@@ -8,10 +8,13 @@ on:
       - 'plugins/**'
       - '.claude-plugin/**'
       - '*.md'
+  pull_request:
+    paths-ignore:
+      - 'dist/**'
+      - 'plugins/**'
+      - '.claude-plugin/**'
+      - '*.md'
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
@@ -20,8 +23,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -38,20 +39,19 @@ jobs:
       - name: Build all targets
         run: npm run build
 
-      - name: Check for changes
-        id: changes
+      - name: Verify build artifacts are in sync
         run: |
-          git add dist/ plugins/ .claude-plugin/ || true
-          if git diff --staged --quiet; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-          else
-            echo "changed=true" >> $GITHUB_OUTPUT
+          if ! git diff --quiet -- dist/ plugins/ .claude-plugin/; then
+            echo "ERROR: Build artifacts are out of sync with source."
+            echo ""
+            echo "Files affected:"
+            git diff --stat -- dist/ plugins/ .claude-plugin/
+            echo ""
+            echo "Diff (first 200 lines):"
+            git diff -- dist/ plugins/ .claude-plugin/ | head -200
+            echo ""
+            echo "Run 'npm run build' locally and commit the resulting changes alongside"
+            echo "the source changes that produced them (per CLAUDE.md convention)."
+            exit 1
           fi
-
-      - name: Commit and push build outputs
-        if: steps.changes.outputs.changed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "build: update distributions"
-          git push
+          echo "Build artifacts are in sync with source."

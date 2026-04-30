@@ -16,6 +16,10 @@ export interface LoafConfig {
     imports?: string[];
   };
   integrations?: Record<string, { enabled: boolean }>;
+  release?: {
+    /** Repo-relative paths to version files. Replaces root auto-detection when set. */
+    versionFiles?: string[];
+  };
   [key: string]: unknown;
 }
 

@@ -19,6 +19,24 @@ export interface ReleaseOptions {
   tag?: boolean;
   gh?: boolean;
   yes?: boolean;
+  /** Repeatable `--version-file <path>` overrides. Replaces declared + auto-detected paths. */
+  versionFile?: string[];
+  /**
+   * `--pre-merge` convenience flag. Bundles `--no-tag --no-gh --base <auto>`.
+   * Auto-detection follows a 4-step priority order (see `cli/lib/release/base.ts`).
+   * Explicit `--tag`, `--gh`, or `--base` overrides the bundled defaults.
+   */
+  preMerge?: boolean;
+  /**
+   * `--post-merge` finalization flag. Skips the bump+commit flow entirely
+   * and instead runs the 8-point guardrail check + tag/push/release/cleanup
+   * sequence on the just-merged release commit. See
+   * `cli/lib/release/post-merge.ts`.
+   *
+   * Incompatible with --bump, --dry-run, --no-tag, --tag, --no-gh, --gh,
+   * --base, --version-file, --yes (post-merge has no bump and no draft step).
+   */
+  postMerge?: boolean;
 }
 
 export interface NormalizedFlags {

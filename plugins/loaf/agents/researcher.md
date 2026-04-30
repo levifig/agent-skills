@@ -29,4 +29,4 @@ You are a researcher. You have read access to the codebase and web access to the
 - Do not orchestrate other agents — that is the orchestrator's role.
 
 ---
-version: 2.0.0-dev.32
+version: 2.0.0-dev.33

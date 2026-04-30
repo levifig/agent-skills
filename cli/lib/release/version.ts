@@ -242,8 +242,154 @@ const CANDIDATES: VersionCandidate[] = [
   },
 ];
 
-/** Auto-detect version files in the project root. Returns all found, ordered by priority. */
-export function detectVersionFiles(cwd: string): VersionFile[] {
+/** Options for {@link detectVersionFiles}. */
+export interface DetectVersionFilesOptions {
+  /** CLI override (`--version-file <path>`, repeatable). Highest precedence. */
+  cliOverrides?: string[];
+  /** Declared paths from `.agents/loaf.json` `release.versionFiles`. */
+  configOverrides?: string[];
+}
+
+/** Infer format + TOML section (if applicable) for a declared path based on its filename. */
+function classifyDeclaredPath(
+  relativePath: string,
+): { format: "json" | "toml-regex"; tomlSection?: string; jsonVersionPath?: string } | null {
+  const normalized = relativePath.replace(/\\/g, "/");
+  const basename = normalized.split("/").pop() ?? normalized;
+
+  if (basename === "package.json") {
+    return { format: "json" };
+  }
+  if (basename === "loaf.json") {
+    return { format: "json" };
+  }
+  if (basename === "marketplace.json") {
+    return { format: "json", jsonVersionPath: "metadata.version" };
+  }
+  if (basename === "pyproject.toml") {
+    return { format: "toml-regex", tomlSection: "project" };
+  }
+  if (basename === "Cargo.toml") {
+    return { format: "toml-regex", tomlSection: "package" };
+  }
+  // Generic JSON / TOML fallback by extension
+  if (basename.endsWith(".json")) {
+    return { format: "json" };
+  }
+  if (basename.endsWith(".toml")) {
+    return { format: "toml-regex", tomlSection: "project" };
+  }
+  return null;
+}
+
+/**
+ * Load a single declared/overridden version file. Throws with a precise
+ * error if the path is missing or its version cannot be parsed.
+ */
+export function loadDeclaredVersionFile(
+  cwd: string,
+  relativePath: string,
+): VersionFile {
+  const normalized = relativePath.replace(/\\/g, "/");
+  const absolutePath = join(cwd, normalized);
+
+  if (!existsSync(absolutePath)) {
+    throw new Error(`version file ${normalized} not found`);
+  }
+
+  const classification = classifyDeclaredPath(normalized);
+  if (!classification) {
+    throw new Error(
+      `version file ${normalized}: unsupported file type (expected .json or .toml)`,
+    );
+  }
+
+  let content: string;
+  try {
+    content = readFileSync(absolutePath, "utf-8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`version file ${normalized}: could not read (${message})`);
+  }
+
+  let version: string | undefined;
+  if (classification.format === "json") {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      throw new Error(`version file ${normalized}: could not parse version`);
+    }
+
+    if (classification.jsonVersionPath) {
+      const segments = classification.jsonVersionPath.split(".");
+      let cursor: unknown = parsed;
+      for (const segment of segments) {
+        if (cursor && typeof cursor === "object" && segment in (cursor as Record<string, unknown>)) {
+          cursor = (cursor as Record<string, unknown>)[segment];
+        } else {
+          cursor = undefined;
+          break;
+        }
+      }
+      if (typeof cursor === "string") version = cursor;
+    } else if (parsed && typeof parsed === "object" && "version" in (parsed as Record<string, unknown>)) {
+      const candidate = (parsed as Record<string, unknown>).version;
+      if (typeof candidate === "string") version = candidate;
+    }
+  } else {
+    const section = classification.tomlSection ?? "project";
+    const result = readTomlVersion(content, section);
+    if (result) version = result;
+  }
+
+  if (!version) {
+    throw new Error(`version file ${normalized}: could not parse version`);
+  }
+
+  return {
+    path: absolutePath,
+    relativePath: normalized,
+    format: classification.format,
+    currentVersion: version,
+  };
+}
+
+/**
+ * Resolve the set of version files to operate on.
+ *
+ * Two-tier resolution, declarative-first:
+ *   1. `cliOverrides` (from `--version-file`) — replaces both declared and
+ *      auto-detected paths for the invocation.
+ *   2. `configOverrides` (from `.agents/loaf.json` `release.versionFiles`) —
+ *      replaces root auto-detection.
+ *   3. Fallback — root auto-detect: `package.json`, `pyproject.toml`,
+ *      `Cargo.toml`, `.agents/loaf.json`, `.claude-plugin/marketplace.json`.
+ *
+ * For (1) and (2): every declared path must exist and contain a parseable
+ * version. Any missing/malformed path throws — partial monorepo bumps are
+ * worse than no bump at all.
+ */
+export function detectVersionFiles(
+  cwd: string,
+  options: DetectVersionFilesOptions = {},
+): VersionFile[] {
+  const cliOverrides = options.cliOverrides ?? [];
+  const configOverrides = options.configOverrides ?? [];
+
+  if (cliOverrides.length > 0) {
+    return cliOverrides.map((path) => loadDeclaredVersionFile(cwd, path));
+  }
+
+  if (configOverrides.length > 0) {
+    return configOverrides.map((path) => loadDeclaredVersionFile(cwd, path));
+  }
+
+  return detectVersionFilesFromRoot(cwd);
+}
+
+/** Root-only auto-detect (the original behavior). */
+function detectVersionFilesFromRoot(cwd: string): VersionFile[] {
   const ecosystemFiles: VersionFile[] = [];
   let loafFile: VersionFile | null = null;
 
@@ -337,7 +483,8 @@ export function prepareVersionUpdates(
 /** Map a relative file path back to its TOML section name. */
 function tomlSectionForPath(relativePath: string): string | null {
   const normalized = relativePath.replace(/\\/g, "/");
-  if (normalized === "pyproject.toml") return "project";
-  if (normalized === "Cargo.toml") return "package";
+  const basename = normalized.split("/").pop() ?? normalized;
+  if (basename === "pyproject.toml") return "project";
+  if (basename === "Cargo.toml") return "package";
   return null;
 }

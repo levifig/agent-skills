@@ -31,6 +31,8 @@ import {
 import type { VersionFile, BumpType } from "../lib/release/version.js";
 import {
   generateChangelogSection,
+  buildChangelogSectionFromEntries,
+  extractUnreleasedEntries,
   insertIntoChangelog,
   createChangelog,
 } from "../lib/release/changelog.js";
@@ -40,6 +42,13 @@ import {
   normalizeSkipFlags,
 } from "../lib/release/options.js";
 import type { ReleaseOptions } from "../lib/release/options.js";
+import { resolveBaseBranch } from "../lib/release/base.js";
+import {
+  checkPostMergeGuardrails,
+  executePostMergeActions,
+} from "../lib/release/post-merge.js";
+import type { PostMergeLogger } from "../lib/release/post-merge.js";
+import { readLoafConfig } from "../lib/config/agents-config.js";
 
 // ANSI color helpers
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -113,6 +122,19 @@ function isGhAvailable(): boolean {
   }
 }
 
+/** Get the current branch name (`git symbolic-ref --short HEAD`) or null if detached. */
+function getCurrentBranch(cwd: string): string | null {
+  try {
+    return execFileSync("git", ["symbolic-ref", "--short", "HEAD"], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
 interface IncompleteTask {
   filename: string;
   status: string;
@@ -158,20 +180,44 @@ function getEditor(): string | null {
   return process.env.VISUAL || process.env.EDITOR || null;
 }
 
+/** Commander collector for repeatable string options. */
+function collect(value: string, previous: string[]): string[] {
+  return previous.concat([value]);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Command
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function registerReleaseCommand(program: Command): void {
-  program
+  const releaseCmd = program
     .command("release")
     .description("Create a new release with changelog, version bump, and tag")
     .option("--dry-run", "Preview release without making changes")
     .option("--bump <type>", "Skip interactive bump choice (prerelease, release, major, minor, patch)")
     .option("--base <ref>", "Use commits since <ref> instead of last tag (e.g. main)")
     .option("--no-tag", "Skip git tag creation")
+    .option("--tag", "Force git tag creation (overrides --pre-merge default)")
     .option("--no-gh", "Skip GitHub release draft")
-    .option("-y, --yes", "Skip confirmation prompt (for non-interactive use)")
+    .option("--gh", "Force GitHub release draft (overrides --pre-merge default)")
+    .option(
+      "--version-file <path>",
+      "Override version file path (repeatable). Replaces .agents/loaf.json release.versionFiles and root auto-detection.",
+      collect,
+      [] as string[],
+    )
+    .option(
+      "--pre-merge",
+      "Shortcut for --no-tag --no-gh --base <auto-detected>. Auto-detects base via 4-step priority: --base flag > open PR base > git config loaf.release.base > default branch.",
+    )
+    .option(
+      "--post-merge",
+      "Finalize release after squash-merge: verify 8-point guardrails, then tag, push tag, create GH release, pull base, best-effort branch cleanup.",
+      false,
+    )
+    .option("-y, --yes", "Skip confirmation prompt (for non-interactive use)");
+
+  releaseCmd
     .action(async (options: ReleaseOptions) => {
       const cwd = process.cwd();
 
@@ -182,6 +228,156 @@ export function registerReleaseCommand(program: Command): void {
       if (!isGitRepo(cwd)) {
         console.error(`  ${red("error:")} Not a git repository`);
         process.exit(1);
+      }
+
+      // ── --post-merge handling ─────────────────────────────────────────
+      //
+      // `--post-merge` finalizes a release after the squash-merge has landed
+      // on the base branch. It is post-bump: the bump + changelog + commit
+      // already happened in the pre-merge run, the PR was reviewed and
+      // squash-merged, and now we tag + push + create the GH release +
+      // cleanup.
+      //
+      // It is incompatible with every flag that influences the bump flow
+      // (--bump, --dry-run, --no-tag, --tag, --no-gh, --gh, --base,
+      // --version-file, --yes). Reject up front before any guardrail.
+      if (options.postMerge) {
+        const incompatibleFlags: Array<{ source: string; label: string }> = [];
+        const checkIncompatible = (
+          optionName: string,
+          label: string,
+        ): void => {
+          const source = releaseCmd.getOptionValueSource(optionName);
+          if (source === "cli") incompatibleFlags.push({ source, label });
+        };
+        checkIncompatible("bump", "--bump");
+        checkIncompatible("dryRun", "--dry-run");
+        checkIncompatible("tag", options.tag === false ? "--no-tag" : "--tag");
+        checkIncompatible("gh", options.gh === false ? "--no-gh" : "--gh");
+        checkIncompatible("base", "--base");
+        checkIncompatible("versionFile", "--version-file");
+        checkIncompatible("yes", "--yes");
+        checkIncompatible("preMerge", "--pre-merge");
+        if (incompatibleFlags.length > 0) {
+          for (const { label } of incompatibleFlags) {
+            console.error(
+              `  ${red("error:")} --post-merge is incompatible with ${label}`,
+            );
+          }
+          process.exit(1);
+        }
+
+        const logger: PostMergeLogger = {
+          ok: (msg) => console.log(`    ${green("✓")} ${msg}`),
+          warn: (msg) => process.stderr.write(`    ${yellow("⚠")} ${msg}\n`),
+          err: (msg) => process.stderr.write(`    ${red("✗")} ${msg}\n`),
+        };
+
+        console.log(`  ${cyan("Verifying post-merge state")}...`);
+        console.log();
+
+        let guardrailResult;
+        try {
+          guardrailResult = await checkPostMergeGuardrails({ cwd });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`  ${red("error:")} ${message}`);
+          process.exit(1);
+        }
+
+        if (!guardrailResult.ok) {
+          console.error(
+            `  ${red("error:")} guardrail ${guardrailResult.guardrail} failed: ${guardrailResult.message}`,
+          );
+          process.exit(1);
+        }
+
+        console.log(
+          `  ${green("✓")} All 8 guardrails passed for ${bold(`v${guardrailResult.version}`)} on ${bold(guardrailResult.base)}`,
+        );
+        if (guardrailResult.featureBranch) {
+          console.log(
+            `  ${gray(`feature branch:`)} ${guardrailResult.featureBranch}`,
+          );
+        }
+        console.log();
+        console.log(`  ${bold("Executing:")}`);
+
+        try {
+          await executePostMergeActions({ cwd }, guardrailResult, logger);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`    ${red("✗")} ${message}`);
+          process.exit(1);
+        }
+
+        console.log();
+        console.log(
+          `  ${green("✓")} Release v${guardrailResult.version} finalized\n`,
+        );
+        return;
+      }
+
+      // ── --pre-merge handling ──────────────────────────────────────────
+      //
+      // `--pre-merge` bundles `--no-tag --no-gh --base <auto>`. Explicit
+      // overrides win:
+      //   - `--tag` with `--pre-merge`     → warn and tag anyway
+      //   - `--gh` with `--pre-merge`      → warn and create release anyway
+      //   - `--base <ref>` with --pre-merge → use the explicit ref (skip
+      //                                       the auto-detection lookup)
+      //
+      // We use Commander's option-source API to distinguish "user passed
+      // the flag explicitly" from "default value". Without the source check
+      // we can't tell --no-tag from "default tag=true" since both leave
+      // options.tag at a known value.
+      if (options.preMerge) {
+        const tagSource = releaseCmd.getOptionValueSource("tag");
+        const ghSource = releaseCmd.getOptionValueSource("gh");
+        const baseSource = releaseCmd.getOptionValueSource("base");
+
+        if (tagSource === "cli" && options.tag === true) {
+          process.stderr.write(
+            `  ${yellow("warning:")} --tag overrides --pre-merge default (no tag); proceeding with tag enabled\n`,
+          );
+        } else {
+          options.tag = false;
+        }
+
+        if (ghSource === "cli" && options.gh === true) {
+          process.stderr.write(
+            `  ${yellow("warning:")} --gh overrides --pre-merge default (no gh release); proceeding with GitHub release enabled\n`,
+          );
+        } else {
+          options.gh = false;
+        }
+
+        // If user did NOT pass --base explicitly, auto-detect it.
+        if (baseSource !== "cli") {
+          const currentBranch = getCurrentBranch(cwd);
+          if (!currentBranch) {
+            console.error(
+              `  ${red("error:")} --pre-merge requires a named branch ` +
+                `(detached HEAD detected). Pass --base <ref> explicitly.`,
+            );
+            process.exit(1);
+          }
+          try {
+            const detected = await resolveBaseBranch({
+              currentBranch,
+              cwd,
+            });
+            options.base = detected.base;
+            console.log(
+              `  ${cyan("Auto-detected base:")} ${bold(detected.base)} ` +
+                `${gray(`(via ${detected.source})`)}`,
+            );
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`  ${red("error:")} ${message}`);
+            process.exit(1);
+          }
+        }
       }
 
       // ── Phase 1: Gather ────────────────────────────────────────────────
@@ -229,8 +425,28 @@ export function registerReleaseCommand(program: Command): void {
       }
       console.log();
 
-      // Detect version files
-      const versionFiles = detectVersionFiles(cwd);
+      // Detect version files. Two-tier resolution:
+      //   1. --version-file CLI override (repeatable)
+      //   2. .agents/loaf.json `release.versionFiles`
+      //   3. Root auto-detect (fallback)
+      const cliOverrides = options.versionFile ?? [];
+      const loafConfig = readLoafConfig(cwd);
+      const configOverrides = Array.isArray(loafConfig.release?.versionFiles)
+        ? (loafConfig.release?.versionFiles as string[])
+        : [];
+
+      let versionFiles: VersionFile[];
+      try {
+        versionFiles = detectVersionFiles(cwd, {
+          cliOverrides,
+          configOverrides,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`  ${red("error:")} ${message}`);
+        process.exit(1);
+      }
+
       if (versionFiles.length === 0) {
         console.error(`  ${red("error:")} No version files found`);
         process.exit(1);
@@ -292,7 +508,28 @@ export function registerReleaseCommand(program: Command): void {
       }
 
       const today = new Date().toISOString().slice(0, 10);
-      let changelogSection = generateChangelogSection(newVersion, today, commits);
+
+      // Curated entries vs auto-generation:
+      // If [Unreleased] in the existing CHANGELOG already contains user-written
+      // list items, preserve them verbatim under the new version header. Auto-
+      // generation from commit subjects only runs when [Unreleased] is empty
+      // (or contains only the stub). The stub is always re-inserted after the
+      // move (see insertIntoChangelog).
+      const existingChangelogPath = join(cwd, "CHANGELOG.md");
+      const curatedEntries = existsSync(existingChangelogPath)
+        ? extractUnreleasedEntries(readFileSync(existingChangelogPath, "utf-8"))
+        : [];
+
+      let changelogSection: string;
+      if (curatedEntries.length > 0) {
+        changelogSection = buildChangelogSectionFromEntries(
+          newVersion,
+          today,
+          curatedEntries,
+        );
+      } else {
+        changelogSection = generateChangelogSection(newVersion, today, commits);
+      }
 
       // Editor workflow
       const editor = getEditor();
@@ -465,7 +702,7 @@ export function registerReleaseCommand(program: Command): void {
         });
         execFileSync(
           "git",
-          ["commit", "-m", `release: ${tagName}`],
+          ["commit", "-m", `chore: release ${tagName}`],
           { cwd, stdio: ["ignore", "pipe", "ignore"] },
         );
         console.log(`    ${green("\u2713")} Committed release artifacts`);
