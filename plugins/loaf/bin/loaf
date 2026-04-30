@@ -18358,7 +18358,7 @@ import { join as join19, dirname as dirname5, resolve } from "path";
 import { readFileSync as readFileSync11 } from "fs";
 import { dirname as dirname4, join as join18 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
-var LOAF_VERSION = "2.0.0-dev.35" ? "2.0.0-dev.35" : readPackageVersion();
+var LOAF_VERSION = "2.0.0-dev.36" ? "2.0.0-dev.36" : readPackageVersion();
 
 // cli/lib/install/fenced-section.ts
 var FENCED_START = "<!-- loaf:managed:start";
@@ -21388,6 +21388,25 @@ ${bold5("loaf release")}
       console.error(`  ${red3("error:")} Not a git repository`);
       process.exit(1);
     }
+    if (options2.bump) {
+      try {
+        validateBumpType(options2.bump);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`  ${red3("error:")} ${message}`);
+        process.exit(1);
+      }
+    }
+    const cliVersionFileOverrides = options2.versionFile ?? [];
+    for (const declared of cliVersionFileOverrides) {
+      const normalized = declared.replace(/\\/g, "/");
+      if (!existsSync23(join29(cwd, normalized))) {
+        console.error(
+          `  ${red3("error:")} version file ${normalized} not found`
+        );
+        process.exit(1);
+      }
+    }
     if (options2.postMerge) {
       const incompatibleFlags = [];
       const checkIncompatible = (optionName, label) => {
@@ -21523,10 +21542,14 @@ ${bold5("loaf release")}
     }
     console.log(`  Commits since ${options2.base ? "base" : "tag"}: ${bold5(String(commits.length))}`);
     console.log();
-    if (commits.length === 0) {
+    if (commits.length === 0 && !options2.dryRun) {
       console.log(`  ${gray5("No unreleased changes found.")}
 `);
       process.exit(0);
+    }
+    if (commits.length === 0) {
+      console.log(`  ${gray5("No unreleased changes found.")}
+`);
     }
     for (const commit of commits) {
       if (commit.section === null) {

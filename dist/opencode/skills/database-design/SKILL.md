@@ -7,7 +7,7 @@ description: >-
   database administration and development. Not for ORM usage in application code
   (use language-specific development skills) or infrastructure orchestration
   (use infrastructure-management).
-version: 2.0.0-dev.35
+version: 2.0.0-dev.36
 ---
 
 # Database Skill

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.36] - 2026-04-30
+
+### Fixed
+- Validate flags early in release and let dry-run preview when no commits (4083f362)
+
 ## [2.0.0-dev.35] - 2026-04-30
 
 ### Added

@@ -230,6 +230,40 @@ export function registerReleaseCommand(program: Command): void {
         process.exit(1);
       }
 
+      // ── Early flag validation ─────────────────────────────────────────
+      //
+      // Validate purely flag-based inputs up front, before we do any commit
+      // analysis. Two reasons:
+      //   1. Bad flags should fail fast with a clear error, regardless of
+      //      whether the repo has unreleased commits.
+      //   2. Tests (and users running `--dry-run` to verify wiring) expect
+      //      these errors to surface even when `commits.length === 0`
+      //      causes the main flow to short-circuit later.
+      if (options.bump) {
+        try {
+          validateBumpType(options.bump);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`  ${red("error:")} ${message}`);
+          process.exit(1);
+        }
+      }
+
+      // Pre-validate --version-file paths before any commit work. The full
+      // detectVersionFiles call still runs later (it returns the parsed
+      // VersionFile objects); this guard just turns "missing path" into an
+      // immediate, actionable error.
+      const cliVersionFileOverrides = options.versionFile ?? [];
+      for (const declared of cliVersionFileOverrides) {
+        const normalized = declared.replace(/\\/g, "/");
+        if (!existsSync(join(cwd, normalized))) {
+          console.error(
+            `  ${red("error:")} version file ${normalized} not found`,
+          );
+          process.exit(1);
+        }
+      }
+
       // ── --post-merge handling ─────────────────────────────────────────
       //
       // `--post-merge` finalizes a release after the squash-merge has landed
@@ -410,9 +444,15 @@ export function registerReleaseCommand(program: Command): void {
       console.log(`  Commits since ${options.base ? "base" : "tag"}: ${bold(String(commits.length))}`);
       console.log();
 
-      if (commits.length === 0) {
+      if (commits.length === 0 && !options.dryRun) {
         console.log(`  ${gray("No unreleased changes found.")}\n`);
         process.exit(0);
+      }
+      if (commits.length === 0) {
+        console.log(`  ${gray("No unreleased changes found.")}\n`);
+        // Fall through in --dry-run so users can still preview flag wiring
+        // (action list, --no-tag/--no-gh skipped markers, version files, etc.)
+        // and the dry-run exit summary.
       }
 
       // Print each commit
