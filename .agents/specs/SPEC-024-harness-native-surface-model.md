@@ -5,7 +5,8 @@ source: >-
   direct — audit of target convergence, duplicate skill discovery, and Gemini
   native subagent/hook capabilities
 created: '2026-04-04T12:13:54Z'
-status: drafting
+status: implementing
+branch: feat/harness-native-surface-model
 ---
 
 # SPEC-024: Harness-Native Surface Model
@@ -182,12 +183,20 @@ This keeps the build efficient without flattening the runtime model.
 
 ## Open Questions
 
-- [ ] Should Gemini agents ship in the first implementation wave, or should hooks/settings land first with agents immediately after?
-- [ ] Should portable skill-family membership live in `targets.yaml` or in a dedicated surface-model module?
-- [ ] Should Codex, Cursor, Gemini, and Amp remain one portable skill family, or should Gemini split once native agent/hook metadata starts affecting skill packaging?
-- [ ] Should installer cleanup be automatic during `install --upgrade`, or offered as an explicit cleanup step?
-- [ ] Should Loaf bridge harness-native task tracking (e.g., `loaf task --ephemeral` mapping to TaskCreate in Claude Code), or just provide skill-level guidance on when to use which tier?
-- [ ] Which harnesses expose task/progress tracking APIs that Loaf could target? (Claude Code: TaskCreate/TaskUpdate; others: TBD)
+Resolved during breakdown (2026-05-01) and Codex review:
+
+- [x] **Gemini agents in first wave?** No — TASK-155 is P2 and re-evaluated after hooks (TASK-153) and settings (TASK-154) land. Drop if hooks+settings alone provide sufficient parity per spec priority order #2.
+- [x] **Surface-matrix location?** Dedicated TS module (`cli/lib/build/surface-matrix.ts`), not `targets.yaml`. Typed source of truth; generate yaml/docs from it if needed. Resolved in TASK-150.
+- [x] **Cursor/Codex/Gemini/Amp as one portable family?** Yes for first wave (`portable:skills-v1`). Parity gate (TASK-158) is the early-warning system that signals when divergence forces a split. Re-check after Gemini native surfaces land.
+- [x] **Auto-cleanup during `install --upgrade`?** No — detection + manual-cleanup guidance only (TASK-156). Auto-clean carries Risk row 3 safety concerns; deferred to follow-up spec. T7 wording updated above.
+- [x] **Bridge harness-native task tracking?** No — skill-level guidance only for SPEC-024. The Loaf-task vs harness-native heuristic is documented in TASK-157 acceptance (T11 guidance layer). `loaf task --ephemeral` bridge deferred.
+- [x] **Which harnesses expose task APIs?** Out of scope for SPEC-024. Only Claude Code (TaskCreate/TaskUpdate) is currently classified `native` for the task-tracking surface in TASK-150's matrix. Other targets default to `portable` (Loaf tasks) until their APIs are catalogued in a follow-up.
+
+Implementation-level questions raised by Codex review (resolved):
+
+- [x] **Gemini hook/settings surfaces in scope for TASK-153/154?** Documented Gemini surfaces only at implementation time. Map existing Loaf hook intents (`config/hooks.yaml`) that have clean Gemini equivalents; skip unmapped intents with a logged warning. No speculative event names. Risk row 1 mitigation.
+- [x] **What counts as "known stale roots" for TASK-156?** Static enumerated list, no heuristics. Specifically: shared install roots written by the pre-SPEC-024 installer that the new matrix-driven installer no longer uses, plus paths the README documented but the installer didn't actually use (No-Go #3). Detection logic is a static list keyed by target.
+- [x] **Parity comparison — pre- or post-sidecar?** Fully rendered tree per target. Sidecars are native-target-specific transforms; portable-family targets don't apply them. If a target needs target-specific skill transformation, the matrix moves it to native — the parity gate is the signal.
 
 ## Test Conditions
 
@@ -197,7 +206,7 @@ This keeps the build efficient without flattening the runtime model.
 - [ ] T4: Portable skill-family targets either produce byte-identical skill trees or fail with a clear parity error
 - [ ] T5: OpenCode remains intentionally divergent and does not participate in the portable skill family
 - [ ] T6: Installer writes artifacts only to declared roots for that target/surface
-- [ ] T7: Legacy Loaf-managed duplicate installs can be detected and cleaned up without touching user-owned files
+- [ ] T7: Legacy Loaf-managed duplicate installs can be detected and flagged for cleanup without touching user-owned files (manual-cleanup guidance is the first-wave deliverable; auto-clean deferred)
 - [ ] T8: README install-location documentation matches the actual installer behavior
 - [ ] T9: A multi-target user can install Codex, Cursor, and Gemini without duplicate skill discovery caused by stale Loaf-managed paths
 - [ ] T10: Existing target-specific native capabilities still work after the refactor (Cursor hooks, Codex hook install, OpenCode commands/runtime plugin)
