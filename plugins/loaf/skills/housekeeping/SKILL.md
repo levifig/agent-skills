@@ -7,7 +7,7 @@ description: >-
   recommendations, archives comp...
 user-invocable: true
 argument-hint: '[sessions|specs|plans|drafts]'
-version: 2.0.0-dev.39
+version: 2.0.0-dev.40
 ---
 
 # Housekeeping

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.40] - 2026-05-02
+
+### Added
+
+- `git-workflow` skill — new "Changelog Discipline" section in `references/commits.md`. Codifies the rule that user-facing CHANGELOG entries describe what changed from a user/operator's perspective, not how the work was tracked or organized internally. Drops internal terms (spec/task IDs, internal session references, hook IDs that aren't user-facing); keeps references to public artifacts (`ADR-NNN`, public CLI flags, documented file paths); requires curating auto-generated `loaf release --pre-merge` output before bumping.
+
 ## [2.0.0-dev.39] - 2026-05-02
 
 ### Added

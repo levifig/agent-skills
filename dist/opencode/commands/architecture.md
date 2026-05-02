@@ -11,7 +11,7 @@ description: >-
   decision() instead). The ADR log is append-only — when circumstances change,
   write a new ADR that supersedes the old one.
 subtask: false
-version: 2.0.0-dev.39
+version: 2.0.0-dev.40
 ---
 
 # Architecture

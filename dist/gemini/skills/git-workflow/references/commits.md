@@ -6,6 +6,7 @@
 - Linear Integration
 - Branch Naming
 - Pull Request Format
+- Changelog Discipline
 - Critical Rules
 - Workflow Enforcement Hooks
 - Semantic Versioning
@@ -169,6 +170,35 @@ Refs BACK-124
 - **Never use the automatic squash description** that dumps all individual commit messages — it's noisy and unhelpful in git history
 - Don't push or merge without explicit request
 - The `/release` skill automates this workflow, including version bump on the feature branch before merge — use it when ready to squash merge a PR
+
+## Changelog Discipline
+
+`CHANGELOG.md` entries describe what shipped from a user's or operator's perspective — not how the work was tracked or organized internally. Curate the `[Unreleased]` section before bumping the version so the published release notes read as user-facing prose, not an internal worklog.
+
+### Drop
+
+Internal terms that have no meaning outside the team's working context:
+
+- Spec IDs and task IDs (`SPEC-024`, `TASK-042`)
+- Session, sprint, or branch references
+- Internal terminology from skills/docs that isn't part of the user's mental model — e.g. `Q1`/`Q2`/`Q3` question numbers from a Triage Gate, internal gate-logic notation like `(Q1 OR Q2) AND Q3`, hook IDs that aren't user-facing
+- "How the work got done" framing — interview steps, breakdown phases, review gates
+
+### Keep
+
+- **What changed** — commands, behaviors, file paths, config keys, hook names the user works with
+- **Why it matters** — compatibility implications, migration notes, breaking-change call-outs
+- **Public references** — `ADR-NNN` IDs, documented CLI flags, public file paths, named features
+
+### Style
+
+- Use backticks for all code references — file names, commands, config keys, hook names
+- Write user-perspective prose: what shipped, not how it got built
+- Group entries by category (`Added`, `Changed`, `Fixed`, `Removed`) per Keep a Changelog convention
+
+### Auto-generated Entries
+
+When `loaf release --pre-merge` auto-generates the `[Unreleased]` section from commit history, those entries inherit any internal terms present in the commit messages. Treat the generated output as a draft: rewrite it under the curated path before bumping. The release skill preserves curated content when it's already in `[Unreleased]` — curate first, bump second.
 
 ## Critical Rules
 

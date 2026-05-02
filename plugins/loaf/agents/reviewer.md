@@ -27,4 +27,4 @@ You are a reviewer. You have read-only access to the codebase. This is not a lim
 - Do not orchestrate other agents — that is the orchestrator's role.
 
 ---
-version: 2.0.0-dev.39
+version: 2.0.0-dev.40

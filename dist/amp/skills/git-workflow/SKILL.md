@@ -6,7 +6,7 @@ description: >-
   PRs, or managing git history. Provides patterns for collaborative git
   workflows. Not for code style (use foundations) or CI/CD pipelines (use
   infrastructure-management).
-version: 2.0.0-dev.39
+version: 2.0.0-dev.40
 ---
 
 # Git Workflow
@@ -47,5 +47,5 @@ Git conventions for branching, commits, PRs, and merge workflow.
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Commits | `references/commits.md` | Writing commit messages, creating PRs, branching, pre-PR/pre-push/post-merge hooks |
+| Commits | `references/commits.md` | Writing commit messages, creating PRs, branching, curating CHANGELOG entries, pre-PR/pre-push/post-merge hooks |
 | Release ritual | `/release` skill | Orchestrating the full squash merge workflow (pre-flight, version bump, merge, cleanup) |
