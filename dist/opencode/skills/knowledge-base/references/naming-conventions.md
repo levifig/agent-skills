@@ -1,7 +1,8 @@
 # Naming Conventions
 
 Where knowledge files live, how to name them, and how they relate to other
-documentation surfaces. Based on ADR-004.
+documentation surfaces. Based on the project's naming convention (see
+`docs/knowledge/knowledge-management-design.md#naming-conventions`).
 
 ## Directory Structure
 
@@ -38,7 +39,7 @@ Knowledge files are living documents, not point-in-time snapshots.
 
 ## CLI Abbreviation
 
-Per ADR-004, the CLI uses `kb` for ergonomics:
+Per the project's naming convention (see `docs/knowledge/knowledge-management-design.md#naming-conventions`), the CLI uses `kb` for ergonomics:
 
 - `loaf kb check` (not `loaf knowledge check`)
 - `loaf kb validate` (not `loaf knowledge validate`)

@@ -15,6 +15,12 @@ last_reviewed: '2026-04-29'
 
 The knowledge management feature: `loaf kb` commands + knowledge-base skill + QMD integration + lifecycle hooks.
 
+## Naming Conventions
+
+Storage uses full words: `docs/knowledge/` and `docs/decisions/` for directories, `{repo-folder}-knowledge` and `{repo-folder}-decisions` for QMD collections. The two names are similar in length and scan well together — `kb` versus `decisions` would create visual asymmetry, and `decisions` is more accessible to non-engineers than `adrs`.
+
+The CLI shorthand is `kb`: `loaf kb check`, not `loaf knowledge check`. The full word is for storage (durable, read by humans and tools); the abbreviation is for typing (ergonomic, used dozens of times a day). ADR files keep the `ADR-XXX` prefix — that's the record format, not the directory name.
+
 ## Knowledge File Schema
 
 ```yaml
@@ -198,5 +204,5 @@ QMD works without models (BM25-only):
 - [agent-harness-vision.md](agent-harness-vision.md) — how agents use the knowledge system
 - [cli-design.md](cli-design.md) — the `loaf kb` commands
 - [../decisions/ADR-003-qmd-as-retrieval-backend.md](../decisions/ADR-003-qmd-as-retrieval-backend.md) — QMD decision
-- [../decisions/ADR-006-agent-creates-human-curates.md](../decisions/ADR-006-agent-creates-human-curates.md) — authoring model
+- [../ARCHITECTURE.md#authorship-model--agents-create-humans-curate](../ARCHITECTURE.md#authorship-model--agents-create-humans-curate) — authoring model
 - Full brainstorm: `.agents/drafts/brainstorm-loaf-cli-knowledge-harness.md`

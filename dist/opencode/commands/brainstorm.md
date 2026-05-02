@@ -5,7 +5,7 @@ description: >-
   options," or is exploring tradeoffs. Produces docs with sparks. Not for quick
   ideas or shaping.
 subtask: false
-version: 2.0.0-dev.37
+version: 2.0.0-dev.38
 ---
 
 # Brainstorm
@@ -18,7 +18,7 @@ Generative thinking — expanding possibilities before narrowing through structu
 - Diverge before converging — generate options before judging
 - Connect exploration to VISION.md and STRATEGY.md context
 - Document discarded options — they hold valuable reasoning
-- Capture sparks (speculative byproducts) in a dedicated section
+- Capture sparks (speculative byproducts) in a dedicated section — brainstorm documents are the canonical home for sparks
 - Set boundaries on exploration time
 - Log outcome to session journal: `loaf session log "decision(scope): direction chosen and rationale"`
 
@@ -57,9 +57,11 @@ After work completes, verify:
 
 Sparks are: lightweight, byproducts, worth remembering. Mark as `*(promoted)*` or `*(abandoned)*` after processing.
 
+Brainstorm documents are archived after sparks are processed — never deleted, since the exploration context has lasting value.
+
 ## Suggests Next
 
-After brainstorming, suggest `/shape` if a clear idea emerged, or `/idea` to capture sparks for later.
+After brainstorming, suggest `/shape` if a clear idea emerged, or `/idea` to capture sparks for later. `/idea` invoked without arguments scans brainstorm docs for unprocessed sparks, bridging the brainstorm → idea pipeline.
 
 ## Topics
 

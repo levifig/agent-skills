@@ -6,7 +6,7 @@ description: >-
   managing deployments. Provides patterns for infrastructure as code. Not for
   application code (use development skills), database schema (use
   database-design), or security audits (use security-compliance).
-version: 2.0.0-dev.37
+version: 2.0.0-dev.38
 ---
 
 # Infrastructure

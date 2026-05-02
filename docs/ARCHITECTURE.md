@@ -163,6 +163,20 @@ Councils convene implementers and researchers for deliberation; reviewers join o
 
 Skills are the only knowledge mechanism that works across all targets (Claude Code, Cursor, Codex, Gemini, Amp). Profiles are Claude Code infrastructure — other targets activate knowledge through skills alone. This makes skills the primary investment surface: better skill descriptions and organization improve all targets simultaneously.
 
+## Operating Principles
+
+Principles that shape how Loaf is designed and operated. Unlike ADRs, these are mutable and evolve via `/reflect` as the project learns. They sit above implementation choices but below VISION (which captures product intent and direction).
+
+### Authorship Model — Agents Create, Humans Curate
+
+Agents are the primary authors of knowledge files, ADRs, tasks, and specs. Humans review, approve, and curate — they are not the writing surface. The CLI follows from this: it is for management and health checks (`check`, `validate`, `status`, `review`), not for authoring.
+
+The principle inverts the traditional "humans write docs, agents consume them" model. Agents are already doing the work and are closest to what's being learned; pulling knowledge creation into the work itself ("maintenance as side effect of work") is cheaper than treating documentation as a separate sprint. Humans are better at judgment — *is this worth recording?* — than at the writing.
+
+The growth loop is concrete: agent discovers an insight during brainstorming, development, or debugging → proposes a knowledge file, ADR, task, or spec → human reviews and accepts, edits, or rejects → committed. Quality control depends on human review; agents may write redundant or low-quality material that the curator catches. Hooks (PostToolUse, SessionEnd) prompt agents at the moments where insights are freshest, so the proposal isn't deferred until the context is gone.
+
+This principle shapes skill design and CLI surface; it is mutable and evolves via `/reflect`.
+
 ## Execution Model
 
 The execution model is a three-artifact pipeline. No separate "plan" artifact — the journal serves as both execution trace and resumption protocol.

@@ -1,8 +1,11 @@
 ---
 id: ADR-009
 title: Sparks Convention in Brainstorm Documents
-status: Accepted
+status: Deprecated
 date: 2026-03-14
+deprecated_date: 2026-05-02
+deprecated_reason: 'Recategorized — workflow lore for brainstorm skill, not architecturally significant.'
+migrated_to: content/skills/brainstorm/SKILL.md
 ---
 
 # ADR-009: Sparks Convention in Brainstorm Documents
@@ -35,3 +38,13 @@ Brainstorming produces speculative byproducts — ideas that aren't ready for `/
 - Idea skill scans brainstorm docs when invoked without arguments
 - Idea files get `origin:` field for traceability
 - Brainstorm docs are retained while they hold unprocessed sparks
+
+## Deprecated
+
+This ADR was recategorized on 2026-05-02 against the tightened architecture-skill bar (see [content/skills/architecture/SKILL.md](../../content/skills/architecture/SKILL.md#the-bar)).
+
+**ADRs capture a *choice* between credible architectural alternatives.** This record codifies workflow lore for the brainstorm skill — the `## Sparks` section convention. The original includes alternatives ("standalone SPARKS.md", "individual spark files"), but they were workflow-design alternatives, not architectural ones (no canonical-domain effect, no cost-of-divergence beyond the brainstorm skill). Microsoft Well-Architected: *"avoid making decision records design guides."*
+
+**The convention itself remains in force.** The active source is now [content/skills/brainstorm/SKILL.md](../../content/skills/brainstorm/SKILL.md) — where the workflow can evolve alongside the skill itself, the appropriate mechanism for skill-specific lore.
+
+This record is retained per the append-only-log discipline ("_was_ the decision, _no longer_ the decision" — Nygard) but is no longer the operative source.

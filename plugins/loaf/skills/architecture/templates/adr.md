@@ -1,3 +1,21 @@
+<!--
+This template is for architecturally significant decisions only.
+
+ADRs are rare yet binding: they capture the rationale for a choice
+that affects the system's structure, key quality attributes,
+dependencies, interfaces, or construction techniques — and that is
+difficult to reverse in the project's current state.
+
+If the decision is a development pattern, exploration, or implementation
+direction, use a SPEC via /loaf:shape instead.
+If it's a guiding principle or operating philosophy, update ARCHITECTURE.md
+or VISION.md.
+If it's workflow lore for a specific skill, document it in that skill.
+If it's a local choice changeable in a single PR, session-log it.
+
+Run the architecture skill's Triage Gate if unsure.
+-->
+
 # ADR Template
 
 **Location:** `docs/decisions/ADR-{number}-{slug}.md`

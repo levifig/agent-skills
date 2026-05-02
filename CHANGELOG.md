@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.38] - 2026-05-02
+
+### Changed
+
+- `architecture` skill — tightened bar. ADRs are now reserved for architecturally significant decisions (those affecting the system's structure, key quality attributes, dependencies, interfaces, or construction techniques) OR decisions that are difficult to reverse, per Microsoft Well-Architected canonical phrasing. The skill includes a structured Triage Gate that operationalizes the bar with explicit routing for non-ADR decisions to `/shape` (SPEC), `ARCHITECTURE.md` / `VISION.md`, the owning skill's docs, or session-log.
+- `architecture` skill — "decisions are choices" filter. ADRs require at least one credible alternative considered. Catches principle/manifesto-shaped artifacts at write time and routes them to `ARCHITECTURE.md` or `VISION.md` instead.
+- `architecture` skill — cost-of-divergence framing. The skill evaluates decisions by the consequence of casual divergence (now: security regression, contract or interface break, multi-PR coordination; later: foundational shape commitments whose future reversal cost is the reason to record now) rather than by the cost of change alone. Captures security-boundary decisions reversible-by-code and foundational early-project commitments.
+- `architecture` skill — Lifecycle nuance. Original `Decision`/`Context`/`Rationale`/`Consequences` sections are immutable post-acceptance; status transitions, frontmatter additions, and append-only `## Deprecated` / `## Superseded` sections are the supported lifecycle mechanism. Distinguishes recategorization (deprecate-in-place, content moved elsewhere) from supersession (new ADR replaces old, both linked).
+- `architecture` skill — maturity-aware bar. The bar is constant; the number of decisions clearing it scales with project maturity. Early/exploratory phases pass foundational shape commitments via the cost-of-divergence framing's "later" prong.
+- ADR template (`content/templates/adr.md`) — HTML-comment header surfaces the bar to agents reading the template; propagates to the `reflect` skill's shared template via the build system.
+- `docs/ARCHITECTURE.md` — new Operating Principles section, with the `Authorship Model — Agents Create, Humans Curate` subsection as its first principle.
+- `docs/knowledge/knowledge-management-design.md` — new Naming Conventions section.
+- `docs/decisions/README.md` — index updated; missing ADR-012 row added.
+
+### Deprecated
+
+- ADR-004 (Knowledge Naming Convention) — recategorized as a project naming convention. Active source: `docs/knowledge/knowledge-management-design.md` Naming Conventions section.
+- ADR-006 (Agent-Creates, Human-Curates Model) — recategorized as a guiding principle (philosophical/operational rationale, not architectural). Active source: `docs/ARCHITECTURE.md` Operating Principles section.
+- ADR-009 (Sparks Convention in Brainstorm Documents) — recategorized as workflow lore for the `brainstorm` skill. Owning skill is the canonical source.
+
 ## [2.0.0-dev.37] - 2026-05-02
 
 ### Added

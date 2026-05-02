@@ -7,7 +7,7 @@ description: >-
   the user wants a st...
 user-invocable: true
 argument-hint: '[topic]'
-version: 2.0.0-dev.37
+version: 2.0.0-dev.38
 ---
 
 # Council
