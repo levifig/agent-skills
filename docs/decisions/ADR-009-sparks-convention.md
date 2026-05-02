@@ -4,8 +4,6 @@ title: Sparks Convention in Brainstorm Documents
 status: Deprecated
 date: 2026-03-14
 deprecated_date: 2026-05-02
-deprecated_reason: 'Recategorized — workflow lore for brainstorm skill, not architecturally significant.'
-migrated_to: content/skills/brainstorm/SKILL.md
 ---
 
 # ADR-009: Sparks Convention in Brainstorm Documents

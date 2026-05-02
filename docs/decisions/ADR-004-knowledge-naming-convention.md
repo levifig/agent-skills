@@ -4,8 +4,6 @@ title: Knowledge Naming Convention
 status: Deprecated
 date: 2026-03-14
 deprecated_date: 2026-05-02
-deprecated_reason: 'Recategorized — naming convention without architectural significance.'
-migrated_to: docs/knowledge/knowledge-management-design.md#naming-conventions
 ---
 
 # ADR-004: Knowledge Naming Convention

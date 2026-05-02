@@ -14,6 +14,10 @@ If it's workflow lore for a specific skill, document it in that skill.
 If it's a local choice changeable in a single PR, session-log it.
 
 Run the architecture skill's Triage Gate if unsure.
+
+A `Rejected` or `Deprecated` ADR REQUIRES a `## Rejected` or `## Deprecated`
+body section explaining the transition. A `Superseded` ADR may include a
+`## Superseded` section but the linkage in `superseded_by:` is sufficient.
 -->
 
 # ADR Template
@@ -24,10 +28,13 @@ Run the architecture skill's Triage Gate if unsure.
 ---
 id: ADR-001
 title: "PostgreSQL as Primary Database"
-status: Accepted  # Proposed | Accepted | Deprecated | Superseded
+status: Accepted  # Proposed | Accepted | Rejected | Deprecated | Superseded
 date: 2026-01-23
-supersedes: null  # ADR-000 if replacing
-superseded_by: null  # ADR-002 if replaced
+# accepted_date:   # optional — only if differs from `date`
+# rejected_date:   # required iff status is Rejected
+# deprecated_date: # required iff status is Deprecated
+supersedes: null   # optional — ADR-NNN if replacing
+superseded_by: null  # required iff status is Superseded
 ---
 
 # ADR-001: PostgreSQL as Primary Database

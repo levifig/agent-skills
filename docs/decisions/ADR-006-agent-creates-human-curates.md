@@ -4,8 +4,6 @@ title: Agent-Creates, Human-Curates Model
 status: Deprecated
 date: 2026-03-14
 deprecated_date: 2026-05-02
-deprecated_reason: 'Recategorized — guiding principle, not architecturally significant decision.'
-migrated_to: docs/ARCHITECTURE.md#authorship-model--agents-create-humans-curate
 ---
 
 # ADR-006: Agent-Creates, Human-Curates Model

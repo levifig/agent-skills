@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.39] - 2026-05-02
+
+### Added
+
+- ADR lifecycle now supports `Rejected` as a fifth status. Full lifecycle: `Proposed | Accepted | Rejected | Deprecated | Superseded`. A `Rejected` ADR records "the team weighed this option and explicitly chose against it" — useful when the same idea resurfaces.
+
+### Changed
+
+- `architecture` skill — Lifecycle section codifies body-section requirements by status. `## Deprecated` is required for `Deprecated`, `## Rejected` is required for `Rejected`, `## Superseded` is optional for `Superseded` (the `superseded_by:` linkage suffices).
+- ADR frontmatter schema finalized as structured what+when: `status`, `date`, `accepted_date` (optional), `rejected_date`, `deprecated_date`, `supersedes`, `superseded_by`. The `deprecated_reason` and `migrated_to` fields introduced during the previous deprecation pass are dropped — context belongs in the body section's prose, not duplicated in frontmatter.
+- ADR template (`content/templates/adr.md`) updated with the new schema and a header note that `Rejected` and `Deprecated` ADRs require a body section.
+- `ADR-004`, `ADR-006`, `ADR-009` frontmatter cleaned up to match the new schema; body sections preserve all migration content.
+- `docs/ARCHITECTURE.md` Operating Principles section gains two new subsections:
+  - **Adversarial Review for Substantive Guidance Changes** — `loaf:reviewer` is the baseline (internal-consistency auditor); `codex:rescue` or equivalent adversarial reviewer is recommended when available, since the two readers catch different defect classes. Codex is plugin-dependent and optional.
+  - **Recategorization as a General Lifecycle Pattern** — distinguishes supersession (the answer changed; new artifact replaces old) from recategorization (the artifact's classification was wrong; the underlying rule still holds; deprecate-in-place and point to new home). Generalizes beyond ADRs.
+
 ## [2.0.0-dev.38] - 2026-05-02
 
 ### Changed

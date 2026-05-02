@@ -74,14 +74,42 @@ Q1 and Q2 form a disjunction (matches Microsoft's bar — either canonical-domai
 
 ADRs are **append-only post-acceptance**. The original `Decision`, `Context`, `Rationale`, and `Consequences` sections are immutable — don't rewrite history.
 
+Five statuses: `Proposed` | `Accepted` | `Rejected` | `Deprecated` | `Superseded`.
+
 What's permitted post-acceptance:
-- **Status transitions:** `Accepted → Deprecated`, `Accepted → Superseded`
-- **Frontmatter additions:** `superseded_by`, `deprecated_date`, `deprecated_reason`, `migrated_to`
-- **Append-only `## Deprecated` or `## Superseded` sections** capturing the lifecycle change
+- **Status transitions:** `Accepted → Deprecated`, `Accepted → Superseded`, `Proposed → Rejected`, `Proposed → Accepted`
+- **Frontmatter additions** per the schema below (transition dates, supersession linkage)
+- **Append-only `## Deprecated`, `## Rejected`, or `## Superseded` sections** capturing the lifecycle change
+
+**Frontmatter schema:**
+
+```yaml
+---
+id: ADR-NNN
+title: "..."
+status: Proposed | Accepted | Rejected | Deprecated | Superseded
+date: YYYY-MM-DD            # creation / proposal
+accepted_date: YYYY-MM-DD   # optional — only if differs from `date`
+rejected_date: YYYY-MM-DD   # required iff status is Rejected
+deprecated_date: YYYY-MM-DD # required iff status is Deprecated
+supersedes: ADR-NNN         # optional — points back to the ADR this replaces
+superseded_by: ADR-NNN      # required iff status is Superseded
+---
+```
+
+Frontmatter encodes the structured *what* and *when* of a status transition. Context for *why* and *where-it-went* belongs in the body section (`## Deprecated` / `## Rejected`). Don't duplicate `reason` or `migrated_to` as frontmatter fields — they're prose.
+
+**Body-section requirements by status:**
+
+- `## Deprecated` is **required** when status is `Deprecated`. Explains why and points to the new home (if migrated).
+- `## Rejected` is **required** when status is `Rejected`. Explains why the proposal was rejected and what was chosen instead (if anything).
+- `## Superseded` is **optional** when status is `Superseded`. The `superseded_by:` linkage carries the structural relationship; the new ADR carries the rationale. Add a body section only if the supersession had specific reasons worth preserving on the old record.
+
+A `Rejected` ADR is a record of "the team weighed this option and explicitly chose against it" — useful when the same idea resurfaces. Keep them.
 
 When the team's answer to a decision changes, write a **new ADR that supersedes the old one** — set `supersedes: ADR-NNN` on the new one and `superseded_by: ADR-MMM` on the old one. Both stay in `docs/decisions/`. The old one preserves the historical "_was_ the decision, _no longer_ the decision" record (Nygard).
 
-When a record is **recategorized** (the underlying choice still holds, but the artifact-classification was wrong — e.g., it was actually a principle, convention, or workflow lore), mark it `Deprecated` with a `migrated_to:` field pointing to the new home. The original record is preserved; the active source is the migrated content. This is distinct from supersession: nothing's been *replaced*; only the *classification* changed.
+When a record is **recategorized** (the underlying choice still holds, but the artifact-classification was wrong — e.g., it was actually a principle, convention, or workflow lore), mark it `Deprecated` and explain the migration target in the `## Deprecated` body section. The original record is preserved; the active source is the migrated content. This is distinct from supersession: nothing's been *replaced*; only the *classification* changed.
 
 Supersession is healthy. The bar for *writing* an ADR is high; once written, the bar for *quietly diverging from* it is also high (write a superseding ADR instead).
 
@@ -103,7 +131,7 @@ Supersession is healthy. The bar for *writing* an ADR is high; once written, the
 - Create ADRs without user approval, even when the user requests one — if the decision fails the Triage Gate, propose the correct destination and decline the ADR
 - Use the word "irreversible" — software decisions can always be reversed via supersession; the operative criterion is "difficult to reverse"
 - ADR-ify aesthetic preferences, naming conventions, workflow lore, or guiding principles — those have other homes (see Skip ADR When)
-- Rewrite accepted ADRs' Decision/Context/Rationale/Consequences sections — those are immutable. Status transitions, frontmatter additions, and append-only Deprecated/Superseded sections are how lifecycle is recorded
+- Rewrite accepted ADRs' Decision/Context/Rationale/Consequences sections — those are immutable. Status transitions, frontmatter additions, and append-only Deprecated/Rejected/Superseded sections are how lifecycle is recorded
 - Block ADR creation on glossary state — glossary mutations are additive and opt-in
 - Call `loaf kb glossary propose` (reserved for upstream ambiguity-resolving skills)
 

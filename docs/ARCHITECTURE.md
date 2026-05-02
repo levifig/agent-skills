@@ -177,6 +177,28 @@ The growth loop is concrete: agent discovers an insight during brainstorming, de
 
 This principle shapes skill design and CLI surface; it is mutable and evolves via `/reflect`.
 
+### Adversarial Review for Substantive Guidance Changes
+
+Substantive changes to skills, guidance docs, or operating principles warrant review beyond the implementer's own check. The Loaf baseline is `loaf:reviewer` (internal-consistency auditor). When available, an adversarial design stress-tester (`codex:rescue` or equivalent) is highly recommended — the two readers catch different defect classes:
+
+- **Internal-consistency review** (`loaf:reviewer`) surfaces stale references, anchor breaks, prose drift, and contradictions between sections.
+- **Adversarial design review** (`codex:rescue`, optional) stress-tests the design itself for false positives, false negatives, and self-contradictions; constructs decision examples the rules don't handle cleanly.
+
+Codex is plugin-dependent — it may not be available in all environments. `loaf:reviewer` is the floor; the adversarial pass is recommended when the change is substantive enough that a design defect would compound across many future invocations (skill rewrites, lifecycle codifications, hook-policy changes).
+
+This principle shapes how Loaf evolves substantive guidance. Evidence: the architecture-skill tightening + ADR deprecations (PR #46) shipped through three review-driven refinement rounds, with each reviewer catching defect classes the other missed.
+
+### Recategorization as a General Lifecycle Pattern
+
+Loaf artifacts evolve in two distinct ways:
+
+- **Supersession** — the underlying answer changed; a new artifact replaces the old. The old is preserved as historical record (`status: Superseded`, `superseded_by:` linkage). Used for ADRs whose decisions changed.
+- **Recategorization** — the underlying rule still holds, but the artifact's classification was wrong from the outset. The artifact is deprecated in place (`status: Deprecated`, `migrated_to:` reference in the body), and the rule's active source moves to its appropriate home.
+
+Recategorization emerged from PR #46: three ADRs whose conventions/principles still held had been classified as architectural decisions when they were actually a naming convention, an operating principle, and skill-specific workflow lore. Supersession (write a new ADR replacing each) was the wrong tool — there was nothing to replace, only to relabel. Recategorization preserves the historical record without overstating its current authority.
+
+This pattern generalizes beyond ADRs. When any Loaf artifact is later judged to have been classified wrong but its content is still valid, recategorize: deprecate the original, point to the new canonical home, leave the body intact for archeology.
+
 ## Execution Model
 
 The execution model is a three-artifact pipeline. No separate "plan" artifact — the journal serves as both execution trace and resumption protocol.

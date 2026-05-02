@@ -7,7 +7,7 @@ description: >-
   for shaping idea...
 user-invocable: true
 argument-hint: '[spec-file or topic]'
-version: 2.0.0-dev.38
+version: 2.0.0-dev.39
 ---
 
 # Breakdown
