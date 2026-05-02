@@ -16,6 +16,7 @@ import { validateLoadedFiles, findSkippedFiles } from "../lib/kb/validate.js";
 import { checkAllStaleness, checkStaleness, findCoveringFiles } from "../lib/kb/staleness.js";
 import { isQmdAvailable, registerCollection, listCollections } from "../lib/kb/qmd.js";
 import type { StalenessResult, ValidationResult } from "../lib/kb/types.js";
+import { registerKbGlossarySubcommand } from "./kb-glossary.js";
 
 // ANSI color helpers (matching project conventions)
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -33,6 +34,9 @@ export function registerKbCommand(program: Command): void {
   const kb = program
     .command("kb")
     .description("Knowledge base management");
+
+  // ── loaf kb glossary ───────────────────────────────────────────────────
+  registerKbGlossarySubcommand(kb);
 
   // ── loaf kb validate ───────────────────────────────────────────────────
 

@@ -178,6 +178,7 @@ Knowledge base management
 
 | Subcommand | Purpose |
 |------------|---------|
+| `loaf kb glossary` | Domain glossary mutation and lookup |
 | `loaf kb validate` | Validate knowledge file frontmatter |
 | `loaf kb status` | Show knowledge base overview |
 | `loaf kb check` | Check knowledge file staleness against git history |
@@ -209,9 +210,9 @@ Knowledge base management
 
 **Usage:**
 ```bash
+loaf kb glossary
 loaf kb validate
 loaf kb status
-loaf kb check
 ```
 
 ---

@@ -6,7 +6,7 @@ Loaf is an opinionated agentic framework that gives AI coding assistants structu
 
 ## Why Loaf?
 
-**Portable knowledge** — 31 skills (29 active, 2 deprecated) covering workflows, engineering standards, and language expertise. Build once, deploy to five AI coding tools without rewriting anything.
+**Portable knowledge** — 32 skills (30 active, 2 deprecated) covering workflows, engineering standards, and language expertise. Build once, deploy to five AI coding tools without rewriting anything.
 
 **Session journal model** — Session files in `.agents/sessions/` capture state, decisions, and handoff context with frontmatter tracking. Work survives context loss, compaction, and `/clear`.
 

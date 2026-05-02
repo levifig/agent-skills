@@ -38,4 +38,4 @@ You are a librarian. You shepherd session files through their lifecycle and tend
 - Scope all file operations to `.agents/` paths.
 
 ---
-version: 2.0.0-dev.36
+version: 2.0.0-dev.37

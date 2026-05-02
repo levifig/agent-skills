@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.37] - 2026-05-02
+
+### Added
+
+- `/refactor-deepen` skill — surfaces refactoring opportunities through a deepening lens (modules that hide complexity behind narrow interfaces). Vocabulary discipline is load-bearing: the skill uses an eight-term taxonomy (Module, Interface, Implementation, Depth, Seam, Adapter, Leverage, Locality) ported verbatim from Matt Pocock's `improve-codebase-architecture` skill, with `references/language.md`, `references/deepening.md`, and `references/interface-design.md` providing the vocabulary's full semantics. Default INTERFACE-DESIGN phase spawns 3 sub-agents with identical briefs (no opposing-constraint priming) — variety emerges from sampling, not manufactured opposition. Terminates by writing a PLAN file. Not for renames, extractions, or generic restructuring (use `/loaf:implement`).
+- `loaf kb glossary` CLI subcommand with five verbs: `upsert` writes or updates a canonical term; `check` resolves a term to canonical, avoided-alias, or unknown; `list` enumerates entries (one line per term, scriptable); `stabilize` promotes a candidate to canonical; `propose` writes a candidate (low-commitment, exploratory). Mutation policy lives in the verb names themselves rather than skill prose. Write commands (`upsert`, `stabilize`, `propose`) fail fast in Linear-native mode with the exact spec error verbatim; read commands (`list`, `check`) work in both modes.
+- Domain glossary KB convention at `docs/knowledge/glossary.md` with `type: glossary` frontmatter and four sections: `## Canonical Terms`, `## Candidates`, `## Relationships`, `## Flagged ambiguities`. Lazy creation — the file is written only on the first successful `upsert`/`stabilize`/`propose`, never on `check` or `list`.
+- `content/templates/grilling.md` shared interview-protocol template covering the relentless-interview / decision-tree / recommend-per-question / explore-when-answerable mechanics. Distributed by `targets.yaml` to `architecture` and `refactor-deepen` skills (NOT `shape` — deferred per separate idea). Mutation policy is delegated to the consuming skill; this template defines interview shape only.
+- Plan artifact convention at `.agents/plans/<YYYYMMDD-HHMMSS>-<slug>.md`. Plans use temporal-record naming (same family as sessions, ideas, drafts, councils) — write-once snapshots of a `/refactor-deepen` interview, never updated. No `id` frontmatter field; the filename is the identity.
+
+### Changed
+
+- `/architecture` skill evolved to integrate with the glossary: reads existing glossary at interview start, challenges drifted/fuzzy language inline, offers `loaf kb glossary upsert` or `stabilize` when load-bearing terms surface during ADR interviews. Glossary side-effects are additive — never gating ADR creation. The `templates/adr.md` artifact format is preserved byte-identical.
+- `cli/lib/kb/glossary.ts` parser is fence-aware and strict: tracks ``` and `~~~` code-fence state so heading-like content inside fences is preserved verbatim; rejects files missing required sections; rejects preamble prose before the first `## ` header; lossless parse/serialize round-trip on any accepted input.
+
+### Internal
+
+- 96 new tests in `cli/lib/kb/glossary.test.ts` and `cli/commands/kb-glossary.test.ts` covering lossless round-trip, fence handling (backtick + tilde), Linear-native gating in all three write verbs, and read-time-no-creation regressions.
+
 ## [2.0.0-dev.36] - 2026-04-30
 
 ### Fixed

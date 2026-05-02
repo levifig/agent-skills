@@ -48,6 +48,19 @@ import { tmpdir } from "os";
 let TEST_ROOT: string;
 const CLI_PATH = join(process.cwd(), "dist-cli/index.js");
 
+/**
+ * Per-command identity flags for `git commit`. Tests must never mutate the
+ * host repo's `.git/config` to set `user.name` / `user.email` — identity
+ * travels with each commit invocation instead, so a stray `cwd:` typo cannot
+ * leak into a real repo.
+ */
+const TEST_IDENTITY = [
+  "-c",
+  "user.name=Test User",
+  "-c",
+  "user.email=test@test.com",
+] as const;
+
 async function runLoaf(
   args: string[],
   options: { cwd: string; input?: string }
@@ -89,21 +102,14 @@ function createTempRepo(name: string): string {
     cwd: repoPath,
     stdio: "pipe",
   });
-  execFileSync("git", ["config", "user.email", "test@test.com"], {
-    cwd: repoPath,
-    stdio: "pipe",
-  });
-  execFileSync("git", ["config", "user.name", "Test User"], {
-    cwd: repoPath,
-    stdio: "pipe",
-  });
 
   writeFileSync(join(repoPath, "README.md"), "# Test\n", "utf-8");
   execFileSync("git", ["add", "."], { cwd: repoPath, stdio: "pipe" });
-  execFileSync("git", ["commit", "-m", "Initial commit"], {
-    cwd: repoPath,
-    stdio: "pipe",
-  });
+  execFileSync(
+    "git",
+    [...TEST_IDENTITY, "commit", "-m", "Initial commit"],
+    { cwd: repoPath, stdio: "pipe" },
+  );
 
   mkdirSync(join(repoPath, ".agents"), { recursive: true });
   writeFileSync(
@@ -260,10 +266,11 @@ describe("SPEC-032 dev.30 misrouting regression (TASK-119)", () => {
     // message for the entry text.
     writeFileSync(join(repoPath, "feat.ts"), "export const z = 3;\n", "utf-8");
     execFileSync("git", ["add", "."], { cwd: repoPath, stdio: "pipe" });
-    execFileSync("git", ["commit", "-m", "feat: dev.30 misroute regression"], {
-      cwd: repoPath,
-      stdio: "pipe",
-    });
+    execFileSync(
+      "git",
+      [...TEST_IDENTITY, "commit", "-m", "feat: dev.30 misroute regression"],
+      { cwd: repoPath, stdio: "pipe" },
+    );
 
     const result = await runLoaf(["log", "--from-hook"], {
       cwd: repoPath,
@@ -369,10 +376,11 @@ describe("SPEC-032 dev.30 misrouting regression (TASK-119)", () => {
 
     writeFileSync(join(repoPath, "x.ts"), "export const x = 1;\n", "utf-8");
     execFileSync("git", ["add", "."], { cwd: repoPath, stdio: "pipe" });
-    execFileSync("git", ["commit", "-m", "chore: tier1 to tier2 fallthrough"], {
-      cwd: repoPath,
-      stdio: "pipe",
-    });
+    execFileSync(
+      "git",
+      [...TEST_IDENTITY, "commit", "-m", "chore: tier1 to tier2 fallthrough"],
+      { cwd: repoPath, stdio: "pipe" },
+    );
 
     const result = await runLoaf(
       ["log", "--from-hook", "--session-id", "no-such-session-id"],

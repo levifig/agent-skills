@@ -45,6 +45,19 @@ beforeAll(() => {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Per-command identity flags. Tests must never mutate the host repo's
+ * `.git/config` to set `user.name` / `user.email` — identity travels with
+ * each `git commit` invocation instead, so a stray `cwd:` typo cannot leak
+ * into a real repo.
+ */
+const TEST_IDENTITY = [
+  "-c",
+  "user.name=Test",
+  "-c",
+  "user.email=test@test.com",
+] as const;
+
 interface RunResult {
   stdout: string;
   stderr: string;
@@ -361,14 +374,6 @@ describe("release commit subject", () => {
           cwd: repoRoot,
           stdio: "ignore",
         });
-        execFileSync("git", ["config", "user.email", "test@test.com"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
-        execFileSync("git", ["config", "user.name", "Test"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
 
         // Initial state: package.json @ 1.0.0, CHANGELOG with curated
         // [Unreleased] entries (so auto-generation from commits is bypassed
@@ -397,10 +402,11 @@ describe("release commit subject", () => {
           cwd: repoRoot,
           stdio: "ignore",
         });
-        execFileSync("git", ["commit", "-m", "chore: initial"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
+        execFileSync(
+          "git",
+          [...TEST_IDENTITY, "commit", "-m", "chore: initial"],
+          { cwd: repoRoot, stdio: "ignore" },
+        );
         const baseSha = execFileSync("git", ["rev-parse", "HEAD"], {
           cwd: repoRoot,
           encoding: "utf-8",
@@ -413,10 +419,11 @@ describe("release commit subject", () => {
           cwd: repoRoot,
           stdio: "ignore",
         });
-        execFileSync("git", ["commit", "-m", "feat: add src.txt"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
+        execFileSync(
+          "git",
+          [...TEST_IDENTITY, "commit", "-m", "feat: add src.txt"],
+          { cwd: repoRoot, stdio: "ignore" },
+        );
 
         // Run a real release. --no-tag --no-gh isolates the assertion to the
         // commit subject (no tag pushing, no gh release). --yes skips the
@@ -498,14 +505,6 @@ describe("release runs npm run build for Node projects (TASK-149)", () => {
           cwd: repoRoot,
           stdio: "ignore",
         });
-        execFileSync("git", ["config", "user.email", "test@test.com"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
-        execFileSync("git", ["config", "user.name", "Test"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
 
         // package.json with a `build` script that writes a marker file.
         // The marker captures the current package.json version at build
@@ -544,10 +543,11 @@ describe("release runs npm run build for Node projects (TASK-149)", () => {
           cwd: repoRoot,
           stdio: "ignore",
         });
-        execFileSync("git", ["commit", "-m", "chore: initial"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
+        execFileSync(
+          "git",
+          [...TEST_IDENTITY, "commit", "-m", "chore: initial"],
+          { cwd: repoRoot, stdio: "ignore" },
+        );
         const baseSha = execFileSync("git", ["rev-parse", "HEAD"], {
           cwd: repoRoot,
           encoding: "utf-8",
@@ -559,10 +559,11 @@ describe("release runs npm run build for Node projects (TASK-149)", () => {
           cwd: repoRoot,
           stdio: "ignore",
         });
-        execFileSync("git", ["commit", "-m", "feat: add src.txt"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
+        execFileSync(
+          "git",
+          [...TEST_IDENTITY, "commit", "-m", "feat: add src.txt"],
+          { cwd: repoRoot, stdio: "ignore" },
+        );
 
         const result = spawnSync(
           "node",
@@ -626,14 +627,6 @@ describe("release runs npm run build for Node projects (TASK-149)", () => {
           cwd: repoRoot,
           stdio: "ignore",
         });
-        execFileSync("git", ["config", "user.email", "test@test.com"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
-        execFileSync("git", ["config", "user.name", "Test"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
 
         // package.json WITHOUT a build script → should use `loaf build`
         writeFileSync(
@@ -660,10 +653,11 @@ describe("release runs npm run build for Node projects (TASK-149)", () => {
           cwd: repoRoot,
           stdio: "ignore",
         });
-        execFileSync("git", ["commit", "-m", "chore: initial"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
+        execFileSync(
+          "git",
+          [...TEST_IDENTITY, "commit", "-m", "chore: initial"],
+          { cwd: repoRoot, stdio: "ignore" },
+        );
         const baseSha = execFileSync("git", ["rev-parse", "HEAD"], {
           cwd: repoRoot,
           encoding: "utf-8",
@@ -674,10 +668,11 @@ describe("release runs npm run build for Node projects (TASK-149)", () => {
           cwd: repoRoot,
           stdio: "ignore",
         });
-        execFileSync("git", ["commit", "-m", "feat: add src.txt"], {
-          cwd: repoRoot,
-          stdio: "ignore",
-        });
+        execFileSync(
+          "git",
+          [...TEST_IDENTITY, "commit", "-m", "feat: add src.txt"],
+          { cwd: repoRoot, stdio: "ignore" },
+        );
 
         const result = spawnSync(
           "node",

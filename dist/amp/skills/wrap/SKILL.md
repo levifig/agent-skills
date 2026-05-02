@@ -7,7 +7,7 @@ description: >-
   the user asks "wrap up." Not for archiving (use housekeeping) or capturing
   ideas (use idea). Produces a Session Wrap-Up section and closes the session
   with done status.
-version: 2.0.0-dev.36
+version: 2.0.0-dev.37
 ---
 
 # Wrap

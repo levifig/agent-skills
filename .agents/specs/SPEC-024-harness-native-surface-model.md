@@ -6,7 +6,6 @@ source: >-
   native subagent/hook capabilities
 created: '2026-04-04T12:13:54Z'
 status: implementing
-branch: feat/harness-native-surface-model
 ---
 
 # SPEC-024: Harness-Native Surface Model

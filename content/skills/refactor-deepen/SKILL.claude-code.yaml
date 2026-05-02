@@ -1,0 +1,3 @@
+# Claude Code skill configuration
+user-invocable: true
+argument-hint: "[module or area]"

@@ -34,4 +34,4 @@ each feature contributes health checks to.
 ## Related
 
 - SPEC-009 (knowledge management) — ships kb-only SessionStart hook first
-- `20260317-spec-lifecycle-cli.md` — spec status staleness is a health signal
+- `20260317-000913-spec-lifecycle-cli.md` — spec status staleness is a health signal

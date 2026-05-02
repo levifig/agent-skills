@@ -35,6 +35,19 @@ const CLI_PATH = join(process.cwd(), "dist-cli/index.js");
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Per-command identity flags for `git commit`. Tests must never mutate the
+ * host repo's `.git/config` to set `user.name` / `user.email` — identity
+ * travels with each commit invocation instead, so a stray `cwd:` typo cannot
+ * leak into a real repo.
+ */
+const TEST_IDENTITY = [
+  "-c",
+  "user.name=Test User",
+  "-c",
+  "user.email=test@test.com",
+] as const;
+
 async function runLoaf(
   args: string[],
   options: { cwd: string; input?: string } = { cwd: TEST_ROOT }
@@ -76,13 +89,13 @@ function createTempRepo(name: string): string {
   // so SPEC-032 tests that assert literal `branch 'main'` in output remain
   // portable across machines.
   execFileSync("git", ["init", "--initial-branch=main"], { cwd: repoPath });
-  execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: repoPath });
-  execFileSync("git", ["config", "user.name", "Test User"], { cwd: repoPath });
-  
+
   // Create initial commit
   writeFileSync(join(repoPath, "README.md"), "# Test\n", "utf-8");
   execFileSync("git", ["add", "."], { cwd: repoPath });
-  execFileSync("git", ["commit", "-m", "Initial commit"], { cwd: repoPath });
+  execFileSync("git", [...TEST_IDENTITY, "commit", "-m", "Initial commit"], {
+    cwd: repoPath,
+  });
   
   // Create .agents directory
   mkdirSync(join(repoPath, ".agents"), { recursive: true });
@@ -365,7 +378,7 @@ describe("session: log", () => {
     // Make an actual commit so git log returns the right message
     writeFileSync(join(repoPath, "feature.ts"), "export const x = 1;\n", "utf-8");
     execFileSync("git", ["add", "."], { cwd: repoPath });
-    execFileSync("git", ["commit", "-m", "feat: add feature"], { cwd: repoPath });
+    execFileSync("git", [...TEST_IDENTITY, "commit", "-m", "feat: add feature"], { cwd: repoPath });
 
     // Log with nested format (tool.input instead of tool_input)
     const result = await runLoaf(["log", "--from-hook"], {
@@ -521,7 +534,7 @@ describe("session: log", () => {
       // Make a real commit so the hook entry-text extraction has a message to grab
       writeFileSync(join(repoPath, "feature.ts"), "export const x = 1;\n", "utf-8");
       execFileSync("git", ["add", "."], { cwd: repoPath });
-      execFileSync("git", ["commit", "-m", "feat: tier2 commit"], { cwd: repoPath });
+      execFileSync("git", [...TEST_IDENTITY, "commit", "-m", "feat: tier2 commit"], { cwd: repoPath });
 
       const result = await runLoaf(["log", "--from-hook"], {
         cwd: repoPath,
@@ -574,7 +587,7 @@ describe("session: log", () => {
 
       writeFileSync(join(repoPath, "x.ts"), "export const y = 2;\n", "utf-8");
       execFileSync("git", ["add", "."], { cwd: repoPath });
-      execFileSync("git", ["commit", "-m", "chore: no sid commit"], { cwd: repoPath });
+      execFileSync("git", [...TEST_IDENTITY, "commit", "-m", "chore: no sid commit"], { cwd: repoPath });
 
       const result = await runLoaf(["log", "--from-hook"], {
         cwd: repoPath,
@@ -705,7 +718,7 @@ describe("session: log", () => {
       // Hook fires for the active session
       writeFileSync(join(repoPath, "feat.ts"), "export const z = 3;\n", "utf-8");
       execFileSync("git", ["add", "."], { cwd: repoPath });
-      execFileSync("git", ["commit", "-m", "feat: misroute repro"], { cwd: repoPath });
+      execFileSync("git", [...TEST_IDENTITY, "commit", "-m", "feat: misroute repro"], { cwd: repoPath });
 
       const result = await runLoaf(["log", "--from-hook"], {
         cwd: repoPath,

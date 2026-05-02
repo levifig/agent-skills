@@ -76,9 +76,9 @@ beforeEach(() => {
 
   // Initialize git repo if not already
   try {
+    // No identity setup is needed: every `git commit` in this file is a
+    // string fixture passed as tool_input to validate-commit, never executed.
     execSync("git init", { cwd: TEST_ROOT, stdio: "ignore" });
-    execSync("git config user.email 'test@test.com'", { cwd: TEST_ROOT, stdio: "ignore" });
-    execSync("git config user.name 'Test'", { cwd: TEST_ROOT, stdio: "ignore" });
   } catch {
     // Git might already be initialized
   }

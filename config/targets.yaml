@@ -8,6 +8,7 @@
 shared-templates:
   session.md: [implement, orchestration, housekeeping, bootstrap]
   adr.md: [architecture, reflect]
+  grilling.md: [architecture, refactor-deepen]
 
 targets:
   claude-code:
