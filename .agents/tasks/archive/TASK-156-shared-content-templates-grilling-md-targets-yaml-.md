@@ -1,12 +1,12 @@
 ---
 id: TASK-156
 title: Shared content/templates/grilling.md + targets.yaml distribution
+spec: SPEC-034
 status: done
 priority: P1
 created: '2026-05-02T01:25:35.806Z'
 updated: '2026-05-02T01:25:35.806Z'
 completed_at: '2026-05-02T03:35:00.000Z'
-spec: SPEC-034
 ---
 
 # TASK-156: Shared content/templates/grilling.md + targets.yaml distribution

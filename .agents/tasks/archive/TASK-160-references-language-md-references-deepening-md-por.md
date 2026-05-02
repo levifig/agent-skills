@@ -1,14 +1,14 @@
 ---
 id: TASK-160
 title: references/language.md + references/deepening.md (port + Loaf mapping)
+spec: SPEC-034
 status: done
 priority: P2
 created: '2026-05-02T01:25:49.035Z'
 updated: '2026-05-02T01:25:49.035Z'
-completed_at: '2026-05-02T03:35:00.000Z'
-spec: SPEC-034
 depends_on:
   - TASK-159
+completed_at: '2026-05-02T03:35:00.000Z'
 ---
 
 # TASK-160: references/language.md + references/deepening.md (port + Loaf mapping)

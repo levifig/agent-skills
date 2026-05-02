@@ -1,14 +1,14 @@
 ---
 id: TASK-162
 title: templates/plan.md + filename convention + .agents/plans/ lazy creation
+spec: SPEC-034
 status: done
 priority: P2
 created: '2026-05-02T01:25:49.154Z'
 updated: '2026-05-02T01:25:49.154Z'
-completed_at: '2026-05-02T03:35:00.000Z'
-spec: SPEC-034
 depends_on:
   - TASK-159
+completed_at: '2026-05-02T03:35:00.000Z'
 ---
 
 # TASK-162: templates/plan.md + filename convention + .agents/plans/ lazy creation

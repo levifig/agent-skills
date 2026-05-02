@@ -1,12 +1,12 @@
 ---
 id: TASK-151
 title: Glossary file format + lazy creation utility
+spec: SPEC-034
 status: done
 priority: P1
 created: '2026-05-02T01:25:28.874Z'
 updated: '2026-05-02T01:25:28.874Z'
 completed_at: '2026-05-02T03:35:00.000Z'
-spec: SPEC-034
 ---
 
 # TASK-151: Glossary file format + lazy creation utility

@@ -1,15 +1,15 @@
 ---
 id: TASK-155
 title: Linear-native fail-fast for glossary write commands
+spec: SPEC-034
 status: done
 priority: P1
 created: '2026-05-02T01:25:29.099Z'
 updated: '2026-05-02T01:25:29.099Z'
-completed_at: '2026-05-02T03:35:00.000Z'
-spec: SPEC-034
 depends_on:
   - TASK-152
   - TASK-154
+completed_at: '2026-05-02T03:35:00.000Z'
 ---
 
 # TASK-155: Linear-native fail-fast for glossary write commands

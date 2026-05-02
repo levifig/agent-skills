@@ -1,14 +1,14 @@
 ---
 id: TASK-164
 title: Codex review opt-in hook for /refactor-deepen
+spec: SPEC-034
 status: done
 priority: P3
 created: '2026-05-02T01:25:49.274Z'
 updated: '2026-05-02T01:25:49.274Z'
-completed_at: '2026-05-02T03:35:00.000Z'
-spec: SPEC-034
 depends_on:
   - TASK-159
+completed_at: '2026-05-02T03:35:00.000Z'
 ---
 
 # TASK-164: Codex review opt-in hook for /refactor-deepen

@@ -1,17 +1,17 @@
 ---
 id: TASK-163
 title: Sentinel vocabulary test (Track B go/no-go)
+spec: SPEC-034
 status: done
 priority: P1
 created: '2026-05-02T01:25:49.208Z'
 updated: '2026-05-02T01:25:49.208Z'
-completed_at: '2026-05-02T03:35:00.000Z'
-spec: SPEC-034
 depends_on:
   - TASK-159
   - TASK-160
   - TASK-161
   - TASK-162
+completed_at: '2026-05-02T03:35:00.000Z'
 ---
 
 # TASK-163: Sentinel vocabulary test (Track B go/no-go)

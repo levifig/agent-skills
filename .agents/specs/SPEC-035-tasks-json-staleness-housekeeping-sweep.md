@@ -1,13 +1,11 @@
 ---
 id: SPEC-035
-title: "TASKS.json staleness + housekeeping sweep gap"
-source: ideas/20260325-012120-task-staleness-prevention.md, ideas/20260410-221800-revisit-tasks-json.md
-created: 2026-05-01T23:46:45Z
+title: TASKS.json staleness + housekeeping sweep gap
+source: >-
+  ideas/20260325-012120-task-staleness-prevention.md,
+  ideas/20260410-221800-revisit-tasks-json.md
+created: '2026-05-01T23:46:45.000Z'
 status: drafting
-shape_status: stub
-source_ideas:
-  - 20260325-012120-task-staleness-prevention
-  - 20260410-221800-revisit-tasks-json
 ---
 
 # SPEC-035: TASKS.json staleness + housekeeping sweep gap

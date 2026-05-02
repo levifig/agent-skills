@@ -1,16 +1,16 @@
 ---
 id: TASK-157
 title: '/architecture skill evolution: glossary integration, ADR template preserved'
+spec: SPEC-034
 status: done
 priority: P1
 created: '2026-05-02T01:25:35.857Z'
 updated: '2026-05-02T01:25:35.857Z'
-completed_at: '2026-05-02T03:35:00.000Z'
-spec: SPEC-034
 depends_on:
   - TASK-152
   - TASK-154
   - TASK-156
+completed_at: '2026-05-02T03:35:00.000Z'
 ---
 
 # TASK-157: /architecture skill evolution: glossary integration, ADR template preserved

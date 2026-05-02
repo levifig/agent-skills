@@ -1,15 +1,15 @@
 ---
 id: TASK-154
 title: loaf kb glossary stabilize + propose CLI verbs
+spec: SPEC-034
 status: done
 priority: P2
 created: '2026-05-02T01:25:29.041Z'
 updated: '2026-05-02T01:25:29.041Z'
-completed_at: '2026-05-02T03:35:00.000Z'
-spec: SPEC-034
 depends_on:
   - TASK-151
   - TASK-152
+completed_at: '2026-05-02T03:35:00.000Z'
 ---
 
 # TASK-154: loaf kb glossary stabilize + propose CLI verbs

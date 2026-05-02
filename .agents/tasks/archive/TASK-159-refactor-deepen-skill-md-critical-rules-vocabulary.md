@@ -1,14 +1,14 @@
 ---
 id: TASK-159
 title: '/refactor-deepen SKILL.md (Critical Rules, vocabulary, glossary integration)'
+spec: SPEC-034
 status: done
 priority: P1
 created: '2026-05-02T01:25:48.983Z'
 updated: '2026-05-02T01:25:48.983Z'
-completed_at: '2026-05-02T03:35:00.000Z'
-spec: SPEC-034
 depends_on:
   - TASK-156
+completed_at: '2026-05-02T03:35:00.000Z'
 ---
 
 # TASK-159: /refactor-deepen SKILL.md (Critical Rules, vocabulary, glossary integration)

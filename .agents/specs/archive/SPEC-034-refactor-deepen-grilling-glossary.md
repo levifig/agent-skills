@@ -3,9 +3,7 @@ id: SPEC-034
 title: Refactor-deepen skill + grilling protocol + glossary convention
 source: direct
 created: '2026-05-01T22:27:43.000Z'
-status: done
-branch: feat/refactor-deepen-grilling-glossary
-session: 20260502-025928-session.md
+status: complete
 ---
 
 # SPEC-034: Refactor-deepen skill + grilling protocol + glossary convention
