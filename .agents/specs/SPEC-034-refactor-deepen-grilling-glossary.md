@@ -156,3 +156,15 @@ Tracks ship in this order. If scope needs cutting, drop from the end.
 1. **Track A — Grilling protocol + glossary KB + `loaf kb glossary` CLI verbs + `/architecture` evolution.** Foundation. Go/no-go: `/architecture` invocation produces a glossary entry via `loaf kb glossary upsert`, then a subsequent `/architecture` reads it via `check` and challenges drift correctly. CLI commands work in local mode and fail fast in Linear-native. Shared template distribution verified in `dist/`.
 2. **Track B — `/refactor-deepen` skill + plan artifact template.** Depends on A for glossary mutation. Go/no-go: one full `/refactor-deepen` invocation on Loaf itself produces a usable PLAN file with vocabulary discipline maintained (sentinel test passes), including parallel sub-agent INTERFACE-DESIGN phase with 3 unprimed agents producing distinct designs.
 3. **Track C — Codex review opt-in for `/refactor-deepen`.** Polish. Drop if scope tightens. Go/no-go: plugin presence detection works; opt-in offer fires on one invocation with `codex` plugin installed.
+
+## Changelog
+
+- 2026-05-02 — Session feat/refactor-deepen-grilling-glossary archived: 8 decision(s) extracted
+  [2026-05-02 13:00] decision(refactor-deepen): plans use YYYYMMDD-HHMMSS-slug naming, not PLAN-NNN — plans are temporal records like sessions/ideas, not contracts like specs/tasks; eliminates race-condition follow-up
+  [2026-05-02 15:39] decision(release): pause to find and fix Loaf bug that sets local git user.name = Test, then rewrite authorship on this branch
+  [2026-05-02 15:51] decision(testing): replace git config writes in tests with -c flag per-command identity (Option 2 — command-focused, not env-focused)
+  [2026-05-02 02:11] decision(glossary): grilling.md template must NOT name verb-specific commitment levels — consuming skill owns mutation policy per SPEC-034; remove propose/stabilize/upsert from shared template
+  [2026-05-02 02:11] decision(glossary): make splitSections and parseTerms fence-aware (track ``` and ~~~ state) and reject sparse files / non-empty preamble strictly to preserve lossless round-trip
+  [2026-05-02 02:23] decision(refactor-deepen): INTERFACE-DESIGN sub-agents use researcher profile by default — read-only matches design-exploration use case, structured-report contract maps to "interface + sketch + tradeoffs" output; implementer documented as opt-in alternative when probe code is needed
+  [2026-05-02 02:25] decision(glossary): list and check verbs must not call ensureGlossaryExists — file creation is lazy on first canonical write only; missing glossary surfaces "no entries" / "unknown" without side effects
+  [2026-05-02 17:04] decision(release): v2.0.0-dev.37 — PR #45 opened with curated CHANGELOG, awaiting squash merge
