@@ -8,10 +8,11 @@ import { join, dirname } from "path";
 import matter from "gray-matter";
 
 import { isTTY, askYesNo } from "../lib/prompts.js";
-import { findAgentsDir, getOrBuildIndex } from "../lib/tasks/resolve.js";
-import { archiveTasks, archiveSpecs, saveIndex } from "../lib/tasks/migrate.js";
+import { findAgentsDir } from "../lib/tasks/resolve.js";
+import { archiveTasks, archiveSpecs } from "../lib/tasks/migrate.js";
+import { withTasksJsonLock } from "../lib/tasks/lock.js";
 import { scanArtifacts } from "../lib/housekeeping/scanner.js";
-import type { ArtifactType, CleanupRecommendation } from "../lib/housekeeping/types.js";
+import type { ArtifactType } from "../lib/housekeeping/types.js";
 
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
@@ -171,11 +172,6 @@ export function registerHousekeepingCommand(program: Command): void {
 
       console.log(`  ${bold("Actions")} — ${actionable.length} item(s)\n`);
 
-      let index: ReturnType<typeof getOrBuildIndex> | null = null;
-      const getIndex = () => {
-        if (!index) index = getOrBuildIndex(agentsDir);
-        return index;
-      };
       const tasksToArchive: string[] = [];
       const specsToArchive: string[] = [];
       let actionsPerformed = 0;
@@ -227,32 +223,33 @@ export function registerHousekeepingCommand(program: Command): void {
         console.log();
       }
 
-      if (tasksToArchive.length > 0) {
-        const idx = getIndex();
-        const results = archiveTasks(agentsDir, idx, tasksToArchive);
-        for (const r of results) {
-          if (r.status === "archived") {
-            console.log(`  ${green("✓")} Archived ${r.id}`);
-          } else {
-            console.log(`  ${yellow("⚠")} Skipped ${r.id}: ${r.reason}`);
+      if (tasksToArchive.length > 0 || specsToArchive.length > 0) {
+        // Single critical section: archive tasks and specs against the fresh
+        // index under the TASKS.json lock so concurrent task-create from
+        // another worktree doesn't lose its allocation to a stale read.
+        withTasksJsonLock(agentsDir, (idx) => {
+          if (tasksToArchive.length > 0) {
+            const results = archiveTasks(agentsDir, idx, tasksToArchive);
+            for (const r of results) {
+              if (r.status === "archived") {
+                console.log(`  ${green("✓")} Archived ${r.id}`);
+              } else {
+                console.log(`  ${yellow("⚠")} Skipped ${r.id}: ${r.reason}`);
+              }
+            }
           }
-        }
-      }
-
-      if (specsToArchive.length > 0) {
-        const idx = getIndex();
-        const results = archiveSpecs(agentsDir, idx, specsToArchive);
-        for (const r of results) {
-          if (r.status === "archived") {
-            console.log(`  ${green("✓")} Archived ${r.id}`);
-          } else {
-            console.log(`  ${yellow("⚠")} Skipped ${r.id}: ${r.reason}`);
+          if (specsToArchive.length > 0) {
+            const results = archiveSpecs(agentsDir, idx, specsToArchive);
+            for (const r of results) {
+              if (r.status === "archived") {
+                console.log(`  ${green("✓")} Archived ${r.id}`);
+              } else {
+                console.log(`  ${yellow("⚠")} Skipped ${r.id}: ${r.reason}`);
+              }
+            }
           }
-        }
-      }
-
-      if (index) {
-        saveIndex(join(agentsDir, "TASKS.json"), index);
+          return undefined;
+        });
       }
 
       console.log(`  ${green("✓")} Housekeeping complete — ${actionsPerformed} action(s) performed.\n`);

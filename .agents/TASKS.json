@@ -1,7 +1,23 @@
 {
   "version": 1,
-  "next_id": 165,
+  "next_id": 173,
   "tasks": {
+    "TASK-165": {
+      "title": "loaf release --post-merge should use git tag -s (signed) explicitly",
+      "slug": "loaf-release-post-merge-should-use-git-tag-s-signe",
+      "spec": null,
+      "status": "todo",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-05-16T18:24:55.387Z",
+      "updated": "2026-05-16T18:24:55.387Z",
+      "completed_at": null,
+      "file": "TASK-165-loaf-release-post-merge-should-use-git-tag-s-signe.md"
+    },
     "TASK-001": {
       "title": "Create verification reference",
       "slug": "verification-reference",
@@ -2901,6 +2917,59 @@
       "updated": "2026-05-02T01:25:49.274Z",
       "completed_at": "2026-05-02T03:35:00.000Z",
       "file": "archive/TASK-164-codex-review-opt-in-hook-for-refactor-deepen.md"
+    },
+    "TASK-166": {
+      "title": "Foundation: worktree probe + dual resolvers + ID allocator scans both views",
+      "slug": "foundation-worktree-probe-dual-resolvers-id-alloca",
+      "spec": "SPEC-036",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": ".agents/sessions/20260519-004429-session.md",
+      "created": "2026-05-18T23:58:39.458Z",
+      "updated": "2026-05-19T08:56:34.313Z",
+      "completed_at": "2026-05-19T08:56:34.312Z",
+      "file": "archive/TASK-166-foundation-worktree-probe-dual-resolvers-id-alloca.md"
+    },
+    "TASK-170": {
+      "title": "loaf migrate worktree-storage command (dry-run default, back-pointer file, round-trip test)",
+      "slug": "loaf-migrate-worktree-storage-command-dry-run-defa",
+      "spec": "SPEC-036",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "TASK-166"
+      ],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": ".agents/sessions/20260519-090118-session.md",
+      "created": "2026-05-18T23:58:56.163Z",
+      "updated": "2026-05-19T09:48:46.260Z",
+      "completed_at": "2026-05-19T09:48:46.260Z",
+      "file": "archive/TASK-170-loaf-migrate-worktree-storage-command-dry-run-defa.md"
+    },
+    "TASK-172": {
+      "title": "ADR: agentic state storage model (shared vs branch-local)",
+      "slug": "adr-agentic-state-storage-model-shared-vs-branch-l",
+      "spec": "SPEC-036",
+      "status": "done",
+      "priority": "P3",
+      "depends_on": [
+        "TASK-166",
+        "TASK-170"
+      ],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": ".agents/sessions/20260519-101320-session.md",
+      "created": "2026-05-18T23:59:01.537Z",
+      "updated": "2026-05-19T10:21:08.192Z",
+      "completed_at": "2026-05-19T10:21:08.191Z",
+      "file": "archive/TASK-172-adr-agentic-state-storage-model-shared-vs-branch-l.md"
     }
   },
   "specs": {
@@ -3183,6 +3252,14 @@
       "source": "direct",
       "created": "2026-05-01T22:27:43.000Z",
       "file": "archive/SPEC-034-refactor-deepen-grilling-glossary.md"
+    },
+    "SPEC-036": {
+      "title": "Worktree-aware .agents/ storage routing",
+      "status": "complete",
+      "requirement": null,
+      "source": "direct",
+      "created": "2026-05-19T00:30:00Z",
+      "file": "archive/SPEC-036-worktree-aware-agents-storage-routing.md"
     }
   }
 }

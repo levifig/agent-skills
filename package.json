@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.40",
+  "version": "2.0.0-dev.42",
   "description": "Loaf - An Opinionated Agentic Framework for Claude Code, OpenCode, Cursor, Codex, and Gemini",
   "type": "module",
   "bin": {
@@ -23,6 +23,7 @@
     "build:content": "node dist-cli/index.js build",
     "build": "npm run build:cli-ref && tsup && node dist-cli/index.js build",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run build:cli",
     "test": "vitest run",
     "test:smoke": "node cli/scripts/smoke-test.js",
     "eval:routing": "node cli/scripts/eval-skill-routing.mjs",

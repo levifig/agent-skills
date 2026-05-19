@@ -18,11 +18,12 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  utimesSync,
   writeFileSync,
   readFileSync,
 } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
+import { hostname, tmpdir } from "os";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Fixtures — unique per test to avoid cross-file interference
@@ -442,9 +443,12 @@ describe("session: log", () => {
     const filePath = join(repoPath, ".agents/sessions", sessionFile);
     const lockPath = `${filePath}.lock`;
 
+    // Dead PID stamped with current host — mirrors the new lock payload
+    // shape. The session-lock staleness check should observe ESRCH on
+    // process.kill(pid, 0) and steal the orphan on the first retry.
     writeFileSync(
       lockPath,
-      JSON.stringify({ pid: 999999, timestamp: Date.now() }),
+      JSON.stringify({ pid: 999999, host: hostname(), timestamp: Date.now() }),
       "utf-8"
     );
 
@@ -2061,5 +2065,158 @@ describe("session: LOAF_ENRICHMENT isolation", () => {
     );
     expect(contentAfter).toBe(contentBefore);
     expect(contentAfter).not.toContain("SESSION STOPPED");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Session-lock staleness — PID liveness vs. age fallback
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// These exercise `isLockStale()` directly (in-process) to lock in the same
+// staleness contract as `cli/lib/tasks/lock.ts`. The previous policy in
+// session.ts was age-OR-dead with a 30s threshold, which evicted long-lived
+// live local critical sections. The new policy is PID-liveness primary, with
+// a conservative 5-minute age fallback only when liveness is unprobeable
+// (malformed content or foreign-host PID namespace).
+//
+// We hand-craft `.lock` files with controlled payloads and mtimes, then ask
+// `isLockStale()` for its verdict. Mirrors the 6 staleness scenarios in
+// `cli/lib/tasks/lock.test.ts`.
+
+describe("session lock: isLockStale staleness contract", () => {
+  // Imported via dynamic import to avoid pulling in the full Commander tree
+  // at the top of this test file — keeps test startup cheap.
+  let isLockStale: (lockPath: string) => boolean;
+
+  beforeEach(async () => {
+    ({ isLockStale } = await import("./session.js"));
+  });
+
+  function writeLock(
+    lockPath: string,
+    payload: unknown,
+    mtimeMs?: number,
+  ): void {
+    writeFileSync(
+      lockPath,
+      typeof payload === "string" ? payload : JSON.stringify(payload),
+      "utf-8",
+    );
+    if (mtimeMs !== undefined) {
+      const t = mtimeMs / 1000;
+      utimesSync(lockPath, t, t);
+    }
+  }
+
+  /**
+   * Find a PID that is guaranteed dead on this host. Scans downward from
+   * 99999; any PID where `process.kill(pid, 0)` reports ESRCH is fair game.
+   */
+  function findDeadPid(): number {
+    for (let pid = 99999; pid > 99800; pid--) {
+      try {
+        process.kill(pid, 0);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException)?.code;
+        if (code === "ESRCH") return pid;
+      }
+    }
+    return 99999;
+  }
+
+  it("live-PID, same host, young mtime: NOT stale (no eviction)", () => {
+    const lockPath = join(TEST_ROOT, "live-young.lock");
+    writeLock(lockPath, {
+      pid: process.pid,
+      host: hostname(),
+      timestamp: Date.now(),
+    });
+    expect(isLockStale(lockPath)).toBe(false);
+  });
+
+  it("live-PID, same host, ancient mtime: NOT stale — PID liveness wins", () => {
+    // Regression: under the old age-OR-dead policy, a 1-hour-old mtime
+    // alone would have evicted this live local holder. The new policy
+    // trusts process.kill(pid, 0) instead.
+    const lockPath = join(TEST_ROOT, "live-old.lock");
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    writeLock(
+      lockPath,
+      { pid: process.pid, host: hostname(), timestamp: oneHourAgo },
+      oneHourAgo,
+    );
+    expect(isLockStale(lockPath)).toBe(false);
+  });
+
+  it("dead-PID, same host: stale (ready to evict)", () => {
+    const lockPath = join(TEST_ROOT, "dead.lock");
+    writeLock(lockPath, {
+      pid: findDeadPid(),
+      host: hostname(),
+      timestamp: Date.now(),
+    });
+    expect(isLockStale(lockPath)).toBe(true);
+  });
+
+  it("malformed payload, young mtime: NOT stale — age fallback says wait", () => {
+    // Garbage content + fresh mtime — liveness unprobeable, but under the
+    // 5-minute fallback threshold. Conservative answer: don't steal yet.
+    const lockPath = join(TEST_ROOT, "malformed-young.lock");
+    writeLock(lockPath, "this-is-not-json{");
+    expect(isLockStale(lockPath)).toBe(false);
+  });
+
+  it("malformed payload, ancient mtime: stale — age fallback fires", () => {
+    // Pre-fix Loaf orphan: garbage payload + old mtime. With liveness
+    // unprobeable, the 5-minute age fallback kicks in and declares stale.
+    const lockPath = join(TEST_ROOT, "malformed-old.lock");
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    writeLock(lockPath, "{ partial", oneHourAgo);
+    expect(isLockStale(lockPath)).toBe(true);
+  });
+
+  it("foreign-host, young mtime: NOT stale — local PID is meaningless", () => {
+    // Different hostname — local PID check is against the wrong PID
+    // namespace. Age fallback says young → not stale. We must NOT steal
+    // even though `process.pid` happens to be "alive" locally.
+    const lockPath = join(TEST_ROOT, "foreign-young.lock");
+    writeLock(lockPath, {
+      pid: process.pid,
+      host: `not-${hostname()}`,
+      timestamp: Date.now(),
+    });
+    expect(isLockStale(lockPath)).toBe(false);
+  });
+
+  it("foreign-host, ancient mtime: stale via age fallback", () => {
+    // Foreign-host lock + ancient mtime. Liveness is meaningless cross-host,
+    // age fallback kicks in.
+    const lockPath = join(TEST_ROOT, "foreign-old.lock");
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    writeLock(
+      lockPath,
+      { pid: process.pid, host: `not-${hostname()}`, timestamp: oneHourAgo },
+      oneHourAgo,
+    );
+    expect(isLockStale(lockPath)).toBe(true);
+  });
+
+  it("legacy payload (no host field), live PID: NOT stale", () => {
+    // Pre-fix Loaf wrote `{pid, timestamp}` without `host`. Treat empty
+    // host as same-host (legacy compat) and run PID liveness — must NOT
+    // steal a live local holder just because the schema is older.
+    const lockPath = join(TEST_ROOT, "legacy-live.lock");
+    writeLock(lockPath, {
+      pid: process.pid,
+      timestamp: Date.now(),
+    });
+    expect(isLockStale(lockPath)).toBe(false);
+  });
+
+  it("missing lock file: stale (so caller proceeds to openSync wx)", () => {
+    // statSync throws — return true so the caller attempts create. The
+    // openSync("wx") will catch any genuine race.
+    const lockPath = join(TEST_ROOT, "ghost.lock");
+    expect(isLockStale(lockPath)).toBe(true);
   });
 });

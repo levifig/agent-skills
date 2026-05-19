@@ -10,7 +10,8 @@ import { existsSync } from "fs";
 import { join } from "path";
 
 import { findAgentsDir } from "../lib/tasks/resolve.js";
-import { loadIndex, buildIndexFromFiles, saveIndex, syncFrontmatterFromIndex, archiveSpecs } from "../lib/tasks/migrate.js";
+import { loadIndex, buildIndexFromFiles, syncFrontmatterFromIndex, archiveSpecs } from "../lib/tasks/migrate.js";
+import { withTasksJsonLock } from "../lib/tasks/lock.js";
 import type { TaskIndex, SpecStatus } from "../lib/tasks/types.js";
 
 // ANSI color helpers
@@ -49,7 +50,9 @@ const STATUS_LABELS: Record<SpecStatus, string> = {
 
 /**
  * Load or build the task index, exiting on error.
- * If TASKS.json doesn't exist, builds from .md files and saves.
+ * If TASKS.json doesn't exist, builds from .md files and saves under the
+ * shared TASKS.json lock so concurrent cold-start callers don't clobber each
+ * other.
  */
 function resolveIndex(agentsDir: string): TaskIndex {
   const indexPath = join(agentsDir, "TASKS.json");
@@ -62,10 +65,15 @@ function resolveIndex(agentsDir: string): TaskIndex {
     process.exit(1);
   }
 
-  // Build from .md files
-  const index = buildIndexFromFiles(agentsDir);
-  saveIndex(indexPath, index);
-  return index;
+  // Build from .md files under the lock — cold-start path.
+  return withTasksJsonLock(agentsDir, (current) => {
+    const rebuilt = buildIndexFromFiles(agentsDir);
+    current.version = rebuilt.version;
+    current.next_id = rebuilt.next_id;
+    current.tasks = rebuilt.tasks;
+    current.specs = rebuilt.specs;
+    return current;
+  });
 }
 
 interface TaskCounts {
@@ -219,31 +227,33 @@ export function registerSpecCommand(program: Command): void {
         process.exit(1);
       }
 
-      const index = resolveIndex(agentsDir);
-      const indexPath = join(agentsDir, "TASKS.json");
-
       console.log(`\n${bold("  loaf spec archive")}\n`);
-
-      const results = archiveSpecs(agentsDir, index, ids);
 
       let archived = 0;
       let skipped = 0;
 
-      for (const r of results) {
-        if (r.status === "archived") {
-          const entry = index.specs[r.id];
-          console.log(`  ${green("✓")} ${bold(r.id)}: ${entry.title}`);
-          archived++;
-        } else {
-          const icon = r.reason === "already archived" ? gray("⊘") : yellow("⊘");
-          console.log(`  ${icon} ${bold(r.id)}: ${r.reason}`);
-          skipped++;
+      withTasksJsonLock(agentsDir, (index) => {
+        const results = archiveSpecs(agentsDir, index, ids);
+
+        for (const r of results) {
+          if (r.status === "archived") {
+            const entry = index.specs[r.id];
+            console.log(`  ${green("✓")} ${bold(r.id)}: ${entry.title}`);
+            archived++;
+          } else {
+            const icon = r.reason === "already archived" ? gray("⊘") : yellow("⊘");
+            console.log(`  ${icon} ${bold(r.id)}: ${r.reason}`);
+            skipped++;
+          }
         }
-      }
+
+        return archived > 0 ? undefined : false;
+      });
 
       if (archived > 0) {
-        saveIndex(indexPath, index);
-        syncFrontmatterFromIndex(agentsDir, index);
+        // Re-read post-lock to pick up the persisted state for frontmatter sync.
+        const freshIndex = resolveIndex(agentsDir);
+        syncFrontmatterFromIndex(agentsDir, freshIndex);
       }
 
       console.log();

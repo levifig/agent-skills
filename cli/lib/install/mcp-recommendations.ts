@@ -56,6 +56,96 @@ function parseScope(answer: string): "global" | "project" | "no" {
   return "no";
 }
 
+/* ── Native Serena setup ────────────────────────────────────────────── */
+
+const SERENA_INSTALL_COMMAND = [
+  "tool",
+  "install",
+  "-p",
+  "3.13",
+  "serena-agent@latest",
+  "--prerelease=allow",
+];
+
+function commandExists(command: string): boolean {
+  try {
+    execFileSync("which", [command], {
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function printSerenaNativeInstructions(log: (message: string) => void): void {
+  log(`    ${yellow("⚠")} Serena must be installed natively before Loaf can add MCP entries.`);
+  log(`    ${gray("Run:")} uv tool install -p 3.13 serena-agent@latest --prerelease=allow`);
+  log(`    ${gray("Then:")} serena init`);
+}
+
+export interface SerenaNativeInstallDeps {
+  commandExists: (command: string) => boolean;
+  ask: (question: string) => Promise<string>;
+  run: (command: string, args: string[]) => void;
+  log: (message: string) => void;
+}
+
+export async function ensureSerenaNativeInstall(
+  deps: SerenaNativeInstallDeps = {
+    commandExists,
+    ask,
+    run: (command, args) => execFileSync(command, args, { stdio: "inherit" }),
+    log: (message) => console.log(message),
+  },
+): Promise<{ ok: boolean; message: string }> {
+  if (deps.commandExists("serena")) {
+    return { ok: true, message: "Serena native CLI found" };
+  }
+
+  printSerenaNativeInstructions(deps.log);
+
+  if (!deps.commandExists("uv")) {
+    return {
+      ok: false,
+      message: "uv not found; install uv, run the Serena setup commands above, then rerun loaf install.",
+    };
+  }
+
+  const answer = await deps.ask(
+    `    Run Serena native install now? [y/N] `,
+  );
+  if (!answer.startsWith("y")) {
+    return {
+      ok: false,
+      message: "Skipped native Serena setup; MCP config not written.",
+    };
+  }
+
+  try {
+    deps.run("uv", SERENA_INSTALL_COMMAND);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: `Serena install failed: ${msg}` };
+  }
+
+  if (!deps.commandExists("serena")) {
+    return {
+      ok: false,
+      message: "Serena installed, but `serena` is not on PATH. Add uv's tool bin directory to PATH, then rerun loaf install.",
+    };
+  }
+
+  try {
+    deps.run("serena", ["init"]);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: `serena init failed: ${msg}` };
+  }
+
+  return { ok: true, message: "Serena native CLI installed" };
+}
+
 /* ── Target installation dispatch ───────────────────────────────────── */
 
 function installViaClaude(
@@ -293,6 +383,18 @@ export async function runMcpRecommendations(
       console.log(`    ${gray("○")} Skipped — recorded in .agents/loaf.json`);
       console.log();
       continue;
+    }
+
+    if (def.id === "serena") {
+      const nativeSerena = await ensureSerenaNativeInstall();
+      if (!nativeSerena.ok) {
+        mergeLoafConfigIntegrations(projectRoot, {
+          [def.id]: { enabled: false },
+        });
+        console.log(`    ${yellow("⚠")} ${nativeSerena.message}`);
+        console.log();
+        continue;
+      }
     }
 
     // Find targets that need installation

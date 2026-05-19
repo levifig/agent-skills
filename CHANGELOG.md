@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.42] - 2026-05-19
+
+### Added
+
+- **Worktree-aware `.agents/` storage.** Loaf now treats `.agents/` as project-scoped state rather than branch-scoped content. Running any `loaf` command from a linked git worktree (a `git worktree add`-style checkout) resolves `.agents/` to the **main worktree's directory** instead of the worktree's own copy. Sessions, IDs, knowledge, and ideas converge across all worktrees of a project. Single-checkout repositories see no behavior change. See [ADR-013](docs/decisions/ADR-013-agentic-state-storage-model.md) for the decision rationale and rejected alternatives.
+- **`loaf migrate worktree-storage`.** New command that moves a linked worktree's local `.agents/` content into the main worktree's `.agents/`. Dry-run by default; `--apply` performs the move. Conflict policy prefers the most-recently-modified version when a file exists in both locations, with `--force-from-worktree` and `--force-from-main` overrides. Writes a `.moved-to` back-pointer in the source location and is idempotent on re-run. EXDEV (cross-filesystem) moves fall back to `fs.cpSync` with `preserveTimestamps`.
+- **Pre-A3 refusal nudge.** Loaf invocations in a linked worktree with un-migrated content are refused with exit code `2` and a single-action instruction: run `loaf migrate worktree-storage`. The migrate command itself, `help` / `-h` / `--help`, and `-v` / `--version` are always allowed; single-checkout repositories and the main worktree never trigger the refusal.
+- **`LOAF_DEBUG_RESOLVE` environment variable.** When set to `1` / `true` / `yes` / `on` (case-insensitive), surfaces git probe diagnostics from `findAgentsDir` that are otherwise suppressed. Useful for diagnosing unexpected refusal nudge fires.
+
+### Changed
+
+- **Retired convention: "spec on main, tasks+code on branch".** Under the worktree-aware storage model, `.agents/` content always lives in the main worktree's directory regardless of which branch's PR is in flight. PR templates and project docs that referenced this convention should be updated.
+
+### Migration
+
+Users with active `git worktree add` linked worktrees containing `.agents/` content must run `loaf migrate worktree-storage --apply` once after upgrading. Single-checkout repositories require no action.
+
 ## [2.0.0-dev.40] - 2026-05-02
 
 ### Added

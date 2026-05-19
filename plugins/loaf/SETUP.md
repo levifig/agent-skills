@@ -62,14 +62,18 @@ Semantic editing operations (`rename_symbol`, `replace_symbol_body`, `insert_aft
 
 Still valuable for non-Claude-Code targets (Cursor, Codex, etc.) that lack native LSP integration.
 
-Requires Python 3.10+ and uv:
+Requires Python 3.13+ and uv:
 
 ```bash
 # Install uv if you don't have it:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
+# Install and initialize Serena:
+uv tool install -p 3.13 serena-agent@latest --prerelease=allow
+serena init
+
 # Add to Claude Code:
-claude mcp add serena -- uvx -p 3.13 --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code --project-from-cwd
+claude mcp add --scope user serena -- serena start-mcp-server --context claude-code --project-from-cwd
 ```
 
 ## Verification
@@ -89,8 +93,8 @@ typescript-language-server --version
 # Check Ruby LSP
 solargraph --version
 
-# Check uv for Serena
-uv --version
+# Check Serena
+serena --version
 ```
 
 ## Troubleshooting
@@ -104,7 +108,7 @@ uv --version
 ### MCP server fails to start
 
 1. Check Node.js version: `node --version` (need 22+)
-2. Check Python/uv for Serena: `uv --version`
+2. Check Serena installation: `serena --version`
 3. Try running the server manually to see errors
 
 ### Linear authentication

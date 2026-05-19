@@ -12,7 +12,7 @@
       "enabled": false
     },
     "serena": {
-      "enabled": false
+      "enabled": true
     }
   }
 }

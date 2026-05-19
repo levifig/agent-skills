@@ -9,6 +9,8 @@ import {
   buildMcpStatuses,
   parseClaudeMcpListOutput,
   mcpSupportedTargets,
+  getMcpDefinition,
+  getMcpArgs,
 } from "./mcp.js";
 import {
   mergeLoafConfigIntegrations,
@@ -193,6 +195,31 @@ describe("MCP stack detection", () => {
     const rows = buildMcpStatuses(TMP, ["claude-code", "cursor"]);
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.id).sort()).toEqual(["linear", "serena"]);
+  });
+
+  it("uses Serena's installed CLI protocol for target launch commands", () => {
+    const serena = getMcpDefinition("serena");
+    expect(serena).toBeDefined();
+
+    expect(getMcpArgs(serena!, "claude-code")).toEqual([
+      "serena",
+      "start-mcp-server",
+      "--context",
+      "claude-code",
+      "--project-from-cwd",
+    ]);
+    expect(getMcpArgs(serena!, "codex")).toEqual([
+      "serena",
+      "start-mcp-server",
+      "--context",
+      "codex",
+      "--project-from-cwd",
+    ]);
+    expect(getMcpArgs(serena!, "opencode")).toEqual([
+      "serena",
+      "start-mcp-server",
+      "--project-from-cwd",
+    ]);
   });
 });
 

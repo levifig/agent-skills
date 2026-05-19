@@ -107,8 +107,6 @@ export function mcpSupportedTargets(): string[] {
 /* ── MCP registry ───────────────────────────────────────────────────── */
 
 const SERENA_BASE_ARGS = [
-  "uvx", "-p", "3.13", "--from",
-  "git+https://github.com/oraios/serena",
   "serena", "start-mcp-server",
 ];
 
@@ -128,10 +126,11 @@ export const MCP_REGISTRY: McpDefinition[] = [
     defaultArgs: [...SERENA_BASE_ARGS, "--project-from-cwd"],
     targetArgs: {
       "claude-code": [...SERENA_BASE_ARGS, "--context", "claude-code", "--project-from-cwd"],
-      cursor: [...SERENA_BASE_ARGS, "--context", "cursor", "--project-from-cwd"],
+      cursor: [...SERENA_BASE_ARGS, "--context", "ide", "--project-from-cwd"],
+      codex: [...SERENA_BASE_ARGS, "--context", "codex", "--project-from-cwd"],
     },
     manualHint:
-      "uvx -p 3.13 --from git+https://github.com/oraios/serena serena start-mcp-server --project-from-cwd",
+      "uv tool install -p 3.13 serena-agent@latest --prerelease=allow && serena init",
   },
 ];
 

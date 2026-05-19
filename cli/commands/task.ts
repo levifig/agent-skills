@@ -10,8 +10,9 @@ import { join } from "path";
 import matter from "gray-matter";
 
 import { findAgentsDir, getOrBuildIndex } from "../lib/tasks/resolve.js";
-import { buildIndexFromFiles, saveIndex, syncFrontmatterFromIndex, findOrphans, archiveTasks } from "../lib/tasks/migrate.js";
-import type { TaskIndex, TaskEntry, TaskStatus, TaskPriority, SpecStatus } from "../lib/tasks/types.js";
+import { buildIndexFromFiles, loadIndex, syncFrontmatterFromIndex, findOrphans, archiveTasks } from "../lib/tasks/migrate.js";
+import { withTasksJsonLock } from "../lib/tasks/lock.js";
+import type { TaskIndex, TaskEntry, SpecEntry, TaskStatus, TaskPriority, SpecStatus } from "../lib/tasks/types.js";
 import { TASK_STATUSES, TASK_PRIORITIES } from "../lib/tasks/types.js";
 import { generateSlug } from "../lib/tasks/slug.js";
 import {
@@ -34,6 +35,18 @@ const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Validation error thrown from inside a `withTasksJsonLock` callback to surface
+ * user-facing messages with `process.exit(1)` without leaking other errors.
+ * Caught at the call site of the lock helper.
+ */
+class TaskCreateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TaskCreateError";
+  }
+}
 
 
 /** Color functions for status headers */
@@ -75,11 +88,109 @@ function countSpecs(index: TaskIndex): { total: number; byStatus: Record<SpecSta
   };
 }
 
-function rebuildTaskIndex(agentsDir: string): TaskIndex {
+/**
+ * Extract the numeric portion of a task/spec ID. "TASK-019" -> 19,
+ * "SPEC-010" -> 10. Returns 0 if the id has no trailing digits (defensive
+ * fallback — shouldn't happen for valid IDs).
+ */
+function parseEntryIdNumber(id: string): number {
+  const match = id.match(/\d+$/);
+  return match ? parseInt(match[0], 10) : 0;
+}
+
+export function rebuildTaskIndex(agentsDir: string): TaskIndex {
+  // Critical-section discipline (ms-scale lock holds) AND scan-window-aware
+  // union merge (Codex HOLD on PR #49):
+  //
+  //   1. OUTSIDE the lock: snapshot the current allocator state, then scan
+  //      .md files. We need the snapshot BEFORE the scan because `task
+  //      create` can commit a fresh task while the scan is running — the
+  //      live index may contain an entry whose .md file was created after
+  //      our scan observed the tasks directory.
+  //
+  //   2. INSIDE the lock: re-read the current index (`nowIndex`) and merge
+  //      using scan-window semantics:
+  //
+  //        - Every entry in `scannedIndex` is authoritative (it exists on
+  //          disk right now), and goes into the merged result.
+  //        - PLUS: every entry in `nowIndex` that was minted DURING the
+  //          scan window (task id >= scanStartNextId, or a spec id we
+  //          didn't see at scan start) — these were committed to TASKS.json
+  //          while our scan was running and their .md file may not have been
+  //          observed by the outside scan. Preserving them prevents `refresh`
+  //          from silently erasing a freshly-created task.
+  //        - DROP: every entry that was in the pre-scan snapshot but is
+  //          NOT in `scannedIndex` — those are pre-scan entries whose .md
+  //          file is gone (the whole point of `refresh` is to reconcile
+  //          to disk truth).
+  //
+  //   3. `next_id` advances monotonically across all three inputs and the
+  //      max parsed id from the merged tasks (+1).
+  //
+  //   4. Persist via the lock helper's standard atomic write.
+  //
+  // The result of holding the lock is a single read + an O(entries) merge
+  // + a single atomic write — sub-millisecond on any reasonable filesystem.
+
+  // Snapshot the allocator + spec ID set BEFORE the file scan. This defines
+  // the "scan window": anything in `nowIndex` past these thresholds was
+  // minted during the scan and must be preserved.
+  //
+  // We use `loadIndex` rather than acquiring the lock here because all
+  // writers use atomic rename — a torn read is not possible. A concurrent
+  // writer landing between this read and our scan is exactly what the
+  // window-aware merge is designed to handle, so we don't need a barrier
+  // for the snapshot itself.
   const indexPath = join(agentsDir, "TASKS.json");
-  const index = buildIndexFromFiles(agentsDir);
-  saveIndex(indexPath, index);
-  return index;
+  const snapshotBefore = loadIndex(indexPath);
+  const scanStartNextId = snapshotBefore?.next_id ?? 1;
+  const scanStartSpecIds = new Set(
+    snapshotBefore ? Object.keys(snapshotBefore.specs) : [],
+  );
+
+  const scannedIndex = buildIndexFromFiles(agentsDir);
+
+  return withTasksJsonLock(agentsDir, (nowIndex) => {
+    // ── Merge tasks ────────────────────────────────────────────────────
+    const mergedTasks: Record<string, TaskEntry> = { ...scannedIndex.tasks };
+    for (const [id, entry] of Object.entries(nowIndex.tasks)) {
+      if (mergedTasks[id]) continue; // scan already has it
+      // Preserve only entries minted DURING the scan window. Pre-scan
+      // entries missing from the scan are stale (their .md was deleted).
+      if (parseEntryIdNumber(id) >= scanStartNextId) {
+        mergedTasks[id] = entry;
+      }
+    }
+
+    // ── Merge specs ────────────────────────────────────────────────────
+    const mergedSpecs: Record<string, SpecEntry> = { ...scannedIndex.specs };
+    for (const [id, entry] of Object.entries(nowIndex.specs)) {
+      if (mergedSpecs[id]) continue;
+      // Spec window: any ID we didn't see at scan-start was minted during
+      // the scan window. Pre-scan IDs that the scan missed are stale.
+      if (!scanStartSpecIds.has(id)) {
+        mergedSpecs[id] = entry;
+      }
+    }
+
+    // ── Monotonic next_id ──────────────────────────────────────────────
+    let maxTaskNum = 0;
+    for (const id of Object.keys(mergedTasks)) {
+      const n = parseEntryIdNumber(id);
+      if (n > maxTaskNum) maxTaskNum = n;
+    }
+    const nextId = Math.max(
+      scannedIndex.next_id,
+      nowIndex.next_id,
+      maxTaskNum + 1,
+    );
+
+    nowIndex.version = scannedIndex.version;
+    nowIndex.next_id = nextId;
+    nowIndex.tasks = mergedTasks;
+    nowIndex.specs = mergedSpecs;
+    return nowIndex;
+  });
 }
 
 
@@ -366,10 +477,7 @@ export function registerTaskCommand(program: Command): void {
         process.exit(1);
       }
 
-      const index = getOrBuildIndex(agentsDir);
-      const indexPath = join(agentsDir, "TASKS.json");
-
-      // ── Validate priority ───────────────────────────────────────────────
+      // ── Validate priority (cheap — no index lookup needed) ──────────────
 
       const priority = options.priority as TaskPriority;
       if (!TASK_PRIORITIES.includes(priority)) {
@@ -377,80 +485,77 @@ export function registerTaskCommand(program: Command): void {
         process.exit(1);
       }
 
-      // ── Validate spec exists ────────────────────────────────────────────
+      // ── Allocate the ID under the TASKS.json lock ───────────────────────
+      //
+      // All read-modify-write of TASKS.json (validation against specs/tasks
+      // AND the ID mint) happens inside the lock to keep cross-worktree
+      // allocations collision-free under contention. The .md file is also
+      // created before the index commit is persisted, so a concurrent refresh
+      // never sees a TASKS.json entry whose backing file has not landed yet.
 
       const spec = options.spec || null;
-      if (spec && !index.specs[spec]) {
-        console.error(`  ${red("error:")} Spec "${spec}" not found in index`);
-        process.exit(1);
-      }
-
-      // ── Validate depends-on IDs exist ───────────────────────────────────
-
-      const dependsOn: string[] = [];
-      if (options.dependsOn) {
-        for (const depId of options.dependsOn.split(",").map((s) => s.trim())) {
-          if (!index.tasks[depId]) {
-            console.error(`  ${red("error:")} Dependency "${depId}" not found in index`);
-            process.exit(1);
-          }
-          dependsOn.push(depId);
-        }
-      }
-
-      // ── Generate ID and slug ────────────────────────────────────────────
-
-      const nextId = index.next_id;
-      const taskId = `TASK-${String(nextId).padStart(3, "0")}`;
       const slug = generateSlug(options.title);
       const now = new Date().toISOString();
-
-      // ── Create TaskEntry ────────────────────────────────────────────────
-
-      const fileName = `${taskId}-${slug}.md`;
-      const entry: TaskEntry = {
-        title: options.title,
-        slug,
-        spec,
-        status: "todo",
-        priority,
-        depends_on: dependsOn,
-        files: [],
-        verify: null,
-        done: null,
-        session: null,
-        created: now,
-        updated: now,
-        completed_at: null,
-        file: fileName,
-      };
-
-      // ── Update index ────────────────────────────────────────────────────
-
-      index.tasks[taskId] = entry;
-      index.next_id = nextId + 1;
-      saveIndex(indexPath, index);
-
-      // ── Create .md file ─────────────────────────────────────────────────
-
       const tasksDir = join(agentsDir, "tasks");
       if (!existsSync(tasksDir)) {
         mkdirSync(tasksDir, { recursive: true });
       }
 
-      const frontmatterData: Record<string, unknown> = {
-        id: taskId,
-        title: options.title,
-        status: "todo",
-        priority,
-        created: now,
-        updated: now,
-      };
-      if (spec) frontmatterData.spec = spec;
-      if (dependsOn.length > 0) frontmatterData.depends_on = dependsOn;
+      let taskId: string;
+      let dependsOn: string[];
+      let fileName: string;
+      try {
+        ({ taskId, dependsOn, fileName } = withTasksJsonLock(agentsDir, (index) => {
+          // ── Validate spec exists (inside lock — index is fresh) ──────────
+          if (spec && !index.specs[spec]) {
+            throw new TaskCreateError(`Spec "${spec}" not found in index`);
+          }
 
-      const body = `
-# ${taskId}: ${options.title}
+          // ── Validate depends-on IDs exist ────────────────────────────────
+          const deps: string[] = [];
+          if (options.dependsOn) {
+            for (const depId of options.dependsOn.split(",").map((s) => s.trim())) {
+              if (!index.tasks[depId]) {
+                throw new TaskCreateError(`Dependency "${depId}" not found in index`);
+              }
+              deps.push(depId);
+            }
+          }
+
+          // ── Mint the ID ──────────────────────────────────────────────────
+          const nextId = index.next_id;
+          const id = `TASK-${String(nextId).padStart(3, "0")}`;
+          const file = `${id}-${slug}.md`;
+          const entry: TaskEntry = {
+            title: options.title,
+            slug,
+            spec,
+            status: "todo",
+            priority,
+            depends_on: deps,
+            files: [],
+            verify: null,
+            done: null,
+            session: null,
+            created: now,
+            updated: now,
+            completed_at: null,
+            file,
+          };
+
+          const frontmatterData: Record<string, unknown> = {
+            id,
+            title: options.title,
+            status: "todo",
+            priority,
+            created: now,
+            updated: now,
+          };
+          if (spec) frontmatterData.spec = spec;
+          if (deps.length > 0) frontmatterData.depends_on = deps;
+
+          const body = `
+# ${id}: ${options.title}
 
 ## Description
 
@@ -467,8 +572,26 @@ export function registerTaskCommand(program: Command): void {
 \`\`\`
 `;
 
-      const mdContent = matter.stringify(body, frontmatterData);
-      writeFileSync(join(tasksDir, fileName), mdContent, "utf-8");
+          const taskPath = join(tasksDir, file);
+          if (existsSync(taskPath)) {
+            throw new TaskCreateError(`Task file already exists: .agents/tasks/${file}. Run "loaf task sync --import" first.`);
+          }
+
+          const mdContent = matter.stringify(body, frontmatterData);
+          writeFileSync(taskPath, mdContent, { encoding: "utf-8", flag: "wx" });
+
+          index.tasks[id] = entry;
+          index.next_id = nextId + 1;
+
+          return { taskId: id, dependsOn: deps, fileName: file };
+        }));
+      } catch (err) {
+        if (err instanceof TaskCreateError) {
+          console.error(`  ${red("error:")} ${err.message}`);
+          process.exit(1);
+        }
+        throw err;
+      }
 
       // ── Print confirmation ──────────────────────────────────────────────
 
@@ -520,97 +643,103 @@ export function registerTaskCommand(program: Command): void {
         process.exit(1);
       }
 
-      const index = getOrBuildIndex(agentsDir);
-
-      // Validate task ID exists
-      const entry = index.tasks[id];
-      if (!entry) {
-        console.error(`  ${red("error:")} ${id} not found in index`);
-        process.exit(1);
-      }
-
       // Track changes for confirmation output
       const changes: Array<{ field: string; from: string; to: string }> = [];
+      let entryAfter: TaskEntry;
 
-      // ── Validate and apply --status ───────────────────────────────────
-      if (options.status !== undefined) {
-        if (!TASK_STATUSES.includes(options.status as TaskStatus)) {
-          console.error(`  ${red("error:")} Invalid status "${options.status}". Valid: ${TASK_STATUSES.join(", ")}`);
-          process.exit(1);
-        }
-
-        const oldStatus = entry.status;
-        const newStatus = options.status as TaskStatus;
-
-        // Handle completed_at transitions
-        if (newStatus === "done" && oldStatus !== "done") {
-          entry.completed_at = new Date().toISOString();
-        } else if (newStatus !== "done" && oldStatus === "done") {
-          entry.completed_at = null;
-        }
-
-        entry.status = newStatus;
-        changes.push({ field: "Status", from: oldStatus, to: newStatus });
-      }
-
-      // ── Validate and apply --priority ─────────────────────────────────
-      if (options.priority !== undefined) {
-        if (!TASK_PRIORITIES.includes(options.priority as TaskPriority)) {
-          console.error(`  ${red("error:")} Invalid priority "${options.priority}". Valid: ${TASK_PRIORITIES.join(", ")}`);
-          process.exit(1);
-        }
-
-        const oldPriority = entry.priority;
-        const newPriority = options.priority as TaskPriority;
-        entry.priority = newPriority;
-        changes.push({ field: "Priority", from: oldPriority, to: newPriority });
-      }
-
-      // ── Validate and apply --depends-on ───────────────────────────────
-      if (options.dependsOn !== undefined) {
-        const newDeps = options.dependsOn
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0);
-
-        for (const depId of newDeps) {
-          if (!index.tasks[depId]) {
-            console.error(`  ${red("error:")} Unknown task ID "${depId}" in --depends-on`);
-            process.exit(1);
+      try {
+        entryAfter = withTasksJsonLock(agentsDir, (index) => {
+          // Validate task ID exists (inside lock — fresh index)
+          const entry = index.tasks[id];
+          if (!entry) {
+            throw new TaskCreateError(`${id} not found in index`);
           }
-        }
 
-        const oldDeps = entry.depends_on.length > 0 ? entry.depends_on.join(", ") : "(none)";
-        entry.depends_on = newDeps;
-        changes.push({ field: "Depends on", from: oldDeps, to: newDeps.length > 0 ? newDeps.join(", ") : "(none)" });
-      }
+          // ── Validate and apply --status ─────────────────────────────────
+          if (options.status !== undefined) {
+            if (!TASK_STATUSES.includes(options.status as TaskStatus)) {
+              throw new TaskCreateError(`Invalid status "${options.status}". Valid: ${TASK_STATUSES.join(", ")}`);
+            }
 
-      // ── Apply --session ───────────────────────────────────────────────
-      if (options.session !== undefined) {
-        const oldSession = entry.session || "(none)";
-        const newSession = options.session === "none" ? null : options.session;
-        entry.session = newSession;
-        changes.push({ field: "Session", from: oldSession, to: newSession || "(none)" });
-      }
+            const oldStatus = entry.status;
+            const newStatus = options.status as TaskStatus;
 
-      // ── Apply --spec ──────────────────────────────────────────────────
-      if (options.spec !== undefined) {
-        if (options.spec !== "none" && !index.specs[options.spec]) {
-          console.error(`  ${red("error:")} Unknown spec "${options.spec}". Use \`loaf spec list\` to see valid IDs.`);
+            if (newStatus === "done" && oldStatus !== "done") {
+              entry.completed_at = new Date().toISOString();
+            } else if (newStatus !== "done" && oldStatus === "done") {
+              entry.completed_at = null;
+            }
+
+            entry.status = newStatus;
+            changes.push({ field: "Status", from: oldStatus, to: newStatus });
+          }
+
+          // ── Validate and apply --priority ───────────────────────────────
+          if (options.priority !== undefined) {
+            if (!TASK_PRIORITIES.includes(options.priority as TaskPriority)) {
+              throw new TaskCreateError(`Invalid priority "${options.priority}". Valid: ${TASK_PRIORITIES.join(", ")}`);
+            }
+
+            const oldPriority = entry.priority;
+            const newPriority = options.priority as TaskPriority;
+            entry.priority = newPriority;
+            changes.push({ field: "Priority", from: oldPriority, to: newPriority });
+          }
+
+          // ── Validate and apply --depends-on ─────────────────────────────
+          if (options.dependsOn !== undefined) {
+            const newDeps = options.dependsOn
+              .split(",")
+              .map((s) => s.trim())
+              .filter((s) => s.length > 0);
+
+            for (const depId of newDeps) {
+              if (!index.tasks[depId]) {
+                throw new TaskCreateError(`Unknown task ID "${depId}" in --depends-on`);
+              }
+            }
+
+            const oldDeps = entry.depends_on.length > 0 ? entry.depends_on.join(", ") : "(none)";
+            entry.depends_on = newDeps;
+            changes.push({ field: "Depends on", from: oldDeps, to: newDeps.length > 0 ? newDeps.join(", ") : "(none)" });
+          }
+
+          // ── Apply --session ─────────────────────────────────────────────
+          if (options.session !== undefined) {
+            const oldSession = entry.session || "(none)";
+            const newSession = options.session === "none" ? null : options.session;
+            entry.session = newSession;
+            changes.push({ field: "Session", from: oldSession, to: newSession || "(none)" });
+          }
+
+          // ── Apply --spec ────────────────────────────────────────────────
+          if (options.spec !== undefined) {
+            if (options.spec !== "none" && !index.specs[options.spec]) {
+              throw new TaskCreateError(`Unknown spec "${options.spec}". Use \`loaf spec list\` to see valid IDs.`);
+            }
+            const oldSpec = entry.spec || "(none)";
+            const newSpec = options.spec === "none" ? null : options.spec;
+            entry.spec = newSpec;
+            changes.push({ field: "Spec", from: oldSpec, to: newSpec || "(none)" });
+          }
+
+          entry.updated = new Date().toISOString();
+          // syncFrontmatterFromIndex below reads files individually — safe to
+          // run outside the lock once the index is persisted.
+          return entry;
+        });
+      } catch (err) {
+        if (err instanceof TaskCreateError) {
+          console.error(`  ${red("error:")} ${err.message}`);
           process.exit(1);
         }
-        const oldSpec = entry.spec || "(none)";
-        const newSpec = options.spec === "none" ? null : options.spec;
-        entry.spec = newSpec;
-        changes.push({ field: "Spec", from: oldSpec, to: newSpec || "(none)" });
+        throw err;
       }
 
-      // ── Update timestamp and persist ──────────────────────────────────
-      entry.updated = new Date().toISOString();
-
-      const indexPath = join(agentsDir, "TASKS.json");
-      saveIndex(indexPath, index);
-      syncFrontmatterFromIndex(agentsDir, index);
+      // Refresh on-disk .md frontmatter from the updated index.
+      const freshIndex = getOrBuildIndex(agentsDir);
+      syncFrontmatterFromIndex(agentsDir, freshIndex);
+      const entry = entryAfter;
 
       // ── Print confirmation ────────────────────────────────────────────
       console.log(`\n  ${bold("loaf task update")}\n`);
@@ -651,60 +780,74 @@ export function registerTaskCommand(program: Command): void {
         process.exit(1);
       }
 
-      const index = getOrBuildIndex(agentsDir);
-      const indexPath = join(agentsDir, "TASKS.json");
-
-      // ── Resolve target task IDs ─────────────────────────────────────────
-
-      let targetIds: string[] = [];
-
-      if (options.spec) {
-        if (!index.specs[options.spec]) {
-          console.error(`  ${red("error:")} Spec "${options.spec}" not found in index`);
-          process.exit(1);
-        }
-
-        targetIds = Object.entries(index.tasks)
-          .filter(([, entry]) => entry.spec === options.spec && entry.status === "done")
-          .map(([id]) => id);
-
-        if (targetIds.length === 0) {
-          console.log(`\n  ${gray("No completed tasks found for")} ${options.spec}\n`);
-          return;
-        }
-      } else if (ids.length > 0) {
-        targetIds = ids;
-      } else {
-        console.error(`  ${red("error:")} Provide task IDs or use --spec <id>`);
-        process.exit(1);
-      }
-
-      // ── Archive ──────────────────────────────────────────────────────────
-
       console.log(`\n  ${bold("loaf task archive")}\n`);
-
-      const results = archiveTasks(agentsDir, index, targetIds);
 
       let archived = 0;
       let skipped = 0;
+      let earlyReturn = false;
 
-      for (const r of results) {
-        if (r.status === "archived") {
-          const entry = index.tasks[r.id];
-          console.log(`  ${green("✓")} ${bold(r.id)}: ${entry.title}`);
-          archived++;
-        } else {
-          const icon = r.reason === "already archived" ? gray("⊘") : yellow("⊘");
-          console.log(`  ${icon} ${bold(r.id)}: ${r.reason}`);
-          skipped++;
+      try {
+        withTasksJsonLock(agentsDir, (index) => {
+          // ── Resolve target task IDs (inside lock — fresh index) ───────────
+
+          let targetIds: string[] = [];
+
+          if (options.spec) {
+            if (!index.specs[options.spec]) {
+              throw new TaskCreateError(`Spec "${options.spec}" not found in index`);
+            }
+
+            targetIds = Object.entries(index.tasks)
+              .filter(([, entry]) => entry.spec === options.spec && entry.status === "done")
+              .map(([id]) => id);
+
+            if (targetIds.length === 0) {
+              earlyReturn = true;
+              return false; // no-write short-circuit inside the lock
+            }
+          } else if (ids.length > 0) {
+            targetIds = ids;
+          } else {
+            throw new TaskCreateError("Provide task IDs or use --spec <id>");
+          }
+
+          // ── Archive (mutates index entries' file paths + renames .md) ─────
+
+          const results = archiveTasks(agentsDir, index, targetIds);
+
+          for (const r of results) {
+            if (r.status === "archived") {
+              const entry = index.tasks[r.id];
+              console.log(`  ${green("✓")} ${bold(r.id)}: ${entry.title}`);
+              archived++;
+            } else {
+              const icon = r.reason === "already archived" ? gray("⊘") : yellow("⊘");
+              console.log(`  ${icon} ${bold(r.id)}: ${r.reason}`);
+              skipped++;
+            }
+          }
+
+          if (archived === 0) {
+            return false; // nothing changed — skip the write
+          }
+          return undefined;
+        });
+      } catch (err) {
+        if (err instanceof TaskCreateError) {
+          console.error(`  ${red("error:")} ${err.message}`);
+          process.exit(1);
         }
+        throw err;
       }
 
-      // ── Persist ─────────────────────────────────────────────────────────
+      if (earlyReturn) {
+        console.log(`\n  ${gray("No completed tasks found for")} ${options.spec}\n`);
+        return;
+      }
 
       if (archived > 0) {
-        saveIndex(indexPath, index);
-        syncFrontmatterFromIndex(agentsDir, index);
+        const freshIndex = getOrBuildIndex(agentsDir);
+        syncFrontmatterFromIndex(agentsDir, freshIndex);
       }
 
       console.log();
@@ -759,8 +902,6 @@ export function registerTaskCommand(program: Command): void {
         process.exit(1);
       }
 
-      const indexPath = join(agentsDir, "TASKS.json");
-
       console.log(`\n  ${bold("loaf task sync")}\n`);
 
       if (options.push) {
@@ -774,54 +915,82 @@ export function registerTaskCommand(program: Command): void {
         console.log(`    Tasks: ${totalTasks}, Specs: ${totalSpecs}`);
         console.log();
       } else if (options.import) {
-        // ── Import mode: find orphans and merge ──────────────────────────
+        // ── Import mode: scan for orphans outside the lock, merge under it ─
+        //
+        // Critical-section discipline (ms-scale lock holds):
+        //
+        //   1. OUTSIDE the lock: snapshot the current index, scan tasks/ and
+        //      specs/ (and their archives) for orphan .md files, parse their
+        //      frontmatter. This is the heavy step.
+        //
+        //   2. INSIDE the lock: re-check each candidate against the fresh
+        //      index (a concurrent worktree may have just imported the same
+        //      file or minted a colliding ID), then merge.
+        //
+        // We don't need to re-parse files inside the lock — orphan entries
+        // are pure data once parsed; the lock only protects the merge.
 
-        const index = getOrBuildIndex(agentsDir);
-        const orphans = findOrphans(agentsDir, index);
-
+        const snapshot = getOrBuildIndex(agentsDir);
+        const orphans = findOrphans(agentsDir, snapshot);
         const totalOrphans = orphans.tasks.length + orphans.specs.length;
 
-        if (totalOrphans === 0) {
+        if (totalOrphans > 0) {
+          console.log(`  Found ${totalOrphans} orphan file(s):`);
+          for (const orphan of orphans.tasks) {
+            console.log(`    ${green("+")} ${orphan.entry.file}`);
+          }
+          for (const orphan of orphans.specs) {
+            console.log(`    ${green("+")} ${orphan.entry.file}`);
+          }
+        }
+
+        let importedTasks = 0;
+        let importedSpecs = 0;
+
+        withTasksJsonLock(agentsDir, (index) => {
+          if (totalOrphans === 0) {
+            return false; // no-op write
+          }
+
+          let maxTaskNum = index.next_id - 1;
+          let merged = false;
+          for (const orphan of orphans.tasks) {
+            // Re-check against the fresh index — a concurrent process may
+            // have already imported this orphan ID between our scan and our
+            // lock acquisition.
+            if (index.tasks[orphan.id]) continue;
+            index.tasks[orphan.id] = orphan.entry;
+            const num = extractOrphanNumber(orphan.id);
+            if (num > maxTaskNum) maxTaskNum = num;
+            importedTasks++;
+            merged = true;
+          }
+          for (const orphan of orphans.specs) {
+            if (index.specs[orphan.id]) continue;
+            index.specs[orphan.id] = orphan.entry;
+            importedSpecs++;
+            merged = true;
+          }
+
+          if (maxTaskNum >= index.next_id) {
+            index.next_id = maxTaskNum + 1;
+          }
+
+          return merged ? undefined : false;
+        });
+
+        if (importedTasks === 0 && importedSpecs === 0) {
           console.log(`  No orphan files found.`);
           console.log();
           return;
         }
 
-        console.log(`  Found ${totalOrphans} orphan file(s):`);
-
-        for (const orphan of orphans.tasks) {
-          console.log(`    ${green("+")} ${orphan.entry.file}`);
-        }
-        for (const orphan of orphans.specs) {
-          console.log(`    ${green("+")} ${orphan.entry.file}`);
-        }
-
-        // Merge orphan tasks into the index
-        let maxTaskNum = index.next_id - 1;
-        for (const orphan of orphans.tasks) {
-          index.tasks[orphan.id] = orphan.entry;
-          const num = extractOrphanNumber(orphan.id);
-          if (num > maxTaskNum) maxTaskNum = num;
-        }
-
-        // Merge orphan specs into the index
-        for (const orphan of orphans.specs) {
-          index.specs[orphan.id] = orphan.entry;
-        }
-
-        // Update next_id if any imported task has a higher number
-        if (maxTaskNum >= index.next_id) {
-          index.next_id = maxTaskNum + 1;
-        }
-
-        saveIndex(indexPath, index);
-
         const importedParts: string[] = [];
-        if (orphans.tasks.length > 0) importedParts.push(`${orphans.tasks.length} task(s)`);
-        if (orphans.specs.length > 0) importedParts.push(`${orphans.specs.length} spec(s)`);
+        if (importedTasks > 0) importedParts.push(`${importedTasks} task(s)`);
+        if (importedSpecs > 0) importedParts.push(`${importedSpecs} spec(s)`);
 
         console.log();
-        console.log(`  ${green("\u2713")} Imported ${importedParts.join(" and ")} into TASKS.json`);
+        console.log(`  ${green("✓")} Imported ${importedParts.join(" and ")} into TASKS.json`);
         console.log();
       } else {
         // ── Full rebuild mode ────────────────────────────────────────────

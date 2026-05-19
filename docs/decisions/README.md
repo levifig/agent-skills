@@ -16,5 +16,6 @@ Immutable records of significant architectural decisions.
 | [ADR-010](ADR-010-agents-md-consolidation.md) | Consolidate Prompt Overlay Around AGENTS.md | Accepted | 2026-04-17 |
 | [ADR-011](ADR-011-linear-native-mode.md) | Linear-Native Mode — Deliberation vs Execution Split | Accepted | 2026-04-22 |
 | [ADR-012](ADR-012-ci-verify-only-build-artifacts.md) | CI as Verifier, Not Fixer (Build Artifacts) | Accepted | 2026-04-30 |
+| [ADR-013](ADR-013-agentic-state-storage-model.md) | Agentic State Is Project-Scoped, Not Branch-Scoped | Accepted | 2026-05-19 |
 
 See [../knowledge/](../knowledge/) for domain knowledge files.
