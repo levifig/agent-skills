@@ -2,22 +2,6 @@
   "version": 1,
   "next_id": 188,
   "tasks": {
-    "TASK-165": {
-      "title": "loaf release --post-merge should use git tag -s (signed) explicitly",
-      "slug": "loaf-release-post-merge-should-use-git-tag-s-signe",
-      "spec": null,
-      "status": "done",
-      "priority": "P1",
-      "depends_on": [],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-05-16T18:24:55.387Z",
-      "updated": "2026-05-19T17:57:58.720Z",
-      "completed_at": "2026-05-19T17:57:58.719Z",
-      "file": "archive/TASK-165-loaf-release-post-merge-should-use-git-tag-s-signe.md"
-    },
     "TASK-001": {
       "title": "Create verification reference",
       "slug": "verification-reference",
@@ -2917,6 +2901,22 @@
       "updated": "2026-05-02T01:25:49.274Z",
       "completed_at": "2026-05-02T03:35:00.000Z",
       "file": "archive/TASK-164-codex-review-opt-in-hook-for-refactor-deepen.md"
+    },
+    "TASK-165": {
+      "title": "loaf release --post-merge should use git tag -s (signed) explicitly",
+      "slug": "loaf-release-post-merge-should-use-git-tag-s-signe",
+      "spec": null,
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [],
+      "verify": null,
+      "done": null,
+      "session": null,
+      "created": "2026-05-16T18:24:55.387Z",
+      "updated": "2026-05-19T17:57:58.720Z",
+      "completed_at": "2026-05-19T17:57:58.719Z",
+      "file": "archive/TASK-165-loaf-release-post-merge-should-use-git-tag-s-signe.md"
     },
     "TASK-166": {
       "title": "Foundation: worktree probe + dual resolvers + ID allocator scans both views",

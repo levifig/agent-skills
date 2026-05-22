@@ -6,9 +6,9 @@ topics:
   - covers
   - growth-loops
 covers:
-  - cli/lib/kb/**/*.ts
-  - docs/knowledge/**/*.md
-last_reviewed: '2026-04-29'
+  - cli/lib/kb/*.ts
+  - docs/knowledge/*.md
+last_reviewed: '2026-05-22'
 ---
 
 # Knowledge Management Design
@@ -98,6 +98,10 @@ QMD handles retrieval (collections, search, MCP). Loaf wraps QMD for setup + add
 - `loaf kb init` → `qmd collection add` + context
 - `loaf kb import` → `qmd collection add` for external repo + `.agents/loaf.json` update
 - Collection naming: `{repo-folder}-knowledge`, `{repo-folder}-decisions`
+
+`loaf kb glossary` is the Markdown-backed terminology surface. It supports
+canonical terms, aliases, candidate terms, and stabilization without moving
+glossary prose into the operational task/session index.
 
 ## Three Knowledge Lifetimes
 

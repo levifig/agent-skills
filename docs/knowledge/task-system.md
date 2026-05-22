@@ -9,14 +9,16 @@ covers:
   - .agents/specs/**/*.md
   - .agents/tasks/**/*.md
   - .agents/sessions/**/*.md
-  - cli/lib/session/**/*.ts
+  - cli/commands/task.ts
+  - cli/lib/session/*.ts
+  - cli/lib/tasks/*.ts
   - content/skills/breakdown/**/*
   - content/skills/implement/**/*
   - content/skills/orchestration/**/*
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-05-02'
+last_reviewed: '2026-05-22'
 ---
 
 # Task System
@@ -43,12 +45,21 @@ Loaf implements a Shape Up-inspired task management system: specs define bounded
 |----------|----------|---------|
 | Specs | `.agents/specs/SPEC-XXX-slug.md` | Bounded work definitions (scope, test conditions, priority order) |
 | Tasks | `.agents/tasks/TASK-XXX-slug.md` | Individual work items (acceptance criteria, verification) |
-| Task index | `.agents/tasks/TASKS.json` | Programmatic index (CLI readable) |
+| Task index | `.agents/TASKS.json` | Programmatic index (CLI readable) |
 | Sessions | `.agents/sessions/YYYYMMDD-HHMMSS-slug.md` | Execution context (linked to branch/spec) |
+
+`findAgentsDir()` is worktree-aware: from a linked git worktree, task, spec,
+session, idea, and KB state resolve to the main worktree's `.agents/`
+directory. A normal single checkout still uses the nearest parent `.agents/`
+directory.
 
 ## TASKS.json
 
 Programmatic index alongside individual task .md files. CLI reads/writes it.
+Mutations go through a PID/host-aware `TASKS.json` lock that re-reads the index
+inside the critical section and writes atomically. Task creation writes the
+backing `.md` file before committing the index entry, so rebuilds do not see an
+index entry whose file has not landed yet.
 
 ```json
 {
@@ -113,6 +124,7 @@ Tasks keyed by ID (Record, not array). Specs section tracks spec lifecycle. `nex
 | Subcommand | Purpose |
 |------------|---------|
 | `list` | Show task board grouped by status |
+| `list --status <status>` | Filter tasks to one status |
 | `show <id>` | Display single task details |
 | `status` | Summary counts |
 | `create` | Create new task |
@@ -136,6 +148,8 @@ Tasks keyed by ID (Record, not array). Specs section tracks spec lifecycle. `nex
 | `end` | End session with progress summary |
 | `log [entry]` | Log entry to session journal |
 | `archive` | Archive completed session |
+| `housekeeping` | Detect orphan/split sessions and archive old done sessions |
+| `enrich [file]` | Enrich a session journal from a JSONL conversation log |
 | `list` | List all active and archived sessions |
 
 ## Session Lifecycle

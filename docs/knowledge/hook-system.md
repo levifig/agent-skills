@@ -8,11 +8,10 @@ covers:
   - config/hooks.yaml
   - cli/commands/check.ts
   - content/hooks/**/*
-  - content/hooks/instructions/**/*
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-05-02'
+last_reviewed: '2026-05-22'
 ---
 
 # Hook System
