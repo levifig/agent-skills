@@ -6,7 +6,7 @@ description: >-
   agents, or coordinating cross-cutting work across multiple agents. Not for
   single-task implementation (use direct tool delegation) or solo research (use
   research).
-version: 2.0.0-dev.43
+version: 2.0.0-dev.44
 ---
 
 # Orchestration
@@ -19,7 +19,6 @@ version: 2.0.0-dev.43
 - Philosophy
 - Configuration
 - Artifact Locations
-- Available Scripts
 - Three-Phase Workflow
 
 Comprehensive patterns for orchestration: coordinating multi-agent work, managing sessions, running councils, delegating to specialized agents, and integrating with Linear.
@@ -87,11 +86,12 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 | Subagent Development | [references/subagent-development.md](references/subagent-development.md) | Delegating to specialized agents |
 | Background Agents | [references/background-agents.md](references/background-agents.md) | Running non-interactive work in background |
 | Council Workflow | [references/councils.md](references/councils.md) | Convening councils for complex decisions |
-| Session Management | [references/sessions.md](references/sessions.md) | Creating sessions, handoffs, validation |
+| Session Management | [references/sessions.md](references/sessions.md) | Creating sessions and keeping live work resumable |
 | Session Resume | [references/session-resume.md](references/session-resume.md) | Resuming sessions, checkpoints, context recovery |
 | Context Management | [references/context-management.md](references/context-management.md) | Using /clear, /compact, managing context limits |
 | Linear Integration | [references/linear.md](references/linear.md) | Updating Linear issues, magic words, status conventions |
 | Product Planning | [references/planning.md](references/planning.md) | Shape Up methodology, complexity sizing, roadmaps |
+| Script Surface | [references/script-surface.md](references/script-surface.md) | Deciding whether helper scripts should become CLI commands |
 
 ## Philosophy
 
@@ -131,25 +131,11 @@ This skill uses paths from `.agents/loaf.json`:
 | Sessions | `.agents/sessions/` | `.agents/sessions/archive/` | `YYYYMMDD-HHMMSS-description.md` |
 | Councils | `.agents/councils/` | `.agents/councils/archive/` | `YYYYMMDD-HHMMSS-topic.md` |
 | Transcripts | `.agents/transcripts/` | N/A | Copied from tool output |
+| Handoffs | `.agents/handoffs/` | delete after deprecated | Created by `/handoff` |
 | Reports | `.agents/reports/` | N/A | `YYYYMMDD-HHMMSS-subject.md` |
 | Tasks | `.agents/tasks/` | N/A | Per task manager conventions |
 
 **Rule:** Agents write artifacts to disk, orchestrator reasons over artifacts, users retrieve from disk.
-
-## Available Scripts
-
-| Script | Usage | Description |
-|--------|-------|-------------|
-| `new-session.sh` | `new-session.sh <description> [linear-issue]` | Generate session file |
-| `new-council.sh` | `new-council.sh <topic> <session> <agents...>` | Generate council file |
-| `validate-session.py` | `validate-session.py <file>` | Validate session format |
-| `validate-council.py` | `validate-council.py <file>` | Validate council format |
-| `validate-roadmap.py` | `validate-roadmap.py <file>` | Validate roadmap format |
-| `get-config.py` | `get-config.py [key.path]` | Read config values |
-| `suggest-team.py` | `suggest-team.py "task desc"` | Suggest Linear team |
-| `check-linear-format.py` | `check-linear-format.py <file>` | Validate Linear text |
-| `format-progress.sh` | `format-progress.sh "Done" -- "Todo"` | Format progress update |
-| `extract-magic-words.sh` | `extract-magic-words.sh HEAD~10..HEAD` | Extract Linear refs |
 
 ## Three-Phase Workflow
 

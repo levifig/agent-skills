@@ -18358,7 +18358,7 @@ import { join as join19, dirname as dirname5, resolve } from "path";
 import { readFileSync as readFileSync11 } from "fs";
 import { dirname as dirname4, join as join18 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
-var LOAF_VERSION = "2.0.0-dev.43" ? "2.0.0-dev.43" : readPackageVersion();
+var LOAF_VERSION = "2.0.0-dev.44" ? "2.0.0-dev.44" : readPackageVersion();
 
 // cli/lib/install/fenced-section.ts
 var FENCED_START = "<!-- loaf:managed:start";
@@ -19938,6 +19938,7 @@ var SCAFFOLD_DIRS = [
   ".agents",
   ".agents/sessions",
   ".agents/ideas",
+  ".agents/handoffs",
   ".agents/specs",
   ".agents/tasks",
   "docs",
@@ -25042,6 +25043,7 @@ var SCAFFOLD_DIRS2 = [
   ".agents",
   ".agents/sessions",
   ".agents/ideas",
+  ".agents/handoffs",
   ".agents/specs",
   ".agents/tasks",
   "docs",
@@ -25503,6 +25505,7 @@ var ARTIFACT_TYPES = [
   "spec",
   "plan",
   "draft",
+  "handoff",
   "council",
   "report"
 ];
@@ -25512,6 +25515,7 @@ var ARTIFACT_DIRS = [
   { type: "spec", dirname: "specs", required: true },
   { type: "plan", dirname: "plans", required: false },
   { type: "draft", dirname: "drafts", required: false },
+  { type: "handoff", dirname: "handoffs", required: false },
   { type: "council", dirname: "councils", required: false },
   { type: "report", dirname: "reports", required: false }
 ];
@@ -25918,6 +25922,58 @@ function scanDrafts(agentsDir, index) {
   }
   return recs;
 }
+function scanHandoffs(agentsDir) {
+  const dir = join42(agentsDir, "handoffs");
+  const files = readMdFiles(dir);
+  const recs = [];
+  for (const file of files) {
+    const fm = file.frontmatter;
+    const handoffBlock = fm.handoff;
+    const status = String(fm.status || handoffBlock?.status || "").toLowerCase();
+    const deprecatedAt = fm.deprecated_at || handoffBlock?.deprecated_at;
+    const activity = lastActivity(fm) || handoffBlock?.updated || handoffBlock?.created;
+    const days = daysSince(activity);
+    if (status === "deprecated" || deprecatedAt) {
+      recs.push({
+        type: "handoff",
+        path: file.path,
+        filename: file.filename,
+        action: "delete",
+        reason: "Handoff confirmed deprecated \u2014 delete after user confirmation",
+        frontmatter: fm
+      });
+    } else if (!status && days !== null && days > 14) {
+      recs.push({
+        type: "handoff",
+        path: file.path,
+        filename: file.filename,
+        action: "flag",
+        reason: `Handoff is ${days} days old with no lifecycle status`,
+        hint: "Mark deprecated when it is no longer useful, then rerun housekeeping",
+        frontmatter: fm
+      });
+    } else if (status === "draft" && days !== null && days > 14) {
+      recs.push({
+        type: "handoff",
+        path: file.path,
+        filename: file.filename,
+        action: "flag",
+        reason: `Draft handoff is ${days} days old \u2014 finalize or delete`,
+        frontmatter: fm
+      });
+    } else {
+      recs.push({
+        type: "handoff",
+        path: file.path,
+        filename: file.filename,
+        action: "skip",
+        reason: "Active handoff",
+        frontmatter: fm
+      });
+    }
+  }
+  return recs;
+}
 function scanCouncils(agentsDir) {
   const dir = join42(agentsDir, "councils");
   const files = readMdFiles(dir);
@@ -26132,6 +26188,7 @@ function scanArtifacts(options2) {
   if (shouldScan("spec")) recommendations.push(...scanSpecs(agentsDir, index));
   if (shouldScan("plan")) recommendations.push(...scanPlans(agentsDir));
   if (shouldScan("draft")) recommendations.push(...scanDrafts(agentsDir, index));
+  if (shouldScan("handoff")) recommendations.push(...scanHandoffs(agentsDir));
   if (shouldScan("council")) recommendations.push(...scanCouncils(agentsDir));
   if (shouldScan("report")) recommendations.push(...scanReports(agentsDir));
   const summary = ARTIFACT_TYPES.filter((t) => shouldScan(t)).map((type) => {
@@ -26161,6 +26218,7 @@ var TYPE_LABELS = {
   spec: "SPECS",
   plan: "PLANS",
   draft: "DRAFTS",
+  handoff: "HANDOFFS",
   council: "COUNCILS",
   report: "REPORTS"
 };
@@ -26198,7 +26256,7 @@ function archiveGenericArtifact(filePath, artifactType) {
   renameSync4(filePath, destPath);
 }
 function registerHousekeepingCommand(program3) {
-  program3.command("housekeeping").description("Scan .agents/ artifacts and recommend housekeeping actions").option("--dry-run", "Show recommendations without prompting for actions").option("--sessions", "Only review sessions").option("--specs", "Only review specs").option("--plans", "Only review plans").option("--drafts", "Only review drafts").action(async (options2) => {
+  program3.command("housekeeping").description("Scan .agents/ artifacts and recommend housekeeping actions").option("--dry-run", "Show recommendations without prompting for actions").option("--sessions", "Only review sessions").option("--specs", "Only review specs").option("--plans", "Only review plans").option("--drafts", "Only review drafts").option("--handoffs", "Only review handoffs").action(async (options2) => {
     const agentsDir = findAgentsDir();
     if (!agentsDir) {
       console.error(`  ${red9("error:")} No .agents/ directory found`);
@@ -26213,6 +26271,7 @@ ${bold12("loaf housekeeping")}
       if (options2.specs) types.push("spec");
       if (options2.plans) types.push("plan");
       if (options2.drafts) types.push("draft");
+      if (options2.handoffs) types.push("handoff");
       return types.length > 0 ? types : void 0;
     })();
     const result = scanArtifacts({ agentsDir, filter });

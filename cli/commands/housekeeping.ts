@@ -27,6 +27,7 @@ const TYPE_LABELS: Record<ArtifactType, string> = {
   spec: "SPECS",
   plan: "PLANS",
   draft: "DRAFTS",
+  handoff: "HANDOFFS",
   council: "COUNCILS",
   report: "REPORTS",
 };
@@ -93,12 +94,14 @@ export function registerHousekeepingCommand(program: Command): void {
     .option("--specs", "Only review specs")
     .option("--plans", "Only review plans")
     .option("--drafts", "Only review drafts")
+    .option("--handoffs", "Only review handoffs")
     .action(async (options: {
       dryRun?: boolean;
       sessions?: boolean;
       specs?: boolean;
       plans?: boolean;
       drafts?: boolean;
+      handoffs?: boolean;
     }) => {
       const agentsDir = findAgentsDir();
       if (!agentsDir) {
@@ -114,6 +117,7 @@ export function registerHousekeepingCommand(program: Command): void {
         if (options.specs) types.push("spec");
         if (options.plans) types.push("plan");
         if (options.drafts) types.push("draft");
+        if (options.handoffs) types.push("handoff");
         return types.length > 0 ? types : undefined;
       })();
 

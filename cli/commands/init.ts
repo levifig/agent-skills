@@ -62,6 +62,7 @@ const SCAFFOLD_DIRS = [
   ".agents",
   ".agents/sessions",
   ".agents/ideas",
+  ".agents/handoffs",
   ".agents/specs",
   ".agents/tasks",
   "docs",

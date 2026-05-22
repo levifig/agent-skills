@@ -2,11 +2,11 @@
 name: housekeeping
 description: >-
   Reviews and maintains agent artifacts in .agents/ — sessions, specs, plans,
-  drafts, councils, and reports. Use when the user asks "housekeeping," "clean
-  up," "review sessions," or "tidy up .agents/." Provides hygiene
-  recommendations, archives completed work, and ensures extracted knowledge is
-  preserved. Not for strategic reflection (use reflect) or knowledge management
-  (use knowledge-base).
+  drafts, handoffs, councils, and reports. Use when the user asks
+  "housekeeping," "clean up," "review sessions," or "tidy up .agents/." Provides
+  hygiene recommendations, archives completed work, and ensures extracted
+  knowledge is preserved. Not for strategic reflection (use reflect) or
+  knowledge management (use knowledge-base).
 ---
 
 # Housekeeping
@@ -20,6 +20,7 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 - Check Linear issue status before archiving sessions
 - Extract lessons learned and decisions before archiving
 - Use CLI (`loaf session housekeeping`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
+- Treat `.agents/handoffs/` as first-class but disposable: keep active/final handoffs, delete only after confirmed deprecated status
 - Check report `status` is `processed` and linked session is archived before archiving reports (see [templates/report.md](templates/report.md))
 - Check state assessment `session:` field before flagging for cleanup — only flag when linked session is archived
 - Verify `TASKS.json` sync after archival with `loaf task sync`
@@ -37,6 +38,7 @@ After work completes, verify:
 - Tasks archived via `loaf task archive` (updates TASKS.json)
 - Specs archived via `loaf spec archive` (updates TASKS.json)
 - Drafts checked for unprocessed sparks before deletion
+- Handoffs deleted only after explicit deprecation is confirmed
 - Summary table presented showing all actions taken
 
 ## Quick Reference
@@ -62,6 +64,7 @@ loaf task sync                       # Fix TASKS.json drift
 | Specs | `.agents/specs/` | `archive/` | `loaf spec archive` |
 | Drafts (state assessments) | `.agents/drafts/` | delete | Flag for cleanup when linked session is archived |
 | Drafts (brainstorms) | `.agents/drafts/` | `archive/` | User decision (spark extraction first) |
+| Handoffs | `.agents/handoffs/` | delete | Delete after status is confirmed `deprecated` |
 | Reports | `.agents/reports/` | `archive/` | Archive after processing + linked session archived |
 
 **Linear-native mode** (when `integrations.linear.enabled` is `true` in

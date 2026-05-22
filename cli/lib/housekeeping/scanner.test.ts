@@ -488,6 +488,50 @@ describe("reports", () => {
   });
 });
 
+describe("handoffs", () => {
+  it("skips active handoffs", () => {
+    writeArtifact("handoffs", "20260522-100000-branch-handoff.md", {
+      title: "Branch Handoff",
+      status: "final",
+      created: new Date().toISOString(),
+    });
+    writeIndex();
+    const result = scanArtifacts({ agentsDir: agentsDir() });
+    const rec = findRec(result.recommendations, "20260522-100000-branch-handoff.md");
+    expect(rec?.type).toBe("handoff");
+    expect(rec?.action).toBe("skip");
+    expect(rec?.reason).toContain("Active handoff");
+  });
+
+  it("recommends delete for deprecated handoffs", () => {
+    writeArtifact("handoffs", "20260522-100000-old-handoff.md", {
+      title: "Old Handoff",
+      status: "deprecated",
+      deprecated_at: "2026-05-22T10:00:00Z",
+    });
+    writeIndex();
+    const result = scanArtifacts({ agentsDir: agentsDir() });
+    const rec = findRec(result.recommendations, "20260522-100000-old-handoff.md");
+    expect(rec?.type).toBe("handoff");
+    expect(rec?.action).toBe("delete");
+    expect(rec?.reason).toContain("confirmed deprecated");
+  });
+
+  it("flags stale handoffs without lifecycle status", () => {
+    const staleDate = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
+    writeArtifact("handoffs", "20260501-100000-unknown-handoff.md", {
+      title: "Unknown Handoff",
+      created: staleDate,
+    });
+    writeIndex();
+    const result = scanArtifacts({ agentsDir: agentsDir() });
+    const rec = findRec(result.recommendations, "20260501-100000-unknown-handoff.md");
+    expect(rec?.type).toBe("handoff");
+    expect(rec?.action).toBe("flag");
+    expect(rec?.reason).toContain("no lifecycle status");
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Missing Directories
 // ─────────────────────────────────────────────────────────────────────────────
@@ -525,12 +569,14 @@ describe("filter option", () => {
   it("restricts scan to specified artifact types", () => {
     writeSession("SESSION-001.md", { status: "completed", created: "2026-03-01" });
     writeArtifact("drafts", "draft-001.md", { title: "Draft", created: new Date().toISOString() });
+    writeArtifact("handoffs", "handoff-001.md", { title: "Handoff", status: "final" });
     writeIndex();
 
     const result = scanArtifacts({ agentsDir: agentsDir(), filter: ["session"] });
     const types = new Set(result.recommendations.map((r) => r.type));
     expect(types.has("session")).toBe(true);
     expect(types.has("draft")).toBe(false);
+    expect(types.has("handoff")).toBe(false);
   });
 });
 

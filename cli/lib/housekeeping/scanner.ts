@@ -483,6 +483,62 @@ function scanDrafts(agentsDir: string, index: TaskIndex): CleanupRecommendation[
   return recs;
 }
 
+function scanHandoffs(agentsDir: string): CleanupRecommendation[] {
+  const dir = join(agentsDir, "handoffs");
+  const files = readMdFiles(dir);
+  const recs: CleanupRecommendation[] = [];
+
+  for (const file of files) {
+    const fm = file.frontmatter;
+    const handoffBlock = fm.handoff as Record<string, unknown> | undefined;
+    const status = String(fm.status || handoffBlock?.status || "").toLowerCase();
+    const deprecatedAt = (fm.deprecated_at || handoffBlock?.deprecated_at) as string | undefined;
+    const activity = lastActivity(fm) || (handoffBlock?.updated as string | undefined) || (handoffBlock?.created as string | undefined);
+    const days = daysSince(activity);
+
+    if (status === "deprecated" || deprecatedAt) {
+      recs.push({
+        type: "handoff",
+        path: file.path,
+        filename: file.filename,
+        action: "delete",
+        reason: "Handoff confirmed deprecated — delete after user confirmation",
+        frontmatter: fm,
+      });
+    } else if (!status && days !== null && days > 14) {
+      recs.push({
+        type: "handoff",
+        path: file.path,
+        filename: file.filename,
+        action: "flag",
+        reason: `Handoff is ${days} days old with no lifecycle status`,
+        hint: "Mark deprecated when it is no longer useful, then rerun housekeeping",
+        frontmatter: fm,
+      });
+    } else if (status === "draft" && days !== null && days > 14) {
+      recs.push({
+        type: "handoff",
+        path: file.path,
+        filename: file.filename,
+        action: "flag",
+        reason: `Draft handoff is ${days} days old — finalize or delete`,
+        frontmatter: fm,
+      });
+    } else {
+      recs.push({
+        type: "handoff",
+        path: file.path,
+        filename: file.filename,
+        action: "skip",
+        reason: "Active handoff",
+        frontmatter: fm,
+      });
+    }
+  }
+
+  return recs;
+}
+
 function scanCouncils(agentsDir: string): CleanupRecommendation[] {
   const dir = join(agentsDir, "councils");
   const files = readMdFiles(dir);
@@ -725,6 +781,7 @@ export function scanArtifacts(options: ScanOptions): ScanResult {
   if (shouldScan("spec")) recommendations.push(...scanSpecs(agentsDir, index));
   if (shouldScan("plan")) recommendations.push(...scanPlans(agentsDir));
   if (shouldScan("draft")) recommendations.push(...scanDrafts(agentsDir, index));
+  if (shouldScan("handoff")) recommendations.push(...scanHandoffs(agentsDir));
   if (shouldScan("council")) recommendations.push(...scanCouncils(agentsDir));
   if (shouldScan("report")) recommendations.push(...scanReports(agentsDir));
 

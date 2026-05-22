@@ -222,6 +222,11 @@ const TEST_CASES = {
     "Review sessions and tidy up",
     "Archive completed specs",
   ],
+  handoff: [
+    "Handoff this branch to the next agent",
+    "Prepare the next session with everything needed to continue",
+    "Write transfer context for this task",
+  ],
   "resume-session": [
     "Resume that session",
     "Pick up where we left off",

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.44] - 2026-05-22
+
+### Added
+- Add dedicated handoff skill (b9a97b51)
+
 ## [2.0.0-dev.43] - 2026-05-20
 
 ### Added

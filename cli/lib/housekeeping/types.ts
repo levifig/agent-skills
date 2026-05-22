@@ -8,6 +8,7 @@ export type ArtifactType =
   | "spec"
   | "plan"
   | "draft"
+  | "handoff"
   | "council"
   | "report";
 
@@ -17,6 +18,7 @@ export const ARTIFACT_TYPES: ArtifactType[] = [
   "spec",
   "plan",
   "draft",
+  "handoff",
   "council",
   "report",
 ];
@@ -65,6 +67,7 @@ export const ARTIFACT_DIRS: ArtifactDirectory[] = [
   { type: "spec", dirname: "specs", required: true },
   { type: "plan", dirname: "plans", required: false },
   { type: "draft", dirname: "drafts", required: false },
+  { type: "handoff", dirname: "handoffs", required: false },
   { type: "council", dirname: "councils", required: false },
   { type: "report", dirname: "reports", required: false },
 ];

@@ -10,7 +10,7 @@ Sessions are coordination artifacts for active work. They are archived (set stat
 - Session File Format
 - Lifecycle States
 - Updating During Work
-- Handoff Protocol
+- Session Continuity Protocol
 - Completing a Session
 - Start Protocol
 - Hook Integration
@@ -282,6 +282,14 @@ See foundations skill reference/diagrams.md for Mermaid syntax.
 **Frontmatter**: Require `status`, `session_reference`, and `processed_at`; add `archived_at` and `archived_by` when archived.
 **Note**: Reports without frontmatter are treated as unprocessed.
 
+## Handoffs
+
+Explicit transfer packets belong to `/handoff`, which writes
+`.agents/handoffs/YYYYMMDD-HHMMSS-title.md`. Orchestration keeps live session
+state resumable; `/handoff` packages context for another agent, branch, task,
+or future session. `/housekeeping` deletes deprecated handoffs after
+confirmation.
+
 ## Blockers
 
 - Current blocker (if any)
@@ -335,6 +343,7 @@ Sessions use an **append-only structured journal** format — a running log of w
 | `skill(name)` | Skill invoked with context | Skill (self-log) | Skill name |
 | `idea(slug)` | Idea captured or promoted | Agent/Skill | Idea slug or `.agents/ideas/` ref |
 | `spec(id)` | Spec created, updated, or approved | Agent/Skill | Spec ID (e.g. `SPEC-024`) |
+| `handoff(slug)` | Handoff created or deprecated | Agent/Skill | Handoff slug or `.agents/handoffs/` ref |
 | `report(slug)` | Report generated | Agent/Skill | Report slug or `.agents/reports/` ref |
 | `council(slug)` | Council convened or concluded | Agent/Skill | Council slug or `.agents/councils/` ref |
 | `brainstorm(slug)` | Brainstorm session held | Agent/Skill | Draft slug or topic |
@@ -416,16 +425,16 @@ After each significant action, append entries to the session journal:
 
 **Cross-agent protocol:** When any agent starts work on a branch, `loaf session start` outputs the last 15-20 journal entries. The agent reads context, continues work, appends entries.
 
-## Handoff Protocol
+## Session Continuity Protocol
 
-### Before Handing Off
+### Before Pausing or Switching Agents
 
 1. Update session file with completed work
 2. Update `Current State` with where you stopped
 3. Update `Next Steps` with immediate actions
 4. Include `Files Modified` for context
 
-### Session as Handoff Medium
+### Session as Continuity Medium
 
 Each agent:
 1. Reads current state from session
@@ -461,12 +470,14 @@ Sessions are **archived, not deleted** when complete to preserve audit trail (se
 - [ ] Council outcomes summarized in this session (link council file)
 - [ ] Reports processed and summarized in this session (link report file)
 - [ ] Reports archived only after session is archived (status + move)
+- [ ] Handoffs reviewed; deprecated handoffs marked for `/housekeeping` deletion
 - [ ] No orphaned references to session file
 - [ ] Set session status to `archived`
 - [ ] Set `archived_at` and `archived_by`
 - [ ] Move file to `.agents/sessions/archive/`
 - [ ] Linked councils moved to `.agents/councils/archive/` after session summary
 - [ ] Linked reports moved to `.agents/reports/archive/` after session archived + conclusions captured
+- [ ] Deprecated handoffs deleted by `/housekeeping` after confirmation
 - [ ] Update `.agents/` references to archived paths (no `.agents` links outside `.agents/`)
 - [ ] Archive indefinitely (no deletion policy)
 - [ ] Use `/housekeeping` for auto-move + link updates after confirmation

@@ -93,7 +93,7 @@ function addWorktree(repoPath: string, branch: string): string {
 
 /**
  * Populate a linked worktree's `.agents/` with the structure SPEC-036 enumerates
- * (sessions/, kb/, ideas/, drafts/, reports/, councils/, tasks/, specs/, plans/,
+ * (sessions/, kb/, ideas/, drafts/, handoffs/, reports/, councils/, tasks/, specs/, plans/,
  * AGENTS.md, loaf.json, SOUL.md, TASKS.json) so tests can assert that the full
  * surface migrates.
  */
@@ -120,6 +120,7 @@ function seedPreA3WorktreeLayout(worktreePath: string): {
   addFile("kb/some-note.md", "# KB Note\n");
   addFile("ideas/idea-001.md", "# Idea\n");
   addFile("drafts/draft-001.md", "# Draft\n");
+  addFile("handoffs/handoff-001.md", "# Handoff\n");
   addFile("reports/report-001.md", "# Report\n");
   addFile("councils/council-001.md", "# Council\n");
   addFile("tasks/TASK-200-example.md", "# Task 200\n");
