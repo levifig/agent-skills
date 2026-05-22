@@ -135,6 +135,18 @@ describe("pre-A3 refusal nudge", () => {
     expect(r.stderr).toContain("LOAF_DEBUG_RESOLVE");
   });
 
+  it("preserves unknown-command feedback when the refusal nudge also fires", async () => {
+    const main = createMainRepo("nudge-unknown-command");
+    const linked = addWorktree(main, "feat/nudge-unknown");
+    seedPreA3WorktreeLayout(linked);
+
+    const r = await runLoaf(["not-a-command"], { cwd: linked });
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain("unknown command 'not-a-command'");
+    expect(r.stderr).toContain("SPEC-036");
+    expect(r.stderr).toContain("loaf migrate worktree-storage");
+  });
+
   it("allows `loaf migrate worktree-storage` to run in pre-A3 state", async () => {
     const main = createMainRepo("nudge-allow-migrate");
     const linked = addWorktree(main, "feat/nudge-allow");

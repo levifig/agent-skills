@@ -22,7 +22,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import matter from "gray-matter";
 
-import { rebuildTaskIndex } from "./task.js";
+import { filterTaskIndexForList, rebuildTaskIndex } from "./task.js";
 import { saveIndex } from "../lib/tasks/migrate.js";
 import type { TaskIndex, TaskEntry } from "../lib/tasks/types.js";
 
@@ -193,6 +193,26 @@ describe("rebuildTaskIndex — scan-window-aware union merge", () => {
     expect(result.next_id).toBeGreaterThanOrEqual(12);
   });
 
+  it("DROPS malformed index-only task IDs instead of treating them as fresh", () => {
+    const agentsDir = makeAgentsDir();
+    const seedIndex: TaskIndex = {
+      version: 1,
+      next_id: 1,
+      tasks: {
+        "TASK-ABC": taskEntry("TASK-ABC", { title: "Malformed" }),
+        "TASK-12A": taskEntry("TASK-12A", { title: "Malformed suffix" }),
+      },
+      specs: {},
+    };
+    saveIndex(join(agentsDir, "TASKS.json"), seedIndex);
+
+    const result = rebuildTaskIndex(agentsDir);
+
+    expect(result.tasks["TASK-ABC"]).toBeUndefined();
+    expect(result.tasks["TASK-12A"]).toBeUndefined();
+    expect(result.next_id).toBe(1);
+  });
+
   it("monotonic next_id across scan, snapshot, and merged max id", () => {
     const agentsDir = makeAgentsDir();
     const seedIndex: TaskIndex = {
@@ -214,5 +234,42 @@ describe("rebuildTaskIndex — scan-window-aware union merge", () => {
     // roll back below the pre-existing 200 (a concurrent allocator already
     // moved past us).
     expect(result.next_id).toBeGreaterThanOrEqual(200);
+  });
+});
+
+describe("filterTaskIndexForList", () => {
+  function indexWithStatuses(): TaskIndex {
+    return {
+      version: 1,
+      next_id: 5,
+      specs: {},
+      tasks: {
+        "TASK-001": taskEntry("TASK-001", { status: "todo", spec: "SPEC-001" }),
+        "TASK-002": taskEntry("TASK-002", { status: "in_progress" }),
+        "TASK-003": taskEntry("TASK-003", { status: "done" }),
+        "TASK-004": taskEntry("TASK-004", { status: "blocked" }),
+      },
+    };
+  }
+
+  it("filters to a single requested status", () => {
+    const result = filterTaskIndexForList(indexWithStatuses(), { status: "in_progress" });
+
+    expect(Object.keys(result.tasks)).toEqual(["TASK-002"]);
+    expect(result.next_id).toBe(5);
+  });
+
+  it("combines --active with --status", () => {
+    const activeDone = filterTaskIndexForList(indexWithStatuses(), {
+      active: true,
+      status: "done",
+    });
+    const activeTodo = filterTaskIndexForList(indexWithStatuses(), {
+      active: true,
+      status: "todo",
+    });
+
+    expect(Object.keys(activeDone.tasks)).toEqual([]);
+    expect(Object.keys(activeTodo.tasks)).toEqual(["TASK-001"]);
   });
 });

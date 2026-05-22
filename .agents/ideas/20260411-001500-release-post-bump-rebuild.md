@@ -1,8 +1,9 @@
 ---
 title: Release skill should verify build artifacts after post-bump commits
-status: raw
+status: archived
 created: 2026-04-11T00:15:00Z
 tags: [release, build, skill]
+resolution: implemented in TASK-182
 related: [content/skills/release/SKILL.md]
 ---
 

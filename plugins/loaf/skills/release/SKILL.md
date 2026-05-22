@@ -7,7 +7,7 @@ description: >-
   changelog updates, and...
 user-invocable: true
 argument-hint: '[PR number or URL]'
-version: 2.0.0-dev.42
+version: 2.0.0-dev.43
 ---
 
 # Release
@@ -233,6 +233,17 @@ When `[Unreleased]` is empty, use `loaf release` to auto-generate changelog entr
 
 ### After either path
 
+Before pushing, verify generated artifacts are still current. This matters if
+any fix commits landed after the release bump commit:
+
+```bash
+npm run build
+git diff --exit-code -- plugins/loaf/bin/loaf dist content/skills/cli-reference/SKILL.md
+```
+
+If the diff check fails, commit the regenerated artifacts with the source change
+that made them stale, then rerun the check.
+
 Push to the feature branch (**with user confirmation**).
 
 ### Why `--pre-merge`?
@@ -288,7 +299,7 @@ After successful merge, run a single command:
 loaf release --post-merge
 ```
 
-This verifies HEAD state against an 8-point guardrail checklist (clean worktree, on the base branch with the merge commit at HEAD, `chore: release v<semver>` subject shape, version-file agreement, CHANGELOG section present, no pre-existing tag or GH release, HEAD untagged). Once all guardrails pass it tags the squash merge commit, pushes the tag, creates the GitHub Release from the matching `## [X.Y.Z]` CHANGELOG section, pulls the base branch, and best-effort deletes the local + remote feature branch. Manual `git tag`, `git push --tags`, `gh release create`, `git checkout`, `git pull --rebase`, and `git branch -d` are no longer needed — the flag subsumes them.
+This verifies HEAD state against an 8-point guardrail checklist (clean worktree, on the base branch with the merge commit at HEAD, readable HEAD subject for optional PR-number lookup, version-file agreement, CHANGELOG section present, no pre-existing tag or GH release, HEAD untagged). The squash subject should describe the shipped work (`feat:`, `fix:`, etc.); post-merge derives the release version from version files and `CHANGELOG.md`, not from a `chore: release` subject. Once all guardrails pass it tags the squash merge commit, pushes the tag, creates the GitHub Release from the matching `## [X.Y.Z]` CHANGELOG section, pulls the base branch, and best-effort deletes the local + remote feature branch. Manual `git tag`, `git push --tags`, `gh release create`, `git checkout`, `git pull --rebase`, and `git branch -d` are no longer needed — the flag subsumes them.
 
 If anything aborts:
 

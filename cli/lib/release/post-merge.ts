@@ -3,18 +3,17 @@
  *
  * Implements `loaf release --post-merge` (SPEC-031 / TASK-142).
  *
- * After a `chore: release v<semver>` PR has been squash-merged onto the base
- * branch, `--post-merge` finalizes the release: it verifies HEAD state against
- * an 8-point guardrail checklist and then runs the tag-push-release-cleanup
+ * After a release-prepared PR has been squash-merged onto the base branch,
+ * `--post-merge` finalizes the release: it verifies HEAD state against an
+ * 8-point guardrail checklist and then runs the tag-push-release-cleanup
  * action sequence.
  *
  * 8-point guardrail (all required, ordered, any failure aborts before tag/release):
  *
  *   1. Clean worktree (no uncommitted changes).
  *   2. On the detected base branch (or cleanly fast-forwardable to it).
- *   3. HEAD subject matches `^chore: release v<semver>( \(#\d+\))?$`.
- *   4. Extracted version (from commit subject) matches the version recorded in
- *      every detected version file at HEAD. Per-file diagnostic on mismatch.
+ *   3. HEAD subject is readable (PR number suffix is captured when present).
+ *   4. Every detected version file at HEAD agrees on one version.
  *   5. `git diff HEAD^ HEAD --name-only` includes `CHANGELOG.md` AND at least
  *      one version file path.
  *   6. CHANGELOG.md contains a non-empty `## [<version>]` section.
@@ -25,7 +24,7 @@
  *
  *   1. Capture feature branch name (best-effort, from `gh pr view <PR#>` if
  *      HEAD subject carries a `(#N)` suffix; otherwise undefined).
- *   2. `git tag -a v<version> -m "Release <version>"`
+ *   2. `git tag -s v<version> -m "Release <version>"`
  *   3. `git push origin v<version>` (explicit, before `gh release create`).
  *   4. `gh release create v<version> --title "v<version>" --notes "<body>"`.
  *   5. `git pull --rebase origin <base>` (best-effort).
@@ -72,7 +71,7 @@ export interface PostMergeAbort {
 
 export interface PostMergeReady {
   ok: true;
-  /** Version extracted from the HEAD commit subject. */
+  /** Version detected from the version files at HEAD. */
   version: string;
   /** Resolved base branch (current branch when guardrail 2 passed). */
   base: string;
@@ -98,14 +97,7 @@ export interface PostMergeActionResult {
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * The release commit subject shape — mirrors `cli/commands/check.ts`'s
- * `RELEASE_COMMIT_SUBJECT_REGEX` (TASK-140). Duplicated here to avoid
- * cross-module coupling; if the regex moves to a shared module later, both
- * call sites should switch to the import in lock-step.
- */
-const RELEASE_SUBJECT_RE =
-  /^chore: release v(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?(?:\+[a-zA-Z0-9.-]+)?)(?:\s+\(#(\d+)\))?$/;
+const PR_SUFFIX_RE = /\(#(\d+)\)\s*$/;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Runner helpers
@@ -181,44 +173,47 @@ function checkOnBaseBranch(
   return `current branch ${current} is not the base branch ${base} — checkout ${base} and rerun`;
 }
 
-/** Guardrail 3: HEAD subject matches the chore-release shape. */
-function checkSubjectShape(
+/** Guardrail 3: HEAD subject is readable; PR suffix is optional metadata. */
+function readHeadSubjectMetadata(
   runner: CommandRunner,
   cwd: string,
-): { version: string; prNumber?: string } | string {
+): { prNumber?: string } | string {
   const result = run(runner, cwd, "git", ["log", "-1", "--pretty=%s"]);
   if (result.exitCode !== 0) {
     return "could not read HEAD subject";
   }
   const subject = result.stdout.trim();
-  const match = subject.match(RELEASE_SUBJECT_RE);
-  if (!match) {
-    return `HEAD subject ${JSON.stringify(subject)} does not match \`chore: release v<semver>\` shape — this is not a post-merge release commit`;
-  }
+  const match = subject.match(PR_SUFFIX_RE);
   return {
-    version: match[1],
-    ...(match[2] ? { prNumber: match[2] } : {}),
+    ...(match?.[1] ? { prNumber: match[1] } : {}),
   };
 }
 
 /**
- * Guardrail 4: extracted version matches every detected version file at HEAD.
- * Returns null (pass) or a per-file diagnostic message.
+ * Guardrail 4: all detected version files agree. Returns the shared version on
+ * pass, or a per-file diagnostic message on failure.
  */
-function checkVersionFilesMatch(
+function detectConsistentVersion(
   files: VersionFile[],
-  version: string,
-): string | null {
+): string | { message: string } {
   if (files.length === 0) {
-    return "no version files detected at HEAD — cannot verify version match";
+    return {
+      message: "no version files detected at HEAD — cannot verify version match",
+    };
   }
+  const version = files[0].currentVersion;
   const mismatches = files
     .filter((f) => f.currentVersion !== version)
-    .map((f) => `${f.relativePath} reports ${f.currentVersion}, expected ${version}`);
+    .map(
+      (f) =>
+        `${f.relativePath} reports ${f.currentVersion}, expected ${version} from ${files[0].relativePath}`,
+    );
   if (mismatches.length > 0) {
-    return `version mismatch in version file(s):\n    ${mismatches.join("\n    ")}`;
+    return {
+      message: `version mismatch in version file(s):\n    ${mismatches.join("\n    ")}`,
+    };
   }
-  return null;
+  return version;
 }
 
 /**
@@ -454,12 +449,15 @@ export async function checkPostMergeGuardrails(
     return { ok: false, guardrail: 2, message: branchAbort };
   }
 
-  // Guardrail 3: subject shape.
-  const subjectResult = checkSubjectShape(runner, cwd);
+  // Guardrail 3: subject metadata. The subject's Conventional Commit type
+  // describes the shipped work (`feat:`, `fix:`, etc.); release safety comes
+  // from version files + CHANGELOG, not from requiring a `chore: release`
+  // squash title.
+  const subjectResult = readHeadSubjectMetadata(runner, cwd);
   if (typeof subjectResult === "string") {
     return { ok: false, guardrail: 3, message: subjectResult };
   }
-  const { version, prNumber } = subjectResult;
+  const { prNumber } = subjectResult;
 
   // Detect version files at HEAD. Done here (not earlier) so a missing/bad
   // version-files config surfaces alongside the version-match guardrail
@@ -480,11 +478,13 @@ export async function checkPostMergeGuardrails(
     return { ok: false, guardrail: 4, message };
   }
 
-  // Guardrail 4: version matches every version file.
-  const versionAbort = checkVersionFilesMatch(versionFiles, version);
-  if (versionAbort) {
-    return { ok: false, guardrail: 4, message: versionAbort };
+  // Guardrail 4: version files agree; their shared version is the release
+  // version for post-merge tagging.
+  const versionResult = detectConsistentVersion(versionFiles);
+  if (typeof versionResult !== "string") {
+    return { ok: false, guardrail: 4, message: versionResult.message };
   }
+  const version = versionResult;
 
   // Guardrail 5: diff includes CHANGELOG + version file.
   const diffAbort = checkDiffFiles(runner, cwd, versionFiles);
@@ -602,7 +602,7 @@ export async function executePostMergeActions(
   // Step 2: tag locally.
   const tagResult = run(runner, cwd, "git", [
     "tag",
-    "-a",
+    "-s",
     tag,
     "-m",
     `Release ${ready.version}`,

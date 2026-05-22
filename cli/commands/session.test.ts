@@ -2076,7 +2076,7 @@ describe("session: LOAF_ENRICHMENT isolation", () => {
 // staleness contract as `cli/lib/tasks/lock.ts`. The previous policy in
 // session.ts was age-OR-dead with a 30s threshold, which evicted long-lived
 // live local critical sections. The new policy is PID-liveness primary, with
-// a conservative 5-minute age fallback only when liveness is unprobeable
+// a conservative 5-second age fallback only when liveness is unprobeable
 // (malformed content or foreign-host PID namespace).
 //
 // We hand-craft `.lock` files with controlled payloads and mtimes, then ask
@@ -2160,7 +2160,7 @@ describe("session lock: isLockStale staleness contract", () => {
 
   it("malformed payload, young mtime: NOT stale — age fallback says wait", () => {
     // Garbage content + fresh mtime — liveness unprobeable, but under the
-    // 5-minute fallback threshold. Conservative answer: don't steal yet.
+    // 5-second fallback threshold. Conservative answer: don't steal yet.
     const lockPath = join(TEST_ROOT, "malformed-young.lock");
     writeLock(lockPath, "this-is-not-json{");
     expect(isLockStale(lockPath)).toBe(false);

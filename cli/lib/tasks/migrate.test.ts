@@ -468,6 +468,63 @@ describe("syncFrontmatterFromIndex", () => {
     expect(data.title).toBe("Updated spec title");
     expect(data.status).toBe("approved");
   });
+
+  it("preserves unknown task and spec frontmatter while syncing indexed fields", () => {
+    writeTask(tempDir, "TASK-001-test.md", {
+      id: "TASK-001",
+      title: "Old task title",
+      status: "todo",
+      priority: "P2",
+      depends_on: ["TASK-999"],
+      custom_task_field: "keep",
+    }, "# Task body\n");
+
+    writeSpec(tempDir, "SPEC-010-test.md", {
+      id: "SPEC-010",
+      title: "Old spec title",
+      status: "drafting",
+      branch: "feat/worktree-storage",
+      adr: "docs/decisions/ADR-013-agentic-state-storage-model.md",
+      custom_spec_field: "keep",
+    }, "# Spec body\n");
+
+    const index = minimalIndex({
+      next_id: 2,
+      tasks: {
+        "TASK-001": taskEntry({
+          title: "New task title",
+          status: "done",
+          completed_at: "2026-05-19T10:00:00Z",
+          depends_on: [],
+        }),
+      },
+      specs: {
+        "SPEC-010": specEntry({
+          title: "New spec title",
+          status: "implementing",
+          file: "SPEC-010-test.md",
+        }),
+      },
+    });
+
+    syncFrontmatterFromIndex(tempDir, index);
+
+    const taskRaw = readFileSync(join(tempDir, "tasks", "TASK-001-test.md"), "utf-8");
+    const { data: taskData } = matter(taskRaw);
+    expect(taskData.title).toBe("New task title");
+    expect(taskData.status).toBe("done");
+    expect(taskData.completed_at).toBe("2026-05-19T10:00:00Z");
+    expect(taskData.custom_task_field).toBe("keep");
+    expect(taskData.depends_on).toBeUndefined();
+
+    const specRaw = readFileSync(join(tempDir, "specs", "SPEC-010-test.md"), "utf-8");
+    const { data: specData } = matter(specRaw);
+    expect(specData.title).toBe("New spec title");
+    expect(specData.status).toBe("implementing");
+    expect(specData.branch).toBe("feat/worktree-storage");
+    expect(specData.adr).toBe("docs/decisions/ADR-013-agentic-state-storage-model.md");
+    expect(specData.custom_spec_field).toBe("keep");
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

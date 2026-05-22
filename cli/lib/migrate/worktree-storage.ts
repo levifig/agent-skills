@@ -13,8 +13,8 @@
  *
  * Behavior summary:
  *   - Dry-run by default; `--apply` mutates.
- *   - Conflict policy: newest mtime wins, with `--force-from-worktree` /
- *     `--force-from-main` overrides.
+ *   - Conflict policy: identical content is deduplicated; otherwise newest
+ *     mtime wins, with `--force-from-worktree` / `--force-from-main` overrides.
  *   - After a successful `--apply`, writes a `.moved-to` back-pointer in the
  *     worktree-local `.agents/` so the refusal nudge can detect post-A3 state.
  *   - Idempotent: re-running on a migrated worktree is a no-op.
@@ -26,6 +26,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  lstatSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -35,7 +36,7 @@ import {
 } from "fs";
 import { dirname, join, relative } from "path";
 
-import { DEBUG_RESOLVE_ENV, findMainWorktreeRoot } from "../tasks/resolve.js";
+import { DEBUG_RESOLVE_ENV, findMainWorktreeRoot, isDebugResolveEnabled } from "../tasks/resolve.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Missing-target error
@@ -127,13 +128,12 @@ function readGitdirPointerMainRoot(wtRoot: string): string | null {
   return m2[1];
 }
 
-// SYMLINK BEHAVIOR (current, intentional but not fully specified):
-//   - Same-FS moves preserve the link itself (renameSync moves the symlink)
-//   - EXDEV fallback dereferences (cpSync follows symlinks unless verbatimSymlinks is set)
-//   - Conflict policy uses statSync, which follows symlinks for mtime comparison
-// This is a known asymmetry. Pinning the behavior requires a design decision —
-// tracked in .agents/ideas/ as a follow-up. Do not extend symlink-touching logic
-// without consulting that idea first.
+// SYMLINK BEHAVIOR:
+// Refuse symlinks inside worktree-local `.agents/` and require manual handling.
+// This avoids the previous platform/path-dependent split where same-FS rename
+// preserved links, EXDEV copy dereferenced them, and conflict mtimes followed
+// targets. `.agents/` artifacts are expected to be plain files; a symlink is
+// rare enough that a loud stop is safer than silent normalization.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Centralized refusal message — referenced by cli/index.ts and tests.
@@ -192,6 +192,12 @@ export function readBackPointer(worktreeAgentsDir: string): string | null {
 export function worktreeAgentsHasContent(worktreeAgentsDir: string): boolean {
   if (!existsSync(worktreeAgentsDir)) return false;
   return enumerateFiles(worktreeAgentsDir).length > 0;
+}
+
+function debugResolve(message: string): void {
+  if (isDebugResolveEnabled()) {
+    process.stderr.write(`${DEBUG_RESOLVE_ENV}: ${message}\n`);
+  }
 }
 
 /**
@@ -340,7 +346,8 @@ export type MigrationStatus =
   | "planned"
   | "applied"
   | "partial-leftover"
-  | "main-missing";
+  | "main-missing"
+  | "symlink-unsupported";
 
 export interface MigrationResult {
   status: MigrationStatus;
@@ -365,7 +372,9 @@ function enumerateFiles(dir: string): string[] {
     let entries: import("fs").Dirent[];
     try {
       entries = readdirSync(current, { withFileTypes: true });
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      debugResolve(`failed to read ${current}: ${message}`);
       return;
     }
     for (const entry of entries) {
@@ -384,11 +393,56 @@ function enumerateFiles(dir: string): string[] {
   return out;
 }
 
+function findSymlinkPaths(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  const walk = (current: string, rel: string) => {
+    let entries: import("fs").Dirent[];
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      debugResolve(`failed to read ${current}: ${message}`);
+      return;
+    }
+    for (const entry of entries) {
+      const absPath = join(current, entry.name);
+      const relPath = rel ? join(rel, entry.name) : entry.name;
+      if (rel === "" && entry.name === BACK_POINTER_FILE) continue;
+      if (entry.isSymbolicLink()) {
+        out.push(relPath);
+        continue;
+      }
+      if (entry.isDirectory()) {
+        try {
+          if (lstatSync(absPath).isSymbolicLink()) {
+            out.push(relPath);
+            continue;
+          }
+        } catch {
+          // If lstat fails, fall back to the Dirent classification above.
+        }
+        walk(absPath, relPath);
+      }
+    }
+  };
+  walk(dir, "");
+  return out;
+}
+
 function mtime(path: string): number {
   try {
     return statSync(path).mtimeMs;
   } catch {
     return 0;
+  }
+}
+
+function hasSameContent(a: string, b: string): boolean {
+  try {
+    return readFileSync(a).equals(readFileSync(b));
+  } catch {
+    return false;
   }
 }
 
@@ -408,27 +462,32 @@ function planMoves(
     let resolutionReason: string | undefined;
 
     if (conflict) {
-      switch (policy) {
-        case "worktree":
-          resolution = "keep-worktree";
-          resolutionReason = "forced by --force-from-worktree";
-          break;
-        case "main":
-          resolution = "keep-main";
-          resolutionReason = "forced by --force-from-main";
-          break;
-        case "newer": {
-          // Ties resolve to "keep-main" (intentional: prefer the canonical store on no-signal).
-          const fromMtime = mtime(from);
-          const toMtime = mtime(to);
-          if (fromMtime > toMtime) {
+      if (hasSameContent(from, to)) {
+        resolution = "keep-main";
+        resolutionReason = "identical content";
+      } else {
+        switch (policy) {
+          case "worktree":
             resolution = "keep-worktree";
-            resolutionReason = `worktree mtime ${new Date(fromMtime).toISOString()} > main mtime ${new Date(toMtime).toISOString()}`;
-          } else {
+            resolutionReason = "forced by --force-from-worktree";
+            break;
+          case "main":
             resolution = "keep-main";
-            resolutionReason = `main mtime ${new Date(toMtime).toISOString()} >= worktree mtime ${new Date(fromMtime).toISOString()}`;
+            resolutionReason = "forced by --force-from-main";
+            break;
+          case "newer": {
+            // Ties resolve to "keep-main" (intentional: prefer the canonical store on no-signal).
+            const fromMtime = mtime(from);
+            const toMtime = mtime(to);
+            if (fromMtime > toMtime) {
+              resolution = "keep-worktree";
+              resolutionReason = `worktree mtime ${new Date(fromMtime).toISOString()} > main mtime ${new Date(toMtime).toISOString()}`;
+            } else {
+              resolution = "keep-main";
+              resolutionReason = `main mtime ${new Date(toMtime).toISOString()} >= worktree mtime ${new Date(fromMtime).toISOString()}`;
+            }
+            break;
           }
-          break;
         }
       }
     }
@@ -643,16 +702,22 @@ export function runMigration(options: MigrationOptions): MigrationResult {
 
   // 3. No local `.agents/` at all? Edge case — treat as nothing to migrate.
   if (!existsSync(localAgents) || !worktreeAgentsHasContent(localAgents)) {
-    // If the back-pointer is set but stale, fall through to a clean plan.
-    if (pointer && pointer === mainRoot) {
-      return {
-        status: "already-migrated",
-        message: "Nothing to do — already migrated.",
-      };
-    }
     return {
       status: "no-local-agents",
       message: "Nothing to migrate — worktree has no local .agents/ content.",
+    };
+  }
+
+  const symlinks = findSymlinkPaths(localAgents);
+  if (symlinks.length > 0) {
+    return {
+      status: "symlink-unsupported",
+      message: [
+        "Refusing to migrate: found symlinks under worktree-local .agents/.",
+        "Handle these paths manually, then re-run the migrate command:",
+        "",
+        ...symlinks.map((p) => `  ${p}`),
+      ].join("\n"),
     };
   }
 
@@ -730,17 +795,27 @@ function findWorktreeRoot(startDir: string): string | null {
 // Pretty printer for CLI output
 // ─────────────────────────────────────────────────────────────────────────────
 
-const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
-const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
-const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
-const gray = (s: string) => `\x1b[90m${s}\x1b[0m`;
-const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
+function shouldUseColor(): boolean {
+  return process.env.NO_COLOR === undefined && process.stdout.isTTY === true;
+}
+
+function color(code: string, enabled: boolean): (s: string) => string {
+  return enabled
+    ? (s: string) => `\x1b[${code}m${s}\x1b[0m`
+    : (s: string) => s;
+}
 
 export function formatResult(
   result: MigrationResult,
-  opts: { apply: boolean },
+  opts: { apply: boolean; color?: boolean },
 ): string {
   const out: string[] = [];
+  const colorEnabled = opts.color ?? shouldUseColor();
+  const bold = color("1", colorEnabled);
+  const green = color("32", colorEnabled);
+  const yellow = color("33", colorEnabled);
+  const gray = color("90", colorEnabled);
+  const cyan = color("36", colorEnabled);
 
   if (result.plan) {
     const plan = result.plan;

@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.43] - 2026-05-20
+
+### Added
+
+- `loaf task list --status <status>` filters task output by lifecycle state.
+
+### Changed
+
+- `loaf release --post-merge` now validates release readiness from version files and `CHANGELOG.md`, so conventional squash subjects like `feat:` and `fix:` are accepted.
+- Release workflow guidance now calls out post-bump build-artifact verification and stricter changelog curation before publishing.
+
+### Fixed
+
+- `loaf migrate worktree-storage` treats identical file contents as already resolved before considering mtimes or overwrite conflicts.
+- Worktree migration diagnostics now surface directory-read failures under `LOAF_DEBUG_RESOLVE`, and migration output respects `NO_COLOR` and non-TTY output.
+- Release tags are created with explicit signed-tag mode.
+- Task index rebuild and frontmatter sync preserve valid concurrent entries and unknown spec metadata.
+- Task and session lock staleness detection share one PID/host-aware policy, avoiding false eviction of live same-host lock holders.
+- Linked-worktree migration refusal preserves unknown-command feedback while still nudging users toward `loaf migrate worktree-storage`.
+
 ## [2.0.0-dev.42] - 2026-05-19
 
 ### Added

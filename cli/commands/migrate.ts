@@ -31,7 +31,11 @@ import {
   type ConflictResolution,
 } from "../lib/migrate/worktree-storage.js";
 
-const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
+function shouldUseErrorColor(): boolean {
+  return process.env.NO_COLOR === undefined && process.stderr.isTTY === true;
+}
+
+const red = (s: string) => shouldUseErrorColor() ? `\x1b[31m${s}\x1b[0m` : s;
 
 interface MigrateWorktreeStorageOptions {
   apply?: boolean;
@@ -98,10 +102,9 @@ export function registerMigrateCommand(program: Command): void {
           process.exit(1);
         }
 
-        if (result.status === "partial-leftover") {
-          // Refusal: a previous run was interrupted mid-EXDEV-stage. Print
-          // the formatted output (it lists the leftover paths) to stderr
-          // and exit non-zero so the user notices.
+        if (result.status === "partial-leftover" || result.status === "symlink-unsupported") {
+          // Refusal: print the diagnostic paths to stderr and exit non-zero so
+          // the user notices.
           console.error(`${red("error:")} ${result.message}`);
           process.exit(1);
         }

@@ -76,9 +76,11 @@ beforeEach(() => {
 
   // Initialize git repo if not already
   try {
-    // No identity setup is needed: every `git commit` in this file is a
-    // string fixture passed as tool_input to validate-commit, never executed.
     execSync("git init", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git config user.email loaf-test@example.invalid", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git config user.name 'Loaf Test'", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git config commit.gpgsign false", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git config tag.gpgsign false", { cwd: TEST_ROOT, stdio: "ignore" });
   } catch {
     // Git might already be initialized
   }
@@ -1083,7 +1085,7 @@ describe("check: workflow-pre-pr", () => {
     writeFileSync(join(TEST_ROOT, "file.txt"), "content");
     execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
     execSync('git commit -m "chore: release v1.1.0"', { cwd: TEST_ROOT, stdio: "ignore" });
-    execSync("git tag v1.1.0", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git -c tag.gpgsign=false tag v1.1.0", { cwd: TEST_ROOT, stdio: "ignore" });
 
     const result = runCheck("workflow-pre-pr", {
       tool: { name: "Bash" },
@@ -1934,7 +1936,7 @@ describe("check: validate-push", () => {
     writeFileSync(join(TEST_ROOT, "file.txt"), "content");
     execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
     execSync('git commit -m "initial"', { cwd: TEST_ROOT, stdio: "ignore" });
-    execSync("git tag v1.0.0", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git -c tag.gpgsign=false tag v1.0.0", { cwd: TEST_ROOT, stdio: "ignore" });
 
     // Make a new commit WITHOUT bumping version — tag is now behind HEAD
     writeFileSync(join(TEST_ROOT, "file.txt"), "updated content");
@@ -1967,7 +1969,7 @@ describe("check: validate-push", () => {
     writeFileSync(join(TEST_ROOT, "file.txt"), "content");
     execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
     execSync('git commit -m "initial"', { cwd: TEST_ROOT, stdio: "ignore" });
-    execSync("git tag v1.0.0", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git -c tag.gpgsign=false tag v1.0.0", { cwd: TEST_ROOT, stdio: "ignore" });
 
     // Make a new commit WITHOUT updating CHANGELOG — tag is now behind HEAD
     writeFileSync(join(TEST_ROOT, "file.txt"), "updated content");
@@ -2001,7 +2003,7 @@ describe("check: validate-push", () => {
     writeFileSync(join(TEST_ROOT, "file.txt"), "content");
     execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
     execSync('git commit -m "chore: release v1.1.0"', { cwd: TEST_ROOT, stdio: "ignore" });
-    execSync("git tag v1.1.0", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git -c tag.gpgsign=false tag v1.1.0", { cwd: TEST_ROOT, stdio: "ignore" });
 
     const result = runCheck("validate-push", {
       tool: { name: "Bash" },
@@ -2031,7 +2033,7 @@ describe("check: validate-push", () => {
     writeFileSync(join(TEST_ROOT, "seed.txt"), "seed");
     execSync("git add seed.txt", { cwd: TEST_ROOT, stdio: "ignore" });
     execSync('git commit -m "chore: seed"', { cwd: TEST_ROOT, stdio: "ignore" });
-    execSync("git tag v1.1.0", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git -c tag.gpgsign=false tag v1.1.0", { cwd: TEST_ROOT, stdio: "ignore" });
 
     // Now produce the pre-merge release commit (tag v1.2.0 NOT created yet).
     writeFileSync(join(TEST_ROOT, "file.txt"), "content");
@@ -2068,7 +2070,7 @@ describe("check: validate-push", () => {
     writeFileSync(join(TEST_ROOT, "file.txt"), "content v2");
     execSync("git add .", { cwd: TEST_ROOT, stdio: "ignore" });
     execSync('git commit -m "bump version"', { cwd: TEST_ROOT, stdio: "ignore" });
-    execSync("git tag v1.0.0", { cwd: TEST_ROOT, stdio: "ignore" });
+    execSync("git -c tag.gpgsign=false tag v1.0.0", { cwd: TEST_ROOT, stdio: "ignore" });
 
     const result = runCheck("validate-push", {
       tool: { name: "Bash" },

@@ -809,7 +809,7 @@ export function registerReleaseCommand(program: Command): void {
         console.log(`    ${gray("-")} Git tag skipped (--no-tag)`);
       } else {
         try {
-          execFileSync("git", ["tag", "-a", tagName, "-m", `Release ${newVersion}`], {
+          execFileSync("git", ["tag", "-s", tagName, "-m", `Release ${newVersion}`], {
             cwd,
             stdio: ["ignore", "pipe", "ignore"],
           });

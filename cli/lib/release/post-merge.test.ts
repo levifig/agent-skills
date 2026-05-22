@@ -170,14 +170,14 @@ function happyPathScript(opts: {
     "git symbolic-ref --short": ok(current),
     "git symbolic-ref refs/remotes/origin/HEAD": ok(`refs/remotes/origin/${base}`),
     "git config --get": exit(1),
-    "git log": ok(`chore: release v${version}${prSuffix}`),
+    "git log": ok(`feat: ship release-ready change${prSuffix}`),
     "git diff": ok(changedFiles),
     "git tag --list": ok(""),
     "git tag --points-at": ok(""),
     "git ls-remote": ok(""),
     "gh release view": exit(1),
     "gh repo view": ok(base),
-    "git tag -a": ok(""),
+    "git tag -s": ok(""),
     "git push": ok(""),
     "gh release create": ok(""),
     "git pull": ok(""),
@@ -312,7 +312,7 @@ describe("checkPostMergeGuardrails — guardrail 2 (on base branch)", () => {
   });
 });
 
-describe("checkPostMergeGuardrails — guardrail 3 (subject shape)", () => {
+describe("checkPostMergeGuardrails — guardrail 3 (subject metadata)", () => {
   let fixture: Fixture;
   beforeEach(() => {
     fixture = makeFixture({
@@ -322,28 +322,24 @@ describe("checkPostMergeGuardrails — guardrail 3 (subject shape)", () => {
   });
   afterEach(() => fixture.cleanup());
 
-  it("aborts when HEAD subject is not a chore: release commit", async () => {
+  it("accepts ordinary squash subjects and derives version from version files", async () => {
     const script = happyPathScript({ version: "1.2.3" });
     script.responses!["git log"] = ok("feat: add new feature");
     const { runner } = makeRunner(script);
 
     const result = await checkPostMergeGuardrails({ cwd: fixture.cwd, runner });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.guardrail).toBe(3);
-    expect(result.message).toContain("does not match");
-    expect(result.message).toContain("chore: release v<semver>");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.version).toBe("1.2.3");
   });
 
-  it("aborts on non-shape chore: release like 'chore: release notes draft'", async () => {
+  it("accepts non-release chore subjects when release files are valid", async () => {
     const script = happyPathScript({ version: "1.2.3" });
     script.responses!["git log"] = ok("chore: release notes draft");
     const { runner } = makeRunner(script);
 
     const result = await checkPostMergeGuardrails({ cwd: fixture.cwd, runner });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.guardrail).toBe(3);
+    expect(result.ok).toBe(true);
   });
 
   it("accepts the PR-number suffix form", async () => {
@@ -358,27 +354,38 @@ describe("checkPostMergeGuardrails — guardrail 3 (subject shape)", () => {
       expect(result.guardrail).not.toBe(3);
     }
   });
+
+  it("aborts when HEAD subject cannot be read", async () => {
+    const script = happyPathScript({ version: "1.2.3" });
+    script.responses!["git log"] = exit(1);
+    const { runner } = makeRunner(script);
+
+    const result = await checkPostMergeGuardrails({ cwd: fixture.cwd, runner });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.guardrail).toBe(3);
+    expect(result.message).toContain("could not read HEAD subject");
+  });
 });
 
 describe("checkPostMergeGuardrails — guardrail 4 (version match)", () => {
   let fixture: Fixture;
   afterEach(() => fixture?.cleanup?.());
 
-  it("aborts when package.json version disagrees with the commit subject", async () => {
+  it("aborts when CHANGELOG does not contain the version-file version", async () => {
     fixture = makeFixture({
       packageJson: { version: "1.2.3" }, // file says 1.2.3
       changelog: validChangelog("1.2.4"),
     });
-    const script = happyPathScript({ version: "1.2.4" }); // subject says 1.2.4
+    const script = happyPathScript({ version: "1.2.4" });
     const { runner } = makeRunner(script);
 
     const result = await checkPostMergeGuardrails({ cwd: fixture.cwd, runner });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.guardrail).toBe(4);
-    expect(result.message).toContain("package.json");
+    expect(result.guardrail).toBe(6);
+    expect(result.message).toContain("CHANGELOG.md");
     expect(result.message).toContain("1.2.3");
-    expect(result.message).toContain("1.2.4");
   });
 
   it("names every mismatching file in the diagnostic", async () => {
@@ -656,7 +663,7 @@ describe("executePostMergeActions", () => {
 
   it("happy path: tag, push, release, pull, delete (local + remote) all succeed", async () => {
     const script = happyPathScript({ version: "1.2.3" });
-    const { runner } = makeRunner(script);
+    const { runner, calls } = makeRunner(script);
 
     const result = await executePostMergeActions(
       { cwd: fixture.cwd, runner },
@@ -676,6 +683,10 @@ describe("executePostMergeActions", () => {
     expect(result.pulled).toBe(true);
     expect(result.deleted.local).toBe(true);
     expect(result.deleted.remote).toBe(true);
+    expect(calls).toContainEqual({
+      command: "git",
+      args: ["tag", "-s", "v1.2.3", "-m", "Release 1.2.3"],
+    });
   });
 
   it("local branch delete fails → remote delete still attempted, deleted.local=false", async () => {

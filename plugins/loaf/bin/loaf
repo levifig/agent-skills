@@ -18358,7 +18358,7 @@ import { join as join19, dirname as dirname5, resolve } from "path";
 import { readFileSync as readFileSync11 } from "fs";
 import { dirname as dirname4, join as join18 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
-var LOAF_VERSION = "2.0.0-dev.42" ? "2.0.0-dev.42" : readPackageVersion();
+var LOAF_VERSION = "2.0.0-dev.43" ? "2.0.0-dev.43" : readPackageVersion();
 
 // cli/lib/install/fenced-section.ts
 var FENCED_START = "<!-- loaf:managed:start";
@@ -20984,7 +20984,7 @@ function lookupDefaultBranch(runner, cwd) {
 // cli/lib/release/post-merge.ts
 import { existsSync as existsSync22, readFileSync as readFileSync20 } from "fs";
 import { join as join28 } from "path";
-var RELEASE_SUBJECT_RE = /^chore: release v(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?(?:\+[a-zA-Z0-9.-]+)?)(?:\s+\(#(\d+)\))?$/;
+var PR_SUFFIX_RE = /\(#(\d+)\)\s*$/;
 function run(runner, cwd, command, args) {
   return runner(command, args, { cwd });
 }
@@ -21015,31 +21015,34 @@ function checkOnBaseBranch(runner, cwd, base, current) {
   if (ffResult.exitCode === 0) return null;
   return `current branch ${current} is not the base branch ${base} \u2014 checkout ${base} and rerun`;
 }
-function checkSubjectShape(runner, cwd) {
+function readHeadSubjectMetadata(runner, cwd) {
   const result = run(runner, cwd, "git", ["log", "-1", "--pretty=%s"]);
   if (result.exitCode !== 0) {
     return "could not read HEAD subject";
   }
   const subject = result.stdout.trim();
-  const match = subject.match(RELEASE_SUBJECT_RE);
-  if (!match) {
-    return `HEAD subject ${JSON.stringify(subject)} does not match \`chore: release v<semver>\` shape \u2014 this is not a post-merge release commit`;
-  }
+  const match = subject.match(PR_SUFFIX_RE);
   return {
-    version: match[1],
-    ...match[2] ? { prNumber: match[2] } : {}
+    ...match?.[1] ? { prNumber: match[1] } : {}
   };
 }
-function checkVersionFilesMatch(files, version) {
+function detectConsistentVersion(files) {
   if (files.length === 0) {
-    return "no version files detected at HEAD \u2014 cannot verify version match";
+    return {
+      message: "no version files detected at HEAD \u2014 cannot verify version match"
+    };
   }
-  const mismatches = files.filter((f) => f.currentVersion !== version).map((f) => `${f.relativePath} reports ${f.currentVersion}, expected ${version}`);
+  const version = files[0].currentVersion;
+  const mismatches = files.filter((f) => f.currentVersion !== version).map(
+    (f) => `${f.relativePath} reports ${f.currentVersion}, expected ${version} from ${files[0].relativePath}`
+  );
   if (mismatches.length > 0) {
-    return `version mismatch in version file(s):
-    ${mismatches.join("\n    ")}`;
+    return {
+      message: `version mismatch in version file(s):
+    ${mismatches.join("\n    ")}`
+    };
   }
-  return null;
+  return version;
 }
 function checkDiffFiles(runner, cwd, versionFiles) {
   const result = run(runner, cwd, "git", [
@@ -21176,11 +21179,11 @@ async function checkPostMergeGuardrails(ctx) {
   if (branchAbort) {
     return { ok: false, guardrail: 2, message: branchAbort };
   }
-  const subjectResult = checkSubjectShape(runner, cwd);
+  const subjectResult = readHeadSubjectMetadata(runner, cwd);
   if (typeof subjectResult === "string") {
     return { ok: false, guardrail: 3, message: subjectResult };
   }
-  const { version, prNumber } = subjectResult;
+  const { prNumber } = subjectResult;
   let versionFiles;
   try {
     const cliOverrides = ctx.cliVersionFileOverrides ?? [];
@@ -21194,10 +21197,11 @@ async function checkPostMergeGuardrails(ctx) {
     const message = error instanceof Error ? error.message : String(error);
     return { ok: false, guardrail: 4, message };
   }
-  const versionAbort = checkVersionFilesMatch(versionFiles, version);
-  if (versionAbort) {
-    return { ok: false, guardrail: 4, message: versionAbort };
+  const versionResult = detectConsistentVersion(versionFiles);
+  if (typeof versionResult !== "string") {
+    return { ok: false, guardrail: 4, message: versionResult.message };
   }
+  const version = versionResult;
   const diffAbort = checkDiffFiles(runner, cwd, versionFiles);
   if (diffAbort) {
     return { ok: false, guardrail: 5, message: diffAbort };
@@ -21258,7 +21262,7 @@ async function executePostMergeActions(ctx, ready, logger = noopLogger) {
   };
   const tagResult = run(runner, cwd, "git", [
     "tag",
-    "-a",
+    "-s",
     tag,
     "-m",
     `Release ${ready.version}`
@@ -21886,7 +21890,7 @@ ${bold5("loaf release")}
       console.log(`    ${gray5("-")} Git tag skipped (--no-tag)`);
     } else {
       try {
-        execFileSync9("git", ["tag", "-a", tagName, "-m", `Release ${newVersion}`], {
+        execFileSync9("git", ["tag", "-s", tagName, "-m", `Release ${newVersion}`], {
           cwd,
           stdio: ["ignore", "pipe", "ignore"]
         });
@@ -22110,6 +22114,29 @@ function parseSpecFile(filePath, content) {
 // cli/lib/tasks/migrate.ts
 var yellow6 = (s) => `\x1B[33m${s}\x1B[0m`;
 var gray6 = (s) => `\x1B[90m${s}\x1B[0m`;
+var TASK_FRONTMATTER_KEYS = /* @__PURE__ */ new Set([
+  "id",
+  "title",
+  "spec",
+  "status",
+  "priority",
+  "created",
+  "updated",
+  "depends_on",
+  "files",
+  "verify",
+  "done",
+  "session",
+  "completed_at"
+]);
+var SPEC_FRONTMATTER_KEYS = /* @__PURE__ */ new Set([
+  "id",
+  "title",
+  "source",
+  "created",
+  "status",
+  "requirement"
+]);
 function collectFiles(dir, prefix) {
   if (!existsSync24(dir)) return [];
   try {
@@ -22247,6 +22274,15 @@ function specEntryToFrontmatter(id, entry) {
 function frontmatterEquals(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
+function mergeFrontmatterPreservingUnknown(existing, generated, knownKeys) {
+  const preserved = {};
+  for (const [key, value] of Object.entries(existing)) {
+    if (!knownKeys.has(key)) {
+      preserved[key] = value;
+    }
+  }
+  return { ...generated, ...preserved };
+}
 function resolveFilePath(agentsDir, subdir, relFile) {
   return join30(agentsDir, subdir, relFile);
 }
@@ -22260,7 +22296,11 @@ function syncFrontmatterFromIndex(agentsDir, index) {
     try {
       const raw = readFileSync22(filePath, "utf-8");
       const { data: existingFm, content: body } = (0, import_gray_matter6.default)(raw);
-      const newFm = taskEntryToFrontmatter(id, entry);
+      const newFm = mergeFrontmatterPreservingUnknown(
+        existingFm,
+        taskEntryToFrontmatter(id, entry),
+        TASK_FRONTMATTER_KEYS
+      );
       if (frontmatterEquals(existingFm, newFm)) continue;
       const updated = import_gray_matter6.default.stringify(body, newFm);
       writeFileSync17(filePath, updated, "utf-8");
@@ -22278,7 +22318,11 @@ function syncFrontmatterFromIndex(agentsDir, index) {
     try {
       const raw = readFileSync22(filePath, "utf-8");
       const { data: existingFm, content: body } = (0, import_gray_matter6.default)(raw);
-      const newFm = specEntryToFrontmatter(id, entry);
+      const newFm = mergeFrontmatterPreservingUnknown(
+        existingFm,
+        specEntryToFrontmatter(id, entry),
+        SPEC_FRONTMATTER_KEYS
+      );
       if (frontmatterEquals(existingFm, newFm)) continue;
       const updated = import_gray_matter6.default.stringify(body, newFm);
       writeFileSync17(filePath, updated, "utf-8");
@@ -22372,18 +22416,23 @@ import {
   existsSync as existsSync25,
   mkdirSync as mkdirSync19,
   openSync,
-  readFileSync as readFileSync23,
   renameSync as renameSync3,
-  statSync,
   unlinkSync as unlinkSync3,
   writeFileSync as writeFileSync18
 } from "fs";
-import { hostname } from "os";
 import { dirname as dirname9, join as join31 } from "path";
-var TASKS_JSON_LOCK_FILE = ".tasks-json.lock";
+
+// cli/lib/locks/file-lock.ts
+import { readFileSync as readFileSync23, statSync } from "fs";
+import { hostname } from "os";
 var LOCK_AGE_FALLBACK_THRESHOLD_MS = 5 * 1e3;
-var DEFAULT_MAX_RETRIES = 100;
-var DEFAULT_RETRY_DELAY_MS = 25;
+function createLockFileContent(timestamp = Date.now()) {
+  return {
+    pid: process.pid,
+    host: hostname(),
+    timestamp
+  };
+}
 function isProcessAlive(pid) {
   try {
     process.kill(pid, 0);
@@ -22424,6 +22473,24 @@ function isLockStale(lockPath) {
   }
   return !isProcessAlive(content.pid);
 }
+function formatLockDiagnostic(lockPath) {
+  try {
+    const content = readLockContent(lockPath);
+    const stats = statSync(lockPath);
+    const ageSeconds = Math.round((Date.now() - stats.mtimeMs) / 1e3);
+    const sameHost = !content?.host || content.host === hostname();
+    const alive = content?.pid && sameHost ? isProcessAlive(content.pid) : "unknown (foreign host)";
+    return `
+  Lock age: ${ageSeconds}s, PID: ${content?.pid ?? "unknown"}, host: ${content?.host ?? "unknown"}, process alive: ${alive}`;
+  } catch {
+    return "";
+  }
+}
+
+// cli/lib/tasks/lock.ts
+var TASKS_JSON_LOCK_FILE = ".tasks-json.lock";
+var DEFAULT_MAX_RETRIES = 100;
+var DEFAULT_RETRY_DELAY_MS = 25;
 function sleepMs(ms) {
   const sab = new Int32Array(new SharedArrayBuffer(4));
   Atomics.wait(sab, 0, 0, ms);
@@ -22438,12 +22505,7 @@ function acquireLockSync(lockPath, maxRetries, retryDelayMs) {
         }
       }
       const fd = openSync(lockPath, "wx");
-      const payload = {
-        pid: process.pid,
-        host: hostname(),
-        timestamp: Date.now()
-      };
-      writeFileSync18(fd, JSON.stringify(payload), "utf-8");
+      writeFileSync18(fd, JSON.stringify(createLockFileContent()), "utf-8");
       closeSync(fd);
       return;
     } catch (err) {
@@ -22462,19 +22524,9 @@ function acquireLockSync(lockPath, maxRetries, retryDelayMs) {
       throw err;
     }
   }
-  let diagnostic = "";
-  try {
-    const content = readLockContent(lockPath);
-    const stats = statSync(lockPath);
-    const ageSeconds = Math.round((Date.now() - stats.mtimeMs) / 1e3);
-    const sameHost = !content?.host || content.host === hostname();
-    const alive = content?.pid && sameHost ? isProcessAlive(content.pid) : "unknown (foreign host)";
-    diagnostic = `
-  Lock age: ${ageSeconds}s, PID: ${content?.pid ?? "unknown"}, host: ${content?.host ?? "unknown"}, process alive: ${alive}
+  const diagnostic = formatLockDiagnostic(lockPath) + `
   Remove manually if you're sure no other loaf process is active:
     rm "${lockPath}"`;
-  } catch {
-  }
   throw new Error(
     `Could not acquire TASKS.json lock after ${maxRetries} retries: ${lockPath}${diagnostic}`
   );
@@ -22736,7 +22788,21 @@ function countSpecs(index) {
 }
 function parseEntryIdNumber(id) {
   const match = id.match(/\d+$/);
-  return match ? parseInt(match[0], 10) : 0;
+  return match ? parseInt(match[0], 10) : null;
+}
+function parseTaskStatusFilter(status) {
+  if (status === void 0) return void 0;
+  if (TASK_STATUSES.includes(status)) return status;
+  throw new Error(`Invalid status "${status}". Must be one of: ${TASK_STATUSES.join(", ")}`);
+}
+function filterTaskIndexForList(index, options2) {
+  const tasks = {};
+  for (const [id, entry] of Object.entries(index.tasks)) {
+    if (options2.active && entry.status === "done") continue;
+    if (options2.status && entry.status !== options2.status) continue;
+    tasks[id] = entry;
+  }
+  return { ...index, tasks };
 }
 function rebuildTaskIndex(agentsDir) {
   const indexPath = join33(agentsDir, "TASKS.json");
@@ -22750,7 +22816,8 @@ function rebuildTaskIndex(agentsDir) {
     const mergedTasks = { ...scannedIndex.tasks };
     for (const [id, entry] of Object.entries(nowIndex.tasks)) {
       if (mergedTasks[id]) continue;
-      if (parseEntryIdNumber(id) >= scanStartNextId) {
+      const idNumber = parseEntryIdNumber(id);
+      if (idNumber !== null && idNumber >= scanStartNextId) {
         mergedTasks[id] = entry;
       }
     }
@@ -22764,7 +22831,7 @@ function rebuildTaskIndex(agentsDir) {
     let maxTaskNum = 0;
     for (const id of Object.keys(mergedTasks)) {
       const n = parseEntryIdNumber(id);
-      if (n > maxTaskNum) maxTaskNum = n;
+      if (n !== null && n > maxTaskNum) maxTaskNum = n;
     }
     const nextId = Math.max(
       scannedIndex.next_id,
@@ -22780,22 +22847,28 @@ function rebuildTaskIndex(agentsDir) {
 }
 function registerTaskCommand(program3) {
   const task = program3.command("task").description("Manage project tasks");
-  task.command("list").description("Show task board grouped by status").option("--json", "Output raw JSON").option("--active", "Hide completed tasks").action(async (options2) => {
+  task.command("list").description("Show task board grouped by status").option("--json", "Output raw JSON").option("--active", "Hide completed tasks").option("--status <status>", `Only show tasks with status: ${TASK_STATUSES.join(", ")}`).action(async (options2) => {
     const agentsDir = findAgentsDir();
     if (!agentsDir) {
       console.error(`  ${red4("error:")} Could not find .agents/ directory`);
       process.exit(1);
     }
+    let statusFilter;
+    try {
+      statusFilter = parseTaskStatusFilter(options2.status);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`  ${red4("error:")} ${message}`);
+      process.exit(1);
+    }
     const index = getOrBuildIndex(agentsDir);
+    const filteredIndex = filterTaskIndexForList(index, {
+      active: options2.active,
+      status: statusFilter
+    });
     if (options2.json) {
-      if (options2.active) {
-        const filtered = { ...index, tasks: {} };
-        for (const [id, entry] of Object.entries(index.tasks)) {
-          if (entry.status !== "done") {
-            filtered.tasks[id] = entry;
-          }
-        }
-        process.stdout.write(JSON.stringify(filtered, null, 2) + "\n");
+      if (options2.active || statusFilter) {
+        process.stdout.write(JSON.stringify(filteredIndex, null, 2) + "\n");
       } else {
         const indexPath = join33(agentsDir, "TASKS.json");
         if (existsSync27(indexPath)) {
@@ -22806,7 +22879,7 @@ function registerTaskCommand(program3) {
       }
       return;
     }
-    const taskEntries = Object.entries(index.tasks);
+    const taskEntries = Object.entries(filteredIndex.tasks);
     if (taskEntries.length === 0) {
       console.log(`
   ${gray7("No tasks found.")}
@@ -22818,7 +22891,7 @@ function registerTaskCommand(program3) {
 `);
     const grouped = groupTasksByStatus(taskEntries);
     const specIds = /* @__PURE__ */ new Set();
-    const displayStatuses = getDisplayStatuses(!!options2.active);
+    const displayStatuses = statusFilter ? [statusFilter] : getDisplayStatuses(!!options2.active);
     for (const status of displayStatuses) {
       const tasks = sortTasks(grouped[status]);
       const colorFn = STATUS_COLORS[status];
@@ -27761,10 +27834,8 @@ import {
   renameSync as renameSync8,
   unlinkSync as unlinkSync5,
   openSync as openSync2,
-  closeSync as closeSync2,
-  statSync as statSync4
+  closeSync as closeSync2
 } from "fs";
-import { hostname as hostname2 } from "os";
 import { join as join49, dirname as dirname18, basename as basename8 } from "path";
 
 // cli/lib/journal/extractor.ts
@@ -28443,47 +28514,6 @@ function consumeKnowledgeNudges(projectRoot, branch) {
   unlinkSync5(nudgeFile);
   return [...new Set(files)];
 }
-var LOCK_AGE_FALLBACK_THRESHOLD_MS2 = 5 * 1e3;
-function isProcessAlive2(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    const code = err?.code;
-    if (code === "ESRCH") return false;
-    return true;
-  }
-}
-function readLockContent2(lockPath) {
-  try {
-    const parsed = JSON.parse(readFileSync41(lockPath, "utf-8"));
-    if (typeof parsed?.pid !== "number") return null;
-    return {
-      pid: parsed.pid,
-      host: typeof parsed.host === "string" ? parsed.host : "",
-      timestamp: typeof parsed.timestamp === "number" ? parsed.timestamp : 0
-    };
-  } catch {
-    return null;
-  }
-}
-function isLockStale2(lockPath) {
-  let stats;
-  try {
-    stats = statSync4(lockPath);
-  } catch {
-    return true;
-  }
-  const content = readLockContent2(lockPath);
-  const age = Date.now() - stats.mtimeMs;
-  if (!content || !content.pid) {
-    return age > LOCK_AGE_FALLBACK_THRESHOLD_MS2;
-  }
-  if (content.host && content.host !== hostname2()) {
-    return age > LOCK_AGE_FALLBACK_THRESHOLD_MS2;
-  }
-  return !isProcessAlive2(content.pid);
-}
 function forceReleaseLock(lockPath) {
   try {
     unlinkSync5(lockPath);
@@ -28493,16 +28523,11 @@ function forceReleaseLock(lockPath) {
 async function acquireLock(lockPath, maxRetries = 50, retryDelay = 100) {
   for (let i = 0; i < maxRetries; i++) {
     try {
-      if (existsSync45(lockPath) && isLockStale2(lockPath)) {
+      if (existsSync45(lockPath) && isLockStale(lockPath)) {
         forceReleaseLock(lockPath);
       }
       const fd = openSync2(lockPath, "wx");
-      const lockContent = {
-        pid: process.pid,
-        host: hostname2(),
-        timestamp: Date.now()
-      };
-      writeFileSync28(fd, JSON.stringify(lockContent), "utf-8");
+      writeFileSync28(fd, JSON.stringify(createLockFileContent()), "utf-8");
       closeSync2(fd);
       return;
     } catch (err) {
@@ -28526,18 +28551,8 @@ async function acquireLock(lockPath, maxRetries = 50, retryDelay = 100) {
       throw err;
     }
   }
-  let diagnostic = "";
-  try {
-    const content = readLockContent2(lockPath);
-    const stats = statSync4(lockPath);
-    const ageSeconds = Math.round((Date.now() - stats.mtimeMs) / 1e3);
-    const sameHost = !content?.host || content.host === hostname2();
-    const alive = content?.pid && sameHost ? isProcessAlive2(content.pid) : "unknown (foreign host)";
-    diagnostic = `
-  Lock age: ${ageSeconds}s, PID: ${content?.pid ?? "unknown"}, host: ${content?.host ?? "unknown"}, process alive: ${alive}
+  const diagnostic = formatLockDiagnostic(lockPath) + `
   Remove manually: rm "${lockPath}"`;
-  } catch {
-  }
   throw new Error(
     `Could not acquire lock after ${maxRetries} retries: ${lockPath}${diagnostic}`
   );
@@ -30575,11 +30590,12 @@ import {
   cpSync as cpSync7,
   existsSync as existsSync47,
   mkdirSync as mkdirSync29,
+  lstatSync as lstatSync4,
   readFileSync as readFileSync43,
   readdirSync as readdirSync18,
   renameSync as renameSync10,
   rmSync as rmSync8,
-  statSync as statSync5,
+  statSync as statSync4,
   writeFileSync as writeFileSync30
 } from "fs";
 import { dirname as dirname19, join as join51, relative as relative9 } from "path";
@@ -30600,7 +30616,7 @@ function buildMainMissingMessage(mainPath, exists) {
 function probeMainWorktreeTarget(path) {
   if (!existsSync47(path)) return { exists: false, isDirectory: false };
   try {
-    return { exists: true, isDirectory: statSync5(path).isDirectory() };
+    return { exists: true, isDirectory: statSync4(path).isDirectory() };
   } catch {
     return { exists: true, isDirectory: false };
   }
@@ -30610,7 +30626,7 @@ function readGitdirPointerMainRoot(wtRoot) {
   if (!existsSync47(dotGit)) return null;
   let stat;
   try {
-    stat = statSync5(dotGit);
+    stat = statSync4(dotGit);
   } catch {
     return null;
   }
@@ -30652,6 +30668,12 @@ function readBackPointer(worktreeAgentsDir) {
 function worktreeAgentsHasContent(worktreeAgentsDir) {
   if (!existsSync47(worktreeAgentsDir)) return false;
   return enumerateFiles(worktreeAgentsDir).length > 0;
+}
+function debugResolve(message) {
+  if (isDebugResolveEnabled()) {
+    process.stderr.write(`${DEBUG_RESOLVE_ENV}: ${message}
+`);
+  }
 }
 function detectMainMissingForRefusal(startDir = process.cwd()) {
   const wtRoot = findWorktreeRootForDetection(startDir);
@@ -30700,7 +30722,9 @@ function enumerateFiles(dir) {
     let entries;
     try {
       entries = readdirSync18(current, { withFileTypes: true });
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      debugResolve(`failed to read ${current}: ${message}`);
       return;
     }
     for (const entry of entries) {
@@ -30717,11 +30741,53 @@ function enumerateFiles(dir) {
   walk(dir, "");
   return out;
 }
+function findSymlinkPaths(dir) {
+  if (!existsSync47(dir)) return [];
+  const out = [];
+  const walk = (current, rel) => {
+    let entries;
+    try {
+      entries = readdirSync18(current, { withFileTypes: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      debugResolve(`failed to read ${current}: ${message}`);
+      return;
+    }
+    for (const entry of entries) {
+      const absPath = join51(current, entry.name);
+      const relPath = rel ? join51(rel, entry.name) : entry.name;
+      if (rel === "" && entry.name === BACK_POINTER_FILE) continue;
+      if (entry.isSymbolicLink()) {
+        out.push(relPath);
+        continue;
+      }
+      if (entry.isDirectory()) {
+        try {
+          if (lstatSync4(absPath).isSymbolicLink()) {
+            out.push(relPath);
+            continue;
+          }
+        } catch {
+        }
+        walk(absPath, relPath);
+      }
+    }
+  };
+  walk(dir, "");
+  return out;
+}
 function mtime(path) {
   try {
-    return statSync5(path).mtimeMs;
+    return statSync4(path).mtimeMs;
   } catch {
     return 0;
+  }
+}
+function hasSameContent(a, b) {
+  try {
+    return readFileSync43(a).equals(readFileSync43(b));
+  } catch {
+    return false;
   }
 }
 function planMoves(worktreeAgents, mainAgents, policy) {
@@ -30734,26 +30800,31 @@ function planMoves(worktreeAgents, mainAgents, policy) {
     let resolution;
     let resolutionReason;
     if (conflict) {
-      switch (policy) {
-        case "worktree":
-          resolution = "keep-worktree";
-          resolutionReason = "forced by --force-from-worktree";
-          break;
-        case "main":
-          resolution = "keep-main";
-          resolutionReason = "forced by --force-from-main";
-          break;
-        case "newer": {
-          const fromMtime = mtime(from);
-          const toMtime = mtime(to);
-          if (fromMtime > toMtime) {
+      if (hasSameContent(from, to)) {
+        resolution = "keep-main";
+        resolutionReason = "identical content";
+      } else {
+        switch (policy) {
+          case "worktree":
             resolution = "keep-worktree";
-            resolutionReason = `worktree mtime ${new Date(fromMtime).toISOString()} > main mtime ${new Date(toMtime).toISOString()}`;
-          } else {
+            resolutionReason = "forced by --force-from-worktree";
+            break;
+          case "main":
             resolution = "keep-main";
-            resolutionReason = `main mtime ${new Date(toMtime).toISOString()} >= worktree mtime ${new Date(fromMtime).toISOString()}`;
+            resolutionReason = "forced by --force-from-main";
+            break;
+          case "newer": {
+            const fromMtime = mtime(from);
+            const toMtime = mtime(to);
+            if (fromMtime > toMtime) {
+              resolution = "keep-worktree";
+              resolutionReason = `worktree mtime ${new Date(fromMtime).toISOString()} > main mtime ${new Date(toMtime).toISOString()}`;
+            } else {
+              resolution = "keep-main";
+              resolutionReason = `main mtime ${new Date(toMtime).toISOString()} >= worktree mtime ${new Date(fromMtime).toISOString()}`;
+            }
+            break;
           }
-          break;
         }
       }
     }
@@ -30879,15 +30950,21 @@ function runMigration(options2) {
     };
   }
   if (!existsSync47(localAgents) || !worktreeAgentsHasContent(localAgents)) {
-    if (pointer && pointer === mainRoot) {
-      return {
-        status: "already-migrated",
-        message: "Nothing to do \u2014 already migrated."
-      };
-    }
     return {
       status: "no-local-agents",
       message: "Nothing to migrate \u2014 worktree has no local .agents/ content."
+    };
+  }
+  const symlinks = findSymlinkPaths(localAgents);
+  if (symlinks.length > 0) {
+    return {
+      status: "symlink-unsupported",
+      message: [
+        "Refusing to migrate: found symlinks under worktree-local .agents/.",
+        "Handle these paths manually, then re-run the migrate command:",
+        "",
+        ...symlinks.map((p) => `  ${p}`)
+      ].join("\n")
     };
   }
   const moves = planMoves(localAgents, mainAgents, conflictPolicy);
@@ -30936,13 +31013,20 @@ function findWorktreeRoot(startDir) {
     current = parent;
   }
 }
-var bold17 = (s) => `\x1B[1m${s}\x1B[0m`;
-var green16 = (s) => `\x1B[32m${s}\x1B[0m`;
-var yellow18 = (s) => `\x1B[33m${s}\x1B[0m`;
-var gray18 = (s) => `\x1B[90m${s}\x1B[0m`;
-var cyan13 = (s) => `\x1B[36m${s}\x1B[0m`;
+function shouldUseColor() {
+  return process.env.NO_COLOR === void 0 && process.stdout.isTTY === true;
+}
+function color(code, enabled) {
+  return enabled ? (s) => `\x1B[${code}m${s}\x1B[0m` : (s) => s;
+}
 function formatResult(result, opts) {
   const out = [];
+  const colorEnabled = opts.color ?? shouldUseColor();
+  const bold17 = color("1", colorEnabled);
+  const green16 = color("32", colorEnabled);
+  const yellow18 = color("33", colorEnabled);
+  const gray18 = color("90", colorEnabled);
+  const cyan13 = color("36", colorEnabled);
   if (result.plan) {
     const plan = result.plan;
     out.push(`${bold17("loaf migrate worktree-storage")} ${opts.apply ? cyan13("--apply") : gray18("(dry-run)")}
@@ -30978,7 +31062,10 @@ function formatResult(result, opts) {
 }
 
 // cli/commands/migrate.ts
-var red14 = (s) => `\x1B[31m${s}\x1B[0m`;
+function shouldUseErrorColor() {
+  return process.env.NO_COLOR === void 0 && process.stderr.isTTY === true;
+}
+var red14 = (s) => shouldUseErrorColor() ? `\x1B[31m${s}\x1B[0m` : s;
 function registerMigrateCommand(program3) {
   const migrate = program3.command("migrate").description("One-shot migrations for Loaf state and storage layout");
   migrate.command("worktree-storage").description(
@@ -31012,7 +31099,7 @@ function registerMigrateCommand(program3) {
         console.error(`${red14("error:")} ${result.message}`);
         process.exit(1);
       }
-      if (result.status === "partial-leftover") {
+      if (result.status === "partial-leftover" || result.status === "symlink-unsupported") {
         console.error(`${red14("error:")} ${result.message}`);
         process.exit(1);
       }
@@ -31054,6 +31141,12 @@ if (process.argv.length <= 2) {
   process.exit(0);
 }
 if (shouldRefuseCommand(process.argv)) {
+  const unknown = unknownTopLevelCommand(process.argv);
+  if (unknown) {
+    process.stderr.write(`error: unknown command '${unknown}'
+
+`);
+  }
   const mainMissing = detectMainMissingForRefusal(process.cwd());
   if (mainMissing) {
     process.stderr.write(`${mainMissing}
@@ -31077,6 +31170,16 @@ function shouldRefuseCommand(argv) {
   if (sub === "migrate") return false;
   if (sub === "help") return false;
   return detectPreA3State(process.cwd());
+}
+function unknownTopLevelCommand(argv) {
+  const sub = argv.slice(2)[0];
+  if (!sub || sub.startsWith("-")) return null;
+  if (sub === "help") return null;
+  const known = program2.commands.some((cmd) => {
+    if (cmd.name() === sub) return true;
+    return cmd.aliases().includes(sub);
+  });
+  return known ? null : sub;
 }
 /*! Bundled license information:
 

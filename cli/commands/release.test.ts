@@ -321,12 +321,11 @@ describe("--post-merge flag", () => {
     );
   });
 
-  it("aborts with guardrail failure on the loaf repo (no chore: release HEAD)", () => {
-    // Running on the loaf repo itself: HEAD is not a chore: release commit,
-    // so guardrail 3 (subject shape) should fail. The test asserts that the
-    // guardrail layer runs and surfaces a non-zero exit with a helpful
-    // message — the exact guardrail that trips depends on local git state
-    // (branch, worktree cleanliness), so we accept any guardrail failure.
+  it("aborts with guardrail failure on the loaf repo when not release-ready", () => {
+    // Running on the loaf repo itself should not finalize a release unless
+    // HEAD has the required version-file + changelog state. The exact
+    // guardrail that trips depends on local git state (branch, worktree
+    // cleanliness), so we accept any guardrail failure.
     const result = runRelease("--post-merge");
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toMatch(/guardrail \d+ failed/);

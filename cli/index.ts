@@ -72,6 +72,10 @@ if (process.argv.length <= 2) {
 // can't complete because its target is gone. Surface the actual problem
 // instead.
 if (shouldRefuseCommand(process.argv)) {
+  const unknown = unknownTopLevelCommand(process.argv);
+  if (unknown) {
+    process.stderr.write(`error: unknown command '${unknown}'\n\n`);
+  }
   const mainMissing = detectMainMissingForRefusal(process.cwd());
   if (mainMissing) {
     process.stderr.write(`${mainMissing}\n`);
@@ -107,4 +111,16 @@ function shouldRefuseCommand(argv: string[]): boolean {
   if (sub === "help") return false;
 
   return detectPreA3State(process.cwd());
+}
+
+function unknownTopLevelCommand(argv: string[]): string | null {
+  const sub = argv.slice(2)[0];
+  if (!sub || sub.startsWith("-")) return null;
+  if (sub === "help") return null;
+
+  const known = program.commands.some((cmd) => {
+    if (cmd.name() === sub) return true;
+    return cmd.aliases().includes(sub);
+  });
+  return known ? null : sub;
 }

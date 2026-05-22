@@ -1,10 +1,11 @@
 ---
 id: TASK-165
 title: loaf release --post-merge should use git tag -s (signed) explicitly
-status: todo
+status: done
 priority: P1
 created: '2026-05-16T18:24:55.387Z'
-updated: '2026-05-16T18:24:55.387Z'
+updated: '2026-05-19T17:57:58.720Z'
+completed_at: '2026-05-19T17:57:58.719Z'
 ---
 
 # TASK-165: loaf release --post-merge should use git tag -s (signed) explicitly

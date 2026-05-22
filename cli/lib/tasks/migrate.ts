@@ -16,6 +16,31 @@ import type { TaskIndex, TaskEntry, SpecEntry } from "./types.js";
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const gray = (s: string) => `\x1b[90m${s}\x1b[0m`;
 
+const TASK_FRONTMATTER_KEYS = new Set([
+  "id",
+  "title",
+  "spec",
+  "status",
+  "priority",
+  "created",
+  "updated",
+  "depends_on",
+  "files",
+  "verify",
+  "done",
+  "session",
+  "completed_at",
+]);
+
+const SPEC_FRONTMATTER_KEYS = new Set([
+  "id",
+  "title",
+  "source",
+  "created",
+  "status",
+  "requirement",
+]);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // File Discovery
 // ─────────────────────────────────────────────────────────────────────────────
@@ -270,6 +295,27 @@ function frontmatterEquals(
 }
 
 /**
+ * Preserve frontmatter fields Loaf does not index while replacing the known
+ * mirror fields from TASKS.json. Known fields are deleted first so optional
+ * indexed metadata can disappear cleanly when it becomes null/empty.
+ */
+function mergeFrontmatterPreservingUnknown(
+  existing: Record<string, unknown>,
+  generated: Record<string, unknown>,
+  knownKeys: Set<string>,
+): Record<string, unknown> {
+  const preserved: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(existing)) {
+    if (!knownKeys.has(key)) {
+      preserved[key] = value;
+    }
+  }
+
+  return { ...generated, ...preserved };
+}
+
+/**
  * Resolve a task/spec file path from its `file` field relative to the
  * appropriate base directory.
  */
@@ -306,7 +352,11 @@ export function syncFrontmatterFromIndex(
     try {
       const raw = readFileSync(filePath, "utf-8");
       const { data: existingFm, content: body } = matter(raw);
-      const newFm = taskEntryToFrontmatter(id, entry);
+      const newFm = mergeFrontmatterPreservingUnknown(
+        existingFm,
+        taskEntryToFrontmatter(id, entry),
+        TASK_FRONTMATTER_KEYS,
+      );
 
       if (frontmatterEquals(existingFm, newFm)) continue;
 
@@ -331,7 +381,11 @@ export function syncFrontmatterFromIndex(
     try {
       const raw = readFileSync(filePath, "utf-8");
       const { data: existingFm, content: body } = matter(raw);
-      const newFm = specEntryToFrontmatter(id, entry);
+      const newFm = mergeFrontmatterPreservingUnknown(
+        existingFm,
+        specEntryToFrontmatter(id, entry),
+        SPEC_FRONTMATTER_KEYS,
+      );
 
       if (frontmatterEquals(existingFm, newFm)) continue;
 

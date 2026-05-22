@@ -25,7 +25,7 @@ import {
   writeFileSync,
 } from "fs";
 import { execFileSync } from "child_process";
-import { join } from "path";
+import { dirname, join } from "path";
 import { tmpdir } from "os";
 
 import {
@@ -42,6 +42,13 @@ import type { TaskIndex } from "./types.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 let TEST_ROOT: string;
+let TEST_ENV_ROOT: string;
+let ORIGINAL_ENV: {
+  HOME?: string;
+  TMPDIR?: string;
+  TMP?: string;
+  TEMP?: string;
+};
 
 /** Per-command identity flags so tests never mutate any real `.git/config`. */
 const TEST_IDENTITY = [
@@ -102,12 +109,50 @@ function addWorktree(repoPath: string, branch: string): string {
 }
 
 beforeEach(() => {
-  TEST_ROOT = realpathSync(mkdtempSync(join(tmpdir(), "loaf-resolve-")));
+  ORIGINAL_ENV = {
+    HOME: process.env.HOME,
+    TMPDIR: process.env.TMPDIR,
+    TMP: process.env.TMP,
+    TEMP: process.env.TEMP,
+  };
+
+  TEST_ENV_ROOT = realpathSync(mkdtempSync(join(tmpdir(), "loaf-resolve-env-")));
+  process.env.HOME = TEST_ENV_ROOT;
+  process.env.TMPDIR = TEST_ENV_ROOT;
+  process.env.TMP = TEST_ENV_ROOT;
+  process.env.TEMP = TEST_ENV_ROOT;
+
+  TEST_ROOT = realpathSync(mkdtempSync(join(TEST_ENV_ROOT, "case-")));
+  assertNoAgentsAncestor(TEST_ROOT);
 });
 
 afterEach(() => {
-  rmSync(TEST_ROOT, { recursive: true, force: true });
+  restoreEnv();
+  rmSync(TEST_ENV_ROOT, { recursive: true, force: true });
 });
+
+function restoreEnv(): void {
+  for (const key of ["HOME", "TMPDIR", "TMP", "TEMP"] as const) {
+    const value = ORIGINAL_ENV[key];
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
+
+function assertNoAgentsAncestor(startDir: string): void {
+  let current = dirname(realpathSync(startDir));
+  while (true) {
+    if (existsSync(join(current, ".agents"))) {
+      throw new Error(`resolve.test isolation failed: ancestor has .agents/: ${current}`);
+    }
+    const parent = dirname(current);
+    if (parent === current) return;
+    current = parent;
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Core findAgentsDir behavior
@@ -134,13 +179,7 @@ describe("findAgentsDir — main checkout (verbatim parent-walk behavior)", () =
     // commonDir and falls through to parent-walk, which finds nothing under
     // the temp root.
     const result = findAgentsDir(repo);
-    // The parent-walk may climb above TEST_ROOT into ancestors that happen
-    // to contain `.agents/` on the developer's machine — assert only that
-    // it does NOT return a path inside the repo we just created. (The
-    // "verbatim parent-walk" contract is what we're locking in.)
-    if (result !== null) {
-      expect(result.startsWith(repo)).toBe(false);
-    }
+    expect(result).toBeNull();
   });
 });
 
@@ -158,12 +197,7 @@ describe("findAgentsDir — outside a git context (verbatim parent-walk behavior
   it("returns null when no .agents/ exists and no git context is available", () => {
     const nonGitDir = mkdtempSync(join(TEST_ROOT, "no-git-empty-"));
     const result = findAgentsDir(nonGitDir);
-    // Same caveat as the no-agents git case above: ancestors might have
-    // an `.agents/` on the dev machine — assert only that nothing inside
-    // our isolated temp tree is returned.
-    if (result !== null) {
-      expect(result.startsWith(nonGitDir)).toBe(false);
-    }
+    expect(result).toBeNull();
   });
 });
 

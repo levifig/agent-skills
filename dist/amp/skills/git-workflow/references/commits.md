@@ -200,6 +200,8 @@ Internal terms that have no meaning outside the team's working context:
 
 When `loaf release --pre-merge` auto-generates the `[Unreleased]` section from commit history, those entries inherit any internal terms present in the commit messages. Treat the generated output as a draft: rewrite it under the curated path before bumping. The release skill preserves curated content when it's already in `[Unreleased]` — curate first, bump second.
 
+Before approving a release bump, compare `[Unreleased]` against the actual squashed change set and remove scaffolding language introduced by specs, reviews, tasks, or session triage. If an entry only explains why the work was discovered or how the branch was organized, it does not belong in the changelog.
+
 ## Critical Rules
 
 ### Always

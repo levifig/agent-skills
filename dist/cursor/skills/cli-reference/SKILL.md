@@ -5,7 +5,7 @@ description: >-
   /implement, /implement, and all loaf subcommands. Use when you need to know
   which CLI command to invoke. Not for skill documentation (use the skill's own
   SKILL.md) or for understanding build internals.
-version: 2.0.0-dev.42
+version: 2.0.0-dev.43
 ---
 
 # Loaf CLI Reference
@@ -111,6 +111,7 @@ Manage project tasks
 - `loaf task list`:
   - `--json` — Output raw JSON
   - `--active` — Hide completed tasks
+  - `--status <status>` — Only show tasks with status: todo, in_progress, blocked, review, done
 
 - `loaf task show`:
   - `--json` — Output task entry as JSON

@@ -111,6 +111,7 @@ Manage project tasks
 - `loaf task list`:
   - `--json` — Output raw JSON
   - `--active` — Hide completed tasks
+  - `--status <status>` — Only show tasks with status: todo, in_progress, blocked, review, done
 
 - `loaf task show`:
   - `--json` — Output task entry as JSON

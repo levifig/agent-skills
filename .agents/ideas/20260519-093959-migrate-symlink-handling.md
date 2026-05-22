@@ -1,9 +1,10 @@
 ---
 title: "Pin symlink handling in loaf migrate worktree-storage"
 captured: 2026-05-19T09:39:59Z
-status: raw
+status: archived
 tags: [migrate, symlinks, worktree-storage, follow-up, spec-036]
 related: [SPEC-036, TASK-170]
+resolution: implemented in TASK-177
 ---
 
 # Pin symlink handling in `loaf migrate worktree-storage`

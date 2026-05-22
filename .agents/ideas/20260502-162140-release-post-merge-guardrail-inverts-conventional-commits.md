@@ -1,8 +1,9 @@
 ---
 title: "loaf release --post-merge guardrail 3 inverts conventional-commits semantics"
 captured: 2026-05-02T16:21:40Z
-status: raw
+status: archived
 tags: [release, cli, conventional-commits, post-merge, guardrails]
+resolution: implemented in TASK-178
 related:
   - feedback_squash_subject_reflects_work
 ---
