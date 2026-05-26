@@ -5,8 +5,8 @@ description: >-
   hide complexity behind narrow interfaces. Not for renames, extractions, or
   generic restructuring (use `/implement`). Use when looking for structural
   improvements, or when the user asks "is this module too shallow?" or "where
-  should we deepen this code?" Produces a PLAN file with candidates, dependency
-  categories, and proposed deepened modules.
+  should we deepen this code?" Produces either a read-only report or a PLAN file
+  with candidates, dependency categories, and proposed deepened modules.
 version: 2.0.0-dev.45
 ---
 
@@ -98,29 +98,74 @@ converge accidentally, the fallback is a 4th agent or a rerun with different
 seeds — *not* introducing priming. See
 [references/interface-design.md](references/interface-design.md).
 
-### Linear-Native Mode: Fail Fast on PLAN Writes
+### Report-Only Mode
 
-Before writing a PLAN file, check the project's Linear-native flag:
+Use report-only mode when the user asks for a broad scan, full report,
+repository-wide review, or anything intended to feed a later brief/task
+workflow rather than immediately persist a PLAN. Report-only mode is also the
+fallback when Linear-native mode blocks local PLAN/glossary writes.
+
+Report-only mode still performs the investigation: read context, survey
+candidates, check candidate names through `loaf kb glossary check`, classify
+dependencies, and present findings. It must not write `.agents/plans/*`, must
+not invoke `loaf kb glossary upsert`, and must not offer Codex review because
+there is no PLAN artifact to review.
+
+Report-only output should be structured so it can become a brief later:
+
+- Scope and evidence read
+- Candidate modules, ordered by expected leverage
+- For each candidate: current interface, hidden implementation complexity,
+  dependency category, locality problem, proposed deepened module, tests that
+  should survive, and rejected alternatives
+- Suggested follow-up: "Use this report to draft a brief, then decide whether
+  to break that brief down into tasks."
+
+### Whole-Repo Inventory
+
+For broad scans, inventory source and project-owned docs first. Exclude
+generated, vendored, cached, virtualenv, and build output trees unless the user
+explicitly asks to inspect them.
+
+Default excludes:
+
+- `node_modules/`, `.next/`, `.venv/`, `venv/`, `__pycache__/`
+- `dist/`, `dist-cli/`, `plugins/`, `build/`, `coverage/`, `.turbo/`
+- generated lock/vendor output and other tool caches
+
+Use `rg --files` with `-g` excludes or targeted `find` commands rather than a
+blind recursive listing. If an excluded tree appears relevant, name it as an
+assumption and ask before pulling it into context.
+
+### Linear-Native Mode: Disable Local Writes
+
+Before writing a PLAN file or mutating the glossary, check the project's
+Linear-native flag:
 
 ```bash
 node -e 'const c=JSON.parse(require("fs").readFileSync(".agents/loaf.json","utf-8"));process.exit(c.integrations?.linear?.enabled?1:0)' 2>/dev/null
 ```
 
-If exit code is `1` (Linear-native enabled), abort the skill with the exact
-message:
+If exit code is `1` (Linear-native enabled), continue in report-only mode and
+surface the exact storage constraint once:
 
-> Linear-native plan storage pending artifact-taxonomy spec — local mode only for now.
+> Linear-native plan storage pending artifact-taxonomy spec — continuing with a read-only report.
 
 Do **not** write the PLAN file, do **not** invoke `loaf kb glossary upsert`,
 and do **not** call Codex review. Partial state across local PLAN + remote
 glossary is the explicit failure mode SPEC-034 forbids (see line 81 No-Gos).
-The glossary `upsert` would also fail fast on its own; this rule prevents
-the skill from getting that far so no orphan PLAN file lands on disk.
+The report is allowed because it is read-only and can feed a later brief.
 
 ### Termination
 
-If Linear-native is **not** enabled, the skill terminates by writing a PLAN
-file using [templates/plan.md](templates/plan.md) at
+If report-only mode is active, terminate with the report in chat and this
+closing message:
+
+> Report complete. Use this report to draft a brief, then decide whether to
+> break that brief down into tasks.
+
+If report-only mode is **not** active and Linear-native is **not** enabled, the
+skill terminates by writing a PLAN file using [templates/plan.md](templates/plan.md) at
 `.agents/plans/<YYYYMMDD-HHMMSS>-<slug>.md`, with this exact closing message
 (substitute the actual filename you wrote):
 
@@ -161,17 +206,20 @@ detection, this rule can switch to it.
 
 - Session journal contains `skill(refactor-deepen):` entry as the first action
 - `docs/knowledge/glossary.md`, `docs/decisions/ADR-*.md`, and
-  `ARCHITECTURE.md` were read before the candidate list was presented
+  `docs/ARCHITECTURE.md` were read before the candidate list was presented
 - Every candidate module name was checked via `loaf kb glossary check` before
   being proposed
 - Output uses the eight source terms verbatim — zero occurrences of
   "boundary," "service," "component," or "layer" in their place
 - INTERFACE-DESIGN phase spawned exactly 3 sub-agents with identical briefs
+- Whole-repo scans excluded generated/vendor/cache/build trees unless the user
+  explicitly asked to inspect them
+- Report-only mode produced a complete read-only report and wrote nothing to
+  `.agents/plans/*`
 - A `.agents/plans/<YYYYMMDD-HHMMSS>-*.md` file was written with the minimal
-  shape filled out (skipped iff Linear-native mode aborted the skill before
-  this step)
-- If Linear-native mode is enabled, the skill exited fast with the
-  artifact-taxonomy error and wrote nothing to disk
+  shape filled out (skipped iff report-only mode was active)
+- If Linear-native mode is enabled, the skill continued in report-only mode and
+  wrote nothing to disk
 - Codex review offer fires only when the `codex` plugin is detected, is
   worded verbatim, and runs only on an affirmative reply — never by default
 - Closing message matches the termination template verbatim
@@ -224,7 +272,7 @@ speed but are unlikely at human pace.
 ## Process
 
 1. **Read context.** Open `docs/knowledge/glossary.md` (via `loaf kb glossary
-   list`), `docs/decisions/ADR-*.md`, and `ARCHITECTURE.md`. Read
+   list`), `docs/decisions/ADR-*.md`, and `docs/ARCHITECTURE.md`. Read
    [references/language.md](references/language.md) and
    [references/deepening.md](references/deepening.md).
 2. **Survey candidates.** Walk the target module/area. Produce a numbered list
@@ -238,8 +286,9 @@ speed but are unlikely at human pace.
 5. **Design the interface** by spawning 3 unprimed sub-agents per the rules in
    [references/interface-design.md](references/interface-design.md). Present
    all three designs to the user; do not pre-rank.
-6. **Check Linear-native mode** via the inline node-one-liner above. If
-   enabled, abort with the verbatim Linear-native error and skip steps 6–9.
+6. **Check report-only and Linear-native mode.** For broad reports, or when the
+   inline Linear-native check exits `1`, continue in report-only mode and skip
+   steps 7-9.
 7. **Write the PLAN** to `.agents/plans/<YYYYMMDD-HHMMSS>-<slug>.md` using
    [templates/plan.md](templates/plan.md). The filename timestamp must match
    the frontmatter `created` field. Required sections: candidate, dependency
