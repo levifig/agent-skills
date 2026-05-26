@@ -17550,10 +17550,10 @@ function mapSessionEvent(event) {
     SessionStart: "sessionStart",
     SessionEnd: "sessionEnd",
     PreCompact: "preCompact",
-    PostCompact: "postCompact",
+    UserPromptSubmit: "beforeSubmitPrompt",
     Stop: "stop"
   };
-  return mapping[event] || event.toLowerCase();
+  return mapping[event] || null;
 }
 function getCursorHookCommand(hook) {
   if (hook.instruction) {
@@ -17622,6 +17622,7 @@ function generateHooksJson(config, distDir) {
   }
   for (const hook of sessionHooks) {
     const eventName = mapSessionEvent(hook.event || "");
+    if (!eventName) continue;
     if (!hooks[eventName]) hooks[eventName] = [];
     const result = {
       [LOAF_HOOK_MARKER]: true,
@@ -18270,7 +18271,10 @@ function installCursor(distDir, configDir, upgrade = false) {
       const existingHooks = existing.hooks?.[hookType] || [];
       const loafHooksList = loafHooks.hooks?.[hookType] || [];
       const userHooks = existingHooks.filter((hook) => !isLoafHook(hook));
-      merged.hooks[hookType] = [...userHooks, ...loafHooksList];
+      const mergedHooks = [...userHooks, ...loafHooksList];
+      if (mergedHooks.length > 0) {
+        merged.hooks[hookType] = mergedHooks;
+      }
     }
     saveHooksJson(hooksPath, merged);
   }

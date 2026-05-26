@@ -109,14 +109,7 @@
         "command": "loaf session end --if-active"
       }
     ],
-    "taskcompleted": [
-      {
-        "loaf-managed": true,
-        "timeout": 30,
-        "command": "loaf session log --from-hook"
-      }
-    ],
-    "userpromptsubmit": [
+    "beforeSubmitPrompt": [
       {
         "loaf-managed": true,
         "timeout": 5,
@@ -128,13 +121,6 @@
         "loaf-managed": true,
         "timeout": 60,
         "command": "loaf session context for-compact"
-      }
-    ],
-    "postCompact": [
-      {
-        "loaf-managed": true,
-        "timeout": 60,
-        "command": "loaf session context for-resumption"
       }
     ]
   }

@@ -32,6 +32,7 @@ interface CursorHooksJson {
   hooks: {
     preToolUse?: CursorHook[];
     postToolUse?: CursorHook[];
+    beforeSubmitPrompt?: CursorHook[];
     sessionStart?: CursorHook[];
     sessionEnd?: CursorHook[];
     preCompact?: CursorHook[];
@@ -85,6 +86,42 @@ describe("cursor hooks.json", () => {
 
   it("has correct version", () => {
     expect(hooksJson.version).toBe(1);
+  });
+
+  it("uses only hook event names supported by Cursor", () => {
+    const supportedCursorEvents = new Set([
+      "beforeShellExecution",
+      "beforeMCPExecution",
+      "afterShellExecution",
+      "afterMCPExecution",
+      "beforeReadFile",
+      "afterFileEdit",
+      "beforeTabFileRead",
+      "afterTabFileEdit",
+      "stop",
+      "beforeSubmitPrompt",
+      "afterAgentResponse",
+      "afterAgentThought",
+      "sessionStart",
+      "sessionEnd",
+      "preCompact",
+      "subagentStart",
+      "subagentStop",
+      "preToolUse",
+      "postToolUse",
+      "postToolUseFailure",
+      "workspaceOpen",
+    ]);
+
+    expect(Object.keys(hooksJson.hooks).sort()).toEqual(
+      expect.arrayContaining(["beforeSubmitPrompt", "preCompact", "sessionStart", "sessionEnd"])
+    );
+    expect(Object.keys(hooksJson.hooks)).not.toEqual(
+      expect.arrayContaining(["postCompact", "taskcompleted", "userpromptsubmit"])
+    );
+    for (const eventName of Object.keys(hooksJson.hooks)) {
+      expect(supportedCursorEvents.has(eventName)).toBe(true);
+    }
   });
 
   it("preserves 'if' on pre-tool instruction hooks", () => {

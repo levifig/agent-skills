@@ -158,15 +158,15 @@ function copyHookFiles(srcDir: string, destDir: string): void {
   }
 }
 
-function mapSessionEvent(event: string): string {
+function mapSessionEvent(event: string): string | null {
   const mapping: Record<string, string> = {
     SessionStart: "sessionStart",
     SessionEnd: "sessionEnd",
     PreCompact: "preCompact",
-    PostCompact: "postCompact",
+    UserPromptSubmit: "beforeSubmitPrompt",
     Stop: "stop",
   };
-  return mapping[event] || event.toLowerCase();
+  return mapping[event] || null;
 }
 
 function getCursorHookCommand(hook: HookDefinition): string {
@@ -260,6 +260,7 @@ function generateHooksJson(config: HooksConfig, distDir: string): void {
 
   for (const hook of sessionHooks) {
     const eventName = mapSessionEvent(hook.event || "");
+    if (!eventName) continue;
     if (!hooks[eventName]) hooks[eventName] = [];
     
     const result: Record<string, unknown> = {

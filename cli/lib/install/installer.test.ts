@@ -182,6 +182,88 @@ describe("installCursor", () => {
     ]);
   });
 
+  it("removes hook types that only contained obsolete Loaf-managed hooks", () => {
+    const distDir = join(TEST_ROOT, "dist-obsolete-hook-types");
+    const configDir = join(TEST_ROOT, ".cursor-obsolete-hook-types");
+    const hooksPath = join(configDir, "hooks.json");
+
+    mkdirSync(distDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+
+    writeFileSync(
+      hooksPath,
+      JSON.stringify(
+        {
+          version: 1,
+          hooks: {
+            postCompact: [
+              {
+                "loaf-managed": true,
+                command: "loaf session context for-resumption",
+              },
+            ],
+            userpromptsubmit: [
+              {
+                "loaf-managed": true,
+                command: "loaf session context for-prompt",
+              },
+            ],
+            taskcompleted: [
+              {
+                "loaf-managed": true,
+                command: "loaf session log --from-hook",
+              },
+            ],
+            beforeSubmitPrompt: [
+              {
+                command: "custom prompt hook",
+              },
+            ],
+          },
+        },
+        null,
+        2
+      ),
+      "utf-8"
+    );
+
+    writeFileSync(
+      join(distDir, "hooks.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          hooks: {
+            beforeSubmitPrompt: [
+              {
+                "loaf-managed": true,
+                command: "loaf session context for-prompt",
+              },
+            ],
+          },
+        },
+        null,
+        2
+      ),
+      "utf-8"
+    );
+
+    installCursor(distDir, configDir);
+
+    const installed = JSON.parse(readFileSync(hooksPath, "utf-8"));
+    expect(installed.hooks.postCompact).toBeUndefined();
+    expect(installed.hooks.userpromptsubmit).toBeUndefined();
+    expect(installed.hooks.taskcompleted).toBeUndefined();
+    expect(installed.hooks.beforeSubmitPrompt).toEqual([
+      {
+        command: "custom prompt hook",
+      },
+      {
+        "loaf-managed": true,
+        command: "loaf session context for-prompt",
+      },
+    ]);
+  });
+
   it("removes obsolete Loaf hook scripts during cursor upgrades", () => {
     const distDir = join(TEST_ROOT, "dist-upgrade");
     const configDir = join(TEST_ROOT, ".cursor-upgrade");

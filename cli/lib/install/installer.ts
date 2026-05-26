@@ -250,7 +250,10 @@ export function installCursor(distDir: string, configDir: string, upgrade: boole
       // Filter out existing Loaf hooks
       const userHooks = existingHooks.filter((hook) => !isLoafHook(hook));
       
-      merged.hooks![hookType] = [...userHooks, ...loafHooksList];
+      const mergedHooks = [...userHooks, ...loafHooksList];
+      if (mergedHooks.length > 0) {
+        merged.hooks![hookType] = mergedHooks;
+      }
     }
 
     saveHooksJson(hooksPath, merged);
