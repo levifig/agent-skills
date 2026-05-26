@@ -5,6 +5,10 @@ source: direct -- conversation about NotebookLM research, SPEC-040 SQLite state,
 created: '2026-05-26T16:11:55Z'
 status: drafting
 branch: feat/sqlite-operational-state
+source_sessions:
+  - id: 019e424f-01bb-7962-b830-d5aac0245fb7
+    role: shaped
+    note: NotebookLM-informed brief/spec taxonomy shaping
 related_specs:
   - SPEC-034
   - SPEC-037

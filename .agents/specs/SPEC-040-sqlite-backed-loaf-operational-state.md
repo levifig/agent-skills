@@ -10,6 +10,10 @@ source: >
 created: '2026-05-23T01:10:29Z'
 status: drafting
 branch: feat/sqlite-operational-state
+source_sessions:
+  - id: 019e525b-f98e-73a1-a280-73cda4c7852a
+    role: shaped
+    note: SQLite operational state shaping
 related_specs:
   - SPEC-010
   - SPEC-023
