@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.45] - 2026-05-27
+
+### Fixed
+
+- `loaf release` refreshes uv-managed Python release artifacts with package-local `uv sync`, and refuses to commit unignored `.venv` files created during release artifact refresh.
+
 ## [2.0.0-dev.44] - 2026-05-22
 
 ### Added

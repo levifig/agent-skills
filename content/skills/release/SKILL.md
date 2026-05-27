@@ -104,7 +104,7 @@ Run these and **BLOCK on any failure** — do not offer to skip.
 
 Inspect the repo to determine available checks:
 - **Node** (`package.json`): look for `typecheck`, `test`, `build` scripts
-- **Python** (`pyproject.toml`): look for `pytest`, `mypy`, `ruff` in dev dependencies or tool config
+- **Python** (`pyproject.toml`): look for `pytest`, `mypy`, `ruff` in dev dependencies or tool config; if the project is uv-managed, expect release artifact refresh to run `uv sync`
 - **Rust** (`Cargo.toml`): `cargo check`, `cargo test`
 - **Go** (`go.mod`): `go vet`, `go test`
 
@@ -193,7 +193,7 @@ The pre-PR workflow requires writing CHANGELOG entries before creating a PR. The
    This will:
    1. Bump version in all detected files (package.json, pyproject.toml, etc.)
    2. Convert the `[Unreleased]` header to `## [X.Y.Z] - YYYY-MM-DD` (preserving the curated entries beneath it) and re-insert a fresh empty `## [Unreleased]` section above
-   3. Run `loaf build` to rebuild all targets with the new version
+   3. Run release artifact commands: `uv sync` for uv-managed Python packages, package-local `npm run build` for Node packages with a build script, or `loaf build` when no package-specific command is detected
    4. Commit: `chore: release vX.Y.Z`
 
 ### Generated path (when no entries exist)
@@ -226,7 +226,7 @@ When `[Unreleased]` is empty, use `loaf release` to auto-generate changelog entr
    This will:
    1. Bump version in all detected files (package.json, pyproject.toml, etc.)
    2. Generate and insert changelog section from branch commits (adding a fresh `[Unreleased]`)
-   3. Run `loaf build` to rebuild all targets with the new version
+   3. Run release artifact commands: `uv sync` for uv-managed Python packages, package-local `npm run build` for Node packages with a build script, or `loaf build` when no package-specific command is detected
    4. Commit: `chore: release vX.Y.Z`
 
 ### After either path

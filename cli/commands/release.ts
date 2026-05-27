@@ -15,7 +15,7 @@ import {
   mkdtempSync,
   unlinkSync,
 } from "fs";
-import { join } from "path";
+import { dirname, join, relative } from "path";
 import { tmpdir } from "os";
 import { createInterface } from "readline";
 
@@ -183,6 +183,157 @@ function getEditor(): string | null {
 /** Commander collector for repeatable string options. */
 function collect(value: string, previous: string[]): string[] {
   return previous.concat([value]);
+}
+
+interface ReleaseArtifactCommand {
+  executable: string;
+  args: string[];
+  cwd: string;
+  label: string;
+  successLabel: string;
+}
+
+function readPackageJson(path: string): { scripts?: Record<string, string> } | null {
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as {
+      scripts?: Record<string, string>;
+    };
+  } catch {
+    return null;
+  }
+}
+
+function hasBuildScript(packageJsonPath: string): boolean {
+  const pkg = readPackageJson(packageJsonPath);
+  return typeof pkg?.scripts?.build === "string";
+}
+
+function displayCwd(root: string, commandCwd: string): string {
+  const rel = relative(root, commandCwd).replace(/\\/g, "/");
+  return rel === "" ? "." : rel;
+}
+
+function displayCommand(command: ReleaseArtifactCommand, root: string): string {
+  const relCwd = displayCwd(root, command.cwd);
+  return relCwd === "." ? command.label : `${command.label} (${relCwd})`;
+}
+
+function releaseArtifactCommands(
+  cwd: string,
+  versionFiles: VersionFile[],
+): ReleaseArtifactCommand[] {
+  const commands: ReleaseArtifactCommand[] = [];
+  const seen = new Set<string>();
+
+  const addCommand = (
+    executable: string,
+    args: string[],
+    commandCwd: string,
+    label: string,
+    successLabel = `Ran ${label}`,
+  ): void => {
+    const key = `${commandCwd}\0${executable}\0${args.join("\0")}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    commands.push({
+      executable,
+      args,
+      cwd: commandCwd,
+      label,
+      successLabel,
+    });
+  };
+
+  for (const file of versionFiles) {
+    const manifestDir = dirname(file.path);
+    const filename = file.relativePath.replace(/\\/g, "/").split("/").pop();
+
+    if (filename === "pyproject.toml" && existsSync(join(manifestDir, "uv.lock"))) {
+      addCommand("uv", ["sync"], manifestDir, "uv sync");
+    }
+  }
+
+  for (const file of versionFiles) {
+    const manifestDir = dirname(file.path);
+    const filename = file.relativePath.replace(/\\/g, "/").split("/").pop();
+
+    if (filename === "package.json" && hasBuildScript(file.path)) {
+      addCommand("npm", ["run", "build"], manifestDir, "npm run build");
+    }
+  }
+
+  const rootPackageJson = join(cwd, "package.json");
+  if (hasBuildScript(rootPackageJson)) {
+    addCommand("npm", ["run", "build"], cwd, "npm run build");
+  }
+
+  if (commands.length === 0) {
+    addCommand(
+      process.execPath,
+      [process.argv[1], "build"],
+      cwd,
+      "loaf build",
+      "Built all targets",
+    );
+  }
+
+  return commands;
+}
+
+function statusPathFromPorcelainEntry(entry: string): string {
+  return /^[ MARCUD?!]{2} /.test(entry) ? entry.slice(3) : entry;
+}
+
+function isVirtualEnvPath(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/");
+  return /(^|\/)\.venv(\/|$)/.test(normalized);
+}
+
+function unignoredVirtualEnvStatusPaths(cwd: string): string[] {
+  let raw: string;
+  try {
+    raw = execFileSync(
+      "git",
+      ["status", "--porcelain", "--untracked-files=all", "-z"],
+      {
+        cwd,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+  } catch {
+    return [];
+  }
+
+  const paths = new Set<string>();
+  for (const entry of raw.split("\0")) {
+    if (!entry) continue;
+    const path = statusPathFromPorcelainEntry(entry);
+    if (isVirtualEnvPath(path)) {
+      paths.add(path);
+    }
+  }
+  return [...paths].sort();
+}
+
+function abortIfUnignoredVirtualEnv(cwd: string): void {
+  const paths = unignoredVirtualEnvStatusPaths(cwd);
+  if (paths.length === 0) return;
+
+  console.error(
+    `    ${red("\u2717")} Refusing to commit release artifacts: unignored virtual environment path detected`,
+  );
+  for (const path of paths.slice(0, 5)) {
+    console.error(`      ${path}`);
+  }
+  if (paths.length > 5) {
+    console.error(`      ...and ${paths.length - 5} more`);
+  }
+  console.error(
+    `      Add ${bold(".venv/")} to .gitignore or remove the virtual environment before rerunning.`,
+  );
+  process.exit(1);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -625,6 +776,8 @@ export function registerReleaseCommand(program: Command): void {
         console.log();
       }
 
+      const artifactCommands = releaseArtifactCommands(cwd, versionFiles);
+
       // Bump summary
       const bumpReasons: Record<string, string> = {
         major: "breaking changes detected",
@@ -643,25 +796,11 @@ export function registerReleaseCommand(program: Command): void {
       // Action list
       console.log(`  ${bold("Actions:")}`);
       let actionNum = 1;
-      // Detect build command for action-list display. Mirrors the Phase 4
-      // heuristic so the preview matches what executes.
-      const buildPkgPathPreview = join(cwd, "package.json");
-      let buildCommandLabel = "loaf build";
-      if (existsSync(buildPkgPathPreview)) {
-        try {
-          const pkg = JSON.parse(readFileSync(buildPkgPathPreview, "utf-8")) as {
-            scripts?: Record<string, string>;
-          };
-          if (pkg.scripts && typeof pkg.scripts.build === "string") {
-            buildCommandLabel = "npm run build";
-          }
-        } catch {
-          // Malformed package.json — keep default
-        }
-      }
       console.log(`    ${actionNum++}. Update version in ${versionFiles.length} file(s)`);
       console.log(`    ${actionNum++}. Update CHANGELOG.md`);
-      console.log(`    ${actionNum++}. Run ${buildCommandLabel}`);
+      for (const command of artifactCommands) {
+        console.log(`    ${actionNum++}. Run ${displayCommand(command, cwd)}`);
+      }
       console.log(`    ${actionNum++}. Commit release artifacts`);
       if (skipTag) {
         console.log(`    ${gray(`${actionNum++}. Create git tag ${tagName} (--no-tag — skipped)`)}`);
@@ -697,6 +836,7 @@ export function registerReleaseCommand(program: Command): void {
       // ── Phase 4: Execute ───────────────────────────────────────────────
 
       console.log(`  ${bold("Executing:")}`);
+      abortIfUnignoredVirtualEnv(cwd);
 
       // Step 1: Write version files
       try {
@@ -739,52 +879,32 @@ export function registerReleaseCommand(program: Command): void {
         process.exit(1);
       }
 
-      // Step 3: Run build
+      // Step 3: Run artifact commands
       //
-      // Heuristic: if the project has a `package.json` with a `build` script,
-      // invoke `npm run build`. This refreshes the full toolchain (e.g. the
-      // bundled CLI in `plugins/loaf/bin/loaf`), not just the content
-      // artifacts that `loaf build` produces. Without this, projects that
-      // bundle their own CLI (like loaf itself) would commit a stale bundle
-      // with the previous version baked in \u2014 the bug that motivated this
-      // path. See TASK-149.
+      // Derive commands from the version files being bumped. Node packages
+      // with a build script run `npm run build`. uv-managed Python packages
+      // run `uv sync` from the package directory so lockfiles refresh after
+      // the version bump. This keeps monorepos scoped to their declared
+      // release surface instead of assuming all commands live at repo root.
       //
-      // For non-Node projects, or Node projects without a `build` script,
-      // fall back to `loaf build` (content-only) \u2014 the prior behavior.
+      // If no package-specific command is discovered, fall back to `loaf build`
+      // (content-only) -- the prior behavior.
       try {
-        const buildPkgPath = join(cwd, "package.json");
-        let useNpmBuild = false;
-        if (existsSync(buildPkgPath)) {
-          try {
-            const pkg = JSON.parse(readFileSync(buildPkgPath, "utf-8")) as {
-              scripts?: Record<string, string>;
-            };
-            if (pkg.scripts && typeof pkg.scripts.build === "string") {
-              useNpmBuild = true;
-            }
-          } catch {
-            // Malformed package.json \u2014 fall back to loaf build
-          }
-        }
-
-        if (useNpmBuild) {
-          execFileSync("npm", ["run", "build"], {
-            cwd,
+        for (const command of artifactCommands) {
+          execFileSync(command.executable, command.args, {
+            cwd: command.cwd,
             stdio: "inherit",
           });
-          console.log(`    ${green("\u2713")} Ran npm run build`);
-        } else {
-          execFileSync(process.execPath, [process.argv[1], "build"], {
-            cwd,
-            stdio: "inherit",
-          });
-          console.log(`    ${green("\u2713")} Built all targets`);
+          const commandCwd = displayCwd(cwd, command.cwd);
+          const suffix = commandCwd === "." ? "" : ` in ${commandCwd}`;
+          console.log(`    ${green("\u2713")} ${command.successLabel}${suffix}`);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`    ${red("\u2717")} Build failed: ${message}`);
+        console.error(`    ${red("\u2717")} Release artifact command failed: ${message}`);
         process.exit(1);
       }
+      abortIfUnignoredVirtualEnv(cwd);
 
       // Step 4: Commit release artifacts
       try {

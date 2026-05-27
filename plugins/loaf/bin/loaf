@@ -18358,7 +18358,7 @@ import { join as join19, dirname as dirname5, resolve } from "path";
 import { readFileSync as readFileSync11 } from "fs";
 import { dirname as dirname4, join as join18 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
-var LOAF_VERSION = "2.0.0-dev.44" ? "2.0.0-dev.44" : readPackageVersion();
+var LOAF_VERSION = "2.0.0-dev.45" ? "2.0.0-dev.45" : readPackageVersion();
 
 // cli/lib/install/fenced-section.ts
 var FENCED_START = "<!-- loaf:managed:start";
@@ -20266,7 +20266,7 @@ import {
   mkdtempSync,
   unlinkSync as unlinkSync2
 } from "fs";
-import { join as join29 } from "path";
+import { dirname as dirname9, join as join29, relative as relative4 } from "path";
 import { tmpdir } from "os";
 import { createInterface as createInterface6 } from "readline";
 
@@ -21445,6 +21445,119 @@ function getEditor() {
 function collect(value, previous) {
   return previous.concat([value]);
 }
+function readPackageJson(path) {
+  if (!existsSync23(path)) return null;
+  try {
+    return JSON.parse(readFileSync21(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function hasBuildScript(packageJsonPath) {
+  const pkg = readPackageJson(packageJsonPath);
+  return typeof pkg?.scripts?.build === "string";
+}
+function displayCwd(root, commandCwd) {
+  const rel = relative4(root, commandCwd).replace(/\\/g, "/");
+  return rel === "" ? "." : rel;
+}
+function displayCommand(command, root) {
+  const relCwd = displayCwd(root, command.cwd);
+  return relCwd === "." ? command.label : `${command.label} (${relCwd})`;
+}
+function releaseArtifactCommands(cwd, versionFiles) {
+  const commands = [];
+  const seen = /* @__PURE__ */ new Set();
+  const addCommand = (executable, args, commandCwd, label, successLabel = `Ran ${label}`) => {
+    const key = `${commandCwd}\0${executable}\0${args.join("\0")}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    commands.push({
+      executable,
+      args,
+      cwd: commandCwd,
+      label,
+      successLabel
+    });
+  };
+  for (const file of versionFiles) {
+    const manifestDir = dirname9(file.path);
+    const filename = file.relativePath.replace(/\\/g, "/").split("/").pop();
+    if (filename === "pyproject.toml" && existsSync23(join29(manifestDir, "uv.lock"))) {
+      addCommand("uv", ["sync"], manifestDir, "uv sync");
+    }
+  }
+  for (const file of versionFiles) {
+    const manifestDir = dirname9(file.path);
+    const filename = file.relativePath.replace(/\\/g, "/").split("/").pop();
+    if (filename === "package.json" && hasBuildScript(file.path)) {
+      addCommand("npm", ["run", "build"], manifestDir, "npm run build");
+    }
+  }
+  const rootPackageJson = join29(cwd, "package.json");
+  if (hasBuildScript(rootPackageJson)) {
+    addCommand("npm", ["run", "build"], cwd, "npm run build");
+  }
+  if (commands.length === 0) {
+    addCommand(
+      process.execPath,
+      [process.argv[1], "build"],
+      cwd,
+      "loaf build",
+      "Built all targets"
+    );
+  }
+  return commands;
+}
+function statusPathFromPorcelainEntry(entry) {
+  return /^[ MARCUD?!]{2} /.test(entry) ? entry.slice(3) : entry;
+}
+function isVirtualEnvPath(path) {
+  const normalized = path.replace(/\\/g, "/");
+  return /(^|\/)\.venv(\/|$)/.test(normalized);
+}
+function unignoredVirtualEnvStatusPaths(cwd) {
+  let raw;
+  try {
+    raw = execFileSync9(
+      "git",
+      ["status", "--porcelain", "--untracked-files=all", "-z"],
+      {
+        cwd,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"]
+      }
+    );
+  } catch {
+    return [];
+  }
+  const paths = /* @__PURE__ */ new Set();
+  for (const entry of raw.split("\0")) {
+    if (!entry) continue;
+    const path = statusPathFromPorcelainEntry(entry);
+    if (isVirtualEnvPath(path)) {
+      paths.add(path);
+    }
+  }
+  return [...paths].sort();
+}
+function abortIfUnignoredVirtualEnv(cwd) {
+  const paths = unignoredVirtualEnvStatusPaths(cwd);
+  if (paths.length === 0) return;
+  console.error(
+    `    ${red3("\u2717")} Refusing to commit release artifacts: unignored virtual environment path detected`
+  );
+  for (const path of paths.slice(0, 5)) {
+    console.error(`      ${path}`);
+  }
+  if (paths.length > 5) {
+    console.error(`      ...and ${paths.length - 5} more`);
+  }
+  console.error(
+    `      Add ${bold5(".venv/")} to .gitignore or remove the virtual environment before rerunning.`
+  );
+  process.exit(1);
+}
 function registerReleaseCommand(program3) {
   const releaseCmd = program3.command("release").description("Create a new release with changelog, version bump, and tag").option("--dry-run", "Preview release without making changes").option("--bump <type>", "Skip interactive bump choice (prerelease, release, major, minor, patch)").option("--base <ref>", "Use commits since <ref> instead of last tag (e.g. main)").option("--no-tag", "Skip git tag creation").option("--tag", "Force git tag creation (overrides --pre-merge default)").option("--no-gh", "Skip GitHub release draft").option("--gh", "Force GitHub release draft (overrides --pre-merge default)").option(
     "--version-file <path>",
@@ -21750,6 +21863,7 @@ ${bold5("loaf release")}
       }
       console.log();
     }
+    const artifactCommands = releaseArtifactCommands(cwd, versionFiles);
     const bumpReasons = {
       major: "breaking changes detected",
       minor: "new features detected",
@@ -21763,20 +21877,11 @@ ${bold5("loaf release")}
     const { skipTag, skipGh } = normalizeSkipFlags(options2);
     console.log(`  ${bold5("Actions:")}`);
     let actionNum = 1;
-    const buildPkgPathPreview = join29(cwd, "package.json");
-    let buildCommandLabel = "loaf build";
-    if (existsSync23(buildPkgPathPreview)) {
-      try {
-        const pkg = JSON.parse(readFileSync21(buildPkgPathPreview, "utf-8"));
-        if (pkg.scripts && typeof pkg.scripts.build === "string") {
-          buildCommandLabel = "npm run build";
-        }
-      } catch {
-      }
-    }
     console.log(`    ${actionNum++}. Update version in ${versionFiles.length} file(s)`);
     console.log(`    ${actionNum++}. Update CHANGELOG.md`);
-    console.log(`    ${actionNum++}. Run ${buildCommandLabel}`);
+    for (const command of artifactCommands) {
+      console.log(`    ${actionNum++}. Run ${displayCommand(command, cwd)}`);
+    }
     console.log(`    ${actionNum++}. Commit release artifacts`);
     if (skipTag) {
       console.log(`    ${gray5(`${actionNum++}. Create git tag ${tagName} (--no-tag \u2014 skipped)`)}`);
@@ -21807,6 +21912,7 @@ ${bold5("loaf release")}
     }
     console.log();
     console.log(`  ${bold5("Executing:")}`);
+    abortIfUnignoredVirtualEnv(cwd);
     try {
       const updates = prepareVersionUpdates(versionFiles, newVersion);
       for (const [filePath, content] of updates) {
@@ -21842,35 +21948,21 @@ ${bold5("loaf release")}
       process.exit(1);
     }
     try {
-      const buildPkgPath = join29(cwd, "package.json");
-      let useNpmBuild = false;
-      if (existsSync23(buildPkgPath)) {
-        try {
-          const pkg = JSON.parse(readFileSync21(buildPkgPath, "utf-8"));
-          if (pkg.scripts && typeof pkg.scripts.build === "string") {
-            useNpmBuild = true;
-          }
-        } catch {
-        }
-      }
-      if (useNpmBuild) {
-        execFileSync9("npm", ["run", "build"], {
-          cwd,
+      for (const command of artifactCommands) {
+        execFileSync9(command.executable, command.args, {
+          cwd: command.cwd,
           stdio: "inherit"
         });
-        console.log(`    ${green5("\u2713")} Ran npm run build`);
-      } else {
-        execFileSync9(process.execPath, [process.argv[1], "build"], {
-          cwd,
-          stdio: "inherit"
-        });
-        console.log(`    ${green5("\u2713")} Built all targets`);
+        const commandCwd = displayCwd(cwd, command.cwd);
+        const suffix = commandCwd === "." ? "" : ` in ${commandCwd}`;
+        console.log(`    ${green5("\u2713")} ${command.successLabel}${suffix}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`    ${red3("\u2717")} Build failed: ${message}`);
+      console.error(`    ${red3("\u2717")} Release artifact command failed: ${message}`);
       process.exit(1);
     }
+    abortIfUnignoredVirtualEnv(cwd);
     try {
       execFileSync9("git", ["add", "-A"], {
         cwd,
@@ -21943,12 +22035,12 @@ import { join as join33 } from "path";
 // cli/lib/tasks/resolve.ts
 import { execFileSync as execFileSync10 } from "child_process";
 import { existsSync as existsSync26, realpathSync as realpathSync3 } from "fs";
-import { join as join32, dirname as dirname10, resolve as resolve3 } from "path";
+import { join as join32, dirname as dirname11, resolve as resolve3 } from "path";
 
 // cli/lib/tasks/migrate.ts
 var import_gray_matter6 = __toESM(require_gray_matter(), 1);
 import { existsSync as existsSync24, mkdirSync as mkdirSync18, readFileSync as readFileSync22, renameSync as renameSync2, writeFileSync as writeFileSync17, readdirSync as readdirSync9 } from "fs";
-import { join as join30, basename as basename3, relative as relative4 } from "path";
+import { join as join30, basename as basename3, relative as relative5 } from "path";
 
 // cli/lib/tasks/parser.ts
 var import_gray_matter5 = __toESM(require_gray_matter(), 1);
@@ -22197,7 +22289,7 @@ function buildIndexFromFiles(agentsDir) {
     const content = readFileSync22(filePath, "utf-8");
     const result = parseTaskFile(filePath, content);
     if (result) {
-      result.entry.file = relative4(tasksDir, filePath);
+      result.entry.file = relative5(tasksDir, filePath);
       tasks[result.id] = result.entry;
       maxTaskNum = Math.max(maxTaskNum, extractNumber(result.id));
     }
@@ -22216,7 +22308,7 @@ function buildIndexFromFiles(agentsDir) {
     const content = readFileSync22(filePath, "utf-8");
     const result = parseSpecFile(filePath, content);
     if (result) {
-      result.entry.file = relative4(specsDir, filePath);
+      result.entry.file = relative5(specsDir, filePath);
       specs[result.id] = result.entry;
     }
   }
@@ -22348,7 +22440,7 @@ function findOrphans(agentsDir, index) {
       const content = readFileSync22(filePath, "utf-8");
       const result = parseTaskFile(filePath, content);
       if (result && !knownTaskIds.has(result.id)) {
-        result.entry.file = relative4(baseDir, filePath);
+        result.entry.file = relative5(baseDir, filePath);
         orphanTasks.push(result);
       }
     }
@@ -22361,7 +22453,7 @@ function findOrphans(agentsDir, index) {
       const content = readFileSync22(filePath, "utf-8");
       const result = parseSpecFile(filePath, content);
       if (result && !knownSpecIds.has(result.id)) {
-        result.entry.file = relative4(baseDir, filePath);
+        result.entry.file = relative5(baseDir, filePath);
         orphanSpecs.push(result);
       }
     }
@@ -22421,7 +22513,7 @@ import {
   unlinkSync as unlinkSync3,
   writeFileSync as writeFileSync18
 } from "fs";
-import { dirname as dirname9, join as join31 } from "path";
+import { dirname as dirname10, join as join31 } from "path";
 
 // cli/lib/locks/file-lock.ts
 import { readFileSync as readFileSync23, statSync } from "fs";
@@ -22517,7 +22609,7 @@ function acquireLockSync(lockPath, maxRetries, retryDelayMs) {
       }
       if (code === "ENOENT") {
         try {
-          mkdirSync19(dirname9(lockPath), { recursive: true });
+          mkdirSync19(dirname10(lockPath), { recursive: true });
         } catch {
         }
         continue;
@@ -22642,7 +22734,7 @@ function findMainWorktreeRoot(startDir) {
     if (gitDir === commonDir) return null;
     const commonCanonical = realpathOrSelf(rawCommonAbs);
     if (commonCanonical.endsWith("/.git") || commonCanonical.endsWith("\\.git")) {
-      return dirname10(commonCanonical);
+      return dirname11(commonCanonical);
     }
     return null;
   } catch (err) {
@@ -22668,7 +22760,7 @@ function findAgentsDir(startDir = process.cwd()) {
     if (existsSync26(candidate)) {
       return candidate;
     }
-    const parent = dirname10(current);
+    const parent = dirname11(current);
     if (parent === current) {
       return null;
     }
@@ -23605,7 +23697,7 @@ ${bold7("  loaf spec archive")}
 // cli/commands/kb.ts
 var import_gray_matter11 = __toESM(require_gray_matter(), 1);
 import { existsSync as existsSync34, mkdirSync as mkdirSync22, readFileSync as readFileSync29, writeFileSync as writeFileSync21 } from "fs";
-import { join as join39, basename as basename4, relative as relative7, isAbsolute as isAbsolute2 } from "path";
+import { join as join39, basename as basename4, relative as relative8, isAbsolute as isAbsolute2 } from "path";
 
 // cli/lib/kb/resolve.ts
 import { execFileSync as execFileSync11 } from "child_process";
@@ -23652,7 +23744,7 @@ function loadKbConfig(gitRoot) {
 // cli/lib/kb/loader.ts
 var import_gray_matter8 = __toESM(require_gray_matter(), 1);
 import { existsSync as existsSync30, readdirSync as readdirSync10, readFileSync as readFileSync26 } from "fs";
-import { join as join36, relative as relative5 } from "path";
+import { join as join36, relative as relative6 } from "path";
 var yellow9 = (s) => `\x1B[33m${s}\x1B[0m`;
 function loadKnowledgeFiles(gitRoot, config) {
   const files = [];
@@ -23673,7 +23765,7 @@ function loadKnowledgeFiles(gitRoot, config) {
     for (const entry of entries) {
       if (!entry.endsWith(".md")) continue;
       const absPath = join36(absDir, entry);
-      const relPath = relative5(gitRoot, absPath);
+      const relPath = relative6(gitRoot, absPath);
       try {
         const raw = readFileSync26(absPath, "utf-8");
         const { data, content } = (0, import_gray_matter8.default)(raw);
@@ -23730,7 +23822,7 @@ function normalizeImplementationStatus(value) {
 var import_gray_matter9 = __toESM(require_gray_matter(), 1);
 import { execFileSync as execFileSync12 } from "child_process";
 import { existsSync as existsSync31, readdirSync as readdirSync11, readFileSync as readFileSync27 } from "fs";
-import { dirname as dirname11, join as join37, relative as relative6 } from "path";
+import { dirname as dirname12, join as join37, relative as relative7 } from "path";
 
 // cli/lib/kb/types.ts
 var IMPLEMENTATION_STATUSES = [
@@ -23757,7 +23849,7 @@ function findSkippedFiles(gitRoot, config) {
     for (const entry of entries) {
       if (!entry.endsWith(".md")) continue;
       const absPath = join37(absDir, entry);
-      const relPath = relative6(gitRoot, absPath);
+      const relPath = relative7(gitRoot, absPath);
       try {
         const raw = readFileSync27(absPath, "utf-8");
         const { data, content } = (0, import_gray_matter9.default)(raw);
@@ -23841,7 +23933,7 @@ function validateLoadedFile(gitRoot, file) {
   if (fm.depends_on) {
     for (const dep of fm.depends_on) {
       const fromRoot = join37(gitRoot, dep);
-      const fromFileDir = join37(dirname11(file.path), dep);
+      const fromFileDir = join37(dirname12(file.path), dep);
       if (!existsSync31(fromRoot) && !existsSync31(fromFileDir)) {
         warnings.push({
           field: "depends_on",
@@ -24014,7 +24106,7 @@ import { existsSync as existsSync33 } from "fs";
 // cli/lib/kb/glossary.ts
 var import_gray_matter10 = __toESM(require_gray_matter(), 1);
 import { existsSync as existsSync32, mkdirSync as mkdirSync21, readFileSync as readFileSync28, writeFileSync as writeFileSync20 } from "fs";
-import { dirname as dirname12, join as join38 } from "path";
+import { dirname as dirname13, join as join38 } from "path";
 var GLOSSARY_RELATIVE_PATH = join38("docs", "knowledge", "glossary.md");
 function glossaryPath(projectRoot) {
   return join38(projectRoot, GLOSSARY_RELATIVE_PATH);
@@ -24184,7 +24276,7 @@ function renderFreeForm(body) {
 function ensureGlossaryExists(projectRoot) {
   const path = glossaryPath(projectRoot);
   if (existsSync32(path)) return false;
-  const dir = dirname12(path);
+  const dir = dirname13(path);
   if (!existsSync32(dir)) mkdirSync21(dir, { recursive: true });
   const empty = {
     frontmatter: {
@@ -24212,7 +24304,7 @@ function readGlossary(projectRoot) {
 }
 function writeGlossary(projectRoot, data) {
   const path = glossaryPath(projectRoot);
-  const dir = dirname12(path);
+  const dir = dirname13(path);
   if (!existsSync32(dir)) mkdirSync21(dir, { recursive: true });
   writeFileSync20(path, serializeGlossary(data), "utf-8");
 }
@@ -24633,7 +24725,7 @@ function registerKbCommand(program3) {
     const config = loadKbConfig(gitRoot);
     const files = loadKnowledgeFiles(gitRoot, config);
     if (options2.file) {
-      const filePath = isAbsolute2(options2.file) ? relative7(gitRoot, options2.file) : options2.file;
+      const filePath = isAbsolute2(options2.file) ? relative8(gitRoot, options2.file) : options2.file;
       const coveringFiles = findCoveringFiles(files, filePath);
       const results2 = coveringFiles.map(
         (f) => checkStaleness(gitRoot, f, config)
@@ -24731,7 +24823,7 @@ function registerKbCommand(program3) {
       process.exit(1);
     }
     const absPath = isAbsolute2(filePath) ? filePath : join39(gitRoot, filePath);
-    const relPath = relative7(gitRoot, absPath);
+    const relPath = relative8(gitRoot, absPath);
     let raw;
     try {
       raw = readFileSync29(absPath, "utf-8");
@@ -24997,9 +25089,9 @@ import {
   statSync as statSync2,
   writeFileSync as writeFileSync22
 } from "fs";
-import { join as join40, dirname as dirname13, resolve as resolve4 } from "path";
+import { join as join40, dirname as dirname14, resolve as resolve4 } from "path";
 import { fileURLToPath as fileURLToPath5 } from "url";
-var __dirname3 = dirname13(fileURLToPath5(import.meta.url));
+var __dirname3 = dirname14(fileURLToPath5(import.meta.url));
 var bold10 = (s) => `\x1B[1m${s}\x1B[0m`;
 var green10 = (s) => `\x1B[32m${s}\x1B[0m`;
 var red8 = (s) => `\x1B[31m${s}\x1B[0m`;
@@ -25016,7 +25108,7 @@ function findRootDir3() {
       if (pkg.name === "loaf") return dir;
     } catch {
     }
-    const parent = dirname13(dir);
+    const parent = dirname14(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -25027,7 +25119,7 @@ function findRootDir3() {
 function withinProject2(cwd, fullPath) {
   let check = fullPath;
   while (!existsSync35(check) && check !== cwd) {
-    const parent = dirname13(check);
+    const parent = dirname14(check);
     if (parent === check) break;
     check = parent;
   }
@@ -25177,7 +25269,7 @@ function scaffoldFiles2(cwd) {
         skipped.push(relPath);
         continue;
       }
-      const parentDir = dirname13(fullPath);
+      const parentDir = dirname14(fullPath);
       if (!existsSync35(parentDir)) {
         mkdirSync23(parentDir, { recursive: true });
       }
@@ -25394,9 +25486,9 @@ ${bold10("loaf setup")}
 // cli/commands/version.ts
 var import_yaml5 = __toESM(require_dist(), 1);
 import { existsSync as existsSync36, readFileSync as readFileSync31, readdirSync as readdirSync12 } from "fs";
-import { join as join41, dirname as dirname14 } from "path";
+import { join as join41, dirname as dirname15 } from "path";
 import { fileURLToPath as fileURLToPath6 } from "url";
-var __dirname4 = dirname14(fileURLToPath6(import.meta.url));
+var __dirname4 = dirname15(fileURLToPath6(import.meta.url));
 var bold11 = (s) => `\x1B[1m${s}\x1B[0m`;
 var gray12 = (s) => `\x1B[90m${s}\x1B[0m`;
 var TARGET_OUTPUTS = {
@@ -25415,7 +25507,7 @@ function findRootDir4() {
       if (pkg.name === "loaf") return dir;
     } catch {
     }
-    const parent = dirname14(dir);
+    const parent = dirname15(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -25491,7 +25583,7 @@ ${bold11("Content:")}`);
 // cli/commands/housekeeping.ts
 var import_gray_matter13 = __toESM(require_gray_matter(), 1);
 import { existsSync as existsSync38, mkdirSync as mkdirSync24, readFileSync as readFileSync33, renameSync as renameSync4, rmSync as rmSync6, writeFileSync as writeFileSync23 } from "fs";
-import { join as join43, dirname as dirname15 } from "path";
+import { join as join43, dirname as dirname16 } from "path";
 
 // cli/lib/housekeeping/scanner.ts
 var import_gray_matter12 = __toESM(require_gray_matter(), 1);
@@ -26233,7 +26325,7 @@ function formatPreview(fm) {
 }
 var NESTED_ARCHIVE_TYPES = /* @__PURE__ */ new Set(["session", "council", "report"]);
 function archiveGenericArtifact(filePath, artifactType) {
-  const dir = dirname15(filePath);
+  const dir = dirname16(filePath);
   const archiveDir = join43(dir, "archive");
   const filename = filePath.split("/").pop();
   const destPath = join43(archiveDir, filename);
@@ -26395,7 +26487,7 @@ ${bold12("loaf housekeeping")}
 
 // cli/commands/check.ts
 import { readFileSync as readFileSync35, existsSync as existsSync40 } from "fs";
-import { dirname as dirname16 } from "path";
+import { dirname as dirname17 } from "path";
 import { fileURLToPath as fileURLToPath7 } from "url";
 import { execSync as execSync2 } from "child_process";
 
@@ -26477,7 +26569,7 @@ async function isReleaseOnlyPR(input) {
 }
 
 // cli/commands/check.ts
-var __dirname5 = dirname16(fileURLToPath7(import.meta.url));
+var __dirname5 = dirname17(fileURLToPath7(import.meta.url));
 var bold13 = (s) => `\x1B[1m${s}\x1B[0m`;
 var green12 = (s) => `\x1B[32m${s}\x1B[0m`;
 var red10 = (s) => `\x1B[31m${s}\x1B[0m`;
@@ -26734,13 +26826,13 @@ async function validatePush(context) {
   } catch {
   }
   let hasPackageJson = false;
-  let hasBuildScript = false;
+  let hasBuildScript2 = false;
   try {
     execSync2("git show HEAD:package.json 2>/dev/null", { stdio: "pipe" });
     hasPackageJson = true;
     const pkgContent = execSync2("git show HEAD:package.json 2>/dev/null", { encoding: "utf-8" });
     const pkg = JSON.parse(pkgContent);
-    hasBuildScript = !!pkg.scripts?.build;
+    hasBuildScript2 = !!pkg.scripts?.build;
   } catch {
   }
   let lastTag = "";
@@ -26808,7 +26900,7 @@ async function validatePush(context) {
       }
     }
   }
-  if (hasBuildScript) {
+  if (hasBuildScript2) {
     try {
       execSync2("npm run build", {
         cwd: process.cwd(),
@@ -27277,7 +27369,7 @@ import {
   symlinkSync as symlinkSync3,
   writeFileSync as writeFileSync24
 } from "fs";
-import { dirname as dirname17, join as join46, relative as relative8 } from "path";
+import { dirname as dirname18, join as join46, relative as relative9 } from "path";
 var bold14 = (s) => `\x1B[1m${s}\x1B[0m`;
 var green13 = (s) => `\x1B[32m${s}\x1B[0m`;
 var red11 = (s) => `\x1B[31m${s}\x1B[0m`;
@@ -27303,7 +27395,7 @@ function resolveSymlink(linkPath) {
   try {
     const target = readlinkSync2(linkPath);
     if (target.startsWith("/")) return target;
-    return join46(dirname17(linkPath), target);
+    return join46(dirname18(linkPath), target);
   } catch {
     return null;
   }
@@ -27327,7 +27419,7 @@ function hasFencedSection(path) {
 }
 function ensureParentDir(filePath) {
   try {
-    mkdirSync25(dirname17(filePath), { recursive: true });
+    mkdirSync25(dirname18(filePath), { recursive: true });
     return true;
   } catch {
     return false;
@@ -27338,7 +27430,7 @@ function migrateRealFileToSymlink(params) {
   try {
     const sourceContent = readFileSync36(linkPath, "utf-8");
     const stripped = stripLoafFence(sourceContent);
-    const relSource = relative8(projectRoot, linkPath) || linkPath;
+    const relSource = relative9(projectRoot, linkPath) || linkPath;
     let merged = false;
     if (stripped.length > 0) {
       merged = mergeContentIntoCanonical(canonicalPath, stripped, relSource);
@@ -27422,7 +27514,7 @@ Want: ${canonical}`,
     const canonical = join46(ctx.projectRoot, ".agents", "AGENTS.md");
     if (!existsSync41(canonical)) {
       try {
-        mkdirSync25(dirname17(canonical), { recursive: true });
+        mkdirSync25(dirname18(canonical), { recursive: true });
         writeFileSync24(canonical, "");
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -27430,7 +27522,7 @@ Want: ${canonical}`,
       }
     }
     if (pathExists2(linkPath) && !isSymlink2(linkPath)) {
-      const relTarget = relative8(dirname17(linkPath), canonical);
+      const relTarget = relative9(dirname18(linkPath), canonical);
       return migrateRealFileToSymlink({
         linkPath,
         canonicalPath: canonical,
@@ -27445,7 +27537,7 @@ Want: ${canonical}`,
       if (!ensureParentDir(linkPath)) {
         return { fixed: false, message: "Could not prepare parent directory" };
       }
-      const relTarget = relative8(dirname17(linkPath), canonical);
+      const relTarget = relative9(dirname18(linkPath), canonical);
       symlinkSync3(relTarget, linkPath);
       return { fixed: true, message: `Created ./AGENTS.md \u2192 ${relTarget}` };
     } catch (err) {
@@ -27510,7 +27602,7 @@ Want: ${canonical}`,
     const canonical = join46(ctx.projectRoot, ".agents", "AGENTS.md");
     if (!existsSync41(canonical)) {
       try {
-        mkdirSync25(dirname17(canonical), { recursive: true });
+        mkdirSync25(dirname18(canonical), { recursive: true });
         writeFileSync24(canonical, "");
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -27518,7 +27610,7 @@ Want: ${canonical}`,
       }
     }
     if (pathExists2(linkPath) && !isSymlink2(linkPath)) {
-      const relTarget = relative8(dirname17(linkPath), canonical);
+      const relTarget = relative9(dirname18(linkPath), canonical);
       return migrateRealFileToSymlink({
         linkPath,
         canonicalPath: canonical,
@@ -27533,7 +27625,7 @@ Want: ${canonical}`,
       if (!ensureParentDir(linkPath)) {
         return { fixed: false, message: "Could not prepare parent directory" };
       }
-      const relTarget = relative8(dirname17(linkPath), canonical);
+      const relTarget = relative9(dirname18(linkPath), canonical);
       symlinkSync3(relTarget, linkPath);
       return { fixed: true, message: `Created .claude/CLAUDE.md \u2192 ${relTarget}` };
     } catch (err) {
@@ -27598,7 +27690,7 @@ var checkCanonicalAgentsFile = {
       return { fixed: false, message: "No legacy real files to migrate" };
     }
     try {
-      mkdirSync25(dirname17(canonical), { recursive: true });
+      mkdirSync25(dirname18(canonical), { recursive: true });
       writeFileSync24(canonical, "");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -27606,7 +27698,7 @@ var checkCanonicalAgentsFile = {
     }
     const results = [];
     if (agentsIsRealFile) {
-      const relTarget = relative8(dirname17(agentsLink), canonical);
+      const relTarget = relative9(dirname18(agentsLink), canonical);
       const r = migrateRealFileToSymlink({
         linkPath: agentsLink,
         canonicalPath: canonical,
@@ -27616,7 +27708,7 @@ var checkCanonicalAgentsFile = {
       results.push(r.message);
     }
     if (claudeIsRealFile) {
-      const relTarget = relative8(dirname17(claudeLink), canonical);
+      const relTarget = relative9(dirname18(claudeLink), canonical);
       const r = migrateRealFileToSymlink({
         linkPath: claudeLink,
         canonicalPath: canonical,
@@ -27734,7 +27826,7 @@ var checkDuplicateFencedSections = {
         message: "State no longer matches \u2014 re-run doctor"
       };
     }
-    const relTarget = relative8(dirname17(claudePath), canonical);
+    const relTarget = relative9(dirname18(claudePath), canonical);
     return migrateRealFileToSymlink({
       linkPath: claudePath,
       canonicalPath: canonical,
@@ -27895,7 +27987,7 @@ import {
   openSync as openSync2,
   closeSync as closeSync2
 } from "fs";
-import { join as join49, dirname as dirname18, basename as basename8 } from "path";
+import { join as join49, dirname as dirname19, basename as basename8 } from "path";
 
 // cli/lib/journal/extractor.ts
 import { readFileSync as readFileSync37, writeFileSync as writeFileSync25, existsSync as existsSync42, mkdirSync as mkdirSync26, readdirSync as readdirSync14 } from "fs";
@@ -28597,14 +28689,14 @@ async function acquireLock(lockPath, maxRetries = 50, retryDelay = 100) {
       }
       if (code === "ENOENT") {
         throw new Error(
-          `Lock directory does not exist: ${dirname18(lockPath)}
+          `Lock directory does not exist: ${dirname19(lockPath)}
   Ensure .agents/sessions/ exists in your working directory.`
         );
       }
       if (code === "EACCES" || code === "EPERM") {
         throw new Error(
           `Permission denied creating lock file: ${lockPath}
-  Check directory permissions for: ${dirname18(lockPath)}`
+  Check directory permissions for: ${dirname19(lockPath)}`
         );
       }
       throw err;
@@ -30657,7 +30749,7 @@ import {
   statSync as statSync4,
   writeFileSync as writeFileSync30
 } from "fs";
-import { dirname as dirname19, join as join51, relative as relative9 } from "path";
+import { dirname as dirname20, join as join51, relative as relative10 } from "path";
 function buildMainMissingMessage(mainPath, exists) {
   const cause = exists ? `Main worktree at ${mainPath} is not a directory.` : `Main worktree at ${mainPath} not found.`;
   return [
@@ -30770,7 +30862,7 @@ function findWorktreeRootForDetection(startDir) {
   let current = startDir;
   while (true) {
     if (existsSync47(join51(current, ".git"))) return current;
-    const parent = dirname19(current);
+    const parent = dirname20(current);
     if (parent === current) return null;
     current = parent;
   }
@@ -30906,7 +30998,7 @@ function applyMove(move) {
     } catch {
     }
   }
-  mkdirSync29(dirname19(move.to), { recursive: true });
+  mkdirSync29(dirname20(move.to), { recursive: true });
   try {
     renameSync10(move.from, move.to);
   } catch (err) {
@@ -31058,7 +31150,7 @@ function isInGitContext(startDir) {
   let current = startDir;
   while (true) {
     if (existsSync47(join51(current, ".git"))) return true;
-    const parent = dirname19(current);
+    const parent = dirname20(current);
     if (parent === current) return false;
     current = parent;
   }
@@ -31067,7 +31159,7 @@ function findWorktreeRoot(startDir) {
   let current = startDir;
   while (true) {
     if (existsSync47(join51(current, ".git"))) return current;
-    const parent = dirname19(current);
+    const parent = dirname20(current);
     if (parent === current) return null;
     current = parent;
   }
@@ -31098,7 +31190,7 @@ function formatResult(result, opts) {
     } else {
       for (const move of plan.moves) {
         const arrow = move.conflict ? move.resolution === "keep-main" ? yellow18("[conflict\u2192main]  ") : yellow18("[conflict\u2192worktree]") : cyan13("\u2192");
-        const path = relative9(plan.worktreeAgents, move.from);
+        const path = relative10(plan.worktreeAgents, move.from);
         if (move.conflict) {
           if (move.resolution === "keep-main") {
             out.push(`  ${arrow} ${path}`);

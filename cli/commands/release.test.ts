@@ -19,7 +19,10 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { execFileSync, spawnSync } from "child_process";
 import {
+  chmodSync,
+  mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -66,10 +69,19 @@ interface RunResult {
 
 /** Run the release command with given args. Never throws — captures exit code. */
 function runRelease(...args: string[]): RunResult {
+  return runReleaseIn(process.cwd(), args);
+}
+
+function runReleaseIn(
+  cwd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): RunResult {
   // spawnSync captures stdout AND stderr regardless of exit code, which
   // matters for warnings emitted on stderr alongside a 0 exit.
   const result = spawnSync("node", [CLI_PATH, "release", ...args], {
-    cwd: process.cwd(),
+    cwd,
+    env,
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 15_000,
@@ -492,7 +504,7 @@ describe("release commit subject", () => {
 // `npm run build` instead.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("release runs npm run build for Node projects (TASK-149)", () => {
+describe("release artifact commands", () => {
   it(
     "invokes the package.json build script during the release commit",
     () => {
@@ -610,6 +622,278 @@ describe("release runs npm run build for Node projects (TASK-149)", () => {
         expect(filesInCommit.split("\n")).toContain("build-marker.txt");
       } finally {
         rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+    90_000,
+  );
+
+  it(
+    "runs `uv sync` from a declared monorepo pyproject directory",
+    () => {
+      const repoRoot = realpathSync(
+        mkdtempSync(join(tmpdir(), "loaf-release-uv-monorepo-")),
+      );
+      const fakeBin = realpathSync(
+        mkdtempSync(join(tmpdir(), "loaf-release-fake-bin-")),
+      );
+      try {
+        execFileSync("git", ["init", "-b", "main"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        mkdirSync(join(repoRoot, ".agents"), { recursive: true });
+        mkdirSync(join(repoRoot, "backend"), { recursive: true });
+
+        writeFileSync(
+          join(repoRoot, ".agents", "loaf.json"),
+          JSON.stringify(
+            { release: { versionFiles: ["backend/pyproject.toml"] } },
+            null,
+            2,
+          ) + "\n",
+        );
+        writeFileSync(
+          join(repoRoot, "backend", "pyproject.toml"),
+          [
+            "[project]",
+            'name = "fixture"',
+            'version = "1.0.0"',
+            "",
+          ].join("\n"),
+        );
+        writeFileSync(join(repoRoot, "backend", "uv.lock"), "# lock\n");
+        writeFileSync(
+          join(repoRoot, "CHANGELOG.md"),
+          [
+            "# Changelog",
+            "",
+            "## [Unreleased]",
+            "",
+            "- Initial backend change",
+            "",
+            "## [1.0.0] - 2024-01-01",
+            "",
+            "- Initial release",
+            "",
+          ].join("\n"),
+        );
+        execFileSync("git", ["add", "."], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync(
+          "git",
+          [...TEST_IDENTITY, "commit", "-m", "chore: initial"],
+          { cwd: repoRoot, stdio: "ignore" },
+        );
+        const baseSha = execFileSync("git", ["rev-parse", "HEAD"], {
+          cwd: repoRoot,
+          encoding: "utf-8",
+        }).trim();
+
+        writeFileSync(join(repoRoot, "backend", "app.py"), "print('v1')\n");
+        execFileSync("git", ["add", "."], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync(
+          "git",
+          [...TEST_IDENTITY, "commit", "-m", "feat: add backend app"],
+          { cwd: repoRoot, stdio: "ignore" },
+        );
+
+        const fakeUvPath = join(fakeBin, "uv");
+        writeFileSync(
+          fakeUvPath,
+          [
+            "#!/bin/sh",
+            "test \"$1\" = \"sync\" || exit 64",
+            "printf 'synced\\n' > uv-marker.txt",
+            "printf '# lock\\nsynced\\n' > uv.lock",
+            "",
+          ].join("\n"),
+        );
+        chmodSync(fakeUvPath, 0o755);
+
+        const result = spawnSync(
+          "node",
+          [
+            CLI_PATH,
+            "release",
+            "--bump",
+            "patch",
+            "--yes",
+            "--no-tag",
+            "--no-gh",
+            "--base",
+            baseSha,
+          ],
+          {
+            cwd: repoRoot,
+            env: {
+              ...process.env,
+              PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+            },
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 60_000,
+          },
+        );
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain("backend/pyproject.toml");
+        expect(result.stdout).toContain("Run uv sync (backend)");
+        expect(result.stdout).toContain("Ran uv sync in backend");
+        expect(result.stdout).not.toContain("Run loaf build");
+
+        expect(readFileSync(join(repoRoot, "backend", "uv-marker.txt"), "utf-8")).toBe(
+          "synced\n",
+        );
+
+        const filesInCommit = execFileSync(
+          "git",
+          ["show", "HEAD", "--name-only", "--pretty=format:"],
+          {
+            cwd: repoRoot,
+            encoding: "utf-8",
+          },
+        ).trim();
+        expect(filesInCommit.split("\n")).toContain("backend/uv.lock");
+        expect(filesInCommit.split("\n")).toContain("backend/uv-marker.txt");
+      } finally {
+        rmSync(repoRoot, { recursive: true, force: true });
+        rmSync(fakeBin, { recursive: true, force: true });
+      }
+    },
+    90_000,
+  );
+
+  it(
+    "aborts instead of committing an unignored virtualenv created by `uv sync`",
+    () => {
+      const repoRoot = realpathSync(
+        mkdtempSync(join(tmpdir(), "loaf-release-uv-venv-")),
+      );
+      const fakeBin = realpathSync(
+        mkdtempSync(join(tmpdir(), "loaf-release-fake-bin-")),
+      );
+      try {
+        execFileSync("git", ["init", "-b", "main"], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        mkdirSync(join(repoRoot, ".agents"), { recursive: true });
+        mkdirSync(join(repoRoot, "backend"), { recursive: true });
+
+        writeFileSync(
+          join(repoRoot, ".agents", "loaf.json"),
+          JSON.stringify(
+            { release: { versionFiles: ["backend/pyproject.toml"] } },
+            null,
+            2,
+          ) + "\n",
+        );
+        writeFileSync(
+          join(repoRoot, "backend", "pyproject.toml"),
+          [
+            "[project]",
+            'name = "fixture"',
+            'version = "1.0.0"',
+            "",
+          ].join("\n"),
+        );
+        writeFileSync(join(repoRoot, "backend", "uv.lock"), "# lock\n");
+        writeFileSync(
+          join(repoRoot, "CHANGELOG.md"),
+          [
+            "# Changelog",
+            "",
+            "## [Unreleased]",
+            "",
+            "- Initial backend change",
+            "",
+          ].join("\n"),
+        );
+        execFileSync("git", ["add", "."], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync(
+          "git",
+          [...TEST_IDENTITY, "commit", "-m", "chore: initial"],
+          { cwd: repoRoot, stdio: "ignore" },
+        );
+        const baseSha = execFileSync("git", ["rev-parse", "HEAD"], {
+          cwd: repoRoot,
+          encoding: "utf-8",
+        }).trim();
+
+        writeFileSync(join(repoRoot, "backend", "app.py"), "print('v1')\n");
+        execFileSync("git", ["add", "."], {
+          cwd: repoRoot,
+          stdio: "ignore",
+        });
+        execFileSync(
+          "git",
+          [...TEST_IDENTITY, "commit", "-m", "feat: add backend app"],
+          { cwd: repoRoot, stdio: "ignore" },
+        );
+
+        const fakeUvPath = join(fakeBin, "uv");
+        writeFileSync(
+          fakeUvPath,
+          [
+            "#!/bin/sh",
+            "test \"$1\" = \"sync\" || exit 64",
+            "mkdir -p .venv/bin",
+            "printf 'python\\n' > .venv/bin/python",
+            "printf '# lock\\nsynced\\n' > uv.lock",
+            "",
+          ].join("\n"),
+        );
+        chmodSync(fakeUvPath, 0o755);
+
+        const result = spawnSync(
+          "node",
+          [
+            CLI_PATH,
+            "release",
+            "--bump",
+            "patch",
+            "--yes",
+            "--no-tag",
+            "--no-gh",
+            "--base",
+            baseSha,
+          ],
+          {
+            cwd: repoRoot,
+            env: {
+              ...process.env,
+              PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+            },
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 60_000,
+          },
+        );
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("unignored virtual environment path detected");
+        expect(result.stderr).toContain("backend/.venv/bin/python");
+
+        const subject = execFileSync(
+          "git",
+          ["log", "-1", "--pretty=%s"],
+          {
+            cwd: repoRoot,
+            encoding: "utf-8",
+          },
+        ).trim();
+        expect(subject).toBe("feat: add backend app");
+      } finally {
+        rmSync(repoRoot, { recursive: true, force: true });
+        rmSync(fakeBin, { recursive: true, force: true });
       }
     },
     90_000,
