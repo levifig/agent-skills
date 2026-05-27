@@ -20,7 +20,7 @@ Convene multi-agent councils for complex decisions requiring diverse expert pers
 **Always**
 - Select odd number of agents (5 or 7) — never even
 - Spawn ALL agents in parallel in a single response
-- Present composition rationale and get user approval before proceeding
+- Select and state the council composition, then proceed directly to spawning
 - Document each perspective and create synthesis with consensus/disagreements
 - Wait for explicit user decision — council advises, user decides
 - Archive council after decision recorded in session
@@ -29,7 +29,7 @@ Convene multi-agent councils for complex decisions requiring diverse expert pers
 **Never**
 - Use even number of agents (risks ties)
 - Spawn agents sequentially — parallel only
-- Proceed without user approval at composition step
+- Pause for composition approval before spawning unless the user explicitly asks for it
 - Make the decision yourself — present synthesis, let user choose
 - Skip documenting minority perspectives
 

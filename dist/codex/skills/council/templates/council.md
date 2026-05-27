@@ -62,5 +62,5 @@ council:
 
 ### [Timestamp] - Council Convened
 Agents: [list]
-Composition approved by user.
+Composition selected by orchestrator.
 ```

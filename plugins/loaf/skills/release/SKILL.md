@@ -183,7 +183,10 @@ The pre-PR workflow requires writing CHANGELOG entries before creating a PR. The
 **Review curated entries for quality before bumping:**
 - Use backticks for code references (file names, commands, config keys, hook names)
 - Remove internal tracking terms (tracks, phases, stages, task IDs, spec IDs)
-- Write from the user's perspective — what changed, not how it was tracked
+- Follow Loaf's Common Changelog profile: imperative, self-describing,
+  one-line entries grouped as `Changed`, `Added`, `Removed`, `Fixed`
+- Write from the user's perspective — what upgrading changes, not how it was tracked
+- Include the best public reference when available, such as a PR, issue, ADR, release, or commit link
 
 1. Run `loaf release --pre-merge --dry-run` to get the **suggested bump type** and **current version** (the `--pre-merge` flag auto-detects the base branch — see [Why `--pre-merge`?](#why---pre-merge) below).
 2. Present the bump suggestion to the user. They may accept or override.
@@ -205,7 +208,8 @@ When `[Unreleased]` is empty, use `loaf release` to auto-generate changelog entr
 **After generation, review and rewrite entries before committing:**
 - Use backticks for code references (file names, commands, config keys, hook names)
 - Remove internal tracking terms (tracks, phases, stages, task IDs, spec IDs)
-- Write from the user's perspective — what changed, not how it was tracked
+- Rewrite generated commit text into Loaf's Common Changelog profile
+- Write from the user's perspective — what upgrading changes, not how it was tracked
 - Keep entries concise but descriptive enough to understand the change without reading the diff
 
 1. Run `loaf release --pre-merge --dry-run` to preview:

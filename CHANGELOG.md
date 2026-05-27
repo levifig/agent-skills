@@ -1,13 +1,15 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+This project follows [Common Changelog](https://common-changelog.org/) and
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). `## [Unreleased]`
+is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Changed
+
+- Adopt Common Changelog as Loaf's changelog writing standard ([Common Changelog](https://common-changelog.org/))
+- Let council workflows state the selected composition and spawn directly, while still reserving the final decision for the user
 
 ## [2.0.0-dev.45] - 2026-05-27
 

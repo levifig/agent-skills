@@ -38,7 +38,7 @@ Councils are deliberation mechanisms for decisions with multiple valid approache
 2. **Always odd number** - 5 or 7 agents to prevent ties
 3. **Domain-matched composition** - Select relevant experts
 4. **Parallel deliberation** - Spawn all agents simultaneously
-5. **User approval required** - NEVER proceed without explicit approval
+5. **User decision required** - The council advises, then waits for the user's decision
 6. **Any agent can participate** - All agents (implementation and advisory) can join councils
 7. **Ad-hoc specialists allowed** - Create specialist personas when domain expertise is needed
 
@@ -70,7 +70,7 @@ Councils are deliberation mechanisms for decisions with multiple valid approache
 When a council needs expertise not covered by existing agents, the orchestrator can create a specialist persona:
 
 ```markdown
-## Proposed Council Composition
+## Council Composition
 
 **Decision**: Real-time data pipeline architecture
 
@@ -106,10 +106,10 @@ Ad-hoc specialists are spawned as general-purpose agents with a specialized prom
 
 ### Step 2: Compose Council
 
-Present to user for approval:
+State the selected composition, then proceed directly to spawning:
 
 ```markdown
-## Proposed Council Composition
+## Council Composition
 
 **Decision**: Session storage strategy
 
@@ -119,8 +119,6 @@ Present to user for approval:
 3. infra specialist - Operational complexity
 4. security - Session security
 5. domain reviewer - Long-term maintainability (domain review)
-
-Do you approve this composition?
 ```
 
 ### Step 3: Spawn All Agents in Parallel
@@ -372,7 +370,7 @@ After council concludes and user decides, the orchestrator spawns implementation
 | Wrong composition | Match agents to decision domain |
 | Even number of agents | Always 5 or 7 |
 | Orchestrator as council member | Orchestrator coordinates, doesn't vote |
-| Proceed without user approval | Wait for explicit decision |
+| Make the final decision | Wait for the user's explicit decision |
 | Implement during council | Advise only, implement after |
 | Skip documentation | Record decision in council file |
 | Archive council without session summary | Summarize in session before archive (status + move) |
@@ -384,7 +382,7 @@ After council concludes and user decides, the orchestrator spawns implementation
 - [ ] Decision genuinely needs council
 - [ ] Decision question is clear
 - [ ] Composition planned (5-7, odd, relevant)
-- [ ] User approved composition
+- [ ] Composition stated before spawning
 
 **During deliberation:**
 

@@ -173,7 +173,10 @@ Refs BACK-124
 
 ## Changelog Discipline
 
-`CHANGELOG.md` entries describe what shipped from a user's or operator's perspective — not how the work was tracked or organized internally. Curate the `[Unreleased]` section before bumping the version so the published release notes read as user-facing prose, not an internal worklog.
+`CHANGELOG.md` entries follow Loaf's Common Changelog profile: write for
+humans, communicate the release impact, and curate git history instead of
+copying it. Curate the `[Unreleased]` section before bumping the version so the
+published release notes read as user-facing prose, not an internal worklog.
 
 ### Drop
 
@@ -193,8 +196,11 @@ Internal terms that have no meaning outside the team's working context:
 ### Style
 
 - Use backticks for all code references — file names, commands, config keys, hook names
-- Write user-perspective prose: what shipped, not how it got built
-- Group entries by category (`Added`, `Changed`, `Fixed`, `Removed`) per Keep a Changelog convention
+- Write imperative, user-perspective prose: what upgrading changes, not how the work got built
+- Keep each entry self-describing and one line whenever possible
+- Link to the best public reference when available: PR, issue, ADR, release, or commit
+- Group entries by Common Changelog category in order: `Changed`, `Added`, `Removed`, `Fixed`
+- Prefix breaking entries with `**Breaking:**` and list them before non-breaking entries in the same category
 
 ### Auto-generated Entries
 

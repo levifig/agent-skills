@@ -165,9 +165,9 @@ const SCAFFOLD_FILES: Array<[string, () => string]> = [
     "CHANGELOG.md",
     () => `# Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/).
+This project follows [Common Changelog](https://common-changelog.org/) and
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). \`## [Unreleased]\`
+is a workflow staging section for curated entries before release.
 
 ## [Unreleased]
 `,

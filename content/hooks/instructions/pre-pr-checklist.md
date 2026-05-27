@@ -2,7 +2,7 @@
 
 ### 1. CHANGELOG entry
 
-Add an entry under `## [Unreleased]` in `CHANGELOG.md`, categorized by change type:
+Add an entry under `## [Unreleased]` in `CHANGELOG.md`, categorized by Common Changelog impact:
 
 | Commit type | Category |
 |-------------|----------|
@@ -12,11 +12,14 @@ Add an entry under `## [Unreleased]` in `CHANGELOG.md`, categorized by change ty
 | `docs` (user-facing) | Changed |
 | `chore`, `ci`, `test` | Skip unless notable |
 
-One line per meaningful change. Include spec reference where applicable.
+One line per meaningful change. Write imperative, self-describing,
+release-facing prose; include public references when available, and do not
+include internal spec/task/session IDs.
 
 ```markdown
 ### Added
-- /bootstrap skill for 0-to-1 project setup (SPEC-013)
+
+- Add `/bootstrap` guidance for 0-to-1 project setup
 ```
 
 If `CHANGELOG.md` does not exist, create it first:
@@ -24,10 +27,9 @@ If `CHANGELOG.md` does not exist, create it first:
 ```markdown
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+This project follows [Common Changelog](https://common-changelog.org/) and
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). `## [Unreleased]`
+is a workflow staging section for curated entries before release.
 
 ## [Unreleased]
 

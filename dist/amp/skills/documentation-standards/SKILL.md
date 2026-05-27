@@ -20,10 +20,16 @@ Standards for ADRs, API docs, changelogs, and diagrams.
 
 ## Critical Rules
 
-- **API docs reflect only what is implemented and released** -- never document future or planned endpoints in API specifications; update docs AFTER features ship
+- **API docs reflect only what is implemented and released** -- never document
+  future or planned endpoints in API specifications; update docs AFTER features
+  ship
 - **Never modify version numbers** in CHANGELOG.md without explicit user approval -- new version headers require user confirmation
-- **CHANGELOG entries must be user-focused** -- no file paths, no implementation details without user benefit, no references to ADR files
-- **Keep a Changelog format** -- entries categorized under Added, Changed, Fixed, Removed, Deprecated, or Security
+- **CHANGELOG.md follows Loaf's Common Changelog profile** -- release notes are
+  written for humans, communicate user/operator impact, and are curated from git
+  history rather than copied from it
+- **CHANGELOG entries must be release-facing** -- imperative, one-line,
+  self-describing entries with useful public references; no internal spec/task
+  IDs, file lists, or implementation detail without user benefit
 
 ## Verification
 
@@ -31,43 +37,43 @@ Standards for ADRs, API docs, changelogs, and diagrams.
 
 **CHANGELOG Validation:**
 - When editing `CHANGELOG.md`, verify entries follow the format:
-  - **User-focused**: What value does this provide to users?
-  - **File-path free**: No paths or extensions in entries
-  - **Concise**: One line, under 80 characters preferred
-  - **Aggregated**: Related changes combined
+  - **Human impact**: What changes for users, operators, or integrators?
+  - **Imperative**: Starts with a present-tense verb such as `Add`, `Fix`, `Remove`, or `Document`
+  - **Self-describing**: Understandable without relying on the category heading
+  - **Referenced**: Links to the best public PR, issue, release, ADR, or commit when available
+  - **Concise and aggregated**: One line per meaningful change; related commits merged
 - **Anti-patterns to avoid:**
   - File paths (`backend/`, `frontend/`, `.py`, `.ts`)
   - Implementation details without user benefit
   - Lists of file paths
-  - References to ADR files
+  - Internal spec/task/session IDs
+  - Verbatim commit or PR-title dumps
 - **Good examples:**
-  - "Circuit breaker pattern for API rate limiting"
-  - "Improved pipeline documentation with architecture patterns"
-  - "Consolidated documentation (redundant design docs removed)"
+  - "Add `loaf release --post-merge` guardrails for tagged GitHub releases"
+  - "Fix session journal routing when hook payloads are empty"
+  - "Document worktree-aware `.agents/` storage for linked checkouts"
 - **Version protection:**
   - Never modify version numbers (## [X.Y.Z]) without explicit user approval
   - New version headers require user confirmation
 
 **Format Verification:**
 - Ensure all entries under `## [Unreleased]` are properly categorized:
-  - Added | Changed | Fixed | Removed | Deprecated | Security
+  - Changed | Added | Removed | Fixed
 
 ### Before Committing
 
 - Review CHANGELOG entries for file-path free, user-focused language
 - Verify version numbers haven't been changed without approval
-- Ensure CHANGELOG.md follows Keep a Changelog format
+- Ensure CHANGELOG.md follows Loaf's Common Changelog profile
 - Consider if commit warrants a CHANGELOG entry
 
 ### CHANGELOG Reminder
 
-After committing, consider updating CHANGELOG.md with the changes made. Use categories:
-- **Added** for new features
+After committing, consider updating CHANGELOG.md with meaningful release-facing changes. Use Common Changelog categories in this order:
 - **Changed** for changes in existing functionality
+- **Added** for new functionality
+- **Removed** for removed functionality
 - **Fixed** for bug fixes
-- **Removed** for removed features
-- **Deprecated** for soon-to-be-removed features
-- **Security** for security-related changes
 
 ## Topics
 
