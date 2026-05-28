@@ -1279,7 +1279,7 @@ describe("session: end", () => {
     expect(existsSync(archiveDir)).toBe(false);
   });
 
-  it("adopts session when branch switches mid-session", async () => {
+  it("adopts session when branch switches mid-session without rewriting branch (SPEC-042 Track B)", async () => {
     const repoPath = createTempRepo("branch-switch-test");
 
     await runLoaf(["start"], { cwd: repoPath });
@@ -1296,14 +1296,17 @@ describe("session: end", () => {
     // Switch to a new branch
     execFileSync("git", ["checkout", "-b", "feat/new-feature"], { cwd: repoPath });
 
-    // Log an entry — triggers findActiveSessionForBranch which should adopt
+    // Log an entry — falls through Tier 3 → most-recent-active adoption.
+    // SPEC-042 Track B: the session is found and the entry is logged, but
+    // the session's `branch:` is NOT rewritten (origin is part of identity).
     await runLoaf(["log", "decision(test): testing branch adoption"], { cwd: repoPath });
 
     const contentAfter = readFileSync(
       join(repoPath, ".agents/sessions", sessionFiles[0]),
       "utf-8"
     );
-    expect(contentAfter).toContain("branch: feat/new-feature");
+    expect(contentAfter).toContain("branch: main");
+    expect(contentAfter).not.toContain("branch: feat/new-feature");
     expect(contentAfter).toContain("decision(test): testing branch adoption");
   });
 

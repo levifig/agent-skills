@@ -1,9 +1,13 @@
 ---
 id: TASK-189
-title: Stop destructive branch-rewrite and extend Tier 3 session fallback to most-recent-active
+title: >-
+  Stop destructive branch-rewrite and extend Tier 3 session fallback to
+  most-recent-active
 spec: SPEC-042
-status: todo
+status: done
 priority: P1
+created: '2026-05-28T01:53:43.449Z'
+updated: '2026-05-28T08:59:26.865Z'
 depends_on:
   - TASK-188
 files:
@@ -11,8 +15,15 @@ files:
   - cli/lib/session/resolve.ts
   - cli/lib/session/find.test.ts
   - cli/lib/session/resolve.test.ts
-verify: npm run typecheck && npm run test -- cli/lib/session/find.test.ts cli/lib/session/resolve.test.ts
-done: findActiveSessionForBranch never mutates session branch frontmatter; multi-active fallback returns most-recent-active with loud WARN; loaf session log on release/v* lands in orchestrator's session without rewriting its origin branch
+verify: >-
+  npm run typecheck && npm run test -- cli/lib/session/find.test.ts
+  cli/lib/session/resolve.test.ts
+done: >-
+  findActiveSessionForBranch never mutates session branch frontmatter;
+  multi-active fallback returns most-recent-active with loud WARN; loaf session
+  log on release/v* lands in orchestrator's session without rewriting its origin
+  branch
+completed_at: '2026-05-28T08:59:26.865Z'
 ---
 
 # TASK-189: Stop destructive branch-rewrite and extend Tier 3 session fallback to most-recent-active

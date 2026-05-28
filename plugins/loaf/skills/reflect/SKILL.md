@@ -7,7 +7,7 @@ description: >-
   experience. Not for pre-i...
 user-invocable: true
 argument-hint: '[session-file]'
-version: 2.0.0-dev.46
+version: 2.0.0-dev.47
 ---
 
 # Reflect

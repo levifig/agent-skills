@@ -2,15 +2,23 @@
 id: TASK-188
 title: Make agents-config.ts worktree-aware (follow .moved-to back-pointer)
 spec: SPEC-042
-status: todo
+status: done
 priority: P1
+created: '2026-05-28T01:53:43.449Z'
+updated: '2026-05-28T08:59:26.504Z'
 files:
   - cli/lib/config/agents-config.ts
   - cli/lib/config/agents-config.test.ts
   - cli/lib/tasks/resolve.ts
   - cli/commands/release.test.ts
-verify: npm run typecheck && npm run test -- cli/lib/config/agents-config.test.ts cli/commands/release.test.ts
-done: readLoafConfig and writeLoafConfigRaw follow .moved-to back-pointer to the main worktree's .agents/loaf.json; loaf release --pre-merge succeeds in a migrated linked worktree without --version-file
+verify: >-
+  npm run typecheck && npm run test -- cli/lib/config/agents-config.test.ts
+  cli/commands/release.test.ts
+done: >-
+  readLoafConfig and writeLoafConfigRaw follow .moved-to back-pointer to the
+  main worktree's .agents/loaf.json; loaf release --pre-merge succeeds in a
+  migrated linked worktree without --version-file
+completed_at: '2026-05-28T08:59:26.503Z'
 ---
 
 # TASK-188: Make agents-config.ts worktree-aware (follow .moved-to back-pointer)

@@ -7,7 +7,7 @@ description: >-
   parked for later....
 user-invocable: true
 argument-hint: '[next-session focus]'
-version: 2.0.0-dev.46
+version: 2.0.0-dev.47
 ---
 
 # Handoff

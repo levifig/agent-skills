@@ -5,17 +5,23 @@
  *
  * - `findSessionByClaudeId` — primary lookup keyed by `claude_session_id`,
  *   scans active + archive, consolidates splits.
- * - `findActiveSessionForBranch` — branch-keyed fallback, with rename and
- *   single-active-session adoption heuristics.
+ * - `findActiveSessionForBranch` — branch-keyed fallback, with rename-link
+ *   detection and most-recent-active adoption.
  *
  * These helpers are called from both `cli/commands/session.ts` (existing call
- * sites) and `cli/lib/session/resolve.ts` (the new 3-tier chain).
+ * sites) and `cli/lib/session/resolve.ts` (the SPEC-032 3-tier chain).
  *
  * Note on shell usage: `findActiveSessionForBranch` calls `git reflog` via
  * `execSync` with a piped `head -10`. This is moved verbatim from the
  * pre-extraction implementation in `cli/commands/session.ts` and intentionally
  * preserved as-is per SPEC-032 (move, don't change). The branch name comes
  * from `git branch --show-current` upstream — not user input.
+ *
+ * SPEC-042 Track B: this module no longer mutates session frontmatter when
+ * resolving via fallback (rename-link or most-recent-active). The session's
+ * `branch:` field represents its ORIGIN and is itself a routing key. The
+ * caller still gets the session, plus an `adoption` discriminator so the
+ * resolver can emit a richer WARN that names the resolved target.
  */
 
 import { execSync } from "child_process";
@@ -23,7 +29,6 @@ import {
   existsSync,
   readdirSync,
   readFileSync,
-  writeFileSync,
   renameSync,
 } from "fs";
 import { basename, join } from "path";
@@ -144,11 +149,49 @@ export function findSessionByClaudeId(
   };
 }
 
-/** Find active session for a branch by scanning files */
+/**
+ * How `findActiveSessionForBranch` resolved the returned session.
+ *
+ *  - `branch-match` — a session whose `branch:` equals the requested branch.
+ *  - `rename-link`  — no direct match, but git reflog shows the branch was
+ *    renamed (`git branch -m`) and a spec is linked to the parent branch
+ *    pointing at an active session.
+ *  - `most-recent-active` — no direct match and no rename link; the
+ *    most-recently-updated active session (any branch) was adopted.
+ *
+ * The discriminator is informational only — `findActiveSessionForBranch` no
+ * longer mutates the returned session's frontmatter in any case. Callers
+ * (notably `resolveCurrentSession`) use it to shape user-facing WARN text.
+ */
+export type SessionAdoption = "branch-match" | "rename-link" | "most-recent-active";
+
+/** Result of `findActiveSessionForBranch` — session plus adoption discriminator. */
+export interface FindActiveSessionResult {
+  filePath: string;
+  data: SessionFrontmatter;
+  content: string;
+  /** How this session was resolved for the requested branch. */
+  adoption: SessionAdoption;
+}
+
+/**
+ * Find an active session for `branch`.
+ *
+ * Resolution order:
+ *
+ *   1. Sessions whose `branch:` frontmatter equals `branch` (direct match).
+ *   2. If none, look for a `git branch -m` rename via reflog and resolve the
+ *      session through the spec linked to the parent branch.
+ *   3. If still none, fall back to the most-recently-updated active session
+ *      across all branches (`last_updated` ➜ `last_entry` ➜ `created`).
+ *
+ * Never mutates session or spec frontmatter — see SPEC-042 Track B. Returns
+ * `null` only when no active sessions exist at all.
+ */
 export function findActiveSessionForBranch(
   agentsDir: string,
   branch: string
-): { filePath: string; data: SessionFrontmatter; content: string } | null {
+): FindActiveSessionResult | null {
   const sessionsDir = join(agentsDir, "sessions");
   if (!existsSync(sessionsDir)) return null;
 
@@ -156,7 +199,7 @@ export function findActiveSessionForBranch(
     (f) => f.endsWith(".md") && !f.startsWith("archive")
   );
 
-  // Collect all candidate sessions for this branch
+  // ─── Direct branch match ───────────────────────────────────────────────
   const candidates: Array<{
     filePath: string;
     data: SessionFrontmatter;
@@ -175,122 +218,117 @@ export function findActiveSessionForBranch(
     }
   }
 
-  // If no session found by branch name, check for renamed branch via spec linkage
-  // This handles: git branch -m old-name new-name (explicit rename only)
-  // We verify the rename by checking git reflog for the explicit "Branch: renamed" pattern
-  if (candidates.length === 0) {
-    // Get current branch's creation info from reflog
-    let parentBranch: string | null = null;
-    try {
-      // Check reflog for explicit rename pattern from "git branch -m old new"
-      const reflogOutput = execSync(
-        `git reflog show --format='%H %gs' ${branch} 2>/dev/null | head -10`,
-        { encoding: "utf-8" }
-      );
+  if (candidates.length > 0) {
+    const winner = pickCandidate(candidates);
+    return { ...winner, adoption: "branch-match" };
+  }
 
-      // ONLY match explicit rename: "Branch: renamed refs/heads/old-branch to refs/heads/new-branch"
-      // Do NOT match "branch: Created from ..." (that's normal branch creation)
-      // Do NOT match "checkout: moving from ..." (that's branch switching)
-      const renamedMatch = reflogOutput.match(
-        /Branch: renamed refs\/heads\/([^\s]+) to/
-      );
-
-      if (renamedMatch) {
-        parentBranch = renamedMatch[1];
-      }
-    } catch {
-      // Git command failed, skip rename detection
+  // ─── Rename-link detection ─────────────────────────────────────────────
+  //
+  // If no session matched by branch name, check whether the current branch
+  // was renamed from another branch (`git branch -m old new`). When we find
+  // a spec linked to the parent branch pointing at an active session, return
+  // it — but DO NOT rewrite the session's `branch:` field. The session's
+  // origin branch is part of its identity; rewriting it on every adoption
+  // breaks subsequent Tier 3 lookups.
+  let parentBranch: string | null = null;
+  try {
+    const reflogOutput = execSync(
+      `git reflog show --format='%H %gs' ${branch} 2>/dev/null | head -10`,
+      { encoding: "utf-8" }
+    );
+    const renamedMatch = reflogOutput.match(
+      /Branch: renamed refs\/heads\/([^\s]+) to/
+    );
+    if (renamedMatch) {
+      parentBranch = renamedMatch[1];
     }
+  } catch {
+    // Git command failed, skip rename detection.
+  }
 
-    // If we found a parent branch, look for sessions that were on that branch
-    if (parentBranch) {
-      const specsDir = join(agentsDir, "specs");
-      if (existsSync(specsDir)) {
-        const specFiles = readdirSync(specsDir).filter((f) => f.endsWith(".md"));
+  if (parentBranch) {
+    const specsDir = join(agentsDir, "specs");
+    if (existsSync(specsDir)) {
+      const specFiles = readdirSync(specsDir).filter((f) => f.endsWith(".md"));
+      for (const specFile of specFiles) {
+        try {
+          const specPath = join(specsDir, specFile);
+          const specContent = readFileSync(specPath, "utf-8");
+          const specParsed = matter(specContent);
+          const specFm = specParsed.data as SpecFrontmatterWithBranch;
 
-        for (const specFile of specFiles) {
-          try {
-            const specPath = join(specsDir, specFile);
-            const specContent = readFileSync(specPath, "utf-8");
-            const specParsed = matter(specContent);
-            const specFm = specParsed.data as SpecFrontmatterWithBranch;
-
-            // Only consider specs linked to the PARENT branch (the one we came from)
-            if (specFm.branch === parentBranch && specFm.session) {
-              const sessionPath = join(agentsDir, "sessions", specFm.session);
-              if (existsSync(sessionPath)) {
-                const session = readSessionFile(sessionPath);
-                // Verify this session was indeed on the parent branch and is non-archived
-                if (
-                  session &&
-                  session.data.branch === parentBranch &&
-                  session.data.status !== "archived"
-                ) {
-                  // RENAME CONFIRMED: Update both session and spec to new branch name
-                  session.data.branch = branch;
-                  const newSessionContent = matter.stringify(
-                    session.content,
-                    session.data as unknown as Record<string, unknown>
-                  );
-                  writeFileSync(sessionPath, newSessionContent, "utf-8");
-
-                  specFm.branch = branch;
-                  const newSpecContent = matter.stringify(
-                    specParsed.content,
-                    specFm as Record<string, unknown>
-                  );
-                  writeFileSync(specPath, newSpecContent, "utf-8");
-
-                  candidates.push({
-                    filePath: sessionPath,
-                    data: session.data,
-                    content: session.content,
-                  });
-                  break; // Found it
-                }
+          if (specFm.branch === parentBranch && specFm.session) {
+            const sessionPath = join(agentsDir, "sessions", specFm.session);
+            if (existsSync(sessionPath)) {
+              const session = readSessionFile(sessionPath);
+              if (
+                session &&
+                session.data.branch === parentBranch &&
+                session.data.status !== "archived"
+              ) {
+                return {
+                  filePath: sessionPath,
+                  data: session.data,
+                  content: session.content,
+                  adoption: "rename-link",
+                };
               }
             }
-          } catch {
-            // Continue to next spec
-            continue;
           }
+        } catch {
+          continue;
         }
       }
     }
   }
 
-  // Branch switch detection: if no session matches the current branch,
-  // but exactly one active session exists, adopt it (common flow: start on main, then branch)
-  if (candidates.length === 0) {
-    const allSessions: Array<{
-      filePath: string;
-      data: SessionFrontmatter;
-      content: string;
-    }> = [];
-    for (const file of files) {
-      const filePath = join(sessionsDir, file);
-      const session = readSessionFile(filePath);
-      if (session && session.data.status === "active") {
-        allSessions.push({ filePath, data: session.data, content: session.content });
-      }
-    }
-
-    if (allSessions.length === 1) {
-      const session = allSessions[0];
-      session.data.branch = branch;
-      const newContent = matter.stringify(
-        session.content,
-        session.data as unknown as Record<string, unknown>
-      );
-      writeFileSync(session.filePath, newContent, "utf-8");
-      candidates.push(session);
+  // ─── Most-recent active adoption (any branch) ──────────────────────────
+  //
+  // Replaces the prior `allSessions.length === 1` gating per SPEC-042 Track
+  // B Bug B2: multi-worktree setups routinely have multiple active sessions
+  // (e.g., orchestrator on `cwt/foo` plus a release agent on
+  // `release/v0.16.0`). Pick the most-recently-updated one; recency is the
+  // only tiebreaker. Returns null when no active sessions exist.
+  const activeSessions: Array<{
+    filePath: string;
+    data: SessionFrontmatter;
+    content: string;
+  }> = [];
+  for (const file of files) {
+    const filePath = join(sessionsDir, file);
+    const session = readSessionFile(filePath);
+    if (session && session.data.status === "active") {
+      activeSessions.push({ filePath, data: session.data, content: session.content });
     }
   }
 
-  if (candidates.length === 0) return null;
+  if (activeSessions.length === 0) return null;
 
-  // Prioritize: active > stopped/blocked/done > others
-  // Sort by status priority (lower number = higher priority)
+  activeSessions.sort((a, b) => {
+    const aTime =
+      a.data.last_updated || a.data.last_entry || a.data.created || "0";
+    const bTime =
+      b.data.last_updated || b.data.last_entry || b.data.created || "0";
+    return bTime.localeCompare(aTime); // descending — newest first
+  });
+
+  const winner = activeSessions[0];
+  return { ...winner, adoption: "most-recent-active" };
+}
+
+/**
+ * Status-prioritized + recency tiebreaker selection across direct branch-match
+ * candidates. `active` wins over terminal states; ties broken by most-recent
+ * `last_updated` / `last_entry`.
+ */
+function pickCandidate(
+  candidates: Array<{
+    filePath: string;
+    data: SessionFrontmatter;
+    content: string;
+  }>
+): { filePath: string; data: SessionFrontmatter; content: string } {
   const statusPriority: Record<string, number> = {
     active: 1,
     stopped: 2,
@@ -298,20 +336,15 @@ export function findActiveSessionForBranch(
     done: 2,
   };
 
-  candidates.sort((a, b) => {
-    // First: sort by status priority
+  const sorted = [...candidates].sort((a, b) => {
     const priorityA = statusPriority[a.data.status] ?? 3;
     const priorityB = statusPriority[b.data.status] ?? 3;
-    if (priorityA !== priorityB) {
-      return priorityA - priorityB;
-    }
+    if (priorityA !== priorityB) return priorityA - priorityB;
 
-    // Second: tie-break by recency (newer wins)
-    // Use last_updated from frontmatter, or fall back to last_entry, or 0
     const timeA = a.data.last_updated || a.data.last_entry || "0";
     const timeB = b.data.last_updated || b.data.last_entry || "0";
-    return timeB.localeCompare(timeA); // descending (newer first)
+    return timeB.localeCompare(timeA);
   });
 
-  return candidates[0];
+  return sorted[0];
 }

@@ -46,11 +46,14 @@ import * as fs from "fs";
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from "fs";
-import { join } from "path";
+import { execFileSync } from "child_process";
+import { createHash } from "crypto";
+import { basename, join } from "path";
 import { tmpdir } from "os";
 import matter from "gray-matter";
 
@@ -78,6 +81,31 @@ const BRANCH = "feat/example";
 const WARN_FOR_BRANCH = (branch: string) =>
   `WARN: no session_id signal — falling back to branch routing for branch '${branch}'. Pass --session-id <id> to silence.\n`;
 
+/**
+ * Adoption WARN — fires when fallback resolves to a session on a different
+ * branch. The wording depends on how the finder resolved:
+ *   - `most-recent-active`: heuristic adoption across all active sessions.
+ *   - `rename-link`: the current branch is a `git branch -m` rename of the
+ *     session's origin branch (detected via reflog).
+ */
+const WARN_ADOPTION_MOST_RECENT = (
+  branch: string,
+  filePath: string,
+  originBranch: string
+) =>
+  `WARN: no session for branch '${branch}'; logging to most-recent active session '${basename(filePath)}' (origin branch '${originBranch}'). Pass --session-id <id> to silence.\n`;
+
+const WARN_ADOPTION_RENAME_LINK = (
+  branch: string,
+  filePath: string,
+  originBranch: string
+) =>
+  `WARN: branch '${branch}' appears to be a rename of '${originBranch}'; logging to its session '${basename(filePath)}'. Pass --session-id <id> to silence.\n`;
+
+/** Zero-active WARN — fires when fallback finds nothing. */
+const WARN_NO_ACTIVE = (branch: string) =>
+  `WARN: no session for branch '${branch}'; no active sessions to fall back to. Pass --session-id <id> to silence.\n`;
+
 interface SessionSeed {
   fileName: string;
   branch?: string;
@@ -85,6 +113,10 @@ interface SessionSeed {
   claude_session_id?: string;
   last_updated?: string;
   last_entry?: string;
+}
+
+function fileHash(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
 function writeSessionFile(seed: SessionSeed): string {
@@ -370,34 +402,76 @@ describe("resolveCurrentSession — Tier 3 (branch fallback)", () => {
     expect(stderr.lines).toEqual([WARN_FOR_BRANCH(BRANCH)]);
   });
 
-  it("adopts a single active session on the wrong branch (heuristic) and emits WARN", async () => {
-    // Seed exactly ONE active session on a different branch — the
-    // findActiveSessionForBranch adoption heuristic re-tags this session to
-    // the requested branch. This test pins that behavior.
-    writeSessionFile({
+  it("adopts a lone active session on a different branch and emits adoption WARN (SPEC-042 Track B)", async () => {
+    // Seed exactly ONE active session on a different branch. Under SPEC-042
+    // Track B the finder no longer re-tags the session — it returns the
+    // session as-is and the resolver emits an adoption WARN naming both the
+    // requested branch and the session's origin branch.
+    const filePath = writeSessionFile({
       fileName: "20260427-220000-session.md",
       branch: "other-branch",
       claude_session_id: "session-A",
     });
+    const before = fileHash(filePath);
 
     const stderr = captureStderr();
     const result = await resolveCurrentSession(AGENTS_DIR, "feat/missing", {});
     stderr.restore();
 
-    expect(stderr.lines).toEqual([WARN_FOR_BRANCH("feat/missing")]);
     expect(result).not.toBeNull();
     expect(result?.data.claude_session_id).toBe("session-A");
+    // Origin branch preserved — no mutation.
+    expect(result?.data.branch).toBe("other-branch");
+    expect(fileHash(filePath)).toBe(before);
+    expect(stderr.lines).toEqual([
+      WARN_ADOPTION_MOST_RECENT("feat/missing", filePath, "other-branch"),
+    ]);
   });
 
-  it("emits WARN even when all tiers fail to resolve (multiple branches, no match)", async () => {
+  it("adopts the most-recent active session when multiple are active on different branches (SPEC-042 Track B)", async () => {
+    // Multi-worktree case: more than one active session, none matching the
+    // requested branch. The finder must adopt the most-recent-by-last_updated
+    // rather than returning null. This pins SPEC-042 Track B Bug B2.
+    const olderPath = writeSessionFile({
+      fileName: "20260427-220000-session.md",
+      branch: "branch-a",
+      claude_session_id: "session-A",
+      last_updated: "2026-04-27T22:00:00.000Z",
+    });
+    const newerPath = writeSessionFile({
+      fileName: "20260427-221000-session.md",
+      branch: "branch-b",
+      claude_session_id: "session-B",
+      last_updated: "2026-04-27T22:30:00.000Z",
+    });
+    const olderBefore = fileHash(olderPath);
+    const newerBefore = fileHash(newerPath);
+
+    const stderr = captureStderr();
+    const result = await resolveCurrentSession(AGENTS_DIR, "branch-c", {});
+    stderr.restore();
+
+    expect(result?.data.claude_session_id).toBe("session-B");
+    expect(result?.data.branch).toBe("branch-b"); // unchanged
+    // Neither file mutated.
+    expect(fileHash(olderPath)).toBe(olderBefore);
+    expect(fileHash(newerPath)).toBe(newerBefore);
+    expect(stderr.lines).toEqual([
+      WARN_ADOPTION_MOST_RECENT("branch-c", newerPath, "branch-b"),
+    ]);
+  });
+
+  it("emits distinct WARN and returns null when no active sessions exist (SPEC-042 Track B)", async () => {
     writeSessionFile({
       fileName: "20260427-220000-session.md",
       branch: "branch-a",
+      status: "stopped",
       claude_session_id: "session-A",
     });
     writeSessionFile({
       fileName: "20260427-221000-session.md",
       branch: "branch-b",
+      status: "done",
       claude_session_id: "session-B",
     });
 
@@ -405,10 +479,144 @@ describe("resolveCurrentSession — Tier 3 (branch fallback)", () => {
     const result = await resolveCurrentSession(AGENTS_DIR, "branch-c", {});
     stderr.restore();
 
-    // With multiple active sessions and no branch match, the adoption heuristic
-    // doesn't fire (it requires exactly one active session) — so result is null.
     expect(result).toBeNull();
-    expect(stderr.lines).toEqual([WARN_FOR_BRANCH("branch-c")]);
+    expect(stderr.lines).toEqual([WARN_NO_ACTIVE("branch-c")]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPEC-042 Track B integration — release-agent scenario
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("resolveCurrentSession — SPEC-042 release agent scenario", () => {
+  it("release-agent branch with orchestrator session active: routes to orchestrator, no mutation, names both branches in WARN", async () => {
+    // Simulates a release agent running in a worktree on `release/v0.16.0`
+    // while an orchestrator session is active on `cwt/foo`. Before SPEC-042
+    // Track B this either silently dropped logs (multi-active) or rewrote
+    // the orchestrator's `branch:` to `release/v0.16.0` (single-active).
+    // Now: orchestrator session is returned, frontmatter untouched, and WARN
+    // names both branches.
+    const orchestratorPath = writeSessionFile({
+      fileName: "20260427-220000-session.md",
+      branch: "cwt/foo",
+      claude_session_id: "orchestrator",
+      last_updated: "2026-04-27T22:30:00.000Z",
+    });
+    const before = fileHash(orchestratorPath);
+
+    const stderr = captureStderr();
+    const result = await resolveCurrentSession(
+      AGENTS_DIR,
+      "release/v0.16.0",
+      {}
+    );
+    stderr.restore();
+
+    expect(result).not.toBeNull();
+    expect(result?.data.claude_session_id).toBe("orchestrator");
+    expect(result?.data.branch).toBe("cwt/foo"); // origin unchanged
+    expect(fileHash(orchestratorPath)).toBe(before);
+    expect(stderr.lines).toEqual([
+      WARN_ADOPTION_MOST_RECENT(
+        "release/v0.16.0",
+        orchestratorPath,
+        "cwt/foo"
+      ),
+    ]);
+    // WARN names both branches.
+    const line = stderr.lines[0];
+    expect(line).toContain("release/v0.16.0");
+    expect(line).toContain("cwt/foo");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resolveCurrentSession — rename-link WARN (SPEC-042 Track B)
+//
+// The finder detects `git branch -m old new` via the current branch's reflog
+// and resolves through the spec linked to the old branch name. The resulting
+// WARN must say "appears to be a rename of <old>" — "most-recent active" is
+// factually wrong here because the lookup never consulted recency.
+//
+// Fixture: real on-disk git repo created in beforeEach so `git reflog` returns
+// a real "Branch: renamed" line. `process.chdir` because find.ts execs git
+// without an explicit cwd.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("resolveCurrentSession — rename-link WARN", () => {
+  let originalCwd: string;
+
+  beforeEach(() => {
+    originalCwd = process.cwd();
+    // Init a fresh repo inside TEST_ROOT so reflog is unpolluted by the
+    // host worktree's history. Configure user.* locally to avoid global
+    // git config noise on CI.
+    execFileSync("git", ["init", "-q", "--initial-branch=feat/old"], {
+      cwd: TEST_ROOT,
+    });
+    execFileSync("git", ["config", "user.email", "test@example.com"], {
+      cwd: TEST_ROOT,
+    });
+    execFileSync("git", ["config", "user.name", "Test"], { cwd: TEST_ROOT });
+    execFileSync("git", ["commit", "--allow-empty", "-q", "-m", "init"], {
+      cwd: TEST_ROOT,
+    });
+    // The rename `feat/old -> feat/new` shows up in the *new* branch's reflog,
+    // which is what find.ts greps for.
+    execFileSync("git", ["branch", "-m", "feat/old", "feat/new"], {
+      cwd: TEST_ROOT,
+    });
+    process.chdir(TEST_ROOT);
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+  });
+
+  it("rename-link adoption emits 'appears to be a rename of' WARN, not 'most-recent active'", async () => {
+    // Seed a session on the OLD branch and a spec that links it. The finder
+    // walks: branch lookup fails → reflog match (feat/new from feat/old) →
+    // find spec where branch=feat/old → follow spec.session pointer.
+    const sessionFile = "20260427-220000-session.md";
+    const sessionPath = writeSessionFile({
+      fileName: sessionFile,
+      branch: "feat/old",
+      claude_session_id: "session-pre-rename",
+    });
+
+    const specsDir = join(AGENTS_DIR, "specs");
+    mkdirSync(specsDir, { recursive: true });
+    const specContent = matter.stringify(
+      "# Spec body\n",
+      {
+        id: "SPEC-TEST",
+        title: "Rename-link fixture",
+        branch: "feat/old",
+        session: sessionFile,
+      } as unknown as Record<string, unknown>
+    );
+    writeFileSync(join(specsDir, "SPEC-TEST.md"), specContent, "utf-8");
+
+    const beforeHash = fileHash(sessionPath);
+
+    const stderr = captureStderr();
+    const result = await resolveCurrentSession(AGENTS_DIR, "feat/new", {});
+    stderr.restore();
+
+    // Routed to the pre-rename session, frontmatter untouched.
+    expect(result).not.toBeNull();
+    expect(result?.data.claude_session_id).toBe("session-pre-rename");
+    expect(result?.data.branch).toBe("feat/old");
+    expect(fileHash(sessionPath)).toBe(beforeHash);
+
+    // The WARN matches the rename-link wording exactly — not the
+    // most-recent-active wording.
+    expect(stderr.lines).toEqual([
+      WARN_ADOPTION_RENAME_LINK("feat/new", sessionPath, "feat/old"),
+    ]);
+    const line = stderr.lines[0];
+    expect(line).toContain("appears to be a rename of 'feat/old'");
+    expect(line).not.toContain("most-recent active session");
   });
 });
 
@@ -564,20 +772,62 @@ describe("resolveCurrentSession — WARN routing", () => {
     stdoutSpy.mockRestore();
   });
 
-  it("WARN message contains exact literal text", async () => {
+  it("branch-match WARN contains exact literal text", async () => {
+    // Session is on BRANCH ('feat/example') and the request matches it →
+    // direct branch-match path → original WARN text.
     writeSessionFile({
       fileName: "20260427-220000-session.md",
       claude_session_id: "session-A",
     });
 
     const stderr = captureStderr();
-    await resolveCurrentSession(AGENTS_DIR, "feat/exact-test", {});
+    await resolveCurrentSession(AGENTS_DIR, BRANCH, {});
     stderr.restore();
 
     expect(stderr.lines).toHaveLength(1);
     const line = stderr.lines[0];
     expect(line).toContain("WARN: no session_id signal");
-    expect(line).toContain("falling back to branch routing for branch 'feat/exact-test'");
+    expect(line).toContain(`falling back to branch routing for branch '${BRANCH}'`);
+    expect(line).toContain("Pass --session-id <id> to silence.");
+  });
+
+  it("adoption WARN contains target file and origin branch (SPEC-042 Track B)", async () => {
+    // Session is on `cwt/foo`; request is on `release/v0.16.0` → adoption
+    // path → richer WARN naming both branches and the resolved file.
+    const filePath = writeSessionFile({
+      fileName: "20260427-220000-session.md",
+      branch: "cwt/foo",
+      claude_session_id: "session-A",
+    });
+
+    const stderr = captureStderr();
+    await resolveCurrentSession(AGENTS_DIR, "release/v0.16.0", {});
+    stderr.restore();
+
+    expect(stderr.lines).toHaveLength(1);
+    const line = stderr.lines[0];
+    expect(line).toContain("WARN: no session for branch 'release/v0.16.0'");
+    expect(line).toContain(`'${basename(filePath)}'`);
+    expect(line).toContain("origin branch 'cwt/foo'");
+    expect(line).toContain("Pass --session-id <id> to silence.");
+  });
+
+  it("zero-active WARN is distinct from adoption WARN (SPEC-042 Track B)", async () => {
+    writeSessionFile({
+      fileName: "20260427-220000-session.md",
+      status: "stopped",
+      claude_session_id: "session-A",
+    });
+
+    const stderr = captureStderr();
+    const result = await resolveCurrentSession(AGENTS_DIR, "release/v0.16.0", {});
+    stderr.restore();
+
+    expect(result).toBeNull();
+    expect(stderr.lines).toHaveLength(1);
+    const line = stderr.lines[0];
+    expect(line).toContain("WARN: no session for branch 'release/v0.16.0'");
+    expect(line).toContain("no active sessions to fall back to");
     expect(line).toContain("Pass --session-id <id> to silence.");
   });
 });
