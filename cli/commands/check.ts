@@ -609,8 +609,21 @@ async function workflowPrePr(context: HookContext): Promise<CheckResult> {
     try {
       const changelog = readFileSync("CHANGELOG.md", "utf-8");
       
-      // Find the Unreleased section
-      const unreleasedMatch = changelog.match(/##\s*\[Unreleased\]([\s\S]*?)(?=\n##\s|$)/);
+      // Find the Unreleased section. The `^` + `m` flag anchors the match
+      // to a real heading line — without it the regex picks up the literal
+      // phrase "## [Unreleased]" embedded in prose (e.g. inside backticks
+      // in the changelog's header description) and treats THAT as the
+      // section, producing false "empty Unreleased" blocks on PRs that
+      // actually have entries.
+      //
+      // The end-of-section guard uses `(?![\s\S])` rather than `$` because
+      // with the `m` flag `$` matches end-of-LINE (not end-of-input), and
+      // combined with the lazy `*?` it would resolve to an empty capture
+      // at the first line break. `(?![\s\S])` is "not followed by any
+      // character" — true only at end-of-input.
+      const unreleasedMatch = changelog.match(
+        /^##\s*\[Unreleased\]([\s\S]*?)(?=\n##\s|(?![\s\S]))/m,
+      );
       
       if (unreleasedMatch) {
         const unreleasedSection = unreleasedMatch[1];

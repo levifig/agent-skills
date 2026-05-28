@@ -7,7 +7,7 @@ description: >-
   tracking. Not for shapin...
 user-invocable: true
 argument-hint: '[TASK-XXX | SPEC-XXX | TASK-XXX..YYY | TASK-XXX,YYY | description]'
-version: 2.0.0-dev.45
+version: 2.0.0-dev.46
 ---
 
 # Implement
@@ -53,7 +53,7 @@ You are the coordinator. Start by understanding the task:
 - All code changes delegated via Task tool -- no direct edits by orchestrator
 - Session file is continuously updated with spawns, progress, and current state
 - Spec artifacts closed out on branch before PR creation
-- **Linear-native mode:** `blockedBy` of the target sub-issue is fully `completed` before any session file is created; parent rollup is auto-closed only when all sub-issues are `completed`
+- **Linear-native mode:** `blockedBy` of the target sub-issue is fully `completed` before any session file is created; starting a sub-issue also promotes an unstarted parent rollup to active; parent rollup is auto-closed only when all sub-issues are `completed`
 
 ## Quick Reference
 
@@ -176,7 +176,15 @@ The issue is an actual task. Implement it directly — with a pre-flight gate.
    - Suggest: `"Complete the blocker(s) first, or ask to override if the
      blockedBy link is stale."`
 2. If blockers are clear:
-   - Move the sub-issue to `in_progress` state via `update_issue`.
+   - Start the sub-issue as one logical Linear operation. This moves
+     the sub-issue to the team's `started`/In Progress state and, when the
+     parent rollup is still `backlog` or `unstarted`, promotes the parent to
+     the same `started`/In Progress state.
+   - If the parent is already active, leave it unchanged. If the parent is
+     `completed`, `canceled`, or archived, refuse to start unless the user
+     explicitly asks to override the protected parent state.
+   - If the child update succeeds but parent promotion fails, report a
+     reconciliation error naming the parent issue before continuing.
    - Resolve branch name from the sub-issue's `branchName` field (Linear
      auto-generates one) — see
      [session-management.md](references/session-management.md).
@@ -204,7 +212,7 @@ When the sub-issue's implementation passes review and tests:
 
 | Moment | Sub-issue state | Parent state |
 |--------|----------------|--------------|
-| Implementation starts | `in_progress` | unchanged |
+| Implementation starts | `started` / In Progress | promoted to `started` / In Progress if still `backlog` or `unstarted` |
 | Implementation + review pass | `completed` | check: close only if all sibs completed |
 | Blocker discovered mid-work | `in_progress` + blocker comment | unchanged |
 
@@ -289,7 +297,7 @@ After creating session file:
 
 1. [ ] Parse input (task, Linear ID, or description)
 2. [ ] If TASK-XXX: load task via `loaf task show TASK-XXX`, update with `loaf task update TASK-XXX --session <session-file>`, load parent spec
-3. [ ] If Linear ID (or `SPEC-XXX` with `linear_parent`): follow [Linear-Native Routing](#linear-native-routing). Parent → walk sub-issues and select next. Sub-issue → verify `blockedBy` is clear, then move to In Progress and continue
+3. [ ] If Linear ID (or `SPEC-XXX` with `linear_parent`): follow [Linear-Native Routing](#linear-native-routing). Parent → walk sub-issues and select next. Sub-issue → verify `blockedBy` is clear, then start it as one logical Linear operation so the parent is promoted when needed
 4. [ ] If description: auto-create task (see Ad-hoc Task Auto-Creation above)
 5. [ ] Create dedicated branch (see [session-management.md](references/session-management.md))
 6. [ ] Suggest team based on task context

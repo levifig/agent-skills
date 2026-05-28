@@ -7,7 +7,7 @@ description: >-
   changelog updates, and...
 user-invocable: true
 argument-hint: '[PR number or URL]'
-version: 2.0.0-dev.45
+version: 2.0.0-dev.46
 ---
 
 # Release

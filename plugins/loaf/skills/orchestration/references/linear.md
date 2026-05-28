@@ -141,6 +141,12 @@ Sub-issues track execution.
   sub-issue IDs.
 - Sub-issue labels describe the task itself (type, team, area), not the
   parent — don't label sub-issues with `spec`.
+- Starting a sub-issue promotes the parent rollup from `backlog`/`unstarted`
+  to the team's `started`/In Progress state. Parent promotion is a state
+  invariant of the start operation, not a separate manual reminder.
+- Do not silently reopen protected parents. If the parent is `completed`,
+  `canceled`, or archived, stop and ask for an explicit override before
+  starting the child.
 
 ### Spec file remains canonical
 

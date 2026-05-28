@@ -980,6 +980,37 @@ describe("check: workflow-pre-pr", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("passes when prose mentions backtick-quoted `## [Unreleased]` before the real header", () => {
+    // Regression: the Unreleased detector previously matched the literal
+    // phrase "## [Unreleased]" embedded in the file's intro paragraph
+    // (e.g. inside backticks). That matched FIRST, captured an empty
+    // section, and blocked every PR with genuine entries. The fix anchors
+    // the regex to start-of-line — backtick-quoted prose mentions can never
+    // be at column zero of a real heading line, so they're skipped.
+    const changelog = `# Changelog
+
+This project documents changes here. The \`## [Unreleased]\` section is a
+staging area for curated entries before release.
+
+## [Unreleased]
+
+- Added new feature
+- Fixed bug
+
+## [1.0.0] - 2024-01-01
+
+- Initial release
+`;
+    writeFileSync(join(TEST_ROOT, "CHANGELOG.md"), changelog);
+
+    const result = runCheck("workflow-pre-pr", {
+      tool: { name: "Bash" },
+      tool_input: { command: 'gh pr create --title "feat: add new feature" --body "Description"' },
+    });
+
+    expect(result.exitCode).toBe(0);
+  });
+
   it("blocks when CHANGELOG is missing", () => {
     const result = runCheck("workflow-pre-pr", {
       tool: { name: "Bash" },

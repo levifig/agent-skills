@@ -100,8 +100,12 @@ export function probeMainWorktreeTarget(path: string): { exists: boolean; isDire
  * Returns the absolute path to the main worktree's root as recorded in the
  * gitdir pointer, or null if the worktree is actually a main checkout, the
  * `.git` file is missing, or the pointer can't be parsed.
+ *
+ * Exported so the `agents-config` resolver can mirror the migrate command's
+ * "main is gone" diagnostic instead of silently writing to the linked
+ * worktree's `.agents/` (SPEC-042 Track A follow-up).
  */
-function readGitdirPointerMainRoot(wtRoot: string): string | null {
+export function readGitdirPointerMainRoot(wtRoot: string): string | null {
   const dotGit = join(wtRoot, ".git");
   if (!existsSync(dotGit)) return null;
   let stat;

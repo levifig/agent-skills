@@ -20,6 +20,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { execFileSync, spawnSync } from "child_process";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -987,5 +988,134 @@ describe("release artifact commands", () => {
       }
     },
     90_000,
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPEC-042 Track A — `loaf release --pre-merge` in a centralized linked worktree
+//
+// Under SPEC-036, a migrated linked worktree has only `.agents/.moved-to`
+// (a back-pointer to the main worktree). `.agents/loaf.json` lives in the
+// main worktree. Before the SPEC-042 fix, `readLoafConfig(cwd)` resolved
+// directly against the linked worktree's empty `.agents/`, so
+// `release.versionFiles` was unreachable and `--pre-merge` failed with
+// "No version files found". This test replicates the GridSight repro and
+// guards against regression.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("--pre-merge in a centralized linked worktree (SPEC-042 Track A)", () => {
+  it(
+    "reads release.versionFiles from the main worktree's .agents/loaf.json",
+    () => {
+      const mainRoot = realpathSync(
+        mkdtempSync(join(tmpdir(), "loaf-release-spec042-main-")),
+      );
+      let linkedRoot: string | null = null;
+      try {
+        // ── Set up the MAIN worktree ────────────────────────────────────────
+        execFileSync("git", ["init", "-b", "main"], {
+          cwd: mainRoot,
+          stdio: "ignore",
+        });
+        mkdirSync(join(mainRoot, ".agents"), { recursive: true });
+        // The centralized config — version files live under `backend/`.
+        writeFileSync(
+          join(mainRoot, ".agents", "loaf.json"),
+          JSON.stringify(
+            { release: { versionFiles: ["backend/pyproject.toml"] } },
+            null,
+            2,
+          ) + "\n",
+        );
+        mkdirSync(join(mainRoot, "backend"), { recursive: true });
+        writeFileSync(
+          join(mainRoot, "backend", "pyproject.toml"),
+          [
+            "[project]",
+            'name = "fixture"',
+            'version = "1.0.0"',
+            "",
+          ].join("\n"),
+        );
+        writeFileSync(
+          join(mainRoot, "CHANGELOG.md"),
+          [
+            "# Changelog",
+            "",
+            "## [Unreleased]",
+            "",
+            "- Initial backend change",
+            "",
+            "## [1.0.0] - 2024-01-01",
+            "",
+            "- Initial release",
+            "",
+          ].join("\n"),
+        );
+        execFileSync("git", ["add", "."], {
+          cwd: mainRoot,
+          stdio: "ignore",
+        });
+        execFileSync(
+          "git",
+          [...TEST_IDENTITY, "commit", "-m", "chore: initial"],
+          { cwd: mainRoot, stdio: "ignore" },
+        );
+
+        // ── Add a LINKED worktree on a feature branch ───────────────────────
+        // `git worktree add` rejects pre-existing target dirs, so we generate
+        // a path that doesn't exist yet and let git create it. We can only
+        // realpath() it after creation.
+        const wtTarget = join(
+          tmpdir(),
+          `loaf-release-spec042-linked-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        );
+        execFileSync(
+          "git",
+          ["worktree", "add", "-b", "feat/spec042", wtTarget],
+          { cwd: mainRoot, stdio: "ignore" },
+        );
+        linkedRoot = realpathSync(wtTarget);
+
+        // Centralized state: linked worktree has only the back-pointer.
+        mkdirSync(join(linkedRoot, ".agents"), { recursive: true });
+        writeFileSync(
+          join(linkedRoot, ".agents", ".moved-to"),
+          `${mainRoot}\n`,
+          "utf-8",
+        );
+
+        // ── Run `loaf release --pre-merge --dry-run` from the LINKED CWD ───
+        const result = spawnSync(
+          "node",
+          [
+            CLI_PATH,
+            "release",
+            "--pre-merge",
+            "--base",
+            "main",
+            "--dry-run",
+          ],
+          {
+            cwd: linkedRoot,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 30_000,
+          },
+        );
+
+        // Must NOT fail with the "No version files found" error.
+        expect(result.stderr).not.toContain("No version files found");
+        expect(result.status).toBe(0);
+        // The configured version file path must appear in the dry-run output.
+        expect(result.stdout).toContain("backend/pyproject.toml");
+      } finally {
+        if (linkedRoot && existsSync(linkedRoot)) {
+          rmSync(linkedRoot, { recursive: true, force: true });
+        }
+        rmSync(mainRoot, { recursive: true, force: true });
+      }
+    },
+    60_000,
   );
 });
