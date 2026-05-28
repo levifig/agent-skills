@@ -3,7 +3,7 @@ id: SPEC-042
 title: Worktree-aware config resolution and ephemeral-branch session fallback
 source: direct — bug reports from GridSight release-agent flows (v0.16.0)
 created: '2026-05-28T00:18:00Z'
-status: implementing
+status: complete
 branch: feat/worktree-aware-config-and-session-fallback
 related_specs:
   - SPEC-032

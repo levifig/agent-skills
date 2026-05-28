@@ -2,50 +2,6 @@
   "version": 1,
   "next_id": 190,
   "tasks": {
-    "TASK-188": {
-      "title": "Make agents-config.ts worktree-aware (follow .moved-to back-pointer)",
-      "slug": "worktree-aware-loaf-config-resolution",
-      "spec": "SPEC-042",
-      "status": "done",
-      "priority": "P1",
-      "depends_on": [],
-      "files": [
-        "cli/lib/config/agents-config.ts",
-        "cli/lib/config/agents-config.test.ts",
-        "cli/lib/tasks/resolve.ts",
-        "cli/commands/release.test.ts"
-      ],
-      "verify": "npm run typecheck && npm run test -- cli/lib/config/agents-config.test.ts cli/commands/release.test.ts",
-      "done": "readLoafConfig and writeLoafConfigRaw follow .moved-to back-pointer to the main worktree's .agents/loaf.json; loaf release --pre-merge succeeds in a migrated linked worktree without --version-file",
-      "session": null,
-      "created": "2026-05-28T01:53:43.449Z",
-      "updated": "2026-05-28T08:59:26.504Z",
-      "completed_at": "2026-05-28T08:59:26.503Z",
-      "file": "TASK-188-worktree-aware-loaf-config-resolution.md"
-    },
-    "TASK-189": {
-      "title": "Stop destructive branch-rewrite and extend Tier 3 session fallback to most-recent-active",
-      "slug": "ephemeral-branch-session-fallback",
-      "spec": "SPEC-042",
-      "status": "done",
-      "priority": "P1",
-      "depends_on": [
-        "TASK-188"
-      ],
-      "files": [
-        "cli/lib/session/find.ts",
-        "cli/lib/session/resolve.ts",
-        "cli/lib/session/find.test.ts",
-        "cli/lib/session/resolve.test.ts"
-      ],
-      "verify": "npm run typecheck && npm run test -- cli/lib/session/find.test.ts cli/lib/session/resolve.test.ts",
-      "done": "findActiveSessionForBranch never mutates session branch frontmatter; multi-active fallback returns most-recent-active with loud WARN; loaf session log on release/v* lands in orchestrator's session without rewriting its origin branch",
-      "session": null,
-      "created": "2026-05-28T01:53:43.449Z",
-      "updated": "2026-05-28T08:59:26.865Z",
-      "completed_at": "2026-05-28T08:59:26.865Z",
-      "file": "TASK-189-ephemeral-branch-session-fallback.md"
-    },
     "TASK-001": {
       "title": "Create verification reference",
       "slug": "verification-reference",
@@ -3254,6 +3210,50 @@
       "updated": "2026-05-19T19:19:56.286Z",
       "completed_at": "2026-05-19T19:19:56.286Z",
       "file": "archive/TASK-187-archive-release-follow-up-ideas-implemented-by-thi.md"
+    },
+    "TASK-188": {
+      "title": "Make agents-config.ts worktree-aware (follow .moved-to back-pointer)",
+      "slug": "worktree-aware-loaf-config-resolution",
+      "spec": "SPEC-042",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [
+        "cli/lib/config/agents-config.ts",
+        "cli/lib/config/agents-config.test.ts",
+        "cli/lib/tasks/resolve.ts",
+        "cli/commands/release.test.ts"
+      ],
+      "verify": "npm run typecheck && npm run test -- cli/lib/config/agents-config.test.ts cli/commands/release.test.ts",
+      "done": "readLoafConfig and writeLoafConfigRaw follow .moved-to back-pointer to the main worktree's .agents/loaf.json; loaf release --pre-merge succeeds in a migrated linked worktree without --version-file",
+      "session": null,
+      "created": "2026-05-28T01:53:43.449Z",
+      "updated": "2026-05-28T08:59:26.504Z",
+      "completed_at": "2026-05-28T08:59:26.503Z",
+      "file": "archive/TASK-188-worktree-aware-loaf-config-resolution.md"
+    },
+    "TASK-189": {
+      "title": "Stop destructive branch-rewrite and extend Tier 3 session fallback to most-recent-active",
+      "slug": "ephemeral-branch-session-fallback",
+      "spec": "SPEC-042",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-188"
+      ],
+      "files": [
+        "cli/lib/session/find.ts",
+        "cli/lib/session/resolve.ts",
+        "cli/lib/session/find.test.ts",
+        "cli/lib/session/resolve.test.ts"
+      ],
+      "verify": "npm run typecheck && npm run test -- cli/lib/session/find.test.ts cli/lib/session/resolve.test.ts",
+      "done": "findActiveSessionForBranch never mutates session branch frontmatter; multi-active fallback returns most-recent-active with loud WARN; loaf session log on release/v* lands in orchestrator's session without rewriting its origin branch",
+      "session": null,
+      "created": "2026-05-28T01:53:43.449Z",
+      "updated": "2026-05-28T08:59:26.865Z",
+      "completed_at": "2026-05-28T08:59:26.865Z",
+      "file": "archive/TASK-189-ephemeral-branch-session-fallback.md"
     }
   },
   "specs": {
@@ -3355,11 +3355,11 @@
     },
     "SPEC-042": {
       "title": "Worktree-aware config resolution and ephemeral-branch session fallback",
-      "status": "implementing",
+      "status": "complete",
       "requirement": null,
       "source": "direct — bug reports from GridSight release-agent flows (v0.16.0)",
       "created": "2026-05-28T00:18:00Z",
-      "file": "SPEC-042-worktree-aware-config-and-session-fallback.md"
+      "file": "archive/SPEC-042-worktree-aware-config-and-session-fallback.md"
     },
     "SPEC-001": {
       "title": "Loaf Self-Sufficiency",
