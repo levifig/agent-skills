@@ -7,7 +7,7 @@ description: >-
   hygiene recommendations, arc...
 user-invocable: true
 argument-hint: '[sessions|specs|plans|drafts|handoffs]'
-version: 2.0.0-dev.48
+version: 2.0.0-dev.49
 ---
 
 # Housekeeping

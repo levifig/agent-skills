@@ -18484,7 +18484,7 @@ import { join as join19, dirname as dirname5, resolve } from "path";
 import { readFileSync as readFileSync11 } from "fs";
 import { dirname as dirname4, join as join18 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
-var LOAF_VERSION = "2.0.0-dev.48" ? "2.0.0-dev.48" : readPackageVersion();
+var LOAF_VERSION = "2.0.0-dev.49" ? "2.0.0-dev.49" : readPackageVersion();
 
 // cli/lib/install/fenced-section.ts
 var FENCED_START = "<!-- loaf:managed:start";
@@ -29121,7 +29121,9 @@ function findActiveSessionForBranch(agentsDir, branch) {
   activeSessions.sort((a, b) => {
     const aTime = a.data.last_updated || a.data.last_entry || a.data.created || "0";
     const bTime = b.data.last_updated || b.data.last_entry || b.data.created || "0";
-    return bTime.localeCompare(aTime);
+    const cmp = bTime.localeCompare(aTime);
+    if (cmp !== 0) return cmp;
+    return a.filePath.localeCompare(b.filePath);
   });
   const winner = activeSessions[0];
   return { ...winner, adoption: "most-recent-active" };
@@ -29139,7 +29141,9 @@ function pickCandidate(candidates) {
     if (priorityA !== priorityB) return priorityA - priorityB;
     const timeA = a.data.last_updated || a.data.last_entry || "0";
     const timeB = b.data.last_updated || b.data.last_entry || "0";
-    return timeB.localeCompare(timeA);
+    const cmp = timeB.localeCompare(timeA);
+    if (cmp !== 0) return cmp;
+    return a.filePath.localeCompare(b.filePath);
   });
   return sorted[0];
 }
