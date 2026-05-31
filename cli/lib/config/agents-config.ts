@@ -44,10 +44,11 @@ export interface LoafConfig {
 
 /**
  * Resolve the effective directory that hosts `.agents/loaf.json` for a given
- * `projectRoot`. In a linked worktree this returns the main worktree's root;
- * everywhere else it returns `projectRoot` unchanged.
+ * `projectRoot`. Linked worktrees normally resolve to their main worktree's
+ * root; single-checkouts and malformed-pointer linked worktrees stay at
+ * `projectRoot`. See Case 4 below for the one linked-worktree exception.
  *
- * Three cases:
+ * Four cases:
  *
  *   1. **Single-checkout** (or non-git): `findMainWorktreeRoot` returns null
  *      AND there is no linked-worktree `.git` pointer file. The legacy
@@ -64,6 +65,23 @@ export interface LoafConfig {
  *      silently falling back to `projectRoot` would create a stale
  *      `loaf.json` invisible to every other tool that resolves through the
  *      main worktree (the exact bug SPEC-042 Track A eliminates).
+ *
+ *   4. **Linked worktree with malformed `.git` pointer**: `.git` exists as a
+ *      file but its contents are unparseable (no `gitdir:` line, or a gitdir
+ *      that doesn't match the `<main>/.git/worktrees/<name>` shape), so
+ *      `readGitdirPointerMainRoot` also returns null. We *deliberately* fall
+ *      back to `projectRoot` here instead of throwing — the resolver is
+ *      best-effort and a corrupt pointer is rare enough that crashing every
+ *      `loaf.json` consumer is worse than the residual shadow-config risk.
+ *      Downstream `.moved-to` detection still catches the migrated case, and
+ *      the planned SQLite/XDG state move further shrinks the surface area.
+ *
+ *      Out of scope for the Case-4 tests: symlinked `.git` files, and
+ *      `gitdir:` lines that use a *relative* path instead of the absolute
+ *      `<main>/.git/worktrees/<name>` shape. Both collapse to the same null
+ *      return (so the fallback behavior is identical), but neither is
+ *      exercised by a dedicated fixture. Add one when a real-world report
+ *      surfaces.
  */
 function resolveEffectiveRoot(projectRoot: string): string {
   const mainRoot = findMainWorktreeRoot(projectRoot);

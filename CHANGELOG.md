@@ -6,7 +6,9 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Changed
+
+- `agents-config` now documents and pins the fall-back-to-`projectRoot` behavior when a linked worktree's `.git` pointer file is malformed (missing `gitdir:` line or non-matching shape). This is the deliberate Case-4 fallback in `resolveEffectiveRoot` — distinct from the "main removed" case fixed in #53, which still throws. Closes a Codex review follow-up on #53.
 
 ## [2.0.0-dev.49] - 2026-05-31
 

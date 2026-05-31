@@ -292,3 +292,57 @@ describe("agents-config — linked worktree with main removed", () => {
     expect(existsSync(join(linked, ".agents", "loaf.json"))).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Linked worktree with malformed `.git` pointer file
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// When the `.git` file inside a linked worktree is corrupt or unparseable —
+// missing the `gitdir:` line, or pointing somewhere that doesn't match the
+// `<main>/.git/worktrees/<name>` shape — `readGitdirPointerMainRoot` returns
+// null. The resolver deliberately falls back to `projectRoot` instead of
+// throwing (see Case 4 in the resolveEffectiveRoot docblock). These tests
+// lock that behavior in so it's not changed accidentally.
+
+describe("agents-config — linked worktree with malformed .git pointer", () => {
+  it("falls back to projectRoot when the .git pointer file has no gitdir: line", () => {
+    const main = createMainRepo("mp-nogitdir");
+    const linked = addWorktree(main, "feat/mp-nogitdir");
+    writeFileSync(join(linked, ".git"), "totally bogus contents\n", "utf-8");
+
+    expect(loafConfigPath(linked)).toBe(join(linked, ".agents", "loaf.json"));
+  });
+
+  it("falls back to projectRoot when the gitdir: line doesn't match <main>/.git/worktrees/<name>", () => {
+    const main = createMainRepo("mp-badshape");
+    const linked = addWorktree(main, "feat/mp-badshape");
+    writeFileSync(join(linked, ".git"), "gitdir: /tmp/some-arbitrary-path\n", "utf-8");
+
+    expect(loafConfigPath(linked)).toBe(join(linked, ".agents", "loaf.json"));
+  });
+
+  it("readLoafConfig returns {} for a malformed-pointer worktree with no .agents/loaf.json", () => {
+    const main = createMainRepo("mp-read");
+    const linked = addWorktree(main, "feat/mp-read");
+    writeFileSync(join(linked, ".git"), "junk\n", "utf-8");
+
+    expect(readLoafConfig(linked)).toEqual({});
+  });
+
+  it("mergeLoafConfigIntegrations writes into the linked worktree's .agents/ when the pointer is malformed", () => {
+    const main = createMainRepo("mp-write");
+    const linked = addWorktree(main, "feat/mp-write");
+    writeFileSync(join(linked, ".git"), "junk\n", "utf-8");
+
+    mergeLoafConfigIntegrations(linked, { linear: { enabled: true } });
+
+    // With no parseable pointer, the resolver can't identify a main worktree,
+    // so the write lands locally. This is the documented Case 4 fallback —
+    // not ideal, but preferable to crashing every loaf.json consumer on a
+    // corrupt pointer. See resolveEffectiveRoot docblock.
+    const linkedConfigPath = join(linked, ".agents", "loaf.json");
+    expect(existsSync(linkedConfigPath)).toBe(true);
+    const written = JSON.parse(readFileSync(linkedConfigPath, "utf-8"));
+    expect(written.integrations?.linear).toEqual({ enabled: true });
+  });
+});
