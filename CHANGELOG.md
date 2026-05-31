@@ -6,7 +6,9 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Fixed
+
+- `findActiveSessionForBranch` now applies a deterministic `filePath` tiebreaker on both the branch-match and most-recent-active fallback paths, so candidates with byte-identical effective timestamps resolve to the same session across repeated calls regardless of `readdirSync` order.
 
 ## [2.0.0-dev.48] - 2026-05-29
 

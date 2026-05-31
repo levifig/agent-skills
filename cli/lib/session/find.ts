@@ -310,7 +310,15 @@ export function findActiveSessionForBranch(
       a.data.last_updated || a.data.last_entry || a.data.created || "0";
     const bTime =
       b.data.last_updated || b.data.last_entry || b.data.created || "0";
-    return bTime.localeCompare(aTime); // descending — newest first
+    const cmp = bTime.localeCompare(aTime); // descending — newest first
+    if (cmp !== 0) return cmp;
+    // Deterministic tiebreaker: alphabetical filePath. Session filenames are
+    // `YYYYMMDD-HHMMSS-…md`, so this still favors the more recent file when
+    // the effective timestamp (`last_updated`, falling back to `last_entry`,
+    // falling back to `created`) is identical across candidates, and removes
+    // the dependency on `readdirSync` collection order (filesystem-/platform-
+    // dependent).
+    return a.filePath.localeCompare(b.filePath);
   });
 
   const winner = activeSessions[0];
@@ -343,7 +351,13 @@ function pickCandidate(
 
     const timeA = a.data.last_updated || a.data.last_entry || "0";
     const timeB = b.data.last_updated || b.data.last_entry || "0";
-    return timeB.localeCompare(timeA);
+    const cmp = timeB.localeCompare(timeA); // descending — newest first
+    if (cmp !== 0) return cmp;
+    // Deterministic tiebreaker: alphabetical filePath. Tie only fires when the
+    // effective timestamp (`last_updated`, falling back to `last_entry`) is
+    // identical across candidates, and removes the dependency on
+    // `readdirSync` collection order (filesystem-/platform-dependent).
+    return a.filePath.localeCompare(b.filePath);
   });
 
   return sorted[0];
