@@ -1,0 +1,161 @@
+package state
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"path/filepath"
+
+	"github.com/levifig/loaf/internal/project"
+)
+
+// SpecShow is the state-backed single-spec read model.
+type SpecShow struct {
+	Query string     `json:"query"`
+	Spec  SpecDetail `json:"spec"`
+}
+
+// SpecDetail contains operational spec metadata plus imported source context.
+type SpecDetail struct {
+	ID            string              `json:"id"`
+	Alias         string              `json:"alias,omitempty"`
+	Title         string              `json:"title"`
+	Status        string              `json:"status"`
+	Tasks         SpecTaskCounts      `json:"tasks"`
+	Sources       []TraceSource       `json:"sources"`
+	Body          string              `json:"body,omitempty"`
+	Relationships []TraceRelationship `json:"relationships"`
+	CreatedAt     string              `json:"created_at"`
+	UpdatedAt     string              `json:"updated_at"`
+}
+
+// ShowSpec returns one spec from initialized SQLite state.
+func ShowSpec(ctx context.Context, root project.Root, resolver PathResolver, ref string) (SpecShow, error) {
+	store, err := openInitializedStore(root, resolver)
+	if err != nil {
+		return SpecShow{}, err
+	}
+	defer store.Close()
+	return store.ShowSpec(ctx, root, ref)
+}
+
+// ShowSpec returns one spec from an open store.
+func (s *Store) ShowSpec(ctx context.Context, root project.Root, ref string) (SpecShow, error) {
+	projectID := ProjectID(root)
+	entity, err := s.resolveTraceEntity(ctx, projectID, ref)
+	if err != nil {
+		return SpecShow{}, err
+	}
+	if entity.Kind != "spec" {
+		return SpecShow{}, fmt.Errorf("spec show target %q resolved to %s, not spec", ref, entity.Kind)
+	}
+
+	spec, err := s.specDetail(ctx, root, projectID, entity)
+	if err != nil {
+		return SpecShow{}, err
+	}
+	return SpecShow{Query: ref, Spec: spec}, nil
+}
+
+func (s *Store) specDetail(ctx context.Context, root project.Root, projectID string, entity TraceEntity) (SpecDetail, error) {
+	var title, status, createdAt, updatedAt string
+	var sourcePath, sourceHash sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+SELECT
+  specs.title,
+  specs.status,
+  specs.created_at,
+  specs.updated_at,
+  sources.path,
+  sources.hash
+FROM specs
+LEFT JOIN sources ON sources.id = specs.body_source_id
+WHERE specs.project_id = ? AND specs.id = ?
+`, projectID, entity.ID).Scan(&title, &status, &createdAt, &updatedAt, &sourcePath, &sourceHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SpecDetail{}, fmt.Errorf("spec %q not found in SQLite state", firstNonEmpty(entity.Alias, entity.ID))
+	}
+	if err != nil {
+		return SpecDetail{}, fmt.Errorf("read spec %s: %w", entity.ID, err)
+	}
+
+	alias := firstNonEmpty(entity.Alias)
+	if alias == "" {
+		if found, err := s.entityAlias(ctx, projectID, "spec", entity.ID); err == nil {
+			alias = found
+		}
+	}
+	tasks, err := s.specTaskCountsByID(ctx, projectID, entity.ID)
+	if err != nil {
+		return SpecDetail{}, err
+	}
+
+	sources := []TraceSource{}
+	body := ""
+	if sourcePath.Valid && sourcePath.String != "" {
+		path := filepath.ToSlash(sourcePath.String)
+		sources = append(sources, TraceSource{Path: path, Hash: sourceHash.String})
+		if content, err := readImportedSourceBody(root.Path(), path); err == nil {
+			body = content
+		}
+	}
+
+	relationships, err := s.traceRelationships(ctx, projectID, TraceEntity{
+		Kind:   "spec",
+		ID:     entity.ID,
+		Alias:  alias,
+		Title:  title,
+		Status: status,
+	})
+	if err != nil {
+		return SpecDetail{}, err
+	}
+
+	return SpecDetail{
+		ID:            entity.ID,
+		Alias:         alias,
+		Title:         title,
+		Status:        status,
+		Tasks:         tasks,
+		Sources:       sources,
+		Body:          body,
+		Relationships: relationships,
+		CreatedAt:     createdAt,
+		UpdatedAt:     updatedAt,
+	}, nil
+}
+
+func (s *Store) specTaskCountsByID(ctx context.Context, projectID string, specID string) (SpecTaskCounts, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT status, COUNT(*)
+FROM tasks
+WHERE project_id = ? AND spec_id = ?
+GROUP BY status
+`, projectID, specID)
+	if err != nil {
+		return SpecTaskCounts{}, fmt.Errorf("query spec task counts: %w", err)
+	}
+	defer rows.Close()
+
+	var counts SpecTaskCounts
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return SpecTaskCounts{}, fmt.Errorf("scan spec task count: %w", err)
+		}
+		switch status {
+		case "done", "archived":
+			counts.Done += count
+		case "in_progress":
+			counts.InProgress += count
+		default:
+			counts.Todo += count
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return SpecTaskCounts{}, fmt.Errorf("iterate spec task counts: %w", err)
+	}
+	return counts, nil
+}

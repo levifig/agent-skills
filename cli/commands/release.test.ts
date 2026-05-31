@@ -16,7 +16,7 @@
  * Test Conditions gate that requires the subject be explicitly tested.
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync, spawnSync } from "child_process";
 import {
   chmodSync,
@@ -36,6 +36,7 @@ import { join } from "path";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CLI_PATH = join(process.cwd(), "dist-cli", "index.js");
+let DEFAULT_RELEASE_ROOT: string;
 
 beforeAll(() => {
   execFileSync("npm", ["run", "build:cli"], {
@@ -43,7 +44,76 @@ beforeAll(() => {
     stdio: "ignore",
     timeout: 30_000,
   });
+
+  DEFAULT_RELEASE_ROOT = realpathSync(mkdtempSync(join(tmpdir(), "loaf-release-default-")));
+  execFileSync("git", ["init", "-b", "main"], {
+    cwd: DEFAULT_RELEASE_ROOT,
+    stdio: "ignore",
+  });
+  execFileSync("git", ["config", "user.name", "Test"], {
+    cwd: DEFAULT_RELEASE_ROOT,
+    stdio: "ignore",
+  });
+  execFileSync("git", ["config", "user.email", "test@test.com"], {
+    cwd: DEFAULT_RELEASE_ROOT,
+    stdio: "ignore",
+  });
+  execFileSync("git", ["config", "loaf.release.base", "HEAD"], {
+    cwd: DEFAULT_RELEASE_ROOT,
+    stdio: "ignore",
+  });
+  writeFileSync(
+    join(DEFAULT_RELEASE_ROOT, "package.json"),
+    JSON.stringify(
+      {
+        name: "release-fixture",
+        version: JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf-8")).version,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  writeFileSync(
+    join(DEFAULT_RELEASE_ROOT, "CHANGELOG.md"),
+    [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      "### Changed",
+      "",
+      "- Test change.",
+      "",
+    ].join("\n"),
+  );
+  execFileSync("git", ["add", "."], {
+    cwd: DEFAULT_RELEASE_ROOT,
+    stdio: "ignore",
+  });
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@test.com",
+      "commit",
+      "-m",
+      "Initial commit",
+    ],
+    { cwd: DEFAULT_RELEASE_ROOT, stdio: "ignore" },
+  );
+  execFileSync("git", ["update-ref", "refs/remotes/origin/main", "HEAD"], {
+    cwd: DEFAULT_RELEASE_ROOT,
+    stdio: "ignore",
+  });
 }, 30_000);
+
+afterAll(() => {
+  if (DEFAULT_RELEASE_ROOT) {
+    rmSync(DEFAULT_RELEASE_ROOT, { recursive: true, force: true });
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -70,7 +140,7 @@ interface RunResult {
 
 /** Run the release command with given args. Never throws — captures exit code. */
 function runRelease(...args: string[]): RunResult {
-  return runReleaseIn(process.cwd(), args);
+  return runReleaseIn(DEFAULT_RELEASE_ROOT, args);
 }
 
 function runReleaseIn(

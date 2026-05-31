@@ -140,12 +140,12 @@ function generateCoreFunctions(platform: RuntimePlatform): string {
 
 /**
  * Run a hook via subprocess (loaf check or script execution)
- * 
+ *
  * Exit codes:
  *   0 = allow (hook passed)
  *   1 = error (hook failed but not blocking)
  *   2 = block (hook rejected the action)
- * 
+ *
  * @param hookType - 'pre-tool', 'post-tool', or 'session'
  * @param toolName - Name of the tool being invoked
  * @param hookId - Specific hook identifier
@@ -214,7 +214,7 @@ async function runHook(
         child.stdin.write(payload);
         child.stdin.end();
       }
-      
+
       const result = await new Promise<HookResult>((resolve) => {
         let stdoutStr = '';
         let stderrStr = '';
@@ -244,7 +244,7 @@ async function runHook(
         child.stdin.write(payload);
         child.stdin.end();
       }
-      
+
       const result = await new Promise<HookResult>((resolve) => {
         let stdoutStr = '';
         let stderrStr = '';
@@ -280,7 +280,7 @@ async function runHook(
  */
 function matchesTool(toolName: string, pattern: string): boolean {
   if (!toolName || !pattern) return false;
-  
+
   const patterns = pattern.split('|');
   return patterns.some((p) => {
     const trimmed = p.trim();
@@ -293,19 +293,19 @@ function matchesTool(toolName: string, pattern: string): boolean {
 
 function matchesIfCondition(toolName: string, toolInput: unknown, ifCondition: string | undefined): boolean {
   if (!ifCondition) return true;
-  
+
   // Parse pattern like "Bash(gh pr merge:*)" or "Bash(git push:*)"
   // Tool name before '(' and command pattern inside parentheses
   const match = ifCondition.match(/^(\\w+)\\(([^)]+)\\)$/);
   if (!match) return true;
-  
+
   const [, expectedTool, commandPattern] = match;
   if (toolName !== expectedTool) return false;
-  
+
   const input = toolInput as Record<string, unknown> | undefined;
   const command = (input?.command || input?.file_path) as string | undefined;
   if (!command) return false;
-  
+
   // Handle glob patterns with :* suffix (e.g., "git commit:*" means "starts with git commit")
   // The :* format treats everything before : as a literal prefix, * matches anything after
   if (commandPattern.endsWith(':')) {
@@ -313,20 +313,20 @@ function matchesIfCondition(toolName: string, toolInput: unknown, ifCondition: s
     const prefix = commandPattern.slice(0, -1);
     return command.startsWith(prefix);
   }
-  
+
   if (commandPattern.endsWith(':*')) {
     // Pattern like "git commit:*" - match commands starting with "git commit"
     const prefix = commandPattern.slice(0, -2);
     return command.startsWith(prefix);
   }
-  
+
   // For other patterns, convert glob to regex
   // Escape regex special characters then convert * to .* and ? to .
   let regexPattern = commandPattern
     .replace(/[.+^$"{}()|[\\]\\\\]/g, '\\\\$&')
     .replace(/\\*/g, '.*')
     .replace(/\\?/g, '.');
-  
+
   const regex = new RegExp('^' + regexPattern + '$');
   return regex.test(command);
 }
@@ -389,12 +389,12 @@ function generatePluginBody(config: HooksConfig, platform: RuntimePlatform): str
           for (const hook of hookList) {
             if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
             const result = await runHook('pre-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
-            
+
             // Exit code 2 = block the action
             if (result.exitCode === 2) {
               ${platform.rejectPattern('result.stderr')}
             }
-            
+
             // Log errors for debugging
             if (result.exitCode === 1) {
               console.warn(\`[loaf] Hook \${hook.id} error: \${result.stderr}\`);
@@ -417,7 +417,7 @@ function generatePluginBody(config: HooksConfig, platform: RuntimePlatform): str
           for (const hook of hookList) {
             if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
             const result = await runHook('post-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
-            
+
             if (result.exitCode !== 0) {
               console.warn(\`[loaf] Post-hook \${hook.id} error (exit \${result.exitCode}): \${result.stderr}\`);
             }
@@ -429,7 +429,7 @@ function generatePluginBody(config: HooksConfig, platform: RuntimePlatform): str
   // Add session lifecycle handlers if events are defined
   if (sessionStartEvent || sessionEndEvent) {
     body += `,\n`;
-    
+
     if (platform.platform === "opencode") {
     // OpenCode uses event-based session handling
       body += generateOpenCodeSessionHandlers(config, platform);

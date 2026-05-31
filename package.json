@@ -1,10 +1,10 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.47",
+  "version": "2.0.0-dev.48",
   "description": "Loaf - An Opinionated Agentic Framework for Claude Code, OpenCode, Cursor, Codex, and Gemini",
   "type": "module",
   "bin": {
-    "loaf": "dist-cli/index.js"
+    "loaf": "bin/loaf"
   },
   "exports": {
     ".": {
@@ -12,22 +12,25 @@
     }
   },
   "files": [
+    "bin/",
     "dist-cli/",
     "content/",
     "config/",
     "build/"
   ],
   "scripts": {
+    "build:go": "node cli/scripts/build-go.mjs",
+    "verify:go-artifacts": "node cli/scripts/verify-go-artifacts.mjs",
     "build:cli": "tsup",
     "build:cli-ref": "bun cli/scripts/generate-cli-ref.ts",
-    "build:content": "node dist-cli/index.js build",
-    "build": "npm run build:cli-ref && tsup && node dist-cli/index.js build",
+    "build:content": "node dist-cli/build-content.js",
+    "build": "npm run build:cli-ref && npm run build:cli && npm run build:go && npm run build:content && npm run verify:go-artifacts",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build:cli",
     "test": "vitest run",
     "test:smoke": "node cli/scripts/smoke-test.js",
     "eval:routing": "node cli/scripts/eval-skill-routing.mjs",
-    "prepare": "npm run build:cli",
+    "prepare": "npm run build:cli && npm run build:go",
     "prepublishOnly": "npm run build"
   },
   "repository": {

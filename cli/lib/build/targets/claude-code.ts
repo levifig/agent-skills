@@ -238,14 +238,28 @@ function buildUnifiedPlugin(
     cpSync(setupSrc, join(pluginDir, "SETUP.md"));
   }
 
-  // Copy CLI binary to plugin bin/ directory for enforcement hooks
+  // Copy portable launcher, native Go runtime, and TypeScript fallback assets for enforcement hooks.
   const binDir = join(pluginDir, "bin");
   mkdirSync(binDir, { recursive: true });
-  const cliSource = join(rootDir, "dist-cli", "index.js");
-  if (existsSync(cliSource)) {
-    copyFileSync(cliSource, join(binDir, "loaf"));
-    chmodSync(join(binDir, "loaf"), 0o755);
+  const launcherSource = join(rootDir, "bin", "loaf");
+  if (!existsSync(launcherSource)) {
+    throw new Error("Loaf launcher not found at bin/loaf. Run npm run build:go first.");
   }
+  copyFileSync(launcherSource, join(binDir, "loaf"));
+  chmodSync(join(binDir, "loaf"), 0o755);
+  copyFileSync(join(rootDir, "bin", "package.json"), join(binDir, "package.json"));
+
+  const nativeSource = join(rootDir, "bin", "native");
+  if (!existsSync(nativeSource)) {
+    throw new Error("Native Loaf runtime not found at bin/native/. Run npm run build:go first.");
+  }
+  cpSync(nativeSource, join(binDir, "native"), { recursive: true });
+
+  const fallbackSource = join(rootDir, "dist-cli");
+  if (!existsSync(fallbackSource)) {
+    throw new Error("TypeScript fallback assets not found at dist-cli/. Run npm run build:cli first.");
+  }
+  cpSync(fallbackSource, join(pluginDir, "dist-cli"), { recursive: true });
   
   // Write minimal package.json so the binary can find its version
   const pluginPackageJson = {

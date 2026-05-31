@@ -7,7 +7,7 @@ description: >-
   processing the intake qu...
 user-invocable: true
 argument-hint: '[idea description]'
-version: 2.0.0-dev.47
+version: 2.0.0-dev.48
 ---
 
 # Idea
@@ -33,15 +33,16 @@ Capture ideas quickly with minimal friction.
 - Speed over completeness -- capture quickly, shape later
 - 2-3 questions maximum -- don't turn capture into an interview
 - Infer metadata automatically -- don't ask for tags, title, or links
-- One idea per file -- keep them atomic
+- One idea per captured row/artifact -- keep them atomic
 - No shaping here -- that's what `/loaf:shape` is for
-- Log capture to session journal: `loaf session log "spark(scope): idea slug captured"`
+- Capture through `loaf idea capture --title ...` when SQLite state is
+  initialized; log notable context with `loaf session log`
 
 ## Verification
 
-- Idea file created in `.agents/ideas/` with correct `YYYYMMDD-HHMMSS-slug.md` naming
-- Frontmatter contains required fields (title, status: raw, created timestamp)
-- If promoted from a spark, source document is marked `*(promoted)*`
+- Idea appears in `loaf idea list` / `loaf idea show`
+- Status is open/raw according to the active backend
+- If promoted from a spark, `loaf spark promote` records the relationship
 
 ## Quick Reference
 
@@ -68,17 +69,23 @@ If `$ARGUMENTS` contains the idea, capture directly.
 
 If `$ARGUMENTS` is empty, ask **at most 2-3 questions**: core idea, problem/opportunity, immediate constraints.
 
-### Step 2: Generate Idea File
+### Step 2: Capture Idea
 
-Create file in `.agents/ideas/` following [idea template](templates/idea.md).
+Use the CLI capture path:
 
-**Filename:** `{YYYYMMDD}-{HHMMSS}-{slug}.md`
+```bash
+loaf idea capture --title "..."
+```
+
+In Markdown-only compatibility mode, this may create a file in `.agents/ideas/`
+following [idea template](templates/idea.md). In SQLite-backed mode, the row is
+stored in SQLite and Markdown is only a source/export artifact.
 
 ### Step 3: Create and Announce
 
 1. Generate timestamp: `date -u +"%Y-%m-%dT%H:%M:%SZ"`
-2. Create the file (infer title, tags, and related links without asking)
-3. Announce: `Captured: .agents/ideas/{filename}.md` with next steps
+2. Run `loaf idea capture --title "..."` with the inferred title
+3. Announce the captured idea alias with next steps
 
 ---
 
@@ -102,7 +109,7 @@ raw -> shaping -> shaped (becomes SPEC) -> archived
 1. **Speed over completeness** -- capture quickly, shape later
 2. **2-3 questions max** -- don't turn this into an interview
 3. **Infer, don't ask** -- metadata should be automatic
-4. **One idea per file** -- keep them atomic
+4. **One idea per captured row/artifact** -- keep them atomic
 5. **No shaping here** -- that's what `/loaf:shape` is for
 
 ---

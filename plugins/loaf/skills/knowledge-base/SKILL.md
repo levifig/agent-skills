@@ -7,7 +7,7 @@ description: >-
   directly), archite...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 2.0.0-dev.47
+version: 2.0.0-dev.48
 ---
 
 # Knowledge Base

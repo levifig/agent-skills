@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 190,
+  "next_id": 253,
   "tasks": {
     "TASK-001": {
       "title": "Create verification reference",
@@ -117,7 +117,7 @@
         "src/commands/council-session.md"
       ],
       "verify": "npm run build && \\\nwc -l src/commands/start-session.md && \\\nwc -l src/commands/council-session.md\n",
-      "done": "start-session.md ≤200 lines, council-session.md ≤200 lines, no functionality lost",
+      "done": "start-session.md \u2264200 lines, council-session.md \u2264200 lines, no functionality lost",
       "session": null,
       "created": "2026-03-16T16:27:15.463Z",
       "updated": "2026-03-17T00:16:40.877Z",
@@ -561,7 +561,7 @@
       "file": "archive/TASK-027-output-improvements-cleanup.md"
     },
     "TASK-028": {
-      "title": "`loaf init` — scaffolding + templates",
+      "title": "`loaf init` \u2014 scaffolding + templates",
       "slug": "init-scaffolding",
       "spec": "SPEC-007",
       "status": "done",
@@ -580,7 +580,7 @@
       "file": "archive/TASK-028-init-scaffolding.md"
     },
     "TASK-029": {
-      "title": "`loaf init` — project detection + skill recommendations",
+      "title": "`loaf init` \u2014 project detection + skill recommendations",
       "slug": "init-project-detection",
       "spec": "SPEC-007",
       "status": "done",
@@ -601,7 +601,7 @@
       "file": "archive/TASK-029-init-project-detection.md"
     },
     "TASK-030": {
-      "title": "`loaf init` — brownfield support + idempotency polish",
+      "title": "`loaf init` \u2014 brownfield support + idempotency polish",
       "slug": "init-brownfield-idempotency",
       "spec": "SPEC-007",
       "status": "done",
@@ -653,7 +653,7 @@
       "file": "archive/TASK-032-add-active-flag-to-loaf-task-list-to-hide-done-tas.md"
     },
     "TASK-033": {
-      "title": "KB core library — types, loader, resolve, config",
+      "title": "KB core library \u2014 types, loader, resolve, config",
       "slug": "kb-core-library",
       "spec": "SPEC-009",
       "status": "done",
@@ -822,7 +822,7 @@
       "file": "archive/TASK-040-loaf-setup-cli-command.md"
     },
     "TASK-041": {
-      "title": "Bootstrap skill — Core SKILL.md (detection, brief, interview, doc population)",
+      "title": "Bootstrap skill \u2014 Core SKILL.md (detection, brief, interview, doc population)",
       "slug": "bootstrap-skill-core-skill-md-detection-brief-inte",
       "spec": "SPEC-013",
       "status": "done",
@@ -838,7 +838,7 @@
       "file": "archive/TASK-041-bootstrap-skill-core-skill-md-detection-brief-inte.md"
     },
     "TASK-042": {
-      "title": "Bootstrap skill — Completeness (session, symlinks, KB, cross-harness, next steps)",
+      "title": "Bootstrap skill \u2014 Completeness (session, symlinks, KB, cross-harness, next steps)",
       "slug": "bootstrap-skill-completeness-session-symlinks-kb-c",
       "spec": "SPEC-013",
       "status": "done",
@@ -892,7 +892,7 @@
       "file": "archive/TASK-044-build-integration-end-to-end-verification.md"
     },
     "TASK-045": {
-      "title": "Hook library — parse_command and parse_exit_code",
+      "title": "Hook library \u2014 parse_command and parse_exit_code",
       "slug": "hook-library-parse-command-and-parse-exit-code",
       "spec": "SPEC-015",
       "status": "done",
@@ -1161,7 +1161,7 @@
       "file": "archive/TASK-060-delete-role-agents-update-agents-md.md"
     },
     "TASK-061": {
-      "title": "Update build system — remove substitutions, profile-aware discovery",
+      "title": "Update build system \u2014 remove substitutions, profile-aware discovery",
       "slug": "update-build-system-for-profiles",
       "spec": "SPEC-014",
       "status": "done",
@@ -1611,7 +1611,7 @@
       "file": "archive/TASK-088-install-mcp-recommendation.md"
     },
     "TASK-089": {
-      "title": "Session stability — subagent detection and session ID tagging",
+      "title": "Session stability \u2014 subagent detection and session ID tagging",
       "slug": "session-stability-subagent-detection-and-session-i",
       "spec": "SPEC-027",
       "status": "done",
@@ -1643,7 +1643,7 @@
       "file": "archive/TASK-090-ad-hoc-task-auto-creation-in-implement.md"
     },
     "TASK-091": {
-      "title": "Compaction-aware sessions — PreCompact, PostCompact, retire archive-context",
+      "title": "Compaction-aware sessions \u2014 PreCompact, PostCompact, retire archive-context",
       "slug": "compaction-aware-sessions-precompact-postcompact-r",
       "spec": "SPEC-027",
       "status": "done",
@@ -1755,7 +1755,7 @@
       "file": "archive/TASK-097-unified-report-template-and-research-skill-updates.md"
     },
     "TASK-098": {
-      "title": "loaf report CLI — list, create, finalize, archive",
+      "title": "loaf report CLI \u2014 list, create, finalize, archive",
       "slug": "loaf-report-cli-list-create-finalize-archive",
       "spec": "SPEC-028",
       "status": "done",
@@ -1771,7 +1771,7 @@
       "file": "archive/TASK-098-loaf-report-cli-list-create-finalize-archive.md"
     },
     "TASK-099": {
-      "title": "Drafts lifecycle policy — session-linked cleanup in housekeeping",
+      "title": "Drafts lifecycle policy \u2014 session-linked cleanup in housekeeping",
       "slug": "drafts-lifecycle-policy-session-linked-cleanup-in-",
       "spec": "SPEC-028",
       "status": "done",
@@ -1963,7 +1963,7 @@
       "file": "archive/TASK-110-fix-loaf-release-to-auto-restore-unreleased-change.md"
     },
     "TASK-111": {
-      "title": "Rewrite brainstorm doc with full Phase 1→5 journey and Loaf-as-platform synthesis",
+      "title": "Rewrite brainstorm doc with full Phase 1\u21925 journey and Loaf-as-platform synthesis",
       "slug": "rewrite-brainstorm-doc-with-full-phase-1-5-journey",
       "spec": null,
       "status": "done",
@@ -1979,7 +1979,7 @@
       "file": "archive/TASK-111-rewrite-brainstorm-doc-with-full-phase-1-5-journey.md"
     },
     "TASK-112": {
-      "title": "Codex GPT-5.5 xhigh review of journal/session → Loaf-as-platform brainstorm",
+      "title": "Codex GPT-5.5 xhigh review of journal/session \u2192 Loaf-as-platform brainstorm",
       "slug": "codex-gpt-5-5-xhigh-review-of-journal-session-loaf",
       "spec": null,
       "status": "done",
@@ -3254,11 +3254,1419 @@
       "updated": "2026-05-28T08:59:26.865Z",
       "completed_at": "2026-05-28T08:59:26.865Z",
       "file": "archive/TASK-189-ephemeral-branch-session-fallback.md"
+    },
+    "TASK-190": {
+      "title": "Add Go module and state runtime skeleton",
+      "slug": "go-module-and-state-runtime-skeleton",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [
+        "go.mod",
+        "cmd/loaf/main.go",
+        "internal/state/",
+        "internal/project/"
+      ],
+      "verify": "go test ./... && go vet ./...",
+      "done": "Go module builds and tests with a minimal state/runtime package boundary, no SQLite dependency selected yet, and existing TypeScript CLI behavior unchanged",
+      "session": null,
+      "created": "2026-05-28T15:13:09Z",
+      "updated": "2026-05-28T15:43:13Z",
+      "completed_at": "2026-05-28T15:43:13Z",
+      "file": "TASK-190-go-module-and-state-runtime-skeleton.md"
+    },
+    "TASK-191": {
+      "title": "Implement Go front controller with native state path dispatch",
+      "slug": "go-front-controller-and-state-path-command",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-190"
+      ],
+      "files": [
+        "cmd/loaf/main.go",
+        "internal/cli/",
+        "internal/state/",
+        "internal/project/",
+        "cli/lib/tasks/resolve.ts"
+      ],
+      "verify": "go test ./... && go run ./cmd/loaf state path",
+      "done": "Go command can run `state path` natively and resolves the same project-state path from main and linked worktrees without invoking the TypeScript CLI",
+      "session": null,
+      "created": "2026-05-28T15:13:09Z",
+      "updated": "2026-05-28T16:06:06Z",
+      "completed_at": "2026-05-28T16:06:06Z",
+      "file": "TASK-191-go-front-controller-and-state-path-command.md"
+    },
+    "TASK-192": {
+      "title": "Add TypeScript legacy-command delegation bridge",
+      "slug": "typescript-legacy-delegation-bridge",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-191"
+      ],
+      "files": [
+        "cmd/loaf/main.go",
+        "internal/legacy/",
+        "dist-cli/",
+        "package.json",
+        "cli/index.ts"
+      ],
+      "verify": "go test ./... && npm run build:cli && go run ./cmd/loaf --help && build a temporary Go binary that delegates task list --json to dist-cli/index.js from a temporary .agents/TASKS.json fixture",
+      "done": "Go front controller delegates unmigrated commands to the bundled TypeScript CLI while keeping `state` commands native and exposing one public command",
+      "session": null,
+      "created": "2026-05-28T15:13:09Z",
+      "updated": "2026-05-28T16:14:54Z",
+      "completed_at": "2026-05-28T16:14:54Z",
+      "file": "TASK-192-typescript-legacy-delegation-bridge.md"
+    },
+    "TASK-193": {
+      "title": "Decide Go SQLite driver and security posture",
+      "slug": "sqlite-driver-decision-spike",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-190"
+      ],
+      "files": [
+        "docs/decisions/",
+        ".agents/specs/SPEC-040-sqlite-backed-loaf-operational-state.md",
+        "go.mod"
+      ],
+      "verify": "go test ./... && go vet ./... && go list -m all",
+      "done": "SQLite driver decision is documented with cgo, cross-compilation, dependency, binary-size, maintenance, and vulnerability criteria before Track A storage code depends on it",
+      "session": null,
+      "created": "2026-05-28T15:13:09Z",
+      "updated": "2026-05-28T16:21:46Z",
+      "completed_at": "2026-05-28T16:21:46Z",
+      "file": "TASK-193-sqlite-driver-decision-spike.md"
+    },
+    "TASK-194": {
+      "title": "Wire Go build and release packaging for one public loaf command",
+      "slug": "go-build-release-packaging-bridge",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-192",
+        "TASK-193"
+      ],
+      "files": [
+        "package.json",
+        "tsup.config.ts",
+        "cli/commands/build.ts",
+        "cli/lib/build/",
+        "plugins/loaf/bin/loaf",
+        ".github/workflows/"
+      ],
+      "verify": "npm run build && npm run test && go test ./...",
+      "done": "Build and release workflows produce one user-facing `loaf` command backed by the Go front controller, with TypeScript fallback assets packaged for unmigrated commands",
+      "session": null,
+      "created": "2026-05-28T15:13:09Z",
+      "updated": "2026-05-28T16:38:40Z",
+      "completed_at": "2026-05-28T16:38:40Z",
+      "file": "TASK-194-go-build-release-packaging-bridge.md"
+    },
+    "TASK-195": {
+      "title": "Define initial SQLite schema migration contract",
+      "slug": "sqlite-schema-migration-contract",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-194"
+      ],
+      "files": [
+        "internal/state/",
+        ".agents/specs/SPEC-040-sqlite-backed-loaf-operational-state.md",
+        ".agents/tasks/TASK-195-sqlite-schema-migration-contract.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && gofmt -w internal/state",
+      "done": "Initial SQLite schema migration is represented in Go-owned state runtime code with tests covering the required table set, migration ordering, and no-secret storage guardrails",
+      "session": null,
+      "created": "2026-05-28T16:56:07Z",
+      "updated": "2026-05-28T16:58:07Z",
+      "completed_at": "2026-05-28T16:58:07Z",
+      "file": "TASK-195-sqlite-schema-migration-contract.md"
+    },
+    "TASK-196": {
+      "title": "Add SQLite driver and state init/status/doctor storage",
+      "slug": "sqlite-driver-state-init-status-doctor",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-195"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        "go.mod",
+        "go.sum",
+        ".agents/tasks/TASK-196-state-status-doctor-diagnostics.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && go vet ./... && go run golang.org/x/vuln/cmd/govulncheck@latest ./...",
+      "done": "The approved ncruces SQLite driver is pinned, `loaf state init` applies Go-owned migrations, and `state status/doctor` report database readiness and schema version",
+      "session": null,
+      "created": "2026-05-28T17:01:40Z",
+      "updated": "2026-05-28T17:08:01Z",
+      "completed_at": "2026-05-28T17:08:01Z",
+      "file": "TASK-196-state-status-doctor-diagnostics.md"
+    },
+    "TASK-197": {
+      "title": "Implement markdown migration dry-run preview",
+      "slug": "markdown-migration-dry-run-preview",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-196"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-197-markdown-migration-dry-run-preview.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "Go-native `loaf state migrate markdown --dry-run` previews non-destructive .agents import counts, inferred relationships, skipped files, and leaves SQLite state untouched",
+      "session": null,
+      "created": "2026-05-28T17:16:01Z",
+      "updated": "2026-05-28T17:20:22Z",
+      "completed_at": "2026-05-28T17:20:22Z",
+      "file": "TASK-197-markdown-migration-dry-run-preview.md"
+    },
+    "TASK-198": {
+      "title": "Implement markdown migration apply importer",
+      "slug": "markdown-migration-apply-importer",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-197"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-198-markdown-migration-apply-importer.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "Go-native `loaf state migrate markdown --apply` initializes SQLite when needed and imports current .agents specs, tasks, ideas, sparks, brainstorms, sessions, reports, relationships, and source links without deleting or rewriting Markdown",
+      "session": null,
+      "created": "2026-05-28T17:27:44Z",
+      "updated": "2026-05-28T17:34:54Z",
+      "completed_at": "2026-05-28T17:34:54Z",
+      "file": "TASK-198-markdown-migration-apply-importer.md"
+    },
+    "TASK-199": {
+      "title": "Implement state-backed trace for imported relationships",
+      "slug": "state-backed-trace-imported-relationships",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-198"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-199-state-backed-trace-imported-relationships.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "Go-native `loaf trace <id>` resolves imported aliases from SQLite and shows entity metadata, source provenance, and inbound/outbound relationships for imported tasks/specs",
+      "session": null,
+      "created": "2026-05-28T17:36:48Z",
+      "updated": "2026-05-28T17:41:07Z",
+      "completed_at": "2026-05-28T17:41:07Z",
+      "file": "TASK-199-state-backed-trace-imported-relationships.md"
+    },
+    "TASK-200": {
+      "title": "Implement state-backed task list read path",
+      "slug": "state-backed-task-list-read-path",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-199"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-200-state-backed-task-list-read-path.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "Go-native `loaf task list` reads tasks from SQLite after migration, supports --json/--active/--status, and falls back to the TypeScript compatibility command while state is Markdown-only",
+      "session": null,
+      "created": "2026-05-28T17:42:47Z",
+      "updated": "2026-05-28T17:48:18Z",
+      "completed_at": "2026-05-28T17:48:18Z",
+      "file": "TASK-200-state-backed-task-list-read-path.md"
+    },
+    "TASK-201": {
+      "title": "Implement state-backed spec list read path",
+      "slug": "state-backed-spec-list-read-path",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-200"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-201-state-backed-spec-list-read-path.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "Go-native `loaf spec list` reads specs from SQLite after migration, supports JSON and human output with task counts, and falls back to the TypeScript compatibility command while state is Markdown-only",
+      "session": null,
+      "created": "2026-05-28T17:50:33Z",
+      "updated": "2026-05-28T17:54:26Z",
+      "completed_at": "2026-05-28T17:54:26Z",
+      "file": "TASK-201-state-backed-spec-list-read-path.md"
+    },
+    "TASK-202": {
+      "title": "Implement state-backed session list read path",
+      "slug": "state-backed-session-list-read-path",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-201"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-202-state-backed-session-list-read-path.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "Go-native `loaf session list` reads sessions from SQLite after migration, supports JSON and --all archived output, and falls back to the TypeScript compatibility command while state is Markdown-only",
+      "session": null,
+      "created": "2026-05-28T17:55:38Z",
+      "updated": "2026-05-28T18:01:00Z",
+      "completed_at": "2026-05-28T18:01:00Z",
+      "file": "TASK-202-state-backed-session-list-read-path.md"
+    },
+    "TASK-203": {
+      "title": "Implement state-backed report list read path",
+      "slug": "state-backed-report-list-read-path",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-202"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-203-state-backed-report-list-read-path.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "Go-native `loaf report list` reads reports from SQLite after migration, supports JSON/type/status filters, imports archived reports, and falls back to the TypeScript compatibility command while state is Markdown-only",
+      "session": null,
+      "created": "2026-05-28T18:02:17Z",
+      "updated": "2026-05-28T18:05:30Z",
+      "completed_at": "2026-05-28T18:05:30Z",
+      "file": "TASK-203-state-backed-report-list-read-path.md"
+    },
+    "TASK-204": {
+      "title": "Import lineage relationships for state-backed trace",
+      "slug": "import-lineage-relationships-for-state-backed-trace",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-203"
+      ],
+      "files": [
+        "internal/state/",
+        ".agents/tasks/TASK-204-import-lineage-relationships-for-state-backed-trace.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "Markdown migration imports explicit lineage relationships and session spark promotion links so `loaf trace` can show spark to idea to spec/task lineage",
+      "session": null,
+      "created": "2026-05-28T18:07:56Z",
+      "updated": "2026-05-28T18:13:33Z",
+      "completed_at": "2026-05-28T18:13:33Z",
+      "file": "TASK-204-import-lineage-relationships-for-state-backed-trace.md"
+    },
+    "TASK-205": {
+      "title": "Import shaping draft lineage for state-backed trace",
+      "slug": "import-shaping-draft-lineage-for-state-backed-trace",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-204"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-205-import-shaping-draft-lineage-for-state-backed-trace.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "Markdown migration imports shaping draft artifacts and lineage relationships so `loaf trace` can show brainstorm to idea to shaping draft to spec/task provenance",
+      "session": null,
+      "created": "2026-05-28T18:15:57Z",
+      "updated": "2026-05-28T18:20:31Z",
+      "completed_at": "2026-05-28T18:20:31Z",
+      "file": "TASK-205-import-shaping-draft-lineage-for-state-backed-trace.md"
+    },
+    "TASK-206": {
+      "title": "Write session log entries to SQLite journal state",
+      "slug": "state-backed-session-log-journal-write",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-205"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-206-state-backed-session-log-journal-write.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf session log` writes a journal entry with nullable unresolved session/spec/task context and observed branch/worktree/harness metadata",
+      "session": null,
+      "created": "2026-05-28T18:22:27Z",
+      "updated": "2026-05-28T18:26:46Z",
+      "completed_at": "2026-05-28T18:26:46Z",
+      "file": "TASK-206-state-backed-session-log-journal-write.md"
+    },
+    "TASK-207": {
+      "title": "Resolve imported ideas in SQLite state",
+      "slug": "state-backed-idea-resolve",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-206"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-207-state-backed-idea-resolve.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf idea resolve <idea> --by <target>` marks the idea resolved, records the resolver relationship, and the default idea list no longer shows the resolved idea.",
+      "session": null,
+      "created": "2026-05-28T18:29:36Z",
+      "updated": "2026-05-28T18:34:37Z",
+      "completed_at": "2026-05-28T18:34:37Z",
+      "file": "TASK-207-state-backed-idea-resolve.md"
+    },
+    "TASK-208": {
+      "title": "Resolve imported sparks in SQLite state",
+      "slug": "state-backed-spark-resolve",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-207"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-208-state-backed-spark-resolve.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf spark resolve <spark> --by <target>` marks the spark resolved, records the resolver relationship, and the default spark list no longer shows the resolved spark.",
+      "session": null,
+      "created": "2026-05-28T18:36:07Z",
+      "updated": "2026-05-28T18:39:51Z",
+      "completed_at": "2026-05-28T18:39:51Z",
+      "file": "TASK-208-state-backed-spark-resolve.md"
+    },
+    "TASK-209": {
+      "title": "Classify SQLite state rows with tags",
+      "slug": "state-backed-tags",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-208"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-209-state-backed-tags.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf tag add/list/show/remove` classifies specs, tasks, ideas, sparks, brainstorms, sessions, reports, and journal entries through the `tags` and `entity_tags` many-to-many tables.",
+      "session": null,
+      "created": "2026-05-28T18:41:26Z",
+      "updated": "2026-05-28T18:48:40Z",
+      "completed_at": "2026-05-28T18:48:40Z",
+      "file": "TASK-209-state-backed-tags.md"
+    },
+    "TASK-210": {
+      "title": "Collect SQLite state rows into bundles",
+      "slug": "state-backed-bundles",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-209"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-210-state-backed-bundles.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf bundle create/show/add/remove` collects rows by tag query and explicit membership, then displays the full related set.",
+      "session": null,
+      "created": "2026-05-28T18:50:00Z",
+      "updated": "2026-05-28T18:58:27Z",
+      "completed_at": "2026-05-28T18:58:27Z",
+      "file": "TASK-210-state-backed-bundles.md"
+    },
+    "TASK-211": {
+      "title": "Link SQLite state rows with explicit relationships",
+      "slug": "state-backed-links",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-210"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-211-state-backed-links.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf link create/list/remove` writes, reads, and removes explicit relationship rows between resolved state entities, and `loaf trace` reflects the resulting relationship graph.",
+      "session": null,
+      "created": "2026-05-28T19:00:37Z",
+      "updated": "2026-05-28T19:05:54Z",
+      "completed_at": "2026-05-28T19:05:54Z",
+      "file": "TASK-211-state-backed-links.md"
+    },
+    "TASK-212": {
+      "title": "Update task status in SQLite state",
+      "slug": "state-backed-task-status-update",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-211"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-212-state-backed-task-status-update.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf task update <task> --status <status>` updates the task row, records a status-change event when appropriate, and leaves Markdown compatibility to fallback/export paths.",
+      "session": null,
+      "created": "2026-05-28T19:07:33Z",
+      "updated": "2026-05-28T19:12:13Z",
+      "completed_at": "2026-05-28T19:12:13Z",
+      "file": "TASK-212-state-backed-task-status-update.md"
+    },
+    "TASK-213": {
+      "title": "Show SQLite-backed task details",
+      "slug": "state-backed-task-show",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-212"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-213-state-backed-task-show.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf task show <task>` reads the task row from SQLite with aliases, spec relationship, dependencies, provenance, and Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T19:15:12Z",
+      "updated": "2026-05-28T19:20:24Z",
+      "completed_at": "2026-05-28T19:20:24Z",
+      "file": "TASK-213-state-backed-task-show.md"
+    },
+    "TASK-214": {
+      "title": "Create tasks in SQLite state",
+      "slug": "state-backed-task-create",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-213"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-214-state-backed-task-create.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf task create --title ...` creates a task row with a generated task alias, optional spec relationship, optional dependencies, a status-change creation event, and Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T19:22:49Z",
+      "updated": "2026-05-28T19:27:59Z",
+      "completed_at": "2026-05-28T19:27:59Z",
+      "file": "TASK-214-state-backed-task-create.md"
+    },
+    "TASK-215": {
+      "title": "Update task metadata in SQLite state",
+      "slug": "state-backed-task-metadata-update",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-214"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-215-state-backed-task-metadata-update.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf task update <task>` updates priority, spec, dependencies, and session relationships in SQLite while preserving status-update behavior and Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T19:29:26Z",
+      "updated": "2026-05-28T19:37:54Z",
+      "completed_at": "2026-05-28T19:37:54Z",
+      "file": "TASK-215-state-backed-task-metadata-update.md"
+    },
+    "TASK-216": {
+      "title": "Archive specs in SQLite state",
+      "slug": "state-backed-spec-archive",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-215"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-216-state-backed-spec-archive.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf spec archive <spec>` archives complete specs in SQLite, records a status-change event, reports skipped specs clearly, and preserves Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T19:41:29Z",
+      "updated": "2026-05-28T19:46:20Z",
+      "completed_at": "2026-05-28T19:46:20Z",
+      "file": "TASK-216-state-backed-spec-archive.md"
+    },
+    "TASK-217": {
+      "title": "Archive tasks in SQLite state",
+      "slug": "state-backed-task-archive",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-216"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-217-state-backed-task-archive.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf task archive` archives done tasks in SQLite by ID or spec, records status-change events, reports skipped tasks clearly, and preserves Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T19:48:48Z",
+      "updated": "2026-05-28T19:57:10Z",
+      "completed_at": "2026-05-28T19:57:10Z",
+      "file": "TASK-217-state-backed-task-archive.md"
+    },
+    "TASK-218": {
+      "title": "Archive ideas in SQLite state",
+      "slug": "state-backed-idea-archive",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-217"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-218-state-backed-idea-archive.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf idea archive` archives ideas in SQLite, records status-change events, hides archived ideas from default triage lists, and preserves Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T20:00:40Z",
+      "updated": "2026-05-28T20:06:57Z",
+      "completed_at": "2026-05-28T20:06:57Z",
+      "file": "TASK-218-state-backed-idea-archive.md"
+    },
+    "TASK-219": {
+      "title": "Record reasons for SQLite spark resolution",
+      "slug": "state-backed-spark-resolve-reason",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-218"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-219-state-backed-spark-resolve-reason.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf spark resolve <spark> --by <target> --reason <text>` stores the reason on the SQLite resolution relationship and status-change event while preserving Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T20:08:43Z",
+      "updated": "2026-05-28T20:12:06Z",
+      "completed_at": "2026-05-28T20:12:06Z",
+      "file": "TASK-219-state-backed-spark-resolve-reason.md"
+    },
+    "TASK-220": {
+      "title": "Capture sparks in SQLite state",
+      "slug": "state-backed-spark-capture",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-219"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-220-state-backed-spark-capture.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf spark capture --scope <scope> --text <text>` creates an open spark in SQLite with an alias, optional scope, status-change event, list/trace visibility, and Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T20:13:32Z",
+      "updated": "2026-05-28T20:17:27Z",
+      "completed_at": "2026-05-28T20:17:27Z",
+      "file": "TASK-220-state-backed-spark-capture.md"
+    },
+    "TASK-221": {
+      "title": "Capture ideas in SQLite state",
+      "slug": "state-backed-idea-capture",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-220"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-221-state-backed-idea-capture.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf idea capture --title <title>` creates an open idea in SQLite with an alias, status-change event, list/trace visibility, and Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T20:18:54Z",
+      "updated": "2026-05-28T20:22:23Z",
+      "completed_at": "2026-05-28T20:22:23Z",
+      "file": "TASK-221-state-backed-idea-capture.md"
+    },
+    "TASK-222": {
+      "title": "Promote sparks to ideas in SQLite state",
+      "slug": "state-backed-spark-promote",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-221"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-222-state-backed-spark-promote.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf spark promote <spark> --to-idea <idea>` records a promoted_to relationship from spark to idea in SQLite, exposes it through trace/link reads, and preserves Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T20:25:33Z",
+      "updated": "2026-05-28T20:29:53Z",
+      "completed_at": "2026-05-28T20:29:53Z",
+      "file": "TASK-222-state-backed-spark-promote.md"
+    },
+    "TASK-223": {
+      "title": "Show SQLite-backed idea details",
+      "slug": "state-backed-idea-show",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-222"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-223-state-backed-idea-show.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf idea show <idea>` reads idea metadata, source provenance, imported body, and immediate relationships from SQLite while preserving Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T20:32:01Z",
+      "updated": "2026-05-28T20:35:38Z",
+      "completed_at": "2026-05-28T20:35:38Z",
+      "file": "TASK-223-state-backed-idea-show.md"
+    },
+    "TASK-224": {
+      "title": "Promote ideas to specs in SQLite state",
+      "slug": "state-backed-idea-promote",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-223"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-224-state-backed-idea-promote.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf idea promote <idea> --to-spec <spec>` records a promoted_to relationship from idea to spec in SQLite, exposes it through trace/link/show reads, and preserves Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T20:37:58Z",
+      "updated": "2026-05-28T20:41:46Z",
+      "completed_at": "2026-05-28T20:41:46Z",
+      "file": "TASK-224-state-backed-idea-promote.md"
+    },
+    "TASK-225": {
+      "title": "List brainstorms from SQLite state",
+      "slug": "state-backed-brainstorm-list",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-224"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-225-state-backed-brainstorm-list.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf brainstorm list` reads imported brainstorms from SQLite with JSON/human output, status filters, source provenance, and Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T20:43:36Z",
+      "updated": "2026-05-28T20:50:37Z",
+      "completed_at": "2026-05-28T20:50:37Z",
+      "file": "TASK-225-state-backed-brainstorm-list.md"
+    },
+    "TASK-226": {
+      "title": "Show SQLite-backed brainstorm details",
+      "slug": "state-backed-brainstorm-show",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-225"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-226-state-backed-brainstorm-show.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf brainstorm show <brainstorm>` reads imported brainstorm metadata, source provenance, body content, and immediate relationships from SQLite with JSON/human output and Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T20:52:53Z",
+      "updated": "2026-05-28T20:56:53Z",
+      "completed_at": "2026-05-28T20:56:53Z",
+      "file": "TASK-226-state-backed-brainstorm-show.md"
+    },
+    "TASK-227": {
+      "title": "Promote brainstorms to ideas in SQLite state",
+      "slug": "state-backed-brainstorm-promote",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-226"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-227-state-backed-brainstorm-promote.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf brainstorm promote <brainstorm> --to-idea <idea>` records an idempotent promoted_to relationship from brainstorm to idea in SQLite, exposes it through trace/link/show reads, and preserves Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T20:58:21Z",
+      "updated": "2026-05-28T21:02:16Z",
+      "completed_at": "2026-05-28T21:02:16Z",
+      "file": "TASK-227-state-backed-brainstorm-promote.md"
+    },
+    "TASK-228": {
+      "title": "Archive brainstorms in SQLite state",
+      "slug": "state-backed-brainstorm-archive",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-227"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-228-state-backed-brainstorm-archive.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf brainstorm archive <brainstorm> [--reason <reason>]` archives brainstorms in SQLite, records status-change event notes, hides archived brainstorms from default triage lists, and preserves Markdown compatibility fallback.",
+      "session": null,
+      "created": "2026-05-28T21:03:47Z",
+      "updated": "2026-05-28T21:08:03Z",
+      "completed_at": "2026-05-28T21:08:03Z",
+      "file": "TASK-228-state-backed-brainstorm-archive.md"
+    },
+    "TASK-229": {
+      "title": "Back up SQLite state database",
+      "slug": "state-backup-sqlite-database",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-228"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-229-state-backup-sqlite-database.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf state backup` writes a timestamped SQLite database copy outside the repository, reports the backup path and byte count in human and JSON output, and refuses missing or invalid state without creating misleading backups.",
+      "session": null,
+      "created": "2026-05-28T21:11:27Z",
+      "updated": "2026-05-28T21:16:45Z",
+      "completed_at": "2026-05-28T21:16:45Z",
+      "file": "TASK-229-state-backup-sqlite-database.md"
+    },
+    "TASK-230": {
+      "title": "Export complete SQLite state as internal JSON",
+      "slug": "state-export-all-json",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-229"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-230-state-export-all-json.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf state export all --format json` writes a deterministic internal JSON snapshot to stdout with export metadata, schema version, table rows, and an explicit internal-audience marker without creating repository files.",
+      "session": null,
+      "created": "2026-05-28T21:18:31Z",
+      "updated": "2026-05-28T21:23:35Z",
+      "completed_at": "2026-05-28T21:23:35Z",
+      "file": "TASK-230-state-export-all-json.md"
+    },
+    "TASK-231": {
+      "title": "Export external-safe triage Markdown from SQLite state",
+      "slug": "state-export-triage-markdown",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-230"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-231-state-export-triage-markdown.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
+      "done": "When SQLite state is initialized, `loaf state export triage --format markdown` writes a deterministic external-safe Markdown summary of idea, spark, and brainstorm triage state to stdout, strips SPEC-038-banned Loaf internals, and refuses missing or invalid state.",
+      "session": null,
+      "created": "2026-05-28T21:25:15Z",
+      "updated": "2026-05-28T21:30:20Z",
+      "completed_at": "2026-05-28T21:30:20Z",
+      "file": "TASK-231-state-export-triage-markdown.md"
+    },
+    "TASK-232": {
+      "title": "Verify linked worktrees share SQLite state",
+      "slug": "linked-worktree-sqlite-state-routing",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-231"
+      ],
+      "files": [
+        "internal/cli/",
+        "internal/project/",
+        "internal/state/",
+        ".agents/tasks/TASK-232-linked-worktree-sqlite-state-routing.md"
+      ],
+      "verify": "go test ./internal/cli ./internal/project ./internal/state && go test ./...",
+      "done": "Command-level tests prove the main worktree and a linked Git worktree resolve to the same SQLite state path and observe the same initialized database and state-backed rows.",
+      "session": null,
+      "created": "2026-05-28T21:31:57Z",
+      "updated": "2026-05-28T21:34:07Z",
+      "completed_at": "2026-05-28T21:34:07Z",
+      "file": "TASK-232-linked-worktree-sqlite-state-routing.md"
+    },
+    "TASK-233": {
+      "title": "Detect schema mismatch and stale exports in state doctor",
+      "slug": "state-doctor-diagnostics",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-232"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-233-state-doctor-diagnostics.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./...",
+      "done": "`loaf state doctor` detects missing databases, markdown fallback mode, schema mismatch, and stale generated export records without mutating state unless `--fix` is explicitly requested.",
+      "session": null,
+      "created": "2026-05-28T21:35:30Z",
+      "updated": "2026-05-28T21:39:00Z",
+      "completed_at": "2026-05-28T21:39:00Z",
+      "file": "TASK-233-state-doctor-diagnostics.md"
+    },
+    "TASK-234": {
+      "title": "Prove state init stays repository-external and secret-free",
+      "slug": "state-init-safety-proof",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-233"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-234-state-init-safety-proof.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./...",
+      "done": "Tests prove `loaf state init` creates a project-scoped SQLite database outside the repository, prints the database path, avoids repository `.agents` writes, and initializes a schema without secret-storage columns.",
+      "session": null,
+      "created": "2026-05-28T21:40:21Z",
+      "updated": "2026-05-28T21:43:26Z",
+      "completed_at": "2026-05-28T21:43:26Z",
+      "file": "TASK-234-state-init-safety-proof.md"
+    },
+    "TASK-235": {
+      "title": "Prove public loaf bridge dispatch and packaging",
+      "slug": "public-loaf-bridge-proof",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-234"
+      ],
+      "files": [
+        "cmd/loaf/",
+        "internal/cli/",
+        "internal/legacy/",
+        "cli/scripts/verify-go-artifacts.mjs",
+        ".agents/tasks/TASK-235-public-loaf-bridge-proof.md"
+      ],
+      "verify": "go test ./cmd/loaf ./internal/cli ./internal/legacy && npm run build",
+      "done": "Tests prove the built public `loaf` binary dispatches Go-native state commands and delegates unmigrated commands through the TypeScript bridge, and artifact verification enforces one packaged public command with synchronized Go and TypeScript fallback assets.",
+      "session": null,
+      "created": "2026-05-28T21:50:30Z",
+      "updated": "2026-05-28T21:53:00Z",
+      "completed_at": "2026-05-28T21:53:00Z",
+      "file": "TASK-235-public-loaf-bridge-proof.md"
+    },
+    "TASK-236": {
+      "title": "Prove markdown migration dry-run is complete and non-mutating",
+      "slug": "markdown-dry-run-complete-proof",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-235"
+      ],
+      "files": [
+        "internal/cli/",
+        ".agents/tasks/TASK-236-markdown-dry-run-complete-proof.md"
+      ],
+      "verify": "go test ./internal/cli -run TestRunnerStateMigrateMarkdownJSONDryRunDoesNotCreateDatabase -count=1 && go test ./internal/cli",
+      "done": "Public CLI dry-run coverage proves `loaf state migrate markdown --dry-run` reports every SPEC-required count and skipped file while leaving SQLite state uncreated.",
+      "session": null,
+      "created": "2026-05-28T21:54:32Z",
+      "updated": "2026-05-28T21:56:06Z",
+      "completed_at": "2026-05-28T21:56:06Z",
+      "file": "TASK-236-markdown-dry-run-complete-proof.md"
+    },
+    "TASK-237": {
+      "title": "Prove SQLite state does not store secrets",
+      "slug": "sqlite-secret-boundary-proof",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-236"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-237-sqlite-secret-boundary-proof.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli && go test ./...",
+      "done": "Tests prove the SQLite schema and Go-native state runtime preserve the secret boundary: backend mappings store only external identity metadata, and no native SQLite command/runtime source introduces Linear token, API key, password, refresh token, credential, or auth-storage terms.",
+      "session": null,
+      "created": "2026-05-28T21:57:50Z",
+      "updated": "2026-05-28T22:00:03Z",
+      "completed_at": "2026-05-28T22:00:03Z",
+      "file": "TASK-237-sqlite-secret-boundary-proof.md"
+    },
+    "TASK-238": {
+      "title": "Prove initialized mutation commands write through SQLite",
+      "slug": "sqlite-mutation-command-matrix-proof",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-237"
+      ],
+      "files": [
+        "internal/cli/",
+        ".agents/tasks/TASK-238-sqlite-mutation-command-matrix-proof.md"
+      ],
+      "verify": "go test ./internal/cli -run TestRunnerInitializedMutationCommandsWriteThroughSQLite -count=1 && go test ./internal/cli",
+      "done": "A public CLI mutation matrix proves initialized task, idea, spark, brainstorm, spec, session, tag, bundle, and link mutations write through SQLite state instead of Markdown fallback paths.",
+      "session": null,
+      "created": "2026-05-28T22:01:49Z",
+      "updated": "2026-05-28T22:06:23Z",
+      "completed_at": "2026-05-28T22:06:23Z",
+      "file": "TASK-238-sqlite-mutation-command-matrix-proof.md"
+    },
+    "TASK-239": {
+      "title": "Add state-backed spec show command",
+      "slug": "state-backed-spec-show-read-path",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-238"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-239-state-backed-spec-show-read-path.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli -run 'TestShowSpec|TestRunnerSpecShow' -count=1 && go test ./internal/state ./internal/cli",
+      "done": "`loaf spec show <spec>` reads initialized SQLite state, including spec metadata, source provenance, imported body, task counts, and immediate relationships, while delegating in Markdown-only mode.",
+      "session": null,
+      "created": "2026-05-28T22:08:17Z",
+      "updated": "2026-05-28T22:11:32Z",
+      "completed_at": "2026-05-28T22:11:32Z",
+      "file": "TASK-239-state-backed-spec-show-read-path.md"
+    },
+    "TASK-240": {
+      "title": "Add state-backed spark show command",
+      "slug": "state-backed-spark-show-read-path",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-239"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-240-state-backed-spark-show-read-path.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli -run 'TestShowSpark|TestRunnerSparkShow' -count=1 && go test ./internal/state ./internal/cli",
+      "done": "`loaf spark show <spark>` reads initialized SQLite state, including spark text, scope, status, source provenance, and immediate relationships, while delegating in Markdown-only mode.",
+      "session": null,
+      "created": "2026-05-28T22:12:50Z",
+      "updated": "2026-05-28T22:16:55Z",
+      "completed_at": "2026-05-28T22:16:55Z",
+      "file": "TASK-240-state-backed-spark-show-read-path.md"
+    },
+    "TASK-241": {
+      "title": "Add state-backed session show command",
+      "slug": "state-backed-session-show-read-path",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-240"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-241-state-backed-session-show-read-path.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli -run 'TestShowSession|TestRunnerSessionShow' -count=1 && go test ./internal/state ./internal/cli",
+      "done": "`loaf session show <session>` reads initialized SQLite state, including session metadata, source provenance, journal entries, and immediate relationships, while delegating in Markdown-only mode.",
+      "session": null,
+      "created": "2026-05-28T22:19:40Z",
+      "updated": "2026-05-28T22:23:39Z",
+      "completed_at": "2026-05-28T22:23:39Z",
+      "file": "TASK-241-state-backed-session-show-read-path.md"
+    },
+    "TASK-242": {
+      "title": "Export session Markdown from SQLite state",
+      "slug": "state-export-session-markdown",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-241"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-242-state-export-session-markdown.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli -run 'TestExportSessionMarkdown|TestRunnerStateExportSessionMarkdown' -count=1 && go test ./internal/state ./internal/cli",
+      "done": "`loaf state export session <session> --format markdown` renders deterministic session Markdown from SQLite metadata, source provenance, journal entries, and relationships without mutating the database or repository files.",
+      "session": null,
+      "created": "2026-05-28T22:24:49Z",
+      "updated": "2026-05-28T22:28:12Z",
+      "completed_at": "2026-05-28T22:28:12Z",
+      "file": "TASK-242-state-export-session-markdown.md"
+    },
+    "TASK-243": {
+      "title": "Export spec Markdown from SQLite state",
+      "slug": "state-export-spec-markdown",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-242"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-243-state-export-spec-markdown.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli -run 'TestExportSpecMarkdown|TestRunnerStateExportSpecMarkdown' -count=1 && go test ./internal/state ./internal/cli",
+      "done": "`loaf state export spec <spec> --format markdown` renders deterministic spec Markdown from SQLite metadata, task counts, source provenance, imported body, and relationships without mutating the database or repository files.",
+      "session": null,
+      "created": "2026-05-28T22:29:11Z",
+      "updated": "2026-05-28T22:32:44Z",
+      "completed_at": "2026-05-28T22:32:44Z",
+      "file": "TASK-243-state-export-spec-markdown.md"
+    },
+    "TASK-244": {
+      "title": "Export release-readiness Markdown from SQLite state",
+      "slug": "state-export-release-readiness-markdown",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-243"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-244-state-export-release-readiness-markdown.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli -run 'TestExportReleaseReadinessMarkdown|TestRunnerStateExportReleaseReadinessMarkdown' -count=1 && go test ./internal/state ./internal/cli",
+      "done": "`loaf state export release-readiness --format markdown` renders deterministic external-safe release-readiness Markdown from SQLite status, task, spec, session, report, relationship, and generated-export state without mutating the database or repository files.",
+      "session": null,
+      "created": "2026-05-28T22:34:35Z",
+      "updated": "2026-05-28T22:41:31Z",
+      "completed_at": "2026-05-28T22:41:31Z",
+      "file": "TASK-244-state-export-release-readiness-markdown.md"
+    },
+    "TASK-245": {
+      "title": "Generate report Markdown from SQLite state",
+      "slug": "state-backed-report-generate-markdown",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-244"
+      ],
+      "files": [
+        "internal/cli/",
+        ".agents/tasks/TASK-245-state-backed-report-generate-markdown.md"
+      ],
+      "verify": "go test ./internal/cli -run 'TestRunnerReportGenerate|TestRunnerSessionReport' -count=1 && go test ./internal/cli",
+      "done": "`loaf report generate session <session>`, `loaf report generate triage`, `loaf report generate release-readiness`, and `loaf session report <session>` generate Markdown from SQLite state to stdout without mutating the database or repository files.",
+      "session": null,
+      "created": "2026-05-28T22:43:09Z",
+      "updated": "2026-05-28T22:46:06Z",
+      "completed_at": "2026-05-28T22:46:06Z",
+      "file": "TASK-245-state-backed-report-generate-markdown.md"
+    },
+    "TASK-246": {
+      "title": "Manage report lifecycle in SQLite state",
+      "slug": "state-backed-report-lifecycle",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-245"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/cli/",
+        ".agents/tasks/TASK-246-state-backed-report-lifecycle.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli -run 'TestReportLifecycle|TestRunnerReportLifecycle' -count=1 && go test ./internal/state ./internal/cli",
+      "done": "`loaf report create`, `loaf report finalize`, and `loaf report archive` write SQLite report rows and status events when state is initialized, delegate in Markdown-only mode, and do not create repository files.",
+      "session": null,
+      "created": "2026-05-28T22:47:20Z",
+      "updated": "2026-05-28T22:56:58Z",
+      "completed_at": "2026-05-28T22:56:58Z",
+      "file": "TASK-246-state-backed-report-lifecycle.md"
+    },
+    "TASK-247": {
+      "title": "Point workflow guidance at SQLite-backed state commands",
+      "slug": "sqlite-state-guidance-migration",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-246"
+      ],
+      "files": [
+        "cli/commands/spec.ts",
+        "cli/commands/task.ts",
+        "cli/lib/cli-reference-generator.ts",
+        "content/skills/breakdown/SKILL.md",
+        "content/skills/cli-reference/SKILL.md",
+        "content/skills/housekeeping/SKILL.md",
+        "content/skills/idea/SKILL.md",
+        "content/skills/implement/SKILL.md",
+        "content/skills/orchestration/references/local-tasks.md",
+        "content/skills/orchestration/references/sessions.md",
+        "content/skills/triage/SKILL.md",
+        "content/skills/research/SKILL.md",
+        "content/skills/research/templates/report.md",
+        ".agents/tasks/TASK-247-sqlite-state-guidance-migration.md"
+      ],
+      "verify": "! rg -n 'TASKS\\.json is the source of truth|Move completed tasks to archive and update TASKS\\.json|Push TASKS\\.json metadata|Update frontmatter `status:`|Promoted sparks have corresponding idea files|Create file in `\\.agents/ideas/`|Status starts as `draft`|Set to `final`|Log resolutions in the source document|Append `resolve\\(spark\\)` entry|Mark inline in source' content/skills && jq empty .agents/TASKS.json",
+      "done": "Workflow guidance for tasks, triage, reports, and housekeeping treats SQLite-backed CLI commands as the operational mutation surface and leaves Markdown/frontmatter guidance as compatibility or authored-prose context.",
+      "session": null,
+      "created": "2026-05-28T22:58:43Z",
+      "updated": "2026-05-28T23:06:56Z",
+      "completed_at": "2026-05-28T23:06:56Z",
+      "file": "TASK-247-sqlite-state-guidance-migration.md"
+    },
+    "TASK-248": {
+      "title": "Resolve remaining SQLite state open questions",
+      "slug": "sqlite-state-open-question-closure",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-247"
+      ],
+      "files": [
+        ".agents/specs/SPEC-040-sqlite-backed-loaf-operational-state.md",
+        ".agents/tasks/TASK-248-sqlite-state-open-question-closure.md"
+      ],
+      "verify": "! rg -n '^- \\[ \\]' .agents/specs/SPEC-040-sqlite-backed-loaf-operational-state.md && jq empty .agents/TASKS.json",
+      "done": "SPEC-040 open questions are resolved with implementation-grounded decisions so the spec has no remaining unchecked decision items before final completion audit.",
+      "session": null,
+      "created": "2026-05-28T23:12:40Z",
+      "updated": "2026-05-28T23:14:00Z",
+      "completed_at": "2026-05-28T23:14:00Z",
+      "file": "TASK-248-sqlite-state-open-question-closure.md"
+    },
+    "TASK-249": {
+      "title": "Add state-backed bundle list and update commands",
+      "slug": "state-backed-bundle-list-update",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-248"
+      ],
+      "files": [
+        "internal/state/bundle.go",
+        "internal/state/bundle_test.go",
+        "internal/cli/cli.go",
+        "internal/cli/cli_test.go",
+        ".agents/tasks/TASK-249-state-backed-bundle-list-update.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli -run 'TestBundles|TestRunnerBundle' -count=1 && go test ./internal/state ./internal/cli",
+      "done": "`loaf bundle list` and `loaf bundle update` are Go-native when SQLite state is initialized, delegate in Markdown-only mode, and cover SPEC-040's bundle command scope.",
+      "session": null,
+      "created": "2026-05-28T23:16:03Z",
+      "updated": "2026-05-28T23:23:32Z",
+      "completed_at": "2026-05-28T23:23:32Z",
+      "file": "TASK-249-state-backed-bundle-list-update.md"
+    },
+    "TASK-250": {
+      "title": "Make housekeeping state-aware in SQLite mode",
+      "slug": "state-aware-housekeeping-read-path",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-249"
+      ],
+      "files": [
+        "internal/state/housekeeping.go",
+        "internal/state/housekeeping_test.go",
+        "internal/cli/cli.go",
+        "internal/cli/cli_test.go",
+        ".agents/tasks/TASK-250-state-aware-housekeeping-read-path.md"
+      ],
+      "verify": "go test ./internal/state ./internal/cli -run 'TestHousekeeping|TestRunnerHousekeeping' -count=1 && go test ./internal/state ./internal/cli",
+      "done": "`loaf housekeeping` reads initialized SQLite state, delegates in Markdown-only mode, rejects invalid state, and reports lifecycle/triage cleanup signals without mutating repository files.",
+      "session": null,
+      "created": "2026-05-28T23:25:55Z",
+      "updated": "2026-05-28T23:30:27Z",
+      "completed_at": "2026-05-28T23:30:27Z",
+      "file": "TASK-250-state-aware-housekeeping-read-path.md"
+    },
+    "TASK-251": {
+      "title": "Guard Markdown compatibility commands in SQLite mode",
+      "slug": "sqlite-mode-compatibility-command-guards",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-250"
+      ],
+      "files": [
+        "internal/cli/cli.go",
+        "internal/cli/cli_test.go",
+        ".agents/tasks/TASK-251-sqlite-mode-compatibility-command-guards.md"
+      ],
+      "verify": "go test ./internal/cli -run 'TestRunnerTaskRefresh|TestRunnerTaskSync|TestRunnerSessionEnrich' -count=1 && go test ./internal/cli",
+      "done": "`loaf task refresh`, `loaf task sync`, and `loaf session enrich` are state-aware: they delegate in Markdown-only mode, reject invalid SQLite state, and avoid Markdown compatibility mutation when SQLite state is initialized.",
+      "session": null,
+      "created": "2026-05-28T23:31:57Z",
+      "updated": "2026-05-28T23:35:20Z",
+      "completed_at": "2026-05-28T23:35:20Z",
+      "file": "TASK-251-sqlite-mode-compatibility-command-guards.md"
+    },
+    "TASK-252": {
+      "title": "Implement markdown migration resume command",
+      "slug": "state-migrate-markdown-resume",
+      "spec": "SPEC-040",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-251"
+      ],
+      "files": [
+        "internal/cli/cli.go",
+        "internal/cli/cli_test.go",
+        ".agents/tasks/TASK-252-state-migrate-markdown-resume.md"
+      ],
+      "verify": "go test ./internal/cli -run 'TestRunnerStateMigrateMarkdownResume' -count=1 && go test ./internal/cli",
+      "done": "`loaf state migrate markdown --resume` is implemented as an idempotent resume/apply path with JSON and human output.",
+      "session": null,
+      "created": "2026-05-28T23:36:44Z",
+      "updated": "2026-05-28T23:39:54Z",
+      "completed_at": "2026-05-28T23:39:54Z",
+      "file": "TASK-252-state-migrate-markdown-resume.md"
     }
   },
   "specs": {
     "SPEC-016": {
-      "title": "Council Advisory Redesign — dynamic specialists, structured output",
+      "title": "Council Advisory Redesign \u2014 dynamic specialists, structured output",
       "status": "drafting",
       "requirement": null,
       "source": "direct",
@@ -3266,7 +4674,7 @@
       "file": "SPEC-016-council-advisory-redesign.md"
     },
     "SPEC-017": {
-      "title": "TDD Harness — spec-driven testing, eval accumulation, reviewer-to-R mapping",
+      "title": "TDD Harness \u2014 spec-driven testing, eval accumulation, reviewer-to-R mapping",
       "status": "drafting",
       "requirement": null,
       "source": "SPEC-014",
@@ -3277,7 +4685,7 @@
       "title": "Bootstrap Document Hierarchy Redesign",
       "status": "drafting",
       "requirement": null,
-      "source": "conversation — bootstrap skill gap analysis",
+      "source": "conversation \u2014 bootstrap skill gap analysis",
       "created": "2026-04-01T00:00:00.000Z",
       "file": "SPEC-021-bootstrap-document-hierarchy.md"
     },
@@ -3285,23 +4693,23 @@
       "title": "Native Agent Profile Routing",
       "status": "drafting",
       "requirement": null,
-      "source": "direct — conversation about PR #15 review revealing gap between profile definitions and usage",
+      "source": "direct \u2014 conversation about PR #15 review revealing gap between profile definitions and usage",
       "created": "2026-04-03T12:23:18.000Z",
       "file": "SPEC-022-native-agent-profile-routing.md"
     },
     "SPEC-023": {
-      "title": "CLI Backend Abstraction — Linear/Local Task Routing",
+      "title": "CLI Backend Abstraction \u2014 Linear/Local Task Routing",
       "status": "drafting",
       "requirement": null,
-      "source": "direct — branch-local draft from feat/decouple-mcps promoting Loaf task operations behind a backend router",
+      "source": "direct \u2014 branch-local draft from feat/decouple-mcps promoting Loaf task operations behind a backend router",
       "created": "2026-04-03T15:30:00Z",
       "file": "SPEC-023-cli-backend-abstraction.md"
     },
     "SPEC-024": {
       "title": "Harness-Native Surface Model",
-      "status": "implementing",
+      "status": "complete",
       "requirement": null,
-      "source": "direct — audit of target convergence, duplicate skill discovery, and Gemini native subagent/hook capabilities",
+      "source": "direct \u2014 audit of target convergence, duplicate skill discovery, and Gemini native subagent/hook capabilities",
       "created": "2026-04-04T12:13:54Z",
       "file": "SPEC-024-harness-native-surface-model.md"
     },
@@ -3339,7 +4747,7 @@
     },
     "SPEC-040": {
       "title": "SQLite-backed Loaf operational state",
-      "status": "drafting",
+      "status": "complete",
       "requirement": null,
       "source": "shaped from raw ideas 20260522-101624-sqlite-backed-operational-state, 20260522-101625-loaf-cli-tui-state-workbench, 20260522-101626-generated-markdown-review-exports, 20260522-101627-structured-session-transcripts-and-reports, and 20260522-101628-triage-resolution-graph\n",
       "created": "2026-05-23T01:10:29Z",
@@ -3357,7 +4765,7 @@
       "title": "Worktree-aware config resolution and ephemeral-branch session fallback",
       "status": "complete",
       "requirement": null,
-      "source": "direct — bug reports from GridSight release-agent flows (v0.16.0)",
+      "source": "direct \u2014 bug reports from GridSight release-agent flows (v0.16.0)",
       "created": "2026-05-28T00:18:00Z",
       "file": "archive/SPEC-042-worktree-aware-config-and-session-fallback.md"
     },
@@ -3402,7 +4810,7 @@
       "file": "archive/SPEC-005-changelog-reminder-hook.md"
     },
     "SPEC-006": {
-      "title": "loaf release — version management workflow",
+      "title": "loaf release \u2014 version management workflow",
       "status": "complete",
       "requirement": null,
       "source": "direct",
@@ -3410,7 +4818,7 @@
       "file": "archive/SPEC-006-release-command.md"
     },
     "SPEC-007": {
-      "title": "loaf init — project bootstrapping",
+      "title": "loaf init \u2014 project bootstrapping",
       "status": "complete",
       "requirement": null,
       "source": "direct",
@@ -3450,7 +4858,7 @@
       "file": "archive/SPEC-011-knowledge-lifecycle.md"
     },
     "SPEC-012": {
-      "title": "Cleanup Refinement — differentiated processes + CLI",
+      "title": "Cleanup Refinement \u2014 differentiated processes + CLI",
       "status": "complete",
       "requirement": null,
       "source": "direct",
@@ -3458,7 +4866,7 @@
       "file": "archive/SPEC-012-cleanup-refinement.md"
     },
     "SPEC-013": {
-      "title": "/bootstrap — Interactive project bootstrapping skill",
+      "title": "/bootstrap \u2014 Interactive project bootstrapping skill",
       "status": "complete",
       "requirement": null,
       "source": "direct",
@@ -3466,7 +4874,7 @@
       "file": "archive/SPEC-013-bootstrap-skill.md"
     },
     "SPEC-014": {
-      "title": "Skill Activation Redesign — foundations decomposition + agent elimination",
+      "title": "Skill Activation Redesign \u2014 foundations decomposition + agent elimination",
       "status": "complete",
       "requirement": null,
       "source": "brainstorm",
@@ -3482,7 +4890,7 @@
       "file": "archive/SPEC-015-workflow-hooks-changelog.md"
     },
     "SPEC-018": {
-      "title": "OpenCode Hooks Parity — verification",
+      "title": "OpenCode Hooks Parity \u2014 verification",
       "status": "complete",
       "requirement": null,
       "source": "code-review",
@@ -3490,7 +4898,7 @@
       "file": "archive/SPEC-018-opencode-hooks-parity.md"
     },
     "SPEC-019": {
-      "title": "Release Skill — orchestrated merge ritual with CLI-backed versioning",
+      "title": "Release Skill \u2014 orchestrated merge ritual with CLI-backed versioning",
       "status": "complete",
       "requirement": null,
       "source": "idea/20260330-idea-merge-command",
@@ -3517,7 +4925,7 @@
       "title": "Instruction-file hooks with native if-filtering",
       "status": "complete",
       "requirement": null,
-      "source": "direct — SPEC-020 incomplete migration, json-parser.sh deletion broke 3 advisory hooks",
+      "source": "direct \u2014 SPEC-020 incomplete migration, json-parser.sh deletion broke 3 advisory hooks",
       "created": "2026-04-06T17:25:27.000Z",
       "file": "archive/SPEC-026-instruction-hooks.md"
     },
@@ -3530,7 +4938,7 @@
       "file": "archive/SPEC-027-implement-adhoc-session-stability.md"
     },
     "SPEC-028": {
-      "title": "Durable Reports — reports/ as concluded artifact store",
+      "title": "Durable Reports \u2014 reports/ as concluded artifact store",
       "status": "complete",
       "requirement": null,
       "source": null,
@@ -3541,12 +4949,12 @@
       "title": "JSONL-Driven Journal Enrichment",
       "status": "complete",
       "requirement": null,
-      "source": "spark — session 20260409-110153",
+      "source": "spark \u2014 session 20260409-110153",
       "created": "2026-04-09T12:30:00.000Z",
       "file": "archive/SPEC-029-jsonl-journal-sync.md"
     },
     "SPEC-030": {
-      "title": "Librarian agent — session lifecycle management via task-driven journaling",
+      "title": "Librarian agent \u2014 session lifecycle management via task-driven journaling",
       "status": "complete",
       "requirement": null,
       "source": "20260409-140251-session-lifecycle-states.md",
@@ -3573,7 +4981,7 @@
       "title": "Configurable Agent Soul (Lore Decoupling)",
       "status": "complete",
       "requirement": null,
-      "source": "direct — conversation about decoupling Warden lore from agent profile mechanics",
+      "source": "direct \u2014 conversation about decoupling Warden lore from agent profile mechanics",
       "created": "2026-04-28T15:30:00.000Z",
       "file": "archive/SPEC-033-configurable-agent-soul.md"
     },

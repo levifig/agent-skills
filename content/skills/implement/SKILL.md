@@ -86,7 +86,7 @@ Parse `$ARGUMENTS` to determine session type:
 
 | Input Pattern | Type | Action |
 |---------------|------|--------|
-| `TASK-XXX` | Local task | Load from TASKS.json via CLI, auto-create session |
+| `TASK-XXX` | Local task | Load via `loaf task show`, auto-create session |
 | `SPEC-XXX` | Spec orchestration | If spec frontmatter has `linear_parent`, resolve to that Linear parent and follow Linear-Native Routing. Otherwise resolve local tasks and build dependency waves |
 | `TASK-XXX..YYY` | Task range | Expand range, build dependency waves |
 | `TASK-XXX,YYY,ZZZ` | Task list | Parse list, build dependency waves |
@@ -97,7 +97,7 @@ Parse `$ARGUMENTS` to determine session type:
 
 When starting from `TASK-XXX`:
 
-1. Load task metadata from TASKS.json via `loaf task show TASK-XXX --json` or read `.agents/TASKS.json` directly
+1. Load task metadata via `loaf task show TASK-XXX --json`; read `.agents/TASKS.json` only as a Markdown-compatibility fallback
 2. Auto-generate session: `YYYYMMDD-HHMMSS-task-XXX.md`
 3. Create session file, update task with session reference: `loaf task update TASK-XXX --session <session-file>`
 4. Load parent spec if task has `spec:` field
@@ -120,9 +120,9 @@ When input is free-text description (not matching any known pattern):
 
 ### Non-Existent Task ID Error
 
-If input matches `TASK-XXX` pattern but the task doesn't exist in TASKS.json:
+If input matches `TASK-XXX` pattern but `loaf task show` cannot resolve it:
 
-1. Show error: `"TASK-XXX not found in TASKS.json"`
+1. Show error: `"TASK-XXX not found in local task state"`
 2. Ask the user: `"Did you mean to create a new task? You can re-run with the description as free text."`
 3. **Do not silently create** — the user likely has a typo
 

@@ -139,81 +139,87 @@ export function registerBuildCommand(program: Command): void {
     .description("Build skill distributions for agent harnesses")
     .option("-t, --target <name>", "Build a specific target only")
     .action(async (options: { target?: string }) => {
-      const startTime = Date.now();
-      const rootDir = findRootDir();
-      const contentDir = join(rootDir, "content");
-      const configDir = join(rootDir, "config");
-      const distDir = join(rootDir, "dist");
-
-      console.log(`\n${bold("loaf build")}\n`);
-
-      // Validate target if specified
-      if (options.target && !TARGET_NAMES.includes(options.target)) {
-        console.error(
-          `${red("error:")} Unknown target ${bold(options.target)}\n` +
-          `${gray("Valid targets:")} ${TARGET_NAMES.join(", ")}`
-        );
-        process.exit(1);
-      }
-
-      // Load config
-      const hooksConfigPath = join(configDir, "hooks.yaml");
-      if (!existsSync(hooksConfigPath)) {
-        console.error(`${red("error:")} Hooks config not found: ${hooksConfigPath}`);
-        process.exit(1);
-      }
-
-      const hooksConfig = loadYamlConfig<HooksConfig>(hooksConfigPath);
-      const targetsConfig = loadYamlConfig<TargetsConfig>(join(configDir, "targets.yaml"));
-
-      const targets = options.target ? [options.target] : TARGET_NAMES;
-
-      // Build shared skills intermediate first (before any target builds)
-      process.stdout.write(`  ${cyan("building")} shared skills intermediate...`);
-      const intermediateStart = Date.now();
       try {
-        await buildSharedIntermediate(rootDir, contentDir, distDir, targetsConfig);
-        const elapsed = ((Date.now() - intermediateStart) / 1000).toFixed(2);
-        process.stdout.write(`\r  ${green("✓")} shared skills intermediate ${gray(`(${elapsed}s)`)}\n`);
+        await runBuild(options);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        process.stdout.write(`\r  ${red("✗")} shared skills intermediate\n`);
-        console.error(`    ${red(message)}`);
+        console.error(message);
         process.exit(1);
       }
-
-      let failed = false;
-      for (const targetName of targets) {
-        const targetStart = Date.now();
-        process.stdout.write(`  ${cyan("building")} ${targetName}...`);
-
-        try {
-          await buildTarget(
-            targetName,
-            rootDir,
-            contentDir,
-            distDir,
-            hooksConfig,
-            targetsConfig,
-          );
-          const elapsed = ((Date.now() - targetStart) / 1000).toFixed(2);
-          process.stdout.write(`\r  ${green("✓")} ${targetName} ${gray(`(${elapsed}s)`)}\n`);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          process.stdout.write(`\r  ${red("✗")} ${targetName}\n`);
-          console.error(`    ${red(message)}`);
-          failed = true;
-        }
-      }
-
-      const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log();
-
-      if (failed) {
-        console.error(`${red("Build failed")} ${gray(`(${totalElapsed}s)`)}`);
-        process.exit(1);
-      }
-
-      console.log(`${green("Build complete")} ${gray(`(${totalElapsed}s)`)}`);
     });
+}
+
+export async function runBuild(options: { target?: string } = {}): Promise<void> {
+  const startTime = Date.now();
+  const rootDir = findRootDir();
+  const contentDir = join(rootDir, "content");
+  const configDir = join(rootDir, "config");
+  const distDir = join(rootDir, "dist");
+
+  console.log(`\n${bold("loaf build")}\n`);
+
+  // Validate target if specified
+  if (options.target && !TARGET_NAMES.includes(options.target)) {
+    throw new Error(
+      `${red("error:")} Unknown target ${bold(options.target)}\n` +
+      `${gray("Valid targets:")} ${TARGET_NAMES.join(", ")}`
+    );
+  }
+
+  // Load config
+  const hooksConfigPath = join(configDir, "hooks.yaml");
+  if (!existsSync(hooksConfigPath)) {
+    throw new Error(`${red("error:")} Hooks config not found: ${hooksConfigPath}`);
+  }
+
+  const hooksConfig = loadYamlConfig<HooksConfig>(hooksConfigPath);
+  const targetsConfig = loadYamlConfig<TargetsConfig>(join(configDir, "targets.yaml"));
+
+  const targets = options.target ? [options.target] : TARGET_NAMES;
+
+  // Build shared skills intermediate first (before any target builds)
+  process.stdout.write(`  ${cyan("building")} shared skills intermediate...`);
+  const intermediateStart = Date.now();
+  try {
+    await buildSharedIntermediate(rootDir, contentDir, distDir, targetsConfig);
+    const elapsed = ((Date.now() - intermediateStart) / 1000).toFixed(2);
+    process.stdout.write(`\r  ${green("✓")} shared skills intermediate ${gray(`(${elapsed}s)`)}\n`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stdout.write(`\r  ${red("✗")} shared skills intermediate\n`);
+    throw new Error(`    ${red(message)}`);
+  }
+
+  let failed = false;
+  for (const targetName of targets) {
+    const targetStart = Date.now();
+    process.stdout.write(`  ${cyan("building")} ${targetName}...`);
+
+    try {
+      await buildTarget(
+        targetName,
+        rootDir,
+        contentDir,
+        distDir,
+        hooksConfig,
+        targetsConfig,
+      );
+      const elapsed = ((Date.now() - targetStart) / 1000).toFixed(2);
+      process.stdout.write(`\r  ${green("✓")} ${targetName} ${gray(`(${elapsed}s)`)}\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stdout.write(`\r  ${red("✗")} ${targetName}\n`);
+      console.error(`    ${red(message)}`);
+      failed = true;
+    }
+  }
+
+  const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log();
+
+  if (failed) {
+    throw new Error(`${red("Build failed")} ${gray(`(${totalElapsed}s)`)}`);
+  }
+
+  console.log(`${green("Build complete")} ${gray(`(${totalElapsed}s)`)}`);
 }

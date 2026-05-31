@@ -103,11 +103,17 @@ Always check project context first. Rate findings: **High** (official/verified),
 1. **Interview** with AskUserQuestion: what are you trying to understand? What context do you have? What decision will this inform?
 2. Check project context first (ADRs, ARCHITECTURE, sessions)
 3. Apply confidence hierarchy for external sources
-4. Create report following the [report template](templates/report.md)
+4. For a transient review artifact, use `loaf report generate` when an existing
+   SQLite-backed export kind fits; for authored long-form research, create a
+   Markdown report following the [report template](templates/report.md)
 
-**Output:** `.agents/reports/{YYYYMMDD}-{HHMMSS}-research-{slug}.md`
+**Output:** generated report Markdown to stdout, or an authored report at
+`.agents/reports/{YYYYMMDD}-{HHMMSS}-research-{slug}.md` when a durable prose
+artifact is explicitly needed.
 
-Status starts as `draft`. Set to `final` when research concludes and findings are validated.
+For SQLite-backed report state, use `loaf report create`, `loaf report
+finalize`, and `loaf report archive`. Do not hand-edit report lifecycle
+frontmatter to represent operational status.
 
 ### Brainstorming
 

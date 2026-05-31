@@ -5,7 +5,7 @@ description: >-
   Use when the user asks "break this down" or "create tasks for this spec."
   Produces task files with estimates, dependencies, and acceptance criteria. Not
   for shaping ideas (use shape) or implementation work (use implement).
-version: 2.0.0-dev.47
+version: 2.0.0-dev.48
 ---
 
 # Breakdown
@@ -47,8 +47,8 @@ Decompose specifications into atomic, implementable tasks.
 - Each created task has a clear title, priority, file hints, verification command, and observable done condition
 - The dependency graph has no cycles and reflects actual implementation order
 - Spec status has been updated to `implementing`
-- **Linear-native mode only:** parent issue exists, labeled `spec`, with description pointing to the local spec file; N sub-issues have `parentId` set; zero local `TASK-NNN.md` files and zero new `TASKS.json` entries were created; spec frontmatter has `linear_parent` and `linear_parent_url` populated
-- **Local-tasks mode only:** N local `TASK-NNN.md` files exist with matching `TASKS.json` entries; no Linear calls were made
+- **Linear-native mode only:** parent issue exists, labeled `spec`, with description pointing to the local spec file; N sub-issues have `parentId` set; zero local task rows or `TASK-NNN.md` files were created; spec frontmatter has `linear_parent` and `linear_parent_url` populated
+- **Local-tasks mode only:** N local tasks exist in `loaf task list` with compatibility `.md` files when configured; no Linear calls were made
 
 ---
 
@@ -177,7 +177,7 @@ created tasks and next steps.
 
 Spec files stay local and canonical in `.agents/specs/`. Tasks live in Linear
 as sub-issues of a parent rollup issue representing the spec. No local
-`TASK-NNN.md` files are created. No new `TASKS.json` entries are created.
+task rows or `TASK-NNN.md` files are created.
 
 ### 7a. Ensure the `spec` label exists
 
@@ -255,7 +255,7 @@ predecessors exist when referenced.
 ### 7f. Do NOT create local task files
 
 Skip `loaf task create` entirely. Linear issue IDs are the task record. No
-`TASK-NNN.md` files, no new `TASKS.json` entries for this spec's tasks.
+local task rows or `TASK-NNN.md` files for this spec's tasks.
 
 ### 7g. Update spec frontmatter
 
@@ -275,13 +275,14 @@ Use the actual parent issue identifier and URL returned from 7c.
 Spec files and task files both live locally. No Linear calls.
 
 Use `loaf task create --spec SPEC-XXX --title "Task title" --priority P1`
-for each task. The CLI creates the `TASKS.json` entry and `TASK-NNN.md`
-skeleton file. Then edit the `.md` body content (description, acceptance
-criteria) directly.
+for each task. In SQLite-backed projects, the CLI creates the operational state
+row and any compatibility Markdown/index artifacts needed by the current
+project. Then edit the `.md` body content (description, acceptance criteria)
+only when an authored task prose artifact exists.
 
-Dependencies are expressed in `TASKS.json` via the CLI's dependency flags (or
-hand-edited into the JSON). Priority Order from the spec maps directly to
-task `priority` fields.
+Dependencies are expressed through CLI flags such as `--depends-on`, not by
+hand-editing the compatibility index. Priority Order from the spec maps directly
+to task `priority` fields.
 
 See [local-tasks reference](../orchestration/references/local-tasks.md) for
 the full local-task model.

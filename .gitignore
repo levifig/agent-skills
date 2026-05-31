@@ -8,6 +8,8 @@ node_modules/
 
 # CLI build output
 dist-cli/
+!plugins/loaf/dist-cli/
+!plugins/loaf/dist-cli/**
 
 # Temporary backups
 dist-backup/

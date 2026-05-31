@@ -6,7 +6,7 @@ description: >-
   summary that replaces Current State. Use at the end of a work session or when
   the user asks "wr...
 user-invocable: true
-version: 2.0.0-dev.47
+version: 2.0.0-dev.48
 ---
 
 # Wrap

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 
 import {
@@ -13,7 +14,7 @@ import {
 } from "./kb-glossary.js";
 import { readGlossary } from "../lib/kb/glossary.js";
 
-const TEST_ROOT = join(process.cwd(), ".test-kb-glossary");
+const TEST_ROOT = mkdtempSync(join(tmpdir(), "loaf-kb-glossary-"));
 
 beforeEach(() => {
   rmSync(TEST_ROOT, { recursive: true, force: true });

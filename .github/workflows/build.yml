@@ -33,22 +33,31 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Install dependencies
         run: npm ci
 
       - name: Build all targets
         run: npm run build
 
+      - name: Verify Go tests
+        run: go test ./...
+
       - name: Verify build artifacts are in sync
         run: |
-          if ! git diff --quiet -- dist/ plugins/ .claude-plugin/; then
+          npm run verify:go-artifacts
+          if ! git diff --quiet -- bin/ dist/ plugins/ .claude-plugin/; then
             echo "ERROR: Build artifacts are out of sync with source."
             echo ""
             echo "Files affected:"
-            git diff --stat -- dist/ plugins/ .claude-plugin/
+            git diff --stat -- bin/ dist/ plugins/ .claude-plugin/
             echo ""
             echo "Diff (first 200 lines):"
-            git diff -- dist/ plugins/ .claude-plugin/ | head -200
+            git diff -- bin/ dist/ plugins/ .claude-plugin/ | head -200
             echo ""
             echo "Run 'npm run build' locally and commit the resulting changes alongside"
             echo "the source changes that produced them (per CLAUDE.md convention)."

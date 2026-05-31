@@ -7,7 +7,7 @@ description: >-
   knowledge is preserved. Not for strategic reflection (use reflect) or
   knowledge management (use knowledge-base).
 subtask: false
-version: 2.0.0-dev.47
+version: 2.0.0-dev.48
 ---
 
 # Housekeeping
@@ -24,7 +24,7 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 - Treat `.agents/handoffs/` as first-class but disposable: keep active/final handoffs, delete only after confirmed deprecated status
 - Check report `status` is `processed` and linked session is archived before archiving reports (see [templates/report.md](../skills/housekeeping/templates/report.md))
 - Check state assessment `session:` field before flagging for cleanup — only flag when linked session is archived
-- Verify `TASKS.json` sync after archival with `loaf task sync`
+- In SQLite-backed projects, verify lifecycle changes through `loaf task list --json`, `loaf spec list --json`, and `loaf report list --json`; use `loaf task sync` only for Markdown compatibility repair
 - Log outcome to session journal: `loaf session log "decision(housekeeping): archived N specs, M sessions"`
 
 **Never**
@@ -36,8 +36,9 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 
 After work completes, verify:
 - Session files archived with proper metadata (status, archived_at, archived_by)
-- Tasks archived via `loaf task archive` (updates TASKS.json)
-- Specs archived via `loaf spec archive` (updates TASKS.json)
+- Tasks archived via `loaf task archive`
+- Specs archived via `loaf spec archive`
+- SQLite-backed task/spec/report state reflects lifecycle changes when initialized
 - Drafts checked for unprocessed sparks before deletion
 - Handoffs deleted only after explicit deprecation is confirmed
 - Summary table presented showing all actions taken
@@ -53,20 +54,20 @@ loaf session archive                 # Archive single session
 loaf session enrich <file>           # Enrich a session's journal from JSONL
 loaf task archive TASK-XXX           # Archive single task
 loaf spec archive SPEC-XXX           # Archive single spec
-loaf task sync                       # Fix TASKS.json drift
+loaf task sync                       # Compatibility: repair Markdown task index drift
 ```
 
 ### Artifact Lifecycle
 
 | Artifact | Active Location | Archive | Action |
 |----------|-----------------|---------|--------|
-| Sessions | `.agents/sessions/` | `archive/` | Move with metadata |
-| Tasks (local mode only) | `.agents/tasks/` | `archive/` | `loaf task archive` |
-| Specs | `.agents/specs/` | `archive/` | `loaf spec archive` |
+| Sessions | SQLite state + `.agents/sessions/` compatibility views | `archive/` | `loaf session archive` / `loaf session housekeeping` |
+| Tasks (local mode only) | SQLite state + `.agents/tasks/` source prose | `archive/` | `loaf task archive` |
+| Specs | SQLite state + `.agents/specs/` authored prose | `archive/` | `loaf spec archive` |
 | Drafts (state assessments) | `.agents/drafts/` | delete | Flag for cleanup when linked session is archived |
 | Drafts (brainstorms) | `.agents/drafts/` | `archive/` | User decision (spark extraction first) |
 | Handoffs | `.agents/handoffs/` | delete | Delete after status is confirmed `deprecated` |
-| Reports | `.agents/reports/` | `archive/` | Archive after processing + linked session archived |
+| Reports | SQLite state + generated/authored report Markdown | `archive/` | `loaf report archive` after processing + linked session archived |
 
 **Linear-native mode** (when `integrations.linear.enabled` is `true` in
 `.agents/loaf.json`): local `TASK-NNN.md` files do not exist for new specs —

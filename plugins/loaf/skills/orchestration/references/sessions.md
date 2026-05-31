@@ -277,10 +277,10 @@ See foundations skill reference/diagrams.md for Mermaid syntax.
 
 **Key Conclusions**: Summary of findings
 **Action Items**: What changed or will change
-**Report File**: `.agents/reports/YYYYMMDD-HHMMSS-title.md`
-**Archive**: After report is processed and the linked session is archived, set report status to `archived`, add `archived_at`, add `archived_by`, and move to `.agents/reports/archive/` (archive indefinitely).
-**Frontmatter**: Require `status`, `session_reference`, and `processed_at`; add `archived_at` and `archived_by` when archived.
-**Note**: Reports without frontmatter are treated as unprocessed.
+**Report Output**: generated with `loaf report generate ...` or stored as an authored report when durable prose is needed.
+**Archive**: After report is processed and the linked session is archived, use `loaf report archive <report>` for SQLite-backed report state. Markdown report movement is compatibility/export handling.
+**Metadata**: Require enough state or frontmatter to identify status, linked session, and processing time. In SQLite-backed projects, CLI state is authoritative.
+**Note**: Reports without state/frontmatter metadata are treated as unprocessed compatibility artifacts.
 
 ## Handoffs
 
@@ -459,7 +459,7 @@ Sessions are **archived, not deleted** when complete to preserve audit trail (se
 | Remaining work | External issue backlog |
 | Council outcomes | Session summary + council file link |
 | Report conclusions | Session summary + report file link |
-| Archived artifacts | `.agents/<type>/archive/` + status `archived` + `archived_at` + `archived_by` |
+| Archived artifacts | SQLite lifecycle state plus compatibility archive metadata when Markdown files exist |
 
 ### Archival Checklist
 
@@ -469,14 +469,14 @@ Sessions are **archived, not deleted** when complete to preserve audit trail (se
 - [ ] Remaining work created as issues
 - [ ] Council outcomes summarized in this session (link council file)
 - [ ] Reports processed and summarized in this session (link report file)
-- [ ] Reports archived only after session is archived (status + move)
+- [ ] Reports archived only after session is archived (`loaf report archive` for SQLite-backed state)
 - [ ] Handoffs reviewed; deprecated handoffs marked for `/loaf:housekeeping` deletion
 - [ ] No orphaned references to session file
 - [ ] Set session status to `archived`
 - [ ] Set `archived_at` and `archived_by`
-- [ ] Move file to `.agents/sessions/archive/`
+- [ ] Move compatibility session file to `.agents/sessions/archive/` when one exists
 - [ ] Linked councils moved to `.agents/councils/archive/` after session summary
-- [ ] Linked reports moved to `.agents/reports/archive/` after session archived + conclusions captured
+- [ ] Linked report state archived after session archived + conclusions captured
 - [ ] Deprecated handoffs deleted by `/loaf:housekeeping` after confirmation
 - [ ] Update `.agents/` references to archived paths (no `.agents` links outside `.agents/`)
 - [ ] Archive indefinitely (no deletion policy)

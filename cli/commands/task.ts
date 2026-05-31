@@ -800,7 +800,7 @@ export function registerTaskCommand(program: Command): void {
 
   task
     .command("archive")
-    .description("Move completed tasks to archive and update TASKS.json")
+    .description("Archive completed tasks through the task lifecycle")
     .argument("[ids...]", "Task IDs to archive (e.g., TASK-040 TASK-041)")
     .option("--spec <id>", "Archive all done tasks for a spec")
     .action(async (ids: string[], options: { spec?: string }) => {
@@ -894,7 +894,7 @@ export function registerTaskCommand(program: Command): void {
 
   task
     .command("refresh")
-    .description("Rebuild TASKS.json from task and spec files")
+    .description("Compatibility: rebuild the Markdown task index from task/spec files")
     .action(async () => {
       const agentsDir = findAgentsDir();
       if (!agentsDir) {
@@ -922,9 +922,9 @@ export function registerTaskCommand(program: Command): void {
 
   task
     .command("sync")
-    .description("Sync between TASKS.json and .md files")
+    .description("Compatibility: sync the Markdown task index and task files")
     .option("--import", "Import orphan .md files not in the index")
-    .option("--push", "Push TASKS.json metadata into .md frontmatter")
+    .option("--push", "Push compatibility index metadata into .md frontmatter")
     .action(async (options: { import?: boolean; push?: boolean }) => {
       const agentsDir = findAgentsDir();
       if (!agentsDir) {

@@ -218,7 +218,7 @@ export function registerSpecCommand(program: Command): void {
   // loaf spec archive
   spec
     .command("archive")
-    .description("Move completed specs to archive and update TASKS.json")
+    .description("Archive completed specs through the spec lifecycle")
     .argument("<ids...>", "Spec IDs to archive (e.g., SPEC-009 SPEC-013)")
     .action(async (ids: string[]) => {
       const agentsDir = findAgentsDir();

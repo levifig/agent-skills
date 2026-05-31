@@ -7,7 +7,7 @@ description: >-
   "what's in my backlog?" Produces promoted ideas, archived discards, and
   resolve(spark) journal entries. Not for capturing new ideas (use idea) or
   shaping (use shape).
-version: 2.0.0-dev.47
+version: 2.0.0-dev.48
 ---
 
 # Triage
@@ -31,23 +31,28 @@ Review and process the intake queue — sparks and raw ideas.
 
 - Present everything before acting -- user decides each disposition
 - Never auto-promote or auto-discard without confirmation
-- Log resolutions in the source document (journal or brainstorm)
+- Use SQLite-aware CLI commands for lifecycle changes; do not edit idea/spark
+  frontmatter by hand
+- Log or link resolutions through `loaf spark resolve`, `loaf spark promote`,
+  `loaf idea archive`, and `loaf brainstorm archive` when state is initialized
 - One pass through the queue -- don't loop or re-present items
 
 ## Verification
 
 - All presented sparks have a recorded disposition (promoted, discarded, or deferred)
-- Promoted sparks have corresponding idea files in `.agents/ideas/`
-- Session journals have `resolve(spark)` entries for each processed spark
-- Brainstorm sparks are marked `*(promoted)*` or `*(discarded)*` in source
+- Promoted sparks have corresponding idea rows visible in `loaf idea list`
+- Processed sparks no longer appear in default `loaf spark list` / triage output
+- Archived ideas/brainstorms no longer appear in default triage lists
+- Markdown source annotations, when present, are compatibility notes rather than
+  the authoritative state transition
 
 ## Quick Reference
 
 | Source | Unprocessed Signal | Resolution |
 |--------|-------------------|------------|
-| Session journal | `spark()` without matching `resolve(spark)` | Append `resolve(spark)` entry |
-| Brainstorm doc | Spark not marked `*(promoted)*` or `*(discarded)*` | Mark inline in source |
-| Ideas directory | `status: raw` in frontmatter | Shape, brainstorm further, or archive |
+| Sparks | Open spark rows from `loaf spark list` | `loaf spark promote` or `loaf spark resolve` |
+| Brainstorms | Open brainstorm rows from `loaf brainstorm list` | `loaf brainstorm promote` or `loaf brainstorm archive` |
+| Ideas | Open idea rows from `loaf idea list` | Shape, promote, or `loaf idea archive` |
 
 ---
 
@@ -55,19 +60,20 @@ Review and process the intake queue — sparks and raw ideas.
 
 ### Step 1: Scan Sources
 
-Scan three sources for unprocessed items:
+Scan state-backed queues first, falling back to Markdown compatibility sources
+only when SQLite state is not initialized:
 
-**1. Session journal sparks**
-- Search `.agents/sessions/*.md` for `spark()` journal entries
-- Exclude sparks that have a matching `resolve(spark)` entry in the same session
-- Also scan `.agents/sessions/archive/*.md` for unresolved sparks from past sessions
+**1. Sparks**
+- Run `loaf spark list` or `loaf spark list --json`
+- Treat open rows as unresolved intake
 
-**2. Brainstorm document sparks**
-- Search `.agents/drafts/*brainstorm*.md` for `## Sparks` sections
-- List sparks not marked as `*(promoted)*` or `*(discarded)*`
+**2. Brainstorms**
+- Run `loaf brainstorm list` or `loaf brainstorm list --json`
+- Treat open rows as brainstorm intake
 
-**3. Raw ideas**
-- Search `.agents/ideas/*.md` for files with `status: raw` in frontmatter
+**3. Ideas**
+- Run `loaf idea list` or `loaf idea list --json`
+- Treat open rows as idea intake
 
 ### Step 2: Present the Queue
 
@@ -88,14 +94,14 @@ Then list each item with source, date, and description.
 For each item, present it and ask for disposition:
 
 **Sparks → one of:**
-- **Promote** → create idea file via the idea capture flow, log resolution
-- **Discard** → log resolution with reason
+- **Promote** → `loaf spark promote <spark> --to-idea <idea>`
+- **Discard** → `loaf spark resolve <spark> --reason <reason>`
 - **Defer** → skip, resurface next triage
 
 **Raw ideas → one of:**
 - **Shape** → suggest running `/shape` with this idea
 - **Brainstorm** → suggest running `/brainstorm` to explore further
-- **Archive** → update status to `archived` with reason
+- **Archive** → `loaf idea archive <idea> --reason <reason>`
 
 ### Step 4: Summarize
 
@@ -114,34 +120,43 @@ Triage complete:
 
 ## Resolution Formats
 
-### Session journal sparks
+### Sparks
 
 When promoting:
-```
-- YYYY-MM-DD HH:MM resolve(spark): slug → promoted to .agents/ideas/YYYYMMDD-HHMMSS-slug.md [YYYY-MM-DD HH:MM]
+```bash
+loaf spark promote SPARK-slug --to-idea idea-slug
 ```
 
 When discarding:
-```
-- YYYY-MM-DD HH:MM resolve(spark): slug → discarded, reason [YYYY-MM-DD HH:MM]
+```bash
+loaf spark resolve SPARK-slug --reason "reason"
 ```
 
 When deferring:
+Do nothing; open sparks remain visible in the next triage pass.
 ```
-- YYYY-MM-DD HH:MM resolve(spark): slug → deferred, reason [YYYY-MM-DD HH:MM]
+
+### Brainstorms
+
+When promoting:
+```bash
+loaf brainstorm promote brainstorm-slug --to-idea idea-slug
 ```
 
-### Brainstorm sparks
+When archiving:
+```bash
+loaf brainstorm archive brainstorm-slug --reason "reason"
+```
 
-Mark inline in the source document:
-- Promoted: `*(promoted to .agents/ideas/YYYYMMDD-HHMMSS-slug.md)*`
-- Discarded: `*(discarded: reason)*`
+### Ideas
 
-### Raw ideas
+When archiving:
+```bash
+loaf idea archive idea-slug --reason "reason"
+```
 
-Update frontmatter `status:` field:
-- `shaping` — when sent to `/shape`
-- `archived` — when decided not to pursue
+When shaping, pass the idea to `/shape`; do not hand-edit status frontmatter to
+represent lifecycle state.
 
 ---
 

@@ -55,6 +55,22 @@ Each target transformer reads content (skills/agents/hooks) and config, then pro
 
 All TypeScript, bundled into a single file by tsup. No dynamic imports. The `loaf` binary in `plugins/loaf/bin/` is a self-contained copy of the bundled CLI with all npm dependencies inlined.
 
+### Stateful Runtime Migration (ADR-014)
+
+ADR-014 accepts Go as the runtime direction for Loaf's stateful core. The current TypeScript CLI remains the shipped implementation until migration work lands, but new SQLite-backed operational-state work starts in Go.
+
+The intended transition shape is a Go front controller for the public `loaf` command:
+
+```
+loaf                     # Go front controller
+├── native Go commands    # stateful/runtime-heavy behavior, starting with `loaf state`
+└── legacy bridge         # temporary delegation to the bundled TypeScript CLI
+```
+
+The bridge prevents a big-bang rewrite. Commands move to Go when they need the stateful runtime, storage layer, or lower-dependency distribution shape. Existing TypeScript command families continue to operate through the bridge until deliberately migrated.
+
+This changes the construction technique, not the product contract: skills still call `loaf`, hooks still enforce through `loaf`, and users still see one command surface. The implementation boundary behind that command is allowed to migrate command-by-command.
+
 ### Targets
 
 | Target | Output | Agents | Skills | Hooks | Runtime Plugin |

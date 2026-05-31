@@ -17,12 +17,14 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   readlinkSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "fs";
+import { tmpdir } from "os";
 import { dirname, join } from "path";
 
 import { runDoctor, CHECKS, type CheckContext } from "./doctor.js";
@@ -31,7 +33,7 @@ import { runDoctor, CHECKS, type CheckContext } from "./doctor.js";
 // Fixtures
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TEST_ROOT = join(process.cwd(), ".test-doctor-command");
+const TEST_ROOT = mkdtempSync(join(tmpdir(), "loaf-doctor-command-"));
 
 // Strip ANSI escape codes so substring assertions don't trip on colour.
 const stripAnsi = (s: string) => s.replace(/\x1b\[\d+m/g, "");

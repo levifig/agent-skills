@@ -93,6 +93,10 @@ loaf release
 ### `loaf task`
 Manage project tasks
 
+In SQLite-backed projects, task metadata mutations go through the Go-native
+state store. Markdown task files and `TASKS.json` remain compatibility/source
+artifacts during migration; do not edit them directly for lifecycle changes.
+
 **Subcommands:**
 
 | Subcommand | Purpose |
@@ -102,9 +106,9 @@ Manage project tasks
 | `loaf task status` | Show task summary counts |
 | `loaf task create` | Create a new task |
 | `loaf task update` | Update a task's metadata |
-| `loaf task archive` | Move completed tasks to archive and update TASKS.json |
-| `loaf task refresh` | Rebuild TASKS.json from task and spec files |
-| `loaf task sync` | Sync between TASKS.json and .md files |
+| `loaf task archive` | Archive completed tasks through the task lifecycle |
+| `loaf task refresh` | Compatibility: rebuild the Markdown task index from task/spec files |
+| `loaf task sync` | Compatibility: sync the Markdown task index and task files |
 
 **Options:**
 
@@ -134,7 +138,7 @@ Manage project tasks
 
 - `loaf task sync`:
   - `--import` — Import orphan .md files not in the index
-  - `--push` — Push TASKS.json metadata into .md frontmatter
+  - `--push` — Push compatibility index metadata into .md frontmatter
 
 **Usage:**
 ```bash
@@ -150,12 +154,16 @@ loaf task status
 ### `loaf spec`
 Manage project specs
 
+Spec lifecycle changes go through `loaf spec` commands. Markdown spec files
+remain the authored prose artifact, while SQLite state carries operational
+status and relationship data when initialized.
+
 **Subcommands:**
 
 | Subcommand | Purpose |
 |------------|---------|
 | `loaf spec list` | Show specs with status and task counts |
-| `loaf spec archive` | Move completed specs to archive and update TASKS.json |
+| `loaf spec archive` | Archive completed specs through the spec lifecycle |
 
 **Options:**
 
@@ -271,6 +279,9 @@ loaf check
 ### `loaf session`
 Manage session journals
 
+Session list/show/log/report commands are SQLite-aware. Prefer these commands
+over manual session frontmatter edits when changing lifecycle or journal state.
+
 **Subcommands:**
 
 | Subcommand | Purpose |
@@ -284,6 +295,8 @@ Manage session journals
 | `loaf session list` | List all active and archived sessions |
 | `loaf session state` | Manage session state snapshot |
 | `loaf session context` | Session context for hooks and agents |
+| `loaf session show` | Display one session from state |
+| `loaf session report` | Generate a session report from SQLite state |
 
 **Options:**
 
@@ -322,6 +335,36 @@ Manage session journals
 loaf session start
 loaf session end
 loaf session log
+```
+
+---
+
+## Report Management
+
+### `loaf report`
+Manage report state and generated report output.
+
+In SQLite-backed projects, report lifecycle state is stored in SQLite. Use
+generated report commands for review output; create authored Markdown reports
+only when a durable prose artifact is explicitly needed.
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf report list` | List reports from SQLite state or Markdown compatibility files |
+| `loaf report create` | Create a draft report row in SQLite state |
+| `loaf report finalize` | Transition a draft report to final |
+| `loaf report archive` | Transition a final report to archived |
+| `loaf report generate` | Generate report Markdown from SQLite state to stdout |
+
+**Usage:**
+```bash
+loaf report list
+loaf report create release-readiness --type audit --source manual
+loaf report finalize report-release-readiness
+loaf report archive report-release-readiness
+loaf report generate release-readiness
 ```
 
 ---

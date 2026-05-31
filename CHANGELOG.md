@@ -8,6 +8,68 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
+## [2.0.0-dev.48] - 2026-05-29
+
+### Changed
+
+- Document Go as the accepted runtime direction for Loaf's stateful core and shape SQLite work around that runtime foundation.
+- Add the initial dependency-free Go runtime skeleton for future state commands without changing the shipped TypeScript CLI.
+- Add Go-native `loaf state path` dispatch with XDG-backed, hashed project-state paths shared by main and linked Git worktrees.
+- Add a transitional Go-to-TypeScript legacy delegation bridge so unmigrated commands keep using the bundled CLI while `state` commands remain Go-native.
+- Use a portable `bin/loaf` launcher with native runtime lookup under `bin/native/<platform>-<arch>/`, keeping legacy TypeScript delegation installable on unsupported native platforms during the Go port.
+- Select `github.com/ncruces/go-sqlite3/driver` as the SQLite driver, with cgo-free, dependency, vulnerability, and testability guardrails documented before adding the dependency.
+- Package the Go front controller as the public `loaf` command while bundling TypeScript fallback assets for delegated commands.
+- Define the initial SQLite operational-state schema as Go-owned migration metadata with dependency-free guardrail tests.
+- Add the approved cgo-free SQLite driver and Go-native `state init/status/doctor` storage lifecycle commands.
+- Add a Go-native markdown migration dry-run that previews `.agents/` import counts, skipped files, inferred relationships, and spark entries without creating SQLite state.
+- Add a Go-native markdown migration apply path that initializes SQLite and imports current `.agents/` specs, tasks, ideas, brainstorms, sessions, reports, sparks, relationships, and source provenance without mutating Markdown.
+- Add a Go-native `loaf trace` read model for imported SQLite state, resolving aliases to source provenance plus inbound and outbound task/spec relationships.
+- Add a Go-native `loaf task list` read path for imported SQLite state, with JSON and human output, active/status filters, dependency aliases, source provenance, and Markdown compatibility fallback.
+- Add a Go-native `loaf spec list` read path for imported SQLite state, with JSON and human output, task counts, source provenance, and Markdown compatibility fallback.
+- Add a Go-native `loaf session list` read path for imported SQLite state, with JSON and human output, archived-session import, journal counts, source provenance, and Markdown compatibility fallback.
+- Add a Go-native `loaf report list` read path for imported SQLite state, with JSON and human output, type/status filters, archived-report import, source provenance, and Markdown compatibility fallback.
+- Import explicit lineage relationships and spark promotion links into SQLite so `loaf trace` can show spark-to-idea-to-spec/task provenance from migrated `.agents/` artifacts.
+- Import shaping draft artifacts into SQLite so `loaf trace` can show brainstorm-to-idea-to-shaping-draft-to-spec/task provenance from migrated `.agents/` drafts.
+- Add a Go-native `loaf session log` write path for initialized SQLite state, preserving unresolved journal context as nullable fields while keeping hook-mode and Markdown-only compatibility delegation.
+- Add Go-native `loaf idea list` and `loaf idea resolve ... --by ...` paths so imported ideas can be marked resolved in SQLite and stay out of the default triage list.
+- Add Go-native `loaf spark list` and `loaf spark resolve ... --by ...` paths so imported sparks can be marked resolved in SQLite and stay out of the default triage list.
+- Add Go-native `loaf tag list/show/add/remove` paths for SQLite-backed many-to-many classification across imported state rows and journal entries.
+- Add Go-native `loaf bundle create/show/add/remove` paths for SQLite-backed related sets assembled from tag queries and explicit membership.
+- Add Go-native `loaf link create/list/remove` paths for SQLite-backed explicit relationships that are visible through `loaf trace`.
+- Add Go-native `loaf task update <task> --status <status>` for SQLite-backed task status changes with status-change events.
+- Add Go-native `loaf task show <task>` for SQLite-backed task inspection with dependencies, source provenance, and imported body output.
+- Add Go-native `loaf task create --title ...` for SQLite-backed task creation with generated aliases, spec/dependency relationships, and creation events.
+- Add Go-native `loaf task update <task>` metadata updates for SQLite-backed priority, spec, dependency, and session relationship changes.
+- Add Go-native `loaf spec archive <spec>` for SQLite-backed spec archival with status-change events and skipped-ref reporting.
+- Add Go-native `loaf task archive` for SQLite-backed task archival by task ID or spec, with status-change events and active-list filtering.
+- Add Go-native `loaf idea capture --title ...` for SQLite-backed idea creation with generated aliases, status-change events, and list/trace visibility.
+- Add Go-native `loaf idea archive` for SQLite-backed idea archival with optional reason notes, status-change events, skipped-ref reporting, and default triage-list filtering.
+- Record optional `loaf spark resolve --reason` rationale on SQLite-backed spark resolution relationships and status-change events.
+- Add Go-native `loaf spark capture --scope ... --text ...` for SQLite-backed spark creation with generated aliases, status-change events, and list/trace visibility.
+- Add Go-native `loaf spark promote --to-idea ...` for SQLite-backed spark-to-idea promotion relationships visible through trace and link reads.
+- Add Go-native `loaf idea show` for SQLite-backed idea inspection with source provenance, imported body output, and immediate relationships.
+- Add Go-native `loaf idea promote --to-spec ...` for SQLite-backed idea-to-spec promotion relationships visible through trace, link, and idea-show reads.
+- Add Go-native `loaf brainstorm list` for SQLite-backed brainstorm triage reads with status filters and source provenance.
+- Add Go-native `loaf brainstorm show` for SQLite-backed brainstorm inspection with source provenance, imported body output, and immediate relationships.
+- Add Go-native `loaf brainstorm promote --to-idea ...` for SQLite-backed brainstorm-to-idea promotion relationships visible through trace, link, and brainstorm-show reads.
+- Add Go-native `loaf brainstorm archive` for SQLite-backed brainstorm archival with optional reason notes, status-change events, and default triage-list filtering.
+- Add Go-native `loaf state backup` for repository-external SQLite database backups with JSON and human output.
+- Add Go-native `loaf state export all --format json` for internal SQLite state snapshots.
+- Add Go-native `loaf state export triage --format markdown` for external-safe SQLite triage summaries.
+- Add command-level linked-worktree coverage proving Go-native SQLite state commands share the same project database.
+- Add `loaf state doctor` diagnostics for schema mismatch, migration checksum drift, and stale generated export records.
+- Add state-init safety coverage proving SQLite state is repository-external and schema columns avoid secret storage.
+- Add public binary bridge coverage proving one packaged `loaf` command can run Go-native state commands and delegate unmigrated commands to the TypeScript fallback.
+- Add public CLI dry-run coverage proving markdown migration previews all required counts and leaves SQLite state uncreated.
+- Add SQLite secret-boundary coverage proving backend mappings store only external identity metadata and native state code does not introduce token or credential storage.
+- Harden Go artifact verification so release builds compare the launcher, platform native runtime, plugin mirror, and TypeScript fallback layout.
+
+### Fixed
+
+- Return clear SQLite initialization errors for Go-only commands in Markdown-only projects instead of delegating to missing TypeScript commands.
+- Resolve installed TypeScript fallback assets from the namespaced `~/.local/share/loaf/dist-cli` layout used by `loaf install`.
+- Keep SQLite writes transactional for tag creation and apply per-connection SQLite pragmas for foreign keys, WAL journaling, and busy timeout handling.
+
 ## [2.0.0-dev.47] - 2026-05-28
 
 ### Fixed

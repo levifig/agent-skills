@@ -4,7 +4,7 @@ import { defineConfig } from "tsup";
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8"));
 
 export default defineConfig({
-  entry: ["cli/index.ts"],
+  entry: ["cli/index.ts", "cli/build-content.ts"],
   format: ["esm"],
   target: "node22",
   outDir: "dist-cli",

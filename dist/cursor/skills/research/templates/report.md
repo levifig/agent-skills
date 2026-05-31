@@ -1,6 +1,8 @@
 # Report Template
 
-**Location:** `.agents/reports/{YYYYMMDD}-{HHMMSS}-{type}-{slug}.md`
+**Location:** `.agents/reports/{YYYYMMDD}-{HHMMSS}-{type}-{slug}.md` for
+authored long-form prose. Generated report output should come from `loaf report
+generate ...` and does not need to be committed as a Markdown file.
 
 **Filename timestamp:** `date -u +"%Y%m%d-%H%M%S"`
 
@@ -54,4 +56,10 @@ tags: []
 
 - **draft** — Work in progress. Findings are being gathered and have not been fully validated.
 - **final** — Research concludes and findings are validated. Conclusions are ready for consumption.
-- **archived** — Report has been processed and moved to `.agents/reports/archive/`.
+- **archived** — Report has been processed and archived in state; authored
+  Markdown reports may also be moved to `.agents/reports/archive/` as a
+  compatibility artifact.
+
+In SQLite-backed projects, lifecycle status is mutated with `loaf report
+create`, `loaf report finalize`, and `loaf report archive`. Frontmatter mirrors
+or documents authored prose; it is not the operational state authority.
