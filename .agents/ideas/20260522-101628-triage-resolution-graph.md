@@ -1,11 +1,13 @@
 ---
 title: Triage resolution graph for sparks, ideas, tasks, and specs
 captured: 2026-05-22T10:16:28Z
-status: raw
+status: absorbed
+absorbed_by: SPEC-040
 tags: [triage, sparks, ideas, tasks, graph, closure]
 related:
   - 20260522-101624-sqlite-backed-operational-state.md
   - 20260411-003000-auto-scaffold-spark-ideas.md
+  - SPEC-040
 ---
 
 # Triage resolution graph for sparks, ideas, tasks, and specs

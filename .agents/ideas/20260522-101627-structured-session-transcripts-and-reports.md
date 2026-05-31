@@ -1,11 +1,13 @@
 ---
 title: Structured session transcripts and generated reports
 captured: 2026-05-22T10:16:27Z
-status: raw
+status: absorbed
+absorbed_by: SPEC-040
 tags: [sessions, transcripts, audit, reports, provenance]
 related:
   - 20260522-101624-sqlite-backed-operational-state.md
   - 20260522-101626-generated-markdown-review-exports.md
+  - SPEC-040
 ---
 
 # Structured session transcripts and generated reports

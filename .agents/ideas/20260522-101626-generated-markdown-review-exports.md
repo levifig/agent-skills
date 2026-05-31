@@ -1,11 +1,13 @@
 ---
 title: Generated Markdown exports for Git and review
 captured: 2026-05-22T10:16:26Z
-status: raw
+status: absorbed
+absorbed_by: SPEC-040
 tags: [reports, markdown, git, review, export]
 related:
   - 20260522-101624-sqlite-backed-operational-state.md
   - 20260522-101625-loaf-cli-tui-state-workbench.md
+  - SPEC-040
 ---
 
 # Generated Markdown exports for Git and review

@@ -1,11 +1,13 @@
 ---
 title: SQLite-backed operational state for Loaf
 captured: 2026-05-22T10:16:24Z
-status: raw
+status: absorbed
+absorbed_by: SPEC-040
 tags: [sqlite, state, tasks, ideas, sessions, triage, architecture]
 related:
   - 20260325-012120-task-staleness-prevention.md
   - 20260315-014055-loaf-interactive-harness.md
+  - SPEC-040
 ---
 
 # SQLite-backed operational state for Loaf

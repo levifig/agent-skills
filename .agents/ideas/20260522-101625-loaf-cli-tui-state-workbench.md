@@ -1,11 +1,13 @@
 ---
 title: Loaf CLI/TUI as the primary state workbench
 captured: 2026-05-22T10:16:25Z
-status: raw
+status: absorbed
+absorbed_by: SPEC-040
 tags: [cli, tui, state, workflow, interface]
 related:
   - 20260315-014055-loaf-interactive-harness.md
   - 20260522-101624-sqlite-backed-operational-state.md
+  - SPEC-040
 ---
 
 # Loaf CLI/TUI as the primary state workbench
