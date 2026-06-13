@@ -8,7 +8,17 @@ is a Loaf workflow staging section for curated entries before release.
 
 ### Changed
 
+- Native Go is now the shipped Loaf runtime, with cross-platform binaries replacing the transitional TypeScript delegation path.
+- Existing Markdown-only Loaf projects now have a documented dry-run and apply path for adopting SQLite-backed state without rewriting source artifacts.
 - `agents-config` now documents and pins the fall-back-to-`projectRoot` behavior when a linked worktree's `.git` pointer file is malformed (missing `gitdir:` line or non-matching shape). This is the deliberate Case-4 fallback in `resolveEffectiveRoot` — distinct from the "main removed" case fixed in #53, which still throws. Closes a Codex review follow-up on #53.
+
+### Fixed
+
+- Storage-home migration now preserves pending SQLite writes when copying legacy state into XDG data-home storage.
+
+### Removed
+
+- Removed the bundled TypeScript command runtime and obsolete TypeScript build/test toolchain from the shipped CLI.
 
 ## [2.0.0-dev.49] - 2026-05-31
 
