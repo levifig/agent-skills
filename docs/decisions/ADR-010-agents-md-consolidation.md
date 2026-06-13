@@ -44,9 +44,9 @@ By April 2026, AGENTS.md reached critical adoption — 23 tools listed at agents
 
 ## Consequences
 
-- `cli/lib/install/fenced-section.ts` maps `cursor` and `gemini` to `.agents/AGENTS.md`; `.mdc` frontmatter special-casing is removed.
-- `installFencedSectionsForTargets` dedupes writes by `realpath` — 5 of 6 targets resolve to the same file.
+- The native install fenced-section path maps `cursor` and `gemini` to `.agents/AGENTS.md`; `.mdc` frontmatter special-casing is removed.
+- Native fenced-section installation dedupes writes by `realpath` — 5 of 6 targets resolve to the same file.
 - `loaf install` enforces `.claude/CLAUDE.md → ../.agents/AGENTS.md` and `./AGENTS.md → .agents/AGENTS.md` symlinks before fenced-section writes land.
 - New `loaf doctor` command surfaces symlink drift, stale `.cursor/rules/loaf.mdc`, version mismatches, and duplicate fenced sections.
 - No user-facing migration shim — single-user tool.
-- `cli/lib/install/symlinks.ts` extracted as a shared helper with a 4-state machine (missing / correct / wrong-symlink / real-file).
+- Native install symlink enforcement uses a shared 4-state machine (missing / correct / wrong-symlink / real-file).

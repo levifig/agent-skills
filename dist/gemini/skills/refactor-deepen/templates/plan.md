@@ -145,7 +145,7 @@ related:
 ## Candidate
 
 The session-journal append path currently lives as a free function in
-`cli/lib/session.ts` with callers reaching past it to format timestamps and
+`internal/cli/cli.go` with callers reaching past it to format timestamps and
 classify entry types. Interface surface is roughly equal to implementation
 surface — every caller that wants to log re-derives the entry-shape rules.
 

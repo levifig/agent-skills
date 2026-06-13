@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/levifig/loaf/internal/project"
@@ -34,6 +35,41 @@ func TestInspectReportsMarkdownOnlyWithoutCreatingFiles(t *testing.T) {
 	assertDiagnostic(t, status.Diagnostics, "markdown-fallback-active")
 }
 
+func TestInspectReportsLegacyStateDatabaseWhenDataHomeIsMissing(t *testing.T) {
+	root := projectRoot(t)
+	dataHome := t.TempDir()
+	stateHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("XDG_STATE_HOME", stateHome)
+
+	legacyStatus, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Initialize(legacy) error = %v", err)
+	}
+
+	status, err := Inspect(root, PathResolver{})
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+
+	if status.Mode != ModeMarkdownOnly {
+		t.Fatalf("Mode = %q, want %q before storage-home migration", status.Mode, ModeMarkdownOnly)
+	}
+	if status.DatabaseExists {
+		t.Fatal("DatabaseExists = true, want false for new data home before migration")
+	}
+	if !status.LegacyDatabaseExists {
+		t.Fatal("LegacyDatabaseExists = false, want true")
+	}
+	if status.LegacyDatabasePath != legacyStatus.DatabasePath {
+		t.Fatalf("LegacyDatabasePath = %q, want %q", status.LegacyDatabasePath, legacyStatus.DatabasePath)
+	}
+	if !strings.HasPrefix(status.DatabasePath, dataHome+string(filepath.Separator)) {
+		t.Fatalf("DatabasePath = %q, want under XDG_DATA_HOME %q", status.DatabasePath, dataHome)
+	}
+	assertDiagnostic(t, status.Diagnostics, "legacy-state-database-detected")
+}
+
 func TestInspectReportsSQLiteReadyWhenDatabaseIsInitialized(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()
@@ -59,8 +95,8 @@ func TestInspectReportsSQLiteReadyWhenDatabaseIsInitialized(t *testing.T) {
 	if !status.DatabaseParentExists {
 		t.Fatal("DatabaseParentExists = false, want true")
 	}
-	if status.SchemaVersion != 1 {
-		t.Fatalf("SchemaVersion = %d, want 1", status.SchemaVersion)
+	if status.SchemaVersion != CurrentSchemaVersion() {
+		t.Fatalf("SchemaVersion = %d, want %d", status.SchemaVersion, CurrentSchemaVersion())
 	}
 	assertDiagnostic(t, status.Diagnostics, "sqlite-ready")
 }

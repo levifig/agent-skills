@@ -6,7 +6,7 @@ topics:
   - enforcement
 covers:
   - config/hooks.yaml
-  - cli/commands/check.ts
+  - internal/cli/check.go
   - content/hooks/**/*
 consumers:
   - implementer
@@ -77,7 +77,7 @@ Hooks are defined in `config/hooks.yaml` grouped under `pre-tool`, `post-tool`, 
 
 ## Enforcement Hooks
 
-Five hooks run as TypeScript via `loaf check --hook <id>` in `cli/commands/check.ts`:
+Five hooks run natively via `loaf check --hook <id>` in `internal/cli/check.go`:
 
 | Hook | Skill | Matcher | Blocking | What It Does |
 |------|-------|---------|:--------:|-------------|

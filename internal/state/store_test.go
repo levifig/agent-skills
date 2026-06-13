@@ -3,8 +3,10 @@ package state
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "github.com/ncruces/go-sqlite3/driver"
@@ -22,8 +24,8 @@ func TestInitializeAppliesMigrationsAndRecordsProject(t *testing.T) {
 	if status.Mode != ModeSQLiteReady {
 		t.Fatalf("Mode = %q, want %q", status.Mode, ModeSQLiteReady)
 	}
-	if status.SchemaVersion != 1 {
-		t.Fatalf("SchemaVersion = %d, want 1", status.SchemaVersion)
+	if status.SchemaVersion != CurrentSchemaVersion() {
+		t.Fatalf("SchemaVersion = %d, want %d", status.SchemaVersion, CurrentSchemaVersion())
 	}
 	if !status.DatabaseExists {
 		t.Fatal("DatabaseExists = false, want true")
@@ -72,8 +74,8 @@ func TestInitializeIsIdempotent(t *testing.T) {
 	if first.DatabasePath != second.DatabasePath {
 		t.Fatalf("DatabasePath changed: %q -> %q", first.DatabasePath, second.DatabasePath)
 	}
-	if second.SchemaVersion != 1 {
-		t.Fatalf("SchemaVersion = %d, want 1", second.SchemaVersion)
+	if second.SchemaVersion != CurrentSchemaVersion() {
+		t.Fatalf("SchemaVersion = %d, want %d", second.SchemaVersion, CurrentSchemaVersion())
 	}
 }
 
@@ -130,5 +132,87 @@ func TestApplyMigrationsDetectsChecksumDrift(t *testing.T) {
 	drifted := SchemaMigration{Version: 1, Name: "one", SQL: "CREATE TABLE two (id TEXT PRIMARY KEY NOT NULL);\n"}
 	if err := ApplyMigrations(context.Background(), db, []SchemaMigration{drifted}); err == nil {
 		t.Fatal("ApplyMigrations() error = nil, want checksum mismatch")
+	}
+}
+
+func TestApplyMigrationsRejectsInvalidFutureMigrationSequence(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		migrations []SchemaMigration
+		want       string
+	}{
+		{
+			name: "duplicate version",
+			migrations: []SchemaMigration{
+				{Version: 1, Name: "one", SQL: "CREATE TABLE one (id TEXT PRIMARY KEY NOT NULL);\n"},
+				{Version: 1, Name: "also_one", SQL: "CREATE TABLE also_one (id TEXT PRIMARY KEY NOT NULL);\n"},
+			},
+			want: "version 1 must be greater than previous version 1",
+		},
+		{
+			name: "out of order",
+			migrations: []SchemaMigration{
+				{Version: 2, Name: "two", SQL: "CREATE TABLE two (id TEXT PRIMARY KEY NOT NULL);\n"},
+				{Version: 1, Name: "one", SQL: "CREATE TABLE one (id TEXT PRIMARY KEY NOT NULL);\n"},
+			},
+			want: "version 1 must be greater than previous version 2",
+		},
+		{
+			name: "missing name",
+			migrations: []SchemaMigration{
+				{Version: 1, SQL: "CREATE TABLE one (id TEXT PRIMARY KEY NOT NULL);\n"},
+			},
+			want: "schema migration 1 must have a name",
+		},
+		{
+			name: "empty sql",
+			migrations: []SchemaMigration{
+				{Version: 1, Name: "one"},
+			},
+			want: "schema migration 1 SQL cannot be empty",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, err := sql.Open(sqliteDriverName, filepath.Join(t.TempDir(), "state.sqlite"))
+			if err != nil {
+				t.Fatalf("sql.Open() error = %v", err)
+			}
+			defer db.Close()
+
+			err = ApplyMigrations(context.Background(), db, tc.migrations)
+			if err == nil {
+				t.Fatal("ApplyMigrations() error = nil, want validation error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("ApplyMigrations() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestApplyMigrationsRollsBackFailedMigrationBatch(t *testing.T) {
+	db, err := sql.Open(sqliteDriverName, filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	migrations := []SchemaMigration{
+		{Version: 1, Name: "one", SQL: "CREATE TABLE one (id TEXT PRIMARY KEY NOT NULL);\n"},
+		{Version: 2, Name: "bad", SQL: "CREATE TABLE broken (\n"},
+	}
+	if err := ApplyMigrations(context.Background(), db, migrations); err == nil {
+		t.Fatal("ApplyMigrations() error = nil, want failure")
+	}
+
+	var tableName string
+	err = db.QueryRowContext(context.Background(), `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'one'`).Scan(&tableName)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("table one lookup error = %v, want no table after rollback", err)
+	}
+	var migrationsTable string
+	err = db.QueryRowContext(context.Background(), `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'`).Scan(&migrationsTable)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("schema_migrations lookup error = %v, want no table after rollback", err)
 	}
 }

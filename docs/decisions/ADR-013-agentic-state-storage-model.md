@@ -11,7 +11,7 @@ date: 2026-05-19
 
 `.agents/` is project-scoped state. It always resolves to the **main worktree's** `.agents/` directory, regardless of which linked worktree a `loaf` command is invoked from. No artifact kind is exempt — sessions, specs, tasks, plans, councils, ADRs, knowledge, and ideas all live in one place.
 
-The resolver (`cli/lib/tasks/resolve.ts`) probes via `git rev-parse --git-dir` vs `--git-common-dir`. When they differ, the caller is in a linked worktree, and `findAgentsDir()` returns `dirname(git-common-dir) + '/.agents'`. In the main checkout, in submodules, and outside any git context, the original parent-walk behavior is preserved verbatim.
+The native project resolver (`internal/project/project.go`) probes via `git rev-parse --git-dir` vs `--git-common-dir`. When they differ, the caller is in a linked worktree, and Loaf resolves `.agents/` through the main worktree. In the main checkout, in submodules, and outside any git context, the original parent-walk behavior is preserved.
 
 Migration is a hard cut. `loaf migrate worktree-storage` moves a linked worktree's local `.agents/` into the main worktree's `.agents/`. Until migration completes, a top-level refusal nudge gates every `loaf` invocation except `migrate`, `help`, and `--version`, exiting with code `2`. There is no silent fallback to the pre-A3 layout.
 
@@ -58,9 +58,8 @@ The underlying error was categorical. `.agents/` is not branch content; it's pro
 
 The migration command and refusal nudge represent a hard cut. Pre-A3 layouts (a linked worktree with a populated local `.agents/` and no valid `.moved-to` back-pointer) are **refused** with exit code `2`, not silently fallback'd. The contract is documented and enforced in:
 
-- `cli/lib/migrate/worktree-storage.ts` — migration logic, dry-run default, conflict policy, back-pointer protocol
-- `cli/index.ts` — top-level pre-A3 detection and command allow-list (`migrate`, `help`, `--version`)
-- `cli/lib/tasks/resolve.ts` — worktree probe and main-worktree redirect
+- `internal/cli/worktree_storage_migration.go` — migration logic, dry-run default, conflict policy, back-pointer protocol, pre-A3 detection, and command allow-list (`migrate`, `help`, `--version`)
+- `internal/project/project.go` — worktree probe and main-worktree redirect
 
 Observability for the resolver is opt-in via `LOAF_DEBUG_RESOLVE=1|true|yes|on` (case-insensitive truthy values), which surfaces otherwise-suppressed stderr from the git probe.
 
@@ -68,7 +67,7 @@ Observability for the resolver is opt-in via `LOAF_DEBUG_RESOLVE=1|true|yes|on` 
 
 - The **"spec on main, tasks+code on branch"** convention is retired by this ADR. It was a workaround for the worktree-fragmentation bug A3 fixes; under A3 it is a no-op (all `.agents/` content always lives in the main worktree's directory regardless of which branch's PR is in flight). Update private memory and any PR templates accordingly.
 - Reviewers reach spec and task context via the PR description. If PR templates exist in this project, they should include an `Implements: SPEC-NNN — see .agents/specs/SPEC-NNN` line so reviewers have a one-click path from the PR to the canonical artifact.
-- An open follow-up captures the symlink-handling design call deferred from TASK-170: see [.agents/ideas/20260519-093959-migrate-symlink-handling.md](../../.agents/ideas/20260519-093959-migrate-symlink-handling.md). Do not extend symlink-touching logic in `worktree-storage.ts` without resolving that idea first.
+- An open follow-up captures the symlink-handling design call deferred from TASK-170: see [.agents/ideas/20260519-093959-migrate-symlink-handling.md](../../.agents/ideas/20260519-093959-migrate-symlink-handling.md). Do not extend symlink-touching logic in `internal/cli/worktree_storage_migration.go` without resolving that idea first.
 
 ## Related
 

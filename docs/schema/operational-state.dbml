@@ -1,0 +1,304 @@
+// Loaf operational state schema.
+// Source of truth: internal/state/migrations/0001_initial.sql.
+// This mirror is guarded by TestSchemaDocumentationMirrorsExecutableMigration.
+
+Table schema_migrations {
+  version integer [pk, not null]
+  name text [not null]
+  checksum text [not null]
+  applied_at text [not null]
+}
+
+Table projects {
+  id text [pk, not null]
+  identity_hash text [not null, unique]
+  created_at text [not null]
+  updated_at text [not null]
+}
+
+Table aliases {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  entity_kind text [not null]
+  entity_id text [not null]
+  namespace text [not null]
+  alias text [not null]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, namespace, alias) [unique]
+    (project_id, entity_kind, entity_id)
+  }
+}
+
+Table specs {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  title text [not null]
+  status text [not null]
+  body_source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+}
+
+Table tasks {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  spec_id text [ref: > specs.id]
+  title text [not null]
+  status text [not null]
+  priority text
+  body_source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, spec_id)
+  }
+}
+
+Table ideas {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  title text [not null]
+  status text [not null]
+  body_source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+}
+
+Table sparks {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  scope text
+  status text [not null]
+  text text [not null]
+  source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+}
+
+Table brainstorms {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  title text [not null]
+  status text [not null]
+  body_source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+}
+
+Table shaping_drafts {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  title text [not null]
+  status text [not null]
+  body_source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+}
+
+Table sessions {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  harness_session_id text
+  branch text
+  status text [not null]
+  body_source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+}
+
+Table session_state_snapshots {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  session_id text [not null, ref: > sessions.id]
+  content text [not null]
+  observed_branch text
+  observed_worktree text
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, session_id) [unique]
+    (project_id, session_id)
+  }
+}
+
+Table reports {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  report_kind text [not null]
+  title text [not null]
+  status text [not null]
+  body_source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+}
+
+Table journal_entries {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  entry_type text [not null]
+  scope text
+  message text [not null]
+  observed_branch text
+  observed_worktree text
+  harness_session_id text
+  session_id text [ref: > sessions.id]
+  spec_id text [ref: > specs.id]
+  task_id text [ref: > tasks.id]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, session_id, spec_id, task_id)
+  }
+}
+
+Table events {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  entity_kind text [not null]
+  entity_id text [not null]
+  event_type text [not null]
+  from_status text
+  to_status text
+  note text
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, entity_kind, entity_id)
+  }
+}
+
+Table relationships {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  from_entity_kind text [not null]
+  from_entity_id text [not null]
+  to_entity_kind text [not null]
+  to_entity_id text [not null]
+  relationship_type text [not null]
+  reason text
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, from_entity_kind, from_entity_id)
+    (project_id, to_entity_kind, to_entity_id)
+  }
+}
+
+Table tags {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  name text [not null]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, name) [unique]
+  }
+}
+
+Table entity_tags {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  tag_id text [not null, ref: > tags.id]
+  entity_kind text [not null]
+  entity_id text [not null]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, tag_id, entity_kind, entity_id) [unique]
+    (project_id, entity_kind, entity_id)
+  }
+}
+
+Table bundles {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  slug text [not null]
+  title text [not null]
+  tag_query text
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, slug) [unique]
+  }
+}
+
+Table bundle_members {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  bundle_id text [not null, ref: > bundles.id]
+  entity_kind text [not null]
+  entity_id text [not null]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, bundle_id, entity_kind, entity_id) [unique]
+  }
+}
+
+Table sources {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  source_kind text [not null]
+  path text [not null]
+  hash text
+  line_start integer
+  line_end integer
+  imported_at text
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, path)
+  }
+}
+
+Table backend_mappings {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  backend text [not null]
+  entity_kind text [not null]
+  entity_id text [not null]
+  external_kind text [not null]
+  external_id text [not null]
+  external_url text
+  sync_status text [not null]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, backend, external_kind, external_id) [unique]
+    (project_id, entity_kind, entity_id)
+  }
+}
+
+Table hook_events {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  hook_id text [not null]
+  hook_phase text [not null]
+  command text
+  exit_code integer
+  message text
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, hook_id, hook_phase)
+  }
+}
+
+Table exports {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  export_kind text [not null]
+  format text [not null]
+  path text [not null]
+  state_version integer
+  source_entity_kind text
+  source_entity_id text
+  generated_at text [not null]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, source_entity_kind, source_entity_id)
+  }
+}

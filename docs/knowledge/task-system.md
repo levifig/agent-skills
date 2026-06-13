@@ -9,9 +9,8 @@ covers:
   - .agents/specs/**/*.md
   - .agents/tasks/**/*.md
   - .agents/sessions/**/*.md
-  - cli/commands/task.ts
-  - cli/lib/session/*.ts
-  - cli/lib/tasks/*.ts
+  - internal/cli/cli.go
+  - internal/state/task_*.go
   - content/skills/breakdown/**/*
   - content/skills/implement/**/*
   - content/skills/orchestration/**/*
@@ -55,11 +54,12 @@ directory.
 
 ## TASKS.json
 
-Programmatic index alongside individual task .md files. CLI reads/writes it.
-Mutations go through a PID/host-aware `TASKS.json` lock that re-reads the index
-inside the critical section and writes atomically. Task creation writes the
-backing `.md` file before committing the index entry, so rebuilds do not see an
-index entry whose file has not landed yet.
+Programmatic index alongside individual task .md files for markdown-only
+compatibility. The native Go CLI reads/writes it when SQLite state has not been
+initialized, and uses SQLite state once `loaf state migrate markdown --apply`
+has imported the project. Markdown task creation writes the backing `.md` file
+before committing the index entry, so rebuilds do not see an index entry whose
+file has not landed yet.
 
 ```json
 {
@@ -157,7 +157,7 @@ Tasks keyed by ID (Record, not array). Specs section tracks spec lifecycle. `nex
 Sessions track execution context per branch. Key behaviors:
 
 - **One session per `claude_session_id`, not per branch.** `loaf session start` routes on the Claude conversation id from the SessionStart hook. One conversation = one session file, regardless of branches visited.
-- **3-tier session routing (SPEC-032).** Session-mutating commands (`loaf session log`, `archive`, `enrich`, `end --wrap`) resolve their target via `resolveCurrentSession` in `cli/lib/session/resolve.ts`: `--session-id <id>` flag → hook stdin payload (`--from-hook` opt-in only) → branch-fallback (Tier 3 emits a visible stderr WARN so misroutes surface immediately).
+- **3-tier session routing (SPEC-032).** Session-mutating commands (`loaf session log`, `archive`, `enrich`, `end --wrap`) resolve their target through the native Go session router: `--session-id <id>` flag → hook stdin payload (`--from-hook` opt-in only) → branch-fallback (Tier 3 emits a visible stderr WARN so misroutes surface immediately).
 - **New-conversation detection.** When a new session starts with an id differing from the stored `claude_session_id`, the session writes resume entries. `loaf session end` writes the `--- PAUSE ---` separator with the correct timestamp.
 - **Subagent detection.** `agent_id` in hook JSON is only present for subagents. `session start` exits early when `agent_id` is set, preventing subagent sessions from polluting the parent journal.
 - **Branch rename recovery.** If a branch is renamed via `git branch -m`, session start detects the rename via reflog and updates both session and spec frontmatter.

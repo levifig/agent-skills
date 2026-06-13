@@ -84,7 +84,7 @@ ORDER BY session_alias.alias
 			rows.Close()
 			return SessionList{}, fmt.Errorf("scan session: %w", err)
 		}
-		if !options.All && status == "archived" {
+		if !options.All && status != "active" {
 			continue
 		}
 		sessionList.Sessions[alias] = SessionItem{

@@ -20,6 +20,9 @@ func TestNativeSQLiteRuntimeDoesNotIntroduceSecretStorageTerms(t *testing.T) {
 		filepath.Join(repoRoot, "internal", "cli"),
 		filepath.Join(repoRoot, "cmd", "loaf"),
 	}
+	allowedScannerFiles := map[string]bool{
+		filepath.Join(repoRoot, "internal", "cli", "check.go"): true,
+	}
 	forbidden := []string{
 		"access_token",
 		"refresh_token",
@@ -35,7 +38,7 @@ func TestNativeSQLiteRuntimeDoesNotIntroduceSecretStorageTerms(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+			if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") || allowedScannerFiles[path] {
 				return nil
 			}
 			content, err := os.ReadFile(path)

@@ -2,27 +2,31 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
+	"time"
 
-	"github.com/levifig/loaf/internal/legacy"
 	"github.com/levifig/loaf/internal/project"
 	"github.com/levifig/loaf/internal/state"
 )
 
-// Runner owns Go-native command dispatch and delegates unmigrated commands to
-// the bundled TypeScript compatibility CLI.
+// Runner owns Go-native command dispatch.
 type Runner struct {
 	Stdout     io.Writer
 	Stderr     io.Writer
 	Stdin      io.Reader
 	WorkingDir string
 	StateHome  string
-	Legacy     legacy.Runner
 }
 
 type housekeepingOptions struct {
@@ -50,18 +54,57 @@ func (r Runner) Run(args []string) error {
 	if out == nil {
 		out = os.Stdout
 	}
+	errOut := r.Stderr
+	if errOut == nil {
+		errOut = os.Stderr
+	}
 
 	workingDir, err := project.ResolveWorkingDirectory(r.WorkingDir)
 	if err != nil {
 		return err
 	}
+	if shouldRefuseCommandNative(args, workingDir.Path()) {
+		if unknown := unknownTopLevelCommandNative(args); unknown != "" {
+			fmt.Fprintf(errOut, "error: unknown command '%s'\n\n", unknown)
+		}
+		if mainMissing := detectMainMissingForRefusalNative(workingDir.Path()); mainMissing != "" {
+			fmt.Fprintln(errOut, mainMissing)
+		} else {
+			fmt.Fprintln(errOut, preA3RefusalMessageNative)
+		}
+		return ExitError{Code: 2}
+	}
 	runtime := state.NewRuntime(workingDir)
 
+	if len(args) > 0 && args[0] == "__generate-cli-ref" {
+		return r.runGenerateCLIReference(args[1:], out, runtime.RootPath())
+	}
+
 	if len(args) == 0 {
-		return r.runLegacy(args, runtime.RootPath(), out)
+		writeRootHelp(out)
+		return nil
 	}
 
 	switch args[0] {
+	case "--help", "-h", "help":
+		writeRootHelp(out)
+		return nil
+	case "--agent-help":
+		return writeAgentHelpJSON(out)
+	case "--version", "-v":
+		return r.runVersion(out, runtime.RootPath())
+	case "build":
+		return r.runBuild(args[1:], out, runtime.RootPath())
+	case "init":
+		return r.runInit(args[1:], out, runtime.RootPath())
+	case "install":
+		return r.runInstall(args[1:], out, runtime.RootPath())
+	case "migrate":
+		return r.runMigrate(args[1:], out, runtime)
+	case "release":
+		return r.runRelease(args[1:], out, runtime.RootPath())
+	case "setup":
+		return r.runSetup(args[1:], out, runtime.RootPath())
 	case "state":
 		return r.runState(args[1:], out, runtime)
 	case "trace":
@@ -76,6 +119,10 @@ func (r Runner) Run(args []string) error {
 		return r.runTag(args[1:], out, runtime)
 	case "bundle":
 		return r.runBundle(args[1:], out, runtime)
+	case "check":
+		return r.runCheck(args[1:], out, runtime.RootPath())
+	case "doctor":
+		return r.runDoctor(args[1:], out, runtime.RootPath())
 	case "link":
 		return r.runLink(args[1:], out, runtime)
 	case "report":
@@ -88,12 +135,49 @@ func (r Runner) Run(args []string) error {
 		return r.runTask(args[1:], out, runtime)
 	case "housekeeping":
 		return r.runHousekeeping(args[1:], out, runtime)
+	case "kb":
+		return r.runKb(args[1:], out, runtime.RootPath())
+	case "version":
+		return r.runVersion(out, runtime.RootPath())
 	default:
-		return r.runLegacy(args, runtime.RootPath(), out)
+		fmt.Fprintf(errOut, "error: unknown command '%s'\n\n", args[0])
+		writeRootHelp(errOut)
+		return ExitError{Code: 1}
 	}
 }
 
+func writeRootHelp(out io.Writer) {
+	fmt.Fprintln(out, "Usage: loaf <command> [options]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Loaf — An Opinionated Agentic Framework")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Commands:")
+	fmt.Fprintln(out, "  build         Build Loaf content targets")
+	fmt.Fprintln(out, "  init          Scaffold project agent files")
+	fmt.Fprintln(out, "  install       Install Loaf into agent tools")
+	fmt.Fprintln(out, "  setup         Initialize, build, and install")
+	fmt.Fprintln(out, "  state         Manage native SQLite state")
+	fmt.Fprintln(out, "  migrate       Run migration workflows")
+	fmt.Fprintln(out, "  session       Manage sessions")
+	fmt.Fprintln(out, "  task          Manage tasks")
+	fmt.Fprintln(out, "  spec          Manage specs")
+	fmt.Fprintln(out, "  report        Manage reports")
+	fmt.Fprintln(out, "  kb            Manage knowledge base")
+	fmt.Fprintln(out, "  check         Run hook checks")
+	fmt.Fprintln(out, "  doctor        Diagnose project alignment")
+	fmt.Fprintln(out, "  release       Create a release")
+	fmt.Fprintln(out, "  version       Show version and content counts")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "  -h, --help     Show help")
+	fmt.Fprintln(out, "  -v, --version  Show version")
+}
+
 func (r Runner) runHousekeeping(args []string, out io.Writer, runtime state.Runtime) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		writeHousekeepingHelp(out)
+		return nil
+	}
 	options, err := parseHousekeepingArgs(args)
 	if err != nil {
 		return err
@@ -104,7 +188,16 @@ func (r Runner) runHousekeeping(args []string, out io.Writer, runtime state.Runt
 	}
 	switch mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"housekeeping"}, args...), runtime.RootPath(), out)
+		result, err := markdownHousekeepingSummary(projectRoot.Path())
+		if err != nil {
+			return err
+		}
+		result = filterHousekeepingSummary(result, options.sections)
+		if options.jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeMarkdownHousekeepingSummary(out, result, options)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -119,6 +212,22 @@ func (r Runner) runHousekeeping(args []string, out io.Writer, runtime state.Runt
 	}
 	writeHousekeepingSummary(out, result, options)
 	return nil
+}
+
+func writeHousekeepingHelp(out io.Writer) {
+	fmt.Fprintln(out, "Usage: loaf housekeeping [options]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Scan agent artifacts and summarize housekeeping recommendations.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "  --json       Output JSON")
+	fmt.Fprintln(out, "  --dry-run    Show recommendations without applying actions")
+	fmt.Fprintln(out, "  --sessions   Only review sessions")
+	fmt.Fprintln(out, "  --specs      Only review specs")
+	fmt.Fprintln(out, "  --drafts     Only review shaping drafts")
+	fmt.Fprintln(out, "  --plans      Accept legacy plans filter for compatibility")
+	fmt.Fprintln(out, "  --handoffs   Accept legacy handoffs filter for compatibility")
+	fmt.Fprintln(out, "  -h, --help   Show help")
 }
 
 func (r Runner) stateMode(runtime state.Runtime) (project.Root, string, error) {
@@ -174,8 +283,37 @@ func writeHousekeepingSummary(out io.Writer, result state.HousekeepingSummary, o
 	fmt.Fprintln(out)
 }
 
+func writeMarkdownHousekeepingSummary(out io.Writer, result state.HousekeepingSummary, options housekeepingOptions) {
+	if options.dryRun {
+		fmt.Fprint(out, "\n  loaf housekeeping (markdown, dry run)\n\n")
+	} else {
+		fmt.Fprint(out, "\n  loaf housekeeping (markdown)\n\n")
+	}
+	fmt.Fprintf(out, "  artifacts: %s\n\n", result.DatabasePath)
+	for _, name := range sortedHousekeepingSections(result) {
+		section := result.Sections[name]
+		fmt.Fprintf(out, "    %-16s%d total", housekeepingSectionLabel(name), section.Total)
+		if section.CleanupCandidate > 0 {
+			fmt.Fprintf(out, "  %d cleanup candidate(s)", section.CleanupCandidate)
+		}
+		fmt.Fprintln(out)
+		for _, status := range sortedCountKeys(section.ByStatus) {
+			fmt.Fprintf(out, "      %-12s%d\n", status+":", section.ByStatus[status])
+		}
+	}
+	if len(result.Signals) == 0 {
+		fmt.Fprint(out, "\n  No markdown housekeeping signals.\n\n")
+		return
+	}
+	fmt.Fprint(out, "\n  Signals:\n")
+	for _, signal := range result.Signals {
+		fmt.Fprintf(out, "    %s\n", signal)
+	}
+	fmt.Fprintln(out)
+}
+
 func writeCompatibilityCommandSummary(out io.Writer, summary compatibilityCommandSummary) {
-	fmt.Fprintf(out, "\n  loaf %s (SQLite state)\n\n", summary.Command)
+	fmt.Fprintf(out, "\n  loaf %s (compatibility)\n\n", summary.Command)
 	fmt.Fprintf(out, "  mode: %s\n", summary.Mode)
 	fmt.Fprintf(out, "  action: %s\n", summary.Action)
 	fmt.Fprintf(out, "  %s\n", summary.Reason)
@@ -204,6 +342,114 @@ func filterHousekeepingSummary(result state.HousekeepingSummary, sections map[st
 	}
 	filtered.Signals = housekeepingSignalsFromSections(filtered.Sections)
 	return filtered
+}
+
+type markdownHousekeepingSectionSpec struct {
+	name            string
+	relativeDir     string
+	cleanupStatuses map[string]bool
+}
+
+var markdownHousekeepingSectionSpecs = []markdownHousekeepingSectionSpec{
+	{name: "brainstorms", relativeDir: filepath.Join("drafts", "brainstorms"), cleanupStatuses: cleanupStatusSet("resolved", "archived")},
+	{name: "ideas", relativeDir: "ideas", cleanupStatuses: cleanupStatusSet("resolved", "archived")},
+	{name: "reports", relativeDir: "reports", cleanupStatuses: cleanupStatusSet("final", "archived")},
+	{name: "sessions", relativeDir: "sessions", cleanupStatuses: cleanupStatusSet("done", "stopped", "archived")},
+	{name: "shaping_drafts", relativeDir: "drafts", cleanupStatuses: cleanupStatusSet("absorbed", "archived")},
+	{name: "sparks", relativeDir: "sparks", cleanupStatuses: cleanupStatusSet("resolved", "archived")},
+	{name: "specs", relativeDir: "specs", cleanupStatuses: cleanupStatusSet("complete", "archived")},
+	{name: "tasks", relativeDir: "tasks", cleanupStatuses: cleanupStatusSet("done", "archived")},
+}
+
+func markdownHousekeepingSummary(rootPath string) (state.HousekeepingSummary, error) {
+	agentsDir := filepath.Join(rootPath, ".agents")
+	sections := map[string]state.HousekeepingSection{}
+	for _, spec := range markdownHousekeepingSectionSpecs {
+		section, err := markdownHousekeepingSection(agentsDir, spec)
+		if err != nil {
+			return state.HousekeepingSummary{}, err
+		}
+		sections[spec.name] = section
+	}
+	return state.HousekeepingSummary{
+		Version:      1,
+		DatabasePath: agentsDir,
+		Sections:     sections,
+		Signals:      housekeepingSignalsFromSections(sections),
+	}, nil
+}
+
+func markdownHousekeepingSection(agentsDir string, spec markdownHousekeepingSectionSpec) (state.HousekeepingSection, error) {
+	dir := filepath.Join(agentsDir, spec.relativeDir)
+	section := state.HousekeepingSection{ByStatus: map[string]int{}}
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if filepath.Ext(entry.Name()) != ".md" {
+			return nil
+		}
+		status, err := markdownArtifactStatus(path)
+		if err != nil {
+			return err
+		}
+		if markdownPathIsArchived(dir, path) {
+			status = "archived"
+		}
+		if status == "" {
+			status = "unknown"
+		}
+		section.Total++
+		section.ByStatus[status]++
+		if spec.cleanupStatuses[status] {
+			section.CleanupCandidate++
+		}
+		return nil
+	})
+	if err != nil {
+		if os.IsNotExist(err) {
+			return section, nil
+		}
+		return state.HousekeepingSection{}, fmt.Errorf("scan markdown housekeeping %s: %w", spec.name, err)
+	}
+	return section, nil
+}
+
+func markdownArtifactStatus(path string) (string, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read markdown artifact %s: %w", path, err)
+	}
+	fields, ok := parseKnowledgeFrontmatter(body)
+	if !ok {
+		return "unknown", nil
+	}
+	return firstFieldValue(fields["status"]), nil
+}
+
+func markdownPathIsArchived(root string, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	for _, part := range parts[:len(parts)-1] {
+		if part == "archive" {
+			return true
+		}
+	}
+	return false
+}
+
+func cleanupStatusSet(statuses ...string) map[string]bool {
+	set := map[string]bool{}
+	for _, status := range statuses {
+		set[status] = true
+	}
+	return set
 }
 
 func housekeepingSignalsFromSections(sections map[string]state.HousekeepingSection) []string {
@@ -638,12 +884,69 @@ func (r Runner) runStateMigrate(args []string, out io.Writer, runtime state.Runt
 	switch args[0] {
 	case "markdown":
 		return r.runStateMigrateMarkdown(args[1:], out, runtime)
+	case "storage-home":
+		return r.runStateMigrateStorageHome(args[1:], out, runtime)
 	default:
 		return fmt.Errorf("state migrate source %q is not implemented yet", args[0])
 	}
 }
 
+func (r Runner) runMigrate(args []string, out io.Writer, runtime state.Runtime) error {
+	if len(args) == 0 {
+		return fmt.Errorf("migrate requires a source")
+	}
+	switch args[0] {
+	case "markdown":
+		return r.runMarkdownMigration(args[1:], out, runtime, "loaf migrate markdown")
+	case "storage-home":
+		return r.runStorageHomeMigration(args[1:], out, runtime, "loaf migrate storage-home")
+	case "worktree-storage":
+		return r.runMigrateWorktreeStorage(args[1:], out, runtime.RootPath())
+	default:
+		return fmt.Errorf("migrate source %q is not implemented yet", args[0])
+	}
+}
+
+func (r Runner) runStateMigrateStorageHome(args []string, out io.Writer, runtime state.Runtime) error {
+	return r.runStorageHomeMigration(args, out, runtime, "loaf state migrate storage-home")
+}
+
+func (r Runner) runStorageHomeMigration(args []string, out io.Writer, runtime state.Runtime, displayCommand string) error {
+	options, err := parseStorageHomeMigrationArgs(args)
+	if err != nil {
+		return err
+	}
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		return err
+	}
+	resolver := state.PathResolver{StateHome: r.StateHome}
+	var plan state.StorageHomeMigrationPlan
+	if options.apply {
+		plan, err = state.ApplyStorageHomeMigration(context.Background(), projectRoot, resolver)
+	} else {
+		plan, err = state.PreviewStorageHomeMigration(projectRoot, resolver)
+	}
+	if err != nil {
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, plan)
+	}
+	if options.apply {
+		fmt.Fprintf(out, "%s --apply\n", displayCommand)
+	} else {
+		fmt.Fprintf(out, "%s --dry-run\n", displayCommand)
+	}
+	writeStorageHomeMigrationPlan(out, plan)
+	return nil
+}
+
 func (r Runner) runStateMigrateMarkdown(args []string, out io.Writer, runtime state.Runtime) error {
+	return r.runMarkdownMigration(args, out, runtime, "loaf state migrate markdown")
+}
+
+func (r Runner) runMarkdownMigration(args []string, out io.Writer, runtime state.Runtime, displayCommand string) error {
 	options, err := parseMarkdownMigrationArgs(args)
 	if err != nil {
 		return err
@@ -661,9 +964,9 @@ func (r Runner) runStateMigrateMarkdown(args []string, out io.Writer, runtime st
 			return writeJSON(out, result)
 		}
 		if options.resume {
-			fmt.Fprintln(out, "loaf state migrate markdown --resume")
+			fmt.Fprintf(out, "%s --resume\n", displayCommand)
 		} else {
-			fmt.Fprintln(out, "loaf state migrate markdown --apply")
+			fmt.Fprintf(out, "%s --apply\n", displayCommand)
 		}
 		fmt.Fprintf(out, "database: %s\n", result.DatabasePath)
 		writeMarkdownMigrationPlan(out, result.MarkdownMigrationPlan)
@@ -678,7 +981,7 @@ func (r Runner) runStateMigrateMarkdown(args []string, out io.Writer, runtime st
 		return writeJSON(out, plan)
 	}
 
-	fmt.Fprintln(out, "loaf state migrate markdown --dry-run")
+	fmt.Fprintf(out, "%s --dry-run\n", displayCommand)
 	writeMarkdownMigrationPlan(out, plan)
 	return nil
 }
@@ -698,6 +1001,18 @@ func writeMarkdownMigrationPlan(out io.Writer, plan state.MarkdownMigrationPlan)
 	for _, path := range plan.SkippedFiles {
 		fmt.Fprintf(out, "  - %s\n", path)
 	}
+	for _, warning := range plan.Warnings {
+		fmt.Fprintf(out, "warning: %s\n", warning)
+	}
+}
+
+func writeStorageHomeMigrationPlan(out io.Writer, plan state.StorageHomeMigrationPlan) {
+	fmt.Fprintf(out, "database: %s\n", plan.DatabasePath)
+	fmt.Fprintf(out, "legacy database: %s\n", plan.LegacyDatabasePath)
+	fmt.Fprintf(out, "database exists: %t\n", plan.DatabaseExists)
+	fmt.Fprintf(out, "legacy database exists: %t\n", plan.LegacyDatabaseExists)
+	fmt.Fprintf(out, "action: %s\n", plan.Action)
+	fmt.Fprintf(out, "applied: %t\n", plan.Applied)
 	for _, warning := range plan.Warnings {
 		fmt.Fprintf(out, "warning: %s\n", warning)
 	}
@@ -767,7 +1082,12 @@ func (r Runner) runTrace(args []string, out io.Writer, runtime state.Runtime) er
 
 func (r Runner) runTask(args []string, out io.Writer, runtime state.Runtime) error {
 	if len(args) == 0 {
-		return r.runLegacy(append([]string{"task"}, args...), runtime.RootPath(), out)
+		writeTaskHelp(out)
+		return nil
+	}
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		writeTaskHelp(out)
+		return nil
 	}
 	switch args[0] {
 	case "create":
@@ -776,6 +1096,8 @@ func (r Runner) runTask(args []string, out io.Writer, runtime state.Runtime) err
 		return r.runTaskList(args[1:], out, runtime)
 	case "show":
 		return r.runTaskShow(args[1:], out, runtime)
+	case "status":
+		return r.runTaskStatus(args[1:], out, runtime)
 	case "update":
 		return r.runTaskUpdate(args[1:], out, runtime)
 	case "archive":
@@ -785,8 +1107,27 @@ func (r Runner) runTask(args []string, out io.Writer, runtime state.Runtime) err
 	case "sync":
 		return r.runTaskSync(args[1:], out, runtime)
 	default:
-		return r.runLegacy(append([]string{"task"}, args...), runtime.RootPath(), out)
+		return unknownSubcommandError("task", args[0])
 	}
+}
+
+func writeTaskHelp(out io.Writer) {
+	fmt.Fprintln(out, "Usage: loaf task <subcommand> [options]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Manage project tasks in native SQLite state or markdown compatibility mode.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Subcommands:")
+	fmt.Fprintln(out, "  create   Create a task")
+	fmt.Fprintln(out, "  list     List tasks")
+	fmt.Fprintln(out, "  show     Show one task")
+	fmt.Fprintln(out, "  status   Summarize task and spec statuses")
+	fmt.Fprintln(out, "  update   Update task metadata")
+	fmt.Fprintln(out, "  archive  Archive tasks")
+	fmt.Fprintln(out, "  refresh  Summarize TASKS.json refresh compatibility")
+	fmt.Fprintln(out, "  sync     Summarize task sync compatibility")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "  -h, --help  Show help")
 }
 
 func (r Runner) runTaskRefresh(args []string, out io.Writer, runtime state.Runtime) error {
@@ -794,15 +1135,23 @@ func (r Runner) runTaskRefresh(args []string, out io.Writer, runtime state.Runti
 	if err != nil {
 		return err
 	}
-	switch mode {
-	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"task", "refresh"}, args...), runtime.RootPath(), out)
-	case state.ModeInvalid:
-		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
-	}
 	options, err := parseCompatibilityCommandArgs("task refresh", args, nil)
 	if err != nil {
 		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		summary, err := markdownTaskRefresh(projectRoot.Path())
+		if err != nil {
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, summary)
+		}
+		writeMarkdownTaskRefreshSummary(out, summary)
+		return nil
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
 	tasks, err := state.ListTasks(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.TaskListOptions{})
 	if err != nil {
@@ -835,15 +1184,23 @@ func (r Runner) runTaskSync(args []string, out io.Writer, runtime state.Runtime)
 	if err != nil {
 		return err
 	}
-	switch mode {
-	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"task", "sync"}, args...), runtime.RootPath(), out)
-	case state.ModeInvalid:
-		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
-	}
 	options, err := parseCompatibilityCommandArgs("task sync", args, map[string]bool{"--import": true, "--push": true})
 	if err != nil {
 		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		summary, err := markdownTaskSync(projectRoot.Path(), args)
+		if err != nil {
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, summary)
+		}
+		writeMarkdownTaskSyncSummary(out, summary)
+		return nil
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
 	tasks, err := state.ListTasks(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.TaskListOptions{})
 	if err != nil {
@@ -878,7 +1235,19 @@ func (r Runner) runTaskCreate(args []string, out io.Writer, runtime state.Runtim
 	}
 	switch mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"task", "create"}, args...), runtime.RootPath(), out)
+		options, err := parseTaskCreateArgs(args)
+		if err != nil {
+			return err
+		}
+		result, err := markdownTaskCreate(projectRoot.Path(), options.create)
+		if err != nil {
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeTaskCreate(out, result)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -909,7 +1278,15 @@ func (r Runner) runTaskShow(args []string, out io.Writer, runtime state.Runtime)
 	}
 	switch mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"task", "show"}, args...), runtime.RootPath(), out)
+		result, err := markdownTaskShow(projectRoot.Path(), ref)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeTaskShow(out, result)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -936,7 +1313,15 @@ func (r Runner) runTaskList(args []string, out io.Writer, runtime state.Runtime)
 	}
 	switch mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"task", "list"}, args...), runtime.RootPath(), out)
+		tasks, err := markdownTaskList(projectRoot.Path(), options.filters)
+		if err != nil {
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, tasks)
+		}
+		writeTaskList(out, tasks, options.filters)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -952,6 +1337,41 @@ func (r Runner) runTaskList(args []string, out io.Writer, runtime state.Runtime)
 	return nil
 }
 
+func (r Runner) runTaskStatus(args []string, out io.Writer, runtime state.Runtime) error {
+	if len(args) > 0 {
+		return fmt.Errorf("task status accepts no arguments")
+	}
+	projectRoot, mode, err := r.taskStateMode(runtime)
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		tasks, err := markdownTaskList(projectRoot.Path(), state.TaskListOptions{})
+		if err != nil {
+			return err
+		}
+		specs, err := markdownSpecList(projectRoot.Path())
+		if err != nil {
+			return err
+		}
+		writeTaskStatus(out, tasks, specs)
+		return nil
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+	tasks, err := state.ListTasks(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.TaskListOptions{})
+	if err != nil {
+		return err
+	}
+	specs, err := state.ListSpecs(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome})
+	if err != nil {
+		return err
+	}
+	writeTaskStatus(out, tasks, specs)
+	return nil
+}
+
 func (r Runner) runTaskUpdate(args []string, out io.Writer, runtime state.Runtime) error {
 	projectRoot, mode, err := r.taskStateMode(runtime)
 	if err != nil {
@@ -959,7 +1379,19 @@ func (r Runner) runTaskUpdate(args []string, out io.Writer, runtime state.Runtim
 	}
 	switch mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"task", "update"}, args...), runtime.RootPath(), out)
+		options, err := parseTaskUpdateArgs(args)
+		if err != nil {
+			return err
+		}
+		result, err := markdownTaskUpdate(projectRoot.Path(), options.update)
+		if err != nil {
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeTaskUpdate(out, result)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -986,7 +1418,19 @@ func (r Runner) runTaskArchive(args []string, out io.Writer, runtime state.Runti
 	}
 	switch mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"task", "archive"}, args...), runtime.RootPath(), out)
+		options, err := parseTaskArchiveArgs(args)
+		if err != nil {
+			return err
+		}
+		result, err := markdownTaskArchive(projectRoot.Path(), options.archive)
+		if err != nil {
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeTaskArchive(out, result)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -1167,6 +1611,1323 @@ func writeTaskList(out io.Writer, tasks state.TaskList, filters state.TaskListOp
 		return
 	}
 	fmt.Fprintf(out, "  Total: %d tasks across %d specs\n\n", total, len(specs))
+}
+
+func markdownTaskList(rootPath string, options state.TaskListOptions) (state.TaskList, error) {
+	files, err := filepath.Glob(filepath.Join(rootPath, ".agents", "tasks", "*.md"))
+	if err != nil {
+		return state.TaskList{}, fmt.Errorf("find markdown tasks: %w", err)
+	}
+	sort.Strings(files)
+	index := loadMarkdownTaskIndex(rootPath)
+	tasks := state.TaskList{Version: 1, Tasks: map[string]state.TaskItem{}}
+	for _, path := range files {
+		item, alias, err := readMarkdownTask(rootPath, path, index)
+		if err != nil {
+			return state.TaskList{}, err
+		}
+		if !taskMatchesFilters(item, options) {
+			continue
+		}
+		tasks.Tasks[alias] = item
+	}
+	return tasks, nil
+}
+
+func markdownTaskShow(rootPath string, ref string) (state.TaskShow, error) {
+	files, err := filepath.Glob(filepath.Join(rootPath, ".agents", "tasks", "*.md"))
+	if err != nil {
+		return state.TaskShow{}, fmt.Errorf("find markdown tasks: %w", err)
+	}
+	sort.Strings(files)
+	index := loadMarkdownTaskIndex(rootPath)
+	for _, path := range files {
+		item, alias, err := readMarkdownTask(rootPath, path, index)
+		if err != nil {
+			return state.TaskShow{}, err
+		}
+		if alias != ref {
+			continue
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return state.TaskShow{}, fmt.Errorf("read markdown task %s: %w", path, err)
+		}
+		frontmatter, _ := parseKnowledgeFrontmatter(body)
+		field := func(keys ...string) string {
+			for _, key := range keys {
+				if value := firstFieldValue(frontmatter[key]); value != "" {
+					return value
+				}
+			}
+			return ""
+		}
+		hash := sha256.Sum256(body)
+		meta := index[alias]
+		return state.TaskShow{
+			Query: ref,
+			Task: state.TaskDetail{
+				ID:        alias,
+				Alias:     alias,
+				Title:     item.Title,
+				Status:    item.Status,
+				Priority:  item.Priority,
+				Spec:      item.Spec,
+				DependsOn: item.DependsOn,
+				Sessions:  markdownTaskSessions(meta, field("session", "sessions")),
+				Sources: []state.TraceSource{{
+					Path: item.SourcePath,
+					Hash: hex.EncodeToString(hash[:]),
+				}},
+				Body:      strings.TrimSpace(markdownContentWithoutFrontmatter(string(body))),
+				CreatedAt: firstNonEmpty(meta.Created, field("created", "created_at")),
+				UpdatedAt: firstNonEmpty(meta.Updated, field("updated", "updated_at"), meta.Created, field("created", "created_at")),
+			},
+		}, nil
+	}
+	return state.TaskShow{}, fmt.Errorf("task %q not found in markdown tasks", ref)
+}
+
+func markdownTaskCreate(rootPath string, options state.TaskCreateOptions) (state.TaskCreateResult, error) {
+	title := strings.TrimSpace(options.Title)
+	if title == "" {
+		return state.TaskCreateResult{}, fmt.Errorf("task create requires --title")
+	}
+	priority := strings.TrimSpace(options.Priority)
+	if priority == "" {
+		priority = "P2"
+	}
+	if !state.ValidTaskPriority(priority) {
+		return state.TaskCreateResult{}, fmt.Errorf("invalid priority %q", priority)
+	}
+	agentsDir := filepath.Join(rootPath, ".agents")
+	tasksDir := filepath.Join(agentsDir, "tasks")
+	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
+		return state.TaskCreateResult{}, fmt.Errorf("create tasks directory: %w", err)
+	}
+	indexPath := filepath.Join(agentsDir, "TASKS.json")
+	index, err := loadMarkdownTaskIndexObject(indexPath)
+	if err != nil {
+		return state.TaskCreateResult{}, err
+	}
+	tasks, err := markdownIndexObject(index, "tasks")
+	if err != nil {
+		return state.TaskCreateResult{}, err
+	}
+	specs, err := markdownIndexObject(index, "specs")
+	if err != nil {
+		return state.TaskCreateResult{}, err
+	}
+
+	var specEntity state.TraceEntity
+	specRef := strings.TrimSpace(options.Spec)
+	if specRef != "" {
+		specValue, ok := specs[specRef]
+		if !ok {
+			return state.TaskCreateResult{}, fmt.Errorf("Spec %q not found in index", specRef)
+		}
+		specEntity = state.TraceEntity{Kind: "spec", ID: specRef, Alias: specRef}
+		if specEntry, ok := specValue.(map[string]any); ok {
+			specEntity.Title = jsonObjectString(specEntry, "title")
+			specEntity.Status = jsonObjectString(specEntry, "status")
+		}
+	}
+
+	dependencies := []state.TraceEntity{}
+	dependencyIDs := []string{}
+	for _, depRef := range options.DependsOn {
+		depRef = strings.TrimSpace(depRef)
+		if depRef == "" {
+			continue
+		}
+		taskValue, ok := tasks[depRef]
+		if !ok {
+			return state.TaskCreateResult{}, fmt.Errorf("Dependency %q not found in index", depRef)
+		}
+		dependencyIDs = append(dependencyIDs, depRef)
+		dependency := state.TraceEntity{Kind: "task", ID: depRef, Alias: depRef}
+		if taskEntry, ok := taskValue.(map[string]any); ok {
+			dependency.Title = jsonObjectString(taskEntry, "title")
+			dependency.Status = jsonObjectString(taskEntry, "status")
+		}
+		dependencies = append(dependencies, dependency)
+	}
+
+	nextID := markdownTaskNextID(index)
+	taskID := fmt.Sprintf("TASK-%03d", nextID)
+	slug := markdownTaskSlug(title)
+	if slug == "" {
+		slug = strings.ToLower(taskID)
+	}
+	file := fmt.Sprintf("%s-%s.md", taskID, slug)
+	taskPath := filepath.Join(tasksDir, file)
+	if _, err := os.Stat(taskPath); err == nil {
+		return state.TaskCreateResult{}, fmt.Errorf("task file already exists: .agents/tasks/%s", file)
+	} else if err != nil && !os.IsNotExist(err) {
+		return state.TaskCreateResult{}, fmt.Errorf("inspect task file %s: %w", file, err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	entry := map[string]any{
+		"title":        title,
+		"slug":         slug,
+		"spec":         nil,
+		"status":       "todo",
+		"priority":     priority,
+		"depends_on":   dependencyIDs,
+		"files":        []string{},
+		"verify":       nil,
+		"done":         nil,
+		"session":      nil,
+		"created":      now,
+		"updated":      now,
+		"completed_at": nil,
+		"file":         file,
+	}
+	if specRef != "" {
+		entry["spec"] = specRef
+	}
+	frontmatter := map[string]frontmatterField{
+		"id":       markdownReportFrontmatterScalar(taskID),
+		"title":    markdownReportFrontmatterScalar(title),
+		"status":   markdownReportFrontmatterScalar("todo"),
+		"priority": markdownReportFrontmatterScalar(priority),
+		"created":  markdownReportFrontmatterScalar(now),
+		"updated":  markdownReportFrontmatterScalar(now),
+	}
+	if specRef != "" {
+		frontmatter["spec"] = markdownReportFrontmatterScalar(specRef)
+	}
+	if len(dependencyIDs) > 0 {
+		frontmatter["depends_on"] = frontmatterField{Values: dependencyIDs, Array: true, Set: true}
+	}
+	if err := os.WriteFile(taskPath, []byte(renderMarkdownTask(frontmatter, markdownTaskBody(taskID, title))), 0o600); err != nil {
+		return state.TaskCreateResult{}, fmt.Errorf("write task %s: %w", taskID, err)
+	}
+
+	tasks[taskID] = entry
+	index["next_id"] = float64(nextID + 1)
+	updated, err := json.MarshalIndent(index, "", "  ")
+	if err != nil {
+		return state.TaskCreateResult{}, fmt.Errorf("encode TASKS.json: %w", err)
+	}
+	updated = append(updated, '\n')
+	if err := os.WriteFile(indexPath, updated, 0o600); err != nil {
+		return state.TaskCreateResult{}, fmt.Errorf("write TASKS.json: %w", err)
+	}
+
+	result := state.TaskCreateResult{
+		Task:     state.TraceEntity{Kind: "task", ID: taskID, Alias: taskID, Title: title, Status: "todo"},
+		Priority: priority,
+		Depends:  dependencies,
+	}
+	if specRef != "" {
+		result.Spec = specEntity
+	}
+	return result, nil
+}
+
+func markdownTaskUpdate(rootPath string, options state.TaskUpdateOptions) (state.TaskStatusUpdateResult, error) {
+	if !options.SetStatus && !options.SetPriority && !options.SetSpec && !options.SetDependsOn && !options.SetSession {
+		return state.TaskStatusUpdateResult{}, fmt.Errorf("task update requires at least one update")
+	}
+	if options.SetStatus && !state.ValidTaskStatus(options.Status) {
+		return state.TaskStatusUpdateResult{}, fmt.Errorf("invalid status %q", options.Status)
+	}
+	if options.SetPriority && !state.ValidTaskPriority(options.Priority) {
+		return state.TaskStatusUpdateResult{}, fmt.Errorf("invalid priority %q", options.Priority)
+	}
+	indexPath := filepath.Join(rootPath, ".agents", "TASKS.json")
+	index, err := loadMarkdownTaskIndexObject(indexPath)
+	if err != nil {
+		return state.TaskStatusUpdateResult{}, err
+	}
+	tasks, err := markdownIndexObject(index, "tasks")
+	if err != nil {
+		return state.TaskStatusUpdateResult{}, err
+	}
+	specs, err := markdownIndexObject(index, "specs")
+	if err != nil {
+		return state.TaskStatusUpdateResult{}, err
+	}
+	entryValue, ok := tasks[options.Ref]
+	if !ok {
+		return state.TaskStatusUpdateResult{}, fmt.Errorf("%s not found in index", options.Ref)
+	}
+	entry, ok := entryValue.(map[string]any)
+	if !ok {
+		return state.TaskStatusUpdateResult{}, fmt.Errorf("TASKS.json entry for %s must be an object", options.Ref)
+	}
+
+	previousStatus := jsonObjectString(entry, "status")
+	if previousStatus == "" {
+		previousStatus = "todo"
+	}
+	finalStatus := previousStatus
+	now := time.Now().UTC().Format(time.RFC3339)
+	if options.SetStatus {
+		finalStatus = options.Status
+		if finalStatus == "done" && previousStatus != "done" {
+			entry["completed_at"] = now
+		} else if finalStatus != "done" && previousStatus == "done" {
+			entry["completed_at"] = nil
+		}
+		entry["status"] = finalStatus
+	}
+	finalPriority := jsonObjectString(entry, "priority")
+	if options.SetPriority {
+		finalPriority = options.Priority
+		entry["priority"] = finalPriority
+	}
+
+	var specEntity *state.TraceEntity
+	if options.SetSpec {
+		if isMarkdownNoneValue(options.Spec) {
+			entry["spec"] = nil
+		} else {
+			specValue, ok := specs[options.Spec]
+			if !ok {
+				return state.TaskStatusUpdateResult{}, fmt.Errorf("Unknown spec %q. Use `loaf spec list` to see valid IDs.", options.Spec)
+			}
+			entry["spec"] = options.Spec
+			spec := state.TraceEntity{Kind: "spec", ID: options.Spec, Alias: options.Spec}
+			if specEntry, ok := specValue.(map[string]any); ok {
+				spec.Title = jsonObjectString(specEntry, "title")
+				spec.Status = jsonObjectString(specEntry, "status")
+			}
+			specEntity = &spec
+		}
+	} else if specRef := jsonObjectString(entry, "spec"); specRef != "" {
+		spec := state.TraceEntity{Kind: "spec", ID: specRef, Alias: specRef}
+		if specEntry, ok := specs[specRef].(map[string]any); ok {
+			spec.Title = jsonObjectString(specEntry, "title")
+			spec.Status = jsonObjectString(specEntry, "status")
+		}
+		specEntity = &spec
+	}
+
+	dependencies := []state.TraceEntity{}
+	if options.SetDependsOn {
+		dependencyIDs := []string{}
+		for _, depRef := range options.DependsOn {
+			depRef = strings.TrimSpace(depRef)
+			if depRef == "" || isMarkdownNoneValue(depRef) {
+				continue
+			}
+			taskValue, ok := tasks[depRef]
+			if !ok {
+				return state.TaskStatusUpdateResult{}, fmt.Errorf("Unknown task ID %q in --depends-on", depRef)
+			}
+			dependencyIDs = append(dependencyIDs, depRef)
+			dependency := state.TraceEntity{Kind: "task", ID: depRef, Alias: depRef}
+			if taskEntry, ok := taskValue.(map[string]any); ok {
+				dependency.Title = jsonObjectString(taskEntry, "title")
+				dependency.Status = jsonObjectString(taskEntry, "status")
+			}
+			dependencies = append(dependencies, dependency)
+		}
+		entry["depends_on"] = dependencyIDs
+	}
+
+	var sessionEntity *state.TraceEntity
+	if options.SetSession {
+		if isMarkdownNoneValue(options.Session) {
+			entry["session"] = nil
+		} else {
+			entry["session"] = options.Session
+			sessionEntity = &state.TraceEntity{Kind: "session", ID: options.Session, Alias: options.Session}
+		}
+	} else if sessionRef := jsonObjectString(entry, "session"); sessionRef != "" {
+		sessionEntity = &state.TraceEntity{Kind: "session", ID: sessionRef, Alias: sessionRef}
+	}
+
+	entry["updated"] = now
+	if err := syncMarkdownTaskFrontmatter(rootPath, options.Ref, entry); err != nil {
+		return state.TaskStatusUpdateResult{}, err
+	}
+	updated, err := json.MarshalIndent(index, "", "  ")
+	if err != nil {
+		return state.TaskStatusUpdateResult{}, fmt.Errorf("encode TASKS.json: %w", err)
+	}
+	updated = append(updated, '\n')
+	if err := os.WriteFile(indexPath, updated, 0o600); err != nil {
+		return state.TaskStatusUpdateResult{}, fmt.Errorf("write TASKS.json: %w", err)
+	}
+
+	result := state.TaskStatusUpdateResult{
+		Task:     state.TraceEntity{Kind: "task", ID: options.Ref, Alias: options.Ref, Title: jsonObjectString(entry, "title"), Status: finalStatus},
+		Previous: previousStatus,
+		Status:   finalStatus,
+		Priority: finalPriority,
+		Spec:     specEntity,
+		Session:  sessionEntity,
+	}
+	if options.SetDependsOn {
+		result.Depends = dependencies
+	}
+	return result, nil
+}
+
+func syncMarkdownTaskFrontmatter(rootPath string, ref string, entry map[string]any) error {
+	file := jsonObjectString(entry, "file")
+	if file == "" {
+		file = markdownTaskFileForAlias(rootPath, ref)
+	}
+	if file == "" {
+		return nil
+	}
+	path := filepath.Join(rootPath, ".agents", "tasks", filepath.FromSlash(file))
+	body := ""
+	if content, err := os.ReadFile(path); err == nil {
+		body = markdownContentWithoutFrontmatter(string(content))
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read markdown task %s: %w", file, err)
+	}
+	frontmatter := map[string]frontmatterField{
+		"id":       markdownReportFrontmatterScalar(ref),
+		"title":    markdownReportFrontmatterScalar(jsonObjectString(entry, "title")),
+		"status":   markdownReportFrontmatterScalar(firstNonEmpty(jsonObjectString(entry, "status"), "todo")),
+		"priority": markdownReportFrontmatterScalar(jsonObjectString(entry, "priority")),
+		"created":  markdownReportFrontmatterScalar(jsonObjectString(entry, "created")),
+		"updated":  markdownReportFrontmatterScalar(jsonObjectString(entry, "updated")),
+	}
+	if spec := jsonObjectString(entry, "spec"); spec != "" {
+		frontmatter["spec"] = markdownReportFrontmatterScalar(spec)
+	}
+	if deps := jsonStringSlice(entry["depends_on"]); len(deps) > 0 {
+		frontmatter["depends_on"] = frontmatterField{Values: deps, Array: true, Set: true}
+	}
+	if session := jsonObjectString(entry, "session"); session != "" {
+		frontmatter["session"] = markdownReportFrontmatterScalar(session)
+	}
+	if body == "" {
+		body = markdownTaskBody(ref, jsonObjectString(entry, "title"))
+	}
+	if err := os.WriteFile(path, []byte(renderMarkdownTask(frontmatter, body)), 0o600); err != nil {
+		return fmt.Errorf("write markdown task %s: %w", file, err)
+	}
+	return nil
+}
+
+func markdownTaskRefresh(rootPath string) (compatibilityCommandSummary, error) {
+	indexPath := filepath.Join(rootPath, ".agents", "TASKS.json")
+	snapshotBefore, err := loadMarkdownTaskIndexObject(indexPath)
+	if err != nil {
+		snapshotBefore = emptyMarkdownTaskIndexObject()
+	}
+	scanStartNextID := markdownTaskNextID(snapshotBefore)
+	scanStartSpecs, err := markdownIndexObject(snapshotBefore, "specs")
+	if err != nil {
+		scanStartSpecs = map[string]any{}
+	}
+
+	index, counts, err := buildMarkdownTaskIndexFromFiles(rootPath)
+	if err != nil {
+		return compatibilityCommandSummary{}, err
+	}
+	nowIndex, err := loadMarkdownTaskIndexObject(indexPath)
+	if err != nil {
+		nowIndex = emptyMarkdownTaskIndexObject()
+	}
+	index = mergeMarkdownTaskRefreshIndex(index, nowIndex, scanStartNextID, scanStartSpecs)
+	counts = markdownTaskIndexCounts(index, 0, 0)
+	if err := writeMarkdownTaskIndex(rootPath, index); err != nil {
+		return compatibilityCommandSummary{}, err
+	}
+	return compatibilityCommandSummary{
+		Version: 1,
+		Command: "task refresh",
+		Mode:    "markdown",
+		Action:  "rebuild",
+		Reason:  "Rebuilt TASKS.json from task/spec markdown files.",
+		Counts:  counts,
+	}, nil
+}
+
+func emptyMarkdownTaskIndexObject() map[string]any {
+	return map[string]any{
+		"version": float64(1),
+		"next_id": float64(1),
+		"tasks":   map[string]any{},
+		"specs":   map[string]any{},
+	}
+}
+
+func mergeMarkdownTaskRefreshIndex(scannedIndex map[string]any, nowIndex map[string]any, scanStartNextID int, scanStartSpecs map[string]any) map[string]any {
+	scannedTasks, _ := markdownIndexObject(scannedIndex, "tasks")
+	nowTasks, err := markdownIndexObject(nowIndex, "tasks")
+	if err == nil {
+		for id, entry := range nowTasks {
+			if _, exists := scannedTasks[id]; exists {
+				continue
+			}
+			if n := numericID(id); n >= scanStartNextID && n > 0 {
+				scannedTasks[id] = entry
+			}
+		}
+	}
+
+	scannedSpecs, _ := markdownIndexObject(scannedIndex, "specs")
+	nowSpecs, err := markdownIndexObject(nowIndex, "specs")
+	if err == nil {
+		for id, entry := range nowSpecs {
+			if _, exists := scannedSpecs[id]; exists {
+				continue
+			}
+			if _, existedAtScanStart := scanStartSpecs[id]; !existedAtScanStart {
+				scannedSpecs[id] = entry
+			}
+		}
+	}
+
+	nextID := max(markdownTaskNextID(scannedIndex), markdownTaskNextID(nowIndex))
+	for id := range scannedTasks {
+		if n := numericID(id); n+1 > nextID {
+			nextID = n + 1
+		}
+	}
+	scannedIndex["version"] = float64(1)
+	scannedIndex["next_id"] = float64(nextID)
+	scannedIndex["tasks"] = scannedTasks
+	scannedIndex["specs"] = scannedSpecs
+	return scannedIndex
+}
+
+func markdownTaskSync(rootPath string, args []string) (compatibilityCommandSummary, error) {
+	switch {
+	case hasFlag(args, "--push"):
+		indexPath := filepath.Join(rootPath, ".agents", "TASKS.json")
+		index, err := loadMarkdownTaskIndexObject(indexPath)
+		if err != nil {
+			return compatibilityCommandSummary{}, err
+		}
+		counts, err := syncMarkdownFrontmatterFromIndex(rootPath, index)
+		if err != nil {
+			return compatibilityCommandSummary{}, err
+		}
+		return compatibilityCommandSummary{
+			Version: 1,
+			Command: "task sync",
+			Mode:    "markdown",
+			Action:  "push",
+			Reason:  "Pushed TASKS.json metadata into task/spec markdown frontmatter.",
+			Counts:  counts,
+		}, nil
+	case hasFlag(args, "--import"):
+		return importMarkdownTaskIndexOrphans(rootPath)
+	default:
+		summary, err := markdownTaskRefresh(rootPath)
+		if err != nil {
+			return compatibilityCommandSummary{}, err
+		}
+		summary.Command = "task sync"
+		summary.Reason = "Rebuilt TASKS.json from task/spec markdown files."
+		return summary, nil
+	}
+}
+
+func writeMarkdownTaskRefreshSummary(out io.Writer, summary compatibilityCommandSummary) {
+	fmt.Fprint(out, "\n  loaf task refresh\n\n")
+	fmt.Fprintln(out, "  ✓ Rebuilt TASKS.json from .md files")
+	fmt.Fprintf(out, "    Tasks: %d (%s)\n", summary.Counts["tasks"], markdownTaskStatusCountText(summary.Counts))
+	fmt.Fprintf(out, "    Specs: %d\n\n", summary.Counts["specs"])
+}
+
+func writeMarkdownTaskSyncSummary(out io.Writer, summary compatibilityCommandSummary) {
+	fmt.Fprint(out, "\n  loaf task sync\n\n")
+	switch summary.Action {
+	case "push":
+		fmt.Fprintln(out, "  ✓ Pushed TASKS.json metadata to .md frontmatter")
+		fmt.Fprintf(out, "    Tasks: %d, Specs: %d\n\n", summary.Counts["tasks"], summary.Counts["specs"])
+	case "import":
+		if summary.Counts["imported_tasks"] == 0 && summary.Counts["imported_specs"] == 0 {
+			fmt.Fprintln(out, "  No orphan files found.")
+			fmt.Fprintln(out)
+			return
+		}
+		parts := []string{}
+		if count := summary.Counts["imported_tasks"]; count > 0 {
+			parts = append(parts, fmt.Sprintf("%d task(s)", count))
+		}
+		if count := summary.Counts["imported_specs"]; count > 0 {
+			parts = append(parts, fmt.Sprintf("%d spec(s)", count))
+		}
+		fmt.Fprintf(out, "  ✓ Imported %s into TASKS.json\n\n", strings.Join(parts, " and "))
+	default:
+		fmt.Fprintln(out, "  ✓ Rebuilt TASKS.json from .md files")
+		fmt.Fprintf(out, "    Tasks: %d (%s)\n", summary.Counts["tasks"], markdownTaskStatusCountText(summary.Counts))
+		fmt.Fprintf(out, "    Specs: %d\n\n", summary.Counts["specs"])
+	}
+}
+
+func markdownTaskStatusCountText(counts map[string]int) string {
+	parts := make([]string, 0, 5)
+	for _, status := range []string{"in_progress", "blocked", "todo", "review", "done"} {
+		parts = append(parts, fmt.Sprintf("%d %s", counts["tasks_"+status], status))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func buildMarkdownTaskIndexFromFiles(rootPath string) (map[string]any, map[string]int, error) {
+	agentsDir := filepath.Join(rootPath, ".agents")
+	tasksDir := filepath.Join(agentsDir, "tasks")
+	specsDir := filepath.Join(agentsDir, "specs")
+	tasks := map[string]any{}
+	specs := map[string]any{}
+	maxTaskID := 0
+
+	taskFiles, err := collectMarkdownIndexFiles(tasksDir, filepath.Join(tasksDir, "archive"), "TASK-")
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, path := range taskFiles {
+		id, entry, err := parseMarkdownTaskIndexFile(tasksDir, path)
+		if err != nil {
+			return nil, nil, err
+		}
+		if id == "" {
+			continue
+		}
+		tasks[id] = entry
+		if n := numericID(id); n > maxTaskID {
+			maxTaskID = n
+		}
+	}
+
+	specFiles, err := collectMarkdownIndexFiles(specsDir, filepath.Join(specsDir, "archive"), "SPEC-")
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, path := range specFiles {
+		id, entry, err := parseMarkdownSpecIndexFile(specsDir, path)
+		if err != nil {
+			return nil, nil, err
+		}
+		if id == "" {
+			continue
+		}
+		specs[id] = entry
+	}
+
+	index := map[string]any{
+		"version": float64(1),
+		"next_id": float64(maxTaskID + 1),
+		"tasks":   tasks,
+		"specs":   specs,
+	}
+	return index, markdownTaskIndexCounts(index, 0, 0), nil
+}
+
+func collectMarkdownIndexFiles(activeDir string, archiveDir string, prefix string) ([]string, error) {
+	files := []string{}
+	active, err := filepath.Glob(filepath.Join(activeDir, prefix+"*.md"))
+	if err != nil {
+		return nil, fmt.Errorf("find markdown files in %s: %w", activeDir, err)
+	}
+	files = append(files, active...)
+	if _, err := os.Stat(archiveDir); err == nil {
+		err = filepath.WalkDir(archiveDir, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) || filepath.Ext(entry.Name()) != ".md" {
+				return nil
+			}
+			files = append(files, path)
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("find archived markdown files in %s: %w", archiveDir, err)
+		}
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("inspect archive directory %s: %w", archiveDir, err)
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+func parseMarkdownTaskIndexFile(baseDir string, path string) (string, map[string]any, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", nil, fmt.Errorf("read markdown task %s: %w", path, err)
+	}
+	frontmatter, _ := parseKnowledgeFrontmatter(content)
+	id := firstNonEmpty(firstFieldValue(frontmatter["id"]), taskAliasFromPath(path))
+	if id == "" {
+		return "", nil, nil
+	}
+	status := normalizeMarkdownTaskStatus(firstFieldValue(frontmatter["status"]))
+	rel, err := filepath.Rel(baseDir, path)
+	if err != nil {
+		return "", nil, fmt.Errorf("resolve markdown task path %s: %w", path, err)
+	}
+	entry := map[string]any{
+		"title":        firstNonEmpty(firstFieldValue(frontmatter["title"]), strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))),
+		"slug":         markdownTaskSlugFromPath(path, id),
+		"spec":         nil,
+		"status":       status,
+		"priority":     normalizeMarkdownTaskPriority(firstFieldValue(frontmatter["priority"])),
+		"depends_on":   frontmatterStringSlice(frontmatter["depends_on"]),
+		"files":        frontmatterStringSlice(frontmatter["files"]),
+		"verify":       nil,
+		"done":         nil,
+		"session":      nil,
+		"created":      normalizeMarkdownIndexDate(firstFieldValue(frontmatter["created"])),
+		"updated":      normalizeMarkdownIndexDate(firstNonEmpty(firstFieldValue(frontmatter["updated"]), firstFieldValue(frontmatter["created"]))),
+		"completed_at": nil,
+		"file":         filepath.ToSlash(rel),
+	}
+	if spec := firstFieldValue(frontmatter["spec"]); spec != "" {
+		entry["spec"] = spec
+	}
+	if verify := firstFieldValue(frontmatter["verify"]); verify != "" {
+		entry["verify"] = verify
+	}
+	if done := firstFieldValue(frontmatter["done"]); done != "" {
+		entry["done"] = done
+	}
+	if session := firstFieldValue(frontmatter["session"]); session != "" {
+		entry["session"] = session
+	}
+	if status == "done" {
+		entry["completed_at"] = normalizeMarkdownIndexDate(firstNonEmpty(firstFieldValue(frontmatter["completed_at"]), firstFieldValue(frontmatter["updated"]), firstFieldValue(frontmatter["created"])))
+	}
+	return id, entry, nil
+}
+
+func parseMarkdownSpecIndexFile(baseDir string, path string) (string, map[string]any, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", nil, fmt.Errorf("read markdown spec %s: %w", path, err)
+	}
+	frontmatter, _ := parseKnowledgeFrontmatter(content)
+	id := firstNonEmpty(firstFieldValue(frontmatter["id"]), specAliasFromPath(path))
+	if id == "" {
+		return "", nil, nil
+	}
+	rel, err := filepath.Rel(baseDir, path)
+	if err != nil {
+		return "", nil, fmt.Errorf("resolve markdown spec path %s: %w", path, err)
+	}
+	entry := map[string]any{
+		"title":       firstNonEmpty(firstFieldValue(frontmatter["title"]), strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))),
+		"status":      normalizeMarkdownSpecStatus(firstFieldValue(frontmatter["status"])),
+		"requirement": nil,
+		"source":      nil,
+		"created":     normalizeMarkdownIndexDate(firstFieldValue(frontmatter["created"])),
+		"file":        filepath.ToSlash(rel),
+	}
+	if requirement := firstFieldValue(frontmatter["requirement"]); requirement != "" {
+		entry["requirement"] = requirement
+	}
+	if source := firstFieldValue(frontmatter["source"]); source != "" {
+		entry["source"] = source
+	}
+	return id, entry, nil
+}
+
+func importMarkdownTaskIndexOrphans(rootPath string) (compatibilityCommandSummary, error) {
+	indexPath := filepath.Join(rootPath, ".agents", "TASKS.json")
+	index, err := loadMarkdownTaskIndexObject(indexPath)
+	if err != nil {
+		return compatibilityCommandSummary{}, err
+	}
+	tasks, err := markdownIndexObject(index, "tasks")
+	if err != nil {
+		return compatibilityCommandSummary{}, err
+	}
+	specs, err := markdownIndexObject(index, "specs")
+	if err != nil {
+		return compatibilityCommandSummary{}, err
+	}
+
+	rebuild, _, err := buildMarkdownTaskIndexFromFiles(rootPath)
+	if err != nil {
+		return compatibilityCommandSummary{}, err
+	}
+	rebuildTasks, err := markdownIndexObject(rebuild, "tasks")
+	if err != nil {
+		return compatibilityCommandSummary{}, err
+	}
+	rebuildSpecs, err := markdownIndexObject(rebuild, "specs")
+	if err != nil {
+		return compatibilityCommandSummary{}, err
+	}
+
+	importedTasks := 0
+	maxTaskID := markdownTaskNextID(index) - 1
+	for id, entry := range rebuildTasks {
+		if _, ok := tasks[id]; ok {
+			continue
+		}
+		tasks[id] = entry
+		importedTasks++
+		if n := numericID(id); n > maxTaskID {
+			maxTaskID = n
+		}
+	}
+	importedSpecs := 0
+	for id, entry := range rebuildSpecs {
+		if _, ok := specs[id]; ok {
+			continue
+		}
+		specs[id] = entry
+		importedSpecs++
+	}
+	if maxTaskID >= markdownTaskNextID(index) {
+		index["next_id"] = float64(maxTaskID + 1)
+	}
+	if importedTasks > 0 || importedSpecs > 0 {
+		if err := writeMarkdownTaskIndex(rootPath, index); err != nil {
+			return compatibilityCommandSummary{}, err
+		}
+	}
+	return compatibilityCommandSummary{
+		Version: 1,
+		Command: "task sync",
+		Mode:    "markdown",
+		Action:  "import",
+		Reason:  "Imported orphan task/spec markdown files into TASKS.json.",
+		Counts:  markdownTaskIndexCounts(index, importedTasks, importedSpecs),
+	}, nil
+}
+
+func syncMarkdownFrontmatterFromIndex(rootPath string, index map[string]any) (map[string]int, error) {
+	tasks, err := markdownIndexObject(index, "tasks")
+	if err != nil {
+		return nil, err
+	}
+	for id, value := range tasks {
+		entry, ok := value.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("TASKS.json entry for %s must be an object", id)
+		}
+		if err := syncMarkdownTaskIndexFrontmatter(rootPath, id, entry); err != nil {
+			return nil, err
+		}
+	}
+	specs, err := markdownIndexObject(index, "specs")
+	if err != nil {
+		return nil, err
+	}
+	for id, value := range specs {
+		entry, ok := value.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("TASKS.json entry for %s must be an object", id)
+		}
+		if err := syncMarkdownSpecIndexFrontmatter(rootPath, id, entry); err != nil {
+			return nil, err
+		}
+	}
+	return markdownTaskIndexCounts(index, 0, 0), nil
+}
+
+func syncMarkdownTaskIndexFrontmatter(rootPath string, ref string, entry map[string]any) error {
+	file := firstNonEmpty(jsonObjectString(entry, "file"), markdownTaskFileForAlias(rootPath, ref))
+	if file == "" {
+		return nil
+	}
+	path := filepath.Join(rootPath, ".agents", "tasks", filepath.FromSlash(file))
+	content, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read markdown task %s: %w", file, err)
+	}
+	existing, _ := parseKnowledgeFrontmatter(content)
+	frontmatter := mergeMarkdownIndexFrontmatter(existing, markdownTaskEntryFrontmatter(ref, entry), markdownTaskFrontmatterKeys())
+	body := markdownContentWithoutFrontmatter(string(content))
+	if err := os.WriteFile(path, []byte(renderMarkdownDocument(frontmatter, markdownTaskFrontmatterOrder(), body)), 0o600); err != nil {
+		return fmt.Errorf("write markdown task %s: %w", file, err)
+	}
+	return nil
+}
+
+func syncMarkdownSpecIndexFrontmatter(rootPath string, ref string, entry map[string]any) error {
+	file := firstNonEmpty(jsonObjectString(entry, "file"), markdownSpecFileForAlias(rootPath, ref))
+	if file == "" {
+		return nil
+	}
+	path := filepath.Join(rootPath, ".agents", "specs", filepath.FromSlash(file))
+	content, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read markdown spec %s: %w", file, err)
+	}
+	existing, _ := parseKnowledgeFrontmatter(content)
+	frontmatter := mergeMarkdownIndexFrontmatter(existing, markdownSpecEntryFrontmatter(ref, entry), markdownSpecFrontmatterKeys())
+	body := markdownContentWithoutFrontmatter(string(content))
+	if err := os.WriteFile(path, []byte(renderMarkdownDocument(frontmatter, markdownSpecFrontmatterOrder(), body)), 0o600); err != nil {
+		return fmt.Errorf("write markdown spec %s: %w", file, err)
+	}
+	return nil
+}
+
+func markdownTaskEntryFrontmatter(ref string, entry map[string]any) map[string]frontmatterField {
+	frontmatter := map[string]frontmatterField{
+		"id":       markdownReportFrontmatterScalar(ref),
+		"title":    markdownReportFrontmatterScalar(jsonObjectString(entry, "title")),
+		"status":   markdownReportFrontmatterScalar(firstNonEmpty(jsonObjectString(entry, "status"), "todo")),
+		"priority": markdownReportFrontmatterScalar(jsonObjectString(entry, "priority")),
+	}
+	if spec := jsonObjectString(entry, "spec"); spec != "" {
+		frontmatter["spec"] = markdownReportFrontmatterScalar(spec)
+	}
+	if created := jsonObjectString(entry, "created"); created != "" {
+		frontmatter["created"] = markdownReportFrontmatterScalar(created)
+	}
+	if updated := jsonObjectString(entry, "updated"); updated != "" {
+		frontmatter["updated"] = markdownReportFrontmatterScalar(updated)
+	}
+	if deps := jsonStringSlice(entry["depends_on"]); len(deps) > 0 {
+		frontmatter["depends_on"] = frontmatterField{Values: deps, Array: true, Set: true}
+	}
+	if files := jsonStringSlice(entry["files"]); len(files) > 0 {
+		frontmatter["files"] = frontmatterField{Values: files, Array: true, Set: true}
+	}
+	if verify := jsonObjectString(entry, "verify"); verify != "" {
+		frontmatter["verify"] = markdownReportFrontmatterScalar(verify)
+	}
+	if done := jsonObjectString(entry, "done"); done != "" {
+		frontmatter["done"] = markdownReportFrontmatterScalar(done)
+	}
+	if session := jsonObjectString(entry, "session"); session != "" {
+		frontmatter["session"] = markdownReportFrontmatterScalar(session)
+	}
+	if completedAt := jsonObjectString(entry, "completed_at"); completedAt != "" {
+		frontmatter["completed_at"] = markdownReportFrontmatterScalar(completedAt)
+	}
+	return frontmatter
+}
+
+func markdownSpecEntryFrontmatter(ref string, entry map[string]any) map[string]frontmatterField {
+	frontmatter := map[string]frontmatterField{
+		"id":     markdownReportFrontmatterScalar(ref),
+		"title":  markdownReportFrontmatterScalar(jsonObjectString(entry, "title")),
+		"status": markdownReportFrontmatterScalar(firstNonEmpty(jsonObjectString(entry, "status"), "drafting")),
+	}
+	if source := jsonObjectString(entry, "source"); source != "" {
+		frontmatter["source"] = markdownReportFrontmatterScalar(source)
+	}
+	if created := jsonObjectString(entry, "created"); created != "" {
+		frontmatter["created"] = markdownReportFrontmatterScalar(created)
+	}
+	if requirement := jsonObjectString(entry, "requirement"); requirement != "" {
+		frontmatter["requirement"] = markdownReportFrontmatterScalar(requirement)
+	}
+	return frontmatter
+}
+
+func mergeMarkdownIndexFrontmatter(existing map[string]frontmatterField, generated map[string]frontmatterField, known map[string]bool) map[string]frontmatterField {
+	merged := map[string]frontmatterField{}
+	for key, value := range generated {
+		if value.Set {
+			merged[key] = value
+		}
+	}
+	for key, value := range existing {
+		if !known[key] && value.Set {
+			merged[key] = value
+		}
+	}
+	return merged
+}
+
+func renderMarkdownDocument(frontmatter map[string]frontmatterField, orderedKeys []string, body string) string {
+	var b strings.Builder
+	b.WriteString("---\n")
+	written := map[string]bool{}
+	for _, key := range orderedKeys {
+		if field := frontmatter[key]; field.Set {
+			writeMarkdownReportFrontmatterField(&b, key, field)
+			written[key] = true
+		}
+	}
+	extraKeys := []string{}
+	for key, field := range frontmatter {
+		if field.Set && !written[key] {
+			extraKeys = append(extraKeys, key)
+		}
+	}
+	sort.Strings(extraKeys)
+	for _, key := range extraKeys {
+		writeMarkdownReportFrontmatterField(&b, key, frontmatter[key])
+	}
+	b.WriteString("---\n")
+	if !strings.HasPrefix(body, "\n") {
+		b.WriteString("\n")
+	}
+	b.WriteString(body)
+	if !strings.HasSuffix(body, "\n") {
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func writeMarkdownTaskIndex(rootPath string, index map[string]any) error {
+	content, err := json.MarshalIndent(index, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode TASKS.json: %w", err)
+	}
+	content = append(content, '\n')
+	indexPath := filepath.Join(rootPath, ".agents", "TASKS.json")
+	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
+		return fmt.Errorf("create .agents directory: %w", err)
+	}
+	if err := os.WriteFile(indexPath, content, 0o600); err != nil {
+		return fmt.Errorf("write TASKS.json: %w", err)
+	}
+	return nil
+}
+
+func markdownTaskIndexCounts(index map[string]any, importedTasks int, importedSpecs int) map[string]int {
+	counts := map[string]int{
+		"imported_tasks": importedTasks,
+		"imported_specs": importedSpecs,
+	}
+	tasks, _ := markdownIndexObject(index, "tasks")
+	specs, _ := markdownIndexObject(index, "specs")
+	counts["tasks"] = len(tasks)
+	counts["specs"] = len(specs)
+	for _, value := range tasks {
+		entry, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		status := firstNonEmpty(jsonObjectString(entry, "status"), "todo")
+		counts["tasks_"+status]++
+	}
+	return counts
+}
+
+func markdownTaskFrontmatterOrder() []string {
+	return []string{"id", "title", "spec", "status", "priority", "created", "updated", "depends_on", "files", "verify", "done", "session", "completed_at"}
+}
+
+func markdownTaskFrontmatterKeys() map[string]bool {
+	keys := map[string]bool{}
+	for _, key := range markdownTaskFrontmatterOrder() {
+		keys[key] = true
+	}
+	return keys
+}
+
+func markdownSpecFrontmatterOrder() []string {
+	return []string{"id", "title", "source", "created", "status", "requirement"}
+}
+
+func markdownSpecFrontmatterKeys() map[string]bool {
+	keys := map[string]bool{}
+	for _, key := range markdownSpecFrontmatterOrder() {
+		keys[key] = true
+	}
+	return keys
+}
+
+func frontmatterStringSlice(field frontmatterField) []string {
+	if len(field.Values) == 0 {
+		return []string{}
+	}
+	if field.Array {
+		return append([]string{}, field.Values...)
+	}
+	return []string{}
+}
+
+func markdownTaskSlugFromPath(path string, id string) string {
+	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	slug := strings.TrimPrefix(stem, id)
+	slug = strings.TrimPrefix(slug, "-")
+	return slug
+}
+
+func normalizeMarkdownTaskStatus(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	switch normalized {
+	case "in progress":
+		return "in_progress"
+	case "complete", "completed", "archived":
+		return "done"
+	case "pending":
+		return "todo"
+	case "waiting":
+		return "blocked"
+	}
+	if state.ValidTaskStatus(normalized) {
+		return normalized
+	}
+	return "todo"
+}
+
+func normalizeMarkdownTaskPriority(value string) string {
+	priority := strings.ToUpper(strings.TrimSpace(value))
+	if state.ValidTaskPriority(priority) {
+		return priority
+	}
+	return "P2"
+}
+
+func normalizeMarkdownSpecStatus(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	switch normalized {
+	case "draft":
+		return "drafting"
+	case "done", "completed", "archived", "implemented":
+		return "complete"
+	case "in_progress":
+		return "implementing"
+	}
+	switch normalized {
+	case "drafting", "approved", "implementing", "complete":
+		return normalized
+	default:
+		return "drafting"
+	}
+}
+
+func normalizeMarkdownIndexDate(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return time.Now().UTC().Format(time.RFC3339)
+	}
+	if regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`).MatchString(trimmed) {
+		return trimmed + "T00:00:00Z"
+	}
+	if _, err := time.Parse(time.RFC3339, trimmed); err == nil {
+		return trimmed
+	}
+	if parsed, err := time.Parse(time.RFC1123, trimmed); err == nil {
+		return parsed.UTC().Format(time.RFC3339)
+	}
+	return trimmed
+}
+
+func numericID(id string) int {
+	match := regexp.MustCompile(`\d+$`).FindString(id)
+	if match == "" {
+		return 0
+	}
+	var value int
+	for _, char := range match {
+		value = value*10 + int(char-'0')
+	}
+	return value
+}
+
+func hasFlag(args []string, flag string) bool {
+	for _, arg := range args {
+		if arg == flag {
+			return true
+		}
+	}
+	return false
+}
+
+func loadMarkdownTaskIndexObject(indexPath string) (map[string]any, error) {
+	content, err := os.ReadFile(indexPath)
+	if os.IsNotExist(err) {
+		return map[string]any{
+			"version": float64(1),
+			"next_id": float64(1),
+			"tasks":   map[string]any{},
+			"specs":   map[string]any{},
+		}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read TASKS.json: %w", err)
+	}
+	var index map[string]any
+	if err := json.Unmarshal(content, &index); err != nil {
+		return nil, fmt.Errorf("parse TASKS.json: %w", err)
+	}
+	return index, nil
+}
+
+func markdownIndexObject(index map[string]any, key string) (map[string]any, error) {
+	value, ok := index[key]
+	if !ok || value == nil {
+		object := map[string]any{}
+		index[key] = object
+		return object, nil
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("TASKS.json %s must be an object", key)
+	}
+	return object, nil
+}
+
+func markdownTaskNextID(index map[string]any) int {
+	value, ok := index["next_id"]
+	if !ok {
+		return 1
+	}
+	switch typed := value.(type) {
+	case float64:
+		if typed >= 1 {
+			return int(typed)
+		}
+	case int:
+		if typed >= 1 {
+			return typed
+		}
+	}
+	return 1
+}
+
+func markdownTaskSlug(title string) string {
+	slug := strings.ToLower(strings.TrimSpace(title))
+	slug = strings.NewReplacer("`", "", "'", "", `"`, "").Replace(slug)
+	re := regexp.MustCompile(`[^a-z0-9]+`)
+	slug = re.ReplaceAllString(slug, "-")
+	slug = strings.Trim(slug, "-")
+	if len(slug) > 50 {
+		slug = strings.Trim(slug[:50], "-")
+	}
+	return slug
+}
+
+func renderMarkdownTask(frontmatter map[string]frontmatterField, body string) string {
+	var b strings.Builder
+	b.WriteString("---\n")
+	for _, key := range []string{"id", "title", "status", "priority", "spec", "depends_on", "session", "created", "updated"} {
+		if field := frontmatter[key]; field.Set {
+			writeMarkdownReportFrontmatterField(&b, key, field)
+		}
+	}
+	b.WriteString("---\n")
+	if !strings.HasPrefix(body, "\n") {
+		b.WriteString("\n")
+	}
+	b.WriteString(body)
+	if !strings.HasSuffix(body, "\n") {
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func markdownTaskBody(taskID string, title string) string {
+	return fmt.Sprintf(`# %s: %s
+
+## Description
+
+<!-- Describe the task here -->
+
+## Acceptance Criteria
+
+- [ ]
+
+## Verification
+
+`+"```"+`bash
+# Add verification command
+`+"```"+`
+`, taskID, title)
+}
+
+func readMarkdownTask(rootPath string, path string, index map[string]markdownTaskIndexEntry) (state.TaskItem, string, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return state.TaskItem{}, "", fmt.Errorf("read markdown task %s: %w", path, err)
+	}
+	frontmatter, _ := parseKnowledgeFrontmatter(body)
+	field := func(keys ...string) string {
+		for _, key := range keys {
+			if value := firstFieldValue(frontmatter[key]); value != "" {
+				return value
+			}
+		}
+		return ""
+	}
+	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	alias := firstNonEmpty(field("id"), taskAliasFromPath(path), stem)
+	meta := index[alias]
+	title := firstNonEmpty(meta.Title, field("title"), firstMarkdownHeading(markdownContentWithoutFrontmatter(string(body))), alias)
+	status := firstNonEmpty(meta.Status, field("status"), "unknown")
+	return state.TaskItem{
+		Title:      title,
+		Spec:       firstNonEmpty(meta.Spec, field("spec")),
+		Status:     status,
+		Priority:   firstNonEmpty(meta.Priority, field("priority")),
+		DependsOn:  markdownTaskDependencies(meta, firstFieldValue(frontmatter["depends_on"])),
+		SourcePath: markdownReportSourcePath(rootPath, path),
+	}, alias, nil
+}
+
+func taskMatchesFilters(item state.TaskItem, options state.TaskListOptions) bool {
+	if options.Active && (item.Status == "done" || item.Status == "archived") {
+		return false
+	}
+	if options.Status != "" && item.Status != options.Status {
+		return false
+	}
+	return true
+}
+
+func markdownTaskDependencies(meta markdownTaskIndexEntry, frontmatterDependsOn string) []string {
+	if len(meta.DependsOn) > 0 {
+		return meta.DependsOn
+	}
+	if frontmatterDependsOn == "" {
+		return nil
+	}
+	return splitCommaList(frontmatterDependsOn)
+}
+
+func markdownTaskSessions(meta markdownTaskIndexEntry, frontmatterSession string) []string {
+	if meta.Session != "" {
+		return []string{meta.Session}
+	}
+	if len(meta.Sessions) > 0 {
+		return meta.Sessions
+	}
+	if frontmatterSession == "" {
+		return nil
+	}
+	return splitCommaList(frontmatterSession)
+}
+
+func taskAliasFromPath(path string) string {
+	re := regexp.MustCompile(`TASK-\d+`)
+	return re.FindString(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+}
+
+func writeTaskStatus(out io.Writer, tasks state.TaskList, specs state.SpecList) {
+	taskCounts := countTaskStatuses(tasks)
+	specCounts := countSpecStatuses(specs)
+
+	fmt.Fprint(out, "\n  loaf task status\n\n")
+	fmt.Fprintf(out, "  Tasks:  %s  (%d total)\n", formatStatusCounts(taskCounts, []string{"in_progress", "blocked", "todo", "review", "done"}), len(tasks.Tasks))
+	fmt.Fprintf(out, "  Specs:  %s  (%d total)\n\n", formatStatusCounts(specCounts, []string{"implementing", "approved", "drafting", "complete"}), len(specs.Specs))
+}
+
+func countTaskStatuses(tasks state.TaskList) map[string]int {
+	counts := map[string]int{}
+	for _, task := range tasks.Tasks {
+		counts[task.Status]++
+	}
+	return counts
+}
+
+func countSpecStatuses(specs state.SpecList) map[string]int {
+	counts := map[string]int{}
+	for _, spec := range specs.Specs {
+		counts[spec.Status]++
+	}
+	return counts
+}
+
+func formatStatusCounts(counts map[string]int, order []string) string {
+	parts := make([]string, 0, len(order))
+	for _, status := range order {
+		parts = append(parts, fmt.Sprintf("%d %s", counts[status], status))
+	}
+	return strings.Join(parts, " · ")
 }
 
 func (r Runner) runIdea(args []string, out io.Writer, runtime state.Runtime) error {
@@ -2290,7 +4051,12 @@ func writeLinkList(out io.Writer, result state.LinkListResult) {
 
 func (r Runner) runSpec(args []string, out io.Writer, runtime state.Runtime) error {
 	if len(args) == 0 {
-		return r.runLegacy(append([]string{"spec"}, args...), runtime.RootPath(), out)
+		writeSpecHelp(out)
+		return nil
+	}
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		writeSpecHelp(out)
+		return nil
 	}
 	switch args[0] {
 	case "list":
@@ -2300,8 +4066,22 @@ func (r Runner) runSpec(args []string, out io.Writer, runtime state.Runtime) err
 	case "archive":
 		return r.runSpecArchive(args[1:], out, runtime)
 	default:
-		return r.runLegacy(append([]string{"spec"}, args...), runtime.RootPath(), out)
+		return unknownSubcommandError("spec", args[0])
 	}
+}
+
+func writeSpecHelp(out io.Writer) {
+	fmt.Fprintln(out, "Usage: loaf spec <subcommand> [options]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Manage project specs in native SQLite state or markdown compatibility mode.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Subcommands:")
+	fmt.Fprintln(out, "  list     List specs")
+	fmt.Fprintln(out, "  show     Show one spec")
+	fmt.Fprintln(out, "  archive  Archive completed specs")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "  -h, --help  Show help")
 }
 
 func (r Runner) runSpecList(args []string, out io.Writer, runtime state.Runtime) error {
@@ -2319,7 +4099,15 @@ func (r Runner) runSpecList(args []string, out io.Writer, runtime state.Runtime)
 	}
 	switch status.Mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"spec", "list"}, args...), runtime.RootPath(), out)
+		specs, err := markdownSpecList(projectRoot.Path())
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return writeJSON(out, specs)
+		}
+		writeSpecList(out, specs)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -2336,6 +4124,10 @@ func (r Runner) runSpecList(args []string, out io.Writer, runtime state.Runtime)
 }
 
 func (r Runner) runSpecShow(args []string, out io.Writer, runtime state.Runtime) error {
+	ref, jsonOutput, err := parseSingleRefArgs("spec show", args)
+	if err != nil {
+		return err
+	}
 	projectRoot, err := project.ResolveRoot(runtime.RootPath())
 	if err != nil {
 		return err
@@ -2346,15 +4138,19 @@ func (r Runner) runSpecShow(args []string, out io.Writer, runtime state.Runtime)
 	}
 	switch status.Mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"spec", "show"}, args...), runtime.RootPath(), out)
+		result, err := markdownSpecShow(projectRoot.Path(), ref)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeSpecShow(out, result)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
 
-	ref, jsonOutput, err := parseSingleRefArgs("spec show", args)
-	if err != nil {
-		return err
-	}
 	result, err := state.ShowSpec(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
 	if err != nil {
 		return err
@@ -2377,7 +4173,19 @@ func (r Runner) runSpecArchive(args []string, out io.Writer, runtime state.Runti
 	}
 	switch status.Mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"spec", "archive"}, args...), runtime.RootPath(), out)
+		refs, jsonOutput, err := parseArchiveArgs("spec archive", args)
+		if err != nil {
+			return err
+		}
+		result, err := markdownSpecArchive(projectRoot.Path(), refs)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeSpecArchive(out, result)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -2419,6 +4227,504 @@ func writeSpecList(out io.Writer, specs state.SpecList) {
 	}
 
 	fmt.Fprintf(out, "  Total: %d specs\n\n", len(specs.Specs))
+}
+
+func markdownSpecList(rootPath string) (state.SpecList, error) {
+	agentsDir := filepath.Join(rootPath, ".agents")
+	files, err := filepath.Glob(filepath.Join(agentsDir, "specs", "*.md"))
+	if err != nil {
+		return state.SpecList{}, fmt.Errorf("find markdown specs: %w", err)
+	}
+	sort.Strings(files)
+	taskCounts := markdownSpecTaskCounts(rootPath)
+	specIndex := loadMarkdownSpecIndex(rootPath)
+	specs := state.SpecList{Version: 1, Specs: map[string]state.SpecItem{}}
+	for _, path := range files {
+		item, alias, err := readMarkdownSpec(rootPath, path, specIndex)
+		if err != nil {
+			return state.SpecList{}, err
+		}
+		item.Tasks = taskCounts[alias]
+		specs.Specs[alias] = item
+	}
+	return specs, nil
+}
+
+func markdownSpecShow(rootPath string, ref string) (state.SpecShow, error) {
+	agentsDir := filepath.Join(rootPath, ".agents")
+	files, err := filepath.Glob(filepath.Join(agentsDir, "specs", "*.md"))
+	if err != nil {
+		return state.SpecShow{}, fmt.Errorf("find markdown specs: %w", err)
+	}
+	sort.Strings(files)
+	specIndex := loadMarkdownSpecIndex(rootPath)
+	taskIndex := loadMarkdownTaskIndex(rootPath)
+	taskCounts := markdownSpecTaskCounts(rootPath)
+	for _, path := range files {
+		item, alias, err := readMarkdownSpec(rootPath, path, specIndex)
+		if err != nil {
+			return state.SpecShow{}, err
+		}
+		if alias != ref {
+			continue
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return state.SpecShow{}, fmt.Errorf("read markdown spec %s: %w", path, err)
+		}
+		frontmatter, _ := parseKnowledgeFrontmatter(body)
+		field := func(keys ...string) string {
+			for _, key := range keys {
+				if value := firstFieldValue(frontmatter[key]); value != "" {
+					return value
+				}
+			}
+			return ""
+		}
+		hash := sha256.Sum256(body)
+		meta := specIndex[alias]
+		return state.SpecShow{
+			Query: ref,
+			Spec: state.SpecDetail{
+				ID:            alias,
+				Alias:         alias,
+				Title:         item.Title,
+				Status:        item.Status,
+				Tasks:         taskCounts[alias],
+				Sources:       []state.TraceSource{{Path: item.SourcePath, Hash: hex.EncodeToString(hash[:])}},
+				Body:          strings.TrimSpace(markdownContentWithoutFrontmatter(string(body))),
+				Relationships: markdownSpecRelationships(alias, taskIndex),
+				CreatedAt:     firstNonEmpty(meta.Created, field("created", "created_at")),
+				UpdatedAt:     firstNonEmpty(meta.Updated, field("updated", "updated_at"), meta.Created, field("created", "created_at")),
+			},
+		}, nil
+	}
+	return state.SpecShow{}, fmt.Errorf("spec %q not found in markdown specs", ref)
+}
+
+func readMarkdownSpec(rootPath string, path string, index map[string]markdownSpecIndexEntry) (state.SpecItem, string, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return state.SpecItem{}, "", fmt.Errorf("read markdown spec %s: %w", path, err)
+	}
+	frontmatter, _ := parseKnowledgeFrontmatter(body)
+	field := func(keys ...string) string {
+		for _, key := range keys {
+			if value := firstFieldValue(frontmatter[key]); value != "" {
+				return value
+			}
+		}
+		return ""
+	}
+	alias := firstNonEmpty(field("id"), specAliasFromPath(path), strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+	meta := index[alias]
+	title := firstNonEmpty(meta.Title, field("title"), firstMarkdownHeading(markdownContentWithoutFrontmatter(string(body))), alias)
+	status := firstNonEmpty(meta.Status, field("status"), "unknown")
+	return state.SpecItem{
+		Title:      title,
+		Status:     status,
+		SourcePath: markdownReportSourcePath(rootPath, path),
+	}, alias, nil
+}
+
+func markdownSpecTaskCounts(rootPath string) map[string]state.SpecTaskCounts {
+	counts := map[string]state.SpecTaskCounts{}
+	for _, task := range loadMarkdownTaskIndex(rootPath) {
+		if task.Spec == "" {
+			continue
+		}
+		specCounts := counts[task.Spec]
+		switch task.Status {
+		case "done", "archived":
+			specCounts.Done++
+		case "in_progress":
+			specCounts.InProgress++
+		default:
+			specCounts.Todo++
+		}
+		counts[task.Spec] = specCounts
+	}
+	return counts
+}
+
+func markdownSpecRelationships(alias string, tasks map[string]markdownTaskIndexEntry) []state.TraceRelationship {
+	taskAliases := make([]string, 0)
+	for taskAlias, task := range tasks {
+		if task.Spec == alias {
+			taskAliases = append(taskAliases, taskAlias)
+		}
+	}
+	sort.Strings(taskAliases)
+	relationships := make([]state.TraceRelationship, 0, len(taskAliases))
+	for _, taskAlias := range taskAliases {
+		task := tasks[taskAlias]
+		relationships = append(relationships, state.TraceRelationship{
+			Direction: "inbound",
+			Type:      "implements",
+			Entity: state.TraceEntity{
+				Kind:   "task",
+				ID:     taskAlias,
+				Alias:  taskAlias,
+				Title:  task.Title,
+				Status: task.Status,
+			},
+		})
+	}
+	return relationships
+}
+
+func markdownSpecArchive(rootPath string, refs []string) (state.SpecArchiveResult, error) {
+	if len(refs) == 0 {
+		return state.SpecArchiveResult{}, fmt.Errorf("spec archive requires at least one spec")
+	}
+	indexPath := filepath.Join(rootPath, ".agents", "TASKS.json")
+	content, err := os.ReadFile(indexPath)
+	if err != nil {
+		return state.SpecArchiveResult{}, fmt.Errorf("read TASKS.json: %w", err)
+	}
+	var index map[string]any
+	if err := json.Unmarshal(content, &index); err != nil {
+		return state.SpecArchiveResult{}, fmt.Errorf("parse TASKS.json: %w", err)
+	}
+	specsValue, ok := index["specs"]
+	if !ok {
+		specsValue = map[string]any{}
+		index["specs"] = specsValue
+	}
+	specs, ok := specsValue.(map[string]any)
+	if !ok {
+		return state.SpecArchiveResult{}, fmt.Errorf("TASKS.json specs must be an object")
+	}
+
+	result := state.SpecArchiveResult{Archived: []state.SpecArchiveItem{}, Skipped: []state.SpecArchiveItem{}}
+	changed := false
+	for _, ref := range refs {
+		entryValue, ok := specs[ref]
+		if !ok {
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Ref: ref, Reason: "not found in index"})
+			continue
+		}
+		entry, ok := entryValue.(map[string]any)
+		if !ok {
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Ref: ref, Reason: "index entry is not an object"})
+			continue
+		}
+		title := jsonObjectString(entry, "title")
+		status := jsonObjectString(entry, "status")
+		spec := state.TraceEntity{Kind: "spec", ID: ref, Alias: ref, Title: title, Status: status}
+		if status != "complete" {
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: status, Status: status, Reason: fmt.Sprintf("status is %s, must be complete", status)})
+			continue
+		}
+		file := jsonObjectString(entry, "file")
+		if strings.HasPrefix(file, "archive/") {
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: status, Status: status, Reason: "already archived"})
+			continue
+		}
+		if file == "" {
+			file = markdownSpecFileForAlias(rootPath, ref)
+		}
+		if file == "" {
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: status, Status: status, Reason: "file not found in index"})
+			continue
+		}
+		srcPath := filepath.Join(rootPath, ".agents", "specs", filepath.FromSlash(file))
+		if _, err := os.Stat(srcPath); os.IsNotExist(err) {
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: status, Status: status, Reason: fmt.Sprintf("file not found at %s", file)})
+			continue
+		} else if err != nil {
+			return state.SpecArchiveResult{}, fmt.Errorf("inspect markdown spec %s: %w", file, err)
+		}
+		archivedFile := filepath.ToSlash(filepath.Join("archive", filepath.FromSlash(file)))
+		destPath := filepath.Join(rootPath, ".agents", "specs", filepath.FromSlash(archivedFile))
+		if _, err := os.Stat(destPath); err == nil {
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: status, Status: status, Reason: fmt.Sprintf("%s already exists", archivedFile)})
+			continue
+		} else if err != nil && !os.IsNotExist(err) {
+			return state.SpecArchiveResult{}, fmt.Errorf("inspect archived markdown spec %s: %w", archivedFile, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return state.SpecArchiveResult{}, fmt.Errorf("create spec archive directory: %w", err)
+		}
+		if err := os.Rename(srcPath, destPath); err != nil {
+			return state.SpecArchiveResult{}, fmt.Errorf("archive markdown spec %s: %w", ref, err)
+		}
+		entry["file"] = archivedFile
+		changed = true
+		spec.Status = "archived"
+		result.Archived = append(result.Archived, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: "complete", Status: "archived"})
+	}
+	if changed {
+		updated, err := json.MarshalIndent(index, "", "  ")
+		if err != nil {
+			return state.SpecArchiveResult{}, fmt.Errorf("encode TASKS.json: %w", err)
+		}
+		updated = append(updated, '\n')
+		if err := os.WriteFile(indexPath, updated, 0o600); err != nil {
+			return state.SpecArchiveResult{}, fmt.Errorf("write TASKS.json: %w", err)
+		}
+	}
+	return result, nil
+}
+
+func markdownTaskArchive(rootPath string, options state.TaskArchiveOptions) (state.TaskArchiveResult, error) {
+	if options.Spec != "" && len(options.Refs) > 0 {
+		return state.TaskArchiveResult{}, fmt.Errorf("task archive accepts task ids or --spec, not both")
+	}
+	if options.Spec == "" && len(options.Refs) == 0 {
+		return state.TaskArchiveResult{}, fmt.Errorf("task archive requires task ids or --spec")
+	}
+	indexPath := filepath.Join(rootPath, ".agents", "TASKS.json")
+	content, err := os.ReadFile(indexPath)
+	if err != nil {
+		return state.TaskArchiveResult{}, fmt.Errorf("read TASKS.json: %w", err)
+	}
+	var index map[string]any
+	if err := json.Unmarshal(content, &index); err != nil {
+		return state.TaskArchiveResult{}, fmt.Errorf("parse TASKS.json: %w", err)
+	}
+	tasksValue, ok := index["tasks"]
+	if !ok {
+		tasksValue = map[string]any{}
+		index["tasks"] = tasksValue
+	}
+	tasks, ok := tasksValue.(map[string]any)
+	if !ok {
+		return state.TaskArchiveResult{}, fmt.Errorf("TASKS.json tasks must be an object")
+	}
+
+	result := state.TaskArchiveResult{Archived: []state.TaskArchiveItem{}, Skipped: []state.TaskArchiveItem{}}
+	refs := append([]string{}, options.Refs...)
+	if options.Spec != "" {
+		specs, ok := index["specs"].(map[string]any)
+		if !ok {
+			return state.TaskArchiveResult{}, fmt.Errorf("TASKS.json specs must be an object")
+		}
+		specValue, ok := specs[options.Spec]
+		if !ok {
+			return state.TaskArchiveResult{}, fmt.Errorf("Spec %q not found in index", options.Spec)
+		}
+		spec := state.TraceEntity{Kind: "spec", ID: options.Spec, Alias: options.Spec}
+		if specEntry, ok := specValue.(map[string]any); ok {
+			spec.Title = jsonObjectString(specEntry, "title")
+			spec.Status = jsonObjectString(specEntry, "status")
+		}
+		result.Spec = &spec
+		for id, entryValue := range tasks {
+			entry, ok := entryValue.(map[string]any)
+			if !ok {
+				continue
+			}
+			if jsonObjectString(entry, "spec") == options.Spec && jsonObjectString(entry, "status") == "done" {
+				refs = append(refs, id)
+			}
+		}
+		sort.Strings(refs)
+	}
+
+	changed := false
+	for _, ref := range refs {
+		entryValue, ok := tasks[ref]
+		if !ok {
+			result.Skipped = append(result.Skipped, state.TaskArchiveItem{Ref: ref, Reason: "not found in index"})
+			continue
+		}
+		entry, ok := entryValue.(map[string]any)
+		if !ok {
+			result.Skipped = append(result.Skipped, state.TaskArchiveItem{Ref: ref, Reason: "index entry is not an object"})
+			continue
+		}
+		title := jsonObjectString(entry, "title")
+		status := jsonObjectString(entry, "status")
+		task := state.TraceEntity{Kind: "task", ID: ref, Alias: ref, Title: title, Status: status}
+		if status != "done" {
+			result.Skipped = append(result.Skipped, state.TaskArchiveItem{Task: &task, Ref: ref, Previous: status, Status: status, Reason: fmt.Sprintf("status is %s, must be done", status)})
+			continue
+		}
+		file := jsonObjectString(entry, "file")
+		if strings.HasPrefix(file, "archive/") {
+			result.Skipped = append(result.Skipped, state.TaskArchiveItem{Task: &task, Ref: ref, Previous: status, Status: status, Reason: "already archived"})
+			continue
+		}
+		if file == "" {
+			file = markdownTaskFileForAlias(rootPath, ref)
+		}
+		if file == "" {
+			result.Skipped = append(result.Skipped, state.TaskArchiveItem{Task: &task, Ref: ref, Previous: status, Status: status, Reason: "file not found in index"})
+			continue
+		}
+		srcPath := filepath.Join(rootPath, ".agents", "tasks", filepath.FromSlash(file))
+		if _, err := os.Stat(srcPath); os.IsNotExist(err) {
+			result.Skipped = append(result.Skipped, state.TaskArchiveItem{Task: &task, Ref: ref, Previous: status, Status: status, Reason: fmt.Sprintf("file not found at %s", file)})
+			continue
+		} else if err != nil {
+			return state.TaskArchiveResult{}, fmt.Errorf("inspect markdown task %s: %w", file, err)
+		}
+		archivedFile := filepath.ToSlash(filepath.Join("archive", filepath.FromSlash(file)))
+		destPath := filepath.Join(rootPath, ".agents", "tasks", filepath.FromSlash(archivedFile))
+		if _, err := os.Stat(destPath); err == nil {
+			result.Skipped = append(result.Skipped, state.TaskArchiveItem{Task: &task, Ref: ref, Previous: status, Status: status, Reason: fmt.Sprintf("%s already exists", archivedFile)})
+			continue
+		} else if err != nil && !os.IsNotExist(err) {
+			return state.TaskArchiveResult{}, fmt.Errorf("inspect archived markdown task %s: %w", archivedFile, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return state.TaskArchiveResult{}, fmt.Errorf("create task archive directory: %w", err)
+		}
+		if err := os.Rename(srcPath, destPath); err != nil {
+			return state.TaskArchiveResult{}, fmt.Errorf("archive markdown task %s: %w", ref, err)
+		}
+		entry["file"] = archivedFile
+		changed = true
+		task.Status = "archived"
+		result.Archived = append(result.Archived, state.TaskArchiveItem{Task: &task, Ref: ref, Previous: "done", Status: "archived"})
+	}
+	if changed {
+		updated, err := json.MarshalIndent(index, "", "  ")
+		if err != nil {
+			return state.TaskArchiveResult{}, fmt.Errorf("encode TASKS.json: %w", err)
+		}
+		updated = append(updated, '\n')
+		if err := os.WriteFile(indexPath, updated, 0o600); err != nil {
+			return state.TaskArchiveResult{}, fmt.Errorf("write TASKS.json: %w", err)
+		}
+	}
+	return result, nil
+}
+
+func jsonObjectString(object map[string]any, key string) string {
+	value, ok := object[key]
+	if !ok || value == nil {
+		return ""
+	}
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return text
+}
+
+func jsonStringSlice(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		return append([]string{}, typed...)
+	case []any:
+		items := make([]string, 0, len(typed))
+		for _, item := range typed {
+			text, ok := item.(string)
+			if ok && strings.TrimSpace(text) != "" {
+				items = append(items, text)
+			}
+		}
+		return items
+	case string:
+		if strings.TrimSpace(typed) == "" {
+			return nil
+		}
+		return splitCommaList(typed)
+	default:
+		return nil
+	}
+}
+
+func isMarkdownNoneValue(value string) bool {
+	return strings.EqualFold(strings.TrimSpace(value), "none")
+}
+
+func markdownSpecFileForAlias(rootPath string, alias string) string {
+	files, err := filepath.Glob(filepath.Join(rootPath, ".agents", "specs", "*.md"))
+	if err != nil {
+		return ""
+	}
+	sort.Strings(files)
+	for _, path := range files {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		frontmatter, _ := parseKnowledgeFrontmatter(body)
+		found := firstNonEmpty(firstFieldValue(frontmatter["id"]), specAliasFromPath(path), strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+		if found == alias {
+			return filepath.Base(path)
+		}
+	}
+	return ""
+}
+
+func markdownTaskFileForAlias(rootPath string, alias string) string {
+	files, err := filepath.Glob(filepath.Join(rootPath, ".agents", "tasks", "*.md"))
+	if err != nil {
+		return ""
+	}
+	sort.Strings(files)
+	for _, path := range files {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		frontmatter, _ := parseKnowledgeFrontmatter(body)
+		found := firstNonEmpty(firstFieldValue(frontmatter["id"]), taskAliasFromPath(path), strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+		if found == alias {
+			return filepath.Base(path)
+		}
+	}
+	return ""
+}
+
+func specAliasFromPath(path string) string {
+	re := regexp.MustCompile(`SPEC-\d+`)
+	return re.FindString(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+}
+
+type markdownSpecIndexEntry struct {
+	Title   string `json:"title"`
+	Status  string `json:"status"`
+	Created string `json:"created"`
+	Updated string `json:"updated"`
+	File    string `json:"file,omitempty"`
+}
+
+type markdownTaskIndexEntry struct {
+	Title     string   `json:"title"`
+	Spec      string   `json:"spec"`
+	Status    string   `json:"status"`
+	Priority  string   `json:"priority"`
+	DependsOn []string `json:"depends_on"`
+	Session   string   `json:"session"`
+	Sessions  []string `json:"sessions"`
+	Created   string   `json:"created"`
+	Updated   string   `json:"updated"`
+	File      string   `json:"file,omitempty"`
+}
+
+func loadMarkdownTaskIndex(rootPath string) map[string]markdownTaskIndexEntry {
+	index := map[string]markdownTaskIndexEntry{}
+	content, err := os.ReadFile(filepath.Join(rootPath, ".agents", "TASKS.json"))
+	if err != nil {
+		return index
+	}
+	var parsed struct {
+		Tasks map[string]markdownTaskIndexEntry `json:"tasks"`
+	}
+	if err := json.Unmarshal(content, &parsed); err != nil {
+		return index
+	}
+	return parsed.Tasks
+}
+
+func loadMarkdownSpecIndex(rootPath string) map[string]markdownSpecIndexEntry {
+	index := map[string]markdownSpecIndexEntry{}
+	content, err := os.ReadFile(filepath.Join(rootPath, ".agents", "TASKS.json"))
+	if err != nil {
+		return index
+	}
+	var parsed struct {
+		Specs map[string]markdownSpecIndexEntry `json:"specs"`
+	}
+	if err := json.Unmarshal(content, &parsed); err != nil {
+		return index
+	}
+	return parsed.Specs
 }
 
 func writeSpecShow(out io.Writer, result state.SpecShow) {
@@ -2486,9 +4792,20 @@ func writeSpecArchive(out io.Writer, result state.SpecArchiveResult) {
 
 func (r Runner) runSession(args []string, out io.Writer, runtime state.Runtime) error {
 	if len(args) == 0 {
-		return r.runLegacy(append([]string{"session"}, args...), runtime.RootPath(), out)
+		writeSessionHelp(out)
+		return nil
+	}
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		writeSessionHelp(out)
+		return nil
 	}
 	switch args[0] {
+	case "start":
+		return r.runSessionStart(args[1:], out, runtime)
+	case "end":
+		return r.runSessionEnd(args[1:], out, runtime)
+	case "archive":
+		return r.runSessionArchive(args[1:], out, runtime)
 	case "list":
 		return r.runSessionList(args[1:], out, runtime)
 	case "show":
@@ -2497,27 +4814,347 @@ func (r Runner) runSession(args []string, out io.Writer, runtime state.Runtime) 
 		return r.runSessionLog(args[1:], out, runtime)
 	case "enrich":
 		return r.runSessionEnrich(args[1:], out, runtime)
+	case "housekeeping":
+		return r.runSessionHousekeeping(args[1:], out, runtime)
+	case "state":
+		return r.runSessionState(args[1:], out, runtime)
+	case "context":
+		return r.runSessionContext(args[1:], out, runtime)
 	case "report":
 		return r.runSessionReport(args[1:], out, runtime)
 	default:
-		return r.runLegacy(append([]string{"session"}, args...), runtime.RootPath(), out)
+		return unknownSubcommandError("session", args[0])
 	}
 }
 
-func (r Runner) runSessionEnrich(args []string, out io.Writer, runtime state.Runtime) error {
+func writeSessionHelp(out io.Writer) {
+	fmt.Fprintln(out, "Usage: loaf session <subcommand> [options]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Manage session journals and native SQLite session state.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Subcommands:")
+	fmt.Fprintln(out, "  start         Start or resume a session for the current branch")
+	fmt.Fprintln(out, "  end           Stop the current or targeted session")
+	fmt.Fprintln(out, "  archive       Archive a stopped or targeted session")
+	fmt.Fprintln(out, "  list          List sessions")
+	fmt.Fprintln(out, "  show          Show one session")
+	fmt.Fprintln(out, "  log           Append a journal entry")
+	fmt.Fprintln(out, "  enrich        Summarize markdown enrichment compatibility in SQLite mode")
+	fmt.Fprintln(out, "  housekeeping  Summarize markdown housekeeping compatibility in SQLite mode")
+	fmt.Fprintln(out, "  state         Compatibility session-state helpers")
+	fmt.Fprintln(out, "  context       Render hook context prompts")
+	fmt.Fprintln(out, "  report        Export a session report")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "  -h, --help    Show help")
+}
+
+func (r Runner) runSessionStart(args []string, out io.Writer, runtime state.Runtime) error {
+	options, err := parseSessionStartArgs(args)
+	if err != nil {
+		return err
+	}
 	projectRoot, mode, err := r.stateMode(runtime)
 	if err != nil {
 		return err
 	}
 	switch mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"session", "enrich"}, args...), runtime.RootPath(), out)
+		return r.runMarkdownSessionStart(options, out, runtime, projectRoot)
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
+
+	if os.Getenv("LOAF_ENRICHMENT") == "1" {
+		return nil
+	}
+	hookInput, err := r.readSessionHookInput()
+	if err != nil {
+		return err
+	}
+	if hookInput.AgentID != "" && !options.force {
+		return nil
+	}
+	harnessSessionID := firstNonEmpty(options.harnessSessionID, hookInput.SessionID)
+	branch := state.ObservedGitBranch(runtime.RootPath())
+	if branch == "" {
+		return fmt.Errorf("session start requires a git branch")
+	}
+	result, err := state.StartSession(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.SessionStartOptions{
+		Branch:           branch,
+		HarnessSessionID: harnessSessionID,
+	})
+	if err != nil {
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeSessionStart(out, branch, result)
+	return nil
+}
+
+func (r Runner) runSessionEnd(args []string, out io.Writer, runtime state.Runtime) error {
+	options, err := parseSessionEndArgs(args)
+	if err != nil {
+		return err
+	}
+	projectRoot, mode, err := r.stateMode(runtime)
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		return r.runMarkdownSessionEnd(options, out, runtime, projectRoot)
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+
+	if os.Getenv("LOAF_ENRICHMENT") == "1" {
+		return nil
+	}
+	hookInput, err := r.readSessionHookInput()
+	if err != nil {
+		return err
+	}
+	harnessSessionID := firstNonEmpty(options.harnessSessionID, hookInput.SessionID)
+	result, err := state.EndSession(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.SessionEndOptions{
+		Branch:           state.ObservedGitBranch(runtime.RootPath()),
+		HarnessSessionID: harnessSessionID,
+		IfActive:         options.ifActive,
+		Wrap:             options.wrap,
+		Clear:            hookInput.Reason == "clear",
+	})
+	if err != nil {
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeSessionEnd(out, result)
+	return nil
+}
+
+func (r Runner) runSessionArchive(args []string, out io.Writer, runtime state.Runtime) error {
+	options, err := parseSessionArchiveArgs(args)
+	if err != nil {
+		return err
+	}
+	projectRoot, mode, err := r.stateMode(runtime)
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		return r.runMarkdownSessionArchive(options, out, runtime, projectRoot)
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+
+	branch := options.branch
+	if branch == "" {
+		branch = state.ObservedGitBranch(runtime.RootPath())
+	}
+	result, err := state.ArchiveSession(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.SessionArchiveOptions{
+		Branch:           branch,
+		HarnessSessionID: options.harnessSessionID,
+	})
+	if err != nil {
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeSessionArchive(out, result)
+	return nil
+}
+
+func (r Runner) runMarkdownSessionArchive(options sessionArchiveOptions, out io.Writer, runtime state.Runtime, root project.Root) error {
+	branch := options.branch
+	if branch == "" {
+		branch = state.ObservedGitBranch(runtime.RootPath())
+	}
+	if branch == "" && options.harnessSessionID == "" {
+		return fmt.Errorf("not in a git repository; use --branch <branch>")
+	}
+	resolution := resolveMarkdownSessionForLog(root.Path(), branch, options.harnessSessionID, "")
+	if !resolution.Found {
+		if branch != "" {
+			fmt.Fprintf(r.sessionLogErrWriter(), "WARN: no session for branch '%s'; no active sessions to fall back to. Pass --session-id <id> to silence.\n", branch)
+		}
+		return fmt.Errorf("no active session found for branch %s", branch)
+	}
+	if resolution.Adoption == "most-recent-active" {
+		fmt.Fprintf(r.sessionLogErrWriter(), "WARN: no session for branch '%s'; logging to most-recent active session '%s' (origin branch '%s'). Pass --session-id <id> to silence.\n", branch, filepath.Base(resolution.Path), resolution.OriginBranch)
+	}
+	result, err := archiveMarkdownSession(root.Path(), resolution.Path)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  loaf session archive")
+	fmt.Fprintln(out)
+	for _, decision := range result.Decisions {
+		fmt.Fprintf(out, "  decision: %s\n", decision)
+	}
+	if len(result.Decisions) > 0 {
+		fmt.Fprintln(out)
+	}
+	if result.SpecMessage != "" {
+		fmt.Fprintf(out, "  %s\n", result.SpecMessage)
+		fmt.Fprintln(out)
+	}
+	fmt.Fprintf(out, "  Archived: %s\n", result.RelativePath)
+	fmt.Fprintln(out)
+	return nil
+}
+
+type markdownSessionArchiveResult struct {
+	RelativePath string
+	Decisions    []string
+	SpecMessage  string
+}
+
+func archiveMarkdownSession(rootPath string, sessionPath string) (markdownSessionArchiveResult, error) {
+	body, err := os.ReadFile(sessionPath)
+	if err != nil {
+		return markdownSessionArchiveResult{}, err
+	}
+	fields, ok := markdownSessionFrontmatter(sessionPath)
+	if !ok {
+		return markdownSessionArchiveResult{}, fmt.Errorf("frontmatter not found")
+	}
+	decisions := extractMarkdownDecisionEntries(markdownContentWithoutFrontmatter(string(body)), 10)
+	specMessage := ""
+	if fields["spec"] != "" && len(decisions) > 0 {
+		message, err := persistMarkdownArchiveDecisionsToSpec(rootPath, fields["spec"], firstNonEmpty(fields["branch"], "unknown"), decisions)
+		if err != nil {
+			specMessage = "Could not persist to spec: " + err.Error()
+		} else {
+			specMessage = message
+		}
+	}
+	if sessionID := fields["claude_session_id"]; sessionID != "" {
+		_ = os.Remove(filepath.Join(rootPath, ".agents", "tmp", sessionID+"-enrichment.txt"))
+	}
+	archiveDir := filepath.Join(rootPath, ".agents", "sessions", "archive")
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		return markdownSessionArchiveResult{}, err
+	}
+	archivePath := filepath.Join(archiveDir, filepath.Base(sessionPath))
+	if err := os.Rename(sessionPath, archivePath); err != nil {
+		return markdownSessionArchiveResult{}, fmt.Errorf("archive session: %w", err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	updated := body
+	updated, err = setFrontmatterScalar(updated, "status", "archived")
+	if err != nil {
+		return markdownSessionArchiveResult{}, err
+	}
+	updated, err = setFrontmatterScalar(updated, "archived_at", now)
+	if err != nil {
+		return markdownSessionArchiveResult{}, err
+	}
+	updated, err = setFrontmatterScalar(updated, "last_updated", now)
+	if err != nil {
+		return markdownSessionArchiveResult{}, err
+	}
+	if err := os.WriteFile(archivePath, updated, 0o600); err != nil {
+		return markdownSessionArchiveResult{}, err
+	}
+	return markdownSessionArchiveResult{
+		RelativePath: markdownSessionRelativePath(rootPath, archivePath),
+		Decisions:    decisions,
+		SpecMessage:  specMessage,
+	}, nil
+}
+
+func persistMarkdownArchiveDecisionsToSpec(rootPath string, specID string, sessionBranch string, decisions []string) (string, error) {
+	specsDir := filepath.Join(rootPath, ".agents", "specs")
+	entries, err := os.ReadDir(specsDir)
+	if err != nil {
+		return "", fmt.Errorf("no specs directory found")
+	}
+	specPath := ""
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		if strings.Contains(entry.Name(), specID) {
+			specPath = filepath.Join(specsDir, entry.Name())
+			break
+		}
+	}
+	if specPath == "" {
+		return "", fmt.Errorf("spec %s not found", specID)
+	}
+	body, err := os.ReadFile(specPath)
+	if err != nil {
+		return "", err
+	}
+	date := time.Now().UTC().Format("2006-01-02")
+	var entry strings.Builder
+	entry.WriteString(fmt.Sprintf("- %s - Session %s archived: %d decision(s) extracted\n", date, sessionBranch, len(decisions)))
+	for _, decision := range decisions {
+		entry.WriteString("  ")
+		entry.WriteString(decision)
+		entry.WriteString("\n")
+	}
+	entry.WriteString("\n")
+	text := string(body)
+	if idx := strings.Index(text, "\n## Changelog\n"); idx >= 0 {
+		insertAt := idx + len("\n## Changelog\n")
+		text = text[:insertAt] + entry.String() + text[insertAt:]
+	} else {
+		if !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		text += "\n## Changelog\n\n" + entry.String()
+	}
+	if err := os.WriteFile(specPath, []byte(text), 0o600); err != nil {
+		return "", err
+	}
+	return "Appended decisions to " + filepath.Base(specPath), nil
+}
+
+func extractMarkdownDecisionEntries(content string, limit int) []string {
+	lines := strings.Split(content, "\n")
+	var entries []string
+	decisionRE := regexp.MustCompile(`^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] decision\([^)]+\):`)
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if decisionRE.MatchString(trimmed) {
+			entries = append(entries, trimmed)
+		}
+	}
+	if limit > 0 && len(entries) > limit {
+		return entries[:limit]
+	}
+	return entries
+}
+
+func (r Runner) runSessionEnrich(args []string, out io.Writer, runtime state.Runtime) error {
 	options, err := parseCompatibilityCommandArgs("session enrich", args, map[string]bool{"--dry-run": true})
 	if err != nil {
 		return err
+	}
+	projectRoot, mode, err := r.stateMode(runtime)
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		summary, err := markdownCompatibilitySummary(projectRoot.Path(), "session enrich", "markdown", "skipped", "Session JSONL enrichment is no longer run through the TypeScript bridge; use native `loaf session log` and `loaf session state update` to maintain markdown journals.")
+		if err != nil {
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, summary)
+		}
+		writeCompatibilityCommandSummary(out, summary)
+		return nil
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
 	sessions, err := state.ListSessions(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.SessionListOptions{All: true})
 	if err != nil {
@@ -2540,6 +5177,1200 @@ func (r Runner) runSessionEnrich(args []string, out io.Writer, runtime state.Run
 	return nil
 }
 
+func (r Runner) runSessionHousekeeping(args []string, out io.Writer, runtime state.Runtime) error {
+	options, err := parseCompatibilityCommandArgs("session housekeeping", args, map[string]bool{"--dry-run": true})
+	if err != nil {
+		return err
+	}
+	projectRoot, mode, err := r.stateMode(runtime)
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		summary, err := markdownCompatibilitySummary(projectRoot.Path(), "session housekeeping", "markdown", "skipped", "Native markdown session lifecycle commands now own start/end/archive/log/state updates; legacy TypeScript housekeeping is not run.")
+		if err != nil {
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, summary)
+		}
+		writeCompatibilityCommandSummary(out, summary)
+		return nil
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+	sessions, err := state.ListSessions(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.SessionListOptions{All: true})
+	if err != nil {
+		return err
+	}
+	summary := compatibilityCommandSummary{
+		Version: 1,
+		Command: "session housekeeping",
+		Mode:    "sqlite",
+		Action:  "skipped",
+		Reason:  "SQLite session lifecycle is maintained by native `loaf session start/end/archive/log`; markdown session housekeeping is a compatibility cleanup path and is not run in SQLite mode.",
+		Counts: map[string]int{
+			"sessions": len(sessions.Sessions),
+		},
+	}
+	if options.jsonOutput {
+		return writeJSON(out, summary)
+	}
+	writeCompatibilityCommandSummary(out, summary)
+	return nil
+}
+
+func (r Runner) runSessionState(args []string, out io.Writer, runtime state.Runtime) error {
+	if len(args) == 0 {
+		writeSessionStateHelp(out)
+		return nil
+	}
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		writeSessionStateHelp(out)
+		return nil
+	}
+	switch args[0] {
+	case "update":
+		return r.runSessionStateUpdate(args[1:], out, runtime)
+	default:
+		return unknownSubcommandError("session state", args[0])
+	}
+}
+
+func writeSessionStateHelp(out io.Writer) {
+	fmt.Fprintln(out, "Usage: loaf session state <subcommand> [options]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Run compatibility helpers for session state maintenance.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Subcommands:")
+	fmt.Fprintln(out, "  update  Refresh legacy markdown session state in markdown-only mode")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "  -h, --help  Show help")
+}
+
+func (r Runner) runSessionStateUpdate(args []string, out io.Writer, runtime state.Runtime) error {
+	if len(args) > 0 {
+		return fmt.Errorf("session state update accepts no arguments")
+	}
+	projectRoot, mode, err := r.stateMode(runtime)
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		return r.runMarkdownSessionStateUpdate(runtime, projectRoot)
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+	return r.runSQLiteSessionStateUpdate(runtime, projectRoot)
+}
+
+func (r Runner) runSQLiteSessionStateUpdate(runtime state.Runtime, root project.Root) error {
+	hookInput, err := r.readSessionHookInput()
+	if err != nil {
+		return err
+	}
+	if hookInput.AgentID != "" {
+		return nil
+	}
+	branch := state.ObservedGitBranch(runtime.RootPath())
+	session, found, err := r.sqliteSessionForContext(root, hookInput.SessionID, branch)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	stateSection := buildMarkdownCurrentStateSection(runtime.RootPath(), firstNonEmpty(branch, session.Session.Branch))
+	_, err = state.RecordSessionStateSnapshot(context.Background(), root, state.PathResolver{StateHome: r.StateHome}, state.SessionStateSnapshotOptions{
+		SessionRef:       firstNonEmpty(session.Session.Alias, session.Session.ID),
+		Content:          stateSection,
+		ObservedBranch:   firstNonEmpty(branch, session.Session.Branch),
+		ObservedWorktree: runtime.RootPath(),
+	})
+	return err
+}
+
+func (r Runner) runMarkdownSessionStateUpdate(runtime state.Runtime, root project.Root) error {
+	hookInput, err := r.readSessionHookInput()
+	if err != nil {
+		return err
+	}
+	if hookInput.AgentID != "" {
+		return nil
+	}
+	branch := state.ObservedGitBranch(runtime.RootPath())
+	if branch == "" {
+		return nil
+	}
+	sessionPath, found := findMarkdownSessionForContext(root.Path(), hookInput.SessionID, branch)
+	if !found {
+		return nil
+	}
+	stateSection := buildMarkdownCurrentStateSection(runtime.RootPath(), branch)
+	return writeMarkdownCurrentState(sessionPath, stateSection)
+}
+
+func buildMarkdownCurrentStateSection(worktree string, branch string) string {
+	now := time.Now().UTC()
+	lines := []string{
+		fmt.Sprintf("## Current State (%s)", now.Format("2006-01-02 15:04")),
+		"",
+		fmt.Sprintf("Branch: %s", branch),
+	}
+	if commits, err := recentGitCommitSubjects(worktree, 1); err == nil && len(commits) > 0 && commits[0].Hash != "" {
+		lines = append(lines, fmt.Sprintf("Last commit: %s - %s", commits[0].Hash, commits[0].Subject))
+	}
+	if uncommitted, err := gitUncommittedFileCount(worktree); err == nil && uncommitted > 0 {
+		suffix := "s"
+		if uncommitted == 1 {
+			suffix = ""
+		}
+		lines = append(lines, fmt.Sprintf("Uncommitted: %d file%s", uncommitted, suffix))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func gitUncommittedFileCount(worktree string) (int, error) {
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = worktree
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func writeMarkdownCurrentState(path string, stateSection string) error {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	updated, err := setFrontmatterScalar(body, "last_updated", time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return err
+	}
+	frontmatter, markdownBody := splitMarkdownDocument(string(updated))
+	markdownBody = upsertMarkdownCurrentState(markdownBody, stateSection)
+	return os.WriteFile(path, []byte(frontmatter+markdownBody), 0o600)
+}
+
+func splitMarkdownDocument(text string) (string, string) {
+	if strings.HasPrefix(text, "---\n") {
+		if offset := strings.Index(text[len("---\n"):], "\n---\n"); offset >= 0 {
+			end := len("---\n") + offset + len("\n---\n")
+			return text[:end], text[end:]
+		}
+	}
+	if strings.HasPrefix(text, "---\r\n") {
+		if offset := strings.Index(text[len("---\r\n"):], "\r\n---\r\n"); offset >= 0 {
+			end := len("---\r\n") + offset + len("\r\n---\r\n")
+			return text[:end], text[end:]
+		}
+	}
+	return "", text
+}
+
+func upsertMarkdownCurrentState(body string, stateSection string) string {
+	lines := strings.Split(body, "\n")
+	currentStateStart := -1
+	journalStart := -1
+	for i, line := range lines {
+		switch {
+		case currentStateStart < 0 && strings.HasPrefix(line, "## Current State"):
+			currentStateStart = i
+		case journalStart < 0 && strings.TrimSpace(line) == "## Journal":
+			journalStart = i
+		}
+	}
+	stateLines := append(strings.Split(stateSection, "\n"), "")
+	if currentStateStart >= 0 {
+		end := len(lines)
+		for i := currentStateStart + 1; i < len(lines); i++ {
+			if strings.HasPrefix(lines[i], "## ") {
+				end = i
+				break
+			}
+		}
+		replaced := append([]string{}, lines[:currentStateStart]...)
+		replaced = append(replaced, stateLines...)
+		replaced = append(replaced, lines[end:]...)
+		return strings.Join(trimExcessBlankLinesBeforeHeading(replaced), "\n")
+	}
+	if journalStart >= 0 {
+		inserted := append([]string{}, lines[:journalStart]...)
+		inserted = append(inserted, stateLines...)
+		inserted = append(inserted, lines[journalStart:]...)
+		return strings.Join(trimExcessBlankLinesBeforeHeading(inserted), "\n")
+	}
+	text := strings.TrimRight(body, "\n")
+	if text == "" {
+		return stateSection + "\n"
+	}
+	return text + "\n\n" + stateSection + "\n"
+}
+
+func trimExcessBlankLinesBeforeHeading(lines []string) []string {
+	for i := 1; i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], "## ") && strings.TrimSpace(lines[i-1]) == "" {
+			for i >= 2 && strings.TrimSpace(lines[i-2]) == "" {
+				lines = append(lines[:i-2], lines[i-1:]...)
+				i--
+			}
+		}
+	}
+	return lines
+}
+
+func (r Runner) runSessionContext(args []string, out io.Writer, runtime state.Runtime) error {
+	if len(args) == 0 {
+		writeSessionContextHelp(out)
+		return nil
+	}
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		writeSessionContextHelp(out)
+		return nil
+	}
+	switch args[0] {
+	case "for-prompt", "--for-prompt":
+		return r.runSessionContextForPrompt(args[1:], out)
+	case "for-resumption", "--for-resumption":
+		return r.runSessionContextForResumption(args[1:], out, runtime)
+	case "for-compact", "--for-compact":
+		return r.runSessionContextForCompact(args[1:], out, runtime)
+	default:
+		return unknownSubcommandError("session context", args[0])
+	}
+}
+
+func writeSessionContextHelp(out io.Writer) {
+	fmt.Fprintln(out, "Usage: loaf session context <subcommand> [options]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Render session lifecycle context for hooks and compaction.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Subcommands:")
+	fmt.Fprintln(out, "  for-prompt      Render implementation prompt context")
+	fmt.Fprintln(out, "  for-resumption  Render post-compaction resumption context")
+	fmt.Fprintln(out, "  for-compact     Render pre-compaction instructions")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "  -h, --help      Show help")
+}
+
+func (r Runner) runSessionContextForPrompt(args []string, out io.Writer) error {
+	if len(args) > 0 {
+		return fmt.Errorf("session context for-prompt accepts no arguments")
+	}
+	hookInput, err := r.readSessionHookInput()
+	if err != nil {
+		return err
+	}
+	if hookInput.AgentID != "" {
+		return nil
+	}
+	fmt.Fprintln(out, sessionContextPrompt())
+	return nil
+}
+
+func (r Runner) runSessionContextForCompact(args []string, out io.Writer, runtime state.Runtime) error {
+	if len(args) > 0 {
+		return fmt.Errorf("session context for-compact accepts no arguments")
+	}
+	projectRoot, mode, err := r.stateMode(runtime)
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		return r.runMarkdownSessionContextForCompact(out, runtime, projectRoot)
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+	hookInput, err := r.readSessionHookInput()
+	if err != nil {
+		return err
+	}
+	if hookInput.AgentID != "" {
+		return nil
+	}
+	_, err = state.LogJournal(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.JournalLogOptions{
+		Entry:            "compact(session): context compaction triggered",
+		ObservedBranch:   state.ObservedGitBranch(runtime.RootPath()),
+		ObservedWorktree: runtime.RootPath(),
+		HarnessSessionID: hookInput.SessionID,
+		LinkSession:      true,
+		IfSessionActive:  true,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out, sessionContextCompactInstructions())
+	return nil
+}
+
+func (r Runner) runMarkdownSessionContextForCompact(out io.Writer, runtime state.Runtime, root project.Root) error {
+	hookInput, err := r.readSessionHookInput()
+	if err != nil {
+		return err
+	}
+	if hookInput.AgentID != "" {
+		return nil
+	}
+	branch := state.ObservedGitBranch(runtime.RootPath())
+	sessionPath, found := findMarkdownSessionForContext(root.Path(), hookInput.SessionID, branch)
+	if found {
+		if err := appendMarkdownSessionJournalEntry(sessionPath, "compact(session): context compaction triggered"); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintln(out, sessionContextCompactInstructions())
+	return nil
+}
+
+func findMarkdownSessionForContext(rootPath string, harnessSessionID string, branch string) (string, bool) {
+	sessionsDir := filepath.Join(rootPath, ".agents", "sessions")
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		return "", false
+	}
+	type candidate struct {
+		path string
+		when string
+	}
+	var branchCandidates []candidate
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		path := filepath.Join(sessionsDir, entry.Name())
+		fields, ok := markdownSessionFrontmatter(path)
+		if !ok {
+			continue
+		}
+		if harnessSessionID != "" && firstNonEmpty(fields["claude_session_id"], fields["harness_session_id"], fields["session_id"]) == harnessSessionID {
+			return path, true
+		}
+		if branch != "" && fields["branch"] == branch && fields["status"] != "archived" {
+			branchCandidates = append(branchCandidates, candidate{
+				path: path,
+				when: firstNonEmpty(fields["last_updated"], fields["last_entry"], fields["created"]),
+			})
+		}
+	}
+	if len(branchCandidates) == 0 {
+		return "", false
+	}
+	sort.Slice(branchCandidates, func(i, j int) bool {
+		return branchCandidates[i].when > branchCandidates[j].when
+	})
+	return branchCandidates[0].path, true
+}
+
+func markdownSessionFrontmatter(path string) (map[string]string, bool) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	fields, ok := parseKnowledgeFrontmatter(body)
+	if !ok {
+		return nil, false
+	}
+	values := map[string]string{}
+	for key, field := range fields {
+		values[key] = firstFieldValue(field)
+	}
+	return values, true
+}
+
+func appendMarkdownSessionJournalEntry(path string, entry string) error {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	updated, err := setFrontmatterScalar(body, "last_updated", now.Format(time.RFC3339))
+	if err != nil {
+		return err
+	}
+	updated, err = setFrontmatterScalar(updated, "last_entry", now.Format(time.RFC3339))
+	if err != nil {
+		return err
+	}
+	text := string(updated)
+	if !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	if !strings.Contains(text, "\n## Journal") {
+		text += "\n## Journal\n\n"
+	}
+	text += fmt.Sprintf("[%s] %s\n", now.Format("2006-01-02 15:04"), entry)
+	return os.WriteFile(path, []byte(text), 0o600)
+}
+
+func (r Runner) runSessionContextForResumption(args []string, out io.Writer, runtime state.Runtime) error {
+	if len(args) > 0 {
+		return fmt.Errorf("session context for-resumption accepts no arguments")
+	}
+	projectRoot, mode, err := r.stateMode(runtime)
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		return r.runMarkdownSessionContextForResumption(out, runtime, projectRoot)
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+	hookInput, err := r.readSessionHookInput()
+	if err != nil {
+		return err
+	}
+	branch := state.ObservedGitBranch(runtime.RootPath())
+	session, found, err := r.sqliteSessionForContext(projectRoot, hookInput.SessionID, branch)
+	if err != nil {
+		return err
+	}
+	writeSessionResumptionContext(out, session, found, branch)
+	return nil
+}
+
+func (r Runner) runMarkdownSessionContextForResumption(out io.Writer, runtime state.Runtime, root project.Root) error {
+	hookInput, err := r.readSessionHookInput()
+	if err != nil {
+		return err
+	}
+	branch := state.ObservedGitBranch(runtime.RootPath())
+	sessionPath, found := findMarkdownSessionForContext(root.Path(), hookInput.SessionID, branch)
+	writeMarkdownSessionResumptionContext(out, root.Path(), sessionPath, found, branch)
+	return nil
+}
+
+func writeMarkdownSessionResumptionContext(out io.Writer, rootPath string, sessionPath string, found bool, observedBranch string) {
+	fmt.Fprintln(out, "=== POST-COMPACTION RESUMPTION ===")
+	fmt.Fprintln(out)
+	if !found {
+		fmt.Fprintln(out, "WARNING: No active session found. Read .agents/sessions/ manually.")
+		return
+	}
+	body, err := os.ReadFile(sessionPath)
+	if err != nil {
+		fmt.Fprintf(out, "WARNING: Could not read session file: %s\n", sessionPath)
+		return
+	}
+	fields, _ := markdownSessionFrontmatter(sessionPath)
+	rel := markdownSessionRelativePath(rootPath, sessionPath)
+	fmt.Fprintf(out, "Session: %s\n", rel)
+	if branch := firstNonEmpty(fields["branch"], observedBranch); branch != "" {
+		fmt.Fprintf(out, "Branch: %s\n", branch)
+	}
+	if spec := fields["spec"]; spec != "" {
+		fmt.Fprintf(out, "Spec: %s\n", spec)
+	}
+	fmt.Fprintln(out)
+	content := markdownContentWithoutFrontmatter(string(body))
+	if currentState := extractMarkdownCurrentState(content); currentState != "" {
+		fmt.Fprintln(out, currentState)
+	} else {
+		fmt.Fprintln(out, "WARNING: No ## Current State was written before compaction.")
+		fmt.Fprintln(out, "Read the session file's ## Journal section for context.")
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "## Recent Journal")
+	fmt.Fprintln(out)
+	entries := extractRecentMarkdownJournalEntries(content, 20)
+	if len(entries) == 0 {
+		fmt.Fprintln(out, "(no journal entries)")
+	} else {
+		for _, entry := range entries {
+			fmt.Fprintln(out, entry)
+		}
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "---")
+	fmt.Fprintln(out, "Resume work from where the state summary left off.")
+	fmt.Fprintln(out, "Do not ask 'where were we?' - the context above tells you.")
+	fmt.Fprintf(out, "If you need more detail, read the full session file: %s\n", rel)
+}
+
+func markdownSessionRelativePath(rootPath string, sessionPath string) string {
+	if rel, err := filepath.Rel(filepath.Join(rootPath, ".agents"), sessionPath); err == nil && !strings.HasPrefix(rel, "..") {
+		return filepath.ToSlash(filepath.Join(".agents", rel))
+	}
+	return sessionPath
+}
+
+type markdownSessionRecord struct {
+	Alias          string
+	Path           string
+	RelativePath   string
+	Fields         map[string]string
+	Body           []byte
+	Archived       bool
+	JournalEntries []state.SessionJournalEntry
+}
+
+func markdownSessionList(rootPath string, options state.SessionListOptions) (state.SessionList, error) {
+	records, err := collectMarkdownSessionRecords(rootPath, options.All)
+	if err != nil {
+		return state.SessionList{}, err
+	}
+	result := state.SessionList{Version: 1, Sessions: map[string]state.SessionItem{}}
+	for _, record := range records {
+		status := markdownSessionStatus(record)
+		if !options.All && status == "archived" {
+			continue
+		}
+		result.Sessions[record.Alias] = state.SessionItem{
+			Branch:           record.Fields["branch"],
+			Status:           status,
+			HarnessSessionID: markdownSessionHarnessID(record.Fields),
+			SourcePath:       record.RelativePath,
+			JournalEntries:   len(record.JournalEntries),
+		}
+	}
+	return result, nil
+}
+
+func markdownSessionShow(rootPath string, ref string) (state.SessionShow, error) {
+	records, err := collectMarkdownSessionRecords(rootPath, true)
+	if err != nil {
+		return state.SessionShow{}, err
+	}
+	record, ok := resolveMarkdownSessionRecord(records, ref)
+	if !ok {
+		return state.SessionShow{}, fmt.Errorf("session %q not found in markdown sessions", ref)
+	}
+	hash := sha256.Sum256(record.Body)
+	return state.SessionShow{
+		Query: ref,
+		Session: state.SessionDetail{
+			ID:               record.Alias,
+			Alias:            record.Alias,
+			Branch:           record.Fields["branch"],
+			Status:           markdownSessionStatus(record),
+			HarnessSessionID: markdownSessionHarnessID(record.Fields),
+			Sources: []state.TraceSource{{
+				Path: record.RelativePath,
+				Hash: hex.EncodeToString(hash[:]),
+			}},
+			JournalEntries: record.JournalEntries,
+			Relationships:  []state.TraceRelationship{},
+			CreatedAt:      firstNonEmpty(record.Fields["created"], record.Fields["last_entry"], record.Fields["last_updated"]),
+			UpdatedAt:      firstNonEmpty(record.Fields["last_updated"], record.Fields["last_entry"], record.Fields["created"]),
+		},
+	}, nil
+}
+
+func markdownCompatibilitySummary(rootPath string, command string, mode string, action string, reason string) (compatibilityCommandSummary, error) {
+	records, err := collectMarkdownSessionRecords(rootPath, true)
+	if err != nil {
+		return compatibilityCommandSummary{}, err
+	}
+	counts := map[string]int{"sessions": len(records)}
+	for _, record := range records {
+		status := markdownSessionStatus(record)
+		if status == "" {
+			status = "unknown"
+		}
+		counts[status]++
+	}
+	return compatibilityCommandSummary{
+		Version: 1,
+		Command: command,
+		Mode:    mode,
+		Action:  action,
+		Reason:  reason,
+		Counts:  counts,
+	}, nil
+}
+
+func (r Runner) runMarkdownSessionStart(options sessionStartOptions, out io.Writer, runtime state.Runtime, root project.Root) error {
+	if os.Getenv("LOAF_ENRICHMENT") == "1" {
+		return nil
+	}
+	hookInput, err := r.readSessionHookInput()
+	if err != nil {
+		return err
+	}
+	if hookInput.AgentID != "" && !options.force {
+		return nil
+	}
+	branch := state.ObservedGitBranch(runtime.RootPath())
+	if branch == "" {
+		return fmt.Errorf("session start requires a git branch")
+	}
+	harnessSessionID := firstNonEmpty(options.harnessSessionID, hookInput.SessionID)
+	result, err := startMarkdownSession(root.Path(), branch, harnessSessionID)
+	if err != nil {
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeSessionStart(out, branch, result)
+	return nil
+}
+
+func (r Runner) runMarkdownSessionEnd(options sessionEndOptions, out io.Writer, runtime state.Runtime, root project.Root) error {
+	if os.Getenv("LOAF_ENRICHMENT") == "1" {
+		return nil
+	}
+	hookInput, err := r.readSessionHookInput()
+	if err != nil {
+		return err
+	}
+	branch := state.ObservedGitBranch(runtime.RootPath())
+	harnessSessionID := firstNonEmpty(options.harnessSessionID, hookInput.SessionID)
+	if branch == "" && harnessSessionID == "" {
+		return fmt.Errorf("session end requires a git branch or harness session id")
+	}
+	result, err := endMarkdownSession(root.Path(), branch, harnessSessionID, markdownSessionEndOptions{
+		ifActive: options.ifActive || options.fromHook,
+		wrap:     options.wrap,
+		clear:    hookInput.Reason == "clear",
+	})
+	if err != nil {
+		if options.fromHook && strings.Contains(err.Error(), "no active session found") {
+			return nil
+		}
+		return err
+	}
+	if options.fromHook && result.Action == state.SessionEndActionNoop && !options.jsonOutput {
+		return nil
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeSessionEnd(out, result)
+	return nil
+}
+
+func startMarkdownSession(rootPath string, branch string, harnessSessionID string) (state.SessionStartResult, error) {
+	if err := os.MkdirAll(filepath.Join(rootPath, ".agents", "sessions"), 0o755); err != nil {
+		return state.SessionStartResult{}, fmt.Errorf("create markdown sessions directory: %w", err)
+	}
+	records, err := collectMarkdownSessionRecords(rootPath, false)
+	if err != nil {
+		return state.SessionStartResult{}, err
+	}
+	var existingByHarness *markdownSessionRecord
+	var activeByBranch *markdownSessionRecord
+	for i := range records {
+		record := &records[i]
+		if harnessSessionID != "" && markdownSessionHarnessID(record.Fields) == harnessSessionID {
+			existingByHarness = record
+			break
+		}
+		if activeByBranch == nil && record.Fields["branch"] == branch && markdownSessionStatus(*record) == "active" {
+			activeByBranch = record
+		}
+	}
+	existing := existingByHarness
+	if existing == nil {
+		existing = activeByBranch
+	}
+
+	now := time.Now().UTC()
+	nowStamp := now.Format(time.RFC3339)
+	journalTime := now.Format("2006-01-02 15:04")
+	previous := (*state.TraceEntity)(nil)
+	previousJournalIDs := []string{}
+	action := state.SessionStartActionCreated
+	if existing != nil && harnessSessionID != "" && markdownSessionHarnessID(existing.Fields) != "" && markdownSessionHarnessID(existing.Fields) != harnessSessionID {
+		if err := appendMarkdownSessionLifecycleEntries(existing.Path, map[string]string{
+			"status":       "stopped",
+			"last_updated": nowStamp,
+			"last_entry":   nowStamp,
+		}, []string{
+			fmt.Sprintf("[%s] session(end): closed by new conversation", journalTime),
+			fmt.Sprintf("[%s] session(stop):   === SESSION STOPPED ===", journalTime),
+		}, true); err != nil {
+			return state.SessionStartResult{}, err
+		}
+		previous = &state.TraceEntity{Kind: "session", ID: existing.Alias, Alias: existing.Alias, Status: "stopped"}
+		previousJournalIDs = []string{existing.Alias + ":end", existing.Alias + ":stop"}
+		existing = nil
+		action = state.SessionStartActionRotated
+	}
+
+	var active markdownSessionRecord
+	journalIDs := []string{}
+	if existing != nil {
+		active = *existing
+		action = state.SessionStartActionAlreadyActive
+		updates := map[string]string{
+			"branch":       branch,
+			"status":       "active",
+			"last_updated": nowStamp,
+			"last_entry":   nowStamp,
+		}
+		if harnessSessionID != "" {
+			updates["claude_session_id"] = harnessSessionID
+		}
+		var entries []string
+		if markdownSessionStatus(active) != "active" {
+			action = state.SessionStartActionResumed
+			entries = append(entries, fmt.Sprintf("[%s] session(resume): %s", journalTime, markdownResumeMessage(harnessSessionID)))
+			journalIDs = append(journalIDs, active.Alias+":resume")
+		}
+		if err := appendMarkdownSessionLifecycleEntries(active.Path, updates, entries, false); err != nil {
+			return state.SessionStartResult{}, err
+		}
+		active.Fields["branch"] = branch
+		active.Fields["status"] = "active"
+		if harnessSessionID != "" {
+			active.Fields["claude_session_id"] = harnessSessionID
+		}
+	} else {
+		alias, path, err := nextMarkdownSessionPath(rootPath, now)
+		if err != nil {
+			return state.SessionStartResult{}, err
+		}
+		if err := writeNewMarkdownSession(path, branch, harnessSessionID, now); err != nil {
+			return state.SessionStartResult{}, err
+		}
+		active = markdownSessionRecord{
+			Alias: alias,
+			Path:  path,
+			Fields: map[string]string{
+				"branch":            branch,
+				"status":            "active",
+				"claude_session_id": harnessSessionID,
+			},
+		}
+		journalIDs = append(journalIDs, alias+":start")
+	}
+	return state.SessionStartResult{
+		Version:             1,
+		Action:              action,
+		Session:             state.TraceEntity{Kind: "session", ID: active.Alias, Alias: active.Alias, Status: "active"},
+		HarnessSessionID:    firstNonEmpty(harnessSessionID, markdownSessionHarnessID(active.Fields)),
+		JournalEntryIDs:     journalIDs,
+		PreviousSession:     previous,
+		PreviousJournalIDs:  previousJournalIDs,
+		PreviousSessionNote: markdownPreviousSessionNote(previous),
+	}, nil
+}
+
+type markdownSessionEndOptions struct {
+	ifActive bool
+	wrap     bool
+	clear    bool
+}
+
+func endMarkdownSession(rootPath string, branch string, harnessSessionID string, options markdownSessionEndOptions) (state.SessionEndResult, error) {
+	records, err := collectMarkdownSessionRecords(rootPath, false)
+	if err != nil {
+		return state.SessionEndResult{}, err
+	}
+	var target *markdownSessionRecord
+	for i := range records {
+		record := &records[i]
+		if harnessSessionID != "" && markdownSessionHarnessID(record.Fields) == harnessSessionID {
+			target = record
+			break
+		}
+		if target == nil && branch != "" && record.Fields["branch"] == branch && markdownSessionStatus(*record) == "active" {
+			target = record
+		}
+	}
+	if target == nil {
+		if options.ifActive {
+			return state.SessionEndResult{Version: 1, Action: state.SessionEndActionNoop, NoopReason: "no active session found"}, nil
+		}
+		return state.SessionEndResult{}, fmt.Errorf("no active session found")
+	}
+	status := markdownSessionStatus(*target)
+	if status != "active" {
+		if options.ifActive {
+			return state.SessionEndResult{
+				Version:          1,
+				Action:           state.SessionEndActionNoop,
+				Session:          state.TraceEntity{Kind: "session", ID: target.Alias, Alias: target.Alias, Status: status},
+				HarnessSessionID: markdownSessionHarnessID(target.Fields),
+				NoopReason:       fmt.Sprintf("session is %s", status),
+			}, nil
+		}
+		return state.SessionEndResult{
+			Version:          1,
+			Action:           state.SessionEndActionAlreadyClosed,
+			Session:          state.TraceEntity{Kind: "session", ID: target.Alias, Alias: target.Alias, Status: status},
+			HarnessSessionID: markdownSessionHarnessID(target.Fields),
+			NoopReason:       fmt.Sprintf("session is %s", status),
+		}, nil
+	}
+	now := time.Now().UTC()
+	nowStamp := now.Format(time.RFC3339)
+	journalTime := now.Format("2006-01-02 15:04")
+	action := state.SessionEndActionStopped
+	nextStatus := "stopped"
+	entries := []string{}
+	journalIDs := []string{}
+	switch {
+	case options.clear:
+		action = state.SessionEndActionCleared
+		nextStatus = "active"
+		entries = append(entries, fmt.Sprintf("[%s] session(clear):  === CONTEXT CLEARED ===", journalTime))
+		journalIDs = append(journalIDs, target.Alias+":clear")
+	case options.wrap:
+		action = state.SessionEndActionDone
+		nextStatus = "done"
+		entries = append(entries, fmt.Sprintf("[%s] session(wrap): session ended", journalTime))
+		journalIDs = append(journalIDs, target.Alias+":wrap")
+	default:
+		entries = append(entries,
+			fmt.Sprintf("[%s] session(end): session ended", journalTime),
+			fmt.Sprintf("[%s] session(stop):   === SESSION STOPPED ===", journalTime),
+		)
+		journalIDs = append(journalIDs, target.Alias+":end", target.Alias+":stop")
+	}
+	if err := appendMarkdownSessionLifecycleEntries(target.Path, map[string]string{
+		"status":       nextStatus,
+		"last_updated": nowStamp,
+		"last_entry":   nowStamp,
+	}, entries, true); err != nil {
+		return state.SessionEndResult{}, err
+	}
+	return state.SessionEndResult{
+		Version:          1,
+		Action:           action,
+		Session:          state.TraceEntity{Kind: "session", ID: target.Alias, Alias: target.Alias, Status: nextStatus},
+		HarnessSessionID: firstNonEmpty(harnessSessionID, markdownSessionHarnessID(target.Fields)),
+		JournalEntryIDs:  journalIDs,
+	}, nil
+}
+
+func collectMarkdownSessionRecords(rootPath string, includeArchived bool) ([]markdownSessionRecord, error) {
+	sessionsDir := filepath.Join(rootPath, ".agents", "sessions")
+	records, err := readMarkdownSessionRecords(rootPath, sessionsDir, false)
+	if err != nil {
+		return nil, err
+	}
+	if includeArchived {
+		archived, err := readMarkdownSessionRecords(rootPath, filepath.Join(sessionsDir, "archive"), true)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, archived...)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		left := firstNonEmpty(records[i].Fields["last_updated"], records[i].Fields["last_entry"], records[i].Fields["created"], records[i].Alias)
+		right := firstNonEmpty(records[j].Fields["last_updated"], records[j].Fields["last_entry"], records[j].Fields["created"], records[j].Alias)
+		if left == right {
+			return records[i].Alias < records[j].Alias
+		}
+		return left > right
+	})
+	return records, nil
+}
+
+func readMarkdownSessionRecords(rootPath string, dir string, archived bool) ([]markdownSessionRecord, error) {
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read markdown sessions: %w", err)
+	}
+	records := []markdownSessionRecord{}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		record, ok, err := readMarkdownSessionRecord(rootPath, path, archived)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		if !archived && markdownSessionStatus(record) == "archived" {
+			continue
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
+func readMarkdownSessionRecord(rootPath string, path string, archived bool) (markdownSessionRecord, bool, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return markdownSessionRecord{}, false, fmt.Errorf("read markdown session %s: %w", path, err)
+	}
+	fields, ok := parseKnowledgeFrontmatter(body)
+	if !ok {
+		return markdownSessionRecord{}, false, nil
+	}
+	values := map[string]string{}
+	for key, field := range fields {
+		values[key] = firstFieldValue(field)
+	}
+	alias := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	content := markdownContentWithoutFrontmatter(string(body))
+	return markdownSessionRecord{
+		Alias:          alias,
+		Path:           path,
+		RelativePath:   markdownSessionRelativePath(rootPath, path),
+		Fields:         values,
+		Body:           body,
+		Archived:       archived,
+		JournalEntries: parseMarkdownSessionJournalEntries(alias, content),
+	}, true, nil
+}
+
+func resolveMarkdownSessionRecord(records []markdownSessionRecord, ref string) (markdownSessionRecord, bool) {
+	trimmed := strings.TrimSpace(ref)
+	for _, record := range records {
+		relativeWithoutExt := strings.TrimSuffix(record.RelativePath, filepath.Ext(record.RelativePath))
+		switch {
+		case record.Alias == trimmed:
+			return record, true
+		case record.RelativePath == trimmed:
+			return record, true
+		case relativeWithoutExt == trimmed:
+			return record, true
+		case record.Path == trimmed:
+			return record, true
+		case markdownSessionHarnessID(record.Fields) == trimmed:
+			return record, true
+		}
+	}
+	for _, record := range records {
+		if record.Fields["branch"] == trimmed && markdownSessionStatus(record) != "archived" {
+			return record, true
+		}
+	}
+	return markdownSessionRecord{}, false
+}
+
+func markdownSessionStatus(record markdownSessionRecord) string {
+	if record.Archived {
+		return "archived"
+	}
+	return firstNonEmpty(record.Fields["status"], "active")
+}
+
+func markdownSessionHarnessID(fields map[string]string) string {
+	return firstNonEmpty(fields["claude_session_id"], fields["harness_session_id"], fields["session_id"])
+}
+
+func parseMarkdownSessionJournalEntries(alias string, content string) []state.SessionJournalEntry {
+	entryRE := regexp.MustCompile(`(?m)^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]\s+(.+)$`)
+	typedRE := regexp.MustCompile(`^([A-Za-z0-9_-]+)(?:\(([^)]*)\))?:\s*(.+)$`)
+	matches := entryRE.FindAllStringSubmatch(content, -1)
+	entries := make([]state.SessionJournalEntry, 0, len(matches))
+	for i, match := range matches {
+		entryType := "entry"
+		scope := ""
+		message := strings.TrimSpace(match[2])
+		if typed := typedRE.FindStringSubmatch(message); typed != nil {
+			entryType = typed[1]
+			scope = strings.TrimSpace(typed[2])
+			message = strings.TrimSpace(typed[3])
+		}
+		entries = append(entries, state.SessionJournalEntry{
+			ID:        fmt.Sprintf("%s:%03d", alias, i+1),
+			EntryType: entryType,
+			Scope:     scope,
+			Message:   message,
+			CreatedAt: match[1],
+		})
+	}
+	return entries
+}
+
+func nextMarkdownSessionPath(rootPath string, now time.Time) (string, string, error) {
+	sessionsDir := filepath.Join(rootPath, ".agents", "sessions")
+	stem := now.UTC().Format("20060102-150405") + "-session"
+	for suffix := 0; ; suffix++ {
+		alias := stem
+		if suffix > 0 {
+			alias = fmt.Sprintf("%s-%d", stem, suffix+1)
+		}
+		path := filepath.Join(sessionsDir, alias+".md")
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return alias, path, nil
+		} else if err != nil {
+			return "", "", fmt.Errorf("check markdown session path: %w", err)
+		}
+	}
+}
+
+func writeNewMarkdownSession(path string, branch string, harnessSessionID string, now time.Time) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create markdown session directory: %w", err)
+	}
+	nowStamp := now.UTC().Format(time.RFC3339)
+	journalTime := now.UTC().Format("2006-01-02 15:04")
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.WriteString("status: active\n")
+	fmt.Fprintf(&b, "branch: %s\n", branch)
+	if harnessSessionID != "" {
+		fmt.Fprintf(&b, "claude_session_id: %s\n", harnessSessionID)
+	}
+	fmt.Fprintf(&b, "created: %s\n", nowStamp)
+	fmt.Fprintf(&b, "last_updated: %s\n", nowStamp)
+	fmt.Fprintf(&b, "last_entry: %s\n", nowStamp)
+	b.WriteString("---\n")
+	b.WriteString("# Session\n\n")
+	b.WriteString("## Journal\n\n")
+	fmt.Fprintf(&b, "[%s] session(start):  %s\n", journalTime, markdownStartMessage(harnessSessionID))
+	return os.WriteFile(path, []byte(b.String()), 0o600)
+}
+
+func appendMarkdownSessionLifecycleEntries(path string, fields map[string]string, entries []string, blankBefore bool) error {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	updated := body
+	for key, value := range fields {
+		updated, err = setFrontmatterScalar(updated, key, value)
+		if err != nil {
+			return err
+		}
+	}
+	text := string(updated)
+	if len(entries) == 0 {
+		return os.WriteFile(path, []byte(text), 0o600)
+	}
+	if !strings.Contains(text, "\n## Journal") {
+		if !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		text += "\n## Journal\n"
+	}
+	text = strings.TrimRight(text, "\n")
+	separator := "\n"
+	if blankBefore || strings.Contains(lastNonEmptyMarkdownLine(text), "session(stop):") {
+		separator = "\n\n"
+	}
+	text += separator + strings.Join(entries, "\n") + "\n"
+	return os.WriteFile(path, []byte(text), 0o600)
+}
+
+func markdownStartMessage(harnessSessionID string) string {
+	if harnessSessionID == "" {
+		return "=== SESSION STARTED ==="
+	}
+	return fmt.Sprintf("=== SESSION STARTED === (session %s)", shortMarkdownHarnessSessionID(harnessSessionID))
+}
+
+func markdownResumeMessage(harnessSessionID string) string {
+	if harnessSessionID == "" {
+		return "=== SESSION RESUMED ==="
+	}
+	return fmt.Sprintf("=== SESSION RESUMED === (session %s)", shortMarkdownHarnessSessionID(harnessSessionID))
+}
+
+func shortMarkdownHarnessSessionID(id string) string {
+	if len(id) <= 8 {
+		return id
+	}
+	return id[:8]
+}
+
+func markdownPreviousSessionNote(previous *state.TraceEntity) string {
+	if previous == nil {
+		return ""
+	}
+	return "previous active session stopped because a different harness session started on the same branch"
+}
+
+func markdownContentWithoutFrontmatter(text string) string {
+	if !strings.HasPrefix(text, "---\n") {
+		return text
+	}
+	rest := text[len("---\n"):]
+	if idx := strings.Index(rest, "\n---\n"); idx >= 0 {
+		return rest[idx+len("\n---\n"):]
+	}
+	return text
+}
+
+func extractMarkdownCurrentState(content string) string {
+	lines := strings.Split(content, "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, "## Current State") {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	end := len(lines)
+	for i := start + 1; i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], "## ") {
+			end = i
+			break
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines[start:end], "\n"))
+}
+
+func extractRecentMarkdownJournalEntries(content string, limit int) []string {
+	lines := strings.Split(content, "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, "## Journal") {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return nil
+	}
+	end := len(lines)
+	for i := start; i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], "## ") {
+			end = i
+			break
+		}
+	}
+	entryRE := regexp.MustCompile(`(?m)^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] .+$`)
+	entries := entryRE.FindAllString(strings.Join(lines[start:end], "\n"), -1)
+	if limit > 0 && len(entries) > limit {
+		return entries[len(entries)-limit:]
+	}
+	return entries
+}
+
+func (r Runner) sqliteSessionForContext(root project.Root, harnessSessionID string, branch string) (state.SessionShow, bool, error) {
+	sessions, err := state.ListSessions(context.Background(), root, state.PathResolver{StateHome: r.StateHome}, state.SessionListOptions{All: true})
+	if err != nil {
+		return state.SessionShow{}, false, err
+	}
+	if harnessSessionID != "" {
+		for alias, session := range sessions.Sessions {
+			if session.HarnessSessionID == harnessSessionID {
+				show, err := state.ShowSession(context.Background(), root, state.PathResolver{StateHome: r.StateHome}, alias)
+				return show, true, err
+			}
+		}
+	}
+	if branch != "" {
+		for alias, session := range sessions.Sessions {
+			if session.Branch == branch && session.Status == "active" {
+				show, err := state.ShowSession(context.Background(), root, state.PathResolver{StateHome: r.StateHome}, alias)
+				return show, true, err
+			}
+		}
+	}
+	return state.SessionShow{}, false, nil
+}
+
 func (r Runner) runSessionShow(args []string, out io.Writer, runtime state.Runtime) error {
 	ref, jsonOutput, err := parseSingleRefArgs("session show", args)
 	if err != nil {
@@ -2555,7 +6386,15 @@ func (r Runner) runSessionShow(args []string, out io.Writer, runtime state.Runti
 	}
 	switch status.Mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"session", "show"}, args...), runtime.RootPath(), out)
+		result, err := markdownSessionShow(projectRoot.Path(), ref)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeSessionShow(out, result)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -2586,7 +6425,15 @@ func (r Runner) runSessionList(args []string, out io.Writer, runtime state.Runti
 	}
 	switch status.Mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"session", "list"}, args...), runtime.RootPath(), out)
+		sessions, err := markdownSessionList(projectRoot.Path(), options.filters)
+		if err != nil {
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, sessions)
+		}
+		writeSessionList(out, sessions, options.filters)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -2603,9 +6450,6 @@ func (r Runner) runSessionList(args []string, out io.Writer, runtime state.Runti
 }
 
 func (r Runner) runSessionLog(args []string, out io.Writer, runtime state.Runtime) error {
-	if shouldDelegateSessionLog(args) {
-		return r.runLegacy(append([]string{"session", "log"}, args...), runtime.RootPath(), out)
-	}
 	options, err := parseSessionLogArgs(args)
 	if err != nil {
 		return err
@@ -2620,25 +6464,379 @@ func (r Runner) runSessionLog(args []string, out io.Writer, runtime state.Runtim
 	}
 	switch status.Mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"session", "log"}, args...), runtime.RootPath(), out)
+		return r.runMarkdownSessionLog(options, out, runtime, projectRoot)
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
 
+	if options.fromHook {
+		hookInput, err := r.readSessionHookInput()
+		if err != nil {
+			return err
+		}
+		if hookInput.Raw == nil && options.harnessSessionID == "" {
+			return nil
+		}
+		options.harnessSessionID = firstNonEmpty(options.harnessSessionID, hookInput.SessionID)
+		if options.entry == "" && hookInput.Raw != nil {
+			entry, ok := deriveSessionHookLogEntry(hookInput)
+			if !ok {
+				return nil
+			}
+			options.entry = entry
+		}
+	}
+	linkSession := options.fromHook
+	if options.detectLinear {
+		entry, ok, disabled, err := detectLinearJournalEntry(projectRoot.Path(), runtime.RootPath())
+		if err != nil {
+			return err
+		}
+		if disabled {
+			return nil
+		}
+		if !ok {
+			fmt.Fprintln(out, "No Linear magic words detected in recent commits")
+			return nil
+		}
+		options.entry = entry
+		linkSession = true
+	}
 	result, err := state.LogJournal(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.JournalLogOptions{
 		Entry:            options.entry,
 		ObservedBranch:   state.ObservedGitBranch(runtime.RootPath()),
 		ObservedWorktree: runtime.RootPath(),
 		HarnessSessionID: options.harnessSessionID,
+		LinkSession:      linkSession,
+		IfSessionActive:  options.fromHook,
 	})
 	if err != nil {
 		return err
+	}
+	if options.fromHook && result.ID == "" && !options.jsonOutput {
+		return nil
 	}
 	if options.jsonOutput {
 		return writeJSON(out, result)
 	}
 	fmt.Fprintf(out, "logged journal entry: %s\n", result.ID)
 	return nil
+}
+
+func (r Runner) runMarkdownSessionLog(options sessionLogOptions, out io.Writer, runtime state.Runtime, root project.Root) error {
+	branch := state.ObservedGitBranch(runtime.RootPath())
+	if branch == "" {
+		return fmt.Errorf("not in a git repository")
+	}
+	hookSessionID := ""
+	if options.fromHook {
+		hookInput, err := r.readSessionHookInput()
+		if err != nil {
+			return err
+		}
+		if hookInput.Raw == nil && options.harnessSessionID == "" {
+			return nil
+		}
+		hookSessionID = hookInput.SessionID
+		if options.entry == "" && hookInput.Raw != nil {
+			entry, ok := deriveSessionHookLogEntry(hookInput)
+			if !ok {
+				return nil
+			}
+			options.entry = entry
+		}
+	}
+	if options.detectLinear {
+		entry, ok, disabled, err := detectLinearJournalEntry(root.Path(), runtime.RootPath())
+		if err != nil {
+			return err
+		}
+		if disabled {
+			return nil
+		}
+		if !ok {
+			fmt.Fprintln(out, "No Linear magic words detected in recent commits")
+			return nil
+		}
+		options.entry = entry
+	}
+	if !validMarkdownSessionLogEntry(options.entry) {
+		return fmt.Errorf("invalid entry format; use type(scope): description")
+	}
+	resolution := resolveMarkdownSessionForLog(root.Path(), branch, options.harnessSessionID, hookSessionID)
+	sessionPath, found := resolution.Path, resolution.Found
+	if !found {
+		if !options.fromHook {
+			fmt.Fprintf(r.sessionLogErrWriter(), "WARN: no session for branch '%s'; no active sessions to fall back to. Pass --session-id <id> to silence.\n", branch)
+		}
+		if options.fromHook {
+			return nil
+		}
+		return fmt.Errorf("no active session found for branch %s; run `loaf session start` first", branch)
+	}
+	if resolution.Adoption == "most-recent-active" && !options.fromHook {
+		fmt.Fprintf(r.sessionLogErrWriter(), "WARN: no session for branch '%s'; logging to most-recent active session '%s' (origin branch '%s'). Pass --session-id <id> to silence.\n", branch, filepath.Base(sessionPath), resolution.OriginBranch)
+	}
+	result, err := appendMarkdownSessionLogEntry(sessionPath, options.entry)
+	if err != nil {
+		return err
+	}
+	if result.DidResume {
+		fmt.Fprintln(out, "Auto-resumed stopped session")
+	}
+	if options.jsonOutput {
+		entryType, scope, message := splitMarkdownSessionLogEntry(options.entry)
+		return writeJSON(out, state.JournalLogResult{
+			ID:               markdownSessionRelativePath(root.Path(), sessionPath),
+			EntryType:        entryType,
+			Scope:            scope,
+			Message:          message,
+			ObservedBranch:   branch,
+			ObservedWorktree: runtime.RootPath(),
+			HarnessSessionID: firstNonEmpty(options.harnessSessionID, hookSessionID),
+		})
+	}
+	fmt.Fprintf(out, "Logged: %s\n", options.entry)
+	return nil
+}
+
+func (r Runner) sessionLogErrWriter() io.Writer {
+	if r.Stderr != nil {
+		return r.Stderr
+	}
+	return os.Stderr
+}
+
+type markdownSessionResolution struct {
+	Path         string
+	Found        bool
+	OriginBranch string
+	Adoption     string
+}
+
+func resolveMarkdownSessionForLog(rootPath string, branch string, explicitSessionID string, hookSessionID string) markdownSessionResolution {
+	if explicitSessionID != "" {
+		if path, found := findMarkdownSessionForContext(rootPath, explicitSessionID, ""); found {
+			return markdownSessionResolution{Path: path, Found: true}
+		}
+	}
+	if hookSessionID != "" && hookSessionID != explicitSessionID {
+		if path, found := findMarkdownSessionForContext(rootPath, hookSessionID, ""); found {
+			return markdownSessionResolution{Path: path, Found: true}
+		}
+	}
+	if path, found := findMarkdownSessionForContext(rootPath, "", branch); found {
+		return markdownSessionResolution{Path: path, Found: true, OriginBranch: branch}
+	}
+	if path, originBranch, found := findMostRecentActiveMarkdownSession(rootPath); found {
+		return markdownSessionResolution{Path: path, Found: true, OriginBranch: originBranch, Adoption: "most-recent-active"}
+	}
+	return markdownSessionResolution{}
+}
+
+func findMostRecentActiveMarkdownSession(rootPath string) (string, string, bool) {
+	sessionsDir := filepath.Join(rootPath, ".agents", "sessions")
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		return "", "", false
+	}
+	type candidate struct {
+		path   string
+		branch string
+		when   string
+	}
+	var candidates []candidate
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		path := filepath.Join(sessionsDir, entry.Name())
+		fields, ok := markdownSessionFrontmatter(path)
+		if !ok || fields["status"] != "active" {
+			continue
+		}
+		candidates = append(candidates, candidate{
+			path:   path,
+			branch: fields["branch"],
+			when:   firstNonEmpty(fields["last_updated"], fields["last_entry"], fields["created"]),
+		})
+	}
+	if len(candidates) == 0 {
+		return "", "", false
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].when == candidates[j].when {
+			return candidates[i].path < candidates[j].path
+		}
+		return candidates[i].when > candidates[j].when
+	})
+	return candidates[0].path, candidates[0].branch, true
+}
+
+func validMarkdownSessionLogEntry(entry string) bool {
+	entryType, _, message := splitMarkdownSessionLogEntry(entry)
+	if entryType == "" || message == "" {
+		return false
+	}
+	validTypes := map[string]bool{
+		"session": true,
+		"start":   true, "resume": true, "pause": true, "clear": true, "progress": true, "commit": true, "pr": true, "merge": true,
+		"decision": true, "discover": true, "finding": true, "block": true, "unblock": true,
+		"spark": true, "todo": true, "assume": true,
+		"branch": true, "task": true, "linear": true, "hypothesis": true, "try": true, "reject": true, "compact": true,
+		"skill": true, "wrap": true,
+		"idea": true, "spec": true, "report": true, "council": true, "brainstorm": true, "plan": true, "draft": true,
+	}
+	return validTypes[entryType]
+}
+
+func splitMarkdownSessionLogEntry(entry string) (string, string, string) {
+	re := regexp.MustCompile(`^([a-z]+)(?:\(([^)]+)\))?:\s*(.+)$`)
+	matches := re.FindStringSubmatch(strings.TrimSpace(entry))
+	if matches == nil {
+		return "", "", ""
+	}
+	return matches[1], strings.TrimSpace(matches[2]), strings.TrimSpace(matches[3])
+}
+
+type markdownSessionLogResult struct {
+	DidResume bool
+}
+
+func appendMarkdownSessionLogEntry(path string, entry string) (markdownSessionLogResult, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return markdownSessionLogResult{}, err
+	}
+	now := time.Now().UTC()
+	fields, ok := markdownSessionFrontmatter(path)
+	if !ok {
+		return markdownSessionLogResult{}, fmt.Errorf("frontmatter not found")
+	}
+	updated, err := setFrontmatterScalar(body, "last_updated", now.Format(time.RFC3339))
+	if err != nil {
+		return markdownSessionLogResult{}, err
+	}
+	updated, err = setFrontmatterScalar(updated, "last_entry", now.Format(time.RFC3339))
+	if err != nil {
+		return markdownSessionLogResult{}, err
+	}
+	didResume := fields["status"] == "stopped"
+	if didResume {
+		updated, err = setFrontmatterScalar(updated, "status", "active")
+		if err != nil {
+			return markdownSessionLogResult{}, err
+		}
+	}
+	text := string(updated)
+	if !strings.Contains(text, "\n## Journal") {
+		if !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		text += "\n## Journal\n"
+	}
+	text = strings.TrimRight(text, "\n")
+	var entries []string
+	if didResume {
+		entries = append(entries, fmt.Sprintf("[%s] session(resume): === SESSION RESUMED ===", now.Format("2006-01-02 15:04")))
+	}
+	entries = append(entries, fmt.Sprintf("[%s] %s", now.Format("2006-01-02 15:04"), entry))
+	separator := "\n"
+	if didResume || strings.Contains(lastNonEmptyMarkdownLine(text), "session(stop):") {
+		separator = "\n\n"
+	}
+	text += separator + strings.Join(entries, "\n") + "\n"
+	return markdownSessionLogResult{DidResume: didResume}, os.WriteFile(path, []byte(text), 0o600)
+}
+
+func lastNonEmptyMarkdownLine(text string) string {
+	lines := strings.Split(text, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			return strings.TrimSpace(lines[i])
+		}
+	}
+	return ""
+}
+
+func detectLinearJournalEntry(projectRoot string, worktree string) (string, bool, bool, error) {
+	if linearIntegrationDisabled(projectRoot) {
+		return "", false, true, nil
+	}
+	commits, err := recentGitCommitSubjects(worktree, 3)
+	if err != nil {
+		return "", false, false, fmt.Errorf("scan recent commits: %w", err)
+	}
+	magicPattern := regexp.MustCompile(`(?i)\b(fixe?s?d?|close?s?d?|resolve?s?d?)\s+([A-Z]+-\d+)`)
+	seen := map[string]bool{}
+	var issues []string
+	for _, commit := range commits {
+		matches := magicPattern.FindAllStringSubmatch(commit.Subject, -1)
+		for _, match := range matches {
+			if len(match) < 3 {
+				continue
+			}
+			issueID := match[2]
+			if seen[issueID] {
+				continue
+			}
+			seen[issueID] = true
+			issues = append(issues, issueID)
+		}
+	}
+	if len(issues) == 0 {
+		return "", false, false, nil
+	}
+	return "discover(linear): found magic words for " + strings.Join(issues, ", "), true, false, nil
+}
+
+type recentGitCommit struct {
+	Hash    string
+	Subject string
+}
+
+func recentGitCommitSubjects(worktree string, count int) ([]recentGitCommit, error) {
+	if count <= 0 {
+		return nil, nil
+	}
+	cmd := exec.Command("git", "log", fmt.Sprintf("-%d", count), "--pretty=format:%h%x00%s")
+	cmd.Dir = worktree
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed == "" {
+		return nil, nil
+	}
+	var commits []recentGitCommit
+	for _, line := range strings.Split(trimmed, "\n") {
+		parts := strings.SplitN(line, "\x00", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		commits = append(commits, recentGitCommit{Hash: parts[0], Subject: parts[1]})
+	}
+	return commits, nil
+}
+
+func linearIntegrationDisabled(projectRoot string) bool {
+	path := filepath.Join(projectRoot, ".agents", "loaf.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var config struct {
+		Integrations struct {
+			Linear struct {
+				Enabled *bool `json:"enabled"`
+			} `json:"linear"`
+		} `json:"integrations"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return false
+	}
+	return config.Integrations.Linear.Enabled != nil && !*config.Integrations.Linear.Enabled
 }
 
 func (r Runner) runSessionReport(args []string, out io.Writer, runtime state.Runtime) error {
@@ -2661,14 +6859,183 @@ func (r Runner) runSessionReport(args []string, out io.Writer, runtime state.Run
 	return nil
 }
 
-func shouldDelegateSessionLog(args []string) bool {
-	for _, arg := range args {
-		switch arg {
-		case "--from-hook", "--detect-linear":
-			return true
+type sessionHookInput struct {
+	SessionID string         `json:"session_id"`
+	AgentID   string         `json:"agent_id"`
+	Source    string         `json:"source"`
+	Reason    string         `json:"reason"`
+	Raw       map[string]any `json:"-"`
+}
+
+func (r Runner) readSessionHookInput() (sessionHookInput, error) {
+	reader := r.Stdin
+	if reader == nil {
+		info, err := os.Stdin.Stat()
+		if err == nil && (info.Mode()&os.ModeCharDevice) == 0 {
+			reader = os.Stdin
 		}
 	}
-	return false
+	if reader == nil {
+		return sessionHookInput{}, nil
+	}
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return sessionHookInput{}, fmt.Errorf("read session hook input: %w", err)
+	}
+	if strings.TrimSpace(string(data)) == "" {
+		return sessionHookInput{}, nil
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return sessionHookInput{}, fmt.Errorf("parse session hook input: %w", err)
+	}
+	input := sessionHookInput{
+		SessionID: stringMapValue(raw, "session_id"),
+		AgentID:   stringMapValue(raw, "agent_id"),
+		Source:    stringMapValue(raw, "source"),
+		Reason:    stringMapValue(raw, "reason"),
+		Raw:       raw,
+	}
+	return input, nil
+}
+
+func deriveSessionHookLogEntry(input sessionHookInput) (string, bool) {
+	raw := input.Raw
+	if raw == nil {
+		return "", false
+	}
+	hookEventName := stringMapValue(raw, "hook_event_name")
+	toolName := firstNonEmpty(stringMapValue(raw, "tool_name"), nestedStringMapValue(raw, "tool", "name"))
+	if hookEventName == "TaskCompleted" || toolName == "TaskCompleted" {
+		description := firstNonEmpty(stringMapValue(raw, "task_description"), stringMapValue(raw, "task_subject"), "task")
+		return "task(completed): " + description, true
+	}
+	command := firstNonEmpty(
+		nestedStringMapValue(raw, "tool_input", "command"),
+		nestedStringMapValue(raw, "input", "command"),
+		nestedStringMapValue(raw, "tool", "input", "command"),
+	)
+	if command == "" {
+		if commit := stringMapValue(raw, "commit"); commit != "" {
+			return fmt.Sprintf("commit(%s): %s", commit, firstNonEmpty(stringMapValue(raw, "message"), "commit")), true
+		}
+		if pr := stringMapValue(raw, "pr"); pr != "" {
+			return fmt.Sprintf("pr(create): %s (#%s)", firstNonEmpty(stringMapValue(raw, "title"), "PR created"), pr), true
+		}
+		if merge := stringMapValue(raw, "merge"); merge != "" {
+			return fmt.Sprintf("pr(merge): #%s", merge), true
+		}
+		return "", false
+	}
+	switch {
+	case strings.Contains(command, "git commit"):
+		message := commandFlagValue(command, "-m")
+		if message == "" {
+			message = "commit"
+		}
+		return fmt.Sprintf("commit(unknown): %s", message), true
+	case strings.Contains(command, "gh pr create"):
+		title := commandFlagValue(command, "--title")
+		if title == "" {
+			title = "PR created"
+		}
+		return "pr(create): " + title, true
+	case strings.Contains(command, "gh pr merge"):
+		return "pr(merge): #unknown", true
+	default:
+		return "", false
+	}
+}
+
+func commandFlagValue(command string, flag string) string {
+	prefixes := []string{flag + " \"", flag + " '"}
+	for _, prefix := range prefixes {
+		_, after, ok := strings.Cut(command, prefix)
+		if !ok {
+			continue
+		}
+		quote := strings.TrimPrefix(prefix, flag+" ")
+		value, _, ok := strings.Cut(after, quote)
+		if ok {
+			return value
+		}
+	}
+	return ""
+}
+
+func stringMapValue(values map[string]any, key string) string {
+	if value, ok := values[key].(string); ok {
+		return value
+	}
+	return ""
+}
+
+func nestedStringMapValue(values map[string]any, keys ...string) string {
+	current := values
+	for i, key := range keys {
+		value, ok := current[key]
+		if !ok {
+			return ""
+		}
+		if i == len(keys)-1 {
+			if text, ok := value.(string); ok {
+				return text
+			}
+			return ""
+		}
+		next, ok := value.(map[string]any)
+		if !ok {
+			return ""
+		}
+		current = next
+	}
+	return ""
+}
+
+func writeSessionStart(out io.Writer, branch string, result state.SessionStartResult) {
+	fmt.Fprint(out, "\n  loaf session start\n\n")
+	fmt.Fprintf(out, "  Branch: %s\n", branch)
+	fmt.Fprintf(out, "  Action: %s\n", result.Action)
+	fmt.Fprintf(out, "  Session: %s\n", firstNonEmpty(result.Session.Alias, result.Session.ID))
+	if result.HarnessSessionID != "" {
+		fmt.Fprintf(out, "  Harness session: %s\n", result.HarnessSessionID)
+	}
+	if result.PreviousSession != nil {
+		fmt.Fprintf(out, "  Previous session: %s stopped\n", firstNonEmpty(result.PreviousSession.Alias, result.PreviousSession.ID))
+	}
+	for _, warning := range []string{result.PreviousSessionNote} {
+		if warning != "" {
+			fmt.Fprintf(out, "  Note: %s\n", warning)
+		}
+	}
+	fmt.Fprintln(out)
+}
+
+func writeSessionEnd(out io.Writer, result state.SessionEndResult) {
+	fmt.Fprint(out, "\n  loaf session end\n\n")
+	fmt.Fprintf(out, "  Action: %s\n", result.Action)
+	if result.NoopReason != "" {
+		fmt.Fprintf(out, "  Reason: %s\n", result.NoopReason)
+	}
+	if result.Session.ID != "" {
+		fmt.Fprintf(out, "  Session: %s\n", firstNonEmpty(result.Session.Alias, result.Session.ID))
+		fmt.Fprintf(out, "  Status: %s\n", result.Session.Status)
+	}
+	if result.HarnessSessionID != "" {
+		fmt.Fprintf(out, "  Harness session: %s\n", result.HarnessSessionID)
+	}
+	fmt.Fprintln(out)
+}
+
+func writeSessionArchive(out io.Writer, result state.SessionArchiveResult) {
+	fmt.Fprint(out, "\n  loaf session archive\n\n")
+	fmt.Fprintf(out, "  Action: %s\n", result.Action)
+	fmt.Fprintf(out, "  Session: %s\n", firstNonEmpty(result.Session.Alias, result.Session.ID))
+	fmt.Fprintf(out, "  Status: %s\n", result.Session.Status)
+	if result.HarnessSessionID != "" {
+		fmt.Fprintf(out, "  Harness session: %s\n", result.HarnessSessionID)
+	}
+	fmt.Fprintln(out)
 }
 
 func writeSessionList(out io.Writer, sessions state.SessionList, filters state.SessionListOptions) {
@@ -2770,7 +7137,12 @@ func writeSessionShow(out io.Writer, result state.SessionShow) {
 
 func (r Runner) runReport(args []string, out io.Writer, runtime state.Runtime) error {
 	if len(args) == 0 {
-		return r.runLegacy(append([]string{"report"}, args...), runtime.RootPath(), out)
+		writeReportHelp(out)
+		return nil
+	}
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		writeReportHelp(out)
+		return nil
 	}
 	switch args[0] {
 	case "list":
@@ -2784,8 +7156,24 @@ func (r Runner) runReport(args []string, out io.Writer, runtime state.Runtime) e
 	case "archive":
 		return r.runReportArchive(args[1:], out, runtime)
 	default:
-		return r.runLegacy(append([]string{"report"}, args...), runtime.RootPath(), out)
+		return unknownSubcommandError("report", args[0])
 	}
+}
+
+func writeReportHelp(out io.Writer) {
+	fmt.Fprintln(out, "Usage: loaf report <subcommand> [options]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Manage durable reports in native SQLite state or markdown compatibility mode.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Subcommands:")
+	fmt.Fprintln(out, "  list      List reports")
+	fmt.Fprintln(out, "  generate  Generate read-only markdown exports")
+	fmt.Fprintln(out, "  create    Create a report")
+	fmt.Fprintln(out, "  finalize  Finalize a report")
+	fmt.Fprintln(out, "  archive   Archive a report")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "  -h, --help  Show help")
 }
 
 func (r Runner) runReportList(args []string, out io.Writer, runtime state.Runtime) error {
@@ -2803,7 +7191,15 @@ func (r Runner) runReportList(args []string, out io.Writer, runtime state.Runtim
 	}
 	switch status.Mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"report", "list"}, args...), runtime.RootPath(), out)
+		reports, err := markdownReportList(projectRoot.Path(), options.filters)
+		if err != nil {
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, reports)
+		}
+		writeReportList(out, reports)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -2854,7 +7250,19 @@ func (r Runner) runReportCreate(args []string, out io.Writer, runtime state.Runt
 	}
 	switch mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"report", "create"}, args...), runtime.RootPath(), out)
+		options, err := parseReportCreateArgs(args)
+		if err != nil {
+			return err
+		}
+		result, err := markdownReportCreate(projectRoot.Path(), options.create)
+		if err != nil {
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeReportCreate(out, result)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -2885,7 +7293,15 @@ func (r Runner) runReportFinalize(args []string, out io.Writer, runtime state.Ru
 	}
 	switch mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"report", "finalize"}, args...), runtime.RootPath(), out)
+		result, err := markdownReportFinalize(projectRoot.Path(), ref)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeReportStatus(out, "finalized", result)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -2912,7 +7328,15 @@ func (r Runner) runReportArchive(args []string, out io.Writer, runtime state.Run
 	}
 	switch mode {
 	case state.ModeMarkdownOnly:
-		return r.runLegacy(append([]string{"report", "archive"}, args...), runtime.RootPath(), out)
+		result, err := markdownReportArchive(projectRoot.Path(), ref)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeReportStatus(out, "archived", result)
+		return nil
 	case state.ModeInvalid:
 		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
@@ -2982,6 +7406,420 @@ func writeReportList(out io.Writer, reports state.ReportList) {
 		fmt.Fprintln(out)
 	}
 	fmt.Fprintf(out, "  %d report(s) total\n\n", len(reports.Reports))
+}
+
+func markdownReportList(rootPath string, options state.ReportListOptions) (state.ReportList, error) {
+	agentsDir := filepath.Join(rootPath, ".agents")
+	files, err := filepath.Glob(filepath.Join(agentsDir, "reports", "*.md"))
+	if err != nil {
+		return state.ReportList{}, fmt.Errorf("find markdown reports: %w", err)
+	}
+	archivedFiles, err := filepath.Glob(filepath.Join(agentsDir, "reports", "archive", "*.md"))
+	if err != nil {
+		return state.ReportList{}, fmt.Errorf("find archived markdown reports: %w", err)
+	}
+	files = append(files, archivedFiles...)
+	sort.Strings(files)
+
+	reports := state.ReportList{Version: 1, Reports: map[string]state.ReportItem{}}
+	for _, path := range files {
+		item, alias, err := readMarkdownReport(rootPath, path)
+		if err != nil {
+			return state.ReportList{}, err
+		}
+		if !reportMatchesFilters(item, options) {
+			continue
+		}
+		reports.Reports[alias] = item
+	}
+	return reports, nil
+}
+
+func readMarkdownReport(rootPath string, path string) (state.ReportItem, string, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return state.ReportItem{}, "", fmt.Errorf("read markdown report %s: %w", path, err)
+	}
+	frontmatter, _ := parseKnowledgeFrontmatter(body)
+	field := func(keys ...string) string {
+		for _, key := range keys {
+			if value := firstFieldValue(frontmatter[key]); value != "" {
+				return value
+			}
+		}
+		return ""
+	}
+	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	alias := firstNonEmpty(field("id"), stem)
+	status := firstNonEmpty(field("status"), "unknown")
+	sourcePath := markdownReportSourcePath(rootPath, path)
+	if strings.HasPrefix(sourcePath, ".agents/reports/archive/") {
+		status = "archived"
+	}
+	title := firstNonEmpty(field("title"), firstMarkdownHeading(markdownContentWithoutFrontmatter(string(body))), alias)
+	kind := firstNonEmpty(field("type", "report_kind", "kind"), "markdown")
+	return state.ReportItem{
+		Title:      title,
+		Kind:       kind,
+		Status:     status,
+		SourcePath: sourcePath,
+	}, alias, nil
+}
+
+func markdownReportSourcePath(rootPath string, path string) string {
+	rel, err := filepath.Rel(rootPath, path)
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+	return filepath.ToSlash(rel)
+}
+
+func firstMarkdownHeading(markdown string) string {
+	for _, line := range strings.Split(markdown, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "# ") {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
+		}
+	}
+	return ""
+}
+
+func reportMatchesFilters(item state.ReportItem, options state.ReportListOptions) bool {
+	if options.Type != "" && item.Kind != options.Type {
+		return false
+	}
+	if options.Status != "" && item.Status != options.Status {
+		return false
+	}
+	return true
+}
+
+func markdownReportCreate(rootPath string, options state.ReportCreateOptions) (state.ReportCreateResult, error) {
+	slug := strings.TrimSpace(options.Slug)
+	if slug == "" {
+		return state.ReportCreateResult{}, fmt.Errorf("report create requires a slug")
+	}
+	kind := strings.TrimSpace(options.Kind)
+	if kind == "" {
+		kind = "research"
+	}
+	source := strings.TrimSpace(options.Source)
+	if source == "" {
+		source = "ad-hoc"
+	}
+	reportsDir := filepath.Join(rootPath, ".agents", "reports")
+	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
+		return state.ReportCreateResult{}, fmt.Errorf("create reports directory: %w", err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	safeType := sanitizeMarkdownReportPathSegment(kind)
+	safeSlug := sanitizeMarkdownReportPathSegment(slug)
+	if safeSlug == "" {
+		return state.ReportCreateResult{}, fmt.Errorf("report create requires a slug")
+	}
+	filename := fmt.Sprintf("%s-%s-%s.md", time.Now().Format("20060102-150405"), safeType, safeSlug)
+	path := filepath.Join(reportsDir, filename)
+	if _, err := os.Stat(path); err == nil {
+		return state.ReportCreateResult{}, fmt.Errorf("report file %s already exists", filename)
+	} else if err != nil && !os.IsNotExist(err) {
+		return state.ReportCreateResult{}, fmt.Errorf("inspect report file %s: %w", filename, err)
+	}
+	title := markdownReportTitleFromSlug(slug)
+	frontmatter := map[string]frontmatterField{
+		"title":   markdownReportFrontmatterScalar(title),
+		"type":    markdownReportFrontmatterScalar(kind),
+		"created": markdownReportFrontmatterScalar(now),
+		"status":  markdownReportFrontmatterScalar("draft"),
+		"source":  markdownReportFrontmatterScalar(source),
+		"tags":    {Array: true, Set: true},
+	}
+	if err := os.WriteFile(path, []byte(renderMarkdownReport(frontmatter, markdownReportBody(title))), 0o600); err != nil {
+		return state.ReportCreateResult{}, fmt.Errorf("write report %s: %w", filename, err)
+	}
+	alias := strings.TrimSuffix(filename, filepath.Ext(filename))
+	return state.ReportCreateResult{
+		Report: state.TraceEntity{
+			Kind:   "report",
+			ID:     alias,
+			Alias:  alias,
+			Title:  title,
+			Status: "draft",
+		},
+		Kind:   kind,
+		Source: source,
+	}, nil
+}
+
+func markdownReportFinalize(rootPath string, ref string) (state.ReportStatusResult, error) {
+	path, err := resolveMarkdownReportFile(rootPath, ref)
+	if err != nil {
+		return state.ReportStatusResult{}, err
+	}
+	frontmatter, body, alias, err := readMarkdownReportDocument(path)
+	if err != nil {
+		return state.ReportStatusResult{}, err
+	}
+	previous := firstNonEmpty(firstFieldValue(frontmatter["status"]), "unknown")
+	if previous != "draft" {
+		return state.ReportStatusResult{}, fmt.Errorf("report %q is not draft (status: %s)", ref, previous)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	frontmatter["status"] = markdownReportFrontmatterScalar("final")
+	frontmatter["finalized_at"] = markdownReportFrontmatterScalar(now)
+	if err := os.WriteFile(path, []byte(renderMarkdownReport(frontmatter, body)), 0o600); err != nil {
+		return state.ReportStatusResult{}, fmt.Errorf("write finalized report %s: %w", ref, err)
+	}
+	title := firstNonEmpty(firstFieldValue(frontmatter["title"]), firstMarkdownHeading(body), alias)
+	return state.ReportStatusResult{
+		Report:   state.TraceEntity{Kind: "report", ID: alias, Alias: alias, Title: title, Status: "final"},
+		Previous: previous,
+		Status:   "final",
+	}, nil
+}
+
+func markdownReportArchive(rootPath string, ref string) (state.ReportStatusResult, error) {
+	path, err := resolveMarkdownReportFile(rootPath, ref)
+	if err != nil {
+		return state.ReportStatusResult{}, err
+	}
+	frontmatter, body, alias, err := readMarkdownReportDocument(path)
+	if err != nil {
+		return state.ReportStatusResult{}, err
+	}
+	previous := firstNonEmpty(firstFieldValue(frontmatter["status"]), "unknown")
+	if previous != "final" {
+		return state.ReportStatusResult{}, fmt.Errorf("report %q is not final (status: %s)", ref, previous)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	frontmatter["status"] = markdownReportFrontmatterScalar("archived")
+	frontmatter["archived_at"] = markdownReportFrontmatterScalar(now)
+	frontmatter["archived_by"] = markdownReportFrontmatterScalar("cli")
+	reportsDir := filepath.Join(rootPath, ".agents", "reports")
+	archiveDir := filepath.Join(reportsDir, "archive")
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		return state.ReportStatusResult{}, fmt.Errorf("create report archive directory: %w", err)
+	}
+	destPath := filepath.Join(archiveDir, filepath.Base(path))
+	if _, err := os.Stat(destPath); err == nil {
+		return state.ReportStatusResult{}, fmt.Errorf("archived report %s already exists", filepath.Base(path))
+	} else if err != nil && !os.IsNotExist(err) {
+		return state.ReportStatusResult{}, fmt.Errorf("inspect archived report %s: %w", filepath.Base(path), err)
+	}
+	if err := os.WriteFile(destPath, []byte(renderMarkdownReport(frontmatter, body)), 0o600); err != nil {
+		return state.ReportStatusResult{}, fmt.Errorf("write archived report %s: %w", ref, err)
+	}
+	if err := os.Remove(path); err != nil {
+		return state.ReportStatusResult{}, fmt.Errorf("remove active report %s: %w", ref, err)
+	}
+	title := firstNonEmpty(firstFieldValue(frontmatter["title"]), firstMarkdownHeading(body), alias)
+	return state.ReportStatusResult{
+		Report:   state.TraceEntity{Kind: "report", ID: alias, Alias: alias, Title: title, Status: "archived"},
+		Previous: previous,
+		Status:   "archived",
+	}, nil
+}
+
+func readMarkdownReportDocument(path string) (map[string]frontmatterField, string, string, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("read markdown report %s: %w", path, err)
+	}
+	parsed, _ := parseKnowledgeFrontmatter(content)
+	body := markdownContentWithoutFrontmatter(string(content))
+	alias := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	return parsed, body, alias, nil
+}
+
+func resolveMarkdownReportFile(rootPath string, ref string) (string, error) {
+	reportsDir := filepath.Join(rootPath, ".agents", "reports")
+	if strings.TrimSpace(ref) == "" {
+		return "", fmt.Errorf("report ref is required")
+	}
+	if filepath.IsAbs(ref) {
+		clean := filepath.Clean(ref)
+		if pathInsideDir(clean, reportsDir) {
+			if _, err := os.Stat(clean); err == nil {
+				return clean, nil
+			} else if err != nil && !os.IsNotExist(err) {
+				return "", fmt.Errorf("inspect report %s: %w", ref, err)
+			}
+		}
+	}
+	if strings.Contains(ref, string(filepath.Separator)) || strings.Contains(ref, "/") || strings.Contains(ref, "\\") {
+		clean := filepath.Clean(filepath.Join(reportsDir, filepath.FromSlash(ref)))
+		if !pathInsideDir(clean, reportsDir) {
+			return "", fmt.Errorf("report %q is outside .agents/reports", ref)
+		}
+		if _, err := os.Stat(clean); err == nil {
+			return clean, nil
+		} else if err != nil && !os.IsNotExist(err) {
+			return "", fmt.Errorf("inspect report %s: %w", ref, err)
+		}
+	}
+	direct := filepath.Join(reportsDir, ref)
+	if _, err := os.Stat(direct); err == nil {
+		return direct, nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("inspect report %s: %w", ref, err)
+	}
+	files, err := filepath.Glob(filepath.Join(reportsDir, "*.md"))
+	if err != nil {
+		return "", fmt.Errorf("find markdown reports: %w", err)
+	}
+	sort.Strings(files)
+	var matches []string
+	for _, path := range files {
+		if strings.Contains(filepath.Base(path), ref) {
+			matches = append(matches, path)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("report not found: %s", ref)
+	case 1:
+		return matches[0], nil
+	default:
+		var names []string
+		for _, match := range matches {
+			names = append(names, filepath.Base(match))
+		}
+		return "", fmt.Errorf("ambiguous report %q: %s", ref, strings.Join(names, ", "))
+	}
+}
+
+func pathInsideDir(path string, dir string) bool {
+	resolvedPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	resolvedDir, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(resolvedDir, resolvedPath)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "..")
+}
+
+func renderMarkdownReport(frontmatter map[string]frontmatterField, body string) string {
+	var b strings.Builder
+	b.WriteString("---\n")
+	for _, key := range []string{"title", "type", "created", "status", "source", "finalized_at", "archived_at", "archived_by"} {
+		if field := frontmatter[key]; field.Set {
+			writeMarkdownReportFrontmatterField(&b, key, field)
+		}
+	}
+	if field := frontmatter["tags"]; field.Set {
+		writeMarkdownReportFrontmatterField(&b, "tags", field)
+	} else {
+		b.WriteString("tags: []\n")
+	}
+	var extraKeys []string
+	for key, field := range frontmatter {
+		if !field.Set || key == "title" || key == "type" || key == "created" || key == "status" || key == "source" || key == "finalized_at" || key == "archived_at" || key == "archived_by" || key == "tags" {
+			continue
+		}
+		extraKeys = append(extraKeys, key)
+	}
+	sort.Strings(extraKeys)
+	for _, key := range extraKeys {
+		writeMarkdownReportFrontmatterField(&b, key, frontmatter[key])
+	}
+	b.WriteString("---\n")
+	if !strings.HasPrefix(body, "\n") {
+		b.WriteString("\n")
+	}
+	b.WriteString(body)
+	if !strings.HasSuffix(body, "\n") {
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func markdownReportFrontmatterScalar(value string) frontmatterField {
+	return frontmatterField{Values: []string{value}, Set: true}
+}
+
+func writeMarkdownReportFrontmatterField(b *strings.Builder, key string, field frontmatterField) {
+	if field.Array {
+		if len(field.Values) == 0 {
+			fmt.Fprintf(b, "%s: []\n", key)
+			return
+		}
+		values := make([]string, 0, len(field.Values))
+		for _, value := range field.Values {
+			values = append(values, quoteYAMLString(value))
+		}
+		fmt.Fprintf(b, "%s: [%s]\n", key, strings.Join(values, ", "))
+		return
+	}
+	fmt.Fprintf(b, "%s: %s\n", key, quoteYAMLString(firstFieldValue(field)))
+}
+
+func quoteYAMLString(value string) string {
+	escaped := strings.ReplaceAll(value, "\\", "\\\\")
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	return `"` + escaped + `"`
+}
+
+func markdownReportBody(title string) string {
+	return fmt.Sprintf(`# %s
+
+## Question
+
+_What question does this report answer?_
+
+## Summary
+
+_Executive summary of findings._
+
+## Key Findings
+
+- _Finding 1_
+- _Finding 2_
+- _Finding 3_
+
+## Methodology
+
+_How was this research conducted?_
+
+## Detailed Analysis
+
+_Full analysis goes here._
+
+## Recommendations
+
+- _Recommendation 1_
+- _Recommendation 2_
+
+## Sources
+
+- _Source 1_
+
+## Open Questions
+
+- _Question 1_
+`, title)
+}
+
+func sanitizeMarkdownReportPathSegment(input string) string {
+	replacer := strings.NewReplacer("/", "-", "\\", "-", ":", "-", "*", "-", "?", "-", `"`, "-", "<", "-", ">", "-", "|", "-")
+	clean := replacer.Replace(input)
+	clean = strings.TrimLeft(clean, ".")
+	return clean
+}
+
+func markdownReportTitleFromSlug(slug string) string {
+	parts := strings.Split(slug, "-")
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(part[:1]) + part[1:]
+	}
+	return strings.Join(parts, " ")
 }
 
 func parseJSONOnly(args []string) (bool, error) {
@@ -3294,8 +8132,30 @@ type sessionListOptions struct {
 	filters    state.SessionListOptions
 }
 
+type sessionStartOptions struct {
+	jsonOutput       bool
+	force            bool
+	harnessSessionID string
+}
+
+type sessionEndOptions struct {
+	jsonOutput       bool
+	ifActive         bool
+	wrap             bool
+	fromHook         bool
+	harnessSessionID string
+}
+
+type sessionArchiveOptions struct {
+	jsonOutput       bool
+	branch           string
+	harnessSessionID string
+}
+
 type sessionLogOptions struct {
 	jsonOutput       bool
+	fromHook         bool
+	detectLinear     bool
 	entry            string
 	harnessSessionID string
 }
@@ -4031,6 +8891,78 @@ func parseSessionListArgs(args []string) (sessionListOptions, error) {
 	return options, nil
 }
 
+func parseSessionStartArgs(args []string) (sessionStartOptions, error) {
+	var options sessionStartOptions
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			options.jsonOutput = true
+		case "--force":
+			options.force = true
+		case "--resume":
+		case "--session-id", "--harness-session-id":
+			value, err := consumeFlagValue(args, &i, args[i])
+			if err != nil {
+				return sessionStartOptions{}, err
+			}
+			options.harnessSessionID = value
+		default:
+			return sessionStartOptions{}, fmt.Errorf("unknown option %q", args[i])
+		}
+	}
+	return options, nil
+}
+
+func parseSessionEndArgs(args []string) (sessionEndOptions, error) {
+	var options sessionEndOptions
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			options.jsonOutput = true
+		case "--if-active":
+			options.ifActive = true
+		case "--wrap":
+			options.wrap = true
+		case "--from-hook":
+			options.fromHook = true
+		case "--session-id", "--harness-session-id":
+			value, err := consumeFlagValue(args, &i, args[i])
+			if err != nil {
+				return sessionEndOptions{}, err
+			}
+			options.harnessSessionID = value
+		default:
+			return sessionEndOptions{}, fmt.Errorf("unknown option %q", args[i])
+		}
+	}
+	return options, nil
+}
+
+func parseSessionArchiveArgs(args []string) (sessionArchiveOptions, error) {
+	var options sessionArchiveOptions
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			options.jsonOutput = true
+		case "--branch":
+			value, err := consumeFlagValue(args, &i, "--branch")
+			if err != nil {
+				return sessionArchiveOptions{}, err
+			}
+			options.branch = value
+		case "--session-id", "--harness-session-id":
+			value, err := consumeFlagValue(args, &i, args[i])
+			if err != nil {
+				return sessionArchiveOptions{}, err
+			}
+			options.harnessSessionID = value
+		default:
+			return sessionArchiveOptions{}, fmt.Errorf("unknown option %q", args[i])
+		}
+	}
+	return options, nil
+}
+
 func parseSessionLogArgs(args []string) (sessionLogOptions, error) {
 	var options sessionLogOptions
 	var entryParts []string
@@ -4038,6 +8970,10 @@ func parseSessionLogArgs(args []string) (sessionLogOptions, error) {
 		switch args[i] {
 		case "--json":
 			options.jsonOutput = true
+		case "--from-hook":
+			options.fromHook = true
+		case "--detect-linear":
+			options.detectLinear = true
 		case "--session-id", "--harness-session-id":
 			value, err := consumeFlagValue(args, &i, args[i])
 			if err != nil {
@@ -4048,10 +8984,12 @@ func parseSessionLogArgs(args []string) (sessionLogOptions, error) {
 			entryParts = append(entryParts, args[i])
 		}
 	}
-	if len(entryParts) != 1 {
+	if len(entryParts) > 1 || (len(entryParts) == 0 && !options.fromHook && !options.detectLinear) {
 		return sessionLogOptions{}, fmt.Errorf("session log accepts exactly one entry")
 	}
-	options.entry = entryParts[0]
+	if len(entryParts) == 1 {
+		options.entry = entryParts[0]
+	}
 	return options, nil
 }
 
@@ -4262,6 +9200,125 @@ func specStatusLabel(status string) string {
 	}
 }
 
+func sessionContextPrompt() string {
+	return strings.Join([]string{
+		"[Implementation Principles]",
+		"- When the user's message is a QUESTION, answer it and STOP. Do not implement anything.",
+		"  Wait for explicit instructions before taking action.",
+		"- Create a Task BEFORE any tool use that changes something (Edit, Write, Bash, etc.).",
+		"  No threshold - if it mutates, track it. TaskCompleted events auto-log to the session journal.",
+		"  Create tasks before starting work, update status as you go, mark complete when done.",
+		"- Delegate code changes to agents - orchestrator coordinates, doesn't implement",
+		"- Log decisions: loaf session log \"decision(scope): description\"",
+		"- One concern per agent, parallel when independent",
+		"- Keep session handoff-ready",
+	}, "\n")
+}
+
+func sessionContextCompactInstructions() string {
+	return strings.Join([]string{
+		"CONTEXT COMPACTION IMMINENT: Your conversation context will be compacted soon.",
+		"",
+		"REQUIRED - two actions before the model responds:",
+		"",
+		"1. **Flush journal entries.** Log all unrecorded decisions, discoveries, and progress:",
+		"   - `decision(scope): key decisions made this session`",
+		"   - `discover(scope): important findings`",
+		"   - `finding(scope): analysis result`",
+		"   Run `loaf session log \"type(scope): description\"` for each.",
+		"",
+		"2. **Write state summary.** SQLite resumption uses session journal entries as the durable source of truth.",
+		"   If a markdown Current State section exists for compatibility, refresh it as handoff context.",
+		"   Use this shape:",
+		"",
+		"   ```",
+		"   ## Current State (YYYY-MM-DD HH:MM)",
+		"",
+		"   **Working on:** spec/task - brief description",
+		"   **Status:** one-line build/test/progress status",
+		"",
+		"   **Done this session:**",
+		"   - bullet per significant change",
+		"",
+		"   **Blocked:** (omit if none)",
+		"   - blockers with context",
+		"",
+		"   **Next:**",
+		"   - immediate follow-ups",
+		"   ```",
+		"",
+		"   Write it as if briefing a colleague who just walked in. Be specific (file names, commit hashes,",
+		"   flag names), not vague.",
+		"",
+		"The journal IS your external memory. Entries not flushed now are lost forever.",
+	}, "\n")
+}
+
+func writeSessionResumptionContext(out io.Writer, result state.SessionShow, found bool, observedBranch string) {
+	fmt.Fprintln(out, "=== POST-COMPACTION RESUMPTION ===")
+	fmt.Fprintln(out)
+	if !found {
+		fmt.Fprintln(out, "WARNING: No active session found. Run `loaf session list --all` for available SQLite sessions.")
+		return
+	}
+	session := result.Session
+	fmt.Fprintf(out, "Session: %s\n", firstNonEmpty(session.Alias, session.ID))
+	if branch := firstNonEmpty(session.Branch, observedBranch); branch != "" {
+		fmt.Fprintf(out, "Branch: %s\n", branch)
+	}
+	for _, source := range session.Sources {
+		fmt.Fprintf(out, "Source: %s\n", source.Path)
+	}
+	fmt.Fprintln(out)
+	if session.StateSnapshot != nil && strings.TrimSpace(session.StateSnapshot.Content) != "" {
+		fmt.Fprintln(out, session.StateSnapshot.Content)
+	} else {
+		fmt.Fprintln(out, "WARNING: No SQLite session state snapshot was written before compaction.")
+		fmt.Fprintln(out, "Use the recent journal below as the durable resumption context.")
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "## Recent Journal")
+	fmt.Fprintln(out)
+	entries := lastSessionJournalEntries(session.JournalEntries, 20)
+	if len(entries) == 0 {
+		fmt.Fprintln(out, "(no journal entries)")
+	} else {
+		for _, entry := range entries {
+			fmt.Fprintf(out, "%s\n", formatSessionJournalEntry(entry))
+		}
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "---")
+	fmt.Fprintln(out, "Resume work from where the journal left off.")
+	fmt.Fprintln(out, "Do not ask 'where were we?' - the context above tells you.")
+	fmt.Fprintf(out, "If you need more detail, run `loaf session show %s`.\n", firstNonEmpty(session.Alias, session.ID))
+}
+
+func lastSessionJournalEntries(entries []state.SessionJournalEntry, limit int) []state.SessionJournalEntry {
+	if limit <= 0 || len(entries) <= limit {
+		return entries
+	}
+	return entries[len(entries)-limit:]
+}
+
+func formatSessionJournalEntry(entry state.SessionJournalEntry) string {
+	timestamp := formatSessionJournalTimestamp(entry.CreatedAt)
+	if entry.Scope != "" {
+		return fmt.Sprintf("[%s] %s(%s): %s", timestamp, entry.EntryType, entry.Scope, entry.Message)
+	}
+	return fmt.Sprintf("[%s] %s: %s", timestamp, entry.EntryType, entry.Message)
+}
+
+func formatSessionJournalTimestamp(value string) string {
+	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return parsed.UTC().Format("2006-01-02 15:04")
+	}
+	if len(value) >= 16 {
+		return strings.ReplaceAll(value[:16], "T", " ")
+	}
+	return value
+}
+
 func sortedSessionsByArchivedState(sessions state.SessionList, archived bool) []string {
 	var aliases []string
 	for alias, session := range sessions.Sessions {
@@ -4321,6 +9378,12 @@ type markdownMigrationOptions struct {
 	resume     bool
 }
 
+type storageHomeMigrationOptions struct {
+	jsonOutput bool
+	apply      bool
+	dryRun     bool
+}
+
 func parseMarkdownMigrationArgs(args []string) (markdownMigrationOptions, error) {
 	var options markdownMigrationOptions
 	for _, arg := range args {
@@ -4349,6 +9412,26 @@ func parseMarkdownMigrationArgs(args []string) (markdownMigrationOptions, error)
 	return options, nil
 }
 
+func parseStorageHomeMigrationArgs(args []string) (storageHomeMigrationOptions, error) {
+	var options storageHomeMigrationOptions
+	for _, arg := range args {
+		switch arg {
+		case "--dry-run":
+			options.dryRun = true
+		case "--json":
+			options.jsonOutput = true
+		case "--apply":
+			options.apply = true
+		default:
+			return storageHomeMigrationOptions{}, fmt.Errorf("unknown option %q", arg)
+		}
+	}
+	if options.apply && options.dryRun {
+		return storageHomeMigrationOptions{}, fmt.Errorf("state migrate storage-home cannot combine --apply and --dry-run")
+	}
+	return options, nil
+}
+
 func writeJSON(out io.Writer, value any) error {
 	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
@@ -4362,33 +9445,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func (r Runner) runLegacy(args []string, cwd string, out io.Writer) error {
-	legacyRunner := r.Legacy
-	legacyRunner.Stdin = firstReader(legacyRunner.Stdin, r.Stdin, os.Stdin)
-	legacyRunner.Stdout = firstWriter(legacyRunner.Stdout, out, os.Stdout)
-	legacyRunner.Stderr = firstWriter(legacyRunner.Stderr, r.Stderr, os.Stderr)
-	if legacyRunner.Cwd == "" {
-		legacyRunner.Cwd = cwd
-	}
-	return legacyRunner.Run(args)
-}
-
-func firstReader(readers ...io.Reader) io.Reader {
-	for _, reader := range readers {
-		if reader != nil {
-			return reader
-		}
-	}
-	return nil
-}
-
-func firstWriter(writers ...io.Writer) io.Writer {
-	for _, writer := range writers {
-		if writer != nil {
-			return writer
-		}
-	}
-	return nil
 }

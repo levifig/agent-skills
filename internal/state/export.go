@@ -105,6 +105,7 @@ var exportAllTables = []exportTable{
 	{Name: "brainstorms", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "shaping_drafts", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "sessions", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "session_state_snapshots", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "reports", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "journal_entries", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "events", OrderBy: "id", FilterColumn: "project_id"},

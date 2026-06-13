@@ -12,7 +12,7 @@ description: >-
 
 Quick reference for all Loaf CLI commands. Each command includes its purpose, common usage patterns, and when to use it.
 
-**Note:** This file is auto-generated from the CLI source code. Do not edit manually.
+**Note:** This file is auto-generated from native CLI reference metadata. Do not edit manually.
 
 ## Global Commands
 
@@ -25,10 +25,10 @@ Orchestrates implementation sessions through agent delegation and batch executio
 - Resuming work after context loss
 
 **Usage:**
-- {{IMPLEMENT_CMD}} TASK-XXX — Load task, auto-create session
-- {{IMPLEMENT_CMD}} SPEC-XXX — Resolve all tasks, build dependency waves
-- {{IMPLEMENT_CMD}} TASK-XXX..YYY — Expand range, build waves
-- {{IMPLEMENT_CMD}} "description" — Ad-hoc session
+- {{IMPLEMENT_CMD}} TASK-XXX - Load task, auto-create session
+- {{IMPLEMENT_CMD}} SPEC-XXX - Resolve all tasks, build dependency waves
+- {{IMPLEMENT_CMD}} TASK-XXX..YYY - Expand range, build waves
+- {{IMPLEMENT_CMD}} "description" - Ad-hoc session
 
 ### {{ORCHESTRATE_CMD}}
 Coordinates multi-agent work: agent delegation, session management, Linear integration.
@@ -88,6 +88,104 @@ loaf release
 
 ---
 
+## State Management
+
+### `loaf state`
+Manage native SQLite state
+
+Existing TypeScript-era projects can keep running supported commands in
+markdown-only compatibility mode until SQLite is initialized. Use
+`loaf state migrate markdown --apply` to import `.agents/` Markdown into SQLite
+without rewriting the source Markdown files.
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf state path` | Print the resolved SQLite database path |
+| `loaf state status` | Show SQLite readiness and markdown-only compatibility status |
+| `loaf state init` | Initialize an empty SQLite state database |
+| `loaf state doctor` | Diagnose SQLite state health |
+| `loaf state migrate markdown` | Import existing .agents Markdown artifacts into SQLite |
+| `loaf state migrate storage-home` | Copy legacy XDG_STATE_HOME SQLite state into XDG_DATA_HOME |
+| `loaf state backup` | Create a SQLite database backup |
+| `loaf state export` | Export SQLite state for review or migration |
+
+**Options:**
+
+- `loaf state status`:
+  - `--json` - Output status as JSON
+
+- `loaf state init`:
+  - `--json` - Output initialized status as JSON
+
+- `loaf state doctor`:
+  - `--fix` - Initialize missing SQLite state when safe
+  - `--json` - Output diagnostics as JSON
+
+- `loaf state migrate markdown`:
+  - `--dry-run` - Preview import counts without creating a database
+  - `--apply` - Initialize SQLite and import Markdown artifacts
+  - `--resume` - Resume the Markdown import after an interrupted attempt
+  - `--json` - Output migration details as JSON
+
+- `loaf state migrate storage-home`:
+  - `--dry-run` - Preview the storage-home migration
+  - `--apply` - Copy the legacy database without deleting it
+  - `--json` - Output migration details as JSON
+
+- `loaf state backup`:
+  - `--json` - Output backup details as JSON
+
+**Usage:**
+```bash
+loaf state status
+loaf state migrate markdown --dry-run
+loaf state migrate markdown --apply
+loaf state status
+```
+
+---
+
+## Migrate Management
+
+### `loaf migrate`
+Run native migration workflows
+
+`loaf migrate markdown` is the upgrade path for existing `.agents/`
+projects with no SQLite database. Start with `--dry-run`, then use `--apply`
+when the artifact counts and skipped files look right.
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf migrate markdown` | Import existing .agents Markdown artifacts into SQLite |
+| `loaf migrate storage-home` | Copy legacy XDG_STATE_HOME SQLite state into XDG_DATA_HOME |
+| `loaf migrate worktree-storage` | Move linked-worktree .agents state to the main worktree |
+
+**Options:**
+
+- `loaf migrate markdown`:
+  - `--dry-run` - Preview import counts without creating a database
+  - `--apply` - Initialize SQLite and import Markdown artifacts
+  - `--resume` - Resume the Markdown import after an interrupted attempt
+  - `--json` - Output migration details as JSON
+
+- `loaf migrate storage-home`:
+  - `--dry-run` - Preview the storage-home migration
+  - `--apply` - Copy the legacy database without deleting it
+  - `--json` - Output migration details as JSON
+
+**Usage:**
+```bash
+loaf migrate markdown --dry-run
+loaf migrate markdown --apply
+loaf migrate storage-home --dry-run
+```
+
+---
+
 ## Task Management
 
 ### `loaf task`
@@ -113,32 +211,32 @@ artifacts during migration; do not edit them directly for lifecycle changes.
 **Options:**
 
 - `loaf task list`:
-  - `--json` — Output raw JSON
-  - `--active` — Hide completed tasks
-  - `--status <status>` — Only show tasks with status: todo, in_progress, blocked, review, done
+  - `--json` - Output raw JSON
+  - `--active` - Hide completed tasks
+  - `--status <status>` - Only show tasks with status: in_progress, blocked, todo, review, done
 
 - `loaf task show`:
-  - `--json` — Output task entry as JSON
+  - `--json` - Output task entry as JSON
 
 - `loaf task create`:
-  - `--title <title>` — Task title
-  - `--spec <id>` — Associated spec ID (e.g., SPEC-010)
-  - `--priority <level>` — Priority level (P0/P1/P2/P3)
-  - `--depends-on <ids>` — Comma-separated task IDs
+  - `--title <title>` - Task title
+  - `--spec <id>` - Associated spec ID (e.g., SPEC-010)
+  - `--priority <level>` - Priority level (P0/P1/P2/P3)
+  - `--depends-on <ids>` - Comma-separated task IDs
 
 - `loaf task update`:
-  - `--status <status>` — New status: todo, in_progress, blocked, review, done
-  - `--priority <level>` — New priority: P0, P1, P2, P3
-  - `--depends-on <ids>` — Replace depends_on (comma-separated task IDs)
-  - `--session <file>` — Set or clear session reference (use "none" to clear)
-  - `--spec <id>` — Set or change associated spec
+  - `--status <status>` - New status: todo, in_progress, blocked, review, done
+  - `--priority <level>` - New priority: P0, P1, P2, P3
+  - `--depends-on <ids>` - Replace depends_on (comma-separated task IDs)
+  - `--session <file>` - Set or clear session reference (use "none" to clear)
+  - `--spec <id>` - Set or change associated spec
 
 - `loaf task archive`:
-  - `--spec <id>` — Archive all done tasks for a spec
+  - `--spec <id>` - Archive all done tasks for a spec
 
 - `loaf task sync`:
-  - `--import` — Import orphan .md files not in the index
-  - `--push` — Push compatibility index metadata into .md frontmatter
+  - `--import` - Import orphan .md files not in the index
+  - `--push` - Push compatibility index metadata into .md frontmatter
 
 **Usage:**
 ```bash
@@ -163,17 +261,76 @@ status and relationship data when initialized.
 | Subcommand | Purpose |
 |------------|---------|
 | `loaf spec list` | Show specs with status and task counts |
-| `loaf spec archive` | Archive completed specs through the spec lifecycle |
+| `loaf spec show` | Show spec details |
+| `loaf spec archive` | Archive a completed spec |
 
 **Options:**
 
 - `loaf spec list`:
-  - `--json` — Output raw JSON
+  - `--json` - Output raw JSON
+
+- `loaf spec show`:
+  - `--json` - Output raw JSON
+
+- `loaf spec archive`:
+  - `--json` - Output raw JSON
 
 **Usage:**
 ```bash
 loaf spec list
+loaf spec show
 loaf spec archive
+```
+
+---
+
+## Report Management
+
+### `loaf report`
+Manage durable reports (research, audits, investigations)
+
+In SQLite-backed projects, report lifecycle state is stored in SQLite. Use
+generated report commands for review output; create authored Markdown reports
+only when a durable prose artifact is explicitly needed.
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf report list` | List reports |
+| `loaf report generate` | Generate a report from state |
+| `loaf report create` | Create a report draft |
+| `loaf report finalize` | Mark a report draft as final |
+| `loaf report archive` | Archive a finalized report |
+
+**Options:**
+
+- `loaf report list`:
+  - `--type <type>` - Filter by report type
+  - `--status <status>` - Filter by status
+  - `--json` - Output as JSON
+
+- `loaf report generate`:
+  - `--format <format>` - Output format
+
+- `loaf report create`:
+  - `--type <type>` - Report type
+  - `--source <source>` - Report source
+  - `--json` - Output as JSON
+
+- `loaf report finalize`:
+  - `--json` - Output as JSON
+
+- `loaf report archive`:
+  - `--json` - Output as JSON
+
+**Usage:**
+```bash
+loaf report list
+loaf report create release-readiness --type audit --source manual
+loaf report finalize report-release-readiness
+loaf report archive report-release-readiness
+loaf report generate release-readiness
 ```
 
 ---
@@ -198,24 +355,24 @@ Knowledge base management
 **Options:**
 
 - `loaf kb validate`:
-  - `--json` — Output results as JSON
+  - `--json` - Output results as JSON
 
 - `loaf kb status`:
-  - `--json` — Output status as JSON
+  - `--json` - Output status as JSON
 
 - `loaf kb check`:
-  - `--file <path>` — Reverse lookup: find knowledge files covering this path
-  - `--json` — Output results as JSON
+  - `--file <path>` - Reverse lookup: find knowledge files covering this path
+  - `--json` - Output results as JSON
 
 - `loaf kb review`:
-  - `--json` — Output updated frontmatter as JSON
+  - `--json` - Output updated frontmatter as JSON
 
 - `loaf kb init`:
-  - `--json` — Output results as JSON
+  - `--json` - Output results as JSON
 
 - `loaf kb import`:
-  - `--path <path>` — Path to the external project's knowledge directory
-  - `--json` — Output results as JSON
+  - `--path <path>` - Path to the external project's knowledge directory
+  - `--json` - Output results as JSON
 
 **Usage:**
 ```bash
@@ -253,7 +410,7 @@ loaf version
 ## Housekeeping Management
 
 ### `loaf housekeeping`
-Scan .agents/ artifacts and recommend housekeeping actions
+Scan project artifacts and recommend housekeeping actions
 
 **Usage:**
 ```bash
@@ -274,101 +431,6 @@ loaf check
 
 ---
 
-## Session Management
-
-### `loaf session`
-Manage session journals
-
-Session list/show/log/report commands are SQLite-aware. Prefer these commands
-over manual session frontmatter edits when changing lifecycle or journal state.
-
-**Subcommands:**
-
-| Subcommand | Purpose |
-|------------|---------|
-| `loaf session start` | Start/resume session for current branch |
-| `loaf session end` | End session with progress summary |
-| `loaf session log` | Log entry to session journal |
-| `loaf session archive` | Archive completed session |
-| `loaf session housekeeping` | Run session housekeeping: orphans, splits, archival, linkage repair |
-| `loaf session enrich` | Enrich session journal from JSONL conversation log |
-| `loaf session list` | List all active and archived sessions |
-| `loaf session state` | Manage session state snapshot |
-| `loaf session context` | Session context for hooks and agents |
-| `loaf session show` | Display one session from state |
-| `loaf session report` | Generate a session report from SQLite state |
-
-**Options:**
-
-- `loaf session start`:
-  - `--resume` — Resume existing paused session instead of creating new
-  - `--force` — Force session creation, bypassing subagent detection
-
-- `loaf session end`:
-  - `--if-active` — Exit successfully when no active session exists
-  - `--wrap` — Close session as done (used after /wrap writes summary)
-  - `--from-hook` — Invoked from a Stop hook — keep inline chain, silent on no-match
-  - `--session-id <id>` — Route to session with this claude_session_id (Tier 1 override)
-
-- `loaf session log`:
-  - `--from-hook` — Parse entry from hook stdin
-  - `--session-id <id>` — Route to session with this claude_session_id (Tier 1 override)
-  - `--detect-linear` — Detect Linear magic words in recent commits
-
-- `loaf session archive`:
-  - `--branch <branch>` — Archive session for specific branch (default: current)
-  - `--session-id <id>` — Route to session with this claude_session_id (Tier 1 override)
-
-- `loaf session housekeeping`:
-  - `--dry-run` — Report what would be done without making changes
-
-- `loaf session enrich`:
-  - `--dry-run` — Show what would be added without writing
-  - `--model <model>` — Override model for the librarian call
-  - `--session-id <id>` — Route to session with this claude_session_id (Tier 1 override)
-
-- `loaf session list`:
-  - `--all` — Include archived sessions
-
-**Usage:**
-```bash
-loaf session start
-loaf session end
-loaf session log
-```
-
----
-
-## Report Management
-
-### `loaf report`
-Manage report state and generated report output.
-
-In SQLite-backed projects, report lifecycle state is stored in SQLite. Use
-generated report commands for review output; create authored Markdown reports
-only when a durable prose artifact is explicitly needed.
-
-**Subcommands:**
-
-| Subcommand | Purpose |
-|------------|---------|
-| `loaf report list` | List reports from SQLite state or Markdown compatibility files |
-| `loaf report create` | Create a draft report row in SQLite state |
-| `loaf report finalize` | Transition a draft report to final |
-| `loaf report archive` | Transition a final report to archived |
-| `loaf report generate` | Generate report Markdown from SQLite state to stdout |
-
-**Usage:**
-```bash
-loaf report list
-loaf report create release-readiness --type audit --source manual
-loaf report finalize report-release-readiness
-loaf report archive report-release-readiness
-loaf report generate release-readiness
-```
-
----
-
 ## Command Substitution Reference
 
 The following placeholders are substituted at build time per target:
@@ -382,16 +444,16 @@ The following placeholders are substituted at build time per target:
 
 ## Quick Decision Guide
 
-**Need to start working?** → `{{IMPLEMENT_CMD}} TASK-XXX`
+**Need to start working?** -> `{{IMPLEMENT_CMD}} TASK-XXX`
 
-**Need to continue after restart?** → `loaf session start` then `{{IMPLEMENT_CMD}}`
+**Need to continue after restart?** -> `loaf session start` then `{{IMPLEMENT_CMD}}`
 
-**Need to coordinate agents?** → `{{ORCHESTRATE_CMD}}`
+**Need to coordinate agents?** -> `{{ORCHESTRATE_CMD}}`
 
-**Made changes to skills?** → `loaf build && loaf install --to <target>`
+**Made changes to skills?** -> `loaf build && loaf install --to <target>`
 
-**Want to see what's in progress?** → `loaf task list --active`
+**Want to see what's in progress?** -> `loaf task list --active`
 
-**Ready to archive completed work?** → `loaf task archive TASK-XXX`
+**Ready to archive completed work?** -> `loaf task archive TASK-XXX`
 
-**Need to check knowledge freshness?** → `loaf kb check`
+**Need to check knowledge freshness?** -> `loaf kb check`

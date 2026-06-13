@@ -1,0 +1,269 @@
+erDiagram
+  projects {
+    text id PK
+    text identity_hash UK
+    text created_at
+    text updated_at
+  }
+  schema_migrations {
+    integer version PK
+    text name
+    text checksum
+    text applied_at
+  }
+  aliases {
+    text id PK
+    text project_id FK
+    text entity_kind
+    text entity_id
+    text namespace
+    text alias
+    text created_at
+    text updated_at
+  }
+  specs {
+    text id PK
+    text project_id FK
+    text title
+    text status
+    text body_source_id FK
+    text created_at
+    text updated_at
+  }
+  tasks {
+    text id PK
+    text project_id FK
+    text spec_id FK
+    text title
+    text status
+    text priority
+    text body_source_id FK
+    text created_at
+    text updated_at
+  }
+  ideas {
+    text id PK
+    text project_id FK
+    text title
+    text status
+    text body_source_id FK
+    text created_at
+    text updated_at
+  }
+  sparks {
+    text id PK
+    text project_id FK
+    text scope
+    text status
+    text text
+    text source_id FK
+    text created_at
+    text updated_at
+  }
+  brainstorms {
+    text id PK
+    text project_id FK
+    text title
+    text status
+    text body_source_id FK
+    text created_at
+    text updated_at
+  }
+  shaping_drafts {
+    text id PK
+    text project_id FK
+    text title
+    text status
+    text body_source_id FK
+    text created_at
+    text updated_at
+  }
+  sessions {
+    text id PK
+    text project_id FK
+    text harness_session_id
+    text branch
+    text status
+    text body_source_id FK
+    text created_at
+    text updated_at
+  }
+  session_state_snapshots {
+    text id PK
+    text project_id FK
+    text session_id FK
+    text content
+    text observed_branch
+    text observed_worktree
+    text created_at
+    text updated_at
+  }
+  reports {
+    text id PK
+    text project_id FK
+    text report_kind
+    text title
+    text status
+    text body_source_id FK
+    text created_at
+    text updated_at
+  }
+  journal_entries {
+    text id PK
+    text project_id FK
+    text entry_type
+    text scope
+    text message
+    text observed_branch
+    text observed_worktree
+    text harness_session_id
+    text session_id FK
+    text spec_id FK
+    text task_id FK
+    text created_at
+    text updated_at
+  }
+  events {
+    text id PK
+    text project_id FK
+    text entity_kind
+    text entity_id
+    text event_type
+    text from_status
+    text to_status
+    text note
+    text created_at
+    text updated_at
+  }
+  relationships {
+    text id PK
+    text project_id FK
+    text from_entity_kind
+    text from_entity_id
+    text to_entity_kind
+    text to_entity_id
+    text relationship_type
+    text reason
+    text created_at
+    text updated_at
+  }
+  tags {
+    text id PK
+    text project_id FK
+    text name
+    text created_at
+    text updated_at
+  }
+  entity_tags {
+    text id PK
+    text project_id FK
+    text tag_id FK
+    text entity_kind
+    text entity_id
+    text created_at
+    text updated_at
+  }
+  bundles {
+    text id PK
+    text project_id FK
+    text slug
+    text title
+    text tag_query
+    text created_at
+    text updated_at
+  }
+  bundle_members {
+    text id PK
+    text project_id FK
+    text bundle_id FK
+    text entity_kind
+    text entity_id
+    text created_at
+    text updated_at
+  }
+  sources {
+    text id PK
+    text project_id FK
+    text source_kind
+    text path
+    text hash
+    integer line_start
+    integer line_end
+    text imported_at
+    text created_at
+    text updated_at
+  }
+  backend_mappings {
+    text id PK
+    text project_id FK
+    text backend
+    text entity_kind
+    text entity_id
+    text external_kind
+    text external_id
+    text external_url
+    text sync_status
+    text created_at
+    text updated_at
+  }
+  hook_events {
+    text id PK
+    text project_id FK
+    text hook_id
+    text hook_phase
+    text command
+    integer exit_code
+    text message
+    text created_at
+    text updated_at
+  }
+  exports {
+    text id PK
+    text project_id FK
+    text export_kind
+    text format
+    text path
+    integer state_version
+    text source_entity_kind
+    text source_entity_id
+    text generated_at
+    text created_at
+    text updated_at
+  }
+
+  projects ||--o{ aliases : scopes
+  projects ||--o{ specs : scopes
+  projects ||--o{ tasks : scopes
+  projects ||--o{ ideas : scopes
+  projects ||--o{ sparks : scopes
+  projects ||--o{ brainstorms : scopes
+  projects ||--o{ shaping_drafts : scopes
+  projects ||--o{ sessions : scopes
+  projects ||--o{ session_state_snapshots : scopes
+  projects ||--o{ reports : scopes
+  projects ||--o{ journal_entries : scopes
+  projects ||--o{ events : scopes
+  projects ||--o{ relationships : scopes
+  projects ||--o{ tags : scopes
+  projects ||--o{ entity_tags : scopes
+  projects ||--o{ bundles : scopes
+  projects ||--o{ bundle_members : scopes
+  projects ||--o{ sources : scopes
+  projects ||--o{ backend_mappings : scopes
+  projects ||--o{ hook_events : scopes
+  projects ||--o{ exports : scopes
+  specs ||--o{ tasks : contains
+  sessions ||--o{ journal_entries : records
+  sessions ||--o{ session_state_snapshots : summarizes
+  specs ||--o{ journal_entries : contextualizes
+  tasks ||--o{ journal_entries : contextualizes
+  tags ||--o{ entity_tags : labels
+  bundles ||--o{ bundle_members : contains
+  sources ||--o{ specs : bodies
+  sources ||--o{ tasks : bodies
+  sources ||--o{ ideas : bodies
+  sources ||--o{ sparks : origins
+  sources ||--o{ brainstorms : bodies
+  sources ||--o{ shaping_drafts : bodies
+  sources ||--o{ sessions : bodies
+  sources ||--o{ reports : bodies

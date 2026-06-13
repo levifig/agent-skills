@@ -10,6 +10,9 @@ import (
 //go:embed migrations/0001_initial.sql
 var initialSchemaSQL string
 
+//go:embed migrations/0002_session_state_snapshots.sql
+var sessionStateSnapshotsSQL string
+
 const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -32,6 +35,11 @@ func SchemaMigrations() []SchemaMigration {
 			Version: 1,
 			Name:    "initial_operational_state",
 			SQL:     normalizeMigrationSQL(initialSchemaSQL),
+		},
+		{
+			Version: 2,
+			Name:    "session_state_snapshots",
+			SQL:     normalizeMigrationSQL(sessionStateSnapshotsSQL),
 		},
 	}
 }

@@ -3,30 +3,11 @@
 ## Current Architecture (v2.0)
 
 ```
-cli/                            # CLI tool (TypeScript, bundled by tsup)
-├── index.ts                    # Commander.js entry point
-├── commands/
-│   ├── build.ts                # loaf build
-│   ├── check.ts                # loaf check (enforcement backend)
-│   ├── doctor.ts               # loaf doctor (alignment diagnostics, --fix)
-│   ├── install.ts              # loaf install
-│   ├── session.ts              # loaf session (start/end/log/enrich/list/archive)
-│   └── spec.ts                 # loaf spec (list/archive)
-└── lib/
-    ├── build/
-    │   ├── types.ts            # Shared types (BuildContext, HooksConfig, etc.)
-    │   ├── targets/            # Target transformers (claude-code, cursor, opencode, codex, gemini, amp)
-    │   └── lib/                # Utilities (version, sidecar, shared-templates, etc.)
-    ├── detect/                 # AI tool + MCP detection
-    ├── install/                # Target installers, fenced-section management, symlink helper
-    │   ├── fenced-section.ts   # Managed-section writer (realpath dedup)
-    │   └── symlinks.ts         # ensureProjectSymlinks, 4-state ensureSymlink + content migration
-    ├── tasks/                  # Task/spec types, parser, migration, archival
-    ├── release/                # Version bump, changelog generation
-    ├── housekeeping/           # Artifact scanning, stale detection
-    ├── journal/                # JSONL extraction for session enrichment
-    ├── kb/                     # Knowledge base loader, staleness, resolution
-    └── session/                # Session routing helpers (store, find, resolve)
+cmd/loaf/                       # Go CLI entry point
+internal/cli/                   # Native command dispatcher, command families, build helpers
+cli/                            # Portable launcher plus JS build/verifier/smoke/eval scripts
+├── runtime/                    # Node launcher wrapper
+└── scripts/                    # JS build, verification, smoke, and evaluation scripts
 
 content/                        # Distributable content (separated from tooling)
 ├── skills/{name}/SKILL.md      # Domain knowledge (Agent Skills standard)
@@ -39,7 +20,8 @@ config/
 └── targets.yaml                # Target defaults + shared-templates mapping
 
 Output:
-├── dist-cli/                   # Bundled CLI (single JS file via tsup)
+├── bin/loaf                    # Portable launcher
+├── bin/native/{platform}/loaf   # Native Go runtime
 ├── plugins/loaf/               # Claude Code plugin (hooks, skills, agents, binary)
 └── dist/{target}/              # Other targets (cursor, opencode, codex, gemini, amp)
 ```
@@ -47,27 +29,26 @@ Output:
 ### Build Flow
 
 ```
-cli/index.ts → tsup → dist-cli/index.js (bundled CLI)
-content/ + config/ → loaf build → dist/ + plugins/
+cmd/loaf + internal/cli -> go build -> bin/native/{platform}/loaf
+content/ + config/ -> loaf build -> dist/ + plugins/
 ```
 
 Each target transformer reads content (skills/agents/hooks) and config, then produces target-specific output. Skills get sidecar files merged. Hooks get registered in plugin manifests. Shared templates get distributed to specified skills.
 
-All TypeScript, bundled into a single file by tsup. No dynamic imports. The `loaf` binary in `plugins/loaf/bin/` is a self-contained copy of the bundled CLI with all npm dependencies inlined.
+The public runtime and CLI reference generation are native Go. Remaining non-Go files under `cli/` are JavaScript launcher/build/smoke/evaluation scripts, not TypeScript command implementations or tests.
 
 ### Stateful Runtime Migration (ADR-014)
 
-ADR-014 accepts Go as the runtime direction for Loaf's stateful core. The current TypeScript CLI remains the shipped implementation until migration work lands, but new SQLite-backed operational-state work starts in Go.
+ADR-014 accepts Go as the runtime direction for Loaf's stateful core. Native Go is now the shipped public runtime; TypeScript command registrations, the shipped fallback bundle, and the local TypeScript test harness have been removed from the active CLI surface.
 
-The intended transition shape is a Go front controller for the public `loaf` command:
+The transition shape is a Go front controller for the public `loaf` command:
 
 ```
 loaf                     # Go front controller
-├── native Go commands    # stateful/runtime-heavy behavior, starting with `loaf state`
-└── legacy bridge         # temporary delegation to the bundled TypeScript CLI
+└── native Go commands    # stateful/runtime-heavy behavior and migrated public commands
 ```
 
-The bridge prevents a big-bang rewrite. Commands move to Go when they need the stateful runtime, storage layer, or lower-dependency distribution shape. Existing TypeScript command families continue to operate through the bridge until deliberately migrated.
+The former TypeScript bridge prevented a big-bang rewrite. Public commands have moved to Go for the stateful runtime, storage layer, and lower-dependency distribution shape. Historical ADRs still describe the transition, but the active `cli/` tree no longer contains TypeScript source or test files.
 
 This changes the construction technique, not the product contract: skills still call `loaf`, hooks still enforce through `loaf`, and users still see one command surface. The implementation boundary behind that command is allowed to migrate command-by-command.
 
@@ -105,7 +86,7 @@ The managed fenced section is written once to a canonical file (`.agents/AGENTS.
 ./AGENTS.md              → symlink →      .agents/AGENTS.md  (agents.md spec)
 ```
 
-**Write path (`loaf install`):** `installFencedSectionsForTargets` resolves each target's destination via `realpath` and groups writes by canonical path. Five of six targets share `.agents/AGENTS.md`, so they produce a single write. Before writing, `ensureProjectSymlinks` runs the 4-state machine per link:
+**Write path (`loaf install`):** the native Go installer resolves each target's destination via `realpath` and groups writes by canonical path. Five of six targets share `.agents/AGENTS.md`, so they produce a single write. Before writing, the native project-symlink installer runs the 4-state machine per link:
 
 | State | Action |
 |-------|--------|
@@ -253,9 +234,9 @@ Sessions are keyed by `claude_session_id` (the JSONL identity), **not** by branc
 
 **Compaction resilience:** The session journal is external memory that survives context compaction. PreCompact requires flushing unrecorded entries and writing a state summary to `## Current State`. PostCompact nudges the model to re-read the session file for resumption context. No separate snapshot mechanism needed.
 
-**Session routing (SPEC-032, v2.0.0-dev.31):** User-facing session-mutating commands (`loaf session log`, `archive`, `enrich`, `end --wrap`) resolve their target via `resolveCurrentSession` in `cli/lib/session/resolve.ts` — a 3-tier priority chain: `--session-id <id>` flag → hook stdin payload (`--from-hook` opt-in only) → branch-fallback. Tier 3 emits a stderr WARN naming the branch and the silencing flag, so misroutes are visible in real time instead of corrupting state silently.
+**Session routing (SPEC-032, v2.0.0-dev.31):** User-facing session-mutating commands (`loaf session log`, `archive`, `enrich`, `end --wrap`) resolve their target through the native Go session router — a 3-tier priority chain: `--session-id <id>` flag → hook stdin payload (`--from-hook` opt-in only) → branch-fallback. Tier 3 emits a stderr WARN naming the branch and the silencing flag, so misroutes are visible in real time instead of corrupting state silently.
 
-Hook-aware code paths (Stop event handlers, SessionStart resumption, PreCompact context, internal create-lock re-checks) keep the older inline pattern (`findSessionByClaudeId(...) || findActiveSessionForBranch(...)`) and exit silently on no-match — they fire frequently and silent failure is correct hook behavior. The asymmetry is documented in a block comment near the helpers in `cli/commands/session.ts`. Modules: `cli/lib/session/store.ts` (persistence primitives), `find.ts` (the two finders), `resolve.ts` (the chain helper), `index.ts` (public re-exports).
+Hook-aware code paths (Stop event handlers, SessionStart resumption, PreCompact context, internal create-lock re-checks) keep the older inline pattern (harness-session lookup, then branch fallback) and exit silently on no-match — they fire frequently and silent failure is correct hook behavior. The public `loaf session` surface and markdown compatibility paths are native Go; the obsolete TypeScript session helpers have been removed.
 
 ### Journal Entry Sources
 
@@ -324,7 +305,7 @@ Hard-won constraints validated during SPEC-030 implementation:
 
 ### Hook Categories
 
-**Enforcement hooks** — quality gates that block bad actions. Run by `loaf check` as a unified TypeScript backend. Exit non-zero to block. `failClosed: true` means failures block the action. `validate-push` (pre-push) restricts direct pushes to the default branch to `.agents/` and `docs/` files only. Code changes require a feature branch and pull request.
+**Enforcement hooks** — quality gates that block bad actions. Run by `loaf check` through the native Go backend. Exit non-zero to block. `failClosed: true` means failures block the action. `validate-push` (pre-push) restricts direct pushes to the default branch to `.agents/` and `docs/` files only. Code changes require a feature branch and pull request.
 
 **Instruction hooks** — context injection at tool invocation. Triggered by `matcher` patterns (tool name) and optionally filtered by `if` conditions (tool input). Inject relevant skill instructions or nudges.
 
@@ -369,40 +350,31 @@ Integration toggles in `loaf.json` gate runtime features (Linear magic-word dete
 
 Any test that spawns a CLI subprocess must use OS-tmp isolation for its fixtures:
 
-```ts
-import { mkdtempSync, realpathSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
-
-let TEST_ROOT: string;
-
-beforeEach(() => {
-  TEST_ROOT = realpathSync(mkdtempSync(join(tmpdir(), "loaf-<suite>-")));
-  // ...
-});
+```go
+workingDir := realpath(t, t.TempDir())
 ```
 
-CWD-relative fixtures (`join(process.cwd(), ".test-..."`)) are forbidden for subprocess tests. Under vitest's default file parallelism, workers share the filesystem and cwd — CWD-relative paths race against other test files' subprocesses. The failure mode is silent under per-file runs (where pollution cannot occur) and non-deterministic under full-suite runs. One such leak in `cli/commands/check.test.ts` silently failed `cli/commands/report.test.ts` for 17+ commits before v2.0.0-dev.28 bisected it.
+CWD-relative fixtures are forbidden for subprocess tests. The old Vitest suite exposed why: workers shared filesystem state and cwd, so `join(process.cwd(), ".test-...")` fixtures could race against other subprocess tests. One such leak in `cli/commands/check.test.ts` silently failed `cli/commands/report.test.ts` for 17+ commits before v2.0.0-dev.28 bisected it.
 
-`realpathSync` is required on macOS because the system tmpdir (`/var/folders/...`) is reached through a `/private/var/folders/...` symlink; without realpath, subprocess cwd comparisons can fail.
+`realpath` is required on macOS because the system tmpdir (`/var/folders/...`) is reached through a `/private/var/folders/...` symlink; without realpath, subprocess cwd comparisons can fail.
 
-Until every test file is migrated, `vitest.config.ts` sets `fileParallelism: false` as a defensive default — ~20% slower but deterministic. The plan is to migrate remaining cwd-relative fixtures and re-enable parallelism once the pattern is enforced throughout.
+The active test harness is now Go. `npm test` delegates to `go test ./...`, and `npm run typecheck` compiles all Go packages with `go test ./... -run=^$`.
 
 ## Cross-Cutting Patterns
 
 Patterns that apply across multiple subsystems and emerged from specific post-release followups. Captured here so they inform future work rather than being re-discovered.
 
-### Single-Source Runtime Versioning via Build-Time Injection
+### Single-Source Runtime Versioning
 
-The CLI version must report the same value in every runtime mode: dev (`tsx`), source-built (`npm run`), and bundled-binary (`dist-cli/index.js` on PATH). `cli/lib/version.ts` exposes `LOAF_VERSION`, sourced from tsup's `define: { __LOAF_VERSION__: JSON.stringify(pkg.version) }`, with a `package.json` walk-up fallback for dev/test contexts where the define is not applied. Consumers: `cli/index.ts` (Commander `.version()`), `cli/lib/install/fenced-section.ts` (fenced-section version marker), `cli/commands/doctor.ts` (`fenced-version` check).
+The native CLI version must report the package version consistently through the launcher, native runtime, generated targets, and install markers. Go runtime paths read package metadata directly; the obsolete TypeScript version helper was removed after the install and version surfaces moved to native Go.
 
 Before PR #35 (v2.0.0-dev.30), three separate runtime `package.json` walkers in those same files diverged and all fell back to `"0.0.0"` from the bundled binary — a false-positive factory for every version-comparison check in the CLI. The lesson generalizes: any value that must be identical across runtime modes should be injected at build time, not resolved at runtime.
 
 ### Generated Runtime Plugin Artifacts Parsed From Emitted Output
 
-Files the build emits for downstream runtimes to execute — OpenCode `hooks.ts`, Amp `loaf.js`, and any future per-target runtime plugin — must have a test that parses the **actual emitted file** via a real parser (TypeScript compiler API, Acorn), not just the generator's input string.
+Files the build emits for downstream runtimes to execute — OpenCode `hooks.ts`, Amp `loaf.js`, and any future per-target runtime plugin — must have tests against the **actual emitted file**, not just the generator's input string.
 
-Template-literal escape bugs are invisible at the string level: `cli/lib/build/lib/hooks/runtime-plugin.ts` emitted invalid regex (`/*/g`) into `dist/opencode/plugins/hooks.ts` for multiple versions because the broken code path was unreachable at runtime. The syntactic breakage was dormant until OpenCode's plugin loader tightened its validation and rejected the file on load. `cli/lib/build/targets/runtime-logic.test.ts` now parses both OpenCode's and Amp's emitted output via the TypeScript compiler API as a regression fence for the entire class of escape/interpolation bugs.
+Template-literal escape bugs are invisible at the source-string level: the former TypeScript build helper emitted invalid regex (`/*/g`) into `dist/opencode/plugins/hooks.ts` for multiple versions because the broken code path was unreachable at runtime. The syntactic breakage was dormant until OpenCode's plugin loader tightened its validation and rejected the file on load. Native build tests in `internal/cli/build_test.go` now read the emitted OpenCode and Amp plugin files and assert the runtime hook bodies and command payloads that downstream runtimes load.
 
 ### Visible-Degraded Fallback with Stderr WARN
 

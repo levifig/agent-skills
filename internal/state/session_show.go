@@ -24,6 +24,7 @@ type SessionDetail struct {
 	Status           string                `json:"status"`
 	HarnessSessionID string                `json:"harness_session_id,omitempty"`
 	Sources          []TraceSource         `json:"sources"`
+	StateSnapshot    *SessionStateSnapshot `json:"state_snapshot,omitempty"`
 	JournalEntries   []SessionJournalEntry `json:"journal_entries"`
 	Relationships    []TraceRelationship   `json:"relationships"`
 	CreatedAt        string                `json:"created_at"`
@@ -106,6 +107,10 @@ WHERE sessions.project_id = ? AND sessions.id = ?
 	if err != nil {
 		return SessionDetail{}, err
 	}
+	stateSnapshot, err := s.latestSessionStateSnapshot(ctx, projectID, entity.ID)
+	if err != nil {
+		return SessionDetail{}, err
+	}
 	relationships, err := s.traceRelationships(ctx, projectID, TraceEntity{
 		Kind:   "session",
 		ID:     entity.ID,
@@ -123,6 +128,7 @@ WHERE sessions.project_id = ? AND sessions.id = ?
 		Status:           status,
 		HarnessSessionID: harnessSessionID.String,
 		Sources:          sources,
+		StateSnapshot:    stateSnapshot,
 		JournalEntries:   journalEntries,
 		Relationships:    relationships,
 		CreatedAt:        createdAt,

@@ -179,13 +179,12 @@ handoff design is downstream of a deferred taxonomy spec.
 After the PLAN file is written, check whether the `codex` plugin is
 available in the current harness — i.e. whether the `codex:codex-rescue`
 agent (or the `codex:rescue` skill) is exposed in this session's available
-skills/agents list. Loaf's CLI-level tool detection (`cli/lib/detect/`)
-discovers external CLIs like the Codex binary; it does **not** report
-Claude-Code-plugin presence inside the running session. The skill-level
-ambient-availability check is the right contract here — what we care about
-is "can I route a review *right now*," not "is the Codex CLI installed
-somewhere on this machine." If a future Loaf surface adds plugin-level
-detection, this rule can switch to it.
+skills/agents list. Loaf's install-time tool detection discovers external CLIs
+like the Codex binary; it does **not** report Claude-Code-plugin presence
+inside the running session. The skill-level ambient-availability check is the
+right contract here — what we care about is "can I route a review *right now*,"
+not "is the Codex CLI installed somewhere on this machine." If a future Loaf
+surface adds plugin-level detection, this rule can switch to it.
 
 - **Always** make this offer plugin-gated and opt-in. Ask once, verbatim:
   > Want a Codex review of this deepening before commit?

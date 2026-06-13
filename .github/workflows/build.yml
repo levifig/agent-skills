@@ -50,14 +50,14 @@ jobs:
       - name: Verify build artifacts are in sync
         run: |
           npm run verify:go-artifacts
-          if ! git diff --quiet -- bin/ dist/ plugins/ .claude-plugin/; then
+          if ! git diff --quiet -- bin/ dist/ plugins/ .claude-plugin/ ':(exclude)bin/native/**' ':(exclude)plugins/loaf/bin/native/**'; then
             echo "ERROR: Build artifacts are out of sync with source."
             echo ""
             echo "Files affected:"
-            git diff --stat -- bin/ dist/ plugins/ .claude-plugin/
+            git diff --stat -- bin/ dist/ plugins/ .claude-plugin/ ':(exclude)bin/native/**' ':(exclude)plugins/loaf/bin/native/**'
             echo ""
             echo "Diff (first 200 lines):"
-            git diff -- bin/ dist/ plugins/ .claude-plugin/ | head -200
+            git diff -- bin/ dist/ plugins/ .claude-plugin/ ':(exclude)bin/native/**' ':(exclude)plugins/loaf/bin/native/**' | head -200
             echo ""
             echo "Run 'npm run build' locally and commit the resulting changes alongside"
             echo "the source changes that produced them (per CLAUDE.md convention)."

@@ -29,7 +29,9 @@ type Status struct {
 	ProjectRoot          string       `json:"project_root"`
 	ProjectID            string       `json:"project_id"`
 	DatabasePath         string       `json:"database_path"`
+	LegacyDatabasePath   string       `json:"legacy_database_path,omitempty"`
 	DatabaseExists       bool         `json:"database_exists"`
+	LegacyDatabaseExists bool         `json:"legacy_database_exists"`
 	DatabaseParentExists bool         `json:"database_parent_exists"`
 	SchemaVersion        int          `json:"schema_version"`
 	Mode                 string       `json:"mode"`
@@ -47,6 +49,12 @@ func Inspect(root project.Root, resolver PathResolver) (Status, error) {
 		ProjectRoot:  root.Path(),
 		ProjectID:    ProjectID(root),
 		DatabasePath: databasePath,
+	}
+	if legacyPath, err := resolver.LegacyDatabasePath(root); err == nil && legacyPath != databasePath {
+		status.LegacyDatabasePath = legacyPath
+		if info, err := os.Stat(legacyPath); err == nil && !info.IsDir() {
+			status.LegacyDatabaseExists = true
+		}
 	}
 
 	parent := filepath.Dir(databasePath)
@@ -129,9 +137,16 @@ func Inspect(root project.Root, resolver PathResolver) (Status, error) {
 			Diagnostic{
 				Severity: "info",
 				Code:     "markdown-fallback-active",
-				Message:  "Markdown and TypeScript compatibility fallback remain active",
+				Message:  "Markdown compatibility remains active for projects without initialized SQLite state",
 			},
 		)
+		if status.LegacyDatabaseExists {
+			status.Diagnostics = append(status.Diagnostics, Diagnostic{
+				Severity: "warn",
+				Code:     "legacy-state-database-detected",
+				Message:  fmt.Sprintf("legacy SQLite state database exists at %s; run `loaf state migrate storage-home --apply` to copy it to %s", status.LegacyDatabasePath, status.DatabasePath),
+			})
+		}
 	default:
 		return Status{}, fmt.Errorf("inspect state database: %w", err)
 	}

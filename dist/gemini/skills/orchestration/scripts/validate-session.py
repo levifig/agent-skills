@@ -138,7 +138,7 @@ def validate_journal_entries(body: str) -> list[str]:
             except ValueError:
                 errors.append(f"Line {i}: Invalid timestamp format: {timestamp_str}")
 
-            # Validate entry type — keep in sync with cli/commands/session.ts EntryType
+            # Validate entry type — keep in sync with native markdown session parsing.
             valid_types = [
                 "session",
                 "start",

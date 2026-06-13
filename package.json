@@ -6,32 +6,24 @@
   "bin": {
     "loaf": "bin/loaf"
   },
-  "exports": {
-    ".": {
-      "import": "./dist-cli/index.js"
-    }
-  },
   "files": [
     "bin/",
-    "dist-cli/",
     "content/",
-    "config/",
-    "build/"
+    "config/"
   ],
   "scripts": {
     "build:go": "node cli/scripts/build-go.mjs",
+    "build:release": "node cli/scripts/build-release.mjs",
     "verify:go-artifacts": "node cli/scripts/verify-go-artifacts.mjs",
-    "build:cli": "tsup",
-    "build:cli-ref": "bun cli/scripts/generate-cli-ref.ts",
-    "build:content": "node dist-cli/build-content.js",
-    "build": "npm run build:cli-ref && npm run build:cli && npm run build:go && npm run build:content && npm run verify:go-artifacts",
-    "typecheck": "tsc --noEmit",
-    "pretest": "npm run build:cli",
-    "test": "vitest run",
+    "build:cli-ref": "bin/loaf __generate-cli-ref",
+    "build:content": "bin/loaf build",
+    "build": "npm run build:cli-ref && npm run build:go && npm run build:content && npm run verify:go-artifacts",
+    "typecheck": "go test ./... -run=^$",
+    "test": "go test ./...",
     "test:smoke": "node cli/scripts/smoke-test.js",
     "eval:routing": "node cli/scripts/eval-skill-routing.mjs",
-    "prepare": "npm run build:cli && npm run build:go",
-    "prepublishOnly": "npm run build"
+    "prepare": "npm run build:go",
+    "prepublishOnly": "npm run build:release"
   },
   "repository": {
     "type": "git",
@@ -52,17 +44,6 @@
   "engines": {
     "node": ">=22"
   },
-  "dependencies": {
-    "commander": "^14.0.3",
-    "gray-matter": "^4.0.3",
-    "picomatch": "^4.0.4",
-    "yaml": "^2.8.2"
-  },
-  "devDependencies": {
-    "@types/node": "^25.5.0",
-    "@types/picomatch": "^4.0.2",
-    "tsup": "^8.5.1",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.0"
-  }
+  "dependencies": {},
+  "devDependencies": {}
 }

@@ -112,7 +112,7 @@ func initGitRepo(t *testing.T) string {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	git(t, repo, "add", "README.md")
-	git(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "commit", "-m", "initial")
+	git(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "initial")
 
 	return repo
 }

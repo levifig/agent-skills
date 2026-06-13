@@ -93,10 +93,10 @@ func TestDatabasePathNonGitFallbackIsDeterministicForCurrentDirectory(t *testing
 	}
 }
 
-func TestPathResolverUsesXDGStateHome(t *testing.T) {
+func TestPathResolverUsesXDGDataHome(t *testing.T) {
 	dir := t.TempDir()
-	stateHome := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", stateHome)
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
 
 	root, err := project.ResolveRoot(dir)
 	if err != nil {
@@ -107,8 +107,39 @@ func TestPathResolverUsesXDGStateHome(t *testing.T) {
 		t.Fatalf("DatabasePath() error = %v", err)
 	}
 
-	if !strings.HasPrefix(got, stateHome+string(filepath.Separator)) {
-		t.Fatalf("DatabasePath() = %q, want under XDG_STATE_HOME %q", got, stateHome)
+	if !strings.HasPrefix(got, dataHome+string(filepath.Separator)) {
+		t.Fatalf("DatabasePath() = %q, want under XDG_DATA_HOME %q", got, dataHome)
+	}
+}
+
+func TestPathResolverPrefersXDGDataHomeOverLegacyStateHome(t *testing.T) {
+	dir := t.TempDir()
+	dataHome := t.TempDir()
+	stateHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("XDG_STATE_HOME", stateHome)
+
+	root, err := project.ResolveRoot(dir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	got, err := PathResolver{}.DatabasePath(root)
+	if err != nil {
+		t.Fatalf("DatabasePath() error = %v", err)
+	}
+	legacy, err := PathResolver{}.LegacyDatabasePath(root)
+	if err != nil {
+		t.Fatalf("LegacyDatabasePath() error = %v", err)
+	}
+
+	if !strings.HasPrefix(got, dataHome+string(filepath.Separator)) {
+		t.Fatalf("DatabasePath() = %q, want under XDG_DATA_HOME %q", got, dataHome)
+	}
+	if !strings.HasPrefix(legacy, stateHome+string(filepath.Separator)) {
+		t.Fatalf("LegacyDatabasePath() = %q, want under XDG_STATE_HOME %q", legacy, stateHome)
+	}
+	if got == legacy {
+		t.Fatalf("DatabasePath() = LegacyDatabasePath() = %q, want distinct migration endpoints", got)
 	}
 }
 
@@ -138,9 +169,9 @@ func TestPathResolverRejectsStateHomeInsideProjectRoot(t *testing.T) {
 	}
 }
 
-func TestPathResolverIgnoresRelativeXDGStateHome(t *testing.T) {
+func TestPathResolverIgnoresRelativeXDGDataHome(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", "relative-state")
+	t.Setenv("XDG_DATA_HOME", "relative-data")
 
 	root, err := project.ResolveRoot(dir)
 	if err != nil {
@@ -152,10 +183,10 @@ func TestPathResolverIgnoresRelativeXDGStateHome(t *testing.T) {
 	}
 
 	if !filepath.IsAbs(got) {
-		t.Fatalf("DatabasePath() = %q, want absolute fallback when XDG_STATE_HOME is relative", got)
+		t.Fatalf("DatabasePath() = %q, want absolute fallback when XDG_DATA_HOME is relative", got)
 	}
-	if strings.Contains(got, "relative-state") {
-		t.Fatalf("DatabasePath() = %q, want relative XDG_STATE_HOME ignored", got)
+	if strings.Contains(got, "relative-data") {
+		t.Fatalf("DatabasePath() = %q, want relative XDG_DATA_HOME ignored", got)
 	}
 }
 
@@ -178,7 +209,7 @@ func initGitRepo(t *testing.T) string {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	git(t, repo, "add", "README.md")
-	git(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "commit", "-m", "initial")
+	git(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "initial")
 
 	return repo
 }

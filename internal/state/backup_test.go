@@ -60,8 +60,8 @@ func TestBackupCreatesSQLiteCopyOutsideRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("backup SchemaVersion() error = %v", err)
 	}
-	if version != 1 {
-		t.Fatalf("backup schema version = %d, want 1", version)
+	if version != CurrentSchemaVersion() {
+		t.Fatalf("backup schema version = %d, want %d", version, CurrentSchemaVersion())
 	}
 }
 

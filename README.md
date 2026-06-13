@@ -201,6 +201,21 @@ npx github:levifig/loaf install
 
 Detects installed tools, lets you select targets, and installs pre-built distributions. Re-run with `--upgrade` to update.
 
+### Upgrading Existing Projects
+
+Projects created with the older TypeScript runtime can keep using their existing `.agents/` Markdown files after installing the native Go runtime. If no SQLite database exists yet, Loaf runs supported task, spec, report, session, and housekeeping commands in `markdown-only` compatibility mode.
+
+Use this sequence when you are ready to adopt SQLite-backed state:
+
+```bash
+loaf state status
+loaf migrate markdown --dry-run
+loaf migrate markdown --apply
+loaf state status
+```
+
+The dry run counts importable artifacts and skipped files without creating a database. The apply step imports `.agents/` Markdown into the XDG data-home SQLite database without rewriting the source Markdown files. Newer graph-oriented commands such as `loaf idea`, `loaf spark`, `loaf tag`, `loaf bundle`, and `loaf link` require initialized SQLite state; run `loaf state init` for a fresh project or `loaf migrate markdown --apply` for an existing Markdown project.
+
 **Install locations:**
 
 | Target | Location |

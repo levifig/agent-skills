@@ -40,14 +40,14 @@ func TestExportAllJSONReturnsInternalSnapshot(t *testing.T) {
 	if snapshot.DatabasePath == "" {
 		t.Fatal("DatabasePath is empty")
 	}
-	if snapshot.SchemaVersion != 1 {
-		t.Fatalf("SchemaVersion = %d, want 1", snapshot.SchemaVersion)
+	if snapshot.SchemaVersion != CurrentSchemaVersion() {
+		t.Fatalf("SchemaVersion = %d, want %d", snapshot.SchemaVersion, CurrentSchemaVersion())
 	}
 	if snapshot.GeneratedAt == "" {
 		t.Fatal("GeneratedAt is empty")
 	}
-	if len(snapshot.Tables["schema_migrations"]) != 1 {
-		t.Fatalf("schema_migrations rows = %d, want 1", len(snapshot.Tables["schema_migrations"]))
+	if len(snapshot.Tables["schema_migrations"]) != len(SchemaMigrations()) {
+		t.Fatalf("schema_migrations rows = %d, want %d", len(snapshot.Tables["schema_migrations"]), len(SchemaMigrations()))
 	}
 	if len(snapshot.Tables["projects"]) != 1 {
 		t.Fatalf("projects rows = %d, want 1", len(snapshot.Tables["projects"]))

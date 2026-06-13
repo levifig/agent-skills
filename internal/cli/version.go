@@ -1,0 +1,226 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	stdlibRuntime "runtime"
+	"strings"
+)
+
+type builtTarget struct {
+	name string
+	path string
+}
+
+var versionTargetOutputs = []builtTarget{
+	{name: "claude-code", path: "plugins/loaf/"},
+	{name: "cursor", path: "dist/cursor/"},
+	{name: "opencode", path: "dist/opencode/"},
+	{name: "codex", path: "dist/codex/"},
+	{name: "gemini", path: "dist/gemini/"},
+}
+
+func (r Runner) runVersion(out io.Writer, runtimeRoot string) error {
+	root, err := resolveLoafPackageRoot(r.WorkingDir, runtimeRoot)
+	if err != nil {
+		root = ""
+	}
+	version := packageVersion(root)
+
+	fmt.Fprintf(out, "\n%s %s\n", ansiBold("loaf"), version)
+	fmt.Fprintf(out, "%s %s\n", ansiGray("go"), strings.TrimPrefix(runtimeVersion(), "go"))
+
+	targets := builtTargets(root)
+	if len(targets) > 0 {
+		fmt.Fprintf(out, "\n%s\n", ansiBold("Targets:"))
+		maxName := 0
+		for _, target := range targets {
+			if len(target.name) > maxName {
+				maxName = len(target.name)
+			}
+		}
+		for _, target := range targets {
+			fmt.Fprintf(out, "  %-*s%s\n", maxName+2, target.name, ansiGray(target.path))
+		}
+	}
+
+	fmt.Fprintf(out, "\n%s\n", ansiBold("Content:"))
+	fmt.Fprintf(out, "  Skills:  %d\n", countSkillDirs(root))
+	fmt.Fprintf(out, "  Agents:  %d\n", countAgentFiles(root))
+	fmt.Fprintf(out, "  Hooks:   %d\n\n", countHookEntries(root))
+	return nil
+}
+
+func resolveLoafPackageRoot(paths ...string) (string, error) {
+	seen := map[string]bool{}
+	for _, path := range paths {
+		if root, ok := findLoafPackageRoot(path, seen); ok {
+			return root, nil
+		}
+	}
+	if executable, err := os.Executable(); err == nil {
+		if root, ok := findLoafPackageRoot(filepath.Dir(executable), seen); ok {
+			return root, nil
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if root, ok := findLoafPackageRoot(cwd, seen); ok {
+			return root, nil
+		}
+	}
+	return "", fmt.Errorf("could not find loaf package root")
+}
+
+func findLoafPackageRoot(path string, seen map[string]bool) (string, bool) {
+	if path == "" {
+		return "", false
+	}
+	clean, err := filepath.Abs(path)
+	if err != nil {
+		return "", false
+	}
+	for {
+		if !seen[clean] {
+			seen[clean] = true
+			if packageName(clean) == "loaf" {
+				return clean, true
+			}
+		}
+		parent := filepath.Dir(clean)
+		if parent == clean {
+			return "", false
+		}
+		clean = parent
+	}
+}
+
+func packageName(root string) string {
+	var pkg struct {
+		Name string `json:"name"`
+	}
+	if err := readPackageJSON(root, &pkg); err != nil {
+		return ""
+	}
+	return pkg.Name
+}
+
+func packageVersion(root string) string {
+	var pkg struct {
+		Version string `json:"version"`
+	}
+	if err := readPackageJSON(root, &pkg); err != nil || pkg.Version == "" {
+		return "0.0.0"
+	}
+	return pkg.Version
+}
+
+func readPackageJSON(root string, target any) error {
+	if root == "" {
+		return fmt.Errorf("missing root")
+	}
+	body, err := os.ReadFile(filepath.Join(root, "package.json"))
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(body, target)
+}
+
+func builtTargets(root string) []builtTarget {
+	var targets []builtTarget
+	for _, target := range versionTargetOutputs {
+		if isDir(filepath.Join(root, filepath.FromSlash(target.path))) {
+			targets = append(targets, target)
+		}
+	}
+	return targets
+}
+
+func countSkillDirs(root string) int {
+	entries, err := os.ReadDir(filepath.Join(root, "content", "skills"))
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			count++
+		}
+	}
+	return count
+}
+
+func countAgentFiles(root string) int {
+	entries, err := os.ReadDir(filepath.Join(root, "content", "agents"))
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+			count++
+		}
+	}
+	return count
+}
+
+func countHookEntries(root string) int {
+	body, err := os.ReadFile(filepath.Join(root, "config", "hooks.yaml"))
+	if err != nil {
+		return 0
+	}
+	allowedSections := map[string]bool{
+		"pre-tool":  true,
+		"post-tool": true,
+		"session":   true,
+	}
+	inHooks := false
+	activeSection := ""
+	count := 0
+	for _, line := range strings.Split(string(body), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if !strings.HasPrefix(line, " ") && strings.HasSuffix(trimmed, ":") {
+			inHooks = trimmed == "hooks:"
+			activeSection = ""
+			continue
+		}
+		if !inHooks {
+			continue
+		}
+		if strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") && strings.HasSuffix(trimmed, ":") {
+			section := strings.TrimSuffix(trimmed, ":")
+			if allowedSections[section] {
+				activeSection = section
+			} else {
+				activeSection = ""
+			}
+			continue
+		}
+		if activeSection != "" && strings.HasPrefix(strings.TrimLeft(line, " "), "- ") {
+			count++
+		}
+	}
+	return count
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+func ansiBold(value string) string {
+	return "\x1b[1m" + value + "\x1b[0m"
+}
+
+func ansiGray(value string) string {
+	return "\x1b[90m" + value + "\x1b[0m"
+}
+
+func runtimeVersion() string {
+	return strings.TrimPrefix(stdlibRuntime.Version(), "go")
+}

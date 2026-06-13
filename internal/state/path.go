@@ -16,28 +16,65 @@ const databaseFileName = "loaf.sqlite"
 
 // PathResolver computes the project-scoped SQLite path without creating it.
 type PathResolver struct {
+	DataHome  string
 	StateHome string
 }
 
 // DatabasePath returns the intended SQLite database path for a project root.
 func (r PathResolver) DatabasePath(root project.Root) (string, error) {
-	stateHome, err := r.stateHome()
+	dataHome, err := r.dataHome()
+	if err != nil {
+		return "", err
+	}
+	if isWithinRoot(dataHome, root.Path()) {
+		return "", fmt.Errorf("data home must be outside project root")
+	}
+	projectID := ProjectID(root)
+	return filepath.Join(dataHome, "loaf", "projects", projectID, databaseFileName), nil
+}
+
+// LegacyDatabasePath returns the old XDG_STATE_HOME SQLite location used before
+// durable operational state moved to XDG_DATA_HOME.
+func (r PathResolver) LegacyDatabasePath(root project.Root) (string, error) {
+	stateHome, err := r.legacyStateHome()
 	if err != nil {
 		return "", err
 	}
 	if isWithinRoot(stateHome, root.Path()) {
-		return "", fmt.Errorf("state home must be outside project root")
+		return "", fmt.Errorf("legacy state home must be outside project root")
 	}
 	projectID := ProjectID(root)
 	return filepath.Join(stateHome, "loaf", "projects", projectID, databaseFileName), nil
 }
 
-func (r PathResolver) stateHome() (string, error) {
-	if r.StateHome != "" {
-		return cleanAbsoluteStateHome("state home", r.StateHome)
+func (r PathResolver) dataHome() (string, error) {
+	if r.DataHome != "" {
+		return cleanAbsoluteHome("data home", r.DataHome)
 	}
+	if r.StateHome != "" {
+		return cleanAbsoluteHome("state home override", r.StateHome)
+	}
+	if value := os.Getenv("XDG_DATA_HOME"); value != "" {
+		if dataHome, ok := cleanAbsoluteXDGHome(value); ok {
+			return dataHome, nil
+		}
+	}
+	if runtime.GOOS == "windows" {
+		if value := os.Getenv("LOCALAPPDATA"); value != "" {
+			return filepath.Join(value, "loaf", "data"), nil
+		}
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve data home: %w", err)
+	}
+	return filepath.Join(home, ".local", "share"), nil
+}
+
+func (r PathResolver) legacyStateHome() (string, error) {
 	if value := os.Getenv("XDG_STATE_HOME"); value != "" {
-		if stateHome, ok := cleanAbsoluteXDGStateHome(value); ok {
+		if stateHome, ok := cleanAbsoluteXDGHome(value); ok {
 			return stateHome, nil
 		}
 	}
@@ -54,14 +91,14 @@ func (r PathResolver) stateHome() (string, error) {
 	return filepath.Join(home, ".local", "state"), nil
 }
 
-func cleanAbsoluteStateHome(name string, value string) (string, error) {
+func cleanAbsoluteHome(name string, value string) (string, error) {
 	if !filepath.IsAbs(value) {
 		return "", fmt.Errorf("%s must be an absolute path", name)
 	}
 	return filepath.Clean(value), nil
 }
 
-func cleanAbsoluteXDGStateHome(value string) (string, bool) {
+func cleanAbsoluteXDGHome(value string) (string, bool) {
 	if !filepath.IsAbs(value) {
 		return "", false
 	}

@@ -6,9 +6,9 @@ topics:
   - covers
   - growth-loops
 covers:
-  - cli/lib/kb/*.ts
+  - internal/cli/kb.go
   - docs/knowledge/*.md
-last_reviewed: '2026-05-22'
+last_reviewed: '2026-06-11'
 ---
 
 # Knowledge Management Design

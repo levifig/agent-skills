@@ -4,7 +4,7 @@ topics:
   - targets
   - distribution
 covers:
-  - cli/lib/build/**/*.ts
+  - internal/cli/build*.go
   - config/targets.yaml
   - config/hooks.yaml
 consumers:
@@ -28,7 +28,7 @@ Loaf compiles skills, agents, and hooks from a single source tree into multiple 
 
 ## Build Flow
 
-`loaf build` (or `npm run build`) → CLI at `cli/commands/build.ts` → loads `hooks.yaml` + `targets.yaml` → builds shared skills intermediate to `dist/skills/` → calls each target's transformer in `cli/lib/build/targets/{target}.ts` → output to `plugins/` or `dist/{target}/`.
+`loaf build` (or `npm run build`) -> Go dispatcher in `internal/cli/build.go` -> loads `hooks.yaml` + `targets.yaml` -> builds shared skills intermediate to `dist/skills/` -> calls each native target builder in `internal/cli/build_{target}.go` -> output to `plugins/` or `dist/{target}/`.
 
 ## Targets
 
@@ -63,7 +63,7 @@ Claude Code has a split registration model: `plugin.json` handles the plugin man
 | `cli/scripts/smoke-test.js` | `npm run test:smoke` | Validates built hook artifacts across all 6 targets (structure, `if` conditions, `failClosed` flags). Run after build changes. |
 | `cli/scripts/eval-skill-routing.mjs` | `npm run eval:routing` | Tests whether Claude routes prompts to correct skills. Requires `ANTHROPIC_API_KEY`. Use `--model` for cheaper runs, `--skill` to test one skill. |
 
-**Smoke test** is a build output integration test — should eventually be converted to a vitest suite. **Routing eval** is a non-deterministic quality tool for tuning skill descriptions; test cases need updating when skills are added/removed/renamed.
+**Smoke test** is a build output integration test for script-level artifact assertions that are not yet worth moving into native Go tests. **Routing eval** is a non-deterministic quality tool for tuning skill descriptions; test cases need updating when skills are added/removed/renamed.
 
 ## Cross-References
 

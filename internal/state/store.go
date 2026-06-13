@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/ncruces/go-sqlite3/driver"
@@ -134,6 +135,9 @@ func (s *Store) AppliedMigrationCount(ctx context.Context) (int, error) {
 
 // ApplyMigrations applies migrations in order and rejects checksum drift.
 func ApplyMigrations(ctx context.Context, db *sql.DB, migrations []SchemaMigration) error {
+	if err := validateSchemaMigrations(migrations); err != nil {
+		return err
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin migration transaction: %w", err)
@@ -152,6 +156,23 @@ func ApplyMigrations(ctx context.Context, db *sql.DB, migrations []SchemaMigrati
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit migrations: %w", err)
+	}
+	return nil
+}
+
+func validateSchemaMigrations(migrations []SchemaMigration) error {
+	previousVersion := 0
+	for _, migration := range migrations {
+		if migration.Version <= previousVersion {
+			return fmt.Errorf("schema migration version %d must be greater than previous version %d", migration.Version, previousVersion)
+		}
+		if strings.TrimSpace(migration.Name) == "" {
+			return fmt.Errorf("schema migration %d must have a name", migration.Version)
+		}
+		if strings.TrimSpace(migration.SQL) == "" {
+			return fmt.Errorf("schema migration %d SQL cannot be empty", migration.Version)
+		}
+		previousVersion = migration.Version
 	}
 	return nil
 }

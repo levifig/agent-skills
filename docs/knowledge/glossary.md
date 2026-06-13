@@ -14,7 +14,7 @@ _Avoid_: module, knowledge file, doc
 
 ### Target
 
-A build output destination: claude-code, opencode, cursor, codex, gemini, amp. Each target has its own transformer in cli/lib/build/targets/.
+A build output destination: claude-code, opencode, cursor, codex, gemini, amp. Each target has its own native builder in `internal/cli/build_{target}.go`.
 
 _Avoid_: platform, backend, tool
 
@@ -37,4 +37,3 @@ _Avoid_: common template, global template
 
 
 ## Flagged ambiguities
-

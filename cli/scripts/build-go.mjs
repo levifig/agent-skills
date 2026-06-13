@@ -4,44 +4,94 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const rootDir = process.cwd();
 const launcherSource = join(rootDir, "cli", "runtime", "loaf-launcher.cjs");
 const launcherOutput = join(rootDir, "bin", "loaf");
 
-const env = {
+const baseEnv = {
   ...process.env,
   CGO_ENABLED: "0",
+  ...pinnedGoToolchainEnv(),
 };
-
-const goTarget = readGoTarget(env);
-const nodeTarget = `${nodePlatform(goTarget.goos)}-${nodeArch(goTarget.goarch)}`;
-const nativeName = goTarget.goos === "windows" ? "loaf.exe" : "loaf";
-const nativeOutput = join(rootDir, "bin", "native", nodeTarget, nativeName);
+const supportedTargets = {
+  "darwin-arm64": { goos: "darwin", goarch: "arm64" },
+  "darwin-x64": { goos: "darwin", goarch: "amd64" },
+  "linux-arm64": { goos: "linux", goarch: "arm64" },
+  "linux-x64": { goos: "linux", goarch: "amd64" },
+  "win32-arm64": { goos: "windows", goarch: "arm64" },
+  "win32-x64": { goos: "windows", goarch: "amd64" },
+};
+const targets = readBuildTargets(baseEnv);
+const dryRun = baseEnv.LOAF_NATIVE_ARTIFACT_DRY_RUN === "1";
 
 mkdirSync(dirname(launcherOutput), { recursive: true });
-copyFileSync(launcherSource, launcherOutput);
-chmodSync(launcherOutput, 0o755);
-writeFileSync(join(rootDir, "bin", "package.json"), JSON.stringify({ type: "commonjs" }, null, 2) + "\n");
-
-mkdirSync(dirname(nativeOutput), { recursive: true });
-const result = spawnSync("go", ["build", "-trimpath", "-o", nativeOutput, "./cmd/loaf"], {
-  cwd: rootDir,
-  env,
-  stdio: "inherit",
-});
-
-if (result.status !== 0) {
-  process.exit(result.status ?? 1);
+if (dryRun) {
+  console.log(`DRY RUN: would copy Loaf launcher to ${launcherOutput}`);
+} else {
+  copyFileSync(launcherSource, launcherOutput);
+  chmodSync(launcherOutput, 0o755);
+  writeFileSync(join(rootDir, "bin", "package.json"), JSON.stringify({ type: "commonjs" }, null, 2) + "\n");
 }
 
-chmodSync(nativeOutput, 0o755);
-console.log(`✓ Built Loaf launcher: ${launcherOutput}`);
-console.log(`✓ Built Go front controller: ${nativeOutput}`);
+for (const target of targets) {
+  const nativeName = target.goos === "windows" ? "loaf.exe" : "loaf";
+  const nativeOutput = join(rootDir, "bin", "native", target.runtimeID, nativeName);
 
-function readGoTarget(goEnv) {
+  if (dryRun) {
+    console.log(`DRY RUN: would build ${target.runtimeID} at ${nativeOutput}`);
+    continue;
+  }
+
+  mkdirSync(dirname(nativeOutput), { recursive: true });
+  const result = spawnSync("go", ["build", "-trimpath", "-ldflags", "-buildid=", "-o", nativeOutput, "./cmd/loaf"], {
+    cwd: rootDir,
+    env: {
+      ...baseEnv,
+      GOOS: target.goos,
+      GOARCH: target.goarch,
+    },
+    stdio: "inherit",
+  });
+
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+
+  chmodSync(nativeOutput, 0o755);
+  console.log(`✓ Built Go front controller (${target.runtimeID}): ${nativeOutput}`);
+}
+
+if (!dryRun) {
+  console.log(`✓ Built Loaf launcher: ${launcherOutput}`);
+}
+
+function readBuildTargets(goEnv) {
+  const requested = targetListFromEnv(goEnv);
+  if (requested.length > 0) {
+    return requested.map((runtimeID) => targetFromRuntimeID(runtimeID));
+  }
+  const current = readCurrentGoTarget(goEnv);
+  return [{ ...current, runtimeID: `${nodePlatform(current.goos)}-${nodeArch(current.goarch)}` }];
+}
+
+function pinnedGoToolchainEnv() {
+  const goMod = readFileSync(join(rootDir, "go.mod"), "utf8");
+  const match = goMod.match(/^toolchain\s+(\S+)\s*$/m);
+  return match ? { GOTOOLCHAIN: match[1] } : {};
+}
+
+function targetListFromEnv(goEnv) {
+  return (goEnv.LOAF_BUILD_TARGETS || goEnv.LOAF_NATIVE_TARGETS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index);
+}
+
+function readCurrentGoTarget(goEnv) {
   const result = spawnSync("go", ["env", "GOOS", "GOARCH"], {
     cwd: rootDir,
     env: goEnv,
@@ -57,6 +107,16 @@ function readGoTarget(goEnv) {
     process.exit(1);
   }
   return { goos, goarch };
+}
+
+function targetFromRuntimeID(runtimeID) {
+  const target = supportedTargets[runtimeID];
+  if (!target) {
+    console.error(`ERROR: unsupported LOAF_BUILD_TARGETS entry ${JSON.stringify(runtimeID)}.`);
+    console.error(`Supported targets: ${Object.keys(supportedTargets).join(", ")}`);
+    process.exit(1);
+  }
+  return { runtimeID, ...target };
 }
 
 function nodePlatform(goos) {
