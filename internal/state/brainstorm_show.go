@@ -12,8 +12,14 @@ import (
 
 // BrainstormShow is the state-backed single-brainstorm read model.
 type BrainstormShow struct {
-	Query      string           `json:"query"`
-	Brainstorm BrainstormDetail `json:"brainstorm"`
+	ContractVersion    int              `json:"contract_version,omitempty"`
+	DatabaseScope      string           `json:"database_scope,omitempty"`
+	DatabasePath       string           `json:"database_path,omitempty"`
+	ProjectID          string           `json:"project_id,omitempty"`
+	ProjectName        string           `json:"project_name,omitempty"`
+	ProjectCurrentPath string           `json:"project_current_path,omitempty"`
+	Query              string           `json:"query"`
+	Brainstorm         BrainstormDetail `json:"brainstorm"`
 }
 
 // BrainstormDetail contains operational brainstorm metadata plus imported source context.
@@ -41,7 +47,14 @@ func ShowBrainstorm(ctx context.Context, root project.Root, resolver PathResolve
 
 // ShowBrainstorm returns one brainstorm from an open store.
 func (s *Store) ShowBrainstorm(ctx context.Context, root project.Root, ref string) (BrainstormShow, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return BrainstormShow{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return BrainstormShow{}, err
+	}
 	entity, err := s.resolveTraceEntity(ctx, projectID, ref)
 	if err != nil {
 		return BrainstormShow{}, err
@@ -54,7 +67,16 @@ func (s *Store) ShowBrainstorm(ctx context.Context, root project.Root, ref strin
 	if err != nil {
 		return BrainstormShow{}, err
 	}
-	return BrainstormShow{Query: ref, Brainstorm: brainstorm}, nil
+	return BrainstormShow{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Query:              ref,
+		Brainstorm:         brainstorm,
+	}, nil
 }
 
 func (s *Store) brainstormDetail(ctx context.Context, root project.Root, projectID string, entity TraceEntity) (BrainstormDetail, error) {

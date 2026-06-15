@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/levifig/loaf/internal/project"
@@ -26,6 +27,24 @@ func TestUpdateTaskStatusMutatesTaskAndRecordsEvent(t *testing.T) {
 	}
 	if updated.Task.Alias != "TASK-001" || updated.Previous != "todo" || updated.Status != "in_progress" || updated.EventID == "" {
 		t.Fatalf("updated = %#v, want TASK-001 todo -> in_progress with event", updated)
+	}
+	if updated.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", updated.ContractVersion, StateJSONContractVersion)
+	}
+	if updated.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", updated.DatabaseScope)
+	}
+	if updated.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if updated.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if updated.ProjectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", updated.ProjectName, filepath.Base(root.Path()))
+	}
+	if updated.ProjectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", updated.ProjectCurrentPath, root.Path())
 	}
 
 	tasks, err := ListTasks(context.Background(), root, PathResolver{StateHome: stateHome}, TaskListOptions{})
@@ -62,7 +81,7 @@ func TestUpdateTaskStatusMutatesTaskAndRecordsEvent(t *testing.T) {
 SELECT COUNT(*)
 FROM events
 WHERE project_id = ? AND entity_kind = 'task' AND event_type = 'status_changed' AND from_status = 'todo' AND to_status = 'in_progress'
-`, ProjectID(root)).Scan(&events); err != nil {
+`, projectIDForTest(t, store, root)).Scan(&events); err != nil {
 		t.Fatalf("count task status events error = %v", err)
 	}
 	if events != 1 {

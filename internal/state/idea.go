@@ -14,8 +14,14 @@ import (
 
 // IdeaList is the state-backed idea-list read model.
 type IdeaList struct {
-	Version int                 `json:"version"`
-	Ideas   map[string]IdeaItem `json:"ideas"`
+	ContractVersion    int                 `json:"contract_version,omitempty"`
+	DatabaseScope      string              `json:"database_scope,omitempty"`
+	DatabasePath       string              `json:"database_path,omitempty"`
+	ProjectID          string              `json:"project_id,omitempty"`
+	ProjectName        string              `json:"project_name,omitempty"`
+	ProjectCurrentPath string              `json:"project_current_path,omitempty"`
+	Version            int                 `json:"version"`
+	Ideas              map[string]IdeaItem `json:"ideas"`
 }
 
 // IdeaItem is an idea entry returned by the state-backed idea list.
@@ -33,10 +39,16 @@ type IdeaListOptions struct {
 
 // IdeaResolveResult describes a state-backed idea resolution mutation.
 type IdeaResolveResult struct {
-	Idea         TraceEntity `json:"idea"`
-	ResolvedBy   TraceEntity `json:"resolved_by"`
-	Relationship string      `json:"relationship"`
-	EventID      string      `json:"event_id,omitempty"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Idea               TraceEntity `json:"idea"`
+	ResolvedBy         TraceEntity `json:"resolved_by"`
+	Relationship       string      `json:"relationship"`
+	EventID            string      `json:"event_id,omitempty"`
 }
 
 // IdeaPromoteOptions describes a SQLite-backed idea promotion request.
@@ -47,9 +59,15 @@ type IdeaPromoteOptions struct {
 
 // IdeaPromoteResult describes a state-backed idea promotion mutation.
 type IdeaPromoteResult struct {
-	Idea         TraceEntity `json:"idea"`
-	Spec         TraceEntity `json:"spec"`
-	Relationship string      `json:"relationship"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Idea               TraceEntity `json:"idea"`
+	Spec               TraceEntity `json:"spec"`
+	Relationship       string      `json:"relationship"`
 }
 
 // IdeaCaptureOptions describes a SQLite-backed idea capture request.
@@ -59,8 +77,14 @@ type IdeaCaptureOptions struct {
 
 // IdeaCaptureResult describes a captured SQLite-backed idea.
 type IdeaCaptureResult struct {
-	Idea    TraceEntity `json:"idea"`
-	EventID string      `json:"event_id"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Idea               TraceEntity `json:"idea"`
+	EventID            string      `json:"event_id"`
 }
 
 // IdeaArchiveOptions describes a SQLite-backed idea archive request.
@@ -71,8 +95,14 @@ type IdeaArchiveOptions struct {
 
 // IdeaArchiveResult describes a state-backed idea archive mutation.
 type IdeaArchiveResult struct {
-	Archived []IdeaArchiveItem `json:"archived"`
-	Skipped  []IdeaArchiveItem `json:"skipped"`
+	ContractVersion    int               `json:"contract_version,omitempty"`
+	DatabaseScope      string            `json:"database_scope,omitempty"`
+	DatabasePath       string            `json:"database_path,omitempty"`
+	ProjectID          string            `json:"project_id,omitempty"`
+	ProjectName        string            `json:"project_name,omitempty"`
+	ProjectCurrentPath string            `json:"project_current_path,omitempty"`
+	Archived           []IdeaArchiveItem `json:"archived"`
+	Skipped            []IdeaArchiveItem `json:"skipped"`
 }
 
 // IdeaArchiveItem describes one requested idea archive outcome.
@@ -107,7 +137,14 @@ func ListIdeas(ctx context.Context, root project.Root, resolver PathResolver, op
 
 // ListIdeas returns imported ideas from an open store.
 func (s *Store) ListIdeas(ctx context.Context, root project.Root, options IdeaListOptions) (IdeaList, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return IdeaList{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return IdeaList{}, err
+	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT
   idea_alias.alias,
@@ -128,7 +165,16 @@ ORDER BY idea_alias.alias
 		return IdeaList{}, fmt.Errorf("query ideas: %w", err)
 	}
 
-	ideas := IdeaList{Version: 1, Ideas: map[string]IdeaItem{}}
+	ideas := IdeaList{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Version:            1,
+		Ideas:              map[string]IdeaItem{},
+	}
 	for rows.Next() {
 		var alias, title, status, sourcePath string
 		if err := rows.Scan(&alias, &title, &status, &sourcePath); err != nil {
@@ -165,7 +211,14 @@ func CaptureIdea(ctx context.Context, root project.Root, resolver PathResolver, 
 
 // CaptureIdea captures an idea in an open store.
 func (s *Store) CaptureIdea(ctx context.Context, root project.Root, options IdeaCaptureOptions) (IdeaCaptureResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return IdeaCaptureResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return IdeaCaptureResult{}, err
+	}
 	title := strings.TrimSpace(options.Title)
 	if title == "" {
 		return IdeaCaptureResult{}, fmt.Errorf("idea capture requires --title")
@@ -209,8 +262,14 @@ VALUES (?, ?, 'idea', ?, 'status_changed', NULL, 'open', 'recorded by idea captu
 	}
 
 	return IdeaCaptureResult{
-		Idea:    TraceEntity{Kind: "idea", ID: ideaID, Alias: alias, Title: title, Status: "open"},
-		EventID: eventID,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Idea:               TraceEntity{Kind: "idea", ID: ideaID, Alias: alias, Title: title, Status: "open"},
+		EventID:            eventID,
 	}, nil
 }
 
@@ -257,7 +316,14 @@ func ResolveIdea(ctx context.Context, root project.Root, resolver PathResolver, 
 
 // ResolveIdea marks an idea resolved in an open store.
 func (s *Store) ResolveIdea(ctx context.Context, root project.Root, ideaRef string, byRef string) (IdeaResolveResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return IdeaResolveResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return IdeaResolveResult{}, err
+	}
 	idea, err := s.resolveTraceEntity(ctx, projectID, ideaRef)
 	if err != nil {
 		return IdeaResolveResult{}, err
@@ -295,10 +361,11 @@ func (s *Store) ResolveIdea(ctx context.Context, root project.Root, ideaRef stri
 
 	relationshipID := stableMigrationID("relationship", projectID, "idea", idea.ID, "resolved_by", target.Kind, target.ID)
 	_, err = tx.ExecContext(ctx, `
-INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'command', ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   reason = excluded.reason,
+  origin = excluded.origin,
   updated_at = excluded.updated_at
 `, relationshipID, projectID, "idea", idea.ID, target.Kind, target.ID, "resolved_by", "recorded by idea resolve", now, now)
 	if err != nil {
@@ -324,10 +391,16 @@ ON CONFLICT(id) DO NOTHING
 
 	idea.Status = "resolved"
 	return IdeaResolveResult{
-		Idea:         idea,
-		ResolvedBy:   target,
-		Relationship: relationshipID,
-		EventID:      eventID,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Idea:               idea,
+		ResolvedBy:         target,
+		Relationship:       relationshipID,
+		EventID:            eventID,
 	}, nil
 }
 
@@ -343,7 +416,14 @@ func PromoteIdea(ctx context.Context, root project.Root, resolver PathResolver, 
 
 // PromoteIdea records that an idea promoted to a spec in an open store.
 func (s *Store) PromoteIdea(ctx context.Context, root project.Root, options IdeaPromoteOptions) (IdeaPromoteResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return IdeaPromoteResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return IdeaPromoteResult{}, err
+	}
 	idea, err := s.resolveTraceEntity(ctx, projectID, options.Idea)
 	if err != nil {
 		return IdeaPromoteResult{}, err
@@ -362,10 +442,11 @@ func (s *Store) PromoteIdea(ctx context.Context, root project.Root, options Idea
 	now := time.Now().UTC().Format(time.RFC3339)
 	relationshipID := stableMigrationID("relationship", projectID, "idea", idea.ID, "promoted_to", "spec", spec.ID)
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'command', ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   reason = excluded.reason,
+  origin = excluded.origin,
   updated_at = excluded.updated_at
 `, relationshipID, projectID, "idea", idea.ID, "spec", spec.ID, "promoted_to", "recorded by idea promote", now, now)
 	if err != nil {
@@ -373,9 +454,15 @@ ON CONFLICT(id) DO UPDATE SET
 	}
 
 	return IdeaPromoteResult{
-		Idea:         idea,
-		Spec:         spec,
-		Relationship: relationshipID,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Idea:               idea,
+		Spec:               spec,
+		Relationship:       relationshipID,
 	}, nil
 }
 
@@ -394,10 +481,23 @@ func (s *Store) ArchiveIdeas(ctx context.Context, root project.Root, options Ide
 	if len(options.Refs) == 0 {
 		return IdeaArchiveResult{}, fmt.Errorf("idea archive requires at least one idea")
 	}
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return IdeaArchiveResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return IdeaArchiveResult{}, err
+	}
 	result := IdeaArchiveResult{
-		Archived: []IdeaArchiveItem{},
-		Skipped:  []IdeaArchiveItem{},
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Archived:           []IdeaArchiveItem{},
+		Skipped:            []IdeaArchiveItem{},
 	}
 	for _, ref := range options.Refs {
 		item, archived, err := s.archiveIdea(ctx, projectID, ref, options.Reason)

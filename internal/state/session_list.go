@@ -10,8 +10,15 @@ import (
 
 // SessionList is the state-backed session-list read model.
 type SessionList struct {
-	Version  int                    `json:"version"`
-	Sessions map[string]SessionItem `json:"sessions"`
+	ContractVersion    int                    `json:"contract_version,omitempty"`
+	DatabaseScope      string                 `json:"database_scope,omitempty"`
+	DatabasePath       string                 `json:"database_path,omitempty"`
+	ProjectID          string                 `json:"project_id,omitempty"`
+	ProjectName        string                 `json:"project_name,omitempty"`
+	ProjectCurrentPath string                 `json:"project_current_path,omitempty"`
+	Diagnostics        []Diagnostic           `json:"diagnostics,omitempty"`
+	Version            int                    `json:"version"`
+	Sessions           map[string]SessionItem `json:"sessions"`
 }
 
 // SessionItem is a session entry returned by the state-backed session list.
@@ -49,7 +56,14 @@ func ListSessions(ctx context.Context, root project.Root, resolver PathResolver,
 
 // ListSessions returns imported sessions from an open store.
 func (s *Store) ListSessions(ctx context.Context, root project.Root, options SessionListOptions) (SessionList, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SessionList{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SessionList{}, err
+	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT
   session_alias.alias,
@@ -76,7 +90,16 @@ ORDER BY session_alias.alias
 		return SessionList{}, fmt.Errorf("query sessions: %w", err)
 	}
 
-	sessionList := SessionList{Version: 1, Sessions: map[string]SessionItem{}}
+	sessionList := SessionList{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Version:            1,
+		Sessions:           map[string]SessionItem{},
+	}
 	for rows.Next() {
 		var alias, branch, status, harnessSessionID, sourcePath string
 		var journalEntries int

@@ -38,6 +38,7 @@ func TestLogJournalWritesEntryWithNullableUnresolvedContext(t *testing.T) {
 	if result.EntryType != "decision" || result.Scope != "sqlite" || result.Message != "write to state first" {
 		t.Fatalf("result = %#v, want parsed journal entry", result)
 	}
+	assertSessionProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 	if result.ObservedBranch != "main" || result.ObservedWorktree != repo || result.HarnessSessionID != "harness-123" {
 		t.Fatalf("result context = %#v, want observed context", result)
 	}
@@ -106,6 +107,7 @@ func TestLogJournalLinksHookEntryToHarnessSession(t *testing.T) {
 	if result.Session == nil || result.Session.ID != start.Session.ID {
 		t.Fatalf("result session = %#v, want linked session %s", result.Session, start.Session.ID)
 	}
+	assertSessionProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
 	show, err := ShowSession(context.Background(), root, PathResolver{StateHome: stateHome}, start.Session.Alias)
 	if err != nil {
@@ -135,4 +137,5 @@ func TestLogJournalHookNoopsWhenNoActiveSessionExists(t *testing.T) {
 	if result.ID != "" || result.NoopReason == "" {
 		t.Fatalf("result = %#v, want noop without inserted journal", result)
 	}
+	assertSessionProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 }

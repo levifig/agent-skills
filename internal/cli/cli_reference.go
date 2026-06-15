@@ -88,30 +88,77 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Name:        "state",
 			Description: "Manage native SQLite state",
 			Subcommands: []cliReferenceSubcommand{
-				{Name: "path", Description: "Print the resolved SQLite database path"},
+				{Name: "path", Description: "Print the resolved SQLite database path", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output contract version, database path, scope, and project root as JSON"},
+					{Flags: "--verbose", Description: "Output command, scope, project root, and database path"},
+				}},
 				{Name: "status", Description: "Show SQLite readiness and markdown-only compatibility status", Options: []cliReferenceOption{
-					{Flags: "--json", Description: "Output status as JSON"},
+					{Flags: "--json", Description: "Output readiness mode, diagnostics, global database scope, and project identity as JSON"},
 				}},
 				{Name: "init", Description: "Initialize an empty SQLite state database", Options: []cliReferenceOption{
-					{Flags: "--json", Description: "Output initialized status as JSON"},
+					{Flags: "--json", Description: "Output initialized status, global database scope, and project identity as JSON"},
 				}},
 				{Name: "doctor", Description: "Diagnose SQLite state health", Options: []cliReferenceOption{
 					{Flags: "--fix", Description: "Initialize missing SQLite state when safe"},
-					{Flags: "--json", Description: "Output diagnostics as JSON"},
+					{Flags: "--dry-run", Description: "Show the repair plan without applying fixes"},
+					{Flags: "--json", Description: "Output diagnostics, repair plan, global database scope, and project identity as JSON"},
+				}},
+				{Name: "repair legacy-project-database", Description: "Archive migrated per-project SQLite leftovers", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Preview archive paths without writing"},
+					{Flags: "--apply", Description: "Move legacy SQLite files into the archive directory"},
+					{Flags: "--json", Description: "Output archive plan/result, global database scope, and project identity as JSON"},
+				}},
+				{Name: "repair relationship-origin", Description: "Preview or apply guarded relationship provenance backfills", Options: []cliReferenceOption{
+					{Flags: "--origin <imported|manual>", Description: "Provenance value to backfill"},
+					{Flags: "--dry-run", Description: "Preview affected rows without writing"},
+					{Flags: "--apply", Description: "Backfill missing origins after creating a SQLite backup"},
+					{Flags: "--json", Description: "Output repair plan/result, global database scope, and project identity as JSON"},
 				}},
 				{Name: "migrate markdown", Description: "Import existing .agents Markdown artifacts into SQLite", Options: []cliReferenceOption{
 					{Flags: "--dry-run", Description: "Preview import counts without creating a database"},
 					{Flags: "--apply", Description: "Initialize SQLite and import Markdown artifacts"},
 					{Flags: "--resume", Description: "Resume the Markdown import after an interrupted attempt"},
-					{Flags: "--json", Description: "Output migration details as JSON"},
+					{Flags: "--json", Description: "Output migration contract, scope, project context, and counts as JSON"},
 				}},
 				{Name: "migrate storage-home", Description: "Copy legacy XDG_STATE_HOME SQLite state into XDG_DATA_HOME", Options: []cliReferenceOption{
 					{Flags: "--dry-run", Description: "Preview the storage-home migration"},
 					{Flags: "--apply", Description: "Copy the legacy database without deleting it"},
-					{Flags: "--json", Description: "Output migration details as JSON"},
+					{Flags: "--json", Description: "Output migration contract, global database paths, action, and project identity when available"},
 				}},
-				{Name: "backup", Description: "Create a SQLite database backup", Options: []cliReferenceOption{{Flags: "--json", Description: "Output backup details as JSON"}}},
-				{Name: "export", Description: "Export SQLite state for review or migration"},
+				{Name: "backup", Description: "Create a SQLite database backup under the global data-home backups directory", Options: []cliReferenceOption{{Flags: "--json", Description: "Output backup verification, checksum, schema version, project count, and current project identity as JSON"}}},
+				{Name: "backup verify", Description: "Verify an existing SQLite database backup", Options: []cliReferenceOption{{Flags: "--json", Description: "Output backup verification, restore guidance, schema version, and captured project identities as JSON"}}},
+				{Name: "export", Description: "Export SQLite state for review or migration", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format for the selected export kind"}}},
+				{Name: "export all", Description: "Export a complete project-scoped SQLite snapshot", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format: json"}, {Flags: "--json", Description: "Alias for --format json"}}},
+				{Name: "export triage", Description: "Export a triage summary from SQLite state", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
+				{Name: "export session", Description: "Export one session from SQLite state", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
+				{Name: "export spec", Description: "Export one spec from SQLite state", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
+				{Name: "export release-readiness", Description: "Export a release-readiness report from SQLite state", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
+			},
+		},
+		{
+			Name:        "project",
+			Description: "Manage durable project identity",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "list", Description: "List registered projects in the global SQLite database", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output database path, project IDs, friendly names, and current paths as JSON"},
+				}},
+				{Name: "show", Description: "Show the current project identity", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output project ID, friendly name, current path, and database path as JSON"},
+				}},
+				{Name: "identity", Description: "Alias for project show", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output project ID, friendly name, current path, and database path as JSON"},
+				}},
+				{Name: "rename", Description: "Rename the friendly project name", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Validate and preview without writing"},
+					{Flags: "--json", Description: "Output project ID, friendly name, current path, database path, and applied status as JSON"},
+				}},
+				{Name: "move", Description: "Record a checkout path move", Options: []cliReferenceOption{
+					{Flags: "<from> [to]", Description: "Previous and optional new absolute project paths"},
+					{Flags: "--from <path>", Description: "Previous absolute project path"},
+					{Flags: "--to <path>", Description: "New absolute project path; defaults to the current project root"},
+					{Flags: "--dry-run", Description: "Validate and preview without writing"},
+					{Flags: "--json", Description: "Output project ID, friendly name, current path, database path, and applied status as JSON"},
+				}},
 			},
 		},
 		{
@@ -122,14 +169,18 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--dry-run", Description: "Preview import counts without creating a database"},
 					{Flags: "--apply", Description: "Initialize SQLite and import Markdown artifacts"},
 					{Flags: "--resume", Description: "Resume the Markdown import after an interrupted attempt"},
-					{Flags: "--json", Description: "Output migration details as JSON"},
+					{Flags: "--json", Description: "Output migration contract, scope, project context, and counts as JSON"},
 				}},
 				{Name: "storage-home", Description: "Copy legacy XDG_STATE_HOME SQLite state into XDG_DATA_HOME", Options: []cliReferenceOption{
 					{Flags: "--dry-run", Description: "Preview the storage-home migration"},
 					{Flags: "--apply", Description: "Copy the legacy database without deleting it"},
-					{Flags: "--json", Description: "Output migration details as JSON"},
+					{Flags: "--json", Description: "Output migration contract, global database paths, action, and project identity when available"},
 				}},
-				{Name: "worktree-storage", Description: "Move linked-worktree .agents state to the main worktree"},
+				{Name: "worktree-storage", Description: "Move linked-worktree .agents state to the main worktree", Options: []cliReferenceOption{
+					{Flags: "--apply", Description: "Perform the migration; dry-run is the default"},
+					{Flags: "--force-from-worktree", Description: "On conflict, keep the worktree-local copy"},
+					{Flags: "--force-from-main", Description: "On conflict, keep the main-worktree copy"},
+				}},
 			},
 		},
 		{
@@ -137,34 +188,40 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Description: "Manage project tasks",
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "list", Description: "Show task board grouped by status", Options: []cliReferenceOption{
-					{Flags: "--json", Description: "Output raw JSON"},
+					{Flags: "--json", Description: "Output tasks, diagnostics, global database scope, and project identity as JSON"},
 					{Flags: "--active", Description: "Hide completed tasks"},
-					{Flags: "--status <status>", Description: "Only show tasks with status: in_progress, blocked, todo, review, done"},
+					{Flags: "--status <status>", Description: "Only show tasks with status: " + validTaskListStatusText()},
 				}},
 				{Name: "show", Description: "Display a single task's details", Options: []cliReferenceOption{
-					{Flags: "--json", Description: "Output task entry as JSON"},
+					{Flags: "--json", Description: "Output task details, relationships, global database scope, and project identity as JSON"},
 				}},
 				{Name: "status", Description: "Show task summary counts"},
 				{Name: "create", Description: "Create a new task", Options: []cliReferenceOption{
 					{Flags: "--title <title>", Description: "Task title"},
 					{Flags: "--spec <id>", Description: "Associated spec ID (e.g., SPEC-010)"},
-					{Flags: "--priority <level>", Description: "Priority level (P0/P1/P2/P3)"},
+					{Flags: "--priority <level>", Description: "Priority level: " + validTaskPriorityText()},
 					{Flags: "--depends-on <ids>", Description: "Comma-separated task IDs"},
+					{Flags: "--json", Description: "Output created task, event, global database scope, and project identity as JSON"},
 				}},
 				{Name: "update", Description: "Update a task's metadata", Options: []cliReferenceOption{
-					{Flags: "--status <status>", Description: "New status: todo, in_progress, blocked, review, done"},
-					{Flags: "--priority <level>", Description: "New priority: P0, P1, P2, P3"},
+					{Flags: "--status <status>", Description: "New status: " + validTaskStatusText()},
+					{Flags: "--priority <level>", Description: "New priority: " + validTaskPriorityText()},
 					{Flags: "--depends-on <ids>", Description: "Replace depends_on (comma-separated task IDs)"},
 					{Flags: "--session <file>", Description: `Set or clear session reference (use "none" to clear)`},
 					{Flags: "--spec <id>", Description: "Set or change associated spec"},
+					{Flags: "--json", Description: "Output updated task, event, global database scope, and project identity as JSON"},
 				}},
 				{Name: "archive", Description: "Archive completed tasks through the task lifecycle", Options: []cliReferenceOption{
 					{Flags: "--spec <id>", Description: "Archive all done tasks for a spec"},
+					{Flags: "--json", Description: "Output archive result, archived tasks, global database scope, and project identity as JSON"},
 				}},
-				{Name: "refresh", Description: "Compatibility: rebuild the Markdown task index from task/spec files"},
+				{Name: "refresh", Description: "Compatibility: rebuild the Markdown task index from task/spec files", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output compatibility summary as JSON"},
+				}},
 				{Name: "sync", Description: "Compatibility: sync the Markdown task index and task files", Options: []cliReferenceOption{
 					{Flags: "--import", Description: "Import orphan .md files not in the index"},
 					{Flags: "--push", Description: "Push compatibility index metadata into .md frontmatter"},
+					{Flags: "--json", Description: "Output compatibility summary as JSON"},
 				}},
 			},
 		},
@@ -172,9 +229,9 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Name:        "spec",
 			Description: "Manage project specs",
 			Subcommands: []cliReferenceSubcommand{
-				{Name: "list", Description: "Show specs with status and task counts", Options: []cliReferenceOption{{Flags: "--json", Description: "Output raw JSON"}}},
-				{Name: "show", Description: "Show spec details", Options: []cliReferenceOption{{Flags: "--json", Description: "Output raw JSON"}}},
-				{Name: "archive", Description: "Archive a completed spec", Options: []cliReferenceOption{{Flags: "--json", Description: "Output raw JSON"}}},
+				{Name: "list", Description: "Show specs with status and task counts", Options: []cliReferenceOption{{Flags: "--json", Description: "Output specs, diagnostics, task counts, global database scope, and project identity as JSON"}}},
+				{Name: "show", Description: "Show spec details", Options: []cliReferenceOption{{Flags: "--json", Description: "Output spec details, task counts, relationships, global database scope, and project identity as JSON"}}},
+				{Name: "archive", Description: "Archive a completed spec", Options: []cliReferenceOption{{Flags: "--json", Description: "Output archive result, archived specs, global database scope, and project identity as JSON"}}},
 			},
 		},
 		{
@@ -183,17 +240,20 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "list", Description: "List reports", Options: []cliReferenceOption{
 					{Flags: "--type <type>", Description: "Filter by report type"},
-					{Flags: "--status <status>", Description: "Filter by status"},
-					{Flags: "--json", Description: "Output as JSON"},
+					{Flags: "--status <status>", Description: "Filter by status; Loaf lifecycle statuses: draft, final, archived"},
+					{Flags: "--json", Description: "Output reports, diagnostics, global database scope, and project identity as JSON"},
 				}},
-				{Name: "generate", Description: "Generate a report from state", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format"}}},
+				{Name: "generate", Description: "Generate a report from state", Options: []cliReferenceOption{
+					{Flags: "--format <format>", Description: "Output format: markdown"},
+					{Flags: "--json", Description: "Output contract, command, project context, and markdown content as JSON"},
+				}},
 				{Name: "create", Description: "Create a report draft", Options: []cliReferenceOption{
 					{Flags: "--type <type>", Description: "Report type"},
 					{Flags: "--source <source>", Description: "Report source"},
-					{Flags: "--json", Description: "Output as JSON"},
+					{Flags: "--json", Description: "Output created report, event, global database scope, and project identity as JSON"},
 				}},
-				{Name: "finalize", Description: "Mark a report draft as final", Options: []cliReferenceOption{{Flags: "--json", Description: "Output as JSON"}}},
-				{Name: "archive", Description: "Archive a finalized report", Options: []cliReferenceOption{{Flags: "--json", Description: "Output as JSON"}}},
+				{Name: "finalize", Description: "Mark a report draft as final", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
+				{Name: "archive", Description: "Archive a finalized report", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
 			},
 		},
 		{
@@ -201,17 +261,17 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Description: "Knowledge base management",
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "glossary", Description: "Domain glossary mutation and lookup"},
-				{Name: "validate", Description: "Validate knowledge file frontmatter", Options: []cliReferenceOption{{Flags: "--json", Description: "Output results as JSON"}}},
-				{Name: "status", Description: "Show knowledge base overview", Options: []cliReferenceOption{{Flags: "--json", Description: "Output status as JSON"}}},
+				{Name: "validate", Description: "Validate knowledge file frontmatter", Options: []cliReferenceOption{{Flags: "--json", Description: "Output per-file frontmatter errors and warnings as JSON"}}},
+				{Name: "status", Description: "Show knowledge base overview", Options: []cliReferenceOption{{Flags: "--json", Description: "Output knowledge file totals, coverage counts, stale count, review age, and directories as JSON"}}},
 				{Name: "check", Description: "Check knowledge file staleness against git history", Options: []cliReferenceOption{
 					{Flags: "--file <path>", Description: "Reverse lookup: find knowledge files covering this path"},
-					{Flags: "--json", Description: "Output results as JSON"},
+					{Flags: "--json", Description: "Output per-file staleness, coverage, commit, and review metadata as JSON"},
 				}},
-				{Name: "review", Description: "Mark a knowledge file as reviewed today", Options: []cliReferenceOption{{Flags: "--json", Description: "Output updated frontmatter as JSON"}}},
-				{Name: "init", Description: "Initialize knowledge base directories and QMD collections", Options: []cliReferenceOption{{Flags: "--json", Description: "Output results as JSON"}}},
+				{Name: "review", Description: "Mark a knowledge file as reviewed today", Options: []cliReferenceOption{{Flags: "--json", Description: "Output updated knowledge frontmatter as JSON"}}},
+				{Name: "init", Description: "Initialize knowledge base directories and QMD collections", Options: []cliReferenceOption{{Flags: "--json", Description: "Output directory actions, config status, and QMD collections as JSON"}}},
 				{Name: "import", Description: "Import external project knowledge via QMD collection", Options: []cliReferenceOption{
 					{Flags: "--path <path>", Description: "Path to the external project's knowledge directory"},
-					{Flags: "--json", Description: "Output results as JSON"},
+					{Flags: "--json", Description: "Output QMD import collection status or import error as JSON"},
 				}},
 			},
 		},
@@ -228,7 +288,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Description: "Scan project artifacts and recommend housekeeping actions",
 			Options: []cliReferenceOption{
 				{Flags: "--dry-run", Description: "Show recommendations without prompting for actions"},
-				{Flags: "--json", Description: "Output as JSON"},
+				{Flags: "--json", Description: "Output housekeeping sections, cleanup candidates, signals, and SQLite-backed project identity when available as JSON"},
 				{Flags: "--sessions", Description: "Only review sessions"},
 				{Flags: "--specs", Description: "Only review specs"},
 				{Flags: "--plans", Description: "Only review plans"},
@@ -237,11 +297,141 @@ func cliReferenceCommands() []cliReferenceCommand {
 			},
 		},
 		{
+			Name:        "trace",
+			Description: "Trace relationships for one state entity",
+			Options: []cliReferenceOption{
+				{Flags: "--json", Description: "Output traced entity, sources, relationships, global database scope, and project identity as JSON"},
+			},
+		},
+		{
+			Name:        "brainstorm",
+			Description: "Manage brainstorms in native SQLite state",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "list", Description: "List brainstorms from SQLite state", Options: []cliReferenceOption{
+					{Flags: "--all", Description: "Include archived brainstorms"},
+					{Flags: "--status <status>", Description: "Filter by status"},
+					{Flags: "--json", Description: "Output brainstorms, global database scope, and project identity as JSON"},
+				}},
+				{Name: "show", Description: "Show one brainstorm from SQLite state", Options: []cliReferenceOption{{Flags: "--json", Description: "Output brainstorm details, relationships, global database scope, and project identity as JSON"}}},
+				{Name: "promote", Description: "Record brainstorm-to-idea promotion", Options: []cliReferenceOption{
+					{Flags: "--to-idea <idea>", Description: "Target idea"},
+					{Flags: "--json", Description: "Output promotion relationship, global database scope, and project identity as JSON"},
+				}},
+				{Name: "archive", Description: "Archive one or more brainstorms", Options: []cliReferenceOption{
+					{Flags: "--reason <text>", Description: "Archive reason"},
+					{Flags: "--json", Description: "Output archive result, archived brainstorms, global database scope, and project identity as JSON"},
+				}},
+			},
+		},
+		{
+			Name:        "idea",
+			Description: "Manage ideas in native SQLite state",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "list", Description: "List ideas from SQLite state", Options: []cliReferenceOption{
+					{Flags: "--all", Description: "Include resolved and archived ideas"},
+					{Flags: "--status <status>", Description: "Filter by status"},
+					{Flags: "--json", Description: "Output ideas, global database scope, and project identity as JSON"},
+				}},
+				{Name: "show", Description: "Show one idea from SQLite state", Options: []cliReferenceOption{{Flags: "--json", Description: "Output idea details, relationships, global database scope, and project identity as JSON"}}},
+				{Name: "capture", Description: "Capture an idea in SQLite state", Options: []cliReferenceOption{
+					{Flags: "--title <title>", Description: "Idea title"},
+					{Flags: "--json", Description: "Output created idea, event, global database scope, and project identity as JSON"},
+				}},
+				{Name: "promote", Description: "Record idea-to-spec promotion", Options: []cliReferenceOption{
+					{Flags: "--to-spec <spec>", Description: "Target spec"},
+					{Flags: "--json", Description: "Output promotion relationship, global database scope, and project identity as JSON"},
+				}},
+				{Name: "resolve", Description: "Resolve an idea by linking it to another entity", Options: []cliReferenceOption{
+					{Flags: "--by <entity>", Description: "Resolving entity"},
+					{Flags: "--json", Description: "Output resolution relationship, event, global database scope, and project identity as JSON"},
+				}},
+				{Name: "archive", Description: "Archive one or more ideas", Options: []cliReferenceOption{
+					{Flags: "--reason <text>", Description: "Archive reason"},
+					{Flags: "--json", Description: "Output archive result, archived ideas, global database scope, and project identity as JSON"},
+				}},
+			},
+		},
+		{
+			Name:        "spark",
+			Description: "Manage sparks in native SQLite state",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "list", Description: "List sparks from SQLite state", Options: []cliReferenceOption{
+					{Flags: "--all", Description: "Include resolved sparks"},
+					{Flags: "--status <status>", Description: "Filter by status"},
+					{Flags: "--json", Description: "Output sparks, global database scope, and project identity as JSON"},
+				}},
+				{Name: "show", Description: "Show one spark from SQLite state", Options: []cliReferenceOption{{Flags: "--json", Description: "Output spark details, relationships, global database scope, and project identity as JSON"}}},
+				{Name: "capture", Description: "Capture a spark in SQLite state", Options: []cliReferenceOption{
+					{Flags: "--scope <scope>", Description: "Spark scope"},
+					{Flags: "--text <text>", Description: "Spark text"},
+					{Flags: "--json", Description: "Output created spark, event, global database scope, and project identity as JSON"},
+				}},
+				{Name: "resolve", Description: "Resolve a spark", Options: []cliReferenceOption{
+					{Flags: "--reason <text>", Description: "Resolution reason"},
+					{Flags: "--json", Description: "Output resolution relationship, event, global database scope, and project identity as JSON"},
+				}},
+				{Name: "promote", Description: "Record spark-to-idea promotion", Options: []cliReferenceOption{
+					{Flags: "--to-idea <idea>", Description: "Target idea"},
+					{Flags: "--json", Description: "Output promotion relationship, global database scope, and project identity as JSON"},
+				}},
+			},
+		},
+		{
+			Name:        "tag",
+			Description: "Manage tags in native SQLite state",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "list", Description: "List tags from SQLite state", Options: []cliReferenceOption{{Flags: "--json", Description: "Output tags, global database scope, and project identity as JSON"}}},
+				{Name: "show", Description: "Show entities with a tag", Options: []cliReferenceOption{{Flags: "--json", Description: "Output tagged entities, global database scope, and project identity as JSON"}}},
+				{Name: "add", Description: "Add a tag to an entity", Options: []cliReferenceOption{{Flags: "--json", Description: "Output tag mutation, entity, global database scope, and project identity as JSON"}}},
+				{Name: "remove", Description: "Remove a tag from an entity", Options: []cliReferenceOption{{Flags: "--json", Description: "Output tag mutation, entity, global database scope, and project identity as JSON"}}},
+			},
+		},
+		{
+			Name:        "bundle",
+			Description: "Manage bundles in native SQLite state",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "list", Description: "List bundles from SQLite state", Options: []cliReferenceOption{{Flags: "--json", Description: "Output bundles, global database scope, and project identity as JSON"}}},
+				{Name: "create", Description: "Create a bundle", Options: []cliReferenceOption{
+					{Flags: "--title <title>", Description: "Bundle title"},
+					{Flags: "--tags <tags>", Description: "Comma-separated tag query"},
+					{Flags: "--json", Description: "Output created bundle, tags, global database scope, and project identity as JSON"},
+				}},
+				{Name: "update", Description: "Update a bundle", Options: []cliReferenceOption{
+					{Flags: "--title <title>", Description: "Bundle title"},
+					{Flags: "--tags <tags>", Description: "Comma-separated tag query"},
+					{Flags: "--json", Description: "Output updated bundle, tags, global database scope, and project identity as JSON"},
+				}},
+				{Name: "show", Description: "Show one bundle", Options: []cliReferenceOption{{Flags: "--json", Description: "Output bundle details, members, global database scope, and project identity as JSON"}}},
+				{Name: "add", Description: "Add an entity to a bundle", Options: []cliReferenceOption{{Flags: "--json", Description: "Output bundle membership result, global database scope, and project identity as JSON"}}},
+				{Name: "remove", Description: "Remove an entity from a bundle", Options: []cliReferenceOption{{Flags: "--json", Description: "Output bundle membership result, global database scope, and project identity as JSON"}}},
+			},
+		},
+		{
+			Name:        "link",
+			Description: "Manage explicit relationships in native SQLite state",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "create", Description: "Create an explicit relationship", Options: []cliReferenceOption{
+					{Flags: "--from <entity>", Description: "Source entity"},
+					{Flags: "--to <entity>", Description: "Target entity"},
+					{Flags: "--type <type>", Description: "Relationship type"},
+					{Flags: "--reason <text>", Description: "Relationship reason"},
+					{Flags: "--json", Description: "Output relationship ID, source/target, global database scope, and project identity as JSON"},
+				}},
+				{Name: "list", Description: "List relationships for one entity", Options: []cliReferenceOption{{Flags: "--json", Description: "Output relationships, global database scope, and project identity as JSON"}}},
+				{Name: "remove", Description: "Remove an explicit relationship", Options: []cliReferenceOption{
+					{Flags: "--from <entity>", Description: "Source entity"},
+					{Flags: "--to <entity>", Description: "Target entity"},
+					{Flags: "--type <type>", Description: "Relationship type"},
+					{Flags: "--json", Description: "Output removed relationship ID, global database scope, and project identity as JSON"},
+				}},
+			},
+		},
+		{
 			Name:        "check",
 			Description: "Run enforcement hook checks",
 			Options: []cliReferenceOption{
 				{Flags: "--hook <id>", Description: "Registered hook ID to run"},
-				{Flags: "--json", Description: "Output JSON format"},
+				{Flags: "--json", Description: "Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON"},
 			},
 		},
 	}
@@ -378,6 +568,14 @@ func generateCLIReferenceCommandSection(cmd cliReferenceCommand) string {
 		}
 	}
 
+	if len(cmd.Options) > 0 {
+		parts = append(parts, "**Options:**", "")
+		for _, opt := range cmd.Options {
+			parts = append(parts, fmt.Sprintf("- `%s` - %s", opt.Flags, opt.Description))
+		}
+		parts = append(parts, "")
+	}
+
 	parts = append(parts, "**Usage:**", "```bash")
 	if examples := cliReferenceCommandUsageExamples(cmd.Name); len(examples) > 0 {
 		parts = append(parts, examples...)
@@ -451,7 +649,11 @@ func cliReferenceCommandGuidance(commandName string) string {
 	case "report":
 		return "In SQLite-backed projects, report lifecycle state is stored in SQLite. Use\ngenerated report commands for review output; create authored Markdown reports\nonly when a durable prose artifact is explicitly needed."
 	case "state":
-		return "Existing TypeScript-era projects can keep running supported commands in\nmarkdown-only compatibility mode until SQLite is initialized. Use\n`loaf state migrate markdown --apply` to import `.agents/` Markdown into SQLite\nwithout rewriting the source Markdown files."
+		return "Existing TypeScript-era projects can keep running supported commands in\nmarkdown-only compatibility mode until SQLite is initialized. Use\n`loaf state migrate markdown --apply` to import `.agents/` Markdown into SQLite\nwithout rewriting the source Markdown files." +
+			"\n\nManual restore from a backup is explicit until a guarded restore command exists:\nverify the backup with `loaf state backup verify <backup>`, preserve the current\n`$(loaf state path)` file, copy the verified backup to that path, then run\n`loaf state doctor` and `loaf state status`." +
+			"\nFor agents, `loaf state backup verify <backup> --json` also returns\n`restore_database_path`, `restore_preserve_path`, and\n`restore_validation_commands` for the current checkout."
+	case "project":
+		return "Project IDs are stable SQLite identities, not path or name hashes. Use\n`loaf project rename --dry-run` for display-name previews and\n`loaf project move --dry-run` before recording checkout path moves."
 	case "migrate":
 		return "`loaf migrate markdown` is the upgrade path for existing `.agents/`\nprojects with no SQLite database. Start with `--dry-run`, then use `--apply`\nwhen the artifact counts and skipped files look right."
 	default:
@@ -466,7 +668,20 @@ func cliReferenceCommandUsageExamples(commandName string) []string {
 			"loaf state status",
 			"loaf state migrate markdown --dry-run",
 			"loaf state migrate markdown --apply",
+			"loaf state backup",
+			"loaf state backup verify /path/to/backup.sqlite",
 			"loaf state status",
+		}
+	case "project":
+		return []string{
+			"loaf project show",
+			"loaf project identity --json",
+			"loaf project rename \"Loaf\" --dry-run",
+			"loaf project rename \"Loaf\"",
+			"loaf project move /old/path/to/loaf /new/path/to/loaf --dry-run",
+			"loaf project move --from /old/path/to/loaf --dry-run",
+			"loaf project move --from /old/path/to/loaf",
+			"loaf project show --json",
 		}
 	case "migrate":
 		return []string{

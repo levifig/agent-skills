@@ -12,6 +12,23 @@ import (
 	"testing"
 )
 
+func TestRunnerCheckHelp(t *testing.T) {
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: t.TempDir(),
+	}.Run([]string{"check", "--help"})
+	if err != nil {
+		t.Fatalf("check --help error = %v", err)
+	}
+	output := stdout.String()
+	for _, want := range []string{"Usage: loaf check --hook <id> [--json]", "--hook", "--json", "validate-commit"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("stdout = %q, want %q", output, want)
+		}
+	}
+}
+
 func TestRunnerCheckSecretsPassesNatively(t *testing.T) {
 	repo := initCLIGitRepo(t)
 	var stdout bytes.Buffer

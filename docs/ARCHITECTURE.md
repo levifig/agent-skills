@@ -52,6 +52,10 @@ The former TypeScript bridge prevented a big-bang rewrite. Public commands have 
 
 This changes the construction technique, not the product contract: skills still call `loaf`, hooks still enforce through `loaf`, and users still see one command surface. The implementation boundary behind that command is allowed to migrate command-by-command.
 
+### Operational State Identity
+
+Loaf stores operational state in one global SQLite database at `$XDG_DATA_HOME/loaf/loaf.sqlite`, partitioned by project ID. New project IDs are generated and stored in SQLite; they are not derived from checkout path or friendly name. The `projects` row carries the friendly display name and current path, while `project_paths` records path mappings so a checkout can move without changing identity. Legacy path-hash IDs remain only as an adoption key for migrated pre-stable-identity data.
+
 ### Targets
 
 | Target | Output | Agents | Skills | Hooks | Runtime Plugin |
@@ -340,7 +344,7 @@ Knowledge files are managed by `loaf kb` — staleness detection compares file m
 
 ```
 .agents/loaf.json               # Project-level (knowledge dirs, integration toggles, settings)
-~/.local/state/loaf/            # User-level (registered KBs, default settings)
+~/.local/share/loaf/            # User-level operational data, including SQLite state
 ~/.config/loaf/                 # User preferences
 ```
 

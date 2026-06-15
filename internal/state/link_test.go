@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/levifig/loaf/internal/project"
@@ -34,6 +35,7 @@ func TestLinksCreateListRemoveAndTraceRelationships(t *testing.T) {
 	if created.Type != "resolved_by" || created.From.Alias != "20260528-link-idea" || created.To.Alias != "SPEC-001" || created.Reason != "captured in task test" {
 		t.Fatalf("created = %#v, want idea resolved_by SPEC-001", created)
 	}
+	assertLinkMutationContext(t, created, root)
 
 	updated, err := CreateLink(context.Background(), root, PathResolver{StateHome: stateHome}, LinkMutationOptions{
 		From:   "20260528-link-idea",
@@ -62,7 +64,7 @@ func TestLinksCreateListRemoveAndTraceRelationships(t *testing.T) {
 	}
 	defer store.Close()
 	var relationshipRows int
-	if err := store.db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM relationships WHERE project_id = ?`, ProjectID(root)).Scan(&relationshipRows); err != nil {
+	if err := store.db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM relationships WHERE project_id = ?`, projectIDForTest(t, store, root)).Scan(&relationshipRows); err != nil {
 		t.Fatalf("count relationships error = %v", err)
 	}
 	if relationshipRows != 2 {
@@ -76,6 +78,7 @@ func TestLinksCreateListRemoveAndTraceRelationships(t *testing.T) {
 	if len(list.Relationships) != 2 {
 		t.Fatalf("relationships = %#v, want two inbound links", list.Relationships)
 	}
+	assertLinkListContext(t, list, root)
 	if !hasStateTraceRelationship(list.Relationships, "inbound", "resolved_by", "idea", "20260528-link-idea") {
 		t.Fatalf("relationships = %#v, want inbound idea resolution", list.Relationships)
 	}
@@ -102,12 +105,57 @@ func TestLinksCreateListRemoveAndTraceRelationships(t *testing.T) {
 	if removed.Reason != "updated reason" {
 		t.Fatalf("removed.Reason = %q, want stored reason", removed.Reason)
 	}
+	assertLinkMutationContext(t, removed, root)
 	trace, err = Trace(context.Background(), root, PathResolver{StateHome: stateHome}, "20260528-link-idea")
 	if err != nil {
 		t.Fatalf("Trace(idea) after remove error = %v", err)
 	}
 	if hasStateTraceRelationship(trace.Relationships, "outbound", "resolved_by", "spec", "SPEC-001") {
 		t.Fatalf("trace relationships = %#v, want resolved_by link removed", trace.Relationships)
+	}
+}
+
+func assertLinkMutationContext(t *testing.T, result LinkMutationResult, root project.Root) {
+	t.Helper()
+	if result.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(root.Path()))
+	}
+	if result.ProjectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, root.Path())
+	}
+}
+
+func assertLinkListContext(t *testing.T, result LinkListResult, root project.Root) {
+	t.Helper()
+	if result.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(root.Path()))
+	}
+	if result.ProjectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, root.Path())
 	}
 }
 

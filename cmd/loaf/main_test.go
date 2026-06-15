@@ -27,8 +27,8 @@ func TestPublicBinaryDispatchesStateVersionAndReleasePostMergeNatively(t *testin
 		t.Fatalf("loaf state path error = %v\n%s", err, output)
 	}
 	statePath := strings.TrimSpace(output)
-	if !strings.HasPrefix(statePath, filepath.Join(dataHome, "loaf", "projects")+string(filepath.Separator)) {
-		t.Fatalf("state path = %q, want under data home %q", statePath, dataHome)
+	if statePath != filepath.Join(dataHome, "loaf", "loaf.sqlite") {
+		t.Fatalf("state path = %q, want global database under data home %q", statePath, dataHome)
 	}
 	if strings.HasPrefix(statePath, workingDir+string(filepath.Separator)) {
 		t.Fatalf("state path = %q, want outside working dir %q", statePath, workingDir)

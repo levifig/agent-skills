@@ -28,14 +28,20 @@ type TaskUpdateOptions struct {
 
 // TaskStatusUpdateResult describes a task status mutation.
 type TaskStatusUpdateResult struct {
-	Task     TraceEntity   `json:"task"`
-	Previous string        `json:"previous_status"`
-	Status   string        `json:"status"`
-	Priority string        `json:"priority,omitempty"`
-	Spec     *TraceEntity  `json:"spec,omitempty"`
-	Depends  []TraceEntity `json:"depends_on,omitempty"`
-	Session  *TraceEntity  `json:"session,omitempty"`
-	EventID  string        `json:"event_id,omitempty"`
+	ContractVersion    int           `json:"contract_version,omitempty"`
+	DatabaseScope      string        `json:"database_scope,omitempty"`
+	DatabasePath       string        `json:"database_path,omitempty"`
+	ProjectID          string        `json:"project_id,omitempty"`
+	ProjectName        string        `json:"project_name,omitempty"`
+	ProjectCurrentPath string        `json:"project_current_path,omitempty"`
+	Task               TraceEntity   `json:"task"`
+	Previous           string        `json:"previous_status"`
+	Status             string        `json:"status"`
+	Priority           string        `json:"priority,omitempty"`
+	Spec               *TraceEntity  `json:"spec,omitempty"`
+	Depends            []TraceEntity `json:"depends_on,omitempty"`
+	Session            *TraceEntity  `json:"session,omitempty"`
+	EventID            string        `json:"event_id,omitempty"`
 }
 
 // UpdateTaskStatus updates a task's status in initialized SQLite state.
@@ -60,7 +66,14 @@ func (s *Store) UpdateTaskStatus(ctx context.Context, root project.Root, ref str
 
 // UpdateTask updates a task in an open store.
 func (s *Store) UpdateTask(ctx context.Context, root project.Root, options TaskUpdateOptions) (TaskStatusUpdateResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return TaskStatusUpdateResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return TaskStatusUpdateResult{}, err
+	}
 	if !options.SetStatus && !options.SetPriority && !options.SetSpec && !options.SetDependsOn && !options.SetSession {
 		return TaskStatusUpdateResult{}, fmt.Errorf("task update requires at least one update")
 	}
@@ -68,7 +81,7 @@ func (s *Store) UpdateTask(ctx context.Context, root project.Root, options TaskU
 		return TaskStatusUpdateResult{}, fmt.Errorf("invalid task status %q", options.Status)
 	}
 	if options.SetPriority && !ValidTaskPriority(options.Priority) {
-		return TaskStatusUpdateResult{}, fmt.Errorf("invalid priority %q", options.Priority)
+		return TaskStatusUpdateResult{}, fmt.Errorf("invalid priority %q (valid: %s)", options.Priority, taskPriorityText())
 	}
 	task, err := s.resolveTraceEntity(ctx, projectID, options.Ref)
 	if err != nil {
@@ -217,14 +230,20 @@ ON CONFLICT(id) DO NOTHING
 	}
 	resultSession := session
 	return TaskStatusUpdateResult{
-		Task:     task,
-		Previous: previousStatus,
-		Status:   finalStatus,
-		Priority: finalPriority,
-		Spec:     resultSpec,
-		Depends:  resultDepends,
-		Session:  resultSession,
-		EventID:  eventID,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Task:               task,
+		Previous:           previousStatus,
+		Status:             finalStatus,
+		Priority:           finalPriority,
+		Spec:               resultSpec,
+		Depends:            resultDepends,
+		Session:            resultSession,
+		EventID:            eventID,
 	}, nil
 }
 
@@ -250,10 +269,11 @@ WHERE project_id = ?
 func insertTaskRelationship(ctx context.Context, tx *sql.Tx, projectID string, taskID string, relationshipType string, targetKind string, targetID string, reason string, now string) error {
 	relationshipID := stableMigrationID("relationship", projectID, "task", taskID, relationshipType, targetKind, targetID)
 	_, err := tx.ExecContext(ctx, `
-INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
-VALUES (?, ?, 'task', ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+VALUES (?, ?, 'task', ?, ?, ?, ?, ?, 'command', ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   reason = excluded.reason,
+  origin = excluded.origin,
   updated_at = excluded.updated_at
 `, relationshipID, projectID, taskID, targetKind, targetID, relationshipType, reason, now, now)
 	if err != nil {

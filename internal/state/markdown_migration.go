@@ -13,27 +13,55 @@ import (
 
 // MarkdownMigrationPlan is the read-only preview for importing .agents files.
 type MarkdownMigrationPlan struct {
-	AgentsPath    string   `json:"agents_path"`
-	Specs         int      `json:"specs"`
-	Tasks         int      `json:"tasks"`
-	Ideas         int      `json:"ideas"`
-	Sparks        int      `json:"sparks"`
-	Brainstorms   int      `json:"brainstorms"`
-	ShapingDrafts int      `json:"shaping_drafts"`
-	Sessions      int      `json:"sessions"`
-	Reports       int      `json:"reports"`
-	Relationships int      `json:"relationships"`
-	SkippedFiles  []string `json:"skipped_files"`
-	Warnings      []string `json:"warnings"`
+	ContractVersion int      `json:"contract_version"`
+	AgentsPath      string   `json:"agents_path"`
+	Specs           int      `json:"specs"`
+	Tasks           int      `json:"tasks"`
+	Ideas           int      `json:"ideas"`
+	Sparks          int      `json:"sparks"`
+	Brainstorms     int      `json:"brainstorms"`
+	ShapingDrafts   int      `json:"shaping_drafts"`
+	Sessions        int      `json:"sessions"`
+	Reports         int      `json:"reports"`
+	Relationships   int      `json:"relationships"`
+	SkippedFiles    []string `json:"skipped_files"`
+	Warnings        []string `json:"warnings"`
+}
+
+// MarkdownMigrationPreviewResult is the CLI-facing dry-run envelope for a
+// Markdown import preview. It does not imply initialized SQLite state.
+type MarkdownMigrationPreviewResult struct {
+	MarkdownMigrationPlan
+	DatabaseScope      string `json:"database_scope"`
+	ImportScope        string `json:"import_scope"`
+	DatabasePath       string `json:"database_path"`
+	ProjectName        string `json:"project_name"`
+	ProjectCurrentPath string `json:"project_current_path"`
+	Applied            bool   `json:"applied"`
+}
+
+// NewMarkdownMigrationPreviewResult adds global DB and project context to a
+// read-only Markdown migration preview without creating SQLite state.
+func NewMarkdownMigrationPreviewResult(plan MarkdownMigrationPlan, root project.Root, databasePath string) MarkdownMigrationPreviewResult {
+	return MarkdownMigrationPreviewResult{
+		MarkdownMigrationPlan: plan,
+		DatabaseScope:         "global",
+		ImportScope:           "project",
+		DatabasePath:          databasePath,
+		ProjectName:           filepath.Base(root.Path()),
+		ProjectCurrentPath:    root.Path(),
+		Applied:               false,
+	}
 }
 
 // PreviewMarkdownMigration inspects .agents without mutating files or SQLite state.
 func PreviewMarkdownMigration(root project.Root) (MarkdownMigrationPlan, error) {
 	agentsPath := filepath.Join(root.Path(), ".agents")
 	plan := MarkdownMigrationPlan{
-		AgentsPath:   agentsPath,
-		SkippedFiles: []string{},
-		Warnings:     []string{},
+		ContractVersion: StateJSONContractVersion,
+		AgentsPath:      agentsPath,
+		SkippedFiles:    []string{},
+		Warnings:        []string{},
 	}
 
 	info, err := os.Stat(agentsPath)

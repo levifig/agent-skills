@@ -8,7 +8,7 @@ description: >-
   session shutdown (use wrap). Produces a disposable handoff artifact that
   housekeeping deletes after confirmed deprecation.
 subtask: false
-version: 2.0.0-dev.49
+version: 2.0.0-pre.20260614235428
 ---
 
 # Handoff

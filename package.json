@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-dev.49",
+  "version": "2.0.0-pre.20260614235428",
   "description": "Loaf - An Opinionated Agentic Framework for Claude Code, OpenCode, Cursor, Codex, and Gemini",
   "type": "module",
   "bin": {
@@ -14,10 +14,11 @@
   "scripts": {
     "build:go": "node cli/scripts/build-go.mjs",
     "build:release": "node cli/scripts/build-release.mjs",
+    "package:release": "node cli/scripts/package-release.mjs",
     "verify:go-artifacts": "node cli/scripts/verify-go-artifacts.mjs",
     "build:cli-ref": "bin/loaf __generate-cli-ref",
     "build:content": "bin/loaf build",
-    "build": "npm run build:cli-ref && npm run build:go && npm run build:content && npm run verify:go-artifacts",
+    "build": "npm run build:go && npm run build:cli-ref && npm run build:content && npm run verify:go-artifacts",
     "typecheck": "go test ./... -run=^$",
     "test": "go test ./...",
     "test:smoke": "node cli/scripts/smoke-test.js",

@@ -19,8 +19,14 @@ type BrainstormArchiveOptions struct {
 
 // BrainstormArchiveResult describes a state-backed brainstorm archive mutation.
 type BrainstormArchiveResult struct {
-	Archived []BrainstormArchiveItem `json:"archived"`
-	Skipped  []BrainstormArchiveItem `json:"skipped"`
+	ContractVersion    int                     `json:"contract_version,omitempty"`
+	DatabaseScope      string                  `json:"database_scope,omitempty"`
+	DatabasePath       string                  `json:"database_path,omitempty"`
+	ProjectID          string                  `json:"project_id,omitempty"`
+	ProjectName        string                  `json:"project_name,omitempty"`
+	ProjectCurrentPath string                  `json:"project_current_path,omitempty"`
+	Archived           []BrainstormArchiveItem `json:"archived"`
+	Skipped            []BrainstormArchiveItem `json:"skipped"`
 }
 
 // BrainstormArchiveItem describes one requested brainstorm archive outcome.
@@ -49,10 +55,23 @@ func (s *Store) ArchiveBrainstorms(ctx context.Context, root project.Root, optio
 	if len(options.Refs) == 0 {
 		return BrainstormArchiveResult{}, fmt.Errorf("brainstorm archive requires at least one brainstorm")
 	}
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return BrainstormArchiveResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return BrainstormArchiveResult{}, err
+	}
 	result := BrainstormArchiveResult{
-		Archived: []BrainstormArchiveItem{},
-		Skipped:  []BrainstormArchiveItem{},
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Archived:           []BrainstormArchiveItem{},
+		Skipped:            []BrainstormArchiveItem{},
 	}
 	for _, ref := range options.Refs {
 		item, archived, err := s.archiveBrainstorm(ctx, projectID, ref, options.Reason)

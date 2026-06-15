@@ -20,8 +20,9 @@ const sqliteDriverName = "sqlite3"
 
 // Store owns a SQLite connection for Loaf operational state.
 type Store struct {
-	db   *sql.DB
-	path string
+	db       *sql.DB
+	path     string
+	readOnly bool
 }
 
 // OpenStore opens an existing SQLite database path.
@@ -38,10 +39,41 @@ func OpenStore(path string) (*Store, error) {
 	return &Store{db: db, path: path}, nil
 }
 
+// OpenStoreReadOnly opens an existing SQLite database without creating or mutating it.
+func OpenStoreReadOnly(path string) (*Store, error) {
+	db, err := sql.Open(sqliteDriverName, sqliteReadOnlyDSN(path))
+	if err != nil {
+		return nil, fmt.Errorf("open state database read-only: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("ping state database read-only: %w", err)
+	}
+	var schemaVersion int
+	if err := db.QueryRow(`PRAGMA schema_version`).Scan(&schemaVersion); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("validate state database read-only: %w", err)
+	}
+	return &Store{db: db, path: path, readOnly: true}, nil
+}
+
 func sqliteDSN(path string) string {
 	values := url.Values{}
 	values.Add("_pragma", "busy_timeout(5000)")
 	values.Add("_pragma", "journal_mode(wal)")
+	values.Add("_pragma", "foreign_keys(on)")
+	return (&url.URL{
+		Scheme:   "file",
+		Path:     filepath.ToSlash(path),
+		RawQuery: values.Encode(),
+	}).String()
+}
+
+func sqliteReadOnlyDSN(path string) string {
+	values := url.Values{}
+	values.Add("mode", "ro")
+	values.Add("_pragma", "busy_timeout(5000)")
 	values.Add("_pragma", "foreign_keys(on)")
 	return (&url.URL{
 		Scheme:   "file",
@@ -63,7 +95,7 @@ func (s *Store) Path() string {
 	return s.path
 }
 
-// Initialize creates the project database, applies migrations, and records the project row.
+// Initialize creates the global database, applies migrations, and records the project row.
 func Initialize(ctx context.Context, root project.Root, resolver PathResolver) (Status, error) {
 	path, err := resolver.DatabasePath(root)
 	if err != nil {
@@ -93,23 +125,6 @@ func (s *Store) ApplyMigrations(ctx context.Context) error {
 	return ApplyMigrations(ctx, s.db, SchemaMigrations())
 }
 
-// UpsertProject records the project identity row after migrations are applied.
-func (s *Store) UpsertProject(ctx context.Context, root project.Root) error {
-	now := time.Now().UTC().Format(time.RFC3339)
-	projectID := ProjectID(root)
-	_, err := s.db.ExecContext(ctx, `
-INSERT INTO projects (id, identity_hash, created_at, updated_at)
-VALUES (?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-  identity_hash = excluded.identity_hash,
-  updated_at = excluded.updated_at
-`, projectID, projectID, now, now)
-	if err != nil {
-		return fmt.Errorf("upsert project: %w", err)
-	}
-	return nil
-}
-
 // SchemaVersion returns the highest applied migration version.
 func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
 	var version sql.NullInt64
@@ -121,6 +136,51 @@ func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 	return int(version.Int64), nil
+}
+
+// DatabasePath returns the SQLite path backing this store.
+func (s *Store) DatabasePath() string {
+	return s.path
+}
+
+// ValidateCurrentSchema rejects version drift, missing migrations, and checksum drift.
+func (s *Store) ValidateCurrentSchema(ctx context.Context) (int, error) {
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		return 0, err
+	}
+	current := CurrentSchemaVersion()
+	if version != current {
+		return version, fmt.Errorf("schema version %d does not match expected version %d", version, current)
+	}
+	for _, migration := range SchemaMigrations() {
+		var checksum string
+		err := s.db.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE version = ?`, migration.Version).Scan(&checksum)
+		switch {
+		case err == nil && checksum != migration.Checksum():
+			return version, fmt.Errorf("schema migration %d checksum does not match Go-owned migration", migration.Version)
+		case errors.Is(err, sql.ErrNoRows):
+			return version, fmt.Errorf("schema migration %d is missing", migration.Version)
+		case err != nil:
+			return version, fmt.Errorf("read schema migration %d: %w", migration.Version, err)
+		}
+	}
+	return version, nil
+}
+
+// ValidateProjectPathInvariants rejects inconsistent durable project path metadata.
+func (s *Store) ValidateProjectPathInvariants(ctx context.Context) error {
+	diagnostics, valid, err := inspectProjectPathInvariants(ctx, s)
+	if err != nil {
+		return err
+	}
+	if valid {
+		return nil
+	}
+	if len(diagnostics) == 0 {
+		return fmt.Errorf("project path invariants are invalid")
+	}
+	return fmt.Errorf("%s", diagnostics[0].Message)
 }
 
 // AppliedMigrationCount returns the number of applied migrations.

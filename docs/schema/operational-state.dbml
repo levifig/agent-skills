@@ -1,5 +1,5 @@
 // Loaf operational state schema.
-// Source of truth: internal/state/migrations/0001_initial.sql.
+// Source of truth: internal/state/migrations/*.sql.
 // This mirror is guarded by TestSchemaDocumentationMirrorsExecutableMigration.
 
 Table schema_migrations {
@@ -14,6 +14,24 @@ Table projects {
   identity_hash text [not null, unique]
   created_at text [not null]
   updated_at text [not null]
+  friendly_name text
+  current_path text
+  last_seen_at text
+}
+
+Table project_paths {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  path text [not null, unique]
+  is_current integer [not null]
+  first_seen_at text [not null]
+  last_seen_at text [not null]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, is_current)
+    (project_id) [unique, note: 'where is_current = 1']
+  }
 }
 
 Table aliases {
@@ -180,9 +198,13 @@ Table relationships {
   reason text
   created_at text [not null]
   updated_at text [not null]
+  origin text
+  source_id text
+  source_field text
   indexes {
     (project_id, from_entity_kind, from_entity_id)
     (project_id, to_entity_kind, to_entity_id)
+    (project_id, origin)
   }
 }
 

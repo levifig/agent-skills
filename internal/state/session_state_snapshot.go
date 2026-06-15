@@ -41,7 +41,10 @@ func RecordSessionStateSnapshot(ctx context.Context, root project.Root, resolver
 
 // RecordSessionStateSnapshot upserts the latest state snapshot for a session in an open store.
 func (s *Store) RecordSessionStateSnapshot(ctx context.Context, root project.Root, options SessionStateSnapshotOptions) (SessionStateSnapshot, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SessionStateSnapshot{}, err
+	}
 	content := strings.TrimSpace(options.Content)
 	if content == "" {
 		return SessionStateSnapshot{}, fmt.Errorf("session state snapshot content cannot be empty")

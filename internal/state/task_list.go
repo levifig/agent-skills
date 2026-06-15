@@ -14,8 +14,15 @@ var taskListStatusOrder = []string{"in_progress", "blocked", "todo", "review", "
 
 // TaskList is the state-backed task-list read model.
 type TaskList struct {
-	Version int                 `json:"version"`
-	Tasks   map[string]TaskItem `json:"tasks"`
+	ContractVersion    int                 `json:"contract_version,omitempty"`
+	DatabaseScope      string              `json:"database_scope,omitempty"`
+	DatabasePath       string              `json:"database_path,omitempty"`
+	ProjectID          string              `json:"project_id,omitempty"`
+	ProjectName        string              `json:"project_name,omitempty"`
+	ProjectCurrentPath string              `json:"project_current_path,omitempty"`
+	Diagnostics        []Diagnostic        `json:"diagnostics,omitempty"`
+	Version            int                 `json:"version"`
+	Tasks              map[string]TaskItem `json:"tasks"`
 }
 
 // TaskItem is a task entry returned by the state-backed task list.
@@ -55,7 +62,14 @@ func ListTasks(ctx context.Context, root project.Root, resolver PathResolver, op
 
 // ListTasks returns imported tasks from an open store.
 func (s *Store) ListTasks(ctx context.Context, root project.Root, options TaskListOptions) (TaskList, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return TaskList{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return TaskList{}, err
+	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT
   task_alias.alias,
@@ -83,7 +97,16 @@ ORDER BY task_alias.alias
 		return TaskList{}, fmt.Errorf("query tasks: %w", err)
 	}
 
-	taskList := TaskList{Version: 1, Tasks: map[string]TaskItem{}}
+	taskList := TaskList{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Version:            1,
+		Tasks:              map[string]TaskItem{},
+	}
 	for rows.Next() {
 		var alias, title, status, priority, specAlias, sourcePath string
 		if err := rows.Scan(&alias, &title, &status, &priority, &specAlias, &sourcePath); err != nil {
@@ -181,6 +204,11 @@ func ValidTaskStatus(status string) bool {
 	return false
 }
 
+// TaskStatuses returns valid direct task statuses in display order.
+func TaskStatuses() []string {
+	return append([]string(nil), taskStatusOrder...)
+}
+
 // ValidTaskListStatus reports whether status is a known task-list filter status.
 func ValidTaskListStatus(status string) bool {
 	for _, valid := range taskListStatusOrder {
@@ -189,4 +217,9 @@ func ValidTaskListStatus(status string) bool {
 		}
 	}
 	return false
+}
+
+// TaskListStatuses returns valid task-list filter statuses in display order.
+func TaskListStatuses() []string {
+	return append([]string(nil), taskListStatusOrder...)
 }

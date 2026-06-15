@@ -6,15 +6,167 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-pre.20260614235428] - 2026-06-14
+
 ### Changed
 
+- Added Homebrew-ready release packaging and CI/CD so tagged Loaf releases can build native archives, upload checksummed assets, and update `levifig/homebrew-tap`.
+- Completed the boring-reliable state/CLI audit, tying the single global SQLite database contract, durable project identity, repair guidance, backup/export/restore evidence, backend/Linear diagnostics, human help, and agent JSON surfaces to tests, docs, SPEC-040, native cutover guardrails, and live primary-checkout dogfood.
+- State, project, repair, backup, and migration terminal help now names the JSON contract fields instead of using generic `Output JSON`, including readiness, diagnostics, repair plans, backup restore guidance, migration context, durable project identity, and applied status.
+- Utility and knowledge-base help surfaces now describe `kb`, `check`, `housekeeping`, and `trace` JSON output in terms of knowledge metadata, hook results, cleanup sections/signals, traced entities, global database scope, and project identity across agent help, command help, and generated CLI reference output.
+- Entity-family help surfaces now describe `brainstorm`, `idea`, `spark`, `tag`, `bundle`, and `link` JSON output in terms of global database scope, project identity, relationships, events, tags, and bundle membership across agent help, command help, and generated CLI reference output.
+- `loaf session report --json` now returns the same session Markdown export contract as state/report generation aliases instead of advertising `--json` and rejecting it; session, task, spec, and report help now describe their JSON scope, project identity, diagnostics, events, and compatibility summaries precisely.
+- Agent help and generated CLI reference output now describe critical state JSON contracts precisely for `state path|init|status|doctor`, guarded repairs, backups, top-level migration aliases, restore guidance, global database scope, and project identity instead of using generic raw/details wording.
+- Agent help, command help, and generated CLI reference output now describe migration/report JSON contracts consistently, including state migration aliases, project context, global database paths, and report command metadata.
+- `loaf state migrate storage-home --dry-run --json` now includes the durable project ID, friendly project name, and current project path when the global data-home database already contains the current project.
+- `loaf report generate ... --json` success payloads now include the JSON contract version, report command, global database scope, project export scope, and durable project identity; external reports omit local database and project paths while internal session reports retain them for agent routing.
+- Human missing-state errors from `loaf state backup` and Markdown `loaf state export ...` commands now include the global database scope, target database path, and safe next actions while preserving concise JSON errors for agents.
+- `loaf state migrate markdown --dry-run --json` now includes the global database scope, target database path, project import scope, project name/path, and `applied: false` without creating SQLite state.
+- `loaf state doctor --json` and exported state snapshots now classify local Markdown import and stale compatibility export warnings with structured category, policy, and details fields for safer agent routing.
+- `loaf state export all --format json` now carries current state diagnostics and repair-plan actions alongside the raw project tables, so backend/Linear repair follow-up exports preserve the reason and policy that led to the export.
+- `loaf state migrate markdown --apply|--resume --json` now includes an explicit `action` field, and human output prints the same action so agents and humans can distinguish fresh imports from resumed imports without relying on argv context.
+- `loaf state backup verify --json` now includes the current checkout's restore target, preserve path, and validation commands without reading or recreating live SQLite state; human verify output prints the same concrete restore paths.
+- `loaf state doctor --json` backend and Linear diagnostics now include structured `details` fields, so agents can route invalid local backend rows, drift warnings, and external sync gaps without parsing prose.
+- Project-specific commands now reject invalid project path invariants before showing or mutating one identity, while `project list --json` remains available for doctor-recommended inspection.
+- Project commands now reject schema checksum drift before reading identity state, matching `state doctor` invalid-state behavior and pointing users at the affected global database path.
+- Project command human errors for missing SQLite state now include the global database path, scope, and safe `state status` / `state init` next actions instead of a terse missing-database message.
+- `loaf project move` now accepts positional absolute paths (`loaf project move <from> [to]`) in addition to `--from/--to`, preserving the same dry-run, JSON, and path-safety checks.
+- `loaf state doctor` now rejects backend mapping rows with sensitive-looking external identity values, keeping Linear/backend metadata to identifiers and URLs instead of credentials.
+- `loaf state export all --json --format markdown` now returns the same machine-readable flag-conflict error as the reverse flag order instead of falling through to a generic unsupported-format message.
+- `loaf report generate` now accepts its documented `--format markdown` option and supports `--json`, returning the same markdown export wrapper used by state exports with machine-readable errors for unsupported formats and missing state.
+- Markdown exports from `loaf state export triage|release-readiness|spec|session` now include explicit project context; external-safe exports name the global/project scope, stable project ID, and friendly project name without exposing local paths, while internal exports also include project and database paths.
+- `loaf state init|status|doctor` human output now uses the same durable project identity labels as the rest of the SQLite CLI: `project` for ID and `project name` for the friendly name.
+- `loaf state backup` human output now ends with a concrete `state backup verify <backup>` next action, and backup help/reference text names the global data-home backups directory.
+- `loaf state path --verbose` now provides human-oriented command, scope, project root, and database path context while preserving raw-path default output for shell substitution and restore workflows.
+- `loaf project show|identity` and `loaf project list` human output now use the same command, scope, database, project ID, friendly name, and project path labels as project identity mutations.
+- `loaf state migrate markdown` and `loaf state migrate storage-home` human output now report command, global database scope, project import/migration scope, database path, project context, applied status, and dry-run next actions consistently.
+- `loaf project rename|move` human output now reports command, scope, database, project identity, from/to values, applied status, and dry-run next actions consistently.
+- `loaf state doctor` diagnostics now label backend mapping and Linear sync findings by policy so local data fixes, drift audits, and external sync work are easier to distinguish.
+- `loaf state doctor` repair-plan commands now have regression coverage proving suggested follow-up commands run in the diagnostic mode that produced them.
+- `loaf state doctor` repair plans now classify local database, backend mapping, and external sync actions for clearer human and agent follow-up.
+- Added safe next-action guidance to backup verification output after dogfooding the manual restore flow, so users know how to preserve the current DB, restore the verified backup, and rerun health checks.
+- Documented and verified a manual SQLite backup restore flow so users can recover the global database by verifying a backup, preserving the current DB, copying the backup into place, and running health checks.
+- Completed the Gate 1 control-plane evidence pass with regression coverage for project rename/move safeguards and repair dry-runs, including durable project identity, single current path, dry-run table stability, and legacy archive preview safety.
+- Added command-matrix regression coverage for critical state/project/migration JSON success contracts, including read-only no-mutation checks, migration dry-run no-copy/no-database checks, and backup verification without live state access.
+- Refocused the boring-reliable state/CLI plan into gated execution criteria so future work progresses through control-plane proof, recovery confidence, and UX/policy normalization instead of broad edge chasing.
+- Added command-matrix regression coverage for critical state/project/migration JSON failure contracts, including contract version, command name, silent exit code, and no database creation for pre-open failures.
+- Added a focused boring-reliable state/CLI plan that turns the remaining SQLite hardening work into an explicit reliability contract, command matrix, and prioritized audit tracks.
+- `loaf state export all --json` is now accepted as an agent-friendly alias for `loaf state export all --format json`, while markdown export kinds continue to require explicit `--format markdown`.
+- `loaf state doctor` repair plans now route invalid backend-mapping diagnostics to `loaf state doctor --json` instead of suggesting `state export`, which refuses to run while state is invalid.
+- `loaf state doctor --json` now includes non-mutating repair plans whenever diagnostics are present, even without `--dry-run`, so agents receive next actions alongside health failures.
+- `loaf state backup verify --json` now includes `backup_path` in verification failure payloads after a path has been parsed, making invalid-backup diagnostics easier for agents to correlate.
+- `loaf state path --json` now reports the resolved global SQLite path with contract version, project root, and database scope without creating the database.
+- `loaf state doctor` now accepts project-level backend mappings, allowing a Loaf project to be linked to a Linear/external project while still rejecting mismatched project mapping IDs.
+- `loaf state doctor --json` now exits nonzero for invalid SQLite state while still returning the machine-readable status payload.
+- `loaf state export all --format json` now includes `project_paths` rows so project-scoped snapshots preserve checkout path history alongside durable project identity.
+- `npm run build` now rebuilds the Go CLI before regenerating the CLI reference so agent-facing docs do not lag behind command metadata changes.
+- `loaf state backup verify <backup> [--json]` now verifies existing SQLite backups without live-state access and reports all project identities captured in the global backup.
+- `loaf task refresh|sync --json` and `loaf session enrich|housekeeping --json` compatibility summaries now include `contract_version` for agentic consumers.
+- `loaf housekeeping` JSON and human output now report global database scope and durable project identity details when backed by SQLite, while Markdown fallback output keeps repository-local artifact context.
+- `loaf trace` and `loaf spec show` JSON and human output now report global database scope and durable project identity details when backed by SQLite, while Markdown `spec show` fallback output keeps repository-local spec context.
+- `loaf task list|show|status` and `loaf spec list` JSON and human output now report global database scope and durable project identity details when backed by SQLite, while Markdown fallback output keeps repository-local task/spec context.
+- `loaf brainstorm promote|archive|list|show` JSON and human output now report global database scope and durable project identity details.
+- `loaf state doctor` and SQLite-backed `loaf report list` now warn when the global database is ready but the current repo still has importable local `.agents` Markdown that has not been migrated.
+- `loaf session start|end|archive|list|show|log` JSON and human output now report global database scope and durable project identity details when backed by SQLite, while Markdown fallback output keeps repository-local session context.
+- `loaf spark capture|promote|resolve|list|show` JSON and human output now report global database scope and durable project identity details.
+- `loaf idea capture|promote|resolve|archive|list|show` JSON and human output now report global database scope and durable project identity details.
+- `loaf report create|finalize|archive|list` JSON and human output now report global database scope and durable project identity details when backed by SQLite, while Markdown fallback output keeps repository-local report context.
+- `loaf bundle create|update|add|remove|list|show` JSON and human output now report global database scope and durable project identity details.
+- `loaf tag add|remove|list|show` JSON and human output now report global database scope and durable project identity details.
+- `loaf link create|remove|list` JSON and human output now report global database scope and durable project identity details.
+- `loaf spec archive` JSON and human output now report global database scope and durable project identity details when backed by SQLite, while Markdown fallback JSON includes the contract version without database context.
+- `loaf task create|update|archive` JSON and human output now report global database scope and durable project identity details when backed by SQLite, while Markdown fallback JSON includes the contract version without database context.
+- `loaf project show|list|rename|move` JSON and human output now identify project metadata as global database state.
+- `loaf state repair ...` JSON and human output now report global database scope and durable project identity details for guarded repair previews and applies.
+- `loaf state init|status|doctor` now report global database scope consistently in JSON and human output, and human diagnostics include durable project identity details when available.
+- `loaf migrate storage-home --json` and human output now report global database scope, project migration scope, and applied project identity details.
+- `loaf migrate markdown --apply|--resume --json` now reports global database scope, project import scope, and durable project identity details.
+- `loaf state doctor` now warns when backend mapping rows use an unknown `sync_status`, helping catch misspelled integration state without invalidating the database.
+- `loaf state export all --format json` now reports `database_scope` and `export_scope` in the snapshot and manifest, making project-scoped exports from the global database explicit.
+- `loaf state backup` JSON and human output now report the number of project identities captured in the global database backup.
+- `loaf state backup` JSON and human output now identify backups as global database backups.
+- `loaf project move` now rejects missing or non-directory target paths before previewing or recording a checkout move.
+- `loaf state doctor` now flags backend mapping rows with empty backend, local entity, external entity, or sync-status fields.
+- `loaf state repair ...` human output now shows `--dry-run` or `--apply` in the command header and suppresses apply guidance when no rows or files match.
+- `loaf migrate markdown --json`, `loaf migrate storage-home --json`, and `loaf state repair ... --json` success payloads now include `contract_version`.
+- `loaf project identity` now works as a discoverable alias for `loaf project show`.
+- `loaf project show|list|rename|move --json` now include `contract_version` for agentic consumers.
+- `loaf state init|status|doctor --json` now include `contract_version` for agentic consumers.
+- JSON error payloads now include `contract_version` for agentic consumers.
+- `loaf state backup --json` and `loaf state export all --format json` now include `contract_version` for agentic JSON consumers.
+- `loaf state backup --json` and human output now include the backup file's SHA-256 digest for artifact verification.
+- `loaf state backup --json` and `loaf state export all --format json` now surface project name and current project path alongside the durable project ID.
+- `loaf state status` and `loaf state doctor` now inspect existing SQLite databases through read-only connections.
+- SQLite backup and export verification errors now include the first foreign-key violation's table, row, parent table, and constraint details.
+- `loaf state export all --format json` manifest now reports SQLite integrity and foreign-key verification checks.
+- `loaf state backup` now verifies and reports backup foreign-key integrity alongside SQLite integrity checks.
+- `loaf state doctor` now reports SQLite `quick_check` failures and foreign-key violations as explicit invalid-state diagnostics.
+- `loaf project rename --json` now requires an existing registered project identity and no longer initializes missing SQLite state as a side effect.
+- `loaf project move --json` now validates against an existing SQLite database before opening a writable handle, so rejected moves no longer create empty state.
+- `loaf project show|list` now open the global SQLite database read-only and no longer initialize missing state as a side effect.
+- `loaf state status` now distinguishes durable SQLite `project_id` from the path-derived `legacy_project_key`, avoiding pre-init identity confusion.
+- `--agent-help` and the generated `cli-reference` skill now document the generic `loaf state export --format <format>` contract.
+- `--agent-help` now documents `loaf build`/`install` short aliases and non-interactive install confirmation flags consistently with native help.
+- `--agent-help` now documents housekeeping's legacy-compatible `--plans` and `--handoffs` filters.
+- `loaf report create --help` now matches the parser by documenting `--source` and no longer advertising unsupported `--title`.
+- `--agent-help` and the generated `cli-reference` skill now document `loaf migrate worktree-storage` dry-run/apply and conflict-resolution flags.
+- `loaf kb ... --help` now works for knowledge-base subcommands and `--agent-help` documents KB JSON/path options for agentic use.
+- `loaf report list --help`, `--agent-help`, and the generated `cli-reference` skill now document Loaf's report lifecycle statuses for `--status` filters.
+- `loaf report generate --help`, `--agent-help`, and the generated `cli-reference` skill now state that `--format` expects Markdown output.
+- `--agent-help` and the generated `cli-reference` skill now document concrete `loaf state export` subcommands and required `--format` contracts.
+- `loaf state export all --format json` now includes a verified manifest with table order, per-table row counts, and total exported rows.
+- `loaf state export all --format json` manifest now includes an explicit `table_count` for agentic consumers.
+- `loaf state export ...` generation now reads SQLite through read-only connections.
+- `loaf project rename|move --json` validation and safeguard failures now return machine-readable JSON error payloads instead of plain text.
+- `loaf state init|status|doctor --json` validation failures now return machine-readable JSON error payloads instead of plain text.
+- `loaf state migrate|repair --json` validation and safeguard failures now return machine-readable JSON error payloads instead of plain text.
+- `loaf state backup --json` and `loaf state export all --format json` failures now return machine-readable JSON error payloads instead of plain text.
+- `loaf trace --json` and `loaf idea capture --json` validation failures now return machine-readable JSON error payloads instead of plain text.
+- `loaf link create|remove` now accepts the documented `--from` and `--to` flags, and `--json` validation failures return machine-readable JSON error payloads.
+- `loaf --json` command paths now apply a central fallback so unwrapped validation failures still return machine-readable JSON error payloads.
+- `--agent-help` and the generated `cli-reference` skill now document task mutation and compatibility `--json` options.
+- `--agent-help` now has a regression guard against live help drift for documented `--json` options, and documents state/session/housekeeping JSON output options consistently.
+- `loaf trace --help` now shows trace usage instead of reporting `--help` as an unknown option, and `--agent-help` documents trace JSON output.
+- `loaf check --help` now shows registered hook usage instead of reporting `--help` as an unknown option.
+- `loaf migrate markdown|storage-home --help` now shows top-level migration usage instead of reporting `--help` as an unknown option, and `--agent-help` documents their migration options.
+- `loaf state doctor` now warns when Linear integration is enabled but active local task rows have no Linear backend mapping.
+- `--agent-help` now documents state-backed brainstorm, idea, spark, tag, bundle, and link subcommands instead of exposing them as bare top-level command names.
+- The generated `cli-reference` skill now documents top-level command options plus state-backed trace, brainstorm, idea, spark, tag, bundle, and link commands.
+- `loaf task create|list|update --json` validation failures now return machine-readable JSON error payloads instead of plain text.
+- `loaf task list|update` help, invalid-status errors, and agent help now name the valid task statuses.
+- `loaf task create|update` help, invalid-priority errors, and agent help now name the valid task priorities.
+- The generated `cli-reference` skill now uses the same task status and priority values as the native CLI help and agent help.
+- `--agent-help` and the generated `cli-reference` skill now document `loaf project` identity commands and their dry-run safeguards.
+- `--agent-help` and the generated `cli-reference` skill now describe `loaf project list` global database JSON fields.
+- `--agent-help` and the generated `cli-reference` skill now document guarded `loaf state repair` targets and safety flags.
+- `loaf state doctor` now validates backend mapping drift for Linear and other external integrations, including orphaned local entities, unknown entity kinds, and ambiguous local-to-external mappings.
+- `loaf state doctor` repair plans now deduplicate repeated repair actions while preserving distinct diagnostic causes.
+- `loaf state backup` now verifies backup integrity, schema version, and project identity before returning, and reports those checks in JSON and human output.
+- `loaf state backup` now verifies created backups through a read-only SQLite connection so verification does not mutate backup files or create sidecars.
+- `loaf project move` now supports `--dry-run` for validated path-move previews without mutating the global project identity index.
+- Project rename and move dry-runs now open SQLite read-only, avoid initializing missing databases, and `loaf project rename` supports `--dry-run` previews.
+- State doctor and repair JSON now keeps empty repair/archive fields as arrays instead of omitting them or returning `null`.
+- `loaf state repair legacy-project-database` now previews and archives migrated per-project SQLite leftovers without deleting them.
+- `loaf state repair relationship-origin` now previews and applies guarded relationship provenance backfills, creating a SQLite backup before writes.
+- `loaf state doctor` now checks operational SQLite invariants for project path identity and relationship provenance, with manual repair guidance for unsafe drift.
+- `loaf state doctor --dry-run` now reports an explicit repair plan in human and JSON output without mutating SQLite state or legacy databases.
+- `loaf project list` now shows registered projects from the global SQLite database with stable IDs, friendly names, current paths, and JSON output.
 - Native Go is now the shipped Loaf runtime, with cross-platform binaries replacing the transitional TypeScript delegation path.
 - Existing Markdown-only Loaf projects now have a documented dry-run and apply path for adopting SQLite-backed state without rewriting source artifacts.
+- SQLite project identity now uses generated stable project IDs in one global database, plus friendly names and path mappings managed by `loaf project show|rename|move`.
 - `agents-config` now documents and pins the fall-back-to-`projectRoot` behavior when a linked worktree's `.git` pointer file is malformed (missing `gitdir:` line or non-matching shape). This is the deliberate Case-4 fallback in `resolveEffectiveRoot` — distinct from the "main removed" case fixed in #53, which still throws. Closes a Codex review follow-up on #53.
 
 ### Fixed
 
+- Markdown migration apply no longer requires legacy `.agents/TASKS.json` when importing Markdown-only task files.
+- State-backed CLI commands now handle parent and nested `--help` consistently before parsing options or opening SQLite state.
+- SQLite-backed state commands now fail on project identity mapping errors instead of silently falling back to path-derived legacy project IDs.
 - Storage-home migration now preserves pending SQLite writes when copying legacy state into XDG data-home storage.
+- Markdown migration relationship imports now ignore empty dependency arrays, prune stale imported links by structured origin, and record imported/manual relationship provenance.
+- Storage-home migration now upgrades copied legacy databases before readiness checks and rekeys legacy path-hash project rows into generated stable identities in the global database.
+- Project path moves now reject unknown source paths without creating a stray project row, and SQLite enforces one current path per project.
 
 ### Removed
 

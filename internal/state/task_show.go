@@ -14,8 +14,14 @@ import (
 
 // TaskShow is the state-backed single-task read model.
 type TaskShow struct {
-	Query string     `json:"query"`
-	Task  TaskDetail `json:"task"`
+	ContractVersion    int        `json:"contract_version,omitempty"`
+	DatabaseScope      string     `json:"database_scope,omitempty"`
+	DatabasePath       string     `json:"database_path,omitempty"`
+	ProjectID          string     `json:"project_id,omitempty"`
+	ProjectName        string     `json:"project_name,omitempty"`
+	ProjectCurrentPath string     `json:"project_current_path,omitempty"`
+	Query              string     `json:"query"`
+	Task               TaskDetail `json:"task"`
 }
 
 // TaskDetail contains operational task metadata plus imported source context.
@@ -55,7 +61,14 @@ func ShowTask(ctx context.Context, root project.Root, resolver PathResolver, ref
 
 // ShowTask returns one imported task from an open store.
 func (s *Store) ShowTask(ctx context.Context, root project.Root, ref string) (TaskShow, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return TaskShow{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return TaskShow{}, err
+	}
 	entity, err := s.resolveTraceEntity(ctx, projectID, ref)
 	if err != nil {
 		return TaskShow{}, err
@@ -68,7 +81,16 @@ func (s *Store) ShowTask(ctx context.Context, root project.Root, ref string) (Ta
 	if err != nil {
 		return TaskShow{}, err
 	}
-	return TaskShow{Query: ref, Task: task}, nil
+	return TaskShow{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Query:              ref,
+		Task:               task,
+	}, nil
 }
 
 func (s *Store) taskDetail(ctx context.Context, root project.Root, projectID string, entity TraceEntity) (TaskDetail, error) {

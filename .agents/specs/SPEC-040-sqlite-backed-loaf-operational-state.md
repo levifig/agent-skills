@@ -47,7 +47,7 @@ SPEC-010 deliberately introduced `TASKS.json` as structured metadata because dir
 
 ## Solution Direction
 
-Introduce a project-scoped SQLite store for Loaf operational state, stored outside the repository under XDG paths and accessed only through the Loaf CLI.
+Introduce a single SQLite store for Loaf operational state, stored outside the repository under XDG paths, partitioned by stable project ID, and accessed only through the Loaf CLI.
 
 The SQLite state layer starts in Go. ADR-014 makes Go the intended home for Loaf's stateful runtime and lower-dependency command surface. The existing TypeScript CLI remains a compatibility implementation during migration, but new SQLite-backed runtime work should not deepen the Node/TypeScript dependency footprint.
 
@@ -393,7 +393,7 @@ Decision criteria:
   not sufficient; SQLite driver upgrades also need release-note review because
   embedded SQLite code may carry non-Go vulnerability context.
 - **Testability:** Track A must include a real SQLite smoke test that opens the
-  project database, applies migrations, writes a row, reads it back, and runs
+  global project-partitioned database, applies migrations, writes a row, reads it back, and runs
   with `CGO_ENABLED=0`.
 
 Implementation constraints for Track A:
@@ -449,8 +449,8 @@ Implementation constraints for Track A:
 
 ## Open Questions
 
-- [x] Exact XDG split: should the project database live under `$XDG_STATE_HOME/loaf/` or `$XDG_DATA_HOME/loaf/`? Decision: SQLite operational state lives under `$XDG_STATE_HOME/loaf/projects/<project-id>/loaf.sqlite`, with platform fallbacks handled by the Go `PathResolver`; it is state, not portable user data.
-- [x] How should project identity be derived for moved repositories: absolute path hash, git remote, git common-dir, explicit project UUID, or a combination? Decision: SPEC-040 hashes the resolved canonical project root. Git linked worktrees resolve through `git-common-dir` to the main checkout root, so sibling worktrees share state. Move-stable project UUIDs remain future migration work.
+- [x] Exact XDG split: should the database live under `$XDG_STATE_HOME/loaf/` or `$XDG_DATA_HOME/loaf/`? Decision: SQLite operational state lives in one global database at `$XDG_DATA_HOME/loaf/loaf.sqlite`, with rows partitioned by project ID and platform fallbacks handled by the Go `PathResolver`.
+- [x] How should project identity be derived for moved repositories: absolute path hash, git remote, git common-dir, explicit project UUID, or a combination? Decision: new projects get a generated stable project ID stored in SQLite, plus a friendly name and path mapping. Legacy path hashes remain only as an adoption key for imported/migrated rows. Use `loaf project rename <name>` for friendly-name changes and `loaf project move --from <old-path>` when a checkout path changes.
 - [x] What is the exact TypeScript delegation mechanism for unmigrated commands: subprocess to bundled JS, embedded assets, or npm-package-local path? Decision: the Go front controller runs a subprocess through `node dist-cli/index.js`, resolving the bundled script from the working tree/project root/executable-relative paths, with `LOAF_LEGACY_CLI` as an override for development.
 - [x] Should Markdown compatibility views be generated automatically after every mutation, or only by explicit export commands? Decision: SQLite-backed commands do not write repository Markdown as a side effect. Compatibility Markdown remains import/fallback input, and reviewable views are produced by explicit export/report commands unless a later compatibility task deliberately adds a generated view command.
 - [x] What is the minimum session transcript row shape that works across Claude Code, Codex, OpenCode, Cursor, Gemini, and Amp? Decision: store structured session rows plus journal summaries/pointers first: session alias, harness session ID, branch, status, optional source, and journal rows with type, scope, message, observed branch/worktree/harness ID, and nullable session/spec/task links. Raw transcript capture stays harness-native/out of scope until redaction controls are designed.
@@ -460,7 +460,7 @@ Implementation constraints for Track A:
 
 ## Test Conditions
 
-- [x] `loaf state init` creates a project-scoped SQLite database outside the repository and prints its path without creating secrets.
+- [x] `loaf state init` creates the global project-partitioned SQLite database outside the repository and prints its path without creating secrets.
 - [x] The public `loaf` command can dispatch Go-native `state` commands while unmigrated commands still delegate to the existing TypeScript CLI.
 - [x] Build and test workflows prove the Go runtime and TypeScript compatibility bridge can coexist without exposing two public command names.
 - [x] `loaf state path` prints the same path from the main worktree and linked worktrees for the same project.

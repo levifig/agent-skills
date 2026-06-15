@@ -12,8 +12,14 @@ import (
 
 // SpecShow is the state-backed single-spec read model.
 type SpecShow struct {
-	Query string     `json:"query"`
-	Spec  SpecDetail `json:"spec"`
+	ContractVersion    int        `json:"contract_version,omitempty"`
+	DatabaseScope      string     `json:"database_scope,omitempty"`
+	DatabasePath       string     `json:"database_path,omitempty"`
+	ProjectID          string     `json:"project_id,omitempty"`
+	ProjectName        string     `json:"project_name,omitempty"`
+	ProjectCurrentPath string     `json:"project_current_path,omitempty"`
+	Query              string     `json:"query"`
+	Spec               SpecDetail `json:"spec"`
 }
 
 // SpecDetail contains operational spec metadata plus imported source context.
@@ -42,7 +48,14 @@ func ShowSpec(ctx context.Context, root project.Root, resolver PathResolver, ref
 
 // ShowSpec returns one spec from an open store.
 func (s *Store) ShowSpec(ctx context.Context, root project.Root, ref string) (SpecShow, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SpecShow{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SpecShow{}, err
+	}
 	entity, err := s.resolveTraceEntity(ctx, projectID, ref)
 	if err != nil {
 		return SpecShow{}, err
@@ -55,7 +68,16 @@ func (s *Store) ShowSpec(ctx context.Context, root project.Root, ref string) (Sp
 	if err != nil {
 		return SpecShow{}, err
 	}
-	return SpecShow{Query: ref, Spec: spec}, nil
+	return SpecShow{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Query:              ref,
+		Spec:               spec,
+	}, nil
 }
 
 func (s *Store) specDetail(ctx context.Context, root project.Root, projectID string, entity TraceEntity) (SpecDetail, error) {

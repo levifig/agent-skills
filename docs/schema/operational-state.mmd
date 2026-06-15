@@ -4,6 +4,19 @@ erDiagram
     text identity_hash UK
     text created_at
     text updated_at
+    text friendly_name
+    text current_path
+    text last_seen_at
+  }
+  project_paths {
+    text id PK
+    text project_id FK
+    text path UK
+    integer is_current
+    text first_seen_at
+    text last_seen_at
+    text created_at
+    text updated_at
   }
   schema_migrations {
     integer version PK
@@ -146,6 +159,9 @@ erDiagram
     text reason
     text created_at
     text updated_at
+    text origin
+    text source_id
+    text source_field
   }
   tags {
     text id PK
@@ -242,6 +258,7 @@ erDiagram
   projects ||--o{ session_state_snapshots : scopes
   projects ||--o{ reports : scopes
   projects ||--o{ journal_entries : scopes
+  projects ||--o{ project_paths : locates
   projects ||--o{ events : scopes
   projects ||--o{ relationships : scopes
   projects ||--o{ tags : scopes

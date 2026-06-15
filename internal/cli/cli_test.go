@@ -2,7 +2,9 @@ package cli
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,8 +46,59 @@ func TestRunnerDispatchesStatePathNatively(t *testing.T) {
 	if got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
-	if !strings.HasPrefix(got, filepath.Join(stateHome, "loaf", "projects")+string(filepath.Separator)) {
+	if got != filepath.Join(stateHome, "loaf", "loaf.sqlite") {
 		t.Fatalf("stdout = %q, want state path under %q", got, stateHome)
+	}
+
+	var jsonOut bytes.Buffer
+	err = Runner{
+		Stdout:     &jsonOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "path", "--json"})
+	if err != nil {
+		t.Fatalf("Run(--json) error = %v", err)
+	}
+	var result struct {
+		ContractVersion int    `json:"contract_version"`
+		DatabaseScope   string `json:"database_scope"`
+		ProjectRoot     string `json:"project_root"`
+		DatabasePath    string `json:"database_path"`
+	}
+	if err := json.Unmarshal(jsonOut.Bytes(), &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", jsonOut.String(), err)
+	}
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" || result.ProjectRoot != root.Path() || result.DatabasePath != want {
+		t.Fatalf("state path JSON = %#v, want global scope, root %q, database %q", result, root.Path(), want)
+	}
+	if _, err := os.Stat(want); !os.IsNotExist(err) {
+		t.Fatalf("state path --json database stat = %v, want command not to create database", err)
+	}
+
+	var verboseOut bytes.Buffer
+	err = Runner{
+		Stdout:     &verboseOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "path", "--verbose"})
+	if err != nil {
+		t.Fatalf("Run(--verbose) error = %v", err)
+	}
+	for _, wantLine := range []string{
+		"loaf state path",
+		"scope: global database",
+		"project root: " + root.Path(),
+		"database: " + want,
+	} {
+		if !strings.Contains(verboseOut.String(), wantLine) {
+			t.Fatalf("state path --verbose stdout = %q, want %q", verboseOut.String(), wantLine)
+		}
+	}
+	if _, err := os.Stat(want); !os.IsNotExist(err) {
+		t.Fatalf("state path --verbose database stat = %v, want command not to create database", err)
 	}
 }
 
@@ -74,6 +127,7 @@ status: complete
 		t.Fatalf("housekeeping --json error = %v", err)
 	}
 	summary := decodeHousekeepingSummary(t, jsonOut.Bytes())
+	assertCLIProjectContext(t, workingDir, summary.ContractVersion, summary.DatabaseScope, summary.DatabasePath, summary.ProjectID, summary.ProjectName, summary.ProjectCurrentPath)
 	if summary.Sections["specs"].ByStatus["complete"] != 1 || summary.Sections["tasks"].ByStatus["done"] != 1 {
 		t.Fatalf("summary = %#v, want SQLite spec/task lifecycle counts", summary)
 	}
@@ -87,7 +141,7 @@ status: complete
 	if err != nil {
 		t.Fatalf("housekeeping --dry-run error = %v", err)
 	}
-	for _, want := range []string{"loaf housekeeping (SQLite state, dry run)", "database:", "specs", "tasks", "cleanup candidate"} {
+	for _, want := range []string{"loaf housekeeping (SQLite state, dry run)", "scope: global database", "database:", "project:", "project name:", "project path:", "specs", "tasks", "cleanup candidate"} {
 		if !strings.Contains(humanOut.String(), want) {
 			t.Fatalf("stdout = %q, want %q", humanOut.String(), want)
 		}
@@ -136,6 +190,9 @@ status: absorbed
 	if summary.DatabasePath != filepath.Join(workingDir, ".agents") {
 		t.Fatalf("database path = %q, want markdown artifacts path", summary.DatabasePath)
 	}
+	if summary.ContractVersion != 0 || summary.DatabaseScope != "" || summary.ProjectID != "" || summary.ProjectName != "" || summary.ProjectCurrentPath != "" {
+		t.Fatalf("markdown housekeeping context = %#v, want empty", summary)
+	}
 	if summary.Sections["specs"].ByStatus["complete"] != 1 || summary.Sections["tasks"].ByStatus["done"] != 1 || summary.Sections["sessions"].ByStatus["active"] != 1 || summary.Sections["sessions"].ByStatus["archived"] != 1 || summary.Sections["shaping_drafts"].ByStatus["absorbed"] != 1 {
 		t.Fatalf("summary = %#v, want markdown artifact lifecycle counts", summary)
 	}
@@ -157,6 +214,9 @@ status: absorbed
 			t.Fatalf("stdout = %q, want %q", humanOut.String(), want)
 		}
 	}
+	if strings.Contains(humanOut.String(), "scope: global database") || strings.Contains(humanOut.String(), "project path:") {
+		t.Fatalf("stdout = %q, want markdown fallback without database context", humanOut.String())
+	}
 	if strings.Contains(humanOut.String(), "specs") {
 		t.Fatalf("stdout = %q, want --sessions filter to hide specs", humanOut.String())
 	}
@@ -174,10 +234,7 @@ func TestRunnerStateMigrateStorageHomeCopiesLegacyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRoot() error = %v", err)
 	}
-	legacyStatus, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome})
-	if err != nil {
-		t.Fatalf("Initialize(legacy) error = %v", err)
-	}
+	legacyPath := initializeCLILegacyStateDatabase(t, root)
 
 	var dryRun bytes.Buffer
 	err = Runner{
@@ -191,6 +248,12 @@ func TestRunnerStateMigrateStorageHomeCopiesLegacyDatabase(t *testing.T) {
 	if err := json.Unmarshal(dryRun.Bytes(), &preview); err != nil {
 		t.Fatalf("Unmarshal(preview) error = %v\n%s", err, dryRun.String())
 	}
+	if preview.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("preview ContractVersion = %d, want %d", preview.ContractVersion, state.StateJSONContractVersion)
+	}
+	if preview.DatabaseScope != "global" || preview.MigrationScope != "project" {
+		t.Fatalf("preview scopes = %q/%q, want global/project", preview.DatabaseScope, preview.MigrationScope)
+	}
 	if preview.Action != state.StorageHomeActionCopy || preview.Applied {
 		t.Fatalf("preview = %#v, want copy dry-run", preview)
 	}
@@ -203,12 +266,15 @@ func TestRunnerStateMigrateStorageHomeCopiesLegacyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("state migrate storage-home --apply error = %v", err)
 	}
-	for _, want := range []string{"loaf state migrate storage-home --apply", "action: already-migrated", "applied: true"} {
+	for _, want := range []string{"loaf state migrate storage-home --apply", "scope: global database, project migration", "project:", "project name:", "project path:", "action: already-migrated", "applied: true"} {
 		if !strings.Contains(applyOut.String(), want) {
 			t.Fatalf("stdout = %q, want %q", applyOut.String(), want)
 		}
 	}
-	if _, err := os.Stat(legacyStatus.DatabasePath); err != nil {
+	if strings.Contains(applyOut.String(), "next:") {
+		t.Fatalf("stdout = %q, did not want dry-run next action after apply", applyOut.String())
+	}
+	if _, err := os.Stat(legacyPath); err != nil {
 		t.Fatalf("legacy database stat error = %v, want legacy preserved", err)
 	}
 
@@ -224,9 +290,29 @@ func TestRunnerStateMigrateStorageHomeCopiesLegacyDatabase(t *testing.T) {
 	if status.Mode != state.ModeSQLiteReady {
 		t.Fatalf("Mode = %q, want %q", status.Mode, state.ModeSQLiteReady)
 	}
+	if status.ProjectID == "" {
+		t.Fatal("ProjectID is empty after storage-home migration")
+	}
 	if !strings.HasPrefix(status.DatabasePath, dataHome+string(filepath.Separator)) {
 		t.Fatalf("DatabasePath = %q, want under data home %q", status.DatabasePath, dataHome)
 	}
+
+	var migratedPreviewOut bytes.Buffer
+	err = Runner{
+		Stdout:     &migratedPreviewOut,
+		WorkingDir: workingDir,
+	}.Run([]string{"state", "migrate", "storage-home", "--dry-run", "--json"})
+	if err != nil {
+		t.Fatalf("state migrate storage-home --dry-run --json after apply error = %v", err)
+	}
+	var migratedPreview state.StorageHomeMigrationPlan
+	if err := json.Unmarshal(migratedPreviewOut.Bytes(), &migratedPreview); err != nil {
+		t.Fatalf("Unmarshal(migratedPreview) error = %v\n%s", err, migratedPreviewOut.String())
+	}
+	if migratedPreview.Action != state.StorageHomeActionAlreadyMigrated || migratedPreview.Applied {
+		t.Fatalf("migrated preview = %#v, want already-migrated dry-run", migratedPreview)
+	}
+	assertCLIProjectContext(t, workingDir, migratedPreview.ContractVersion, migratedPreview.DatabaseScope, migratedPreview.DatabasePath, migratedPreview.ProjectID, migratedPreview.ProjectName, migratedPreview.ProjectCurrentPath)
 }
 
 func TestRunnerMigrateStorageHomeUsesNativeAlias(t *testing.T) {
@@ -240,9 +326,7 @@ func TestRunnerMigrateStorageHomeUsesNativeAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRoot() error = %v", err)
 	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize(legacy) error = %v", err)
-	}
+	initializeCLILegacyStateDatabase(t, root)
 
 	var stdout bytes.Buffer
 	err = Runner{
@@ -252,10 +336,49 @@ func TestRunnerMigrateStorageHomeUsesNativeAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("migrate storage-home error = %v", err)
 	}
-	for _, want := range []string{"loaf migrate storage-home --dry-run", "action: copy"} {
+	for _, want := range []string{
+		"loaf migrate storage-home --dry-run",
+		"scope: global database, project migration",
+		"project: (not initialized)",
+		"project name:",
+		"project path:",
+		"action: copy",
+		"applied: false",
+		"next: rerun with --apply to copy eligible legacy state into the global database",
+	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 		}
+	}
+}
+
+func TestRunnerMigrateStorageHomeNoLegacyHumanDryRun(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	dataHome := t.TempDir()
+	stateHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("XDG_STATE_HOME", stateHome)
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+	}.Run([]string{"state", "migrate", "storage-home", "--dry-run"})
+	if err != nil {
+		t.Fatalf("state migrate storage-home --dry-run error = %v", err)
+	}
+	for _, want := range []string{
+		"loaf state migrate storage-home --dry-run",
+		"action: no-legacy-state",
+		"applied: false",
+		"next: no legacy state was found; run `loaf state init` or `loaf state migrate markdown --apply` if this project still needs SQLite state",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+	if strings.Contains(stdout.String(), "rerun with --apply") {
+		t.Fatalf("stdout = %q, did not want apply guidance when no legacy source exists", stdout.String())
 	}
 }
 
@@ -271,15 +394,27 @@ func TestRunnerMigrateMarkdownUsesNativeAlias(t *testing.T) {
 		"# Demo task",
 	}, "\n"))
 
+	stateHome := t.TempDir()
 	var stdout bytes.Buffer
 	err := Runner{
 		Stdout:     &stdout,
 		WorkingDir: repo,
+		StateHome:  stateHome,
 	}.Run([]string{"migrate", "markdown"})
 	if err != nil {
 		t.Fatalf("migrate markdown error = %v", err)
 	}
-	for _, want := range []string{"loaf migrate markdown --dry-run", "tasks: 1"} {
+	for _, want := range []string{
+		"loaf migrate markdown --dry-run",
+		"scope: global database, project import",
+		"database:",
+		"project: (not initialized)",
+		"project name:",
+		"project path:",
+		"applied: false",
+		"tasks: 1",
+		"next: rerun with --apply to import Markdown into the global database",
+	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 		}
@@ -288,7 +423,7 @@ func TestRunnerMigrateMarkdownUsesNativeAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRoot() error = %v", err)
 	}
-	databasePath, err := state.PathResolver{}.DatabasePath(root)
+	databasePath, err := state.PathResolver{StateHome: stateHome}.DatabasePath(root)
 	if err != nil {
 		t.Fatalf("DatabasePath() error = %v", err)
 	}
@@ -666,13 +801,22 @@ func TestRunnerHousekeepingReportsInvalidSQLiteState(t *testing.T) {
 
 func assertSQLiteRequired(t *testing.T, args ...string) {
 	t.Helper()
+	var stdout bytes.Buffer
 	err := Runner{
-		Stdout:     &bytes.Buffer{},
+		Stdout:     &stdout,
 		WorkingDir: realpath(t, t.TempDir()),
 		StateHome:  t.TempDir(),
 	}.Run(args)
 	if err == nil {
 		t.Fatalf("Run(%v) error = nil, want SQLite state required error", args)
+	}
+	if hasFlag(args, "--json") {
+		assertSilentExitCode(t, err, 1)
+		output := decodeCommandError(t, stdout.Bytes())
+		if !strings.Contains(output.Error, "requires initialized SQLite state") {
+			t.Fatalf("Run(%v) JSON error = %#v, want SQLite state required error", args, output)
+		}
+		return
 	}
 	if !strings.Contains(err.Error(), "requires initialized SQLite state") {
 		t.Fatalf("Run(%v) error = %v, want SQLite state required error", args, err)
@@ -1899,6 +2043,32 @@ last_entry: 2026-06-10T10:05:00Z
 	}
 }
 
+func initializeCLILegacyStateDatabase(t *testing.T, root project.Root) string {
+	t.Helper()
+	resolver := state.PathResolver{}
+	legacyPath, err := resolver.LegacyDatabasePath(root)
+	if err != nil {
+		t.Fatalf("LegacyDatabasePath() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o700); err != nil {
+		t.Fatalf("create legacy database dir error = %v", err)
+	}
+	store, err := state.OpenStore(legacyPath)
+	if err != nil {
+		t.Fatalf("OpenStore(legacy) error = %v", err)
+	}
+	if err := store.ApplyMigrations(t.Context()); err != nil {
+		t.Fatalf("ApplyMigrations(legacy) error = %v", err)
+	}
+	if err := store.UpsertProject(t.Context(), root); err != nil {
+		t.Fatalf("UpsertProject(legacy) error = %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close(legacy) error = %v", err)
+	}
+	return legacyPath
+}
+
 func TestRunnerSessionContextForResumptionWarnsWithoutMarkdownSession(t *testing.T) {
 	requireCLIGit(t)
 	workingDir := initCLIGitRepo(t)
@@ -1940,8 +2110,8 @@ func TestRunnerLinkedWorktreesShareSQLiteState(t *testing.T) {
 	if mainPath != linkedPath {
 		t.Fatalf("linked state path = %q, want main path %q", linkedPath, mainPath)
 	}
-	if !strings.HasPrefix(mainPath, filepath.Join(stateHome, "loaf", "projects")+string(filepath.Separator)) {
-		t.Fatalf("state path = %q, want under state home %q", mainPath, stateHome)
+	if mainPath != filepath.Join(stateHome, "loaf", "loaf.sqlite") {
+		t.Fatalf("state path = %q, want global database under state home %q", mainPath, stateHome)
 	}
 
 	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: main, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
@@ -1982,6 +2152,891 @@ func TestRunnerLinkedWorktreesShareSQLiteState(t *testing.T) {
 	}
 }
 
+func TestRunnerProjectShowRenameAndMoveUseStableIdentity(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	movedDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+
+	var showOut bytes.Buffer
+	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"}); err != nil {
+		t.Fatalf("project show --json error = %v", err)
+	}
+	var shown state.ProjectIdentity
+	if err := json.Unmarshal(showOut.Bytes(), &shown); err != nil {
+		t.Fatalf("json.Unmarshal(show) error = %v\n%s", err, showOut.String())
+	}
+	if shown.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("shown.ContractVersion = %d, want %d", shown.ContractVersion, state.StateJSONContractVersion)
+	}
+	if shown.DatabaseScope != "global" {
+		t.Fatalf("shown.DatabaseScope = %q, want global", shown.DatabaseScope)
+	}
+	if shown.ID == "" || shown.CurrentPath != workingDir || shown.FriendlyName != filepath.Base(workingDir) {
+		t.Fatalf("shown project = %#v, want generated identity for %s", shown, workingDir)
+	}
+	var identityOut bytes.Buffer
+	if err := (Runner{Stdout: &identityOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "identity", "--json"}); err != nil {
+		t.Fatalf("project identity --json error = %v", err)
+	}
+	var aliasShown state.ProjectIdentity
+	if err := json.Unmarshal(identityOut.Bytes(), &aliasShown); err != nil {
+		t.Fatalf("json.Unmarshal(identity alias) error = %v\n%s", err, identityOut.String())
+	}
+	if aliasShown != shown {
+		t.Fatalf("project identity alias = %#v, want project show result %#v", aliasShown, shown)
+	}
+	var humanShowOut bytes.Buffer
+	if err := (Runner{Stdout: &humanShowOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "show"}); err != nil {
+		t.Fatalf("project show error = %v", err)
+	}
+	for _, want := range []string{
+		"loaf project show",
+		"scope: global database",
+		"database:",
+		"project: " + shown.ID,
+		"project name: " + filepath.Base(workingDir),
+		"project path: " + workingDir,
+	} {
+		if !strings.Contains(humanShowOut.String(), want) {
+			t.Fatalf("project show output = %q, want %q", humanShowOut.String(), want)
+		}
+	}
+	if strings.Contains(humanShowOut.String(), "Project:") || strings.Contains(humanShowOut.String(), "db:") {
+		t.Fatalf("project show output = %q, want normalized identity labels", humanShowOut.String())
+	}
+	var humanIdentityOut bytes.Buffer
+	if err := (Runner{Stdout: &humanIdentityOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "identity"}); err != nil {
+		t.Fatalf("project identity error = %v", err)
+	}
+	if !strings.Contains(humanIdentityOut.String(), "loaf project identity") || !strings.Contains(humanIdentityOut.String(), "project: "+shown.ID) {
+		t.Fatalf("project identity output = %q, want alias command header and project ID", humanIdentityOut.String())
+	}
+
+	var renameOut bytes.Buffer
+	if err := (Runner{Stdout: &renameOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "rename", "Friendly Loaf", "--json"}); err != nil {
+		t.Fatalf("project rename --json error = %v", err)
+	}
+	var renamed state.ProjectIdentity
+	if err := json.Unmarshal(renameOut.Bytes(), &renamed); err != nil {
+		t.Fatalf("json.Unmarshal(rename) error = %v\n%s", err, renameOut.String())
+	}
+	if renamed.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("renamed.ContractVersion = %d, want %d", renamed.ContractVersion, state.StateJSONContractVersion)
+	}
+	if renamed.DatabaseScope != "global" {
+		t.Fatalf("renamed.DatabaseScope = %q, want global", renamed.DatabaseScope)
+	}
+	if renamed.ID != shown.ID || renamed.FriendlyName != "Friendly Loaf" {
+		t.Fatalf("renamed project = %#v, want same ID %q and friendly name", renamed, shown.ID)
+	}
+
+	var moveOut bytes.Buffer
+	if err := (Runner{Stdout: &moveOut, WorkingDir: movedDir, StateHome: stateHome}).Run([]string{"project", "move", "--from", workingDir, "--json"}); err != nil {
+		t.Fatalf("project move --json error = %v", err)
+	}
+	var moved state.ProjectMoveResult
+	if err := json.Unmarshal(moveOut.Bytes(), &moved); err != nil {
+		t.Fatalf("json.Unmarshal(move) error = %v\n%s", err, moveOut.String())
+	}
+	if moved.ContractVersion != state.StateJSONContractVersion || moved.Project.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("moved contract versions = %d/%d, want %d", moved.ContractVersion, moved.Project.ContractVersion, state.StateJSONContractVersion)
+	}
+	if moved.DatabaseScope != "global" || moved.Project.DatabaseScope != "global" {
+		t.Fatalf("moved scopes = %q/%q, want global/global", moved.DatabaseScope, moved.Project.DatabaseScope)
+	}
+	if moved.Project.ID != shown.ID || moved.Project.CurrentPath != movedDir {
+		t.Fatalf("moved project = %#v, want same ID %q at %s", moved.Project, shown.ID, movedDir)
+	}
+
+	var movedShowOut bytes.Buffer
+	if err := (Runner{Stdout: &movedShowOut, WorkingDir: movedDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"}); err != nil {
+		t.Fatalf("project show after move --json error = %v", err)
+	}
+	var movedShown state.ProjectIdentity
+	if err := json.Unmarshal(movedShowOut.Bytes(), &movedShown); err != nil {
+		t.Fatalf("json.Unmarshal(moved show) error = %v\n%s", err, movedShowOut.String())
+	}
+	if movedShown.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("movedShown.ContractVersion = %d, want %d", movedShown.ContractVersion, state.StateJSONContractVersion)
+	}
+	if movedShown.DatabaseScope != "global" {
+		t.Fatalf("movedShown.DatabaseScope = %q, want global", movedShown.DatabaseScope)
+	}
+	if movedShown.ID != shown.ID || movedShown.FriendlyName != "Friendly Loaf" {
+		t.Fatalf("moved show = %#v, want same renamed project", movedShown)
+	}
+
+	var listOut bytes.Buffer
+	if err := (Runner{Stdout: &listOut, WorkingDir: movedDir, StateHome: stateHome}).Run([]string{"project", "list", "--json"}); err != nil {
+		t.Fatalf("project list --json error = %v", err)
+	}
+	var listed state.ProjectList
+	if err := json.Unmarshal(listOut.Bytes(), &listed); err != nil {
+		t.Fatalf("json.Unmarshal(list) error = %v\n%s", err, listOut.String())
+	}
+	if listed.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("listed.ContractVersion = %d, want %d", listed.ContractVersion, state.StateJSONContractVersion)
+	}
+	if listed.DatabaseScope != "global" {
+		t.Fatalf("listed.DatabaseScope = %q, want global", listed.DatabaseScope)
+	}
+	if len(listed.Projects) != 1 {
+		t.Fatalf("listed projects = %#v, want one stable project", listed.Projects)
+	}
+	if listed.Projects[0].ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("listed project ContractVersion = %d, want %d", listed.Projects[0].ContractVersion, state.StateJSONContractVersion)
+	}
+	if listed.Projects[0].DatabaseScope != "global" {
+		t.Fatalf("listed project DatabaseScope = %q, want global", listed.Projects[0].DatabaseScope)
+	}
+	if listed.Projects[0].ID != shown.ID || listed.Projects[0].FriendlyName != "Friendly Loaf" || listed.Projects[0].CurrentPath != movedDir {
+		t.Fatalf("listed project = %#v, want renamed moved project", listed.Projects[0])
+	}
+
+	var humanListOut bytes.Buffer
+	if err := (Runner{Stdout: &humanListOut, WorkingDir: movedDir, StateHome: stateHome}).Run([]string{"project", "list"}); err != nil {
+		t.Fatalf("project list error = %v", err)
+	}
+	for _, want := range []string{
+		"loaf project list",
+		"scope: global database",
+		"database:",
+		"project: " + shown.ID,
+		"project name: Friendly Loaf",
+		"project path: " + movedDir,
+		"last seen:",
+	} {
+		if !strings.Contains(humanListOut.String(), want) {
+			t.Fatalf("project list output = %q, want %q", humanListOut.String(), want)
+		}
+	}
+	if strings.Contains(humanListOut.String(), "  id:") || strings.Contains(humanListOut.String(), "  path:") || strings.Contains(humanListOut.String(), "  seen:") {
+		t.Fatalf("project list output = %q, want normalized identity labels", humanListOut.String())
+	}
+
+	db, err := sql.Open("sqlite3", filepath.Join(stateHome, "loaf", "loaf.sqlite"))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM projects`); got != 1 {
+		t.Fatalf("projects = %d, want one stable project row", got)
+	}
+}
+
+func TestRunnerProjectReadsDoNotCreateMissingDatabase(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	for _, args := range [][]string{
+		{"project", "show", "--json"},
+		{"project", "list", "--json"},
+	} {
+		var stdout bytes.Buffer
+		err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run(args)
+		if err == nil {
+			t.Fatalf("Run(%v) error = nil, want missing database error", args)
+		}
+		assertSilentExitCode(t, err, 1)
+		output := decodeCommandError(t, stdout.Bytes())
+		if !strings.Contains(output.Error, "state database does not exist") {
+			t.Fatalf("Run(%v) JSON error = %#v, want missing database message", args, output)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(stateHome, "loaf", "loaf.sqlite")); !os.IsNotExist(err) {
+		t.Fatalf("state database stat error = %v, want project reads not to create database", err)
+	}
+}
+
+func TestRunnerProjectMissingDatabaseHumanErrorsIncludeContext(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	databasePath := filepath.Join(stateHome, "loaf", "loaf.sqlite")
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "show", args: []string{"project", "show"}},
+		{name: "list", args: []string{"project", "list"}},
+		{name: "rename dry-run", args: []string{"project", "rename", "Human Dogfood", "--dry-run"}},
+		{name: "move dry-run", args: []string{"project", "move", workingDir, realpath(t, t.TempDir()), "--dry-run"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run(tt.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want missing database error", tt.args)
+			}
+			for _, want := range []string{
+				"project state database does not exist",
+				"scope: global database",
+				databasePath,
+				"loaf state status",
+				"loaf state init",
+			} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("Run(%v) error = %q, want %q", tt.args, err.Error(), want)
+				}
+			}
+		})
+	}
+	if _, err := os.Stat(databasePath); !os.IsNotExist(err) {
+		t.Fatalf("state database stat error = %v, want project human failures not to create database", err)
+	}
+}
+
+func TestRunnerProjectCommandsRejectSchemaChecksumDrift(t *testing.T) {
+	workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+	db := openCLITestDB(t, initialized.DatabasePath)
+	if _, err := db.Exec(`UPDATE schema_migrations SET checksum = 'drifted' WHERE version = 1`); err != nil {
+		t.Fatalf("drift schema checksum error = %v", err)
+	}
+	closeCLITestDB(t, db)
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "show", args: []string{"project", "show"}},
+		{name: "list", args: []string{"project", "list"}},
+		{name: "rename dry-run", args: []string{"project", "rename", "Human Dogfood", "--dry-run"}},
+		{name: "move dry-run", args: []string{"project", "move", workingDir, realpath(t, t.TempDir()), "--dry-run"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run(tt.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want schema checksum drift rejection", tt.args)
+			}
+			for _, want := range []string{
+				"project state database is invalid",
+				initialized.DatabasePath,
+				"scope: global database",
+				"schema migration 1 checksum does not match Go-owned migration",
+				"loaf state doctor",
+			} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("Run(%v) error = %q, want %q", tt.args, err.Error(), want)
+				}
+			}
+		})
+	}
+
+	var jsonOut bytes.Buffer
+	err := (Runner{Stdout: &jsonOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"})
+	if err == nil {
+		t.Fatal("project show --json schema checksum drift error = nil, want rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	output := decodeCommandError(t, jsonOut.Bytes())
+	if output.Command != "project show" || !strings.Contains(output.Error, "schema migration 1 checksum") || !strings.Contains(output.Error, initialized.DatabasePath) {
+		t.Fatalf("project show --json error = %#v, want schema checksum drift context", output)
+	}
+}
+
+func TestRunnerProjectCommandsRejectPathInvariantMismatch(t *testing.T) {
+	workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+	db := openCLITestDB(t, initialized.DatabasePath)
+	if _, err := db.Exec(`UPDATE projects SET current_path = current_path || '/stale' WHERE id = ?`, initialized.ProjectID); err != nil {
+		t.Fatalf("drift project current_path error = %v", err)
+	}
+	closeCLITestDB(t, db)
+
+	var listOut bytes.Buffer
+	if err := (Runner{Stdout: &listOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "list", "--json"}); err != nil {
+		t.Fatalf("project list --json error = %v", err)
+	}
+	var listed state.ProjectList
+	if err := json.Unmarshal(listOut.Bytes(), &listed); err != nil {
+		t.Fatalf("json.Unmarshal(project list) error = %v\n%s", err, listOut.String())
+	}
+	if len(listed.Projects) != 1 || listed.Projects[0].CurrentPath != workingDir {
+		t.Fatalf("project list = %#v, want inspectable current path row %s", listed.Projects, workingDir)
+	}
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "show", args: []string{"project", "show"}},
+		{name: "rename dry-run", args: []string{"project", "rename", "Human Dogfood", "--dry-run"}},
+		{name: "move dry-run", args: []string{"project", "move", workingDir, realpath(t, t.TempDir()), "--dry-run"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run(tt.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want project path invariant rejection", tt.args)
+			}
+			for _, want := range []string{
+				"project state path invariants are invalid",
+				initialized.DatabasePath,
+				"scope: global database",
+				"current_path",
+				"does not match current project_paths row",
+				"loaf state doctor",
+			} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("Run(%v) error = %q, want %q", tt.args, err.Error(), want)
+				}
+			}
+		})
+	}
+
+	var jsonOut bytes.Buffer
+	err := (Runner{Stdout: &jsonOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"})
+	if err == nil {
+		t.Fatal("project show --json path invariant error = nil, want rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	output := decodeCommandError(t, jsonOut.Bytes())
+	if output.Command != "project show" || !strings.Contains(output.Error, "project state path invariants") || !strings.Contains(output.Error, initialized.DatabasePath) {
+		t.Fatalf("project show --json error = %#v, want path invariant context", output)
+	}
+}
+
+func TestRunnerProjectShowDoesNotRegisterUnknownPath(t *testing.T) {
+	registeredDir := realpath(t, t.TempDir())
+	unknownDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: registeredDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := (Runner{Stdout: &stdout, WorkingDir: unknownDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"})
+	if err == nil {
+		t.Fatal("project show unknown path error = nil, want not registered error")
+	}
+	assertSilentExitCode(t, err, 1)
+	output := decodeCommandError(t, stdout.Bytes())
+	if output.Command != "project show" || !strings.Contains(output.Error, "project identity is not registered") {
+		t.Fatalf("JSON error = %#v, want project show not registered error", output)
+	}
+
+	var listOut bytes.Buffer
+	if err := (Runner{Stdout: &listOut, WorkingDir: registeredDir, StateHome: stateHome}).Run([]string{"project", "list", "--json"}); err != nil {
+		t.Fatalf("project list --json error = %v", err)
+	}
+	var listed state.ProjectList
+	if err := json.Unmarshal(listOut.Bytes(), &listed); err != nil {
+		t.Fatalf("json.Unmarshal(list) error = %v\n%s", err, listOut.String())
+	}
+	if len(listed.Projects) != 1 || listed.Projects[0].CurrentPath != registeredDir {
+		t.Fatalf("listed projects = %#v, want only registered path %s", listed.Projects, registeredDir)
+	}
+}
+
+func TestRunnerProjectRenameDoesNotCreateMissingDatabase(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	var stdout bytes.Buffer
+	err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "rename", "New Name", "--json"})
+	if err == nil {
+		t.Fatal("project rename missing database error = nil, want rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	output := decodeCommandError(t, stdout.Bytes())
+	if output.Command != "project rename" || !strings.Contains(output.Error, "state database does not exist") {
+		t.Fatalf("project rename JSON error = %#v, want machine-readable missing database rejection", output)
+	}
+	if _, err := os.Stat(filepath.Join(stateHome, "loaf", "loaf.sqlite")); !os.IsNotExist(err) {
+		t.Fatalf("state database stat error = %v, want rejected project rename not to create database", err)
+	}
+}
+
+func TestRunnerProjectRenameUnknownPathDoesNotRegisterProject(t *testing.T) {
+	registeredDir := realpath(t, t.TempDir())
+	unknownDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: registeredDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := (Runner{Stdout: &stdout, WorkingDir: unknownDir, StateHome: stateHome}).Run([]string{"project", "rename", "Unknown", "--json"})
+	if err == nil {
+		t.Fatal("project rename unknown path error = nil, want rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	output := decodeCommandError(t, stdout.Bytes())
+	if output.Command != "project rename" || !strings.Contains(output.Error, "project identity is not registered") {
+		t.Fatalf("JSON error = %#v, want project rename not registered error", output)
+	}
+
+	var listOut bytes.Buffer
+	if err := (Runner{Stdout: &listOut, WorkingDir: registeredDir, StateHome: stateHome}).Run([]string{"project", "list", "--json"}); err != nil {
+		t.Fatalf("project list --json error = %v", err)
+	}
+	var listed state.ProjectList
+	if err := json.Unmarshal(listOut.Bytes(), &listed); err != nil {
+		t.Fatalf("json.Unmarshal(list) error = %v\n%s", err, listOut.String())
+	}
+	if len(listed.Projects) != 1 || listed.Projects[0].CurrentPath != registeredDir {
+		t.Fatalf("listed projects = %#v, want only registered path %s", listed.Projects, registeredDir)
+	}
+}
+
+func TestRunnerProjectRenameDryRunDoesNotWrite(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+
+	var showOut bytes.Buffer
+	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"}); err != nil {
+		t.Fatalf("project show --json error = %v", err)
+	}
+	var shown state.ProjectIdentity
+	if err := json.Unmarshal(showOut.Bytes(), &shown); err != nil {
+		t.Fatalf("json.Unmarshal(show) error = %v\n%s", err, showOut.String())
+	}
+
+	var dryRunOut bytes.Buffer
+	if err := (Runner{Stdout: &dryRunOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "rename", "Preview Loaf", "--dry-run", "--json"}); err != nil {
+		t.Fatalf("project rename --dry-run --json error = %v", err)
+	}
+	var preview state.ProjectRenameResult
+	if err := json.Unmarshal(dryRunOut.Bytes(), &preview); err != nil {
+		t.Fatalf("json.Unmarshal(dry-run rename) error = %v\n%s", err, dryRunOut.String())
+	}
+	if preview.ContractVersion != state.StateJSONContractVersion || preview.Project.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("preview contract versions = %d/%d, want %d", preview.ContractVersion, preview.Project.ContractVersion, state.StateJSONContractVersion)
+	}
+	if preview.DatabaseScope != "global" || preview.Project.DatabaseScope != "global" {
+		t.Fatalf("preview scopes = %q/%q, want global/global", preview.DatabaseScope, preview.Project.DatabaseScope)
+	}
+	if preview.Action != "dry-run" || preview.Project.ID != shown.ID || preview.FromName != shown.FriendlyName || preview.ToName != "Preview Loaf" {
+		t.Fatalf("preview = %#v, want dry-run rename from %q to Preview Loaf", preview, shown.FriendlyName)
+	}
+	if preview.Project.FriendlyName != "Preview Loaf" {
+		t.Fatalf("preview project friendly name = %q, want Preview Loaf", preview.Project.FriendlyName)
+	}
+
+	var afterOut bytes.Buffer
+	if err := (Runner{Stdout: &afterOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"}); err != nil {
+		t.Fatalf("project show after dry-run --json error = %v", err)
+	}
+	var after state.ProjectIdentity
+	if err := json.Unmarshal(afterOut.Bytes(), &after); err != nil {
+		t.Fatalf("json.Unmarshal(after dry-run show) error = %v\n%s", err, afterOut.String())
+	}
+	if after.ID != shown.ID || after.FriendlyName != shown.FriendlyName {
+		t.Fatalf("after dry-run = %#v, want unchanged friendly name %q", after, shown.FriendlyName)
+	}
+
+	var humanOut bytes.Buffer
+	if err := (Runner{Stdout: &humanOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "rename", "Preview Loaf", "--dry-run"}); err != nil {
+		t.Fatalf("project rename --dry-run error = %v", err)
+	}
+	for _, want := range []string{
+		"loaf project rename --dry-run",
+		"scope: global database",
+		"database:",
+		"project: " + shown.ID,
+		"project name: Preview Loaf",
+		"project path: " + workingDir,
+		"from name: " + shown.FriendlyName,
+		"to name: Preview Loaf",
+		"applied: false",
+		"next: rerun without --dry-run",
+	} {
+		if !strings.Contains(humanOut.String(), want) {
+			t.Fatalf("human dry-run output = %q, want %q", humanOut.String(), want)
+		}
+	}
+}
+
+func TestRunnerProjectMoveDryRunDoesNotWrite(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	movedDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+
+	var showOut bytes.Buffer
+	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"}); err != nil {
+		t.Fatalf("project show --json error = %v", err)
+	}
+	var shown state.ProjectIdentity
+	if err := json.Unmarshal(showOut.Bytes(), &shown); err != nil {
+		t.Fatalf("json.Unmarshal(show) error = %v\n%s", err, showOut.String())
+	}
+
+	var dryRunOut bytes.Buffer
+	if err := (Runner{Stdout: &dryRunOut, WorkingDir: movedDir, StateHome: stateHome}).Run([]string{"project", "move", "--from", workingDir, "--dry-run", "--json"}); err != nil {
+		t.Fatalf("project move --dry-run --json error = %v", err)
+	}
+	var preview state.ProjectMoveResult
+	if err := json.Unmarshal(dryRunOut.Bytes(), &preview); err != nil {
+		t.Fatalf("json.Unmarshal(dry-run move) error = %v\n%s", err, dryRunOut.String())
+	}
+	if preview.ContractVersion != state.StateJSONContractVersion || preview.Project.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("preview contract versions = %d/%d, want %d", preview.ContractVersion, preview.Project.ContractVersion, state.StateJSONContractVersion)
+	}
+	if preview.DatabaseScope != "global" || preview.Project.DatabaseScope != "global" {
+		t.Fatalf("preview scopes = %q/%q, want global/global", preview.DatabaseScope, preview.Project.DatabaseScope)
+	}
+	if preview.Action != "dry-run" || preview.Project.ID != shown.ID || preview.Project.CurrentPath != movedDir {
+		t.Fatalf("preview = %#v, want dry-run with same ID %q and target path %s", preview, shown.ID, movedDir)
+	}
+
+	var afterOut bytes.Buffer
+	if err := (Runner{Stdout: &afterOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"}); err != nil {
+		t.Fatalf("project show after dry-run --json error = %v", err)
+	}
+	var after state.ProjectIdentity
+	if err := json.Unmarshal(afterOut.Bytes(), &after); err != nil {
+		t.Fatalf("json.Unmarshal(after dry-run show) error = %v\n%s", err, afterOut.String())
+	}
+	if after.ID != shown.ID || after.CurrentPath != workingDir {
+		t.Fatalf("after dry-run = %#v, want unchanged current path %s", after, workingDir)
+	}
+
+	var humanOut bytes.Buffer
+	if err := (Runner{Stdout: &humanOut, WorkingDir: movedDir, StateHome: stateHome}).Run([]string{"project", "move", "--from", workingDir, "--dry-run"}); err != nil {
+		t.Fatalf("project move --dry-run error = %v", err)
+	}
+	for _, want := range []string{
+		"loaf project move --dry-run",
+		"scope: global database",
+		"database:",
+		"project: " + shown.ID,
+		"project name: " + shown.FriendlyName,
+		"project path: " + movedDir,
+		"from path: " + workingDir,
+		"to path: " + movedDir,
+		"applied: false",
+		"next: rerun without --dry-run",
+	} {
+		if !strings.Contains(humanOut.String(), want) {
+			t.Fatalf("human dry-run output = %q, want %q", humanOut.String(), want)
+		}
+	}
+}
+
+func TestRunnerProjectMoveAcceptsPositionalPaths(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	movedDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+
+	var showOut bytes.Buffer
+	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"}); err != nil {
+		t.Fatalf("project show --json error = %v", err)
+	}
+	var shown state.ProjectIdentity
+	if err := json.Unmarshal(showOut.Bytes(), &shown); err != nil {
+		t.Fatalf("json.Unmarshal(show) error = %v\n%s", err, showOut.String())
+	}
+
+	var dryRunOut bytes.Buffer
+	if err := (Runner{Stdout: &dryRunOut, WorkingDir: movedDir, StateHome: stateHome}).Run([]string{"project", "move", workingDir, movedDir, "--dry-run", "--json"}); err != nil {
+		t.Fatalf("project move positional --dry-run --json error = %v", err)
+	}
+	var preview state.ProjectMoveResult
+	if err := json.Unmarshal(dryRunOut.Bytes(), &preview); err != nil {
+		t.Fatalf("json.Unmarshal(positional dry-run move) error = %v\n%s", err, dryRunOut.String())
+	}
+	if preview.Action != "dry-run" || preview.FromPath != workingDir || preview.ToPath != movedDir || preview.Project.ID != shown.ID {
+		t.Fatalf("preview = %#v, want positional dry-run from %s to %s with project ID %s", preview, workingDir, movedDir, shown.ID)
+	}
+
+	var humanOut bytes.Buffer
+	if err := (Runner{Stdout: &humanOut, WorkingDir: movedDir, StateHome: stateHome}).Run([]string{"project", "move", workingDir, movedDir, "--dry-run"}); err != nil {
+		t.Fatalf("project move positional --dry-run error = %v", err)
+	}
+	for _, want := range []string{
+		"loaf project move --dry-run",
+		"from path: " + workingDir,
+		"to path: " + movedDir,
+		"applied: false",
+	} {
+		if !strings.Contains(humanOut.String(), want) {
+			t.Fatalf("human positional dry-run output = %q, want %q", humanOut.String(), want)
+		}
+	}
+}
+
+func TestRunnerProjectRenameAndMoveHumanApplyOutput(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	movedDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+
+	identity := projectIdentityForCLI(t, workingDir, stateHome)
+	var renameOut bytes.Buffer
+	if err := (Runner{Stdout: &renameOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "rename", "Friendly Loaf"}); err != nil {
+		t.Fatalf("project rename human error = %v", err)
+	}
+	for _, want := range []string{
+		"loaf project rename",
+		"scope: global database",
+		"database:",
+		"project: " + identity.ID,
+		"project name: Friendly Loaf",
+		"project path: " + workingDir,
+		"from name: " + identity.FriendlyName,
+		"to name: Friendly Loaf",
+		"applied: true",
+	} {
+		if !strings.Contains(renameOut.String(), want) {
+			t.Fatalf("rename output = %q, want %q", renameOut.String(), want)
+		}
+	}
+
+	var moveOut bytes.Buffer
+	if err := (Runner{Stdout: &moveOut, WorkingDir: movedDir, StateHome: stateHome}).Run([]string{"project", "move", "--from", workingDir}); err != nil {
+		t.Fatalf("project move human error = %v", err)
+	}
+	for _, want := range []string{
+		"loaf project move",
+		"scope: global database",
+		"database:",
+		"project: " + identity.ID,
+		"project name: Friendly Loaf",
+		"project path: " + movedDir,
+		"from path: " + workingDir,
+		"to path: " + movedDir,
+		"applied: true",
+	} {
+		if !strings.Contains(moveOut.String(), want) {
+			t.Fatalf("move output = %q, want %q", moveOut.String(), want)
+		}
+	}
+	if strings.Contains(renameOut.String(), "next:") || strings.Contains(moveOut.String(), "next:") {
+		t.Fatalf("apply outputs should not include dry-run next action:\nrename=%q\nmove=%q", renameOut.String(), moveOut.String())
+	}
+}
+
+func TestRunnerProjectDryRunsDoNotCreateMissingDatabase(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	for _, args := range [][]string{
+		{"project", "rename", "Preview Loaf", "--dry-run", "--json"},
+		{"project", "move", "--from", workingDir, "--dry-run", "--json"},
+	} {
+		var stdout bytes.Buffer
+		err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run(args)
+		if err == nil {
+			t.Fatalf("Run(%v) error = nil, want missing database error", args)
+		}
+		assertSilentExitCode(t, err, 1)
+		output := decodeCommandError(t, stdout.Bytes())
+		if !strings.Contains(output.Error, "state database does not exist") {
+			t.Fatalf("Run(%v) JSON error = %#v, want missing database message", args, output)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(stateHome, "loaf", "loaf.sqlite")); !os.IsNotExist(err) {
+		t.Fatalf("state database stat error = %v, want project dry-runs not to create database", err)
+	}
+}
+
+func TestRunnerProjectMoveDoesNotCreateMissingDatabase(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	var stdout bytes.Buffer
+	err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "move", "--from", filepath.Join(t.TempDir(), "missing"), "--json"})
+	if err == nil {
+		t.Fatal("project move unknown --from error = nil, want rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	output := decodeCommandError(t, stdout.Bytes())
+	if output.Command != "project move" || !strings.Contains(output.Error, "state database does not exist") {
+		t.Fatalf("project move JSON error = %#v, want machine-readable missing database rejection", output)
+	}
+	if _, err := os.Stat(filepath.Join(stateHome, "loaf", "loaf.sqlite")); !os.IsNotExist(err) {
+		t.Fatalf("state database stat error = %v, want rejected project move not to create database", err)
+	}
+}
+
+func TestRunnerProjectMoveUnknownFromDoesNotCreateProject(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "move", "--from", filepath.Join(t.TempDir(), "missing"), "--json"})
+	if err == nil {
+		t.Fatal("project move unknown --from error = nil, want rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	output := decodeCommandError(t, stdout.Bytes())
+	if output.Command != "project move" || !strings.Contains(output.Error, "not registered") {
+		t.Fatalf("project move JSON error = %#v, want machine-readable unknown path rejection", output)
+	}
+	db, openErr := sql.Open("sqlite3", filepath.Join(stateHome, "loaf", "loaf.sqlite"))
+	if openErr != nil {
+		t.Fatalf("sql.Open() error = %v", openErr)
+	}
+	defer db.Close()
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM projects`); got != 1 {
+		t.Fatalf("projects = %d, want only initialized project row after rejected move", got)
+	}
+}
+
+func TestRunnerProjectMoveRejectsMissingTargetPath(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+
+	missingTarget := filepath.Join(t.TempDir(), "missing-target")
+	var stdout bytes.Buffer
+	err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "move", "--from", workingDir, "--to", missingTarget, "--dry-run", "--json"})
+	if err == nil {
+		t.Fatal("project move missing --to error = nil, want rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	output := decodeCommandError(t, stdout.Bytes())
+	if output.Command != "project move" || !strings.Contains(output.Error, "target path does not exist") {
+		t.Fatalf("project move JSON error = %#v, want missing target path rejection", output)
+	}
+
+	var showOut bytes.Buffer
+	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"}); err != nil {
+		t.Fatalf("project show after rejected move --json error = %v", err)
+	}
+	var shown state.ProjectIdentity
+	if err := json.Unmarshal(showOut.Bytes(), &shown); err != nil {
+		t.Fatalf("json.Unmarshal(show) error = %v\n%s", err, showOut.String())
+	}
+	if shown.CurrentPath != workingDir {
+		t.Fatalf("CurrentPath = %q, want unchanged %q", shown.CurrentPath, workingDir)
+	}
+}
+
+func TestRunnerProjectJSONValidationErrorsAreMachineReadable(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	var initOut bytes.Buffer
+	if err := (Runner{Stdout: &initOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		args    []string
+		command string
+		want    string
+	}{
+		{
+			name:    "rename parse error",
+			args:    []string{"project", "rename", "--json"},
+			command: "project rename",
+			want:    "requires a name",
+		},
+		{
+			name:    "rename store validation error",
+			args:    []string{"project", "rename", "   ", "--dry-run", "--json"},
+			command: "project rename",
+			want:    "project name cannot be empty",
+		},
+		{
+			name:    "move parse error",
+			args:    []string{"project", "move", "--from", "relative/path", "--json"},
+			command: "project move",
+			want:    "requires absolute",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run(tc.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want JSON validation error", tc.args)
+			}
+			assertSilentExitCode(t, err, 1)
+			output := decodeCommandError(t, stdout.Bytes())
+			if output.Command != tc.command || !strings.Contains(output.Error, tc.want) {
+				t.Fatalf("JSON error = %#v, want command %q and error containing %q", output, tc.command, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunnerJSONErrorFallbackWrapsUnownedErrors(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		args    []string
+		command string
+		want    string
+	}{
+		{
+			name:    "idea promote parse error",
+			args:    []string{"idea", "promote", "--json"},
+			command: "idea promote",
+			want:    "requires an idea",
+		},
+		{
+			name:    "idea resolve parse error",
+			args:    []string{"idea", "resolve", "--json"},
+			command: "idea resolve",
+			want:    "requires an idea",
+		},
+		{
+			name:    "spark capture parse error",
+			args:    []string{"spark", "capture", "--json"},
+			command: "spark capture",
+			want:    "requires --text",
+		},
+		{
+			name:    "unknown nested subcommand",
+			args:    []string{"idea", "nope", "--json"},
+			command: "idea nope",
+			want:    "unknown loaf idea subcommand",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run(tc.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want JSON validation error", tc.args)
+			}
+			assertSilentExitCode(t, err, 1)
+			output := decodeCommandError(t, stdout.Bytes())
+			if output.Command != tc.command || !strings.Contains(output.Error, tc.want) {
+				t.Fatalf("JSON error = %#v, want command %q and error containing %q", output, tc.command, tc.want)
+			}
+		})
+	}
+}
+
 func TestRunnerStateInitStatusAndDoctor(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -1999,9 +3054,21 @@ func TestRunnerStateInitStatusAndDoctor(t *testing.T) {
 	if before.Mode != state.ModeMarkdownOnly {
 		t.Fatalf("before.Mode = %q, want %q", before.Mode, state.ModeMarkdownOnly)
 	}
+	if before.DatabaseScope != "global" {
+		t.Fatalf("before.DatabaseScope = %q, want global", before.DatabaseScope)
+	}
 	if before.DatabaseExists {
 		t.Fatal("before.DatabaseExists = true, want false")
 	}
+	if before.ProjectID != "" {
+		t.Fatalf("before.ProjectID = %q, want empty before SQLite records durable identity", before.ProjectID)
+	}
+	if before.LegacyProjectKey == "" {
+		t.Fatal("before.LegacyProjectKey is empty")
+	}
+	assertJSONFieldAbsent(t, statusBefore.Bytes(), "project_id")
+	assertJSONFieldPresent(t, statusBefore.Bytes(), "database_scope")
+	assertJSONFieldPresent(t, statusBefore.Bytes(), "legacy_project_key")
 
 	var initOut bytes.Buffer
 	err = Runner{
@@ -2016,11 +3083,40 @@ func TestRunnerStateInitStatusAndDoctor(t *testing.T) {
 	if initialized.Mode != state.ModeSQLiteReady {
 		t.Fatalf("initialized.Mode = %q, want %q", initialized.Mode, state.ModeSQLiteReady)
 	}
+	if initialized.DatabaseScope != "global" {
+		t.Fatalf("initialized.DatabaseScope = %q, want global", initialized.DatabaseScope)
+	}
 	if initialized.SchemaVersion != state.CurrentSchemaVersion() {
 		t.Fatalf("initialized.SchemaVersion = %d, want %d", initialized.SchemaVersion, state.CurrentSchemaVersion())
 	}
+	if initialized.ProjectID == "" {
+		t.Fatal("initialized.ProjectID is empty after SQLite records durable identity")
+	}
+	if initialized.ProjectID == initialized.LegacyProjectKey {
+		t.Fatalf("initialized.ProjectID = legacy key %q, want generated durable identity", initialized.ProjectID)
+	}
+	assertJSONFieldPresent(t, initOut.Bytes(), "project_id")
+	assertJSONFieldPresent(t, initOut.Bytes(), "legacy_project_key")
 	if _, err := os.Stat(initialized.DatabasePath); err != nil {
 		t.Fatalf("state init did not create database: %v", err)
+	}
+
+	var humanStatusOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanStatusOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "status"})
+	if err != nil {
+		t.Fatalf("state status error = %v", err)
+	}
+	for _, want := range []string{"loaf state status", "scope: global database", "project: " + initialized.ProjectID, "project name: " + initialized.ProjectName, "project path:", "mode: " + state.ModeSQLiteReady} {
+		if !strings.Contains(humanStatusOut.String(), want) {
+			t.Fatalf("state status output = %q, want %q", humanStatusOut.String(), want)
+		}
+	}
+	if strings.Contains(humanStatusOut.String(), "project id:") {
+		t.Fatalf("state status output = %q, want normalized project identity labels", humanStatusOut.String())
 	}
 
 	var doctorOut bytes.Buffer
@@ -2034,6 +3130,317 @@ func TestRunnerStateInitStatusAndDoctor(t *testing.T) {
 	}
 	if !strings.Contains(doctorOut.String(), "mode: "+state.ModeSQLiteReady) {
 		t.Fatalf("doctor output = %q, want sqlite-ready mode", doctorOut.String())
+	}
+	for _, want := range []string{"scope: global database", "project: " + initialized.ProjectID, "project name: " + initialized.ProjectName, "project path:", "schema version:"} {
+		if !strings.Contains(doctorOut.String(), want) {
+			t.Fatalf("doctor output = %q, want %q", doctorOut.String(), want)
+		}
+	}
+	if strings.Contains(doctorOut.String(), "project id:") {
+		t.Fatalf("doctor output = %q, want normalized project identity labels", doctorOut.String())
+	}
+}
+
+func TestRunnerStateLifecycleJSONErrorsAreMachineReadable(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		command string
+		want    string
+	}{
+		{
+			name:    "init unknown option",
+			args:    []string{"state", "init", "--json", "--bogus"},
+			command: "state init",
+			want:    "unknown option",
+		},
+		{
+			name:    "status unknown option",
+			args:    []string{"state", "status", "--json", "--bogus"},
+			command: "state status",
+			want:    "unknown option",
+		},
+		{
+			name:    "doctor unknown option",
+			args:    []string{"state", "doctor", "--json", "--bogus"},
+			command: "state doctor",
+			want:    "unknown option",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: realpath(t, t.TempDir()),
+				StateHome:  t.TempDir(),
+			}.Run(tc.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want JSON error", tc.args)
+			}
+			assertSilentExitCode(t, err, 1)
+			output := decodeCommandError(t, stdout.Bytes())
+			if output.Command != tc.command || !strings.Contains(output.Error, tc.want) {
+				t.Fatalf("JSON error = %#v, want command %q and error containing %q", output, tc.command, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunnerStateHelpIsNative(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "state", args: []string{"state", "--help"}, want: "Usage: loaf state <command> [options]"},
+		{name: "state path", args: []string{"state", "path", "--help"}, want: "Usage: loaf state path [--json|--verbose]"},
+		{name: "state init", args: []string{"state", "init", "--help"}, want: "Usage: loaf state init [--json]"},
+		{name: "state doctor", args: []string{"state", "doctor", "--help"}, want: "Usage: loaf state doctor [--fix] [--dry-run] [--json]"},
+		{name: "state repair", args: []string{"state", "repair", "--help"}, want: "Usage: loaf state repair <target> [options]"},
+		{name: "state repair legacy-project-database", args: []string{"state", "repair", "legacy-project-database", "--help"}, want: "Usage: loaf state repair legacy-project-database [--dry-run|--apply] [--json]"},
+		{name: "state repair relationship-origin", args: []string{"state", "repair", "relationship-origin", "--help"}, want: "Usage: loaf state repair relationship-origin --origin <imported|manual> [--dry-run|--apply] [--json]"},
+		{name: "state migrate", args: []string{"state", "migrate", "--help"}, want: "Usage: loaf state migrate <source> [options]"},
+		{name: "project list", args: []string{"project", "list", "--help"}, want: "Usage: loaf project list [--json]"},
+		{name: "project identity", args: []string{"project", "identity", "--help"}, want: "Usage: loaf project show|identity [--json]"},
+		{name: "project rename", args: []string{"project", "rename", "--help"}, want: "Usage: loaf project rename <name> [--dry-run] [--json]"},
+		{name: "project move", args: []string{"project", "move", "--help"}, want: "Usage: loaf project move <from> [to] [--dry-run] [--json]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: workingDir,
+				StateHome:  stateHome,
+			}.Run(tt.args)
+			if err != nil {
+				t.Fatalf("Run(%v) error = %v", tt.args, err)
+			}
+			if !strings.Contains(stdout.String(), tt.want) {
+				t.Fatalf("output = %q, want %q", stdout.String(), tt.want)
+			}
+		})
+	}
+}
+
+func TestRunnerStateAndProjectJSONHelpNamesContracts(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	tests := []struct {
+		name  string
+		args  []string
+		wants []string
+	}{
+		{name: "state path", args: []string{"state", "path", "--help"}, wants: []string{"--json", "contract version", "database scope", "database path"}},
+		{name: "state init", args: []string{"state", "init", "--help"}, wants: []string{"--json", "readiness mode", "global database scope", "project identity"}},
+		{name: "state status", args: []string{"state", "status", "--help"}, wants: []string{"--json", "readiness mode", "diagnostics", "project identity"}},
+		{name: "state doctor", args: []string{"state", "doctor", "--help"}, wants: []string{"--json", "diagnostics", "repair plan", "global database scope"}},
+		{name: "state backup", args: []string{"state", "backup", "--help"}, wants: []string{"--json", "backup verification", "checksum", "current project identity"}},
+		{name: "state backup verify", args: []string{"state", "backup", "verify", "--help"}, wants: []string{"--json", "restore guidance", "schema version", "captured project identities"}},
+		{name: "project list", args: []string{"project", "list", "--help"}, wants: []string{"--json", "database path", "friendly names", "current paths"}},
+		{name: "project show", args: []string{"project", "show", "--help"}, wants: []string{"--json", "project ID", "friendly name", "current path", "database path"}},
+		{name: "project rename", args: []string{"project", "rename", "--help"}, wants: []string{"--json", "friendly name", "database path", "applied status"}},
+		{name: "project move", args: []string{"project", "move", "--help"}, wants: []string{"--json", "current path", "database path", "applied status"}},
+		{name: "state repair legacy", args: []string{"state", "repair", "legacy-project-database", "--help"}, wants: []string{"--json", "archive plan/result", "global database scope", "project identity"}},
+		{name: "state repair relationship", args: []string{"state", "repair", "relationship-origin", "--help"}, wants: []string{"--json", "repair plan/result", "global database scope", "project identity"}},
+		{name: "state migrate markdown", args: []string{"state", "migrate", "markdown", "--help"}, wants: []string{"--json", "migration contract", "project context", "counts"}},
+		{name: "state migrate storage-home", args: []string{"state", "migrate", "storage-home", "--help"}, wants: []string{"--json", "migration contract", "global database paths", "project identity"}},
+		{name: "migrate markdown", args: []string{"migrate", "markdown", "--help"}, wants: []string{"--json", "migration contract", "project context", "counts"}},
+		{name: "migrate storage-home", args: []string{"migrate", "storage-home", "--help"}, wants: []string{"--json", "migration contract", "global database paths", "project identity"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: workingDir,
+				StateHome:  stateHome,
+			}.Run(tt.args)
+			if err != nil {
+				t.Fatalf("Run(%v) error = %v", tt.args, err)
+			}
+			output := stdout.String()
+			if strings.Contains(output, "Output JSON") {
+				t.Fatalf("output = %q, want specific JSON contract wording", output)
+			}
+			for _, want := range tt.wants {
+				if !strings.Contains(output, want) {
+					t.Fatalf("output = %q, want %q", output, want)
+				}
+			}
+		})
+	}
+}
+
+func TestRunnerTaskStatusHelpNamesValidStatuses(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "task list", args: []string{"task", "list", "--help"}, want: "--status     Filter by status: in_progress, blocked, todo, review, done, archived"},
+		{name: "task update", args: []string{"task", "update", "--help"}, want: "--status     New task status: in_progress, blocked, todo, review, done"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: workingDir,
+				StateHome:  stateHome,
+			}.Run(tt.args)
+			if err != nil {
+				t.Fatalf("Run(%v) error = %v", tt.args, err)
+			}
+			if !strings.Contains(stdout.String(), tt.want) {
+				t.Fatalf("output = %q, want %q", stdout.String(), tt.want)
+			}
+		})
+	}
+}
+
+func TestRunnerTaskStatusErrorsNameValidStatuses(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "task list", args: []string{"task", "list", "--status", "open"}, want: `invalid status "open" (valid: in_progress, blocked, todo, review, done, archived)`},
+		{name: "task update", args: []string{"task", "update", "TASK-001", "--status", "archived"}, want: `invalid status "archived" (valid: in_progress, blocked, todo, review, done)`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Runner{
+				Stdout:     &bytes.Buffer{},
+				WorkingDir: realpath(t, t.TempDir()),
+				StateHome:  t.TempDir(),
+			}.Run(tt.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want invalid status error", tt.args)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
+func TestRunnerTaskPriorityHelpNamesValidPriorities(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "task create", args: []string{"task", "create", "--help"}, want: "--priority   Task priority: P0, P1, P2, P3"},
+		{name: "task update", args: []string{"task", "update", "--help"}, want: "--priority   New task priority: P0, P1, P2, P3"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: workingDir,
+				StateHome:  stateHome,
+			}.Run(tt.args)
+			if err != nil {
+				t.Fatalf("Run(%v) error = %v", tt.args, err)
+			}
+			if !strings.Contains(stdout.String(), tt.want) {
+				t.Fatalf("output = %q, want %q", stdout.String(), tt.want)
+			}
+		})
+	}
+}
+
+func TestRunnerTaskPriorityErrorsNameValidPriorities(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "task create", args: []string{"task", "create", "--title", "Bad", "--priority", "P9"}, want: `invalid priority "P9" (valid: P0, P1, P2, P3)`},
+		{name: "task update", args: []string{"task", "update", "TASK-001", "--priority", "P9"}, want: `invalid priority "P9" (valid: P0, P1, P2, P3)`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Runner{
+				Stdout:     &bytes.Buffer{},
+				WorkingDir: realpath(t, t.TempDir()),
+				StateHome:  t.TempDir(),
+			}.Run(tt.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want invalid priority error", tt.args)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
+func TestRunnerTaskJSONValidationErrorsAreMachineReadable(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		command string
+		want    string
+	}{
+		{
+			name:    "list invalid status",
+			args:    []string{"task", "list", "--json", "--status", "open"},
+			command: "task list",
+			want:    `invalid status "open"`,
+		},
+		{
+			name:    "create invalid priority",
+			args:    []string{"task", "create", "--title", "Bad", "--priority", "P9", "--json"},
+			command: "task create",
+			want:    `invalid priority "P9"`,
+		},
+		{
+			name:    "update invalid status",
+			args:    []string{"task", "update", "TASK-001", "--status", "archived", "--json"},
+			command: "task update",
+			want:    `invalid status "archived"`,
+		},
+		{
+			name:    "update invalid priority",
+			args:    []string{"task", "update", "TASK-001", "--priority", "P9", "--json"},
+			command: "task update",
+			want:    `invalid priority "P9"`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: realpath(t, t.TempDir()),
+				StateHome:  t.TempDir(),
+			}.Run(tc.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want JSON validation error", tc.args)
+			}
+			assertSilentExitCode(t, err, 1)
+			output := decodeCommandError(t, stdout.Bytes())
+			if output.Command != tc.command || !strings.Contains(output.Error, tc.want) {
+				t.Fatalf("JSON error = %#v, want command %q and error containing %q", output, tc.command, tc.want)
+			}
+		})
 	}
 }
 
@@ -2052,6 +3459,14 @@ func TestRunnerStateInitHumanOutputPrintsRepositoryExternalDatabaseWithoutSecret
 	}
 
 	output := stdout.String()
+	for _, want := range []string{"scope: global database", "project:", "project name:", "project path:"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
+	}
+	if strings.Contains(output, "project id:") {
+		t.Fatalf("output = %q, want normalized project identity labels", output)
+	}
 	databasePath := ""
 	for _, line := range strings.Split(output, "\n") {
 		if strings.HasPrefix(line, "database: ") {
@@ -2065,7 +3480,7 @@ func TestRunnerStateInitHumanOutputPrintsRepositoryExternalDatabaseWithoutSecret
 	if !filepath.IsAbs(databasePath) {
 		t.Fatalf("database path = %q, want absolute path", databasePath)
 	}
-	if !strings.HasPrefix(databasePath, filepath.Join(stateHome, "loaf", "projects")+string(filepath.Separator)) {
+	if databasePath != filepath.Join(stateHome, "loaf", "loaf.sqlite") {
 		t.Fatalf("database path = %q, want under state home %q", databasePath, stateHome)
 	}
 	if strings.HasPrefix(databasePath, workingDir+string(filepath.Separator)) {
@@ -2110,6 +3525,827 @@ func TestRunnerStateDoctorFixInitializesMissingDatabase(t *testing.T) {
 	}
 }
 
+func TestRunnerStateDoctorDryRunShowsRepairPlanWithoutCreatingDatabase(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	for _, args := range [][]string{
+		{"state", "doctor", "--dry-run", "--json"},
+		{"state", "doctor", "--fix", "--dry-run", "--json"},
+	} {
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: workingDir,
+				StateHome:  stateHome,
+			}.Run(args)
+			if err != nil {
+				t.Fatalf("%v error = %v", args, err)
+			}
+			status := decodeStateStatus(t, stdout.Bytes())
+			if status.Mode != state.ModeMarkdownOnly {
+				t.Fatalf("Mode = %q, want %q", status.Mode, state.ModeMarkdownOnly)
+			}
+			action := findStateRepairAction(t, status.RepairPlan, "initialize-database")
+			if !action.Safe || action.Applied {
+				t.Fatalf("repair action = %#v, want safe unapplied initialization", action)
+			}
+			if action.Path != status.DatabasePath {
+				t.Fatalf("repair action path = %q, want %q", action.Path, status.DatabasePath)
+			}
+			assertNoStateDatabase(t, workingDir, stateHome)
+		})
+	}
+}
+
+func TestRunnerStateDoctorJSONIncludesRepairPlanForDiagnostics(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	var missingOut bytes.Buffer
+	err := Runner{
+		Stdout:     &missingOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "doctor", "--json"})
+	if err != nil {
+		t.Fatalf("state doctor --json missing database error = %v", err)
+	}
+	missing := decodeStateStatus(t, missingOut.Bytes())
+	if missing.Mode != state.ModeMarkdownOnly {
+		t.Fatalf("missing Mode = %q, want %q", missing.Mode, state.ModeMarkdownOnly)
+	}
+	action := findStateRepairAction(t, missing.RepairPlan, "initialize-database")
+	if !action.Safe || action.Applied {
+		t.Fatalf("missing repair action = %#v, want safe unapplied initialization", action)
+	}
+	assertNoStateDatabase(t, workingDir, stateHome)
+
+	var initOut bytes.Buffer
+	if err := (Runner{Stdout: &initOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+	initialized := decodeStateStatus(t, initOut.Bytes())
+	db, err := sql.Open("sqlite3", initialized.DatabasePath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+INSERT INTO backend_mappings (id, project_id, backend, entity_kind, entity_id, external_kind, external_id, external_url, sync_status, created_at, updated_at)
+VALUES ('backend-mapping-wrong-project', ?, 'linear', 'project', 'project-missing', 'project', 'LIN-PROJ-124', 'https://linear.app/workspace/project/LIN-PROJ-124', 'linked', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+		t.Fatalf("insert invalid backend mapping error = %v", err)
+	}
+
+	var invalidOut bytes.Buffer
+	err = Runner{
+		Stdout:     &invalidOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "doctor", "--json"})
+	if err == nil {
+		t.Fatal("state doctor --json invalid database error = nil, want nonzero exit")
+	}
+	assertSilentExitCode(t, err, 1)
+	invalid := decodeStateStatus(t, invalidOut.Bytes())
+	if invalid.Mode != state.ModeInvalid {
+		t.Fatalf("invalid Mode = %q, want %q", invalid.Mode, state.ModeInvalid)
+	}
+	action = findStateRepairAction(t, invalid.RepairPlan, "inspect-backend-mappings")
+	if action.Safe || action.Applied {
+		t.Fatalf("invalid repair action = %#v, want manual unapplied audit", action)
+	}
+	if action.Command != "loaf state doctor --json" {
+		t.Fatalf("invalid repair action command = %q, want state doctor JSON", action.Command)
+	}
+	if action.Category != state.RepairCategoryBackendMapping || action.RequiresExternalSync {
+		t.Fatalf("invalid repair action = %#v, want local backend mapping inspection", action)
+	}
+}
+
+func TestRunnerStateDoctorRepairPlanCommandsExecuteInDiagnosticMode(t *testing.T) {
+	tests := []struct {
+		name          string
+		actionCode    string
+		setup         func(t *testing.T) (string, string)
+		wantCommand   string
+		wantExitCode  int
+		verifyCommand func(t *testing.T, output []byte)
+	}{
+		{
+			name:         "missing database initializes through doctor fix",
+			actionCode:   "initialize-database",
+			wantCommand:  "loaf state doctor --fix",
+			wantExitCode: 0,
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				return realpath(t, t.TempDir()), t.TempDir()
+			},
+			verifyCommand: func(t *testing.T, output []byte) {
+				t.Helper()
+				text := string(output)
+				if !strings.Contains(text, "loaf state doctor") || !strings.Contains(text, "info: SQLite state database initialized") {
+					t.Fatalf("doctor --fix output = %q, want initialized SQLite state", text)
+				}
+			},
+		},
+		{
+			name:         "legacy storage-home migration previews while markdown-only",
+			actionCode:   "migrate-storage-home",
+			wantCommand:  "loaf state migrate storage-home --dry-run",
+			wantExitCode: 0,
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				workingDir := realpath(t, t.TempDir())
+				t.Setenv("XDG_DATA_HOME", t.TempDir())
+				t.Setenv("XDG_STATE_HOME", t.TempDir())
+				root, err := project.ResolveRoot(workingDir)
+				if err != nil {
+					t.Fatalf("ResolveRoot() error = %v", err)
+				}
+				initializeCLILegacyStateDatabase(t, root)
+				return workingDir, ""
+			},
+			verifyCommand: func(t *testing.T, output []byte) {
+				t.Helper()
+				text := string(output)
+				if !strings.Contains(text, "loaf state migrate storage-home --dry-run") || !strings.Contains(text, "applied: false") {
+					t.Fatalf("storage-home dry-run output = %q, want preview output", text)
+				}
+			},
+		},
+		{
+			name:         "legacy project database repair dry-run previews leftover",
+			actionCode:   "review-legacy-project-database",
+			wantCommand:  "loaf state repair legacy-project-database --dry-run --json",
+			wantExitCode: 0,
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				workingDir := realpath(t, t.TempDir())
+				t.Setenv("XDG_DATA_HOME", t.TempDir())
+				t.Setenv("XDG_STATE_HOME", t.TempDir())
+				root, err := project.ResolveRoot(workingDir)
+				if err != nil {
+					t.Fatalf("ResolveRoot() error = %v", err)
+				}
+				initializeCLILegacyStateDatabase(t, root)
+				if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir}).Run([]string{"state", "init", "--json"}); err != nil {
+					t.Fatalf("state init --json error = %v", err)
+				}
+				return workingDir, ""
+			},
+			verifyCommand: func(t *testing.T, output []byte) {
+				t.Helper()
+				result := decodeLegacyProjectDatabaseArchiveResult(t, output)
+				if result.Applied || len(result.MatchedPaths) == 0 {
+					t.Fatalf("legacy repair dry-run = %#v, want matched unapplied archive plan", result)
+				}
+			},
+		},
+		{
+			name:         "schema drift inspection keeps doctor JSON executable",
+			actionCode:   "inspect-schema-migrations",
+			wantCommand:  "loaf state doctor --json",
+			wantExitCode: 1,
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+				db := openCLITestDB(t, initialized.DatabasePath)
+				if _, err := db.Exec(`UPDATE schema_migrations SET checksum = 'drifted' WHERE version = 1`); err != nil {
+					t.Fatalf("drift schema checksum error = %v", err)
+				}
+				closeCLITestDB(t, db)
+				return workingDir, stateHome
+			},
+			verifyCommand: func(t *testing.T, output []byte) {
+				t.Helper()
+				status := decodeStateStatus(t, output)
+				if status.Mode != state.ModeInvalid || !hasDiagnostic(status.Diagnostics, "schema-checksum-mismatch") {
+					t.Fatalf("doctor output = %#v, want schema checksum mismatch", status)
+				}
+			},
+		},
+		{
+			name:         "SQLite invariant inspection keeps doctor JSON executable",
+			actionCode:   "inspect-state-invariants",
+			wantCommand:  "loaf state doctor --json",
+			wantExitCode: 1,
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+				db := openCLITestDB(t, initialized.DatabasePath)
+				if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+					t.Fatalf("disable foreign keys error = %v", err)
+				}
+				if _, err := db.Exec(`
+INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
+VALUES ('alias-orphaned-project', 'project-missing', 'task', 'task-missing', 'task', 'TASK-MISSING', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`); err != nil {
+					t.Fatalf("insert orphaned alias fixture error = %v", err)
+				}
+				closeCLITestDB(t, db)
+				return workingDir, stateHome
+			},
+			verifyCommand: func(t *testing.T, output []byte) {
+				t.Helper()
+				status := decodeStateStatus(t, output)
+				if status.Mode != state.ModeInvalid || !hasDiagnostic(status.Diagnostics, "sqlite-foreign-key-violation") {
+					t.Fatalf("doctor output = %#v, want foreign-key violation", status)
+				}
+			},
+		},
+		{
+			name:         "project path invariant repair can list projects",
+			actionCode:   "repair-project-path-invariants",
+			wantCommand:  "loaf project list --json",
+			wantExitCode: 0,
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+				db := openCLITestDB(t, initialized.DatabasePath)
+				if _, err := db.Exec(`UPDATE projects SET current_path = ? WHERE id = ?`, filepath.Join(workingDir, "stale"), initialized.ProjectID); err != nil {
+					t.Fatalf("drift project current_path error = %v", err)
+				}
+				closeCLITestDB(t, db)
+				return workingDir, stateHome
+			},
+			verifyCommand: func(t *testing.T, output []byte) {
+				t.Helper()
+				var projects state.ProjectList
+				if err := json.Unmarshal(output, &projects); err != nil {
+					t.Fatalf("json.Unmarshal(%q) error = %v", string(output), err)
+				}
+				if projects.DatabaseScope != "global" || len(projects.Projects) != 1 {
+					t.Fatalf("project list = %#v, want global project index", projects)
+				}
+			},
+		},
+		{
+			name:         "relationship provenance repair dry-run executes",
+			actionCode:   "audit-relationship-origin",
+			wantCommand:  "loaf state repair relationship-origin --origin imported --dry-run --json",
+			wantExitCode: 0,
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+				db := openCLITestDB(t, initialized.DatabasePath)
+				if _, err := db.Exec(`
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
+VALUES ('relationship-without-origin', ?, 'task', 'task-one', 'spec', 'spec-one', 'implements', 'legacy row', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+					t.Fatalf("insert relationship without origin error = %v", err)
+				}
+				closeCLITestDB(t, db)
+				return workingDir, stateHome
+			},
+			verifyCommand: func(t *testing.T, output []byte) {
+				t.Helper()
+				result := decodeRelationshipOriginRepairResult(t, output)
+				if result.Applied || result.Matched != 1 || result.Updated != 0 {
+					t.Fatalf("relationship repair dry-run = %#v, want one matched unapplied row", result)
+				}
+			},
+		},
+		{
+			name:         "invalid backend mappings keep doctor JSON executable",
+			actionCode:   "inspect-backend-mappings",
+			wantCommand:  "loaf state doctor --json",
+			wantExitCode: 1,
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+				db := openCLITestDB(t, initialized.DatabasePath)
+				if _, err := db.Exec(`
+INSERT INTO backend_mappings (id, project_id, backend, entity_kind, entity_id, external_kind, external_id, external_url, sync_status, created_at, updated_at)
+VALUES ('backend-mapping-wrong-project', ?, 'linear', 'project', 'project-missing', 'project', 'LIN-PROJ-124', 'https://linear.app/workspace/project/LIN-PROJ-124', 'linked', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+					t.Fatalf("insert invalid backend mapping error = %v", err)
+				}
+				closeCLITestDB(t, db)
+				return workingDir, stateHome
+			},
+			verifyCommand: func(t *testing.T, output []byte) {
+				t.Helper()
+				status := decodeStateStatus(t, output)
+				if status.Mode != state.ModeInvalid || !hasDiagnostic(status.Diagnostics, "backend-mapping-entity-missing") {
+					t.Fatalf("doctor output = %#v, want invalid backend mapping diagnostic", status)
+				}
+			},
+		},
+		{
+			name:         "backend mapping drift can export audit snapshot",
+			actionCode:   "audit-backend-mappings",
+			wantCommand:  "loaf state export all --format json",
+			wantExitCode: 0,
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+				db := openCLITestDB(t, initialized.DatabasePath)
+				if _, err := db.Exec(`
+INSERT INTO tasks (id, project_id, spec_id, title, status, priority, body_source_id, created_at, updated_at)
+VALUES ('task-linear-typo', ?, NULL, 'Linear typo task', 'todo', 'P2', NULL, '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+					t.Fatalf("insert task fixture error = %v", err)
+				}
+				if _, err := db.Exec(`
+INSERT INTO backend_mappings (id, project_id, backend, entity_kind, entity_id, external_kind, external_id, external_url, sync_status, created_at, updated_at)
+VALUES ('backend-mapping-linear-typo', ?, 'linear', 'task', 'task-linear-typo', 'issue', 'ENG-126', 'https://linear.app/workspace/issue/ENG-126', 'lnked', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+					t.Fatalf("insert backend mapping fixture error = %v", err)
+				}
+				closeCLITestDB(t, db)
+				return workingDir, stateHome
+			},
+			verifyCommand: func(t *testing.T, output []byte) {
+				t.Helper()
+				snapshot := decodeStateExportSnapshot(t, output)
+				if snapshot.ExportKind != state.ExportKindAll || !snapshot.Manifest.Verified {
+					t.Fatalf("export snapshot = %#v, want verified all export", snapshot)
+				}
+				if !hasDiagnostic(snapshot.Diagnostics, "backend-mapping-sync-status-unknown") {
+					t.Fatalf("export diagnostics = %#v, want backend mapping drift diagnostic", snapshot.Diagnostics)
+				}
+				action := findStateRepairAction(t, snapshot.RepairPlan, "audit-backend-mappings")
+				if action.Command != "loaf state export all --format json" || action.RequiresExternalSync {
+					t.Fatalf("export repair action = %#v, want local backend mapping audit action", action)
+				}
+				if snapshot.Manifest.DiagnosticCount != len(snapshot.Diagnostics) || snapshot.Manifest.RepairActionCount != len(snapshot.RepairPlan) {
+					t.Fatalf("export manifest = %#v, want diagnostic and repair counts matching payload", snapshot.Manifest)
+				}
+			},
+		},
+		{
+			name:         "Linear task mapping gaps can export sync snapshot",
+			actionCode:   "reconcile-linear-task-mappings",
+			wantCommand:  "loaf state export all --format json",
+			wantExitCode: 0,
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+				writeCLIAgentsFile(t, workingDir, "loaf.json", `{"integrations":{"linear":{"enabled":true}}}`)
+				db := openCLITestDB(t, initialized.DatabasePath)
+				if _, err := db.Exec(`
+INSERT INTO tasks (id, project_id, spec_id, title, status, priority, body_source_id, created_at, updated_at)
+VALUES ('task-active-unmapped', ?, NULL, 'Active unmapped task', 'todo', 'P2', NULL, '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+					t.Fatalf("insert task fixture error = %v", err)
+				}
+				closeCLITestDB(t, db)
+				return workingDir, stateHome
+			},
+			verifyCommand: func(t *testing.T, output []byte) {
+				t.Helper()
+				snapshot := decodeStateExportSnapshot(t, output)
+				if snapshot.ExportKind != state.ExportKindAll || !snapshot.Manifest.Verified {
+					t.Fatalf("export snapshot = %#v, want verified Linear reconciliation export", snapshot)
+				}
+				if !hasDiagnostic(snapshot.Diagnostics, "linear-mode-local-task-unmapped") {
+					t.Fatalf("export diagnostics = %#v, want Linear unmapped task diagnostic", snapshot.Diagnostics)
+				}
+				action := findStateRepairAction(t, snapshot.RepairPlan, "reconcile-linear-task-mappings")
+				if action.Command != "loaf state export all --format json" || !action.RequiresExternalSync {
+					t.Fatalf("export repair action = %#v, want external Linear reconciliation action", action)
+				}
+				if snapshot.Manifest.DiagnosticCount != len(snapshot.Diagnostics) || snapshot.Manifest.RepairActionCount != len(snapshot.RepairPlan) {
+					t.Fatalf("export manifest = %#v, want diagnostic and repair counts matching payload", snapshot.Manifest)
+				}
+			},
+		},
+		{
+			name:         "local markdown import preview executes",
+			actionCode:   "migrate-current-project-markdown",
+			wantCommand:  "loaf state migrate markdown --dry-run",
+			wantExitCode: 0,
+			setup: func(t *testing.T) (string, string) {
+				t.Helper()
+				workingDir, stateHome, _ := initCLIStateForRepairCommand(t)
+				writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-local.md", "# Local Task\n")
+				return workingDir, stateHome
+			},
+			verifyCommand: func(t *testing.T, output []byte) {
+				t.Helper()
+				text := string(output)
+				if !strings.Contains(text, "loaf state migrate markdown --dry-run") || !strings.Contains(text, "tasks: 1") {
+					t.Fatalf("markdown dry-run output = %q, want preview output", text)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			workingDir, stateHome := tc.setup(t)
+			action := doctorRepairActionForCLI(t, workingDir, stateHome, tc.actionCode)
+			if action.Command != tc.wantCommand {
+				t.Fatalf("repair action command = %q, want %q", action.Command, tc.wantCommand)
+			}
+			output := runRepairActionCommandForCLI(t, workingDir, stateHome, action, tc.wantExitCode)
+			if tc.verifyCommand != nil {
+				tc.verifyCommand(t, output)
+			}
+		})
+	}
+}
+
+func TestRunnerStateDoctorDryRunJSONUsesStableEmptyRepairPlan(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "doctor", "--dry-run", "--json"})
+	if err != nil {
+		t.Fatalf("state doctor --dry-run --json error = %v", err)
+	}
+	assertJSONArrayLength(t, stdout.Bytes(), "repair_plan", 0)
+}
+
+func TestRunnerStateDoctorDryRunShowsLegacyLeftoverManualAction(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	dataHome := t.TempDir()
+	stateHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("XDG_STATE_HOME", stateHome)
+
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	legacyPath := initializeCLILegacyStateDatabase(t, root)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err = Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+	}.Run([]string{"state", "doctor", "--dry-run", "--json"})
+	if err != nil {
+		t.Fatalf("state doctor --dry-run --json error = %v", err)
+	}
+	status := decodeStateStatus(t, stdout.Bytes())
+	if !hasDiagnostic(status.Diagnostics, "legacy-project-database-leftover") {
+		t.Fatalf("diagnostics = %#v, want legacy leftover", status.Diagnostics)
+	}
+	action := findStateRepairAction(t, status.RepairPlan, "review-legacy-project-database")
+	if action.Safe || action.Applied {
+		t.Fatalf("repair action = %#v, want manual unapplied legacy review", action)
+	}
+	if action.Command != "loaf state repair legacy-project-database --dry-run --json" {
+		t.Fatalf("repair action command = %q, want legacy archive dry-run", action.Command)
+	}
+	if action.Path != legacyPath {
+		t.Fatalf("repair action path = %q, want %q", action.Path, legacyPath)
+	}
+	if _, err := os.Stat(legacyPath); err != nil {
+		t.Fatalf("legacy database was removed during dry-run: %v", err)
+	}
+}
+
+func TestRunnerStateDoctorDryRunShowsRelationshipOriginAuditAction(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	var initOut bytes.Buffer
+	if err := (Runner{Stdout: &initOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	initialized := decodeStateStatus(t, initOut.Bytes())
+	db, err := sql.Open("sqlite3", initialized.DatabasePath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
+VALUES ('relationship-without-origin', ?, 'task', 'task-one', 'spec', 'spec-one', 'implements', 'legacy row', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+		t.Fatalf("insert relationship without origin error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err = Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "doctor", "--dry-run", "--json"})
+	if err != nil {
+		t.Fatalf("state doctor --dry-run --json error = %v", err)
+	}
+	status := decodeStateStatus(t, stdout.Bytes())
+	if status.Mode != state.ModeSQLiteReady {
+		t.Fatalf("Mode = %q, want %q for relationship provenance warning", status.Mode, state.ModeSQLiteReady)
+	}
+	if !hasDiagnostic(status.Diagnostics, "relationship-origin-missing") {
+		t.Fatalf("diagnostics = %#v, want relationship-origin-missing", status.Diagnostics)
+	}
+	action := findStateRepairAction(t, status.RepairPlan, "audit-relationship-origin")
+	if action.Safe || action.Applied {
+		t.Fatalf("repair action = %#v, want manual unapplied relationship audit", action)
+	}
+	if action.Command != "loaf state repair relationship-origin --origin imported --dry-run --json" {
+		t.Fatalf("repair action command = %q, want guarded relationship origin repair command", action.Command)
+	}
+}
+
+func TestRunnerStateRepairRelationshipOriginDryRunAndApply(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	var initOut bytes.Buffer
+	if err := (Runner{Stdout: &initOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	initialized := decodeStateStatus(t, initOut.Bytes())
+	db, err := sql.Open("sqlite3", initialized.DatabasePath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
+VALUES ('relationship-without-origin', ?, 'task', 'task-one', 'spec', 'spec-one', 'implements', 'legacy row', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+		t.Fatalf("insert relationship without origin error = %v", err)
+	}
+
+	var humanDryRunOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanDryRunOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "repair", "relationship-origin", "--origin", "imported", "--dry-run"})
+	if err != nil {
+		t.Fatalf("state repair relationship-origin human dry-run error = %v", err)
+	}
+	if !strings.Contains(humanDryRunOut.String(), "loaf state repair relationship-origin --dry-run") {
+		t.Fatalf("human dry-run output = %q, want explicit --dry-run header", humanDryRunOut.String())
+	}
+	for _, want := range []string{"scope: global database", "project:", "project name:", "project path:"} {
+		if !strings.Contains(humanDryRunOut.String(), want) {
+			t.Fatalf("human dry-run output = %q, want %q", humanDryRunOut.String(), want)
+		}
+	}
+	if !strings.Contains(humanDryRunOut.String(), "next: rerun with --apply") {
+		t.Fatalf("human dry-run output = %q, want apply guidance when rows match", humanDryRunOut.String())
+	}
+
+	var dryRunOut bytes.Buffer
+	err = Runner{
+		Stdout:     &dryRunOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "repair", "relationship-origin", "--origin", "imported", "--dry-run", "--json"})
+	if err != nil {
+		t.Fatalf("state repair relationship-origin --dry-run error = %v", err)
+	}
+	dryRun := decodeRelationshipOriginRepairResult(t, dryRunOut.Bytes())
+	if dryRun.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("dry-run ContractVersion = %d, want %d", dryRun.ContractVersion, state.StateJSONContractVersion)
+	}
+	if dryRun.DatabaseScope != "global" {
+		t.Fatalf("dry-run DatabaseScope = %q, want global", dryRun.DatabaseScope)
+	}
+	if dryRun.ProjectID != initialized.ProjectID {
+		t.Fatalf("dry-run ProjectID = %q, want %q", dryRun.ProjectID, initialized.ProjectID)
+	}
+	if dryRun.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("dry-run ProjectName = %q, want %q", dryRun.ProjectName, filepath.Base(workingDir))
+	}
+	if dryRun.ProjectCurrentPath != workingDir {
+		t.Fatalf("dry-run ProjectCurrentPath = %q, want %q", dryRun.ProjectCurrentPath, workingDir)
+	}
+	if dryRun.Applied {
+		t.Fatal("dry-run Applied = true, want false")
+	}
+	if dryRun.Matched != 1 || dryRun.Updated != 0 {
+		t.Fatalf("dry-run result = %#v, want matched 1 updated 0", dryRun)
+	}
+	if dryRun.BackupPath != "" {
+		t.Fatalf("dry-run BackupPath = %q, want empty", dryRun.BackupPath)
+	}
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM relationships WHERE origin IS NULL OR TRIM(origin) = ''`); got != 1 {
+		t.Fatalf("relationships without origin after dry-run = %d, want 1", got)
+	}
+
+	var applyOut bytes.Buffer
+	err = Runner{
+		Stdout:     &applyOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "repair", "relationship-origin", "--origin", "imported", "--apply", "--json"})
+	if err != nil {
+		t.Fatalf("state repair relationship-origin --apply error = %v", err)
+	}
+	applied := decodeRelationshipOriginRepairResult(t, applyOut.Bytes())
+	if applied.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("applied ContractVersion = %d, want %d", applied.ContractVersion, state.StateJSONContractVersion)
+	}
+	if applied.DatabaseScope != "global" {
+		t.Fatalf("applied DatabaseScope = %q, want global", applied.DatabaseScope)
+	}
+	if applied.ProjectID != initialized.ProjectID {
+		t.Fatalf("applied ProjectID = %q, want %q", applied.ProjectID, initialized.ProjectID)
+	}
+	if applied.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("applied ProjectName = %q, want %q", applied.ProjectName, filepath.Base(workingDir))
+	}
+	if applied.ProjectCurrentPath != workingDir {
+		t.Fatalf("applied ProjectCurrentPath = %q, want %q", applied.ProjectCurrentPath, workingDir)
+	}
+	if !applied.Applied {
+		t.Fatal("apply Applied = false, want true")
+	}
+	if applied.Matched != 1 || applied.Updated != 1 {
+		t.Fatalf("apply result = %#v, want matched 1 updated 1", applied)
+	}
+	if applied.BackupPath == "" {
+		t.Fatal("apply BackupPath is empty")
+	}
+	if _, err := os.Stat(applied.BackupPath); err != nil {
+		t.Fatalf("apply backup does not exist: %v", err)
+	}
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM relationships WHERE origin = 'imported'`); got != 1 {
+		t.Fatalf("relationships with imported origin = %d, want 1", got)
+	}
+
+	var noopHumanOut bytes.Buffer
+	err = Runner{
+		Stdout:     &noopHumanOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "repair", "relationship-origin", "--origin", "imported", "--dry-run"})
+	if err != nil {
+		t.Fatalf("state repair relationship-origin no-op human dry-run error = %v", err)
+	}
+	if !strings.Contains(noopHumanOut.String(), "loaf state repair relationship-origin --dry-run") {
+		t.Fatalf("no-op human output = %q, want explicit --dry-run header", noopHumanOut.String())
+	}
+	if strings.Contains(noopHumanOut.String(), "next: rerun with --apply") {
+		t.Fatalf("no-op human output = %q, want no apply guidance when no rows match", noopHumanOut.String())
+	}
+}
+
+func TestRunnerStateRepairLegacyProjectDatabaseDryRunAndApply(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	dataHome := t.TempDir()
+	stateHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("XDG_STATE_HOME", stateHome)
+
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	legacyPath := initializeCLILegacyStateDatabase(t, root)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+
+	var humanDryRunOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanDryRunOut,
+		WorkingDir: workingDir,
+	}.Run([]string{"state", "repair", "legacy-project-database", "--dry-run"})
+	if err != nil {
+		t.Fatalf("state repair legacy-project-database human dry-run error = %v", err)
+	}
+	if !strings.Contains(humanDryRunOut.String(), "loaf state repair legacy-project-database --dry-run") {
+		t.Fatalf("human dry-run output = %q, want explicit --dry-run header", humanDryRunOut.String())
+	}
+	for _, want := range []string{"scope: global database", "project:", "project name:", "project path:"} {
+		if !strings.Contains(humanDryRunOut.String(), want) {
+			t.Fatalf("human dry-run output = %q, want %q", humanDryRunOut.String(), want)
+		}
+	}
+	if !strings.Contains(humanDryRunOut.String(), "next: rerun with --apply") {
+		t.Fatalf("human dry-run output = %q, want apply guidance when legacy files match", humanDryRunOut.String())
+	}
+
+	var dryRunOut bytes.Buffer
+	err = Runner{
+		Stdout:     &dryRunOut,
+		WorkingDir: workingDir,
+	}.Run([]string{"state", "repair", "legacy-project-database", "--dry-run", "--json"})
+	if err != nil {
+		t.Fatalf("state repair legacy-project-database --dry-run error = %v", err)
+	}
+	dryRun := decodeLegacyProjectDatabaseArchiveResult(t, dryRunOut.Bytes())
+	if dryRun.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("dry-run ContractVersion = %d, want %d", dryRun.ContractVersion, state.StateJSONContractVersion)
+	}
+	if dryRun.DatabaseScope != "global" {
+		t.Fatalf("dry-run DatabaseScope = %q, want global", dryRun.DatabaseScope)
+	}
+	if dryRun.ProjectID == "" {
+		t.Fatal("dry-run ProjectID is empty")
+	}
+	if dryRun.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("dry-run ProjectName = %q, want %q", dryRun.ProjectName, filepath.Base(workingDir))
+	}
+	if dryRun.ProjectCurrentPath != workingDir {
+		t.Fatalf("dry-run ProjectCurrentPath = %q, want %q", dryRun.ProjectCurrentPath, workingDir)
+	}
+	if dryRun.Applied {
+		t.Fatal("dry-run Applied = true, want false")
+	}
+	if dryRun.Action != state.LegacyProjectDatabaseArchiveAction {
+		t.Fatalf("dry-run Action = %q, want archive action", dryRun.Action)
+	}
+	if len(dryRun.MatchedPaths) != 1 || dryRun.MatchedPaths[0] != legacyPath {
+		t.Fatalf("dry-run MatchedPaths = %#v, want legacy path %q", dryRun.MatchedPaths, legacyPath)
+	}
+	if _, err := os.Stat(legacyPath); err != nil {
+		t.Fatalf("legacy database moved during dry-run: %v", err)
+	}
+
+	var applyOut bytes.Buffer
+	err = Runner{
+		Stdout:     &applyOut,
+		WorkingDir: workingDir,
+	}.Run([]string{"state", "repair", "legacy-project-database", "--apply", "--json"})
+	if err != nil {
+		t.Fatalf("state repair legacy-project-database --apply error = %v", err)
+	}
+	applied := decodeLegacyProjectDatabaseArchiveResult(t, applyOut.Bytes())
+	if applied.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("applied ContractVersion = %d, want %d", applied.ContractVersion, state.StateJSONContractVersion)
+	}
+	if applied.DatabaseScope != "global" {
+		t.Fatalf("applied DatabaseScope = %q, want global", applied.DatabaseScope)
+	}
+	if applied.ProjectID != dryRun.ProjectID {
+		t.Fatalf("applied ProjectID = %q, want %q", applied.ProjectID, dryRun.ProjectID)
+	}
+	if applied.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("applied ProjectName = %q, want %q", applied.ProjectName, filepath.Base(workingDir))
+	}
+	if applied.ProjectCurrentPath != workingDir {
+		t.Fatalf("applied ProjectCurrentPath = %q, want %q", applied.ProjectCurrentPath, workingDir)
+	}
+	if !applied.Applied {
+		t.Fatal("apply Applied = false, want true")
+	}
+	if len(applied.ArchivedPaths) != 1 {
+		t.Fatalf("ArchivedPaths = %#v, want one archived database", applied.ArchivedPaths)
+	}
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Fatalf("legacy database still exists after apply; err = %v", err)
+	}
+	if _, err := os.Stat(applied.ArchivedPaths[0]); err != nil {
+		t.Fatalf("archived legacy database missing: %v", err)
+	}
+
+	var doctorOut bytes.Buffer
+	err = Runner{
+		Stdout:     &doctorOut,
+		WorkingDir: workingDir,
+	}.Run([]string{"state", "doctor", "--dry-run", "--json"})
+	if err != nil {
+		t.Fatalf("state doctor after legacy archive error = %v", err)
+	}
+	status := decodeStateStatus(t, doctorOut.Bytes())
+	if hasDiagnostic(status.Diagnostics, "legacy-project-database-leftover") {
+		t.Fatalf("diagnostics = %#v, want legacy leftover resolved", status.Diagnostics)
+	}
+
+	var noopOut bytes.Buffer
+	err = Runner{
+		Stdout:     &noopOut,
+		WorkingDir: workingDir,
+	}.Run([]string{"state", "repair", "legacy-project-database", "--dry-run", "--json"})
+	if err != nil {
+		t.Fatalf("state repair legacy-project-database no-op dry-run error = %v", err)
+	}
+	assertJSONArrayLength(t, noopOut.Bytes(), "matched_paths", 0)
+	assertJSONArrayLength(t, noopOut.Bytes(), "archived_paths", 0)
+	assertJSONArrayLength(t, noopOut.Bytes(), "warnings", 0)
+
+	var noopHumanOut bytes.Buffer
+	err = Runner{
+		Stdout:     &noopHumanOut,
+		WorkingDir: workingDir,
+	}.Run([]string{"state", "repair", "legacy-project-database", "--dry-run"})
+	if err != nil {
+		t.Fatalf("state repair legacy-project-database no-op human dry-run error = %v", err)
+	}
+	if !strings.Contains(noopHumanOut.String(), "loaf state repair legacy-project-database --dry-run") {
+		t.Fatalf("no-op human output = %q, want explicit --dry-run header", noopHumanOut.String())
+	}
+	if strings.Contains(noopHumanOut.String(), "next: rerun with --apply") {
+		t.Fatalf("no-op human output = %q, want no apply guidance when no files match", noopHumanOut.String())
+	}
+}
+
 func TestRunnerStateDoctorReportsSchemaMismatch(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -2147,6 +4383,179 @@ func TestRunnerStateDoctorReportsSchemaMismatch(t *testing.T) {
 	}
 }
 
+func TestRunnerStateDoctorJSONExitsNonzeroForInvalidState(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	var initOut bytes.Buffer
+	if err := (Runner{Stdout: &initOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+	initialized := decodeStateStatus(t, initOut.Bytes())
+	db, err := sql.Open("sqlite3", initialized.DatabasePath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+INSERT INTO backend_mappings (id, project_id, backend, entity_kind, entity_id, external_kind, external_id, external_url, sync_status, created_at, updated_at)
+VALUES ('backend-mapping-wrong-project', ?, 'linear', 'project', 'project-missing', 'project', 'LIN-PROJ-124', 'https://linear.app/workspace/project/LIN-PROJ-124', 'linked', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+		t.Fatalf("insert invalid backend mapping error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err = Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "doctor", "--json"})
+	if err == nil {
+		t.Fatal("state doctor --json invalid-state error = nil, want nonzero exit")
+	}
+	assertSilentExitCode(t, err, 1)
+	status := decodeStateStatus(t, stdout.Bytes())
+	if status.Mode != state.ModeInvalid {
+		t.Fatalf("Mode = %q, want %q", status.Mode, state.ModeInvalid)
+	}
+	if !hasDiagnostic(status.Diagnostics, "backend-mapping-entity-missing") {
+		t.Fatalf("diagnostics = %#v, want backend mapping diagnostic", status.Diagnostics)
+	}
+	assertJSONFieldAbsent(t, stdout.Bytes(), "error")
+}
+
+func TestRunnerStateDoctorLabelsBackendDiagnosticPolicy(t *testing.T) {
+	t.Run("invalid local backend mapping", func(t *testing.T) {
+		workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+		db := openCLITestDB(t, initialized.DatabasePath)
+		if _, err := db.Exec(`
+INSERT INTO backend_mappings (id, project_id, backend, entity_kind, entity_id, external_kind, external_id, external_url, sync_status, created_at, updated_at)
+VALUES ('backend-mapping-wrong-project', ?, 'linear', 'project', 'project-missing', 'project', 'LIN-PROJ-124', 'https://linear.app/workspace/project/LIN-PROJ-124', 'linked', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+			t.Fatalf("insert invalid backend mapping error = %v", err)
+		}
+		closeCLITestDB(t, db)
+
+		var humanOut bytes.Buffer
+		err := (Runner{Stdout: &humanOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "doctor"})
+		if err == nil {
+			t.Fatal("state doctor invalid backend mapping error = nil, want nonzero exit")
+		}
+		for _, want := range []string{
+			"error [backend-mapping/invalid-local-data]:",
+			"fix or remove the local backend mapping row",
+			"- inspect-backend-mappings [manual/backend-mapping]",
+		} {
+			if !strings.Contains(humanOut.String(), want) {
+				t.Fatalf("human output = %q, want %q", humanOut.String(), want)
+			}
+		}
+
+		var jsonOut bytes.Buffer
+		err = (Runner{Stdout: &jsonOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "doctor", "--json"})
+		assertSilentExitCode(t, err, 1)
+		status := decodeStateStatus(t, jsonOut.Bytes())
+		diagnostic := findCLIDiagnostic(t, status.Diagnostics, "backend-mapping-entity-missing")
+		if diagnostic.Category != state.RepairCategoryBackendMapping || diagnostic.Policy != state.DiagnosticPolicyInvalidLocalData || diagnostic.RequiresExternalSync {
+			t.Fatalf("diagnostic = %#v, want invalid local backend mapping policy", diagnostic)
+		}
+		if diagnostic.Details["mapping_id"] != "backend-mapping-wrong-project" || diagnostic.Details["entity_kind"] != "project" {
+			t.Fatalf("diagnostic Details = %#v, want structured backend mapping identifiers", diagnostic.Details)
+		}
+	})
+
+	t.Run("Linear external sync gap", func(t *testing.T) {
+		workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+		writeCLIAgentsFile(t, workingDir, "loaf.json", `{"integrations":{"linear":{"enabled":true}}}`)
+		db := openCLITestDB(t, initialized.DatabasePath)
+		if _, err := db.Exec(`
+INSERT INTO tasks (id, project_id, spec_id, title, status, priority, body_source_id, created_at, updated_at)
+VALUES ('task-active-unmapped', ?, NULL, 'Active unmapped task', 'todo', 'P2', NULL, '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+			t.Fatalf("insert task fixture error = %v", err)
+		}
+		closeCLITestDB(t, db)
+
+		var humanOut bytes.Buffer
+		if err := (Runner{Stdout: &humanOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "doctor"}); err != nil {
+			t.Fatalf("state doctor Linear warning error = %v", err)
+		}
+		for _, want := range []string{
+			"warn [external-sync/external-sync-gap] [external-sync-required]:",
+			"reconcile it through Linear or future backend sync tooling",
+			"- reconcile-linear-task-mappings [manual/external-sync]",
+			"external sync: required",
+		} {
+			if !strings.Contains(humanOut.String(), want) {
+				t.Fatalf("human output = %q, want %q", humanOut.String(), want)
+			}
+		}
+
+		var jsonOut bytes.Buffer
+		if err := (Runner{Stdout: &jsonOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "doctor", "--json"}); err != nil {
+			t.Fatalf("state doctor --json Linear warning error = %v", err)
+		}
+		status := decodeStateStatus(t, jsonOut.Bytes())
+		diagnostic := findCLIDiagnostic(t, status.Diagnostics, "linear-mode-local-task-unmapped")
+		if diagnostic.Category != state.RepairCategoryExternalSync || diagnostic.Policy != state.DiagnosticPolicyExternalSyncGap || !diagnostic.RequiresExternalSync {
+			t.Fatalf("diagnostic = %#v, want Linear external sync policy", diagnostic)
+		}
+		if diagnostic.Details["backend"] != "linear" || diagnostic.Details["unmapped_task_count"] != float64(1) {
+			t.Fatalf("diagnostic Details = %#v, want structured Linear sync identifiers", diagnostic.Details)
+		}
+	})
+}
+
+func TestRunnerStateExportAllCarriesWarningDiagnosticDetails(t *testing.T) {
+	workingDir, stateHome, initialized := initCLIStateForRepairCommand(t)
+	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-local.md", `---
+title: Local Markdown Task
+status: todo
+---
+# Local Markdown Task
+`)
+	db := openCLITestDB(t, initialized.DatabasePath)
+	if _, err := db.Exec(`
+INSERT INTO specs (id, project_id, title, status, body_source_id, created_at, updated_at)
+VALUES ('SPEC-STALE', ?, 'Stale Spec', 'active', NULL, '2026-06-13T10:00:00Z', '2026-06-14T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+		t.Fatalf("insert stale spec fixture error = %v", err)
+	}
+	if _, err := db.Exec(`
+INSERT INTO exports (id, project_id, export_kind, format, path, state_version, source_entity_kind, source_entity_id, generated_at, created_at, updated_at)
+VALUES ('export-stale-spec', ?, 'spec', 'markdown', '.agents/specs/SPEC-STALE.md', 1, 'spec', 'SPEC-STALE', '2026-06-13T11:00:00Z', '2026-06-13T11:00:00Z', '2026-06-13T11:00:00Z')
+`, initialized.ProjectID); err != nil {
+		t.Fatalf("insert stale export fixture error = %v", err)
+	}
+	closeCLITestDB(t, db)
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "export", "all", "--format", "json"}); err != nil {
+		t.Fatalf("state export all --format json error = %v", err)
+	}
+	snapshot := decodeStateExportSnapshot(t, stdout.Bytes())
+	localMarkdown := findCLIDiagnostic(t, snapshot.Diagnostics, "local-markdown-not-imported")
+	if localMarkdown.Category != state.RepairCategoryMarkdownImport || localMarkdown.Policy != state.DiagnosticPolicyImportPending {
+		t.Fatalf("local markdown diagnostic = %#v, want markdown import/import-pending", localMarkdown)
+	}
+	if localMarkdown.Details["importable_count"] != float64(1) || localMarkdown.Details["tasks"] != float64(1) {
+		t.Fatalf("local markdown details = %#v, want importable task counts", localMarkdown.Details)
+	}
+	if localMarkdown.Details["preview_command"] != "loaf state migrate markdown --dry-run" {
+		t.Fatalf("local markdown details = %#v, want preview command", localMarkdown.Details)
+	}
+
+	staleExport := findCLIDiagnostic(t, snapshot.Diagnostics, "stale-compatibility-export")
+	if staleExport.Category != state.RepairCategoryCompatibilityExport || staleExport.Policy != state.DiagnosticPolicyStaleExport {
+		t.Fatalf("stale export diagnostic = %#v, want compatibility-export/stale-export", staleExport)
+	}
+	if staleExport.Details["export_id"] != "export-stale-spec" || staleExport.Details["source_entity_id"] != "SPEC-STALE" {
+		t.Fatalf("stale export details = %#v, want export and source identifiers", staleExport.Details)
+	}
+	if snapshot.Manifest.DiagnosticCount != len(snapshot.Diagnostics) || snapshot.Manifest.RepairActionCount != len(snapshot.RepairPlan) {
+		t.Fatalf("export manifest = %#v, want diagnostic and repair counts matching payload", snapshot.Manifest)
+	}
+}
+
 func TestRunnerStateBackupCreatesSQLiteCopy(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -2165,6 +4574,12 @@ func TestRunnerStateBackupCreatesSQLiteCopy(t *testing.T) {
 	}
 
 	result := decodeStateBackupResult(t, stdout.Bytes())
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
 	if result.DatabasePath == "" {
 		t.Fatal("DatabasePath is empty")
 	}
@@ -2174,8 +4589,35 @@ func TestRunnerStateBackupCreatesSQLiteCopy(t *testing.T) {
 	if result.Bytes <= 0 {
 		t.Fatalf("Bytes = %d, want > 0", result.Bytes)
 	}
+	if result.SHA256 == "" {
+		t.Fatal("SHA256 is empty")
+	}
 	if result.CreatedAt == "" {
 		t.Fatal("CreatedAt is empty")
+	}
+	if !result.Verified {
+		t.Fatal("Verified = false, want true")
+	}
+	if result.SchemaVersion != state.CurrentSchemaVersion() {
+		t.Fatalf("SchemaVersion = %d, want %d", result.SchemaVersion, state.CurrentSchemaVersion())
+	}
+	if result.ProjectCount != 1 {
+		t.Fatalf("ProjectCount = %d, want 1", result.ProjectCount)
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(workingDir))
+	}
+	if result.ProjectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, workingDir)
+	}
+	if result.IntegrityCheck != "ok" {
+		t.Fatalf("IntegrityCheck = %q, want ok", result.IntegrityCheck)
+	}
+	if result.ForeignKeyCheck != "ok" {
+		t.Fatalf("ForeignKeyCheck = %q, want ok", result.ForeignKeyCheck)
 	}
 	if strings.HasPrefix(result.BackupPath, workingDir+string(filepath.Separator)) {
 		t.Fatalf("BackupPath = %q, want outside working dir %q", result.BackupPath, workingDir)
@@ -2183,9 +4625,13 @@ func TestRunnerStateBackupCreatesSQLiteCopy(t *testing.T) {
 	if _, err := os.Stat(result.BackupPath); err != nil {
 		t.Fatalf("backup file missing: %v", err)
 	}
-	store, err := state.OpenStore(result.BackupPath)
+	if result.SHA256 != testFileSHA256(t, result.BackupPath) {
+		t.Fatalf("SHA256 = %q, want actual backup digest", result.SHA256)
+	}
+	assertNoSQLiteSidecars(t, result.BackupPath)
+	store, err := state.OpenStoreReadOnly(result.BackupPath)
 	if err != nil {
-		t.Fatalf("OpenStore(backup) error = %v", err)
+		t.Fatalf("OpenStoreReadOnly(backup) error = %v", err)
 	}
 	defer store.Close()
 	version, err := store.SchemaVersion(t.Context())
@@ -2195,6 +4641,7 @@ func TestRunnerStateBackupCreatesSQLiteCopy(t *testing.T) {
 	if version != state.CurrentSchemaVersion() {
 		t.Fatalf("backup schema version = %d, want %d", version, state.CurrentSchemaVersion())
 	}
+	assertNoSQLiteSidecars(t, result.BackupPath)
 }
 
 func TestRunnerStateBackupHumanOutput(t *testing.T) {
@@ -2215,10 +4662,216 @@ func TestRunnerStateBackupHumanOutput(t *testing.T) {
 	}
 
 	output := stdout.String()
-	for _, want := range []string{"loaf state backup", "database:", "backup:", "bytes:", "created at:"} {
+	for _, want := range []string{"loaf state backup", "scope: global database", "database:", "backup:", "bytes:", "sha256:", "verified: true", "schema version:", "projects: 1", "project:", "project name:", "project path:", "integrity: ok", "foreign keys: ok", "created at:", "next: verify this backup later with `loaf state backup verify "} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
+	}
+}
+
+func TestRunnerStateBackupVerifyReportsGlobalProjects(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	otherDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init first error = %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: otherDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init second error = %v", err)
+	}
+
+	var backupOut bytes.Buffer
+	if err := (Runner{Stdout: &backupOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "backup", "--json"}); err != nil {
+		t.Fatalf("state backup --json error = %v", err)
+	}
+	backup := decodeStateBackupResult(t, backupOut.Bytes())
+	if err := os.Remove(backup.DatabasePath); err != nil {
+		t.Fatalf("remove live database error = %v", err)
+	}
+
+	var jsonOut bytes.Buffer
+	err := Runner{
+		Stdout:     &jsonOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "backup", "verify", backup.BackupPath, "--json"})
+	if err != nil {
+		t.Fatalf("state backup verify --json error = %v", err)
+	}
+	result := decodeStateBackupVerificationResult(t, jsonOut.Bytes())
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.BackupPath != backup.BackupPath {
+		t.Fatalf("BackupPath = %q, want %q", result.BackupPath, backup.BackupPath)
+	}
+	if result.SHA256 != backup.SHA256 {
+		t.Fatalf("SHA256 = %q, want %q", result.SHA256, backup.SHA256)
+	}
+	if !result.Verified {
+		t.Fatal("Verified = false, want true")
+	}
+	if result.SchemaVersion != state.CurrentSchemaVersion() {
+		t.Fatalf("SchemaVersion = %d, want %d", result.SchemaVersion, state.CurrentSchemaVersion())
+	}
+	if result.ProjectCount != 2 || len(result.Projects) != 2 {
+		t.Fatalf("projects = %d/%d, want two projects", result.ProjectCount, len(result.Projects))
+	}
+	if result.RestoreDatabasePath != backup.DatabasePath {
+		t.Fatalf("RestoreDatabasePath = %q, want live target %q", result.RestoreDatabasePath, backup.DatabasePath)
+	}
+	if result.RestorePreservePath != backup.DatabasePath+".before-restore" {
+		t.Fatalf("RestorePreservePath = %q, want preserve path for live target", result.RestorePreservePath)
+	}
+	if strings.Join(result.RestoreValidationCommands, ",") != "loaf state doctor,loaf state status" {
+		t.Fatalf("RestoreValidationCommands = %#v, want doctor/status checks", result.RestoreValidationCommands)
+	}
+	if _, err := os.Stat(backup.DatabasePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("state backup verify recreated live database; stat err = %v", err)
+	}
+	for _, project := range result.Projects {
+		if project.DatabasePath != backup.BackupPath {
+			t.Fatalf("project DatabasePath = %q, want backup path %q", project.DatabasePath, backup.BackupPath)
+		}
+	}
+
+	var humanOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanOut,
+		WorkingDir: otherDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "backup", "verify", backup.BackupPath})
+	if err != nil {
+		t.Fatalf("state backup verify error = %v", err)
+	}
+	for _, want := range []string{"loaf state backup verify", "scope: global backup", "backup:", "bytes:", "sha256:", "verified: true", "schema version:", "projects: 2", "project:", "project name:", "project path:", "integrity: ok", "foreign keys: ok", "restore target:", "preserve as:", "next: if present, preserve current database as"} {
+		if !strings.Contains(humanOut.String(), want) {
+			t.Fatalf("output = %q, want %q", humanOut.String(), want)
+		}
+	}
+}
+
+func TestRunnerStateBackupManualRestoreProcedure(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+	original := projectIdentityForCLI(t, workingDir, stateHome)
+
+	var backupOut bytes.Buffer
+	if err := (Runner{Stdout: &backupOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "backup", "--json"}); err != nil {
+		t.Fatalf("state backup --json error = %v", err)
+	}
+	backup := decodeStateBackupResult(t, backupOut.Bytes())
+	if backup.ProjectID != original.ID || backup.ProjectName != original.FriendlyName {
+		t.Fatalf("backup project = %s/%s, want original %s/%s", backup.ProjectID, backup.ProjectName, original.ID, original.FriendlyName)
+	}
+
+	var verifyOut bytes.Buffer
+	if err := (Runner{Stdout: &verifyOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "backup", "verify", backup.BackupPath, "--json"}); err != nil {
+		t.Fatalf("state backup verify --json error = %v", err)
+	}
+	verified := decodeStateBackupVerificationResult(t, verifyOut.Bytes())
+	if !verified.Verified || verified.BackupPath != backup.BackupPath || verified.SHA256 != backup.SHA256 {
+		t.Fatalf("backup verification = %#v, want verified backup %s", verified, backup.BackupPath)
+	}
+	if verified.RestoreDatabasePath != backup.DatabasePath {
+		t.Fatalf("verified RestoreDatabasePath = %q, want %q", verified.RestoreDatabasePath, backup.DatabasePath)
+	}
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "rename", "Changed After Backup", "--json"}); err != nil {
+		t.Fatalf("project rename after backup error = %v", err)
+	}
+	changed := projectIdentityForCLI(t, workingDir, stateHome)
+	if changed.ID != original.ID || changed.FriendlyName != "Changed After Backup" {
+		t.Fatalf("changed project = %#v, want same ID %s with changed name", changed, original.ID)
+	}
+
+	preservedLivePath := backup.DatabasePath + ".before-restore"
+	if err := os.Rename(backup.DatabasePath, preservedLivePath); err != nil {
+		t.Fatalf("preserve live database error = %v", err)
+	}
+	copyFileForCLITest(t, backup.BackupPath, backup.DatabasePath, 0o600)
+
+	var preservedVerifyOut bytes.Buffer
+	if err := (Runner{Stdout: &preservedVerifyOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "backup", "verify", preservedLivePath, "--json"}); err != nil {
+		t.Fatalf("state backup verify preserved live database error = %v", err)
+	}
+	preserved := decodeStateBackupVerificationResult(t, preservedVerifyOut.Bytes())
+	if !preserved.Verified || len(preserved.Projects) != 1 || preserved.Projects[0].FriendlyName != "Changed After Backup" {
+		t.Fatalf("preserved live database verification = %#v, want changed project preserved", preserved)
+	}
+
+	var doctorOut bytes.Buffer
+	if err := (Runner{Stdout: &doctorOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "doctor", "--json"}); err != nil {
+		t.Fatalf("state doctor --json after manual restore error = %v", err)
+	}
+	doctor := decodeStateStatus(t, doctorOut.Bytes())
+	if doctor.Mode != state.ModeSQLiteReady || doctor.ProjectID != original.ID || doctor.ProjectName != original.FriendlyName {
+		t.Fatalf("doctor after restore = %#v, want original restored project %s/%s", doctor, original.ID, original.FriendlyName)
+	}
+
+	var statusOut bytes.Buffer
+	if err := (Runner{Stdout: &statusOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "status", "--json"}); err != nil {
+		t.Fatalf("state status --json after manual restore error = %v", err)
+	}
+	status := decodeStateStatus(t, statusOut.Bytes())
+	if status.Mode != state.ModeSQLiteReady || status.ProjectID != original.ID || status.ProjectName != original.FriendlyName || status.DatabasePath != backup.DatabasePath {
+		t.Fatalf("status after restore = %#v, want original restored state at %s", status, backup.DatabasePath)
+	}
+	if restoredHash := testFileSHA256(t, backup.DatabasePath); restoredHash != backup.SHA256 {
+		t.Fatalf("restored database sha256 = %q, want backup sha256 %q", restoredHash, backup.SHA256)
+	}
+}
+
+func TestRunnerStateBackupVerifyJSONErrorsIncludeBackupPath(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	invalidBackup := filepath.Join(t.TempDir(), "not-a-backup.sqlite")
+	if err := os.WriteFile(invalidBackup, []byte("not sqlite"), 0o600); err != nil {
+		t.Fatalf("WriteFile(invalid backup) error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  t.TempDir(),
+	}.Run([]string{"state", "backup", "verify", invalidBackup, "--json"})
+	if err == nil {
+		t.Fatal("state backup verify invalid backup error = nil, want JSON rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	output := decodeCommandError(t, stdout.Bytes())
+	if output.Command != "state backup verify" {
+		t.Fatalf("Command = %q, want state backup verify", output.Command)
+	}
+	if output.BackupPath != invalidBackup {
+		t.Fatalf("BackupPath = %q, want %q", output.BackupPath, invalidBackup)
+	}
+	if !strings.Contains(output.Error, "open state backup for verification") {
+		t.Fatalf("Error = %q, want verification context", output.Error)
+	}
+
+	var parseOut bytes.Buffer
+	err = Runner{
+		Stdout:     &parseOut,
+		WorkingDir: workingDir,
+		StateHome:  t.TempDir(),
+	}.Run([]string{"state", "backup", "verify", "--json"})
+	if err == nil {
+		t.Fatal("state backup verify missing path error = nil, want JSON rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	parseError := decodeCommandError(t, parseOut.Bytes())
+	if parseError.Command != "state backup verify" || !strings.Contains(parseError.Error, "requires a backup path") {
+		t.Fatalf("parse JSON error = %#v, want missing backup path", parseError)
+	}
+	if parseError.BackupPath != "" {
+		t.Fatalf("parse BackupPath = %q, want omitted/empty before path is parsed", parseError.BackupPath)
 	}
 }
 
@@ -2235,6 +4888,17 @@ func TestRunnerStateBackupRejectsMissingAndInvalidState(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "SQLite state database is not initialized") {
 		t.Fatalf("error = %v, want initialization message", err)
+	}
+	for _, want := range []string{
+		"scope: global database",
+		"database:",
+		filepath.Join(stateHome, "loaf", "loaf.sqlite"),
+		"next: run `loaf state status`",
+		"loaf state migrate markdown --apply",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %v, want %q", err, want)
+		}
 	}
 
 	root, err := project.ResolveRoot(workingDir)
@@ -2265,6 +4929,47 @@ func TestRunnerStateBackupRejectsMissingAndInvalidState(t *testing.T) {
 	}
 }
 
+func TestRunnerStateBackupJSONErrorsAreMachineReadable(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "unknown option",
+			args: []string{"state", "backup", "--json", "--bogus"},
+			want: "unknown option",
+		},
+		{
+			name: "missing state",
+			args: []string{"state", "backup", "--json"},
+			want: "SQLite state database is not initialized",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: workingDir,
+				StateHome:  stateHome,
+			}.Run(tc.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want JSON error", tc.args)
+			}
+			assertSilentExitCode(t, err, 1)
+			output := decodeCommandError(t, stdout.Bytes())
+			if output.Command != "state backup" || !strings.Contains(output.Error, tc.want) {
+				t.Fatalf("JSON error = %#v, want state backup error containing %q", output, tc.want)
+			}
+		})
+	}
+}
+
 func TestRunnerStateExportAllJSON(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -2292,6 +4997,9 @@ status: implementing
 	}
 
 	snapshot := decodeStateExportSnapshot(t, stdout.Bytes())
+	if snapshot.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", snapshot.ContractVersion, state.StateJSONContractVersion)
+	}
 	if snapshot.ExportKind != state.ExportKindAll {
 		t.Fatalf("ExportKind = %q, want %q", snapshot.ExportKind, state.ExportKindAll)
 	}
@@ -2301,8 +5009,77 @@ status: implementing
 	if snapshot.Audience != state.ExportAudienceLocal {
 		t.Fatalf("Audience = %q, want internal marker", snapshot.Audience)
 	}
+	if snapshot.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", snapshot.DatabaseScope)
+	}
+	if snapshot.ExportScope != "project" {
+		t.Fatalf("ExportScope = %q, want project", snapshot.ExportScope)
+	}
+
+	var aliasOut bytes.Buffer
+	err = Runner{
+		Stdout:     &aliasOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "export", "all", "--json"})
+	if err != nil {
+		t.Fatalf("state export all --json error = %v", err)
+	}
+	aliasSnapshot := decodeStateExportSnapshot(t, aliasOut.Bytes())
+	if aliasSnapshot.ExportKind != state.ExportKindAll || aliasSnapshot.Format != state.ExportFormatJSON || aliasSnapshot.ProjectID != snapshot.ProjectID {
+		t.Fatalf("alias snapshot = %#v, want all/json export for project %q", aliasSnapshot, snapshot.ProjectID)
+	}
+
 	if snapshot.SchemaVersion != state.CurrentSchemaVersion() {
 		t.Fatalf("SchemaVersion = %d, want %d", snapshot.SchemaVersion, state.CurrentSchemaVersion())
+	}
+	if !snapshot.Manifest.Verified {
+		t.Fatal("Manifest.Verified = false, want true")
+	}
+	if snapshot.Manifest.ContractVersion != snapshot.ContractVersion {
+		t.Fatalf("Manifest.ContractVersion = %d, want %d", snapshot.Manifest.ContractVersion, snapshot.ContractVersion)
+	}
+	if snapshot.Manifest.DatabaseScope != snapshot.DatabaseScope {
+		t.Fatalf("Manifest.DatabaseScope = %q, want %q", snapshot.Manifest.DatabaseScope, snapshot.DatabaseScope)
+	}
+	if snapshot.Manifest.ExportScope != snapshot.ExportScope {
+		t.Fatalf("Manifest.ExportScope = %q, want %q", snapshot.Manifest.ExportScope, snapshot.ExportScope)
+	}
+	if snapshot.Manifest.SchemaVersion != snapshot.SchemaVersion {
+		t.Fatalf("Manifest.SchemaVersion = %d, want %d", snapshot.Manifest.SchemaVersion, snapshot.SchemaVersion)
+	}
+	if snapshot.Manifest.ProjectID != snapshot.ProjectID {
+		t.Fatalf("Manifest.ProjectID = %q, want %q", snapshot.Manifest.ProjectID, snapshot.ProjectID)
+	}
+	if snapshot.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", snapshot.ProjectName, filepath.Base(workingDir))
+	}
+	if snapshot.ProjectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", snapshot.ProjectCurrentPath, workingDir)
+	}
+	if snapshot.Manifest.ProjectName != snapshot.ProjectName {
+		t.Fatalf("Manifest.ProjectName = %q, want %q", snapshot.Manifest.ProjectName, snapshot.ProjectName)
+	}
+	if snapshot.Manifest.ProjectCurrentPath != snapshot.ProjectCurrentPath {
+		t.Fatalf("Manifest.ProjectCurrentPath = %q, want %q", snapshot.Manifest.ProjectCurrentPath, snapshot.ProjectCurrentPath)
+	}
+	if snapshot.Manifest.IntegrityCheck != "ok" {
+		t.Fatalf("Manifest.IntegrityCheck = %q, want ok", snapshot.Manifest.IntegrityCheck)
+	}
+	if snapshot.Manifest.ForeignKeyCheck != "ok" {
+		t.Fatalf("Manifest.ForeignKeyCheck = %q, want ok", snapshot.Manifest.ForeignKeyCheck)
+	}
+	if snapshot.Manifest.RowCounts["project_paths"] != 1 || snapshot.Manifest.RowCounts["specs"] != 1 || snapshot.Manifest.RowCounts["tasks"] != 1 {
+		t.Fatalf("manifest row counts = %#v, want exported project path, spec, and task counts", snapshot.Manifest.RowCounts)
+	}
+	if snapshot.Manifest.TotalRows == 0 {
+		t.Fatal("Manifest.TotalRows = 0, want exported row count")
+	}
+	if len(snapshot.Tables["project_paths"]) != 1 {
+		t.Fatalf("project_paths rows = %#v, want exported project path row", snapshot.Tables["project_paths"])
+	}
+	if snapshot.Tables["project_paths"][0]["path"] != workingDir {
+		t.Fatalf("project path row = %#v, want path %q", snapshot.Tables["project_paths"][0], workingDir)
 	}
 	if len(snapshot.Tables["specs"]) != 1 || len(snapshot.Tables["tasks"]) != 1 {
 		t.Fatalf("tables = %#v, want exported spec and task rows", snapshot.Tables)
@@ -2336,12 +5113,23 @@ func TestRunnerStateExportTriageMarkdown(t *testing.T) {
 	}
 
 	output := stdout.String()
-	for _, want := range []string{"# Triage Export", "Audience: external", "## Ideas", "## Sparks", "## Brainstorms", "internal reference"} {
+	for _, want := range []string{
+		"# Triage Export",
+		"Audience: external",
+		"## Project Context",
+		"- Scope: global database, project export",
+		"- Project: `proj_",
+		"- Project name: " + filepath.Base(workingDir),
+		"## Ideas",
+		"## Sparks",
+		"## Brainstorms",
+		"internal reference",
+	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
 	}
-	for _, banned := range []string{"SPEC-001", "TASK-002", ".agents/", "Track A", "Phase 2"} {
+	for _, banned := range []string{"SPEC-001", "TASK-002", ".agents/", "Track A", "Phase 2", "Project path:", "Database:"} {
 		if strings.Contains(output, banned) {
 			t.Fatalf("output leaked %q:\n%s", banned, output)
 		}
@@ -2396,6 +5184,10 @@ status: final
 	for _, want := range []string{
 		"# Release Readiness Export",
 		"Audience: external",
+		"## Project Context",
+		"- Scope: global database, project export",
+		"- Project: `proj_",
+		"- Project name: " + filepath.Base(workingDir),
 		"Release readiness: not ready",
 		"Specs: 1 active, 0 complete, 0 archived",
 		"Tasks: 1 unresolved, 0 done, 0 archived",
@@ -2409,7 +5201,7 @@ status: final
 			t.Fatalf("output = %q, want %q", output, want)
 		}
 	}
-	for _, banned := range []string{"SPEC-001", "TASK-001", ".agents/", "Track A", "Phase 2"} {
+	for _, banned := range []string{"SPEC-001", "TASK-001", ".agents/", "Track A", "Phase 2", "Project path:", "Database:"} {
 		if strings.Contains(output, banned) {
 			t.Fatalf("output leaked %q:\n%s", banned, output)
 		}
@@ -2457,6 +5249,12 @@ Imported spec prose.
 	for _, want := range []string{
 		"# Spec Export",
 		"Audience: internal",
+		"## Project Context",
+		"- Scope: global database, project export",
+		"- Project: `proj_",
+		"- Project name: " + filepath.Base(workingDir),
+		"- Project path: `" + workingDir + "`",
+		"- Database: `" + filepath.Join(stateHome, "loaf", "loaf.sqlite") + "`",
 		"Spec: `SPEC-001`",
 		"Title: Example Spec",
 		"Status: implementing",
@@ -2510,6 +5308,12 @@ claude_session_id: harness-export
 	for _, want := range []string{
 		"# Session Export",
 		"Audience: internal",
+		"## Project Context",
+		"- Scope: global database, project export",
+		"- Project: `proj_",
+		"- Project name: " + filepath.Base(workingDir),
+		"- Project path: `" + workingDir + "`",
+		"- Database: `" + filepath.Join(stateHome, "loaf", "loaf.sqlite") + "`",
 		"Session: `20260528-session`",
 		"Branch: `feature/session-export`",
 		"Harness session: `harness-export`",
@@ -2560,6 +5364,32 @@ status: active
 	if !strings.Contains(reportOut.String(), "# Session Export") {
 		t.Fatalf("report output = %q, want session export markdown", reportOut.String())
 	}
+
+	var sessionJSONOut bytes.Buffer
+	if err := (Runner{Stdout: &sessionJSONOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "generate", "session", "20260528-session", "--json"}); err != nil {
+		t.Fatalf("report generate session --json error = %v", err)
+	}
+	var sessionJSON state.MarkdownExport
+	if err := json.Unmarshal(sessionJSONOut.Bytes(), &sessionJSON); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", sessionJSONOut.String(), err)
+	}
+	if sessionJSON.Command != "report generate session" || sessionJSON.ExportKind != state.ExportKindSession || sessionJSON.Audience != state.ExportAudienceLocal {
+		t.Fatalf("session JSON wrapper = %#v, want session report command and local audience", sessionJSON)
+	}
+	assertCLIProjectContext(t, workingDir, sessionJSON.ContractVersion, sessionJSON.DatabaseScope, sessionJSON.DatabasePath, sessionJSON.ProjectID, sessionJSON.ProjectName, sessionJSON.ProjectCurrentPath)
+
+	var sessionReportJSONOut bytes.Buffer
+	if err := (Runner{Stdout: &sessionReportJSONOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "report", "20260528-session", "--json"}); err != nil {
+		t.Fatalf("session report --json error = %v", err)
+	}
+	var sessionReportJSON state.MarkdownExport
+	if err := json.Unmarshal(sessionReportJSONOut.Bytes(), &sessionReportJSON); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", sessionReportJSONOut.String(), err)
+	}
+	if sessionReportJSON.Command != "session report" || sessionReportJSON.ExportKind != state.ExportKindSession || sessionReportJSON.Content != sessionJSON.Content {
+		t.Fatalf("session report JSON wrapper = %#v, want session report command and export content parity", sessionReportJSON)
+	}
+	assertCLIProjectContext(t, workingDir, sessionReportJSON.ContractVersion, sessionReportJSON.DatabaseScope, sessionReportJSON.DatabasePath, sessionReportJSON.ProjectID, sessionReportJSON.ProjectName, sessionReportJSON.ProjectCurrentPath)
 }
 
 func TestRunnerReportGenerateTriageAndReleaseReadinessMatchStateExports(t *testing.T) {
@@ -2583,6 +5413,13 @@ func TestRunnerReportGenerateTriageAndReleaseReadinessMatchStateExports(t *testi
 	if triageReport.String() != triageExport.String() {
 		t.Fatalf("triage report output differs from state export:\nreport=%s\nexport=%s", triageReport.String(), triageExport.String())
 	}
+	var triageReportFormat bytes.Buffer
+	if err := (Runner{Stdout: &triageReportFormat, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "generate", "triage", "--format", "markdown"}); err != nil {
+		t.Fatalf("report generate triage --format markdown error = %v", err)
+	}
+	if triageReportFormat.String() != triageExport.String() {
+		t.Fatalf("triage report --format output differs from state export:\nreport=%s\nexport=%s", triageReportFormat.String(), triageExport.String())
+	}
 
 	var releaseExport bytes.Buffer
 	if err := (Runner{Stdout: &releaseExport, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "export", "release-readiness", "--format", "markdown"}); err != nil {
@@ -2597,6 +5434,66 @@ func TestRunnerReportGenerateTriageAndReleaseReadinessMatchStateExports(t *testi
 	}
 	if !strings.Contains(releaseReport.String(), "# Release Readiness Export") {
 		t.Fatalf("release report output = %q, want release readiness markdown", releaseReport.String())
+	}
+}
+
+func TestRunnerReportGenerateJSONContracts(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"idea", "capture", "--title", "JSON report follow-up"}); err != nil {
+		t.Fatalf("idea capture error = %v", err)
+	}
+
+	var jsonOut bytes.Buffer
+	if err := (Runner{Stdout: &jsonOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "generate", "triage", "--format", "markdown", "--json"}); err != nil {
+		t.Fatalf("report generate triage --format markdown --json error = %v", err)
+	}
+	var export state.MarkdownExport
+	if err := json.Unmarshal(jsonOut.Bytes(), &export); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", jsonOut.String(), err)
+	}
+	if export.ExportKind != state.ExportKindTriage || export.Format != state.ExportFormatMarkdown || export.Audience != state.ExportAudienceExternal {
+		t.Fatalf("export wrapper = %#v, want triage markdown external", export)
+	}
+	if export.Command != "report generate triage" {
+		t.Fatalf("export.Command = %q, want report generate triage", export.Command)
+	}
+	if export.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("export.ContractVersion = %d, want %d", export.ContractVersion, state.StateJSONContractVersion)
+	}
+	if export.DatabaseScope != "global" || export.ExportScope != "project" || export.ProjectID == "" || export.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("export context = %#v, want global project identity", export)
+	}
+	if export.DatabasePath != "" || export.ProjectCurrentPath != "" {
+		t.Fatalf("external export context = %#v, want no local paths", export)
+	}
+	if !strings.Contains(export.Content, "# Triage Export") || !strings.Contains(export.Content, "## Project Context") {
+		t.Fatalf("export content = %q, want triage markdown with project context", export.Content)
+	}
+
+	var formatErrorOut bytes.Buffer
+	err := (Runner{Stdout: &formatErrorOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "generate", "triage", "--format", "json", "--json"})
+	if err == nil {
+		t.Fatal("report generate triage --format json --json error = nil, want rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	formatError := decodeCommandError(t, formatErrorOut.Bytes())
+	if formatError.Command != "report generate triage" || !strings.Contains(formatError.Error, "supports only --format markdown") {
+		t.Fatalf("JSON error = %#v, want unsupported-format report generate error", formatError)
+	}
+
+	var missingOut bytes.Buffer
+	err = (Runner{Stdout: &missingOut, WorkingDir: realpath(t, t.TempDir()), StateHome: t.TempDir()}).Run([]string{"report", "generate", "triage", "--json"})
+	if err == nil {
+		t.Fatal("report generate triage --json missing-state error = nil, want rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	missingError := decodeCommandError(t, missingOut.Bytes())
+	if missingError.Command != "report generate triage" || !strings.Contains(missingError.Error, "SQLite state database is not initialized") {
+		t.Fatalf("JSON error = %#v, want missing-state report generate error", missingError)
 	}
 }
 
@@ -2645,6 +5542,17 @@ func TestRunnerReportGenerateRejectsMissingInvalidUnsupportedState(t *testing.T)
 	if !strings.Contains(err.Error(), "SQLite state database is not initialized") {
 		t.Fatalf("error = %v, want initialization message", err)
 	}
+	for _, want := range []string{
+		"scope: global database",
+		"database:",
+		filepath.Join(stateHome, "loaf", "loaf.sqlite"),
+		"next: run `loaf state status`",
+		"loaf state migrate markdown --apply",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %v, want %q", err, want)
+		}
+	}
 
 	err = Runner{
 		Stdout:     &bytes.Buffer{},
@@ -2689,6 +5597,7 @@ func TestRunnerReportLifecycleUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if created.Report.Alias != "report-release-readiness" || created.Report.Status != "draft" || created.Kind != "audit" || created.Source != "manual" {
 		t.Fatalf("created = %#v, want draft report", created)
 	}
+	assertCLIReportContext(t, created.ContractVersion, created.DatabaseScope, created.DatabasePath, created.ProjectID, created.ProjectName, created.ProjectCurrentPath, workingDir)
 
 	var draftListOut bytes.Buffer
 	if err := (Runner{Stdout: &draftListOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "list", "--json"}); err != nil {
@@ -2698,6 +5607,7 @@ func TestRunnerReportLifecycleUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if draftReports.Reports["report-release-readiness"].Status != "draft" {
 		t.Fatalf("draft reports = %#v, want draft report", draftReports.Reports)
 	}
+	assertCLIReportContext(t, draftReports.ContractVersion, draftReports.DatabaseScope, draftReports.DatabasePath, draftReports.ProjectID, draftReports.ProjectName, draftReports.ProjectCurrentPath, workingDir)
 
 	var finalizeOut bytes.Buffer
 	if err := (Runner{Stdout: &finalizeOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "finalize", "report-release-readiness", "--json"}); err != nil {
@@ -2707,6 +5617,7 @@ func TestRunnerReportLifecycleUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if finalized.Previous != "draft" || finalized.Status != "final" {
 		t.Fatalf("finalized = %#v, want final transition", finalized)
 	}
+	assertCLIReportContext(t, finalized.ContractVersion, finalized.DatabaseScope, finalized.DatabasePath, finalized.ProjectID, finalized.ProjectName, finalized.ProjectCurrentPath, workingDir)
 
 	var archiveOut bytes.Buffer
 	if err := (Runner{Stdout: &archiveOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "archive", "report-release-readiness", "--json"}); err != nil {
@@ -2716,6 +5627,7 @@ func TestRunnerReportLifecycleUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if archived.Previous != "final" || archived.Status != "archived" {
 		t.Fatalf("archived = %#v, want archived transition", archived)
 	}
+	assertCLIReportContext(t, archived.ContractVersion, archived.DatabaseScope, archived.DatabasePath, archived.ProjectID, archived.ProjectName, archived.ProjectCurrentPath, workingDir)
 
 	var archivedListOut bytes.Buffer
 	if err := (Runner{Stdout: &archivedListOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "list", "--json", "--status", "archived"}); err != nil {
@@ -2725,6 +5637,7 @@ func TestRunnerReportLifecycleUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if archivedReports.Reports["report-release-readiness"].Status != "archived" {
 		t.Fatalf("archived reports = %#v, want archived report", archivedReports.Reports)
 	}
+	assertCLIReportContext(t, archivedReports.ContractVersion, archivedReports.DatabaseScope, archivedReports.DatabasePath, archivedReports.ProjectID, archivedReports.ProjectName, archivedReports.ProjectCurrentPath, workingDir)
 
 	afterFiles := repoFileList(t, workingDir)
 	if strings.Join(afterFiles, "\n") != strings.Join(beforeFiles, "\n") {
@@ -2748,6 +5661,9 @@ func TestRunnerReportLifecycleUsesMarkdownFilesWhenMarkdownOnly(t *testing.T) {
 	created := decodeReportCreateResult(t, createOut.Bytes())
 	if created.Report.Status != "draft" || created.Kind != "audit" || created.Source != "manual" || !strings.HasSuffix(created.Report.Alias, "-audit-release-readiness") {
 		t.Fatalf("created = %#v, want markdown draft report", created)
+	}
+	if created.ContractVersion != 0 || created.DatabaseScope != "" || created.DatabasePath != "" || created.ProjectID != "" || created.ProjectName != "" || created.ProjectCurrentPath != "" {
+		t.Fatalf("created markdown context = %#v, want no SQLite context", created)
 	}
 	reportFile := filepath.Join(workingDir, ".agents", "reports", created.Report.Alias+".md")
 	reportRaw, err := os.ReadFile(reportFile)
@@ -2782,6 +5698,9 @@ func TestRunnerReportLifecycleUsesMarkdownFilesWhenMarkdownOnly(t *testing.T) {
 	if listed.Reports[created.Report.Alias].Status != "draft" || listed.Reports[created.Report.Alias].Kind != "audit" {
 		t.Fatalf("reports = %#v, want created markdown report", listed.Reports)
 	}
+	if listed.ContractVersion != 0 || listed.DatabaseScope != "" || listed.DatabasePath != "" || listed.ProjectID != "" || listed.ProjectName != "" || listed.ProjectCurrentPath != "" {
+		t.Fatalf("listed markdown context = %#v, want no SQLite context", listed)
+	}
 
 	var finalizeOut bytes.Buffer
 	err = Runner{
@@ -2795,6 +5714,9 @@ func TestRunnerReportLifecycleUsesMarkdownFilesWhenMarkdownOnly(t *testing.T) {
 	finalized := decodeReportStatusResult(t, finalizeOut.Bytes())
 	if finalized.Previous != "draft" || finalized.Status != "final" || finalized.Report.Alias != created.Report.Alias {
 		t.Fatalf("finalized = %#v, want draft to final", finalized)
+	}
+	if finalized.ContractVersion != 0 || finalized.DatabaseScope != "" || finalized.DatabasePath != "" || finalized.ProjectID != "" || finalized.ProjectName != "" || finalized.ProjectCurrentPath != "" {
+		t.Fatalf("finalized markdown context = %#v, want no SQLite context", finalized)
 	}
 	reportRaw, err = os.ReadFile(reportFile)
 	if err != nil {
@@ -2820,6 +5742,9 @@ func TestRunnerReportLifecycleUsesMarkdownFilesWhenMarkdownOnly(t *testing.T) {
 	archived := decodeReportStatusResult(t, archiveOut.Bytes())
 	if archived.Previous != "final" || archived.Status != "archived" || archived.Report.Alias != created.Report.Alias {
 		t.Fatalf("archived = %#v, want final to archived", archived)
+	}
+	if archived.ContractVersion != 0 || archived.DatabaseScope != "" || archived.DatabasePath != "" || archived.ProjectID != "" || archived.ProjectName != "" || archived.ProjectCurrentPath != "" {
+		t.Fatalf("archived markdown context = %#v, want no SQLite context", archived)
 	}
 	if _, err := os.Stat(reportFile); !os.IsNotExist(err) {
 		t.Fatalf("active report stat error = %v, want removed", err)
@@ -3094,16 +6019,41 @@ func TestRunnerStateExportTriageMarkdownDoesNotCreateRepoFiles(t *testing.T) {
 func TestRunnerStateExportRejectsMissingInvalidUnsupportedState(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
+
 	err := Runner{
 		Stdout:     &bytes.Buffer{},
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "export", "triage", "--format", "markdown"})
+	if err == nil {
+		t.Fatal("state export triage missing-state error = nil, want rejection")
+	}
+	for _, want := range []string{
+		"SQLite state database is not initialized",
+		"scope: global database",
+		"database:",
+		filepath.Join(stateHome, "loaf", "loaf.sqlite"),
+		"next: run `loaf state status`",
+		"loaf state migrate markdown --apply",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %v, want %q", err, want)
+		}
+	}
+
+	var missingOut bytes.Buffer
+	err = Runner{
+		Stdout:     &missingOut,
 		WorkingDir: workingDir,
 		StateHome:  stateHome,
 	}.Run([]string{"state", "export", "all", "--format", "json"})
 	if err == nil {
 		t.Fatal("state export missing-state error = nil, want rejection")
 	}
-	if !strings.Contains(err.Error(), "SQLite state database is not initialized") {
-		t.Fatalf("error = %v, want initialization message", err)
+	assertSilentExitCode(t, err, 1)
+	missingOutput := decodeCommandError(t, missingOut.Bytes())
+	if missingOutput.Command != "state export" || !strings.Contains(missingOutput.Error, "SQLite state database is not initialized") {
+		t.Fatalf("JSON error = %#v, want initialization message", missingOutput)
 	}
 
 	err = Runner{
@@ -3154,6 +6104,21 @@ func TestRunnerStateExportRejectsMissingInvalidUnsupportedState(t *testing.T) {
 		t.Fatalf("error = %v, want unsupported format message", err)
 	}
 
+	var jsonMarkdownOut bytes.Buffer
+	err = Runner{
+		Stdout:     &jsonMarkdownOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "export", "triage", "--json"})
+	if err == nil {
+		t.Fatal("state export triage --json error = nil, want rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	jsonMarkdownError := decodeCommandError(t, jsonMarkdownOut.Bytes())
+	if jsonMarkdownError.Command != "state export" || !strings.Contains(jsonMarkdownError.Error, "--json is only supported for state export all") {
+		t.Fatalf("JSON error = %#v, want markdown export json-alias rejection", jsonMarkdownError)
+	}
+
 	root, err := project.ResolveRoot(workingDir)
 	if err != nil {
 		t.Fatalf("ResolveRoot() error = %v", err)
@@ -3169,16 +6134,105 @@ func TestRunnerStateExportRejectsMissingInvalidUnsupportedState(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
+	var invalidOut bytes.Buffer
 	err = Runner{
-		Stdout:     &bytes.Buffer{},
+		Stdout:     &invalidOut,
 		WorkingDir: workingDir,
 		StateHome:  stateHome,
 	}.Run([]string{"state", "export", "all", "--format", "json"})
 	if err == nil {
 		t.Fatal("state export invalid-state error = nil, want rejection")
 	}
-	if !strings.Contains(err.Error(), "state database is invalid; run `loaf state doctor`") {
-		t.Fatalf("error = %v, want doctor message", err)
+	assertSilentExitCode(t, err, 1)
+	invalidOutput := decodeCommandError(t, invalidOut.Bytes())
+	if invalidOutput.Command != "state export" || !strings.Contains(invalidOutput.Error, "state database is invalid; run `loaf state doctor`") {
+		t.Fatalf("JSON error = %#v, want doctor message", invalidOutput)
+	}
+}
+
+func TestRunnerStateExportJSONErrorsAreMachineReadable(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "missing state",
+			args: []string{"state", "export", "all", "--format", "json"},
+			want: "SQLite state database is not initialized",
+		},
+		{
+			name: "unknown option",
+			args: []string{"state", "export", "all", "--format=json", "--bogus"},
+			want: "unknown option",
+		},
+		{
+			name: "unsupported json export kind",
+			args: []string{"state", "export", "spec", "SPEC-001", "--format", "json"},
+			want: "state export format \"json\" is not implemented yet",
+		},
+		{
+			name: "json alias after markdown format",
+			args: []string{"state", "export", "all", "--format", "markdown", "--json"},
+			want: "cannot combine --json with --format markdown",
+		},
+		{
+			name: "json alias before markdown format",
+			args: []string{"state", "export", "all", "--json", "--format", "markdown"},
+			want: "cannot combine --json with --format markdown",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: workingDir,
+				StateHome:  stateHome,
+			}.Run(tc.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want JSON error", tc.args)
+			}
+			assertSilentExitCode(t, err, 1)
+			output := decodeCommandError(t, stdout.Bytes())
+			if output.Command != "state export" || !strings.Contains(output.Error, tc.want) {
+				t.Fatalf("JSON error = %#v, want state export error containing %q", output, tc.want)
+			}
+		})
+	}
+
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	databasePath, err := (state.PathResolver{StateHome: stateHome}).DatabasePath(root)
+	if err != nil {
+		t.Fatalf("DatabasePath() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(databasePath), 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(databasePath, []byte("not sqlite"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err = Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "export", "all", "--format", "json"})
+	if err == nil {
+		t.Fatal("state export invalid-state error = nil, want JSON rejection")
+	}
+	assertSilentExitCode(t, err, 1)
+	output := decodeCommandError(t, stdout.Bytes())
+	if output.Command != "state export" || !strings.Contains(output.Error, "state database is invalid; run `loaf state doctor`") {
+		t.Fatalf("JSON error = %#v, want invalid database message", output)
 	}
 }
 
@@ -3330,6 +6384,7 @@ func TestRunnerSessionStartUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if start.Action != state.SessionStartActionCreated || start.Session.Alias == "" || start.HarnessSessionID != "harness-cli-123456" {
 		t.Fatalf("start = %#v, want created harness-backed session", start)
 	}
+	assertCLISessionContext(t, start.ContractVersion, start.DatabaseScope, start.DatabasePath, start.ProjectID, start.ProjectName, start.ProjectCurrentPath, workingDir)
 
 	var showOut bytes.Buffer
 	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "show", start.Session.Alias, "--json"}); err != nil {
@@ -3342,6 +6397,7 @@ func TestRunnerSessionStartUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if len(show.Session.JournalEntries) != 1 || show.Session.JournalEntries[0].EntryType != "session" || show.Session.JournalEntries[0].Scope != "start" {
 		t.Fatalf("journal entries = %#v, want linked session(start)", show.Session.JournalEntries)
 	}
+	assertCLISessionContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
 }
 
 func TestRunnerSessionStartUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
@@ -3368,6 +6424,9 @@ func TestRunnerSessionStartUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
 	start := decodeSessionStart(t, stdout.Bytes())
 	if start.Action != state.SessionStartActionCreated || start.Session.Alias == "" || start.HarnessSessionID != "markdown-start-111111" {
 		t.Fatalf("start = %#v, want created markdown session", start)
+	}
+	if start.ContractVersion != 0 || start.DatabaseScope != "" || start.DatabasePath != "" || start.ProjectID != "" || start.ProjectName != "" || start.ProjectCurrentPath != "" {
+		t.Fatalf("markdown start context = %#v, want no SQLite context", start)
 	}
 	sessionRel := filepath.ToSlash(filepath.Join("sessions", start.Session.Alias+".md"))
 	created := readCLIAgentsFile(t, workingDir, sessionRel)
@@ -3475,6 +6534,7 @@ func TestRunnerSessionEndTargetsHarnessSessionInSQLiteState(t *testing.T) {
 	if ended.Action != state.SessionEndActionStopped || ended.Session.ID != target.Session.ID || len(ended.JournalEntryIDs) != 2 {
 		t.Fatalf("ended = %#v, want stopped target session", ended)
 	}
+	assertCLISessionContext(t, ended.ContractVersion, ended.DatabaseScope, ended.DatabasePath, ended.ProjectID, ended.ProjectName, ended.ProjectCurrentPath, workingDir)
 
 	var targetShowOut bytes.Buffer
 	if err := (Runner{Stdout: &targetShowOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "show", target.Session.Alias, "--json"}); err != nil {
@@ -3484,6 +6544,7 @@ func TestRunnerSessionEndTargetsHarnessSessionInSQLiteState(t *testing.T) {
 	if targetShow.Session.Status != "stopped" {
 		t.Fatalf("target status = %q, want stopped", targetShow.Session.Status)
 	}
+	assertCLISessionContext(t, targetShow.ContractVersion, targetShow.DatabaseScope, targetShow.DatabasePath, targetShow.ProjectID, targetShow.ProjectName, targetShow.ProjectCurrentPath, workingDir)
 
 	var otherShowOut bytes.Buffer
 	if err := (Runner{Stdout: &otherShowOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "show", other.Session.Alias, "--json"}); err != nil {
@@ -3505,6 +6566,7 @@ func TestRunnerSessionEndTargetsHarnessSessionInSQLiteState(t *testing.T) {
 	if _, ok := list.Sessions[other.Session.Alias]; !ok {
 		t.Fatalf("active session list missing active session %s", other.Session.Alias)
 	}
+	assertCLISessionContext(t, list.ContractVersion, list.DatabaseScope, list.DatabasePath, list.ProjectID, list.ProjectName, list.ProjectCurrentPath, workingDir)
 }
 
 func TestRunnerSessionEndIfActiveNoopsInSQLiteState(t *testing.T) {
@@ -3532,6 +6594,7 @@ func TestRunnerSessionEndIfActiveNoopsInSQLiteState(t *testing.T) {
 	if ended.Action != state.SessionEndActionNoop || ended.NoopReason == "" {
 		t.Fatalf("ended = %#v, want noop with reason", ended)
 	}
+	assertCLISessionContext(t, ended.ContractVersion, ended.DatabaseScope, ended.DatabasePath, ended.ProjectID, ended.ProjectName, ended.ProjectCurrentPath, workingDir)
 }
 
 func TestRunnerSessionEndUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
@@ -3570,6 +6633,9 @@ last_updated: 2026-06-10T10:00:00Z
 	ended := decodeSessionEnd(t, stdout.Bytes())
 	if ended.Action != state.SessionEndActionStopped || ended.Session.Alias != "20260610-active" || ended.Session.Status != "stopped" || len(ended.JournalEntryIDs) != 2 {
 		t.Fatalf("ended = %#v, want stopped markdown session", ended)
+	}
+	if ended.ContractVersion != 0 || ended.DatabaseScope != "" || ended.DatabasePath != "" || ended.ProjectID != "" || ended.ProjectName != "" || ended.ProjectCurrentPath != "" {
+		t.Fatalf("markdown end context = %#v, want no SQLite context", ended)
 	}
 	stopped := readCLIAgentsFile(t, workingDir, "sessions/20260610-active.md")
 	for _, want := range []string{"status: stopped", "session(end): session ended", "session(stop):   === SESSION STOPPED ==="} {
@@ -3697,6 +6763,7 @@ func TestRunnerSessionArchiveTargetsHarnessSessionInSQLiteState(t *testing.T) {
 	if archived.Action != state.SessionArchiveActionArchived || archived.Session.ID != target.Session.ID || archived.Session.Status != "archived" {
 		t.Fatalf("archived = %#v, want archived target session", archived)
 	}
+	assertCLISessionContext(t, archived.ContractVersion, archived.DatabaseScope, archived.DatabasePath, archived.ProjectID, archived.ProjectName, archived.ProjectCurrentPath, workingDir)
 
 	var listOut bytes.Buffer
 	if err := (Runner{Stdout: &listOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "list", "--json"}); err != nil {
@@ -3886,7 +6953,23 @@ func TestRunnerStateMigrateMarkdownJSONDryRunDoesNotCreateDatabase(t *testing.T)
 		t.Fatalf("state migrate markdown --dry-run --json error = %v", err)
 	}
 
-	plan := decodeMarkdownMigrationPlan(t, stdout.Bytes())
+	preview := decodeMarkdownMigrationPreviewResult(t, stdout.Bytes())
+	plan := preview.MarkdownMigrationPlan
+	if plan.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", plan.ContractVersion, state.StateJSONContractVersion)
+	}
+	if preview.DatabaseScope != "global" || preview.ImportScope != "project" {
+		t.Fatalf("preview = %#v, want global database project import scope", preview)
+	}
+	if preview.DatabasePath != databasePath {
+		t.Fatalf("DatabasePath = %q, want %q", preview.DatabasePath, databasePath)
+	}
+	if preview.ProjectName != filepath.Base(workingDir) || preview.ProjectCurrentPath != workingDir {
+		t.Fatalf("preview = %#v, want project name %q and path %s", preview, filepath.Base(workingDir), workingDir)
+	}
+	if preview.Applied {
+		t.Fatal("Applied = true, want false for dry-run")
+	}
 	if plan.Specs != 1 ||
 		plan.Tasks != 1 ||
 		plan.Ideas != 1 ||
@@ -3925,8 +7008,19 @@ func TestRunnerStateMigrateMarkdownHumanDryRun(t *testing.T) {
 	if !strings.Contains(output, "loaf state migrate markdown --dry-run") {
 		t.Fatalf("output = %q, want dry-run heading", output)
 	}
-	if !strings.Contains(output, "ideas: 1") {
-		t.Fatalf("output = %q, want idea count", output)
+	for _, want := range []string{
+		"scope: global database, project import",
+		"database:",
+		"project: (not initialized)",
+		"project name:",
+		"project path:",
+		"applied: false",
+		"ideas: 1",
+		"next: rerun with --apply to import Markdown into the global database",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
 	}
 }
 
@@ -4071,6 +7165,9 @@ status: open
 	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM relationships WHERE relationship_type = ? AND reason = ?`, "resolved_by", "matrix link"); got != 0 {
 		t.Fatalf("matrix resolved_by link count = %d, want 0 after link remove", got)
 	}
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM relationships WHERE origin IS NULL OR origin = ''`); got != 0 {
+		t.Fatalf("relationships without origin = %d, want 0", got)
+	}
 }
 
 func TestRunnerStateMigrateMarkdownApplyJSON(t *testing.T) {
@@ -4091,11 +7188,32 @@ func TestRunnerStateMigrateMarkdownApplyJSON(t *testing.T) {
 	}
 
 	result := decodeMarkdownMigrationResult(t, stdout.Bytes())
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
 	if !result.Applied {
 		t.Fatal("Applied = false, want true")
 	}
+	if result.Action != state.MarkdownMigrationActionApply {
+		t.Fatalf("Action = %q, want %q", result.Action, state.MarkdownMigrationActionApply)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.ImportScope != "project" {
+		t.Fatalf("ImportScope = %q, want project", result.ImportScope)
+	}
 	if result.DatabasePath == "" {
 		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(workingDir))
+	}
+	if result.ProjectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, workingDir)
 	}
 	if _, err := os.Stat(result.DatabasePath); err != nil {
 		t.Fatalf("database was not created: %v", err)
@@ -4105,12 +7223,97 @@ func TestRunnerStateMigrateMarkdownApplyJSON(t *testing.T) {
 	}
 }
 
+func TestRunnerStateMigrateMarkdownApplyHuman(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "ideas/20260528-apply-idea.md", "# Apply Idea\n")
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "migrate", "markdown", "--apply"})
+	if err != nil {
+		t.Fatalf("state migrate markdown --apply error = %v", err)
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"loaf state migrate markdown --apply",
+		"scope: global database, project import",
+		"database:",
+		"project:",
+		"project name:",
+		"project path:",
+		"action: apply",
+		"applied: true",
+		"ideas: 1",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
+	}
+	if strings.Contains(output, "next:") {
+		t.Fatalf("output = %q, did not want dry-run next action after apply", output)
+	}
+}
+
+func TestRunnerStateMigrateMarkdownApplyJSONDoesNotRequireTasksJSON(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-markdown-only.md", `---
+id: TASK-001
+title: Markdown Only Task
+status: todo
+priority: P2
+depends_on: []
+---
+
+# Markdown Only Task
+`)
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"migrate", "markdown", "--apply", "--json"})
+	if err != nil {
+		t.Fatalf("migrate markdown --apply --json error = %v", err)
+	}
+
+	result := decodeMarkdownMigrationResult(t, stdout.Bytes())
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if !result.Applied || result.Tasks != 1 || result.Relationships != 0 {
+		t.Fatalf("result = %#v, want one markdown-only task with no relationships", result)
+	}
+	if _, err := os.Stat(result.DatabasePath); err != nil {
+		t.Fatalf("database was not created: %v", err)
+	}
+}
+
 func TestRunnerStateMigrateMarkdownResumeJSON(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
 	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-resume.md", "# Resume Spec\n")
 	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-resume.md", "# Resume Task\n")
 	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{"TASK-001":{"spec":"SPEC-001"}}}`)
+	sourcePaths := []string{
+		filepath.Join(workingDir, ".agents", "specs", "SPEC-001-resume.md"),
+		filepath.Join(workingDir, ".agents", "tasks", "TASK-001-resume.md"),
+		filepath.Join(workingDir, ".agents", "TASKS.json"),
+	}
+	sourceBytes := map[string][]byte{}
+	for _, path := range sourcePaths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read source %s: %v", path, err)
+		}
+		sourceBytes[path] = content
+	}
 
 	var firstStdout bytes.Buffer
 	err := Runner{
@@ -4125,6 +7328,9 @@ func TestRunnerStateMigrateMarkdownResumeJSON(t *testing.T) {
 	firstResult := decodeMarkdownMigrationResult(t, firstStdout.Bytes())
 	if !firstResult.Applied {
 		t.Fatal("Applied = false, want true")
+	}
+	if firstResult.Action != state.MarkdownMigrationActionResume {
+		t.Fatalf("first Action = %q, want %q", firstResult.Action, state.MarkdownMigrationActionResume)
 	}
 	if firstResult.DatabasePath == "" {
 		t.Fatal("DatabasePath is empty")
@@ -4144,11 +7350,23 @@ func TestRunnerStateMigrateMarkdownResumeJSON(t *testing.T) {
 	}
 
 	secondResult := decodeMarkdownMigrationResult(t, secondStdout.Bytes())
+	if secondResult.Action != state.MarkdownMigrationActionResume {
+		t.Fatalf("second Action = %q, want %q", secondResult.Action, state.MarkdownMigrationActionResume)
+	}
 	if secondResult.DatabasePath != firstResult.DatabasePath {
 		t.Fatalf("DatabasePath = %q, want %q", secondResult.DatabasePath, firstResult.DatabasePath)
 	}
 	if secondResult.Specs != 1 || secondResult.Tasks != 1 || secondResult.Relationships != 1 {
 		t.Fatalf("second result = %#v, want idempotent imported counts", secondResult)
+	}
+	for _, path := range sourcePaths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read source after resume %s: %v", path, err)
+		}
+		if !bytes.Equal(content, sourceBytes[path]) {
+			t.Fatalf("source %s changed after repeated resume", path)
+		}
 	}
 }
 
@@ -4175,8 +7393,21 @@ func TestRunnerStateMigrateMarkdownResumeHuman(t *testing.T) {
 	if !strings.Contains(output, "database: ") {
 		t.Fatalf("output = %q, want database path", output)
 	}
-	if !strings.Contains(output, "ideas: 1") {
-		t.Fatalf("output = %q, want idea count", output)
+	for _, want := range []string{"scope: global database, project import", "project:", "project name:", "project path:"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
+	}
+	for _, want := range []string{"applied: true", "ideas: 1"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
+	}
+	if !strings.Contains(output, "action: resume") {
+		t.Fatalf("output = %q, want resume action", output)
+	}
+	if strings.Contains(output, "next:") {
+		t.Fatalf("output = %q, did not want dry-run next action after resume", output)
 	}
 }
 
@@ -4229,6 +7460,588 @@ func TestRunnerStateMigrateMarkdownResumeRejectsFlagCombinations(t *testing.T) {
 	}
 }
 
+func TestRunnerStateJSONValidationErrorsAreMachineReadable(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		command string
+		want    string
+	}{
+		{
+			name:    "state markdown conflicting flags",
+			args:    []string{"state", "migrate", "markdown", "--apply", "--dry-run", "--json"},
+			command: "state migrate markdown",
+			want:    "cannot combine --apply and --dry-run",
+		},
+		{
+			name:    "top-level markdown conflicting flags",
+			args:    []string{"migrate", "markdown", "--resume", "--apply", "--json"},
+			command: "migrate markdown",
+			want:    "migrate markdown cannot combine --resume and --apply",
+		},
+		{
+			name:    "storage-home conflicting flags",
+			args:    []string{"state", "migrate", "storage-home", "--apply", "--dry-run", "--json"},
+			command: "state migrate storage-home",
+			want:    "cannot combine --apply and --dry-run",
+		},
+		{
+			name:    "legacy repair conflicting flags",
+			args:    []string{"state", "repair", "legacy-project-database", "--apply", "--dry-run", "--json"},
+			command: "state repair legacy-project-database",
+			want:    "cannot combine --apply and --dry-run",
+		},
+		{
+			name:    "relationship repair missing origin",
+			args:    []string{"state", "repair", "relationship-origin", "--dry-run", "--json"},
+			command: "state repair relationship-origin",
+			want:    "requires --origin",
+		},
+		{
+			name:    "relationship repair invalid origin",
+			args:    []string{"state", "repair", "relationship-origin", "--origin", "external", "--json"},
+			command: "state repair relationship-origin",
+			want:    "must be imported or manual",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := (Runner{
+				Stdout:     &stdout,
+				WorkingDir: realpath(t, t.TempDir()),
+				StateHome:  t.TempDir(),
+			}).Run(tc.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want JSON validation error", tc.args)
+			}
+			assertSilentExitCode(t, err, 1)
+			output := decodeCommandError(t, stdout.Bytes())
+			if output.Command != tc.command || !strings.Contains(output.Error, tc.want) {
+				t.Fatalf("JSON error = %#v, want command %q and error containing %q", output, tc.command, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunnerStateControlPlaneJSONFailureMatrix(t *testing.T) {
+	tests := []struct {
+		name               string
+		args               []string
+		command            string
+		want               string
+		wantMissingStateDB bool
+	}{
+		{
+			name:               "state path parse failure",
+			args:               []string{"state", "path", "--json", "--bogus"},
+			command:            "state path",
+			want:               "unknown option",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state path json verbose conflict",
+			args:               []string{"state", "path", "--json", "--verbose"},
+			command:            "state path",
+			want:               "cannot combine --json and --verbose",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state status parse failure",
+			args:               []string{"state", "status", "--json", "--bogus"},
+			command:            "state status",
+			want:               "unknown option",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state doctor parse failure",
+			args:               []string{"state", "doctor", "--json", "--bogus"},
+			command:            "state doctor",
+			want:               "unknown option",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state backup parse failure",
+			args:               []string{"state", "backup", "--json", "--bogus"},
+			command:            "state backup",
+			want:               "unknown option",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state backup verify missing path",
+			args:               []string{"state", "backup", "verify", "--json"},
+			command:            "state backup verify",
+			want:               "requires a backup path",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state export missing database",
+			args:               []string{"state", "export", "all", "--json"},
+			command:            "state export",
+			want:               "SQLite state database is not initialized",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state export markdown json misuse",
+			args:               []string{"state", "export", "triage", "--json"},
+			command:            "state export",
+			want:               "--json is only supported for state export all",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state repair conflicting flags",
+			args:               []string{"state", "repair", "legacy-project-database", "--dry-run", "--apply", "--json"},
+			command:            "state repair legacy-project-database",
+			want:               "cannot combine --apply and --dry-run",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "project show missing database",
+			args:               []string{"project", "show", "--json"},
+			command:            "project show",
+			want:               "state database does not exist",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "project list parse failure",
+			args:               []string{"project", "list", "--json", "--bogus"},
+			command:            "project list",
+			want:               "unknown option",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "project rename parse failure",
+			args:               []string{"project", "rename", "--json"},
+			command:            "project rename",
+			want:               "requires a name",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "project move parse failure",
+			args:               []string{"project", "move", "--from", "relative/path", "--json"},
+			command:            "project move",
+			want:               "requires absolute",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state migrate markdown conflicting flags",
+			args:               []string{"state", "migrate", "markdown", "--apply", "--dry-run", "--json"},
+			command:            "state migrate markdown",
+			want:               "cannot combine --apply and --dry-run",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "top-level migrate markdown conflicting flags",
+			args:               []string{"migrate", "markdown", "--resume", "--apply", "--json"},
+			command:            "migrate markdown",
+			want:               "cannot combine --resume and --apply",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state migrate storage-home conflicting flags",
+			args:               []string{"state", "migrate", "storage-home", "--apply", "--dry-run", "--json"},
+			command:            "state migrate storage-home",
+			want:               "cannot combine --apply and --dry-run",
+			wantMissingStateDB: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			workingDir := realpath(t, t.TempDir())
+			stateHome := t.TempDir()
+			var stdout bytes.Buffer
+			err := (Runner{
+				Stdout:     &stdout,
+				WorkingDir: workingDir,
+				StateHome:  stateHome,
+			}).Run(tc.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want JSON failure", tc.args)
+			}
+			assertSilentExitCode(t, err, 1)
+			output := decodeCommandError(t, stdout.Bytes())
+			if output.Command != tc.command || !strings.Contains(output.Error, tc.want) {
+				t.Fatalf("JSON error = %#v, want command %q and error containing %q", output, tc.command, tc.want)
+			}
+			if tc.wantMissingStateDB {
+				assertNoStateDatabase(t, workingDir, stateHome)
+			}
+		})
+	}
+}
+
+func TestRunnerStateControlPlaneJSONSuccessMatrix(t *testing.T) {
+	t.Run("initialized read-only commands preserve SQLite rows and repo files", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			args   []string
+			verify func(t *testing.T, data []byte, workingDir string)
+		}{
+			{
+				name: "state status",
+				args: []string{"state", "status", "--json"},
+				verify: func(t *testing.T, data []byte, workingDir string) {
+					t.Helper()
+					status := decodeStateStatus(t, data)
+					assertCLIProjectContext(t, workingDir, status.ContractVersion, status.DatabaseScope, status.DatabasePath, status.ProjectID, status.ProjectName, status.ProjectCurrentPath)
+					if status.Mode != state.ModeSQLiteReady {
+						t.Fatalf("Mode = %q, want %q", status.Mode, state.ModeSQLiteReady)
+					}
+				},
+			},
+			{
+				name: "state doctor",
+				args: []string{"state", "doctor", "--json"},
+				verify: func(t *testing.T, data []byte, workingDir string) {
+					t.Helper()
+					status := decodeStateStatus(t, data)
+					assertCLIProjectContext(t, workingDir, status.ContractVersion, status.DatabaseScope, status.DatabasePath, status.ProjectID, status.ProjectName, status.ProjectCurrentPath)
+					if status.Mode != state.ModeSQLiteReady {
+						t.Fatalf("Mode = %q, want %q", status.Mode, state.ModeSQLiteReady)
+					}
+					assertJSONArrayLength(t, data, "repair_plan", 0)
+				},
+			},
+			{
+				name: "state export all",
+				args: []string{"state", "export", "all", "--json"},
+				verify: func(t *testing.T, data []byte, workingDir string) {
+					t.Helper()
+					snapshot := decodeStateExportSnapshot(t, data)
+					assertCLIProjectContext(t, workingDir, snapshot.ContractVersion, snapshot.DatabaseScope, snapshot.DatabasePath, snapshot.ProjectID, snapshot.ProjectName, snapshot.ProjectCurrentPath)
+					if snapshot.ExportKind != state.ExportKindAll || snapshot.Format != state.ExportFormatJSON || snapshot.ExportScope != "project" {
+						t.Fatalf("snapshot = %#v, want all/json project export", snapshot)
+					}
+					if !snapshot.Manifest.Verified {
+						t.Fatal("Manifest.Verified = false, want true")
+					}
+				},
+			},
+			{
+				name: "project show",
+				args: []string{"project", "show", "--json"},
+				verify: func(t *testing.T, data []byte, workingDir string) {
+					t.Helper()
+					var shown state.ProjectIdentity
+					if err := json.Unmarshal(data, &shown); err != nil {
+						t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+					}
+					if shown.ContractVersion != state.StateJSONContractVersion || shown.DatabaseScope != "global" || shown.ID == "" || shown.FriendlyName != filepath.Base(workingDir) || shown.CurrentPath != workingDir {
+						t.Fatalf("project show = %#v, want stable initialized project identity for %s", shown, workingDir)
+					}
+				},
+			},
+			{
+				name: "project list",
+				args: []string{"project", "list", "--json"},
+				verify: func(t *testing.T, data []byte, workingDir string) {
+					t.Helper()
+					var listed state.ProjectList
+					if err := json.Unmarshal(data, &listed); err != nil {
+						t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+					}
+					if listed.ContractVersion != state.StateJSONContractVersion || listed.DatabaseScope != "global" || len(listed.Projects) != 1 {
+						t.Fatalf("project list = %#v, want one initialized global project", listed)
+					}
+					project := listed.Projects[0]
+					if project.ContractVersion != state.StateJSONContractVersion || project.DatabaseScope != "global" || project.ID == "" || project.FriendlyName != filepath.Base(workingDir) || project.CurrentPath != workingDir {
+						t.Fatalf("listed project = %#v, want stable initialized project identity for %s", project, workingDir)
+					}
+				},
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				workingDir := realpath(t, t.TempDir())
+				stateHome := t.TempDir()
+				if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+					t.Fatalf("state init --json error = %v", err)
+				}
+
+				before := exportAllTablesForCLI(t, workingDir, stateHome)
+				var stdout bytes.Buffer
+				if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run(tc.args); err != nil {
+					t.Fatalf("Run(%v) error = %v\nstdout:\n%s", tc.args, err, stdout.String())
+				}
+				tc.verify(t, stdout.Bytes(), workingDir)
+				after := exportAllTablesForCLI(t, workingDir, stateHome)
+				if !reflect.DeepEqual(before, after) {
+					t.Fatalf("Run(%v) mutated exported tables:\nbefore=%#v\nafter=%#v", tc.args, before, after)
+				}
+				assertNoRepositoryAgentsDir(t, workingDir)
+			})
+		}
+	})
+
+	t.Run("markdown dry-run returns JSON without creating SQLite state", func(t *testing.T) {
+		workingDir := realpath(t, t.TempDir())
+		stateHome := t.TempDir()
+		writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-example.md", "# Spec\n")
+		writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-example.md", "# Task\n")
+
+		var stdout bytes.Buffer
+		if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--dry-run", "--json"}); err != nil {
+			t.Fatalf("state migrate markdown --dry-run --json error = %v", err)
+		}
+		preview := decodeMarkdownMigrationPreviewResult(t, stdout.Bytes())
+		plan := preview.MarkdownMigrationPlan
+		if plan.ContractVersion != state.StateJSONContractVersion || plan.AgentsPath != filepath.Join(workingDir, ".agents") {
+			t.Fatalf("markdown migration plan = %#v, want contract version and agents path for dry-run", plan)
+		}
+		if preview.DatabaseScope != "global" || preview.ImportScope != "project" || preview.DatabasePath == "" || preview.Applied {
+			t.Fatalf("markdown migration preview = %#v, want non-mutating global project preview", preview)
+		}
+		if plan.Specs != 1 || plan.Tasks != 1 {
+			t.Fatalf("markdown migration plan = %#v, want one spec and one task", plan)
+		}
+		assertNoStateDatabase(t, workingDir, stateHome)
+	})
+
+	t.Run("storage-home dry-run returns JSON without copying destination", func(t *testing.T) {
+		workingDir := realpath(t, t.TempDir())
+		dataHome := t.TempDir()
+		stateHome := t.TempDir()
+		t.Setenv("XDG_DATA_HOME", dataHome)
+		t.Setenv("XDG_STATE_HOME", stateHome)
+		root, err := project.ResolveRoot(workingDir)
+		if err != nil {
+			t.Fatalf("ResolveRoot() error = %v", err)
+		}
+		legacyPath := initializeCLILegacyStateDatabase(t, root)
+		destination, err := state.PathResolver{}.DatabasePath(root)
+		if err != nil {
+			t.Fatalf("DatabasePath() error = %v", err)
+		}
+
+		var stdout bytes.Buffer
+		if err := (Runner{Stdout: &stdout, WorkingDir: workingDir}).Run([]string{"state", "migrate", "storage-home", "--dry-run", "--json"}); err != nil {
+			t.Fatalf("state migrate storage-home --dry-run --json error = %v", err)
+		}
+		var plan state.StorageHomeMigrationPlan
+		if err := json.Unmarshal(stdout.Bytes(), &plan); err != nil {
+			t.Fatalf("json.Unmarshal(%q) error = %v", stdout.String(), err)
+		}
+		if plan.ContractVersion != state.StateJSONContractVersion || plan.DatabaseScope != "global" || plan.MigrationScope != "project" || plan.Action != state.StorageHomeActionCopy || plan.Applied {
+			t.Fatalf("storage-home plan = %#v, want unapplied global/project copy dry-run", plan)
+		}
+		if plan.LegacyDatabasePath != legacyPath || plan.DatabasePath != destination {
+			t.Fatalf("storage-home paths = %q -> %q, want %q -> %q", plan.LegacyDatabasePath, plan.DatabasePath, legacyPath, destination)
+		}
+		if _, err := os.Stat(destination); !os.IsNotExist(err) {
+			t.Fatalf("destination stat error = %v, want storage-home dry-run not to copy %s", err, destination)
+		}
+		if _, err := os.Stat(legacyPath); err != nil {
+			t.Fatalf("legacy source stat error = %v, want preserved source %s", err, legacyPath)
+		}
+	})
+
+	t.Run("backup verify reads backup without live state", func(t *testing.T) {
+		workingDir := realpath(t, t.TempDir())
+		stateHome := t.TempDir()
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+			t.Fatalf("state init --json error = %v", err)
+		}
+		var backupOut bytes.Buffer
+		if err := (Runner{Stdout: &backupOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "backup", "--json"}); err != nil {
+			t.Fatalf("state backup --json error = %v", err)
+		}
+		backup := decodeStateBackupResult(t, backupOut.Bytes())
+
+		var verifyOut bytes.Buffer
+		otherWorkingDir := realpath(t, t.TempDir())
+		otherStateHome := t.TempDir()
+		if err := (Runner{Stdout: &verifyOut, WorkingDir: otherWorkingDir, StateHome: otherStateHome}).Run([]string{"state", "backup", "verify", backup.BackupPath, "--json"}); err != nil {
+			t.Fatalf("state backup verify --json error = %v", err)
+		}
+		verified := decodeStateBackupVerificationResult(t, verifyOut.Bytes())
+		if verified.ContractVersion != state.StateJSONContractVersion || !verified.Verified || verified.BackupPath != backup.BackupPath {
+			t.Fatalf("backup verification = %#v, want verified backup %s for project %s", verified, backup.BackupPath, backup.ProjectID)
+		}
+		if len(verified.Projects) != 1 || verified.Projects[0].ID != backup.ProjectID {
+			t.Fatalf("backup verification projects = %#v, want backed-up project %s", verified.Projects, backup.ProjectID)
+		}
+		otherRoot, err := project.ResolveRoot(otherWorkingDir)
+		if err != nil {
+			t.Fatalf("ResolveRoot(otherWorkingDir) error = %v", err)
+		}
+		otherDatabasePath, err := state.PathResolver{StateHome: otherStateHome}.DatabasePath(otherRoot)
+		if err != nil {
+			t.Fatalf("DatabasePath(otherWorkingDir) error = %v", err)
+		}
+		if verified.RestoreDatabasePath != otherDatabasePath {
+			t.Fatalf("RestoreDatabasePath = %q, want verifier target %q", verified.RestoreDatabasePath, otherDatabasePath)
+		}
+		assertNoStateDatabase(t, otherWorkingDir, otherStateHome)
+	})
+}
+
+func TestRunnerStateControlPlaneMutationAndRepairSafeguards(t *testing.T) {
+	t.Run("project rename and move keep durable identity boundaries", func(t *testing.T) {
+		workingDir := realpath(t, t.TempDir())
+		movedDir := realpath(t, t.TempDir())
+		stateHome := t.TempDir()
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+			t.Fatalf("state init --json error = %v", err)
+		}
+
+		original := projectIdentityForCLI(t, workingDir, stateHome)
+		beforeRenamePreview := exportAllTablesForCLI(t, workingDir, stateHome)
+		var renamePreviewOut bytes.Buffer
+		if err := (Runner{Stdout: &renamePreviewOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "rename", "Preview Loaf", "--dry-run", "--json"}); err != nil {
+			t.Fatalf("project rename --dry-run --json error = %v", err)
+		}
+		var renamePreview state.ProjectRenameResult
+		if err := json.Unmarshal(renamePreviewOut.Bytes(), &renamePreview); err != nil {
+			t.Fatalf("json.Unmarshal(%q) error = %v", renamePreviewOut.String(), err)
+		}
+		if renamePreview.ContractVersion != state.StateJSONContractVersion || renamePreview.DatabaseScope != "global" || renamePreview.Action != "dry-run" {
+			t.Fatalf("rename preview = %#v, want global dry-run contract", renamePreview)
+		}
+		if renamePreview.Project.ID != original.ID || renamePreview.Project.FriendlyName != "Preview Loaf" || renamePreview.FromName != original.FriendlyName {
+			t.Fatalf("rename preview = %#v, want same ID %q from %q to Preview Loaf", renamePreview, original.ID, original.FriendlyName)
+		}
+		afterRenamePreview := exportAllTablesForCLI(t, workingDir, stateHome)
+		if !reflect.DeepEqual(beforeRenamePreview, afterRenamePreview) {
+			t.Fatalf("project rename dry-run mutated exported tables:\nbefore=%#v\nafter=%#v", beforeRenamePreview, afterRenamePreview)
+		}
+
+		var renameApplyOut bytes.Buffer
+		if err := (Runner{Stdout: &renameApplyOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "rename", "Friendly Loaf", "--json"}); err != nil {
+			t.Fatalf("project rename --json error = %v", err)
+		}
+		var renamed state.ProjectIdentity
+		if err := json.Unmarshal(renameApplyOut.Bytes(), &renamed); err != nil {
+			t.Fatalf("json.Unmarshal(%q) error = %v", renameApplyOut.String(), err)
+		}
+		if renamed.ContractVersion != state.StateJSONContractVersion || renamed.DatabaseScope != "global" || renamed.ID != original.ID || renamed.FriendlyName != "Friendly Loaf" || renamed.CurrentPath != workingDir {
+			t.Fatalf("renamed project = %#v, want same ID %q renamed at %s", renamed, original.ID, workingDir)
+		}
+
+		beforeMovePreview := exportAllTablesForCLI(t, workingDir, stateHome)
+		var movePreviewOut bytes.Buffer
+		if err := (Runner{Stdout: &movePreviewOut, WorkingDir: movedDir, StateHome: stateHome}).Run([]string{"project", "move", "--from", workingDir, "--dry-run", "--json"}); err != nil {
+			t.Fatalf("project move --dry-run --json error = %v", err)
+		}
+		var movePreview state.ProjectMoveResult
+		if err := json.Unmarshal(movePreviewOut.Bytes(), &movePreview); err != nil {
+			t.Fatalf("json.Unmarshal(%q) error = %v", movePreviewOut.String(), err)
+		}
+		if movePreview.ContractVersion != state.StateJSONContractVersion || movePreview.DatabaseScope != "global" || movePreview.Action != "dry-run" {
+			t.Fatalf("move preview = %#v, want global dry-run contract", movePreview)
+		}
+		if movePreview.Project.ID != original.ID || movePreview.Project.CurrentPath != movedDir || movePreview.FromPath != workingDir || movePreview.ToPath != movedDir {
+			t.Fatalf("move preview = %#v, want same ID %q previewed from %s to %s", movePreview, original.ID, workingDir, movedDir)
+		}
+		afterMovePreview := exportAllTablesForCLI(t, workingDir, stateHome)
+		if !reflect.DeepEqual(beforeMovePreview, afterMovePreview) {
+			t.Fatalf("project move dry-run mutated exported tables:\nbefore=%#v\nafter=%#v", beforeMovePreview, afterMovePreview)
+		}
+
+		var moveApplyOut bytes.Buffer
+		if err := (Runner{Stdout: &moveApplyOut, WorkingDir: movedDir, StateHome: stateHome}).Run([]string{"project", "move", "--from", workingDir, "--json"}); err != nil {
+			t.Fatalf("project move --json error = %v", err)
+		}
+		var moved state.ProjectMoveResult
+		if err := json.Unmarshal(moveApplyOut.Bytes(), &moved); err != nil {
+			t.Fatalf("json.Unmarshal(%q) error = %v", moveApplyOut.String(), err)
+		}
+		if moved.ContractVersion != state.StateJSONContractVersion || moved.DatabaseScope != "global" || moved.Action != "moved" {
+			t.Fatalf("moved project result = %#v, want global moved contract", moved)
+		}
+		if moved.Project.ID != original.ID || moved.Project.FriendlyName != "Friendly Loaf" || moved.Project.CurrentPath != movedDir {
+			t.Fatalf("moved project = %#v, want same renamed ID %q at %s", moved.Project, original.ID, movedDir)
+		}
+		db, err := sql.Open("sqlite3", stateDBPathForWorkingDir(t, movedDir, stateHome))
+		if err != nil {
+			t.Fatalf("sql.Open() error = %v", err)
+		}
+		defer db.Close()
+		if got := sqliteCount(t, db, `SELECT COUNT(*) FROM projects`); got != 1 {
+			t.Fatalf("projects = %d, want one durable project after rename/move", got)
+		}
+		if got := sqliteCount(t, db, `SELECT COUNT(*) FROM project_paths WHERE project_id = ? AND is_current = 1`, original.ID); got != 1 {
+			t.Fatalf("current project paths = %d, want one current path after move", got)
+		}
+		assertNoRepositoryAgentsDir(t, workingDir)
+		assertNoRepositoryAgentsDir(t, movedDir)
+	})
+
+	t.Run("relationship-origin repair dry-run preserves relationship rows", func(t *testing.T) {
+		workingDir := realpath(t, t.TempDir())
+		stateHome := t.TempDir()
+		var initOut bytes.Buffer
+		if err := (Runner{Stdout: &initOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+			t.Fatalf("state init --json error = %v", err)
+		}
+		initialized := decodeStateStatus(t, initOut.Bytes())
+		db, err := sql.Open("sqlite3", initialized.DatabasePath)
+		if err != nil {
+			t.Fatalf("sql.Open() error = %v", err)
+		}
+		defer db.Close()
+		if _, err := db.Exec(`
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
+VALUES ('relationship-without-origin', ?, 'task', 'task-one', 'spec', 'spec-one', 'implements', 'legacy row', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+			t.Fatalf("insert relationship without origin error = %v", err)
+		}
+
+		before := exportAllTablesForCLI(t, workingDir, stateHome)
+		var stdout bytes.Buffer
+		if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "repair", "relationship-origin", "--origin", "imported", "--dry-run", "--json"}); err != nil {
+			t.Fatalf("state repair relationship-origin --dry-run --json error = %v", err)
+		}
+		result := decodeRelationshipOriginRepairResult(t, stdout.Bytes())
+		if result.ContractVersion != state.StateJSONContractVersion || result.DatabaseScope != "global" || result.ProjectID != initialized.ProjectID || result.Applied || result.Matched != 1 || result.Updated != 0 || result.BackupPath != "" {
+			t.Fatalf("relationship repair dry-run = %#v, want one matched row without writes or backup", result)
+		}
+		after := exportAllTablesForCLI(t, workingDir, stateHome)
+		if !reflect.DeepEqual(before, after) {
+			t.Fatalf("relationship-origin dry-run mutated exported tables:\nbefore=%#v\nafter=%#v", before, after)
+		}
+	})
+
+	t.Run("legacy project database repair dry-run preserves legacy files", func(t *testing.T) {
+		workingDir := realpath(t, t.TempDir())
+		dataHome := t.TempDir()
+		stateHome := t.TempDir()
+		t.Setenv("XDG_DATA_HOME", dataHome)
+		t.Setenv("XDG_STATE_HOME", stateHome)
+		root, err := project.ResolveRoot(workingDir)
+		if err != nil {
+			t.Fatalf("ResolveRoot() error = %v", err)
+		}
+		legacyPath := initializeCLILegacyStateDatabase(t, root)
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir}).Run([]string{"state", "init", "--json"}); err != nil {
+			t.Fatalf("state init --json error = %v", err)
+		}
+
+		var stdout bytes.Buffer
+		if err := (Runner{Stdout: &stdout, WorkingDir: workingDir}).Run([]string{"state", "repair", "legacy-project-database", "--dry-run", "--json"}); err != nil {
+			t.Fatalf("state repair legacy-project-database --dry-run --json error = %v", err)
+		}
+		result := decodeLegacyProjectDatabaseArchiveResult(t, stdout.Bytes())
+		if result.ContractVersion != state.StateJSONContractVersion || result.DatabaseScope != "global" || result.Action != state.LegacyProjectDatabaseArchiveAction || result.Applied {
+			t.Fatalf("legacy project database repair dry-run = %#v, want unapplied archive plan", result)
+		}
+		if len(result.MatchedPaths) == 0 || len(result.ArchivedPaths) != 0 || result.LegacyDatabasePath != legacyPath {
+			t.Fatalf("legacy project database repair dry-run = %#v, want matched legacy files and no archived files", result)
+		}
+		if _, err := os.Stat(legacyPath); err != nil {
+			t.Fatalf("legacy database stat error = %v, want dry-run to preserve %s", err, legacyPath)
+		}
+		if result.ArchivePath == "" {
+			t.Fatal("legacy project database repair dry-run ArchivePath is empty")
+		}
+		if _, err := os.Stat(result.ArchivePath); !os.IsNotExist(err) {
+			t.Fatalf("archive path stat error = %v, want dry-run not to create archive %s", err, result.ArchivePath)
+		}
+	})
+}
+
 func TestRunnerTraceJSONUsesSQLiteState(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -4256,6 +8069,7 @@ status: implementing
 	}
 
 	trace := decodeTraceResult(t, stdout.Bytes())
+	assertCLIProjectContext(t, workingDir, trace.ContractVersion, trace.DatabaseScope, trace.DatabasePath, trace.ProjectID, trace.ProjectName, trace.ProjectCurrentPath)
 	if trace.Entity.Kind != "task" || trace.Entity.Alias != "TASK-001" || trace.Entity.Title != "Example Task" {
 		t.Fatalf("Entity = %#v, want imported task", trace.Entity)
 	}
@@ -4264,6 +8078,22 @@ status: implementing
 	}
 	if !hasTraceRelationship(trace.Relationships, "outbound", "blocked_by", "task", "TASK-000") {
 		t.Fatalf("Relationships = %#v, want task dependency alias", trace.Relationships)
+	}
+
+	var humanOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"trace", "TASK-001"})
+	if err != nil {
+		t.Fatalf("trace TASK-001 human error = %v", err)
+	}
+	human := humanOut.String()
+	for _, want := range []string{"task TASK-001", "scope: global database", "database:", "project:", "project name:", "project path:", "title: Example Task", "outbound implements spec SPEC-001"} {
+		if !strings.Contains(human, want) {
+			t.Fatalf("human output = %q, want %q", human, want)
+		}
 	}
 }
 
@@ -4278,6 +8108,44 @@ func TestRunnerTraceHumanMissingDatabase(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "loaf state migrate markdown --apply") {
 		t.Fatalf("error = %v, want migration hint", err)
+	}
+}
+
+func TestRunnerTraceJSONErrorsAreMachineReadable(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "missing ref",
+			args: []string{"trace", "--json"},
+			want: "trace requires an id",
+		},
+		{
+			name: "extra ref",
+			args: []string{"trace", "TASK-001", "TASK-002", "--json"},
+			want: "trace accepts exactly one id",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: realpath(t, t.TempDir()),
+				StateHome:  t.TempDir(),
+			}.Run(tc.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want JSON validation error", tc.args)
+			}
+			assertSilentExitCode(t, err, 1)
+			output := decodeCommandError(t, stdout.Bytes())
+			if output.Command != "trace" || !strings.Contains(output.Error, tc.want) {
+				t.Fatalf("JSON error = %#v, want trace error containing %q", output, tc.want)
+			}
+		})
 	}
 }
 
@@ -4314,6 +8182,7 @@ status: implementing
 	}
 
 	tasks := decodeTaskList(t, stdout.Bytes())
+	assertCLIProjectContext(t, workingDir, tasks.ContractVersion, tasks.DatabaseScope, tasks.DatabasePath, tasks.ProjectID, tasks.ProjectName, tasks.ProjectCurrentPath)
 	if _, ok := tasks.Tasks["TASK-002"]; ok {
 		t.Fatal("active task list includes done task")
 	}
@@ -4346,8 +8215,10 @@ func TestRunnerTaskListHumanUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("task list --status todo error = %v", err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, "loaf task list") || !strings.Contains(output, "TASK-001") || !strings.Contains(output, "Example Task") {
-		t.Fatalf("output = %q, want state-backed task list", output)
+	for _, want := range []string{"loaf task list", "scope: global database", "database:", "project:", "project name:", "project path:", "TASK-001", "Example Task"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
 	}
 }
 
@@ -4388,6 +8259,11 @@ status: complete
 	output := stdout.String()
 	for _, want := range []string{
 		"loaf task status",
+		"scope: global database",
+		"database:",
+		"project:",
+		"project name:",
+		"project path:",
 		"Tasks:",
 		"1 in_progress",
 		"0 blocked",
@@ -4428,8 +8304,26 @@ func TestRunnerTaskCreateUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("task create --json error = %v", err)
 	}
 	created := decodeTaskCreateResult(t, createOut.Bytes())
-	if created.Task.Alias != "TASK-002" || created.Task.Title != "Created Task" || created.Task.Status != "todo" || created.Priority != "P1" || created.Spec.Alias != "SPEC-001" || created.EventID == "" {
+	if created.Task.Alias != "TASK-002" || created.Task.Title != "Created Task" || created.Task.Status != "todo" || created.Priority != "P1" || created.Spec == nil || created.Spec.Alias != "SPEC-001" || created.EventID == "" {
 		t.Fatalf("created = %#v, want TASK-002 under SPEC-001", created)
+	}
+	if created.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("created ContractVersion = %d, want %d", created.ContractVersion, state.StateJSONContractVersion)
+	}
+	if created.DatabaseScope != "global" {
+		t.Fatalf("created DatabaseScope = %q, want global", created.DatabaseScope)
+	}
+	if created.DatabasePath == "" {
+		t.Fatal("created DatabasePath is empty")
+	}
+	if created.ProjectID == "" {
+		t.Fatal("created ProjectID is empty")
+	}
+	if created.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("created ProjectName = %q, want %q", created.ProjectName, filepath.Base(workingDir))
+	}
+	if created.ProjectCurrentPath != workingDir {
+		t.Fatalf("created ProjectCurrentPath = %q, want %q", created.ProjectCurrentPath, workingDir)
 	}
 	if len(created.Depends) != 1 || created.Depends[0].Alias != "TASK-001" {
 		t.Fatalf("created.Depends = %#v, want TASK-001", created.Depends)
@@ -4484,10 +8378,35 @@ func TestRunnerTaskCreateHumanUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("task create human error = %v", err)
 	}
 	output := stdout.String()
-	for _, want := range []string{"created task TASK-001: Human Task", "status: todo", "priority: P2", "event:"} {
+	for _, want := range []string{"created task TASK-001: Human Task", "scope: global database", "database:", "project:", "project name:", "project path:", "status: todo", "priority: P2", "event:"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
+	}
+}
+
+func TestRunnerTaskCreateJSONOmitsEmptySpecWhenInitialized(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"task", "create", "--title", "No Spec Task", "--json"})
+	if err != nil {
+		t.Fatalf("task create --json error = %v", err)
+	}
+	created := decodeTaskCreateResult(t, stdout.Bytes())
+	if created.Spec != nil {
+		t.Fatalf("created.Spec = %#v, want nil", created.Spec)
+	}
+	if bytes.Contains(stdout.Bytes(), []byte(`"spec"`)) {
+		t.Fatalf("output = %s, want spec omitted", stdout.String())
 	}
 }
 
@@ -4524,6 +8443,7 @@ Imported body.
 	}
 
 	show := decodeTaskShow(t, stdout.Bytes())
+	assertCLIProjectContext(t, workingDir, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath)
 	task := show.Task
 	if show.Query != "TASK-001" || task.Alias != "TASK-001" || task.Title != "Example Task" || task.Status != "todo" || task.Priority != "P1" || task.Spec != "SPEC-001" {
 		t.Fatalf("show = %#v, want imported TASK-001 details", show)
@@ -4559,7 +8479,7 @@ func TestRunnerTaskShowHumanUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("task show error = %v", err)
 	}
 	output := stdout.String()
-	for _, want := range []string{"task TASK-001", "title: Example Task", "status: todo", "priority: P1", "spec: SPEC-001", "source: .agents/tasks/TASK-001-example.md", "# Task Body"} {
+	for _, want := range []string{"task TASK-001", "scope: global database", "database:", "project:", "project name:", "project path:", "title: Example Task", "status: todo", "priority: P1", "spec: SPEC-001", "source: .agents/tasks/TASK-001-example.md", "# Task Body"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
@@ -4609,6 +8529,9 @@ depends_on: TASK-999
 		t.Fatalf("task list markdown --json --active error = %v", err)
 	}
 	tasks := decodeTaskList(t, jsonOut.Bytes())
+	if tasks.ContractVersion != 0 || tasks.DatabaseScope != "" || tasks.DatabasePath != "" || tasks.ProjectID != "" || tasks.ProjectName != "" || tasks.ProjectCurrentPath != "" {
+		t.Fatalf("markdown task list context = %#v, want empty", tasks)
+	}
 	if _, ok := tasks.Tasks["TASK-002"]; ok {
 		t.Fatalf("active tasks = %#v, want done task filtered out", tasks.Tasks)
 	}
@@ -4648,6 +8571,9 @@ depends_on: TASK-999
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
+	}
+	if strings.Contains(output, "scope: global database") || strings.Contains(output, "project path:") {
+		t.Fatalf("output = %q, want markdown fallback without database context", output)
 	}
 	assertNoStateDatabase(t, workingDir, stateHome)
 }
@@ -4694,6 +8620,9 @@ status: complete
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout = %q, want %q", output, want)
 		}
+	}
+	if strings.Contains(output, "scope: global database") || strings.Contains(output, "project path:") {
+		t.Fatalf("stdout = %q, want markdown fallback without database context", output)
 	}
 	assertNoStateDatabase(t, workingDir, stateHome)
 }
@@ -4743,11 +8672,17 @@ func TestRunnerTaskCreateUsesMarkdownIndexWhenMarkdownOnly(t *testing.T) {
 		t.Fatalf("task create markdown --json error = %v", err)
 	}
 	created := decodeTaskCreateResult(t, createOut.Bytes())
-	if created.Task.Alias != "TASK-002" || created.Task.Title != "Created Task!" || created.Task.Status != "todo" || created.Priority != "P1" || created.Spec.Alias != "SPEC-001" {
+	if created.Task.Alias != "TASK-002" || created.Task.Title != "Created Task!" || created.Task.Status != "todo" || created.Priority != "P1" || created.Spec == nil || created.Spec.Alias != "SPEC-001" {
 		t.Fatalf("created = %#v, want TASK-002 under SPEC-001", created)
 	}
 	if len(created.Depends) != 1 || created.Depends[0].Alias != "TASK-001" {
 		t.Fatalf("created.Depends = %#v, want TASK-001", created.Depends)
+	}
+	if created.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("created ContractVersion = %d, want %d", created.ContractVersion, state.StateJSONContractVersion)
+	}
+	if created.DatabaseScope != "" || created.DatabasePath != "" || created.ProjectID != "" || created.ProjectName != "" || created.ProjectCurrentPath != "" {
+		t.Fatalf("created database context = %#v, want empty for markdown fallback", created)
 	}
 
 	var index map[string]any
@@ -4873,6 +8808,9 @@ Markdown details.
 		t.Fatalf("task show markdown --json error = %v", err)
 	}
 	show := decodeTaskShow(t, jsonOut.Bytes())
+	if show.ContractVersion != 0 || show.DatabaseScope != "" || show.DatabasePath != "" || show.ProjectID != "" || show.ProjectName != "" || show.ProjectCurrentPath != "" {
+		t.Fatalf("markdown task show context = %#v, want empty", show)
+	}
 	task := show.Task
 	if show.Query != "TASK-001" || task.Alias != "TASK-001" || task.Title != "Example Task" || task.Status != "todo" || task.Priority != "P1" || task.Spec != "SPEC-001" {
 		t.Fatalf("show = %#v, want TASKS.json metadata over frontmatter", show)
@@ -5088,6 +9026,24 @@ func TestRunnerTaskUpdateStatusUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if updated.Task.Alias != "TASK-001" || updated.Previous != "todo" || updated.Status != "in_progress" || updated.EventID == "" {
 		t.Fatalf("updated = %#v, want TASK-001 todo -> in_progress", updated)
 	}
+	if updated.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("updated ContractVersion = %d, want %d", updated.ContractVersion, state.StateJSONContractVersion)
+	}
+	if updated.DatabaseScope != "global" {
+		t.Fatalf("updated DatabaseScope = %q, want global", updated.DatabaseScope)
+	}
+	if updated.DatabasePath == "" {
+		t.Fatal("updated DatabasePath is empty")
+	}
+	if updated.ProjectID == "" {
+		t.Fatal("updated ProjectID is empty")
+	}
+	if updated.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("updated ProjectName = %q, want %q", updated.ProjectName, filepath.Base(workingDir))
+	}
+	if updated.ProjectCurrentPath != workingDir {
+		t.Fatalf("updated ProjectCurrentPath = %q, want %q", updated.ProjectCurrentPath, workingDir)
+	}
 
 	var listOut bytes.Buffer
 	err = Runner{
@@ -5276,6 +9232,12 @@ Preserve this body.
 	if len(updated.Depends) != 1 || updated.Depends[0].Alias != "TASK-003" {
 		t.Fatalf("updated.Depends = %#v, want TASK-003", updated.Depends)
 	}
+	if updated.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("updated ContractVersion = %d, want %d", updated.ContractVersion, state.StateJSONContractVersion)
+	}
+	if updated.DatabaseScope != "" || updated.DatabasePath != "" || updated.ProjectID != "" || updated.ProjectName != "" || updated.ProjectCurrentPath != "" {
+		t.Fatalf("updated database context = %#v, want empty for markdown fallback", updated)
+	}
 
 	rawIndex, err := os.ReadFile(filepath.Join(workingDir, ".agents", "TASKS.json"))
 	if err != nil {
@@ -5454,6 +9416,24 @@ func TestRunnerTaskArchiveUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if len(archive.Archived) != 1 || archive.Archived[0].Task == nil || archive.Archived[0].Task.Alias != "TASK-001" || archive.Archived[0].EventID == "" {
 		t.Fatalf("Archived = %#v, want TASK-001 archived with event", archive.Archived)
 	}
+	if archive.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("archive ContractVersion = %d, want %d", archive.ContractVersion, state.StateJSONContractVersion)
+	}
+	if archive.DatabaseScope != "global" {
+		t.Fatalf("archive DatabaseScope = %q, want global", archive.DatabaseScope)
+	}
+	if archive.DatabasePath == "" {
+		t.Fatal("archive DatabasePath is empty")
+	}
+	if archive.ProjectID == "" {
+		t.Fatal("archive ProjectID is empty")
+	}
+	if archive.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("archive ProjectName = %q, want %q", archive.ProjectName, filepath.Base(workingDir))
+	}
+	if archive.ProjectCurrentPath != workingDir {
+		t.Fatalf("archive ProjectCurrentPath = %q, want %q", archive.ProjectCurrentPath, workingDir)
+	}
 	if len(archive.Skipped) != 3 {
 		t.Fatalf("Skipped = %#v, want three skipped refs", archive.Skipped)
 	}
@@ -5626,6 +9606,12 @@ func TestRunnerTaskArchiveUsesMarkdownIndexWhenMarkdownOnly(t *testing.T) {
 	if archive.Skipped[1].Ref != "TASK-999" || archive.Skipped[1].Reason != "not found in index" {
 		t.Fatalf("Skipped[1] = %#v, want not-found skip", archive.Skipped[1])
 	}
+	if archive.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("archive ContractVersion = %d, want %d", archive.ContractVersion, state.StateJSONContractVersion)
+	}
+	if archive.DatabaseScope != "" || archive.DatabasePath != "" || archive.ProjectID != "" || archive.ProjectName != "" || archive.ProjectCurrentPath != "" {
+		t.Fatalf("archive database context = %#v, want empty for markdown fallback", archive)
+	}
 	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "tasks", "TASK-001-done.md")); !os.IsNotExist(err) {
 		t.Fatalf("active task file stat error = %v, want not exist", err)
 	}
@@ -5758,6 +9744,7 @@ status: archived
 	if open.Title != "Open Brainstorm" || open.SourcePath != ".agents/drafts/20260528-brainstorm-open.md" {
 		t.Fatalf("open = %#v, want imported title and source", open)
 	}
+	assertCLIBrainstormContext(t, defaultList.ContractVersion, defaultList.DatabaseScope, defaultList.DatabasePath, defaultList.ProjectID, defaultList.ProjectName, defaultList.ProjectCurrentPath, workingDir)
 
 	var allOut bytes.Buffer
 	err = Runner{
@@ -5772,6 +9759,7 @@ status: archived
 	if len(all.Brainstorms) != 3 || all.Brainstorms["20260528-brainstorm-resolved"].Status != "resolved" {
 		t.Fatalf("all = %#v, want all brainstorms", all.Brainstorms)
 	}
+	assertCLIBrainstormContext(t, all.ContractVersion, all.DatabaseScope, all.DatabasePath, all.ProjectID, all.ProjectName, all.ProjectCurrentPath, workingDir)
 
 	var archivedOut bytes.Buffer
 	err = Runner{
@@ -5786,6 +9774,7 @@ status: archived
 	if len(archived.Brainstorms) != 1 || archived.Brainstorms["20260528-brainstorm-archived"].Status != "archived" {
 		t.Fatalf("archived = %#v, want archived brainstorm only", archived.Brainstorms)
 	}
+	assertCLIBrainstormContext(t, archived.ContractVersion, archived.DatabaseScope, archived.DatabasePath, archived.ProjectID, archived.ProjectName, archived.ProjectCurrentPath, workingDir)
 
 	var humanOut bytes.Buffer
 	err = Runner{
@@ -5797,7 +9786,7 @@ status: archived
 		t.Fatalf("brainstorm list human error = %v", err)
 	}
 	human := humanOut.String()
-	for _, want := range []string{"loaf brainstorm list", "20260528-brainstorm-open", "Open Brainstorm", "[resolved]", ".agents/drafts/20260528-brainstorm-open.md"} {
+	for _, want := range []string{"loaf brainstorm list", "scope: global database", "database:", "project:", "project name:", "project path:", "20260528-brainstorm-open", "Open Brainstorm", "[resolved]", ".agents/drafts/20260528-brainstorm-open.md"} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output = %q, want %q", human, want)
 		}
@@ -5875,6 +9864,7 @@ status: open
 	if show.Brainstorm.Alias != "20260528-brainstorm-sqlite" || show.Brainstorm.Title != "SQLite Brainstorm" || show.Brainstorm.Status != "open" {
 		t.Fatalf("show = %#v, want imported brainstorm metadata", show)
 	}
+	assertCLIBrainstormContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
 	if len(show.Brainstorm.Sources) != 1 || show.Brainstorm.Sources[0].Path != ".agents/drafts/20260528-brainstorm-sqlite.md" || show.Brainstorm.Sources[0].Hash == "" {
 		t.Fatalf("Sources = %#v, want imported brainstorm source", show.Brainstorm.Sources)
 	}
@@ -5895,7 +9885,7 @@ status: open
 		t.Fatalf("brainstorm show human error = %v", err)
 	}
 	human := humanOut.String()
-	for _, want := range []string{"brainstorm 20260528-brainstorm-sqlite", "title: SQLite Brainstorm", "status: open", "source: .agents/drafts/20260528-brainstorm-sqlite.md", "outbound promoted_to idea 20260528-target-idea", "Imported brainstorm prose."} {
+	for _, want := range []string{"brainstorm 20260528-brainstorm-sqlite", "title: SQLite Brainstorm", "status: open", "scope: global database", "database:", "project:", "project name:", "project path:", "source: .agents/drafts/20260528-brainstorm-sqlite.md", "outbound promoted_to idea 20260528-target-idea", "Imported brainstorm prose."} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output = %q, want %q", human, want)
 		}
@@ -5970,6 +9960,7 @@ status: open
 	if result.Brainstorm.Alias != "20260528-brainstorm-sqlite" || result.Idea.Alias != "20260528-target-idea" || result.Relationship == "" {
 		t.Fatalf("result = %#v, want brainstorm promoted to target idea with relationship", result)
 	}
+	assertCLIBrainstormContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
 
 	var traceOut bytes.Buffer
 	err = Runner{
@@ -5998,6 +9989,7 @@ status: open
 	if !hasTraceRelationship(show.Brainstorm.Relationships, "outbound", "promoted_to", "idea", "20260528-target-idea") {
 		t.Fatalf("show relationships = %#v, want promoted_to target idea", show.Brainstorm.Relationships)
 	}
+	assertCLIBrainstormContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
 
 	var linkOut bytes.Buffer
 	err = Runner{
@@ -6023,7 +10015,7 @@ status: open
 		t.Fatalf("brainstorm promote human error = %v", err)
 	}
 	human := humanOut.String()
-	for _, want := range []string{"promoted brainstorm 20260528-brainstorm-sqlite to idea 20260528-target-idea", "relationship:"} {
+	for _, want := range []string{"promoted brainstorm 20260528-brainstorm-sqlite to idea 20260528-target-idea", "scope: global database", "database:", "project:", "project name:", "project path:", "relationship:"} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output = %q, want %q", human, want)
 		}
@@ -6099,6 +10091,7 @@ status: archived
 	if len(archive.Archived) != 1 || archive.Archived[0].Brainstorm == nil || archive.Archived[0].Brainstorm.Alias != "20260528-brainstorm-open" || archive.Archived[0].EventID == "" || archive.Archived[0].Note != "promoted to idea" {
 		t.Fatalf("Archived = %#v, want open brainstorm archived with event", archive.Archived)
 	}
+	assertCLIBrainstormContext(t, archive.ContractVersion, archive.DatabaseScope, archive.DatabasePath, archive.ProjectID, archive.ProjectName, archive.ProjectCurrentPath, workingDir)
 	if len(archive.Skipped) != 3 {
 		t.Fatalf("Skipped = %#v, want three skipped refs", archive.Skipped)
 	}
@@ -6116,6 +10109,7 @@ status: archived
 	if _, ok := defaultList.Brainstorms["20260528-brainstorm-open"]; ok {
 		t.Fatalf("defaultList.Brainstorms = %#v, want archived brainstorm hidden", defaultList.Brainstorms)
 	}
+	assertCLIBrainstormContext(t, defaultList.ContractVersion, defaultList.DatabaseScope, defaultList.DatabasePath, defaultList.ProjectID, defaultList.ProjectName, defaultList.ProjectCurrentPath, workingDir)
 
 	var archivedOut bytes.Buffer
 	err = Runner{
@@ -6130,6 +10124,7 @@ status: archived
 	if archived.Brainstorms["20260528-brainstorm-open"].Status != "archived" || archived.Brainstorms["20260528-brainstorm-archived"].Status != "archived" {
 		t.Fatalf("archived.Brainstorms = %#v, want both archived brainstorms", archived.Brainstorms)
 	}
+	assertCLIBrainstormContext(t, archived.ContractVersion, archived.DatabaseScope, archived.DatabasePath, archived.ProjectID, archived.ProjectName, archived.ProjectCurrentPath, workingDir)
 
 	var traceOut bytes.Buffer
 	err = Runner{
@@ -6158,6 +10153,7 @@ status: archived
 	if show.Brainstorm.Status != "archived" {
 		t.Fatalf("show status = %q, want archived", show.Brainstorm.Status)
 	}
+	assertCLIBrainstormContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
 
 	var humanOut bytes.Buffer
 	err = Runner{
@@ -6169,8 +10165,32 @@ status: archived
 		t.Fatalf("brainstorm archive human error = %v", err)
 	}
 	output := humanOut.String()
-	if !strings.Contains(output, "loaf brainstorm archive") || !strings.Contains(output, "skipped 20260528-brainstorm-open: already archived") || !strings.Contains(output, "Skipped 1 brainstorm(s)") {
-		t.Fatalf("output = %q, want already-archived human summary", output)
+	for _, want := range []string{"loaf brainstorm archive", "scope: global database", "database:", "project:", "project name:", "project path:", "skipped 20260528-brainstorm-open: already archived", "Skipped 1 brainstorm(s)"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
+	}
+}
+
+func assertCLIBrainstormContext(t *testing.T, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string, workingDir string) {
+	t.Helper()
+	if contractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", contractVersion, state.StateJSONContractVersion)
+	}
+	if databaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", databaseScope)
+	}
+	if databasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if projectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if projectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", projectName, filepath.Base(workingDir))
+	}
+	if projectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, workingDir)
 	}
 }
 
@@ -6237,6 +10257,7 @@ status: open
 	if before.Ideas["20260528-sqlite-state"].Status != "open" {
 		t.Fatalf("before.Ideas = %#v, want open imported idea", before.Ideas)
 	}
+	assertCLIIdeaContext(t, before.ContractVersion, before.DatabaseScope, before.DatabasePath, before.ProjectID, before.ProjectName, before.ProjectCurrentPath, workingDir)
 
 	var resolveOut bytes.Buffer
 	err = Runner{
@@ -6251,6 +10272,7 @@ status: open
 	if result.Idea.Status != "resolved" || result.ResolvedBy.Alias != "SPEC-001" || result.EventID == "" {
 		t.Fatalf("result = %#v, want resolved idea by SPEC-001 with event", result)
 	}
+	assertCLIIdeaContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
 
 	var afterOut bytes.Buffer
 	err = Runner{
@@ -6265,6 +10287,7 @@ status: open
 	if _, ok := after.Ideas["20260528-sqlite-state"]; ok {
 		t.Fatalf("after.Ideas = %#v, want resolved idea omitted by default", after.Ideas)
 	}
+	assertCLIIdeaContext(t, after.ContractVersion, after.DatabaseScope, after.DatabasePath, after.ProjectID, after.ProjectName, after.ProjectCurrentPath, workingDir)
 
 	var allOut bytes.Buffer
 	err = Runner{
@@ -6279,6 +10302,7 @@ status: open
 	if all.Ideas["20260528-sqlite-state"].Status != "resolved" {
 		t.Fatalf("all.Ideas = %#v, want resolved idea included with --all", all.Ideas)
 	}
+	assertCLIIdeaContext(t, all.ContractVersion, all.DatabaseScope, all.DatabasePath, all.ProjectID, all.ProjectName, all.ProjectCurrentPath, workingDir)
 }
 
 func TestRunnerIdeaShowUsesSQLiteStateWhenInitialized(t *testing.T) {
@@ -6313,6 +10337,7 @@ Imported idea prose.
 	if show.Idea.Alias != "20260528-sqlite-state" || show.Idea.Title != "SQLite State" || show.Idea.Status != "open" {
 		t.Fatalf("show = %#v, want imported idea metadata", show)
 	}
+	assertCLIIdeaContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
 	if len(show.Idea.Sources) != 1 || show.Idea.Sources[0].Path != ".agents/ideas/20260528-sqlite-state.md" || show.Idea.Sources[0].Hash == "" {
 		t.Fatalf("Sources = %#v, want imported idea source", show.Idea.Sources)
 	}
@@ -6333,7 +10358,7 @@ Imported idea prose.
 		t.Fatalf("idea show human error = %v", err)
 	}
 	human := humanOut.String()
-	for _, want := range []string{"idea 20260528-sqlite-state", "title: SQLite State", "status: open", "source: .agents/ideas/20260528-sqlite-state.md", "outbound resolved_by spec SPEC-001", "Imported idea prose."} {
+	for _, want := range []string{"idea 20260528-sqlite-state", "title: SQLite State", "status: open", "scope: global database", "database:", "project:", "project name:", "project path:", "source: .agents/ideas/20260528-sqlite-state.md", "outbound resolved_by spec SPEC-001", "Imported idea prose."} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output = %q, want %q", human, want)
 		}
@@ -6349,6 +10374,7 @@ Imported idea prose.
 		t.Fatalf("idea capture --json error = %v", err)
 	}
 	captured := decodeIdeaCaptureResult(t, captureOut.Bytes())
+	assertCLIIdeaContext(t, captured.ContractVersion, captured.DatabaseScope, captured.DatabasePath, captured.ProjectID, captured.ProjectName, captured.ProjectCurrentPath, workingDir)
 	var capturedShowOut bytes.Buffer
 	err = Runner{
 		Stdout:     &capturedShowOut,
@@ -6362,6 +10388,7 @@ Imported idea prose.
 	if capturedShow.Idea.Alias != captured.Idea.Alias || capturedShow.Idea.Title != "Captured Idea" || len(capturedShow.Idea.Sources) != 0 || capturedShow.Idea.Body != "" {
 		t.Fatalf("capturedShow = %#v, want captured idea without source/body", capturedShow)
 	}
+	assertCLIIdeaContext(t, capturedShow.ContractVersion, capturedShow.DatabaseScope, capturedShow.DatabasePath, capturedShow.ProjectID, capturedShow.ProjectName, capturedShow.ProjectCurrentPath, workingDir)
 }
 
 func TestRunnerIdeaPromoteUsesSQLiteStateWhenInitialized(t *testing.T) {
@@ -6392,6 +10419,7 @@ status: open
 	if result.Idea.Alias != "20260528-sqlite-state" || result.Idea.Status != "open" || result.Spec.Alias != "SPEC-001" || result.Relationship == "" {
 		t.Fatalf("result = %#v, want open idea promoted to target spec with relationship", result)
 	}
+	assertCLIIdeaContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
 
 	var traceOut bytes.Buffer
 	err = Runner{
@@ -6420,6 +10448,7 @@ status: open
 	if !hasTraceRelationship(show.Idea.Relationships, "outbound", "promoted_to", "spec", "SPEC-001") {
 		t.Fatalf("show relationships = %#v, want promoted_to target spec", show.Idea.Relationships)
 	}
+	assertCLIIdeaContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
 
 	var linkOut bytes.Buffer
 	err = Runner{
@@ -6445,7 +10474,7 @@ status: open
 		t.Fatalf("idea promote human error = %v", err)
 	}
 	human := humanOut.String()
-	for _, want := range []string{"promoted idea 20260528-sqlite-state to spec SPEC-001", "relationship:"} {
+	for _, want := range []string{"promoted idea 20260528-sqlite-state to spec SPEC-001", "scope: global database", "database:", "project:", "project name:", "project path:", "relationship:"} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output = %q, want %q", human, want)
 		}
@@ -6473,6 +10502,7 @@ func TestRunnerIdeaCaptureUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if result.Idea.Status != "open" || result.Idea.Title != "Repeat Idea" || !strings.HasPrefix(result.Idea.Alias, "IDEA-") || !strings.Contains(result.Idea.Alias, "repeat-idea") || result.EventID == "" {
 		t.Fatalf("result = %#v, want captured idea with alias and event", result)
 	}
+	assertCLIIdeaContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
 
 	var secondOut bytes.Buffer
 	err = Runner{
@@ -6487,6 +10517,7 @@ func TestRunnerIdeaCaptureUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if second.Idea.Alias != result.Idea.Alias+"-2" {
 		t.Fatalf("second alias = %q, want collision suffix after %q", second.Idea.Alias, result.Idea.Alias)
 	}
+	assertCLIIdeaContext(t, second.ContractVersion, second.DatabaseScope, second.DatabasePath, second.ProjectID, second.ProjectName, second.ProjectCurrentPath, workingDir)
 
 	var listOut bytes.Buffer
 	err = Runner{
@@ -6501,6 +10532,7 @@ func TestRunnerIdeaCaptureUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if ideas.Ideas[result.Idea.Alias].Status != "open" || ideas.Ideas[result.Idea.Alias].Title != "Repeat Idea" {
 		t.Fatalf("ideas = %#v, want captured idea in list", ideas.Ideas)
 	}
+	assertCLIIdeaContext(t, ideas.ContractVersion, ideas.DatabaseScope, ideas.DatabasePath, ideas.ProjectID, ideas.ProjectName, ideas.ProjectCurrentPath, workingDir)
 
 	var traceOut bytes.Buffer
 	err = Runner{
@@ -6526,10 +10558,55 @@ func TestRunnerIdeaCaptureUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("idea capture human error = %v", err)
 	}
 	human := humanOut.String()
-	for _, want := range []string{"captured idea IDEA-", "human-idea", "title: Human Idea", "event:"} {
+	for _, want := range []string{"captured idea IDEA-", "human-idea", "scope: global database", "database:", "project:", "project name:", "project path:", "title: Human Idea", "event:"} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output = %q, want %q", human, want)
 		}
+	}
+}
+
+func TestRunnerIdeaCaptureJSONErrorsAreMachineReadable(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}`)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
+		t.Fatalf("state migrate markdown --apply error = %v", err)
+	}
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "missing title",
+			args: []string{"idea", "capture", "--json"},
+			want: "idea capture requires --title",
+		},
+		{
+			name: "unknown option",
+			args: []string{"idea", "capture", "--json", "--bogus"},
+			want: "unknown option",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: workingDir,
+				StateHome:  stateHome,
+			}.Run(tc.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want JSON validation error", tc.args)
+			}
+			assertSilentExitCode(t, err, 1)
+			output := decodeCommandError(t, stdout.Bytes())
+			if output.Command != "idea capture" || !strings.Contains(output.Error, tc.want) {
+				t.Fatalf("JSON error = %#v, want idea capture error containing %q", output, tc.want)
+			}
+		})
 	}
 }
 
@@ -6567,6 +10644,7 @@ status: archived
 	if len(archive.Archived) != 1 || archive.Archived[0].Idea == nil || archive.Archived[0].Idea.Alias != "20260528-open-idea" || archive.Archived[0].EventID == "" || archive.Archived[0].Note != "covered by SPEC-001" {
 		t.Fatalf("Archived = %#v, want open idea archived with event", archive.Archived)
 	}
+	assertCLIIdeaContext(t, archive.ContractVersion, archive.DatabaseScope, archive.DatabasePath, archive.ProjectID, archive.ProjectName, archive.ProjectCurrentPath, workingDir)
 	if len(archive.Skipped) != 3 {
 		t.Fatalf("Skipped = %#v, want three skipped refs", archive.Skipped)
 	}
@@ -6584,6 +10662,7 @@ status: archived
 	if _, ok := defaultList.Ideas["20260528-open-idea"]; ok {
 		t.Fatalf("defaultList.Ideas = %#v, want archived idea hidden", defaultList.Ideas)
 	}
+	assertCLIIdeaContext(t, defaultList.ContractVersion, defaultList.DatabaseScope, defaultList.DatabasePath, defaultList.ProjectID, defaultList.ProjectName, defaultList.ProjectCurrentPath, workingDir)
 
 	var archivedOut bytes.Buffer
 	err = Runner{
@@ -6598,6 +10677,7 @@ status: archived
 	if archived.Ideas["20260528-open-idea"].Status != "archived" || archived.Ideas["20260528-archived-idea"].Status != "archived" {
 		t.Fatalf("archived.Ideas = %#v, want both archived ideas", archived.Ideas)
 	}
+	assertCLIIdeaContext(t, archived.ContractVersion, archived.DatabaseScope, archived.DatabasePath, archived.ProjectID, archived.ProjectName, archived.ProjectCurrentPath, workingDir)
 
 	var traceOut bytes.Buffer
 	err = Runner{
@@ -6623,8 +10703,32 @@ status: archived
 		t.Fatalf("idea archive human error = %v", err)
 	}
 	output := humanOut.String()
-	if !strings.Contains(output, "loaf idea archive") || !strings.Contains(output, "skipped 20260528-open-idea: already archived") || !strings.Contains(output, "Skipped 1 idea(s)") {
-		t.Fatalf("output = %q, want already-archived human summary", output)
+	for _, want := range []string{"loaf idea archive", "scope: global database", "database:", "project:", "project name:", "project path:", "skipped 20260528-open-idea: already archived", "Skipped 1 idea(s)"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
+	}
+}
+
+func assertCLIIdeaContext(t *testing.T, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string, workingDir string) {
+	t.Helper()
+	if contractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", contractVersion, state.StateJSONContractVersion)
+	}
+	if databaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", databaseScope)
+	}
+	if databasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if projectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if projectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", projectName, filepath.Base(workingDir))
+	}
+	if projectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, workingDir)
 	}
 }
 
@@ -6738,6 +10842,7 @@ func TestRunnerSparkListAndResolveUseSQLiteStateWhenInitialized(t *testing.T) {
 	if before.Sparks["SPARK-smoke"].Status != "open" {
 		t.Fatalf("before.Sparks = %#v, want open imported spark", before.Sparks)
 	}
+	assertCLISparkContext(t, before.ContractVersion, before.DatabaseScope, before.DatabasePath, before.ProjectID, before.ProjectName, before.ProjectCurrentPath, workingDir)
 
 	var resolveOut bytes.Buffer
 	err = Runner{
@@ -6752,6 +10857,7 @@ func TestRunnerSparkListAndResolveUseSQLiteStateWhenInitialized(t *testing.T) {
 	if result.Spark.Status != "resolved" || result.ResolvedBy.Alias != "20260528-target-idea" || result.EventID == "" || result.Reason != "triaged into target idea" {
 		t.Fatalf("result = %#v, want resolved spark by target idea with event", result)
 	}
+	assertCLISparkContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
 
 	var afterOut bytes.Buffer
 	err = Runner{
@@ -6766,6 +10872,7 @@ func TestRunnerSparkListAndResolveUseSQLiteStateWhenInitialized(t *testing.T) {
 	if _, ok := after.Sparks["SPARK-smoke"]; ok {
 		t.Fatalf("after.Sparks = %#v, want resolved spark omitted by default", after.Sparks)
 	}
+	assertCLISparkContext(t, after.ContractVersion, after.DatabaseScope, after.DatabasePath, after.ProjectID, after.ProjectName, after.ProjectCurrentPath, workingDir)
 
 	var allOut bytes.Buffer
 	err = Runner{
@@ -6780,6 +10887,7 @@ func TestRunnerSparkListAndResolveUseSQLiteStateWhenInitialized(t *testing.T) {
 	if all.Sparks["SPARK-smoke"].Status != "resolved" {
 		t.Fatalf("all.Sparks = %#v, want resolved spark included with --all", all.Sparks)
 	}
+	assertCLISparkContext(t, all.ContractVersion, all.DatabaseScope, all.DatabasePath, all.ProjectID, all.ProjectName, all.ProjectCurrentPath, workingDir)
 }
 
 func TestRunnerSparkPromoteUsesSQLiteStateWhenInitialized(t *testing.T) {
@@ -6805,6 +10913,7 @@ func TestRunnerSparkPromoteUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if result.Spark.Alias != "SPARK-smoke" || result.Spark.Status != "open" || result.Idea.Alias != "20260528-target-idea" || result.Relationship == "" {
 		t.Fatalf("result = %#v, want open spark promoted to target idea with relationship", result)
 	}
+	assertCLISparkContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
 
 	var traceOut bytes.Buffer
 	err = Runner{
@@ -6844,7 +10953,7 @@ func TestRunnerSparkPromoteUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("spark promote human error = %v", err)
 	}
 	human := humanOut.String()
-	for _, want := range []string{"promoted spark SPARK-smoke to idea 20260528-target-idea", "relationship:"} {
+	for _, want := range []string{"promoted spark SPARK-smoke to idea 20260528-target-idea", "scope: global database", "database:", "project:", "project name:", "project path:", "relationship:"} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output = %q, want %q", human, want)
 		}
@@ -6877,6 +10986,7 @@ func TestRunnerSparkShowUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if show.Spark.Alias != "SPARK-smoke" || show.Spark.Text != "smoke spark" || show.Spark.Scope != "sqlite" || show.Spark.Status != "open" {
 		t.Fatalf("show = %#v, want imported spark metadata", show)
 	}
+	assertCLISparkContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
 	if len(show.Spark.Sources) != 1 || show.Spark.Sources[0].Path != ".agents/sessions/20260528-session.md" || show.Spark.Sources[0].Hash == "" {
 		t.Fatalf("Sources = %#v, want session source with hash", show.Spark.Sources)
 	}
@@ -6894,7 +11004,7 @@ func TestRunnerSparkShowUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("spark show human error = %v", err)
 	}
 	human := humanOut.String()
-	for _, want := range []string{"spark SPARK-smoke", "scope: sqlite", "status: open", "text: smoke spark", "source: .agents/sessions/20260528-session.md", "outbound promoted_to idea 20260528-target-idea"} {
+	for _, want := range []string{"spark SPARK-smoke", "scope: global database", "database:", "project:", "project name:", "project path:", "scope: sqlite", "status: open", "text: smoke spark", "source: .agents/sessions/20260528-session.md", "outbound promoted_to idea 20260528-target-idea"} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output = %q, want %q", human, want)
 		}
@@ -6922,6 +11032,7 @@ func TestRunnerSparkCaptureUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if result.Spark.Alias != "SPARK-repeat-spark" || result.Spark.Status != "open" || result.Scope != "architecture" || result.EventID == "" {
 		t.Fatalf("result = %#v, want captured spark with alias, scope, and event", result)
 	}
+	assertCLISparkContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
 
 	var secondOut bytes.Buffer
 	err = Runner{
@@ -6936,6 +11047,7 @@ func TestRunnerSparkCaptureUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if second.Spark.Alias != "SPARK-repeat-spark-2" {
 		t.Fatalf("second alias = %q, want collision suffix", second.Spark.Alias)
 	}
+	assertCLISparkContext(t, second.ContractVersion, second.DatabaseScope, second.DatabasePath, second.ProjectID, second.ProjectName, second.ProjectCurrentPath, workingDir)
 
 	var listOut bytes.Buffer
 	err = Runner{
@@ -6950,6 +11062,7 @@ func TestRunnerSparkCaptureUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if sparks.Sparks["SPARK-repeat-spark"].Status != "open" || sparks.Sparks["SPARK-repeat-spark"].Scope != "architecture" {
 		t.Fatalf("sparks = %#v, want captured spark in list", sparks.Sparks)
 	}
+	assertCLISparkContext(t, sparks.ContractVersion, sparks.DatabaseScope, sparks.DatabasePath, sparks.ProjectID, sparks.ProjectName, sparks.ProjectCurrentPath, workingDir)
 
 	var traceOut bytes.Buffer
 	err = Runner{
@@ -6975,10 +11088,32 @@ func TestRunnerSparkCaptureUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("spark capture human error = %v", err)
 	}
 	human := humanOut.String()
-	for _, want := range []string{"captured spark SPARK-human-spark", "scope: ops", "text: Human Spark", "event:"} {
+	for _, want := range []string{"captured spark SPARK-human-spark", "scope: global database", "database:", "project:", "project name:", "project path:", "scope: ops", "text: Human Spark", "event:"} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output = %q, want %q", human, want)
 		}
+	}
+}
+
+func assertCLISparkContext(t *testing.T, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string, workingDir string) {
+	t.Helper()
+	if contractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", contractVersion, state.StateJSONContractVersion)
+	}
+	if databaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", databaseScope)
+	}
+	if databasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if projectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if projectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", projectName, filepath.Base(workingDir))
+	}
+	if projectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, workingDir)
 	}
 }
 
@@ -7091,8 +11226,15 @@ func TestRunnerTagCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	if added.Name != "sqlite" || added.Entity.Kind != "spec" || added.Entity.Alias != "SPEC-001" {
 		t.Fatalf("added = %#v, want sqlite tag on SPEC-001", added)
 	}
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"tag", "add", "20260528-tag-idea", "sqlite"}); err != nil {
+	assertCLITagMutationContext(t, added, workingDir)
+	var humanAddOut bytes.Buffer
+	if err := (Runner{Stdout: &humanAddOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"tag", "add", "20260528-tag-idea", "sqlite"}); err != nil {
 		t.Fatalf("tag add idea error = %v", err)
+	}
+	for _, want := range []string{"tagged idea 20260528-tag-idea with sqlite", "scope: global database", "database:", "project:", "project name:", "project path:"} {
+		if !strings.Contains(humanAddOut.String(), want) {
+			t.Fatalf("human tag add output = %q, want %q", humanAddOut.String(), want)
+		}
 	}
 
 	var listOut bytes.Buffer
@@ -7108,6 +11250,22 @@ func TestRunnerTagCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	if tags.Tags["sqlite"].Count != 2 {
 		t.Fatalf("tags = %#v, want sqlite count 2", tags.Tags)
 	}
+	assertCLITagListContext(t, tags, workingDir)
+
+	var humanListOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanListOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"tag", "list"})
+	if err != nil {
+		t.Fatalf("tag list human error = %v", err)
+	}
+	for _, want := range []string{"loaf tag list", "scope: global database", "database:", "project:", "project name:", "project path:", "sqlite"} {
+		if !strings.Contains(humanListOut.String(), want) {
+			t.Fatalf("human tag list output = %q, want %q", humanListOut.String(), want)
+		}
+	}
 
 	var showOut bytes.Buffer
 	err = Runner{
@@ -7122,6 +11280,22 @@ func TestRunnerTagCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	if len(show.Members) != 2 {
 		t.Fatalf("show.Members = %#v, want 2 members", show.Members)
 	}
+	assertCLITagShowContext(t, show, workingDir)
+
+	var humanShowOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanShowOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"tag", "show", "sqlite"})
+	if err != nil {
+		t.Fatalf("tag show human error = %v", err)
+	}
+	for _, want := range []string{"tag sqlite", "scope: global database", "database:", "project:", "project name:", "project path:", "SPEC-001", "20260528-tag-idea"} {
+		if !strings.Contains(humanShowOut.String(), want) {
+			t.Fatalf("human tag show output = %q, want %q", humanShowOut.String(), want)
+		}
+	}
 
 	var removeOut bytes.Buffer
 	err = Runner{
@@ -7135,6 +11309,88 @@ func TestRunnerTagCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	removed := decodeTagMutationResult(t, removeOut.Bytes())
 	if removed.Entity.Alias != "SPEC-001" {
 		t.Fatalf("removed = %#v, want SPEC-001 removed", removed)
+	}
+	assertCLITagMutationContext(t, removed, workingDir)
+
+	var humanRemoveOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanRemoveOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"tag", "remove", "20260528-tag-idea", "sqlite"})
+	if err != nil {
+		t.Fatalf("tag remove human error = %v", err)
+	}
+	for _, want := range []string{"removed tag sqlite from idea 20260528-tag-idea", "scope: global database", "database:", "project:", "project name:", "project path:"} {
+		if !strings.Contains(humanRemoveOut.String(), want) {
+			t.Fatalf("human tag remove output = %q, want %q", humanRemoveOut.String(), want)
+		}
+	}
+}
+
+func assertCLITagMutationContext(t *testing.T, result state.TagMutationResult, workingDir string) {
+	t.Helper()
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(workingDir))
+	}
+	if result.ProjectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, workingDir)
+	}
+}
+
+func assertCLITagListContext(t *testing.T, result state.TagList, workingDir string) {
+	t.Helper()
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(workingDir))
+	}
+	if result.ProjectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, workingDir)
+	}
+}
+
+func assertCLITagShowContext(t *testing.T, result state.TagShowResult, workingDir string) {
+	t.Helper()
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(workingDir))
+	}
+	if result.ProjectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, workingDir)
 	}
 }
 
@@ -7203,6 +11459,22 @@ func TestRunnerBundleCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	if created.Entity != nil {
 		t.Fatalf("created.Entity = %#v, want nil for bundle create", created.Entity)
 	}
+	assertCLIBundleMutationContext(t, created, workingDir)
+
+	var humanCreateOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanCreateOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"bundle", "create", "sqlite-backend", "--tag", "sqlite", "--title", "SQLite Backend"})
+	if err != nil {
+		t.Fatalf("bundle create human error = %v", err)
+	}
+	for _, want := range []string{"created bundle sqlite-backend", "scope: global database", "database:", "project:", "project name:", "project path:"} {
+		if !strings.Contains(humanCreateOut.String(), want) {
+			t.Fatalf("human bundle create output = %q, want %q", humanCreateOut.String(), want)
+		}
+	}
 
 	var listOut bytes.Buffer
 	err = Runner{
@@ -7218,6 +11490,22 @@ func TestRunnerBundleCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	if listed.Title != "SQLite Backend" || listed.TagMatchedCount != 1 || listed.MemberCount != 1 {
 		t.Fatalf("list = %#v, want sqlite-backend bundle with tag-matched spec", list)
 	}
+	assertCLIBundleListContext(t, list, workingDir)
+
+	var humanListOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanListOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"bundle", "list"})
+	if err != nil {
+		t.Fatalf("bundle list human error = %v", err)
+	}
+	for _, want := range []string{"loaf bundle list", "scope: global database", "database:", "project:", "project name:", "project path:", "sqlite-backend"} {
+		if !strings.Contains(humanListOut.String(), want) {
+			t.Fatalf("human bundle list output = %q, want %q", humanListOut.String(), want)
+		}
+	}
 
 	var updateOut bytes.Buffer
 	err = Runner{
@@ -7231,6 +11519,22 @@ func TestRunnerBundleCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	updated := decodeBundleMutationResult(t, updateOut.Bytes())
 	if updated.Title != "SQLite Runtime" || len(updated.Tags) != 2 || updated.Tags[0] != "sqlite" || updated.Tags[1] != "state" {
 		t.Fatalf("updated = %#v, want replaced title and tags", updated)
+	}
+	assertCLIBundleMutationContext(t, updated, workingDir)
+
+	var humanUpdateOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanUpdateOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"bundle", "update", "sqlite-backend", "--title", "SQLite Runtime", "--tag", "sqlite", "--tag", "state"})
+	if err != nil {
+		t.Fatalf("bundle update human error = %v", err)
+	}
+	for _, want := range []string{"updated bundle sqlite-backend", "scope: global database", "database:", "project:", "project name:", "project path:", "title: SQLite Runtime", "tags: sqlite, state"} {
+		if !strings.Contains(humanUpdateOut.String(), want) {
+			t.Fatalf("human bundle update output = %q, want %q", humanUpdateOut.String(), want)
+		}
 	}
 
 	var addOut bytes.Buffer
@@ -7246,6 +11550,22 @@ func TestRunnerBundleCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	if added.Entity == nil || added.Entity.Kind != "task" || added.Entity.Alias != "TASK-001" {
 		t.Fatalf("added = %#v, want TASK-001 explicit member", added)
 	}
+	assertCLIBundleMutationContext(t, added, workingDir)
+
+	var humanAddOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanAddOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"bundle", "add", "sqlite-backend", "TASK-001"})
+	if err != nil {
+		t.Fatalf("bundle add human error = %v", err)
+	}
+	for _, want := range []string{"added task TASK-001 to bundle sqlite-backend", "scope: global database", "database:", "project:", "project name:", "project path:"} {
+		if !strings.Contains(humanAddOut.String(), want) {
+			t.Fatalf("human bundle add output = %q, want %q", humanAddOut.String(), want)
+		}
+	}
 
 	var showOut bytes.Buffer
 	err = Runner{
@@ -7260,6 +11580,22 @@ func TestRunnerBundleCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	if show.Title != "SQLite Runtime" || len(show.TagQuery) != 2 || len(show.TagMatched) != 1 || len(show.Explicit) != 1 || len(show.Members) != 2 {
 		t.Fatalf("show = %#v, want updated bundle with tag-matched spec and explicit task", show)
 	}
+	assertCLIBundleShowContext(t, show, workingDir)
+
+	var humanShowOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanShowOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"bundle", "show", "sqlite-backend"})
+	if err != nil {
+		t.Fatalf("bundle show human error = %v", err)
+	}
+	for _, want := range []string{"bundle sqlite-backend", "scope: global database", "database:", "project:", "project name:", "project path:", "SPEC-001", "TASK-001"} {
+		if !strings.Contains(humanShowOut.String(), want) {
+			t.Fatalf("human bundle show output = %q, want %q", humanShowOut.String(), want)
+		}
+	}
 
 	var removeOut bytes.Buffer
 	err = Runner{
@@ -7273,6 +11609,91 @@ func TestRunnerBundleCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	removed := decodeBundleMutationResult(t, removeOut.Bytes())
 	if removed.Entity == nil || removed.Entity.Alias != "TASK-001" {
 		t.Fatalf("removed = %#v, want TASK-001 removed", removed)
+	}
+	assertCLIBundleMutationContext(t, removed, workingDir)
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"bundle", "add", "sqlite-backend", "TASK-001"}); err != nil {
+		t.Fatalf("bundle add before human remove error = %v", err)
+	}
+	var humanRemoveOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanRemoveOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"bundle", "remove", "sqlite-backend", "TASK-001"})
+	if err != nil {
+		t.Fatalf("bundle remove human error = %v", err)
+	}
+	for _, want := range []string{"removed task TASK-001 from bundle sqlite-backend", "scope: global database", "database:", "project:", "project name:", "project path:"} {
+		if !strings.Contains(humanRemoveOut.String(), want) {
+			t.Fatalf("human bundle remove output = %q, want %q", humanRemoveOut.String(), want)
+		}
+	}
+}
+
+func assertCLIBundleMutationContext(t *testing.T, result state.BundleMutationResult, workingDir string) {
+	t.Helper()
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(workingDir))
+	}
+	if result.ProjectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, workingDir)
+	}
+}
+
+func assertCLIBundleListContext(t *testing.T, result state.BundleList, workingDir string) {
+	t.Helper()
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(workingDir))
+	}
+	if result.ProjectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, workingDir)
+	}
+}
+
+func assertCLIBundleShowContext(t *testing.T, result state.BundleShowResult, workingDir string) {
+	t.Helper()
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(workingDir))
+	}
+	if result.ProjectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, workingDir)
 	}
 }
 
@@ -7347,6 +11768,7 @@ func TestRunnerLinkCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	if created.Type != "resolved_by" || created.From.Alias != "20260528-link-idea" || created.To.Alias != "SPEC-001" || created.Reason != "from cli test" {
 		t.Fatalf("created = %#v, want idea resolved_by SPEC-001", created)
 	}
+	assertCLILinkMutationContext(t, created, workingDir)
 
 	var listOut bytes.Buffer
 	err = Runner{
@@ -7360,6 +11782,22 @@ func TestRunnerLinkCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	list := decodeLinkListResult(t, listOut.Bytes())
 	if len(list.Relationships) != 1 || !hasTraceRelationship(list.Relationships, "inbound", "resolved_by", "idea", "20260528-link-idea") {
 		t.Fatalf("list = %#v, want inbound idea relationship", list)
+	}
+	assertCLILinkListContext(t, list, workingDir)
+
+	var humanListOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanListOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"link", "list", "SPEC-001"})
+	if err != nil {
+		t.Fatalf("link list human error = %v", err)
+	}
+	for _, want := range []string{"links for spec SPEC-001", "scope: global database", "database:", "project:", "project name:", "project path:"} {
+		if !strings.Contains(humanListOut.String(), want) {
+			t.Fatalf("human link list output = %q, want %q", humanListOut.String(), want)
+		}
 	}
 
 	var removeOut bytes.Buffer
@@ -7375,6 +11813,37 @@ func TestRunnerLinkCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	if removed.Type != "resolved_by" || removed.From.Alias != "20260528-link-idea" || removed.To.Alias != "SPEC-001" || removed.Reason != "from cli test" {
 		t.Fatalf("removed = %#v, want removed relationship", removed)
 	}
+	assertCLILinkMutationContext(t, removed, workingDir)
+
+	var humanCreateOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanCreateOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"link", "create", "20260528-link-idea", "SPEC-001", "--type", "resolved_by", "--reason", "human cli test"})
+	if err != nil {
+		t.Fatalf("link create human error = %v", err)
+	}
+	for _, want := range []string{"linked idea 20260528-link-idea resolved_by spec SPEC-001", "scope: global database", "database:", "project:", "project name:", "project path:"} {
+		if !strings.Contains(humanCreateOut.String(), want) {
+			t.Fatalf("human link create output = %q, want %q", humanCreateOut.String(), want)
+		}
+	}
+
+	var humanRemoveOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanRemoveOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"link", "remove", "20260528-link-idea", "SPEC-001", "--type", "resolved_by"})
+	if err != nil {
+		t.Fatalf("link remove human error = %v", err)
+	}
+	for _, want := range []string{"removed link idea 20260528-link-idea resolved_by spec SPEC-001", "scope: global database", "database:", "project:", "project name:", "project path:"} {
+		if !strings.Contains(humanRemoveOut.String(), want) {
+			t.Fatalf("human link remove output = %q, want %q", humanRemoveOut.String(), want)
+		}
+	}
 
 	var listAfterRemove bytes.Buffer
 	err = Runner{
@@ -7388,6 +11857,145 @@ func TestRunnerLinkCommandsUseSQLiteStateWhenInitialized(t *testing.T) {
 	after := decodeLinkListResult(t, listAfterRemove.Bytes())
 	if len(after.Relationships) != 0 {
 		t.Fatalf("relationships after remove = %#v, want none", after.Relationships)
+	}
+}
+
+func TestRunnerLinkMutationCommandsAcceptDocumentedFlags(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-link.md", "# Link Spec\n")
+	writeCLIAgentsFile(t, workingDir, "ideas/20260528-link-idea.md", "# Link Idea\n")
+	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}`)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
+		t.Fatalf("state migrate markdown --apply error = %v", err)
+	}
+
+	var createOut bytes.Buffer
+	err := Runner{
+		Stdout:     &createOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"link", "create", "--from", "20260528-link-idea", "--to", "SPEC-001", "--type", "resolved_by", "--reason", "flag cli test", "--json"})
+	if err != nil {
+		t.Fatalf("link create flags error = %v", err)
+	}
+	created := decodeLinkMutationResult(t, createOut.Bytes())
+	if created.Type != "resolved_by" || created.From.Alias != "20260528-link-idea" || created.To.Alias != "SPEC-001" || created.Reason != "flag cli test" {
+		t.Fatalf("created = %#v, want idea resolved_by SPEC-001 from documented flags", created)
+	}
+
+	var removeOut bytes.Buffer
+	err = Runner{
+		Stdout:     &removeOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"link", "remove", "--from", "20260528-link-idea", "--to", "SPEC-001", "--type", "resolved_by", "--json"})
+	if err != nil {
+		t.Fatalf("link remove flags error = %v", err)
+	}
+	removed := decodeLinkMutationResult(t, removeOut.Bytes())
+	if removed.Type != "resolved_by" || removed.From.Alias != "20260528-link-idea" || removed.To.Alias != "SPEC-001" || removed.Reason != "flag cli test" {
+		t.Fatalf("removed = %#v, want documented flags to remove relationship", removed)
+	}
+}
+
+func assertCLILinkMutationContext(t *testing.T, result state.LinkMutationResult, workingDir string) {
+	t.Helper()
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(workingDir))
+	}
+	if result.ProjectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, workingDir)
+	}
+}
+
+func assertCLILinkListContext(t *testing.T, result state.LinkListResult, workingDir string) {
+	t.Helper()
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, state.StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(workingDir))
+	}
+	if result.ProjectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, workingDir)
+	}
+}
+
+func TestRunnerLinkMutationJSONErrorsAreMachineReadable(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	tests := []struct {
+		name    string
+		args    []string
+		command string
+		want    string
+	}{
+		{
+			name:    "create missing target",
+			args:    []string{"link", "create", "--from", "TASK-001", "--type", "related_to", "--json"},
+			command: "link create",
+			want:    "requires a source entity and target entity",
+		},
+		{
+			name:    "create missing type",
+			args:    []string{"link", "create", "--from", "TASK-001", "--to", "SPEC-001", "--json"},
+			command: "link create",
+			want:    "requires --type",
+		},
+		{
+			name:    "create mixed entity forms",
+			args:    []string{"link", "create", "--from", "TASK-001", "SPEC-001", "--type", "related_to", "--json"},
+			command: "link create",
+			want:    "cannot mix positional entities",
+		},
+		{
+			name:    "remove missing source",
+			args:    []string{"link", "remove", "--to", "SPEC-001", "--type", "related_to", "--json"},
+			command: "link remove",
+			want:    "requires a source entity and target entity",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: workingDir,
+				StateHome:  stateHome,
+			}.Run(tc.args)
+			if err == nil {
+				t.Fatalf("Run(%v) error = nil, want JSON validation error", tc.args)
+			}
+			assertSilentExitCode(t, err, 1)
+			output := decodeCommandError(t, stdout.Bytes())
+			if output.Command != tc.command || !strings.Contains(output.Error, tc.want) {
+				t.Fatalf("JSON error = %#v, want command %q and error containing %q", output, tc.command, tc.want)
+			}
+		})
 	}
 }
 
@@ -7459,6 +12067,7 @@ status: implementing
 	}
 
 	specs := decodeSpecList(t, stdout.Bytes())
+	assertCLIProjectContext(t, workingDir, specs.ContractVersion, specs.DatabaseScope, specs.DatabasePath, specs.ProjectID, specs.ProjectName, specs.ProjectCurrentPath)
 	spec := specs.Specs["SPEC-001"]
 	if spec.Title != "Example Spec" || spec.Status != "implementing" || spec.SourcePath != ".agents/specs/SPEC-001-example.md" {
 		t.Fatalf("SPEC-001 = %#v, want imported spec metadata", spec)
@@ -7494,7 +12103,7 @@ status: implementing
 		t.Fatalf("spec list error = %v", err)
 	}
 	output := stdout.String()
-	for _, want := range []string{"loaf spec list", "Implementing (1)", "SPEC-001", "Example Spec", "0 todo / 1 in_progress / 0 done"} {
+	for _, want := range []string{"loaf spec list", "scope: global database", "database:", "project:", "project name:", "project path:", "Implementing (1)", "SPEC-001", "Example Spec", "0 todo / 1 in_progress / 0 done"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
@@ -7537,6 +12146,9 @@ status: drafting
 		t.Fatalf("spec list markdown --json error = %v", err)
 	}
 	specs := decodeSpecList(t, jsonOut.Bytes())
+	if specs.ContractVersion != 0 || specs.DatabaseScope != "" || specs.DatabasePath != "" || specs.ProjectID != "" || specs.ProjectName != "" || specs.ProjectCurrentPath != "" {
+		t.Fatalf("markdown spec list context = %#v, want empty", specs)
+	}
 	spec := specs.Specs["SPEC-001"]
 	if spec.Title != "Example Spec" || spec.Status != "implementing" || spec.SourcePath != ".agents/specs/SPEC-001-example.md" {
 		t.Fatalf("SPEC-001 = %#v, want markdown spec metadata", spec)
@@ -7625,6 +12237,7 @@ Imported spec prose.
 		t.Fatalf("spec show --json error = %v", err)
 	}
 	show := decodeSpecShow(t, showOut.Bytes())
+	assertCLIProjectContext(t, workingDir, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath)
 	if show.Spec.Alias != "SPEC-001" || show.Spec.Title != "Example Spec" || show.Spec.Status != "implementing" {
 		t.Fatalf("show = %#v, want imported spec metadata", show)
 	}
@@ -7651,7 +12264,7 @@ Imported spec prose.
 		t.Fatalf("spec show human error = %v", err)
 	}
 	human := humanOut.String()
-	for _, want := range []string{"spec SPEC-001", "title: Example Spec", "status: implementing", "tasks: 1 todo / 0 in_progress / 0 done", "source: .agents/specs/SPEC-001-example.md", "inbound implements task TASK-001", "Imported spec prose."} {
+	for _, want := range []string{"spec SPEC-001", "scope: global database", "database:", "project:", "project name:", "project path:", "title: Example Spec", "status: implementing", "tasks: 1 todo / 0 in_progress / 0 done", "source: .agents/specs/SPEC-001-example.md", "inbound implements task TASK-001", "Imported spec prose."} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output = %q, want %q", human, want)
 		}
@@ -7697,6 +12310,9 @@ Markdown spec prose.
 		t.Fatalf("spec show markdown --json error = %v", err)
 	}
 	show := decodeSpecShow(t, jsonOut.Bytes())
+	if show.ContractVersion != 0 || show.DatabaseScope != "" || show.DatabasePath != "" || show.ProjectID != "" || show.ProjectName != "" || show.ProjectCurrentPath != "" {
+		t.Fatalf("markdown spec show context = %#v, want empty", show)
+	}
 	spec := show.Spec
 	if show.Query != "SPEC-001" || spec.Alias != "SPEC-001" || spec.Title != "Example Spec" || spec.Status != "implementing" {
 		t.Fatalf("show = %#v, want TASKS.json spec metadata over frontmatter", show)
@@ -7731,6 +12347,9 @@ Markdown spec prose.
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
+	}
+	if strings.Contains(output, "scope: global database") || strings.Contains(output, "project path:") {
+		t.Fatalf("output = %q, want markdown fallback without database context", output)
 	}
 	assertNoStateDatabase(t, workingDir, stateHome)
 }
@@ -7802,6 +12421,24 @@ status: drafting
 	if len(archive.Archived) != 1 || archive.Archived[0].Spec == nil || archive.Archived[0].Spec.Alias != "SPEC-001" || archive.Archived[0].EventID == "" {
 		t.Fatalf("Archived = %#v, want SPEC-001 archived with event", archive.Archived)
 	}
+	if archive.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("archive ContractVersion = %d, want %d", archive.ContractVersion, state.StateJSONContractVersion)
+	}
+	if archive.DatabaseScope != "global" {
+		t.Fatalf("archive DatabaseScope = %q, want global", archive.DatabaseScope)
+	}
+	if archive.DatabasePath == "" {
+		t.Fatal("archive DatabasePath is empty")
+	}
+	if archive.ProjectID == "" {
+		t.Fatal("archive ProjectID is empty")
+	}
+	if archive.ProjectName != filepath.Base(workingDir) {
+		t.Fatalf("archive ProjectName = %q, want %q", archive.ProjectName, filepath.Base(workingDir))
+	}
+	if archive.ProjectCurrentPath != workingDir {
+		t.Fatalf("archive ProjectCurrentPath = %q, want %q", archive.ProjectCurrentPath, workingDir)
+	}
 	if len(archive.Skipped) != 3 {
 		t.Fatalf("Skipped = %#v, want three skipped specs", archive.Skipped)
 	}
@@ -7844,8 +12481,10 @@ status: drafting
 		t.Fatalf("spec archive human error = %v", err)
 	}
 	output := humanOut.String()
-	if !strings.Contains(output, "loaf spec archive") || !strings.Contains(output, "skipped SPEC-001: already archived") || !strings.Contains(output, "Skipped 1 spec(s)") {
-		t.Fatalf("output = %q, want already-archived human summary", output)
+	for _, want := range []string{"loaf spec archive", "scope: global database", "database:", "project:", "project name:", "project path:", "skipped SPEC-001: already archived", "Skipped 1 spec(s)"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
 	}
 }
 
@@ -7907,6 +12546,12 @@ status: drafting
 	}
 	if len(archive.Skipped) != 2 || archive.Skipped[0].Ref != "SPEC-002" || !strings.Contains(archive.Skipped[0].Reason, "status is drafting") || archive.Skipped[1].Ref != "SPEC-999" || archive.Skipped[1].Reason != "not found in index" {
 		t.Fatalf("Skipped = %#v, want draft and missing skips", archive.Skipped)
+	}
+	if archive.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("archive ContractVersion = %d, want %d", archive.ContractVersion, state.StateJSONContractVersion)
+	}
+	if archive.DatabaseScope != "" || archive.DatabasePath != "" || archive.ProjectID != "" || archive.ProjectName != "" || archive.ProjectCurrentPath != "" {
+		t.Fatalf("archive database context = %#v, want empty for markdown fallback", archive)
 	}
 	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "specs", "SPEC-001-complete.md")); !os.IsNotExist(err) {
 		t.Fatalf("active spec still exists or stat failed: %v", err)
@@ -8031,6 +12676,7 @@ claude_session_id: session-archived
 	if archived.Status != "archived" || archived.SourcePath != ".agents/sessions/archive/20260527-archived.md" {
 		t.Fatalf("archived session = %#v, want archived imported session", archived)
 	}
+	assertCLISessionContext(t, sessions.ContractVersion, sessions.DatabaseScope, sessions.DatabasePath, sessions.ProjectID, sessions.ProjectName, sessions.ProjectCurrentPath, workingDir)
 }
 
 func TestRunnerSessionListHumanUsesSQLiteStateWhenInitialized(t *testing.T) {
@@ -8066,7 +12712,7 @@ claude_session_id: session-archived
 		t.Fatalf("session list error = %v", err)
 	}
 	output := activeOnly.String()
-	for _, want := range []string{"loaf session list", "Active Sessions", "feature/session-list", ".agents/sessions/20260528-active.md", "1 active"} {
+	for _, want := range []string{"loaf session list", "scope: global database", "database:", "project:", "project name:", "project path:", "Active Sessions", "feature/session-list", ".agents/sessions/20260528-active.md", "1 active"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
@@ -8150,6 +12796,9 @@ claude_session_id: session-archived
 	if archived.Status != "archived" || archived.SourcePath != ".agents/sessions/archive/20260527-archived.md" {
 		t.Fatalf("archived session = %#v, want archive directory to force archived status", archived)
 	}
+	if sessions.ContractVersion != 0 || sessions.DatabaseScope != "" || sessions.DatabasePath != "" || sessions.ProjectID != "" || sessions.ProjectName != "" || sessions.ProjectCurrentPath != "" {
+		t.Fatalf("markdown session list context = %#v, want no SQLite context", sessions)
+	}
 	assertNoStateDatabase(t, workingDir, stateHome)
 
 	var activeOnly bytes.Buffer
@@ -8169,6 +12818,31 @@ claude_session_id: session-archived
 	}
 	if strings.Contains(output, "old/session") || strings.Contains(output, "args=session list") {
 		t.Fatalf("output = %q, want archive hidden and no legacy delegation", output)
+	}
+	if strings.Contains(output, "scope: global database") || strings.Contains(output, "project name:") {
+		t.Fatalf("output = %q, want markdown fallback without SQLite context", output)
+	}
+}
+
+func assertCLISessionContext(t *testing.T, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string, workingDir string) {
+	t.Helper()
+	if contractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", contractVersion, state.StateJSONContractVersion)
+	}
+	if databaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", databaseScope)
+	}
+	if databasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if projectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if projectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", projectName, filepath.Base(workingDir))
+	}
+	if projectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, workingDir)
 	}
 }
 
@@ -8239,6 +12913,7 @@ claude_session_id: session-active
 	if show.Query != "20260528-active" || session.Alias != "20260528-active" {
 		t.Fatalf("show = %#v, want query and alias", show)
 	}
+	assertCLISessionContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
 	if session.Branch != "feature/session-show" || session.Status != "active" || session.HarnessSessionID != "session-active" {
 		t.Fatalf("session metadata = %#v, want imported frontmatter", session)
 	}
@@ -8262,7 +12937,7 @@ claude_session_id: session-active
 		t.Fatalf("session show error = %v", err)
 	}
 	output := humanOut.String()
-	for _, want := range []string{"session 20260528-active", "branch: feature/session-show", "status: active", "harness session: session-active", ".agents/sessions/20260528-active.md", "decision(sqlite): keep session state queryable", "inbound associated_with task TASK-001"} {
+	for _, want := range []string{"session 20260528-active", "scope: global database", "database:", "project:", "project name:", "project path:", "branch: feature/session-show", "status: active", "harness session: session-active", ".agents/sessions/20260528-active.md", "decision(sqlite): keep session state queryable", "inbound associated_with task TASK-001"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
@@ -8303,6 +12978,9 @@ last_updated: 2026-05-28T10:05:00Z
 	session := show.Session
 	if show.Query != "20260528-active" || session.Alias != "20260528-active" {
 		t.Fatalf("show = %#v, want query and alias", show)
+	}
+	if show.ContractVersion != 0 || show.DatabaseScope != "" || show.DatabasePath != "" || show.ProjectID != "" || show.ProjectName != "" || show.ProjectCurrentPath != "" {
+		t.Fatalf("markdown show context = %#v, want no SQLite context", show)
 	}
 	if session.Branch != "feature/session-show" || session.Status != "active" || session.HarnessSessionID != "session-active" {
 		t.Fatalf("session metadata = %#v, want markdown frontmatter metadata", session)
@@ -8390,6 +13068,7 @@ func TestRunnerSessionLogJSONUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if result.EntryType != "decision" || result.Scope != "sqlite" || result.Message != "write to state" {
 		t.Fatalf("result = %#v, want parsed journal entry", result)
 	}
+	assertCLISessionContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
 	if result.ObservedWorktree != workingDir || result.HarnessSessionID != "harness-123" {
 		t.Fatalf("result context = %#v, want observed worktree and harness id", result)
 	}
@@ -8685,6 +13364,7 @@ func TestRunnerSessionLogFromHookUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if result.EntryType != "task" || result.Scope != "completed" || result.Message != "port hook logging" {
 		t.Fatalf("result = %#v, want TaskCompleted entry", result)
 	}
+	assertCLISessionContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
 	if result.Session == nil || result.Session.ID != start.Session.ID {
 		t.Fatalf("result session = %#v, want linked started session", result.Session)
 	}
@@ -8941,6 +13621,7 @@ source: old
 	if archived.Status != "archived" || archived.SourcePath != ".agents/reports/archive/old.md" {
 		t.Fatalf("archived report = %#v, want archive-location status", archived)
 	}
+	assertCLIReportContext(t, reports.ContractVersion, reports.DatabaseScope, reports.DatabasePath, reports.ProjectID, reports.ProjectName, reports.ProjectCurrentPath, workingDir)
 }
 
 func TestRunnerReportListHumanUsesSQLiteStateWhenInitialized(t *testing.T) {
@@ -8978,7 +13659,7 @@ source: SPEC-001
 		t.Fatalf("report list --status final error = %v", err)
 	}
 	output := stdout.String()
-	for _, want := range []string{"loaf report list", "Final:", "Final Report", "[audit]", ".agents/reports/final.md", "1 report(s) total"} {
+	for _, want := range []string{"loaf report list", "scope: global database", "database:", "project:", "project name:", "project path:", "Final:", "Final Report", "[audit]", ".agents/reports/final.md", "1 report(s) total"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
@@ -9037,6 +13718,9 @@ source: old
 	if archived.Title != "Old Report" || archived.Kind != "research" || archived.Status != "archived" || archived.SourcePath != ".agents/reports/archive/old.md" {
 		t.Fatalf("archived report = %#v, want archive-location status", archived)
 	}
+	if reports.ContractVersion != 0 || reports.DatabaseScope != "" || reports.DatabasePath != "" || reports.ProjectID != "" || reports.ProjectName != "" || reports.ProjectCurrentPath != "" {
+		t.Fatalf("markdown report list context = %#v, want no SQLite context", reports)
+	}
 
 	var humanOut bytes.Buffer
 	err = Runner{
@@ -9056,7 +13740,85 @@ source: old
 	if strings.Contains(output, "Draft Report") || strings.Contains(output, "Old Report") {
 		t.Fatalf("output = %q, want status filter to hide non-final reports", output)
 	}
+	if strings.Contains(output, "scope: global database") || strings.Contains(output, "project name:") {
+		t.Fatalf("output = %q, want markdown fallback without SQLite context", output)
+	}
 	assertNoStateDatabase(t, workingDir, stateHome)
+}
+
+func TestRunnerReportListWarnsWhenGlobalDatabaseHasUnimportedMarkdown(t *testing.T) {
+	registeredDir := realpath(t, t.TempDir())
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: registeredDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init registered project error = %v", err)
+	}
+	writeCLIAgentsFile(t, workingDir, "reports/local.md", `---
+title: Local Markdown Report
+type: audit
+status: final
+---
+# Local Markdown Report
+`)
+
+	var jsonOut bytes.Buffer
+	err := Runner{
+		Stdout:     &jsonOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"report", "list", "--json"})
+	if err != nil {
+		t.Fatalf("report list --json error = %v", err)
+	}
+	reports := decodeReportList(t, jsonOut.Bytes())
+	if !hasDiagnostic(reports.Diagnostics, "local-markdown-not-imported") {
+		t.Fatalf("diagnostics = %#v, want local-markdown-not-imported", reports.Diagnostics)
+	}
+	diagnostic := findCLIDiagnostic(t, reports.Diagnostics, "local-markdown-not-imported")
+	if diagnostic.Category != state.RepairCategoryMarkdownImport || diagnostic.Policy != state.DiagnosticPolicyImportPending {
+		t.Fatalf("diagnostic = %#v, want markdown import/import-pending policy", diagnostic)
+	}
+	if len(reports.Reports) != 0 {
+		t.Fatalf("reports = %#v, want empty SQLite list with warning", reports.Reports)
+	}
+
+	var humanOut bytes.Buffer
+	err = Runner{
+		Stdout:     &humanOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"report", "list"})
+	if err != nil {
+		t.Fatalf("report list human error = %v", err)
+	}
+	output := humanOut.String()
+	for _, want := range []string{"loaf report list", "warn [markdown-import/import-pending]:", "local .agents Markdown has 1 importable artifact", "loaf state migrate markdown --dry-run", "No reports found."} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
+	}
+}
+
+func assertCLIReportContext(t *testing.T, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string, workingDir string) {
+	t.Helper()
+	if contractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", contractVersion, state.StateJSONContractVersion)
+	}
+	if databaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", databaseScope)
+	}
+	if databasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if projectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if projectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", projectName, filepath.Base(workingDir))
+	}
+	if projectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, workingDir)
+	}
 }
 
 func TestRunnerReportListReportsInvalidSQLiteState(t *testing.T) {
@@ -9096,12 +13858,116 @@ func decodeStateStatus(t *testing.T, data []byte) state.Status {
 	if err := json.Unmarshal(data, &status); err != nil {
 		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
 	}
+	if status.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d in %s", status.ContractVersion, state.StateJSONContractVersion, string(data))
+	}
 	return status
+}
+
+func decodeCommandError(t *testing.T, data []byte) commandErrorJSON {
+	t.Helper()
+	var output commandErrorJSON
+	if err := json.Unmarshal(data, &output); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	if output.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d in %s", output.ContractVersion, state.StateJSONContractVersion, string(data))
+	}
+	return output
+}
+
+func assertSilentExitCode(t *testing.T, err error, want int) {
+	t.Helper()
+	exitErr, ok := err.(interface {
+		ExitCode() int
+		Silent() bool
+	})
+	if !ok || exitErr.ExitCode() != want || !exitErr.Silent() {
+		t.Fatalf("error = %#v, want silent exit code %d", err, want)
+	}
+}
+
+func assertJSONArrayLength(t *testing.T, data []byte, field string, want int) {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	value, ok := payload[field]
+	if !ok {
+		t.Fatalf("JSON field %q missing in %s", field, string(data))
+	}
+	items, ok := value.([]any)
+	if !ok {
+		t.Fatalf("JSON field %q = %#v, want array", field, value)
+	}
+	if len(items) != want {
+		t.Fatalf("JSON field %q length = %d, want %d", field, len(items), want)
+	}
+}
+
+func assertJSONFieldPresent(t *testing.T, data []byte, field string) {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	if _, ok := payload[field]; !ok {
+		t.Fatalf("JSON field %q missing in %s", field, string(data))
+	}
+}
+
+func assertJSONFieldAbsent(t *testing.T, data []byte, field string) {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	if _, ok := payload[field]; ok {
+		t.Fatalf("JSON field %q present in %s", field, string(data))
+	}
 }
 
 func decodeStateBackupResult(t *testing.T, data []byte) state.BackupResult {
 	t.Helper()
 	var result state.BackupResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeStateBackupVerificationResult(t *testing.T, data []byte) state.BackupVerificationResult {
+	t.Helper()
+	var result state.BackupVerificationResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func assertNoSQLiteSidecars(t *testing.T, path string) {
+	t.Helper()
+	for _, suffix := range []string{"-wal", "-shm"} {
+		sidecar := path + suffix
+		if _, err := os.Stat(sidecar); !os.IsNotExist(err) {
+			t.Fatalf("SQLite sidecar %s exists or stat failed: %v", sidecar, err)
+		}
+	}
+}
+
+func decodeRelationshipOriginRepairResult(t *testing.T, data []byte) state.RelationshipOriginRepairResult {
+	t.Helper()
+	var result state.RelationshipOriginRepairResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeLegacyProjectDatabaseArchiveResult(t *testing.T, data []byte) state.LegacyProjectDatabaseArchiveResult {
+	t.Helper()
+	var result state.LegacyProjectDatabaseArchiveResult
 	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
 	}
@@ -9117,6 +13983,28 @@ func decodeStateExportSnapshot(t *testing.T, data []byte) state.ExportSnapshot {
 	return snapshot
 }
 
+func exportAllTablesForCLI(t *testing.T, workingDir string, stateHome string) map[string][]map[string]any {
+	t.Helper()
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "export", "all", "--json"}); err != nil {
+		t.Fatalf("state export all --json error = %v", err)
+	}
+	return decodeStateExportSnapshot(t, stdout.Bytes()).Tables
+}
+
+func projectIdentityForCLI(t *testing.T, workingDir string, stateHome string) state.ProjectIdentity {
+	t.Helper()
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"project", "show", "--json"}); err != nil {
+		t.Fatalf("project show --json error = %v", err)
+	}
+	var identity state.ProjectIdentity
+	if err := json.Unmarshal(stdout.Bytes(), &identity); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	return identity
+}
+
 func decodeMarkdownMigrationPlan(t *testing.T, data []byte) state.MarkdownMigrationPlan {
 	t.Helper()
 	var plan state.MarkdownMigrationPlan
@@ -9124,6 +14012,15 @@ func decodeMarkdownMigrationPlan(t *testing.T, data []byte) state.MarkdownMigrat
 		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
 	}
 	return plan
+}
+
+func decodeMarkdownMigrationPreviewResult(t *testing.T, data []byte) state.MarkdownMigrationPreviewResult {
+	t.Helper()
+	var result state.MarkdownMigrationPreviewResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
 }
 
 func decodeMarkdownMigrationResult(t *testing.T, data []byte) state.MarkdownMigrationResult {
@@ -9151,6 +14048,28 @@ func decodeTaskList(t *testing.T, data []byte) state.TaskList {
 		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
 	}
 	return result
+}
+
+func assertCLIProjectContext(t *testing.T, workingDir string, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string) {
+	t.Helper()
+	if contractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", contractVersion, state.StateJSONContractVersion)
+	}
+	if databaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", databaseScope)
+	}
+	if databasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if projectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if projectName != filepath.Base(workingDir) {
+		t.Fatalf("ProjectName = %q, want %q", projectName, filepath.Base(workingDir))
+	}
+	if projectCurrentPath != workingDir {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, workingDir)
+	}
 }
 
 func decodeTaskShow(t *testing.T, data []byte) state.TaskShow {
@@ -9393,6 +14312,9 @@ func decodeCompatibilityCommandSummary(t *testing.T, data []byte) compatibilityC
 	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
 	}
+	if result.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d in %s", result.ContractVersion, state.StateJSONContractVersion, string(data))
+	}
 	return result
 }
 
@@ -9595,6 +14517,98 @@ func hasDiagnostic(diagnostics []state.Diagnostic, code string) bool {
 	return false
 }
 
+func findCLIDiagnostic(t *testing.T, diagnostics []state.Diagnostic, code string) state.Diagnostic {
+	t.Helper()
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == code {
+			return diagnostic
+		}
+	}
+	t.Fatalf("diagnostic %q not found in %#v", code, diagnostics)
+	return state.Diagnostic{}
+}
+
+func findStateRepairAction(t *testing.T, actions []state.RepairAction, code string) state.RepairAction {
+	t.Helper()
+	for _, action := range actions {
+		if action.Code == code {
+			return action
+		}
+	}
+	t.Fatalf("repair action %q not found in %#v", code, actions)
+	return state.RepairAction{}
+}
+
+func initCLIStateForRepairCommand(t *testing.T) (string, string, state.Status) {
+	t.Helper()
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init --json error = %v", err)
+	}
+	return workingDir, stateHome, decodeStateStatus(t, stdout.Bytes())
+}
+
+func doctorRepairActionForCLI(t *testing.T, workingDir string, stateHome string, code string) state.RepairAction {
+	t.Helper()
+	var stdout bytes.Buffer
+	err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "doctor", "--json"})
+	status := decodeStateStatus(t, stdout.Bytes())
+	if status.Mode == state.ModeInvalid {
+		assertSilentExitCode(t, err, 1)
+	} else if err != nil {
+		t.Fatalf("state doctor --json error = %v", err)
+	}
+	return findStateRepairAction(t, status.RepairPlan, code)
+}
+
+func runRepairActionCommandForCLI(t *testing.T, workingDir string, stateHome string, action state.RepairAction, wantExitCode int) []byte {
+	t.Helper()
+	args := repairActionCommandArgs(t, action)
+	var stdout bytes.Buffer
+	err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run(args)
+	if wantExitCode == 0 {
+		if err != nil {
+			t.Fatalf("%s error = %v\nstdout:\n%s", action.Command, err, stdout.String())
+		}
+	} else {
+		assertSilentExitCode(t, err, wantExitCode)
+	}
+	if stdout.Len() == 0 {
+		t.Fatalf("%s produced empty stdout", action.Command)
+	}
+	return stdout.Bytes()
+}
+
+func repairActionCommandArgs(t *testing.T, action state.RepairAction) []string {
+	t.Helper()
+	if action.Command == "" {
+		t.Fatalf("repair action %q has no command", action.Code)
+	}
+	parts := strings.Fields(action.Command)
+	if len(parts) < 2 || parts[0] != "loaf" {
+		t.Fatalf("repair action %q command = %q, want loaf command", action.Code, action.Command)
+	}
+	return parts[1:]
+}
+
+func openCLITestDB(t *testing.T, path string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("sql.Open(%s) error = %v", path, err)
+	}
+	return db
+}
+
+func closeCLITestDB(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+}
+
 func sqliteCount(t *testing.T, db *sql.DB, query string, args ...any) int {
 	t.Helper()
 	var count int
@@ -9715,6 +14729,81 @@ func gitCLI(t *testing.T, dir string, args ...string) {
 	}
 }
 
+func TestRunnerStateBackedCommandHelpDoesNotRequireState(t *testing.T) {
+	parentCases := []struct {
+		command        string
+		wantHelp       string
+		wantSubcommand string
+	}{
+		{command: "brainstorm", wantHelp: "Usage: loaf brainstorm <subcommand>", wantSubcommand: "promote"},
+		{command: "idea", wantHelp: "Usage: loaf idea <subcommand>", wantSubcommand: "capture"},
+		{command: "spark", wantHelp: "Usage: loaf spark <subcommand>", wantSubcommand: "capture"},
+		{command: "tag", wantHelp: "Usage: loaf tag <subcommand>", wantSubcommand: "add"},
+		{command: "bundle", wantHelp: "Usage: loaf bundle <subcommand>", wantSubcommand: "create"},
+		{command: "link", wantHelp: "Usage: loaf link <subcommand>", wantSubcommand: "create"},
+	}
+	for _, tc := range parentCases {
+		t.Run(tc.command, func(t *testing.T) {
+			for _, args := range [][]string{{tc.command}, {tc.command, "--help"}, {tc.command, "help"}} {
+				var stdout bytes.Buffer
+				err := Runner{
+					Stdout:     &stdout,
+					WorkingDir: t.TempDir(),
+				}.Run(args)
+				if err != nil {
+					t.Fatalf("%v error = %v", args, err)
+				}
+				if !strings.Contains(stdout.String(), tc.wantHelp) || !strings.Contains(stdout.String(), tc.wantSubcommand) {
+					t.Fatalf("stdout = %q, want %q and %q", stdout.String(), tc.wantHelp, tc.wantSubcommand)
+				}
+			}
+		})
+	}
+}
+
+func TestRunnerNestedStateBackedHelpDoesNotParseAsOption(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "state migrate markdown", args: []string{"state", "migrate", "markdown", "--help"}, want: "Usage: loaf state migrate markdown"},
+		{name: "state migrate storage-home", args: []string{"state", "migrate", "storage-home", "--help"}, want: "Usage: loaf state migrate storage-home"},
+		{name: "migrate markdown", args: []string{"migrate", "markdown", "--help"}, want: "Usage: loaf migrate markdown"},
+		{name: "migrate storage-home", args: []string{"migrate", "storage-home", "--help"}, want: "Usage: loaf migrate storage-home"},
+		{name: "state backup", args: []string{"state", "backup", "--help"}, want: "global data-home backups directory"},
+		{name: "state backup verify", args: []string{"state", "backup", "verify", "--help"}, want: "Usage: loaf state backup verify"},
+		{name: "state export all", args: []string{"state", "export", "all", "--help"}, want: "Usage: loaf state export all"},
+		{name: "task update", args: []string{"task", "update", "--help"}, want: "Usage: loaf task update <task>"},
+		{name: "task create", args: []string{"task", "create", "--help"}, want: "Usage: loaf task create --title <title>"},
+		{name: "spec show", args: []string{"spec", "show", "--help"}, want: "Usage: loaf spec show <spec>"},
+		{name: "session log", args: []string{"session", "log", "--help"}, want: "Usage: loaf session log <entry>"},
+		{name: "report create", args: []string{"report", "create", "--help"}, want: "Usage: loaf report create <slug>"},
+		{name: "brainstorm archive", args: []string{"brainstorm", "archive", "--help"}, want: "Usage: loaf brainstorm archive <brainstorm...>"},
+		{name: "idea capture", args: []string{"idea", "capture", "--help"}, want: "Usage: loaf idea capture --title <title>"},
+		{name: "spark promote", args: []string{"spark", "promote", "--help"}, want: "Usage: loaf spark promote <spark>"},
+		{name: "tag add", args: []string{"tag", "add", "--help"}, want: "Usage: loaf tag add <entity> <tag>"},
+		{name: "bundle update", args: []string{"bundle", "update", "--help"}, want: "Usage: loaf bundle update <slug>"},
+		{name: "link create", args: []string{"link", "create", "--help"}, want: "Usage: loaf link create --from <entity>"},
+		{name: "trace", args: []string{"trace", "--help"}, want: "Usage: loaf trace <entity>"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: t.TempDir(),
+			}.Run(tc.args)
+			if err != nil {
+				t.Fatalf("%v error = %v", tc.args, err)
+			}
+			if !strings.Contains(stdout.String(), tc.want) {
+				t.Fatalf("stdout = %q, want %q", stdout.String(), tc.want)
+			}
+		})
+	}
+}
+
 func TestRunnerRootHelpIsNative(t *testing.T) {
 	for _, args := range [][]string{{}, {"--help"}, {"-h"}, {"help"}} {
 		var stdout bytes.Buffer
@@ -9758,6 +14847,63 @@ func TestRunnerUnknownTopLevelCommandIsNative(t *testing.T) {
 	}
 }
 
+func TestRunnerReportGenerateHelpNamesMarkdownFormat(t *testing.T) {
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: t.TempDir(),
+	}.Run([]string{"report", "generate", "--help"})
+	if err != nil {
+		t.Fatalf("Run(report generate --help) error = %v", err)
+	}
+	for _, want := range []string{
+		"Usage: loaf report generate <kind> [ref] [--format markdown] [--json]",
+		"--format     Output format: markdown",
+		"--json       Output contract, command, project context, and markdown content as JSON",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunnerReportListHelpNamesLifecycleStatuses(t *testing.T) {
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: t.TempDir(),
+	}.Run([]string{"report", "list", "--help"})
+	if err != nil {
+		t.Fatalf("Run(report list --help) error = %v", err)
+	}
+	want := "--status     Filter by status; Loaf lifecycle statuses: draft, final, archived"
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestRunnerReportCreateHelpMatchesParser(t *testing.T) {
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: t.TempDir(),
+	}.Run([]string{"report", "create", "--help"})
+	if err != nil {
+		t.Fatalf("Run(report create --help) error = %v", err)
+	}
+	for _, want := range []string{
+		"Usage: loaf report create <slug> [--type <type>] [--source <source>] [--json]",
+		"--source     Report source",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+	if strings.Contains(stdout.String(), "--title") {
+		t.Fatalf("stdout = %q, want help to omit unsupported --title flag", stdout.String())
+	}
+}
+
 func TestRunnerAgentHelpIsNative(t *testing.T) {
 	var stdout bytes.Buffer
 	err := Runner{
@@ -9794,29 +14940,221 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 		t.Fatalf("agent help root = %#v, want loaf metadata", doc)
 	}
 	commands := map[string]struct {
-		subcommands []string
-		options     []string
+		subcommands        []string
+		options            []string
+		optionDescriptions map[string]string
 	}{}
+	seenCommands := map[string]bool{}
 	for _, command := range doc.Commands {
+		if seenCommands[command.Name] {
+			t.Fatalf("agent help has duplicate command %q", command.Name)
+		}
+		seenCommands[command.Name] = true
 		entry := commands[command.Name]
+		if entry.optionDescriptions == nil {
+			entry.optionDescriptions = map[string]string{}
+		}
+		seenSubcommands := map[string]bool{}
 		for _, subcommand := range command.Subcommands {
+			if seenSubcommands[subcommand.Name] {
+				t.Fatalf("agent help command %q has duplicate subcommand %q", command.Name, subcommand.Name)
+			}
+			seenSubcommands[subcommand.Name] = true
 			entry.subcommands = append(entry.subcommands, subcommand.Name)
 			for _, option := range subcommand.Options {
-				entry.options = append(entry.options, command.Name+" "+subcommand.Name+" "+option.Flags)
+				key := command.Name + " " + subcommand.Name + " " + option.Flags
+				entry.options = append(entry.options, key)
+				entry.optionDescriptions[key] = option.Description
 			}
 		}
 		for _, option := range command.Options {
-			entry.options = append(entry.options, command.Name+" "+option.Flags)
+			key := command.Name + " " + option.Flags
+			entry.options = append(entry.options, key)
+			entry.optionDescriptions[key] = option.Description
 		}
 		commands[command.Name] = entry
 	}
-	for _, want := range []string{"build", "session", "task", "spec", "report", "kb", "release", "version"} {
+	for _, want := range []string{"build", "state", "project", "session", "task", "spec", "report", "kb", "release", "version"} {
 		if _, ok := commands[want]; !ok {
 			t.Fatalf("agent help commands missing %q: %#v", want, commands)
 		}
 	}
 	if len(doc.Commands) < 15 {
 		t.Fatalf("agent help commands = %d, want full native surface rather than stale release-only JSON", len(doc.Commands))
+	}
+	for _, command := range doc.Commands {
+		if len(command.Subcommands) == 0 {
+			assertAgentHelpJSONMatchesLiveHelp(t, []string{command.Name}, commands[command.Name].options, command.Name+" --json")
+			continue
+		}
+		for _, subcommand := range command.Subcommands {
+			args := append([]string{command.Name}, strings.Fields(subcommand.Name)...)
+			assertAgentHelpJSONMatchesLiveHelp(t, args, commands[command.Name].options, command.Name+" "+subcommand.Name+" --json")
+		}
+	}
+	for _, want := range []string{
+		"build -t, --target <name>",
+		"install -y, --yes",
+		"install --no-yes",
+	} {
+		commandName := strings.Fields(want)[0]
+		if !stringSliceContains(commands[commandName].options, want) {
+			t.Fatalf("%s options = %#v, want agent help to include %q", commandName, commands[commandName].options, want)
+		}
+	}
+	for _, want := range []string{"repair", "repair legacy-project-database", "repair relationship-origin", "migrate", "migrate markdown", "migrate storage-home"} {
+		if !stringSliceContains(commands["state"].subcommands, want) {
+			t.Fatalf("state subcommands = %#v, want %q", commands["state"].subcommands, want)
+		}
+	}
+	if got := commands["state"].optionDescriptions["state path --verbose"]; !strings.Contains(got, "scope") || !strings.Contains(got, "database path") {
+		t.Fatalf("state path verbose description = %q, want human context guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state path --json"]; !strings.Contains(got, "contract version") || !strings.Contains(got, "database path") {
+		t.Fatalf("state path json description = %q, want contract/database path guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state init --json"]; !strings.Contains(got, "global database scope") || !strings.Contains(got, "project identity") {
+		t.Fatalf("state init json description = %q, want scope/project identity guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state status --json"]; !strings.Contains(got, "readiness mode") || !strings.Contains(got, "diagnostics") || !strings.Contains(got, "project identity") {
+		t.Fatalf("state status json description = %q, want readiness/diagnostics/project identity guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state doctor --json"]; !strings.Contains(got, "diagnostics") || !strings.Contains(got, "repair plan") || !strings.Contains(got, "global database scope") {
+		t.Fatalf("state doctor json description = %q, want diagnostics/repair/scope guidance", got)
+	}
+	for _, subcommand := range []string{"backup"} {
+		if !stringSliceContains(commands["state"].subcommands, subcommand) {
+			t.Fatalf("state subcommands = %#v, want %q", commands["state"].subcommands, subcommand)
+		}
+	}
+	for _, want := range []string{"backup verify", "export all", "export triage", "export session", "export spec", "export release-readiness"} {
+		if !stringSliceContains(commands["state"].subcommands, want) {
+			t.Fatalf("state subcommands = %#v, want %q", commands["state"].subcommands, want)
+		}
+	}
+	if got := commands["state"].optionDescriptions["state export --format <format>"]; !strings.Contains(got, "selected export kind") {
+		t.Fatalf("state export format description = %q, want generic export format guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state repair legacy-project-database --dry-run"]; !strings.Contains(got, "without writing") {
+		t.Fatalf("legacy repair dry-run description = %q, want non-mutating preview", got)
+	}
+	if got := commands["state"].optionDescriptions["state repair legacy-project-database --apply"]; !strings.Contains(got, "Move legacy SQLite files") {
+		t.Fatalf("legacy repair apply description = %q, want apply action", got)
+	}
+	if got := commands["state"].optionDescriptions["state repair legacy-project-database --json"]; !strings.Contains(got, "archive plan/result") || !strings.Contains(got, "project identity") {
+		t.Fatalf("legacy repair json description = %q, want archive/project identity guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state repair relationship-origin --origin <imported|manual>"]; !strings.Contains(got, "Provenance value") {
+		t.Fatalf("relationship repair origin description = %q, want provenance guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state repair relationship-origin --dry-run"]; !strings.Contains(got, "without writing") {
+		t.Fatalf("relationship repair dry-run description = %q, want non-mutating preview", got)
+	}
+	if got := commands["state"].optionDescriptions["state repair relationship-origin --json"]; !strings.Contains(got, "repair plan/result") || !strings.Contains(got, "global database scope") {
+		t.Fatalf("relationship repair json description = %q, want repair/scope guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state migrate markdown --json"]; !strings.Contains(got, "migration contract") || !strings.Contains(got, "project context") {
+		t.Fatalf("state migrate markdown json description = %q, want contract/project context guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state migrate storage-home --json"]; !strings.Contains(got, "global database paths") || !strings.Contains(got, "project identity") {
+		t.Fatalf("state migrate storage-home json description = %q, want global path/project identity guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state backup --json"]; !strings.Contains(got, "checksum") || !strings.Contains(got, "current project identity") {
+		t.Fatalf("state backup json description = %q, want checksum/current project identity guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state backup verify --json"]; !strings.Contains(got, "restore guidance") || !strings.Contains(got, "captured project identities") {
+		t.Fatalf("state backup verify json description = %q, want restore/project identity guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state export all --format <format>"]; !strings.Contains(got, "json") {
+		t.Fatalf("state export all format description = %q, want JSON guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state export all --json"]; !strings.Contains(got, "Alias for --format json") {
+		t.Fatalf("state export all json description = %q, want JSON alias guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state export release-readiness --format <format>"]; !strings.Contains(got, "markdown") {
+		t.Fatalf("state export release-readiness format description = %q, want Markdown guidance", got)
+	}
+	if got := commands["report"].optionDescriptions["report generate --format <format>"]; !strings.Contains(got, "markdown") {
+		t.Fatalf("report generate format description = %q, want Markdown guidance", got)
+	}
+	if got := commands["report"].optionDescriptions["report generate --json"]; !strings.Contains(got, "contract") || !strings.Contains(got, "project context") || !strings.Contains(got, "markdown content") {
+		t.Fatalf("report generate json description = %q, want contract/project context/Markdown content guidance", got)
+	}
+	if got := commands["report"].optionDescriptions["report list --status <status>"]; !strings.Contains(got, "draft, final, archived") {
+		t.Fatalf("report list status description = %q, want lifecycle status guidance", got)
+	}
+	for _, want := range []string{
+		"kb status --json",
+		"kb validate --json",
+		"kb check --file <path>",
+		"kb check --json",
+		"kb review --json",
+		"kb init --json",
+		"kb import --path <path>",
+		"kb import --json",
+	} {
+		if !stringSliceContains(commands["kb"].options, want) {
+			t.Fatalf("kb options = %#v, want agent help to include %q", commands["kb"].options, want)
+		}
+	}
+	for option, wants := range map[string][]string{
+		"kb status --json":   {"knowledge file totals", "coverage counts", "directories"},
+		"kb validate --json": {"frontmatter errors", "warnings"},
+		"kb check --json":    {"staleness", "coverage", "commit", "review metadata"},
+		"kb review --json":   {"updated knowledge frontmatter"},
+		"kb init --json":     {"directory actions", "config status", "QMD collections"},
+		"kb import --json":   {"QMD import collection status", "import error"},
+	} {
+		got := commands["kb"].optionDescriptions[option]
+		for _, want := range wants {
+			if !strings.Contains(got, want) {
+				t.Fatalf("agent help option %q description = %q, want %q", option, got, want)
+			}
+		}
+	}
+	if got := commands["check"].optionDescriptions["check --json"]; !strings.Contains(got, "hook result") || !strings.Contains(got, "pass/block status") || !strings.Contains(got, "exit code") {
+		t.Fatalf("check json description = %q, want hook result/pass-block/exit code guidance", got)
+	}
+	if got := commands["housekeeping"].optionDescriptions["housekeeping --json"]; !strings.Contains(got, "housekeeping sections") || !strings.Contains(got, "cleanup candidates") || !strings.Contains(got, "project identity") {
+		t.Fatalf("housekeeping json description = %q, want sections/cleanup/project identity guidance", got)
+	}
+	if got := commands["trace"].optionDescriptions["trace --json"]; !strings.Contains(got, "traced entity") || !strings.Contains(got, "sources") || !strings.Contains(got, "relationships") || !strings.Contains(got, "project identity") {
+		t.Fatalf("trace json description = %q, want entity/sources/relationships/project identity guidance", got)
+	}
+	for _, want := range []string{
+		"migrate worktree-storage --apply",
+		"migrate worktree-storage --force-from-worktree",
+		"migrate worktree-storage --force-from-main",
+	} {
+		if !stringSliceContains(commands["migrate"].options, want) {
+			t.Fatalf("migrate options = %#v, want agent help to include %q", commands["migrate"].options, want)
+		}
+	}
+	if got := commands["migrate"].optionDescriptions["migrate worktree-storage --apply"]; !strings.Contains(got, "dry-run") {
+		t.Fatalf("worktree-storage apply description = %q, want dry-run guidance", got)
+	}
+	if got := commands["session"].optionDescriptions["session start --json"]; !strings.Contains(got, "action") || !strings.Contains(got, "journal IDs") || !strings.Contains(got, "project identity") {
+		t.Fatalf("session start json description = %q, want action/journal/project identity guidance", got)
+	}
+	if got := commands["session"].optionDescriptions["session list --json"]; !strings.Contains(got, "sessions") || !strings.Contains(got, "diagnostics") || !strings.Contains(got, "global database scope") {
+		t.Fatalf("session list json description = %q, want sessions/diagnostics/scope guidance", got)
+	}
+	if got := commands["session"].optionDescriptions["session show --json"]; !strings.Contains(got, "journal entries") || !strings.Contains(got, "relationships") || !strings.Contains(got, "project identity") {
+		t.Fatalf("session show json description = %q, want journal/relationship/project identity guidance", got)
+	}
+	if got := commands["session"].optionDescriptions["session report --json"]; !strings.Contains(got, "export contract") || !strings.Contains(got, "markdown content") {
+		t.Fatalf("session report json description = %q, want export/markdown guidance", got)
+	}
+	if got := commands["session"].optionDescriptions["session enrich --json"]; !strings.Contains(got, "compatibility mode") || !strings.Contains(got, "counts") {
+		t.Fatalf("session enrich json description = %q, want compatibility/count guidance", got)
+	}
+	for _, want := range []string{
+		"housekeeping --plans",
+		"housekeeping --handoffs",
+	} {
+		if !stringSliceContains(commands["housekeeping"].options, want) {
+			t.Fatalf("housekeeping options = %#v, want agent help to include %q", commands["housekeeping"].options, want)
+		}
 	}
 	for _, want := range []string{"refresh", "sync"} {
 		if !stringSliceContains(commands["task"].subcommands, want) {
@@ -9825,6 +15163,132 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 	}
 	if !stringSliceContains(commands["task"].options, "task sync --import") || !stringSliceContains(commands["task"].options, "task sync --push") {
 		t.Fatalf("task options = %#v, want sync import/push options", commands["task"].options)
+	}
+	for _, want := range []string{
+		"task list --json",
+		"task show --json",
+		"task create --json",
+		"task update --json",
+		"task archive --json",
+		"task refresh --json",
+		"task sync --json",
+	} {
+		if !stringSliceContains(commands["task"].options, want) {
+			t.Fatalf("task options = %#v, want agent help to include %q", commands["task"].options, want)
+		}
+	}
+	if got := commands["task"].optionDescriptions["task list --status <status>"]; !strings.Contains(got, "in_progress, blocked, todo, review, done, archived") {
+		t.Fatalf("task list status description = %q, want valid list statuses", got)
+	}
+	if got := commands["task"].optionDescriptions["task update --status <status>"]; !strings.Contains(got, "in_progress, blocked, todo, review, done") {
+		t.Fatalf("task update status description = %q, want valid update statuses", got)
+	}
+	if got := commands["task"].optionDescriptions["task create --priority <level>"]; !strings.Contains(got, "P0, P1, P2, P3") {
+		t.Fatalf("task create priority description = %q, want valid priorities", got)
+	}
+	if got := commands["task"].optionDescriptions["task update --priority <level>"]; !strings.Contains(got, "P0, P1, P2, P3") {
+		t.Fatalf("task update priority description = %q, want valid priorities", got)
+	}
+	if got := commands["task"].optionDescriptions["task list --json"]; !strings.Contains(got, "tasks") || !strings.Contains(got, "diagnostics") || !strings.Contains(got, "project identity") {
+		t.Fatalf("task list json description = %q, want tasks/diagnostics/project identity guidance", got)
+	}
+	if got := commands["task"].optionDescriptions["task create --json"]; !strings.Contains(got, "created task") || !strings.Contains(got, "event") || !strings.Contains(got, "global database scope") {
+		t.Fatalf("task create json description = %q, want created/event/scope guidance", got)
+	}
+	if got := commands["task"].optionDescriptions["task refresh --json"]; !strings.Contains(got, "compatibility mode") || !strings.Contains(got, "counts") {
+		t.Fatalf("task refresh json description = %q, want compatibility/count guidance", got)
+	}
+	if got := commands["spec"].optionDescriptions["spec list --json"]; !strings.Contains(got, "specs") || !strings.Contains(got, "task counts") || !strings.Contains(got, "project identity") {
+		t.Fatalf("spec list json description = %q, want specs/task counts/project identity guidance", got)
+	}
+	if got := commands["spec"].optionDescriptions["spec show --json"]; !strings.Contains(got, "relationships") || !strings.Contains(got, "global database scope") {
+		t.Fatalf("spec show json description = %q, want relationship/scope guidance", got)
+	}
+	if got := commands["report"].optionDescriptions["report list --json"]; !strings.Contains(got, "reports") || !strings.Contains(got, "diagnostics") || !strings.Contains(got, "project identity") {
+		t.Fatalf("report list json description = %q, want reports/diagnostics/project identity guidance", got)
+	}
+	if got := commands["report"].optionDescriptions["report create --json"]; !strings.Contains(got, "created report") || !strings.Contains(got, "event") || !strings.Contains(got, "global database scope") {
+		t.Fatalf("report create json description = %q, want created/event/scope guidance", got)
+	}
+	if got := commands["report"].optionDescriptions["report finalize --json"]; !strings.Contains(got, "status transition") || !strings.Contains(got, "project identity") {
+		t.Fatalf("report finalize json description = %q, want status transition/project identity guidance", got)
+	}
+	for _, want := range []string{"list", "show", "identity", "rename", "move"} {
+		if !stringSliceContains(commands["project"].subcommands, want) {
+			t.Fatalf("project subcommands = %#v, want %q", commands["project"].subcommands, want)
+		}
+	}
+	if got := commands["project"].optionDescriptions["project rename --dry-run"]; !strings.Contains(got, "preview without writing") {
+		t.Fatalf("project rename dry-run description = %q, want preview safeguard", got)
+	}
+	if got := commands["project"].optionDescriptions["project move --dry-run"]; !strings.Contains(got, "preview without writing") {
+		t.Fatalf("project move dry-run description = %q, want preview safeguard", got)
+	}
+	if got := commands["project"].optionDescriptions["project list --json"]; !strings.Contains(got, "database path") || !strings.Contains(got, "friendly names") || !strings.Contains(got, "current paths") {
+		t.Fatalf("project list json description = %q, want global project identity fields", got)
+	}
+	for command, wants := range map[string][]string{
+		"brainstorm": {"list", "show", "promote", "archive"},
+		"idea":       {"list", "show", "capture", "promote", "resolve", "archive"},
+		"spark":      {"list", "show", "capture", "resolve", "promote"},
+		"tag":        {"list", "show", "add", "remove"},
+		"bundle":     {"list", "create", "update", "show", "add", "remove"},
+		"link":       {"create", "list", "remove"},
+	} {
+		for _, want := range wants {
+			if !stringSliceContains(commands[command].subcommands, want) {
+				t.Fatalf("%s subcommands = %#v, want %q", command, commands[command].subcommands, want)
+			}
+		}
+	}
+	for _, want := range []string{
+		"idea capture --title <title>",
+		"idea resolve --by <entity>",
+		"spark capture --scope <scope>",
+		"spark capture --text <text>",
+		"bundle create --tags <tags>",
+		"bundle update --title <title>",
+		"link create --from <entity>",
+		"link create --to <entity>",
+		"link remove --type <type>",
+	} {
+		if !stringSliceContains(commands[strings.Fields(want)[0]].options, want) {
+			t.Fatalf("agent help options missing %q", want)
+		}
+	}
+	for option, wants := range map[string][]string{
+		"brainstorm list --json": {"brainstorms", "global database scope", "project identity"},
+		"idea resolve --json":    {"resolution relationship", "event", "project identity"},
+		"spark capture --json":   {"created spark", "event", "global database scope"},
+		"tag add --json":         {"tag mutation", "entity", "project identity"},
+		"bundle show --json":     {"members", "global database scope"},
+		"link create --json":     {"relationship ID", "source/target", "project identity"},
+	} {
+		command := strings.Fields(option)[0]
+		got := commands[command].optionDescriptions[option]
+		for _, want := range wants {
+			if !strings.Contains(got, want) {
+				t.Fatalf("agent help option %q description = %q, want %q", option, got, want)
+			}
+		}
+	}
+}
+
+func assertAgentHelpJSONMatchesLiveHelp(t *testing.T, commandArgs []string, agentOptions []string, jsonOption string) {
+	t.Helper()
+	helpArgs := append(append([]string{}, commandArgs...), "--help")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		WorkingDir: t.TempDir(),
+	}.Run(helpArgs)
+	if err != nil {
+		return
+	}
+	if strings.Contains(stdout.String(), "--json") && !stringSliceContains(agentOptions, jsonOption) {
+		t.Fatalf("live help for %q includes --json, but agent help options = %#v missing %q", strings.Join(commandArgs, " "), agentOptions, jsonOption)
 	}
 }
 
@@ -9835,6 +15299,27 @@ func realpath(t *testing.T, path string) string {
 		t.Fatalf("EvalSymlinks() error = %v", err)
 	}
 	return realpath
+}
+
+func testFileSHA256(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", path, err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func copyFileForCLITest(t *testing.T, source string, destination string, perm os.FileMode) {
+	t.Helper()
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", source, err)
+	}
+	if err := os.WriteFile(destination, data, perm); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", destination, err)
+	}
 }
 
 func assertNoStateDatabase(t *testing.T, workingDir string, stateHome string) {
@@ -9849,5 +15334,12 @@ func assertNoStateDatabase(t *testing.T, workingDir string, stateHome string) {
 	}
 	if _, err := os.Stat(databasePath); !os.IsNotExist(err) {
 		t.Fatalf("state database stat error = %v, want missing database at %s", err, databasePath)
+	}
+}
+
+func assertNoRepositoryAgentsDir(t *testing.T, workingDir string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(workingDir, ".agents")); !os.IsNotExist(err) {
+		t.Fatalf("repository .agents directory exists or stat failed after read-only command; err = %v", err)
 	}
 }

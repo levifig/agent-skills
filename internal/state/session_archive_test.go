@@ -36,6 +36,7 @@ func TestArchiveSessionTargetsHarnessSessionOnly(t *testing.T) {
 	if result.Action != SessionArchiveActionArchived || result.Session.ID != target.Session.ID || result.Session.Status != "archived" {
 		t.Fatalf("result = %#v, want archived target session", result)
 	}
+	assertSessionProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
 	activeOnly, err := ListSessions(context.Background(), root, PathResolver{StateHome: stateHome}, SessionListOptions{})
 	if err != nil {
@@ -80,6 +81,7 @@ func TestArchiveSessionFallsBackToBranch(t *testing.T) {
 	if result.Session.ID != start.Session.ID || result.Session.Status != "archived" {
 		t.Fatalf("result = %#v, want branch session archived", result)
 	}
+	assertSessionProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 }
 
 func TestArchiveSessionAlreadyArchivedIsIdempotent(t *testing.T) {

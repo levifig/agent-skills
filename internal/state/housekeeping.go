@@ -9,10 +9,15 @@ import (
 
 // HousekeepingSummary is the SQLite-backed housekeeping read model.
 type HousekeepingSummary struct {
-	Version      int                            `json:"version"`
-	DatabasePath string                         `json:"database_path"`
-	Sections     map[string]HousekeepingSection `json:"sections"`
-	Signals      []string                       `json:"signals"`
+	ContractVersion    int                            `json:"contract_version,omitempty"`
+	DatabaseScope      string                         `json:"database_scope,omitempty"`
+	DatabasePath       string                         `json:"database_path"`
+	ProjectID          string                         `json:"project_id,omitempty"`
+	ProjectName        string                         `json:"project_name,omitempty"`
+	ProjectCurrentPath string                         `json:"project_current_path,omitempty"`
+	Version            int                            `json:"version"`
+	Sections           map[string]HousekeepingSection `json:"sections"`
+	Signals            []string                       `json:"signals"`
 }
 
 // HousekeepingSection summarizes one operational state area.
@@ -38,7 +43,14 @@ func Housekeeping(ctx context.Context, root project.Root, resolver PathResolver)
 
 // Housekeeping returns lifecycle and cleanup signals from an open store.
 func (s *Store) Housekeeping(ctx context.Context, root project.Root, databasePath string) (HousekeepingSummary, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return HousekeepingSummary{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return HousekeepingSummary{}, err
+	}
 	sections := map[string]HousekeepingSection{}
 	specs, err := s.housekeepingStatusSection(ctx, "specs", projectID, "complete", "archived")
 	if err != nil {
@@ -82,10 +94,15 @@ func (s *Store) Housekeeping(ctx context.Context, root project.Root, databasePat
 	sections["shaping_drafts"] = shapingDrafts
 
 	return HousekeepingSummary{
-		Version:      1,
-		DatabasePath: databasePath,
-		Sections:     sections,
-		Signals:      housekeepingSignals(sections),
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Version:            1,
+		Sections:           sections,
+		Signals:            housekeepingSignals(sections),
 	}, nil
 }
 

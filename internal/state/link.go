@@ -21,18 +21,30 @@ type LinkMutationOptions struct {
 
 // LinkMutationResult describes a relationship mutation.
 type LinkMutationResult struct {
-	RelationshipID string      `json:"relationship_id"`
-	Type           string      `json:"type"`
-	Reason         string      `json:"reason,omitempty"`
-	From           TraceEntity `json:"from"`
-	To             TraceEntity `json:"to"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	RelationshipID     string      `json:"relationship_id"`
+	Type               string      `json:"type"`
+	Reason             string      `json:"reason,omitempty"`
+	From               TraceEntity `json:"from"`
+	To                 TraceEntity `json:"to"`
 }
 
 // LinkListResult describes immediate relationships for one entity.
 type LinkListResult struct {
-	Query         string              `json:"query"`
-	Entity        TraceEntity         `json:"entity"`
-	Relationships []TraceRelationship `json:"relationships"`
+	ContractVersion    int                 `json:"contract_version,omitempty"`
+	DatabaseScope      string              `json:"database_scope,omitempty"`
+	DatabasePath       string              `json:"database_path,omitempty"`
+	ProjectID          string              `json:"project_id,omitempty"`
+	ProjectName        string              `json:"project_name,omitempty"`
+	ProjectCurrentPath string              `json:"project_current_path,omitempty"`
+	Query              string              `json:"query"`
+	Entity             TraceEntity         `json:"entity"`
+	Relationships      []TraceRelationship `json:"relationships"`
 }
 
 // CreateLink writes an explicit relationship in initialized SQLite state.
@@ -67,7 +79,14 @@ func RemoveLink(ctx context.Context, root project.Root, resolver PathResolver, o
 
 // CreateLink writes an explicit relationship in an open store.
 func (s *Store) CreateLink(ctx context.Context, root project.Root, options LinkMutationOptions) (LinkMutationResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return LinkMutationResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return LinkMutationResult{}, err
+	}
 	from, to, relationshipType, reason, err := s.resolveLinkOptions(ctx, projectID, options)
 	if err != nil {
 		return LinkMutationResult{}, err
@@ -75,27 +94,41 @@ func (s *Store) CreateLink(ctx context.Context, root project.Root, options LinkM
 	now := time.Now().UTC().Format(time.RFC3339)
 	relationshipID := stableMigrationID("relationship", projectID, from.Kind, from.ID, relationshipType, to.Kind, to.ID)
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   reason = excluded.reason,
+  origin = excluded.origin,
   updated_at = excluded.updated_at
-`, relationshipID, projectID, from.Kind, from.ID, to.Kind, to.ID, relationshipType, reason, now, now)
+`, relationshipID, projectID, from.Kind, from.ID, to.Kind, to.ID, relationshipType, reason, "manual", now, now)
 	if err != nil {
 		return LinkMutationResult{}, fmt.Errorf("create link: %w", err)
 	}
 	return LinkMutationResult{
-		RelationshipID: relationshipID,
-		Type:           relationshipType,
-		Reason:         reason,
-		From:           from,
-		To:             to,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		RelationshipID:     relationshipID,
+		Type:               relationshipType,
+		Reason:             reason,
+		From:               from,
+		To:                 to,
 	}, nil
 }
 
 // ListLinks returns immediate relationships for one entity from an open store.
 func (s *Store) ListLinks(ctx context.Context, root project.Root, ref string) (LinkListResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return LinkListResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return LinkListResult{}, err
+	}
 	entity, err := s.resolveTraceEntity(ctx, projectID, ref)
 	if err != nil {
 		return LinkListResult{}, err
@@ -105,15 +138,28 @@ func (s *Store) ListLinks(ctx context.Context, root project.Root, ref string) (L
 		return LinkListResult{}, err
 	}
 	return LinkListResult{
-		Query:         ref,
-		Entity:        entity,
-		Relationships: relationships,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Query:              ref,
+		Entity:             entity,
+		Relationships:      relationships,
 	}, nil
 }
 
 // RemoveLink removes one explicit relationship from an open store.
 func (s *Store) RemoveLink(ctx context.Context, root project.Root, options LinkMutationOptions) (LinkMutationResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return LinkMutationResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return LinkMutationResult{}, err
+	}
 	from, to, relationshipType, _, err := s.resolveLinkOptions(ctx, projectID, options)
 	if err != nil {
 		return LinkMutationResult{}, err
@@ -142,11 +188,17 @@ WHERE id = ? AND project_id = ?
 		return LinkMutationResult{}, fmt.Errorf("link %s %q -> %s %q with type %q not found", from.Kind, firstNonEmpty(from.Alias, from.ID), to.Kind, firstNonEmpty(to.Alias, to.ID), relationshipType)
 	}
 	return LinkMutationResult{
-		RelationshipID: relationshipID,
-		Type:           relationshipType,
-		Reason:         reason.String,
-		From:           from,
-		To:             to,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		RelationshipID:     relationshipID,
+		Type:               relationshipType,
+		Reason:             reason.String,
+		From:               from,
+		To:                 to,
 	}, nil
 }
 

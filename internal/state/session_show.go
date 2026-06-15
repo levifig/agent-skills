@@ -12,8 +12,14 @@ import (
 
 // SessionShow is the state-backed single-session read model.
 type SessionShow struct {
-	Query   string        `json:"query"`
-	Session SessionDetail `json:"session"`
+	ContractVersion    int           `json:"contract_version,omitempty"`
+	DatabaseScope      string        `json:"database_scope,omitempty"`
+	DatabasePath       string        `json:"database_path,omitempty"`
+	ProjectID          string        `json:"project_id,omitempty"`
+	ProjectName        string        `json:"project_name,omitempty"`
+	ProjectCurrentPath string        `json:"project_current_path,omitempty"`
+	Query              string        `json:"query"`
+	Session            SessionDetail `json:"session"`
 }
 
 // SessionDetail contains operational session metadata plus journal context.
@@ -52,7 +58,14 @@ func ShowSession(ctx context.Context, root project.Root, resolver PathResolver, 
 
 // ShowSession returns one session from an open store.
 func (s *Store) ShowSession(ctx context.Context, root project.Root, ref string) (SessionShow, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SessionShow{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SessionShow{}, err
+	}
 	entity, err := s.resolveTraceEntity(ctx, projectID, ref)
 	if err != nil {
 		return SessionShow{}, err
@@ -65,7 +78,16 @@ func (s *Store) ShowSession(ctx context.Context, root project.Root, ref string) 
 	if err != nil {
 		return SessionShow{}, err
 	}
-	return SessionShow{Query: ref, Session: session}, nil
+	return SessionShow{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Query:              ref,
+		Session:            session,
+	}, nil
 }
 
 func (s *Store) sessionDetail(ctx context.Context, projectID string, entity TraceEntity) (SessionDetail, error) {

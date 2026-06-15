@@ -7,7 +7,7 @@ description: >-
   difficult to reverse. Captures ...
 user-invocable: true
 argument-hint: '[topic or decision]'
-version: 2.0.0-dev.49
+version: 2.0.0-pre.20260614235428
 ---
 
 # Architecture

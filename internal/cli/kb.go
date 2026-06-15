@@ -163,6 +163,17 @@ func (r Runner) runKb(args []string, out io.Writer, runtimeRoot string) error {
 		writeKbHelp(out)
 		return nil
 	}
+	if writeNestedHelp(out, args, map[string]func(io.Writer){
+		"status":   writeKbStatusHelp,
+		"validate": writeKbValidateHelp,
+		"check":    writeKbCheckHelp,
+		"review":   writeKbReviewHelp,
+		"init":     writeKbInitHelp,
+		"import":   writeKbImportHelp,
+		"glossary": writeKbGlossaryHelp,
+	}) {
+		return nil
+	}
 	switch args[0] {
 	case "check":
 		stderr := r.Stderr
@@ -212,7 +223,82 @@ func writeKbHelp(out io.Writer) {
 	}, "\n"))
 }
 
+func writeKbStatusHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf kb status [--json]", "Show knowledge base overview.", "--json       Output knowledge file totals, coverage counts, stale count, review age, and directories as JSON")
+}
+
+func writeKbValidateHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf kb validate [--json]", "Validate knowledge file frontmatter.", "--json       Output per-file frontmatter errors and warnings as JSON")
+}
+
+func writeKbCheckHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf kb check [--file <path>] [--json]", "Check knowledge file staleness against git history.", "--file       Reverse lookup: find knowledge files covering this path", "--json       Output per-file staleness, coverage, commit, and review metadata as JSON")
+}
+
+func writeKbReviewHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf kb review <file> [--json]", "Mark a knowledge file as reviewed today.", "--json       Output updated knowledge frontmatter as JSON")
+}
+
+func writeKbInitHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf kb init [--json]", "Initialize knowledge base directories and QMD collections.", "--json       Output directory actions, config status, and QMD collections as JSON")
+}
+
+func writeKbImportHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf kb import <name> --path <path> [--json]", "Register an external QMD collection as a knowledge source.", "--path       Path to the external project's knowledge directory", "--json       Output QMD import collection status or import error as JSON")
+}
+
+func writeKbGlossaryHelp(out io.Writer) {
+	fmt.Fprintln(out, strings.Join([]string{
+		"Usage: loaf kb glossary <subcommand> [options]",
+		"",
+		"Domain glossary mutation and lookup.",
+		"",
+		"Subcommands:",
+		"  upsert     Create or update a canonical term",
+		"  propose    Create or update a candidate term",
+		"  check      Check one term",
+		"  list       List glossary terms",
+		"  stabilize  Promote a candidate term to canonical",
+		"",
+		"Options:",
+		"  -h, --help  Show help",
+	}, "\n"))
+}
+
+func writeKbGlossaryUpsertHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf kb glossary upsert <term> --definition <text> [--avoid <terms>]", "Create or update a canonical glossary term.", "--definition  Canonical definition", "--avoid       Comma-separated discouraged alternatives")
+}
+
+func writeKbGlossaryProposeHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf kb glossary propose <term> --definition <text> [--avoid <terms>]", "Create or update a candidate glossary term.", "--definition  Candidate definition", "--avoid       Comma-separated discouraged alternatives")
+}
+
+func writeKbGlossaryCheckHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf kb glossary check <term>", "Check one glossary term.")
+}
+
+func writeKbGlossaryListHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf kb glossary list [--canonical|--candidates|--all]", "List glossary terms.", "--canonical   Show canonical terms", "--candidates  Show candidate terms", "--all         Show canonical and candidate terms")
+}
+
+func writeKbGlossaryStabilizeHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf kb glossary stabilize <term> --definition <text>", "Promote a candidate glossary term to canonical.", "--definition  Canonical definition")
+}
+
 func (r Runner) runKbGlossary(args []string, out io.Writer, runtimeRoot string) error {
+	if len(args) == 0 || isHelpArg(args) {
+		writeKbGlossaryHelp(out)
+		return nil
+	}
+	if writeNestedHelp(out, args, map[string]func(io.Writer){
+		"upsert":    writeKbGlossaryUpsertHelp,
+		"propose":   writeKbGlossaryProposeHelp,
+		"check":     writeKbGlossaryCheckHelp,
+		"list":      writeKbGlossaryListHelp,
+		"stabilize": writeKbGlossaryStabilizeHelp,
+	}) {
+		return nil
+	}
 	options, err := parseKbGlossaryArgs(args)
 	if err != nil {
 		return err
@@ -297,6 +383,7 @@ func (r Runner) runKbImport(args []string, out io.Writer, runtimeRoot string) er
 			if err := writeJSON(out, kbImportResult{Error: message}); err != nil {
 				return err
 			}
+			return ExitError{Code: 1}
 		}
 		return fmt.Errorf("%s", message)
 	}
@@ -317,6 +404,9 @@ func (r Runner) runKbImport(args []string, out io.Writer, runtimeRoot string) er
 		}
 	}
 	if err != nil {
+		if options.jsonOutput && result.Error != "" {
+			return ExitError{Code: 1}
+		}
 		return err
 	}
 	if !options.jsonOutput {
@@ -403,6 +493,9 @@ func (r Runner) runKbValidate(args []string, out io.Writer, errOut io.Writer, ru
 		writeKbValidation(out, results)
 	}
 	if countValidationErrors(results) > 0 {
+		if jsonOutput {
+			return ExitError{Code: 1}
+		}
 		return fmt.Errorf("kb validation failed: %d error(s)", countValidationErrors(results))
 	}
 	return nil
@@ -432,6 +525,7 @@ func (r Runner) runKbReview(args []string, out io.Writer, runtimeRoot string) er
 			if err := writeJSON(out, map[string]string{"error": message}); err != nil {
 				return err
 			}
+			return ExitError{Code: 1}
 		}
 		return fmt.Errorf("%s", message)
 	}

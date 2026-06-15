@@ -23,18 +23,30 @@ type ReportCreateOptions struct {
 
 // ReportCreateResult describes a created SQLite-backed report.
 type ReportCreateResult struct {
-	Report  TraceEntity `json:"report"`
-	Kind    string      `json:"kind"`
-	Source  string      `json:"source"`
-	EventID string      `json:"event_id"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Report             TraceEntity `json:"report"`
+	Kind               string      `json:"kind"`
+	Source             string      `json:"source"`
+	EventID            string      `json:"event_id"`
 }
 
 // ReportStatusResult describes a SQLite-backed report status transition.
 type ReportStatusResult struct {
-	Report   TraceEntity `json:"report"`
-	Previous string      `json:"previous"`
-	Status   string      `json:"status"`
-	EventID  string      `json:"event_id"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Report             TraceEntity `json:"report"`
+	Previous           string      `json:"previous"`
+	Status             string      `json:"status"`
+	EventID            string      `json:"event_id"`
 }
 
 // CreateReport creates a draft report in initialized SQLite state.
@@ -69,7 +81,14 @@ func ArchiveReport(ctx context.Context, root project.Root, resolver PathResolver
 
 // CreateReport creates a draft report in an open store.
 func (s *Store) CreateReport(ctx context.Context, root project.Root, options ReportCreateOptions) (ReportCreateResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return ReportCreateResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return ReportCreateResult{}, err
+	}
 	slug := normalizeReportSlug(options.Slug)
 	if slug == "" {
 		return ReportCreateResult{}, fmt.Errorf("report create requires a slug")
@@ -121,10 +140,16 @@ VALUES (?, ?, 'report', ?, 'status_changed', NULL, 'draft', ?, ?, ?)
 	}
 
 	return ReportCreateResult{
-		Report:  TraceEntity{Kind: "report", ID: reportID, Alias: alias, Title: title, Status: "draft"},
-		Kind:    kind,
-		Source:  source,
-		EventID: eventID,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Report:             TraceEntity{Kind: "report", ID: reportID, Alias: alias, Title: title, Status: "draft"},
+		Kind:               kind,
+		Source:             source,
+		EventID:            eventID,
 	}, nil
 }
 
@@ -139,7 +164,14 @@ func (s *Store) ArchiveReport(ctx context.Context, root project.Root, ref string
 }
 
 func (s *Store) updateReportStatus(ctx context.Context, root project.Root, ref string, requiredStatus string, nextStatus string, command string) (ReportStatusResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return ReportStatusResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return ReportStatusResult{}, err
+	}
 	report, err := s.resolveTraceEntity(ctx, projectID, ref)
 	if err != nil {
 		return ReportStatusResult{}, err
@@ -187,10 +219,16 @@ ON CONFLICT(id) DO NOTHING
 	report.Title = title
 	report.Status = nextStatus
 	return ReportStatusResult{
-		Report:   report,
-		Previous: previousStatus,
-		Status:   nextStatus,
-		EventID:  eventID,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Report:             report,
+		Previous:           previousStatus,
+		Status:             nextStatus,
+		EventID:            eventID,
 	}, nil
 }
 

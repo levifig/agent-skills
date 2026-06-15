@@ -7,7 +7,7 @@ description: >-
   knowledge is preserved. Not for strategic reflection (use reflect) or
   knowledge management (use knowledge-base).
 subtask: false
-version: 2.0.0-dev.49
+version: 2.0.0-pre.20260614235428
 ---
 
 # Housekeeping

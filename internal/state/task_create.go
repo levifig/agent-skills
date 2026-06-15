@@ -14,6 +14,7 @@ import (
 )
 
 var taskAliasPattern = regexp.MustCompile(`^TASK-(\d+)$`)
+var taskPriorityOrder = []string{"P0", "P1", "P2", "P3"}
 
 // TaskCreateOptions describes a SQLite-backed task creation request.
 type TaskCreateOptions struct {
@@ -25,11 +26,17 @@ type TaskCreateOptions struct {
 
 // TaskCreateResult describes a created SQLite-backed task.
 type TaskCreateResult struct {
-	Task     TraceEntity   `json:"task"`
-	Priority string        `json:"priority"`
-	Spec     TraceEntity   `json:"spec,omitempty"`
-	Depends  []TraceEntity `json:"depends_on"`
-	EventID  string        `json:"event_id"`
+	ContractVersion    int           `json:"contract_version,omitempty"`
+	DatabaseScope      string        `json:"database_scope,omitempty"`
+	DatabasePath       string        `json:"database_path,omitempty"`
+	ProjectID          string        `json:"project_id,omitempty"`
+	ProjectName        string        `json:"project_name,omitempty"`
+	ProjectCurrentPath string        `json:"project_current_path,omitempty"`
+	Task               TraceEntity   `json:"task"`
+	Priority           string        `json:"priority"`
+	Spec               *TraceEntity  `json:"spec,omitempty"`
+	Depends            []TraceEntity `json:"depends_on"`
+	EventID            string        `json:"event_id"`
 }
 
 // CreateTask creates a task in initialized SQLite state.
@@ -44,7 +51,14 @@ func CreateTask(ctx context.Context, root project.Root, resolver PathResolver, o
 
 // CreateTask creates a task in an open store.
 func (s *Store) CreateTask(ctx context.Context, root project.Root, options TaskCreateOptions) (TaskCreateResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return TaskCreateResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return TaskCreateResult{}, err
+	}
 	title := strings.TrimSpace(options.Title)
 	if title == "" {
 		return TaskCreateResult{}, fmt.Errorf("task create requires --title")
@@ -54,10 +68,10 @@ func (s *Store) CreateTask(ctx context.Context, root project.Root, options TaskC
 		priority = "P2"
 	}
 	if !ValidTaskPriority(priority) {
-		return TaskCreateResult{}, fmt.Errorf("invalid priority %q", priority)
+		return TaskCreateResult{}, fmt.Errorf("invalid priority %q (valid: %s)", priority, taskPriorityText())
 	}
 
-	var spec TraceEntity
+	var spec *TraceEntity
 	var specID any
 	if strings.TrimSpace(options.Spec) != "" {
 		resolved, err := s.resolveTraceEntity(ctx, projectID, options.Spec)
@@ -67,7 +81,7 @@ func (s *Store) CreateTask(ctx context.Context, root project.Root, options TaskC
 		if resolved.Kind != "spec" {
 			return TaskCreateResult{}, fmt.Errorf("%q resolves to %s, not spec", options.Spec, resolved.Kind)
 		}
-		spec = resolved
+		spec = &resolved
 		specID = resolved.ID
 	}
 
@@ -111,11 +125,11 @@ VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
 		return TaskCreateResult{}, err
 	}
 
-	if spec.ID != "" {
+	if spec != nil {
 		relationshipID := stableMigrationID("relationship", projectID, "task", taskID, "implements", "spec", spec.ID)
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
-VALUES (?, ?, 'task', ?, 'spec', ?, 'implements', 'recorded by task create', ?, ?)
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+VALUES (?, ?, 'task', ?, 'spec', ?, 'implements', 'recorded by task create', 'command', ?, ?)
 `, relationshipID, projectID, taskID, spec.ID, now, now); err != nil {
 			return TaskCreateResult{}, fmt.Errorf("record task spec relationship: %w", err)
 		}
@@ -123,8 +137,8 @@ VALUES (?, ?, 'task', ?, 'spec', ?, 'implements', 'recorded by task create', ?, 
 	for _, dependency := range dependencies {
 		relationshipID := stableMigrationID("relationship", projectID, "task", taskID, "blocked_by", "task", dependency.ID)
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
-VALUES (?, ?, 'task', ?, 'task', ?, 'blocked_by', 'recorded by task create', ?, ?)
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+VALUES (?, ?, 'task', ?, 'task', ?, 'blocked_by', 'recorded by task create', 'command', ?, ?)
 `, relationshipID, projectID, taskID, dependency.ID, now, now); err != nil {
 			return TaskCreateResult{}, fmt.Errorf("record task dependency relationship: %w", err)
 		}
@@ -144,11 +158,17 @@ VALUES (?, ?, 'task', ?, 'status_changed', NULL, 'todo', 'recorded by task creat
 
 	task := TraceEntity{Kind: "task", ID: taskID, Alias: alias, Title: title, Status: "todo"}
 	return TaskCreateResult{
-		Task:     task,
-		Priority: priority,
-		Spec:     spec,
-		Depends:  dependencies,
-		EventID:  eventID,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Task:               task,
+		Priority:           priority,
+		Spec:               spec,
+		Depends:            dependencies,
+		EventID:            eventID,
 	}, nil
 }
 
@@ -212,10 +232,19 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 
 // ValidTaskPriority reports whether priority is a known task priority.
 func ValidTaskPriority(priority string) bool {
-	switch priority {
-	case "P0", "P1", "P2", "P3":
-		return true
-	default:
-		return false
+	for _, valid := range taskPriorityOrder {
+		if priority == valid {
+			return true
+		}
 	}
+	return false
+}
+
+// TaskPriorities returns valid task priorities in display order.
+func TaskPriorities() []string {
+	return append([]string(nil), taskPriorityOrder...)
+}
+
+func taskPriorityText() string {
+	return strings.Join(TaskPriorities(), ", ")
 }

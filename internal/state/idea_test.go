@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,6 +35,7 @@ status: open
 	if _, ok := before.Ideas["20260528-sqlite-state"]; !ok {
 		t.Fatalf("before.Ideas = %#v, want imported idea in default list", before.Ideas)
 	}
+	assertIdeaProjectContext(t, root, before.ContractVersion, before.DatabaseScope, before.DatabasePath, before.ProjectID, before.ProjectName, before.ProjectCurrentPath)
 
 	result, err := ResolveIdea(context.Background(), root, PathResolver{StateHome: stateHome}, "20260528-sqlite-state", "SPEC-001")
 	if err != nil {
@@ -42,6 +44,7 @@ status: open
 	if result.Idea.Status != "resolved" || result.ResolvedBy.Alias != "SPEC-001" || result.Relationship == "" || result.EventID == "" {
 		t.Fatalf("result = %#v, want resolved idea, SPEC-001 target, relationship, and event", result)
 	}
+	assertIdeaProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
 	after, err := ListIdeas(context.Background(), root, PathResolver{StateHome: stateHome}, IdeaListOptions{})
 	if err != nil {
@@ -57,6 +60,7 @@ status: open
 	if all.Ideas["20260528-sqlite-state"].Status != "resolved" {
 		t.Fatalf("all.Ideas = %#v, want resolved idea included with status", all.Ideas)
 	}
+	assertIdeaProjectContext(t, root, all.ContractVersion, all.DatabaseScope, all.DatabasePath, all.ProjectID, all.ProjectName, all.ProjectCurrentPath)
 	resolvedOnly, err := ListIdeas(context.Background(), root, PathResolver{StateHome: stateHome}, IdeaListOptions{Status: "resolved"})
 	if err != nil {
 		t.Fatalf("ListIdeas(Status resolved) error = %v", err)
@@ -83,7 +87,7 @@ status: open
 SELECT COUNT(*)
 FROM events
 WHERE project_id = ? AND entity_kind = 'idea' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'resolved'
-`, ProjectID(root)).Scan(&events)
+`, projectIDForTest(t, store, root)).Scan(&events)
 	if err != nil {
 		t.Fatalf("count events error = %v", err)
 	}
@@ -143,6 +147,7 @@ Imported idea prose.
 	if result.Query != "20260528-sqlite-state" {
 		t.Fatalf("Query = %q, want 20260528-sqlite-state", result.Query)
 	}
+	assertIdeaProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 	if idea.Alias != "20260528-sqlite-state" || idea.Title != "SQLite State" || idea.Status != "open" {
 		t.Fatalf("Idea = %#v, want imported idea metadata", idea)
 	}
@@ -186,6 +191,7 @@ func TestShowIdeaReadsCapturedIdeaWithoutSource(t *testing.T) {
 	if result.Idea.Alias != captured.Idea.Alias || result.Idea.Title != "Captured Idea" || result.Idea.Status != "open" {
 		t.Fatalf("Idea = %#v, want captured idea metadata", result.Idea)
 	}
+	assertIdeaProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 	if len(result.Idea.Sources) != 0 || result.Idea.Body != "" {
 		t.Fatalf("Idea = %#v, want no source/body for captured idea", result.Idea)
 	}
@@ -251,6 +257,7 @@ status: open
 	if result.Idea.Alias != "20260528-sqlite-state" || result.Idea.Status != "open" || result.Spec.Alias != "SPEC-001" || result.Relationship == "" {
 		t.Fatalf("result = %#v, want open idea promoted to target spec with relationship", result)
 	}
+	assertIdeaProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
 	ideas, err := ListIdeas(context.Background(), root, PathResolver{StateHome: stateHome}, IdeaListOptions{})
 	if err != nil {
@@ -361,6 +368,7 @@ func TestCaptureIdeaCreatesOpenIdeaWithAliasAndEvent(t *testing.T) {
 	if first.Idea.Status != "open" || first.Idea.Title != "Repeat Idea" || !strings.Contains(first.Idea.Alias, "repeat-idea") || !strings.HasPrefix(first.Idea.Alias, "IDEA-") || first.EventID == "" {
 		t.Fatalf("first = %#v, want open idea with dated slug alias and event", first)
 	}
+	assertIdeaProjectContext(t, root, first.ContractVersion, first.DatabaseScope, first.DatabasePath, first.ProjectID, first.ProjectName, first.ProjectCurrentPath)
 	second, err := CaptureIdea(context.Background(), root, PathResolver{StateHome: stateHome}, IdeaCaptureOptions{Title: "Repeat Idea"})
 	if err != nil {
 		t.Fatalf("CaptureIdea() second error = %v", err)
@@ -376,6 +384,7 @@ func TestCaptureIdeaCreatesOpenIdeaWithAliasAndEvent(t *testing.T) {
 	if ideas.Ideas[first.Idea.Alias].Status != "open" || ideas.Ideas[first.Idea.Alias].Title != "Repeat Idea" {
 		t.Fatalf("ideas = %#v, want captured idea visible in default list", ideas.Ideas)
 	}
+	assertIdeaProjectContext(t, root, ideas.ContractVersion, ideas.DatabaseScope, ideas.DatabasePath, ideas.ProjectID, ideas.ProjectName, ideas.ProjectCurrentPath)
 	trace, err := Trace(context.Background(), root, PathResolver{StateHome: stateHome}, first.Idea.Alias)
 	if err != nil {
 		t.Fatalf("Trace() error = %v", err)
@@ -394,7 +403,7 @@ func TestCaptureIdeaCreatesOpenIdeaWithAliasAndEvent(t *testing.T) {
 SELECT COUNT(*)
 FROM events
 WHERE project_id = ? AND entity_kind = 'idea' AND event_type = 'status_changed' AND from_status IS NULL AND to_status = 'open'
-`, ProjectID(root)).Scan(&events)
+`, projectIDForTest(t, store, root)).Scan(&events)
 	if err != nil {
 		t.Fatalf("count capture events error = %v", err)
 	}
@@ -438,6 +447,7 @@ status: archived
 	if len(result.Archived) != 1 || result.Archived[0].Idea == nil || result.Archived[0].Idea.Alias != "20260528-open-idea" || result.Archived[0].Previous != "open" || result.Archived[0].EventID == "" || result.Archived[0].Note != "covered by SPEC-001" {
 		t.Fatalf("Archived = %#v, want open idea archived with event", result.Archived)
 	}
+	assertIdeaProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 	if len(result.Skipped) != 3 {
 		t.Fatalf("Skipped = %#v, want already archived, wrong-kind, and missing refs", result.Skipped)
 	}
@@ -476,7 +486,7 @@ status: archived
 SELECT COUNT(*), COALESCE(MAX(note), '')
 FROM events
 WHERE project_id = ? AND entity_kind = 'idea' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'archived'
-`, ProjectID(root)).Scan(&events, &note)
+`, projectIDForTest(t, store, root)).Scan(&events, &note)
 	if err != nil {
 		t.Fatalf("count archive events error = %v", err)
 	}
@@ -504,4 +514,26 @@ func hasStateTraceRelationship(relationships []TraceRelationship, direction stri
 		}
 	}
 	return false
+}
+
+func assertIdeaProjectContext(t *testing.T, root project.Root, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string) {
+	t.Helper()
+	if contractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", contractVersion, StateJSONContractVersion)
+	}
+	if databaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", databaseScope)
+	}
+	if databasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if projectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if projectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", projectName, filepath.Base(root.Path()))
+	}
+	if projectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, root.Path())
+	}
 }

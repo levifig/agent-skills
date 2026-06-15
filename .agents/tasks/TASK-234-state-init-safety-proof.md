@@ -16,7 +16,7 @@ files:
 verify: >-
   go test ./internal/state ./internal/cli && go test ./...
 done: >-
-  Tests prove `loaf state init` creates a project-scoped SQLite database outside
+  Tests prove `loaf state init` creates a global project-partitioned SQLite database outside
   the repository, prints the database path, avoids repository `.agents` writes,
   and initializes a schema without secret-storage columns.
 ---

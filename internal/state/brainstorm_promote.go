@@ -16,9 +16,15 @@ type BrainstormPromoteOptions struct {
 
 // BrainstormPromoteResult describes a state-backed brainstorm promotion mutation.
 type BrainstormPromoteResult struct {
-	Brainstorm   TraceEntity `json:"brainstorm"`
-	Idea         TraceEntity `json:"idea"`
-	Relationship string      `json:"relationship"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Brainstorm         TraceEntity `json:"brainstorm"`
+	Idea               TraceEntity `json:"idea"`
+	Relationship       string      `json:"relationship"`
 }
 
 // PromoteBrainstorm records that a brainstorm promoted to an idea in initialized SQLite state.
@@ -33,7 +39,14 @@ func PromoteBrainstorm(ctx context.Context, root project.Root, resolver PathReso
 
 // PromoteBrainstorm records that a brainstorm promoted to an idea in an open store.
 func (s *Store) PromoteBrainstorm(ctx context.Context, root project.Root, options BrainstormPromoteOptions) (BrainstormPromoteResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return BrainstormPromoteResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return BrainstormPromoteResult{}, err
+	}
 	brainstorm, err := s.resolveTraceEntity(ctx, projectID, options.Brainstorm)
 	if err != nil {
 		return BrainstormPromoteResult{}, err
@@ -52,10 +65,11 @@ func (s *Store) PromoteBrainstorm(ctx context.Context, root project.Root, option
 	now := time.Now().UTC().Format(time.RFC3339)
 	relationshipID := stableMigrationID("relationship", projectID, "brainstorm", brainstorm.ID, "promoted_to", "idea", idea.ID)
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'command', ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   reason = excluded.reason,
+  origin = excluded.origin,
   updated_at = excluded.updated_at
 `, relationshipID, projectID, "brainstorm", brainstorm.ID, "idea", idea.ID, "promoted_to", "recorded by brainstorm promote", now, now)
 	if err != nil {
@@ -63,8 +77,14 @@ ON CONFLICT(id) DO UPDATE SET
 	}
 
 	return BrainstormPromoteResult{
-		Brainstorm:   brainstorm,
-		Idea:         idea,
-		Relationship: relationshipID,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Brainstorm:         brainstorm,
+		Idea:               idea,
+		Relationship:       relationshipID,
 	}, nil
 }

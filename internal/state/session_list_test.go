@@ -32,6 +32,7 @@ claude_session_id: session-archived
 	if err != nil {
 		t.Fatalf("ListSessions(activeOnly) error = %v", err)
 	}
+	assertSessionProjectContext(t, root, activeOnly.ContractVersion, activeOnly.DatabaseScope, activeOnly.DatabasePath, activeOnly.ProjectID, activeOnly.ProjectName, activeOnly.ProjectCurrentPath)
 	if _, ok := activeOnly.Sessions["20260527-archived"]; ok {
 		t.Fatal("active-only session list includes archived session")
 	}
@@ -47,6 +48,7 @@ claude_session_id: session-archived
 	if err != nil {
 		t.Fatalf("ListSessions(all) error = %v", err)
 	}
+	assertSessionProjectContext(t, root, withArchived.ContractVersion, withArchived.DatabaseScope, withArchived.DatabasePath, withArchived.ProjectID, withArchived.ProjectName, withArchived.ProjectCurrentPath)
 	archived := withArchived.Sessions["20260527-archived"]
 	if archived.Status != "archived" || archived.SourcePath != ".agents/sessions/archive/20260527-archived.md" || archived.HarnessSessionID != "session-archived" {
 		t.Fatalf("archived session = %#v, want archived imported metadata", archived)

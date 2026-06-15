@@ -9,8 +9,14 @@ import (
 
 // BrainstormList is the state-backed brainstorm-list read model.
 type BrainstormList struct {
-	Version     int                       `json:"version"`
-	Brainstorms map[string]BrainstormItem `json:"brainstorms"`
+	ContractVersion    int                       `json:"contract_version,omitempty"`
+	DatabaseScope      string                    `json:"database_scope,omitempty"`
+	DatabasePath       string                    `json:"database_path,omitempty"`
+	ProjectID          string                    `json:"project_id,omitempty"`
+	ProjectName        string                    `json:"project_name,omitempty"`
+	ProjectCurrentPath string                    `json:"project_current_path,omitempty"`
+	Version            int                       `json:"version"`
+	Brainstorms        map[string]BrainstormItem `json:"brainstorms"`
 }
 
 // BrainstormItem is a brainstorm entry returned by the state-backed brainstorm list.
@@ -38,7 +44,14 @@ func ListBrainstorms(ctx context.Context, root project.Root, resolver PathResolv
 
 // ListBrainstorms returns imported brainstorms from an open store.
 func (s *Store) ListBrainstorms(ctx context.Context, root project.Root, options BrainstormListOptions) (BrainstormList, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return BrainstormList{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return BrainstormList{}, err
+	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT
   brainstorm_alias.alias,
@@ -59,7 +72,16 @@ ORDER BY brainstorm_alias.alias
 		return BrainstormList{}, fmt.Errorf("query brainstorms: %w", err)
 	}
 
-	brainstorms := BrainstormList{Version: 1, Brainstorms: map[string]BrainstormItem{}}
+	brainstorms := BrainstormList{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Version:            1,
+		Brainstorms:        map[string]BrainstormItem{},
+	}
 	for rows.Next() {
 		var alias, title, status, sourcePath string
 		if err := rows.Scan(&alias, &title, &status, &sourcePath); err != nil {

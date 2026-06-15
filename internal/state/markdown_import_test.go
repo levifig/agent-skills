@@ -22,11 +22,29 @@ func TestApplyMarkdownMigrationImportsArtifactsAndPreservesSources(t *testing.T)
 		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
 	}
 
+	if result.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, StateJSONContractVersion)
+	}
 	if !result.Applied {
 		t.Fatal("Applied = false, want true")
 	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.ImportScope != "project" {
+		t.Fatalf("ImportScope = %q, want project", result.ImportScope)
+	}
 	if result.DatabasePath == "" {
 		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName == "" {
+		t.Fatal("ProjectName is empty")
+	}
+	if result.ProjectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, root.Path())
 	}
 	if _, err := os.Stat(result.DatabasePath); err != nil {
 		t.Fatalf("database was not created: %v", err)
@@ -86,6 +104,42 @@ func TestApplyMarkdownMigrationImportsArtifactsAndPreservesSources(t *testing.T)
 	assertTableCount(t, store, "specs", 1)
 	assertTableCount(t, store, "tasks", 1)
 	assertTableCount(t, store, "relationships", 2)
+}
+
+func TestApplyMarkdownMigrationDoesNotRequireTasksJSON(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	writeAgentsFile(t, root.Path(), "tasks/TASK-001-markdown-only.md", `---
+id: TASK-001
+title: Markdown Only Task
+status: todo
+priority: P2
+depends_on: []
+---
+
+# Markdown Only Task
+`)
+
+	result, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	if result.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, StateJSONContractVersion)
+	}
+	if !result.Applied || result.Tasks != 1 {
+		t.Fatalf("result = %#v, want one applied markdown task", result)
+	}
+
+	store, err := OpenStore(result.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+
+	assertTableCount(t, store, "tasks", 1)
+	assertTableCount(t, store, "sources", 1)
+	assertTableCount(t, store, "relationships", 0)
 }
 
 func TestFrontmatterListItemsPreserveCommas(t *testing.T) {

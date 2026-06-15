@@ -20,8 +20,21 @@ type PathResolver struct {
 	StateHome string
 }
 
-// DatabasePath returns the intended SQLite database path for a project root.
+// DatabasePath returns the intended global SQLite database path.
 func (r PathResolver) DatabasePath(root project.Root) (string, error) {
+	dataHome, err := r.dataHome()
+	if err != nil {
+		return "", err
+	}
+	if isWithinRoot(dataHome, root.Path()) {
+		return "", fmt.Errorf("data home must be outside project root")
+	}
+	return filepath.Join(dataHome, "loaf", databaseFileName), nil
+}
+
+// ProjectDatabasePath returns the prior project-sharded XDG_DATA_HOME SQLite
+// location used before Loaf converged on one global database file.
+func (r PathResolver) ProjectDatabasePath(root project.Root) (string, error) {
 	dataHome, err := r.dataHome()
 	if err != nil {
 		return "", err

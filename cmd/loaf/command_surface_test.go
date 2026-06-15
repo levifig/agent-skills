@@ -53,7 +53,7 @@ func nativeGoCommands(t *testing.T, root string) map[string]bool {
 		t.Fatalf("could not isolate Runner.Run dispatcher in %s", cliPath)
 	}
 	dispatcher := source[start:end]
-	matches := regexp.MustCompile(`case "([^"]+)":\s*\n\s*return r\.run`).FindAllStringSubmatch(dispatcher, -1)
+	matches := regexp.MustCompile(`case "([^"]+)":\s*\n\s*(?:return|dispatchErr =) r\.run`).FindAllStringSubmatch(dispatcher, -1)
 	if len(matches) == 0 {
 		t.Fatalf("no Go-native command dispatch cases found in %s", cliPath)
 	}

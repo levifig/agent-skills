@@ -28,14 +28,38 @@ func TestExportAllJSONReturnsInternalSnapshot(t *testing.T) {
 	if snapshot.ExportKind != ExportKindAll {
 		t.Fatalf("ExportKind = %q, want %q", snapshot.ExportKind, ExportKindAll)
 	}
+	if snapshot.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", snapshot.ContractVersion, StateJSONContractVersion)
+	}
 	if snapshot.Format != ExportFormatJSON {
 		t.Fatalf("Format = %q, want %q", snapshot.Format, ExportFormatJSON)
 	}
 	if snapshot.Audience != ExportAudienceLocal {
 		t.Fatalf("Audience = %q, want %q", snapshot.Audience, ExportAudienceLocal)
 	}
-	if snapshot.ProjectID != ProjectID(root) {
+	if snapshot.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", snapshot.DatabaseScope)
+	}
+	if snapshot.ExportScope != "project" {
+		t.Fatalf("ExportScope = %q, want project", snapshot.ExportScope)
+	}
+	store, err := OpenStoreReadOnly(snapshot.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStoreReadOnly() error = %v", err)
+	}
+	defer store.Close()
+	if snapshot.ProjectID != projectIDForTest(t, store, root) {
 		t.Fatalf("ProjectID = %q, want project id", snapshot.ProjectID)
+	}
+	identity, err := store.LookupProjectIdentityForRoot(context.Background(), root)
+	if err != nil {
+		t.Fatalf("LookupProjectIdentityForRoot() error = %v", err)
+	}
+	if snapshot.ProjectName != identity.FriendlyName {
+		t.Fatalf("ProjectName = %q, want %q", snapshot.ProjectName, identity.FriendlyName)
+	}
+	if snapshot.ProjectCurrentPath != identity.CurrentPath {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", snapshot.ProjectCurrentPath, identity.CurrentPath)
 	}
 	if snapshot.DatabasePath == "" {
 		t.Fatal("DatabasePath is empty")
@@ -46,11 +70,56 @@ func TestExportAllJSONReturnsInternalSnapshot(t *testing.T) {
 	if snapshot.GeneratedAt == "" {
 		t.Fatal("GeneratedAt is empty")
 	}
+	if !snapshot.Manifest.Verified {
+		t.Fatal("Manifest.Verified = false, want true")
+	}
+	if snapshot.Manifest.DatabaseScope != snapshot.DatabaseScope {
+		t.Fatalf("Manifest.DatabaseScope = %q, want %q", snapshot.Manifest.DatabaseScope, snapshot.DatabaseScope)
+	}
+	if snapshot.Manifest.ExportScope != snapshot.ExportScope {
+		t.Fatalf("Manifest.ExportScope = %q, want %q", snapshot.Manifest.ExportScope, snapshot.ExportScope)
+	}
+	if snapshot.Manifest.ContractVersion != snapshot.ContractVersion {
+		t.Fatalf("Manifest.ContractVersion = %d, want %d", snapshot.Manifest.ContractVersion, snapshot.ContractVersion)
+	}
+	if snapshot.Manifest.SchemaVersion != snapshot.SchemaVersion {
+		t.Fatalf("Manifest.SchemaVersion = %d, want %d", snapshot.Manifest.SchemaVersion, snapshot.SchemaVersion)
+	}
+	if snapshot.Manifest.ProjectID != snapshot.ProjectID {
+		t.Fatalf("Manifest.ProjectID = %q, want %q", snapshot.Manifest.ProjectID, snapshot.ProjectID)
+	}
+	if snapshot.Manifest.ProjectName != snapshot.ProjectName {
+		t.Fatalf("Manifest.ProjectName = %q, want %q", snapshot.Manifest.ProjectName, snapshot.ProjectName)
+	}
+	if snapshot.Manifest.ProjectCurrentPath != snapshot.ProjectCurrentPath {
+		t.Fatalf("Manifest.ProjectCurrentPath = %q, want %q", snapshot.Manifest.ProjectCurrentPath, snapshot.ProjectCurrentPath)
+	}
+	if snapshot.Manifest.IntegrityCheck != "ok" {
+		t.Fatalf("Manifest.IntegrityCheck = %q, want ok", snapshot.Manifest.IntegrityCheck)
+	}
+	if snapshot.Manifest.ForeignKeyCheck != "ok" {
+		t.Fatalf("Manifest.ForeignKeyCheck = %q, want ok", snapshot.Manifest.ForeignKeyCheck)
+	}
+	if snapshot.Manifest.GeneratedAt != snapshot.GeneratedAt {
+		t.Fatalf("Manifest.GeneratedAt = %q, want %q", snapshot.Manifest.GeneratedAt, snapshot.GeneratedAt)
+	}
+	if snapshot.Manifest.TableCount != len(exportAllTables) {
+		t.Fatalf("Manifest.TableCount = %d, want %d", snapshot.Manifest.TableCount, len(exportAllTables))
+	}
+	if len(snapshot.Manifest.TableOrder) != len(exportAllTables) {
+		t.Fatalf("Manifest.TableOrder length = %d, want %d", len(snapshot.Manifest.TableOrder), len(exportAllTables))
+	}
 	if len(snapshot.Tables["schema_migrations"]) != len(SchemaMigrations()) {
 		t.Fatalf("schema_migrations rows = %d, want %d", len(snapshot.Tables["schema_migrations"]), len(SchemaMigrations()))
 	}
 	if len(snapshot.Tables["projects"]) != 1 {
 		t.Fatalf("projects rows = %d, want 1", len(snapshot.Tables["projects"]))
+	}
+	if len(snapshot.Tables["project_paths"]) != 1 {
+		t.Fatalf("project_paths rows = %d, want 1", len(snapshot.Tables["project_paths"]))
+	}
+	if snapshot.Tables["project_paths"][0]["path"] != identity.CurrentPath {
+		t.Fatalf("project_paths path = %#v, want %q", snapshot.Tables["project_paths"][0]["path"], identity.CurrentPath)
 	}
 	if len(snapshot.Tables["tasks"]) != 1 {
 		t.Fatalf("tasks rows = %d, want 1", len(snapshot.Tables["tasks"]))
@@ -61,6 +130,66 @@ func TestExportAllJSONReturnsInternalSnapshot(t *testing.T) {
 	if snapshot.Tables["tasks"][0]["title"] != "Example Task" {
 		t.Fatalf("task title = %#v, want imported title", snapshot.Tables["tasks"][0]["title"])
 	}
+	assertExportManifestCounts(t, snapshot)
+}
+
+func TestExportAllJSONIncludesProjectPathHistory(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	status, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	movedRoot := projectRoot(t)
+	movedPath := movedRoot.Path()
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	if _, err := store.MoveProject(context.Background(), root, root.Path(), movedPath); err != nil {
+		t.Fatalf("MoveProject() error = %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	snapshot, err := ExportAllJSON(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("ExportAllJSON() error = %v", err)
+	}
+
+	if snapshot.ProjectID != status.ProjectID {
+		t.Fatalf("ProjectID = %q, want %q", snapshot.ProjectID, status.ProjectID)
+	}
+	if snapshot.ProjectCurrentPath != movedPath {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", snapshot.ProjectCurrentPath, movedPath)
+	}
+	paths := snapshot.Tables["project_paths"]
+	if len(paths) != 2 {
+		t.Fatalf("project_paths rows = %#v, want old and current paths", paths)
+	}
+	currentPaths := 0
+	seen := map[string]bool{}
+	for _, row := range paths {
+		path, _ := row["path"].(string)
+		seen[path] = true
+		if row["is_current"] == int64(1) || row["is_current"] == 1 {
+			currentPaths++
+			if path != movedPath {
+				t.Fatalf("current project path = %q, want %q", path, movedPath)
+			}
+		}
+	}
+	if !seen[root.Path()] || !seen[movedPath] {
+		t.Fatalf("project_paths = %#v, want %q and %q", paths, root.Path(), movedPath)
+	}
+	if currentPaths != 1 {
+		t.Fatalf("current project paths = %d, want 1", currentPaths)
+	}
+	if snapshot.Manifest.RowCounts["project_paths"] != 2 {
+		t.Fatalf("manifest project_paths count = %d, want 2", snapshot.Manifest.RowCounts["project_paths"])
+	}
+	assertExportManifestCounts(t, snapshot)
 }
 
 func TestExportTableValidationRejectsUnfilteredProjectTables(t *testing.T) {
@@ -171,6 +300,7 @@ func TestExportTriageMarkdownReturnsExternalSafeSummary(t *testing.T) {
 			t.Fatalf("content = %q, want %q", export.Content, want)
 		}
 	}
+	assertExternalMarkdownProjectContext(t, root, stateHome, export.Content)
 	for _, banned := range []string{"SPEC-001", "TASK-002", ".agents/", "Track A", "Phase 2"} {
 		if strings.Contains(export.Content, banned) {
 			t.Fatalf("content leaked %q:\n%s", banned, export.Content)
@@ -332,6 +462,7 @@ status: final
 			t.Fatalf("content = %q, want %q", export.Content, want)
 		}
 	}
+	assertExternalMarkdownProjectContext(t, root, stateHome, export.Content)
 	for _, banned := range []string{"SPEC-001", "TASK-001", ".agents/", "Track A", "Phase 2"} {
 		if strings.Contains(export.Content, banned) {
 			t.Fatalf("content leaked %q:\n%s", banned, export.Content)
@@ -452,6 +583,7 @@ Imported spec prose.
 			t.Fatalf("content = %q, want %q", export.Content, want)
 		}
 	}
+	assertInternalMarkdownProjectContext(t, root, stateHome, export.Content)
 	if strings.Contains(export.Content, "status: implementing") || strings.Contains(export.Content, "---") {
 		t.Fatalf("content = %q, want stripped frontmatter", export.Content)
 	}
@@ -572,6 +704,7 @@ claude_session_id: harness-export
 			t.Fatalf("content = %q, want %q", export.Content, want)
 		}
 	}
+	assertInternalMarkdownProjectContext(t, root, stateHome, export.Content)
 }
 
 func TestExportSessionMarkdownIsDeterministicAndDoesNotMutateDatabase(t *testing.T) {
@@ -643,7 +776,7 @@ func insertBrainstormForExport(t *testing.T, root project.Root, stateHome string
 	}
 	defer store.Close()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	projectID := ProjectID(root)
+	projectID := projectIDForTest(t, store, root)
 	_, err = store.db.ExecContext(context.Background(), `
 INSERT INTO brainstorms (id, project_id, title, status, created_at, updated_at)
 VALUES ('brainstorm-export', ?, ?, 'open', ?, ?)
@@ -660,6 +793,78 @@ VALUES ('alias-brainstorm-export', ?, 'brainstorm', 'brainstorm-export', 'brains
 	}
 }
 
+func assertExternalMarkdownProjectContext(t *testing.T, root project.Root, stateHome string, content string) {
+	t.Helper()
+	status, err := Inspect(root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	for _, want := range []string{
+		"## Project Context",
+		"- Scope: global database, project export",
+		"- Project: `" + status.ProjectID + "`",
+		"- Project name: " + status.ProjectName,
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("content = %q, want project context %q", content, want)
+		}
+	}
+	for _, banned := range []string{
+		"Project path:",
+		"Database:",
+		root.Path(),
+		status.DatabasePath,
+	} {
+		if strings.Contains(content, banned) {
+			t.Fatalf("external content leaked %q:\n%s", banned, content)
+		}
+	}
+}
+
+func assertInternalMarkdownProjectContext(t *testing.T, root project.Root, stateHome string, content string) {
+	t.Helper()
+	status, err := Inspect(root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	for _, want := range []string{
+		"## Project Context",
+		"- Scope: global database, project export",
+		"- Project: `" + status.ProjectID + "`",
+		"- Project name: " + status.ProjectName,
+		"- Project path: `" + status.ProjectCurrentPath + "`",
+		"- Database: `" + status.DatabasePath + "`",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("content = %q, want project context %q", content, want)
+		}
+	}
+}
+
+func assertExportManifestCounts(t *testing.T, snapshot ExportSnapshot) {
+	t.Helper()
+	if snapshot.Manifest.TableCount != len(snapshot.Manifest.TableOrder) {
+		t.Fatalf("manifest table count = %d, want table order length %d", snapshot.Manifest.TableCount, len(snapshot.Manifest.TableOrder))
+	}
+	if snapshot.Manifest.TableCount != len(snapshot.Tables) {
+		t.Fatalf("manifest table count = %d, want snapshot table map length %d", snapshot.Manifest.TableCount, len(snapshot.Tables))
+	}
+	total := 0
+	for _, tableName := range snapshot.Manifest.TableOrder {
+		rows, ok := snapshot.Tables[tableName]
+		if !ok {
+			t.Fatalf("manifest table %q missing from snapshot tables", tableName)
+		}
+		total += len(rows)
+		if got := snapshot.Manifest.RowCounts[tableName]; got != len(rows) {
+			t.Fatalf("manifest row count for %s = %d, want %d", tableName, got, len(rows))
+		}
+	}
+	if snapshot.Manifest.TotalRows != total {
+		t.Fatalf("manifest total rows = %d, want %d", snapshot.Manifest.TotalRows, total)
+	}
+}
+
 func insertGeneratedExportForReadiness(t *testing.T, root project.Root, stateHome string) {
 	t.Helper()
 	store, err := OpenStore(mustDatabasePath(t, root, stateHome))
@@ -668,7 +873,7 @@ func insertGeneratedExportForReadiness(t *testing.T, root project.Root, stateHom
 	}
 	defer store.Close()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	projectID := ProjectID(root)
+	projectID := projectIDForTest(t, store, root)
 	_, err = store.db.ExecContext(context.Background(), `
 INSERT INTO exports (id, project_id, export_kind, format, path, state_version, generated_at, created_at, updated_at)
 VALUES ('export-release-readiness', ?, 'release-readiness', 'markdown', '.agents/reports/SPEC-001-release.md', 1, ?, ?, ?)

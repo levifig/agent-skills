@@ -84,6 +84,10 @@ var validCheckHooks = map[string]bool{
 }
 
 func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error {
+	if isHelpArg(args) {
+		writeCheckHelp(out)
+		return nil
+	}
 	options, err := parseCheckArgs(args)
 	if err != nil {
 		return err
@@ -121,6 +125,10 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 		return ExitError{Code: 2}
 	}
 	return nil
+}
+
+func writeCheckHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf check --hook <id> [--json]", "Run one registered hook check.", "--hook      Hook id: check-secrets, validate-commit, security-audit, workflow-pre-pr, validate-push", "--json      Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON")
 }
 
 func parseCheckArgs(args []string) (checkOptions, error) {

@@ -10,8 +10,15 @@ import (
 
 // ReportList is the state-backed report-list read model.
 type ReportList struct {
-	Version int                   `json:"version"`
-	Reports map[string]ReportItem `json:"reports"`
+	ContractVersion    int                   `json:"contract_version,omitempty"`
+	DatabaseScope      string                `json:"database_scope,omitempty"`
+	DatabasePath       string                `json:"database_path,omitempty"`
+	ProjectID          string                `json:"project_id,omitempty"`
+	ProjectName        string                `json:"project_name,omitempty"`
+	ProjectCurrentPath string                `json:"project_current_path,omitempty"`
+	Diagnostics        []Diagnostic          `json:"diagnostics,omitempty"`
+	Version            int                   `json:"version"`
+	Reports            map[string]ReportItem `json:"reports"`
 }
 
 // ReportItem is a report entry returned by the state-backed report list.
@@ -49,7 +56,14 @@ func ListReports(ctx context.Context, root project.Root, resolver PathResolver, 
 
 // ListReports returns imported reports from an open store.
 func (s *Store) ListReports(ctx context.Context, root project.Root, options ReportListOptions) (ReportList, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return ReportList{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return ReportList{}, err
+	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT
   report_alias.alias,
@@ -71,7 +85,16 @@ ORDER BY report_alias.alias
 		return ReportList{}, fmt.Errorf("query reports: %w", err)
 	}
 
-	reportList := ReportList{Version: 1, Reports: map[string]ReportItem{}}
+	reportList := ReportList{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Version:            1,
+		Reports:            map[string]ReportItem{},
+	}
 	for rows.Next() {
 		var alias, title, kind, status, sourcePath string
 		if err := rows.Scan(&alias, &title, &kind, &status, &sourcePath); err != nil {

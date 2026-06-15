@@ -29,12 +29,18 @@ type SessionEndOptions struct {
 
 // SessionEndResult describes the affected session after `loaf session end`.
 type SessionEndResult struct {
-	Version          int         `json:"version"`
-	Action           string      `json:"action"`
-	Session          TraceEntity `json:"session,omitempty"`
-	HarnessSessionID string      `json:"harness_session_id,omitempty"`
-	JournalEntryIDs  []string    `json:"journal_entry_ids,omitempty"`
-	NoopReason       string      `json:"noop_reason,omitempty"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Version            int         `json:"version"`
+	Action             string      `json:"action"`
+	Session            TraceEntity `json:"session,omitempty"`
+	HarnessSessionID   string      `json:"harness_session_id,omitempty"`
+	JournalEntryIDs    []string    `json:"journal_entry_ids,omitempty"`
+	NoopReason         string      `json:"noop_reason,omitempty"`
 }
 
 // EndSession ends, wraps, or clears a session in initialized SQLite state.
@@ -49,7 +55,14 @@ func EndSession(ctx context.Context, root project.Root, resolver PathResolver, o
 
 // EndSession ends, wraps, or clears a session in an open store.
 func (s *Store) EndSession(ctx context.Context, root project.Root, options SessionEndOptions) (SessionEndResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SessionEndResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SessionEndResult{}, err
+	}
 	branch := strings.TrimSpace(options.Branch)
 	harnessSessionID := strings.TrimSpace(options.HarnessSessionID)
 	if harnessSessionID == "" && branch == "" {
@@ -78,26 +91,48 @@ func (s *Store) EndSession(ctx context.Context, root project.Root, options Sessi
 	}
 	if target.ID == "" {
 		if options.IfActive {
-			return SessionEndResult{Version: 1, Action: SessionEndActionNoop, NoopReason: "no active session found"}, nil
+			return SessionEndResult{
+				ContractVersion:    StateJSONContractVersion,
+				DatabaseScope:      identity.DatabaseScope,
+				DatabasePath:       identity.DatabasePath,
+				ProjectID:          identity.ID,
+				ProjectName:        identity.FriendlyName,
+				ProjectCurrentPath: identity.CurrentPath,
+				Version:            1,
+				Action:             SessionEndActionNoop,
+				NoopReason:         "no active session found",
+			}, nil
 		}
 		return SessionEndResult{}, fmt.Errorf("no active session found")
 	}
 	if target.Status != "active" {
 		if options.IfActive {
 			return SessionEndResult{
-				Version:          1,
-				Action:           SessionEndActionNoop,
-				Session:          TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: target.Status},
-				HarnessSessionID: target.HarnessSessionID,
-				NoopReason:       fmt.Sprintf("session is %s", target.Status),
+				ContractVersion:    StateJSONContractVersion,
+				DatabaseScope:      identity.DatabaseScope,
+				DatabasePath:       identity.DatabasePath,
+				ProjectID:          identity.ID,
+				ProjectName:        identity.FriendlyName,
+				ProjectCurrentPath: identity.CurrentPath,
+				Version:            1,
+				Action:             SessionEndActionNoop,
+				Session:            TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: target.Status},
+				HarnessSessionID:   target.HarnessSessionID,
+				NoopReason:         fmt.Sprintf("session is %s", target.Status),
 			}, nil
 		}
 		return SessionEndResult{
-			Version:          1,
-			Action:           SessionEndActionAlreadyClosed,
-			Session:          TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: target.Status},
-			HarnessSessionID: target.HarnessSessionID,
-			NoopReason:       fmt.Sprintf("session is %s", target.Status),
+			ContractVersion:    StateJSONContractVersion,
+			DatabaseScope:      identity.DatabaseScope,
+			DatabasePath:       identity.DatabasePath,
+			ProjectID:          identity.ID,
+			ProjectName:        identity.FriendlyName,
+			ProjectCurrentPath: identity.CurrentPath,
+			Version:            1,
+			Action:             SessionEndActionAlreadyClosed,
+			Session:            TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: target.Status},
+			HarnessSessionID:   target.HarnessSessionID,
+			NoopReason:         fmt.Sprintf("session is %s", target.Status),
 		}, nil
 	}
 
@@ -144,11 +179,17 @@ func (s *Store) EndSession(ctx context.Context, root project.Root, options Sessi
 		return SessionEndResult{}, fmt.Errorf("commit session end transaction: %w", err)
 	}
 	return SessionEndResult{
-		Version:          1,
-		Action:           action,
-		Session:          TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: status},
-		HarnessSessionID: firstNonEmpty(harnessSessionID, target.HarnessSessionID),
-		JournalEntryIDs:  journalEntryIDs,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Version:            1,
+		Action:             action,
+		Session:            TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: status},
+		HarnessSessionID:   firstNonEmpty(harnessSessionID, target.HarnessSessionID),
+		JournalEntryIDs:    journalEntryIDs,
 	}, nil
 }
 

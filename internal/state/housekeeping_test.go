@@ -18,7 +18,7 @@ func TestHousekeepingSummarizesSQLiteLifecycleState(t *testing.T) {
 	}
 	defer store.Close()
 
-	projectID := ProjectID(root)
+	projectID := projectIDForTest(t, store, root)
 	now := "2026-05-28T23:25:55Z"
 	insertHousekeepingEntity(t, store, "specs", projectID, "spec-complete", "Complete Spec", "complete", now)
 	insertHousekeepingEntity(t, store, "tasks", projectID, "task-done", "Done Task", "done", now)
@@ -36,6 +36,7 @@ func TestHousekeepingSummarizesSQLiteLifecycleState(t *testing.T) {
 	if summary.DatabasePath != result.DatabasePath {
 		t.Fatalf("DatabasePath = %q, want %q", summary.DatabasePath, result.DatabasePath)
 	}
+	assertTaskProjectContext(t, root.Path(), summary.ContractVersion, summary.DatabaseScope, summary.DatabasePath, summary.ProjectID, summary.ProjectName, summary.ProjectCurrentPath)
 	for name, status := range map[string]string{
 		"specs":          "complete",
 		"tasks":          "done",

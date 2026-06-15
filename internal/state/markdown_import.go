@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,9 +20,20 @@ import (
 // MarkdownMigrationResult is the structured result for a markdown migration apply.
 type MarkdownMigrationResult struct {
 	MarkdownMigrationPlan
-	DatabasePath string `json:"database_path"`
-	Applied      bool   `json:"applied"`
+	DatabaseScope      string `json:"database_scope"`
+	ImportScope        string `json:"import_scope"`
+	DatabasePath       string `json:"database_path"`
+	ProjectID          string `json:"project_id"`
+	ProjectName        string `json:"project_name"`
+	ProjectCurrentPath string `json:"project_current_path"`
+	Action             string `json:"action"`
+	Applied            bool   `json:"applied"`
 }
+
+const (
+	MarkdownMigrationActionApply  = "apply"
+	MarkdownMigrationActionResume = "resume"
+)
 
 type taskIndexEntry struct {
 	Title     string   `json:"title"`
@@ -66,13 +78,23 @@ func ApplyMarkdownMigration(ctx context.Context, root project.Root, resolver Pat
 	}
 	return MarkdownMigrationResult{
 		MarkdownMigrationPlan: plan,
+		DatabaseScope:         "global",
+		ImportScope:           "project",
 		DatabasePath:          status.DatabasePath,
+		ProjectID:             status.ProjectID,
+		ProjectName:           status.ProjectName,
+		ProjectCurrentPath:    status.ProjectCurrentPath,
+		Action:                MarkdownMigrationActionApply,
 		Applied:               true,
 	}, nil
 }
 
 // ImportMarkdown imports .agents artifacts into an initialized state database.
 func (s *Store) ImportMarkdown(ctx context.Context, root project.Root) error {
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin markdown import transaction: %w", err)
@@ -82,7 +104,7 @@ func (s *Store) ImportMarkdown(ctx context.Context, root project.Root) error {
 	importer := markdownImporter{
 		tx:           tx,
 		root:         root,
-		projectID:    ProjectID(root),
+		projectID:    projectID,
 		now:          time.Now().UTC().Format(time.RFC3339),
 		taskIndex:    loadTaskIndex(root.Path()),
 		sparkAliases: map[string]string{},
@@ -157,6 +179,9 @@ func (m markdownImporter) importSpecs(ctx context.Context, agentsPath string) er
 		if err := m.upsertAlias(ctx, "spec", id, "spec", alias); err != nil {
 			return err
 		}
+		if err := m.deleteImportedRelationships(ctx, "spec", id); err != nil {
+			return err
+		}
 		if err := m.importArtifactRelationships(ctx, "spec", id, artifact); err != nil {
 			return err
 		}
@@ -199,6 +224,9 @@ func (m markdownImporter) importTasks(ctx context.Context, agentsPath string) er
 			return err
 		}
 		if err := m.upsertAlias(ctx, "task", id, "task", alias); err != nil {
+			return err
+		}
+		if err := m.deleteImportedRelationships(ctx, "task", id); err != nil {
 			return err
 		}
 		if specAlias != "" {
@@ -251,6 +279,9 @@ func (m markdownImporter) importSimpleMarkdown(ctx context.Context, agentsPath s
 		if err := m.upsertAlias(ctx, kind, id, kind, alias); err != nil {
 			return err
 		}
+		if err := m.deleteImportedRelationships(ctx, kind, id); err != nil {
+			return err
+		}
 		if err := m.importArtifactRelationships(ctx, kind, id, artifact); err != nil {
 			return err
 		}
@@ -283,6 +314,9 @@ func (m markdownImporter) importShapingDrafts(ctx context.Context, agentsPath st
 			return err
 		}
 		if err := m.upsertAlias(ctx, "shaping_draft", id, "shaping_draft", alias); err != nil {
+			return err
+		}
+		if err := m.deleteImportedRelationships(ctx, "shaping_draft", id); err != nil {
 			return err
 		}
 		if err := m.importArtifactRelationships(ctx, "shaping_draft", id, artifact); err != nil {
@@ -359,6 +393,9 @@ func (m markdownImporter) importReports(ctx context.Context, agentsPath string) 
 		if err := m.upsertAlias(ctx, "report", id, "report", alias); err != nil {
 			return err
 		}
+		if err := m.deleteImportedRelationships(ctx, "report", id); err != nil {
+			return err
+		}
 		if err := m.importArtifactRelationships(ctx, "report", id, artifact); err != nil {
 			return err
 		}
@@ -368,7 +405,7 @@ func (m markdownImporter) importReports(ctx context.Context, agentsPath string) 
 
 func (m markdownImporter) importJSONSource(ctx context.Context, path string) error {
 	artifact, err := readSourceArtifact(m.root.Path(), path)
-	if os.IsNotExist(err) {
+	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
@@ -665,14 +702,31 @@ ON CONFLICT(id) DO UPDATE SET
 func (m markdownImporter) upsertRelationship(ctx context.Context, fromKind string, fromID string, toKind string, toID string, relationshipType string, reason string) error {
 	id := stableMigrationID("relationship", m.projectID, fromKind, fromID, relationshipType, toKind, toID)
 	_, err := m.tx.ExecContext(ctx, `
-INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, source_id, source_field, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   reason = excluded.reason,
+  origin = excluded.origin,
+  source_id = excluded.source_id,
+  source_field = excluded.source_field,
   updated_at = excluded.updated_at
-`, id, m.projectID, fromKind, fromID, toKind, toID, relationshipType, reason, m.now, m.now)
+`, id, m.projectID, fromKind, fromID, toKind, toID, relationshipType, reason, "imported", nil, relationshipType, m.now, m.now)
 	if err != nil {
 		return fmt.Errorf("upsert relationship %s: %w", id, err)
+	}
+	return nil
+}
+
+func (m markdownImporter) deleteImportedRelationships(ctx context.Context, fromKind string, fromID string) error {
+	_, err := m.tx.ExecContext(ctx, `
+DELETE FROM relationships
+WHERE project_id = ?
+  AND from_entity_kind = ?
+  AND from_entity_id = ?
+  AND (origin = 'imported' OR reason LIKE 'imported from %')
+`, m.projectID, fromKind, fromID)
+	if err != nil {
+		return fmt.Errorf("delete imported relationships for %s %s: %w", fromKind, fromID, err)
 	}
 	return nil
 }
@@ -820,16 +874,7 @@ func taskDependencies(meta taskIndexEntry, frontmatterDependsOn string) []string
 	if len(meta.DependsOn) > 0 {
 		return meta.DependsOn
 	}
-	if frontmatterDependsOn == "" {
-		return nil
-	}
-	var dependencies []string
-	for _, dependency := range strings.Split(frontmatterDependsOn, ",") {
-		if trimmed := strings.TrimSpace(dependency); trimmed != "" {
-			dependencies = append(dependencies, trimmed)
-		}
-	}
-	return dependencies
+	return splitFrontmatterList(frontmatterDependsOn)
 }
 
 func stableMigrationID(parts ...string) string {
@@ -889,8 +934,15 @@ func relationshipAliasAndKind(value string) (string, string, bool) {
 }
 
 func splitFrontmatterList(value string) []string {
-	if value == "" {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "[]" {
 		return nil
+	}
+	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+		value = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(value, "["), "]"))
+		if value == "" {
+			return nil
+		}
 	}
 	separator := ","
 	if strings.Contains(value, frontmatterListSeparator) {
@@ -898,8 +950,8 @@ func splitFrontmatterList(value string) []string {
 	}
 	var values []string
 	for _, part := range strings.Split(value, separator) {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
+		trimmed := strings.Trim(strings.TrimSpace(part), `"'`)
+		if trimmed != "" && trimmed != "[]" {
 			values = append(values, trimmed)
 		}
 	}

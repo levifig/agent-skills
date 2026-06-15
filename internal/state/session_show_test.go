@@ -41,6 +41,7 @@ claude_session_id: session-active
 	if show.Query != "20260528-active" || session.Alias != "20260528-active" {
 		t.Fatalf("show = %#v, want query and alias", show)
 	}
+	assertSessionProjectContext(t, root, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath)
 	if session.Branch != "feature/session-show" || session.Status != "active" || session.HarnessSessionID != "session-active" {
 		t.Fatalf("session metadata = %#v, want imported frontmatter", session)
 	}

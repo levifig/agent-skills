@@ -3,10 +3,12 @@ package state
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/levifig/loaf/internal/project"
 )
@@ -17,25 +19,67 @@ const (
 	ModeInvalid      = "invalid"
 )
 
+const (
+	RepairCategoryLocalDatabase          = "local-database"
+	RepairCategoryStorageMigration       = "storage-migration"
+	RepairCategoryProjectIdentity        = "project-identity"
+	RepairCategoryRelationshipProvenance = "relationship-provenance"
+	RepairCategoryBackendMapping         = "backend-mapping"
+	RepairCategoryExternalSync           = "external-sync"
+	RepairCategoryMarkdownImport         = "markdown-import"
+	RepairCategoryCompatibilityExport    = "compatibility-export"
+)
+
+const (
+	DiagnosticPolicyInvalidLocalData = "invalid-local-data"
+	DiagnosticPolicyWarningDrift     = "warning-drift"
+	DiagnosticPolicyExternalSyncGap  = "external-sync-gap"
+	DiagnosticPolicyImportPending    = "import-pending"
+	DiagnosticPolicyStaleExport      = "stale-export"
+)
+
 // Diagnostic describes a state-runtime observation without mutating state.
 type Diagnostic struct {
-	Severity string `json:"severity"`
-	Code     string `json:"code"`
-	Message  string `json:"message"`
+	Severity             string         `json:"severity"`
+	Code                 string         `json:"code"`
+	Category             string         `json:"category,omitempty"`
+	Policy               string         `json:"policy,omitempty"`
+	Message              string         `json:"message"`
+	Details              map[string]any `json:"details,omitempty"`
+	RequiresExternalSync bool           `json:"requires_external_sync,omitempty"`
+}
+
+// RepairAction describes an explicit repair recommendation from diagnostics.
+type RepairAction struct {
+	Code                 string `json:"code"`
+	DiagnosticCode       string `json:"diagnostic_code"`
+	Category             string `json:"category"`
+	Description          string `json:"description"`
+	Command              string `json:"command,omitempty"`
+	Path                 string `json:"path,omitempty"`
+	Safe                 bool   `json:"safe"`
+	Applied              bool   `json:"applied"`
+	RequiresExternalSync bool   `json:"requires_external_sync"`
 }
 
 // Status is the pre-init state view exposed by `loaf state status`.
 type Status struct {
-	ProjectRoot          string       `json:"project_root"`
-	ProjectID            string       `json:"project_id"`
-	DatabasePath         string       `json:"database_path"`
-	LegacyDatabasePath   string       `json:"legacy_database_path,omitempty"`
-	DatabaseExists       bool         `json:"database_exists"`
-	LegacyDatabaseExists bool         `json:"legacy_database_exists"`
-	DatabaseParentExists bool         `json:"database_parent_exists"`
-	SchemaVersion        int          `json:"schema_version"`
-	Mode                 string       `json:"mode"`
-	Diagnostics          []Diagnostic `json:"diagnostics"`
+	ContractVersion      int            `json:"contract_version"`
+	DatabaseScope        string         `json:"database_scope"`
+	ProjectRoot          string         `json:"project_root"`
+	ProjectID            string         `json:"project_id,omitempty"`
+	LegacyProjectKey     string         `json:"legacy_project_key,omitempty"`
+	ProjectName          string         `json:"project_name,omitempty"`
+	ProjectCurrentPath   string         `json:"project_current_path,omitempty"`
+	DatabasePath         string         `json:"database_path"`
+	LegacyDatabasePath   string         `json:"legacy_database_path,omitempty"`
+	DatabaseExists       bool           `json:"database_exists"`
+	LegacyDatabaseExists bool           `json:"legacy_database_exists"`
+	DatabaseParentExists bool           `json:"database_parent_exists"`
+	SchemaVersion        int            `json:"schema_version"`
+	Mode                 string         `json:"mode"`
+	Diagnostics          []Diagnostic   `json:"diagnostics"`
+	RepairPlan           []RepairAction `json:"repair_plan"`
 }
 
 // Inspect returns the current state-runtime status without creating files.
@@ -46,11 +90,15 @@ func Inspect(root project.Root, resolver PathResolver) (Status, error) {
 	}
 
 	status := Status{
-		ProjectRoot:  root.Path(),
-		ProjectID:    ProjectID(root),
-		DatabasePath: databasePath,
+		ContractVersion:  StateJSONContractVersion,
+		DatabaseScope:    "global",
+		ProjectRoot:      root.Path(),
+		LegacyProjectKey: ProjectID(root),
+		DatabasePath:     databasePath,
+		Diagnostics:      []Diagnostic{},
+		RepairPlan:       []RepairAction{},
 	}
-	if legacyPath, err := resolver.LegacyDatabasePath(root); err == nil && legacyPath != databasePath {
+	if legacyPath, err := migrationSourceDatabasePath(root, resolver); err == nil && legacyPath != databasePath {
 		status.LegacyDatabasePath = legacyPath
 		if info, err := os.Stat(legacyPath); err == nil && !info.IsDir() {
 			status.LegacyDatabaseExists = true
@@ -82,7 +130,7 @@ func Inspect(root project.Root, resolver PathResolver) (Status, error) {
 		})
 	case err == nil:
 		status.DatabaseExists = true
-		store, err := OpenStore(databasePath)
+		store, err := OpenStoreReadOnly(databasePath)
 		if err != nil {
 			status.Mode = ModeInvalid
 			status.Diagnostics = append(status.Diagnostics, Diagnostic{
@@ -110,12 +158,64 @@ func Inspect(root project.Root, resolver PathResolver) (Status, error) {
 			status.Mode = ModeInvalid
 			return status, nil
 		}
+		invariantDiagnostics, invariantValid, err := inspectOperationalInvariants(context.Background(), store)
+		if err != nil {
+			status.Diagnostics = append(status.Diagnostics, Diagnostic{
+				Severity: "error",
+				Code:     "state-invariants-unreadable",
+				Message:  err.Error(),
+			})
+		} else {
+			status.Diagnostics = append(status.Diagnostics, invariantDiagnostics...)
+		}
+		if !invariantValid {
+			status.Mode = ModeInvalid
+			return status, nil
+		}
 		status.Mode = ModeSQLiteReady
+		if identity, err := store.LookupProjectIdentityForRoot(context.Background(), root); err == nil {
+			status.ProjectID = identity.ID
+			status.ProjectName = identity.FriendlyName
+			status.ProjectCurrentPath = identity.CurrentPath
+		} else {
+			status.Diagnostics = append(status.Diagnostics, Diagnostic{
+				Severity: "warn",
+				Code:     "project-identity-unreadable",
+				Message:  err.Error(),
+			})
+		}
 		status.Diagnostics = append(status.Diagnostics, Diagnostic{
 			Severity: "info",
 			Code:     "sqlite-ready",
 			Message:  fmt.Sprintf("SQLite state database is ready at schema version %d", version),
 		})
+		if status.LegacyDatabaseExists {
+			status.Diagnostics = append(status.Diagnostics, Diagnostic{
+				Severity: "warn",
+				Code:     "legacy-project-database-leftover",
+				Message:  fmt.Sprintf("legacy project database remains at %s after global DB initialization", status.LegacyDatabasePath),
+			})
+		}
+		markdownDiagnostics, err := inspectUnimportedLocalMarkdown(context.Background(), root, store, status.ProjectID)
+		if err != nil {
+			status.Diagnostics = append(status.Diagnostics, Diagnostic{
+				Severity: "warn",
+				Code:     "local-markdown-import-check-unreadable",
+				Message:  err.Error(),
+			})
+		} else {
+			status.Diagnostics = append(status.Diagnostics, markdownDiagnostics...)
+		}
+		linearDiagnostics, err := inspectLinearModeTaskMappings(context.Background(), root, store, status.ProjectID)
+		if err != nil {
+			status.Diagnostics = append(status.Diagnostics, Diagnostic{
+				Severity: "warn",
+				Code:     "linear-mode-task-mappings-unreadable",
+				Message:  err.Error(),
+			})
+		} else {
+			status.Diagnostics = append(status.Diagnostics, linearDiagnostics...)
+		}
 		exportDiagnostics, err := inspectStaleExports(context.Background(), store)
 		if err != nil {
 			status.Diagnostics = append(status.Diagnostics, Diagnostic{
@@ -152,6 +252,147 @@ func Inspect(root project.Root, resolver PathResolver) (Status, error) {
 	}
 
 	return status, nil
+}
+
+// RepairPlanForStatus turns diagnostics into explicit, non-surprising repair actions.
+func RepairPlanForStatus(status Status) []RepairAction {
+	actions := []RepairAction{}
+	for _, diagnostic := range status.Diagnostics {
+		switch diagnostic.Code {
+		case "database-missing":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "initialize-database",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryLocalDatabase,
+				Description:    "Initialize the global SQLite database for this project.",
+				Command:        "loaf state doctor --fix",
+				Path:           status.DatabasePath,
+				Safe:           true,
+			})
+		case "legacy-state-database-detected":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "migrate-storage-home",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryStorageMigration,
+				Description:    "Preview and then apply storage-home migration to copy legacy state into the global database.",
+				Command:        "loaf state migrate storage-home --dry-run",
+				Path:           status.LegacyDatabasePath,
+				Safe:           false,
+			})
+		case "legacy-project-database-leftover":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "review-legacy-project-database",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryLocalDatabase,
+				Description:    "Preview archiving the leftover legacy project database after verifying the global database.",
+				Command:        "loaf state repair legacy-project-database --dry-run --json",
+				Path:           status.LegacyDatabasePath,
+				Safe:           false,
+			})
+		case "schema-version-mismatch", "schema-checksum-mismatch", "schema-migration-missing":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "inspect-schema-migrations",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryLocalDatabase,
+				Description:    "Inspect schema migration drift before applying any repair.",
+				Command:        "loaf state doctor --json",
+				Path:           status.DatabasePath,
+				Safe:           false,
+			})
+		case "state-invariants-unreadable", "sqlite-integrity-check-failed", "sqlite-foreign-key-violation":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "inspect-state-invariants",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryLocalDatabase,
+				Description:    "Inspect SQLite table integrity before applying any state repair.",
+				Command:        "loaf state doctor --json",
+				Path:           status.DatabasePath,
+				Safe:           false,
+			})
+		case "project-current-path-missing", "project-current-path-mismatch", "orphaned-project-path":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "repair-project-path-invariants",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryProjectIdentity,
+				Description:    "Inspect project identity and path history before repairing project path invariants.",
+				Command:        "loaf project list --json",
+				Path:           status.DatabasePath,
+				Safe:           false,
+			})
+		case "relationship-origin-missing", "relationship-origin-unknown":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "audit-relationship-origin",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryRelationshipProvenance,
+				Description:    "Audit relationship provenance before backfilling or pruning relationship rows.",
+				Command:        "loaf state repair relationship-origin --origin imported --dry-run --json",
+				Path:           status.DatabasePath,
+				Safe:           false,
+			})
+		case "backend-mapping-field-empty", "backend-mapping-sensitive-value", "backend-mapping-entity-kind-unknown", "backend-mapping-entity-missing":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "inspect-backend-mappings",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryBackendMapping,
+				Description:    "Inspect invalid local backend mapping rows before pruning or reconnecting integration metadata.",
+				Command:        "loaf state doctor --json",
+				Path:           status.DatabasePath,
+				Safe:           false,
+			})
+		case "backend-mapping-entity-ambiguous", "backend-mapping-sync-status-unknown":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "audit-backend-mappings",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryBackendMapping,
+				Description:    "Audit local backend mapping drift before pruning or reconnecting integration metadata.",
+				Command:        "loaf state export all --format json",
+				Path:           status.DatabasePath,
+				Safe:           false,
+			})
+		case "linear-mode-local-task-unmapped":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:                 "reconcile-linear-task-mappings",
+				DiagnosticCode:       diagnostic.Code,
+				Category:             RepairCategoryExternalSync,
+				Description:          "Export local task state, then reconcile active local tasks with Linear or future backend sync tooling.",
+				Command:              "loaf state export all --format json",
+				Path:                 status.DatabasePath,
+				Safe:                 false,
+				RequiresExternalSync: true,
+			})
+		case "stale-compatibility-export":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "regenerate-export",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryCompatibilityExport,
+				Description:    "Regenerate the stale compatibility export from SQLite state.",
+				Safe:           false,
+			})
+		case "local-markdown-not-imported":
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "migrate-current-project-markdown",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryMarkdownImport,
+				Description:    "Preview importing this project's local .agents Markdown artifacts into the global SQLite database.",
+				Command:        "loaf state migrate markdown --dry-run",
+				Path:           status.ProjectRoot,
+				Safe:           true,
+			})
+		}
+	}
+	return actions
+}
+
+func appendRepairAction(actions []RepairAction, action RepairAction) []RepairAction {
+	for _, existing := range actions {
+		if existing.Code == action.Code &&
+			existing.DiagnosticCode == action.DiagnosticCode &&
+			existing.Command == action.Command &&
+			existing.Path == action.Path {
+			return actions
+		}
+	}
+	return append(actions, action)
 }
 
 func inspectSchemaMigrations(ctx context.Context, store *Store, version int) ([]Diagnostic, bool) {
@@ -195,6 +436,677 @@ func inspectSchemaMigrations(ctx context.Context, store *Store, version int) ([]
 		}
 	}
 	return diagnostics, valid
+}
+
+func inspectOperationalInvariants(ctx context.Context, store *Store) ([]Diagnostic, bool, error) {
+	diagnostics := []Diagnostic{}
+	valid := true
+
+	sqliteDiagnostics, sqliteValid, err := inspectSQLiteIntegrity(ctx, store)
+	if err != nil {
+		return nil, false, err
+	}
+	diagnostics = append(diagnostics, sqliteDiagnostics...)
+	if !sqliteValid {
+		valid = false
+	}
+
+	projectPathDiagnostics, projectPathsValid, err := inspectProjectPathInvariants(ctx, store)
+	if err != nil {
+		return nil, false, err
+	}
+	diagnostics = append(diagnostics, projectPathDiagnostics...)
+	if !projectPathsValid {
+		valid = false
+	}
+
+	relationshipDiagnostics, err := inspectRelationshipOriginInvariants(ctx, store)
+	if err != nil {
+		return nil, false, err
+	}
+	diagnostics = append(diagnostics, relationshipDiagnostics...)
+
+	backendDiagnostics, backendMappingsValid, err := inspectBackendMappingInvariants(ctx, store)
+	if err != nil {
+		return nil, false, err
+	}
+	diagnostics = append(diagnostics, backendDiagnostics...)
+	if !backendMappingsValid {
+		valid = false
+	}
+
+	return diagnostics, valid, nil
+}
+
+func inspectUnimportedLocalMarkdown(ctx context.Context, root project.Root, store *Store, projectID string) ([]Diagnostic, error) {
+	plan, err := PreviewMarkdownMigration(root)
+	if err != nil {
+		return nil, err
+	}
+	importableCount := markdownMigrationImportableCount(plan)
+	if importableCount == 0 {
+		return nil, nil
+	}
+	if projectID != "" {
+		var importedSources int
+		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sources WHERE project_id = ? AND path LIKE '.agents/%'`, projectID).Scan(&importedSources); err != nil {
+			return nil, fmt.Errorf("inspect imported Markdown sources: %w", err)
+		}
+		if importedSources > 0 {
+			return nil, nil
+		}
+	}
+	return []Diagnostic{{
+		Severity: "warn",
+		Code:     "local-markdown-not-imported",
+		Category: RepairCategoryMarkdownImport,
+		Policy:   DiagnosticPolicyImportPending,
+		Message:  fmt.Sprintf("local .agents Markdown has %d importable artifact(s), but this project has no imported Markdown sources in the global SQLite database; run `loaf state migrate markdown --dry-run` before trusting empty SQLite output", importableCount),
+		Details: map[string]any{
+			"agents_path":       plan.AgentsPath,
+			"importable_count":  importableCount,
+			"specs":             plan.Specs,
+			"tasks":             plan.Tasks,
+			"ideas":             plan.Ideas,
+			"sparks":            plan.Sparks,
+			"brainstorms":       plan.Brainstorms,
+			"shaping_drafts":    plan.ShapingDrafts,
+			"sessions":          plan.Sessions,
+			"reports":           plan.Reports,
+			"relationships":     plan.Relationships,
+			"imported_sources":  0,
+			"preview_command":   "loaf state migrate markdown --dry-run",
+			"migration_command": "loaf state migrate markdown --apply",
+		},
+	}}, nil
+}
+
+func markdownMigrationImportableCount(plan MarkdownMigrationPlan) int {
+	return plan.Specs +
+		plan.Tasks +
+		plan.Ideas +
+		plan.Sparks +
+		plan.Brainstorms +
+		plan.ShapingDrafts +
+		plan.Sessions +
+		plan.Reports +
+		plan.Relationships
+}
+
+func inspectSQLiteIntegrity(ctx context.Context, store *Store) ([]Diagnostic, bool, error) {
+	diagnostics := []Diagnostic{}
+	valid := true
+
+	checkRows, err := store.db.QueryContext(ctx, `PRAGMA quick_check`)
+	if err != nil {
+		return nil, false, fmt.Errorf("run SQLite quick_check: %w", err)
+	}
+	defer checkRows.Close()
+	for checkRows.Next() {
+		var result string
+		if err := checkRows.Scan(&result); err != nil {
+			return nil, false, fmt.Errorf("scan SQLite quick_check: %w", err)
+		}
+		if result != "ok" {
+			valid = false
+			diagnostics = append(diagnostics, Diagnostic{
+				Severity: "error",
+				Code:     "sqlite-integrity-check-failed",
+				Message:  fmt.Sprintf("SQLite quick_check reported: %s", result),
+			})
+		}
+	}
+	if err := checkRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate SQLite quick_check: %w", err)
+	}
+
+	foreignKeyRows, err := store.db.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		return nil, false, fmt.Errorf("run SQLite foreign_key_check: %w", err)
+	}
+	defer foreignKeyRows.Close()
+	for foreignKeyRows.Next() {
+		var tableName, parentTable string
+		var rowID sql.NullInt64
+		var foreignKeyID int
+		if err := foreignKeyRows.Scan(&tableName, &rowID, &parentTable, &foreignKeyID); err != nil {
+			return nil, false, fmt.Errorf("scan SQLite foreign_key_check: %w", err)
+		}
+		valid = false
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "error",
+			Code:     "sqlite-foreign-key-violation",
+			Message:  formatSQLiteForeignKeyViolation(tableName, rowID, parentTable, foreignKeyID),
+		})
+	}
+	if err := foreignKeyRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate SQLite foreign_key_check: %w", err)
+	}
+
+	return diagnostics, valid, nil
+}
+
+func inspectProjectPathInvariants(ctx context.Context, store *Store) ([]Diagnostic, bool, error) {
+	diagnostics := []Diagnostic{}
+	valid := true
+
+	missingRows, err := store.db.QueryContext(ctx, `
+SELECT projects.id
+FROM projects
+LEFT JOIN project_paths ON project_paths.project_id = projects.id AND project_paths.is_current = 1
+WHERE project_paths.id IS NULL
+ORDER BY projects.id
+`)
+	if err != nil {
+		return nil, false, fmt.Errorf("inspect missing current project paths: %w", err)
+	}
+	defer missingRows.Close()
+	for missingRows.Next() {
+		var projectID string
+		if err := missingRows.Scan(&projectID); err != nil {
+			return nil, false, fmt.Errorf("scan missing current project path: %w", err)
+		}
+		valid = false
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "error",
+			Code:     "project-current-path-missing",
+			Message:  fmt.Sprintf("project %s has no current project_paths row", projectID),
+		})
+	}
+	if err := missingRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate missing current project paths: %w", err)
+	}
+
+	mismatchRows, err := store.db.QueryContext(ctx, `
+SELECT projects.id, COALESCE(projects.current_path, ''), project_paths.path
+FROM projects
+JOIN project_paths ON project_paths.project_id = projects.id AND project_paths.is_current = 1
+WHERE COALESCE(projects.current_path, '') <> project_paths.path
+ORDER BY projects.id
+`)
+	if err != nil {
+		return nil, false, fmt.Errorf("inspect current project path mismatches: %w", err)
+	}
+	defer mismatchRows.Close()
+	for mismatchRows.Next() {
+		var projectID, projectCurrentPath, currentPathRow string
+		if err := mismatchRows.Scan(&projectID, &projectCurrentPath, &currentPathRow); err != nil {
+			return nil, false, fmt.Errorf("scan current project path mismatch: %w", err)
+		}
+		valid = false
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "error",
+			Code:     "project-current-path-mismatch",
+			Message:  fmt.Sprintf("project %s current_path %q does not match current project_paths row %q", projectID, projectCurrentPath, currentPathRow),
+		})
+	}
+	if err := mismatchRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate current project path mismatches: %w", err)
+	}
+
+	orphanRows, err := store.db.QueryContext(ctx, `
+SELECT project_paths.id, project_paths.path
+FROM project_paths
+LEFT JOIN projects ON projects.id = project_paths.project_id
+WHERE projects.id IS NULL
+ORDER BY project_paths.id
+`)
+	if err != nil {
+		return nil, false, fmt.Errorf("inspect orphaned project paths: %w", err)
+	}
+	defer orphanRows.Close()
+	for orphanRows.Next() {
+		var pathID, path string
+		if err := orphanRows.Scan(&pathID, &path); err != nil {
+			return nil, false, fmt.Errorf("scan orphaned project path: %w", err)
+		}
+		valid = false
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "error",
+			Code:     "orphaned-project-path",
+			Message:  fmt.Sprintf("project path %s at %s references a missing project", pathID, path),
+		})
+	}
+	if err := orphanRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate orphaned project paths: %w", err)
+	}
+
+	return diagnostics, valid, nil
+}
+
+func inspectRelationshipOriginInvariants(ctx context.Context, store *Store) ([]Diagnostic, error) {
+	diagnostics := []Diagnostic{}
+	var missingCount int
+	if err := store.db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM relationships
+WHERE origin IS NULL OR TRIM(origin) = ''
+`).Scan(&missingCount); err != nil {
+		return nil, fmt.Errorf("inspect missing relationship origins: %w", err)
+	}
+	if missingCount > 0 {
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "warn",
+			Code:     "relationship-origin-missing",
+			Message:  fmt.Sprintf("%d relationship row(s) are missing provenance origin", missingCount),
+		})
+	}
+
+	unknownRows, err := store.db.QueryContext(ctx, `
+SELECT origin, COUNT(*)
+FROM relationships
+WHERE origin IS NOT NULL AND TRIM(origin) != '' AND origin NOT IN ('imported', 'manual')
+GROUP BY origin
+ORDER BY origin
+`)
+	if err != nil {
+		return nil, fmt.Errorf("inspect unknown relationship origins: %w", err)
+	}
+	defer unknownRows.Close()
+	for unknownRows.Next() {
+		var origin string
+		var count int
+		if err := unknownRows.Scan(&origin, &count); err != nil {
+			return nil, fmt.Errorf("scan unknown relationship origin: %w", err)
+		}
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "warn",
+			Code:     "relationship-origin-unknown",
+			Message:  fmt.Sprintf("%d relationship row(s) have unknown provenance origin %q", count, origin),
+		})
+	}
+	if err := unknownRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate unknown relationship origins: %w", err)
+	}
+	return diagnostics, nil
+}
+
+func inspectBackendMappingInvariants(ctx context.Context, store *Store) ([]Diagnostic, bool, error) {
+	diagnostics := []Diagnostic{}
+	valid := true
+
+	blankRows, err := store.db.QueryContext(ctx, `
+SELECT field, COUNT(*)
+FROM (
+  SELECT 'backend' AS field FROM backend_mappings WHERE TRIM(backend) = ''
+  UNION ALL SELECT 'entity_kind' FROM backend_mappings WHERE TRIM(entity_kind) = ''
+  UNION ALL SELECT 'entity_id' FROM backend_mappings WHERE TRIM(entity_id) = ''
+  UNION ALL SELECT 'external_kind' FROM backend_mappings WHERE TRIM(external_kind) = ''
+  UNION ALL SELECT 'external_id' FROM backend_mappings WHERE TRIM(external_id) = ''
+  UNION ALL SELECT 'sync_status' FROM backend_mappings WHERE TRIM(sync_status) = ''
+)
+GROUP BY field
+ORDER BY field
+`)
+	if err != nil {
+		return nil, false, fmt.Errorf("inspect blank backend mapping fields: %w", err)
+	}
+	defer blankRows.Close()
+	for blankRows.Next() {
+		var field string
+		var count int
+		if err := blankRows.Scan(&field, &count); err != nil {
+			return nil, false, fmt.Errorf("scan blank backend mapping field: %w", err)
+		}
+		valid = false
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "error",
+			Code:     "backend-mapping-field-empty",
+			Category: RepairCategoryBackendMapping,
+			Policy:   DiagnosticPolicyInvalidLocalData,
+			Message:  fmt.Sprintf("%d backend mapping row(s) have an empty %s field; fix or remove the local backend mapping row before trusting integration state", count, field),
+			Details: map[string]any{
+				"field":     field,
+				"row_count": count,
+			},
+		})
+	}
+	if err := blankRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate blank backend mapping fields: %w", err)
+	}
+
+	sensitiveRows, err := store.db.QueryContext(ctx, `
+SELECT field, value
+FROM (
+  SELECT 'external_id' AS field, external_id AS value FROM backend_mappings
+  UNION ALL SELECT 'external_url', COALESCE(external_url, '') FROM backend_mappings
+)
+ORDER BY field
+`)
+	if err != nil {
+		return nil, false, fmt.Errorf("inspect sensitive backend mapping values: %w", err)
+	}
+	defer sensitiveRows.Close()
+	sensitiveCounts := map[string]int{}
+	for sensitiveRows.Next() {
+		var field, value string
+		if err := sensitiveRows.Scan(&field, &value); err != nil {
+			return nil, false, fmt.Errorf("scan sensitive backend mapping value: %w", err)
+		}
+		if backendMappingHasSensitiveValue(value) {
+			sensitiveCounts[field]++
+		}
+	}
+	if err := sensitiveRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate sensitive backend mapping values: %w", err)
+	}
+	for _, field := range []string{"external_id", "external_url"} {
+		count := sensitiveCounts[field]
+		if count == 0 {
+			continue
+		}
+		valid = false
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "error",
+			Code:     "backend-mapping-sensitive-value",
+			Category: RepairCategoryBackendMapping,
+			Policy:   DiagnosticPolicyInvalidLocalData,
+			Message:  fmt.Sprintf("%d backend mapping row(s) contain sensitive-looking %s values; replace them with external record identifiers or URLs before trusting integration state", count, field),
+			Details: map[string]any{
+				"field":     field,
+				"row_count": count,
+			},
+		})
+	}
+
+	unknownRows, err := store.db.QueryContext(ctx, `
+SELECT entity_kind, COUNT(*)
+FROM backend_mappings
+WHERE entity_kind NOT IN (
+  'project',
+  'alias',
+  'spec',
+  'task',
+  'idea',
+  'spark',
+  'brainstorm',
+  'shaping_draft',
+  'session',
+  'report',
+  'journal_entry',
+  'event',
+  'relationship',
+  'tag',
+  'entity_tag',
+  'bundle',
+  'bundle_member',
+  'source',
+  'hook_event',
+  'export'
+)
+GROUP BY entity_kind
+ORDER BY entity_kind
+`)
+	if err != nil {
+		return nil, false, fmt.Errorf("inspect unknown backend mapping entity kinds: %w", err)
+	}
+	defer unknownRows.Close()
+	for unknownRows.Next() {
+		var entityKind string
+		var count int
+		if err := unknownRows.Scan(&entityKind, &count); err != nil {
+			return nil, false, fmt.Errorf("scan unknown backend mapping entity kind: %w", err)
+		}
+		valid = false
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "error",
+			Code:     "backend-mapping-entity-kind-unknown",
+			Category: RepairCategoryBackendMapping,
+			Policy:   DiagnosticPolicyInvalidLocalData,
+			Message:  fmt.Sprintf("%d backend mapping row(s) reference unknown local entity kind %q; fix or remove the local backend mapping row before trusting integration state", count, entityKind),
+			Details: map[string]any{
+				"entity_kind": entityKind,
+				"row_count":   count,
+			},
+		})
+	}
+	if err := unknownRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate unknown backend mapping entity kinds: %w", err)
+	}
+
+	unknownStatusRows, err := store.db.QueryContext(ctx, `
+SELECT sync_status, COUNT(*)
+FROM backend_mappings
+WHERE TRIM(sync_status) <> ''
+  AND sync_status NOT IN ('linked', 'pending', 'stale', 'conflict', 'error')
+GROUP BY sync_status
+ORDER BY sync_status
+`)
+	if err != nil {
+		return nil, false, fmt.Errorf("inspect unknown backend mapping sync statuses: %w", err)
+	}
+	defer unknownStatusRows.Close()
+	for unknownStatusRows.Next() {
+		var syncStatus string
+		var count int
+		if err := unknownStatusRows.Scan(&syncStatus, &count); err != nil {
+			return nil, false, fmt.Errorf("scan unknown backend mapping sync status: %w", err)
+		}
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "warn",
+			Code:     "backend-mapping-sync-status-unknown",
+			Category: RepairCategoryBackendMapping,
+			Policy:   DiagnosticPolicyWarningDrift,
+			Message:  fmt.Sprintf("%d backend mapping row(s) have unknown sync_status %q; audit local integration metadata before pruning or reconnecting external records", count, syncStatus),
+			Details: map[string]any{
+				"row_count":   count,
+				"sync_status": syncStatus,
+			},
+		})
+	}
+	if err := unknownStatusRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate unknown backend mapping sync statuses: %w", err)
+	}
+
+	missingRows, err := store.db.QueryContext(ctx, `
+WITH local_entities(entity_kind, project_id, entity_id) AS (
+  SELECT 'project', id, id FROM projects
+  UNION ALL SELECT 'alias', project_id, id FROM aliases
+  UNION ALL SELECT 'spec', project_id, id FROM specs
+  UNION ALL SELECT 'task', project_id, id FROM tasks
+  UNION ALL SELECT 'idea', project_id, id FROM ideas
+  UNION ALL SELECT 'spark', project_id, id FROM sparks
+  UNION ALL SELECT 'brainstorm', project_id, id FROM brainstorms
+  UNION ALL SELECT 'shaping_draft', project_id, id FROM shaping_drafts
+  UNION ALL SELECT 'session', project_id, id FROM sessions
+  UNION ALL SELECT 'report', project_id, id FROM reports
+  UNION ALL SELECT 'journal_entry', project_id, id FROM journal_entries
+  UNION ALL SELECT 'event', project_id, id FROM events
+  UNION ALL SELECT 'relationship', project_id, id FROM relationships
+  UNION ALL SELECT 'tag', project_id, id FROM tags
+  UNION ALL SELECT 'entity_tag', project_id, id FROM entity_tags
+  UNION ALL SELECT 'bundle', project_id, id FROM bundles
+  UNION ALL SELECT 'bundle_member', project_id, id FROM bundle_members
+  UNION ALL SELECT 'source', project_id, id FROM sources
+  UNION ALL SELECT 'hook_event', project_id, id FROM hook_events
+  UNION ALL SELECT 'export', project_id, id FROM exports
+)
+SELECT backend_mappings.id, backend_mappings.backend, backend_mappings.entity_kind, backend_mappings.entity_id, backend_mappings.external_kind, backend_mappings.external_id
+FROM backend_mappings
+LEFT JOIN local_entities
+  ON local_entities.project_id = backend_mappings.project_id
+ AND local_entities.entity_kind = backend_mappings.entity_kind
+ AND local_entities.entity_id = backend_mappings.entity_id
+WHERE local_entities.entity_id IS NULL
+  AND backend_mappings.entity_kind IN (
+    'project',
+    'alias',
+    'spec',
+    'task',
+    'idea',
+    'spark',
+    'brainstorm',
+    'shaping_draft',
+    'session',
+    'report',
+    'journal_entry',
+    'event',
+    'relationship',
+    'tag',
+    'entity_tag',
+    'bundle',
+    'bundle_member',
+    'source',
+    'hook_event',
+    'export'
+  )
+ORDER BY backend_mappings.id
+`)
+	if err != nil {
+		return nil, false, fmt.Errorf("inspect orphaned backend mappings: %w", err)
+	}
+	defer missingRows.Close()
+	for missingRows.Next() {
+		var mappingID, backend, entityKind, entityID, externalKind, externalID string
+		if err := missingRows.Scan(&mappingID, &backend, &entityKind, &entityID, &externalKind, &externalID); err != nil {
+			return nil, false, fmt.Errorf("scan orphaned backend mapping: %w", err)
+		}
+		valid = false
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "error",
+			Code:     "backend-mapping-entity-missing",
+			Category: RepairCategoryBackendMapping,
+			Policy:   DiagnosticPolicyInvalidLocalData,
+			Message:  fmt.Sprintf("backend mapping %s links local %s %s to %s %s:%s, but the local entity is missing; fix or remove the local backend mapping row before trusting integration state", mappingID, entityKind, entityID, backend, externalKind, externalID),
+			Details: map[string]any{
+				"backend":       backend,
+				"entity_id":     entityID,
+				"entity_kind":   entityKind,
+				"external_id":   externalID,
+				"external_kind": externalKind,
+				"mapping_id":    mappingID,
+			},
+		})
+	}
+	if err := missingRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate orphaned backend mappings: %w", err)
+	}
+
+	ambiguousRows, err := store.db.QueryContext(ctx, `
+SELECT project_id, backend, entity_kind, entity_id, external_kind, COUNT(DISTINCT external_id)
+FROM backend_mappings
+GROUP BY project_id, backend, entity_kind, entity_id, external_kind
+HAVING COUNT(DISTINCT external_id) > 1
+ORDER BY project_id, backend, entity_kind, entity_id, external_kind
+`)
+	if err != nil {
+		return nil, false, fmt.Errorf("inspect ambiguous backend mappings: %w", err)
+	}
+	defer ambiguousRows.Close()
+	for ambiguousRows.Next() {
+		var projectID, backend, entityKind, entityID, externalKind string
+		var count int
+		if err := ambiguousRows.Scan(&projectID, &backend, &entityKind, &entityID, &externalKind, &count); err != nil {
+			return nil, false, fmt.Errorf("scan ambiguous backend mapping: %w", err)
+		}
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "warn",
+			Code:     "backend-mapping-entity-ambiguous",
+			Category: RepairCategoryBackendMapping,
+			Policy:   DiagnosticPolicyWarningDrift,
+			Message:  fmt.Sprintf("local %s %s in project %s maps to %d %s %s records; audit local integration metadata before pruning or reconnecting external records", entityKind, entityID, projectID, count, backend, externalKind),
+			Details: map[string]any{
+				"backend":                    backend,
+				"distinct_external_id_count": count,
+				"entity_id":                  entityID,
+				"entity_kind":                entityKind,
+				"external_kind":              externalKind,
+				"project_id":                 projectID,
+			},
+		})
+	}
+	if err := ambiguousRows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate ambiguous backend mappings: %w", err)
+	}
+
+	return diagnostics, valid, nil
+}
+
+func backendMappingHasSensitiveValue(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return false
+	}
+	markers := []string{
+		"authorization:",
+		"bearer ",
+		strings.Join([]string{"api", "_", "key", "="}, ""),
+		strings.Join([]string{"x-api", "-", "key"}, ""),
+		strings.Join([]string{"access_", "tok", "en", "="}, ""),
+		strings.Join([]string{"refresh_", "tok", "en", "="}, ""),
+		strings.Join([]string{"tok", "en", "="}, ""),
+		strings.Join([]string{"pass", "word", "="}, ""),
+		strings.Join([]string{"sec", "ret", "="}, ""),
+		"ghp_",
+		"xoxb-",
+		"sk_live_",
+	}
+	for _, marker := range markers {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func inspectLinearModeTaskMappings(ctx context.Context, root project.Root, store *Store, projectID string) ([]Diagnostic, error) {
+	enabled, err := linearIntegrationEnabled(root.Path())
+	if err != nil || !enabled {
+		return nil, err
+	}
+
+	var unmappedCount int
+	if err := store.db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM tasks
+LEFT JOIN backend_mappings
+  ON backend_mappings.project_id = tasks.project_id
+ AND backend_mappings.backend = 'linear'
+ AND backend_mappings.entity_kind = 'task'
+ AND backend_mappings.entity_id = tasks.id
+WHERE tasks.project_id = ?
+  AND tasks.status <> 'archived'
+  AND backend_mappings.id IS NULL
+`, projectID).Scan(&unmappedCount); err != nil {
+		return nil, fmt.Errorf("inspect Linear-mode task backend mappings: %w", err)
+	}
+	if unmappedCount == 0 {
+		return nil, nil
+	}
+	return []Diagnostic{{
+		Severity: "warn",
+		Code:     "linear-mode-local-task-unmapped",
+		Category: RepairCategoryExternalSync,
+		Policy:   DiagnosticPolicyExternalSyncGap,
+		Message:  fmt.Sprintf("Linear integration is enabled, but %d active local task row(s) have no Linear backend mapping; export local task state and reconcile it through Linear or future backend sync tooling", unmappedCount),
+		Details: map[string]any{
+			"backend":             "linear",
+			"entity_kind":         "task",
+			"unmapped_task_count": unmappedCount,
+		},
+		RequiresExternalSync: true,
+	}}, nil
+}
+
+func linearIntegrationEnabled(rootPath string) (bool, error) {
+	data, err := os.ReadFile(filepath.Join(rootPath, ".agents", "loaf.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read .agents/loaf.json: %w", err)
+	}
+	var config struct {
+		Integrations struct {
+			Linear struct {
+				Enabled *bool `json:"enabled"`
+			} `json:"linear"`
+		} `json:"integrations"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return false, fmt.Errorf("parse .agents/loaf.json: %w", err)
+	}
+	return config.Integrations.Linear.Enabled != nil && *config.Integrations.Linear.Enabled, nil
 }
 
 func inspectStaleExports(ctx context.Context, store *Store) ([]Diagnostic, error) {
@@ -241,7 +1153,17 @@ FROM exports JOIN journal_entries ON exports.source_entity_kind = 'journal_entry
 			diagnostics = append(diagnostics, Diagnostic{
 				Severity: "warn",
 				Code:     "stale-compatibility-export",
+				Category: RepairCategoryCompatibilityExport,
+				Policy:   DiagnosticPolicyStaleExport,
 				Message:  fmt.Sprintf("export %s at %s is stale for %s %s", id, path, kind, entityID),
+				Details: map[string]any{
+					"export_id":          id,
+					"path":               path,
+					"source_entity_kind": kind,
+					"source_entity_id":   entityID,
+					"generated_at":       generatedAt,
+					"source_updated_at":  updatedAt,
+				},
 			})
 		}
 	}

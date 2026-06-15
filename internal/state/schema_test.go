@@ -11,6 +11,7 @@ import (
 
 var requiredInitialTables = []string{
 	"projects",
+	"project_paths",
 	"aliases",
 	"specs",
 	"tasks",
@@ -37,8 +38,8 @@ var requiredInitialTables = []string{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 2 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 2", len(migrations))
+	if len(migrations) != 4 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 4", len(migrations))
 	}
 
 	for i, migration := range migrations {
@@ -51,6 +52,12 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[1].Name != "session_state_snapshots" {
 		t.Fatalf("migration[1].Name = %q, want session_state_snapshots", migrations[1].Name)
+	}
+	if migrations[2].Name != "project_identity_and_relationship_origin" {
+		t.Fatalf("migration[2].Name = %q, want project_identity_and_relationship_origin", migrations[2].Name)
+	}
+	if migrations[3].Name != "project_path_current_uniqueness" {
+		t.Fatalf("migration[3].Name = %q, want project_path_current_uniqueness", migrations[3].Name)
 	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
@@ -102,6 +109,7 @@ func TestInitialSchemaPreservesLineageAndExports(t *testing.T) {
 
 	for table, columns := range map[string][]string{
 		"relationships":           {"relationship_type", "from_entity_kind", "to_entity_kind", "reason"},
+		"project_paths":           {"project_id", "path", "is_current", "first_seen_at", "last_seen_at"},
 		"sources":                 {"source_kind", "path", "hash", "imported_at"},
 		"exports":                 {"export_kind", "format", "state_version", "generated_at"},
 		"session_state_snapshots": {"content", "observed_branch", "observed_worktree"},
@@ -178,6 +186,14 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	if sqlDoc != SchemaMigrations()[1].SQL {
 		t.Fatal("docs/schema/0002_session_state_snapshots.sql must match embedded migration 0002 exactly")
 	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0003_project_identity_and_relationship_origin.sql")
+	if sqlDoc != SchemaMigrations()[2].SQL {
+		t.Fatal("docs/schema/0003_project_identity_and_relationship_origin.sql must match embedded migration 0003 exactly")
+	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0004_project_path_current_uniqueness.sql")
+	if sqlDoc != SchemaMigrations()[3].SQL {
+		t.Fatal("docs/schema/0004_project_path_current_uniqueness.sql must match embedded migration 0004 exactly")
+	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
 	mermaidDoc := readRepoFile(t, "docs", "schema", "operational-state.mmd")
@@ -213,6 +229,7 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ hook_events : scopes",
 		"projects ||--o{ ideas : scopes",
 		"projects ||--o{ journal_entries : scopes",
+		"projects ||--o{ project_paths : locates",
 		"projects ||--o{ relationships : scopes",
 		"projects ||--o{ reports : scopes",
 		"projects ||--o{ session_state_snapshots : scopes",
@@ -296,6 +313,10 @@ func schemaColumnNames(t *testing.T, sql string) map[string][]string {
 			}
 			columnsByTable[table] = append(columnsByTable[table], strings.ToLower(fields[0]))
 		}
+	}
+	alterRe := regexp.MustCompile(`(?im)^ALTER TABLE ([a-z_]+) ADD COLUMN ([a-z_]+) `)
+	for _, match := range alterRe.FindAllStringSubmatch(sql, -1) {
+		columnsByTable[match[1]] = append(columnsByTable[match[1]], strings.ToLower(match[2]))
 	}
 	return columnsByTable
 }

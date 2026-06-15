@@ -14,8 +14,14 @@ import (
 
 // BundleList is the state-backed bundle-list read model.
 type BundleList struct {
-	Version int                   `json:"version"`
-	Bundles map[string]BundleItem `json:"bundles"`
+	ContractVersion    int                   `json:"contract_version,omitempty"`
+	DatabaseScope      string                `json:"database_scope,omitempty"`
+	DatabasePath       string                `json:"database_path,omitempty"`
+	ProjectID          string                `json:"project_id,omitempty"`
+	ProjectName        string                `json:"project_name,omitempty"`
+	ProjectCurrentPath string                `json:"project_current_path,omitempty"`
+	Version            int                   `json:"version"`
+	Bundles            map[string]BundleItem `json:"bundles"`
 }
 
 // BundleItem is one bundle row returned by the state-backed bundle list.
@@ -31,20 +37,32 @@ type BundleItem struct {
 
 // BundleShowResult describes a bundle and its resolved member set.
 type BundleShowResult struct {
-	Slug       string        `json:"slug"`
-	Title      string        `json:"title"`
-	TagQuery   []string      `json:"tag_query,omitempty"`
-	Members    []TraceEntity `json:"members"`
-	Explicit   []TraceEntity `json:"explicit,omitempty"`
-	TagMatched []TraceEntity `json:"tag_matched,omitempty"`
+	ContractVersion    int           `json:"contract_version,omitempty"`
+	DatabaseScope      string        `json:"database_scope,omitempty"`
+	DatabasePath       string        `json:"database_path,omitempty"`
+	ProjectID          string        `json:"project_id,omitempty"`
+	ProjectName        string        `json:"project_name,omitempty"`
+	ProjectCurrentPath string        `json:"project_current_path,omitempty"`
+	Slug               string        `json:"slug"`
+	Title              string        `json:"title"`
+	TagQuery           []string      `json:"tag_query,omitempty"`
+	Members            []TraceEntity `json:"members"`
+	Explicit           []TraceEntity `json:"explicit,omitempty"`
+	TagMatched         []TraceEntity `json:"tag_matched,omitempty"`
 }
 
 // BundleMutationResult describes create/add/remove bundle mutations.
 type BundleMutationResult struct {
-	Slug   string       `json:"slug"`
-	Title  string       `json:"title,omitempty"`
-	Tags   []string     `json:"tags,omitempty"`
-	Entity *TraceEntity `json:"entity,omitempty"`
+	ContractVersion    int          `json:"contract_version,omitempty"`
+	DatabaseScope      string       `json:"database_scope,omitempty"`
+	DatabasePath       string       `json:"database_path,omitempty"`
+	ProjectID          string       `json:"project_id,omitempty"`
+	ProjectName        string       `json:"project_name,omitempty"`
+	ProjectCurrentPath string       `json:"project_current_path,omitempty"`
+	Slug               string       `json:"slug"`
+	Title              string       `json:"title,omitempty"`
+	Tags               []string     `json:"tags,omitempty"`
+	Entity             *TraceEntity `json:"entity,omitempty"`
 }
 
 // BundleCreateOptions describes bundle creation.
@@ -125,7 +143,14 @@ func RemoveBundleMember(ctx context.Context, root project.Root, resolver PathRes
 
 // CreateBundle creates or updates a bundle in an open store.
 func (s *Store) CreateBundle(ctx context.Context, root project.Root, options BundleCreateOptions) (BundleMutationResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return BundleMutationResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return BundleMutationResult{}, err
+	}
 	slug, err := normalizeBundleSlug(options.Slug)
 	if err != nil {
 		return BundleMutationResult{}, err
@@ -151,12 +176,29 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
 	if err != nil {
 		return BundleMutationResult{}, fmt.Errorf("upsert bundle %s: %w", slug, err)
 	}
-	return BundleMutationResult{Slug: slug, Title: title, Tags: tags}, nil
+	return BundleMutationResult{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Slug:               slug,
+		Title:              title,
+		Tags:               tags,
+	}, nil
 }
 
 // ListBundles returns all bundles in an open store.
 func (s *Store) ListBundles(ctx context.Context, root project.Root) (BundleList, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return BundleList{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return BundleList{}, err
+	}
 	rows, err := s.db.QueryContext(ctx, `
 	SELECT id, slug, title, COALESCE(tag_query, ''), created_at, updated_at
 FROM bundles
@@ -192,7 +234,16 @@ ORDER BY slug
 		return BundleList{}, fmt.Errorf("close bundle rows: %w", err)
 	}
 
-	list := BundleList{Version: 1, Bundles: map[string]BundleItem{}}
+	list := BundleList{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Version:            1,
+		Bundles:            map[string]BundleItem{},
+	}
 	for _, row := range bundleRows {
 		tags, err := normalizeBundleTags(splitCommaList(row.tagQuery))
 		if err != nil {
@@ -221,7 +272,14 @@ ORDER BY slug
 
 // ShowBundle returns a bundle and its full related set from an open store.
 func (s *Store) ShowBundle(ctx context.Context, root project.Root, slugValue string) (BundleShowResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return BundleShowResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return BundleShowResult{}, err
+	}
 	bundleID, slug, title, tags, err := s.resolveBundle(ctx, projectID, slugValue)
 	if err != nil {
 		return BundleShowResult{}, err
@@ -236,18 +294,31 @@ func (s *Store) ShowBundle(ctx context.Context, root project.Root, slugValue str
 	}
 	members := mergeTraceEntities(tagMatched, explicit)
 	return BundleShowResult{
-		Slug:       slug,
-		Title:      title,
-		TagQuery:   tags,
-		Members:    members,
-		Explicit:   explicit,
-		TagMatched: tagMatched,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Slug:               slug,
+		Title:              title,
+		TagQuery:           tags,
+		Members:            members,
+		Explicit:           explicit,
+		TagMatched:         tagMatched,
 	}, nil
 }
 
 // UpdateBundle updates an existing bundle in an open store.
 func (s *Store) UpdateBundle(ctx context.Context, root project.Root, options BundleUpdateOptions) (BundleMutationResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return BundleMutationResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return BundleMutationResult{}, err
+	}
 	bundleID, slug, currentTitle, currentTags, err := s.resolveBundle(ctx, projectID, options.Slug)
 	if err != nil {
 		return BundleMutationResult{}, err
@@ -280,12 +351,29 @@ WHERE project_id = ? AND id = ?
 	if err != nil {
 		return BundleMutationResult{}, fmt.Errorf("update bundle %s: %w", slug, err)
 	}
-	return BundleMutationResult{Slug: slug, Title: title, Tags: tags}, nil
+	return BundleMutationResult{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Slug:               slug,
+		Title:              title,
+		Tags:               tags,
+	}, nil
 }
 
 // AddBundleMember adds an explicit member in an open store.
 func (s *Store) AddBundleMember(ctx context.Context, root project.Root, slugValue string, ref string) (BundleMutationResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return BundleMutationResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return BundleMutationResult{}, err
+	}
 	bundleID, slug, title, _, err := s.resolveBundle(ctx, projectID, slugValue)
 	if err != nil {
 		return BundleMutationResult{}, err
@@ -304,12 +392,29 @@ ON CONFLICT(project_id, bundle_id, entity_kind, entity_id) DO UPDATE SET updated
 	if err != nil {
 		return BundleMutationResult{}, fmt.Errorf("add bundle member: %w", err)
 	}
-	return BundleMutationResult{Slug: slug, Title: title, Entity: &entity}, nil
+	return BundleMutationResult{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Slug:               slug,
+		Title:              title,
+		Entity:             &entity,
+	}, nil
 }
 
 // RemoveBundleMember removes an explicit member in an open store.
 func (s *Store) RemoveBundleMember(ctx context.Context, root project.Root, slugValue string, ref string) (BundleMutationResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return BundleMutationResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return BundleMutationResult{}, err
+	}
 	bundleID, slug, title, _, err := s.resolveBundle(ctx, projectID, slugValue)
 	if err != nil {
 		return BundleMutationResult{}, err
@@ -332,7 +437,17 @@ WHERE project_id = ? AND bundle_id = ? AND entity_kind = ? AND entity_id = ?
 	if rows == 0 {
 		return BundleMutationResult{}, fmt.Errorf("%s %q is not an explicit member of bundle %q", entity.Kind, firstNonEmpty(entity.Alias, entity.ID), slug)
 	}
-	return BundleMutationResult{Slug: slug, Title: title, Entity: &entity}, nil
+	return BundleMutationResult{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Slug:               slug,
+		Title:              title,
+		Entity:             &entity,
+	}, nil
 }
 
 func (s *Store) resolveBundle(ctx context.Context, projectID string, slugValue string) (string, string, string, []string, error) {

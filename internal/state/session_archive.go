@@ -23,10 +23,16 @@ type SessionArchiveOptions struct {
 
 // SessionArchiveResult describes the affected session after `loaf session archive`.
 type SessionArchiveResult struct {
-	Version          int         `json:"version"`
-	Action           string      `json:"action"`
-	Session          TraceEntity `json:"session"`
-	HarnessSessionID string      `json:"harness_session_id,omitempty"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Version            int         `json:"version"`
+	Action             string      `json:"action"`
+	Session            TraceEntity `json:"session"`
+	HarnessSessionID   string      `json:"harness_session_id,omitempty"`
 }
 
 // ArchiveSession marks a session archived in initialized SQLite state.
@@ -41,7 +47,14 @@ func ArchiveSession(ctx context.Context, root project.Root, resolver PathResolve
 
 // ArchiveSession marks a session archived in an open store.
 func (s *Store) ArchiveSession(ctx context.Context, root project.Root, options SessionArchiveOptions) (SessionArchiveResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SessionArchiveResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SessionArchiveResult{}, err
+	}
 	branch := strings.TrimSpace(options.Branch)
 	harnessSessionID := strings.TrimSpace(options.HarnessSessionID)
 	if branch == "" && harnessSessionID == "" {
@@ -73,10 +86,16 @@ func (s *Store) ArchiveSession(ctx context.Context, root project.Root, options S
 	}
 	if target.Status == "archived" {
 		return SessionArchiveResult{
-			Version:          1,
-			Action:           SessionArchiveActionAlreadyArchived,
-			Session:          TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: target.Status},
-			HarnessSessionID: target.HarnessSessionID,
+			ContractVersion:    StateJSONContractVersion,
+			DatabaseScope:      identity.DatabaseScope,
+			DatabasePath:       identity.DatabasePath,
+			ProjectID:          identity.ID,
+			ProjectName:        identity.FriendlyName,
+			ProjectCurrentPath: identity.CurrentPath,
+			Version:            1,
+			Action:             SessionArchiveActionAlreadyArchived,
+			Session:            TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: target.Status},
+			HarnessSessionID:   target.HarnessSessionID,
 		}, nil
 	}
 	if err := updateSessionStatusTransition(ctx, tx, projectID, target.ID, target.Status, "archived", "recorded by session archive", now); err != nil {
@@ -86,10 +105,16 @@ func (s *Store) ArchiveSession(ctx context.Context, root project.Root, options S
 		return SessionArchiveResult{}, fmt.Errorf("commit session archive transaction: %w", err)
 	}
 	return SessionArchiveResult{
-		Version:          1,
-		Action:           SessionArchiveActionArchived,
-		Session:          TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: "archived"},
-		HarnessSessionID: firstNonEmpty(harnessSessionID, target.HarnessSessionID),
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Version:            1,
+		Action:             SessionArchiveActionArchived,
+		Session:            TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: "archived"},
+		HarnessSessionID:   firstNonEmpty(harnessSessionID, target.HarnessSessionID),
 	}, nil
 }
 

@@ -86,6 +86,7 @@ CLI commands that support the workflow pipeline:
 | `loaf build` | Build all targets after modifying skills/agents |
 | `loaf install` | Install to detected AI tools |
 | `loaf check` | Run enforcement hooks manually |
+| `loaf project` | Manage durable project identity (show, rename, move) |
 | `loaf task` | Manage project tasks (list, show, update, archive) |
 | `loaf spec` | Manage spec lifecycle |
 | `loaf kb` | Knowledge base management |
@@ -185,6 +186,15 @@ Build once, deploy everywhere. Skills are the universal layer; profiles and hook
 
 ## Getting Started
 
+### Homebrew
+
+```bash
+brew tap levifig/tap
+brew install loaf
+```
+
+Homebrew installs the native `loaf` binary plus Loaf's packaged content under the tap-managed prefix. Use `brew upgrade loaf` after releases.
+
 ### Claude Code
 
 ```bash
@@ -214,7 +224,22 @@ loaf migrate markdown --apply
 loaf state status
 ```
 
-The dry run counts importable artifacts and skipped files without creating a database. The apply step imports `.agents/` Markdown into the XDG data-home SQLite database without rewriting the source Markdown files. Newer graph-oriented commands such as `loaf idea`, `loaf spark`, `loaf tag`, `loaf bundle`, and `loaf link` require initialized SQLite state; run `loaf state init` for a fresh project or `loaf migrate markdown --apply` for an existing Markdown project.
+The dry run counts importable artifacts and skipped files without creating a database. The apply step imports `.agents/` Markdown into the XDG data-home SQLite database without rewriting the source Markdown files. Loaf uses one global SQLite file and partitions rows by stable project ID, so multiple projects share the same database path while project queries stay isolated. Project IDs are not bound to the checkout path or friendly name; use `loaf project rename <name>` for display names and `loaf project move --from <old-path>` after moving a checkout. Newer graph-oriented commands such as `loaf idea`, `loaf spark`, `loaf tag`, `loaf bundle`, and `loaf link` require initialized SQLite state; run `loaf state init` for a fresh project or `loaf migrate markdown --apply` for an existing Markdown project.
+
+### Recovering SQLite State From A Backup
+
+Loaf backups are full SQLite database copies stored outside the repository. There is not yet a `loaf state restore` command, so restore is an explicit manual procedure:
+
+```bash
+loaf state backup verify /path/to/backup.sqlite
+DB="$(loaf state path)"
+cp "$DB" "$DB.before-restore"
+cp /path/to/backup.sqlite "$DB"
+loaf state doctor
+loaf state status
+```
+
+Only copy a backup after `loaf state backup verify` reports `verified: true`, `integrity: ok`, `foreign keys: ok`, and the expected project identities. Preserve the current global database first so a bad restore can be reversed. For agentic restore flows, `loaf state backup verify --json` includes `restore_database_path`, `restore_preserve_path`, and `restore_validation_commands` for the current checkout. After copying the backup into `$XDG_DATA_HOME/loaf/loaf.sqlite`, run `loaf state doctor` and `loaf state status` from the affected checkout before continuing work.
 
 **Install locations:**
 

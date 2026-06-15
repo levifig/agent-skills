@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -20,8 +21,26 @@ func TestCreateTaskDefaultsAndIntegratesWithReads(t *testing.T) {
 	if result.Task.Alias != "TASK-001" || result.Task.Title != "New Task" || result.Task.Status != "todo" || result.Priority != "P2" || result.EventID == "" {
 		t.Fatalf("result = %#v, want default TASK-001 todo task", result)
 	}
-	if result.Spec.ID != "" {
-		t.Fatalf("Spec = %#v, want empty spec", result.Spec)
+	if result.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(root.Path()))
+	}
+	if result.ProjectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, root.Path())
+	}
+	if result.Spec != nil {
+		t.Fatalf("Spec = %#v, want nil spec", result.Spec)
 	}
 	if len(result.Depends) != 0 {
 		t.Fatalf("Depends = %#v, want none", result.Depends)
@@ -73,7 +92,7 @@ func TestCreateTaskWithSpecAndDependencies(t *testing.T) {
 	if result.Task.Alias != "TASK-002" || result.Task.Title != "Follow-up Task" || result.Priority != "P1" {
 		t.Fatalf("result.Task = %#v, want TASK-002 follow-up", result.Task)
 	}
-	if result.Spec.Alias != "SPEC-001" {
+	if result.Spec == nil || result.Spec.Alias != "SPEC-001" {
 		t.Fatalf("Spec = %#v, want SPEC-001", result.Spec)
 	}
 	if len(result.Depends) != 1 || result.Depends[0].Alias != "TASK-001" {

@@ -24,15 +24,21 @@ type JournalLogOptions struct {
 
 // JournalLogResult is returned after a state-backed journal entry write.
 type JournalLogResult struct {
-	ID               string       `json:"id"`
-	EntryType        string       `json:"entry_type"`
-	Scope            string       `json:"scope,omitempty"`
-	Message          string       `json:"message"`
-	ObservedBranch   string       `json:"observed_branch,omitempty"`
-	ObservedWorktree string       `json:"observed_worktree,omitempty"`
-	HarnessSessionID string       `json:"harness_session_id,omitempty"`
-	Session          *TraceEntity `json:"session,omitempty"`
-	NoopReason       string       `json:"noop_reason,omitempty"`
+	ContractVersion    int          `json:"contract_version,omitempty"`
+	DatabaseScope      string       `json:"database_scope,omitempty"`
+	DatabasePath       string       `json:"database_path,omitempty"`
+	ProjectID          string       `json:"project_id,omitempty"`
+	ProjectName        string       `json:"project_name,omitempty"`
+	ProjectCurrentPath string       `json:"project_current_path,omitempty"`
+	ID                 string       `json:"id"`
+	EntryType          string       `json:"entry_type"`
+	Scope              string       `json:"scope,omitempty"`
+	Message            string       `json:"message"`
+	ObservedBranch     string       `json:"observed_branch,omitempty"`
+	ObservedWorktree   string       `json:"observed_worktree,omitempty"`
+	HarnessSessionID   string       `json:"harness_session_id,omitempty"`
+	Session            *TraceEntity `json:"session,omitempty"`
+	NoopReason         string       `json:"noop_reason,omitempty"`
 }
 
 // LogJournal writes a journal entry into initialized SQLite state.
@@ -61,7 +67,14 @@ func (s *Store) LogJournal(ctx context.Context, root project.Root, options Journ
 		return JournalLogResult{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return JournalLogResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return JournalLogResult{}, err
+	}
 	var session sessionRow
 	if options.LinkSession {
 		tx, err := s.db.BeginTx(ctx, nil)
@@ -86,13 +99,19 @@ func (s *Store) LogJournal(ctx context.Context, root project.Root, options Journ
 		if session.ID == "" {
 			if options.IfSessionActive {
 				return JournalLogResult{
-					EntryType:        entryType,
-					Scope:            scope,
-					Message:          message,
-					ObservedBranch:   options.ObservedBranch,
-					ObservedWorktree: options.ObservedWorktree,
-					HarnessSessionID: options.HarnessSessionID,
-					NoopReason:       "no active session found",
+					ContractVersion:    StateJSONContractVersion,
+					DatabaseScope:      identity.DatabaseScope,
+					DatabasePath:       identity.DatabasePath,
+					ProjectID:          identity.ID,
+					ProjectName:        identity.FriendlyName,
+					ProjectCurrentPath: identity.CurrentPath,
+					EntryType:          entryType,
+					Scope:              scope,
+					Message:            message,
+					ObservedBranch:     options.ObservedBranch,
+					ObservedWorktree:   options.ObservedWorktree,
+					HarnessSessionID:   options.HarnessSessionID,
+					NoopReason:         "no active session found",
 				}, nil
 			}
 			return JournalLogResult{}, fmt.Errorf("no active session found")
@@ -133,14 +152,20 @@ INSERT INTO journal_entries (
 			return JournalLogResult{}, fmt.Errorf("commit journal transaction: %w", err)
 		}
 		return JournalLogResult{
-			ID:               id,
-			EntryType:        entryType,
-			Scope:            scope,
-			Message:          message,
-			ObservedBranch:   options.ObservedBranch,
-			ObservedWorktree: options.ObservedWorktree,
-			HarnessSessionID: options.HarnessSessionID,
-			Session:          &TraceEntity{Kind: "session", ID: session.ID, Alias: session.Alias, Status: session.Status},
+			ContractVersion:    StateJSONContractVersion,
+			DatabaseScope:      identity.DatabaseScope,
+			DatabasePath:       identity.DatabasePath,
+			ProjectID:          identity.ID,
+			ProjectName:        identity.FriendlyName,
+			ProjectCurrentPath: identity.CurrentPath,
+			ID:                 id,
+			EntryType:          entryType,
+			Scope:              scope,
+			Message:            message,
+			ObservedBranch:     options.ObservedBranch,
+			ObservedWorktree:   options.ObservedWorktree,
+			HarnessSessionID:   options.HarnessSessionID,
+			Session:            &TraceEntity{Kind: "session", ID: session.ID, Alias: session.Alias, Status: session.Status},
 		}, nil
 	}
 	id := stableMigrationID("journal", projectID, now, entryType, scope, message)
@@ -165,13 +190,19 @@ INSERT INTO journal_entries (
 		return JournalLogResult{}, fmt.Errorf("insert journal entry: %w", err)
 	}
 	return JournalLogResult{
-		ID:               id,
-		EntryType:        entryType,
-		Scope:            scope,
-		Message:          message,
-		ObservedBranch:   options.ObservedBranch,
-		ObservedWorktree: options.ObservedWorktree,
-		HarnessSessionID: options.HarnessSessionID,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		ID:                 id,
+		EntryType:          entryType,
+		Scope:              scope,
+		Message:            message,
+		ObservedBranch:     options.ObservedBranch,
+		ObservedWorktree:   options.ObservedWorktree,
+		HarnessSessionID:   options.HarnessSessionID,
 	}, nil
 }
 

@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 )
 
@@ -26,6 +27,24 @@ status: complete
 	}
 	if len(result.Archived) != 1 || result.Archived[0].Spec == nil || result.Archived[0].Spec.Alias != "SPEC-001" || result.Archived[0].Previous != "complete" || result.Archived[0].Status != "archived" || result.Archived[0].EventID == "" {
 		t.Fatalf("Archived = %#v, want SPEC-001 archived with event", result.Archived)
+	}
+	if result.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(root.Path()))
+	}
+	if result.ProjectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, root.Path())
 	}
 	if len(result.Skipped) != 0 {
 		t.Fatalf("Skipped = %#v, want none", result.Skipped)

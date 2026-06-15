@@ -42,6 +42,7 @@ source: old
 	if err != nil {
 		t.Fatalf("ListReports() error = %v", err)
 	}
+	assertReportProjectContext(t, root, reports.ContractVersion, reports.DatabaseScope, reports.DatabasePath, reports.ProjectID, reports.ProjectName, reports.ProjectCurrentPath)
 
 	draft := reports.Reports["draft"]
 	if draft.Title != "Draft Report" || draft.Kind != "research" || draft.Status != "draft" || draft.SourcePath != ".agents/reports/draft.md" {
@@ -60,6 +61,7 @@ source: old
 	if err != nil {
 		t.Fatalf("ListReports(type) error = %v", err)
 	}
+	assertReportProjectContext(t, root, research.ContractVersion, research.DatabaseScope, research.DatabasePath, research.ProjectID, research.ProjectName, research.ProjectCurrentPath)
 	if len(research.Reports) != 2 || research.Reports["draft"].Kind != "research" || research.Reports["old"].Kind != "research" {
 		t.Fatalf("research reports = %#v, want draft and archived research reports", research.Reports)
 	}
@@ -68,6 +70,7 @@ source: old
 	if err != nil {
 		t.Fatalf("ListReports(status) error = %v", err)
 	}
+	assertReportProjectContext(t, root, finalOnly.ContractVersion, finalOnly.DatabaseScope, finalOnly.DatabasePath, finalOnly.ProjectID, finalOnly.ProjectName, finalOnly.ProjectCurrentPath)
 	if len(finalOnly.Reports) != 1 || finalOnly.Reports["final"].Status != "final" {
 		t.Fatalf("final reports = %#v, want only final report", finalOnly.Reports)
 	}

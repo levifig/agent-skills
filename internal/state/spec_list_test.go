@@ -43,6 +43,7 @@ status: drafting
 	if err != nil {
 		t.Fatalf("ListSpecs() error = %v", err)
 	}
+	assertTaskProjectContext(t, root.Path(), specs.ContractVersion, specs.DatabaseScope, specs.DatabasePath, specs.ProjectID, specs.ProjectName, specs.ProjectCurrentPath)
 
 	spec := specs.Specs["SPEC-001"]
 	if spec.Title != "Example Spec" || spec.Status != "implementing" || spec.SourcePath != ".agents/specs/SPEC-001-example.md" {

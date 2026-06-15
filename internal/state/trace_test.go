@@ -27,6 +27,7 @@ func TestTraceImportedTaskShowsSourcesAndRelationships(t *testing.T) {
 		t.Fatalf("Trace(TASK-001) error = %v", err)
 	}
 
+	assertTaskProjectContext(t, root.Path(), trace.ContractVersion, trace.DatabaseScope, trace.DatabasePath, trace.ProjectID, trace.ProjectName, trace.ProjectCurrentPath)
 	if trace.Entity.Kind != "task" || trace.Entity.Alias != "TASK-001" || trace.Entity.Title != "Example Task" || trace.Entity.Status != "todo" {
 		t.Fatalf("Entity = %#v, want imported task metadata", trace.Entity)
 	}

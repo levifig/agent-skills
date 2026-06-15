@@ -32,6 +32,9 @@ func TestPreviewMarkdownMigrationCountsAgentsArtifacts(t *testing.T) {
 		t.Fatalf("PreviewMarkdownMigration() error = %v", err)
 	}
 
+	if plan.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", plan.ContractVersion, StateJSONContractVersion)
+	}
 	if plan.AgentsPath != filepath.Join(root.Path(), ".agents") {
 		t.Fatalf("AgentsPath = %q, want project .agents", plan.AgentsPath)
 	}

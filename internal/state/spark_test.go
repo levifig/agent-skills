@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,6 +30,7 @@ func TestResolveSparkMarksResolvedAndRecordsRelationshipEvent(t *testing.T) {
 	if before.Sparks["SPARK-smoke"].Status != "open" {
 		t.Fatalf("before.Sparks = %#v, want imported open spark", before.Sparks)
 	}
+	assertSparkProjectContext(t, root, before.ContractVersion, before.DatabaseScope, before.DatabasePath, before.ProjectID, before.ProjectName, before.ProjectCurrentPath)
 
 	result, err := ResolveSparkWithOptions(context.Background(), root, PathResolver{StateHome: stateHome}, SparkResolveOptions{
 		Spark:  "SPARK-smoke",
@@ -41,6 +43,7 @@ func TestResolveSparkMarksResolvedAndRecordsRelationshipEvent(t *testing.T) {
 	if result.Spark.Status != "resolved" || result.ResolvedBy.Alias != "20260528-target-idea" || result.Relationship == "" || result.EventID == "" || result.Reason != "triaged into target idea" {
 		t.Fatalf("result = %#v, want resolved spark, target idea, relationship, and event", result)
 	}
+	assertSparkProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
 	after, err := ListSparks(context.Background(), root, PathResolver{StateHome: stateHome}, SparkListOptions{})
 	if err != nil {
@@ -56,6 +59,7 @@ func TestResolveSparkMarksResolvedAndRecordsRelationshipEvent(t *testing.T) {
 	if all.Sparks["SPARK-smoke"].Status != "resolved" {
 		t.Fatalf("all.Sparks = %#v, want resolved spark included with status", all.Sparks)
 	}
+	assertSparkProjectContext(t, root, all.ContractVersion, all.DatabaseScope, all.DatabasePath, all.ProjectID, all.ProjectName, all.ProjectCurrentPath)
 	resolvedOnly, err := ListSparks(context.Background(), root, PathResolver{StateHome: stateHome}, SparkListOptions{Status: "resolved"})
 	if err != nil {
 		t.Fatalf("ListSparks(Status resolved) error = %v", err)
@@ -83,7 +87,7 @@ func TestResolveSparkMarksResolvedAndRecordsRelationshipEvent(t *testing.T) {
 SELECT COUNT(*), COALESCE(MAX(note), '')
 FROM events
 WHERE project_id = ? AND entity_kind = 'spark' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'resolved'
-`, ProjectID(root)).Scan(&events, &eventNote)
+`, projectIDForTest(t, store, root)).Scan(&events, &eventNote)
 	if err != nil {
 		t.Fatalf("count events error = %v", err)
 	}
@@ -105,11 +109,12 @@ WHERE project_id = ? AND entity_kind = 'spark' AND event_type = 'status_changed'
 	if result.EventID != "" || result.Reason != "updated rationale" {
 		t.Fatalf("repeat result = %#v, want relationship update without duplicate event", result)
 	}
+	assertSparkProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 	err = store.db.QueryRowContext(context.Background(), `
 SELECT COUNT(*)
 FROM events
 WHERE project_id = ? AND entity_kind = 'spark' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'resolved'
-`, ProjectID(root)).Scan(&events)
+`, projectIDForTest(t, store, root)).Scan(&events)
 	if err != nil {
 		t.Fatalf("count events after repeat error = %v", err)
 	}
@@ -178,6 +183,7 @@ func TestShowSparkReadsImportedSQLiteSpark(t *testing.T) {
 	if result.Query != "SPARK-smoke" {
 		t.Fatalf("Query = %q, want SPARK-smoke", result.Query)
 	}
+	assertSparkProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 	if spark.Alias != "SPARK-smoke" || spark.Text != "smoke spark" || spark.Scope != "sqlite" || spark.Status != "open" {
 		t.Fatalf("Spark = %#v, want imported spark metadata", spark)
 	}
@@ -238,6 +244,7 @@ func TestPromoteSparkRecordsPromotedToRelationship(t *testing.T) {
 	if result.Spark.Alias != "SPARK-smoke" || result.Spark.Status != "open" || result.Idea.Alias != "20260528-target-idea" || result.Relationship == "" {
 		t.Fatalf("result = %#v, want open spark promoted to target idea with relationship", result)
 	}
+	assertSparkProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
 	sparks, err := ListSparks(context.Background(), root, PathResolver{StateHome: stateHome}, SparkListOptions{})
 	if err != nil {
@@ -343,6 +350,7 @@ func TestCaptureSparkCreatesOpenSparkWithAliasAndEvent(t *testing.T) {
 	if first.Spark.Alias != "SPARK-repeat-spark" || first.Spark.Status != "open" || first.Scope != "architecture" || first.EventID == "" {
 		t.Fatalf("first = %#v, want open spark with slug alias, scope, and event", first)
 	}
+	assertSparkProjectContext(t, root, first.ContractVersion, first.DatabaseScope, first.DatabasePath, first.ProjectID, first.ProjectName, first.ProjectCurrentPath)
 	second, err := CaptureSpark(context.Background(), root, PathResolver{StateHome: stateHome}, SparkCaptureOptions{
 		Text: "Repeat Spark",
 	})
@@ -360,6 +368,7 @@ func TestCaptureSparkCreatesOpenSparkWithAliasAndEvent(t *testing.T) {
 	if sparks.Sparks["SPARK-repeat-spark"].Status != "open" || sparks.Sparks["SPARK-repeat-spark"].Scope != "architecture" {
 		t.Fatalf("sparks = %#v, want captured spark visible in default list", sparks.Sparks)
 	}
+	assertSparkProjectContext(t, root, sparks.ContractVersion, sparks.DatabaseScope, sparks.DatabasePath, sparks.ProjectID, sparks.ProjectName, sparks.ProjectCurrentPath)
 	trace, err := Trace(context.Background(), root, PathResolver{StateHome: stateHome}, "SPARK-repeat-spark")
 	if err != nil {
 		t.Fatalf("Trace() error = %v", err)
@@ -378,11 +387,33 @@ func TestCaptureSparkCreatesOpenSparkWithAliasAndEvent(t *testing.T) {
 SELECT COUNT(*)
 FROM events
 WHERE project_id = ? AND entity_kind = 'spark' AND event_type = 'status_changed' AND from_status IS NULL AND to_status = 'open'
-`, ProjectID(root)).Scan(&events)
+`, projectIDForTest(t, store, root)).Scan(&events)
 	if err != nil {
 		t.Fatalf("count capture events error = %v", err)
 	}
 	if events != 2 {
 		t.Fatalf("events = %d, want one status event per captured spark", events)
+	}
+}
+
+func assertSparkProjectContext(t *testing.T, root project.Root, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string) {
+	t.Helper()
+	if contractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", contractVersion, StateJSONContractVersion)
+	}
+	if databaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", databaseScope)
+	}
+	if databasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if projectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if projectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", projectName, filepath.Base(root.Path()))
+	}
+	if projectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, root.Path())
 	}
 }

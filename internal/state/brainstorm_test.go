@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/levifig/loaf/internal/project"
@@ -54,6 +55,7 @@ status: archived
 	if open.Title != "Open Brainstorm" || open.SourcePath != ".agents/drafts/20260528-brainstorm-open.md" {
 		t.Fatalf("open = %#v, want imported title and source path", open)
 	}
+	assertBrainstormProjectContext(t, root, defaultList.ContractVersion, defaultList.DatabaseScope, defaultList.DatabasePath, defaultList.ProjectID, defaultList.ProjectName, defaultList.ProjectCurrentPath)
 
 	all, err := ListBrainstorms(context.Background(), root, PathResolver{StateHome: stateHome}, BrainstormListOptions{All: true})
 	if err != nil {
@@ -62,6 +64,7 @@ status: archived
 	if len(all.Brainstorms) != 3 {
 		t.Fatalf("all = %#v, want all three brainstorms", all.Brainstorms)
 	}
+	assertBrainstormProjectContext(t, root, all.ContractVersion, all.DatabaseScope, all.DatabasePath, all.ProjectID, all.ProjectName, all.ProjectCurrentPath)
 
 	archived, err := ListBrainstorms(context.Background(), root, PathResolver{StateHome: stateHome}, BrainstormListOptions{Status: "archived"})
 	if err != nil {
@@ -106,6 +109,7 @@ status: open
 	if show.Brainstorm.Alias != "20260528-brainstorm-sqlite" || show.Brainstorm.Title != "SQLite Brainstorm" || show.Brainstorm.Status != "open" {
 		t.Fatalf("show = %#v, want imported brainstorm metadata", show)
 	}
+	assertBrainstormProjectContext(t, root, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath)
 	if len(show.Brainstorm.Sources) != 1 || show.Brainstorm.Sources[0].Path != ".agents/drafts/20260528-brainstorm-sqlite.md" || show.Brainstorm.Sources[0].Hash == "" {
 		t.Fatalf("Sources = %#v, want imported brainstorm source", show.Brainstorm.Sources)
 	}
@@ -151,6 +155,7 @@ status: open
 	if result.Brainstorm.Alias != "20260528-brainstorm-sqlite" || result.Idea.Alias != "20260528-target-idea" || result.Relationship == "" {
 		t.Fatalf("result = %#v, want brainstorm promoted to target idea with relationship", result)
 	}
+	assertBrainstormProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
 	trace, err := Trace(context.Background(), root, PathResolver{StateHome: stateHome}, "20260528-brainstorm-sqlite")
 	if err != nil {
@@ -261,6 +266,7 @@ status: archived
 	if len(result.Archived) != 1 || result.Archived[0].Brainstorm == nil || result.Archived[0].Brainstorm.Alias != "20260528-brainstorm-open" || result.Archived[0].Previous != "open" || result.Archived[0].EventID == "" || result.Archived[0].Note != "promoted to idea" {
 		t.Fatalf("Archived = %#v, want open brainstorm archived with event", result.Archived)
 	}
+	assertBrainstormProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 	if len(result.Skipped) != 3 {
 		t.Fatalf("Skipped = %#v, want already archived, wrong-kind, and missing refs", result.Skipped)
 	}
@@ -294,6 +300,7 @@ status: archived
 	if show.Brainstorm.Status != "archived" {
 		t.Fatalf("show status = %q, want archived", show.Brainstorm.Status)
 	}
+	assertBrainstormProjectContext(t, root, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath)
 
 	store, err := OpenStore(mustDatabasePath(t, root, stateHome))
 	if err != nil {
@@ -306,7 +313,7 @@ status: archived
 SELECT COUNT(*), COALESCE(MAX(note), '')
 FROM events
 WHERE project_id = ? AND entity_kind = 'brainstorm' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'archived'
-`, ProjectID(root)).Scan(&events, &note)
+`, projectIDForTest(t, store, root)).Scan(&events, &note)
 	if err != nil {
 		t.Fatalf("count archive events error = %v", err)
 	}
@@ -315,5 +322,27 @@ WHERE project_id = ? AND entity_kind = 'brainstorm' AND event_type = 'status_cha
 	}
 	if note != "promoted to idea" {
 		t.Fatalf("event note = %q, want archive reason", note)
+	}
+}
+
+func assertBrainstormProjectContext(t *testing.T, root project.Root, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string) {
+	t.Helper()
+	if contractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", contractVersion, StateJSONContractVersion)
+	}
+	if databaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", databaseScope)
+	}
+	if databasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if projectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if projectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", projectName, filepath.Base(root.Path()))
+	}
+	if projectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, root.Path())
 	}
 }

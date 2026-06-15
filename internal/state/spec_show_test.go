@@ -37,6 +37,7 @@ Imported spec prose.
 	if err != nil {
 		t.Fatalf("ShowSpec() error = %v", err)
 	}
+	assertTaskProjectContext(t, root.Path(), result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
 	spec := result.Spec
 	if result.Query != "SPEC-001" {

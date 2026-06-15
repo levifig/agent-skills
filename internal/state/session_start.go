@@ -26,6 +26,12 @@ type SessionStartOptions struct {
 
 // SessionStartResult describes the active session after `loaf session start`.
 type SessionStartResult struct {
+	ContractVersion     int          `json:"contract_version,omitempty"`
+	DatabaseScope       string       `json:"database_scope,omitempty"`
+	DatabasePath        string       `json:"database_path,omitempty"`
+	ProjectID           string       `json:"project_id,omitempty"`
+	ProjectName         string       `json:"project_name,omitempty"`
+	ProjectCurrentPath  string       `json:"project_current_path,omitempty"`
 	Version             int          `json:"version"`
 	Action              string       `json:"action"`
 	Session             TraceEntity  `json:"session"`
@@ -56,7 +62,14 @@ func StartSession(ctx context.Context, root project.Root, resolver PathResolver,
 
 // StartSession creates or resumes a session in an open store.
 func (s *Store) StartSession(ctx context.Context, root project.Root, options SessionStartOptions) (SessionStartResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SessionStartResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SessionStartResult{}, err
+	}
 	branch := strings.TrimSpace(options.Branch)
 	if branch == "" {
 		return SessionStartResult{}, fmt.Errorf("session start requires a git branch")
@@ -155,6 +168,12 @@ VALUES (?, ?, ?, ?, 'active', NULL, ?, ?)
 	}
 
 	return SessionStartResult{
+		ContractVersion:     StateJSONContractVersion,
+		DatabaseScope:       identity.DatabaseScope,
+		DatabasePath:        identity.DatabasePath,
+		ProjectID:           identity.ID,
+		ProjectName:         identity.FriendlyName,
+		ProjectCurrentPath:  identity.CurrentPath,
 		Version:             1,
 		Action:              action,
 		Session:             TraceEntity{Kind: "session", ID: active.ID, Alias: active.Alias, Status: active.Status},

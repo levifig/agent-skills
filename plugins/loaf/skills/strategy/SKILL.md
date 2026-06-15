@@ -7,7 +7,7 @@ description: >-
   architecture (use arc...
 user-invocable: true
 argument-hint: '[topic]'
-version: 2.0.0-dev.49
+version: 2.0.0-pre.20260614235428
 ---
 
 # Strategy

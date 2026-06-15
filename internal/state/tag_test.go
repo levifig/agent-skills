@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/levifig/loaf/internal/project"
@@ -40,9 +41,11 @@ func TestTagsClassifyRequiredEntityKindsThroughManyToManyTable(t *testing.T) {
 		"journal_entry": journal.ID,
 	}
 	for kind, ref := range refs {
-		if _, err := AddTag(context.Background(), root, PathResolver{StateHome: stateHome}, ref, "SQLite"); err != nil {
+		added, err := AddTag(context.Background(), root, PathResolver{StateHome: stateHome}, ref, "SQLite")
+		if err != nil {
 			t.Fatalf("AddTag(%s %s) error = %v", kind, ref, err)
 		}
+		assertTagMutationContext(t, added, root)
 	}
 	if _, err := AddTag(context.Background(), root, PathResolver{StateHome: stateHome}, "SPEC-001", "sqlite"); err != nil {
 		t.Fatalf("idempotent AddTag() error = %v", err)
@@ -55,11 +58,13 @@ func TestTagsClassifyRequiredEntityKindsThroughManyToManyTable(t *testing.T) {
 	if tags.Tags["sqlite"].Count != len(refs) {
 		t.Fatalf("sqlite count = %d, want %d", tags.Tags["sqlite"].Count, len(refs))
 	}
+	assertTagListContext(t, tags, root)
 
 	show, err := ShowTag(context.Background(), root, PathResolver{StateHome: stateHome}, "sqlite")
 	if err != nil {
 		t.Fatalf("ShowTag() error = %v", err)
 	}
+	assertTagShowContext(t, show, root)
 	gotKinds := map[string]bool{}
 	for _, member := range show.Members {
 		gotKinds[member.Kind] = true
@@ -81,7 +86,7 @@ SELECT COUNT(*)
 FROM entity_tags
 JOIN tags ON tags.id = entity_tags.tag_id AND tags.project_id = entity_tags.project_id
 WHERE entity_tags.project_id = ? AND tags.name = 'sqlite'
-`, ProjectID(root)).Scan(&memberships)
+`, projectIDForTest(t, store, root)).Scan(&memberships)
 	if err != nil {
 		t.Fatalf("count memberships error = %v", err)
 	}
@@ -89,9 +94,11 @@ WHERE entity_tags.project_id = ? AND tags.name = 'sqlite'
 		t.Fatalf("memberships = %d, want %d after idempotent add", memberships, len(refs))
 	}
 
-	if _, err := RemoveTag(context.Background(), root, PathResolver{StateHome: stateHome}, "TASK-001", "sqlite"); err != nil {
+	removed, err := RemoveTag(context.Background(), root, PathResolver{StateHome: stateHome}, "TASK-001", "sqlite")
+	if err != nil {
 		t.Fatalf("RemoveTag() error = %v", err)
 	}
+	assertTagMutationContext(t, removed, root)
 	show, err = ShowTag(context.Background(), root, PathResolver{StateHome: stateHome}, "sqlite")
 	if err != nil {
 		t.Fatalf("ShowTag() after remove error = %v", err)
@@ -103,6 +110,72 @@ WHERE entity_tags.project_id = ? AND tags.name = 'sqlite'
 		if member.Kind == "task" && member.Alias == "TASK-001" {
 			t.Fatalf("members = %#v, removed task still present", show.Members)
 		}
+	}
+}
+
+func assertTagMutationContext(t *testing.T, result TagMutationResult, root project.Root) {
+	t.Helper()
+	if result.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(root.Path()))
+	}
+	if result.ProjectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, root.Path())
+	}
+}
+
+func assertTagListContext(t *testing.T, result TagList, root project.Root) {
+	t.Helper()
+	if result.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(root.Path()))
+	}
+	if result.ProjectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, root.Path())
+	}
+}
+
+func assertTagShowContext(t *testing.T, result TagShowResult, root project.Root) {
+	t.Helper()
+	if result.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(root.Path()))
+	}
+	if result.ProjectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, root.Path())
 	}
 }
 

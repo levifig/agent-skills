@@ -24,7 +24,7 @@ func TestDatabasePathUsesStateHomeAndStaysOutsideRepository(t *testing.T) {
 		t.Fatalf("DatabasePath() error = %v", err)
 	}
 
-	if !strings.HasPrefix(got, filepath.Join(stateHome, "loaf", "projects")+string(filepath.Separator)) {
+	if got != filepath.Join(stateHome, "loaf", databaseFileName) {
 		t.Fatalf("DatabasePath() = %q, want under state home %q", got, stateHome)
 	}
 	if strings.HasPrefix(got, repo+string(filepath.Separator)) {
@@ -90,6 +90,35 @@ func TestDatabasePathNonGitFallbackIsDeterministicForCurrentDirectory(t *testing
 
 	if second != first {
 		t.Fatalf("DatabasePath() = %q, want deterministic fallback %q", second, first)
+	}
+}
+
+func TestDatabasePathIsSingleGlobalDatabaseAcrossProjects(t *testing.T) {
+	firstDir := t.TempDir()
+	secondDir := t.TempDir()
+	stateHome := t.TempDir()
+
+	firstRoot, err := project.ResolveRoot(firstDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot(first) error = %v", err)
+	}
+	secondRoot, err := project.ResolveRoot(secondDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot(second) error = %v", err)
+	}
+
+	resolver := PathResolver{StateHome: stateHome}
+	first, err := resolver.DatabasePath(firstRoot)
+	if err != nil {
+		t.Fatalf("DatabasePath(first) error = %v", err)
+	}
+	second, err := resolver.DatabasePath(secondRoot)
+	if err != nil {
+		t.Fatalf("DatabasePath(second) error = %v", err)
+	}
+
+	if first != second {
+		t.Fatalf("DatabasePath() = %q and %q, want one global database", first, second)
 	}
 }
 

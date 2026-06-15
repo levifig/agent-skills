@@ -15,8 +15,14 @@ import (
 
 // SparkList is the state-backed spark-list read model.
 type SparkList struct {
-	Version int                  `json:"version"`
-	Sparks  map[string]SparkItem `json:"sparks"`
+	ContractVersion    int                  `json:"contract_version,omitempty"`
+	DatabaseScope      string               `json:"database_scope,omitempty"`
+	DatabasePath       string               `json:"database_path,omitempty"`
+	ProjectID          string               `json:"project_id,omitempty"`
+	ProjectName        string               `json:"project_name,omitempty"`
+	ProjectCurrentPath string               `json:"project_current_path,omitempty"`
+	Version            int                  `json:"version"`
+	Sparks             map[string]SparkItem `json:"sparks"`
 }
 
 // SparkItem is a spark entry returned by the state-backed spark list.
@@ -29,8 +35,14 @@ type SparkItem struct {
 
 // SparkShow is the state-backed single-spark read model.
 type SparkShow struct {
-	Query string      `json:"query"`
-	Spark SparkDetail `json:"spark"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Query              string      `json:"query"`
+	Spark              SparkDetail `json:"spark"`
 }
 
 // SparkDetail contains operational spark metadata plus imported source context.
@@ -54,11 +66,17 @@ type SparkListOptions struct {
 
 // SparkResolveResult describes a state-backed spark resolution mutation.
 type SparkResolveResult struct {
-	Spark        TraceEntity `json:"spark"`
-	ResolvedBy   TraceEntity `json:"resolved_by"`
-	Relationship string      `json:"relationship"`
-	EventID      string      `json:"event_id,omitempty"`
-	Reason       string      `json:"reason,omitempty"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Spark              TraceEntity `json:"spark"`
+	ResolvedBy         TraceEntity `json:"resolved_by"`
+	Relationship       string      `json:"relationship"`
+	EventID            string      `json:"event_id,omitempty"`
+	Reason             string      `json:"reason,omitempty"`
 }
 
 // SparkResolveOptions describes a SQLite-backed spark resolution request.
@@ -76,9 +94,15 @@ type SparkPromoteOptions struct {
 
 // SparkPromoteResult describes a state-backed spark promotion mutation.
 type SparkPromoteResult struct {
-	Spark        TraceEntity `json:"spark"`
-	Idea         TraceEntity `json:"idea"`
-	Relationship string      `json:"relationship"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Spark              TraceEntity `json:"spark"`
+	Idea               TraceEntity `json:"idea"`
+	Relationship       string      `json:"relationship"`
 }
 
 // SparkCaptureOptions describes a SQLite-backed spark capture request.
@@ -89,9 +113,15 @@ type SparkCaptureOptions struct {
 
 // SparkCaptureResult describes a captured SQLite-backed spark.
 type SparkCaptureResult struct {
-	Spark   TraceEntity `json:"spark"`
-	Scope   string      `json:"scope,omitempty"`
-	EventID string      `json:"event_id"`
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Spark              TraceEntity `json:"spark"`
+	Scope              string      `json:"scope,omitempty"`
+	EventID            string      `json:"event_id"`
 }
 
 // ListSparks returns imported sparks from initialized SQLite state.
@@ -115,7 +145,14 @@ func ListSparks(ctx context.Context, root project.Root, resolver PathResolver, o
 
 // ListSparks returns imported sparks from an open store.
 func (s *Store) ListSparks(ctx context.Context, root project.Root, options SparkListOptions) (SparkList, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SparkList{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SparkList{}, err
+	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT
   spark_alias.alias,
@@ -137,7 +174,16 @@ ORDER BY spark_alias.alias
 		return SparkList{}, fmt.Errorf("query sparks: %w", err)
 	}
 
-	sparks := SparkList{Version: 1, Sparks: map[string]SparkItem{}}
+	sparks := SparkList{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Version:            1,
+		Sparks:             map[string]SparkItem{},
+	}
 	for rows.Next() {
 		var alias, text, scope, status, sourcePath string
 		if err := rows.Scan(&alias, &text, &scope, &status, &sourcePath); err != nil {
@@ -175,7 +221,14 @@ func ShowSpark(ctx context.Context, root project.Root, resolver PathResolver, re
 
 // ShowSpark returns one spark from an open store.
 func (s *Store) ShowSpark(ctx context.Context, root project.Root, ref string) (SparkShow, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SparkShow{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SparkShow{}, err
+	}
 	entity, err := s.resolveTraceEntity(ctx, projectID, ref)
 	if err != nil {
 		return SparkShow{}, err
@@ -188,7 +241,16 @@ func (s *Store) ShowSpark(ctx context.Context, root project.Root, ref string) (S
 	if err != nil {
 		return SparkShow{}, err
 	}
-	return SparkShow{Query: ref, Spark: spark}, nil
+	return SparkShow{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Query:              ref,
+		Spark:              spark,
+	}, nil
 }
 
 func (s *Store) sparkDetail(ctx context.Context, projectID string, entity TraceEntity) (SparkDetail, error) {
@@ -262,7 +324,14 @@ func CaptureSpark(ctx context.Context, root project.Root, resolver PathResolver,
 
 // CaptureSpark captures a spark in an open store.
 func (s *Store) CaptureSpark(ctx context.Context, root project.Root, options SparkCaptureOptions) (SparkCaptureResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SparkCaptureResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SparkCaptureResult{}, err
+	}
 	text := strings.TrimSpace(options.Text)
 	if text == "" {
 		return SparkCaptureResult{}, fmt.Errorf("spark capture requires --text")
@@ -306,9 +375,15 @@ VALUES (?, ?, 'spark', ?, 'status_changed', NULL, 'open', 'recorded by spark cap
 	}
 
 	return SparkCaptureResult{
-		Spark:   TraceEntity{Kind: "spark", ID: sparkID, Alias: alias, Title: text, Status: "open"},
-		Scope:   scope,
-		EventID: eventID,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Spark:              TraceEntity{Kind: "spark", ID: sparkID, Alias: alias, Title: text, Status: "open"},
+		Scope:              scope,
+		EventID:            eventID,
 	}, nil
 }
 
@@ -364,7 +439,14 @@ func (s *Store) ResolveSpark(ctx context.Context, root project.Root, sparkRef st
 
 // ResolveSparkWithOptions marks a spark resolved in an open store.
 func (s *Store) ResolveSparkWithOptions(ctx context.Context, root project.Root, options SparkResolveOptions) (SparkResolveResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SparkResolveResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SparkResolveResult{}, err
+	}
 	spark, err := s.resolveTraceEntity(ctx, projectID, options.Spark)
 	if err != nil {
 		return SparkResolveResult{}, err
@@ -403,10 +485,11 @@ func (s *Store) ResolveSparkWithOptions(ctx context.Context, root project.Root, 
 	reason := firstNonEmpty(strings.TrimSpace(options.Reason), "recorded by spark resolve")
 	relationshipID := stableMigrationID("relationship", projectID, "spark", spark.ID, "resolved_by", target.Kind, target.ID)
 	_, err = tx.ExecContext(ctx, `
-INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'command', ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   reason = excluded.reason,
+  origin = excluded.origin,
   updated_at = excluded.updated_at
 `, relationshipID, projectID, "spark", spark.ID, target.Kind, target.ID, "resolved_by", reason, now, now)
 	if err != nil {
@@ -432,11 +515,17 @@ ON CONFLICT(id) DO NOTHING
 
 	spark.Status = "resolved"
 	return SparkResolveResult{
-		Spark:        spark,
-		ResolvedBy:   target,
-		Relationship: relationshipID,
-		EventID:      eventID,
-		Reason:       reason,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Spark:              spark,
+		ResolvedBy:         target,
+		Relationship:       relationshipID,
+		EventID:            eventID,
+		Reason:             reason,
 	}, nil
 }
 
@@ -452,7 +541,14 @@ func PromoteSpark(ctx context.Context, root project.Root, resolver PathResolver,
 
 // PromoteSpark records that a spark promoted to an idea in an open store.
 func (s *Store) PromoteSpark(ctx context.Context, root project.Root, options SparkPromoteOptions) (SparkPromoteResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SparkPromoteResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SparkPromoteResult{}, err
+	}
 	spark, err := s.resolveTraceEntity(ctx, projectID, options.Spark)
 	if err != nil {
 		return SparkPromoteResult{}, err
@@ -471,10 +567,11 @@ func (s *Store) PromoteSpark(ctx context.Context, root project.Root, options Spa
 	now := time.Now().UTC().Format(time.RFC3339)
 	relationshipID := stableMigrationID("relationship", projectID, "spark", spark.ID, "promoted_to", "idea", idea.ID)
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'command', ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   reason = excluded.reason,
+  origin = excluded.origin,
   updated_at = excluded.updated_at
 `, relationshipID, projectID, "spark", spark.ID, "idea", idea.ID, "promoted_to", "recorded by spark promote", now, now)
 	if err != nil {
@@ -482,9 +579,15 @@ ON CONFLICT(id) DO UPDATE SET
 	}
 
 	return SparkPromoteResult{
-		Spark:        spark,
-		Idea:         idea,
-		Relationship: relationshipID,
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Spark:              spark,
+		Idea:               idea,
+		Relationship:       relationshipID,
 	}, nil
 }
 

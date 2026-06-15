@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 )
 
@@ -25,6 +26,24 @@ func TestArchiveTasksArchivesDoneTasksAndRecordsEvents(t *testing.T) {
 	}
 	if len(result.Archived) != 1 || result.Archived[0].Task == nil || result.Archived[0].Task.Alias != "TASK-001" || result.Archived[0].Previous != "done" || result.Archived[0].Status != "archived" || result.Archived[0].EventID == "" {
 		t.Fatalf("Archived = %#v, want TASK-001 archived with event", result.Archived)
+	}
+	if result.ContractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", result.ContractVersion, StateJSONContractVersion)
+	}
+	if result.DatabaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", result.DatabaseScope)
+	}
+	if result.DatabasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if result.ProjectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", result.ProjectName, filepath.Base(root.Path()))
+	}
+	if result.ProjectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", result.ProjectCurrentPath, root.Path())
 	}
 	if len(result.Skipped) != 3 {
 		t.Fatalf("Skipped = %#v, want todo, wrong-kind, and missing refs", result.Skipped)

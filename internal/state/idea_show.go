@@ -12,8 +12,14 @@ import (
 
 // IdeaShow is the state-backed single-idea read model.
 type IdeaShow struct {
-	Query string     `json:"query"`
-	Idea  IdeaDetail `json:"idea"`
+	ContractVersion    int        `json:"contract_version,omitempty"`
+	DatabaseScope      string     `json:"database_scope,omitempty"`
+	DatabasePath       string     `json:"database_path,omitempty"`
+	ProjectID          string     `json:"project_id,omitempty"`
+	ProjectName        string     `json:"project_name,omitempty"`
+	ProjectCurrentPath string     `json:"project_current_path,omitempty"`
+	Query              string     `json:"query"`
+	Idea               IdeaDetail `json:"idea"`
 }
 
 // IdeaDetail contains operational idea metadata plus imported source context.
@@ -41,7 +47,14 @@ func ShowIdea(ctx context.Context, root project.Root, resolver PathResolver, ref
 
 // ShowIdea returns one idea from an open store.
 func (s *Store) ShowIdea(ctx context.Context, root project.Root, ref string) (IdeaShow, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return IdeaShow{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return IdeaShow{}, err
+	}
 	entity, err := s.resolveTraceEntity(ctx, projectID, ref)
 	if err != nil {
 		return IdeaShow{}, err
@@ -54,7 +67,16 @@ func (s *Store) ShowIdea(ctx context.Context, root project.Root, ref string) (Id
 	if err != nil {
 		return IdeaShow{}, err
 	}
-	return IdeaShow{Query: ref, Idea: idea}, nil
+	return IdeaShow{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Query:              ref,
+		Idea:               idea,
+	}, nil
 }
 
 func (s *Store) ideaDetail(ctx context.Context, root project.Root, projectID string, entity TraceEntity) (IdeaDetail, error) {

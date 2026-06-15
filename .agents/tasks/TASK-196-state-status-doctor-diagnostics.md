@@ -30,7 +30,7 @@ completed_at: '2026-05-28T17:08:01Z'
 
 Add the approved `github.com/ncruces/go-sqlite3/driver` dependency and wire the
 first real storage lifecycle commands. `loaf state init` should create the
-project-scoped SQLite database outside the repository and apply Go-owned schema
+global project-partitioned SQLite database outside the repository and apply Go-owned schema
 migrations. `loaf state status` and `loaf state doctor` should report the
 resolved project root, intended database path, DB presence, schema version, and
 Markdown fallback state.
@@ -38,7 +38,7 @@ Markdown fallback state.
 ## Acceptance Criteria
 
 - [x] `github.com/ncruces/go-sqlite3` is pinned in `go.mod`/`go.sum`.
-- [x] `loaf state init` creates the project-scoped SQLite database outside the repository.
+- [x] `loaf state init` creates the global project-partitioned SQLite database outside the repository.
 - [x] `state init` applies the ordered Go-owned migrations and records checksums in `schema_migrations`.
 - [x] `state init` is idempotent and detects migration checksum drift.
 - [x] `loaf state status` prints project root, database path, database presence, mode, and schema version.

@@ -18,9 +18,15 @@ type TaskArchiveOptions struct {
 
 // TaskArchiveResult describes a state-backed task archive mutation.
 type TaskArchiveResult struct {
-	Spec     *TraceEntity      `json:"spec,omitempty"`
-	Archived []TaskArchiveItem `json:"archived"`
-	Skipped  []TaskArchiveItem `json:"skipped"`
+	ContractVersion    int               `json:"contract_version,omitempty"`
+	DatabaseScope      string            `json:"database_scope,omitempty"`
+	DatabasePath       string            `json:"database_path,omitempty"`
+	ProjectID          string            `json:"project_id,omitempty"`
+	ProjectName        string            `json:"project_name,omitempty"`
+	ProjectCurrentPath string            `json:"project_current_path,omitempty"`
+	Spec               *TraceEntity      `json:"spec,omitempty"`
+	Archived           []TaskArchiveItem `json:"archived"`
+	Skipped            []TaskArchiveItem `json:"skipped"`
 }
 
 // TaskArchiveItem describes one requested task archive outcome.
@@ -45,7 +51,14 @@ func ArchiveTasks(ctx context.Context, root project.Root, resolver PathResolver,
 
 // ArchiveTasks archives done tasks in an open store.
 func (s *Store) ArchiveTasks(ctx context.Context, root project.Root, options TaskArchiveOptions) (TaskArchiveResult, error) {
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return TaskArchiveResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return TaskArchiveResult{}, err
+	}
 	if options.Spec != "" && len(options.Refs) > 0 {
 		return TaskArchiveResult{}, fmt.Errorf("task archive accepts task ids or --spec, not both")
 	}
@@ -54,6 +67,12 @@ func (s *Store) ArchiveTasks(ctx context.Context, root project.Root, options Tas
 	}
 
 	result := TaskArchiveResult{Archived: []TaskArchiveItem{}, Skipped: []TaskArchiveItem{}}
+	result.ContractVersion = StateJSONContractVersion
+	result.DatabaseScope = identity.DatabaseScope
+	result.DatabasePath = identity.DatabasePath
+	result.ProjectID = identity.ID
+	result.ProjectName = identity.FriendlyName
+	result.ProjectCurrentPath = identity.CurrentPath
 	refs := options.Refs
 	if options.Spec != "" {
 		spec, err := s.resolveTraceEntity(ctx, projectID, options.Spec)

@@ -13,8 +13,14 @@ import (
 
 // SpecArchiveResult describes a state-backed spec archive mutation.
 type SpecArchiveResult struct {
-	Archived []SpecArchiveItem `json:"archived"`
-	Skipped  []SpecArchiveItem `json:"skipped"`
+	ContractVersion    int               `json:"contract_version,omitempty"`
+	DatabaseScope      string            `json:"database_scope,omitempty"`
+	DatabasePath       string            `json:"database_path,omitempty"`
+	ProjectID          string            `json:"project_id,omitempty"`
+	ProjectName        string            `json:"project_name,omitempty"`
+	ProjectCurrentPath string            `json:"project_current_path,omitempty"`
+	Archived           []SpecArchiveItem `json:"archived"`
+	Skipped            []SpecArchiveItem `json:"skipped"`
 }
 
 // SpecArchiveItem describes one requested spec archive outcome.
@@ -51,10 +57,23 @@ func (s *Store) ArchiveSpecs(ctx context.Context, root project.Root, refs []stri
 	if len(refs) == 0 {
 		return SpecArchiveResult{}, fmt.Errorf("spec archive requires at least one spec")
 	}
-	projectID := ProjectID(root)
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SpecArchiveResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SpecArchiveResult{}, err
+	}
 	result := SpecArchiveResult{
-		Archived: []SpecArchiveItem{},
-		Skipped:  []SpecArchiveItem{},
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Archived:           []SpecArchiveItem{},
+		Skipped:            []SpecArchiveItem{},
 	}
 	for _, ref := range refs {
 		item, archived, err := s.archiveSpec(ctx, projectID, ref)

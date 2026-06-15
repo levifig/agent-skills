@@ -3,7 +3,10 @@ package state
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"testing"
+
+	"github.com/levifig/loaf/internal/project"
 )
 
 func TestStartSessionCreatesSQLiteSessionWithLinkedStartJournal(t *testing.T) {
@@ -26,6 +29,7 @@ func TestStartSessionCreatesSQLiteSessionWithLinkedStartJournal(t *testing.T) {
 	if len(result.JournalEntryIDs) != 1 {
 		t.Fatalf("JournalEntryIDs = %#v, want one start entry", result.JournalEntryIDs)
 	}
+	assertSessionProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
 	show, err := ShowSession(context.Background(), root, PathResolver{StateHome: stateHome}, result.Session.Alias)
 	if err != nil {
@@ -38,6 +42,7 @@ func TestStartSessionCreatesSQLiteSessionWithLinkedStartJournal(t *testing.T) {
 	if !hasJournalEntry(session.JournalEntries, "session", "start", "=== SESSION STARTED === (session harness-)") {
 		t.Fatalf("journal entries = %#v, want linked session(start)", session.JournalEntries)
 	}
+	assertSessionProjectContext(t, root, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath)
 }
 
 func TestStartSessionResumesSameHarnessSessionWithoutCreatingDuplicate(t *testing.T) {
@@ -67,7 +72,7 @@ func TestStartSessionResumesSameHarnessSessionWithoutCreatingDuplicate(t *testin
 
 	store := openTestStore(t, root, stateHome)
 	defer store.Close()
-	if got := countRows(t, store, `SELECT COUNT(*) FROM sessions WHERE project_id = ?`, ProjectID(root)); got != 1 {
+	if got := countRows(t, store, `SELECT COUNT(*) FROM sessions WHERE project_id = ?`, projectIDForTest(t, store, root)); got != 1 {
 		t.Fatalf("session rows = %d, want 1", got)
 	}
 	show, err := ShowSession(context.Background(), root, PathResolver{StateHome: stateHome}, first.Session.Alias)
@@ -148,6 +153,7 @@ func TestEndSessionStopsTargetHarnessSessionOnly(t *testing.T) {
 	if result.Action != SessionEndActionStopped || result.Session.ID != target.Session.ID || len(result.JournalEntryIDs) != 2 {
 		t.Fatalf("result = %#v, want stopped target session", result)
 	}
+	assertSessionProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
 	targetShow, err := ShowSession(context.Background(), root, PathResolver{StateHome: stateHome}, target.Session.Alias)
 	if err != nil {
@@ -166,6 +172,28 @@ func TestEndSessionStopsTargetHarnessSessionOnly(t *testing.T) {
 	}
 	if otherShow.Session.Status != "active" {
 		t.Fatalf("other status = %q, want active", otherShow.Session.Status)
+	}
+}
+
+func assertSessionProjectContext(t *testing.T, root project.Root, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string) {
+	t.Helper()
+	if contractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", contractVersion, StateJSONContractVersion)
+	}
+	if databaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", databaseScope)
+	}
+	if databasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if projectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if projectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", projectName, filepath.Base(root.Path()))
+	}
+	if projectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, root.Path())
 	}
 }
 

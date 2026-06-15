@@ -7,7 +7,7 @@ description: >-
   database administration ...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep, Bash(psql:*, sqlite3:*, mysql:*)'
-version: 2.0.0-dev.49
+version: 2.0.0-pre.20260614235428
 ---
 
 # Database Skill

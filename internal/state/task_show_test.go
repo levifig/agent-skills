@@ -26,6 +26,7 @@ Imported task prose.
 	if err != nil {
 		t.Fatalf("ShowTask() error = %v", err)
 	}
+	assertTaskProjectContext(t, root.Path(), result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
 	task := result.Task
 	if result.Query != "TASK-001" {

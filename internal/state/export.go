@@ -22,26 +22,64 @@ const (
 	ExportFormatMarkdown       = "markdown"
 	ExportAudienceLocal        = "internal"
 	ExportAudienceExternal     = "external"
+	StateJSONContractVersion   = 1
 )
 
 // ExportSnapshot is a complete internal JSON view of current SQLite state.
 type ExportSnapshot struct {
-	ExportKind    string                      `json:"export_kind"`
-	Format        string                      `json:"format"`
-	Audience      string                      `json:"audience"`
-	GeneratedAt   string                      `json:"generated_at"`
-	ProjectID     string                      `json:"project_id"`
-	DatabasePath  string                      `json:"database_path"`
-	SchemaVersion int                         `json:"schema_version"`
-	Tables        map[string][]map[string]any `json:"tables"`
+	ContractVersion    int                         `json:"contract_version"`
+	ExportKind         string                      `json:"export_kind"`
+	Format             string                      `json:"format"`
+	Audience           string                      `json:"audience"`
+	DatabaseScope      string                      `json:"database_scope"`
+	ExportScope        string                      `json:"export_scope"`
+	GeneratedAt        string                      `json:"generated_at"`
+	ProjectID          string                      `json:"project_id"`
+	ProjectName        string                      `json:"project_name"`
+	ProjectCurrentPath string                      `json:"project_current_path"`
+	DatabasePath       string                      `json:"database_path"`
+	SchemaVersion      int                         `json:"schema_version"`
+	Diagnostics        []Diagnostic                `json:"diagnostics"`
+	RepairPlan         []RepairAction              `json:"repair_plan"`
+	Manifest           ExportManifest              `json:"manifest"`
+	Tables             map[string][]map[string]any `json:"tables"`
+}
+
+// ExportManifest is a compact, agent-friendly summary of an export snapshot.
+type ExportManifest struct {
+	ContractVersion    int            `json:"contract_version"`
+	Verified           bool           `json:"verified"`
+	DatabaseScope      string         `json:"database_scope"`
+	ExportScope        string         `json:"export_scope"`
+	SchemaVersion      int            `json:"schema_version"`
+	ProjectID          string         `json:"project_id"`
+	ProjectName        string         `json:"project_name"`
+	ProjectCurrentPath string         `json:"project_current_path"`
+	IntegrityCheck     string         `json:"integrity_check"`
+	ForeignKeyCheck    string         `json:"foreign_key_check"`
+	DiagnosticCount    int            `json:"diagnostic_count"`
+	RepairActionCount  int            `json:"repair_action_count"`
+	TableCount         int            `json:"table_count"`
+	TableOrder         []string       `json:"table_order"`
+	RowCounts          map[string]int `json:"row_counts"`
+	TotalRows          int            `json:"total_rows"`
+	GeneratedAt        string         `json:"generated_at"`
 }
 
 // MarkdownExport is a generated Markdown view of SQLite state.
 type MarkdownExport struct {
-	ExportKind string `json:"export_kind"`
-	Format     string `json:"format"`
-	Audience   string `json:"audience"`
-	Content    string `json:"content"`
+	ContractVersion    int    `json:"contract_version"`
+	Command            string `json:"command,omitempty"`
+	ExportKind         string `json:"export_kind"`
+	Format             string `json:"format"`
+	Audience           string `json:"audience"`
+	DatabaseScope      string `json:"database_scope"`
+	ExportScope        string `json:"export_scope"`
+	ProjectID          string `json:"project_id"`
+	ProjectName        string `json:"project_name"`
+	ProjectCurrentPath string `json:"project_current_path,omitempty"`
+	DatabasePath       string `json:"database_path,omitempty"`
+	Content            string `json:"content"`
 }
 
 type exportTable struct {
@@ -61,6 +99,16 @@ type releaseReadinessExportData struct {
 	ExportCounts       []releaseReadinessCount
 	RecentReports      []releaseReadinessReport
 	RecentSessions     []releaseReadinessSession
+}
+
+type markdownExportContext struct {
+	Audience           string
+	DatabaseScope      string
+	ExportScope        string
+	ProjectID          string
+	ProjectName        string
+	ProjectCurrentPath string
+	DatabasePath       string
 }
 
 type releaseReadinessSourceCoverage struct {
@@ -97,6 +145,7 @@ var externalLeakPatterns = []*regexp.Regexp{
 var exportAllTables = []exportTable{
 	{Name: "schema_migrations", OrderBy: "version"},
 	{Name: "projects", OrderBy: "id", FilterColumn: "id"},
+	{Name: "project_paths", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "aliases", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "specs", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "tasks", OrderBy: "id", FilterColumn: "project_id"},
@@ -133,14 +182,29 @@ func ExportAllJSON(ctx context.Context, root project.Root, resolver PathResolver
 		return ExportSnapshot{}, fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
 
-	store, err := OpenStore(status.DatabasePath)
+	store, err := OpenStoreReadOnly(status.DatabasePath)
 	if err != nil {
 		return ExportSnapshot{}, fmt.Errorf("open state database for export: %w", err)
 	}
 	defer store.Close()
 
 	tables := make(map[string][]map[string]any, len(exportAllTables))
-	projectID := ProjectID(root)
+	tableOrder := make([]string, 0, len(exportAllTables))
+	rowCounts := make(map[string]int, len(exportAllTables))
+	totalRows := 0
+	identity, err := store.LookupProjectIdentityForRoot(ctx, root)
+	if err != nil {
+		return ExportSnapshot{}, err
+	}
+	projectID := identity.ID
+	integrityCheck, err := verifySQLiteIntegrity(ctx, store)
+	if err != nil {
+		return ExportSnapshot{}, fmt.Errorf("verify export integrity: %w", err)
+	}
+	foreignKeyCheck, err := verifyNoForeignKeyViolations(ctx, store)
+	if err != nil {
+		return ExportSnapshot{}, fmt.Errorf("verify export foreign keys: %w", err)
+	}
 	if err := store.validateExportTableFilters(ctx, exportAllTables); err != nil {
 		return ExportSnapshot{}, err
 	}
@@ -150,17 +214,48 @@ func ExportAllJSON(ctx context.Context, root project.Root, resolver PathResolver
 			return ExportSnapshot{}, err
 		}
 		tables[table.Name] = rows
+		tableOrder = append(tableOrder, table.Name)
+		rowCounts[table.Name] = len(rows)
+		totalRows += len(rows)
 	}
+	generatedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	repairPlan := RepairPlanForStatus(status)
 
 	return ExportSnapshot{
-		ExportKind:    ExportKindAll,
-		Format:        ExportFormatJSON,
-		Audience:      ExportAudienceLocal,
-		GeneratedAt:   time.Now().UTC().Format(time.RFC3339Nano),
-		ProjectID:     projectID,
-		DatabasePath:  status.DatabasePath,
-		SchemaVersion: status.SchemaVersion,
-		Tables:        tables,
+		ContractVersion:    StateJSONContractVersion,
+		ExportKind:         ExportKindAll,
+		Format:             ExportFormatJSON,
+		Audience:           ExportAudienceLocal,
+		DatabaseScope:      "global",
+		ExportScope:        "project",
+		GeneratedAt:        generatedAt,
+		ProjectID:          projectID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		DatabasePath:       status.DatabasePath,
+		SchemaVersion:      status.SchemaVersion,
+		Diagnostics:        status.Diagnostics,
+		RepairPlan:         repairPlan,
+		Manifest: ExportManifest{
+			ContractVersion:    StateJSONContractVersion,
+			Verified:           true,
+			DatabaseScope:      "global",
+			ExportScope:        "project",
+			SchemaVersion:      status.SchemaVersion,
+			ProjectID:          projectID,
+			ProjectName:        identity.FriendlyName,
+			ProjectCurrentPath: identity.CurrentPath,
+			IntegrityCheck:     integrityCheck,
+			ForeignKeyCheck:    foreignKeyCheck,
+			DiagnosticCount:    len(status.Diagnostics),
+			RepairActionCount:  len(repairPlan),
+			TableCount:         len(tableOrder),
+			TableOrder:         tableOrder,
+			RowCounts:          rowCounts,
+			TotalRows:          totalRows,
+			GeneratedAt:        generatedAt,
+		},
+		Tables: tables,
 	}, nil
 }
 
@@ -177,7 +272,7 @@ func ExportTriageMarkdown(ctx context.Context, root project.Root, resolver PathR
 		return MarkdownExport{}, fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
 
-	store, err := OpenStore(status.DatabasePath)
+	store, err := OpenStoreReadOnly(status.DatabasePath)
 	if err != nil {
 		return MarkdownExport{}, fmt.Errorf("open state database for export: %w", err)
 	}
@@ -196,16 +291,12 @@ func ExportTriageMarkdown(ctx context.Context, root project.Root, resolver PathR
 		return MarkdownExport{}, err
 	}
 
-	content := renderTriageMarkdown(ideas, sparks, brainstorms)
+	exportContext := markdownExportContextFromStatus(status, ExportAudienceExternal)
+	content := renderTriageMarkdown(exportContext, ideas, sparks, brainstorms)
 	if err := ValidateExternalMarkdownExport(content); err != nil {
 		return MarkdownExport{}, err
 	}
-	return MarkdownExport{
-		ExportKind: ExportKindTriage,
-		Format:     ExportFormatMarkdown,
-		Audience:   ExportAudienceExternal,
-		Content:    content,
-	}, nil
+	return markdownExportResult(ExportKindTriage, exportContext, content), nil
 }
 
 // ExportReleaseReadinessMarkdown returns an external-safe Markdown release readiness summary.
@@ -221,7 +312,7 @@ func ExportReleaseReadinessMarkdown(ctx context.Context, root project.Root, reso
 		return MarkdownExport{}, fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
 
-	store, err := OpenStore(status.DatabasePath)
+	store, err := OpenStoreReadOnly(status.DatabasePath)
 	if err != nil {
 		return MarkdownExport{}, fmt.Errorf("open state database for export: %w", err)
 	}
@@ -231,16 +322,12 @@ func ExportReleaseReadinessMarkdown(ctx context.Context, root project.Root, reso
 	if err != nil {
 		return MarkdownExport{}, err
 	}
-	content := renderReleaseReadinessMarkdown(data)
+	exportContext := markdownExportContextFromStatus(status, ExportAudienceExternal)
+	content := renderReleaseReadinessMarkdown(exportContext, data)
 	if err := ValidateExternalMarkdownExport(content); err != nil {
 		return MarkdownExport{}, err
 	}
-	return MarkdownExport{
-		ExportKind: ExportKindReleaseReadiness,
-		Format:     ExportFormatMarkdown,
-		Audience:   ExportAudienceExternal,
-		Content:    content,
-	}, nil
+	return markdownExportResult(ExportKindReleaseReadiness, exportContext, content), nil
 }
 
 // ExportSpecMarkdown returns an internal Markdown summary for one spec.
@@ -256,7 +343,7 @@ func ExportSpecMarkdown(ctx context.Context, root project.Root, resolver PathRes
 		return MarkdownExport{}, fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
 
-	store, err := OpenStore(status.DatabasePath)
+	store, err := OpenStoreReadOnly(status.DatabasePath)
 	if err != nil {
 		return MarkdownExport{}, fmt.Errorf("open state database for export: %w", err)
 	}
@@ -266,12 +353,8 @@ func ExportSpecMarkdown(ctx context.Context, root project.Root, resolver PathRes
 	if err != nil {
 		return MarkdownExport{}, err
 	}
-	return MarkdownExport{
-		ExportKind: ExportKindSpec,
-		Format:     ExportFormatMarkdown,
-		Audience:   ExportAudienceLocal,
-		Content:    renderSpecMarkdown(show.Spec),
-	}, nil
+	exportContext := markdownExportContextFromStatus(status, ExportAudienceLocal)
+	return markdownExportResult(ExportKindSpec, exportContext, renderSpecMarkdown(exportContext, show.Spec)), nil
 }
 
 // ExportSessionMarkdown returns an internal Markdown summary for one session.
@@ -287,7 +370,7 @@ func ExportSessionMarkdown(ctx context.Context, root project.Root, resolver Path
 		return MarkdownExport{}, fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	}
 
-	store, err := OpenStore(status.DatabasePath)
+	store, err := OpenStoreReadOnly(status.DatabasePath)
 	if err != nil {
 		return MarkdownExport{}, fmt.Errorf("open state database for export: %w", err)
 	}
@@ -297,12 +380,8 @@ func ExportSessionMarkdown(ctx context.Context, root project.Root, resolver Path
 	if err != nil {
 		return MarkdownExport{}, err
 	}
-	return MarkdownExport{
-		ExportKind: ExportKindSession,
-		Format:     ExportFormatMarkdown,
-		Audience:   ExportAudienceLocal,
-		Content:    renderSessionMarkdown(show.Session),
-	}, nil
+	exportContext := markdownExportContextFromStatus(status, ExportAudienceLocal)
+	return markdownExportResult(ExportKindSession, exportContext, renderSessionMarkdown(exportContext, show.Session)), nil
 }
 
 func (s *Store) releaseReadinessExportData(ctx context.Context, root project.Root, schemaVersion int) (releaseReadinessExportData, error) {
@@ -322,7 +401,11 @@ func (s *Store) releaseReadinessExportData(ctx context.Context, root project.Roo
 	if err != nil {
 		return releaseReadinessExportData{}, err
 	}
-	projectID := ProjectID(root)
+	identity, err := s.LookupProjectIdentityForRoot(ctx, root)
+	if err != nil {
+		return releaseReadinessExportData{}, err
+	}
+	projectID := identity.ID
 	sourceCoverage, err := s.releaseReadinessSourceCoverage(ctx, projectID)
 	if err != nil {
 		return releaseReadinessExportData{}, err
@@ -588,18 +671,74 @@ func ValidateExternalMarkdownExport(content string) error {
 	return nil
 }
 
-func renderTriageMarkdown(ideas IdeaList, sparks SparkList, brainstorms BrainstormList) string {
+func markdownExportContextFromStatus(status Status, audience string) markdownExportContext {
+	return markdownExportContext{
+		Audience:           audience,
+		DatabaseScope:      firstNonEmpty(status.DatabaseScope, "global"),
+		ExportScope:        "project",
+		ProjectID:          status.ProjectID,
+		ProjectName:        status.ProjectName,
+		ProjectCurrentPath: status.ProjectCurrentPath,
+		DatabasePath:       status.DatabasePath,
+	}
+}
+
+func markdownExportResult(kind string, ctx markdownExportContext, content string) MarkdownExport {
+	result := MarkdownExport{
+		ContractVersion: StateJSONContractVersion,
+		ExportKind:      kind,
+		Format:          ExportFormatMarkdown,
+		Audience:        ctx.Audience,
+		DatabaseScope:   firstNonEmpty(ctx.DatabaseScope, "global"),
+		ExportScope:     firstNonEmpty(ctx.ExportScope, "project"),
+		ProjectID:       ctx.ProjectID,
+		ProjectName:     ctx.ProjectName,
+		Content:         content,
+	}
+	if ctx.Audience == ExportAudienceLocal {
+		result.ProjectCurrentPath = ctx.ProjectCurrentPath
+		result.DatabasePath = ctx.DatabasePath
+	}
+	return result
+}
+
+func renderMarkdownExportContext(b *strings.Builder, ctx markdownExportContext) {
+	b.WriteString("## Project Context\n\n")
+	fmt.Fprintf(b, "- Scope: %s database, %s export\n", firstNonEmpty(ctx.DatabaseScope, "global"), firstNonEmpty(ctx.ExportScope, "project"))
+	if ctx.ProjectID != "" {
+		fmt.Fprintf(b, "- Project: `%s`\n", ctx.ProjectID)
+	}
+	if ctx.ProjectName != "" {
+		projectName := ctx.ProjectName
+		if ctx.Audience == ExportAudienceExternal {
+			projectName = sanitizeExternalText(projectName)
+		}
+		fmt.Fprintf(b, "- Project name: %s\n", projectName)
+	}
+	if ctx.Audience == ExportAudienceLocal {
+		if ctx.ProjectCurrentPath != "" {
+			fmt.Fprintf(b, "- Project path: `%s`\n", ctx.ProjectCurrentPath)
+		}
+		if ctx.DatabasePath != "" {
+			fmt.Fprintf(b, "- Database: `%s`\n", ctx.DatabasePath)
+		}
+	}
+	b.WriteString("\n")
+}
+
+func renderTriageMarkdown(ctx markdownExportContext, ideas IdeaList, sparks SparkList, brainstorms BrainstormList) string {
 	var b strings.Builder
 	b.WriteString("# Triage Export\n\n")
 	b.WriteString("Audience: external\n")
 	b.WriteString("Source: Loaf SQLite state\n\n")
+	renderMarkdownExportContext(&b, ctx)
 	renderIdeaExportSection(&b, ideas)
 	renderSparkExportSection(&b, sparks)
 	renderBrainstormExportSection(&b, brainstorms)
 	return b.String()
 }
 
-func renderReleaseReadinessMarkdown(data releaseReadinessExportData) string {
+func renderReleaseReadinessMarkdown(ctx markdownExportContext, data releaseReadinessExportData) string {
 	specActive, specComplete, specArchived := releaseSpecStatusCounts(data.Specs)
 	taskUnresolved, taskDone, taskArchived := releaseTaskStatusCounts(data.Tasks)
 	activeSessions := releaseSessionStatusCount(data.Sessions, "active")
@@ -611,6 +750,7 @@ func renderReleaseReadinessMarkdown(data releaseReadinessExportData) string {
 	b.WriteString("# Release Readiness Export\n\n")
 	b.WriteString("Audience: external\n")
 	b.WriteString("Source: Loaf SQLite state\n\n")
+	renderMarkdownExportContext(&b, ctx)
 
 	b.WriteString("## State\n\n")
 	b.WriteString("- SQLite state: ready\n")
@@ -694,11 +834,12 @@ func renderReleaseReadinessMarkdown(data releaseReadinessExportData) string {
 	return b.String()
 }
 
-func renderSpecMarkdown(spec SpecDetail) string {
+func renderSpecMarkdown(ctx markdownExportContext, spec SpecDetail) string {
 	var b strings.Builder
 	b.WriteString("# Spec Export\n\n")
 	b.WriteString("Audience: internal\n")
 	b.WriteString("Source: Loaf SQLite state\n\n")
+	renderMarkdownExportContext(&b, ctx)
 	b.WriteString("## Spec\n\n")
 	fmt.Fprintf(&b, "- Spec: `%s`\n", firstNonEmpty(spec.Alias, spec.ID))
 	fmt.Fprintf(&b, "- Title: %s\n", spec.Title)
@@ -751,11 +892,12 @@ func renderSpecMarkdown(spec SpecDetail) string {
 	return b.String()
 }
 
-func renderSessionMarkdown(session SessionDetail) string {
+func renderSessionMarkdown(ctx markdownExportContext, session SessionDetail) string {
 	var b strings.Builder
 	b.WriteString("# Session Export\n\n")
 	b.WriteString("Audience: internal\n")
 	b.WriteString("Source: Loaf SQLite state\n\n")
+	renderMarkdownExportContext(&b, ctx)
 	b.WriteString("## Session\n\n")
 	fmt.Fprintf(&b, "- Session: `%s`\n", firstNonEmpty(session.Alias, session.ID))
 	fmt.Fprintf(&b, "- Status: %s\n", session.Status)
