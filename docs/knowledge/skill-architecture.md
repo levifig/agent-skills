@@ -85,7 +85,7 @@ Skills load into profiles at spawn time. What an agent *can do* is fixed by prof
 | Reference/Knowledge | `false` | python-development, database-design, foundations, git-workflow, orchestration |
 | Workflow/Process | `true` (default) | implement, research, shape, breakdown, ship, release, housekeeping, wrap |
 
-33 skills total: 17 workflow, 16 reference/knowledge.
+34 skills total: 19 workflow/default-invocable, 15 reference/knowledge with `user-invocable: false`.
 
 ## Cross-References
 
