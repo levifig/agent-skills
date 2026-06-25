@@ -1,523 +1,116 @@
 # Session Management
 
-Sessions are coordination artifacts for active work. They are archived (set status, `archived_at`, `archived_by`, move to `.agents/sessions/archive/`) when work completes to preserve an audit trail.
+Sessions are SQLite-backed coordination records for active work. Markdown is a
+rendered view for reading or compatibility export; agents persist new facts with
+`loaf session` commands.
 
 ## Contents
 
-- Compact vs New Session
+- Core Model
 - When to Use Sessions
-- Session Types
-- Session File Format
-- Lifecycle States
-- Updating During Work
-- Session Continuity Protocol
-- Completing a Session
-- Start Protocol
+- Lifecycle
+- Journal Protocol
+- Continuity
+- Completion
 - Hook Integration
 - Anti-Patterns
 
-## Compact vs New Session
+## Core Model
 
-| Scenario | Action |
-|----------|--------|
-| Picking up previous work, same scope | Compact or resume existing conversation |
-| Switching to entirely different scope | New conversation (new session) |
-| Finished and archived a spec | New conversation |
-| Context full mid-task | Auto-compact (journal survives) |
-| Quick unrelated question | New conversation (don't pollute working session) |
+Use the `wrap` skill as the canonical session model:
 
-**Rule of thumb:** if you'd need the same session file, compact. If you'd need a different one, start fresh.
+1. `loaf session start` finds or creates the active session for the current branch
+   and prints resumption context.
+2. `loaf session log "type(scope): description"` writes durable journal rows.
+3. `loaf session show <session-ref> --json` reads the SQLite-backed session view.
+4. `loaf session end --wrap` persists the wrapped end state.
+5. `loaf session archive` archives closed sessions when the branch/work is done.
+
+The render format is documented in `templates/session.md`; it is not an
+instruction to author markdown directly.
 
 ## When to Use Sessions
 
-- Multi-step work requiring agent coordination
+- Multi-step work requiring coordination
 - Handoffs between agents
-- Tracking progress during implementation
-- Context preservation across agent spawns
+- Implementation or release work that must survive compaction
+- Long research, architecture, council, or review efforts
 
-## Session Types
+For quick unrelated questions, start a fresh conversation so the active session
+stays focused.
 
-### Implementation Sessions (Invisible)
+## Lifecycle
 
-When implementing tasks via `/implement TASK-XXX`:
+The interim runtime lifecycle before SPEC-049 is:
 
-- Session created automatically with filename `YYYYMMDD-HHMMSS-session.md`
-- Task file updated with `session:` field linking to session
-- No user interaction needed for session naming
-- Resume via `loaf session start` then `/implement TASK-XXX`
+| State | Source | Meaning |
+|-------|--------|---------|
+| `active` | `loaf session start` | Current work may receive journal entries |
+| `stopped` | `loaf session end` | Work paused or closed without wrap |
+| `done` | `loaf session end --wrap` | Wrapped work is complete |
+| `archived` | `loaf session archive` | Closed session preserved outside active list |
 
-Users work with tasks; sessions are an implementation detail.
+Do not introduce additional session vocabulary in guidance. SPEC-049 owns the
+durable status vocabulary.
 
-### Explicit Sessions
+## Journal Protocol
 
-For non-task work, sessions are still created explicitly:
-
-- Research sessions (`/research`)
-- Architecture decisions (`/architecture`)
-- Council deliberations (`/council`)
-
-These sessions may not have a linked task but still follow standard session format.
-
-## Session File Format
-
-**Link policy**: Documents outside `.agents/` must not reference `.agents/` files. Keep `.agents/` links contained within `.agents/` artifacts, and update them when files move to `.agents/<type>/archive/`.
-
-### Location & Naming
-
-```
-.agents/sessions/YYYYMMDD-HHMMSS-session.md
-```
-
-**Archive location:** `.agents/sessions/archive/`
-
-**Transcripts location:** `.agents/transcripts/`
-
-Transcripts are Cursor conversation exports (`.jsonl` files) archived after context compaction. They preserve the full audit trail of agent interactions.
-
-```
-.agents/
-├── sessions/
-│   ├── YYYYMMDD-HHMMSS-session.md
-│   └── archive/
-└── transcripts/              # Cursor transcripts
-    ├── 2a244262-8599-4bef-8bb8-3feea33d14e2.jsonl
-    └── archive/
-```
-
-**Why keep original filenames:** The UUID-like hash is unique and matches Cursor's internal reference, making correlation easier if needed.
-
-**Generate timestamps:**
+Log compact, factual entries:
 
 ```bash
-# Filename timestamp
-date -u +"%Y%m%d-%H%M%S"
-
-# ISO timestamp (for YAML)
-date -u +"%Y-%m-%dT%H:%M:%SZ"
+loaf session log "decision(scope): chose X because Y"
+loaf session log "discover(scope): learned Z from file/path"
+loaf session log "block(scope): waiting on external approval"
+loaf session log "unblock(scope): approval received"
+loaf session log "spark(scope): possible follow-up idea"
+loaf session log "todo(scope): concrete follow-up action"
 ```
 
-### Naming Convention
+Log durable facts, not thoughts. The journal should let another agent resume
+without reading the whole conversation.
 
-All session files use the fixed format: `YYYYMMDD-HHMMSS-session.md`
+## Continuity
 
-The timestamp is the unique identifier. Descriptions, spec links, and branch names belong in frontmatter and the `# Session:` heading, not the filename. This keeps references stable — spec and task files can point to session filenames without them ever breaking.
+Before compaction, branch switches, or agent handoff:
 
-### Required Frontmatter
+1. Flush unrecorded decisions, discoveries, blockers, and next actions with
+   `loaf session log`.
+2. Use `loaf session show <session-ref> --json` to confirm the journal has the
+   required resumption context.
+3. Pass task IDs, spec IDs, report IDs, and commit refs rather than duplicating
+   large prose into the journal.
 
-```yaml
----
-session:
-  title: "Clear description of work"           # REQUIRED
-  status: in_progress                          # REQUIRED: in_progress|paused|completed|archived
-  created: "2025-12-04T14:30:00Z"              # REQUIRED: ISO 8601
-  last_updated: "2025-12-04T14:30:00Z"         # REQUIRED: ISO 8601
-  last_archived: "2025-12-04T16:00:00Z"        # Set by PreCompact hook before compaction
-  archive_reason: "pre-compact"                # Why archived (pre-compact, manual, etc.)
-  archived_at: "2025-12-04T18:10:00Z"          # Required when archived
-  task: TASK-001                               # If implementation work (links to .agents/tasks/)
-  linear_issue: "BACK-123"                     # Optional
-  linear_url: "https://linear.app/..."         # Optional
-  branch: "username/back-123-feature"          # Optional: working branch
-  transcripts: []                              # Archived Cursor transcripts (filenames only)
-                                               # Example: ["2a244262-8599-4bef-8bb8-3feea33d14e2.jsonl"]
-  referenced_sessions: []                      # Cross-session references (see below)
+Background and delegated agents should receive the relevant task/spec/report
+references plus the active session alias when the caller has one.
 
-orchestration:
-  current_task: "What's actively being worked" # REQUIRED
-  spawned_agents:
-    - agent: implementer
-      task: "Brief task description"
-      status: completed                        # pending|in_progress|completed
-      summary: "Outcome summary"
+## Completion
 
-background_agents:                             # Background work running independently
-  - id: "bg-20260123-143000-security-scan"     # ID: bg-YYYYMMDD-HHMMSS-description
-    agent: background-runner                              # Agent type
-    task: "Full security audit"                # Brief description
-    status: running                            # running|completed|failed
-    result_location: null                      # Path to report when complete
----
-```
+When work is complete:
 
-### Cross-Session References
+1. Ensure decisions and discoveries are captured in durable homes such as ADRs,
+   specs, reports, or docs.
+2. Run `loaf session end --wrap` so the CLI persists the wrapped state.
+3. After merge or closure, use `loaf session archive` if the session should leave
+   the active list.
 
-Track decisions imported from past sessions via Serena memory:
-
-```yaml
-session:
-  # ... other fields ...
-  referenced_sessions:
-    - session: "20250115-140000-auth-jwt.md"     # Source session filename
-      imported_at: "2025-01-23T14:30:00Z"        # When imported
-      content_type: decisions                     # decisions|context|all
-      decisions_imported:                         # List of decision titles
-        - "JWT token rotation strategy"
-        - "Refresh token storage approach"
-    - session: "20250110-090000-auth-oauth.md"
-      imported_at: "2025-01-23T14:35:00Z"
-      content_type: context
-      summary: "OAuth provider integration patterns"
-```
-
-**Why track references:**
-
-- Audit trail of where context came from
-- Avoids re-importing same decisions
-- Enables tracing decision lineage across sessions
-
-See `references/cross-session.md` for full patterns.
-
-### Required Sections
-
-Every session file MUST have:
-
-1. **`## Context`** - Background for anyone picking up this work
-2. **`## Current State`** - Where we are now (MUST be handoff-ready)
-3. **`## Next Steps`** - Immediate actions for continuation
-
-### Session Template
-
-```markdown
-# Session: [Title]
-
-## Context
-Background for anyone picking up this work.
-What problem are we solving? Why now?
-
-## Current State
-Where we are right now. What just happened.
-**This section should ALWAYS be handoff-ready.**
-
-## Resumption Prompt
-
-<!-- Generated by PreCompact hook before compaction -->
-<!-- Provides self-contained context for post-compaction continuation -->
-
-> **Context**: [Brief description of work being done]
->
-> **Last Action**: [What just happened]
->
-> **Immediate Next**: [Concrete next step]
->
-> **Key Files**: [Relevant file paths]
->
-> **Blockers**: [Any blockers, or "None"]
->
-> **Transcript Archive**: If Cursor provided a transcript path after compaction,
-> copy it to `.agents/transcripts/` and add the filename to this session's
-> `transcripts:` array in frontmatter.
-
-## Execution Progress
-
-### Wave 1: [Name] (ACTIVE)
-- [ ] BACK-123 - Brief description
-- [x] BACK-124 - Brief description (completed)
-
-### Wave 2: [Name] (blocked by Wave 1)
-- [ ] BACK-125 - Brief description
-
-## Technical Context
-
-### Files to Update
-- `path/to/file.py` - What needs to change
-
-### Key Commands
-```bash
-pytest path/to/tests/ -v
-mypy path/to/code/
-```
-
-## Acceptance Criteria
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-
-## Decisions
-
-### Decision 1: [Title]
-
-**Decision**: What was decided
-**Rationale**: Why
-
-## Architecture Diagrams
-
-### [Diagram Name]
-
-```mermaid
-[diagram content]
-```
-
-**Purpose**: Why this diagram helps understand the work
-**Files involved**: List of related file paths
-**Created**: When diagram was created (update if modified)
-
-<!--
-When to add diagrams:
-- Multi-service changes: Show interaction points
-- Data flow changes: Trace data through system
-- Schema modifications: Visualize relationships
-- API design: Document request/response flows
-
-For reusable diagrams, store in .agents/diagrams/ instead.
-See foundations skill reference/diagrams.md for Mermaid syntax.
--->
-
-## Council Outcomes
-
-### Council: [Topic]
-
-**Outcome**: Decision summary
-**Council File**: `.agents/councils/YYYYMMDD-HHMMSS-topic.md`
-**Next Steps**: Action items captured
-**Archive**: After this summary is captured, set council status to `archived`, set `archived_at`, set `archived_by`, and move to `.agents/councils/archive/` (archive indefinitely).
-
-## Reports Processed
-
-### Report: [Title]
-
-**Key Conclusions**: Summary of findings
-**Action Items**: What changed or will change
-**Report Output**: generated with `loaf report generate ...` or stored as an authored report when durable prose is needed.
-**Archive**: After report is processed and the linked session is archived, use `loaf report archive <report>` for SQLite-backed report state. Markdown report movement is compatibility/export handling.
-**Metadata**: Require enough state or frontmatter to identify status, linked session, and processing time. In SQLite-backed projects, CLI state is authoritative.
-**Note**: Reports without state/frontmatter metadata are treated as unprocessed compatibility artifacts.
-
-## Handoffs
-
-Explicit transfer packets belong to `/handoff`, which writes
-`.agents/handoffs/YYYYMMDD-HHMMSS-title.md`. Orchestration keeps live session
-state resumable; `/handoff` packages context for another agent, branch, task,
-or future session. `/housekeeping` deletes deprecated handoffs after
-confirmation.
-
-## Blockers
-
-- Current blocker (if any)
-
----
-
-## Session Log (Compact Inline Journal)
-
-Sessions use an **append-only structured journal** format — a running log of what happened, what was decided, and what's next. Think "conventional commits meets bullet journal."
-
-### Format
-
-```markdown
-## Journal
-
-[YYYY-MM-DD HH:MM] resume(branch-name): from commit abc1234, context summary
-[YYYY-MM-DD HH:MM] decision(scope): description of decision
-[YYYY-MM-DD HH:MM] discover(scope): something learned
-
-[YYYY-MM-DD HH:MM] block(scope): what is blocked
-[YYYY-MM-DD HH:MM] hypothesis: theory being tested
-
-[YYYY-MM-DD HH:MM] unblock(scope): how it was resolved
-[YYYY-MM-DD HH:MM] commit(abc1234): commit message
-
---- PAUSE YYYY-MM-DD HH:MM ---
-
-[YYYY-MM-DD HH:MM] resume(branch-name): duration paused, last action summary
-```
-
-### Entry Types
-
-| Type | Use For | Written By | Scope Convention |
-|------|---------|------------|------------------|
-| `resume(scope)` | Session started/resumed | Hook (auto) | Branch name |
-| `pause` | Session ended | Hook (auto) | — |
-| `commit(SHA)` | Code committed | Hook (auto) | Short SHA |
-| `pr(#N)` | PR created/updated | Hook (auto) | PR number |
-| `merge(#N)` | PR merged | Hook (auto) | PR number |
-| `decision(scope)` | Key decisions | Agent | Topic |
-| `discover(scope)` | Something learned | Agent | Topic |
-| `block(scope)` | Blocker encountered | Agent | Topic |
-| `unblock(scope)` | Blocker resolved | Agent | Topic |
-| `spark(scope)` | Ideas to promote | Agent | Topic |
-| `resolve(spark)` | Spark triaged via `/idea` | Agent/User | Spark slug → disposition [timestamp] |
-| `todo(scope)` | Action items | Agent | Topic |
-| `finding(scope)` | Findings from analysis | Agent | Topic |
-| `hypothesis` | Theory being tested | Agent | — |
-| `try` | Approach attempted | Agent | — |
-| `reject` | Approach abandoned | Agent | — |
-| `skill(name)` | Skill invoked with context | Skill (self-log) | Skill name |
-| `idea(slug)` | Idea captured or promoted | Agent/Skill | Idea slug or `.agents/ideas/` ref |
-| `spec(id)` | Spec created, updated, or approved | Agent/Skill | Spec ID (e.g. `SPEC-024`) |
-| `handoff(slug)` | Handoff created or deprecated | Agent/Skill | Handoff slug or `.agents/handoffs/` ref |
-| `report(slug)` | Report generated | Agent/Skill | Report slug or `.agents/reports/` ref |
-| `council(slug)` | Council convened or concluded | Agent/Skill | Council slug or `.agents/councils/` ref |
-| `brainstorm(slug)` | Brainstorm session held | Agent/Skill | Draft slug or topic |
-| `plan(slug)` | Plan created or updated | Agent/Skill | Plan slug or topic |
-| `draft(slug)` | Draft document created | Agent/Skill | Draft slug or `.agents/drafts/` ref |
-
-### Format Rules
-
-1. **Timestamp:** `YYYY-MM-DD HH:MM` (no seconds)
-2. **Entry format:** `[<timestamp>] <type>(<scope>): <description>`
-3. **Blank line separator:** Insert when:
-   - Gap ≥ 5 minutes since last entry, OR
-   - State transition (block/unblock/pause/resume)
-4. **PAUSE header:** `--- PAUSE YYYY-MM-DD HH:MM ---` (auto-generated by `loaf session end`)
-5. **Resume after pause:** Always starts new section after `--- PAUSE ---`
-
-### Example Session
-
-```markdown
----
-spec: SPEC-020
-branch: feat/target-convergence
-status: active
-created: 2026-03-31T14:30:00Z
-last_entry: 2026-04-02T09:15:00Z
----
-
-# Session: Target Convergence
-
-## Journal
-
-[2026-03-31 14:30] resume(feat/target-convergence): from commit abc1234, 3 tasks pending
-[2026-03-31 14:30] decision(hooks): remove bash wrappers, go direct
-[2026-03-31 14:32] discover(cursor): prompt hooks filtered at line 269
-
-[2026-03-31 15:10] block(parity): Codex output differs by trailing newline
-[2026-03-31 15:11] hypothesis: gray-matter serialization adds trailing \n
-
-[2026-03-31 16:45] unblock(parity): confirmed gray-matter quirk, fixed with trim
-[2026-03-31 16:46] commit(def5678): fix: trim frontmatter for Codex byte parity
-
---- PAUSE 2026-03-31 17:00 ---
-
-[2026-04-02 09:15] resume(feat/target-convergence): 16 hours paused, last: verification
-```
-
-### CLI Commands
-
-```bash
-loaf session start    # Find/create session, append resume entry, output context
-loaf session end      # Append pause entry with summary
-loaf session log      # Append typed entry: loaf session log "decide(scope): desc"
-loaf session archive  # Move to archive when branch merges
-```
-
-### Consistency
-
-- **`loaf session log`** validates and appends entries in correct format
-- **Read-only agents** (reviewer, researcher) CAN write journal entries via `loaf session log` (Bash command, not file edit)
-- **Concurrent writes** are safe: atomic append, timestamps provide ordering
-
-## Lifecycle States
-
-| State | Description |
-|-------|-------------|
-| `in_progress` | Work actively happening |
-| `paused` | Temporarily stopped |
-| `completed` | Work finished; ready to archive (set status, `archived_at`, `archived_by`, move) after extraction |
-| `archived` | Closed and preserved for audit (set `archived_at`/`archived_by`, status set + moved to `.agents/sessions/archive/`) |
-
-## Updating During Work
-
-After each significant action, append entries to the session journal:
-
-1. **Use `loaf session log`** to append entries in the correct format
-2. **Add `decision`, `discover`, `block`, `spark`, `wrap` entries** during normal work
-3. **Hooks auto-append:** `resume`, `commit(SHA)`, `pr(#N)`, `merge(#N)`, `pause`
-4. **Blank line rules:** Inserted automatically by `loaf session log` based on time gaps and state transitions
-
-**Cross-agent protocol:** When any agent starts work on a branch, `loaf session start` outputs the last 15-20 journal entries. The agent reads context, continues work, appends entries.
-
-## Session Continuity Protocol
-
-### Before Pausing or Switching Agents
-
-1. Update session file with completed work
-2. Update `Current State` with where you stopped
-3. Update `Next Steps` with immediate actions
-4. Include `Files Modified` for context
-
-### Session as Continuity Medium
-
-Each agent:
-1. Reads current state from session
-2. Performs assigned work
-3. Updates session with outcomes
-4. Sets up context for next agent
-
-## Completing a Session
-
-Sessions are **archived, not deleted** when complete to preserve audit trail (set status to `archived`, set `archived_at` and `archived_by`, and move into `.agents/sessions/archive/`). Archive indefinitely (no deletion policy).
-
-**Archive timing:** only after extraction and council/report summaries are captured.
-
-### Knowledge Extraction Checklist
-
-| Information Type | Where It Belongs |
-|------------------|------------------|
-| Work tracking | External issue (Linear, GitHub) |
-| Implementation details | Git commits/PRs |
-| Architectural decisions | ADRs (`docs/decisions/`) |
-| API contracts | API documentation |
-| Remaining work | External issue backlog |
-| Council outcomes | Session summary + council file link |
-| Report conclusions | Session summary + report file link |
-| Archived artifacts | SQLite lifecycle state plus compatibility archive metadata when Markdown files exist |
-
-### Archival Checklist
-
-- [ ] External issue updated with final status
-- [ ] Decisions captured as ADRs (if architectural)
-- [ ] Lessons learned added to relevant docs
-- [ ] Remaining work created as issues
-- [ ] Council outcomes summarized in this session (link council file)
-- [ ] Reports processed and summarized in this session (link report file)
-- [ ] Reports archived only after session is archived (`loaf report archive` for SQLite-backed state)
-- [ ] Handoffs reviewed; deprecated handoffs marked for `/housekeeping` deletion
-- [ ] No orphaned references to session file
-- [ ] Set session status to `archived`
-- [ ] Set `archived_at` and `archived_by`
-- [ ] Move compatibility session file to `.agents/sessions/archive/` when one exists
-- [ ] Linked councils moved to `.agents/councils/archive/` after session summary
-- [ ] Linked report state archived after session archived + conclusions captured
-- [ ] Deprecated handoffs deleted by `/housekeeping` after confirmation
-- [ ] Update `.agents/` references to archived paths (no `.agents` links outside `.agents/`)
-- [ ] Archive indefinitely (no deletion policy)
-- [ ] Use `/housekeeping` for auto-move + link updates after confirmation
-
-## Start Protocol
-
-When starting a new orchestration context:
-
-1. Check for existing active sessions
-2. If found, ask user which to resume or start fresh
-3. If resuming, read session for context
-4. If starting fresh, create new session file
+Reports, councils, and handoffs have their own archive or finalization commands.
+Do not use session archival as a substitute for those lifecycles.
 
 ## Hook Integration
 
-### SessionStart Hook
-- Lists active sessions
-- Provides agent-specific context
-- Suggests session review/resume
-
-### SessionEnd Hook
-- Displays completion checklist
-- Reminds about session file updates
-- Shows count of active sessions
-
-### PreCompact Hook
-- `loaf session context for-compact` logs compact marker and injects flush instructions
-- Model flushes unrecorded decisions/discoveries to journal
-- Model writes structured `## Current State` summary
-- After compaction: `loaf session context for-resumption` prints rich resumption context (session, spec, journal, git)
+- Session start hooks should surface recent journal entries from SQLite.
+- Session-end hooks should nudge for missing durable journal entries before wrap.
+- Pre-compaction hooks should ask the agent to flush facts through
+  `loaf session log`.
+- Post-compaction recovery should use `loaf session start` and
+  `loaf session show`.
 
 ## Anti-Patterns
 
 | Don't | Do Instead |
 |-------|------------|
-| Archive without extraction | Extract outcomes before archiving |
-| Use sessions as permanent records | Use proper documentation locations |
-| Reference stale sessions | Keep sessions current or archive (status + move) when done |
-| Store decisions only in sessions | Create ADRs for important decisions |
-| Archive without council/report summaries | Summarize outcomes in session before archive |
-| Archive but leave in active folder | Move file to `.agents/sessions/archive/` after setting status |
-| Batch session updates | Update after each significant event |
-| Keep status as `in_progress` when paused | Update status when state changes |
+| Hand-author session markdown as source | Use `loaf session start/log/show/end` |
+| Store decisions only in chat context | Log them and promote durable decisions to ADR/spec/report/docs |
+| Invent status values | Cite the runtime lifecycle until SPEC-049 lands |
+| Archive before extracting outcomes | Promote outcomes first, then wrap/archive |
+| Batch all journal entries at the end | Log significant facts as they happen |

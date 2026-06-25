@@ -3,9 +3,9 @@ name: implement
 description: >-
   Orchestrates implementation sessions through agent delegation and batch
   execution. Use for all implementation work — features, bug fixes, refactors,
-  and code changes. Produces session files, agent spawn plans, and progress
-  tracking. Not for shaping (use shape), breakdown (use breakdown), research, or
-  review.
+  and code changes. Produces SQLite-backed session journals, agent spawn plans,
+  and progress tracking. Not for shaping (use shape), breakdown (use breakdown),
+  research, or review.
 version: 2.0.0-pre.20260614235428
 ---
 
@@ -38,7 +38,7 @@ You are the coordinator. Start by understanding the task:
 **You are the ORCHESTRATOR, not the implementer.**
 
 ### Orchestrator Can Do Directly
-- Create/edit session files, council files
+- Start/log/show sessions, create council files
 - Use Amp thread checklist; **if `integrations.linear.enabled` is `true` in `.agents/loaf.json`**, use Linear MCP tools when helpful
 - Read any file for context
 - Ask clarifying questions
@@ -48,11 +48,11 @@ You are the coordinator. Start by understanding the task:
 
 ## Verification
 
-- Session file exists before any implementation work begins
+- `loaf session start` has created or resumed an active SQLite-backed session before implementation work begins
 - All code changes delegated via Amp check/agent mode or new thread -- no direct edits by orchestrator
-- Session file is continuously updated with spawns, progress, and current state
+- Session journal is continuously updated with spawns, progress, and current state
 - Spec artifacts closed out on branch before PR creation
-- **Linear-native mode:** `blockedBy` of the target sub-issue is fully `completed` before any session file is created; starting a sub-issue also promotes an unstarted parent rollup to active; parent rollup is auto-closed only when all sub-issues are `completed`
+- **Linear-native mode:** `blockedBy` of the target sub-issue is fully `completed` before any session is started; starting a sub-issue also promotes an unstarted parent rollup to active; parent rollup is auto-closed only when all sub-issues are `completed`
 
 ## Quick Reference
 
@@ -80,7 +80,7 @@ Before starting, evaluate context suitability.
 | Just completed a different task/spec | Suggest clear |
 | About to start multi-file implementation | Check depth |
 
-If restart needed: capture state in session file, generate resumption prompt, ask user to restart.
+If restart needed: log current state with `loaf session log`, generate resumption prompt, ask user to restart.
 
 ## Input Detection
 
@@ -88,7 +88,7 @@ Parse `$ARGUMENTS` to determine session type:
 
 | Input Pattern | Type | Action |
 |---------------|------|--------|
-| `TASK-XXX` | Local task | Load via `loaf task show`, auto-create session |
+| `TASK-XXX` | Local task | Load via `loaf task show`, start/resume session |
 | `SPEC-XXX` | Spec orchestration | If spec frontmatter has `linear_parent`, resolve to that Linear parent and follow Linear-Native Routing. Otherwise resolve local tasks and build dependency waves |
 | `TASK-XXX..YYY` | Task range | Expand range, build dependency waves |
 | `TASK-XXX,YYY,ZZZ` | Task list | Parse list, build dependency waves |
@@ -100,8 +100,8 @@ Parse `$ARGUMENTS` to determine session type:
 When starting from `TASK-XXX`:
 
 1. Load task metadata via `loaf task show TASK-XXX --json`; read `.agents/TASKS.json` only as a Markdown-compatibility fallback
-2. Auto-generate session: `YYYYMMDD-HHMMSS-task-XXX.md`
-3. Create session file, update task with session reference: `loaf task update TASK-XXX --session <session-file>`
+2. Run `loaf session start` to find or create the active session for the branch
+3. Log the task coupling: `loaf session log "decision(implement): implementing TASK-XXX"`
 4. Load parent spec if task has `spec:` field
 
 **No user interaction required for session naming.**
@@ -187,7 +187,7 @@ The issue is an actual task. Implement it directly — with a pre-flight gate.
    - Resolve branch name from the sub-issue's `branchName` field (Linear
      auto-generates one) — see
      [session-management.md](references/session-management.md).
-   - Create session file, continue with the standard Startup Checklist.
+   - Run `loaf session start`, then continue with the standard Startup Checklist.
 
 ### Completion (after implementer + reviewer finish cleanly)
 
@@ -224,8 +224,8 @@ When the sub-issue's implementation passes review and tests:
   implementation reveals a missing task, surface it to the user; they
   decide whether to run `/breakdown` again or add an ad-hoc sub-issue.
 - Does not sync in-progress state bidirectionally. Source of truth at any
-  moment: Linear for issue state, local files for spec content, session
-  file for current handoff.
+  moment: Linear for issue state, local files for spec content, SQLite session
+  journal for current handoff.
 
 ---
 
@@ -248,19 +248,19 @@ Use the **Amp check/agent mode or new thread** with appropriate `agent_type`:
 
 ---
 
-## Session Creation
+## Session Start
 
-**MANDATORY: Create session file BEFORE any other work.**
+**MANDATORY: Run `loaf session start` BEFORE any implementation work.**
 
-1. Generate timestamps: `date -u +"%Y%m%d-%H%M%S"` and `date -u +"%Y-%m-%dT%H:%M:%SZ"`
-2. Create session file following [session template](templates/session.md)
-3. Verify session file exists with valid frontmatter
+1. Run `loaf session start` from the target branch/worktree.
+2. Log invocation context: `loaf session log "skill(implement): <task/spec/context>"`
+3. Verify the active session is readable with `loaf session list --json` or `loaf session show <session-ref> --json`.
 4. Suggest renaming Amp session with a meaningful name derived from context:
    - From spec: `Suggestion: /rename SPEC-027-session-stability`
    - From task: `Suggestion: /rename TASK-042-login-fix`
    - From ad-hoc: `Suggestion: /rename {short-slug-from-description}`
 
-**DO NOT PROCEED WITHOUT A SESSION FILE.**
+**Do not proceed until the active session is visible through `loaf session` commands.**
 
 ---
 
@@ -271,8 +271,8 @@ Use the **Amp check/agent mode or new thread** with appropriate `agent_type`:
 3. **When uncertain** -- convene council, present results, **wait for user approval**
 4. **Ensure quality** -- spawn implementer for tests, route reviews to reviewer Amp check/agent mode or new thread
 5. **When debugging** -- if a test failure or error isn't immediately obvious, load the **debugging** skill for structured hypothesis tracking before retrying
-6. **Update session file continuously** -- log spawns, update current_task, keep handoff-ready
-6. **Clean up** -- no ephemeral files, archive completed sessions (status + `archived_at` + `archived_by` + move to archive/)
+6. **Update session continuously** -- log spawns, progress, blockers, and next actions with `loaf session log`
+6. **Clean up** -- no ephemeral files; wrap with `loaf session end --wrap` and archive closed sessions with `loaf session archive`
 7. **When in doubt, ask the user**
 
 ## Decision Tree
@@ -281,7 +281,7 @@ Use the **Amp check/agent mode or new thread** with appropriate `agent_type`:
 Is this a code/config/doc change?
 +-- YES -> Spawn appropriate agent
 +-- NO -> Is this a planning/coordination decision?
-    +-- YES with clear path -> Proceed, update session
+    +-- YES with clear path -> Proceed, log session decision
     +-- YES but ambiguous -> Ask user
     +-- NO -> Ask user
 ```
@@ -292,18 +292,18 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 
 ## Startup Checklist
 
-After creating session file:
+After `loaf session start`:
 
 1. [ ] Parse input (task, Linear ID, or description)
-2. [ ] If TASK-XXX: load task via `loaf task show TASK-XXX`, update with `loaf task update TASK-XXX --session <session-file>`, load parent spec
+2. [ ] If TASK-XXX: load task via `loaf task show TASK-XXX`, log task coupling, load parent spec
 3. [ ] If Linear ID (or `SPEC-XXX` with `linear_parent`): follow [Linear-Native Routing](#linear-native-routing). Parent → walk sub-issues and select next. Sub-issue → verify `blockedBy` is clear, then start it as one logical Linear operation so the parent is promoted when needed
 4. [ ] If description: auto-create task (see Ad-hoc Task Auto-Creation above)
 5. [ ] Create dedicated branch (see [session-management.md](references/session-management.md))
 6. [ ] Suggest team based on task context
-7. [ ] Populate session Context section
+7. [ ] Log initial context and references with `loaf session log`
 8. [ ] Break down work using Amp thread checklist
 9. [ ] Identify needed specialized agents
-10. [ ] Update session Next Steps
+10. [ ] Log next steps before spawning
 11. [ ] **Get user approval** before spawning
 
 ---
@@ -311,7 +311,7 @@ After creating session file:
 ## Then Execute
 
 ### BEFORE (Planning)
-1. Create session file
+1. Run `loaf session start`
 2. Set task status: `loaf task update TASK-XXX --status in_progress`
 3. Break down work into agent-sized tasks
 4. Identify spawn order (respect dependencies)
@@ -319,10 +319,10 @@ After creating session file:
 
 ### DURING (Execution)
 1. Spawn specialized agents via Amp check/agent mode or new thread
-2. Log each spawn in session `orchestration.spawned_agents`
+2. Log each spawn with `loaf session log "todo(agent): spawned <agent> for <task>"`
 3. Update Linear with progress (no emoji, no file paths)
-4. Keep session `## Current State` handoff-ready
-5. After each agent completes: update session, spawn next
+4. Keep journal entries handoff-ready
+5. After each agent completes: log outcome, spawn next
 
 ### AFTER (Completion)
 1. Code review pass (spawn `reviewer` agent)
@@ -331,13 +331,13 @@ After creating session file:
    - **Local-tasks mode:** `loaf task update TASK-XXX --status done` (per task), then `loaf task archive --spec SPEC-XXX`
    - **Linear-native mode:** `update_issue` the sub-issue to `completed`-type state. Then query the parent's sub-issues; if all are `completed`, also close the parent. If some remain, list them for the user (see [Linear-Native Routing → Completion](#completion-after-implementer--reviewer-finish-cleanly))
    - Mark spec complete and archive: `loaf spec archive SPEC-XXX` (both modes)
-   - Update session file (status: done, `archived_at`, `archived_by`)
-   - Commit: `chore: close SPEC-XXX — archive tasks, spec, and session`
+   - Run `loaf session end --wrap`; archive later with `loaf session archive` when appropriate
+   - Commit: `chore: close SPEC-XXX — archive tasks, spec, and session state`
 4. If on a feature branch: push and create PR (`gh pr create`). Follow PR format and squash merge conventions in [commits reference](../git-workflow/references/commits.md).
 5. After PR is created and approved, use `/ship` to review, verify, and land the PR. Use `/release` later when a coherent batch of landed work is ready to publish.
-6. **Suggest reflection:** Check the session file for extractable learnings before closing out:
-   - `## Key Decisions` has content (not `*(none yet)*` or empty)
-   - `traceability.decisions` has entries (ADRs were recorded)
+6. **Suggest reflection:** Check the session journal for extractable learnings before closing out:
+   - `decision(...)` entries are present
+   - ADRs, report verdicts, or spec changelog entries were recorded
    If any signal is present, suggest: *"This session produced key decisions. Consider running `/reflect` to update strategic docs."* If none are present, stay silent.
 
 ---
@@ -360,4 +360,4 @@ After all tasks are complete, suggest `/ship` to land the PR. Suggest `/release`
 - **orchestration/product-development** - Full workflow hierarchy
 - **orchestration/specs** - Spec format and lifecycle
 - **orchestration/local-tasks** - Task file format including `session:` field
-- **orchestration/sessions** - Session lifecycle details
+- **orchestration/sessions** - SQLite-backed session lifecycle details

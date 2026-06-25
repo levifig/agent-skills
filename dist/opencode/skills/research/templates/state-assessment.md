@@ -12,7 +12,7 @@ title: "State Assessment: [YYYY-MM-DD]"
 type: state-assessment
 created: YYYY-MM-DDTHH:MM:SSZ
 status: active         # active | archived
-session: ".agents/sessions/YYYYMMDD-HHMMSS-description.md"  # Session that produced this assessment
+session: "session alias or loaf session show reference"  # Session that produced this assessment
 tags: []
 ---
 

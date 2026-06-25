@@ -1,15 +1,15 @@
 # Session Resume Patterns
 
-Patterns for resuming work across Claude Code sessions using CLI flags and session files.
+Patterns for resuming work with CLI conversation history plus SQLite-backed
+Loaf session state.
 
 ## Contents
 
 - CLI Resume Flags
 - Resume Methods
 - When to Use Each Method
-- Session File as Resume Checkpoint
+- SQLite Session as Resume Checkpoint
 - Checkpoint Pattern
-- Naming Sessions Descriptively
 - Context Recovery Strategies
 - Handling Stale Sessions
 - Multi-Session Coordination
@@ -17,7 +17,7 @@ Patterns for resuming work across Claude Code sessions using CLI flags and sessi
 
 ## CLI Resume Flags
 
-Claude Code provides built-in session continuation:
+Some harnesses provide built-in conversation continuation:
 
 | Flag | Purpose |
 |------|---------|
@@ -25,217 +25,113 @@ Claude Code provides built-in session continuation:
 | `--resume <id>` | Resume a specific conversation by ID |
 | `/resume` | In-session command to list and resume |
 
+Use harness resume for chat history. Use `loaf session` for operational state.
+
 ## Resume Methods
 
-### Method 1: CLI Continue
+### Method 1: Conversation Continue
+
+Resume the exact conversation when you need full chat history.
+
+### Method 2: SQLite Session Resume
+
+Start fresh and recover operational state:
 
 ```bash
-# Continue most recent conversation
-claude --continue
-
-# Resume specific conversation
-claude --resume abc123
+loaf session start
+loaf session list --all --json
+loaf session show <session-ref> --json
 ```
 
-**Best for:** Picking up exactly where you left off with full context.
-
-### Method 2: Session File Resume
-
-```bash
-# Start new conversation, resume from session file
-claude
-> /resume 20250123-143000-feature-auth
-```
-
-**Best for:** Fresh context but task continuity from session file.
+Best for clean context with task continuity.
 
 ### Method 3: Hybrid Resume
 
-```bash
-# Continue conversation AND sync with session file
-claude --continue
-> Check session file for any updates: .agents/sessions/20250123-143000-feature-auth.md
-```
-
-**Best for:** Recovering from context pollution while preserving conversation history.
+Continue the conversation, then compare it against `loaf session show` output.
+Best when chat history matters but the journal may contain newer facts.
 
 ## When to Use Each Method
 
 | Situation | Recommended Method |
 |-----------|-------------------|
-| Short break, same task | `--continue` |
-| Long break, clean state needed | Session file resume |
+| Short break, same task | Conversation continue |
+| Long break, clean state needed | SQLite session resume |
 | Context polluted but need history | Hybrid resume |
-| Different machine | Session file resume |
-| Handoff to another person | Session file resume |
+| Different machine | SQLite session resume |
+| Handoff to another person | SQLite session + handoff/report |
 
-## Session File as Resume Checkpoint
+## SQLite Session as Resume Checkpoint
 
-### Writing Resume-Ready State
+Before ending or compacting:
 
-Before ending a session, ensure session file contains:
-
-```markdown
-## Current State
-**Last Action:** Completed API endpoint implementation
-**Pending:** Tests need to be written
-
-## Resumption Notes
-- Branch: feature/auth-endpoints
-- Key files modified: src/auth/routes.py, src/auth/models.py
-- Tests to write: test_login, test_logout, test_refresh
-- Blocker: None
-
-## Next Steps
-1. Spawn QA agent for test implementation
-2. Run full test suite
-3. Update API documentation
-```
-
-### Reading Resume State
+1. Log last action, blockers, and next steps with `loaf session log`.
+2. Reference tasks, specs, reports, commits, and branch names by stable ID/path.
+3. Run `loaf session end --wrap` when work is complete.
 
 When resuming:
 
-1. Read session file for context
-2. Check `## Current State` for where you left off
-3. Check `## Resumption Notes` for key details
-4. Check `## Next Steps` for immediate actions
-5. Verify branch and file state match expectations
+1. Run `loaf session start` on the branch/worktree.
+2. Inspect `loaf session show <session-ref> --json`.
+3. Verify branch and file state match expectations.
+4. Continue from the next logged action.
 
 ## Checkpoint Pattern
 
-For long-running tasks, create explicit checkpoints:
-
-```markdown
-## Checkpoints
-
-### Checkpoint 1: Schema Complete
-**Timestamp:** 2025-01-23T14:30:00Z
-**State:** Database schema implemented and migrated
-**Can resume from:** This checkpoint if later work fails
-
-### Checkpoint 2: API Complete
-**Timestamp:** 2025-01-23T15:45:00Z
-**State:** All endpoints implemented, passing basic tests
-**Can resume from:** This checkpoint for test expansion
-```
-
-### Rewind to Checkpoint
-
-If work goes wrong:
-
-1. Identify safe checkpoint
-2. `git checkout <commit>` to restore code state
-3. Update session file to checkpoint state
-4. `/clear` to reset context
-5. Resume from checkpoint
-
-## Naming Sessions Descriptively
-
-Good session names aid resume:
-
-```
-# Good - descriptive, searchable
-20250123-143000-auth-jwt-implementation.md
-20250123-160000-api-rate-limiting.md
-
-# Bad - generic, hard to find
-20250123-143000-feature.md
-20250123-160000-fix.md
-```
-
-### Rename Pattern
+For long-running tasks, create explicit journal checkpoints:
 
 ```bash
-# If session name becomes unclear, rename for clarity
-mv .agents/sessions/20250123-143000-feature.md \
-   .agents/sessions/20250123-143000-user-auth-oauth.md
+loaf session log "decision(checkpoint): schema complete at <commit>"
+loaf session log "decision(checkpoint): API complete; next write tests"
 ```
 
-Update any references in Linear or other sessions.
+If work goes wrong, use Git to restore code state and log the reconciliation:
+
+```bash
+loaf session log "decision(recovery): rewound to <commit>; replaying tests"
+```
 
 ## Context Recovery Strategies
 
-### Strategy 1: Full Replay
+### Full Replay
 
-For complex state, replay key decisions:
+Use `loaf session show` plus ADR/spec/report links for complex state.
 
-```markdown
-## Decision Replay
+### Minimal Context
 
-When resuming, recall these decisions:
-1. Chose JWT over sessions (see ADR-007)
-2. Using Redis for token storage
-3. 15-minute access token expiry
-```
+Use the last few journal entries when the next action is obvious.
 
-### Strategy 2: Minimal Context
+### Reference Chain
 
-For simple continuation:
+For multi-session work, log relationships:
 
-```markdown
-## Minimal Resume Context
-
-Branch: feature/auth
-Last commit: "feat: add login endpoint"
-Next: Write tests for login endpoint
-```
-
-### Strategy 3: Reference Chain
-
-For multi-session work:
-
-```markdown
-## Session Chain
-
-Previous sessions:
-- 20250122-100000-auth-design.md (planning)
-- 20250122-143000-auth-schema.md (database)
-- This session: API implementation
+```bash
+loaf session log "discover(context): previous design captured in SPEC-123 and ADR-007"
 ```
 
 ## Handling Stale Sessions
 
-### Signs of Stale Session
+Signs of stale session state:
 
-- Code has changed since session was active
-- Other sessions modified same files
+- Code changed after the last journal entry
 - Branch was rebased or merged
+- Another task/spec superseded the work
 
-### Stale Session Recovery
+Recovery:
 
-```
-1. Read session file for intended state
-2. Compare with actual code state (git diff)
-3. Identify conflicts or drift
-4. Update session file to reflect reality
-5. Plan reconciliation if needed
-```
+1. Inspect `loaf session show`.
+2. Compare with `git status`, `git log`, and relevant specs/tasks.
+3. Log the drift and reconciliation plan.
 
 ## Multi-Session Coordination
 
-When multiple sessions touch same codebase:
-
-```markdown
-## Related Sessions
-
-| Session | Status | Overlaps |
-|---------|--------|----------|
-| auth-backend | completed | src/auth/ |
-| auth-frontend | in_progress | src/components/auth/ |
-| This session | in_progress | src/auth/models.py (shared) |
-
-## Coordination Notes
-- Wait for auth-backend completion before modifying models
-- Sync with auth-frontend on API contract changes
-```
+When multiple sessions touch related areas, use specs/tasks/reports as the shared
+coordination layer. Session journals should point to those durable artifacts
+rather than becoming the only place a dependency is described.
 
 ## Best Practices
 
-1. **Update session before stopping** - capture state while fresh
-2. **Use descriptive names** - aid future resume
-3. **Create checkpoints** - safe rollback points
-4. **Note dependencies** - what must complete first
-5. **Clear stale context** - don't resume into pollution
-6. **Verify state on resume** - code may have changed
-7. **Document decision context** - not just decisions
+1. Log before stopping.
+2. Prefer stable IDs over pasted summaries.
+3. Use `loaf session show` as the operational resume surface.
+4. Keep chat-history resume separate from Loaf session state.
+5. Verify code state on resume.

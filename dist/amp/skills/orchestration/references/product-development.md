@@ -11,7 +11,6 @@ A Research → Vision → Architecture → Requirements → Specs → Tasks → 
 - Configuration
 - Workflow Examples
 - Feedback Loops
-- Transcript Archival
 - Flexibility Preserved
 - Critical Files
 
@@ -33,10 +32,9 @@ docs/                               # Permanent project knowledge
 
 .agents/                            # Ephemeral orchestration
 ├── loaf.yaml                       # Project config (task backend, etc.)
-├── sessions/                       # Active work contexts
+├── sessions/                       # Compatibility/rendered session views
 ├── plans/                          # Implementation plans
 ├── councils/                       # Deliberation records
-├── transcripts/                    # Archived conversation transcripts
 ├── tasks/                          # Local tasks (when not using Linear)
 │   ├── active/
 │   │   └── TASK-001-oauth-provider.md
@@ -71,7 +69,7 @@ RESEARCH → VISION → ARCHITECTURE → REQUIREMENTS → SPECS → TASKS → SE
 | `/architecture` | Decision question | ARCHITECTURE.md + ADR | Technical decisions |
 | `/shape` | Feature area or requirement | Spec in .agents/specs/ | Implementation-ready specification with boundaries |
 | `/breakdown` | Spec | Tasks in .agents/tasks/ | Atomic work items for agents |
-| `/implement` | TASK-ID | Session file | Execute a task |
+| `/implement` | TASK-ID | SQLite session + implementation commits | Execute a task |
 
 ## Document Formats
 
@@ -187,7 +185,7 @@ docs:
 
 # 6. Work on tasks
 /implement TASK-001
-# → Session → Implementation → Done
+# → SQLite session → Implementation → Done
 ```
 
 ### Quick Fix (Ad-hoc)
@@ -197,7 +195,7 @@ docs:
 /implement TASK-099
 # Orchestrator: "No parent spec. Proceed?"
 # User: "Yes, small fix"
-# → Session → Fix → Done
+# → SQLite session → Fix → Done
 ```
 
 ## Feedback Loops
@@ -210,23 +208,6 @@ The workflow is not rigid. Each level can feed back to higher levels:
 | Edge case invalidates requirement | Update REQUIREMENTS.md |
 | Spec too complex for its size | Re-scope or split |
 | Task reveals missing requirement | Add to REQUIREMENTS.md |
-
-## Transcript Archival
-
-After `/compact` or `/clear`, archive conversation transcripts for future reference:
-
-1. **Copy transcript** to `.agents/transcripts/`
-2. **Link from session file** in frontmatter:
-
-```yaml
-session:
-  title: "Feature Implementation"
-  transcripts:
-    - 20260123-143500-pre-compact.jsonl
-    - 20260123-160000-final.jsonl
-```
-
-This preserves full context for debugging, knowledge extraction, and audit trails.
 
 ## Flexibility Preserved
 

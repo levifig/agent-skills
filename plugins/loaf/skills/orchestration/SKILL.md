@@ -27,12 +27,12 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 ## Critical Rules
 
 ### Sessions
-- Create following [session template](templates/session.md) — compact inline journal format
-- Use `loaf session log` for journal entries: `decide(scope)`, `discover(scope)`, `block(scope)`, `spark(scope)`, `todo(scope)`
+- Start or resume with `loaf session start`; SQLite is the operational source.
+- Use `loaf session log` for journal entries: `decision(scope)`, `discover(scope)`, `block(scope)`, `spark(scope)`, `todo(scope)`
 - **SESSION JOURNAL NUDGE**: When you see this hook trigger, log unrecorded decisions or findings before responding. Use `loaf session log "entry(scope): description"`. Only log actions (decisions made, things discovered, conclusions reached) — not thoughts or read-only work.
-- Archive when complete (status + `archived_at` + `archived_by` + move to `.agents/sessions/archive/`)
-- PreCompact hook: appends `compact` entry with context summary
-- Post-compaction: `loaf session start` outputs recent journal entries for recovery
+- Wrap with `loaf session end --wrap`; archive with `loaf session archive` when complete.
+- PreCompact hook: flushes journal-worthy state before compaction.
+- Post-compaction: `loaf session start` and `loaf session show` expose recent journal context for recovery.
 
 ### Councils
 - Always odd number: 5 or 7 agents
@@ -57,7 +57,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 
 ## Verification
 
-- Validate session files with `validate-session.py` before archiving
+- Verify `loaf session list --json` / `loaf session show <ref> --json` reflect the active work before archiving
 - Validate council files with `validate-council.py` before concluding
 - Confirm Linear issue updates are self-contained (no local paths, no emoji)
 
@@ -65,7 +65,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 
 | Task | Action |
 |------|--------|
-| Multi-step work | Create session file, spawn agents |
+| Multi-step work | Start/resume session, spawn agents |
 | Complex decision | Convene council (5-7 agents, odd) |
 | Linear update | Checkboxes, no emoji, no local paths |
 | Feature planning | Size by complexity, shape before building |
@@ -87,7 +87,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 | Subagent Development | [references/subagent-development.md](references/subagent-development.md) | Delegating to specialized agents |
 | Background Agents | [references/background-agents.md](references/background-agents.md) | Running non-interactive work in background |
 | Council Workflow | [references/councils.md](references/councils.md) | Convening councils for complex decisions |
-| Session Management | [references/sessions.md](references/sessions.md) | Creating sessions and keeping live work resumable |
+| Session Management | [references/sessions.md](references/sessions.md) | Starting sessions and keeping live work resumable |
 | Session Resume | [references/session-resume.md](references/session-resume.md) | Resuming sessions, checkpoints, context recovery |
 | Context Management | [references/context-management.md](references/context-management.md) | Using /clear, /compact, managing context limits |
 | Linear Integration | [references/linear.md](references/linear.md) | Updating Linear issues, magic words, status conventions |
@@ -99,7 +99,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 **You are the orchestrator, not the implementer.**
 
 The orchestrator:
-1. Creates issues and session files for tracking
+1. Creates issues and starts sessions for tracking
 2. Breaks down work into delegable tasks
 3. Spawns specialized agents for implementation
 4. Coordinates outcomes and updates external systems
@@ -114,7 +114,6 @@ This skill uses paths from `.agents/loaf.json`:
 ```json
 {
   "sessions": {
-    "directory": ".agents/sessions",
     "councils_directory": ".agents/councils"
   },
   "linear": {
@@ -129,9 +128,8 @@ This skill uses paths from `.agents/loaf.json`:
 
 | Artifact | Location | Archive | Naming |
 |----------|----------|---------|--------|
-| Sessions | `.agents/sessions/` | `.agents/sessions/archive/` | `YYYYMMDD-HHMMSS-description.md` |
+| Sessions | SQLite (`loaf session show`) | `loaf session archive` | CLI alias / session ID |
 | Councils | `.agents/councils/` | `.agents/councils/archive/` | `YYYYMMDD-HHMMSS-topic.md` |
-| Transcripts | `.agents/transcripts/` | N/A | Copied from tool output |
 | Handoffs | `.agents/handoffs/` | delete after deprecated | Created by `/loaf:handoff` |
 | Reports | `.agents/reports/` | N/A | `YYYYMMDD-HHMMSS-subject.md` |
 | Tasks | `.agents/tasks/` | N/A | Per task manager conventions |
@@ -142,16 +140,16 @@ This skill uses paths from `.agents/loaf.json`:
 
 ### BEFORE (Planning)
 - Create/check external issue (Linear, GitHub)
-- Create session file following [session template](templates/session.md)
+- Run `loaf session start` and log the orchestration intent
 - Break down into tasks, identify agents, get user approval
 
 ### DURING (Execution)
 - Spawn specialized agents (never implement directly)
-- Track progress in session file and external issue
+- Track progress with `loaf session log` and external issue updates
 - Convene councils for uncertain decisions
 
 ### AFTER (Completion)
 - Code review + QA testing
 - Update external issue to Done
 - Ensure knowledge captured in permanent locations
-- Archive session (status + `archived_at` + `archived_by` + move + update links)
+- Run `loaf session end --wrap`; archive with `loaf session archive` after merge/closure

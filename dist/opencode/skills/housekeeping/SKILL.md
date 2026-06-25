@@ -18,10 +18,11 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 ## Critical Rules
 
 **Always**
+- Log invocation as the first action: `loaf session log "skill(housekeeping): <scope or trigger>"`
 - Review EVERY file individually — never sample or average
 - Check Linear issue status before archiving sessions
 - Extract lessons learned and decisions before archiving
-- Use CLI (`loaf session housekeeping`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
+- Use CLI (`loaf housekeeping`, `loaf session archive`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
 - Treat `.agents/handoffs/` as first-class but disposable: keep active/final handoffs, delete only after confirmed deprecated status
 - Check report `status` is `processed` and linked session is archived before archiving reports (see [templates/report.md](templates/report.md))
 - Check state assessment `session:` field before flagging for cleanup — only flag when linked session is archived
@@ -36,7 +37,7 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 ## Verification
 
 After work completes, verify:
-- Session files archived with proper metadata (status, archived_at, archived_by)
+- Session lifecycle state is visible through `loaf session list --json`
 - Tasks archived via `loaf task archive`
 - Specs archived via `loaf spec archive`
 - SQLite-backed task/spec/report state reflects lifecycle changes when initialized
@@ -49,10 +50,11 @@ After work completes, verify:
 ### CLI Commands
 
 ```bash
-loaf session housekeeping --dry-run  # Preview all actions
-loaf session housekeeping            # Run all checks and fixes
+loaf housekeeping --dry-run          # Preview recommendations
+loaf housekeeping                    # Run artifact scanner
+loaf housekeeping --sessions         # Review sessions only
 loaf session archive                 # Archive single session
-loaf session enrich <file>           # Enrich a session's journal from JSONL
+loaf session enrich --json           # Compatibility diagnostic for legacy enrichment
 loaf task archive TASK-XXX           # Archive single task
 loaf spec archive SPEC-XXX           # Archive single spec
 loaf task sync                       # Compatibility: repair Markdown task index drift
@@ -62,7 +64,7 @@ loaf task sync                       # Compatibility: repair Markdown task index
 
 | Artifact | Active Location | Archive | Action |
 |----------|-----------------|---------|--------|
-| Sessions | SQLite state + `.agents/sessions/` compatibility views | `archive/` | `loaf session archive` / `loaf session housekeeping` |
+| Sessions | SQLite state + `.agents/sessions/` compatibility views | `archive/` | `loaf housekeeping --sessions` / `loaf session archive` |
 | Tasks (local mode only) | SQLite state + `.agents/tasks/` source prose | `archive/` | `loaf task archive` |
 | Specs | SQLite state + `.agents/specs/` authored prose | `archive/` | `loaf spec archive` |
 | Drafts (state assessments) | `.agents/drafts/` | delete | Flag for cleanup when linked session is archived |
@@ -79,7 +81,10 @@ every mode.
 
 ## Session Enrichment
 
-For each session with status `stopped` or `done` that has a `claude_session_id` in frontmatter, run `loaf session enrich <file>` to catch up on journal entries that weren't logged during the session.
+In SQLite-backed projects, `loaf session log` is the canonical journal writer and
+`wrap` owns end-of-session checks. `loaf session enrich --json` is a compatibility
+diagnostic for legacy markdown enrichment; it is not part of the normal
+housekeeping flow.
 
 Do NOT enrich `active` sessions — those are handled by the wrap skill when the session ends.
 

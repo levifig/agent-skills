@@ -1,12 +1,13 @@
 # Background Agents
 
-Background agents handle low-priority, long-running, or non-interactive work that can run independently while the user continues with other tasks.
+Background agents handle low-priority, long-running, or non-interactive work
+while the user continues with other tasks.
 
 ## Contents
 
 - When to Use Background Agents
 - Spawning Background Agents
-- Background Agent Tracking
+- Tracking
 - Result Retrieval
 - Workflow Example
 - Anti-Patterns
@@ -19,20 +20,11 @@ Background agents handle low-priority, long-running, or non-interactive work tha
 | Security audits | Interactive debugging |
 | Code coverage analysis | User-facing questions |
 | Large-scale refactoring reports | Time-sensitive fixes |
-| Codebase-wide linting reports | Tasks requiring immediate feedback |
 | Documentation audits | Work needing user decisions mid-task |
 | Dependency vulnerability scans | Blocking tasks for current work |
 
-**Good candidates:**
-- Results can be processed later
-- No user interaction required
-- Task is well-defined with clear completion criteria
-- Output is a report or artifact, not a conversation
-
-**Poor candidates:**
-- Needs clarification mid-task
-- Time-sensitive (user waiting for result)
-- Requires real-time coordination with other agents
+Good candidates have clear completion criteria, can run without clarification,
+and produce a report or durable artifact.
 
 ## Spawning Background Agents
 
@@ -51,8 +43,7 @@ Task(
     - src/services/
 
     Write report to: .agents/reports/YYYYMMDD-HHMMSS-security-audit.md
-
-    Session: .agents/sessions/20260123-143000-auth-feature.md
+    Active session: SESSION-ALIAS if available from loaf session list/show
     """,
     run_in_background=True
 )
@@ -60,187 +51,57 @@ Task(
 
 ### Cursor
 
-Background agents are configured via the `is_background: true` YAML property. When spawning:
+Background agents are configured via the `is_background: true` YAML property.
+When spawning, specify the report destination and any task/spec/session IDs:
 
 ```
 @background-runner Run security audit on backend codebase.
-Write report to .agents/reports/
+Write report to .agents/reports/.
+Reference TASK-123 and the active session alias if available.
 ```
 
-## Background Agent Tracking
+## Tracking
 
-Track background agents in session frontmatter:
+Track background work with durable references:
 
-```yaml
-background_agents:
-  - id: "bg-20260123-143000-security-scan"
-    agent: background-runner
-    task: "Full security audit of backend"
-    status: running  # running | completed | failed
-    result_location: null
-  - id: "bg-20260123-144500-coverage"
-    agent: background-runner
-    task: "Test coverage analysis"
-    status: completed
-    result_location: ".agents/reports/20260123-144500-coverage-report.md"
-```
+1. Log the spawn with `loaf session log "todo(background): started <id> for <task>"`.
+2. Ask the background agent to write a report under `.agents/reports/`.
+3. When complete, log `discover(background): <id> wrote <report>`.
+4. Process findings into tasks, specs, ADRs, or report verdicts as appropriate.
 
-### Status Values
-
-| Status | Meaning |
-|--------|---------|
-| `running` | Agent still executing |
-| `completed` | Work finished, results available |
-| `failed` | Agent encountered error |
-
-### ID Convention
-
-Background agent IDs follow: `bg-YYYYMMDD-HHMMSS-<description>`
-
-Generate with:
-```bash
-echo "bg-$(date -u +"%Y%m%d-%H%M%S")-<description>"
-```
+Use a stable ID such as `bg-YYYYMMDD-HHMMSS-description` in the prompt and
+journal entries.
 
 ## Result Retrieval
 
-Background agents write results to `.agents/reports/` with standard frontmatter:
-
-```yaml
----
-report:
-  title: "Security Audit Report"
-  type: background-agent-output
-  status: unprocessed  # unprocessed | processed | archived
-  created: "2026-01-23T14:30:00Z"
-  background_agent_id: "bg-20260123-143000-security-scan"
-  session_reference: "20260123-140000-auth-feature.md"
----
-```
-
-### Processing Results
-
-1. SessionStart hook alerts user to completed background work
-2. User or orchestrator reviews report in `.agents/reports/`
-3. Orchestrator updates session frontmatter:
-   - Change `status` from `running` to `completed`
-   - Set `result_location` to report path
-4. Process findings as needed (spawn agents, create issues)
-5. Set report `status` to `processed`
+Background agents write results to `.agents/reports/` with enough metadata to
+identify the source task and report status. In SQLite-backed projects, use
+`loaf report list`, `loaf report show`, and `loaf report archive` when report
+state is available.
 
 ## Workflow Example
 
-### 1. Orchestrator Identifies Low-Priority Work
-
-During auth feature implementation, orchestrator identifies need for security audit but it is not blocking current work.
-
-### 2. Orchestrator Spawns Background Agent
-
-```python
-Task(
-    subagent_type="background-runner",
-    prompt="""
-    Run comprehensive security audit on auth implementation.
-
-    Files to audit:
-    - src/auth/endpoints.py
-    - src/auth/token.py
-    - src/auth/middleware.py
-
-    Check for:
-    - OWASP Top 10 vulnerabilities
-    - Secrets in code
-    - SQL injection risks
-    - Authentication bypasses
-
-    Write report to: .agents/reports/20260123-143000-auth-security.md
-
-    Session: .agents/sessions/20260123-140000-auth-feature.md
-    """,
-    run_in_background=True
-)
-```
-
-### 3. Orchestrator Updates Session Frontmatter
-
-```yaml
-background_agents:
-  - id: "bg-20260123-143000-auth-security"
-    agent: background-runner
-    task: "Auth security audit"
-    status: running
-    result_location: null
-```
-
-### 4. Work Continues
-
-Orchestrator and other agents continue with main implementation while background agent works.
-
-### 5. Session Resumes Later
-
-SessionStart hook detects completed background work:
-
-```
-# Background Work Completed
-
-The following background agents have completed:
-
-- **bg-20260123-143000-auth-security** (background-runner)
-  - Task: Auth security audit
-  - Result: .agents/reports/20260123-143000-auth-security.md
-
-Review reports and update session frontmatter after processing.
-```
-
-### 6. Results Processed
-
-Orchestrator reads report, creates issues for findings, updates session.
+1. Orchestrator identifies non-blocking security audit work.
+2. Orchestrator logs the background spawn in the active session.
+3. Background agent writes `.agents/reports/YYYYMMDD-HHMMSS-auth-security.md`.
+4. Orchestrator reviews the report, creates follow-up tasks, and logs the
+   outcome.
+5. Report state is finalized or archived through the report lifecycle.
 
 ## Anti-Patterns
 
 | Don't | Do Instead |
 |-------|------------|
 | Use for blocking work | Keep blocking work in foreground |
-| Spawn without tracking | Always update session frontmatter |
-| Ignore completed results | Process results when alerted |
+| Spawn without tracking | Log the spawn and require a report path |
+| Ignore completed results | Process reports into tasks, findings, or decisions |
 | Use for interactive tasks | Reserve for autonomous work |
-| Spawn many concurrent background agents | Limit to 2-3 to avoid resource contention |
-| Skip result location in prompt | Always specify where to write output |
+| Spawn many concurrent background agents | Limit concurrency to avoid resource contention |
+| Skip result location in prompt | Always specify where output belongs |
 
 ## Integration Points
 
-### SessionStart Hook
-
-Checks session frontmatter for `background_agents` with `status: completed`. Alerts user to review results.
-
-### PreCompact Hook
-
-Includes background agent state in preservation. PreCompact hook captures:
-- Active background agent list
-- Current status of each
-- Result locations for completed agents
-
-### Session Frontmatter
-
-Full template with background agents:
-
-```yaml
----
-session:
-  title: "Feature implementation"
-  status: in_progress
-  # ... other session fields ...
-
-background_agents:
-  - id: "bg-20260123-143000-security"
-    agent: background-runner
-    task: "Security audit"
-    status: completed
-    result_location: ".agents/reports/20260123-143000-security.md"
-  - id: "bg-20260123-150000-coverage"
-    agent: background-runner
-    task: "Coverage analysis"
-    status: running
-    result_location: null
----
-```
+- `loaf session log` records spawn and completion facts.
+- `loaf session show` exposes recent background-work journal entries.
+- `loaf report` commands own durable report lifecycle when available.
+- `/loaf:wrap` should mention unprocessed background reports before ending a session.

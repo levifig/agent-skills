@@ -8,7 +8,6 @@
 - Linear Status Management
 - Handoff State Requirements
 - Timestamps for User Context
-- Transcript Archival
 - Task Completion
 
 Detailed reference for session lifecycle management during implementation.
@@ -87,7 +86,7 @@ Use Linear MCP's `list_teams` (if configured) to get all workspace teams for val
 
 ## Diagram Consideration
 
-For multi-file or multi-service changes, consider adding architecture diagrams to the session file.
+For multi-file or multi-service changes, consider adding architecture diagrams to the linked spec, report, ADR, or implementation notes.
 
 ### When to Create Diagrams
 
@@ -106,7 +105,7 @@ Ask yourself:
 2. Is there a data flow that needs to be understood?
 3. Would a visual help communicate the approach?
 
-If yes to any, add an `## Architecture Diagrams` section to the session file.
+If yes to any, capture the diagram in a durable artifact such as a spec, report, ADR, or implementation note, and log the reference with `loaf session log`.
 
 ### Diagram Template
 
@@ -144,7 +143,7 @@ For complex tasks, explore before implementing:
 1. Use Task(Explore) or Task(Plan) to investigate codebase
 2. Map existing patterns and conventions
 3. Identify integration points
-4. Document findings in session file
+4. Log findings with `loaf session log` and reference durable artifacts
 5. Present approach to user for approval before spawning
 ```
 
@@ -193,12 +192,12 @@ never implement through open `blockedBy`.
 
 ## Handoff State Requirements
 
-**The session file must ALWAYS be handoff-ready.** After every significant action:
+**The session journal must ALWAYS be handoff-ready.** After every significant action:
 
-1. Update `## Current State` to reflect what just happened
-2. Update `orchestration.current_task` in frontmatter
+1. Log what just happened with `loaf session log`
+2. Reference task/spec/report/commit IDs rather than duplicating long prose
 3. Log completed agent work with outcomes
-4. Ensure anyone could pick up the work immediately
+4. Ensure anyone could pick up the work immediately from `loaf session show`
 
 ---
 
@@ -217,44 +216,6 @@ Generate with: `date -u +"%Y-%m-%d %H:%M UTC"`
 
 ---
 
-## Transcript Archival
-
-After `/compact` or `/clear`, archive conversation transcripts for future reference.
-
-### Process
-
-1. **Get transcript path** from OpenCode output after compaction
-2. **Create transcripts directory** if needed:
-   ```bash
-   mkdir -p .agents/transcripts
-   ```
-3. **Copy transcript** with descriptive name:
-   ```bash
-   cp /path/to/transcript.jsonl .agents/transcripts/YYYYMMDD-HHMMSS-description.jsonl
-   ```
-4. **Update session frontmatter**:
-   ```yaml
-   transcripts:
-     - 20260123-143500-pre-compact.jsonl
-   ```
-
-### When to Archive
-
-| Event | Action |
-|-------|--------|
-| Before `/compact` | Archive current transcript |
-| Before `/clear` | Archive current transcript |
-| Session end | Archive final transcript |
-
-### Benefits
-
-- **Audit trail** - Full history of decisions and work
-- **Knowledge extraction** - Mining past sessions for patterns
-- **Debugging** - Understanding how errors occurred
-- **Training** - Learning from past sessions
-
----
-
 ## Task Completion
 
 When a task-coupled session completes:
@@ -267,7 +228,7 @@ When a task-coupled session completes:
      `list_issues` with `parent: <parent-id>`; if all are `completed`-type,
      close the parent and mark the local spec `complete`, else both stay
      in flight
-3. **Archive session** (standard process)
+3. **Wrap session** with `loaf session end --wrap`; archive with `loaf session archive` when the work is closed
 
 ### Spec Completion Check
 

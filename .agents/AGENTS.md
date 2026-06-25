@@ -90,6 +90,10 @@ loaf session log "skill(implement): TASK-042 — add PAUSE headers to session en
 
 This creates an audit trail of which skills ran during a session. `/wrap` uses these entries to check whether housekeeping or other periodic skills were run.
 
+### Canonical Session Model
+
+`wrap` is the canonical session model. Operational session truth lives in SQLite; use `loaf session start` to find or create the active session, `loaf session log "type(scope): desc"` for journal entries, and `loaf session end --wrap` to close a wrapped session. Markdown is a rendered view or compatibility export, not a hand-authored source surface.
+
 ### Naming Conventions
 
 Use domain-focused names in gerund or noun-phrase form:
@@ -220,7 +224,7 @@ description: >-
 
 ### Templates
 
-Artifact format templates (session files, specs, ADRs, task files) live in `templates/` directories. SKILL.md references them with links instead of embedding inline.
+Artifact format templates (session renders, specs, ADRs, task files) live in `templates/` directories. SKILL.md references them with links instead of embedding inline.
 
 **Skill-specific templates:** `content/skills/{name}/templates/` — templates unique to one skill.
 
@@ -236,7 +240,7 @@ shared-templates:
 
 **Reference pattern in SKILL.md:**
 ```markdown
-Create session file following [templates/session.md](templates/session.md).
+Use [templates/session.md](templates/session.md) for rendered session journal format.
 ```
 
 **Templates vs references:**
@@ -327,19 +331,19 @@ Users shouldn't invoke `/python-development` directly.
 
 ### Session Journal Vocabulary
 
-Session journals in `.agents/sessions/` use a **compact inline format** — append-only structured logs. Think "conventional commits meets bullet journal."
+Session journals live in SQLite and render to a **compact inline format** — append-only structured logs. Think "conventional commits meets bullet journal."
 
 | Term | Meaning |
 |------|---------|
-| **Session** | A markdown file with compact inline journal entries |
-| **Session File** | Named `YYYYMMDD-HHMMSS-description.md` in `.agents/sessions/` |
-| **Frontmatter** | YAML header with `spec`, `branch`, `status`, `created`, `last_entry` |
+| **Session** | A SQLite-backed work record with compact inline journal entries |
+| **Session Render** | Markdown view produced from SQLite state |
+| **Session Row** | SQLite record containing branch, status, timestamps, and harness identity |
 | **Journal Entry** | `[YYYY-MM-DD HH:MM] type(scope): description` |
 | **Entry Type** | `session`, `commit`, `decision`, `discover`, `block`, `unblock`, `spark`, `todo`, etc. |
 | **Burst** | Entries grouped without blank lines |
-| **Archive** | Completed sessions moved to `.agents/sessions/archive/` |
+| **Archive** | Completed sessions marked archived with `loaf session archive` |
 
-**Session Status Values:** `active`, `stopped`, `done`, `blocked`, `archived`
+**Session Status Values:** `active`, `stopped`, `done`, `archived` until SPEC-049 unifies vocabulary.
 
 **Entry Format:**
 ```markdown

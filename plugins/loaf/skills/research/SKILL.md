@@ -34,6 +34,7 @@ Patterns for zooming out, investigating topics, and evolving project direction.
 - Cite sources with confidence levels
 - Present options, let user decide
 - Get approval before editing VISION
+- Log invocation first: `loaf session log "skill(research): <topic or mode>"`
 - Log findings to session journal: `loaf session log "discover(scope): summary of finding"`
 
 ### Never
@@ -80,7 +81,7 @@ Parse `$ARGUMENTS` to determine mode:
 
 Prioritize sources in this order:
 
-1. **Project context** (highest) -- VISION.md, ARCHITECTURE.md, session files, codebase patterns
+1. **Project context** (highest) -- VISION.md, ARCHITECTURE.md, SQLite sessions, codebase patterns
 2. **Authoritative docs** -- Context7, official docs, RFCs
 3. **Community knowledge** -- Stack Overflow (verified), GitHub issues, expert blogs
 4. **General web** (lowest) -- Search results, unverified sources
@@ -95,7 +96,7 @@ Always check project context first. Rate findings: **High** (official/verified),
 
 1. Read project documents: VISION.md, STRATEGY.md, ARCHITECTURE.md
 2. Check ideas (`.agents/ideas/`) and specs (`docs/specs/`)
-3. Review recent sessions (`.agents/sessions/`)
+3. Review recent sessions with `loaf session list --all --json` and `loaf session show <ref> --json`
 4. Check recent commits: `git log --oneline -20`
 5. Synthesize following [state-assessment template](templates/state-assessment.md)
 
@@ -104,7 +105,7 @@ Always check project context first. Rate findings: **High** (official/verified),
 **Trigger:** Specific topic or question
 
 1. **Interview** with AskUserQuestion: what are you trying to understand? What context do you have? What decision will this inform?
-2. Check project context first (ADRs, ARCHITECTURE, sessions)
+2. Check project context first (ADRs, ARCHITECTURE, SQLite sessions)
 3. Apply confidence hierarchy for external sources
 4. For a transient review artifact, use `loaf report generate` when an existing
    SQLite-backed export kind fits; for authored long-form research, create a

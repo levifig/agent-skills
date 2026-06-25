@@ -3,7 +3,7 @@ id: SPEC-048
 title: Session-Model Convergence to SQLite
 source: "/Users/levifig/Code/levifig/projects/loaf/.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md (WS-C)"
 created: 2026-06-22T09:13:21Z
-status: drafting
+status: complete
 branch: feat/session-model-convergence
 source_sessions:
   - id: 20260621-001541-session
@@ -86,15 +86,18 @@ guidance.
   markdown view of a session uses SPEC-044's deterministic body renderer. SPEC-048
   benefits from but does not strictly require SPEC-044 — until it lands, sessions
   are SQLite-only with the existing compatibility export.
-- **SPEC-049** (WS-C, status-vocabulary unification) — **sequenced-with SPEC-049
-  (soft; SPEC-048 may land first)**. The session status enum is
-  inconsistent across three files today: `active` (`content/templates/session.md`),
-  `in_progress`/`paused` (`content/skills/orchestration/references/sessions.md`),
-  and `active/stopped/done/blocked/archived` (CLAUDE.md). SPEC-049 owns the
-  canonical enum and the "schema lives in exactly one file" lint. SPEC-048 must
-  not invent a fourth vocabulary — it cites whatever SPEC-049 anoints. If SPEC-048
-  lands first, it uses the SPEC-040 runtime enum (`internal/state/session_*.go`)
-  as the interim source of truth and SPEC-049 reconciles.
+- **SPEC-049** (WS-C, status-vocabulary unification) — **sequenced-after
+  SPEC-048 for now**. The session status enum is inconsistent across current
+  guidance: `active` (`content/templates/session.md`), `in_progress`/`paused`
+  (`content/skills/orchestration/references/sessions.md`), and
+  `active/stopped/done/blocked/archived` (CLAUDE.md). SPEC-049 owns the canonical
+  enum and the "schema lives in exactly one file" lint. SPEC-048 must not invent
+  a fourth vocabulary. Because SPEC-048 lands first, it cites the current runtime
+  transitions as interim truth: `active` and `stopped` in
+  `internal/state/session_start.go`, `stopped`/`active`/`done` in
+  `internal/state/session_end.go`, and `archived` in
+  `internal/state/session_archive.go`. SPEC-049 reconciles that into the durable
+  vocabulary.
 - **SPEC-029** (librarian journal enrichment). SPEC-029 enriches session journals
   from JSONL; the `housekeeping` skill currently drives `loaf session enrich`
   (`content/skills/housekeeping/SKILL.md:52,79`). SPEC-048 keeps enrichment but
@@ -249,58 +252,74 @@ tokens where harness-specific terms appear.
 
 ## Open Questions
 
-- [ ] Does SPEC-049 land before or after SPEC-048? If after, confirm the interim
-  enum source (`internal/state/session_*.go`) is the right citation and that
-  SPEC-049 will reconcile the three documents this spec touches.
-- [ ] After SPEC-043, is `content/templates/session.md` retained as a *render
+- [x] Does SPEC-049 land before or after SPEC-048? **After.** SPEC-048 cites the
+  runtime transitions in `internal/state/session_start.go`,
+  `internal/state/session_end.go`, and `internal/state/session_archive.go` as the
+  interim source; SPEC-049 will collapse that into the canonical status vocabulary.
+- [x] After SPEC-043, is `content/templates/session.md` retained as a *render
   template* consumed by the renderer, or demoted to a pure journal-format
-  *reference* doc? (Affects whether it lives in `templates/` or `references/`.)
-- [ ] Should `loaf session enrich` guidance survive in `housekeeping` at all once
+  *reference* doc? **Retain in place for this spec.** Reframe it as a render
+  template / journal-format reference, not a file scaffold. Moving it from
+  `templates/` to `references/` would churn target distribution and belongs in
+  SPEC-044/SPEC-050 if the deterministic renderer no longer consumes it.
+- [x] Should `loaf session enrich` guidance survive in `housekeeping` at all once
   sessions are SQLite-only bodies (SPEC-029 writes rows, not file lines), or move
-  wholesale into the SQLite enrichment path?
-- [ ] Exact set of "read-side" skills beyond `reflect`/`research`/`background-runner`
+  wholesale into the SQLite enrichment path? **Demote it out of the primary
+  housekeeping flow.** `wrap` may still mention `loaf session enrich --json` as a
+  compatibility diagnostic; `housekeeping` should not drive legacy file
+  enrichment as normal work.
+- [x] Exact set of "read-side" skills beyond `reflect`/`research`/`background-runner`
   that reference session state — confirm by grep before the atomic change so none
-  are left markdown-first.
-- [ ] Which user-invocable workflows still lack a first-action self-log? Enumerate
-  against `content/skills/*` (eval §3 M1 says only 2 of ~19 comply).
+  are left markdown-first. **In scope:** the named read-side wave plus
+  `content/agents/background-runner.md`; `handoff` and `librarian` are reviewed
+  for explicit conflict but only edited if they present session files as the
+  primary routing surface. Compatibility hooks/scripts may remain as legacy
+  tooling if they are not promoted as the canonical path.
+- [x] Which user-invocable workflows still lack a first-action self-log? Enumerate
+  against `content/skills/*` (eval §3 M1 says only 2 of ~19 comply). **Scope for
+  this spec:** add first-action self-log guidance to touched user-invocable
+  workflows: `bootstrap`, `brainstorm`, `implement`, `housekeeping`, `reflect`,
+  `research`, plus any touched workflow that already has a user-invocable sidecar.
+  A repo-wide self-log sweep remains outside SPEC-048 unless required by a touched
+  cross-reference.
 
 ## Test Conditions
 
-- [ ] `wrap` is cited as the canonical session model in `.claude/CLAUDE.md` and
+- [x] `wrap` is cited as the canonical session model in `.claude/CLAUDE.md` and
   `.agents/AGENTS.md`; no other document presents a competing "create a session
   file" model as primary.
-- [ ] `content/templates/session.md` no longer instructs creating
+- [x] `content/templates/session.md` no longer instructs creating
   `.agents/sessions/*.md` as a source surface; it documents the journal entry
   format and entry types as a render template / reference.
-- [ ] No skill or agent profile references `loaf session housekeeping`; all
+- [x] No skill or agent profile references `loaf session housekeeping`; all
   housekeeping guidance uses `loaf housekeeping`.
-- [ ] `content/skills/housekeeping/SKILL.md` writes a `skill(housekeeping)`
+- [x] `content/skills/housekeeping/SKILL.md` writes a `skill(housekeeping)`
   self-log marker on invocation, and `wrap`'s "no housekeeping this session"
   nudge stops mis-firing when housekeeping has run.
-- [ ] Zero matches for `Transcript Archival` or `.agents/transcripts/` across
+- [x] Zero matches for `Transcript Archival` or `.agents/transcripts/` across
   `content/` and all built outputs (`dist/*`, `plugins/loaf/`).
-- [ ] `content/skills/implement/SKILL.md` no longer contains "MANDATORY: Create
+- [x] `content/skills/implement/SKILL.md` no longer contains "MANDATORY: Create
   session file BEFORE any other work" or "DO NOT PROCEED WITHOUT A SESSION FILE";
   it teaches `loaf session start`.
-- [ ] `content/agents/implementer.md` no longer demands a hand-authored "session
+- [x] `content/agents/implementer.md` no longer demands a hand-authored "session
   file" and aligns with the `loaf session start` model — changed in the same
   commit set as `implement`.
-- [ ] `orchestration` SKILL + `sessions.md`/`context-management.md`/
+- [x] `orchestration` SKILL + `sessions.md`/`context-management.md`/
   `background-agents.md` present the SQLite/`wrap` model and contain no
   `transcripts:` frontmatter rows/layout.
-- [ ] `brainstorm` captures sparks via `loaf spark capture` (SQLite-first); the
+- [x] `brainstorm` captures sparks via `loaf spark capture` (SQLite-first); the
   draft `.md` is described as export/projection, not canonical source.
-- [ ] Read-side skills (`reflect`, `research`, `background-runner`) reference the
+- [x] Read-side skills (`reflect`, `research`, `background-runner`) reference the
   SQLite session model, not markdown session files as the routing surface.
-- [ ] User-invocable workflow skills touched in this convergence include a
+- [x] User-invocable workflow skills touched in this convergence include a
   first-action `loaf session log "skill(<name>): …"`; the `shape`, `housekeeping`,
   and `implement` AGENTS.md exemplars match the documented rule.
-- [ ] The session vocabulary used in the rewritten content matches the runtime
+- [x] The session vocabulary used in the rewritten content matches the runtime
   enum (`internal/state/session_*.go`) / SPEC-049's canonical enum — no fourth
   vocabulary introduced.
-- [ ] `loaf build` succeeds; `npm run typecheck` and `npm run test` pass; built
+- [x] `loaf build` succeeds; `npm run typecheck` and `npm run test` pass; built
   outputs committed with source.
-- [ ] The whole convergence lands as one atomic change set — no intermediate
+- [x] The whole convergence lands as one atomic change set — no intermediate
   commit leaves some session skills SQLite-first and others markdown-first.
 
 ## Priority Order
@@ -324,7 +343,9 @@ SPEC-043 (session bodies).
    demands a hand-authored session file. *(non-breaking)*
 4. **Bootstrap + brainstorm.** Bootstrap session guidance to SQLite/`wrap`;
    brainstorm to `loaf spark capture`. *(non-breaking)*
-5. **Read-side wave.** `reflect`, `research`, `background-runner`. *(non-breaking)*
+5. **Read-side wave.** `reflect`, `research`, and
+   `content/agents/background-runner.md`; review `handoff` and `librarian` for
+   explicit primary-model conflicts and edit only if needed. *(non-breaking)*
 6. **Housekeeping fix + self-logging.** `loaf session housekeeping` →
    `loaf housekeeping`; write `skill(housekeeping)` marker; add first-action
    self-logging to touched user-invocable workflows; fix AGENTS.md exemplars.

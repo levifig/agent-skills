@@ -18,7 +18,8 @@ Generative thinking — expanding possibilities before narrowing through structu
 - Diverge before converging — generate options before judging
 - Connect exploration to VISION.md and STRATEGY.md context
 - Document discarded options — they hold valuable reasoning
-- Capture sparks (speculative byproducts) in a dedicated section — brainstorm documents are the canonical home for sparks
+- Log invocation first: `loaf session log "skill(brainstorm): <topic>"`
+- Capture sparks (speculative byproducts) with `loaf spark capture --scope <scope> --text <text>`; brainstorm documents may render or summarize them
 - Set boundaries on exploration time
 - Log outcome to session journal: `loaf session log "decision(scope): direction chosen and rationale"`
 
@@ -32,7 +33,7 @@ Generative thinking — expanding possibilities before narrowing through structu
 
 After work completes, verify:
 - Brainstorm document created at `.agents/drafts/{YYYYMMDD}-{HHMMSS}-brainstorm-{slug}.md`
-- `## Sparks` section present with speculative byproducts
+- Sparks captured with `loaf spark capture` and optionally summarized in `## Sparks`
 - Spark lifecycle documented: unprocessed → promoted/discarded
 - Brainstorm references strategic context from VISION/STRATEGY
 
@@ -57,7 +58,7 @@ After work completes, verify:
 
 Sparks are: lightweight, byproducts, worth remembering. Mark as `*(promoted)*` or `*(abandoned)*` after processing.
 
-Brainstorm documents are archived after sparks are processed — never deleted, since the exploration context has lasting value.
+Brainstorm documents are archived after sparks are processed — never deleted, since the exploration context has lasting value. SQLite spark state is the lifecycle source; draft markdown is a projection or narrative summary.
 
 ## Suggests Next
 

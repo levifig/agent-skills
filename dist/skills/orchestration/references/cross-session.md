@@ -135,7 +135,7 @@ When sessions are archived, decisions are extracted to Serena memory:
 
 1. `loaf session end --wrap` persists decisions to spec changelog
 2. Session stays in `sessions/` with `status: done` — no immediate archive
-3. `loaf session housekeeping` archives complete sessions after 7-day age threshold
+3. `loaf housekeeping` reports stale compatibility artifacts, and `loaf session archive` archives closed SQLite sessions when work is complete
 
 ### At Reference Time (spec changelog)
 

@@ -8,7 +8,7 @@ title: "[Handoff Title]"
 created: YYYY-MM-DDTHH:MM:SSZ
 status: draft | final | deprecated
 source: session | branch | task | ad-hoc
-session: .agents/sessions/YYYYMMDD-HHMMSS-session.md
+session: session alias or loaf session show reference
 branch: branch-name
 deprecated_at: YYYY-MM-DDTHH:MM:SSZ  # Set only when confirmed obsolete
 deprecated_by: orchestrator

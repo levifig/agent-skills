@@ -34,12 +34,13 @@ Update VISION, STRATEGY, and ARCHITECTURE based on proven implementation.
 - **Post-implementation only** -- reflect after shipping, not before or during planning
 - **Get explicit approval** -- never update strategic docs (VISION.md, STRATEGY.md, ARCHITECTURE.md) without user confirmation
 - **Consolidate** -- batch related learnings into coherent updates, avoid micro-updates
-- **Link back** -- always reference the specs/sessions that informed each update
+- **Log first** -- log invocation before gathering evidence: `loaf session log "skill(reflect): <scope>"`
+- **Link back** -- always reference the specs, SQLite sessions, reports, and commits that informed each update
 - **Log updates** -- log each strategic document update to session journal: `loaf session log "decision(scope): updated STRATEGY.md with learning"`
 
 ## Verification
 
-- Proposals cite specific specs, sessions, or commits as evidence
+- Proposals cite specific specs, SQLite sessions, reports, or commits as evidence
 - No strategic document was modified without explicit user approval
 - Completed specs referenced in updates are archived after reflection
 
@@ -87,7 +88,7 @@ After completing work, `/loaf:reflect` extracts learnings and proposes updates t
 
 Sources:
 1. **Completed specs** (`.agents/specs/SPEC-*.md` with status `complete`) -- look for "Lessons Learned"
-2. **Session files** (`.agents/sessions/`) -- insights, surprises, pivots
+2. **SQLite sessions** (`loaf session list --all --json`, then `loaf session show <ref> --json`) -- insights, surprises, pivots
 3. **Recent commits** (`git log --oneline -30`)
 4. **Implementation reality** -- what was harder/easier than expected? What assumptions were wrong?
 

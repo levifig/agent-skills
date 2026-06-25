@@ -40,6 +40,7 @@ First-contact project setup: detect state, interview the builder, populate proje
 - **BRIEF is input, not output** -- the BRIEF is raw intake. Extract every useful fact into VISION/STRATEGY/ARCHITECTURE/AGENTS during bootstrap.
 - **BRIEF is archeological after bootstrap** -- once extraction completes, the BRIEF is a frozen historical snapshot. No skill, agent, command, or template should reference `docs/BRIEF.md` post-bootstrap. Operating documents must stand on their own.
 - **Suggest, don't execute** -- recommend next skills at the end, never auto-run them
+- **Log first** -- log invocation before interviewing: `loaf session log "skill(bootstrap): <project or intake>"`
 - **Log outcome** -- log bootstrap completion to session journal: `loaf session log "decision(bootstrap): project bootstrapped, mode detected"`
 
 ---
@@ -49,7 +50,7 @@ First-contact project setup: detect state, interview the builder, populate proje
 - All expected operating documents (`docs/VISION.md`, `.agents/AGENTS.md` at minimum) exist and contain populated content
 - Useful BRIEF content has been extracted into operating documents (no future reader should need to open the BRIEF)
 - Symlinks are correct: `.claude/CLAUDE.md -> .agents/AGENTS.md` and `./AGENTS.md -> .agents/AGENTS.md`
-- A session file was saved in `.agents/sessions/` capturing key decisions and interview exchanges
+- Key decisions and interview outcomes were logged with `loaf session log` and are readable with `loaf session show`
 
 ---
 
@@ -368,13 +369,13 @@ If symlinks already exist and point to the right targets, skip silently. If they
 
 ### 3. Session Recording
 
-Save the bootstrap interview as a session file:
+Record the bootstrap interview in the active SQLite-backed session:
 
-```
-.agents/sessions/{YYYYMMDD}-{HHMMSS}-bootstrap.md
-```
+1. Run `loaf session start` if there is no active session.
+2. Log mode detection and key interview decisions with `loaf session log`.
+3. Use `loaf session show <session-ref>` to inspect the rendered session view.
 
-The session should capture:
+The session journal should capture:
 - Mode detected and why
 - Key decisions made during the interview
 - Key interview exchanges that informed those decisions
@@ -382,7 +383,8 @@ The session should capture:
 - The original problem framing and user intent
 - Any open questions or deferred decisions
 
-Follow [templates/session.md](templates/session.md) for structure and frontmatter schema.
+Use [templates/session.md](templates/session.md) only as the rendered journal
+format reference; do not hand-author session markdown as the source of truth.
 
 ### 4. Next Steps
 
