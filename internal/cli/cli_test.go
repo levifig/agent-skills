@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14004,6 +14005,313 @@ func TestRunnerReportCreateAndShowSQLiteBody(t *testing.T) {
 	assertCLIReportContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
 }
 
+func TestRunnerFindingCRUDAndReportDecomposition(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "create", "security-audit", "--type", "audit", "--message", "# Security Audit"}); err != nil {
+		t.Fatalf("report create error = %v", err)
+	}
+
+	var createOut bytes.Buffer
+	err := Runner{Stdout: &createOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{
+		"finding", "create",
+		"--report", "report-security-audit",
+		"--title", "Missing auth check",
+		"--severity", "critical",
+		"--confidence", "high",
+		"--dimension", "auth",
+		"--path", "internal/auth.go",
+		"--line-start", "42",
+		"--message", "Handler accepts unauthenticated requests.",
+		"--json",
+	})
+	if err != nil {
+		t.Fatalf("finding create --json error = %v", err)
+	}
+	created := decodeFindingCreateResult(t, createOut.Bytes())
+	if !strings.HasPrefix(created.Finding.Alias, "FINDING-") || !strings.HasSuffix(created.Finding.Alias, "-missing-auth-check") {
+		t.Fatalf("created.Finding.Alias = %q, want finding alias with title slug", created.Finding.Alias)
+	}
+	if created.Finding.Body != "Handler accepts unauthenticated requests." {
+		t.Fatalf("created.Finding.Body = %q, want CLI message body", created.Finding.Body)
+	}
+
+	var verdictOut bytes.Buffer
+	err = Runner{Stdout: &verdictOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{
+		"finding", "verdict", created.Finding.Alias,
+		"--outcome", "confirmed",
+		"--rationale", "Reproduced in CLI test.",
+		"--json",
+	})
+	if err != nil {
+		t.Fatalf("finding verdict --json error = %v", err)
+	}
+	verdict := decodeFindingVerdictResult(t, verdictOut.Bytes())
+	if verdict.Finding.Status != "confirmed" || verdict.Verdict.Outcome != "confirmed" {
+		t.Fatalf("verdict result = %#v, want confirmed finding and verdict", verdict)
+	}
+
+	var listOut bytes.Buffer
+	err = Runner{Stdout: &listOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"finding", "list", "--severity", "critical", "--status", "confirmed", "--json"})
+	if err != nil {
+		t.Fatalf("finding list --json error = %v", err)
+	}
+	list := decodeFindingList(t, listOut.Bytes())
+	if len(list.Findings) != 1 {
+		t.Fatalf("len(list.Findings) = %d, want 1", len(list.Findings))
+	}
+	if list.Findings[created.Finding.Alias].Status != "confirmed" {
+		t.Fatalf("list.Findings[%q] = %#v, want confirmed finding", created.Finding.Alias, list.Findings[created.Finding.Alias])
+	}
+
+	var showOut bytes.Buffer
+	err = Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"report", "show", "report-security-audit", "--json"})
+	if err != nil {
+		t.Fatalf("report show --json error = %v", err)
+	}
+	show := decodeReportShow(t, showOut.Bytes())
+	if len(show.Report.Findings) != 1 {
+		t.Fatalf("len(show.Report.Findings) = %d, want 1", len(show.Report.Findings))
+	}
+	if show.Report.Findings[0].Alias != created.Finding.Alias || show.Report.Findings[0].Status != "confirmed" {
+		t.Fatalf("show.Report.Findings[0] = %#v, want confirmed child finding", show.Report.Findings[0])
+	}
+}
+
+func TestRunnerRunLifecycleAndFindingRelationships(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "create", "run-report", "--type", "audit"}); err != nil {
+		t.Fatalf("report create error = %v", err)
+	}
+
+	var createOut bytes.Buffer
+	err := Runner{Stdout: &createOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{
+		"run", "create",
+		"--generator", "pipeline/findings",
+		"--version", "v1",
+		"--hash", "hash-run",
+		"--status", "running",
+		"--metadata", `{"kind":"fixture"}`,
+		"--report", "report-run-report",
+		"--json",
+	})
+	if err != nil {
+		t.Fatalf("run create --json error = %v", err)
+	}
+	created := decodeRunCreateResult(t, createOut.Bytes())
+	if !strings.HasPrefix(created.Run.Alias, "RUN-") || created.Run.GeneratorRef != "pipeline/findings" || created.Run.Status != "running" {
+		t.Fatalf("created run = %#v, want running pipeline/findings run", created.Run)
+	}
+	if !hasTraceRelationship(created.Run.Relationships, "outbound", "produces", "report", "report-run-report") {
+		t.Fatalf("created run relationships = %#v, want report relationship", created.Run.Relationships)
+	}
+
+	var findingOut bytes.Buffer
+	err = Runner{Stdout: &findingOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{
+		"finding", "create",
+		"--report", "report-run-report",
+		"--run", created.Run.Alias,
+		"--title", "Run linked finding",
+		"--severity", "medium",
+		"--confidence", "high",
+		"--message", "Finding created by provenance run.",
+		"--json",
+	})
+	if err != nil {
+		t.Fatalf("finding create --run error = %v", err)
+	}
+	finding := decodeFindingCreateResult(t, findingOut.Bytes())
+
+	var listOut bytes.Buffer
+	err = Runner{Stdout: &listOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"run", "list", "--status", "running", "--generator", "pipeline/findings", "--json"})
+	if err != nil {
+		t.Fatalf("run list --json error = %v", err)
+	}
+	list := decodeRunList(t, listOut.Bytes())
+	if len(list.Runs) != 1 || list.Runs[created.Run.Alias].GeneratorVersion != "v1" || list.Runs[created.Run.Alias].GeneratorHash != "hash-run" {
+		t.Fatalf("list runs = %#v, want created run with version/hash", list.Runs)
+	}
+
+	var completeOut bytes.Buffer
+	err = Runner{Stdout: &completeOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"run", "complete", created.Run.Alias, "--json"})
+	if err != nil {
+		t.Fatalf("run complete --json error = %v", err)
+	}
+	completed := decodeRunCompleteResult(t, completeOut.Bytes())
+	if completed.Previous != "running" || completed.Status != "completed" || completed.Run.CompletedAt == "" {
+		t.Fatalf("completed run = %#v, want running->completed transition", completed)
+	}
+
+	var showOut bytes.Buffer
+	err = Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"run", "show", created.Run.Alias, "--json"})
+	if err != nil {
+		t.Fatalf("run show --json error = %v", err)
+	}
+	show := decodeRunShow(t, showOut.Bytes())
+	if show.Run.Metadata != `{"kind":"fixture"}` || !hasTraceRelationship(show.Run.Relationships, "outbound", "produces", "finding", finding.Finding.Alias) {
+		t.Fatalf("show run = %#v, want metadata preserved and finding relationship", show.Run)
+	}
+
+	err = Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"run", "create", "--generator", "pipeline/findings", "--body-file", "script.sh"})
+	if err == nil || !strings.Contains(err.Error(), `unknown option "--body-file"`) {
+		t.Fatalf("run create --body-file error = %v, want unknown option", err)
+	}
+}
+
+func TestRunnerFindingImportJSON(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	importDir := filepath.Join(workingDir, "import")
+	if err := os.MkdirAll(importDir, 0o755); err != nil {
+		t.Fatalf("mkdir import fixture error = %v", err)
+	}
+	writeCLIFile(t, filepath.Join(importDir, "find.auth.json"), `[
+  {
+    "id": "auth-001",
+    "title": "Missing authorization check",
+    "severity": "critical",
+    "confidence": "high",
+    "path": "internal/auth.go",
+    "line_start": 42,
+    "message": "Handler accepts caller-controlled account IDs."
+  }
+]`)
+	writeCLIFile(t, filepath.Join(importDir, "VERDICTS.json"), `[
+  {
+    "id": "auth-001-confirmed",
+    "finding_id": "auth-001",
+    "outcome": "confirmed",
+    "rationale": "Reproduced from CLI import fixture."
+  }
+]`)
+
+	var importOut bytes.Buffer
+	err := Runner{Stdout: &importOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{
+		"finding", "import-json",
+		"--report", "imported-audit",
+		"--findings", "import/find.auth.json",
+		"--verdicts", "import/VERDICTS.json",
+		"--json",
+	})
+	if err != nil {
+		t.Fatalf("finding import-json --json error = %v", err)
+	}
+	imported := decodeFindingImportJSONResult(t, importOut.Bytes())
+	if imported.Report.Alias != "report-imported-audit" || imported.FindingsImported != 1 || imported.VerdictsImported != 1 {
+		t.Fatalf("imported = %#v, want created report with one finding and verdict", imported)
+	}
+
+	var secondOut bytes.Buffer
+	err = Runner{Stdout: &secondOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{
+		"finding", "import-json",
+		"--report", "report-imported-audit",
+		"--findings", "import/find.auth.json",
+		"--verdicts", "import/VERDICTS.json",
+		"--json",
+	})
+	if err != nil {
+		t.Fatalf("finding import-json second run error = %v", err)
+	}
+	second := decodeFindingImportJSONResult(t, secondOut.Bytes())
+	if second.FindingsImported != 0 || second.VerdictsImported != 0 || second.FindingsSkipped != 1 || second.VerdictsSkipped != 1 {
+		t.Fatalf("second = %#v, want idempotent skips", second)
+	}
+
+	var listOut bytes.Buffer
+	err = Runner{Stdout: &listOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"finding", "list", "--severity", "critical", "--status", "confirmed", "--json"})
+	if err != nil {
+		t.Fatalf("finding list imported rows error = %v", err)
+	}
+	list := decodeFindingList(t, listOut.Bytes())
+	if len(list.Findings) != 1 {
+		t.Fatalf("imported list = %#v, want one confirmed critical finding", list.Findings)
+	}
+}
+
+func TestRunnerFindingFormatExports(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "create", "format-audit", "--type", "audit"}); err != nil {
+		t.Fatalf("report create error = %v", err)
+	}
+	var createOut bytes.Buffer
+	if err := (Runner{Stdout: &createOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{
+		"finding", "create",
+		"--report", "report-format-audit",
+		"--title", "Escaped <Finding>",
+		"--severity", "critical",
+		"--confidence", "high",
+		"--dimension", "auth",
+		"--path", "internal/auth.go",
+		"--line-start", "42",
+		"--message", "No private Loaf refs here.",
+		"--json",
+	}); err != nil {
+		t.Fatalf("finding create error = %v", err)
+	}
+	created := decodeFindingCreateResult(t, createOut.Bytes())
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{
+		"finding", "verdict", created.Finding.Alias,
+		"--outcome", "confirmed",
+		"--rationale", "Reproduced from format test.",
+	}); err != nil {
+		t.Fatalf("finding verdict error = %v", err)
+	}
+
+	var csvOut bytes.Buffer
+	if err := (Runner{Stdout: &csvOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"finding", "list", "--severity", "critical", "--format", "csv"}); err != nil {
+		t.Fatalf("finding list --format csv error = %v", err)
+	}
+	records, err := csv.NewReader(strings.NewReader(csvOut.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("parse finding CSV error = %v\n%s", err, csvOut.String())
+	}
+	if len(records) != 2 || records[0][0] != "alias" || records[1][1] != "Escaped <Finding>" || records[1][2] != "confirmed" {
+		t.Fatalf("CSV records = %#v, want header and confirmed finding", records)
+	}
+
+	var markdownOut bytes.Buffer
+	if err := (Runner{Stdout: &markdownOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"finding", "list", "--format", "markdown"}); err != nil {
+		t.Fatalf("finding list --format markdown error = %v", err)
+	}
+	if !strings.Contains(markdownOut.String(), "# Findings") || strings.Contains(markdownOut.String(), "task:") {
+		t.Fatalf("markdown output = %q, want public finding table", markdownOut.String())
+	}
+
+	var htmlOut bytes.Buffer
+	if err := (Runner{Stdout: &htmlOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"finding", "show", created.Finding.Alias, "--format=html"}); err != nil {
+		t.Fatalf("finding show --format html error = %v", err)
+	}
+	if !strings.Contains(htmlOut.String(), "&lt;Finding&gt;") || !strings.Contains(htmlOut.String(), "<h2>Verdicts</h2>") {
+		t.Fatalf("HTML output = %q, want escaped title and verdict section", htmlOut.String())
+	}
+
+	var showCSV bytes.Buffer
+	if err := (Runner{Stdout: &showCSV, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"finding", "show", created.Finding.Alias, "--format", "csv"}); err != nil {
+		t.Fatalf("finding show --format csv error = %v", err)
+	}
+	showRecords, err := csv.NewReader(strings.NewReader(showCSV.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("parse finding show CSV error = %v\n%s", err, showCSV.String())
+	}
+	if len(showRecords) != 2 || showRecords[1][12] != "1" {
+		t.Fatalf("show CSV records = %#v, want verdict_count 1", showRecords)
+	}
+}
+
 func TestRunnerReportShowUsesMarkdownFallbackWhenMarkdownOnly(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -14764,6 +15072,78 @@ func decodeReportShow(t *testing.T, data []byte) state.ReportShow {
 	return result
 }
 
+func decodeFindingCreateResult(t *testing.T, data []byte) state.FindingCreateResult {
+	t.Helper()
+	var result state.FindingCreateResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeFindingList(t *testing.T, data []byte) state.FindingList {
+	t.Helper()
+	var result state.FindingList
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeFindingVerdictResult(t *testing.T, data []byte) state.FindingVerdictResult {
+	t.Helper()
+	var result state.FindingVerdictResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeFindingImportJSONResult(t *testing.T, data []byte) state.FindingImportJSONResult {
+	t.Helper()
+	var result state.FindingImportJSONResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeRunCreateResult(t *testing.T, data []byte) state.RunCreateResult {
+	t.Helper()
+	var result state.RunCreateResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeRunList(t *testing.T, data []byte) state.RunList {
+	t.Helper()
+	var result state.RunList
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeRunShow(t *testing.T, data []byte) state.RunShow {
+	t.Helper()
+	var result state.RunShow
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeRunCompleteResult(t *testing.T, data []byte) state.RunCompleteResult {
+	t.Helper()
+	var result state.RunCompleteResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
 func decodeArtifactEntityCreateResult(t *testing.T, data []byte) state.ArtifactEntityCreateResult {
 	t.Helper()
 	var result state.ArtifactEntityCreateResult
@@ -14969,6 +15349,16 @@ func sqliteEntityStatus(t *testing.T, db *sql.DB, table string, kind string, ali
 func writeCLIAgentsFile(t *testing.T, root string, rel string, content string) {
 	t.Helper()
 	path := filepath.Join(root, ".agents", filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", path, err)
+	}
+}
+
+func writeCLIFile(t *testing.T, path string, content string) {
+	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) error = %v", filepath.Dir(path), err)
 	}

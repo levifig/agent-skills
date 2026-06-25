@@ -50,7 +50,7 @@ type TraceRelationship struct {
 
 func validateResolutionTargetKind(kind string, ref string) error {
 	switch kind {
-	case "spec", "task", "idea", "brainstorm", "shaping_draft", "session", "report", "plan", "handoff", "council":
+	case "spec", "task", "idea", "brainstorm", "shaping_draft", "session", "report", "finding", "verdict", "run", "plan", "handoff", "council":
 		return nil
 	default:
 		return fmt.Errorf("%q resolves to %s, which cannot resolve another entity", ref, kind)
@@ -145,7 +145,7 @@ LIMIT 1
 }
 
 func (s *Store) resolveEntityByInternalID(ctx context.Context, projectID string, ref string) (string, string, error) {
-	for _, kind := range []string{"spec", "task", "idea", "spark", "brainstorm", "shaping_draft", "session", "report", "plan", "handoff", "council", "journal_entry"} {
+	for _, kind := range []string{"spec", "task", "idea", "spark", "brainstorm", "shaping_draft", "session", "report", "finding", "verdict", "run", "plan", "handoff", "council", "journal_entry"} {
 		table := traceTable(kind)
 		var id string
 		err := s.db.QueryRowContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE project_id = ? AND id = ?`, table), projectID, ref).Scan(&id)
@@ -184,6 +184,39 @@ func (s *Store) entityDetails(ctx context.Context, projectID string, kind string
 			return TraceEntity{}, fmt.Errorf("read spark %s: %w", id, err)
 		}
 		entity.Title = text.String
+		entity.Status = status.String
+	case "finding":
+		var title, status sql.NullString
+		err := s.db.QueryRowContext(ctx, `SELECT title, status FROM findings WHERE project_id = ? AND id = ?`, projectID, id).Scan(&title, &status)
+		if errors.Is(err, sql.ErrNoRows) {
+			return entityWithAliasFallback(ctx, s, projectID, entity)
+		}
+		if err != nil {
+			return TraceEntity{}, fmt.Errorf("read finding %s: %w", id, err)
+		}
+		entity.Title = title.String
+		entity.Status = status.String
+	case "verdict":
+		var outcome, rationale sql.NullString
+		err := s.db.QueryRowContext(ctx, `SELECT outcome, rationale FROM verdicts WHERE project_id = ? AND id = ?`, projectID, id).Scan(&outcome, &rationale)
+		if errors.Is(err, sql.ErrNoRows) {
+			return entityWithAliasFallback(ctx, s, projectID, entity)
+		}
+		if err != nil {
+			return TraceEntity{}, fmt.Errorf("read verdict %s: %w", id, err)
+		}
+		entity.Title = rationale.String
+		entity.Status = outcome.String
+	case "run":
+		var generatorRef, status sql.NullString
+		err := s.db.QueryRowContext(ctx, `SELECT generator_ref, status FROM runs WHERE project_id = ? AND id = ?`, projectID, id).Scan(&generatorRef, &status)
+		if errors.Is(err, sql.ErrNoRows) {
+			return entityWithAliasFallback(ctx, s, projectID, entity)
+		}
+		if err != nil {
+			return TraceEntity{}, fmt.Errorf("read run %s: %w", id, err)
+		}
+		entity.Title = generatorRef.String
 		entity.Status = status.String
 	case "session":
 		var status sql.NullString
@@ -363,6 +396,12 @@ func traceTable(kind string) string {
 		return "sessions"
 	case "report":
 		return "reports"
+	case "finding":
+		return "findings"
+	case "verdict":
+		return "verdicts"
+	case "run":
+		return "runs"
 	case "plan":
 		return "plans"
 	case "handoff":

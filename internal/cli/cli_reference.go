@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/levifig/loaf/internal/state"
 )
 
 type cliReferenceCommand struct {
@@ -281,6 +283,86 @@ func cliReferenceCommands() []cliReferenceCommand {
 				}},
 				{Name: "finalize", Description: "Mark a report draft as final and write its deterministic tracked render", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, render path, event, global database scope, and project identity as JSON"}}},
 				{Name: "archive", Description: "Archive a finalized report", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
+			},
+		},
+		{
+			Name:        "finding",
+			Description: "Manage report findings and verdicts in native SQLite state",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "list", Description: "List findings", Options: []cliReferenceOption{
+					{Flags: "--report <report>", Description: "Filter by parent report"},
+					{Flags: "--run <run>", Description: "Filter by provenance run"},
+					{Flags: "--status <status>", Description: "Filter by status: " + strings.Join(state.FindingStatuses(), ", ")},
+					{Flags: "--severity <severity>", Description: "Filter by severity: " + strings.Join(state.FindingSeverities(), ", ")},
+					{Flags: "--confidence <confidence>", Description: "Filter by confidence: " + strings.Join(state.FindingConfidences(), ", ")},
+					{Flags: "--dimension <dimension>", Description: "Filter by freeform finding dimension"},
+					{Flags: "--format <format>", Description: "Output format: json, csv, markdown, html"},
+					{Flags: "--json", Description: "Alias for --format json"},
+				}},
+				{Name: "show", Description: "Show one finding", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format: json, csv, markdown, html"}, {Flags: "--json", Description: "Alias for --format json"}}},
+				{Name: "create", Description: "Create a finding under a report", Options: []cliReferenceOption{
+					{Flags: "--report <report>", Description: "Parent report"},
+					{Flags: "--run <run>", Description: "Optional run provenance row"},
+					{Flags: "--title <title>", Description: "Finding title"},
+					{Flags: "--status <status>", Description: "Initial status: " + strings.Join(state.FindingStatuses(), ", ")},
+					{Flags: "--severity <severity>", Description: "Severity: " + strings.Join(state.FindingSeverities(), ", ")},
+					{Flags: "--confidence <confidence>", Description: "Confidence: " + strings.Join(state.FindingConfidences(), ", ")},
+					{Flags: "--dimension <dimension>", Description: "Freeform finding dimension"},
+					{Flags: "--path <path>", Description: "File path or artifact location"},
+					{Flags: "--line-start <line>", Description: "Starting line number"},
+					{Flags: "--line-end <line>", Description: "Ending line number"},
+					{Flags: "--symbol <symbol>", Description: "Symbol or object location"},
+					{Flags: "--metadata <json>", Description: "JSON metadata"},
+					{Flags: "--body-file <path>", Description: "Read finding narrative from a UTF-8 file"},
+					{Flags: "--body -", Description: "Read finding narrative from stdin"},
+					{Flags: "--message <text>", Description: "Use inline finding narrative text"},
+					{Flags: "--json", Description: "Output created finding, event, global database scope, and project identity as JSON"},
+				}},
+				{Name: "verdict", Description: "Record a finding verdict", Options: []cliReferenceOption{
+					{Flags: "--outcome <outcome>", Description: "Verdict outcome: " + strings.Join(state.VerdictOutcomes(), ", ")},
+					{Flags: "--rationale <text>", Description: "Verdict rationale"},
+					{Flags: "--run <run>", Description: "Optional run provenance row"},
+					{Flags: "--notes <text>", Description: "Reproduction notes"},
+					{Flags: "--metadata <json>", Description: "JSON metadata"},
+					{Flags: "--json", Description: "Output verdict, updated finding, event, global database scope, and project identity as JSON"},
+				}},
+				{Name: "import-json", Description: "Import row-shaped finding and verdict JSON", Options: []cliReferenceOption{
+					{Flags: "--report <report>", Description: "Existing report ref, or slug for a new import report"},
+					{Flags: "--report-type <type>", Description: "Report type used when creating a missing report"},
+					{Flags: "--source <source>", Description: "Source label used when creating a missing report"},
+					{Flags: "--run <run>", Description: "Optional run provenance row for imported rows"},
+					{Flags: "--findings <path>", Description: "Row-shaped findings JSON; may be repeated"},
+					{Flags: "--verdicts <path>", Description: "Row-shaped verdicts JSON; may be repeated"},
+					{Flags: "--json", Description: "Output import counts, files, global database scope, and project identity as JSON"},
+				}},
+			},
+		},
+		{
+			Name:        "run",
+			Description: "Manage provenance runs for generated findings and reports",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "list", Description: "List provenance runs", Options: []cliReferenceOption{
+					{Flags: "--status <status>", Description: "Filter by status: " + strings.Join(state.RunStatuses(), ", ")},
+					{Flags: "--generator <ref>", Description: "Filter by generator reference"},
+					{Flags: "--json", Description: "Output runs, filters, global database scope, and project identity as JSON"},
+				}},
+				{Name: "show", Description: "Show one provenance run", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output run metadata, relationships, global database scope, and project identity as JSON"},
+				}},
+				{Name: "create", Description: "Create a provenance run row without storing generator code", Options: []cliReferenceOption{
+					{Flags: "--generator <ref>", Description: "Generator reference or name"},
+					{Flags: "--version <version>", Description: "Generator version"},
+					{Flags: "--hash <hash>", Description: "Generator content hash"},
+					{Flags: "--status <status>", Description: "Initial status: " + strings.Join(state.RunStatuses(), ", ")},
+					{Flags: "--metadata <json>", Description: "JSON metadata"},
+					{Flags: "--report <report>", Description: "Optional produced report relationship"},
+					{Flags: "--json", Description: "Output created run, event, global database scope, and project identity as JSON"},
+				}},
+				{Name: "complete", Description: "Complete, fail, or archive a provenance run", Options: []cliReferenceOption{
+					{Flags: "--status <status>", Description: "Completion status: completed, failed, archived"},
+					{Flags: "--metadata <json>", Description: "Replace run metadata with JSON"},
+					{Flags: "--json", Description: "Output run transition, event, global database scope, and project identity as JSON"},
+				}},
 			},
 		},
 		{

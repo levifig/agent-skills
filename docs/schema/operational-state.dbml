@@ -189,6 +189,64 @@ Table reports {
   updated_at text [not null]
 }
 
+Table runs {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  generator_ref text [not null]
+  generator_version text
+  generator_hash text
+  status text [not null]
+  metadata text
+  started_at text
+  completed_at text
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, generator_ref, status)
+  }
+}
+
+Table findings {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  report_id text [not null, ref: > reports.id]
+  run_id text [ref: > runs.id]
+  title text [not null]
+  status text [not null]
+  severity text [not null]
+  confidence text [not null]
+  dimension text
+  path text
+  line_start integer
+  line_end integer
+  symbol text
+  metadata text
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, report_id)
+    (project_id, run_id)
+    (project_id, severity, status, confidence)
+  }
+}
+
+Table verdicts {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  finding_id text [not null, ref: > findings.id]
+  run_id text [ref: > runs.id]
+  outcome text [not null]
+  rationale text [not null]
+  reproduction_notes text
+  metadata text
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, finding_id)
+    (project_id, run_id)
+  }
+}
+
 Table plans {
   id text [pk, not null]
   project_id text [not null, ref: > projects.id]

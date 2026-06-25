@@ -36,6 +36,9 @@ var requiredInitialTables = []string{
 	"exports",
 	"session_state_snapshots",
 	"artifact_bodies",
+	"runs",
+	"findings",
+	"verdicts",
 	"plans",
 	"handoffs",
 	"councils",
@@ -44,8 +47,8 @@ var requiredInitialTables = []string{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 6 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 6", len(migrations))
+	if len(migrations) != 7 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 7", len(migrations))
 	}
 
 	for i, migration := range migrations {
@@ -70,6 +73,9 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[5].Name != "journal_search" {
 		t.Fatalf("migration[5].Name = %q, want journal_search", migrations[5].Name)
+	}
+	if migrations[6].Name != "findings_verdicts_runs" {
+		t.Fatalf("migration[6].Name = %q, want findings_verdicts_runs", migrations[6].Name)
 	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
@@ -126,6 +132,9 @@ func TestInitialSchemaPreservesLineageAndExports(t *testing.T) {
 		"exports":                 {"export_kind", "format", "state_version", "generated_at"},
 		"session_state_snapshots": {"content", "observed_branch", "observed_worktree"},
 		"artifact_bodies":         {"entity_kind", "entity_id", "body_kind", "content", "content_hash", "source_id"},
+		"runs":                    {"generator_ref", "generator_version", "generator_hash", "metadata", "started_at", "completed_at"},
+		"findings":                {"report_id", "run_id", "severity", "confidence", "dimension", "line_start", "line_end", "metadata"},
+		"verdicts":                {"finding_id", "run_id", "outcome", "rationale", "reproduction_notes", "metadata"},
 		"plans":                   {"spec_id", "body_source_id"},
 		"handoffs":                {"session_id", "task_id", "body_source_id"},
 		"councils":                {"spec_id", "body_source_id"},
@@ -218,6 +227,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	if sqlDoc != SchemaMigrations()[5].SQL {
 		t.Fatal("docs/schema/0006_journal_search.sql must match embedded migration 0006 exactly")
 	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0007_findings_verdicts_runs.sql")
+	if sqlDoc != SchemaMigrations()[6].SQL {
+		t.Fatal("docs/schema/0007_findings_verdicts_runs.sql must match embedded migration 0007 exactly")
+	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
 	mermaidDoc := readRepoFile(t, "docs", "schema", "operational-state.mmd")
@@ -242,6 +255,7 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 
 	wantMermaidRelationships := []string{
 		"bundles ||--o{ bundle_members : contains",
+		"findings ||--o{ verdicts : adjudicates",
 		"projects ||--o{ aliases : scopes",
 		"projects ||--o{ artifact_bodies : scopes",
 		"projects ||--o{ backend_mappings : scopes",
@@ -252,6 +266,7 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ entity_tags : scopes",
 		"projects ||--o{ events : scopes",
 		"projects ||--o{ exports : scopes",
+		"projects ||--o{ findings : scopes",
 		"projects ||--o{ handoffs : scopes",
 		"projects ||--o{ hook_events : scopes",
 		"projects ||--o{ ideas : scopes",
@@ -260,6 +275,7 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ project_paths : locates",
 		"projects ||--o{ relationships : scopes",
 		"projects ||--o{ reports : scopes",
+		"projects ||--o{ runs : scopes",
 		"projects ||--o{ session_state_snapshots : scopes",
 		"projects ||--o{ sessions : scopes",
 		"projects ||--o{ shaping_drafts : scopes",
@@ -268,6 +284,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ specs : scopes",
 		"projects ||--o{ tags : scopes",
 		"projects ||--o{ tasks : scopes",
+		"projects ||--o{ verdicts : scopes",
+		"reports ||--o{ findings : contains",
+		"runs ||--o{ findings : produces",
+		"runs ||--o{ verdicts : records",
 		"sessions ||--o{ handoffs : transfers",
 		"sessions ||--o{ journal_entries : records",
 		"sessions ||--o{ session_state_snapshots : summarizes",

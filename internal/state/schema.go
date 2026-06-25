@@ -25,6 +25,9 @@ var artifactBodiesAndSearchSQL string
 //go:embed migrations/0006_journal_search.sql
 var journalSearchSQL string
 
+//go:embed migrations/0007_findings_verdicts_runs.sql
+var findingsVerdictsRunsSQL string
+
 const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -72,6 +75,11 @@ func SchemaMigrations() []SchemaMigration {
 			Version: 6,
 			Name:    "journal_search",
 			SQL:     normalizeMigrationSQL(journalSearchSQL),
+		},
+		{
+			Version: 7,
+			Name:    "findings_verdicts_runs",
+			SQL:     normalizeMigrationSQL(findingsVerdictsRunsSQL),
 		},
 	}
 }

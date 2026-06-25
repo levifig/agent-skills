@@ -31,6 +31,7 @@ type ReportDetail struct {
 	Status        string              `json:"status"`
 	Sources       []TraceSource       `json:"sources"`
 	Body          string              `json:"body,omitempty"`
+	Findings      []FindingItem       `json:"findings,omitempty"`
 	Relationships []TraceRelationship `json:"relationships"`
 	CreatedAt     string              `json:"created_at"`
 	UpdatedAt     string              `json:"updated_at"`
@@ -117,6 +118,10 @@ WHERE reports.project_id = ? AND reports.id = ?
 	if err != nil {
 		return ReportDetail{}, err
 	}
+	findings, err := s.reportFindings(ctx, projectID, entity.ID)
+	if err != nil {
+		return ReportDetail{}, err
+	}
 	relationships, err := s.traceRelationships(ctx, projectID, TraceEntity{
 		Kind:   "report",
 		ID:     entity.ID,
@@ -136,8 +141,74 @@ WHERE reports.project_id = ? AND reports.id = ?
 		Status:        status,
 		Sources:       sources,
 		Body:          body,
+		Findings:      findings,
 		Relationships: relationships,
 		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,
 	}, nil
+}
+
+func (s *Store) reportFindings(ctx context.Context, projectID string, reportID string) ([]FindingItem, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT
+  findings.id,
+  COALESCE(finding_alias.alias, ''),
+  COALESCE(report_alias.alias, findings.report_id),
+  COALESCE(run_alias.alias, findings.run_id, ''),
+  findings.title,
+  findings.status,
+  findings.severity,
+  findings.confidence,
+  COALESCE(findings.dimension, ''),
+  COALESCE(findings.path, ''),
+  COALESCE(findings.line_start, 0),
+  COALESCE(findings.line_end, 0),
+  COALESCE(findings.symbol, '')
+FROM findings
+LEFT JOIN aliases finding_alias
+  ON finding_alias.project_id = findings.project_id
+ AND finding_alias.entity_kind = 'finding'
+ AND finding_alias.entity_id = findings.id
+ AND finding_alias.namespace = 'finding'
+LEFT JOIN aliases report_alias
+  ON report_alias.project_id = findings.project_id
+ AND report_alias.entity_kind = 'report'
+ AND report_alias.entity_id = findings.report_id
+ AND report_alias.namespace = 'report'
+LEFT JOIN aliases run_alias
+  ON run_alias.project_id = findings.project_id
+ AND run_alias.entity_kind = 'run'
+ AND run_alias.entity_id = findings.run_id
+ AND run_alias.namespace = 'run'
+WHERE findings.project_id = ? AND findings.report_id = ?
+ORDER BY CASE findings.severity
+    WHEN 'critical' THEN 1
+    WHEN 'high' THEN 2
+    WHEN 'medium' THEN 3
+    WHEN 'low' THEN 4
+    WHEN 'info' THEN 5
+    ELSE 99
+  END,
+  finding_alias.alias,
+  findings.id
+`, projectID, reportID)
+	if err != nil {
+		return nil, fmt.Errorf("query report findings: %w", err)
+	}
+	var findings []FindingItem
+	for rows.Next() {
+		var item FindingItem
+		if err := rows.Scan(&item.ID, &item.Alias, &item.Report, &item.Run, &item.Title, &item.Status, &item.Severity, &item.Confidence, &item.Dimension, &item.Path, &item.LineStart, &item.LineEnd, &item.Symbol); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan report finding: %w", err)
+		}
+		findings = append(findings, item)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close report findings: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate report findings: %w", err)
+	}
+	return findings, nil
 }

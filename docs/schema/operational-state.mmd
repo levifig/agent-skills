@@ -150,6 +150,49 @@ erDiagram
     text created_at
     text updated_at
   }
+  runs {
+    text id PK
+    text project_id FK
+    text generator_ref
+    text generator_version
+    text generator_hash
+    text status
+    text metadata
+    text started_at
+    text completed_at
+    text created_at
+    text updated_at
+  }
+  findings {
+    text id PK
+    text project_id FK
+    text report_id FK
+    text run_id FK
+    text title
+    text status
+    text severity
+    text confidence
+    text dimension
+    text path
+    integer line_start
+    integer line_end
+    text symbol
+    text metadata
+    text created_at
+    text updated_at
+  }
+  verdicts {
+    text id PK
+    text project_id FK
+    text finding_id FK
+    text run_id FK
+    text outcome
+    text rationale
+    text reproduction_notes
+    text metadata
+    text created_at
+    text updated_at
+  }
   plans {
     text id PK
     text project_id FK
@@ -318,6 +361,9 @@ erDiagram
   projects ||--o{ sessions : scopes
   projects ||--o{ session_state_snapshots : scopes
   projects ||--o{ reports : scopes
+  projects ||--o{ runs : scopes
+  projects ||--o{ findings : scopes
+  projects ||--o{ verdicts : scopes
   projects ||--o{ plans : scopes
   projects ||--o{ handoffs : scopes
   projects ||--o{ councils : scopes
@@ -342,6 +388,10 @@ erDiagram
   tasks ||--o{ handoffs : transfers
   specs ||--o{ journal_entries : contextualizes
   tasks ||--o{ journal_entries : contextualizes
+  reports ||--o{ findings : contains
+  runs ||--o{ findings : produces
+  runs ||--o{ verdicts : records
+  findings ||--o{ verdicts : adjudicates
   tags ||--o{ entity_tags : labels
   bundles ||--o{ bundle_members : contains
   sources ||--o{ artifact_bodies : provenance

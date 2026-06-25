@@ -551,6 +551,128 @@ loaf report generate release-readiness
 
 ---
 
+## Finding Management
+
+### `loaf finding`
+Manage report findings and verdicts in native SQLite state
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf finding list` | List findings |
+| `loaf finding show` | Show one finding |
+| `loaf finding create` | Create a finding under a report |
+| `loaf finding verdict` | Record a finding verdict |
+| `loaf finding import-json` | Import row-shaped finding and verdict JSON |
+
+**Options:**
+
+- `loaf finding list`:
+  - `--report <report>` - Filter by parent report
+  - `--run <run>` - Filter by provenance run
+  - `--status <status>` - Filter by status: open, confirmed, refuted, partial, archived
+  - `--severity <severity>` - Filter by severity: critical, high, medium, low, info
+  - `--confidence <confidence>` - Filter by confidence: high, medium, low
+  - `--dimension <dimension>` - Filter by freeform finding dimension
+  - `--format <format>` - Output format: json, csv, markdown, html
+  - `--json` - Alias for --format json
+
+- `loaf finding show`:
+  - `--format <format>` - Output format: json, csv, markdown, html
+  - `--json` - Alias for --format json
+
+- `loaf finding create`:
+  - `--report <report>` - Parent report
+  - `--run <run>` - Optional run provenance row
+  - `--title <title>` - Finding title
+  - `--status <status>` - Initial status: open, confirmed, refuted, partial, archived
+  - `--severity <severity>` - Severity: critical, high, medium, low, info
+  - `--confidence <confidence>` - Confidence: high, medium, low
+  - `--dimension <dimension>` - Freeform finding dimension
+  - `--path <path>` - File path or artifact location
+  - `--line-start <line>` - Starting line number
+  - `--line-end <line>` - Ending line number
+  - `--symbol <symbol>` - Symbol or object location
+  - `--metadata <json>` - JSON metadata
+  - `--body-file <path>` - Read finding narrative from a UTF-8 file
+  - `--body -` - Read finding narrative from stdin
+  - `--message <text>` - Use inline finding narrative text
+  - `--json` - Output created finding, event, global database scope, and project identity as JSON
+
+- `loaf finding verdict`:
+  - `--outcome <outcome>` - Verdict outcome: confirmed, refuted, partial
+  - `--rationale <text>` - Verdict rationale
+  - `--run <run>` - Optional run provenance row
+  - `--notes <text>` - Reproduction notes
+  - `--metadata <json>` - JSON metadata
+  - `--json` - Output verdict, updated finding, event, global database scope, and project identity as JSON
+
+- `loaf finding import-json`:
+  - `--report <report>` - Existing report ref, or slug for a new import report
+  - `--report-type <type>` - Report type used when creating a missing report
+  - `--source <source>` - Source label used when creating a missing report
+  - `--run <run>` - Optional run provenance row for imported rows
+  - `--findings <path>` - Row-shaped findings JSON; may be repeated
+  - `--verdicts <path>` - Row-shaped verdicts JSON; may be repeated
+  - `--json` - Output import counts, files, global database scope, and project identity as JSON
+
+**Usage:**
+```bash
+loaf finding list
+loaf finding show
+loaf finding create
+```
+
+---
+
+## Run Management
+
+### `loaf run`
+Manage provenance runs for generated findings and reports
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf run list` | List provenance runs |
+| `loaf run show` | Show one provenance run |
+| `loaf run create` | Create a provenance run row without storing generator code |
+| `loaf run complete` | Complete, fail, or archive a provenance run |
+
+**Options:**
+
+- `loaf run list`:
+  - `--status <status>` - Filter by status: pending, running, completed, failed, archived
+  - `--generator <ref>` - Filter by generator reference
+  - `--json` - Output runs, filters, global database scope, and project identity as JSON
+
+- `loaf run show`:
+  - `--json` - Output run metadata, relationships, global database scope, and project identity as JSON
+
+- `loaf run create`:
+  - `--generator <ref>` - Generator reference or name
+  - `--version <version>` - Generator version
+  - `--hash <hash>` - Generator content hash
+  - `--status <status>` - Initial status: pending, running, completed, failed, archived
+  - `--metadata <json>` - JSON metadata
+  - `--report <report>` - Optional produced report relationship
+  - `--json` - Output created run, event, global database scope, and project identity as JSON
+
+- `loaf run complete`:
+  - `--status <status>` - Completion status: completed, failed, archived
+  - `--metadata <json>` - Replace run metadata with JSON
+  - `--json` - Output run transition, event, global database scope, and project identity as JSON
+
+**Usage:**
+```bash
+loaf run list
+loaf run show
+loaf run create
+```
+
+---
+
 ## Plan Management
 
 ### `loaf plan`
