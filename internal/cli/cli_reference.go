@@ -88,12 +88,22 @@ func cliReferenceCommands() []cliReferenceCommand {
 		},
 		{
 			Name:        "search",
-			Description: "Search Tier-1 SQLite artifact bodies and journal entries",
+			Description: "Search SQLite artifact bodies, journal entries, and indexed docs",
 			Options: []cliReferenceOption{
 				{Flags: "<query>", Description: "Search terms matched through SQLite FTS5"},
 				{Flags: "--all-projects", Description: "Search every registered project instead of only the current project"},
 				{Flags: "--limit <n>", Description: "Maximum results to return (default: 20)"},
 				{Flags: "--json", Description: "Output tiered hits, stable entity addresses, snippets, global database scope, and project identity as JSON"},
+			},
+		},
+		{
+			Name:        "docs",
+			Description: "Manage docs/ indexing",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "index", Description: "Index docs/ Markdown into SQLite FTS", Options: []cliReferenceOption{
+					{Flags: "--rebuild", Description: "Rebuild current worktree docs index before scanning"},
+					{Flags: "--json", Description: "Output indexed docs, counts, global database scope, and project identity as JSON"},
+				}},
 			},
 		},
 		{

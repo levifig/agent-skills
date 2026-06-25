@@ -140,6 +140,25 @@ erDiagram
     text scope
     text message
   }
+  docs_index {
+    text id PK
+    text project_id FK
+    text path
+    text content
+    text content_hash
+    text indexed_ref
+    text indexed_worktree
+    text indexed_at
+    text created_at
+    text updated_at
+  }
+  docs_search {
+    integer rowid PK
+    text project_id
+    text id
+    text path
+    text content
+  }
   reports {
     text id PK
     text project_id FK
@@ -352,6 +371,7 @@ erDiagram
 
   projects ||--o{ aliases : scopes
   projects ||--o{ artifact_bodies : scopes
+  projects ||--o{ docs_index : scopes
   projects ||--o{ specs : scopes
   projects ||--o{ tasks : scopes
   projects ||--o{ ideas : scopes

@@ -106,6 +106,13 @@ func agentHelpCommands() []agentHelpCommand {
 			},
 		},
 		{
+			Name:        "docs",
+			Description: "Manage docs/ indexing",
+			Subcommands: []agentHelpSubcommand{
+				{Name: "index", Description: "Index docs/ Markdown into SQLite FTS", Options: []agentHelpOption{{Flags: "--rebuild", Description: "Rebuild current worktree docs index before scanning"}, {Flags: "--json", Description: "Output indexed docs, counts, global database scope, and project identity as JSON"}}},
+			},
+		},
+		{
 			Name:        "migrate",
 			Description: "Run migration workflows",
 			Subcommands: []agentHelpSubcommand{

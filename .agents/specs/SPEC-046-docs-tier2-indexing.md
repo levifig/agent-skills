@@ -6,7 +6,7 @@ source_sessions:
   - id: 20260621-001541-session
     role: shaped
 created: 2026-06-22T09:13:21Z
-status: drafting
+status: complete
 branch: feat/docs-tier2-indexing
 ---
 
@@ -113,7 +113,9 @@ search is a scope flag over existing rows, not new plumbing.
 - Which `docs/` paths are in scope: `docs/decisions/*` (ADRs), `docs/ARCHITECTURE.md`,
   `docs/STRATEGY.md`, `docs/VISION.md`, and `docs/**/*.md` generally (decide globs in breakdown);
   exclude generated/index files (`docs/decisions/README.md` if purely generated).
-- Optional `post-commit`/`post-checkout` re-index hook (advisory), behind the open question.
+- No default git hook in this spec. Freshness is provided by lazy search-time staleness checks plus
+  explicit `loaf docs index --rebuild`; a future hook can call the same command if the cost/benefit
+  becomes clear.
 
 ### Out of Scope
 - Any change that makes SQLite the *source* for Tier-2 docs — they stay git-native source
@@ -147,39 +149,38 @@ search is a scope flag over existing rows, not new plumbing.
 |------|------------|--------|------------|
 | Index reflects wrong branch's `docs/` | Med | High | Index the invoking checkout's working tree + record ref; staleness check re-scopes before serving; `--rebuild` escape hatch |
 | Stale index after `git checkout`/`rebase` with no hook | Med | Med | Hash-based staleness detection on every `loaf search`; optional `post-checkout` hook; `loaf docs index --rebuild` |
-| Lazy re-index slows `loaf search` on large `docs/` | Low | Med | Hash-compare is cheap; only changed docs re-index; full scan only via explicit `--rebuild` |
+| Lazy re-index slows `loaf search` on large `docs/` | Low | Med | Hash-compare is cheap; stale worktree indexes refresh on demand; explicit `--rebuild` remains available |
 | Tier-2 `path:line` collides/confuses with Tier-1 entity refs in output | Med | Med | Explicit `tier` discriminator + distinct `locator` shape in schema and human output |
 | Cross-project search leaks paths from unrelated repos confusingly | Low | Low | Default current-project; `--all-projects` groups by project + shows project name + absolute path |
 | ADR-013:12 mis-statement makes "where do ADRs live" ambiguous during breakdown | Low | Low | This spec fixes the source of truth (index `docs/decisions/`); SPEC-050 corrects the prose |
 
 ## Open Questions
-- [ ] Re-index trigger default: on-demand-only, or also wire a `post-commit`/`post-checkout` hook
-      out of the box? (freshness vs. per-commit cost)
-- [ ] Exact `docs/` glob: all `docs/**/*.md`, or an allowlist (decisions/ + the four top-level
-      durable docs)? Handle non-markdown (`docs/schema/*`?) — index or skip.
-- [ ] Default search scope confirmation: current-project default + `--all-projects` flag (proposed),
-      vs. a configurable default.
-- [ ] Should `loaf docs index` be a top-level verb, or namespaced under `loaf search index` /
-      `loaf docs`? (depends on SPEC-043's final verb layout)
-- [ ] Working-tree vs `HEAD`: index uncommitted edits (proposed — index working tree) vs. only
-      committed content (cleaner ref semantics, staler results)?
+- [x] Re-index trigger default: lazy search-time staleness checks plus explicit
+      `loaf docs index [--rebuild]`. No default post-commit/post-checkout hook in this spec.
+- [x] Exact `docs/` glob: index Markdown under `docs/**/*.md`, including ADRs and top-level durable
+      docs; skip non-Markdown schema/assets and generated index files.
+- [x] Default search scope: current project; `--all-projects` is the explicit widening flag.
+- [x] Command shape: top-level family `loaf docs index [--rebuild]`; search remains
+      `loaf search <query>`.
+- [x] Working-tree vs `HEAD`: index working-tree content from the invoking checkout and record
+      branch/ref metadata for stale-scope detection.
 
 ## Test Conditions
-- [ ] `loaf docs index` populates `docs_index` from the invoking checkout's `docs/`; a subsequent
+- [x] `loaf docs index` populates `docs_index` from the invoking checkout's `docs/`; a subsequent
       `loaf search "<term-in-an-ADR>"` returns the ADR with a `docs/decisions/…md:line` locator.
-- [ ] `loaf search` returns **both** Tier-1 hits (entity-addressed) and Tier-2 hits (`path:line`)
+- [x] `loaf search` returns **both** Tier-1 hits (entity-addressed) and Tier-2 hits (`path:line`)
       in one result set, each tagged with its `tier`; `--json` carries the discriminator.
-- [ ] Editing a `docs/` file and re-running `loaf search` reflects the new content **without** an
-      explicit re-index (lazy staleness detection re-indexes the changed doc).
-- [ ] `git checkout`-ing a branch with different `docs/` content and running `loaf search` returns
+- [x] Editing a `docs/` file and re-running `loaf search` reflects the new content **without** an
+      explicit re-index (lazy staleness detection refreshes the current worktree index).
+- [x] `git checkout`-ing a branch with different `docs/` content and running `loaf search` returns
       results from the **checked-out branch's** docs, not another branch's (working-tree rule).
-- [ ] `loaf docs index --rebuild` drops and rebuilds the index; results are unchanged vs. a fresh
+- [x] `loaf docs index --rebuild` drops and rebuilds the index; results are unchanged vs. a fresh
       index (index is purely derived).
-- [ ] `loaf search` defaults to the current project; `--all-projects` returns hits across project
+- [x] `loaf search` defaults to the current project; `--all-projects` returns hits across project
       partitions, each labeled with project + an unambiguous path.
-- [ ] Tier-2 docs are never written/moved by indexing — `git status` stays clean after any
+- [x] Tier-2 docs are never written/moved by indexing — `git status` stays clean after any
       `loaf search` / `loaf docs index`.
-- [ ] `CGO_ENABLED=0 go build` stays green (no new dependency; reuses SPEC-043 FTS5 setup).
+- [x] `CGO_ENABLED=0 go build` stays green (no new dependency; reuses SPEC-043 FTS5 setup).
 
 ## Priority Order
 
@@ -197,6 +198,6 @@ Tracks ship in order; all non-breaking. Hard dependency: **SPEC-043 must have la
    *Go/no-go:* the branch-switch test condition passes. *(non-breaking)*
 4. **Track 3 — Cross-project scope.** `--all-projects` flag + current-project default + path
    disambiguation across partitions. *Go/no-go:* cross-project hits are unambiguous. *(non-breaking)*
-5. **Track 4 — Optional re-index hook.** `post-commit`/`post-checkout` advisory hook calling
-   `loaf docs index`, gated on the open question; ships only if breakdown elects to. *(non-breaking;
-   optional)*
+5. **Track 4 — Documentation/reference updates.** Update CLI reference, agent help, generated
+   outputs, and the native cutover test map so `loaf docs index` and Tier-2 search are documented
+   with the same contract the implementation enforces. *(non-breaking)*

@@ -9,6 +9,7 @@ is a Loaf workflow staging section for curated entries before release.
 ### Added
 
 - Added the SPEC-054 rich artifact entity model for reports, findings, verdicts, and provenance runs, including row-shaped JSON imports and multi-format finding exports.
+- Added SPEC-046 docs Tier-2 indexing and cross-project search, including `loaf docs index`, docs search locators, stale-index refresh, and branch-aware docs results.
 - Added deterministic durable document rendering and finalization in SPEC-044, including scratch/final render commands, self-consistency drift checks, and CI/build drift validation.
 - Added SQLite-native artifact bodies and Tier-1 FTS search in SPEC-043, including artifact body schema, dual-source Markdown fallback, body write verbs, direct-write guardrails, and generated CLI reference coverage.
 

@@ -99,6 +99,11 @@ type searchOptions struct {
 	jsonOutput  bool
 }
 
+type docsIndexCLIOptions struct {
+	rebuild    bool
+	jsonOutput bool
+}
+
 type findingCreateCLIOptions struct {
 	jsonOutput bool
 	create     state.FindingCreateOptions
@@ -213,6 +218,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runProject(args[1:], out, runtime)
 	case "search":
 		dispatchErr = r.runSearch(args[1:], out, runtime)
+	case "docs":
+		dispatchErr = r.runDocs(args[1:], out, runtime)
 	case "finding":
 		dispatchErr = r.runFinding(args[1:], out, runtime)
 	case "run":
@@ -310,6 +317,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  state         Manage native SQLite state")
 	fmt.Fprintln(out, "  project       Manage project identity")
 	fmt.Fprintln(out, "  search        Search SQLite-resident artifacts and journals")
+	fmt.Fprintln(out, "  docs          Manage docs/ indexing")
 	fmt.Fprintln(out, "  finding       Manage report findings and verdicts")
 	fmt.Fprintln(out, "  run           Manage provenance runs")
 	fmt.Fprintln(out, "  migrate       Run migration workflows")
@@ -2899,9 +2907,10 @@ func (r Runner) runSearch(args []string, out io.Writer, runtime state.Runtime) e
 		return err
 	}
 	result, err := state.Search(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.SearchOptions{
-		Query:       options.query,
-		AllProjects: options.allProjects,
-		Limit:       options.limit,
+		Query:        options.query,
+		AllProjects:  options.allProjects,
+		Limit:        options.limit,
+		WorktreePath: runtime.RootPath(),
 	})
 	if err != nil {
 		if options.jsonOutput {
@@ -2931,7 +2940,7 @@ func (r Runner) runSearch(args []string, out io.Writer, runtime state.Runtime) e
 }
 
 func writeSearchHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf search <query> [--all-projects] [--limit <n>] [--json]", "Search Tier-1 SQLite artifact bodies and journal entries.", "--all-projects  Search every registered project instead of only the current project", "--limit         Maximum results to return (default: 20)", "--json          Output tiered hits, stable entity addresses, snippets, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf search <query> [--all-projects] [--limit <n>] [--json]", "Search SQLite artifact bodies, journal entries, and indexed docs.", "--all-projects  Search every registered project instead of only the current project", "--limit         Maximum results to return (default: 20)", "--json          Output tiered hits, stable entity addresses, snippets, global database scope, and project identity as JSON")
 }
 
 func parseSearchArgs(args []string) (searchOptions, error) {
@@ -2968,6 +2977,19 @@ func parseSearchArgs(args []string) (searchOptions, error) {
 }
 
 func searchHitAddress(hit state.SearchHit) string {
+	if hit.Source == "docs_index" {
+		locator := hit.Locator
+		if locator == "" {
+			locator = hit.Path
+		}
+		if hit.ProjectName != "" {
+			return hit.ProjectName + ":" + locator
+		}
+		return locator
+	}
+	if hit.Locator != "" {
+		return hit.Locator
+	}
 	if hit.Source == "journal_entry" {
 		address := hit.JournalEntryID
 		if hit.SessionID != "" {
@@ -2983,6 +3005,101 @@ func searchHitAddress(hit state.SearchHit) string {
 		address += "#" + hit.BodyKind
 	}
 	return address
+}
+
+func (r Runner) runDocs(args []string, out io.Writer, runtime state.Runtime) error {
+	if len(args) == 0 || isHelpArg(args) {
+		writeDocsHelp(out)
+		return nil
+	}
+	if writeNestedHelp(out, args, map[string]func(io.Writer){
+		"index": writeDocsIndexHelp,
+	}) {
+		return nil
+	}
+	switch args[0] {
+	case "index":
+		return r.runDocsIndex(args[1:], out, runtime)
+	default:
+		return unknownSubcommandError("docs", args[0])
+	}
+}
+
+func writeDocsHelp(out io.Writer) {
+	fmt.Fprintln(out, "Usage: loaf docs <subcommand> [options]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Manage docs/ indexing.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Subcommands:")
+	fmt.Fprintln(out, "  index  Index docs/ Markdown into SQLite FTS")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "  -h, --help  Show help")
+}
+
+func writeDocsIndexHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf docs index [--rebuild] [--json]", "Index docs/ Markdown into SQLite FTS.", "--rebuild    Rebuild current worktree docs index before scanning", "--json       Output indexed docs, counts, global database scope, and project identity as JSON")
+}
+
+func (r Runner) runDocsIndex(args []string, out io.Writer, runtime state.Runtime) error {
+	options, err := parseDocsIndexArgs(args)
+	if err != nil {
+		return err
+	}
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		return err
+	}
+	result, err := state.IndexDocs(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.DocsIndexOptions{Rebuild: options.rebuild, WorktreePath: runtime.RootPath()})
+	if err != nil {
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeDocsIndexResult(out, result)
+	return nil
+}
+
+func parseDocsIndexArgs(args []string) (docsIndexCLIOptions, error) {
+	var options docsIndexCLIOptions
+	for _, arg := range args {
+		switch arg {
+		case "--rebuild":
+			options.rebuild = true
+		case "--json":
+			options.jsonOutput = true
+		default:
+			return docsIndexCLIOptions{}, fmt.Errorf("unknown docs index option %q", arg)
+		}
+	}
+	return options, nil
+}
+
+func writeDocsIndexResult(out io.Writer, result state.DocsIndexResult) {
+	fmt.Fprintln(out, "loaf docs index")
+	if result.Rebuild {
+		fmt.Fprintln(out, "mode: rebuild")
+	}
+	fmt.Fprintln(out, "scope: global database")
+	if result.DatabasePath != "" {
+		fmt.Fprintf(out, "database: %s\n", result.DatabasePath)
+	}
+	if result.ProjectName != "" {
+		fmt.Fprintf(out, "project: %s\n", result.ProjectName)
+	}
+	if result.ProjectCurrentPath != "" {
+		fmt.Fprintf(out, "project path: %s\n", result.ProjectCurrentPath)
+	}
+	if result.IndexedWorktree != "" {
+		fmt.Fprintf(out, "indexed worktree: %s\n", result.IndexedWorktree)
+	}
+	if result.IndexedRef != "" {
+		fmt.Fprintf(out, "indexed ref: %s\n", result.IndexedRef)
+	}
+	fmt.Fprintf(out, "scanned: %d\n", result.Scanned)
+	fmt.Fprintf(out, "indexed: %d\n", result.Indexed)
+	fmt.Fprintf(out, "removed: %d\n", result.Removed)
 }
 
 func (r Runner) runTrace(args []string, out io.Writer, runtime state.Runtime) error {

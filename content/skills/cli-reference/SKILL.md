@@ -120,7 +120,7 @@ loaf release
 ## Search Management
 
 ### `loaf search`
-Search Tier-1 SQLite artifact bodies and journal entries
+Search SQLite artifact bodies, journal entries, and indexed docs
 
 **Options:**
 
@@ -132,6 +132,30 @@ Search Tier-1 SQLite artifact bodies and journal entries
 **Usage:**
 ```bash
 loaf search
+```
+
+---
+
+## Docs Management
+
+### `loaf docs`
+Manage docs/ indexing
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf docs index` | Index docs/ Markdown into SQLite FTS |
+
+**Options:**
+
+- `loaf docs index`:
+  - `--rebuild` - Rebuild current worktree docs index before scanning
+  - `--json` - Output indexed docs, counts, global database scope, and project identity as JSON
+
+**Usage:**
+```bash
+loaf docs index
 ```
 
 ---

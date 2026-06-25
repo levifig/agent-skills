@@ -178,6 +178,32 @@ Table journal_search {
   message text
 }
 
+Table docs_index {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  path text [not null]
+  content text [not null]
+  content_hash text [not null]
+  indexed_ref text
+  indexed_worktree text [not null]
+  indexed_at text [not null]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, indexed_worktree, path) [unique]
+    (project_id, path)
+    (project_id, indexed_worktree)
+  }
+}
+
+Table docs_search {
+  rowid integer [pk]
+  project_id text
+  id text
+  path text
+  content text
+}
+
 Table reports {
   id text [pk, not null]
   project_id text [not null, ref: > projects.id]

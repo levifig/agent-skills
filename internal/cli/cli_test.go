@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/csv"
@@ -15515,6 +15516,7 @@ func TestRunnerNestedStateBackedHelpDoesNotParseAsOption(t *testing.T) {
 		{name: "link create", args: []string{"link", "create", "--help"}, want: "Usage: loaf link create --from <entity>"},
 		{name: "trace", args: []string{"trace", "--help"}, want: "Usage: loaf trace <entity>"},
 		{name: "search", args: []string{"search", "--help"}, want: "Usage: loaf search <query>"},
+		{name: "docs index", args: []string{"docs", "index", "--help"}, want: "Usage: loaf docs index"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -15704,7 +15706,7 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 		}
 		commands[command.Name] = entry
 	}
-	for _, want := range []string{"build", "state", "project", "session", "task", "spec", "report", "plan", "handoff", "council", "kb", "release", "version"} {
+	for _, want := range []string{"build", "state", "project", "docs", "session", "task", "spec", "report", "plan", "handoff", "council", "kb", "release", "version"} {
 		if _, ok := commands[want]; !ok {
 			t.Fatalf("agent help commands missing %q: %#v", want, commands)
 		}
@@ -16059,6 +16061,82 @@ func TestRunnerSearchReturnsTier1SQLiteHits(t *testing.T) {
 	hit := result.Results[0]
 	if hit.Tier != "tier1" || hit.Source != "artifact_body" || hit.EntityKind != "report" || hit.EntityID == "" || !strings.Contains(hit.Snippet, "cliuniqueterm") {
 		t.Fatalf("hit = %#v, want Tier-1 report artifact hit with snippet", hit)
+	}
+}
+
+func TestRunnerDocsIndexIndexesMarkdown(t *testing.T) {
+	workingDir := initCLIGitRepo(t)
+	stateHome := t.TempDir()
+	writeCLIFile(t, filepath.Join(workingDir, "docs", "guide.md"), "# Guide\n\nclidocsuniqueterm")
+	writeCLIFile(t, filepath.Join(workingDir, "docs", "ignored.txt"), "clidocsignored")
+	if err := (Runner{WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"docs", "index", "--json"}); err != nil {
+		t.Fatalf("docs index --json error = %v", err)
+	}
+	var result state.DocsIndexResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	if result.Scanned != 1 || result.Indexed != 1 || result.Removed != 0 || result.Rebuild {
+		t.Fatalf("docs index result = %#v, want one indexed doc without rebuild", result)
+	}
+	if len(result.Docs) != 1 || result.Docs[0].Path != "docs/guide.md" {
+		t.Fatalf("docs = %#v, want docs/guide.md", result.Docs)
+	}
+
+	db := openCLITestDB(t, stateDBPathForWorkingDir(t, workingDir, stateHome))
+	defer closeCLITestDB(t, db)
+	var hitCount int
+	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM docs_search WHERE docs_search MATCH ?`, "clidocsuniqueterm").Scan(&hitCount); err != nil {
+		t.Fatalf("docs_search query error = %v", err)
+	}
+	if hitCount != 1 {
+		t.Fatalf("docs_search hit count = %d, want 1", hitCount)
+	}
+
+	stdout.Reset()
+	if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"docs", "index", "--rebuild"}); err != nil {
+		t.Fatalf("docs index --rebuild error = %v", err)
+	}
+	for _, want := range []string{"loaf docs index", "mode: rebuild", "scanned: 1", "indexed: 1"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunnerSearchReturnsTier2DocsHits(t *testing.T) {
+	workingDir := initCLIGitRepo(t)
+	stateHome := t.TempDir()
+	writeCLIFile(t, filepath.Join(workingDir, "docs", "guide.md"), "# Guide\n\nclisearchdocsterm")
+	if err := (Runner{WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	if err := (Runner{WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"docs", "index"}); err != nil {
+		t.Fatalf("docs index error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"search", "clisearchdocsterm", "--json"}); err != nil {
+		t.Fatalf("search docs --json error = %v", err)
+	}
+	var result state.SearchResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	if len(result.Results) != 1 {
+		t.Fatalf("results = %#v, want one docs hit", result.Results)
+	}
+	hit := result.Results[0]
+	if hit.Tier != "tier2" || hit.Source != "docs_index" || hit.Path != "docs/guide.md" || hit.Locator != "docs/guide.md:3" || !strings.Contains(hit.Snippet, "clisearchdocsterm") {
+		t.Fatalf("hit = %#v, want Tier-2 docs hit with line locator and snippet", hit)
+	}
+	if hit.ProjectName == "" || hit.ProjectCurrentPath != workingDir {
+		t.Fatalf("hit project context = %#v, want project name and path %q", hit, workingDir)
 	}
 }
 

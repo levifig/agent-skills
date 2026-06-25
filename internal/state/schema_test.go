@@ -36,6 +36,7 @@ var requiredInitialTables = []string{
 	"exports",
 	"session_state_snapshots",
 	"artifact_bodies",
+	"docs_index",
 	"runs",
 	"findings",
 	"verdicts",
@@ -47,8 +48,8 @@ var requiredInitialTables = []string{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 7 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 7", len(migrations))
+	if len(migrations) != 8 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 8", len(migrations))
 	}
 
 	for i, migration := range migrations {
@@ -76,6 +77,9 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[6].Name != "findings_verdicts_runs" {
 		t.Fatalf("migration[6].Name = %q, want findings_verdicts_runs", migrations[6].Name)
+	}
+	if migrations[7].Name != "docs_index" {
+		t.Fatalf("migration[7].Name = %q, want docs_index", migrations[7].Name)
 	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
@@ -132,6 +136,7 @@ func TestInitialSchemaPreservesLineageAndExports(t *testing.T) {
 		"exports":                 {"export_kind", "format", "state_version", "generated_at"},
 		"session_state_snapshots": {"content", "observed_branch", "observed_worktree"},
 		"artifact_bodies":         {"entity_kind", "entity_id", "body_kind", "content", "content_hash", "source_id"},
+		"docs_index":              {"path", "content", "content_hash", "indexed_ref", "indexed_worktree", "indexed_at"},
 		"runs":                    {"generator_ref", "generator_version", "generator_hash", "metadata", "started_at", "completed_at"},
 		"findings":                {"report_id", "run_id", "severity", "confidence", "dimension", "line_start", "line_end", "metadata"},
 		"verdicts":                {"finding_id", "run_id", "outcome", "rationale", "reproduction_notes", "metadata"},
@@ -231,6 +236,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	if sqlDoc != SchemaMigrations()[6].SQL {
 		t.Fatal("docs/schema/0007_findings_verdicts_runs.sql must match embedded migration 0007 exactly")
 	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0008_docs_index.sql")
+	if sqlDoc != SchemaMigrations()[7].SQL {
+		t.Fatal("docs/schema/0008_docs_index.sql must match embedded migration 0008 exactly")
+	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
 	mermaidDoc := readRepoFile(t, "docs", "schema", "operational-state.mmd")
@@ -263,6 +272,7 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ bundle_members : scopes",
 		"projects ||--o{ bundles : scopes",
 		"projects ||--o{ councils : scopes",
+		"projects ||--o{ docs_index : scopes",
 		"projects ||--o{ entity_tags : scopes",
 		"projects ||--o{ events : scopes",
 		"projects ||--o{ exports : scopes",
@@ -400,6 +410,49 @@ SELECT entry_type, journal_entry_id FROM journal_search WHERE journal_search MAT
 	}
 	if entryType != "decision" || entryID != "journal-one" {
 		t.Fatalf("journal_search hit = %s/%s, want decision/journal-one", entryType, entryID)
+	}
+}
+
+func TestDocsSearchFTS5VirtualTableWorks(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open(sqliteDriverName, filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	if err := ApplyMigrations(ctx, db, SchemaMigrations()); err != nil {
+		t.Fatalf("ApplyMigrations() error = %v", err)
+	}
+
+	now := "2026-06-24T13:00:00Z"
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO projects (id, identity_hash, created_at, updated_at) VALUES ('project-one', 'hash-one', ?, ?)
+`, now, now); err != nil {
+		t.Fatalf("insert project fixture error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO docs_index (id, project_id, path, content, content_hash, indexed_ref, indexed_worktree, indexed_at, created_at, updated_at)
+VALUES ('doc-one', 'project-one', 'docs/guide.md', 'alpha docs needle', 'hash-doc', 'main', '/tmp/worktree', ?, ?, ?)
+`, now, now, now); err != nil {
+		t.Fatalf("insert docs_index fixture error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO docs_search(rowid, project_id, id, path, content)
+SELECT rowid, project_id, id, path, content FROM docs_index WHERE id = 'doc-one'
+`); err != nil {
+		t.Fatalf("insert docs_search fixture error = %v", err)
+	}
+
+	var path, docID string
+	if err := db.QueryRowContext(ctx, `
+SELECT path, id FROM docs_search WHERE docs_search MATCH 'needle'
+`).Scan(&path, &docID); err != nil {
+		t.Fatalf("docs_search MATCH error = %v", err)
+	}
+	if path != "docs/guide.md" || docID != "doc-one" {
+		t.Fatalf("docs_search hit = %s/%s, want docs/guide.md/doc-one", path, docID)
 	}
 }
 

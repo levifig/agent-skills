@@ -9,6 +9,9 @@ Files:
 - `0003_project_identity_and_relationship_origin.sql`: exact mirror of `internal/state/migrations/0003_project_identity_and_relationship_origin.sql`
 - `0004_project_path_current_uniqueness.sql`: exact mirror of `internal/state/migrations/0004_project_path_current_uniqueness.sql`
 - `0005_artifact_bodies_and_search.sql`: exact mirror of `internal/state/migrations/0005_artifact_bodies_and_search.sql`
+- `0006_journal_search.sql`: exact mirror of `internal/state/migrations/0006_journal_search.sql`
+- `0007_findings_verdicts_runs.sql`: exact mirror of `internal/state/migrations/0007_findings_verdicts_runs.sql`
+- `0008_docs_index.sql`: exact mirror of `internal/state/migrations/0008_docs_index.sql`
 - `operational-state.dbml`: editable relational model for design review
 - `operational-state.mmd`: Mermaid ER diagram for quick visual inspection
 
