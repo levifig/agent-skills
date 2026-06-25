@@ -453,7 +453,7 @@ func detectInstallTools() []detectedInstallTool {
 	home := installHome()
 	defaults := defaultInstallConfigDirs()
 	var tools []detectedInstallTool
-	if dirExistsForInstall(defaults["opencode"]) {
+	if dirExistsForInstall(defaults["opencode"]) || installRecordExists(home, "opencode") {
 		tools = append(tools, newDetectedInstallTool("opencode", defaults["opencode"], "config"))
 	}
 	cursorConfig := defaults["cursor"]
@@ -462,15 +462,15 @@ func detectInstallTools() []detectedInstallTool {
 		tools = append(tools, newDetectedInstallTool("cursor", cursorConfig, "cli"))
 	case runtime.GOOS == "darwin" && (dirExistsForInstall("/Applications/Cursor.app") || dirExistsForInstall(filepath.Join(home, "Applications", "Cursor.app"))):
 		tools = append(tools, newDetectedInstallTool("cursor", cursorConfig, "app"))
-	case dirExistsForInstall(cursorConfig):
+	case dirExistsForInstall(cursorConfig) || installRecordExists(home, "cursor"):
 		tools = append(tools, newDetectedInstallTool("cursor", cursorConfig, "config"))
 	}
 	codexConfig := defaults["codex"]
-	if installCommandExists("codex") || dirExistsForInstall(codexConfig) || dirExistsForInstall(filepath.Join(home, ".codex")) {
+	if installCommandExists("codex") || dirExistsForInstall(codexConfig) || dirExistsForInstall(filepath.Join(home, ".codex")) || installRecordExists(home, "codex") {
 		tools = append(tools, newDetectedInstallTool("codex", codexConfig, "config"))
 	}
 	ampConfig := defaults["amp"]
-	if installCommandExists("amp") || dirExistsForInstall(ampConfig) {
+	if installCommandExists("amp") || dirExistsForInstall(ampConfig) || installRecordExists(home, "amp") {
 		tools = append(tools, newDetectedInstallTool("amp", ampConfig, "config"))
 	}
 	return tools
@@ -481,7 +481,7 @@ func newDetectedInstallTool(key string, configDir string, detectedBy string) det
 		key:        key,
 		name:       installDisplayName(key),
 		configDir:  configDir,
-		installed:  isLoafInstalledForInstall(configDir),
+		installed:  isLoafInstalledForTargetInstall(key, configDir),
 		detectedBy: detectedBy,
 	}
 }
@@ -514,6 +514,17 @@ func isLoafInstalledForInstall(configDir string) bool {
 		}
 	}
 	return false
+}
+
+func isLoafInstalledForTargetInstall(target string, configDir string) bool {
+	return isLoafInstalledForInstall(configDir) || installRecordExists(installHome(), target)
+}
+
+func installRecordExists(homeDir string, target string) bool {
+	if homeDir == "" || target == "" {
+		return false
+	}
+	return fileExistsForInstall(installRecordPath(homeDir, target))
 }
 
 func installAssumeYes(options installOptions) bool {

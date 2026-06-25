@@ -6,7 +6,7 @@ source_sessions:
   - id: 20260621-001541-session
     role: shaped
 created: 2026-06-22T09:13:21Z
-status: drafting
+status: complete
 branch: feat/agents-install-convention-parity
 ---
 
@@ -165,30 +165,30 @@ already-installed users' files, it is **breaking** and must be gated.
 
 ## Test Conditions
 
-- [ ] A capability table / mini-ADR exists in docs/decisions/ recording, per harness (Codex,
+- [x] A capability table / mini-ADR exists in docs/decisions/ recording, per harness (Codex,
       Cursor, OpenCode, Amp), whether it reads a configurable/shared skills dir, the path, and the
       doc citation; the Amp `~/.agents/skills/` question is explicitly answered.
-- [ ] A single destination resolver maps `(target, capability) -> destination`; no per-target
+- [x] A single destination resolver maps `(target, capability) -> destination`; no per-target
       `~/.agents` path literals remain scattered in `install_target.go`.
-- [ ] For every harness verified to support `~/.agents/`, `loaf install --to <harness>` writes
+- [x] For every harness verified to support `~/.agents/`, `loaf install --to <harness>` writes
       skills under `~/.agents/skills/` (test asserts the path).
-- [ ] OpenCode skills install to `~/.agents/skills/` iff verified-supported; otherwise the test
+- [x] OpenCode skills install to `~/.agents/skills/` iff verified-supported; otherwise the test
       asserts its native path with a documented exception.
-- [ ] Amp skills install to the resolver's path matching the verified capability (not a hardcoded
+- [x] Amp skills install to the resolver's path matching the verified capability (not a hardcoded
       `~/.config/agents/skills/` unless that is the verified answer).
-- [ ] `loaf install --upgrade` relocating a harness removes the old per-harness skill dir (no
+- [x] `loaf install --upgrade` relocating a harness removes the old per-harness skill dir (no
       orphans), via SPEC-053's mechanism — asserted by a test that seeds the old path and checks it
       is gone after upgrade.
-- [ ] Claude Code install path and plugin mechanism are unchanged (documented exception) — asserted.
-- [ ] Installed-detection / marker correctly identifies a relocated install (does not report
+- [x] Claude Code install path and plugin mechanism are unchanged (documented exception) — asserted.
+- [x] Installed-detection / marker correctly identifies a relocated install (does not report
       "not installed" after relocation).
-- [ ] Shared `~/.agents/skills/` cleanup never deletes non-Loaf-managed entries (test with a
+- [x] Shared `~/.agents/skills/` cleanup never deletes non-Loaf-managed entries (test with a
       foreign skill present).
-- [ ] No relocation code path executes unless SPEC-053's migration mechanism is present (gate
+- [x] No relocation code path executes unless SPEC-053's migration mechanism is present (gate
       asserted in test or guarded at call site).
-- [ ] Gemini's installed skill files are removed on upgrade as orphans; no Gemini target is
+- [x] Gemini's installed skill files are removed on upgrade as orphans; no Gemini target is
       re-introduced.
-- [ ] Destination-resolution cells are referenced by SPEC-047's parity-matrix test (or a stub
+- [x] Destination-resolution cells are referenced by SPEC-047's parity-matrix test (or a stub
       asserting the contract), so a per-harness regression fails the build.
 
 ## Priority Order

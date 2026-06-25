@@ -1,6 +1,16 @@
 {
   "version": 1,
-  "retired_targets": [],
+  "retired_targets": [
+    {
+      "target": "gemini",
+      "since": "v2.0.0-pre.20260614235428",
+      "reason": "Gemini is no longer a first-class Loaf install target",
+      "signoff": "SPEC-047-SPEC-052",
+      "paths": [
+        "${HOME}/.gemini"
+      ]
+    }
+  ],
   "retired_skills": [],
   "retired_agents": [],
   "externalized_skills": [
@@ -17,6 +27,25 @@
       ]
     }
   ],
-  "relocations": [],
+  "relocations": [
+    {
+      "id": "opencode-skills-to-agents-home",
+      "from": "${XDG_CONFIG_HOME}/opencode/skills",
+      "to": "${HOME}/.agents/skills",
+      "owner_marker": "${XDG_CONFIG_HOME}/opencode/.loaf-version",
+      "since": "v2.0.0-pre.20260614235428",
+      "reason": "OpenCode skills moved to the shared ~/.agents/skills install convention",
+      "signoff": "SPEC-052"
+    },
+    {
+      "id": "amp-skills-to-agents-home",
+      "from": "${HOME}/.config/agents/skills",
+      "to": "${HOME}/.agents/skills",
+      "owner_marker": "${HOME}/.amp/.loaf-version",
+      "since": "v2.0.0-pre.20260614235428",
+      "reason": "Amp skills moved to the shared ~/.agents/skills install convention",
+      "signoff": "SPEC-052"
+    }
+  ],
   "aliases": []
 }

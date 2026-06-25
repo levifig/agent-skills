@@ -12,6 +12,7 @@ import (
 const (
 	loafInstallMarkerFile = ".loaf-version"
 	loafHookMarker        = "loaf-managed"
+	loafSkillManifestFile = ".loaf-managed-skills.json"
 )
 
 var legacyLoafHookSignatures = map[string]bool{
@@ -77,6 +78,18 @@ type codexHooksFile struct {
 	Hooks   map[string][]map[string]any `json:"hooks,omitempty"`
 }
 
+type installTargetRecord struct {
+	Version   string `json:"version"`
+	Target    string `json:"target"`
+	ConfigDir string `json:"config_dir"`
+	SkillsDir string `json:"skills_dir,omitempty"`
+}
+
+type managedSkillsManifest struct {
+	Version int      `json:"version"`
+	Skills  []string `json:"skills"`
+}
+
 func installTargetDistribution(options targetInstallOptions) error {
 	if options.Target == "" {
 		return fmt.Errorf("install target is required")
@@ -106,17 +119,24 @@ func installTargetDistribution(options targetInstallOptions) error {
 }
 
 func installOpencodeTarget(options targetInstallOptions) error {
-	for _, dir := range []string{"skills", "agents", "commands", "plugins", "templates"} {
+	skillsDest := installSkillsDestination(options)
+	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
+		return err
+	}
+	for _, dir := range []string{"agents", "commands", "plugins", "templates"} {
 		if err := syncTargetSubdir(options.DistDir, options.ConfigDir, dir); err != nil {
 			return err
 		}
 	}
-	return writeInstallMarker(options.ConfigDir, options.Version)
+	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {
+		return err
+	}
+	return writeInstallRecord(options, skillsDest)
 }
 
 func installCursorTarget(options targetInstallOptions) error {
-	homeDir := installHomeDir(options)
-	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "skills"), filepath.Join(homeDir, ".agents", "skills")); err != nil {
+	skillsDest := installSkillsDestination(options)
+	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
 		return err
 	}
 	if err := os.RemoveAll(filepath.Join(options.ConfigDir, "commands")); err != nil {
@@ -141,7 +161,10 @@ func installCursorTarget(options targetInstallOptions) error {
 	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "templates"), filepath.Join(options.ConfigDir, "templates")); err != nil {
 		return err
 	}
-	return writeInstallMarker(options.ConfigDir, options.Version)
+	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {
+		return err
+	}
+	return writeInstallRecord(options, skillsDest)
 }
 
 func installCodexTarget(options targetInstallOptions) error {
@@ -150,22 +173,23 @@ func installCodexTarget(options targetInstallOptions) error {
 	if codexHome == "" {
 		codexHome = filepath.Join(homeDir, ".codex")
 	}
-	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "skills"), filepath.Join(homeDir, ".agents", "skills")); err != nil {
+	skillsDest := installSkillsDestination(options)
+	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
 		return err
 	}
 	if err := mergeHookFiles(filepath.Join(codexHome, "hooks.json"), filepath.Join(options.DistDir, ".codex", "hooks.json")); err != nil {
 		return err
 	}
-	return writeInstallMarker(options.ConfigDir, options.Version)
+	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {
+		return err
+	}
+	return writeInstallRecord(options, skillsDest)
 }
 
 func installAmpTarget(options targetInstallOptions) error {
 	homeDir := installHomeDir(options)
-	skillsDest := options.AmpSkillsDir
-	if skillsDest == "" {
-		skillsDest = filepath.Join(homeDir, ".config", "agents", "skills")
-	}
-	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
+	skillsDest := installSkillsDestination(options)
+	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
 		return err
 	}
 	pluginSrc := filepath.Join(options.DistDir, ".amp", "plugins", "loaf.ts")
@@ -181,7 +205,10 @@ func installAmpTarget(options targetInstallOptions) error {
 			return err
 		}
 	}
-	return writeInstallMarker(options.ConfigDir, options.Version)
+	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {
+		return err
+	}
+	return writeInstallRecord(options, skillsDest)
 }
 
 func installHomeDir(options targetInstallOptions) string {
@@ -192,6 +219,13 @@ func installHomeDir(options targetInstallOptions) string {
 		return home
 	}
 	return os.Getenv("USERPROFILE")
+}
+
+func installSkillsDestination(options targetInstallOptions) string {
+	if options.Target == "amp" && options.AmpSkillsDir != "" {
+		return options.AmpSkillsDir
+	}
+	return filepath.Join(installHomeDir(options), ".agents", "skills")
 }
 
 func syncTargetSubdir(distDir string, configDir string, name string) error {
@@ -215,6 +249,82 @@ func syncTargetDirIfExists(src string, dest string) error {
 		}
 	}
 	return copyDirContentsForInstall(src, dest)
+}
+
+func syncManagedSkillsDirIfExists(src string, dest string) error {
+	if !dirExistsForInstall(src) {
+		return nil
+	}
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	sourceSkills, err := listInstallSkillDirs(src)
+	if err != nil {
+		return err
+	}
+	previous, err := readManagedSkillsManifest(dest)
+	if err != nil {
+		return err
+	}
+	current := map[string]bool{}
+	for _, skill := range sourceSkills {
+		current[skill] = true
+	}
+	for _, skill := range previous.Skills {
+		if !current[skill] {
+			if err := os.RemoveAll(filepath.Join(dest, skill)); err != nil {
+				return err
+			}
+		}
+	}
+	for _, skill := range sourceSkills {
+		if err := os.RemoveAll(filepath.Join(dest, skill)); err != nil {
+			return err
+		}
+		if err := copyDirContentsForInstall(filepath.Join(src, skill), filepath.Join(dest, skill)); err != nil {
+			return err
+		}
+	}
+	return writeManagedSkillsManifest(dest, managedSkillsManifest{Version: 1, Skills: sourceSkills})
+}
+
+func listInstallSkillDirs(path string) ([]string, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	var skills []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			skills = append(skills, entry.Name())
+		}
+	}
+	return skills, nil
+}
+
+func readManagedSkillsManifest(dest string) (managedSkillsManifest, error) {
+	path := filepath.Join(dest, loafSkillManifestFile)
+	body, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return managedSkillsManifest{Version: 1}, nil
+		}
+		return managedSkillsManifest{}, err
+	}
+	var manifest managedSkillsManifest
+	if err := json.Unmarshal(body, &manifest); err != nil {
+		return managedSkillsManifest{}, fmt.Errorf("read managed skills manifest: %w", err)
+	}
+	return manifest, nil
+}
+
+func writeManagedSkillsManifest(dest string, manifest managedSkillsManifest) error {
+	body, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	body = append(body, '\n')
+	return os.WriteFile(filepath.Join(dest, loafSkillManifestFile), body, 0o644)
 }
 
 func mergeTargetDirIfExists(src string, dest string) error {
@@ -272,6 +382,33 @@ func writeInstallMarker(configDir string, version string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(configDir, loafInstallMarkerFile), []byte(version+"\n"), 0o644)
+}
+
+func writeInstallRecord(options targetInstallOptions, skillsDir string) error {
+	homeDir := installHomeDir(options)
+	if homeDir == "" {
+		return nil
+	}
+	record := installTargetRecord{
+		Version:   options.Version,
+		Target:    options.Target,
+		ConfigDir: options.ConfigDir,
+		SkillsDir: skillsDir,
+	}
+	body, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return err
+	}
+	body = append(body, '\n')
+	path := installRecordPath(homeDir, options.Target)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, body, 0o644)
+}
+
+func installRecordPath(homeDir string, target string) string {
+	return filepath.Join(homeDir, ".agents", "loaf", "install-targets", target+".json")
 }
 
 func mergeHookFiles(destPath string, loafPath string) error {

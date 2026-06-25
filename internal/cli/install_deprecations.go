@@ -63,13 +63,14 @@ type externalizedInstallSkill struct {
 }
 
 type installRelocationManifest struct {
-	ID      string `json:"id"`
-	From    string `json:"from"`
-	To      string `json:"to"`
-	Since   string `json:"since"`
-	Window  string `json:"window"`
-	Reason  string `json:"reason"`
-	Signoff string `json:"signoff"`
+	ID          string `json:"id"`
+	From        string `json:"from"`
+	To          string `json:"to"`
+	OwnerMarker string `json:"owner_marker"`
+	Since       string `json:"since"`
+	Window      string `json:"window"`
+	Reason      string `json:"reason"`
+	Signoff     string `json:"signoff"`
 }
 
 type installAliasManifest struct {
@@ -297,6 +298,13 @@ func applyInstallDeprecationCleanup(manifest installDeprecationManifest, pathCon
 		if err != nil {
 			return result, err
 		}
+		ownerMarker := ""
+		if relocation.OwnerMarker != "" {
+			ownerMarker, err = expandInstallDeprecationPath(relocation.OwnerMarker, pathContext)
+			if err != nil {
+				return result, err
+			}
+		}
 		action := installDeprecationCleanupAction{
 			Kind:    "path",
 			Name:    relocation.ID,
@@ -311,7 +319,7 @@ func applyInstallDeprecationCleanup(manifest installDeprecationManifest, pathCon
 			result.Skipped = append(result.Skipped, action)
 			continue
 		}
-		if !isLoafOwnedInstallDir(from) {
+		if !isLoafOwnedRelocationDir(from, ownerMarker) {
 			action.Action = "unmarked"
 			result.Skipped = append(result.Skipped, action)
 			continue
@@ -362,7 +370,12 @@ func deprecationWindow(value string) string {
 
 func isLoafOwnedInstallDir(path string) bool {
 	return fileExistsForInstall(filepath.Join(path, loafInstallMarkerFile)) ||
+		fileExistsForInstall(filepath.Join(filepath.Dir(path), loafInstallMarkerFile)) ||
 		fileExistsForInstall(filepath.Join(path, "SKILL.md"))
+}
+
+func isLoafOwnedRelocationDir(path string, ownerMarker string) bool {
+	return isLoafOwnedInstallDir(path) || (ownerMarker != "" && fileExistsForInstall(ownerMarker))
 }
 
 func isLoafOwnedAgentFile(agentHome string) bool {

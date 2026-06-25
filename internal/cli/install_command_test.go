@@ -44,6 +44,81 @@ func TestRunnerInstallExplicitCursorTargetRunsNatively(t *testing.T) {
 	}
 }
 
+func TestRunnerInstallUsesAgentsHomeSkillDestinations(t *testing.T) {
+	for _, target := range []string{"opencode", "cursor", "codex", "amp"} {
+		t.Run(target, func(t *testing.T) {
+			root, home := setupInstallCommandFixture(t)
+			writeInstallFile(t, filepath.Join(root, "dist", target, "skills", "foundations", "SKILL.md"), "# Foundations\n")
+			if target == "codex" {
+				writeInstallFile(t, filepath.Join(root, "dist", target, ".codex", "hooks.json"), `{"version":1,"hooks":{}}`)
+			}
+
+			var stdout bytes.Buffer
+			err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", target, "--yes"})
+			if err != nil {
+				t.Fatalf("install --to %s error = %v\n%s", target, err, stdout.String())
+			}
+
+			assertInstallFile(t, filepath.Join(home, ".agents", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+			record := readInstallCommandJSON(t, installRecordPath(home, target))
+			if record["target"] != target || record["skills_dir"] != filepath.Join(home, ".agents", "skills") {
+				t.Fatalf("record = %#v, want target and shared skills dir", record)
+			}
+			switch target {
+			case "opencode":
+				assertInstallPathMissing(t, filepath.Join(home, ".config", "opencode", "skills", "foundations"))
+			case "amp":
+				assertInstallPathMissing(t, filepath.Join(home, ".config", "agents", "skills", "foundations"))
+			}
+		})
+	}
+}
+
+func TestRunnerInstallSharedSkillsPreservesForeignEntries(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	sharedSkills := filepath.Join(home, ".agents", "skills")
+	writeInstallFile(t, filepath.Join(sharedSkills, "foreign-skill", "SKILL.md"), "# Mine\n")
+	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", "cursor", "--yes"})
+	if err != nil {
+		t.Fatalf("install --to cursor error = %v\n%s", err, stdout.String())
+	}
+	assertInstallFile(t, filepath.Join(sharedSkills, "foreign-skill", "SKILL.md"), "# Mine\n")
+	assertInstallFile(t, filepath.Join(sharedSkills, "foundations", "SKILL.md"), "# Foundations\n")
+
+	if err := os.RemoveAll(filepath.Join(root, "dist", "cursor", "skills", "foundations")); err != nil {
+		t.Fatalf("RemoveAll(foundations) error = %v", err)
+	}
+	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "go-development", "SKILL.md"), "# Go\n")
+	stdout.Reset()
+	err = Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", "cursor", "--yes"})
+	if err != nil {
+		t.Fatalf("second install --to cursor error = %v\n%s", err, stdout.String())
+	}
+	assertInstallPathMissing(t, filepath.Join(sharedSkills, "foundations"))
+	assertInstallFile(t, filepath.Join(sharedSkills, "foreign-skill", "SKILL.md"), "# Mine\n")
+	assertInstallFile(t, filepath.Join(sharedSkills, "go-development", "SKILL.md"), "# Go\n")
+}
+
+func TestRunnerInstallRecordKeepsRelocatedTargetDetectable(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", "cursor", "--yes"})
+	if err != nil {
+		t.Fatalf("install --to cursor error = %v\n%s", err, stdout.String())
+	}
+	if err := os.Remove(filepath.Join(home, ".cursor", loafInstallMarkerFile)); err != nil {
+		t.Fatalf("Remove(marker) error = %v", err)
+	}
+	if !isLoafInstalledForTargetInstall("cursor", filepath.Join(home, ".cursor")) {
+		t.Fatal("cursor install not detected from shared install record")
+	}
+}
+
 func TestRunnerInstallUpgradeOnlyInstallsDetectedLoafTargets(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
@@ -61,6 +136,66 @@ func TestRunnerInstallUpgradeOnlyInstallsDetectedLoafTargets(t *testing.T) {
 	assertInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "9.8.7-test.1\n")
 	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", loafInstallMarkerFile)); !os.IsNotExist(err) {
 		t.Fatalf("opencode marker stat = %v, want not installed during upgrade", err)
+	}
+}
+
+func TestRunnerInstallUpgradeRelocatesOpenCodeAndAmpSkillHomes(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		target      string
+		oldSkills   func(home string) string
+		ownerMarker func(home string) string
+	}{
+		{
+			name:        "opencode",
+			target:      "opencode",
+			oldSkills:   func(home string) string { return filepath.Join(home, ".config", "opencode", "skills") },
+			ownerMarker: func(home string) string { return filepath.Join(home, ".config", "opencode", loafInstallMarkerFile) },
+		},
+		{
+			name:        "amp",
+			target:      "amp",
+			oldSkills:   func(home string) string { return filepath.Join(home, ".config", "agents", "skills") },
+			ownerMarker: func(home string) string { return filepath.Join(home, ".amp", loafInstallMarkerFile) },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, home := setupInstallCommandFixture(t)
+			oldSkills := tc.oldSkills(home)
+			ownerMarker := tc.ownerMarker(home)
+			writeInstallFile(t, ownerMarker, "old\n")
+			writeInstallFile(t, filepath.Join(oldSkills, "foundations", "SKILL.md"), "# Old foundations\n")
+			writeInstallFile(t, filepath.Join(root, "dist", tc.target, "skills", "go-development", "SKILL.md"), "# Go\n")
+			writeInstallDeprecationManifest(t, root, fmt.Sprintf(`{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [],
+  "relocations": [
+    {
+      "id": "%s-skills-to-agents-home",
+      "from": %q,
+      "to": "${HOME}/.agents/skills",
+      "owner_marker": %q,
+      "since": "v9.9.0",
+      "window": "one-release",
+      "reason": "%s skills moved to ~/.agents/skills"
+    }
+  ],
+  "aliases": []
+}`, tc.target, oldSkills, ownerMarker, tc.target))
+
+			var stdout bytes.Buffer
+			err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+			if err != nil {
+				t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+			}
+			assertInstallPathMissing(t, oldSkills)
+			assertInstallFile(t, filepath.Join(home, ".agents", "skills", "foundations", "SKILL.md"), "# Old foundations\n")
+			assertInstallFile(t, filepath.Join(home, ".agents", "skills", "go-development", "SKILL.md"), "# Go\n")
+			if !strings.Contains(stdout.String(), "relocated path "+tc.target+"-skills-to-agents-home") {
+				t.Fatalf("stdout = %q, want relocation report", stdout.String())
+			}
+		})
 	}
 }
 
@@ -97,6 +232,41 @@ func TestRunnerInstallUpgradeCleansRetiredTargetFromManifest(t *testing.T) {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 		}
+	}
+}
+
+func TestRunnerInstallUpgradeCleansRetiredGeminiTargetWithoutReintroducingIt(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	geminiHome := filepath.Join(home, ".gemini")
+	writeInstallFile(t, filepath.Join(geminiHome, loafInstallMarkerFile), "old\n")
+	writeInstallFile(t, filepath.Join(geminiHome, "skills", "stale", "SKILL.md"), "# Stale\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [
+    {
+      "target": "gemini",
+      "since": "v9.9.0",
+      "window": "one-release",
+      "reason": "gemini retired",
+      "paths": ["${HOME}/.gemini"]
+    }
+  ],
+  "retired_skills": [],
+  "relocations": [],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	assertInstallPathMissing(t, geminiHome)
+	if isValidInstallTarget("gemini") {
+		t.Fatal("gemini target was reintroduced")
+	}
+	if !strings.Contains(stdout.String(), "removed retired target gemini") {
+		t.Fatalf("stdout = %q, want gemini cleanup report", stdout.String())
 	}
 }
 

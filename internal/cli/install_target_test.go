@@ -10,25 +10,24 @@ import (
 
 func TestInstallTargetOpencodeSyncsBuiltOutputAndMarker(t *testing.T) {
 	root := realpath(t, t.TempDir())
+	home := filepath.Join(root, "home")
 	dist := filepath.Join(root, "dist", "opencode")
 	config := filepath.Join(root, "config", "opencode")
 	writeInstallFile(t, filepath.Join(dist, "skills", "go-development", "SKILL.md"), "# Go\n")
 	writeInstallFile(t, filepath.Join(dist, "agents", "implementer.md"), "# Implementer\n")
-	writeInstallFile(t, filepath.Join(config, "skills", "stale", "SKILL.md"), "stale\n")
 
 	err := installTargetDistribution(targetInstallOptions{
 		Target:    "opencode",
 		DistDir:   dist,
 		ConfigDir: config,
 		Version:   "9.8.7-test.1",
+		HomeDir:   home,
 	})
 	if err != nil {
 		t.Fatalf("install opencode error = %v", err)
 	}
-	assertInstallFile(t, filepath.Join(config, "skills", "go-development", "SKILL.md"), "# Go\n")
-	if _, err := os.Stat(filepath.Join(config, "skills", "stale")); !os.IsNotExist(err) {
-		t.Fatalf("stale opencode skill stat = %v, want removed by sync", err)
-	}
+	assertInstallFile(t, filepath.Join(home, ".agents", "skills", "go-development", "SKILL.md"), "# Go\n")
+	assertInstallPathMissing(t, filepath.Join(config, "skills", "go-development"))
 	assertInstallFile(t, filepath.Join(config, loafInstallMarkerFile), "9.8.7-test.1\n")
 }
 
@@ -140,13 +139,13 @@ func TestInstallTargetAmpUsesSharedAndCustomHomes(t *testing.T) {
 
 func TestInstallTargetRejectsUnknownTarget(t *testing.T) {
 	err := installTargetDistribution(targetInstallOptions{
-		Target:    "unknown",
+		Target:    "claude-code",
 		DistDir:   t.TempDir(),
 		ConfigDir: t.TempDir(),
 		Version:   "9.8.7-test.1",
 	})
 	if err == nil || !strings.Contains(err.Error(), "no installer available") {
-		t.Fatalf("unknown install target error = %v, want unavailable target error", err)
+		t.Fatalf("claude-code install target error = %v, want plugin exception unavailable target error", err)
 	}
 }
 

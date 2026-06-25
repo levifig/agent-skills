@@ -8,11 +8,13 @@ is a Loaf workflow staging section for curated entries before release.
 
 ### Added
 
+- Added SPEC-052 install-destination parity for Codex, Cursor, OpenCode, and Amp, including a documented `~/.agents/skills` capability table and install records for relocated targets.
 - Added the SPEC-049 reversible `loaf state migrate lifecycle-statuses` migration with copy-run dry-run, live-backup apply, rollback manifest, and top-level `loaf migrate lifecycle-statuses` alias.
 - Added the SPEC-049 canonical lifecycle status registry for Loaf state entities, including per-entity validators and explicit exclusions for finding and run domain vocabularies.
 
 ### Changed
 
+- SPEC-052 updates `loaf install` to write OpenCode and Amp skills to the shared `~/.agents/skills` convention, preserve foreign shared skills, and relocate old Loaf-owned per-harness skill homes through the SPEC-053 upgrade manifest.
 - Trimmed duplicated skill guidance and stale references in SPEC-050, including orchestration authority handoffs, ADR-source de-duplication, helper-script contract checks, and generated CLI/session reference coverage.
 - Refreshed the SPEC-051 skill routing eval harness and description rewrite validation scaffolding, including dry-run suite checks and conflict-pair probes for measured routing work.
 - SPEC-049 lifecycle write paths now emit canonical statuses such as `done`, `paused`, and `in_progress` while tolerating legacy current rows until migration.
