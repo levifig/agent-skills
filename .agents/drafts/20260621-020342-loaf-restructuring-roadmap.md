@@ -333,4 +333,9 @@ body storage). SPEC-043 is already drafted and reviewed; the other ten are draft
 should each get a `/shape`-style refinement + adversarial review (like SPEC-043 got) before
 breakdown. Each spec lands on its own `feat/<slug>` branch at breakdown.
 
+Before implementing SPEC-047 or SPEC-043, apply the shared cross-spec contract lock in
+`.agents/drafts/20260624-115322-loaf-restructuring-shared-contracts-lock.md`. It fixes the body
+store shape, render stamp, migration/deprecation manifest, status boundary, and harness parity
+contract so the dependency waves do not re-decide them independently.
+
 *This roadmap is the parent; each spec above is a child.*
