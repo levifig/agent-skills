@@ -246,7 +246,7 @@ loaf state migrate markdown --resume
 loaf state migrate markdown --json
 ```
 
-Migration imports current `.agents/` material, including specs, tasks, ideas, sparks, sessions, reports, `TASKS.json`, and known archive directories. Dry-run output must show counts, skipped files, conflicts, inferred relationships, and destructive-risk warnings before `--apply`.
+Migration imports current `.agents/` material, including specs, tasks, ideas, sparks, sessions, reports, `TASKS.json`, and known archive directories. Dry-run output must show counts, unimported/ignored file classifications, conflicts, inferred relationships, and destructive-risk warnings before `--apply`.
 
 ### Specs And Tasks
 
@@ -439,7 +439,7 @@ Implementation constraints for Track A:
 | SQLite dependency adds install friction | Medium | High | Require explicit driver decision; prefer a maintained Go SQLite path compatible with single-binary distribution and Loaf's security posture |
 | Go runtime migration creates split-brain CLI behavior | Medium | High | Use a Go front controller with one public `loaf` command and explicit TypeScript delegation for unmigrated commands |
 | SQLite driver choice adds hidden native-build risk | Medium | High | Make driver selection a Track 0 decision; test cross-platform build, cgo policy, dependency count, and vulnerability checks before Track A depends on it |
-| Migration loses meaning from old Markdown | Medium | High | Dry-run import, source links, non-destructive migration, skipped-file reports |
+| Migration loses meaning from old Markdown | Medium | High | Dry-run import, source links, non-destructive migration, classified unimported/ignored file reports |
 | Agents bypass CLI and edit Markdown anyway | High | Medium | Update skills, add warnings/checks, keep Markdown lifecycle fields generated or marked compatibility-only |
 | External artifacts leak internal IDs via generated exports | Medium | High | Run SPEC-038 validators on export commands |
 | XDG path makes state harder to find | Medium | Medium | Add `loaf state path`, `status`, `backup`, and clear doctor output |
@@ -465,7 +465,7 @@ Implementation constraints for Track A:
 - [x] Build and test workflows prove the Go runtime and TypeScript compatibility bridge can coexist without exposing two public command names.
 - [x] `loaf state path` prints the same path from the main worktree and linked worktrees for the same project.
 - [x] `loaf state backup` writes a SQLite backup outside the repository and reports source path, backup path, byte count, and creation timestamp.
-- [x] `loaf state migrate markdown --dry-run` imports nothing and reports counts for specs, tasks, ideas, sparks, sessions, reports, relationships, and skipped files.
+- [x] `loaf state migrate markdown --dry-run` imports nothing and reports counts for specs, tasks, ideas, sparks, sessions, reports, relationships, and skipped-file classifications.
 - [x] `loaf state migrate markdown --apply` imports current `.agents/` artifacts without deleting or rewriting source Markdown.
 - [x] Import preserves source file paths and enough provenance to trace a row back to the original artifact.
 - [x] `loaf trace` can show spark -> idea -> spec/task -> resolved/exported lineage for an imported fixture.

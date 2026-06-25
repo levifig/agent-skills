@@ -13,19 +13,28 @@ import (
 
 // MarkdownMigrationPlan is the read-only preview for importing .agents files.
 type MarkdownMigrationPlan struct {
-	ContractVersion int      `json:"contract_version"`
-	AgentsPath      string   `json:"agents_path"`
-	Specs           int      `json:"specs"`
-	Tasks           int      `json:"tasks"`
-	Ideas           int      `json:"ideas"`
-	Sparks          int      `json:"sparks"`
-	Brainstorms     int      `json:"brainstorms"`
-	ShapingDrafts   int      `json:"shaping_drafts"`
-	Sessions        int      `json:"sessions"`
-	Reports         int      `json:"reports"`
-	Relationships   int      `json:"relationships"`
-	SkippedFiles    []string `json:"skipped_files"`
-	Warnings        []string `json:"warnings"`
+	ContractVersion int                         `json:"contract_version"`
+	AgentsPath      string                      `json:"agents_path"`
+	Specs           int                         `json:"specs"`
+	Tasks           int                         `json:"tasks"`
+	Ideas           int                         `json:"ideas"`
+	Sparks          int                         `json:"sparks"`
+	Brainstorms     int                         `json:"brainstorms"`
+	ShapingDrafts   int                         `json:"shaping_drafts"`
+	Sessions        int                         `json:"sessions"`
+	Reports         int                         `json:"reports"`
+	Relationships   int                         `json:"relationships"`
+	SkippedFiles    []string                    `json:"skipped_files"`
+	UnimportedFiles []MarkdownMigrationFileNote `json:"unimported_files"`
+	IgnoredFiles    []MarkdownMigrationFileNote `json:"ignored_files"`
+	Warnings        []string                    `json:"warnings"`
+}
+
+// MarkdownMigrationFileNote explains why a .agents file is absent from the
+// SQLite import plan.
+type MarkdownMigrationFileNote struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
 }
 
 // MarkdownMigrationPreviewResult is the CLI-facing dry-run envelope for a
@@ -61,6 +70,8 @@ func PreviewMarkdownMigration(root project.Root) (MarkdownMigrationPlan, error) 
 		ContractVersion: StateJSONContractVersion,
 		AgentsPath:      agentsPath,
 		SkippedFiles:    []string{},
+		UnimportedFiles: []MarkdownMigrationFileNote{},
+		IgnoredFiles:    []MarkdownMigrationFileNote{},
 		Warnings:        []string{},
 	}
 
@@ -86,11 +97,13 @@ func PreviewMarkdownMigration(root project.Root) (MarkdownMigrationPlan, error) 
 	countSparks(agentsPath, &plan.Sparks)
 	countRelationships(agentsPath, &plan.Relationships, &plan.Warnings)
 
-	skipped, err := skippedFiles(agentsPath)
+	disposition, err := classifySkippedFiles(agentsPath)
 	if err != nil {
 		return plan, err
 	}
-	plan.SkippedFiles = skipped
+	plan.SkippedFiles = disposition.skippedPaths()
+	plan.UnimportedFiles = disposition.Unimported
+	plan.IgnoredFiles = disposition.Ignored
 	return plan, nil
 }
 
@@ -270,8 +283,22 @@ func markdownFrontmatter(content []byte) string {
 	return ""
 }
 
-func skippedFiles(agentsPath string) ([]string, error) {
-	skipped := []string{}
+type skippedFileDisposition struct {
+	Skipped    []string
+	Unimported []MarkdownMigrationFileNote
+	Ignored    []MarkdownMigrationFileNote
+}
+
+func (d skippedFileDisposition) skippedPaths() []string {
+	return d.Skipped
+}
+
+func classifySkippedFiles(agentsPath string) (skippedFileDisposition, error) {
+	disposition := skippedFileDisposition{
+		Skipped:    []string{},
+		Unimported: []MarkdownMigrationFileNote{},
+		Ignored:    []MarkdownMigrationFileNote{},
+	}
 	err := filepath.WalkDir(agentsPath, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -286,10 +313,61 @@ func skippedFiles(agentsPath string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		skipped = append(skipped, filepath.ToSlash(filepath.Join(".agents", rel)))
+		rel = filepath.ToSlash(rel)
+		note := MarkdownMigrationFileNote{
+			Path:   filepath.ToSlash(filepath.Join(".agents", rel)),
+			Reason: skippedFileReason(rel),
+		}
+		disposition.Skipped = append(disposition.Skipped, note.Path)
+		if isIgnoredMigrationFile(rel) {
+			disposition.Ignored = append(disposition.Ignored, note)
+			return nil
+		}
+		disposition.Unimported = append(disposition.Unimported, note)
 		return nil
 	})
-	return skipped, err
+	return disposition, err
+}
+
+func isIgnoredMigrationFile(rel string) bool {
+	name := filepath.Base(rel)
+	if name == ".DS_Store" || name == ".gitkeep" || rel == ".loaf-state" {
+		return true
+	}
+	if strings.HasPrefix(rel, "tmp/") {
+		return true
+	}
+	return false
+}
+
+func skippedFileReason(rel string) string {
+	name := filepath.Base(rel)
+	switch {
+	case name == ".DS_Store":
+		return "macOS metadata"
+	case name == ".gitkeep":
+		return "directory placeholder"
+	case rel == ".loaf-state":
+		return "legacy local state marker"
+	case strings.HasPrefix(rel, "tmp/"):
+		return "temporary enrichment artifact"
+	case strings.HasPrefix(rel, "reports/") && !strings.HasSuffix(rel, ".md"):
+		return "unsupported report support file; only Markdown reports are imported"
+	case strings.HasPrefix(rel, "councils/") && strings.HasSuffix(rel, ".md"):
+		return "unsupported artifact kind: council"
+	case strings.HasPrefix(rel, "handoffs/") && strings.HasSuffix(rel, ".md"):
+		return "unsupported artifact kind: handoff"
+	case strings.HasPrefix(rel, "plans/") && strings.HasSuffix(rel, ".md"):
+		return "unsupported artifact kind: plan"
+	case strings.HasPrefix(rel, "drafts/") && strings.HasSuffix(rel, ".md"):
+		return "draft is not classified as brainstorm or shaping draft"
+	case strings.HasPrefix(rel, "skills/"):
+		return "project-local skill override is not imported into SQLite state"
+	case strings.HasSuffix(rel, ".md"):
+		return "unsupported Markdown artifact kind"
+	default:
+		return "unsupported file type"
+	}
 }
 
 func isKnownAgentsFile(agentsPath string, path string) bool {

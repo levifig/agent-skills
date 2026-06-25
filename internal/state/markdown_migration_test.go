@@ -48,6 +48,13 @@ func TestPreviewMarkdownMigrationCountsAgentsArtifacts(t *testing.T) {
 	if !reflect.DeepEqual(plan.SkippedFiles, wantSkipped) {
 		t.Fatalf("SkippedFiles = %#v, want %#v", plan.SkippedFiles, wantSkipped)
 	}
+	wantIgnored := []MarkdownMigrationFileNote{{Path: ".agents/tmp/unknown.txt", Reason: "temporary enrichment artifact"}}
+	if !reflect.DeepEqual(plan.IgnoredFiles, wantIgnored) {
+		t.Fatalf("IgnoredFiles = %#v, want %#v", plan.IgnoredFiles, wantIgnored)
+	}
+	if len(plan.UnimportedFiles) != 0 {
+		t.Fatalf("UnimportedFiles = %#v, want none", plan.UnimportedFiles)
+	}
 	if len(plan.Warnings) != 0 {
 		t.Fatalf("Warnings = %#v, want none", plan.Warnings)
 	}
@@ -140,6 +147,55 @@ resolved_by: TASK-001
 	wantSkipped := []string{".agents/drafts/20260528-research-note.md"}
 	if !reflect.DeepEqual(plan.SkippedFiles, wantSkipped) {
 		t.Fatalf("SkippedFiles = %#v, want only generic draft skipped", plan.SkippedFiles)
+	}
+	wantUnimported := []MarkdownMigrationFileNote{{Path: ".agents/drafts/20260528-research-note.md", Reason: "draft is not classified as brainstorm or shaping draft"}}
+	if !reflect.DeepEqual(plan.UnimportedFiles, wantUnimported) {
+		t.Fatalf("UnimportedFiles = %#v, want generic draft note", plan.UnimportedFiles)
+	}
+	if len(plan.IgnoredFiles) != 0 {
+		t.Fatalf("IgnoredFiles = %#v, want none", plan.IgnoredFiles)
+	}
+}
+
+func TestPreviewMarkdownMigrationClassifiesSkippedFiles(t *testing.T) {
+	root := projectRoot(t)
+	writeAgentsFile(t, root.Path(), ".DS_Store", "metadata\n")
+	writeAgentsFile(t, root.Path(), ".loaf-state", "{}\n")
+	writeAgentsFile(t, root.Path(), "councils/20260615-mqtt-identity-model.md", "# Council\n")
+	writeAgentsFile(t, root.Path(), "handoffs/20260617-security-wave-complete.md", "# Handoff\n")
+	writeAgentsFile(t, root.Path(), "ideas/.gitkeep", "\n")
+	writeAgentsFile(t, root.Path(), "plans/PLAN-010-break-glass-cli.md", "# Plan\n")
+	writeAgentsFile(t, root.Path(), "reports/audit/STATE.json", "{}\n")
+	writeAgentsFile(t, root.Path(), "skills/knowledge-base/SKILL.md", "# Skill\n")
+	writeAgentsFile(t, root.Path(), "tmp/enrichment.txt", "temporary\n")
+
+	plan, err := PreviewMarkdownMigration(root)
+	if err != nil {
+		t.Fatalf("PreviewMarkdownMigration() error = %v", err)
+	}
+
+	wantUnimported := []MarkdownMigrationFileNote{
+		{Path: ".agents/councils/20260615-mqtt-identity-model.md", Reason: "unsupported artifact kind: council"},
+		{Path: ".agents/handoffs/20260617-security-wave-complete.md", Reason: "unsupported artifact kind: handoff"},
+		{Path: ".agents/plans/PLAN-010-break-glass-cli.md", Reason: "unsupported artifact kind: plan"},
+		{Path: ".agents/reports/audit/STATE.json", Reason: "unsupported report support file; only Markdown reports are imported"},
+		{Path: ".agents/skills/knowledge-base/SKILL.md", Reason: "project-local skill override is not imported into SQLite state"},
+	}
+	if !reflect.DeepEqual(plan.UnimportedFiles, wantUnimported) {
+		t.Fatalf("UnimportedFiles = %#v, want %#v", plan.UnimportedFiles, wantUnimported)
+	}
+
+	wantIgnored := []MarkdownMigrationFileNote{
+		{Path: ".agents/.DS_Store", Reason: "macOS metadata"},
+		{Path: ".agents/.loaf-state", Reason: "legacy local state marker"},
+		{Path: ".agents/ideas/.gitkeep", Reason: "directory placeholder"},
+		{Path: ".agents/tmp/enrichment.txt", Reason: "temporary enrichment artifact"},
+	}
+	if !reflect.DeepEqual(plan.IgnoredFiles, wantIgnored) {
+		t.Fatalf("IgnoredFiles = %#v, want %#v", plan.IgnoredFiles, wantIgnored)
+	}
+	if len(plan.SkippedFiles) != len(wantUnimported)+len(wantIgnored) {
+		t.Fatalf("SkippedFiles = %#v, want legacy aggregate of unimported and ignored paths", plan.SkippedFiles)
 	}
 }
 

@@ -294,7 +294,7 @@ Run native migration workflows
 
 `loaf migrate markdown` is the upgrade path for existing `.agents/`
 projects with no SQLite database. Start with `--dry-run`, then use `--apply`
-when the artifact counts and skipped files look right.
+when the artifact counts and unimported file classifications look right.
 
 **Subcommands:**
 

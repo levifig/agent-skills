@@ -16,7 +16,7 @@ verify: >-
   go test ./internal/state ./internal/cli && go test ./... && npm run build
 done: >-
   Go-native `loaf state migrate markdown --dry-run` previews non-destructive
-  .agents import counts, inferred relationships, skipped files, and leaves
+  .agents import counts, inferred relationships, unimported/ignored files, and leaves
   SQLite state untouched
 ---
 
@@ -32,14 +32,14 @@ This task does not implement `--apply`, row insertion, or full trace queries.
 
 ## Acceptance Criteria
 
-- [x] `loaf state migrate markdown --dry-run` reports counts for specs, tasks, ideas, sparks, sessions, reports, relationships, and skipped files.
+- [x] `loaf state migrate markdown --dry-run` reports counts for specs, tasks, ideas, sparks, sessions, reports, relationships, and skipped-file classifications.
 - [x] `loaf state migrate markdown --json` returns the same dry-run information as structured JSON.
 - [x] Dry-run resolves `.agents/` from the project root and does not create a database file.
 - [x] Task dependency relationships are inferred from task frontmatter / `TASKS.json` where available.
 - [x] Spark counts are inferred from session journal entries using the compact `spark(scope): ...` convention.
 - [x] Unknown regular files under `.agents/` are reported as skipped with repo-relative paths.
 - [x] `--apply` is explicitly rejected until the apply importer is implemented.
-- [x] Tests cover populated fixtures, JSON output, skipped files, no `.agents/` directory, and no state DB mutation.
+- [x] Tests cover populated fixtures, JSON output, skipped-file classifications, no `.agents/` directory, and no state DB mutation.
 
 ## Verification
 

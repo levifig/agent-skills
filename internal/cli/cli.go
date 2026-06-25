@@ -2273,9 +2273,13 @@ func writeMarkdownMigrationPlan(out io.Writer, plan state.MarkdownMigrationPlan)
 	fmt.Fprintf(out, "sessions: %d\n", plan.Sessions)
 	fmt.Fprintf(out, "reports: %d\n", plan.Reports)
 	fmt.Fprintf(out, "relationships: %d\n", plan.Relationships)
-	fmt.Fprintf(out, "skipped files: %d\n", len(plan.SkippedFiles))
-	for _, path := range plan.SkippedFiles {
-		fmt.Fprintf(out, "  - %s\n", path)
+	fmt.Fprintf(out, "unimported files: %d\n", len(plan.UnimportedFiles))
+	for _, file := range plan.UnimportedFiles {
+		fmt.Fprintf(out, "  - %s (%s)\n", file.Path, file.Reason)
+	}
+	fmt.Fprintf(out, "ignored files: %d\n", len(plan.IgnoredFiles))
+	for _, file := range plan.IgnoredFiles {
+		fmt.Fprintf(out, "  - %s (%s)\n", file.Path, file.Reason)
 	}
 	for _, warning := range plan.Warnings {
 		fmt.Fprintf(out, "warning: %s\n", warning)

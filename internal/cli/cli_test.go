@@ -6985,6 +6985,12 @@ func TestRunnerStateMigrateMarkdownJSONDryRunDoesNotCreateDatabase(t *testing.T)
 	if len(plan.SkippedFiles) != 1 || plan.SkippedFiles[0] != ".agents/tmp/unknown.txt" {
 		t.Fatalf("SkippedFiles = %#v, want unknown file", plan.SkippedFiles)
 	}
+	if len(plan.UnimportedFiles) != 0 {
+		t.Fatalf("UnimportedFiles = %#v, want none", plan.UnimportedFiles)
+	}
+	if len(plan.IgnoredFiles) != 1 || plan.IgnoredFiles[0].Path != ".agents/tmp/unknown.txt" || plan.IgnoredFiles[0].Reason != "temporary enrichment artifact" {
+		t.Fatalf("IgnoredFiles = %#v, want classified unknown temp file", plan.IgnoredFiles)
+	}
 	if _, err := os.Stat(filepath.Dir(databasePath)); !os.IsNotExist(err) {
 		t.Fatalf("database parent exists after dry-run; err = %v", err)
 	}
@@ -6993,6 +6999,8 @@ func TestRunnerStateMigrateMarkdownJSONDryRunDoesNotCreateDatabase(t *testing.T)
 func TestRunnerStateMigrateMarkdownHumanDryRun(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	writeCLIAgentsFile(t, workingDir, "ideas/20260528-idea.md", "# Idea\n")
+	writeCLIAgentsFile(t, workingDir, "councils/20260615-mqtt-identity-model.md", "# Council\n")
+	writeCLIAgentsFile(t, workingDir, "tmp/enrichment.txt", "temporary\n")
 
 	var stdout bytes.Buffer
 	err := Runner{
@@ -7016,6 +7024,10 @@ func TestRunnerStateMigrateMarkdownHumanDryRun(t *testing.T) {
 		"project path:",
 		"applied: false",
 		"ideas: 1",
+		"unimported files: 1",
+		".agents/councils/20260615-mqtt-identity-model.md (unsupported artifact kind: council)",
+		"ignored files: 1",
+		".agents/tmp/enrichment.txt (temporary enrichment artifact)",
 		"next: rerun with --apply to import Markdown into the global database",
 	} {
 		if !strings.Contains(output, want) {

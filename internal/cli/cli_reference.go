@@ -655,7 +655,7 @@ func cliReferenceCommandGuidance(commandName string) string {
 	case "project":
 		return "Project IDs are stable SQLite identities, not path or name hashes. Use\n`loaf project rename --dry-run` for display-name previews and\n`loaf project move --dry-run` before recording checkout path moves."
 	case "migrate":
-		return "`loaf migrate markdown` is the upgrade path for existing `.agents/`\nprojects with no SQLite database. Start with `--dry-run`, then use `--apply`\nwhen the artifact counts and skipped files look right."
+		return "`loaf migrate markdown` is the upgrade path for existing `.agents/`\nprojects with no SQLite database. Start with `--dry-run`, then use `--apply`\nwhen the artifact counts and unimported file classifications look right."
 	default:
 		return ""
 	}

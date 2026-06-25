@@ -3433,7 +3433,7 @@
         ".agents/tasks/TASK-197-markdown-migration-dry-run-preview.md"
       ],
       "verify": "go test ./internal/state ./internal/cli && go test ./... && npm run build",
-      "done": "Go-native `loaf state migrate markdown --dry-run` previews non-destructive .agents import counts, inferred relationships, skipped files, and leaves SQLite state untouched",
+      "done": "Go-native `loaf state migrate markdown --dry-run` previews non-destructive .agents import counts, inferred relationships, unimported/ignored files, and leaves SQLite state untouched",
       "session": null,
       "created": "2026-05-28T17:16:01Z",
       "updated": "2026-05-28T17:20:22Z",
