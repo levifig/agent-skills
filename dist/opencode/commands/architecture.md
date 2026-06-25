@@ -16,6 +16,12 @@ version: 2.0.0-pre.20260625183349
 
 # Architecture
 
+## Contents
+- Critical Rules
+- Verification
+- Quick Reference
+- Topics
+
 Guides decision-making for **architecturally significant** choices through structured interviews, options analysis, and Architecture Decision Records. ADRs are **rare yet binding** — they record the rationale for choices that shape the system's structure, quality attributes, dependencies, interfaces, or construction techniques, and that the team agrees to honor until explicitly superseded. Most technical decisions do not warrant an ADR; the skill routes those to their proper destination (session log, SPEC, ARCHITECTURE.md, or owning skill) and stops.
 
 Stabilizes canonical vocabulary in `docs/knowledge/glossary.md` when load-bearing terms surface mid-interview — additive to ADR creation, never a gate on it.
@@ -197,7 +203,7 @@ This skill *stabilizes* terms — promote a previously-proposed candidate, or wr
 |-------|-----------|----------|
 | ADR Template | [templates/adr.md](../skills/architecture/templates/adr.md) | Creating new architecture decision records |
 | Grilling Protocol | [templates/grilling.md](../skills/architecture/templates/grilling.md) | Running the structured interview, including glossary discipline |
-| Council Workflow | `orchestration/references/councils.md` | Multi-agent deliberation for complex decisions |
+| Council Workflow | `council/SKILL.md` | Multi-agent deliberation for complex decisions |
 | Documentation | `documentation-standards/references/documentation.md` | ADR formatting and standards |
 | Canonical ADR sources | [https://adr.github.io/](https://adr.github.io/) | Reference for ADR practice; format hub |
 | AWS ADR Process | [AWS prescriptive guidance](https://docs.aws.amazon.com/prescriptive-guidance/latest/architectural-decision-records/adr-process.html) | "Architecturally significant" framing, separate-design-from-decision principle |

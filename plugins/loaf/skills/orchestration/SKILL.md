@@ -80,19 +80,18 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Product Development | [references/product-development.md](references/product-development.md) | Following Research -> Vision -> Architecture -> Specs workflow |
-| Specifications | [references/specs.md](references/specs.md) | Creating specs, shaping work, defining test conditions |
+| Shaping Specs | [../shape/SKILL.md](../shape/SKILL.md) | Creating specs, shaping work, defining test conditions |
+| Breaking Work Into Tasks | [../breakdown/SKILL.md](../breakdown/SKILL.md) | Turning shaped specs into implementation tasks |
 | Local Tasks | [references/local-tasks.md](references/local-tasks.md) | Managing tasks locally or with Linear backend |
 | Agent Delegation | [references/delegation.md](references/delegation.md) | Choosing agents, spawning subagents, decision trees |
 | Parallel Agents | [references/parallel-agents.md](references/parallel-agents.md) | Dispatching independent work concurrently |
 | Subagent Development | [references/subagent-development.md](references/subagent-development.md) | Delegating to specialized agents |
 | Background Agents | [references/background-agents.md](references/background-agents.md) | Running non-interactive work in background |
-| Council Workflow | [references/councils.md](references/councils.md) | Convening councils for complex decisions |
+| Council Workflow | [../council/SKILL.md](../council/SKILL.md) | Convening councils for complex decisions |
 | Session Management | [references/sessions.md](references/sessions.md) | Starting sessions and keeping live work resumable |
 | Session Resume | [references/session-resume.md](references/session-resume.md) | Resuming sessions, checkpoints, context recovery |
 | Context Management | [references/context-management.md](references/context-management.md) | Using /clear, /compact, managing context limits |
 | Linear Integration | [references/linear.md](references/linear.md) | Updating Linear issues, magic words, status conventions |
-| Product Planning | [references/planning.md](references/planning.md) | Shape Up methodology, complexity sizing, roadmaps |
 | Script Surface | [references/script-surface.md](references/script-surface.md) | Deciding whether helper scripts should become CLI commands |
 
 ## Philosophy

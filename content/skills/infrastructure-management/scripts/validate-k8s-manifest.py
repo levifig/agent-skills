@@ -5,88 +5,70 @@ Usage: validate-k8s-manifest.py <manifest.yaml>
 """
 
 import sys
+import re
 from pathlib import Path
 
-import yaml
 
-
-def validate_pod_spec(spec: dict, path: str) -> list[str]:
+def validate_pod_spec(text: str, path: str) -> list[str]:
     """Validate pod spec for security and resource settings."""
     errors = []
 
-    # Check security context
-    security_context = spec.get("securityContext", {})
-    if not security_context.get("runAsNonRoot"):
+    if not re.search(r"(?m)^\s*runAsNonRoot:\s*true\s*(?:#.*)?$", text):
         errors.append(f"{path}: Missing runAsNonRoot: true")
 
-    # Check containers
-    containers = spec.get("containers", [])
-    for i, container in enumerate(containers):
-        container_path = f"{path}.containers[{i}]"
+    if "containers:" not in text:
+        return errors
 
-        # Check resources
-        resources = container.get("resources", {})
-        if not resources.get("requests"):
-            errors.append(f"{container_path}: Missing resource requests")
-        if not resources.get("limits"):
-            errors.append(f"{container_path}: Missing resource limits")
+    container_path = f"{path}.containers"
+    for required in ["resources:", "requests:", "limits:", "livenessProbe:", "readinessProbe:"]:
+        if required not in text:
+            errors.append(f"{container_path}: Missing {required.rstrip(':')}")
 
-        # Check probes
-        if not container.get("livenessProbe"):
-            errors.append(f"{container_path}: Missing livenessProbe")
-        if not container.get("readinessProbe"):
-            errors.append(f"{container_path}: Missing readinessProbe")
-
-        # Check image tag
-        image = container.get("image", "")
+    for image in re.findall(r"(?m)^\s*image:\s*([^\s#]+)", text):
         if ":latest" in image or ":" not in image:
             errors.append(f"{container_path}: Using :latest or no tag for image")
 
-        # Check container security context
-        container_security = container.get("securityContext", {})
-        if container_security.get("allowPrivilegeEscalation") is not False:
-            errors.append(f"{container_path}: Missing allowPrivilegeEscalation: false")
+    if not re.search(r"(?m)^\s*allowPrivilegeEscalation:\s*false\s*(?:#.*)?$", text):
+        errors.append(f"{container_path}: Missing allowPrivilegeEscalation: false")
 
     return errors
 
 
-def validate_manifest(doc: dict) -> list[str]:
+def field_value(text: str, field: str, default: str = "Unknown") -> str:
+    match = re.search(rf"(?m)^\s*{re.escape(field)}:\s*([^\s#]+)", text)
+    if not match:
+        return default
+    return match.group(1).strip().strip('"\'')
+
+
+def secret_string_data_keys(text: str) -> list[str]:
+    match = re.search(r"(?ms)^stringData:\s*\n(?P<body>(?:^[ \t]+[A-Za-z0-9_.-]+:\s*.*\n?)+)", text)
+    if not match:
+        return []
+    return re.findall(r"(?m)^\s+([A-Za-z0-9_.-]+):", match.group("body"))
+
+
+def manifest_documents(text: str) -> list[str]:
+    return [doc.strip() for doc in re.split(r"(?m)^---\s*$", text) if doc.strip()]
+
+
+def validate_manifest(doc: str) -> list[str]:
     """Validate a single Kubernetes manifest."""
     errors = []
-    kind = doc.get("kind", "Unknown")
-    name = doc.get("metadata", {}).get("name", "unnamed")
+    kind = field_value(doc, "kind")
+    name = field_value(doc, "name", "unnamed")
     path = f"{kind}/{name}"
 
-    # Validate based on kind
-    if kind == "Deployment":
-        spec = doc.get("spec", {}).get("template", {}).get("spec", {})
-        errors.extend(validate_pod_spec(spec, f"{path}.spec.template.spec"))
-
-    elif kind == "StatefulSet":
-        spec = doc.get("spec", {}).get("template", {}).get("spec", {})
-        errors.extend(validate_pod_spec(spec, f"{path}.spec.template.spec"))
-
+    if kind in {"Deployment", "StatefulSet"}:
+        errors.extend(validate_pod_spec(doc, f"{path}.spec.template.spec"))
     elif kind == "CronJob":
-        spec = (
-            doc.get("spec", {})
-            .get("jobTemplate", {})
-            .get("spec", {})
-            .get("template", {})
-            .get("spec", {})
-        )
-        errors.extend(validate_pod_spec(spec, f"{path}.spec.jobTemplate.spec.template.spec"))
-
+        errors.extend(validate_pod_spec(doc, f"{path}.spec.jobTemplate.spec.template.spec"))
     elif kind == "Pod":
-        spec = doc.get("spec", {})
-        errors.extend(validate_pod_spec(spec, f"{path}.spec"))
-
+        errors.extend(validate_pod_spec(doc, f"{path}.spec"))
     elif kind == "Secret":
-        # Check if data contains sensitive keys in stringData (would be visible)
-        string_data = doc.get("stringData", {})
-        for key in string_data:
+        for key in secret_string_data_keys(doc):
             if any(sensitive in key.upper() for sensitive in ["PASSWORD", "KEY", "TOKEN"]):
                 errors.append(f"{path}: Sensitive data in stringData (use data with base64)")
-
     return errors
 
 
@@ -105,12 +87,8 @@ def main():
 
     all_errors = []
 
-    with open(manifest_path) as f:
-        docs = list(yaml.safe_load_all(f))
-
+    docs = manifest_documents(manifest_path.read_text())
     for doc in docs:
-        if doc is None:
-            continue
         errors = validate_manifest(doc)
         all_errors.extend(errors)
 

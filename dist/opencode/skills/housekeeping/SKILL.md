@@ -13,6 +13,16 @@ version: 2.0.0-pre.20260625183349
 
 # Housekeeping
 
+## Contents
+- Critical Rules
+- Verification
+- Quick Reference
+- Session Enrichment
+- Mode-Aware Checks
+- Process
+- Guardrails
+- Related Skills
+
 Systematic review and archival of all `.agents/` artifacts with Linear-aware checks.
 
 ## Critical Rules

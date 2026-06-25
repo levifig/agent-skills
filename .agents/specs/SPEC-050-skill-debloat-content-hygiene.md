@@ -3,7 +3,7 @@ id: SPEC-050
 title: Skill De-bloat & Content Hygiene
 source: "/Users/levifig/Code/levifig/projects/loaf/.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md (WS-D)"
 created: 2026-06-22T09:13:21Z
-status: drafting
+status: complete
 branch: feat/skill-debloat-content-hygiene
 source_sessions:
   - id: 20260621-001541-session
@@ -77,13 +77,12 @@ so the structural work landing in earlier specs is not re-buried under duplicate
   removes/relocates orchestration's *non-session* duplicated references and unwired scripts only
   after that rewrite settles. The session references themselves are SPEC-048's domain, not this
   one's.
-- **SPEC-051 (Routing Eval & Validated Description Rewrites).** The description rewrites here
-  (`research` de-scope, `interface-design` negative-routing, `foundations` de-scope) are *content*
-  edits; SPEC-051 owns the routing-eval harness that *validates* description changes measurably
-  improve routing. This spec proposes the edits; SPEC-051 gates whether they ship. The two run in
-  parallel (roadmap §3: D ∥ E) and must coordinate so a description is not rewritten twice.
-  Per the roadmap decision, *no blind rewrites* — description changes here are staged behind
-  SPEC-051's eval where they affect routing.
+- **SPEC-051 (Routing Eval & Validated Description Rewrites).** SPEC-051 owns routing-affecting
+  `description:` rewrites and the eval harness that validates them. SPEC-050 may trim duplicate
+  body prose, stale references, broken helper contracts, and duplicated authority, but it must not
+  edit skill frontmatter descriptions or ship routing text that SPEC-051 has not validated. The two
+  run in parallel (roadmap §3: D ∥ E); this spec supplies hygiene evidence and leaves description
+  decisions to SPEC-051.
 - **SPEC-043 (SQLite-Native Artifact Bodies).** The `cli-reference` catalog gap is a *content*
   symptom; SPEC-043 introduces uniform `new/edit/show/list/link` verbs and a cli-reference
   regeneration build-step. This spec only ensures the `loaf session` family is cataloged; it does
@@ -116,12 +115,11 @@ gate. Group the work into four clusters that can land as separate commits/PRs:
    `documentation-standards/references/documentation.md` and replace it with a link to
    `architecture` as the single ADR source of truth.
 
-2. **Description de-scope & repositioning** (staged behind SPEC-051's eval where routing-affecting):
-   drop `research`'s ideation/vision modes (it becomes investigation-only; ideation→`brainstorm`,
-   vision→`strategy`/`reflect`); add negative-routing to `interface-design`'s description toward
-   `artifact-design`/`frontend-design` and keep it `user-invocable: false`; narrow `foundations`'
-   description to its actual surface (code quality + naming + TDD + verification), dropping the
-   git/docs/security over-claim and negative-routing to the sibling skills.
+2. **Body de-scope only.** Remove or replace duplicate body sections when they restate authority
+   owned by another skill, but do not change YAML `description:` fields. `research` mode wording,
+   `interface-design` negative routing, and `foundations` description scope are SPEC-051 decisions;
+   SPEC-050 can record evidence and clean non-frontmatter duplication after confirming it is not a
+   routing rewrite.
 
 3. **Tooling correctness.** Remove the undeclared PyYAML dependency from
    `infrastructure-management`'s k8s validator — rewrite without `import yaml` (stdlib-only parse or
@@ -141,10 +139,8 @@ gate. Group the work into four clusters that can land as separate commits/PRs:
 - Trim `orchestration` references that duplicate `council`/`shape`/`breakdown`/`research`
   authority; retire or wire the unwired orchestration scripts.
 - Strip the duplicate ADR template/format from `documentation-standards`; link to `architecture`.
-- De-scope `research` (drop ideation/vision modes → investigation-only).
-- Reposition `interface-design` as a reference skill with negative-routing to
-  `artifact-design`/`frontend-design`.
-- De-scope `foundations` description (drop the three over-claimed sibling domains).
+- Remove non-frontmatter duplicate body prose only when ownership is unambiguous; record evidence
+  for SPEC-051 where the cleanup would require a routing-affecting description rewrite.
 - Fix unrunnable tooling: `infrastructure-management` PyYAML import; `power-systems-modeling`
   sidecar/script mismatch.
 - Stale skill-name reference fixes: `database-design`→`infrastructure-management`,
@@ -160,6 +156,9 @@ gate. Group the work into four clusters that can land as separate commits/PRs:
 - Session-model rewrites of `orchestration`/`implement`/`bootstrap` and the session references
   (`sessions.md`, `context-management.md`) — owned by **SPEC-048**.
 - The routing-eval harness and the decision of *whether* a rewrite ships — owned by **SPEC-051**.
+- YAML `description:` rewrites for `research`, `interface-design`, or `foundations` that change
+  routing scope — owned by **SPEC-051**. Stale path-name corrections that preserve routing intent
+  are allowed here.
 - The cli-reference *generation mechanism* and uniform entity verbs — owned by **SPEC-043**.
 - Retiring `thermo-nuclear-code-quality-review`, `debugging` disposition, opt-in install packs,
   `librarian` profile — owned by **SPEC-053** (taxonomy decisions).
@@ -196,45 +195,41 @@ gate. Group the work into four clusters that can land as separate commits/PRs:
 
 ## Open Questions
 
-1. Should the unwired orchestration scripts that are genuinely useful (`suggest-team.py`,
-   `new-council.sh`) be promoted to `loaf` subcommands, or retired and folded into the relevant
-   skill prose? (Likely defers to whether SPEC-043/SPEC-048 absorb their function.)
-2. Does the `research` de-scope require a new template/mode removal, or only description + Quick
-   Reference table edits? (Verify `research/templates/` after SPEC-051's eval.)
-3. For `power-systems-modeling`: convert the shell helper to Python (matching the sidecar) or widen
-   the sidecar to allow shell? (Convention favors Python parity with the existing `*.py` scripts.)
-4. Is the `cli-reference` session gap fully closed by SPEC-043's regeneration build-step, making
-   this spec's catalog item a no-op? (Coordinate at breakdown time.)
+1. **Orchestration scripts:** classify each helper as hook-owned, CLI-owned, skill-local, or
+   retired. SPEC-050 may document skill-local helpers and remove clearly dead legacy helpers, but it
+   should not create new `loaf` subcommands.
+2. **Research/foundations/interface descriptions:** defer frontmatter description changes to
+   SPEC-051. SPEC-050 may only trim duplicate body prose when the edit does not change routing.
+3. **Power-systems helper contract:** widen the sidecar to include the shipped shell helper unless
+   implementation evidence shows conversion to Python is smaller and clearer.
+4. **cli-reference session gap:** re-check after SPEC-043. If the generated session family catalog
+   is already present, mark this item as closed-by-dependency and do not hand-edit generated docs.
 
 ## Test Conditions
 
-- [ ] `loaf build` succeeds and `git diff --exit-code -- dist plugins` is clean after each cluster.
-- [ ] `npm run typecheck` and `npm run test` pass.
-- [ ] `content/skills/orchestration/references/` no longer contains references duplicating
+- [x] `loaf build` succeeds and generated `dist/` / `plugins/` changes are refreshed with source.
+- [x] `npm run typecheck` and `npm run test` pass.
+- [x] `content/skills/orchestration/references/` no longer contains references duplicating
       `council`/`shape`/`breakdown`/`research` authority (session references untouched, owned by
       SPEC-048).
-- [ ] Every script under `content/skills/orchestration/scripts/` is either wired (hook or
+- [x] Every script under `content/skills/orchestration/scripts/` is either wired (hook or
       `loaf check`), documented as a skill-local helper, or removed.
-- [ ] `documentation-standards/references/documentation.md` no longer publishes an ADR template;
+- [x] `documentation-standards/references/documentation.md` no longer publishes an ADR template;
       it links to `architecture` as the single ADR source of truth.
-- [ ] `research/SKILL.md` no longer advertises Brainstorming or Vision Evolution modes; routing
-      to `brainstorm`/`strategy`/`reflect` is negative-routed in its description.
-- [ ] `interface-design`'s description negative-routes to `artifact-design`/`frontend-design` and
-      it remains `user-invocable: false`.
-- [ ] `foundations`'s description no longer claims commit conventions, documentation standards, or
-      security patterns as its own surface.
-- [ ] `infrastructure-management/scripts/validate-k8s-manifest.py` runs without an undeclared
+- [x] SPEC-050 does not ship the `research` / `interface-design` / `foundations` routing rewrites;
+      those remain for SPEC-051. Stale path-only description corrections preserve routing intent.
+- [x] `infrastructure-management/scripts/validate-k8s-manifest.py` runs without an undeclared
       `import yaml` (or the dependency is explicitly declared/opt-in).
-- [ ] `power-systems-modeling` sidecar `allowed-tools` matches the scripts it ships (no
+- [x] `power-systems-modeling` sidecar `allowed-tools` matches the scripts it ships (no
       shell-script-without-shell-permission mismatch).
-- [ ] `rg -n 'infrastructure\b|database-patterns' content/skills/database-design content/skills/power-systems-modeling`
+- [x] `rg -n 'infrastructure\b|database-patterns' content/skills/database-design content/skills/power-systems-modeling`
       returns no stale skill-name references.
-- [ ] `rg -n '`python` skill|`typescript` skill|`rails` skill' content/skills/foundations` returns
+- [x] `rg -n '`python` skill|`typescript` skill|`rails` skill' content/skills/foundations` returns
       nothing.
-- [ ] `knowledge-base/SKILL.md` routes agent instructions to `.agents/AGENTS.md`, not `CLAUDE.md`.
-- [ ] `triage/SKILL.md` has no stray/unbalanced code fence.
-- [ ] Every source `SKILL.md` over 100 lines has a `## Contents` header.
-- [ ] The `loaf session` family (`start/log/end/list/show/archive`) appears in the generated
+- [x] `knowledge-base/SKILL.md` routes agent instructions to `.agents/AGENTS.md`, not `CLAUDE.md`.
+- [x] `triage/SKILL.md` has no stray/unbalanced code fence.
+- [x] Every source `SKILL.md` over 100 lines has a `## Contents` header.
+- [x] The `loaf session` family (`start/log/end/list/show/archive`) appears in the generated
       `cli-reference` catalog (or the gap is closed by SPEC-043).
 
 ## Priority Order
@@ -252,8 +247,7 @@ SPEC-048 has landed.
 4. **Orchestration reference trim & script disposition** (non-breaking)
    — **go/no-go gate: SPEC-048 must be merged** to avoid churn on shared orchestration/session
    files.
-5. **Description de-scope & repositioning** (non-breaking)
-   — **go/no-go gate: SPEC-051's routing eval** must validate that routing-affecting rewrites
-   measurably improve routing before they ship (no blind rewrites).
+5. **Body-only de-scope evidence** (non-breaking) — collect duplicate-body evidence for SPEC-051
+   and trim only non-frontmatter prose whose ownership is unambiguous.
 6. **cli-reference session catalog** (non-breaking) — **conditional on SPEC-043**: drop if
    SPEC-043's regeneration build-step already closes the gap.

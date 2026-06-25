@@ -93,6 +93,6 @@ Follow language-specific conventions consistently:
 ## Implementation
 
 See language-specific skills for syntax and tooling:
-- `python` skill for Python/FastAPI/pytest
-- `typescript` skill for TypeScript/React/Vitest
-- `rails` skill for Ruby/Rails/Minitest
+- `python-development` skill for Python/FastAPI/pytest
+- `typescript-development` skill for TypeScript/React/Vitest
+- `ruby-development` skill for Ruby/Rails/Minitest

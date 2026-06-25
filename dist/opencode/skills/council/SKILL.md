@@ -95,5 +95,5 @@ When a council resolves a spec's open questions:
 | Topic | Reference | Use When |
 |-------|-----------|----------|
 | Council Template | [templates/council.md](templates/council.md) | Creating council files |
-| Composition | `orchestration/references/councils.md` | Selecting council agents |
+| Composition | `council/SKILL.md` | Selecting council agents |
 | Delegation | `orchestration/references/delegation.md` | Spawning subtask agent |

@@ -74,4 +74,4 @@ Exact equality only                  → Hash (rare)
 ## Related Skills
 
 - See `foundations` for code style, TDD, and verification principles
-- See `infrastructure` for connection pooling and deployment patterns
+- See `infrastructure-management` for connection pooling and deployment patterns

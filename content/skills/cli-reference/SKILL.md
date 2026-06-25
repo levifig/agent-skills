@@ -10,6 +10,12 @@ description: >-
 
 # Loaf CLI Reference
 
+## Contents
+- Global Commands
+- Command Reference
+- Command Substitution Reference
+- Quick Decision Guide
+
 Quick reference for all Loaf CLI commands. Each command includes its purpose, common usage patterns, and when to use it.
 
 **Note:** This file is auto-generated from native CLI reference metadata. Do not edit manually.
@@ -300,6 +306,70 @@ loaf state migrate markdown --apply
 loaf state backup
 loaf state backup verify /path/to/backup.sqlite
 loaf state status
+```
+
+---
+
+## Session Management
+
+### `loaf session`
+Manage session journals and native SQLite session state
+
+Session list/show/log/report commands are SQLite-aware. Prefer these commands
+over manual session frontmatter edits when changing lifecycle or journal state.
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf session start` | Start or resume a session for the current branch |
+| `loaf session end` | End, wrap, or clear a session |
+| `loaf session archive` | Archive a stopped or targeted session |
+| `loaf session list` | List sessions |
+| `loaf session show` | Show one session |
+| `loaf session log` | Append a session journal entry |
+| `loaf session report` | Export a session report |
+
+**Options:**
+
+- `loaf session start`:
+  - `--resume` - Resume if possible
+  - `--session-id <id>` - Harness session ID
+  - `--force` - Ignore hook agent adoption guard
+  - `--json` - Output action, session, journal IDs, global database scope, and project identity as JSON
+
+- `loaf session end`:
+  - `--if-active` - No-op when no active session exists
+  - `--wrap` - Mark as wrapped
+  - `--from-hook` - Read hook input
+  - `--session-id <id>` - Harness session ID
+  - `--json` - Output action/noop, session, journal IDs, global database scope, and project identity as JSON
+
+- `loaf session archive`:
+  - `--branch <branch>` - Branch to archive
+  - `--session-id <id>` - Harness session ID
+  - `--json` - Output archive result, affected sessions, global database scope, and project identity as JSON
+
+- `loaf session list`:
+  - `--all` - Include archived sessions
+  - `--json` - Output sessions, diagnostics, global database scope, and project identity as JSON
+
+- `loaf session show`:
+  - `--json` - Output session details, journal entries, relationships, global database scope, and project identity as JSON
+
+- `loaf session log`:
+  - `--from-hook` - Read hook input
+  - `--session-id <id>` - Harness session ID
+  - `--json` - Output journal entry, linked session, global database scope, and project identity as JSON
+
+- `loaf session report`:
+  - `--json` - Output export contract, command, project context, and markdown content as JSON
+
+**Usage:**
+```bash
+loaf session start
+loaf session end
+loaf session archive
 ```
 
 ---

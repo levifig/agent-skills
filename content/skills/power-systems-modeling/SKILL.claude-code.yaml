@@ -2,4 +2,4 @@
 # Base name/description in SKILL.md
 
 user-invocable: false
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash(python:*)
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(python:*), Bash(*.sh)

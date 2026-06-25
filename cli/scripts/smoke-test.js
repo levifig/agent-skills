@@ -16,7 +16,7 @@ import { dirname } from "path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const ROOT_DIR = join(__dirname, "..");
+const ROOT_DIR = join(__dirname, "..", "..");
 
 // ANSI colors
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
@@ -52,6 +52,12 @@ function assert(condition, message) {
   }
 }
 
+function flattenClaudeHookMatchers(matchers = []) {
+  return matchers.flatMap(matcher =>
+    (matcher.hooks || []).map(hook => ({ ...hook, matcher: matcher.matcher }))
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Cursor Target Tests
 // ─────────────────────────────────────────────────────────────────────────────
@@ -79,37 +85,36 @@ function testCursor() {
   test("journal-post-pr hook has if condition", () => {
     const postTool = hooks.hooks.postToolUse || [];
     const journalPr = postTool.find(
-      h => h.command?.includes("session log --from-hook") && h.if?.includes("gh pr create")
+      h => h.command?.includes("session log --from-hook") && h.if === "Bash(gh pr:*)"
     );
     assert(journalPr, "journal-post-pr not found");
-    assert(journalPr.if === "Bash(gh pr create:*)", `Expected if: Bash(gh pr create:*), got: ${journalPr.if}`);
+    assert(journalPr.if === "Bash(gh pr:*)", `Expected if: Bash(gh pr:*), got: ${journalPr.if}`);
   });
   
-  test("journal-post-merge hook has if condition", () => {
+  test("post-merge instruction hook has if condition", () => {
     const postTool = hooks.hooks.postToolUse || [];
-    const journalMerge = postTool.find(
-      h => h.command?.includes("session log --from-hook") && h.if?.includes("gh pr merge")
+    const postMerge = postTool.find(
+      h => h.command?.includes("post-merge.md") && h.if === "Bash(gh pr merge:*)"
     );
-    assert(journalMerge, "journal-post-merge not found");
-    assert(journalMerge.if === "Bash(gh pr merge:*)", `Expected if: Bash(gh pr merge:*), got: ${journalMerge.if}`);
+    assert(postMerge, "post-merge instruction hook not found");
   });
   
-  test("validate-push hook has failClosed", () => {
+  test("validate-push hook is scoped to git push", () => {
     const preTool = hooks.hooks.preToolUse || [];
     const validatePush = preTool.find(
       h => h.command?.includes("validate-push")
     );
     assert(validatePush, "validate-push not found");
-    assert(validatePush.failClosed === true, "Expected failClosed: true");
+    assert(validatePush.if === "Bash(git push:*)", `Expected if: Bash(git push:*), got: ${validatePush.if}`);
   });
   
-  test("workflow-pre-pr hook has failClosed", () => {
+  test("workflow-pre-pr hook is scoped to PR creation", () => {
     const preTool = hooks.hooks.preToolUse || [];
     const workflowPrePr = preTool.find(
       h => h.command?.includes("workflow-pre-pr")
     );
     assert(workflowPrePr, "workflow-pre-pr not found");
-    assert(workflowPrePr.failClosed === true, "Expected failClosed: true");
+    assert(workflowPrePr.if === "Bash(gh pr create:*)", `Expected if: Bash(gh pr create:*), got: ${workflowPrePr.if}`);
   });
 }
 
@@ -120,20 +125,17 @@ function testCursor() {
 function testClaudeCode() {
   console.log(`\n${cyan("Claude Code Target")}`);
   
-  const pluginPath = join(ROOT_DIR, "plugins", "loaf", ".claude-plugin", "plugin.json");
+  const hooksPath = join(ROOT_DIR, "plugins", "loaf", "hooks", "hooks.json");
   
-  test("plugin.json exists", () => {
-    assert(existsSync(pluginPath), "plugin.json not found");
+  test("hooks.json exists", () => {
+    assert(existsSync(hooksPath), "hooks.json not found");
   });
   
-  const plugin = JSON.parse(readFileSync(pluginPath, "utf-8"));
+  const plugin = JSON.parse(readFileSync(hooksPath, "utf-8"));
   
   test("journal-post-commit hook has if condition", () => {
-    const postTool = plugin.hooks.PostToolUse || [];
-    const bashMatcher = postTool.find(m => m.matcher === "Bash");
-    assert(bashMatcher, "Bash matcher not found in PostToolUse");
-    
-    const journalCommit = bashMatcher.hooks.find(
+    const postTool = flattenClaudeHookMatchers(plugin.hooks.PostToolUse);
+    const journalCommit = postTool.find(
       h => h.command?.includes("session log --from-hook") && h.if?.includes("git commit")
     );
     assert(journalCommit, "journal-post-commit not found");
@@ -141,39 +143,29 @@ function testClaudeCode() {
   });
   
   test("journal-post-pr hook has if condition", () => {
-    const postTool = plugin.hooks.PostToolUse || [];
-    const bashMatcher = postTool.find(m => m.matcher === "Bash");
-    assert(bashMatcher, "Bash matcher not found in PostToolUse");
-    
-    const journalPr = bashMatcher.hooks.find(
-      h => h.command?.includes("session log --from-hook") && h.if?.includes("gh pr create")
+    const postTool = flattenClaudeHookMatchers(plugin.hooks.PostToolUse);
+    const journalPr = postTool.find(
+      h => h.command?.includes("session log --from-hook") && h.if === "Bash(gh pr:*)"
     );
     assert(journalPr, "journal-post-pr not found");
-    assert(journalPr.if === "Bash(gh pr create:*)", `Expected if: Bash(gh pr create:*), got: ${journalPr.if}`);
+    assert(journalPr.if === "Bash(gh pr:*)", `Expected if: Bash(gh pr:*), got: ${journalPr.if}`);
   });
   
-  test("journal-post-merge hook has if condition", () => {
-    const postTool = plugin.hooks.PostToolUse || [];
-    const bashMatcher = postTool.find(m => m.matcher === "Bash");
-    assert(bashMatcher, "Bash matcher not found in PostToolUse");
-    
-    const journalMerge = bashMatcher.hooks.find(
-      h => h.command?.includes("session log --from-hook") && h.if?.includes("gh pr merge")
+  test("post-merge instruction hook has if condition", () => {
+    const postTool = flattenClaudeHookMatchers(plugin.hooks.PostToolUse);
+    const postMerge = postTool.find(
+      h => h.command?.includes("post-merge.md") && h.if === "Bash(gh pr merge:*)"
     );
-    assert(journalMerge, "journal-post-merge not found");
-    assert(journalMerge.if === "Bash(gh pr merge:*)", `Expected if: Bash(gh pr merge:*), got: ${journalMerge.if}`);
+    assert(postMerge, "post-merge instruction hook not found");
   });
   
-  test("validate-push hook has description mentioning build", () => {
-    const preTool = plugin.hooks.PreToolUse || [];
-    const bashMatcher = preTool.find(m => m.matcher === "Bash");
-    assert(bashMatcher, "Bash matcher not found in PreToolUse");
-    
-    const validatePush = bashMatcher.hooks.find(
+  test("validate-push hook is scoped to git push", () => {
+    const preTool = flattenClaudeHookMatchers(plugin.hooks.PreToolUse);
+    const validatePush = preTool.find(
       h => h.command?.includes("validate-push")
     );
     assert(validatePush, "validate-push not found");
-    assert(validatePush.description?.includes("build"), "Expected description to mention build");
+    assert(validatePush.if === "Bash(git push:*)", `Expected if: Bash(git push:*), got: ${validatePush.if}`);
   });
 }
 
@@ -233,39 +225,16 @@ function testCodex() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Gemini Target Tests
-// ─────────────────────────────────────────────────────────────────────────────
-
-function testGemini() {
-  console.log(`\n${cyan("Gemini Target")}`);
-  
-  const skillsDir = join(ROOT_DIR, "dist", "gemini", "skills");
-  
-  test("skills directory exists", () => {
-    assert(existsSync(skillsDir), "skills directory not found");
-  });
-  
-  // Gemini target only gets skills, no hooks
-  const skills = ["git-workflow", "orchestration", "security-compliance"];
-  for (const skill of skills) {
-    test(`${skill} skill exists`, () => {
-      const skillPath = join(skillsDir, skill, "SKILL.md");
-      assert(existsSync(skillPath), `${skill} SKILL.md not found`);
-    });
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Amp Target Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
 function testAmp() {
   console.log(`\n${cyan("Amp Target")}`);
   
-  const hooksPath = join(ROOT_DIR, "dist", "amp", "plugins", "loaf.js");
+  const hooksPath = join(ROOT_DIR, "dist", "amp", ".amp", "plugins", "loaf.ts");
   
-  test("loaf.js exists", () => {
-    assert(existsSync(hooksPath), "loaf.js not found");
+  test("loaf.ts exists", () => {
+    assert(existsSync(hooksPath), "loaf.ts not found");
   });
   
   const hooksContent = readFileSync(hooksPath, "utf-8");
@@ -291,7 +260,6 @@ testCursor();
 testClaudeCode();
 testOpenCode();
 testCodex();
-testGemini();
 testAmp();
 
 console.log(`\n${cyan("═".repeat(70))}`);

@@ -135,7 +135,6 @@ loaf spark resolve SPARK-slug --reason "reason"
 
 When deferring:
 Do nothing; open sparks remain visible in the next triage pass.
-```
 
 ### Brainstorms
 

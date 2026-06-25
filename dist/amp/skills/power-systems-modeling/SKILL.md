@@ -92,5 +92,5 @@ Thermal calculations: use `pytest.approx()` with `rel=1e-3` (0.1% accuracy).
 
 ## Related Skills
 
-- `database-patterns` — For persisting physics results
+- `database-design` — For persisting physics results
 - [foundations/code-style](../foundations/references/code-style.md) — For Python conventions in physics code

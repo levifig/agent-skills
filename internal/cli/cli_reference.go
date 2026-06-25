@@ -171,6 +171,45 @@ func cliReferenceCommands() []cliReferenceCommand {
 			},
 		},
 		{
+			Name:        "session",
+			Description: "Manage session journals and native SQLite session state",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "start", Description: "Start or resume a session for the current branch", Options: []cliReferenceOption{
+					{Flags: "--resume", Description: "Resume if possible"},
+					{Flags: "--session-id <id>", Description: "Harness session ID"},
+					{Flags: "--force", Description: "Ignore hook agent adoption guard"},
+					{Flags: "--json", Description: "Output action, session, journal IDs, global database scope, and project identity as JSON"},
+				}},
+				{Name: "end", Description: "End, wrap, or clear a session", Options: []cliReferenceOption{
+					{Flags: "--if-active", Description: "No-op when no active session exists"},
+					{Flags: "--wrap", Description: "Mark as wrapped"},
+					{Flags: "--from-hook", Description: "Read hook input"},
+					{Flags: "--session-id <id>", Description: "Harness session ID"},
+					{Flags: "--json", Description: "Output action/noop, session, journal IDs, global database scope, and project identity as JSON"},
+				}},
+				{Name: "archive", Description: "Archive a stopped or targeted session", Options: []cliReferenceOption{
+					{Flags: "--branch <branch>", Description: "Branch to archive"},
+					{Flags: "--session-id <id>", Description: "Harness session ID"},
+					{Flags: "--json", Description: "Output archive result, affected sessions, global database scope, and project identity as JSON"},
+				}},
+				{Name: "list", Description: "List sessions", Options: []cliReferenceOption{
+					{Flags: "--all", Description: "Include archived sessions"},
+					{Flags: "--json", Description: "Output sessions, diagnostics, global database scope, and project identity as JSON"},
+				}},
+				{Name: "show", Description: "Show one session", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output session details, journal entries, relationships, global database scope, and project identity as JSON"},
+				}},
+				{Name: "log", Description: "Append a session journal entry", Options: []cliReferenceOption{
+					{Flags: "--from-hook", Description: "Read hook input"},
+					{Flags: "--session-id <id>", Description: "Harness session ID"},
+					{Flags: "--json", Description: "Output journal entry, linked session, global database scope, and project identity as JSON"},
+				}},
+				{Name: "report", Description: "Export a session report", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output export contract, command, project context, and markdown content as JSON"},
+				}},
+			},
+		},
+		{
 			Name:        "project",
 			Description: "Manage durable project identity",
 			Subcommands: []cliReferenceSubcommand{
@@ -596,6 +635,12 @@ description: >-
 ---
 
 # Loaf CLI Reference
+
+## Contents
+- Global Commands
+- Command Reference
+- Command Substitution Reference
+- Quick Decision Guide
 
 Quick reference for all Loaf CLI commands. Each command includes its purpose, common usage patterns, and when to use it.
 

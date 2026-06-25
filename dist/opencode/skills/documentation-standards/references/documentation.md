@@ -40,38 +40,13 @@ docs/
 
 ## Architecture Decision Records
 
-**When to write:** Technology choices, architectural patterns, integration approaches, security decisions. **Skip for:** library version updates, bug fixes, performance tweaks, style changes.
+ADRs are owned by the `architecture` skill. Use
+`content/skills/architecture/templates/adr.md` as the single template and route
+ADR lifecycle, numbering, supersession, and triage-gate questions there.
 
-**File naming:** `docs/decisions/ADRXXX-short-descriptive-title.md`
-
-### ADR Template
-
-```markdown
-# ADR-XXX: Title
-
-**Decision Date**: YYYY-MM-DD
-
-**Status**: Proposed | Accepted | Deprecated | Superseded
-
-## Context
-[Situation, problem, constraints]
-
-## Decision
-[Use "We will..." not "It was decided..."]
-
-## Consequences
-### Positive
-- [Benefit 1]
-
-### Negative
-- [Drawback 1]
-
-## Alternatives Considered
-### Alternative 1: [Name]
-[Brief description and why rejected]
-```
-
-**Status lifecycle:** `Proposed -> Accepted -> (Deprecated | Superseded)`
+**When to write:** Technology choices, architectural patterns, integration
+approaches, security decisions. **Skip for:** library version updates, bug
+fixes, performance tweaks, style changes.
 
 ## API Documentation
 

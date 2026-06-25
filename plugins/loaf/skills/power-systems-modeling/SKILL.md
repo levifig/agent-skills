@@ -6,7 +6,7 @@ description: >-
   thermal calculations, validating conductors, or computing sag and resistance.
   Not for infras...
 user-invocable: false
-allowed-tools: 'Read, Write, Edit, Glob, Grep, Bash(python:*)'
+allowed-tools: 'Read, Write, Edit, Glob, Grep, Bash(python:*), Bash(*.sh)'
 version: 2.0.0-pre.20260625183349
 ---
 
@@ -93,5 +93,5 @@ Thermal calculations: use `pytest.approx()` with `rel=1e-3` (0.1% accuracy).
 
 ## Related Skills
 
-- `database-patterns` — For persisting physics results
+- `database-design` — For persisting physics results
 - [foundations/code-style](../foundations/references/code-style.md) — For Python conventions in physics code
