@@ -63,8 +63,8 @@ Install Loaf to detected AI tool configurations
 **Options:**
 
 - `--to <target>` - Target to install to (or "all")
-- `--upgrade` - Update only already-installed targets
-- `-y, --yes` - Assume 'yes' to safe migrations (merge content, back up, and replace real files with symlinks)
+- `--upgrade` - Update installed targets and apply deprecation-manifest cleanup
+- `-y, --yes` - Assume 'yes' to safe migrations and destructive deprecation cleanup
 - `--no-yes` - Force interactive prompts even when stdin is not a TTY (testing)
 
 **Usage:**
@@ -256,7 +256,10 @@ For agents, `loaf state backup verify <backup> --json` also returns
   - `--dry-run` - Preview import counts without creating a database
   - `--apply` - Initialize SQLite and import Markdown artifacts
   - `--resume` - Resume the Markdown import after an interrupted attempt
-  - `--json` - Output migration contract, scope, project context, and counts as JSON
+  - `--backup` - Create SQLite and .agents rollback backups during apply or resume
+  - `--remove-source` - Remove ephemeral Markdown sources after a rollback backup
+  - `--rollback <manifest>` - Restore .agents files from a rollback manifest
+  - `--json` - Output migration contract, scope, project context, counts, and rollback fields as JSON
 
 - `loaf state migrate storage-home`:
   - `--dry-run` - Preview the storage-home migration
@@ -378,7 +381,10 @@ when the artifact counts and unimported file classifications look right.
   - `--dry-run` - Preview import counts without creating a database
   - `--apply` - Initialize SQLite and import Markdown artifacts
   - `--resume` - Resume the Markdown import after an interrupted attempt
-  - `--json` - Output migration contract, scope, project context, and counts as JSON
+  - `--backup` - Create SQLite and .agents rollback backups during apply or resume
+  - `--remove-source` - Remove ephemeral Markdown sources after a rollback backup
+  - `--rollback <manifest>` - Restore .agents files from a rollback manifest
+  - `--json` - Output migration contract, scope, project context, counts, and rollback fields as JSON
 
 - `loaf migrate storage-home`:
   - `--dry-run` - Preview the storage-home migration

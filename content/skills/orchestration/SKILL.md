@@ -69,6 +69,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 | Agent selection | Match domain expertise to task |
 | Stuck on task | Check priority order, consider reshaping |
 | Pre-compaction | CLI hooks handle journal flush + resumption context |
+| Durable artifact handling | Delegate `.agents/`-scoped session/report/spec/handoff/knowledge tending to `librarian` |
 | Low-priority work | Spawn background-runner with run_in_background |
 | New feature workflow | Research -> Architecture -> Shape -> Breakdown -> Implement |
 

@@ -2631,7 +2631,7 @@ func (r Runner) runStateMigrate(args []string, out io.Writer, runtime state.Runt
 }
 
 func writeStateMigrateMarkdownHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf state migrate markdown [--dry-run|--apply|--resume] [--json]", "Import .agents Markdown artifacts into SQLite without mutating Markdown.", "--dry-run     Preview import work", "--apply       Apply the import", "--resume      Resume an interrupted import", "--json        Output migration contract, scope, project context, and counts as JSON")
+	writeUsageHelp(out, "loaf state migrate markdown [--dry-run|--apply|--resume] [--backup] [--remove-source] [--rollback <manifest>] [--json]", "Import .agents Markdown artifacts into SQLite without mutating Markdown by default.", "--dry-run       Preview import work", "--apply         Apply the import", "--resume        Resume an interrupted import", "--backup        Create SQLite and .agents rollback backups during apply/resume", "--remove-source Remove ephemeral Markdown sources; requires --backup", "--rollback      Restore .agents files from a rollback manifest", "--json          Output migration contract, scope, project context, counts, and rollback fields as JSON")
 }
 
 func writeStateMigrateStorageHomeHelp(out io.Writer) {
@@ -2639,7 +2639,7 @@ func writeStateMigrateStorageHomeHelp(out io.Writer) {
 }
 
 func writeMigrateMarkdownHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf migrate markdown [--dry-run|--apply|--resume] [--json]", "Import .agents Markdown artifacts into SQLite without mutating Markdown.", "--dry-run     Preview import work", "--apply       Apply the import", "--resume      Resume an interrupted import", "--json        Output migration contract, scope, project context, and counts as JSON")
+	writeUsageHelp(out, "loaf migrate markdown [--dry-run|--apply|--resume] [--backup] [--remove-source] [--rollback <manifest>] [--json]", "Import .agents Markdown artifacts into SQLite without mutating Markdown by default.", "--dry-run       Preview import work", "--apply         Apply the import", "--resume        Resume an interrupted import", "--backup        Create SQLite and .agents rollback backups during apply/resume", "--remove-source Remove ephemeral Markdown sources; requires --backup", "--rollback      Restore .agents files from a rollback manifest", "--json          Output migration contract, scope, project context, counts, and rollback fields as JSON")
 }
 
 func writeMigrateStorageHomeHelp(out io.Writer) {
@@ -2741,6 +2741,35 @@ func (r Runner) runMarkdownMigration(args []string, out io.Writer, runtime state
 		if options.resume {
 			result.Action = state.MarkdownMigrationActionResume
 		}
+		if options.backup {
+			backup, err := state.Backup(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome})
+			if err != nil {
+				if options.jsonOutput {
+					return writeJSONCommandError(out, command, err)
+				}
+				return err
+			}
+			rollbackBackup, err := state.CreateMarkdownRollbackBackup(context.Background(), projectRoot, backup.BackupPath)
+			if err != nil {
+				if options.jsonOutput {
+					return writeJSONCommandError(out, command, err)
+				}
+				return err
+			}
+			result.BackupPath = backup.BackupPath
+			result.RollbackManifestPath = rollbackBackup.RollbackManifestPath
+			result.AgentsBackupPath = rollbackBackup.AgentsBackupPath
+			if options.removeSource {
+				removed, err := state.RemoveMarkdownMigrationSources(projectRoot, rollbackBackup.RollbackManifestPath)
+				if err != nil {
+					if options.jsonOutput {
+						return writeJSONCommandError(out, command, err)
+					}
+					return err
+				}
+				result.RemovedSourceFiles = removed
+			}
+		}
 		if options.jsonOutput {
 			return writeJSON(out, result)
 		}
@@ -2749,6 +2778,20 @@ func (r Runner) runMarkdownMigration(args []string, out io.Writer, runtime state
 		} else {
 			writeMarkdownMigrationResultHuman(out, displayCommand+" --apply", result)
 		}
+		return nil
+	}
+	if options.rollbackPath != "" {
+		result, err := state.RollbackMarkdownMigration(context.Background(), projectRoot, options.rollbackPath)
+		if err != nil {
+			if options.jsonOutput {
+				return writeJSONCommandError(out, command, err)
+			}
+			return err
+		}
+		if options.jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeMarkdownRollbackResultHuman(out, displayCommand+" --rollback", result)
 		return nil
 	}
 
@@ -2796,7 +2839,35 @@ func writeMarkdownMigrationResultHuman(out io.Writer, command string, result sta
 	fmt.Fprintf(out, "project path: %s\n", result.ProjectCurrentPath)
 	fmt.Fprintf(out, "action: %s\n", result.Action)
 	fmt.Fprintf(out, "applied: %t\n", result.Applied)
+	if result.BackupPath != "" {
+		fmt.Fprintf(out, "backup: %s\n", result.BackupPath)
+	}
+	if result.RollbackManifestPath != "" {
+		fmt.Fprintf(out, "rollback manifest: %s\n", result.RollbackManifestPath)
+	}
+	if result.AgentsBackupPath != "" {
+		fmt.Fprintf(out, "agents backup: %s\n", result.AgentsBackupPath)
+	}
+	if len(result.RemovedSourceFiles) > 0 {
+		fmt.Fprintf(out, "removed source files: %d\n", len(result.RemovedSourceFiles))
+		for _, path := range result.RemovedSourceFiles {
+			fmt.Fprintf(out, "  - %s\n", path)
+		}
+	}
 	writeMarkdownMigrationPlan(out, result.MarkdownMigrationPlan)
+}
+
+func writeMarkdownRollbackResultHuman(out io.Writer, command string, result state.MarkdownRollbackResult) {
+	fmt.Fprintln(out, command)
+	fmt.Fprintf(out, "action: %s\n", result.Action)
+	fmt.Fprintf(out, "project path: %s\n", result.ProjectPath)
+	fmt.Fprintf(out, "rollback manifest: %s\n", result.RollbackManifestPath)
+	fmt.Fprintf(out, "state backup: %s\n", result.StateBackupPath)
+	fmt.Fprintf(out, "restored: %t\n", result.Restored)
+	fmt.Fprintf(out, "restored files: %d\n", len(result.RestoredFiles))
+	for _, path := range result.RestoredFiles {
+		fmt.Fprintf(out, "  - %s\n", path)
+	}
 }
 
 func writeMarkdownMigrationPlan(out io.Writer, plan state.MarkdownMigrationPlan) {
@@ -14141,10 +14212,13 @@ func reportStatusLabel(status string) string {
 }
 
 type markdownMigrationOptions struct {
-	jsonOutput bool
-	apply      bool
-	dryRun     bool
-	resume     bool
+	jsonOutput   bool
+	apply        bool
+	dryRun       bool
+	resume       bool
+	backup       bool
+	removeSource bool
+	rollbackPath string
 }
 
 type storageHomeMigrationOptions struct {
@@ -14168,7 +14242,8 @@ type legacyProjectDatabaseRepairOptions struct {
 
 func parseMarkdownMigrationArgs(args []string, command string) (markdownMigrationOptions, error) {
 	var options markdownMigrationOptions
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		switch arg {
 		case "--dry-run":
 			options.dryRun = true
@@ -14178,6 +14253,16 @@ func parseMarkdownMigrationArgs(args []string, command string) (markdownMigratio
 			options.apply = true
 		case "--resume":
 			options.resume = true
+		case "--backup":
+			options.backup = true
+		case "--remove-source":
+			options.removeSource = true
+		case "--rollback":
+			if i+1 >= len(args) {
+				return markdownMigrationOptions{}, fmt.Errorf("%s requires --rollback <manifest>", command)
+			}
+			i++
+			options.rollbackPath = args[i]
 		default:
 			return markdownMigrationOptions{}, fmt.Errorf("unknown option %q", arg)
 		}
@@ -14190,6 +14275,18 @@ func parseMarkdownMigrationArgs(args []string, command string) (markdownMigratio
 	}
 	if options.resume && options.apply {
 		return markdownMigrationOptions{}, fmt.Errorf("%s cannot combine --resume and --apply", command)
+	}
+	if options.rollbackPath != "" {
+		if options.apply || options.resume || options.dryRun || options.backup || options.removeSource {
+			return markdownMigrationOptions{}, fmt.Errorf("%s cannot combine --rollback with --apply, --resume, --dry-run, --backup, or --remove-source", command)
+		}
+		return options, nil
+	}
+	if options.backup && !options.apply && !options.resume {
+		return markdownMigrationOptions{}, fmt.Errorf("%s requires --apply or --resume with --backup", command)
+	}
+	if options.removeSource && !options.backup {
+		return markdownMigrationOptions{}, fmt.Errorf("%s requires --backup with --remove-source", command)
 	}
 	return options, nil
 }

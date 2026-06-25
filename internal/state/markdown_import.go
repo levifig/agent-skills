@@ -20,14 +20,18 @@ import (
 // MarkdownMigrationResult is the structured result for a markdown migration apply.
 type MarkdownMigrationResult struct {
 	MarkdownMigrationPlan
-	DatabaseScope      string `json:"database_scope"`
-	ImportScope        string `json:"import_scope"`
-	DatabasePath       string `json:"database_path"`
-	ProjectID          string `json:"project_id"`
-	ProjectName        string `json:"project_name"`
-	ProjectCurrentPath string `json:"project_current_path"`
-	Action             string `json:"action"`
-	Applied            bool   `json:"applied"`
+	DatabaseScope        string   `json:"database_scope"`
+	ImportScope          string   `json:"import_scope"`
+	DatabasePath         string   `json:"database_path"`
+	ProjectID            string   `json:"project_id"`
+	ProjectName          string   `json:"project_name"`
+	ProjectCurrentPath   string   `json:"project_current_path"`
+	Action               string   `json:"action"`
+	Applied              bool     `json:"applied"`
+	BackupPath           string   `json:"backup_path,omitempty"`
+	RollbackManifestPath string   `json:"rollback_manifest_path,omitempty"`
+	AgentsBackupPath     string   `json:"agents_backup_path,omitempty"`
+	RemovedSourceFiles   []string `json:"removed_source_files,omitempty"`
 }
 
 const (

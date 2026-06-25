@@ -174,6 +174,124 @@ depends_on: []
 	assertTableCount(t, store, "relationships", 0)
 }
 
+func TestMarkdownRollbackBackupRemovesAndRestoresEphemeralSources(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	taskBody := "# Task body\n\nFirst paragraph.\n"
+	writeMarkdownImportFixture(t, root.Path(), taskBody)
+	writeAgentsFile(t, root.Path(), "drafts/20260528-research-note.md", "# Research Note\n")
+	writeAgentsFile(t, root.Path(), "tasks/archive/TASK-999-archived.md", "# Archived Task\n")
+
+	migration, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	backup, err := Backup(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Backup() error = %v", err)
+	}
+	rollbackBackup, err := CreateMarkdownRollbackBackup(context.Background(), root, backup.BackupPath)
+	if err != nil {
+		t.Fatalf("CreateMarkdownRollbackBackup() error = %v", err)
+	}
+
+	removed, err := RemoveMarkdownMigrationSources(root, rollbackBackup.RollbackManifestPath)
+	if err != nil {
+		t.Fatalf("RemoveMarkdownMigrationSources() error = %v", err)
+	}
+	wantRemoved := []string{
+		".agents/drafts/20260528-brainstorm-topic.md",
+		".agents/ideas/20260528-idea.md",
+		".agents/sessions/20260528-session.md",
+		".agents/tasks/TASK-001-example.md",
+	}
+	if !reflect.DeepEqual(removed, wantRemoved) {
+		t.Fatalf("removed = %#v, want %#v", removed, wantRemoved)
+	}
+	for _, rel := range removed {
+		if _, err := os.Stat(filepath.Join(root.Path(), filepath.FromSlash(rel))); !os.IsNotExist(err) {
+			t.Fatalf("%s still exists after remove, err=%v", rel, err)
+		}
+	}
+	for _, rel := range []string{
+		".agents/specs/SPEC-001-example.md",
+		".agents/reports/report.md",
+		".agents/drafts/20260528-research-note.md",
+		".agents/tasks/archive/TASK-999-archived.md",
+		".agents/TASKS.json",
+	} {
+		if _, err := os.Stat(filepath.Join(root.Path(), filepath.FromSlash(rel))); err != nil {
+			t.Fatalf("%s should remain after remove: %v", rel, err)
+		}
+	}
+
+	rollback, err := RollbackMarkdownMigration(context.Background(), root, rollbackBackup.RollbackManifestPath)
+	if err != nil {
+		t.Fatalf("RollbackMarkdownMigration() error = %v", err)
+	}
+	if !rollback.Restored {
+		t.Fatal("Restored = false, want true")
+	}
+	if rollback.Action != MarkdownMigrationActionRollback {
+		t.Fatalf("Action = %q, want %q", rollback.Action, MarkdownMigrationActionRollback)
+	}
+	taskPath := filepath.Join(root.Path(), ".agents", "tasks", "TASK-001-example.md")
+	content, err := os.ReadFile(taskPath)
+	if err != nil {
+		t.Fatalf("ReadFile(task) after rollback error = %v", err)
+	}
+	if string(content) != taskBody {
+		t.Fatalf("restored task body = %q, want byte-exact original", string(content))
+	}
+	if migration.DatabasePath != backup.DatabasePath {
+		t.Fatalf("backup database path = %q, want migration database path %q", backup.DatabasePath, migration.DatabasePath)
+	}
+	if rollback.StateBackupPath != backup.BackupPath {
+		t.Fatalf("rollback StateBackupPath = %q, want %q", rollback.StateBackupPath, backup.BackupPath)
+	}
+}
+
+func TestMarkdownRollbackRemoveRequiresIntactBackup(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	writeAgentsFile(t, root.Path(), "tasks/TASK-001-example.md", "# Task\n")
+
+	if _, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	backup, err := Backup(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Backup() error = %v", err)
+	}
+	rollbackBackup, err := CreateMarkdownRollbackBackup(context.Background(), root, backup.BackupPath)
+	if err != nil {
+		t.Fatalf("CreateMarkdownRollbackBackup() error = %v", err)
+	}
+	manifest, err := readMarkdownRollbackManifest(rollbackBackup.RollbackManifestPath)
+	if err != nil {
+		t.Fatalf("readMarkdownRollbackManifest() error = %v", err)
+	}
+	for _, file := range manifest.Files {
+		if file.Path == ".agents/tasks/TASK-001-example.md" {
+			if err := os.WriteFile(file.BackupPath, []byte("corrupt\n"), 0o600); err != nil {
+				t.Fatalf("corrupt rollback backup file error = %v", err)
+			}
+			break
+		}
+	}
+
+	_, err = RemoveMarkdownMigrationSources(root, rollbackBackup.RollbackManifestPath)
+	if err == nil {
+		t.Fatal("RemoveMarkdownMigrationSources() error = nil, want checksum rejection")
+	}
+	if !strings.Contains(err.Error(), "checksum mismatch before removal") {
+		t.Fatalf("error = %v, want checksum mismatch before removal", err)
+	}
+	if _, err := os.Stat(filepath.Join(root.Path(), ".agents", "tasks", "TASK-001-example.md")); err != nil {
+		t.Fatalf("task source should remain after failed removal: %v", err)
+	}
+}
+
 func TestFrontmatterListItemsPreserveCommas(t *testing.T) {
 	frontmatter := parseFrontmatterMap([]byte(`---
 implements:

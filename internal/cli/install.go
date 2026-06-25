@@ -75,6 +75,12 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 	if options.upgrade && len(selectedTargets) > 0 {
 		fmt.Fprintf(out, "  %s %s\n", ansiGray("Upgrading:"), strings.Join(selectedTargets, ", "))
 	}
+	if options.upgrade {
+		allowDestructiveCleanup := options.yes != nil && *options.yes
+		if err := runInstallDeprecationCleanup(loafRoot, out, allowDestructiveCleanup); err != nil {
+			return err
+		}
+	}
 
 	if len(selectedTargets) == 0 {
 		if hasClaudeCode {
@@ -183,8 +189,8 @@ func writeInstallHelp(out io.Writer) {
 		"",
 		"Options:",
 		"  --to <target>  Target to install to (or \"all\")",
-		"  --upgrade      Update only already-installed targets",
-		"  -y, --yes      Assume yes to safe project-file symlink migrations",
+		"  --upgrade      Update installed targets and apply deprecation-manifest cleanup",
+		"  -y, --yes      Assume yes to safe project-file symlink migrations and destructive deprecation cleanup",
 		"  --no-yes       Force prompt-style declines in non-interactive mode",
 		"  -h, --help     Show help",
 	}, "\n"))

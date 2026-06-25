@@ -35,6 +35,10 @@ Responsible session shutdown — everything that needs a conscious model before 
 - Pull from live data (git, filesystem), not memory or assumptions
 - Keep the report concise — one screen, not a wall of text
 - Scope to THIS session, not the full backlog
+- When delegated separate Codex thread or explicit multi-agent tool when available are available, use the `librarian` profile as the
+  durable artifact handler for `.agents/`-scoped wrap cleanup, report/session
+  hygiene, and knowledge note preservation. The main wrap flow remains
+  responsible for user-facing decisions and commit/push/archive prompts.
 - Do NOT archive — session stays with `done` status. Archival is housekeeping's job
 
 ## Verification

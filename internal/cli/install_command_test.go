@@ -64,6 +64,432 @@ func TestRunnerInstallUpgradeOnlyInstallsDetectedLoafTargets(t *testing.T) {
 	}
 }
 
+func TestRunnerInstallUpgradeCleansRetiredTargetFromManifest(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	retiredTarget := filepath.Join(home, ".retired-tool")
+	writeInstallFile(t, filepath.Join(retiredTarget, loafInstallMarkerFile), "old\n")
+	writeInstallFile(t, filepath.Join(retiredTarget, "skills", "stale", "SKILL.md"), "stale\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [
+    {
+      "target": "retired-tool",
+      "since": "v9.9.0",
+      "window": "one-release",
+      "reason": "retired by test manifest",
+      "paths": ["${HOME}/.retired-tool"]
+    }
+  ],
+  "retired_skills": [],
+  "relocations": [],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	if _, err := os.Stat(retiredTarget); !os.IsNotExist(err) {
+		t.Fatalf("retired target stat = %v, want removed", err)
+	}
+	for _, want := range []string{"install deprecation cleanup", "removed retired target retired-tool", "retired by test manifest", "since v9.9.0, window one-release"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunnerInstallUpgradeCleansRetiredSkillFromManifest(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	retiredSkill := filepath.Join(home, ".agents", "skills", "old-skill")
+	writeInstallFile(t, filepath.Join(retiredSkill, "SKILL.md"), "# Old skill\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [
+    {
+      "skill": "old-skill",
+      "since": "v9.9.0",
+      "window": "one-release",
+      "reason": "old-skill was retired",
+      "skill_homes": ["${HOME}/.agents/skills"]
+    }
+  ],
+  "relocations": [],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	if _, err := os.Stat(retiredSkill); !os.IsNotExist(err) {
+		t.Fatalf("retired skill stat = %v, want removed", err)
+	}
+	for _, want := range []string{"removed retired skill old-skill", "old-skill was retired"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunnerInstallUpgradeSkipsDestructiveDeprecationWithoutExplicitYes(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	retiredSkill := filepath.Join(home, ".agents", "skills", "old-skill")
+	writeInstallFile(t, filepath.Join(retiredSkill, "SKILL.md"), "# Old skill\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [
+    {
+      "skill": "old-skill",
+      "since": "v9.9.0",
+      "reason": "old-skill was retired",
+      "skill_homes": ["${HOME}/.agents/skills"]
+    }
+  ],
+  "relocations": [],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	assertInstallFile(t, filepath.Join(retiredSkill, "SKILL.md"), "# Old skill\n")
+	for _, want := range []string{"skipped skill old-skill", "rerun with --yes to apply destructive deprecation cleanup"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunnerInstallUpgradeCleansRetiredAgentFromManifest(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	agentHome := filepath.Join(home, ".cursor", "agents")
+	retiredAgent := filepath.Join(agentHome, "old-agent.md")
+	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
+	writeInstallFile(t, retiredAgent, "# Old Agent\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [],
+  "retired_agents": [
+    {
+      "agent": "old-agent",
+      "since": "v9.9.0",
+      "window": "one-release",
+      "reason": "old-agent was retired",
+      "agent_homes": ["${HOME}/.cursor/agents"]
+    }
+  ],
+  "relocations": [],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	if _, err := os.Stat(retiredAgent); !os.IsNotExist(err) {
+		t.Fatalf("retired agent stat = %v, want removed", err)
+	}
+	for _, want := range []string{"removed retired agent old-agent", "old-agent was retired"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunnerInstallUpgradeSkipsUnmarkedRetiredAgent(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	agentHome := filepath.Join(home, ".cursor", "agents")
+	retiredAgent := filepath.Join(agentHome, "old-agent.md")
+	writeInstallFile(t, retiredAgent, "# User-owned Agent\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [],
+  "retired_agents": [
+    {
+      "agent": "old-agent",
+      "since": "v9.9.0",
+      "reason": "old-agent was retired",
+      "agent_homes": ["${HOME}/.cursor/agents"]
+    }
+  ],
+  "relocations": [],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	assertInstallFile(t, retiredAgent, "# User-owned Agent\n")
+	if !strings.Contains(stdout.String(), "path is not marked as Loaf-owned") {
+		t.Fatalf("stdout = %q, want unmarked skip", stdout.String())
+	}
+}
+
+func TestRunnerInstallUpgradeReportsDefaultDeprecationWindow(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	retiredSkill := filepath.Join(home, ".agents", "skills", "old-skill")
+	writeInstallFile(t, filepath.Join(retiredSkill, "SKILL.md"), "# Old skill\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [
+    {
+      "skill": "old-skill",
+      "since": "v9.9.0",
+      "reason": "old-skill was retired",
+      "skill_homes": ["${HOME}/.agents/skills"]
+    }
+  ],
+  "relocations": [],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "since v9.9.0, window one-release") {
+		t.Fatalf("stdout = %q, want default deprecation window", stdout.String())
+	}
+}
+
+func TestRunnerInstallUpgradeReportsDeprecationSignoff(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	retiredSkill := filepath.Join(home, ".agents", "skills", "old-skill")
+	writeInstallFile(t, filepath.Join(retiredSkill, "SKILL.md"), "# Old skill\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [
+    {
+      "skill": "old-skill",
+      "since": "v9.9.0",
+      "reason": "old-skill was retired",
+      "signoff": "report-spec-053-taxonomy-signoff",
+      "skill_homes": ["${HOME}/.agents/skills"]
+    }
+  ],
+  "retired_agents": [],
+  "relocations": [],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	for _, want := range []string{"removed retired skill old-skill", "[signoff: report-spec-053-taxonomy-signoff]"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunnerInstallUpgradeReportsAliasTombstoneFromManifest(t *testing.T) {
+	root, _ := setupInstallCommandFixture(t)
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [],
+  "retired_agents": [],
+  "relocations": [],
+  "aliases": [
+    {
+      "from": "old-skill",
+      "to": "new-skill",
+      "since": "v9.9.0",
+      "reason": "old-skill now routes to new-skill",
+      "signoff": "report-spec-053-taxonomy-signoff"
+    }
+  ]
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	for _, want := range []string{
+		"install deprecation cleanup",
+		"alias old-skill -> new-skill",
+		"old-skill now routes to new-skill",
+		"since v9.9.0, window one-release",
+		"[signoff: report-spec-053-taxonomy-signoff]",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunnerInstallUpgradeReportsExternalizedSkillWithoutRemoving(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	externalizedSkill := filepath.Join(home, ".agents", "skills", "vendor-skill")
+	writeInstallFile(t, filepath.Join(externalizedSkill, "SKILL.md"), "# Vendor skill\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [],
+  "retired_agents": [],
+  "externalized_skills": [
+    {
+      "skill": "vendor-skill",
+      "since": "v9.9.0",
+      "reason": "vendor-skill moved out of Loaf core",
+      "signoff": "report-spec-053-taxonomy-signoff",
+      "source": "https://github.com/example/skills/tree/main/skills/vendor-skill",
+      "install_command": "loaf skill add https://github.com/example/skills/tree/main/skills/vendor-skill",
+      "skill_homes": ["${HOME}/.agents/skills"]
+    }
+  ],
+  "relocations": [],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	assertInstallFile(t, filepath.Join(externalizedSkill, "SKILL.md"), "# Vendor skill\n")
+	for _, want := range []string{
+		"install deprecation cleanup",
+		"externalized skill vendor-skill",
+		"vendor-skill moved out of Loaf core",
+		"source: https://github.com/example/skills/tree/main/skills/vendor-skill",
+		"command: loaf skill add https://github.com/example/skills/tree/main/skills/vendor-skill",
+		"[signoff: report-spec-053-taxonomy-signoff]",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunnerInstallUpgradeSkipsUnmarkedRetiredTarget(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	retiredTarget := filepath.Join(home, ".unmarked-tool")
+	writeInstallFile(t, filepath.Join(retiredTarget, "user-file.txt"), "keep me\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [
+    {
+      "target": "unmarked-tool",
+      "since": "v9.9.0",
+      "window": "one-release",
+      "reason": "retired by test manifest",
+      "paths": ["${HOME}/.unmarked-tool"]
+    }
+  ],
+  "retired_skills": [],
+  "relocations": [],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	assertInstallFile(t, filepath.Join(retiredTarget, "user-file.txt"), "keep me\n")
+	if !strings.Contains(stdout.String(), "path is not marked as Loaf-owned") {
+		t.Fatalf("stdout = %q, want unmarked skip", stdout.String())
+	}
+}
+
+func TestRunnerInstallUpgradeRelocatesManifestPathExactlyOnce(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	oldPath := filepath.Join(home, ".old-agents", "skills")
+	newPath := filepath.Join(home, ".agents", "skills")
+	writeInstallFile(t, filepath.Join(oldPath, loafInstallMarkerFile), "old\n")
+	writeInstallFile(t, filepath.Join(oldPath, "foundations", "SKILL.md"), "# Foundations\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [],
+  "relocations": [
+    {
+      "id": "old-agents-skills",
+      "from": "${HOME}/.old-agents/skills",
+      "to": "${HOME}/.agents/skills",
+      "since": "v9.9.0",
+      "window": "one-release",
+      "reason": "skills moved to ~/.agents/skills"
+    }
+  ],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	assertInstallPathMissing(t, oldPath)
+	assertInstallFile(t, filepath.Join(newPath, "foundations", "SKILL.md"), "# Foundations\n")
+	if !strings.Contains(stdout.String(), "relocated path old-agents-skills") {
+		t.Fatalf("stdout = %q, want relocation report", stdout.String())
+	}
+
+	stdout.Reset()
+	err = Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("second install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	assertInstallPathMissing(t, oldPath)
+	assertInstallFile(t, filepath.Join(newPath, "foundations", "SKILL.md"), "# Foundations\n")
+}
+
+func TestRunnerInstallUpgradeRemovesStaleRelocatedPathWhenDestinationExists(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	oldPath := filepath.Join(home, ".old-agents", "skills")
+	newPath := filepath.Join(home, ".agents", "skills")
+	writeInstallFile(t, filepath.Join(oldPath, loafInstallMarkerFile), "old\n")
+	writeInstallFile(t, filepath.Join(oldPath, "stale", "SKILL.md"), "# Stale\n")
+	writeInstallFile(t, filepath.Join(newPath, "foundations", "SKILL.md"), "# Foundations\n")
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [],
+  "relocations": [
+    {
+      "id": "old-agents-skills",
+      "from": "${HOME}/.old-agents/skills",
+      "to": "${HOME}/.agents/skills",
+      "since": "v9.9.0",
+      "window": "one-release",
+      "reason": "skills moved to ~/.agents/skills"
+    }
+  ],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	assertInstallPathMissing(t, oldPath)
+	assertInstallFile(t, filepath.Join(newPath, "foundations", "SKILL.md"), "# Foundations\n")
+	if !strings.Contains(stdout.String(), "removed stale relocated path old-agents-skills") {
+		t.Fatalf("stdout = %q, want stale relocation removal report", stdout.String())
+	}
+}
+
 func TestRunnerInstallCodexUsesCodeXHomeNatively(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	codexHome := filepath.Join(home, "custom-codex")
@@ -366,6 +792,11 @@ func setupInstallCommandFixture(t *testing.T) (string, string) {
 	t.Setenv("PATH", bin)
 	writeInstallFile(t, filepath.Join(root, "package.json"), `{"name":"loaf","version":"9.8.7-test.1"}`+"\n")
 	return root, home
+}
+
+func writeInstallDeprecationManifest(t *testing.T, root string, body string) {
+	t.Helper()
+	writeInstallFile(t, filepath.Join(root, "config", "deprecations.json"), body+"\n")
 }
 
 func readInstallCommandJSON(t *testing.T, path string) map[string]any {

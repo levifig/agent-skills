@@ -26,6 +26,10 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 - Check report `status` is `processed` and linked session is archived before archiving reports (see [templates/report.md](templates/report.md))
 - Check state assessment `session:` field before flagging for cleanup — only flag when linked session is archived
 - In SQLite-backed projects, verify lifecycle changes through `loaf task list --json`, `loaf spec list --json`, and `loaf report list --json`; use `loaf task sync` only for Markdown compatibility repair
+- When delegated separate Codex thread or explicit multi-agent tool when available are available, use the `librarian` profile for
+  `.agents/`-scoped durable artifact tending: session/report/spec/handoff
+  hygiene, staleness notes, and lifecycle-safe cleanup recommendations.
+  Housekeeping still owns user confirmation and final archive decisions.
 - Log outcome to session journal: `loaf session log "decision(housekeeping): archived N specs, M sessions"`
 
 **Never**

@@ -7448,6 +7448,82 @@ depends_on: []
 	}
 }
 
+func TestRunnerStateMigrateMarkdownBackupRemoveSourceAndRollback(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	taskBody := "# Task\n"
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-example.md", "# Spec\n")
+	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-example.md", taskBody)
+	writeCLIAgentsFile(t, workingDir, "ideas/20260528-idea.md", "# Idea\n")
+	writeCLIAgentsFile(t, workingDir, "sessions/20260528-session.md", "[2026-05-28 10:00] spark(scope): capture this\n")
+	writeCLIAgentsFile(t, workingDir, "reports/report.md", "# Report\n")
+	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{"TASK-001":{"spec":"SPEC-001"}}}`)
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "migrate", "markdown", "--apply", "--backup", "--remove-source", "--json"})
+	if err != nil {
+		t.Fatalf("state migrate markdown --apply --backup --remove-source --json error = %v", err)
+	}
+
+	result := decodeMarkdownMigrationResult(t, stdout.Bytes())
+	if result.BackupPath == "" || result.RollbackManifestPath == "" || result.AgentsBackupPath == "" {
+		t.Fatalf("result missing backup paths: %#v", result)
+	}
+	if _, err := os.Stat(result.BackupPath); err != nil {
+		t.Fatalf("backup was not created: %v", err)
+	}
+	if _, err := os.Stat(result.RollbackManifestPath); err != nil {
+		t.Fatalf("rollback manifest was not created: %v", err)
+	}
+	wantRemoved := []string{
+		".agents/ideas/20260528-idea.md",
+		".agents/sessions/20260528-session.md",
+		".agents/tasks/TASK-001-example.md",
+	}
+	if !reflect.DeepEqual(result.RemovedSourceFiles, wantRemoved) {
+		t.Fatalf("RemovedSourceFiles = %#v, want %#v", result.RemovedSourceFiles, wantRemoved)
+	}
+	for _, rel := range result.RemovedSourceFiles {
+		if _, err := os.Stat(filepath.Join(workingDir, filepath.FromSlash(rel))); !os.IsNotExist(err) {
+			t.Fatalf("%s still exists after remove, err=%v", rel, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "specs", "SPEC-001-example.md")); err != nil {
+		t.Fatalf("spec render should remain after source removal: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "reports", "report.md")); err != nil {
+		t.Fatalf("report render should remain after source removal: %v", err)
+	}
+
+	var rollbackStdout bytes.Buffer
+	err = Runner{
+		Stdout:     &rollbackStdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "migrate", "markdown", "--rollback", result.RollbackManifestPath, "--json"})
+	if err != nil {
+		t.Fatalf("state migrate markdown --rollback --json error = %v", err)
+	}
+	var rollback state.MarkdownRollbackResult
+	if err := json.Unmarshal(rollbackStdout.Bytes(), &rollback); err != nil {
+		t.Fatalf("decode rollback result error = %v\n%s", err, rollbackStdout.String())
+	}
+	if !rollback.Restored || rollback.Action != state.MarkdownMigrationActionRollback {
+		t.Fatalf("rollback = %#v, want restored rollback action", rollback)
+	}
+	taskContent, err := os.ReadFile(filepath.Join(workingDir, ".agents", "tasks", "TASK-001-example.md"))
+	if err != nil {
+		t.Fatalf("read restored task error = %v", err)
+	}
+	if string(taskContent) != taskBody {
+		t.Fatalf("restored task content = %q, want %q", string(taskContent), taskBody)
+	}
+}
+
 func TestRunnerStateMigrateMarkdownResumeJSON(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -7593,6 +7669,21 @@ func TestRunnerStateMigrateMarkdownResumeRejectsFlagCombinations(t *testing.T) {
 			name:    "apply",
 			args:    []string{"state", "migrate", "markdown", "--resume", "--apply"},
 			wantErr: "cannot combine --resume and --apply",
+		},
+		{
+			name:    "remove source without backup",
+			args:    []string{"state", "migrate", "markdown", "--apply", "--remove-source"},
+			wantErr: "requires --backup with --remove-source",
+		},
+		{
+			name:    "backup without apply",
+			args:    []string{"state", "migrate", "markdown", "--backup"},
+			wantErr: "requires --apply or --resume with --backup",
+		},
+		{
+			name:    "rollback with apply",
+			args:    []string{"state", "migrate", "markdown", "--rollback", "manifest.json", "--apply"},
+			wantErr: "cannot combine --rollback",
 		},
 	}
 

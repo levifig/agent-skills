@@ -3,11 +3,12 @@ description: >-
   Durable artifact handler for SQLite-backed Loaf state and .agents/ artifacts.
   Use from wrap, housekeeping, or orchestration when session journals, reports,
   specs, handoffs, or knowledge notes need lifecycle-safe tending.
-model: sonnet
+mode: subagent
 skills:
   - orchestration
 tools:
-  - Read
-  - Edit
-  - Glob
-  - Grep
+  Read: true
+  Edit: true
+  Glob: true
+  Grep: true
+  TodoRead: true

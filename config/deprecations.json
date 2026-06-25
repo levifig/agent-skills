@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [],
+  "retired_agents": [],
+  "externalized_skills": [
+    {
+      "skill": "thermo-nuclear-code-quality-review",
+      "since": "v2.0.0-pre.20260614235428",
+      "reason": "externalized by SPEC-053 taxonomy decision; install as a vendor skill instead of a Loaf core skill",
+      "signoff": "report-spec-053-taxonomy-signoff",
+      "source": "https://github.com/cursor/plugins/tree/main/cursor-team-kit/skills/thermo-nuclear-code-quality-review",
+      "skill_homes": [
+        "${HOME}/.agents/skills",
+        "${HOME}/.config/agents/skills",
+        "${HOME}/.config/opencode/skills"
+      ]
+    }
+  ],
+  "relocations": [],
+  "aliases": []
+}
