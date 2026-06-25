@@ -7,7 +7,7 @@ description: >-
   acceptance criteria. Not for brainstorming (use brainstorm) or task breakdown
   (use breakdown).
 subtask: false
-version: 2.0.0-pre.20260625183349
+version: 2.0.0-pre.20260625190923
 ---
 
 # Shape

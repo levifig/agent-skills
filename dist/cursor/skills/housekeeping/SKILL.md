@@ -7,7 +7,7 @@ description: >-
   hygiene recommendations, archives completed work, and ensures extracted
   knowledge is preserved. Not for strategic reflection (use reflect) or
   knowledge management (use knowledge-base).
-version: 2.0.0-pre.20260625183349
+version: 2.0.0-pre.20260625190923
 ---
 
 # Housekeeping

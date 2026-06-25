@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-pre.20260625190923] - 2026-06-25
+
 ### Added
 
 - Added SPEC-052 install-destination parity for Codex, Cursor, OpenCode, and Amp, including a documented `~/.agents/skills` capability table and install records for relocated targets.

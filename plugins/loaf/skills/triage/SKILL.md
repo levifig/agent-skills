@@ -6,7 +6,7 @@ description: >-
   when the user asks "what sparks do I have?", "review my ideas", "triage", or
   "what's in my backlog?"...
 user-invocable: true
-version: 2.0.0-pre.20260625183349
+version: 2.0.0-pre.20260625190923
 ---
 
 # Triage
