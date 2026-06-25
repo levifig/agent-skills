@@ -8,6 +8,18 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
+## [2.0.0-pre.20260625192947] - 2026-06-25
+
+### Added
+
+- Added checksum-verified `loaf state restore-ephemerals` and `loaf state verify-ephemerals` rollback commands for the ephemeral Markdown cutover.
+- Added `loaf check --hook ephemeral-provenance` to block tracked or dangling `.agents` task/session/idea/draft Markdown after cutover.
+
+### Changed
+
+- Made ephemeral agent artifacts SQLite-only by removing tracked `.agents` tasks, sessions, ideas, drafts, brainstorms, and `.agents/TASKS.json` from git after the migration gate.
+- Changed `loaf session enrich` to record native SQLite journal checkpoints instead of recreating or editing session Markdown.
+
 ## [2.0.0-pre.20260625190923] - 2026-06-25
 
 ### Added

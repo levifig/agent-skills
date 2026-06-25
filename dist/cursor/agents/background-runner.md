@@ -157,4 +157,4 @@ Background Agent ID: bg-20260123-143000-auth-security
 4. Log completion to the session journal if session context was provided
 
 ---
-version: 2.0.0-pre.20260625190923
+version: 2.0.0-pre.20260625192947

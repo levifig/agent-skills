@@ -6,7 +6,7 @@ description: >-
   experience. Not for pre-implementation strategy (use strategy) or ADRs (use
   architecture).
 subtask: false
-version: 2.0.0-pre.20260625190923
+version: 2.0.0-pre.20260625192947
 ---
 
 # Reflect

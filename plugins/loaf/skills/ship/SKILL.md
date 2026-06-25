@@ -7,7 +7,7 @@ description: >-
   cleanup. Not for version b...
 user-invocable: true
 argument-hint: '[PR number or URL]'
-version: 2.0.0-pre.20260625190923
+version: 2.0.0-pre.20260625192947
 ---
 
 # Ship

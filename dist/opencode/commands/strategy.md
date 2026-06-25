@@ -6,7 +6,7 @@ description: >-
   architecture (use architecture) or post-implementation reflection (use
   reflect).
 subtask: false
-version: 2.0.0-pre.20260625190923
+version: 2.0.0-pre.20260625192947
 ---
 
 # Strategy
