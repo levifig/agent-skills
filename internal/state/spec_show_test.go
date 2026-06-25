@@ -43,7 +43,7 @@ Imported spec prose.
 	if result.Query != "SPEC-001" {
 		t.Fatalf("Query = %q, want SPEC-001", result.Query)
 	}
-	if spec.Alias != "SPEC-001" || spec.Title != "Example Spec" || spec.Status != "implementing" {
+	if spec.Alias != "SPEC-001" || spec.Title != "Example Spec" || spec.Status != "in_progress" {
 		t.Fatalf("Spec = %#v, want imported spec metadata", spec)
 	}
 	if spec.Tasks.Todo != 1 || spec.Tasks.InProgress != 1 || spec.Tasks.Done != 1 {

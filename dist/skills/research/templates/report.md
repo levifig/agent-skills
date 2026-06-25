@@ -13,7 +13,7 @@ generate ...` and does not need to be committed as a Markdown file.
 title: "Report: [Topic]"
 type: research | audit | analysis | council
 created: YYYY-MM-DDTHH:MM:SSZ
-status: draft | final | archived
+status: draft | done | archived
 source: SPEC-XXX | TASK-XXX | ad-hoc
 tags: []
 ---
@@ -55,7 +55,7 @@ tags: []
 ## Status Lifecycle
 
 - **draft** — Work in progress. Findings are being gathered and have not been fully validated.
-- **final** — Research concludes and findings are validated. Conclusions are ready for consumption.
+- **done** — Research concludes and findings are validated. Conclusions are ready for consumption.
 - **archived** — Report has been processed and archived in state; authored
   Markdown reports may also be moved to `.agents/reports/archive/` as a
   compatibility artifact.

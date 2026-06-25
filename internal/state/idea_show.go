@@ -100,6 +100,7 @@ WHERE ideas.project_id = ? AND ideas.id = ?
 	if err != nil {
 		return IdeaDetail{}, fmt.Errorf("read idea %s: %w", entity.ID, err)
 	}
+	status = LifecycleStatusForDisplay(LifecycleEntityIdea, status)
 
 	alias := firstNonEmpty(entity.Alias)
 	if alias == "" {

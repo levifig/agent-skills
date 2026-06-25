@@ -173,7 +173,7 @@ func (s *Store) entityDetails(ctx context.Context, projectID string, kind string
 			return TraceEntity{}, fmt.Errorf("read %s %s: %w", kind, id, err)
 		}
 		entity.Title = title.String
-		entity.Status = status.String
+		entity.Status = LifecycleStatusForDisplay(kind, status.String)
 	case "spark":
 		var text, status sql.NullString
 		err := s.db.QueryRowContext(ctx, `SELECT text, status FROM sparks WHERE project_id = ? AND id = ?`, projectID, id).Scan(&text, &status)
@@ -184,7 +184,7 @@ func (s *Store) entityDetails(ctx context.Context, projectID string, kind string
 			return TraceEntity{}, fmt.Errorf("read spark %s: %w", id, err)
 		}
 		entity.Title = text.String
-		entity.Status = status.String
+		entity.Status = LifecycleStatusForDisplay(LifecycleEntitySpark, status.String)
 	case "finding":
 		var title, status sql.NullString
 		err := s.db.QueryRowContext(ctx, `SELECT title, status FROM findings WHERE project_id = ? AND id = ?`, projectID, id).Scan(&title, &status)
@@ -195,7 +195,7 @@ func (s *Store) entityDetails(ctx context.Context, projectID string, kind string
 			return TraceEntity{}, fmt.Errorf("read finding %s: %w", id, err)
 		}
 		entity.Title = title.String
-		entity.Status = status.String
+		entity.Status = LifecycleStatusForDisplay(LifecycleEntitySession, status.String)
 	case "verdict":
 		var outcome, rationale sql.NullString
 		err := s.db.QueryRowContext(ctx, `SELECT outcome, rationale FROM verdicts WHERE project_id = ? AND id = ?`, projectID, id).Scan(&outcome, &rationale)

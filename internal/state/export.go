@@ -514,6 +514,7 @@ LIMIT 5
 		if err := rows.Scan(&report.Title, &report.Kind, &report.Status); err != nil {
 			return nil, fmt.Errorf("scan release recent report: %w", err)
 		}
+		report.Status = LifecycleStatusForDisplay(LifecycleEntityReport, report.Status)
 		reports = append(reports, report)
 	}
 	if err := rows.Err(); err != nil {
@@ -544,6 +545,7 @@ LIMIT 5
 		if err := rows.Scan(&session.Branch, &session.Status, &session.JournalEntries); err != nil {
 			return nil, fmt.Errorf("scan release recent session: %w", err)
 		}
+		session.Status = LifecycleStatusForDisplay(LifecycleEntitySession, session.Status)
 		sessions = append(sessions, session)
 	}
 	if err := rows.Err(); err != nil {
@@ -1006,10 +1008,10 @@ func renderBrainstormExportSection(b *strings.Builder, brainstorms BrainstormLis
 
 func releaseSpecStatusCounts(specs SpecList) (active int, complete int, archived int) {
 	for _, spec := range specs.Specs {
-		switch spec.Status {
-		case "complete":
+		switch {
+		case LifecycleStatusMatches(LifecycleEntitySpec, spec.Status, LifecycleStatusDone):
 			complete++
-		case "archived":
+		case LifecycleStatusMatches(LifecycleEntitySpec, spec.Status, LifecycleStatusArchived):
 			archived++
 		default:
 			active++
@@ -1020,10 +1022,10 @@ func releaseSpecStatusCounts(specs SpecList) (active int, complete int, archived
 
 func releaseTaskStatusCounts(tasks TaskList) (unresolved int, done int, archived int) {
 	for _, task := range tasks.Tasks {
-		switch task.Status {
-		case "done":
+		switch {
+		case LifecycleStatusMatches(LifecycleEntityTask, task.Status, LifecycleStatusDone):
 			done++
-		case "archived":
+		case LifecycleStatusMatches(LifecycleEntityTask, task.Status, LifecycleStatusArchived):
 			archived++
 		default:
 			unresolved++
@@ -1035,7 +1037,7 @@ func releaseTaskStatusCounts(tasks TaskList) (unresolved int, done int, archived
 func releaseSessionStatusCount(sessions SessionList, status string) int {
 	count := 0
 	for _, session := range sessions.Sessions {
-		if session.Status == status {
+		if LifecycleStatusFilterMatches(LifecycleEntitySession, session.Status, status) {
 			count++
 		}
 	}
@@ -1045,7 +1047,7 @@ func releaseSessionStatusCount(sessions SessionList, status string) int {
 func releaseReportStatusCount(reports ReportList, status string) int {
 	count := 0
 	for _, report := range reports.Reports {
-		if report.Status == status {
+		if LifecycleStatusFilterMatches(LifecycleEntityReport, report.Status, status) {
 			count++
 		}
 	}

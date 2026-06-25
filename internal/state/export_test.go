@@ -455,8 +455,8 @@ status: final
 		"Tasks: 1/1 with source",
 		"Total relationships:",
 		"release-readiness/markdown: 1",
-		"session/final: Release internal reference internal reference report",
-		"active session on feature/internal reference-internal reference with 1 journal entry",
+		"session/done: Release internal reference internal reference report",
+		"in_progress session on feature/internal reference-internal reference with 1 journal entry",
 	} {
 		if !strings.Contains(export.Content, want) {
 			t.Fatalf("content = %q, want %q", export.Content, want)
@@ -572,7 +572,7 @@ Imported spec prose.
 		"Audience: internal",
 		"Spec: `SPEC-001`",
 		"Title: Example Spec",
-		"Status: implementing",
+		"Status: in_progress",
 		"Tasks: 1 todo, 1 in progress, 1 done",
 		"`.agents/specs/SPEC-001-example.md`",
 		"inbound `implements` task `TASK-001`",

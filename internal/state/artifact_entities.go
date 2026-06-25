@@ -158,15 +158,15 @@ func (s *Store) CreateArtifactEntity(ctx context.Context, root project.Root, opt
 	case "plan", "council":
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`
 INSERT INTO %s (id, project_id, spec_id, title, status, body_source_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, 'draft', NULL, ?, ?)
-`, table), id, projectID, emptyToNil(specID), title, timestamp, timestamp); err != nil {
+VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+`, table), id, projectID, emptyToNil(specID), title, LifecycleStatusDraft, timestamp, timestamp); err != nil {
 			return ArtifactEntityCreateResult{}, fmt.Errorf("insert %s %s: %w", kind, alias, err)
 		}
 	case "handoff":
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO handoffs (id, project_id, session_id, task_id, title, status, body_source_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, 'draft', NULL, ?, ?)
-`, id, projectID, emptyToNil(sessionID), emptyToNil(taskID), title, timestamp, timestamp); err != nil {
+VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
+`, id, projectID, emptyToNil(sessionID), emptyToNil(taskID), title, LifecycleStatusDraft, timestamp, timestamp); err != nil {
 			return ArtifactEntityCreateResult{}, fmt.Errorf("insert handoff %s: %w", alias, err)
 		}
 	default:
@@ -175,11 +175,11 @@ VALUES (?, ?, ?, ?, ?, 'draft', NULL, ?, ?)
 	if err := insertAlias(ctx, tx, projectID, kind, id, kind, alias, timestamp); err != nil {
 		return ArtifactEntityCreateResult{}, err
 	}
-	eventID := stableMigrationID("event", projectID, kind, id, "created", "draft")
+	eventID := stableMigrationID("event", projectID, kind, id, "created", LifecycleStatusDraft)
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
-VALUES (?, ?, ?, ?, 'status_changed', NULL, 'draft', ?, ?, ?)
-`, eventID, projectID, kind, id, "recorded by "+kind+" new", timestamp, timestamp); err != nil {
+VALUES (?, ?, ?, ?, 'status_changed', NULL, ?, ?, ?, ?)
+`, eventID, projectID, kind, id, LifecycleStatusDraft, "recorded by "+kind+" new", timestamp, timestamp); err != nil {
 		return ArtifactEntityCreateResult{}, fmt.Errorf("record %s create event: %w", kind, err)
 	}
 	if _, err := upsertArtifactBodyTx(ctx, tx, projectID, kind, id, ArtifactBodyKindMarkdown, options.Body, nil, timestamp); err != nil {
@@ -196,7 +196,7 @@ VALUES (?, ?, ?, ?, 'status_changed', NULL, 'draft', ?, ?, ?)
 		ProjectID:          identity.ID,
 		ProjectName:        identity.FriendlyName,
 		ProjectCurrentPath: identity.CurrentPath,
-		Entity:             TraceEntity{Kind: kind, ID: id, Alias: alias, Title: title, Status: "draft"},
+		Entity:             TraceEntity{Kind: kind, ID: id, Alias: alias, Title: title, Status: LifecycleStatusDraft},
 		EventID:            eventID,
 	}, nil
 }
@@ -245,12 +245,13 @@ ORDER BY artifact_alias.alias
 			rows.Close()
 			return ArtifactEntityList{}, fmt.Errorf("scan %s: %w", kind, err)
 		}
-		if options.Status != "" && options.Status != status {
+		if !LifecycleStatusFilterMatches(kind, status, options.Status) {
 			continue
 		}
-		if !options.All && status == "archived" {
+		if !options.All && LifecycleStatusMatches(kind, status, LifecycleStatusArchived) {
 			continue
 		}
+		status = LifecycleStatusForDisplay(kind, status)
 		result.Entities[alias] = ArtifactEntityItem{Title: title, Status: status}
 	}
 	if err := rows.Close(); err != nil {
@@ -314,6 +315,7 @@ WHERE %s.project_id = ? AND %s.id = ?
 	if err != nil {
 		return ArtifactEntityDetail{}, fmt.Errorf("read %s %s: %w", kind, entity.ID, err)
 	}
+	status = LifecycleStatusForDisplay(kind, status)
 	alias := firstNonEmpty(entity.Alias)
 	if alias == "" {
 		if found, err := s.entityAlias(ctx, projectID, kind, entity.ID); err == nil {

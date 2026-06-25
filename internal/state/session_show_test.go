@@ -42,7 +42,7 @@ claude_session_id: session-active
 		t.Fatalf("show = %#v, want query and alias", show)
 	}
 	assertSessionProjectContext(t, root, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath)
-	if session.Branch != "feature/session-show" || session.Status != "active" || session.HarnessSessionID != "session-active" {
+	if session.Branch != "feature/session-show" || session.Status != "in_progress" || session.HarnessSessionID != "session-active" {
 		t.Fatalf("session metadata = %#v, want imported frontmatter", session)
 	}
 	if len(session.Sources) != 1 || session.Sources[0].Path != ".agents/sessions/20260528-active.md" || session.Sources[0].Hash == "" {

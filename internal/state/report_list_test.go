@@ -49,7 +49,7 @@ source: old
 		t.Fatalf("draft report = %#v, want imported metadata", draft)
 	}
 	final := reports.Reports["final"]
-	if final.Title != "Final Report" || final.Kind != "audit" || final.Status != "final" {
+	if final.Title != "Final Report" || final.Kind != "audit" || final.Status != "done" {
 		t.Fatalf("final report = %#v, want kind from legacy kind frontmatter", final)
 	}
 	archived := reports.Reports["old"]
@@ -71,7 +71,7 @@ source: old
 		t.Fatalf("ListReports(status) error = %v", err)
 	}
 	assertReportProjectContext(t, root, finalOnly.ContractVersion, finalOnly.DatabaseScope, finalOnly.DatabasePath, finalOnly.ProjectID, finalOnly.ProjectName, finalOnly.ProjectCurrentPath)
-	if len(finalOnly.Reports) != 1 || finalOnly.Reports["final"].Status != "final" {
-		t.Fatalf("final reports = %#v, want only final report", finalOnly.Reports)
+	if len(finalOnly.Reports) != 1 || finalOnly.Reports["final"].Status != "done" {
+		t.Fatalf("final reports = %#v, want only done report", finalOnly.Reports)
 	}
 }

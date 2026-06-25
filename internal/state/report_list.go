@@ -104,6 +104,7 @@ ORDER BY report_alias.alias
 		if !includeReport(kind, status, options) {
 			continue
 		}
+		status = LifecycleStatusForDisplay(LifecycleEntityReport, status)
 		reportList.Reports[alias] = ReportItem{
 			Title:      title,
 			Kind:       kind,
@@ -124,7 +125,7 @@ func includeReport(kind string, status string, options ReportListOptions) bool {
 	if options.Type != "" && kind != options.Type {
 		return false
 	}
-	if options.Status != "" && status != options.Status {
+	if !LifecycleStatusFilterMatches(LifecycleEntityReport, status, options.Status) {
 		return false
 	}
 	return true

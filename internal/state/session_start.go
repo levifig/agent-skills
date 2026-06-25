@@ -101,7 +101,7 @@ func (s *Store) StartSession(ctx context.Context, root project.Root, options Ses
 	previousJournalIDs := []string{}
 	action := SessionStartActionCreated
 	if existing.ID != "" && harnessSessionID != "" && existing.HarnessSessionID != "" && existing.HarnessSessionID != harnessSessionID {
-		if err := updateSessionStatus(ctx, tx, projectID, existing.ID, "stopped", now); err != nil {
+		if err := updateSessionStatus(ctx, tx, projectID, existing.ID, LifecycleStatusPaused, now); err != nil {
 			return SessionStartResult{}, err
 		}
 		endID, err := insertSessionJournalEntry(ctx, tx, projectID, existing.ID, "session", "end", "closed by new conversation", now)
@@ -112,7 +112,7 @@ func (s *Store) StartSession(ctx context.Context, root project.Root, options Ses
 		if err != nil {
 			return SessionStartResult{}, err
 		}
-		previous = &TraceEntity{Kind: "session", ID: existing.ID, Alias: existing.Alias, Status: "stopped"}
+		previous = &TraceEntity{Kind: "session", ID: existing.ID, Alias: existing.Alias, Status: LifecycleStatusPaused}
 		previousJournalIDs = []string{endID, stopID}
 		existing = sessionRow{}
 		action = SessionStartActionRotated
@@ -123,7 +123,7 @@ func (s *Store) StartSession(ctx context.Context, root project.Root, options Ses
 	if existing.ID != "" {
 		active = existing
 		action = SessionStartActionAlreadyActive
-		if existing.Status != "active" {
+		if !LifecycleStatusMatches(LifecycleEntitySession, existing.Status, LifecycleStatusInProgress) {
 			action = SessionStartActionResumed
 			resumeID, err := insertSessionJournalEntry(ctx, tx, projectID, existing.ID, "session", "resume", resumeMessage(harnessSessionID), now)
 			if err != nil {
@@ -135,7 +135,7 @@ func (s *Store) StartSession(ctx context.Context, root project.Root, options Ses
 			return SessionStartResult{}, err
 		}
 		active.Branch = branch
-		active.Status = "active"
+		active.Status = LifecycleStatusInProgress
 		active.HarnessSessionID = firstNonEmpty(harnessSessionID, existing.HarnessSessionID)
 	} else {
 		alias, err := nextSessionAlias(ctx, tx, projectID, now)
@@ -145,8 +145,8 @@ func (s *Store) StartSession(ctx context.Context, root project.Root, options Ses
 		sessionID := stableMigrationID("session", projectID, alias)
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO sessions (id, project_id, harness_session_id, branch, status, body_source_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, 'active', NULL, ?, ?)
-`, sessionID, projectID, emptyToNil(harnessSessionID), branch, now, now); err != nil {
+VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+`, sessionID, projectID, emptyToNil(harnessSessionID), branch, LifecycleStatusInProgress, now, now); err != nil {
 			return SessionStartResult{}, fmt.Errorf("insert session %s: %w", alias, err)
 		}
 		if err := insertAlias(ctx, tx, projectID, "session", sessionID, "session", alias, now); err != nil {
@@ -156,10 +156,10 @@ VALUES (?, ?, ?, ?, 'active', NULL, ?, ?)
 		if err != nil {
 			return SessionStartResult{}, err
 		}
-		if err := insertSessionStatusEvent(ctx, tx, projectID, sessionID, "", "active", "recorded by session start", now); err != nil {
+		if err := insertSessionStatusEvent(ctx, tx, projectID, sessionID, "", LifecycleStatusInProgress, "recorded by session start", now); err != nil {
 			return SessionStartResult{}, err
 		}
-		active = sessionRow{ID: sessionID, Alias: alias, Branch: branch, Status: "active", HarnessSessionID: harnessSessionID}
+		active = sessionRow{ID: sessionID, Alias: alias, Branch: branch, Status: LifecycleStatusInProgress, HarnessSessionID: harnessSessionID}
 		journalEntryIDs = append(journalEntryIDs, startID)
 	}
 
@@ -209,7 +209,7 @@ LEFT JOIN aliases session_alias
  AND session_alias.entity_kind = 'session'
  AND session_alias.entity_id = sessions.id
  AND session_alias.namespace = 'session'
-WHERE sessions.project_id = ? AND sessions.branch = ? AND sessions.status = 'active'
+WHERE sessions.project_id = ? AND sessions.branch = ? AND sessions.status IN ('active', 'in_progress')
 ORDER BY sessions.updated_at DESC
 LIMIT 1
 `, projectID, branch)
@@ -254,14 +254,14 @@ func updateSessionActive(ctx context.Context, tx *sql.Tx, projectID string, sess
 UPDATE sessions
 SET branch = ?,
     harness_session_id = COALESCE(?, harness_session_id),
-    status = 'active',
+    status = ?,
     updated_at = ?
 WHERE project_id = ? AND id = ?
-`, branch, emptyToNil(harnessSessionID), now, projectID, sessionID)
+`, branch, emptyToNil(harnessSessionID), LifecycleStatusInProgress, now, projectID, sessionID)
 	if err != nil {
 		return fmt.Errorf("update active session: %w", err)
 	}
-	return insertSessionStatusEvent(ctx, tx, projectID, sessionID, "", "active", "recorded by session start", now)
+	return insertSessionStatusEvent(ctx, tx, projectID, sessionID, "", LifecycleStatusInProgress, "recorded by session start", now)
 }
 
 func updateSessionStatus(ctx context.Context, tx *sql.Tx, projectID string, sessionID string, status string, now string) error {

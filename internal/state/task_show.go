@@ -120,6 +120,7 @@ WHERE tasks.project_id = ? AND tasks.id = ?
 	if err != nil {
 		return TaskDetail{}, fmt.Errorf("read task %s: %w", entity.ID, err)
 	}
+	status = LifecycleStatusForDisplay(LifecycleEntityTask, status)
 
 	alias := firstNonEmpty(entity.Alias)
 	if alias == "" {

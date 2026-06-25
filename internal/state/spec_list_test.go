@@ -46,14 +46,14 @@ status: drafting
 	assertTaskProjectContext(t, root.Path(), specs.ContractVersion, specs.DatabaseScope, specs.DatabasePath, specs.ProjectID, specs.ProjectName, specs.ProjectCurrentPath)
 
 	spec := specs.Specs["SPEC-001"]
-	if spec.Title != "Example Spec" || spec.Status != "implementing" || spec.SourcePath != ".agents/specs/SPEC-001-example.md" {
+	if spec.Title != "Example Spec" || spec.Status != "in_progress" || spec.SourcePath != ".agents/specs/SPEC-001-example.md" {
 		t.Fatalf("SPEC-001 = %#v, want imported metadata", spec)
 	}
 	if spec.Tasks.Todo != 2 || spec.Tasks.InProgress != 1 || spec.Tasks.Done != 1 {
 		t.Fatalf("SPEC-001 task counts = %#v, want todo=2 in_progress=1 done=1", spec.Tasks)
 	}
 	draft := specs.Specs["SPEC-002"]
-	if draft.Title != "Draft Spec" || draft.Status != "drafting" {
+	if draft.Title != "Draft Spec" || draft.Status != "draft" {
 		t.Fatalf("SPEC-002 = %#v, want imported draft spec", draft)
 	}
 	if draft.Tasks != (SpecTaskCounts{}) {

@@ -8,7 +8,7 @@ import (
 	"github.com/levifig/loaf/internal/project"
 )
 
-var specStatusOrder = []string{"implementing", "approved", "drafting", "complete", "archived"}
+var specStatusOrder = []string{LifecycleStatusInProgress, LifecycleStatusTodo, LifecycleStatusDraft, LifecycleStatusDone, LifecycleStatusArchived}
 
 // SpecList is the state-backed spec-list read model.
 type SpecList struct {
@@ -103,6 +103,7 @@ ORDER BY spec_alias.alias
 			rows.Close()
 			return SpecList{}, fmt.Errorf("scan spec: %w", err)
 		}
+		status = LifecycleStatusForDisplay(LifecycleEntitySpec, status)
 		specList.Specs[alias] = SpecItem{
 			Title:      title,
 			Status:     status,

@@ -2615,12 +2615,15 @@ func (r Runner) runStateMigrate(args []string, out io.Writer, runtime state.Runt
 		return fmt.Errorf("state migrate requires a source")
 	}
 	if writeNestedHelp(out, args, map[string]func(io.Writer){
-		"markdown":     writeStateMigrateMarkdownHelp,
-		"storage-home": writeStateMigrateStorageHomeHelp,
+		"lifecycle-statuses": writeStateMigrateLifecycleStatusesHelp,
+		"markdown":           writeStateMigrateMarkdownHelp,
+		"storage-home":       writeStateMigrateStorageHomeHelp,
 	}) {
 		return nil
 	}
 	switch args[0] {
+	case "lifecycle-statuses":
+		return r.runStateMigrateLifecycleStatuses(args[1:], out, runtime)
 	case "markdown":
 		return r.runStateMigrateMarkdown(args[1:], out, runtime)
 	case "storage-home":
@@ -2638,6 +2641,10 @@ func writeStateMigrateStorageHomeHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf state migrate storage-home [--dry-run|--apply] [--json]", "Copy legacy per-project state into the global XDG data-home SQLite database.", "--dry-run     Preview migration work", "--apply       Apply the migration", "--json        Output migration contract, global database paths, action, and project identity when available")
 }
 
+func writeStateMigrateLifecycleStatusesHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf state migrate lifecycle-statuses [--dry-run|--apply|--rollback <manifest>] [--json]", "Normalize legacy lifecycle statuses in SQLite with a backup and rollback manifest.", "--dry-run  Preview on a temporary database copy", "--apply    Normalize live SQLite statuses after creating a backup", "--rollback Restore statuses from a lifecycle-statuses rollback manifest", "--json     Output migration contract, project context, counts, backup, and rollback fields as JSON")
+}
+
 func writeMigrateMarkdownHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf migrate markdown [--dry-run|--apply|--resume] [--backup] [--remove-source] [--rollback <manifest>] [--json]", "Import .agents Markdown artifacts into SQLite without mutating Markdown by default.", "--dry-run       Preview import work", "--apply         Apply the import", "--resume        Resume an interrupted import", "--backup        Create SQLite and .agents rollback backups during apply/resume", "--remove-source Remove ephemeral Markdown sources; requires --backup", "--rollback      Restore .agents files from a rollback manifest", "--json          Output migration contract, scope, project context, counts, and rollback fields as JSON")
 }
@@ -2646,17 +2653,24 @@ func writeMigrateStorageHomeHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf migrate storage-home [--dry-run|--apply] [--json]", "Copy legacy per-project state into the global XDG data-home SQLite database.", "--dry-run     Preview migration work", "--apply       Apply the migration", "--json        Output migration contract, global database paths, action, and project identity when available")
 }
 
+func writeMigrateLifecycleStatusesHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf migrate lifecycle-statuses [--dry-run|--apply|--rollback <manifest>] [--json]", "Normalize legacy lifecycle statuses in SQLite with a backup and rollback manifest.", "--dry-run  Preview on a temporary database copy", "--apply    Normalize live SQLite statuses after creating a backup", "--rollback Restore statuses from a lifecycle-statuses rollback manifest", "--json     Output migration contract, project context, counts, backup, and rollback fields as JSON")
+}
+
 func (r Runner) runMigrate(args []string, out io.Writer, runtime state.Runtime) error {
 	if len(args) == 0 {
 		return fmt.Errorf("migrate requires a source")
 	}
 	if writeNestedHelp(out, args, map[string]func(io.Writer){
-		"markdown":     writeMigrateMarkdownHelp,
-		"storage-home": writeMigrateStorageHomeHelp,
+		"lifecycle-statuses": writeMigrateLifecycleStatusesHelp,
+		"markdown":           writeMigrateMarkdownHelp,
+		"storage-home":       writeMigrateStorageHomeHelp,
 	}) {
 		return nil
 	}
 	switch args[0] {
+	case "lifecycle-statuses":
+		return r.runLifecycleStatusMigration(args[1:], out, runtime, "loaf migrate lifecycle-statuses")
 	case "markdown":
 		return r.runMarkdownMigration(args[1:], out, runtime, "loaf migrate markdown")
 	case "storage-home":
@@ -2670,6 +2684,50 @@ func (r Runner) runMigrate(args []string, out io.Writer, runtime state.Runtime) 
 
 func (r Runner) runStateMigrateStorageHome(args []string, out io.Writer, runtime state.Runtime) error {
 	return r.runStorageHomeMigration(args, out, runtime, "loaf state migrate storage-home")
+}
+
+func (r Runner) runStateMigrateLifecycleStatuses(args []string, out io.Writer, runtime state.Runtime) error {
+	return r.runLifecycleStatusMigration(args, out, runtime, "loaf state migrate lifecycle-statuses")
+}
+
+func (r Runner) runLifecycleStatusMigration(args []string, out io.Writer, runtime state.Runtime, displayCommand string) error {
+	command := strings.TrimPrefix(displayCommand, "loaf ")
+	jsonRequested := hasFlag(args, "--json")
+	options, err := parseLifecycleStatusMigrationArgs(args, command)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, command, err)
+		}
+		return err
+	}
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, command, err)
+		}
+		return err
+	}
+	resolver := state.PathResolver{StateHome: r.StateHome}
+	var result state.LifecycleStatusMigrationResult
+	switch {
+	case options.rollbackPath != "":
+		result, err = state.RollbackLifecycleStatusMigration(context.Background(), projectRoot, resolver, options.rollbackPath)
+	case options.apply:
+		result, err = state.ApplyLifecycleStatusMigration(context.Background(), projectRoot, resolver)
+	default:
+		result, err = state.PreviewLifecycleStatusMigration(context.Background(), projectRoot, resolver)
+	}
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, command, err)
+		}
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeLifecycleStatusMigrationHuman(out, displayCommand, result)
+	return nil
 }
 
 func (r Runner) runStorageHomeMigration(args []string, out io.Writer, runtime state.Runtime, displayCommand string) error {
@@ -2938,6 +2996,58 @@ func writeStorageHomeMigrationPlan(out io.Writer, plan state.StorageHomeMigratio
 	fmt.Fprintf(out, "applied: %t\n", plan.Applied)
 	for _, warning := range plan.Warnings {
 		fmt.Fprintf(out, "warning: %s\n", warning)
+	}
+}
+
+func writeLifecycleStatusMigrationHuman(out io.Writer, displayCommand string, result state.LifecycleStatusMigrationResult) {
+	switch result.Action {
+	case state.LifecycleStatusMigrationActionApply:
+		fmt.Fprintf(out, "%s --apply\n", displayCommand)
+	case state.LifecycleStatusMigrationActionRollback:
+		fmt.Fprintf(out, "%s --rollback\n", displayCommand)
+	default:
+		fmt.Fprintf(out, "%s --dry-run\n", displayCommand)
+	}
+	fmt.Fprintf(out, "scope: %s database, lifecycle status migration\n", result.DatabaseScope)
+	fmt.Fprintf(out, "database: %s\n", result.DatabasePath)
+	fmt.Fprintf(out, "project: %s\n", result.ProjectID)
+	fmt.Fprintf(out, "project name: %s\n", result.ProjectName)
+	fmt.Fprintf(out, "project path: %s\n", result.ProjectCurrentPath)
+	fmt.Fprintf(out, "action: %s\n", result.Action)
+	fmt.Fprintf(out, "applied: %t\n", result.Applied)
+	fmt.Fprintf(out, "copy run: %t\n", result.CopyRun)
+	if result.BackupPath != "" {
+		fmt.Fprintf(out, "backup: %s\n", result.BackupPath)
+	}
+	if result.RollbackManifestPath != "" {
+		fmt.Fprintf(out, "rollback manifest: %s\n", result.RollbackManifestPath)
+	}
+	fmt.Fprintf(out, "entities scanned: %d\n", result.EntitiesScanned)
+	fmt.Fprintf(out, "entities rewritten: %d\n", result.EntitiesRewritten)
+	fmt.Fprintf(out, "events scanned: %d\n", result.EventsScanned)
+	fmt.Fprintf(out, "events rewritten: %d\n", result.EventsRewritten)
+	fmt.Fprintf(out, "normalization events: %d\n", result.NormalizationEvents)
+	fmt.Fprintf(out, "legacy statuses remaining: %d\n", result.LegacyStatusesRemaining)
+	if result.RollbackEntitiesRestored > 0 || result.RollbackEventsRestored > 0 {
+		fmt.Fprintf(out, "rollback entities restored: %d\n", result.RollbackEntitiesRestored)
+		fmt.Fprintf(out, "rollback events restored: %d\n", result.RollbackEventsRestored)
+	}
+	for _, warning := range result.Warnings {
+		fmt.Fprintf(out, "warning: %s\n", warning)
+	}
+	switch result.Action {
+	case state.LifecycleStatusMigrationActionDryRun:
+		if result.EntitiesRewritten > 0 || result.EventsRewritten > 0 {
+			fmt.Fprintln(out, "next: rerun with --apply to normalize live SQLite statuses after a backup")
+		} else {
+			fmt.Fprintln(out, "next: no lifecycle status migration is needed")
+		}
+	case state.LifecycleStatusMigrationActionApply:
+		if result.RollbackManifestPath != "" {
+			fmt.Fprintln(out, "next: keep the rollback manifest until the migration is verified")
+		}
+	case state.LifecycleStatusMigrationActionRollback:
+		fmt.Fprintln(out, "next: inspect state before rerunning lifecycle status migration")
 	}
 }
 
@@ -5221,7 +5331,7 @@ func writeTaskStatus(out io.Writer, tasks state.TaskList, specs state.SpecList) 
 		fmt.Fprintln(out)
 	}
 	fmt.Fprintf(out, "  Tasks:  %s  (%d total)\n", formatStatusCounts(taskCounts, []string{"in_progress", "blocked", "todo", "review", "done"}), len(tasks.Tasks))
-	fmt.Fprintf(out, "  Specs:  %s  (%d total)\n\n", formatStatusCounts(specCounts, []string{"implementing", "approved", "drafting", "complete"}), len(specs.Specs))
+	fmt.Fprintf(out, "  Specs:  %s  (%d total)\n\n", formatStatusCounts(specCounts, []string{state.LifecycleStatusInProgress, state.LifecycleStatusTodo, state.LifecycleStatusDraft, state.LifecycleStatusDone}), len(specs.Specs))
 }
 
 func countTaskStatuses(tasks state.TaskList) map[string]int {
@@ -5293,7 +5403,7 @@ func writeIdeaHelp(out io.Writer) {
 }
 
 func writeIdeaListHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf idea list [--all|--status <status>] [--json]", "List ideas from SQLite state.", "--all        Include resolved and archived ideas", "--status     Filter by status", "--json       Output ideas, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf idea list [--all|--status <status>] [--json]", "List ideas from SQLite state.", "--all        Include done and archived ideas", "--status     Filter by status", "--json       Output ideas, global database scope, and project identity as JSON")
 }
 
 func writeIdeaShowHelp(out io.Writer) {
@@ -5669,7 +5779,7 @@ func writeSparkHelp(out io.Writer) {
 }
 
 func writeSparkListHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf spark list [--all|--status <status>] [--json]", "List sparks from SQLite state.", "--all        Include resolved sparks", "--status     Filter by status", "--json       Output sparks, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf spark list [--all|--status <status>] [--json]", "List sparks from SQLite state.", "--all        Include done sparks", "--status     Filter by status", "--json       Output sparks, global database scope, and project identity as JSON")
 }
 
 func writeSparkShowHelp(out io.Writer) {
@@ -7061,7 +7171,7 @@ func readMarkdownSpec(rootPath string, path string, index map[string]markdownSpe
 	alias := firstNonEmpty(field("id"), specAliasFromPath(path), strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
 	meta := index[alias]
 	title := firstNonEmpty(meta.Title, field("title"), firstMarkdownHeading(markdownContentWithoutFrontmatter(string(body))), alias)
-	status := firstNonEmpty(meta.Status, field("status"), "unknown")
+	status := state.LifecycleStatusForDisplay(state.LifecycleEntitySpec, firstNonEmpty(meta.Status, field("status"), "drafting"))
 	return state.SpecItem{
 		Title:      title,
 		Status:     status,
@@ -10409,7 +10519,7 @@ func writeReportHelp(out io.Writer) {
 }
 
 func writeReportListHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf report list [--type <type>|--status <status>] [--json]", "List reports.", "--type       Filter by report type", "--status     Filter by status; Loaf lifecycle statuses: draft, final, archived", "--json       Output reports, diagnostics, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf report list [--type <type>|--status <status>] [--json]", "List reports.", "--type       Filter by report type", "--status     Filter by status; Loaf lifecycle statuses: draft, done, archived", "--json       Output reports, diagnostics, global database scope, and project identity as JSON")
 }
 
 func writeReportShowHelp(out io.Writer) {
@@ -11422,11 +11532,12 @@ func readMarkdownReport(rootPath string, path string) (state.ReportItem, string,
 	}
 	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	alias := firstNonEmpty(field("id"), stem)
-	status := firstNonEmpty(field("status"), "unknown")
+	status := firstNonEmpty(field("status"), "draft")
 	sourcePath := markdownReportSourcePath(rootPath, path)
 	if strings.HasPrefix(sourcePath, ".agents/reports/archive/") {
 		status = "archived"
 	}
+	status = state.LifecycleStatusForDisplay(state.LifecycleEntityReport, status)
 	title := firstNonEmpty(field("title"), firstMarkdownHeading(markdownContentWithoutFrontmatter(string(body))), alias)
 	kind := firstNonEmpty(field("type", "report_kind", "kind"), "markdown")
 	return state.ReportItem{
@@ -11459,7 +11570,7 @@ func reportMatchesFilters(item state.ReportItem, options state.ReportListOptions
 	if options.Type != "" && item.Kind != options.Type {
 		return false
 	}
-	if options.Status != "" && item.Status != options.Status {
+	if !state.LifecycleStatusFilterMatches(state.LifecycleEntityReport, item.Status, options.Status) {
 		return false
 	}
 	return true
@@ -11530,21 +11641,22 @@ func markdownReportFinalize(rootPath string, ref string) (state.ReportStatusResu
 	if err != nil {
 		return state.ReportStatusResult{}, err
 	}
-	previous := firstNonEmpty(firstFieldValue(frontmatter["status"]), "unknown")
-	if previous != "draft" {
+	previousRaw := firstNonEmpty(firstFieldValue(frontmatter["status"]), "draft")
+	previous := state.LifecycleStatusForDisplay(state.LifecycleEntityReport, previousRaw)
+	if !state.LifecycleStatusMatches(state.LifecycleEntityReport, previousRaw, state.LifecycleStatusDraft) {
 		return state.ReportStatusResult{}, fmt.Errorf("report %q is not draft (status: %s)", ref, previous)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	frontmatter["status"] = markdownReportFrontmatterScalar("final")
+	frontmatter["status"] = markdownReportFrontmatterScalar(state.LifecycleStatusDone)
 	frontmatter["finalized_at"] = markdownReportFrontmatterScalar(now)
 	if err := os.WriteFile(path, []byte(renderMarkdownReport(frontmatter, body)), 0o600); err != nil {
 		return state.ReportStatusResult{}, fmt.Errorf("write finalized report %s: %w", ref, err)
 	}
 	title := firstNonEmpty(firstFieldValue(frontmatter["title"]), firstMarkdownHeading(body), alias)
 	return state.ReportStatusResult{
-		Report:   state.TraceEntity{Kind: "report", ID: alias, Alias: alias, Title: title, Status: "final"},
+		Report:   state.TraceEntity{Kind: "report", ID: alias, Alias: alias, Title: title, Status: state.LifecycleStatusDone},
 		Previous: previous,
-		Status:   "final",
+		Status:   state.LifecycleStatusDone,
 	}, nil
 }
 
@@ -11557,9 +11669,10 @@ func markdownReportArchive(rootPath string, ref string) (state.ReportStatusResul
 	if err != nil {
 		return state.ReportStatusResult{}, err
 	}
-	previous := firstNonEmpty(firstFieldValue(frontmatter["status"]), "unknown")
-	if previous != "final" {
-		return state.ReportStatusResult{}, fmt.Errorf("report %q is not final (status: %s)", ref, previous)
+	previousRaw := firstNonEmpty(firstFieldValue(frontmatter["status"]), "draft")
+	previous := state.LifecycleStatusForDisplay(state.LifecycleEntityReport, previousRaw)
+	if !state.LifecycleStatusMatches(state.LifecycleEntityReport, previousRaw, state.LifecycleStatusDone) {
+		return state.ReportStatusResult{}, fmt.Errorf("report %q is not done (status: %s)", ref, previous)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	frontmatter["status"] = markdownReportFrontmatterScalar("archived")
@@ -14025,15 +14138,15 @@ func sortedSpecsByStatus(specs state.SpecList, status string) []string {
 
 func specStatusLabel(status string) string {
 	switch status {
-	case "implementing":
-		return "Implementing"
-	case "approved":
-		return "Approved"
-	case "drafting":
-		return "Drafting"
-	case "complete":
-		return "Complete"
-	case "archived":
+	case state.LifecycleStatusInProgress:
+		return "In Progress"
+	case state.LifecycleStatusTodo:
+		return "Todo"
+	case state.LifecycleStatusDraft:
+		return "Draft"
+	case state.LifecycleStatusDone:
+		return "Done"
+	case state.LifecycleStatusArchived:
 		return "Archived"
 	default:
 		return status
@@ -14162,7 +14275,7 @@ func formatSessionJournalTimestamp(value string) string {
 func sortedSessionsByArchivedState(sessions state.SessionList, archived bool) []string {
 	var aliases []string
 	for alias, session := range sessions.Sessions {
-		if (session.Status == "archived") == archived {
+		if state.LifecycleStatusMatches(state.LifecycleEntitySession, session.Status, state.LifecycleStatusArchived) == archived {
 			aliases = append(aliases, alias)
 		}
 	}
@@ -14171,7 +14284,7 @@ func sortedSessionsByArchivedState(sessions state.SessionList, archived bool) []
 }
 
 func reportStatusDisplayOrder(reports state.ReportList) []string {
-	statuses := []string{"draft", "final", "archived"}
+	statuses := []string{state.LifecycleStatusDraft, state.LifecycleStatusDone, state.LifecycleStatusArchived}
 	seen := map[string]bool{}
 	for _, status := range statuses {
 		seen[status] = true
@@ -14202,8 +14315,8 @@ func reportStatusLabel(status string) string {
 	switch status {
 	case "draft":
 		return "Drafts"
-	case "final":
-		return "Final"
+	case "done":
+		return "Done"
 	case "archived":
 		return "Archived"
 	default:
@@ -14225,6 +14338,13 @@ type storageHomeMigrationOptions struct {
 	jsonOutput bool
 	apply      bool
 	dryRun     bool
+}
+
+type lifecycleStatusMigrationOptions struct {
+	jsonOutput   bool
+	apply        bool
+	dryRun       bool
+	rollbackPath string
 }
 
 type relationshipOriginRepairOptions struct {
@@ -14307,6 +14427,36 @@ func parseStorageHomeMigrationArgs(args []string, command string) (storageHomeMi
 	}
 	if options.apply && options.dryRun {
 		return storageHomeMigrationOptions{}, fmt.Errorf("%s cannot combine --apply and --dry-run", command)
+	}
+	return options, nil
+}
+
+func parseLifecycleStatusMigrationArgs(args []string, command string) (lifecycleStatusMigrationOptions, error) {
+	var options lifecycleStatusMigrationOptions
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--dry-run":
+			options.dryRun = true
+		case "--json":
+			options.jsonOutput = true
+		case "--apply":
+			options.apply = true
+		case "--rollback":
+			if i+1 >= len(args) {
+				return lifecycleStatusMigrationOptions{}, fmt.Errorf("%s requires --rollback <manifest>", command)
+			}
+			i++
+			options.rollbackPath = args[i]
+		default:
+			return lifecycleStatusMigrationOptions{}, fmt.Errorf("unknown option %q", arg)
+		}
+	}
+	if options.apply && options.dryRun {
+		return lifecycleStatusMigrationOptions{}, fmt.Errorf("%s cannot combine --apply and --dry-run", command)
+	}
+	if options.rollbackPath != "" && (options.apply || options.dryRun) {
+		return lifecycleStatusMigrationOptions{}, fmt.Errorf("%s cannot combine --rollback with --apply or --dry-run", command)
 	}
 	return options, nil
 }

@@ -100,6 +100,7 @@ WHERE brainstorms.project_id = ? AND brainstorms.id = ?
 	if err != nil {
 		return BrainstormDetail{}, fmt.Errorf("read brainstorm %s: %w", entity.ID, err)
 	}
+	status = LifecycleStatusForDisplay(LifecycleEntityBrainstorm, status)
 
 	alias := firstNonEmpty(entity.Alias)
 	if alias == "" {

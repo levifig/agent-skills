@@ -37,7 +37,7 @@ claude_session_id: session-archived
 		t.Fatal("active-only session list includes archived session")
 	}
 	active := activeOnly.Sessions["20260528-active"]
-	if active.Branch != "feature/session-list" || active.Status != "active" || active.HarnessSessionID != "session-active" {
+	if active.Branch != "feature/session-list" || active.Status != "in_progress" || active.HarnessSessionID != "session-active" {
 		t.Fatalf("active session = %#v, want imported metadata", active)
 	}
 	if active.SourcePath != ".agents/sessions/20260528-active.md" || active.JournalEntries != 1 {

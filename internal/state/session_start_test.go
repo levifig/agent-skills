@@ -36,8 +36,8 @@ func TestStartSessionCreatesSQLiteSessionWithLinkedStartJournal(t *testing.T) {
 		t.Fatalf("ShowSession() error = %v", err)
 	}
 	session := show.Session
-	if session.Branch != "feature/session-start" || session.Status != "active" || session.HarnessSessionID != "harness-123456789" {
-		t.Fatalf("session = %#v, want active native session metadata", session)
+	if session.Branch != "feature/session-start" || session.Status != "in_progress" || session.HarnessSessionID != "harness-123456789" {
+		t.Fatalf("session = %#v, want in-progress native session metadata", session)
 	}
 	if !hasJournalEntry(session.JournalEntries, "session", "start", "=== SESSION STARTED === (session harness-)") {
 		t.Fatalf("journal entries = %#v, want linked session(start)", session.JournalEntries)
@@ -113,8 +113,8 @@ func TestStartSessionRotatesDifferentHarnessSessionOnSameBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ShowSession(old) error = %v", err)
 	}
-	if oldShow.Session.Status != "stopped" {
-		t.Fatalf("old status = %q, want stopped", oldShow.Session.Status)
+	if oldShow.Session.Status != "paused" {
+		t.Fatalf("old status = %q, want paused", oldShow.Session.Status)
 	}
 	if !hasJournalEntry(oldShow.Session.JournalEntries, "session", "end", "closed by new conversation") ||
 		!hasJournalEntry(oldShow.Session.JournalEntries, "session", "stop", "=== SESSION STOPPED ===") {
@@ -159,8 +159,8 @@ func TestEndSessionStopsTargetHarnessSessionOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ShowSession(target) error = %v", err)
 	}
-	if targetShow.Session.Status != "stopped" {
-		t.Fatalf("target status = %q, want stopped", targetShow.Session.Status)
+	if targetShow.Session.Status != "paused" {
+		t.Fatalf("target status = %q, want paused", targetShow.Session.Status)
 	}
 	if !hasJournalEntry(targetShow.Session.JournalEntries, "session", "end", "session ended") ||
 		!hasJournalEntry(targetShow.Session.JournalEntries, "session", "stop", "=== SESSION STOPPED ===") {
@@ -170,8 +170,8 @@ func TestEndSessionStopsTargetHarnessSessionOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ShowSession(other) error = %v", err)
 	}
-	if otherShow.Session.Status != "active" {
-		t.Fatalf("other status = %q, want active", otherShow.Session.Status)
+	if otherShow.Session.Status != "in_progress" {
+		t.Fatalf("other status = %q, want in_progress", otherShow.Session.Status)
 	}
 }
 
@@ -283,8 +283,8 @@ func TestEndSessionClearKeepsSessionActive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ShowSession() error = %v", err)
 	}
-	if show.Session.Status != "active" {
-		t.Fatalf("status = %q, want active", show.Session.Status)
+	if show.Session.Status != "in_progress" {
+		t.Fatalf("status = %q, want in_progress", show.Session.Status)
 	}
 	if !hasJournalEntry(show.Session.JournalEntries, "session", "clear", "=== CONTEXT CLEARED ===") {
 		t.Fatalf("journal entries = %#v, want clear entry", show.Session.JournalEntries)

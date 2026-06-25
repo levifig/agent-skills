@@ -105,7 +105,7 @@ func (s *Store) EndSession(ctx context.Context, root project.Root, options Sessi
 		}
 		return SessionEndResult{}, fmt.Errorf("no active session found")
 	}
-	if target.Status != "active" {
+	if !LifecycleStatusMatches(LifecycleEntitySession, target.Status, LifecycleStatusInProgress) {
 		if options.IfActive {
 			return SessionEndResult{
 				ContractVersion:    StateJSONContractVersion,
@@ -137,12 +137,12 @@ func (s *Store) EndSession(ctx context.Context, root project.Root, options Sessi
 	}
 
 	action := SessionEndActionStopped
-	status := "stopped"
+	status := LifecycleStatusPaused
 	journalEntryIDs := []string{}
 	switch {
 	case options.Clear:
 		action = SessionEndActionCleared
-		status = "active"
+		status = LifecycleStatusInProgress
 		id, err := insertSessionJournalEntry(ctx, tx, projectID, target.ID, "session", "clear", "=== CONTEXT CLEARED ===", now)
 		if err != nil {
 			return SessionEndResult{}, err
@@ -150,7 +150,7 @@ func (s *Store) EndSession(ctx context.Context, root project.Root, options Sessi
 		journalEntryIDs = append(journalEntryIDs, id)
 	case options.Wrap:
 		action = SessionEndActionDone
-		status = "done"
+		status = LifecycleStatusDone
 		id, err := insertSessionJournalEntry(ctx, tx, projectID, target.ID, "session", "wrap", "session ended", now)
 		if err != nil {
 			return SessionEndResult{}, err

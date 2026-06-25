@@ -101,6 +101,7 @@ WHERE specs.project_id = ? AND specs.id = ?
 	if err != nil {
 		return SpecDetail{}, fmt.Errorf("read spec %s: %w", entity.ID, err)
 	}
+	status = LifecycleStatusForDisplay(LifecycleEntitySpec, status)
 
 	alias := firstNonEmpty(entity.Alias)
 	if alias == "" {

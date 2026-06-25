@@ -112,6 +112,7 @@ WHERE sessions.project_id = ? AND sessions.id = ?
 	if err != nil {
 		return SessionDetail{}, fmt.Errorf("read session %s: %w", entity.ID, err)
 	}
+	status = LifecycleStatusForDisplay(LifecycleEntitySession, status)
 
 	alias := firstNonEmpty(entity.Alias)
 	if alias == "" {

@@ -136,7 +136,7 @@ func TestRunnerGenerateCLIReferenceWritesSkillNatively(t *testing.T) {
 	if !strings.Contains(content, "- `loaf migrate storage-home`:\n  - `--dry-run` - Preview the storage-home migration\n  - `--apply` - Copy the legacy database without deleting it\n  - `--json` - Output migration contract, global database paths, action, and project identity when available") {
 		t.Fatalf("generated CLI reference missing top-level migrate storage-home JSON contract guidance\n%s", content)
 	}
-	if !strings.Contains(content, "- `loaf report list`:\n  - `--type <type>` - Filter by report type\n  - `--status <status>` - Filter by status; Loaf lifecycle statuses: draft, final, archived") {
+	if !strings.Contains(content, "- `loaf report list`:\n  - `--type <type>` - Filter by report type\n  - `--status <status>` - Filter by status; Loaf lifecycle statuses: draft, done, archived") {
 		t.Fatalf("generated CLI reference missing report list status guidance\n%s", content)
 	}
 	if !strings.Contains(content, "- `loaf task list`:\n  - `--json` - Output tasks, diagnostics, global database scope, and project identity as JSON") {
@@ -145,7 +145,7 @@ func TestRunnerGenerateCLIReferenceWritesSkillNatively(t *testing.T) {
 	if !strings.Contains(content, "- `loaf spec list`:\n  - `--json` - Output specs, diagnostics, task counts, global database scope, and project identity as JSON") {
 		t.Fatalf("generated CLI reference missing spec list JSON contract guidance\n%s", content)
 	}
-	if !strings.Contains(content, "- `loaf report list`:\n  - `--type <type>` - Filter by report type\n  - `--status <status>` - Filter by status; Loaf lifecycle statuses: draft, final, archived\n  - `--json` - Output reports, diagnostics, global database scope, and project identity as JSON") {
+	if !strings.Contains(content, "- `loaf report list`:\n  - `--type <type>` - Filter by report type\n  - `--status <status>` - Filter by status; Loaf lifecycle statuses: draft, done, archived\n  - `--json` - Output reports, diagnostics, global database scope, and project identity as JSON") {
 		t.Fatalf("generated CLI reference missing report list JSON contract guidance\n%s", content)
 	}
 }

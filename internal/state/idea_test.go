@@ -41,8 +41,8 @@ status: open
 	if err != nil {
 		t.Fatalf("ResolveIdea() error = %v", err)
 	}
-	if result.Idea.Status != "resolved" || result.ResolvedBy.Alias != "SPEC-001" || result.Relationship == "" || result.EventID == "" {
-		t.Fatalf("result = %#v, want resolved idea, SPEC-001 target, relationship, and event", result)
+	if result.Idea.Status != "done" || result.ResolvedBy.Alias != "SPEC-001" || result.Relationship == "" || result.EventID == "" {
+		t.Fatalf("result = %#v, want done idea, SPEC-001 target, relationship, and event", result)
 	}
 	assertIdeaProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
@@ -51,22 +51,22 @@ status: open
 		t.Fatalf("ListIdeas() after error = %v", err)
 	}
 	if _, ok := after.Ideas["20260528-sqlite-state"]; ok {
-		t.Fatalf("after.Ideas = %#v, want resolved idea omitted from default list", after.Ideas)
+		t.Fatalf("after.Ideas = %#v, want done idea omitted from default list", after.Ideas)
 	}
 	all, err := ListIdeas(context.Background(), root, PathResolver{StateHome: stateHome}, IdeaListOptions{All: true})
 	if err != nil {
 		t.Fatalf("ListIdeas(All) error = %v", err)
 	}
-	if all.Ideas["20260528-sqlite-state"].Status != "resolved" {
-		t.Fatalf("all.Ideas = %#v, want resolved idea included with status", all.Ideas)
+	if all.Ideas["20260528-sqlite-state"].Status != "done" {
+		t.Fatalf("all.Ideas = %#v, want done idea included with status", all.Ideas)
 	}
 	assertIdeaProjectContext(t, root, all.ContractVersion, all.DatabaseScope, all.DatabasePath, all.ProjectID, all.ProjectName, all.ProjectCurrentPath)
-	resolvedOnly, err := ListIdeas(context.Background(), root, PathResolver{StateHome: stateHome}, IdeaListOptions{Status: "resolved"})
+	resolvedOnly, err := ListIdeas(context.Background(), root, PathResolver{StateHome: stateHome}, IdeaListOptions{Status: "done"})
 	if err != nil {
-		t.Fatalf("ListIdeas(Status resolved) error = %v", err)
+		t.Fatalf("ListIdeas(Status done) error = %v", err)
 	}
-	if resolvedOnly.Ideas["20260528-sqlite-state"].Status != "resolved" {
-		t.Fatalf("resolvedOnly.Ideas = %#v, want explicit status filter to include resolved idea", resolvedOnly.Ideas)
+	if resolvedOnly.Ideas["20260528-sqlite-state"].Status != "done" {
+		t.Fatalf("resolvedOnly.Ideas = %#v, want explicit status filter to include done idea", resolvedOnly.Ideas)
 	}
 
 	trace, err := Trace(context.Background(), root, PathResolver{StateHome: stateHome}, "20260528-sqlite-state")
@@ -86,7 +86,7 @@ status: open
 	err = store.db.QueryRowContext(context.Background(), `
 SELECT COUNT(*)
 FROM events
-WHERE project_id = ? AND entity_kind = 'idea' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'resolved'
+WHERE project_id = ? AND entity_kind = 'idea' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'done'
 `, projectIDForTest(t, store, root)).Scan(&events)
 	if err != nil {
 		t.Fatalf("count events error = %v", err)

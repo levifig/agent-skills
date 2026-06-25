@@ -6,7 +6,7 @@ source_sessions:
   - id: 20260621-001541-session
     role: shaped
 created: 2026-06-22T09:13:21Z
-status: drafting
+status: done
 branch: feat/status-vocabulary-unification
 ---
 
@@ -82,18 +82,27 @@ is a small set of universal phases that each entity maps onto; entity-specific n
 where it carries real meaning (e.g. task `blocked`, session `stopped` vs `done`) rather than
 collapsed for tidiness.
 
-Candidate universal phases (exact set is an Open Question, to be decided *with* SPEC-048, not
-bikeshedded):
+Canonical lifecycle phases are deliberately small, but not artificially collapsed. `draft`, `open`,
+and `todo` stay distinct because they mean different things: an authored durable artifact is being
+written, a triage object is unresolved, or committed work is waiting to start.
 
-| Universal phase | Today's spellings it absorbs |
-|-----------------|------------------------------|
-| `open` / `active` | idea/spark/brainstorm `open`; session `active`; task `todo` |
-| `in_progress` | task `in_progress`; spec `implementing` |
-| `blocked` | task `blocked`; session `blocked` |
-| `review` | task `review`; spec `approved`; report `draft` (under review) |
-| `done` | task `done`; spec `complete`; report `final`; idea/spark/brainstorm `resolved`; session `done` |
-| `paused` | session `stopped` |
-| `archived` | all entities' `archived` |
+| Canonical phase | Today's spellings it absorbs | Primary use |
+|-----------------|------------------------------|-------------|
+| `draft` | spec `drafting`; report/plan/handoff/council `draft` | authored durable artifacts not finalized |
+| `open` | idea/spark/brainstorm `open` | unresolved intake/triage objects |
+| `todo` | task `todo`; spec `approved` | accepted work not started |
+| `in_progress` | task `in_progress`; spec `implementing`; session `active` | active execution |
+| `blocked` | task `blocked`; session `blocked` | work waiting on an external condition |
+| `review` | task `review` | implementation awaiting review |
+| `done` | task `done`; spec `complete`; report/plan/handoff/council `final`; idea/spark/brainstorm `resolved`; session `done` | completed/non-archived work |
+| `paused` | session `stopped` | intentionally stopped resumable sessions |
+| `archived` | all lifecycle entities' `archived` | hidden historical records |
+
+Domain-specific status vocabularies that are not lifecycle phases stay in their own explicit
+registries. Findings (`open`/`confirmed`/`refuted`/`partial`/`archived`) and runs
+(`pending`/`running`/`completed`/`failed`/`archived`) from SPEC-054 are not flattened into this
+model; SPEC-049 only requires them to be declared outside the lifecycle registry instead of
+appearing as anonymous literals.
 
 Each entity declares which subset it permits; `Valid<Entity>Status` validates against that subset;
 `<Entity>StatusOrder` returns display order over it. A migration rewrites every populated row in the
@@ -106,11 +115,8 @@ entity tables and the `events` table:
   fabricate history, the migration **appends exactly one synthetic normalization event per rewritten
   entity** (`event_type = "status_normalized"`, `from_status` = the entity's last known legacy
   status, `to_status` = its canonical equivalent, `note` describing the SPEC-049 migration). Existing
-  `events` rows keep their original `from_status`/`to_status` *spellings as historical record* — the
-  migration does **not** silently rewrite history in place beyond `to_status` normalization needed
-  for current-state queries. (Final in-place-vs-synthetic policy is an Open Question to settle before
-  breakdown; the default here is: normalize `to_status` for query correctness, do not invent
-  `from_status`, emit one synthetic boundary event.)
+  `events` rows keep their original `from_status` as historical record; `to_status` is normalized so
+  current-state status queries can treat event destinations as typed lifecycle data.
 
 Migration runs against a **copy of the DB first**, takes a **backup** via the existing state-backup
 mechanism, and is **reversible** (a down-mapping table from canonical → legacy spelling is retained
@@ -124,8 +130,9 @@ SPEC-048's "session schema in one file" lint, generalized).
 
 ### In Scope
 - Canonical lifecycle vocabulary defined once (single Go file) with per-entity allowed subsets.
-- `Valid<Entity>Status` + `<Entity>StatusOrder` for **every** entity (spec, task, report, session,
-  idea, spark, brainstorm), replacing the ad-hoc literals and missing validators.
+- `Valid<Entity>Status` + `<Entity>StatusOrder` for **every lifecycle entity** (spec, task, report,
+  session, idea, spark, brainstorm, plan, handoff, council), replacing the ad-hoc literals and
+  missing validators.
 - Rewrite of every `insert*StatusEvent` / events-insert call site
   (`task_create.go:149`, `task_update.go:204`, `task_archive.go:178`, `spec_archive.go:130`,
   `report_lifecycle.go:132,208`, `session_start.go:294`, `session_end.go:205`, `idea.go:254,379,552`,
@@ -136,6 +143,8 @@ SPEC-048's "session schema in one file" lint, generalized).
 - A lint/test: the canonical vocabulary is defined in exactly one file; no entity uses a status
   outside its declared subset.
 - Reconcile the report `active`/`unknown` display defect against the canonical set.
+- Explicitly register domain-specific non-lifecycle vocabularies (finding status, run status,
+  verdict outcomes) as excluded from lifecycle canonicalization.
 
 ### Out of Scope
 - The session-state semantics themselves (`stopped` vs `done`, `wrap` model) — owned by SPEC-048.
@@ -143,6 +152,8 @@ SPEC-048's "session schema in one file" lint, generalized).
 - The migration harness itself (deprecation window, backup/restore plumbing) — owned by SPEC-053;
   this spec *consumes* it.
 - `TASKS.json` retirement — owned by SPEC-035; this spec only defines the status mapping for it.
+- Changing finding/verdict semantics from SPEC-054; those statuses are domain outcomes, not the
+  core lifecycle vocabulary.
 
 ### Rabbit Holes
 - **Bikeshedding the exact universal set.** Pick a small set with SPEC-048, migrate, move on. The
@@ -164,53 +175,127 @@ SPEC-048's "session schema in one file" lint, generalized).
 |------|------------|--------|------------|
 | Data loss / corruption during events + entity rewrite | Med | High | Run on DB copy first; mandatory backup; reversible down-mapping; behind SPEC-053 gate |
 | Divergence from SPEC-048's session enum (two rewrites) | Med | High | Sequence with SPEC-048; adopt its canonical session states; land in same change where files overlap |
-| `TASKS.json` re-introduces dual-source status drift (SPEC-035) | Med | Med | Define explicit status mapping for `TASKS.json`; coordinate with SPEC-035 |
+| `TASKS.json` re-introduces dual-source status drift (SPEC-035) | Med | Med | Define explicit task status mapping for `TASKS.json`; canonical SQLite writes lead; compatibility exports translate where needed |
 | Synthetic events confuse downstream history readers | Low | Med | Distinct `event_type = "status_normalized"`; documented; one per entity |
 | Spec/report status *meaning* accidentally redefined (SPEC-037) | Low | Med | Only respell/validate; do not change lifecycle semantics |
 | Missed call site leaves a legacy spelling in new rows | Med | Med | One-file vocabulary + lint; exhaustive call-site list above; test that no status outside subset is writable |
 
 ## Open Questions
-- [ ] Exact canonical universal set and per-entity subsets (decide *with* SPEC-048).
-- [ ] `events` rewrite policy: normalize `to_status` only + synthetic boundary event (proposed
-      default) vs full in-place rewrite vs append-only with a normalization marker.
-- [ ] Whether `paused` (session `stopped`) is a universal phase or session-only.
-- [ ] How `TASKS.json` task statuses map to the canonical set and who owns keeping them in sync
-      (this spec vs SPEC-035).
-- [ ] Down-mapping fidelity for reversibility when multiple legacy spellings collapse to one
-      canonical phase (e.g. `complete`/`final`/`done`/`resolved` → `done`): does reverse need the
-      original spelling per entity, or is entity-type sufficient to recover it?
+- [x] Exact canonical set and per-entity subsets: use `draft`, `open`, `todo`, `in_progress`,
+      `blocked`, `review`, `done`, `paused`, `archived`; each entity declares an allowed subset.
+- [x] `events` rewrite policy: normalize `to_status`, preserve historical `from_status`, and append
+      one `status_normalized` boundary event per rewritten entity.
+- [x] `paused` is a canonical phase, with sessions as the first allowed entity subset.
+- [x] `TASKS.json` mapping: SQLite canonical task statuses lead. Compatibility exports/imports map
+      task statuses directly because task `todo`/`in_progress`/`blocked`/`review`/`done` stay
+      canonical; `archived` is list/archive state, not a writable active task update.
+- [x] Down-mapping fidelity: the migration records each entity's original legacy status before
+      rewrite; rollback restores from that manifest rather than inferring from canonical status
+      alone.
+- [x] SPEC-054 statuses: finding, verdict, and run vocabularies are domain-specific and must remain
+      explicit, but are not lifecycle-canonicalized by SPEC-049.
 
 ## Test Conditions
-- [ ] A single Go source file defines the canonical vocabulary; a lint fails the build if any
-      status literal is defined elsewhere.
-- [ ] `Valid<Entity>Status` exists for spec, task, report, session, idea, spark, and brainstorm and
-      rejects any status outside that entity's declared subset.
-- [ ] Writing an out-of-subset status to any entity is rejected (was silently accepted for report,
-      session, idea, spark, brainstorm before).
-- [ ] Migration on a DB copy rewrites every entity `status` to its canonical spelling with zero rows
-      left at a legacy spelling.
-- [ ] After migration, each rewritten entity has exactly one `status_normalized` event whose
+- [x] A single Go source file defines the canonical vocabulary (`internal/state/lifecycle_status.go`);
+      regression coverage checks the registry helpers and explicit domain-vocabulary exclusions.
+- [x] `Valid<Entity>Status`/registry validation exists for spec, task, report, session, idea, spark,
+      brainstorm, plan, handoff, and council, with tests rejecting out-of-subset values.
+- [x] Writing an out-of-subset status to lifecycle entities is rejected before SQLite writes.
+- [x] Migration on a DB copy rewrites every lifecycle entity `status` to its canonical spelling with
+      zero legacy lifecycle statuses remaining in the copy.
+- [x] After migration, each rewritten entity has exactly one `status_normalized` event whose
       `from_status` is its last legacy status and `to_status` its canonical equivalent.
-- [ ] Pre-existing `events` rows retain their original transition record (history not destroyed).
-- [ ] The migration is reversible: running the down-migration restores legacy spellings byte-for-byte
-      on the entity `status` column.
-- [ ] A backup is taken before the live migration runs (verified by the SPEC-053 harness contract).
-- [ ] Report list no longer surfaces `active`/`unknown`; it shows canonical statuses only.
-- [ ] Session statuses produced match SPEC-048's canonical session set (cross-spec consistency test).
+- [x] Pre-existing `events` rows preserve historical `from_status`; only `to_status` is normalized
+      for query correctness.
+- [x] The migration is reversible: rollback restores original entity `status` bytes and event
+      `to_status` values from the manifest.
+- [x] A backup is taken before live apply and before rollback through the existing state backup
+      mechanism.
+- [x] Report list no longer surfaces `active`/`unknown`; it shows canonical statuses only.
+- [x] Session statuses use the SPEC-048 canonical set: `in_progress`, `paused`, `blocked`, `done`,
+      `archived`.
+- [x] Plan, handoff, and council statuses use the same lifecycle registry as reports.
+- [x] Finding, verdict, and run status tests prove those domain vocabularies remain explicitly
+      registered and are not anonymous lifecycle literals.
+
+Evidence: `go test ./internal/state ./internal/cli -count=1`, `npm run build`, `npm run typecheck`,
+`npm run test`, and `git diff --check` in TASK-396..TASK-400 implementation slices. No
+`docs/schema/*` DDL update was required for TASK-399 because lifecycle-status normalization is a
+data migration with JSON rollback manifests, not a schema migration.
 
 ## Priority Order
 
 Tracks ship in this order. If scope needs cutting, drop from the end. Marked non-breaking vs gated.
 
-1. **Define the canonical vocabulary + per-entity subsets + validators** (single file,
-   `Valid<Entity>Status`, `<Entity>StatusOrder`). *Non-breaking* (additive; new rows still accept
-   legacy spellings until track 3). Go/no-go: validators + one-file lint pass before touching call
-   sites.
-2. **Rewrite call sites + `include*Status` filters + list/show output to canonical spellings.**
-   *Non-breaking to stored data* (no rewrite yet); new rows now use canonical spellings. Go/no-go:
-   all 14 events-insert sites and every filter emit/accept canonical only; tests green. Must land
-   *with or after* SPEC-048's session changes where `session_*.go` overlaps.
-3. **Data migration: rewrite populated entity `status` + events `to_status`, emit synthetic
+1. **Define the canonical lifecycle contract + registry + validators** (single file,
+   `Valid<Entity>Status`, `<Entity>StatusOrder`, explicit domain-vocabulary exclusions).
+   *Non-breaking* (additive; call sites can still emit legacy spellings until track 2). Go/no-go:
+   validators + registry tests pass before touching write paths.
+2. **Rewrite entity write paths and events to canonical spellings.** *Breaking for newly-written
+   rows, but gated behind this branch/PR and SPEC-053's migration mechanism.* Go/no-go: all write
+   sites emit statuses from the registry, and invalid writable statuses are rejected.
+3. **Normalize list filters, displays, housekeeping, exports, and generated help.** Go/no-go:
+   human/JSON output uses canonical statuses; compatibility exports name any legacy translation
+   explicitly.
+4. **Data migration: rewrite populated entity `status` + events `to_status`, emit synthetic
    normalization events; reversible + backed-up.** **BREAKING — gated on SPEC-053 and user
    sign-off.** Go/no-go: copy-run succeeds, reverse-migration verified, backup taken, sign-off
    obtained before running against the live global DB.
+5. **Docs/generated-output refresh.** Regenerate CLI reference and tracked build artifacts, update
+   schema docs/changelog, and close the PR verification matrix.
+
+## Task Breakdown
+
+Local task rows exist in SQLite for scheduling; markdown task files are intentionally not generated
+in SQLite mode.
+
+1. **TASK-396 — Finalize lifecycle status contract and registry** (P1)
+   - Depends on: none.
+   - File hints: `internal/state/lifecycle_status.go`, `internal/state/*_test.go`, existing
+     `finding_vocab.go` tests for explicit non-lifecycle vocabularies.
+   - Scope: add the canonical lifecycle registry, per-entity subsets, mapping tables from legacy
+     spellings, status-order helpers, validator tests, and domain-vocabulary exclusions for
+     finding/verdict/run statuses.
+   - Acceptance: every lifecycle entity has a declared subset; validators reject out-of-subset
+     values; domain vocabularies remain explicit but outside lifecycle canonicalization.
+   - Verification: `go test ./internal/state -run 'LifecycleStatus|FindingVocab|RunStatus' -count=1`.
+
+2. **TASK-397 — Wire lifecycle validators into entity writes** (P1)
+   - Depends on: TASK-396.
+   - File hints: `internal/state/task_create.go`, `task_update.go`, `task_archive.go`,
+     `spec_archive.go`, `report_lifecycle.go`, `session_*.go`, `idea.go`, `spark.go`,
+     `brainstorm*.go`, `artifact_entities.go`.
+   - Scope: update all lifecycle write paths and status events to emit canonical spellings, and
+     reject invalid writable statuses before SQLite writes.
+   - Acceptance: new rows and `status_changed` events use registry values only; invalid report,
+     session, idea, spark, brainstorm, plan, handoff, and council statuses are rejected.
+   - Verification: targeted lifecycle write tests plus `go test ./internal/state -run 'Status|Lifecycle|Task|Report|Session|Idea|Spark|Brainstorm|Artifact' -count=1`.
+
+3. **TASK-398 — Normalize lifecycle list filters and displays** (P1)
+   - Depends on: TASK-396.
+   - File hints: list/show/export/housekeeping code under `internal/state`, CLI help/reference code
+     under `internal/cli`.
+   - Scope: update `include*Status` filters, list/show JSON, human output, housekeeping sections,
+     and compatibility exports to use canonical statuses or explicit legacy-translation wording.
+   - Acceptance: report list never emits `active`/`unknown`; archived/default filters use entity
+     subsets; task compatibility status mapping is documented and tested.
+   - Verification: `go test ./internal/state ./internal/cli -run 'List|Show|Export|Housekeeping|Status' -count=1`.
+
+4. **TASK-399 — Add reversible lifecycle status migration** (P1)
+   - Depends on: TASK-397, TASK-398.
+   - File hints: `internal/state/migrations`, migration harness code from SPEC-053, schema docs.
+   - Scope: add copy-run, backup-gated, reversible migration that rewrites entity statuses and
+     event `to_status`, emits one `status_normalized` event per rewritten entity, and stores
+     enough original spelling data for rollback.
+   - Acceptance: copy-run leaves zero legacy lifecycle statuses, preserves `from_status`, appends
+     boundary events exactly once, and rollback restores entity `status` bytes from the manifest.
+   - Verification: migration fixture tests with apply/rollback plus `go test ./internal/state -run 'LifecycleStatusMigration|MarkdownRollback|Backup' -count=1`.
+
+5. **TASK-400 — Refresh status vocabulary docs and generated outputs** (P2)
+   - Depends on: TASK-399.
+   - File hints: `CHANGELOG.md`, `docs/schema/*`, generated `dist/**`, `plugins/loaf/**`,
+     `content/skills/cli-reference/SKILL.md`.
+   - Scope: update schema/docs/changelog, regenerate all targets, and close standard verification.
+   - Acceptance: tracked generated artifacts match source, changelog has an unreleased entry, and
+     spec test conditions are checked off with evidence.
+   - Verification: `npm run build`, `npm run typecheck`, `npm run test`, `git diff --check`.

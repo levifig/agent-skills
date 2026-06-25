@@ -44,21 +44,21 @@ func TestReportLifecycleCreatesFinalizesAndArchivesReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FinalizeReport() error = %v", err)
 	}
-	if finalized.Report.Alias != "report-release-readiness" || finalized.Previous != "draft" || finalized.Status != "final" || finalized.EventID == "" {
-		t.Fatalf("finalized = %#v, want final transition", finalized)
+	if finalized.Report.Alias != "report-release-readiness" || finalized.Previous != "draft" || finalized.Status != "done" || finalized.EventID == "" {
+		t.Fatalf("finalized = %#v, want done transition", finalized)
 	}
 	assertReportProjectContext(t, root, finalized.ContractVersion, finalized.DatabaseScope, finalized.DatabasePath, finalized.ProjectID, finalized.ProjectName, finalized.ProjectCurrentPath)
-	assertReportEvent(t, root, stateHome, created.Report.ID, "draft", "final", "recorded by report finalize")
+	assertReportEvent(t, root, stateHome, created.Report.ID, "draft", "done", "recorded by report finalize")
 
 	archived, err := ArchiveReport(context.Background(), root, PathResolver{StateHome: stateHome}, "report-release-readiness")
 	if err != nil {
 		t.Fatalf("ArchiveReport() error = %v", err)
 	}
-	if archived.Report.Alias != "report-release-readiness" || archived.Previous != "final" || archived.Status != "archived" || archived.EventID == "" {
+	if archived.Report.Alias != "report-release-readiness" || archived.Previous != "done" || archived.Status != "archived" || archived.EventID == "" {
 		t.Fatalf("archived = %#v, want archived transition", archived)
 	}
 	assertReportProjectContext(t, root, archived.ContractVersion, archived.DatabaseScope, archived.DatabasePath, archived.ProjectID, archived.ProjectName, archived.ProjectCurrentPath)
-	assertReportEvent(t, root, stateHome, created.Report.ID, "final", "archived", "recorded by report archive")
+	assertReportEvent(t, root, stateHome, created.Report.ID, "done", "archived", "recorded by report archive")
 
 	archivedReports, err := ListReports(context.Background(), root, PathResolver{StateHome: stateHome}, ReportListOptions{Status: "archived"})
 	if err != nil {
@@ -110,8 +110,8 @@ func TestReportLifecycleRejectsInvalidTransitionsWithoutMutation(t *testing.T) {
 		t.Fatalf("CreateReport() error = %v", err)
 	}
 
-	if _, err := ArchiveReport(context.Background(), root, PathResolver{StateHome: stateHome}, "report-transition-check"); err == nil || !strings.Contains(err.Error(), "not final") {
-		t.Fatalf("ArchiveReport(draft) error = %v, want not final", err)
+	if _, err := ArchiveReport(context.Background(), root, PathResolver{StateHome: stateHome}, "report-transition-check"); err == nil || !strings.Contains(err.Error(), "not done") {
+		t.Fatalf("ArchiveReport(draft) error = %v, want not done", err)
 	}
 	assertReportStatus(t, root, stateHome, "report-transition-check", "draft")
 
@@ -119,15 +119,15 @@ func TestReportLifecycleRejectsInvalidTransitionsWithoutMutation(t *testing.T) {
 		t.Fatalf("FinalizeReport() error = %v", err)
 	}
 	if _, err := FinalizeReport(context.Background(), root, PathResolver{StateHome: stateHome}, "report-transition-check"); err == nil || !strings.Contains(err.Error(), "not draft") {
-		t.Fatalf("FinalizeReport(final) error = %v, want not draft", err)
+		t.Fatalf("FinalizeReport(done) error = %v, want not draft", err)
 	}
-	assertReportStatus(t, root, stateHome, "report-transition-check", "final")
+	assertReportStatus(t, root, stateHome, "report-transition-check", "done")
 
 	if _, err := ArchiveReport(context.Background(), root, PathResolver{StateHome: stateHome}, "report-transition-check"); err != nil {
 		t.Fatalf("ArchiveReport() error = %v", err)
 	}
-	if _, err := ArchiveReport(context.Background(), root, PathResolver{StateHome: stateHome}, "report-transition-check"); err == nil || !strings.Contains(err.Error(), "not final") {
-		t.Fatalf("ArchiveReport(archived) error = %v, want not final", err)
+	if _, err := ArchiveReport(context.Background(), root, PathResolver{StateHome: stateHome}, "report-transition-check"); err == nil || !strings.Contains(err.Error(), "not done") {
+		t.Fatalf("ArchiveReport(archived) error = %v, want not done", err)
 	}
 	assertReportStatus(t, root, stateHome, "report-transition-check", "archived")
 }

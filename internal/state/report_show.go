@@ -102,6 +102,7 @@ WHERE reports.project_id = ? AND reports.id = ?
 	if err != nil {
 		return ReportDetail{}, fmt.Errorf("read report %s: %w", entity.ID, err)
 	}
+	status = LifecycleStatusForDisplay(LifecycleEntityReport, status)
 
 	alias := firstNonEmpty(entity.Alias)
 	if alias == "" {

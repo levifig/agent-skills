@@ -116,6 +116,7 @@ ORDER BY task_alias.alias
 		if !includeTaskStatus(status, options) {
 			continue
 		}
+		status = LifecycleStatusForDisplay(LifecycleEntityTask, status)
 		taskList.Tasks[alias] = TaskItem{
 			Title:      title,
 			Spec:       specAlias,
@@ -185,10 +186,10 @@ ORDER BY dep_alias.alias, relationships.to_entity_id
 }
 
 func includeTaskStatus(status string, options TaskListOptions) bool {
-	if options.Active && (status == "done" || status == "archived") {
+	if options.Active && (LifecycleStatusMatches(LifecycleEntityTask, status, LifecycleStatusDone) || LifecycleStatusMatches(LifecycleEntityTask, status, LifecycleStatusArchived)) {
 		return false
 	}
-	if options.Status != "" && status != options.Status {
+	if !LifecycleStatusFilterMatches(LifecycleEntityTask, status, options.Status) {
 		return false
 	}
 	return true

@@ -62,7 +62,7 @@ func CreateReport(ctx context.Context, root project.Root, resolver PathResolver,
 	return store.CreateReport(ctx, root, options)
 }
 
-// FinalizeReport transitions a draft report to final in initialized SQLite state.
+// FinalizeReport transitions a draft report to done in initialized SQLite state.
 func FinalizeReport(ctx context.Context, root project.Root, resolver PathResolver, ref string) (ReportStatusResult, error) {
 	store, err := openInitializedStore(root, resolver)
 	if err != nil {
@@ -72,7 +72,7 @@ func FinalizeReport(ctx context.Context, root project.Root, resolver PathResolve
 	return store.FinalizeReport(ctx, root, ref)
 }
 
-// ArchiveReport transitions a final report to archived in initialized SQLite state.
+// ArchiveReport transitions a done report to archived in initialized SQLite state.
 func ArchiveReport(ctx context.Context, root project.Root, resolver PathResolver, ref string) (ReportStatusResult, error) {
 	store, err := openInitializedStore(root, resolver)
 	if err != nil {
@@ -121,8 +121,8 @@ func (s *Store) CreateReport(ctx context.Context, root project.Root, options Rep
 
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO reports (id, project_id, report_kind, title, status, body_source_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, 'draft', NULL, ?, ?)
-`, reportID, projectID, kind, title, now, now)
+VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+`, reportID, projectID, kind, title, LifecycleStatusDraft, now, now)
 	if err != nil {
 		return ReportCreateResult{}, fmt.Errorf("insert report %s: %w", alias, err)
 	}
@@ -130,11 +130,11 @@ VALUES (?, ?, ?, ?, 'draft', NULL, ?, ?)
 		return ReportCreateResult{}, err
 	}
 
-	eventID := stableMigrationID("event", projectID, "report", reportID, "created", "draft")
+	eventID := stableMigrationID("event", projectID, "report", reportID, "created", LifecycleStatusDraft)
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
-VALUES (?, ?, 'report', ?, 'status_changed', NULL, 'draft', ?, ?, ?)
-`, eventID, projectID, reportID, reportCreateEventNote(source), now, now); err != nil {
+VALUES (?, ?, 'report', ?, 'status_changed', NULL, ?, ?, ?, ?)
+`, eventID, projectID, reportID, LifecycleStatusDraft, reportCreateEventNote(source), now, now); err != nil {
 		return ReportCreateResult{}, fmt.Errorf("record report create event: %w", err)
 	}
 	if options.SetBody {
@@ -154,21 +154,21 @@ VALUES (?, ?, 'report', ?, 'status_changed', NULL, 'draft', ?, ?, ?)
 		ProjectID:          identity.ID,
 		ProjectName:        identity.FriendlyName,
 		ProjectCurrentPath: identity.CurrentPath,
-		Report:             TraceEntity{Kind: "report", ID: reportID, Alias: alias, Title: title, Status: "draft"},
+		Report:             TraceEntity{Kind: "report", ID: reportID, Alias: alias, Title: title, Status: LifecycleStatusDraft},
 		Kind:               kind,
 		Source:             source,
 		EventID:            eventID,
 	}, nil
 }
 
-// FinalizeReport transitions a draft report to final in an open store.
+// FinalizeReport transitions a draft report to done in an open store.
 func (s *Store) FinalizeReport(ctx context.Context, root project.Root, ref string) (ReportStatusResult, error) {
-	return s.updateReportStatus(ctx, root, ref, "draft", "final", "finalize")
+	return s.updateReportStatus(ctx, root, ref, LifecycleStatusDraft, LifecycleStatusDone, "finalize")
 }
 
-// ArchiveReport transitions a final report to archived in an open store.
+// ArchiveReport transitions a done report to archived in an open store.
 func (s *Store) ArchiveReport(ctx context.Context, root project.Root, ref string) (ReportStatusResult, error) {
-	return s.updateReportStatus(ctx, root, ref, "final", "archived", "archive")
+	return s.updateReportStatus(ctx, root, ref, LifecycleStatusDone, LifecycleStatusArchived, "archive")
 }
 
 func (s *Store) updateReportStatus(ctx context.Context, root project.Root, ref string, requiredStatus string, nextStatus string, command string) (ReportStatusResult, error) {
@@ -202,7 +202,7 @@ func (s *Store) updateReportStatus(ctx context.Context, root project.Root, ref s
 	if err != nil {
 		return ReportStatusResult{}, fmt.Errorf("read report metadata: %w", err)
 	}
-	if previousStatus != requiredStatus {
+	if !LifecycleStatusMatches(LifecycleEntityReport, previousStatus, requiredStatus) {
 		return ReportStatusResult{}, fmt.Errorf("report %q is not %s (status: %s)", firstNonEmpty(report.Alias, ref), requiredStatus, previousStatus)
 	}
 

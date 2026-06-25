@@ -222,6 +222,7 @@ For agents, `loaf state backup verify <backup> --json` also returns
 | `loaf state repair relationship-origin` | Preview or apply guarded relationship provenance backfills |
 | `loaf state migrate markdown` | Import existing .agents Markdown artifacts into SQLite |
 | `loaf state migrate storage-home` | Copy legacy XDG_STATE_HOME SQLite state into XDG_DATA_HOME |
+| `loaf state migrate lifecycle-statuses` | Normalize legacy lifecycle statuses in SQLite |
 | `loaf state backup` | Create a SQLite database backup under the global data-home backups directory |
 | `loaf state backup verify` | Verify an existing SQLite database backup |
 | `loaf state export` | Export SQLite state for review or migration |
@@ -273,6 +274,12 @@ For agents, `loaf state backup verify <backup> --json` also returns
   - `--apply` - Copy the legacy database without deleting it
   - `--json` - Output migration contract, global database paths, action, and project identity when available
 
+- `loaf state migrate lifecycle-statuses`:
+  - `--dry-run` - Preview status normalization on a temporary database copy
+  - `--apply` - Normalize live SQLite statuses after creating a backup
+  - `--rollback <manifest>` - Restore statuses from a lifecycle-statuses rollback manifest
+  - `--json` - Output migration contract, project context, counts, backup, and rollback fields as JSON
+
 - `loaf state backup`:
   - `--json` - Output backup verification, checksum, schema version, project count, and current project identity as JSON
 
@@ -303,6 +310,7 @@ For agents, `loaf state backup verify <backup> --json` also returns
 loaf state status
 loaf state migrate markdown --dry-run
 loaf state migrate markdown --apply
+loaf state migrate lifecycle-statuses --dry-run
 loaf state backup
 loaf state backup verify /path/to/backup.sqlite
 loaf state status
@@ -444,6 +452,7 @@ when the artifact counts and unimported file classifications look right.
 |------------|---------|
 | `loaf migrate markdown` | Import existing .agents Markdown artifacts into SQLite |
 | `loaf migrate storage-home` | Copy legacy XDG_STATE_HOME SQLite state into XDG_DATA_HOME |
+| `loaf migrate lifecycle-statuses` | Normalize legacy lifecycle statuses in SQLite |
 | `loaf migrate worktree-storage` | Move linked-worktree .agents state to the main worktree |
 
 **Options:**
@@ -462,6 +471,12 @@ when the artifact counts and unimported file classifications look right.
   - `--apply` - Copy the legacy database without deleting it
   - `--json` - Output migration contract, global database paths, action, and project identity when available
 
+- `loaf migrate lifecycle-statuses`:
+  - `--dry-run` - Preview status normalization on a temporary database copy
+  - `--apply` - Normalize live SQLite statuses after creating a backup
+  - `--rollback <manifest>` - Restore statuses from a lifecycle-statuses rollback manifest
+  - `--json` - Output migration contract, project context, counts, backup, and rollback fields as JSON
+
 - `loaf migrate worktree-storage`:
   - `--apply` - Perform the migration; dry-run is the default
   - `--force-from-worktree` - On conflict, keep the worktree-local copy
@@ -472,6 +487,7 @@ when the artifact counts and unimported file classifications look right.
 loaf migrate markdown --dry-run
 loaf migrate markdown --apply
 loaf migrate storage-home --dry-run
+loaf migrate lifecycle-statuses --dry-run
 ```
 
 ---
@@ -607,14 +623,14 @@ only when a durable prose artifact is explicitly needed.
 | `loaf report render` | Render deterministic report Markdown to the XDG cache |
 | `loaf report generate` | Generate a report from state |
 | `loaf report create` | Create a report draft |
-| `loaf report finalize` | Mark a report draft as final and write its deterministic tracked render |
-| `loaf report archive` | Archive a finalized report |
+| `loaf report finalize` | Mark a report draft as done and write its deterministic tracked render |
+| `loaf report archive` | Archive a done report |
 
 **Options:**
 
 - `loaf report list`:
   - `--type <type>` - Filter by report type
-  - `--status <status>` - Filter by status; Loaf lifecycle statuses: draft, final, archived
+  - `--status <status>` - Filter by status; Loaf lifecycle statuses: draft, done, archived
   - `--json` - Output reports, diagnostics, global database scope, and project identity as JSON
 
 - `loaf report show`:
@@ -1091,7 +1107,7 @@ Manage ideas in native SQLite state
 **Options:**
 
 - `loaf idea list`:
-  - `--all` - Include resolved and archived ideas
+  - `--all` - Include done and archived ideas
   - `--status <status>` - Filter by status
   - `--json` - Output ideas, global database scope, and project identity as JSON
 
@@ -1141,7 +1157,7 @@ Manage sparks in native SQLite state
 **Options:**
 
 - `loaf spark list`:
-  - `--all` - Include resolved sparks
+  - `--all` - Include done sparks
   - `--status <status>` - Filter by status
   - `--json` - Output sparks, global database scope, and project identity as JSON
 

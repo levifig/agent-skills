@@ -7,9 +7,9 @@
 title: "Report: [Topic]"
 type: research | audit | analysis | council
 created: YYYY-MM-DDTHH:MM:SSZ
-status: draft | final | archived
+status: draft | done | archived
 source: SPEC-XXX | TASK-XXX | ad-hoc
-finalized_at: YYYY-MM-DDTHH:MM:SSZ    # Set when status → final
+finalized_at: YYYY-MM-DDTHH:MM:SSZ    # Set when status → done
 archived_at: YYYY-MM-DDTHH:MM:SSZ     # Set when status → archived
 archived_by: orchestrator
 tags: []
@@ -19,6 +19,6 @@ tags: []
 **Archive location:** `.agents/reports/archive/`
 
 **Archive prerequisites:**
-- Status is `final`
+- Status is `done`
 - Linked session is archived
 - `archived_at` and `archived_by` are set

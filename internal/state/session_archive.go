@@ -84,7 +84,7 @@ func (s *Store) ArchiveSession(ctx context.Context, root project.Root, options S
 	if target.ID == "" {
 		return SessionArchiveResult{}, fmt.Errorf("no active session found")
 	}
-	if target.Status == "archived" {
+	if LifecycleStatusMatches(LifecycleEntitySession, target.Status, LifecycleStatusArchived) {
 		return SessionArchiveResult{
 			ContractVersion:    StateJSONContractVersion,
 			DatabaseScope:      identity.DatabaseScope,
@@ -98,7 +98,7 @@ func (s *Store) ArchiveSession(ctx context.Context, root project.Root, options S
 			HarnessSessionID:   target.HarnessSessionID,
 		}, nil
 	}
-	if err := updateSessionStatusTransition(ctx, tx, projectID, target.ID, target.Status, "archived", "recorded by session archive", now); err != nil {
+	if err := updateSessionStatusTransition(ctx, tx, projectID, target.ID, target.Status, LifecycleStatusArchived, "recorded by session archive", now); err != nil {
 		return SessionArchiveResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -113,7 +113,7 @@ func (s *Store) ArchiveSession(ctx context.Context, root project.Root, options S
 		ProjectCurrentPath: identity.CurrentPath,
 		Version:            1,
 		Action:             SessionArchiveActionArchived,
-		Session:            TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: "archived"},
+		Session:            TraceEntity{Kind: "session", ID: target.ID, Alias: target.Alias, Status: LifecycleStatusArchived},
 		HarnessSessionID:   firstNonEmpty(harnessSessionID, target.HarnessSessionID),
 	}, nil
 }

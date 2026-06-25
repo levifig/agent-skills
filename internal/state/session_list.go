@@ -107,9 +107,10 @@ ORDER BY session_alias.alias
 			rows.Close()
 			return SessionList{}, fmt.Errorf("scan session: %w", err)
 		}
-		if !options.All && status != "active" {
+		if !options.All && !LifecycleStatusMatches(LifecycleEntitySession, status, LifecycleStatusInProgress) {
 			continue
 		}
+		status = LifecycleStatusForDisplay(LifecycleEntitySession, status)
 		sessionList.Sessions[alias] = SessionItem{
 			Branch:           branch,
 			Status:           status,

@@ -193,6 +193,7 @@ ORDER BY spark_alias.alias
 		if !includeSparkStatus(status, options) {
 			continue
 		}
+		status = LifecycleStatusForDisplay(LifecycleEntitySpark, status)
 		sparks.Sparks[alias] = SparkItem{
 			Text:       text,
 			Scope:      scope,
@@ -275,6 +276,7 @@ WHERE sparks.project_id = ? AND sparks.id = ?
 	if err != nil {
 		return SparkDetail{}, fmt.Errorf("read spark %s: %w", entity.ID, err)
 	}
+	status = LifecycleStatusForDisplay(LifecycleEntitySpark, status)
 
 	alias := firstNonEmpty(entity.Alias)
 	if alias == "" {
@@ -478,7 +480,7 @@ func (s *Store) ResolveSparkWithOptions(ctx context.Context, root project.Root, 
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := tx.ExecContext(ctx, `UPDATE sparks SET status = ?, updated_at = ? WHERE project_id = ? AND id = ?`, "resolved", now, projectID, spark.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE sparks SET status = ?, updated_at = ? WHERE project_id = ? AND id = ?`, LifecycleStatusDone, now, projectID, spark.ID); err != nil {
 		return SparkResolveResult{}, fmt.Errorf("update spark status: %w", err)
 	}
 
@@ -497,13 +499,13 @@ ON CONFLICT(id) DO UPDATE SET
 	}
 
 	eventID := ""
-	if previousStatus != "resolved" {
-		eventID = stableMigrationID("event", projectID, "spark", spark.ID, "status", previousStatus, "resolved")
+	if !LifecycleStatusMatches(LifecycleEntitySpark, previousStatus, LifecycleStatusDone) {
+		eventID = stableMigrationID("event", projectID, "spark", spark.ID, "status", previousStatus, LifecycleStatusDone)
 		_, err = tx.ExecContext(ctx, `
 INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO NOTHING
-`, eventID, projectID, "spark", spark.ID, "status_changed", previousStatus, "resolved", reason, now, now)
+`, eventID, projectID, "spark", spark.ID, "status_changed", previousStatus, LifecycleStatusDone, reason, now, now)
 		if err != nil {
 			return SparkResolveResult{}, fmt.Errorf("record spark resolution event: %w", err)
 		}
@@ -513,7 +515,7 @@ ON CONFLICT(id) DO NOTHING
 		return SparkResolveResult{}, fmt.Errorf("commit spark resolve transaction: %w", err)
 	}
 
-	spark.Status = "resolved"
+	spark.Status = LifecycleStatusDone
 	return SparkResolveResult{
 		ContractVersion:    StateJSONContractVersion,
 		DatabaseScope:      identity.DatabaseScope,
@@ -592,13 +594,13 @@ ON CONFLICT(id) DO UPDATE SET
 }
 
 func includeSparkStatus(status string, options SparkListOptions) bool {
-	if options.Status != "" && status != options.Status {
+	if !LifecycleStatusFilterMatches(LifecycleEntitySpark, status, options.Status) {
 		return false
 	}
 	if options.Status != "" {
 		return true
 	}
-	if !options.All && status == "resolved" {
+	if !options.All && LifecycleStatusMatches(LifecycleEntitySpark, status, LifecycleStatusDone) {
 		return false
 	}
 	return true

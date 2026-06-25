@@ -160,6 +160,12 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--apply", Description: "Copy the legacy database without deleting it"},
 					{Flags: "--json", Description: "Output migration contract, global database paths, action, and project identity when available"},
 				}},
+				{Name: "migrate lifecycle-statuses", Description: "Normalize legacy lifecycle statuses in SQLite", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Preview status normalization on a temporary database copy"},
+					{Flags: "--apply", Description: "Normalize live SQLite statuses after creating a backup"},
+					{Flags: "--rollback <manifest>", Description: "Restore statuses from a lifecycle-statuses rollback manifest"},
+					{Flags: "--json", Description: "Output migration contract, project context, counts, backup, and rollback fields as JSON"},
+				}},
 				{Name: "backup", Description: "Create a SQLite database backup under the global data-home backups directory", Options: []cliReferenceOption{{Flags: "--json", Description: "Output backup verification, checksum, schema version, project count, and current project identity as JSON"}}},
 				{Name: "backup verify", Description: "Verify an existing SQLite database backup", Options: []cliReferenceOption{{Flags: "--json", Description: "Output backup verification, restore guidance, schema version, and captured project identities as JSON"}}},
 				{Name: "export", Description: "Export SQLite state for review or migration", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format for the selected export kind"}}},
@@ -253,6 +259,12 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--apply", Description: "Copy the legacy database without deleting it"},
 					{Flags: "--json", Description: "Output migration contract, global database paths, action, and project identity when available"},
 				}},
+				{Name: "lifecycle-statuses", Description: "Normalize legacy lifecycle statuses in SQLite", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Preview status normalization on a temporary database copy"},
+					{Flags: "--apply", Description: "Normalize live SQLite statuses after creating a backup"},
+					{Flags: "--rollback <manifest>", Description: "Restore statuses from a lifecycle-statuses rollback manifest"},
+					{Flags: "--json", Description: "Output migration contract, project context, counts, backup, and rollback fields as JSON"},
+				}},
 				{Name: "worktree-storage", Description: "Move linked-worktree .agents state to the main worktree", Options: []cliReferenceOption{
 					{Flags: "--apply", Description: "Perform the migration; dry-run is the default"},
 					{Flags: "--force-from-worktree", Description: "On conflict, keep the worktree-local copy"},
@@ -319,7 +331,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "list", Description: "List reports", Options: []cliReferenceOption{
 					{Flags: "--type <type>", Description: "Filter by report type"},
-					{Flags: "--status <status>", Description: "Filter by status; Loaf lifecycle statuses: draft, final, archived"},
+					{Flags: "--status <status>", Description: "Filter by status; Loaf lifecycle statuses: draft, done, archived"},
 					{Flags: "--json", Description: "Output reports, diagnostics, global database scope, and project identity as JSON"},
 				}},
 				{Name: "show", Description: "Show one report", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report details, relationships, global database scope, and project identity as JSON"}}},
@@ -336,8 +348,8 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--message <text>", Description: "Use inline Markdown body text"},
 					{Flags: "--json", Description: "Output created report, event, global database scope, and project identity as JSON"},
 				}},
-				{Name: "finalize", Description: "Mark a report draft as final and write its deterministic tracked render", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, render path, event, global database scope, and project identity as JSON"}}},
-				{Name: "archive", Description: "Archive a finalized report", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
+				{Name: "finalize", Description: "Mark a report draft as done and write its deterministic tracked render", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, render path, event, global database scope, and project identity as JSON"}}},
+				{Name: "archive", Description: "Archive a done report", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
 			},
 		},
 		{
@@ -514,7 +526,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Description: "Manage ideas in native SQLite state",
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "list", Description: "List ideas from SQLite state", Options: []cliReferenceOption{
-					{Flags: "--all", Description: "Include resolved and archived ideas"},
+					{Flags: "--all", Description: "Include done and archived ideas"},
 					{Flags: "--status <status>", Description: "Filter by status"},
 					{Flags: "--json", Description: "Output ideas, global database scope, and project identity as JSON"},
 				}},
@@ -542,7 +554,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Description: "Manage sparks in native SQLite state",
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "list", Description: "List sparks from SQLite state", Options: []cliReferenceOption{
-					{Flags: "--all", Description: "Include resolved sparks"},
+					{Flags: "--all", Description: "Include done sparks"},
 					{Flags: "--status <status>", Description: "Filter by status"},
 					{Flags: "--json", Description: "Output sparks, global database scope, and project identity as JSON"},
 				}},
@@ -842,8 +854,8 @@ func supplementalCLIReferenceCommands(commands []cliReferenceCommand) []cliRefer
 		Subcommands: []cliReferenceSubcommand{
 			{Name: "list", Description: "List reports from SQLite state or Markdown compatibility files"},
 			{Name: "create", Description: "Create a draft report row in SQLite state"},
-			{Name: "finalize", Description: "Transition a draft report to final"},
-			{Name: "archive", Description: "Transition a final report to archived"},
+			{Name: "finalize", Description: "Transition a draft report to done"},
+			{Name: "archive", Description: "Transition a done report to archived"},
 			{Name: "generate", Description: "Generate report Markdown from SQLite state to stdout"},
 		},
 	}}
@@ -893,6 +905,7 @@ func cliReferenceCommandUsageExamples(commandName string) []string {
 			"loaf state status",
 			"loaf state migrate markdown --dry-run",
 			"loaf state migrate markdown --apply",
+			"loaf state migrate lifecycle-statuses --dry-run",
 			"loaf state backup",
 			"loaf state backup verify /path/to/backup.sqlite",
 			"loaf state status",
@@ -913,6 +926,7 @@ func cliReferenceCommandUsageExamples(commandName string) []string {
 			"loaf migrate markdown --dry-run",
 			"loaf migrate markdown --apply",
 			"loaf migrate storage-home --dry-run",
+			"loaf migrate lifecycle-statuses --dry-run",
 		}
 	case "render":
 		return []string{

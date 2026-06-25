@@ -6,7 +6,18 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Added
+
+- Added the SPEC-049 reversible `loaf state migrate lifecycle-statuses` migration with copy-run dry-run, live-backup apply, rollback manifest, and top-level `loaf migrate lifecycle-statuses` alias.
+- Added the SPEC-049 canonical lifecycle status registry for Loaf state entities, including per-entity validators and explicit exclusions for finding and run domain vocabularies.
+
+### Changed
+
+- Trimmed duplicated skill guidance and stale references in SPEC-050, including orchestration authority handoffs, ADR-source de-duplication, helper-script contract checks, and generated CLI/session reference coverage.
+- Refreshed the SPEC-051 skill routing eval harness and description rewrite validation scaffolding, including dry-run suite checks and conflict-pair probes for measured routing work.
+- SPEC-049 lifecycle write paths now emit canonical statuses such as `done`, `paused`, and `in_progress` while tolerating legacy current rows until migration.
+- SPEC-049 lifecycle list, show, export, and help surfaces now display canonical statuses while accepting legacy status filters during the migration window.
+- SPEC-049 generated CLI reference output and report templates now document canonical lifecycle statuses, including report `done` and the lifecycle-status migration command.
 
 ## [2.0.0-pre.20260625183349] - 2026-06-25
 
@@ -22,8 +33,6 @@ is a Loaf workflow staging section for curated entries before release.
 - Completed SPEC-047 build integrity and parity hardening, including real JS/TS output validation, first-class Amp TypeScript plugin output, Gemini target removal, Codex hook semantics, OpenCode command reachability, and cross-harness parity linting.
 - Converged session workflow guidance in SPEC-048 around SQLite-backed session state, native session journal commands, and render-on-demand Markdown artifacts across skills, templates, agents, and generated targets.
 - SPEC-053 adds the breaking-change migration mechanism: `loaf install --upgrade` now reports externalized vendor skills and requires `--yes` before destructive deprecation cleanup, while `librarian` is available as the durable artifact handler across supported harnesses.
-- Trimmed duplicated skill guidance and stale references in SPEC-050, including orchestration authority handoffs, ADR-source de-duplication, helper-script contract checks, and generated CLI/session reference coverage.
-- Refreshed the SPEC-051 skill routing eval harness and description rewrite validation scaffolding, including dry-run suite checks and conflict-pair probes for measured routing work.
 
 ## [2.0.0-pre.20260614235428] - 2026-06-14
 

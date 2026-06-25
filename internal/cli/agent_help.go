@@ -165,12 +165,12 @@ func agentHelpCommands() []agentHelpCommand {
 			Name:        "report",
 			Description: "Manage durable reports",
 			Subcommands: []agentHelpSubcommand{
-				{Name: "list", Description: "List reports", Options: []agentHelpOption{{Flags: "--type <type>", Description: "Filter by report type"}, {Flags: "--status <status>", Description: "Filter by status; Loaf lifecycle statuses: draft, final, archived"}, {Flags: "--json", Description: "Output reports, diagnostics, global database scope, and project identity as JSON"}}},
+				{Name: "list", Description: "List reports", Options: []agentHelpOption{{Flags: "--type <type>", Description: "Filter by report type"}, {Flags: "--status <status>", Description: "Filter by status; Loaf lifecycle statuses: draft, done, archived"}, {Flags: "--json", Description: "Output reports, diagnostics, global database scope, and project identity as JSON"}}},
 				{Name: "show", Description: "Show one report", Options: []agentHelpOption{{Flags: "--json", Description: "Output report details, relationships, global database scope, and project identity as JSON"}}},
 				{Name: "generate", Description: "Generate a report from state", Options: []agentHelpOption{{Flags: "--format <format>", Description: "Output format: markdown"}, {Flags: "--json", Description: "Output contract, command, project context, and markdown content as JSON"}}},
 				{Name: "create", Description: "Create a report draft", Options: []agentHelpOption{{Flags: "--type <type>", Description: "Report type"}, {Flags: "--source <source>", Description: "Report source"}, {Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"}, {Flags: "--body -", Description: "Read Markdown body from stdin"}, {Flags: "--message <text>", Description: "Use inline Markdown body text"}, {Flags: "--json", Description: "Output created report, event, global database scope, and project identity as JSON"}}},
-				{Name: "finalize", Description: "Mark a report draft as final", Options: []agentHelpOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
-				{Name: "archive", Description: "Archive a finalized report", Options: []agentHelpOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
+				{Name: "finalize", Description: "Mark a report draft as done", Options: []agentHelpOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
+				{Name: "archive", Description: "Archive a done report", Options: []agentHelpOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
 			},
 		},
 		{
@@ -254,7 +254,7 @@ func agentHelpCommands() []agentHelpCommand {
 			Name:        "idea",
 			Description: "Manage ideas",
 			Subcommands: []agentHelpSubcommand{
-				{Name: "list", Description: "List ideas from SQLite state", Options: []agentHelpOption{{Flags: "--all", Description: "Include resolved and archived ideas"}, {Flags: "--status <status>", Description: "Filter by status"}, {Flags: "--json", Description: "Output ideas, global database scope, and project identity as JSON"}}},
+				{Name: "list", Description: "List ideas from SQLite state", Options: []agentHelpOption{{Flags: "--all", Description: "Include done and archived ideas"}, {Flags: "--status <status>", Description: "Filter by status"}, {Flags: "--json", Description: "Output ideas, global database scope, and project identity as JSON"}}},
 				{Name: "show", Description: "Show one idea from SQLite state", Options: []agentHelpOption{{Flags: "--json", Description: "Output idea details, relationships, global database scope, and project identity as JSON"}}},
 				{Name: "capture", Description: "Capture an idea in SQLite state", Options: []agentHelpOption{{Flags: "--title <title>", Description: "Idea title"}, {Flags: "--json", Description: "Output created idea, event, global database scope, and project identity as JSON"}}},
 				{Name: "promote", Description: "Record idea-to-spec promotion", Options: []agentHelpOption{{Flags: "--to-spec <spec>", Description: "Target spec"}, {Flags: "--json", Description: "Output promotion relationship, global database scope, and project identity as JSON"}}},
@@ -266,7 +266,7 @@ func agentHelpCommands() []agentHelpCommand {
 			Name:        "spark",
 			Description: "Manage sparks",
 			Subcommands: []agentHelpSubcommand{
-				{Name: "list", Description: "List sparks from SQLite state", Options: []agentHelpOption{{Flags: "--all", Description: "Include resolved sparks"}, {Flags: "--status <status>", Description: "Filter by status"}, {Flags: "--json", Description: "Output sparks, global database scope, and project identity as JSON"}}},
+				{Name: "list", Description: "List sparks from SQLite state", Options: []agentHelpOption{{Flags: "--all", Description: "Include done sparks"}, {Flags: "--status <status>", Description: "Filter by status"}, {Flags: "--json", Description: "Output sparks, global database scope, and project identity as JSON"}}},
 				{Name: "show", Description: "Show one spark from SQLite state", Options: []agentHelpOption{{Flags: "--json", Description: "Output spark details, relationships, global database scope, and project identity as JSON"}}},
 				{Name: "capture", Description: "Capture a spark in SQLite state", Options: []agentHelpOption{{Flags: "--scope <scope>", Description: "Spark scope"}, {Flags: "--text <text>", Description: "Spark text"}, {Flags: "--json", Description: "Output created spark, event, global database scope, and project identity as JSON"}}},
 				{Name: "resolve", Description: "Resolve a spark", Options: []agentHelpOption{{Flags: "--reason <text>", Description: "Resolution reason"}, {Flags: "--json", Description: "Output resolution relationship, event, global database scope, and project identity as JSON"}}},

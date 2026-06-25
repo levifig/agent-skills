@@ -40,8 +40,8 @@ func TestResolveSparkMarksResolvedAndRecordsRelationshipEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveSparkWithOptions() error = %v", err)
 	}
-	if result.Spark.Status != "resolved" || result.ResolvedBy.Alias != "20260528-target-idea" || result.Relationship == "" || result.EventID == "" || result.Reason != "triaged into target idea" {
-		t.Fatalf("result = %#v, want resolved spark, target idea, relationship, and event", result)
+	if result.Spark.Status != "done" || result.ResolvedBy.Alias != "20260528-target-idea" || result.Relationship == "" || result.EventID == "" || result.Reason != "triaged into target idea" {
+		t.Fatalf("result = %#v, want done spark, target idea, relationship, and event", result)
 	}
 	assertSparkProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 
@@ -50,22 +50,22 @@ func TestResolveSparkMarksResolvedAndRecordsRelationshipEvent(t *testing.T) {
 		t.Fatalf("ListSparks() after error = %v", err)
 	}
 	if _, ok := after.Sparks["SPARK-smoke"]; ok {
-		t.Fatalf("after.Sparks = %#v, want resolved spark omitted from default list", after.Sparks)
+		t.Fatalf("after.Sparks = %#v, want done spark omitted from default list", after.Sparks)
 	}
 	all, err := ListSparks(context.Background(), root, PathResolver{StateHome: stateHome}, SparkListOptions{All: true})
 	if err != nil {
 		t.Fatalf("ListSparks(All) error = %v", err)
 	}
-	if all.Sparks["SPARK-smoke"].Status != "resolved" {
-		t.Fatalf("all.Sparks = %#v, want resolved spark included with status", all.Sparks)
+	if all.Sparks["SPARK-smoke"].Status != "done" {
+		t.Fatalf("all.Sparks = %#v, want done spark included with status", all.Sparks)
 	}
 	assertSparkProjectContext(t, root, all.ContractVersion, all.DatabaseScope, all.DatabasePath, all.ProjectID, all.ProjectName, all.ProjectCurrentPath)
-	resolvedOnly, err := ListSparks(context.Background(), root, PathResolver{StateHome: stateHome}, SparkListOptions{Status: "resolved"})
+	resolvedOnly, err := ListSparks(context.Background(), root, PathResolver{StateHome: stateHome}, SparkListOptions{Status: "done"})
 	if err != nil {
-		t.Fatalf("ListSparks(Status resolved) error = %v", err)
+		t.Fatalf("ListSparks(Status done) error = %v", err)
 	}
-	if resolvedOnly.Sparks["SPARK-smoke"].Status != "resolved" {
-		t.Fatalf("resolvedOnly.Sparks = %#v, want explicit status filter to include resolved spark", resolvedOnly.Sparks)
+	if resolvedOnly.Sparks["SPARK-smoke"].Status != "done" {
+		t.Fatalf("resolvedOnly.Sparks = %#v, want explicit status filter to include done spark", resolvedOnly.Sparks)
 	}
 
 	trace, err := Trace(context.Background(), root, PathResolver{StateHome: stateHome}, "SPARK-smoke")
@@ -86,7 +86,7 @@ func TestResolveSparkMarksResolvedAndRecordsRelationshipEvent(t *testing.T) {
 	err = store.db.QueryRowContext(context.Background(), `
 SELECT COUNT(*), COALESCE(MAX(note), '')
 FROM events
-WHERE project_id = ? AND entity_kind = 'spark' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'resolved'
+WHERE project_id = ? AND entity_kind = 'spark' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'done'
 `, projectIDForTest(t, store, root)).Scan(&events, &eventNote)
 	if err != nil {
 		t.Fatalf("count events error = %v", err)
@@ -113,7 +113,7 @@ WHERE project_id = ? AND entity_kind = 'spark' AND event_type = 'status_changed'
 	err = store.db.QueryRowContext(context.Background(), `
 SELECT COUNT(*)
 FROM events
-WHERE project_id = ? AND entity_kind = 'spark' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'resolved'
+WHERE project_id = ? AND entity_kind = 'spark' AND event_type = 'status_changed' AND from_status = 'open' AND to_status = 'done'
 `, projectIDForTest(t, store, root)).Scan(&events)
 	if err != nil {
 		t.Fatalf("count events after repeat error = %v", err)
