@@ -334,7 +334,7 @@ After creating session file:
    - Update session file (status: done, `archived_at`, `archived_by`)
    - Commit: `chore: close SPEC-XXX — archive tasks, spec, and session`
 4. If on a feature branch: push and create PR (`gh pr create`). Follow PR format and squash merge conventions in [commits reference](../git-workflow/references/commits.md).
-5. After PR is created and approved, use `/release` to orchestrate the squash merge with correct version ordering, documentation freshness check, and post-merge cleanup.
+5. After PR is created and approved, use `/ship` to review, verify, and land the PR. Use `/release` later when a coherent batch of landed work is ready to publish.
 6. **Suggest reflection:** Check the session file for extractable learnings before closing out:
    - `## Key Decisions` has content (not `*(none yet)*` or empty)
    - `traceability.decisions` has entries (ADRs were recorded)
@@ -353,7 +353,7 @@ After creating session file:
 
 ## Suggests Next
 
-After all tasks are complete, suggest `/release` to merge the work.
+After all tasks are complete, suggest `/ship` to land the PR. Suggest `/release` only when the landed work forms a coherent release batch.
 
 ## Related Skills
 

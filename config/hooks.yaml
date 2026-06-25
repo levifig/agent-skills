@@ -35,7 +35,7 @@ hooks:
       description: Run security audit on bash commands
 
     # Git Workflow - Push and PR guards (ADVISORY)
-    # These are safety nets, not gates — the release skill orchestrates the same checks.
+    # These are safety nets, not gates — ship/release skills orchestrate the same checks.
     # Security hooks (above) stay blocking; workflow hooks warn but don't block.
     - id: validate-push
       skill: git-workflow

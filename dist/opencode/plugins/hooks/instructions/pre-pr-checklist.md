@@ -29,7 +29,7 @@ If `CHANGELOG.md` does not exist, create it first:
 
 This project follows [Common Changelog](https://common-changelog.org/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). `## [Unreleased]`
-is a workflow staging section for curated entries before release.
+is a workflow staging section for curated entries that land with PRs before a later release.
 
 ## [Unreleased]
 

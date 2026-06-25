@@ -33,7 +33,7 @@ Loaf's commands form a three-phase workflow that mirrors how good software gets 
 ┌─────────────────────────────────────────────────────────────┐
 │                       PHASE 2: BUILD                        │
 │                                                             │
-│           /breakdown  →  /implement  →  /release            │
+│       /breakdown  →  /implement  →  /ship  →  /release      │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
                               ↓
@@ -64,7 +64,8 @@ Decompose specs into atomic tasks and execute with specialized agents.
 |---------|--------------|
 | `/breakdown` | Split spec into agent-sized atomic tasks |
 | `/implement` | Execute tasks with orchestrated agent delegation |
-| `/release` (`/ship`) | Orchestrate the merge ritual: pre-flight, docs check, version bump, squash merge, cleanup |
+| `/ship` | Review, verify, and land one PR |
+| `/release` | Publish a version from already-landed work |
 
 ### Phase 3: Learn
 
@@ -93,7 +94,7 @@ CLI commands that support the workflow pipeline:
 | `loaf session` | Session journal management (list, start, end, log) |
 | `loaf session enrich` | Enrich session journal from JSONL conversation logs |
 | `loaf session housekeeping` | Review and archive agent artifacts |
-| `loaf release` / `loaf ship` | Orchestrate release ritual |
+| `loaf release` | Publish a release: version bump, changelog, tag, and release artifacts |
 
 ## Profiles
 
@@ -119,7 +120,8 @@ Skills you invoke directly to drive work forward.
 | `shape` | Shaping ideas into bounded specs |
 | `breakdown` | Decomposing specs into atomic tasks |
 | `implement` | Starting task or spec implementation |
-| `release` | Orchestrating the release ritual (version bump, squash merge) |
+| `ship` | Reviewing, verifying, and landing one PR |
+| `release` | Publishing a version from already-landed work |
 | `brainstorm` | Deep exploration of a problem space |
 | `research` | Investigating questions, comparing options |
 | `strategy` | Discovering or updating strategic direction |

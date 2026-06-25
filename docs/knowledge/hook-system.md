@@ -87,7 +87,7 @@ Five hooks run natively via `loaf check --hook <id>` in `internal/cli/check.go`:
 | `workflow-pre-pr` | git-workflow | Bash | Advisory | Checks PR format, CHANGELOG entry, unpushed base-branch commits |
 | `validate-commit` | orchestration | Bash | Yes (failClosed) | Validates Conventional Commits format, blocks AI attribution |
 
-Security hooks (`check-secrets`, `security-audit`) and `validate-commit` use `failClosed: true`. Workflow hooks (`validate-push`, `workflow-pre-pr`) are advisory (`blocking: false`) -- they warn but do not block, since the release skill orchestrates the same checks.
+Security hooks (`check-secrets`, `security-audit`) and `validate-commit` use `failClosed: true`. Workflow hooks (`validate-push`, `workflow-pre-pr`) are advisory (`blocking: false`) -- they warn but do not block, since `/ship` and `/release` orchestrate the same checks at their respective PR-landing and publication gates.
 
 ## Instruction Hooks
 

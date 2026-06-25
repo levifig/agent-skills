@@ -95,7 +95,7 @@ const TEST_CASES = {
   "git-workflow": [
     "Write a commit message for these changes",
     "Create a PR for this branch",
-    "merge this PR",
+    "What branch name should I use?",
   ],
   debugging: [
     "This test is flaky, help me fix it",
@@ -207,10 +207,15 @@ const TEST_CASES = {
     "Create an ADR for the caching approach",
     "Evaluate the tradeoffs for this technical decision",
   ],
-  release: [
-    "Release this branch",
+  ship: [
     "Ready to merge this PR",
     "Ship it",
+    "Land this branch",
+  ],
+  release: [
+    "Cut a release from main",
+    "Publish a new version",
+    "Should we batch the landed PRs into a release?",
   ],
   reflect: [
     "What did we learn from shipping this?",

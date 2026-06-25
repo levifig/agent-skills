@@ -1,0 +1,3 @@
+# Claude Code skill configuration
+user-invocable: true
+argument-hint: "[PR number or URL]"

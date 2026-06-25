@@ -169,13 +169,13 @@ Refs BACK-124
 - **Write a clean extended description** for the squash merge commit — a one-line summary followed by bullet points grouped by feature area
 - **Never use the automatic squash description** that dumps all individual commit messages — it's noisy and unhelpful in git history
 - Don't push or merge without explicit request
-- The `/loaf:release` skill automates this workflow, including version bump on the feature branch before merge — use it when ready to squash merge a PR
+- The `/loaf:ship` skill automates this workflow when ready to squash merge a PR; `/loaf:release` publishes a version later from already-landed work
 
 ## Changelog Discipline
 
 `CHANGELOG.md` entries follow Loaf's Common Changelog profile: write for
 humans, communicate the release impact, and curate git history instead of
-copying it. Curate the `[Unreleased]` section before bumping the version so the
+copying it. Curate the `[Unreleased]` section as PRs land so the later
 published release notes read as user-facing prose, not an internal worklog.
 
 ### Drop
@@ -204,9 +204,9 @@ Internal terms that have no meaning outside the team's working context:
 
 ### Auto-generated Entries
 
-When `loaf release --pre-merge` auto-generates the `[Unreleased]` section from commit history, those entries inherit any internal terms present in the commit messages. Treat the generated output as a draft: rewrite it under the curated path before bumping. The release skill preserves curated content when it's already in `[Unreleased]` — curate first, bump second.
+When `loaf release` auto-generates the `[Unreleased]` section from commit history, those entries inherit any internal terms present in the commit messages. Treat the generated output as a draft: rewrite it under the curated path before bumping. The release skill preserves curated content when it's already in `[Unreleased]` — curate first, bump second.
 
-Before approving a release bump, compare `[Unreleased]` against the actual squashed change set and remove scaffolding language introduced by specs, reviews, tasks, or session triage. If an entry only explains why the work was discovered or how the branch was organized, it does not belong in the changelog.
+Before approving a release bump, compare `[Unreleased]` against the actual release range and remove scaffolding language introduced by specs, reviews, tasks, or session triage. If an entry only explains why the work was discovered or how the work was organized, it does not belong in the changelog.
 
 ## Critical Rules
 
@@ -285,7 +285,7 @@ When developing toward a major version, use pre-release suffixes to mark develop
 
 **Convention:**
 - Set the target version with `-dev.0` when starting a major effort (e.g. `2.0.0-dev.0`)
-- Bump the dev counter (`-dev.N` → `-dev.N+1`) when a meaningful batch of work ships — a spec completing, a group of related features landing
+- Bump the dev counter (`-dev.N` → `-dev.N+1`) when a meaningful batch of landed work is ready to publish — a completed spec, a related feature group, or a release train
 - Don't bump for every commit — that's what git history is for
 - Strip the suffix (`-dev.N` → `2.0.0`) when all planned work is complete
 - `loaf release` handles all bump types: `prerelease`, `release`, `major`, `minor`, `patch`

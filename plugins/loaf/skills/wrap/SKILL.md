@@ -41,8 +41,8 @@ Responsible session shutdown — everything that needs a conscious model before 
 - All decisions and discoveries from this session are in the journal
 - Uncommitted/unpushed state is surfaced with clear action prompts
 - Stale KB files are flagged if any
-- `## Session Wrap-Up` section written to session file (replaces `## Current State`)
-- `loaf session end --wrap` run after writing the summary
+- `## Session Wrap-Up` section persisted in the canonical session surface; in SQLite mode this is represented by wrapped session/report state rather than an active `.md` file
+- `loaf session end --wrap` run after generating or writing the summary
 - Session status is `done` (session stays open for further journal entries until `SessionEnd` fires)
 
 ## Quick Reference
@@ -63,7 +63,7 @@ These steps require conversation context — only the model can do them.
 
 Before anything else, complete the session journal:
 
-1. **Enrich from conversation log** — run `loaf session enrich` to fill in gaps from the JSONL conversation log. This catches decisions, discoveries, and context that weren't manually logged. If enrichment fails, continue — manual flush is the fallback.
+1. **Check enrichment state** — run `loaf session enrich --json`. In SQLite mode this is expected to report `action: "skipped"` because `loaf session log` is already the canonical journal writer; in markdown-only compatibility mode it summarizes legacy JSONL enrichment status. If enrichment is skipped or fails, continue — manual flush is the fallback.
 2. **Manual review** — review the conversation for anything enrichment missed:
    - Decisions — design choices, trade-offs, direction changes not yet logged as `decision()` entries
    - Discoveries — anything learned that future sessions would benefit from
@@ -74,7 +74,7 @@ Before anything else, complete the session journal:
 
 Run in parallel:
 
-1. **Session journal** — read the active session file for this branch
+1. **Session journal** — run `loaf session list --json`, choose the active session for the current branch or explicit harness session, then run `loaf session show <session-ref> --json`; if SQLite state is unavailable, fall back to the active markdown session file for this branch
 2. **Commits this session** — `git log --oneline` since session start
 3. **Working tree** — `git status --short`
 4. **Unpushed commits** — `git log --oneline origin/<branch>..HEAD`
@@ -89,7 +89,7 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 |-----------|--------|
 | Uncommitted changes | "N file(s) uncommitted — commit, stash, or leave for next session?" |
 | Unpushed commits | "N commit(s) on <branch> not pushed — push now?" |
-| No version bump | "This session shipped work but no release was run — bump version now?" |
+| Release candidate | "This session landed work that may belong in the next release — run `/loaf:release` now?" |
 | Stale KB files | "N stale knowledge file(s) — address now or defer?" |
 | Unresolved blocks | "Block on <scope> still open — note for next session?" |
 | No changelog entries | "N commit(s) on branch but `[Unreleased]` is empty — add changelog entries?" |
@@ -98,15 +98,17 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 **Detection logic:**
 - **Changelog entries:** check if the current branch has commits vs the base branch (e.g., `git rev-list --count origin/main..HEAD`) AND `CHANGELOG.md` `[Unreleased]` section has no list items (`^[-*]\s`). If both are true, prompt. **Skip when HEAD is tagged** (post-release state).
 - **Housekeeping:** scan session journal for `skill(housekeeping)` entry. If absent and the session had significant work, suggest it.
-- **Version bump:** scan session journal for `decision(release)` entry. If absent and the session has commits, offer to run `loaf release --bump prerelease --no-gh --yes`.
+- **Release candidate:** scan session journal for `decision(release)` entry. If absent and the session has landed commits, suggest `/loaf:release` only when the work forms a coherent release batch.
 
 ### Step 4: Generate Report
 
 Assemble the report per the format below. Omit empty sections — don't show "None" placeholders.
 
-### Step 5: Write Wrap Summary to Session File
+### Step 5: Persist Wrap Summary
 
-Write the `## Session Wrap-Up` section into the active session file, **replacing** `## Current State`. The wrap summary IS the final state — it's a superset that includes everything Current State had plus the structured report.
+In SQLite mode, keep the generated wrap summary in the conversation response and let `loaf session end --wrap` persist the mechanical wrapped state. Do not invent or edit a missing active `.md` session file; `loaf session show <session-ref> --json` is the canonical read surface.
+
+In markdown-only compatibility mode, write the `## Session Wrap-Up` section into the active session file, **replacing** `## Current State`. The wrap summary IS the final state — it's a superset that includes everything Current State had plus the structured report.
 
 Use the Edit tool to replace `## Current State (...)` and everything below it (up to `## Journal`) with the wrap-up section. The session file layout after wrap should be:
 
@@ -140,7 +142,7 @@ This handles the mechanical bookkeeping:
 
 ## Composability
 
-When called from `/loaf:release`, wrap runs the same steps but skips the version bump prompt (release already handles it). The `/loaf:release` skill should invoke `/loaf:wrap` first, then proceed with release steps.
+When called near `/loaf:ship` or `/loaf:release`, wrap runs the same steps but keeps PR landing and version publication distinct. `/loaf:ship` may wrap a landed PR; `/loaf:release` may wrap a published version.
 
 ## Suggests Next
 

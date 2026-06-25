@@ -1,4 +1,4 @@
-**Note:** If you used `/release`, these steps were already handled by the skill. This checklist is for manual merges.
+**Note:** If you used `/ship`, these steps were already handled by the skill. This checklist is for manual merges.
 
 # Pre-Merge Checklist
 
@@ -12,27 +12,19 @@ Complete these steps on the feature branch before creating the PR.
    ```
    Archive session file (status: done, `archived_at`, `archived_by`, move to archive/).
 
-2. **Update CHANGELOG.md:**
-   Add entries under `[Unreleased]` describing what the PR ships.
+2. **Update CHANGELOG.md when the PR has release-facing impact:**
+   Add curated entries under `[Unreleased]` describing what the PR lands. Do not move entries to a versioned section here; `/release` publishes the batch later.
 
-3. **Bump version** in `package.json`:
-   - `feat` commit -> minor bump (or dev bump if pre-release)
-   - `fix` commit -> patch bump
-   - Breaking change -> major bump
-
-4. **Move `[Unreleased]` to versioned section:**
-   `## [X.Y.Z] - YYYY-MM-DD`
-
-5. **Rebuild all targets:**
+3. **Rebuild all targets:**
    ```
    npx loaf build
    ```
 
-6. **Commit and push** the changelog + version + archived artifacts to the PR branch.
+4. **Commit and push** the changelog and generated artifacts to the PR branch.
 
-7. **Create PR** with `gh pr create` — title + summary + test plan.
+5. **Create PR** with `gh pr create` — title + summary + test plan.
 
-8. **Squash merge** with a clean commit body:
+6. **Squash merge** with a clean commit body:
    - Let GitHub default the title: `PR title (#N)`
    - Write a concise 2-4 sentence summary as `--body` (use a HEREDOC)
    - **Never** use the automatic squash description that dumps all individual commit messages
@@ -55,3 +47,5 @@ Complete these steps on main after merging.
    ```
 
 3. **Suggest reflection** if the session had key decisions or learnings.
+
+4. **Suggest `/release` only when appropriate** — if this PR completes a coherent batch or release branch, publish from the base branch after the landed work is present there.
