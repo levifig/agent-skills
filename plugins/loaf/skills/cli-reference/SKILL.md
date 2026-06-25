@@ -209,7 +209,9 @@ verify the backup with `loaf state backup verify <backup>`, preserve the current
 `loaf state doctor` and `loaf state status`.
 For agents, `loaf state backup verify <backup> --json` also returns
 `restore_database_path`, `restore_preserve_path`, and
-`restore_validation_commands` for the current checkout.
+`restore_validation_commands` for the current checkout. Ephemeral Markdown can
+be verified with `loaf state verify-ephemerals <manifest|backup-dir|backup-id>`
+and restored and staged with `loaf state restore-ephemerals <manifest|backup-dir|backup-id>`.
 
 **Subcommands:**
 
@@ -226,6 +228,8 @@ For agents, `loaf state backup verify <backup> --json` also returns
 | `loaf state migrate lifecycle-statuses` | Normalize legacy lifecycle statuses in SQLite |
 | `loaf state backup` | Create a SQLite database backup under the global data-home backups directory |
 | `loaf state backup verify` | Verify an existing SQLite database backup |
+| `loaf state restore-ephemerals` | Restore and stage .agents ephemeral Markdown from a rollback manifest or backup id |
+| `loaf state verify-ephemerals` | Verify .agents ephemeral Markdown before SQLite cutover |
 | `loaf state export` | Export SQLite state for review or migration |
 | `loaf state export all` | Export a complete project-scoped SQLite snapshot |
 | `loaf state export triage` | Export a triage summary from SQLite state |
@@ -287,6 +291,14 @@ For agents, `loaf state backup verify <backup> --json` also returns
 - `loaf state backup verify`:
   - `--json` - Output backup verification, restore guidance, schema version, and captured project identities as JSON
 
+- `loaf state restore-ephemerals`:
+  - `<manifest|backup-dir|backup-id>` - Rollback manifest path, directory containing manifest.json, or backup id under the global backups directory
+  - `--json` - Output rollback contract, project path, manifest path, restored file list, and restored status as JSON
+
+- `loaf state verify-ephemerals`:
+  - `<manifest|backup-dir|backup-id>` - Rollback manifest path, directory containing manifest.json, or backup id under the global backups directory
+  - `--json` - Output verification contract, project context, per-file checks, and failures as JSON
+
 - `loaf state export`:
   - `--format <format>` - Output format for the selected export kind
 
@@ -314,6 +326,8 @@ loaf state migrate markdown --apply
 loaf state migrate lifecycle-statuses --dry-run
 loaf state backup
 loaf state backup verify /path/to/backup.sqlite
+loaf state verify-ephemerals loaf-20260625-120000-000000000
+loaf state restore-ephemerals loaf-20260625-120000-000000000
 loaf state status
 ```
 
@@ -324,8 +338,10 @@ loaf state status
 ### `loaf session`
 Manage session journals and native SQLite session state
 
-Session list/show/log/report commands are SQLite-aware. Prefer these commands
-over manual session frontmatter edits when changing lifecycle or journal state.
+Session list/show/log/report/enrich commands are SQLite-aware. Prefer these
+commands over manual session frontmatter edits when changing lifecycle or
+journal state; `session enrich` records a native journal checkpoint and edits no
+session Markdown.
 
 **Subcommands:**
 
@@ -499,8 +515,8 @@ loaf migrate lifecycle-statuses --dry-run
 Manage project tasks
 
 In SQLite-backed projects, task metadata mutations go through the Go-native
-state store. Markdown task files and `TASKS.json` remain compatibility/source
-artifacts during migration; do not edit them directly for lifecycle changes.
+state store. `.agents/tasks/` and `.agents/TASKS.json` are rollback material
+after the SPEC-045 cutover; do not recreate them as compatibility mirrors.
 
 **Subcommands:**
 

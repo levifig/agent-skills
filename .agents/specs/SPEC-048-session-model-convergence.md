@@ -1,7 +1,7 @@
 ---
 id: SPEC-048
 title: Session-Model Convergence to SQLite
-source: "/Users/levifig/Code/levifig/projects/loaf/.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md (WS-C)"
+source: "roadmap:20260621-020342-loaf-restructuring-roadmap (WS-C)"
 created: 2026-06-22T09:13:21Z
 status: complete
 branch: feat/session-model-convergence
@@ -38,8 +38,8 @@ now a no-op:
   self-log marker, so `wrap`'s "no housekeeping this session" nudge mis-fires
   (eval report §3 M1).
 - `content/templates/session.md` — the schema *everyone cites* — still documents
-  a markdown file at `.agents/sessions/YYYYMMDD-HHMMSS-session.md` with YAML
-  frontmatter as the routing surface (template lines 3–12, 57–59).
+  the legacy timestamped session Markdown file with YAML frontmatter as the
+  routing surface (template lines 3–12, 57–59).
 - `implement` teaches "**MANDATORY: Create session file BEFORE any other work**"
   (`content/skills/implement/SKILL.md:251,261`), and the `implementer.md`
   profile (`content/agents/implementer.md:8`) still demands "a session file …

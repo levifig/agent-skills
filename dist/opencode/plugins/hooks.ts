@@ -253,6 +253,12 @@ const preToolHooks: Record<string, HookEntry[]> = {
       "if": "Bash(git push:*)"
     },
     {
+      "id": "ephemeral-provenance",
+      "timeout": 30000,
+      "failClosed": true,
+      "if": "Bash(git push:*)"
+    },
+    {
       "id": "validate-push",
       "command": "loaf check --hook validate-push",
       "timeout": 60000,

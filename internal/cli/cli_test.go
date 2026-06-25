@@ -1492,6 +1492,74 @@ claude_session_id: abc123
 	}
 }
 
+func TestRunnerSessionEnrichWritesSQLiteJournalWithoutMarkdown(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	sessionRel := filepath.Join("sessions", "20260528-session.md")
+	writeCLIAgentsFile(t, workingDir, sessionRel, `---
+status: done
+branch: main
+claude_session_id: abc123
+---
+# Session
+`)
+	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}`)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
+		t.Fatalf("state migrate markdown --apply error = %v", err)
+	}
+	sessionPath := filepath.Join(workingDir, ".agents", sessionRel)
+	if err := os.Remove(sessionPath); err != nil {
+		t.Fatalf("remove session markdown after migration error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"session", "enrich", "20260528-session.md", "--json"})
+	if err != nil {
+		t.Fatalf("session enrich --json error = %v", err)
+	}
+	summary := decodeCompatibilityCommandSummary(t, stdout.Bytes())
+	if summary.Command != "session enrich" || summary.Action != "logged" || summary.Counts["journal_entries"] != 1 {
+		t.Fatalf("summary = %#v, want logged SQLite enrichment checkpoint", summary)
+	}
+	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
+		t.Fatalf("session markdown stat = %v, want no recreated markdown file", err)
+	}
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	databasePath, err := (state.PathResolver{StateHome: stateHome}).DatabasePath(root)
+	if err != nil {
+		t.Fatalf("DatabasePath() error = %v", err)
+	}
+	db, err := sql.Open("sqlite3", databasePath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM journal_entries WHERE entry_type = ? AND scope = ? AND message = ?`, "session", "enrich", "recorded native SQLite enrichment checkpoint for 20260528-session.md"); got != 1 {
+		t.Fatalf("journal entry count = %d, want enrichment checkpoint", got)
+	}
+	show, err := state.ShowSession(context.Background(), root, state.PathResolver{StateHome: stateHome}, "20260528-session")
+	if err != nil {
+		t.Fatalf("ShowSession() error = %v", err)
+	}
+	found := false
+	for _, entry := range show.Session.JournalEntries {
+		if entry.EntryType == "session" && entry.Scope == "enrich" && entry.Message == "recorded native SQLite enrichment checkpoint for 20260528-session.md" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("journal entries = %#v, want enrichment checkpoint linked to session", show.Session.JournalEntries)
+	}
+}
+
 func TestRunnerSessionEnrichSummarizesMarkdownOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture is POSIX-only")
@@ -3373,6 +3441,8 @@ func TestRunnerStateAndProjectJSONHelpNamesContracts(t *testing.T) {
 		{name: "state doctor", args: []string{"state", "doctor", "--help"}, wants: []string{"--json", "diagnostics", "repair plan", "global database scope"}},
 		{name: "state backup", args: []string{"state", "backup", "--help"}, wants: []string{"--json", "backup verification", "checksum", "current project identity"}},
 		{name: "state backup verify", args: []string{"state", "backup", "verify", "--help"}, wants: []string{"--json", "restore guidance", "schema version", "captured project identities"}},
+		{name: "state restore ephemerals", args: []string{"state", "restore-ephemerals", "--help"}, wants: []string{"--json", "rollback contract", "restored file list", "restored status"}},
+		{name: "state verify ephemerals", args: []string{"state", "verify-ephemerals", "--help"}, wants: []string{"--json", "verification contract", "per-file checks", "failures"}},
 		{name: "project list", args: []string{"project", "list", "--help"}, wants: []string{"--json", "database path", "friendly names", "current paths"}},
 		{name: "project show", args: []string{"project", "show", "--help"}, wants: []string{"--json", "project ID", "friendly name", "current path", "database path"}},
 		{name: "project rename", args: []string{"project", "rename", "--help"}, wants: []string{"--json", "friendly name", "database path", "applied status"}},
@@ -7454,7 +7524,9 @@ func TestRunnerStateMigrateMarkdownBackupRemoveSourceAndRollback(t *testing.T) {
 	taskBody := "# Task\n"
 	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-example.md", "# Spec\n")
 	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-example.md", taskBody)
+	writeCLIAgentsFile(t, workingDir, "tasks/archive/TASK-999-archived.md", "# Archived Task\n")
 	writeCLIAgentsFile(t, workingDir, "ideas/20260528-idea.md", "# Idea\n")
+	writeCLIAgentsFile(t, workingDir, "ideas/archive/.gitkeep", "")
 	writeCLIAgentsFile(t, workingDir, "sessions/20260528-session.md", "[2026-05-28 10:00] spark(scope): capture this\n")
 	writeCLIAgentsFile(t, workingDir, "reports/report.md", "# Report\n")
 	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{"TASK-001":{"spec":"SPEC-001"}}}`)
@@ -7480,9 +7552,12 @@ func TestRunnerStateMigrateMarkdownBackupRemoveSourceAndRollback(t *testing.T) {
 		t.Fatalf("rollback manifest was not created: %v", err)
 	}
 	wantRemoved := []string{
+		".agents/TASKS.json",
 		".agents/ideas/20260528-idea.md",
+		".agents/ideas/archive/.gitkeep",
 		".agents/sessions/20260528-session.md",
 		".agents/tasks/TASK-001-example.md",
+		".agents/tasks/archive/TASK-999-archived.md",
 	}
 	if !reflect.DeepEqual(result.RemovedSourceFiles, wantRemoved) {
 		t.Fatalf("RemovedSourceFiles = %#v, want %#v", result.RemovedSourceFiles, wantRemoved)
@@ -7498,22 +7573,26 @@ func TestRunnerStateMigrateMarkdownBackupRemoveSourceAndRollback(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "reports", "report.md")); err != nil {
 		t.Fatalf("report render should remain after source removal: %v", err)
 	}
+	changedSpecBody := "# Spec changed after backup\n"
+	if err := os.WriteFile(filepath.Join(workingDir, ".agents", "specs", "SPEC-001-example.md"), []byte(changedSpecBody), 0o600); err != nil {
+		t.Fatalf("write changed spec render error = %v", err)
+	}
 
 	var rollbackStdout bytes.Buffer
 	err = Runner{
 		Stdout:     &rollbackStdout,
 		WorkingDir: workingDir,
 		StateHome:  stateHome,
-	}.Run([]string{"state", "migrate", "markdown", "--rollback", result.RollbackManifestPath, "--json"})
+	}.Run([]string{"state", "restore-ephemerals", result.RollbackManifestPath, "--json"})
 	if err != nil {
-		t.Fatalf("state migrate markdown --rollback --json error = %v", err)
+		t.Fatalf("state restore-ephemerals --json error = %v", err)
 	}
 	var rollback state.MarkdownRollbackResult
 	if err := json.Unmarshal(rollbackStdout.Bytes(), &rollback); err != nil {
 		t.Fatalf("decode rollback result error = %v\n%s", err, rollbackStdout.String())
 	}
-	if !rollback.Restored || rollback.Action != state.MarkdownMigrationActionRollback {
-		t.Fatalf("rollback = %#v, want restored rollback action", rollback)
+	if !rollback.Restored || rollback.Action != state.MarkdownMigrationActionRestoreEphemerals {
+		t.Fatalf("rollback = %#v, want restored ephemeral action", rollback)
 	}
 	taskContent, err := os.ReadFile(filepath.Join(workingDir, ".agents", "tasks", "TASK-001-example.md"))
 	if err != nil {
@@ -7521,6 +7600,51 @@ func TestRunnerStateMigrateMarkdownBackupRemoveSourceAndRollback(t *testing.T) {
 	}
 	if string(taskContent) != taskBody {
 		t.Fatalf("restored task content = %q, want %q", string(taskContent), taskBody)
+	}
+	archivedTaskContent, err := os.ReadFile(filepath.Join(workingDir, ".agents", "tasks", "archive", "TASK-999-archived.md"))
+	if err != nil {
+		t.Fatalf("read restored archived task error = %v", err)
+	}
+	if string(archivedTaskContent) != "# Archived Task\n" {
+		t.Fatalf("restored archived task content = %q, want byte-exact original", string(archivedTaskContent))
+	}
+	tasksJSONContent, err := os.ReadFile(filepath.Join(workingDir, ".agents", "TASKS.json"))
+	if err != nil {
+		t.Fatalf("read restored TASKS.json error = %v", err)
+	}
+	if string(tasksJSONContent) != `{"tasks":{"TASK-001":{"spec":"SPEC-001"}}}` {
+		t.Fatalf("restored TASKS.json = %q, want byte-exact original", string(tasksJSONContent))
+	}
+	specContent, err := os.ReadFile(filepath.Join(workingDir, ".agents", "specs", "SPEC-001-example.md"))
+	if err != nil {
+		t.Fatalf("read changed spec render error = %v", err)
+	}
+	if string(specContent) != changedSpecBody {
+		t.Fatalf("restore-ephemerals rewrote durable spec render = %q, want %q", string(specContent), changedSpecBody)
+	}
+
+	if err := os.Remove(filepath.Join(workingDir, ".agents", "tasks", "TASK-001-example.md")); err != nil {
+		t.Fatalf("remove restored task before backup-id restore error = %v", err)
+	}
+	backupID := strings.TrimSuffix(filepath.Base(result.BackupPath), filepath.Ext(result.BackupPath))
+	var restoreStdout bytes.Buffer
+	err = Runner{
+		Stdout:     &restoreStdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "restore-ephemerals", backupID})
+	if err != nil {
+		t.Fatalf("state restore-ephemerals backup id error = %v", err)
+	}
+	if !strings.Contains(restoreStdout.String(), "loaf state restore-ephemerals") {
+		t.Fatalf("restore output missing command header:\n%s", restoreStdout.String())
+	}
+	taskContent, err = os.ReadFile(filepath.Join(workingDir, ".agents", "tasks", "TASK-001-example.md"))
+	if err != nil {
+		t.Fatalf("read backup-id restored task error = %v", err)
+	}
+	if string(taskContent) != taskBody {
+		t.Fatalf("backup-id restored task content = %q, want %q", string(taskContent), taskBody)
 	}
 }
 
@@ -7627,6 +7751,65 @@ WHERE project_id = ?
 	}
 	if got := rawCLINormalizationEventCount(t, migrated.DatabasePath, migrated.ProjectID); got != 0 {
 		t.Fatalf("normalization event count after rollback = %d, want 0", got)
+	}
+}
+
+func TestRunnerStateVerifyEphemeralsFailsOnDrift(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-example.md", "# Spec\n")
+	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-example.md", "# Task\n")
+	writeCLIAgentsFile(t, workingDir, "tasks/archive/TASK-999-archived.md", "# Archived Task\n")
+	writeCLIAgentsFile(t, workingDir, "ideas/20260528-idea.md", "# Idea\n")
+	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{"TASK-001":{"spec":"SPEC-001"}}}`)
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "migrate", "markdown", "--apply", "--backup", "--json"})
+	if err != nil {
+		t.Fatalf("state migrate markdown --apply --backup --json error = %v", err)
+	}
+	migration := decodeMarkdownMigrationResult(t, stdout.Bytes())
+	backupID := strings.TrimSuffix(filepath.Base(migration.BackupPath), filepath.Ext(migration.BackupPath))
+
+	var verifyStdout bytes.Buffer
+	err = Runner{
+		Stdout:     &verifyStdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "verify-ephemerals", backupID, "--json"})
+	if err != nil {
+		t.Fatalf("state verify-ephemerals --json error = %v", err)
+	}
+	var verified state.EphemeralVerificationResult
+	if err := json.Unmarshal(verifyStdout.Bytes(), &verified); err != nil {
+		t.Fatalf("decode ephemeral verification result error = %v\n%s", err, verifyStdout.String())
+	}
+	if !verified.Verified || verified.TotalFiles != 4 || verified.VerifiedFiles != 4 || len(verified.Failures) != 0 {
+		t.Fatalf("verified = %#v, want four verified ephemeral files", verified)
+	}
+
+	if err := os.WriteFile(filepath.Join(workingDir, ".agents", "tasks", "TASK-001-example.md"), []byte("# Drift\n"), 0o600); err != nil {
+		t.Fatalf("write drifted task error = %v", err)
+	}
+	var driftStdout bytes.Buffer
+	err = Runner{
+		Stdout:     &driftStdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "verify-ephemerals", migration.RollbackManifestPath, "--json"})
+	if err == nil {
+		t.Fatal("state verify-ephemerals drift error = nil, want failure")
+	}
+	var drift state.EphemeralVerificationResult
+	if unmarshalErr := json.Unmarshal(driftStdout.Bytes(), &drift); unmarshalErr != nil {
+		t.Fatalf("decode drift verification result error = %v\n%s", unmarshalErr, driftStdout.String())
+	}
+	if drift.Verified || len(drift.Failures) != 1 || drift.Failures[0].Path != ".agents/tasks/TASK-001-example.md" {
+		t.Fatalf("drift = %#v, want one task failure", drift)
 	}
 }
 
@@ -7923,6 +8106,20 @@ func TestRunnerStateControlPlaneJSONFailureMatrix(t *testing.T) {
 			args:               []string{"state", "backup", "verify", "--json"},
 			command:            "state backup verify",
 			want:               "requires a backup path",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state restore ephemerals missing target",
+			args:               []string{"state", "restore-ephemerals", "--json"},
+			command:            "state restore-ephemerals",
+			want:               "requires a manifest path",
+			wantMissingStateDB: true,
+		},
+		{
+			name:               "state verify ephemerals missing target",
+			args:               []string{"state", "verify-ephemerals", "--json"},
+			command:            "state verify-ephemerals",
+			want:               "requires a manifest path",
 			wantMissingStateDB: true,
 		},
 		{
@@ -15728,6 +15925,8 @@ func TestRunnerNestedStateBackedHelpDoesNotParseAsOption(t *testing.T) {
 		{name: "migrate storage-home", args: []string{"migrate", "storage-home", "--help"}, want: "Usage: loaf migrate storage-home"},
 		{name: "state backup", args: []string{"state", "backup", "--help"}, want: "global data-home backups directory"},
 		{name: "state backup verify", args: []string{"state", "backup", "verify", "--help"}, want: "Usage: loaf state backup verify"},
+		{name: "state restore ephemerals", args: []string{"state", "restore-ephemerals", "--help"}, want: "Usage: loaf state restore-ephemerals"},
+		{name: "state verify ephemerals", args: []string{"state", "verify-ephemerals", "--help"}, want: "Usage: loaf state verify-ephemerals"},
 		{name: "state export all", args: []string{"state", "export", "all", "--help"}, want: "Usage: loaf state export all"},
 		{name: "task update", args: []string{"task", "update", "--help"}, want: "Usage: loaf task update <task>"},
 		{name: "task create", args: []string{"task", "create", "--help"}, want: "Usage: loaf task create --title <title>"},
@@ -15985,7 +16184,7 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 			t.Fatalf("state subcommands = %#v, want %q", commands["state"].subcommands, subcommand)
 		}
 	}
-	for _, want := range []string{"backup verify", "export all", "export triage", "export session", "export spec", "export release-readiness"} {
+	for _, want := range []string{"backup verify", "restore-ephemerals", "verify-ephemerals", "export all", "export triage", "export session", "export spec", "export release-readiness"} {
 		if !stringSliceContains(commands["state"].subcommands, want) {
 			t.Fatalf("state subcommands = %#v, want %q", commands["state"].subcommands, want)
 		}
@@ -16022,6 +16221,12 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 	}
 	if got := commands["state"].optionDescriptions["state backup verify --json"]; !strings.Contains(got, "restore guidance") || !strings.Contains(got, "captured project identities") {
 		t.Fatalf("state backup verify json description = %q, want restore/project identity guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state restore-ephemerals --json"]; !strings.Contains(got, "rollback contract") || !strings.Contains(got, "restored file list") {
+		t.Fatalf("state restore-ephemerals json description = %q, want rollback/restored-file guidance", got)
+	}
+	if got := commands["state"].optionDescriptions["state verify-ephemerals --json"]; !strings.Contains(got, "verification contract") || !strings.Contains(got, "per-file checks") {
+		t.Fatalf("state verify-ephemerals json description = %q, want verification/per-file guidance", got)
 	}
 	if got := commands["state"].optionDescriptions["state export all --format <format>"]; !strings.Contains(got, "json") {
 		t.Fatalf("state export all format description = %q, want JSON guidance", got)

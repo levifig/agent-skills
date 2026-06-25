@@ -39,6 +39,12 @@ is a Loaf workflow staging section for curated entries before release.
 - Completed SPEC-047 build integrity and parity hardening, including real JS/TS output validation, first-class Amp TypeScript plugin output, Gemini target removal, Codex hook semantics, OpenCode command reachability, and cross-harness parity linting.
 - Converged session workflow guidance in SPEC-048 around SQLite-backed session state, native session journal commands, and render-on-demand Markdown artifacts across skills, templates, agents, and generated targets.
 - SPEC-053 adds the breaking-change migration mechanism: `loaf install --upgrade` now reports externalized vendor skills and requires `--yes` before destructive deprecation cleanup, while `librarian` is available as the durable artifact handler across supported harnesses.
+- SPEC-045 adds `loaf state restore-ephemerals <manifest|backup-dir|backup-id>` to restore and stage ephemeral `.agents` Markdown rollback backups with checksum verification and JSON output before destructive cutover work.
+- SPEC-045 adds `loaf state verify-ephemerals <manifest|backup-dir|backup-id>` to fail closed when ephemeral `.agents` Markdown no longer matches its rollback backup bytes, creating a byte barrier for cutover CI.
+- SPEC-045 adds `loaf check --hook ephemeral-provenance` to guard active specs against dangling ephemeral Markdown provenance after cutover, with ADR-017 recording the SQLite-only ephemeral artifact decision.
+- SPEC-045 makes ephemeral agent artifacts SQLite-only: 422 tracked `.agents` task/session/idea/draft files and `.agents/TASKS.json` were removed from git after a rollback backup and byte barrier, with restore available through `loaf state restore-ephemerals`.
+- SPEC-045 updates `loaf state doctor --json` to report whether the post-cutover ephemeral Markdown surface is clear, including explicit zero counts for legacy ephemeral Markdown files and `.agents/TASKS.json` presence.
+- SPEC-045 changes `loaf session enrich <ref>` to record a native SQLite journal checkpoint linked to the requested session instead of recreating or editing session Markdown.
 
 ## [2.0.0-pre.20260614235428] - 2026-06-14
 

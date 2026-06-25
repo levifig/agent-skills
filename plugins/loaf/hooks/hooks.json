@@ -40,6 +40,14 @@
           },
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/.",
+            "if": "Bash(git push:*)",
+            "timeout": 30,
+            "description": "Block active specs from pointing at deleted ephemeral Markdown after cutover",
+            "failClosed": true
+          },
+          {
+            "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook validate-push",
             "if": "Bash(git push:*)",
             "timeout": 60,

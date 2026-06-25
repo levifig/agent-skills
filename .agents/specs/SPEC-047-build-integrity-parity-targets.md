@@ -1,13 +1,13 @@
 ---
 id: SPEC-047
 title: "Build Integrity, Parity Contract & Target Simplification"
-source: "/Users/levifig/Code/levifig/projects/loaf/.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md (WS-A)"
+source: "roadmap:20260621-020342-loaf-restructuring-roadmap (WS-A)"
 created: 2026-06-22T09:13:21Z
 status: complete
 branch: feat/build-integrity-parity-targets
 governed_by:
   - docs/decisions/ADR-016-artifact-storage-trichotomy.md
-  - .agents/drafts/20260624-115322-loaf-restructuring-shared-contracts-lock.md
+  - shared-contracts:20260624-115322-loaf-restructuring
 source_sessions:
   - id: 20260621-001541-session
     role: shaped

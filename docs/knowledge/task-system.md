@@ -7,8 +7,6 @@ topics:
   - orchestration
 covers:
   - .agents/specs/**/*.md
-  - .agents/tasks/**/*.md
-  - .agents/sessions/**/*.md
   - internal/cli/cli.go
   - internal/state/task_*.go
   - content/skills/breakdown/**/*
@@ -35,7 +33,7 @@ Loaf implements a Shape Up-inspired task management system: specs define bounded
 ## Pipeline
 
 ```
-/shape → SPEC file → /breakdown → TASK files → /implement → Sessions → Done
+/shape → SPEC file → /breakdown → SQLite tasks → /implement → SQLite sessions → Done
 ```
 
 ## Structure
@@ -43,79 +41,21 @@ Loaf implements a Shape Up-inspired task management system: specs define bounded
 | Artifact | Location | Purpose |
 |----------|----------|---------|
 | Specs | `.agents/specs/SPEC-XXX-slug.md` | Bounded work definitions (scope, test conditions, priority order) |
-| Tasks | `.agents/tasks/TASK-XXX-slug.md` | Individual work items (acceptance criteria, verification) |
-| Task index | `.agents/TASKS.json` | Programmatic index (CLI readable) |
-| Sessions | `.agents/sessions/YYYYMMDD-HHMMSS-slug.md` | Execution context (linked to branch/spec) |
+| Tasks | SQLite (`loaf task show/list`) | Individual work items (acceptance criteria, verification) |
+| Sessions | SQLite (`loaf session show/list`) | Execution context (linked to branch/spec) |
 
-`findAgentsDir()` is worktree-aware: from a linked git worktree, task, spec,
-session, idea, and KB state resolve to the main worktree's `.agents/`
-directory. A normal single checkout still uses the nearest parent `.agents/`
-directory.
+`findAgentsDir()` remains relevant for durable `.agents/` content such as
+specs, reports, councils, handoffs, and project config. Ephemeral task,
+session, idea, spark, brainstorm, and draft records live in the global SQLite
+store after the SPEC-045 cutover.
 
 ## TASKS.json
 
-Programmatic index alongside individual task .md files for markdown-only
-compatibility. The native Go CLI reads/writes it when SQLite state has not been
-initialized, and uses SQLite state once `loaf state migrate markdown --apply`
-has imported the project. Markdown task creation writes the backing `.md` file
-before committing the index entry, so rebuilds do not see an index entry whose
-file has not landed yet.
-
-```json
-{
-  "version": 1,
-  "next_id": 89,
-  "tasks": {
-    "TASK-065": {
-      "title": "Extract shared content modules",
-      "slug": "extract-shared-content-modules",
-      "spec": "SPEC-020",
-      "status": "todo",
-      "priority": "P0",
-      "depends_on": [],
-      "files": [],
-      "verify": null,
-      "done": null,
-      "session": null,
-      "created": "2026-04-04T16:41:22Z",
-      "updated": "2026-04-04T16:41:22Z",
-      "completed_at": null,
-      "file": "TASK-065-extract-shared-content-modules.md"
-    }
-  },
-  "specs": {
-    "SPEC-020": {
-      "title": "Cross-Harness Skills, Hook Consolidation & Target Convergence",
-      "status": "complete",
-      "requirement": null,
-      "source": null,
-      "created": "2026-04-04T00:00:00Z",
-      "file": "archive/SPEC-020-target-convergence-amp.md"
-    }
-  }
-}
-```
-
-Tasks keyed by ID (Record, not array). Specs section tracks spec lifecycle. `next_id` ensures unique IDs across creates.
-
-### Task Entry Fields
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `title` | string | Task description |
-| `slug` | string | Derived from filename |
-| `spec` | string\|null | Associated spec ID |
-| `status` | enum | `todo`, `in_progress`, `blocked`, `review`, `done` |
-| `priority` | enum | `P0` (critical) through `P3` (nice-to-have) |
-| `depends_on` | string[] | Task IDs this depends on |
-| `files` | string[] | Hint files relevant to task |
-| `verify` | string\|null | Shell command to verify completion |
-| `done` | string\|null | Observable done condition |
-| `session` | string\|null | Session filename when picked up |
-| `created` | ISO 8601 | Creation timestamp |
-| `updated` | ISO 8601 | Last-updated timestamp |
-| `completed_at` | ISO 8601\|null | Set when status becomes `done` |
-| `file` | string | Relative path to task .md file |
+`.agents/TASKS.json` was removed by the SPEC-045 cutover. It is rollback
+material only, restored by `loaf state restore-ephemerals <backup-id>` when
+explicitly undoing the cutover. Do not recreate it as an index or compatibility
+mirror. `loaf check --hook ephemeral-provenance` fails if `TASKS.json` or
+tracked ephemeral markdown returns.
 
 ## CLI Commands
 
@@ -129,9 +69,9 @@ Tasks keyed by ID (Record, not array). Specs section tracks spec lifecycle. `nex
 | `status` | Summary counts |
 | `create` | Create new task |
 | `update <id>` | Update metadata (status, priority, depends_on, session, spec) |
-| `archive [ids...]` | Move completed tasks to `archive/` and update TASKS.json |
-| `refresh` | Rebuild TASKS.json from .md files |
-| `sync` | Sync between TASKS.json and .md frontmatter |
+| `archive [ids...]` | Archive completed tasks in SQLite state |
+| `refresh` | Compatibility diagnostic; no-op in SQLite-backed projects |
+| `sync` | Compatibility diagnostic; no-op in SQLite-backed projects |
 
 ### `loaf spec`
 
@@ -149,30 +89,27 @@ Tasks keyed by ID (Record, not array). Specs section tracks spec lifecycle. `nex
 | `log [entry]` | Log entry to session journal |
 | `archive` | Archive completed session |
 | `housekeeping` | Detect orphan/split sessions and archive old done sessions |
-| `enrich [file]` | Enrich a session journal from a JSONL conversation log |
+| `enrich [file]` | Record a native SQLite enrichment checkpoint; no markdown edit |
 | `list` | List all active and archived sessions |
 
 ## Session Lifecycle
 
-Sessions track execution context per branch. Key behaviors:
+Sessions track execution context per branch in SQLite. Key behaviors:
 
-- **One session per `claude_session_id`, not per branch.** `loaf session start` routes on the Claude conversation id from the SessionStart hook. One conversation = one session file, regardless of branches visited.
+- **One session per harness session ID, not per branch.** `loaf session start` routes on the harness conversation id from the SessionStart hook. One conversation = one SQLite session record, regardless of branches visited.
 - **3-tier session routing (SPEC-032).** Session-mutating commands (`loaf session log`, `archive`, `enrich`, `end --wrap`) resolve their target through the native Go session router: `--session-id <id>` flag → hook stdin payload (`--from-hook` opt-in only) → branch-fallback (Tier 3 emits a visible stderr WARN so misroutes surface immediately).
-- **New-conversation detection.** When a new session starts with an id differing from the stored `claude_session_id`, the session writes resume entries. `loaf session end` writes the `--- PAUSE ---` separator with the correct timestamp.
+- **New-conversation detection.** When a new session starts with an id differing from the stored harness session id, the session writes resume entries. `loaf session end --wrap` persists wrapped state in SQLite.
 - **Subagent detection.** `agent_id` in hook JSON is only present for subagents. `session start` exits early when `agent_id` is set, preventing subagent sessions from polluting the parent journal.
 - **Branch rename recovery.** If a branch is renamed via `git branch -m`, session start detects the rename via reflog and updates both session and spec frontmatter.
 - **Session status values:** `active`, `stopped`, `done`, `blocked`, `archived`
 
-### Session Frontmatter Fields
+### Cross-Branch Reconciliation
 
-| Field | Purpose |
-|-------|---------|
-| `branch` | Git branch name |
-| `status` | Session lifecycle state |
-| `spec` | Linked spec ID |
-| `claude_session_id` | Harness session ID for new-conversation detection |
-| `created`, `last_updated`, `last_entry` | Timestamps |
-| `archived_at`, `archived_by` | Archive metadata |
+After SPEC-045, stale branches may still carry deleted ephemeral files. Rebase
+or merge main, keep the deletion side for `.agents/{tasks,ideas,sparks,sessions,brainstorms,drafts}/`
+and `.agents/TASKS.json`, then run `loaf check --hook ephemeral-provenance`.
+If rollback is intentionally needed, use `loaf state restore-ephemerals
+<backup-id>` and re-import forward; do not hand-edit restored files as a mirror.
 
 ## Linear Integration
 

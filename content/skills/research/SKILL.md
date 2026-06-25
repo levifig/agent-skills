@@ -92,7 +92,7 @@ Always check project context first. Rate findings: **High** (official/verified),
 **Trigger:** Empty input, "project state", "catch me up"
 
 1. Read project documents: VISION.md, STRATEGY.md, ARCHITECTURE.md
-2. Check ideas (`.agents/ideas/`) and specs (`docs/specs/`)
+2. Check ideas with `loaf idea list --json` and specs with `loaf spec list --json`
 3. Review recent sessions with `loaf session list --all --json` and `loaf session show <ref> --json`
 4. Check recent commits: `git log --oneline -20`
 5. Synthesize following [state-assessment template](templates/state-assessment.md)

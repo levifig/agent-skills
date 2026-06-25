@@ -181,6 +181,7 @@ func TestMarkdownRollbackBackupRemovesAndRestoresEphemeralSources(t *testing.T) 
 	writeMarkdownImportFixture(t, root.Path(), taskBody)
 	writeAgentsFile(t, root.Path(), "drafts/20260528-research-note.md", "# Research Note\n")
 	writeAgentsFile(t, root.Path(), "tasks/archive/TASK-999-archived.md", "# Archived Task\n")
+	writeAgentsFile(t, root.Path(), "ideas/archive/.gitkeep", "")
 
 	migration, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome})
 	if err != nil {
@@ -200,10 +201,14 @@ func TestMarkdownRollbackBackupRemovesAndRestoresEphemeralSources(t *testing.T) 
 		t.Fatalf("RemoveMarkdownMigrationSources() error = %v", err)
 	}
 	wantRemoved := []string{
+		".agents/TASKS.json",
 		".agents/drafts/20260528-brainstorm-topic.md",
+		".agents/drafts/20260528-research-note.md",
 		".agents/ideas/20260528-idea.md",
+		".agents/ideas/archive/.gitkeep",
 		".agents/sessions/20260528-session.md",
 		".agents/tasks/TASK-001-example.md",
+		".agents/tasks/archive/TASK-999-archived.md",
 	}
 	if !reflect.DeepEqual(removed, wantRemoved) {
 		t.Fatalf("removed = %#v, want %#v", removed, wantRemoved)
@@ -216,9 +221,6 @@ func TestMarkdownRollbackBackupRemovesAndRestoresEphemeralSources(t *testing.T) 
 	for _, rel := range []string{
 		".agents/specs/SPEC-001-example.md",
 		".agents/reports/report.md",
-		".agents/drafts/20260528-research-note.md",
-		".agents/tasks/archive/TASK-999-archived.md",
-		".agents/TASKS.json",
 	} {
 		if _, err := os.Stat(filepath.Join(root.Path(), filepath.FromSlash(rel))); err != nil {
 			t.Fatalf("%s should remain after remove: %v", rel, err)
@@ -242,6 +244,14 @@ func TestMarkdownRollbackBackupRemovesAndRestoresEphemeralSources(t *testing.T) 
 	}
 	if string(content) != taskBody {
 		t.Fatalf("restored task body = %q, want byte-exact original", string(content))
+	}
+	archivedTaskPath := filepath.Join(root.Path(), ".agents", "tasks", "archive", "TASK-999-archived.md")
+	archivedContent, err := os.ReadFile(archivedTaskPath)
+	if err != nil {
+		t.Fatalf("ReadFile(archived task) after rollback error = %v", err)
+	}
+	if string(archivedContent) != "# Archived Task\n" {
+		t.Fatalf("restored archived task body = %q, want byte-exact original", string(archivedContent))
 	}
 	if migration.DatabasePath != backup.DatabasePath {
 		t.Fatalf("backup database path = %q, want migration database path %q", backup.DatabasePath, migration.DatabasePath)

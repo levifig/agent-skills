@@ -65,21 +65,20 @@ loaf housekeeping --dry-run          # Preview recommendations
 loaf housekeeping                    # Run artifact scanner
 loaf housekeeping --sessions         # Review sessions only
 loaf session archive                 # Archive single session
-loaf session enrich --json           # Compatibility diagnostic for legacy enrichment
+loaf session enrich --json           # Record SQLite enrichment checkpoint
 loaf task archive TASK-XXX           # Archive single task
 loaf spec archive SPEC-XXX           # Archive single spec
-loaf task sync                       # Compatibility: repair Markdown task index drift
+loaf task sync                       # Compatibility diagnostic in SQLite-backed projects
 ```
 
 ### Artifact Lifecycle
 
 | Artifact | Active Location | Archive | Action |
 |----------|-----------------|---------|--------|
-| Sessions | SQLite state + `.agents/sessions/` compatibility views | `archive/` | `loaf housekeeping --sessions` / `loaf session archive` |
-| Tasks (local mode only) | SQLite state + `.agents/tasks/` source prose | `archive/` | `loaf task archive` |
+| Sessions | SQLite state | SQLite archived status | `loaf housekeeping --sessions` / `loaf session archive` |
+| Tasks (local mode only) | SQLite state | SQLite archived status | `loaf task archive` |
 | Specs | SQLite state + `.agents/specs/` authored prose | `archive/` | `loaf spec archive` |
-| Drafts (state assessments) | `.agents/drafts/` | delete | Flag for cleanup when linked session is archived |
-| Drafts (brainstorms) | `.agents/drafts/` | `archive/` | User decision (spark extraction first) |
+| Drafts / brainstorms | SQLite state | SQLite resolved/archived status | User decision (spark extraction first) |
 | Handoffs | `.agents/handoffs/` | delete | Delete after status is confirmed `deprecated` |
 | Reports | SQLite state + generated/authored report Markdown | `archive/` | `loaf report archive` after processing + linked session archived |
 
@@ -93,9 +92,8 @@ every mode.
 ## Session Enrichment
 
 In SQLite-backed projects, `loaf session log` is the canonical journal writer and
-`wrap` owns end-of-session checks. `loaf session enrich --json` is a compatibility
-diagnostic for legacy markdown enrichment; it is not part of the normal
-housekeeping flow.
+`wrap` owns end-of-session checks. `loaf session enrich --json` records a native
+SQLite enrichment checkpoint and edits no session Markdown.
 
 Do NOT enrich `active` sessions — those are handled by the wrap skill when the session ends.
 
@@ -106,6 +104,13 @@ Treat enrichment failures as non-fatal — log a warning and continue with other
 ## Archival Cleanup
 
 When archiving a session, delete its enrichment temp file if one exists at `.agents/tmp/<session-id>-enrichment.txt`. This prevents stale temp files from accumulating across sessions.
+
+## Cross-Branch Reconciliation
+
+If a stale branch reintroduces `.agents/{tasks,ideas,sparks,sessions,brainstorms,drafts}/`
+or `.agents/TASKS.json`, keep the deletion from the cutover branch and rerun
+`loaf check --hook ephemeral-provenance`. Use `loaf state restore-ephemerals
+<backup-id>` only for an intentional rollback, followed by a forward re-import.
 
 ## Mode-Aware Checks
 
@@ -131,7 +136,7 @@ Treat all three as **warnings**, not auto-fixes. The user decides resolution.
 
 ### Pre-Linear local task detection
 
-If Linear is enabled but local `TASK-NNN.md` files exist in `.agents/tasks/`,
+If Linear is enabled but local task records exist in SQLite,
 surface them with context: "Pre-Linear local tasks detected. These aren't
 auto-migrated. Either continue using them, run a manual migration, or
 archive if superseded by Linear issues."

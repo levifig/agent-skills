@@ -97,7 +97,7 @@ Parse `$ARGUMENTS` to determine session type:
 
 When starting from `TASK-XXX`:
 
-1. Load task metadata via `loaf task show TASK-XXX --json`; read `.agents/TASKS.json` only as a Markdown-compatibility fallback
+1. Load task metadata via `loaf task show TASK-XXX --json`; do not recreate `.agents/TASKS.json` after the SQLite cutover
 2. Run `loaf session start` to find or create the active session for the branch
 3. Log the task coupling: `loaf session log "decision(implement): implementing TASK-XXX"`
 4. Load parent spec if task has `spec:` field

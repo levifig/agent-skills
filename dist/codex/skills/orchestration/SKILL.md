@@ -131,7 +131,7 @@ This skill uses paths from `.agents/loaf.json`:
 | Councils | `.agents/councils/` | `.agents/councils/archive/` | `YYYYMMDD-HHMMSS-topic.md` |
 | Handoffs | `.agents/handoffs/` | delete after deprecated | Created by `/handoff` |
 | Reports | `.agents/reports/` | N/A | `YYYYMMDD-HHMMSS-subject.md` |
-| Tasks | `.agents/tasks/` | N/A | Per task manager conventions |
+| Tasks | SQLite (`loaf task show/list`) | N/A | Per task manager conventions |
 
 **Rule:** Agents write artifacts to disk, orchestrator reasons over artifacts, users retrieve from disk.
 

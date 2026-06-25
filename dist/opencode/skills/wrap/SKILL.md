@@ -58,7 +58,7 @@ Responsible session shutdown — everything that needs a conscious model before 
 | Shipped | `git log` since session start |
 | Pending | `git status` + unpushed commits |
 | Decisions | Session journal `decision()` entries |
-| Ideas | Session journal `spark()` entries + new `.agents/ideas/` files |
+| Ideas | Session journal `spark()` entries + SQLite idea/spark records |
 | Loose ends | Unresolved `todo()`/`block()`, stale KB |
 
 ## Interactive Steps
@@ -69,7 +69,7 @@ These steps require conversation context — only the model can do them.
 
 Before anything else, complete the session journal:
 
-1. **Check enrichment state** — run `loaf session enrich --json`. In SQLite mode this is expected to report `action: "skipped"` because `loaf session log` is already the canonical journal writer; in markdown-only compatibility mode it summarizes legacy JSONL enrichment status. If enrichment is skipped or fails, continue — manual flush is the fallback.
+1. **Check enrichment state** — run `loaf session enrich --json`. In SQLite mode this records a native enrichment checkpoint and edits no session Markdown; in markdown-only compatibility mode it summarizes legacy JSONL enrichment status. If enrichment is skipped or fails, continue — manual flush is the fallback.
 2. **Manual review** — review the conversation for anything enrichment missed:
    - Decisions — design choices, trade-offs, direction changes not yet logged as `decision()` entries
    - Discoveries — anything learned that future sessions would benefit from
@@ -84,7 +84,7 @@ Run in parallel:
 2. **Commits this session** — `git log --oneline` since session start
 3. **Working tree** — `git status --short`
 4. **Unpushed commits** — `git log --oneline origin/<branch>..HEAD`
-5. **Ideas this session** — `.agents/ideas/` files created today
+5. **Ideas this session** — SQLite idea/spark records created today
 6. **Stale KB** — `loaf kb` count if available
 
 ### Step 3: Prompt for Action

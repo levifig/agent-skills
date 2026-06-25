@@ -1,7 +1,7 @@
 ---
 id: SPEC-053
 title: Breaking-Change Migration Mechanism & Taxonomy Decisions
-source: "/Users/levifig/Code/levifig/projects/loaf/.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md (WS-G)"
+source: "roadmap:20260621-020342-loaf-restructuring-roadmap (WS-G)"
 created: 2026-06-22T09:13:21Z
 status: complete
 branch: feat/migration-mechanism-taxonomy
@@ -58,7 +58,7 @@ user sign-off. **No breaking change in the program ships until this lands.**
 ## Strategic Alignment
 
 **Vision/Architecture.** Implements the roadmap's WS-G and §4 breaking-change ledger
-(`.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md:232-243,273-283`). Upholds the
+(`roadmap:20260621-020342-loaf-restructuring-roadmap:232-243,273-283`). Upholds the
 CLAUDE.md non-negotiable "ask before significant or breaking changes" by making the program's
 breaking changes opt-in, reversible, and backed up. Honors ADR-013: `.agents/` resolves to the
 **main** worktree, and moving ephemerals to SQLite *shrinks* that surface (companion ADR) rather

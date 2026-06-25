@@ -202,6 +202,53 @@ func TestRunnerCheckValidHooksAreHandledNatively(t *testing.T) {
 	}
 }
 
+func TestRunnerCheckEphemeralProvenanceBlocksTrackedEphemeralMarkdown(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeCheckFile(t, repo, ".agents/tasks/TASK-001-example.md", "# Task\n")
+	writeCheckFile(t, repo, ".agents/specs/SPEC-001-example.md", "source: .agents/tasks/TASK-001-example.md\n")
+	gitCLI(t, repo, "add", ".agents/tasks/TASK-001-example.md", ".agents/specs/SPEC-001-example.md")
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+	}.Run([]string{"check", "--hook", "ephemeral-provenance", "--json"})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("ephemeral-provenance error = %v, want exit code 2", err)
+	}
+	var output checkJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	if !output.Blocked || len(output.Findings) == 0 || output.Findings[0] != ".agents/tasks/TASK-001-example.md" {
+		t.Fatalf("output = %#v, want tracked ephemeral finding", output)
+	}
+}
+
+func TestRunnerCheckEphemeralProvenanceBlocksAfterCutover(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeCheckFile(t, repo, ".agents/specs/SPEC-001-example.md", "source: .agents/tasks/TASK-001-example.md\n")
+	gitCLI(t, repo, "add", ".agents/specs/SPEC-001-example.md")
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+	}.Run([]string{"check", "--hook", "ephemeral-provenance", "--json"})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("ephemeral-provenance error = %v, want exit code 2", err)
+	}
+	var output checkJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	if !output.Blocked || len(output.Findings) != 1 || !strings.Contains(output.Findings[0], ".agents/specs/SPEC-001-example.md:1") {
+		t.Fatalf("output = %#v, want active spec finding", output)
+	}
+}
+
 func TestRunnerCheckRenderDriftPassesStampedRenderWithoutDatabase(t *testing.T) {
 	repo := initCLIGitRepo(t)
 	rendered, err := state.RenderDurableDocument(state.DurableRenderDocument{

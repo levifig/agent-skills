@@ -34,7 +34,7 @@ For `SPEC-XXX`, `TASK-XXX..YYY`, and `TASK-XXX,YYY,ZZZ`:
 
 ## Option Handling (`--continue`, `--skip`, `--abort`)
 
-1. Locate active orchestration session in `.agents/sessions/` with `type: orchestration`.
+1. Locate active orchestration session with `loaf session list --json` and inspect it with `loaf session show <ref> --json`.
 2. If `--continue`: resume from `orchestration.current_wave` and `orchestration.current_task`.
 3. If `--skip TASK-XXX`: mark that task `skipped`, append reason in session log, continue same wave.
 4. If `--abort`: set session/orchestration status to `aborted`, record timestamp, print summary, stop.

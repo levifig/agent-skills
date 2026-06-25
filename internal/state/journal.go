@@ -16,6 +16,7 @@ import (
 // JournalLogOptions describes a journal entry write request.
 type JournalLogOptions struct {
 	Entry            string
+	SessionRef       string
 	ObservedBranch   string
 	ObservedWorktree string
 	HarnessSessionID string
@@ -78,6 +79,17 @@ func (s *Store) LogJournal(ctx context.Context, root project.Root, options Journ
 	}
 	var session sessionRow
 	if options.LinkSession {
+		sessionRef := normalizeJournalSessionRef(options.SessionRef)
+		if sessionRef != "" {
+			entity, err := s.resolveTraceEntity(ctx, projectID, sessionRef)
+			if err != nil {
+				return JournalLogResult{}, err
+			}
+			if entity.Kind != "session" {
+				return JournalLogResult{}, fmt.Errorf("%q resolves to %s, not session", options.SessionRef, entity.Kind)
+			}
+			session = sessionRow{ID: entity.ID, Alias: entity.Alias, Status: entity.Status}
+		}
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return JournalLogResult{}, fmt.Errorf("begin journal transaction: %w", err)
@@ -85,7 +97,7 @@ func (s *Store) LogJournal(ctx context.Context, root project.Root, options Journ
 		defer tx.Rollback()
 
 		harnessSessionID := strings.TrimSpace(options.HarnessSessionID)
-		if harnessSessionID != "" {
+		if session.ID == "" && harnessSessionID != "" {
 			session, err = findSessionByHarnessID(ctx, tx, projectID, harnessSessionID)
 			if err != nil {
 				return JournalLogResult{}, err
@@ -244,6 +256,18 @@ func parseJournalEntry(entry string) (string, string, string, error) {
 		return "", "", "", fmt.Errorf("session log entry must look like type(scope): message")
 	}
 	return matches[1], strings.TrimSpace(matches[2]), strings.TrimSpace(matches[3]), nil
+}
+
+func normalizeJournalSessionRef(ref string) string {
+	ref = strings.TrimSpace(strings.ReplaceAll(ref, "\\", "/"))
+	ref = strings.TrimPrefix(ref, "./")
+	for _, prefix := range []string{".agents/sessions/archive/", ".agents/sessions/", "sessions/archive/", "sessions/", "archive/"} {
+		ref = strings.TrimPrefix(ref, prefix)
+	}
+	if strings.Contains(ref, "/") && strings.HasSuffix(ref, ".md") {
+		ref = ref[strings.LastIndex(ref, "/")+1:]
+	}
+	return strings.TrimSuffix(ref, ".md")
 }
 
 func insertJournalSearchTx(ctx context.Context, tx *sql.Tx, projectID string, journalEntryID string, sessionID string, entryType string, scope string, message string) error {

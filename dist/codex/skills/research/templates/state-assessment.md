@@ -1,8 +1,7 @@
 # State Assessment Template
 
-State assessments are typically presented in-conversation. If saved to a file:
-
-**Location:** `.agents/drafts/{YYYYMMDD}-{HHMMSS}-state-assessment.md`
+State assessments are typically presented in-conversation. If saved, use a
+durable report artifact rather than `.agents/drafts/`.
 
 **Filename timestamp:** `date -u +"%Y%m%d-%H%M%S"`
 

@@ -206,6 +206,16 @@ func Inspect(root project.Root, resolver PathResolver) (Status, error) {
 		} else {
 			status.Diagnostics = append(status.Diagnostics, markdownDiagnostics...)
 		}
+		ephemeralDiagnostics, err := inspectEphemeralMarkdownCutover(root)
+		if err != nil {
+			status.Diagnostics = append(status.Diagnostics, Diagnostic{
+				Severity: "warn",
+				Code:     "ephemeral-markdown-cutover-check-unreadable",
+				Message:  err.Error(),
+			})
+		} else {
+			status.Diagnostics = append(status.Diagnostics, ephemeralDiagnostics...)
+		}
 		linearDiagnostics, err := inspectLinearModeTaskMappings(context.Background(), root, store, status.ProjectID)
 		if err != nil {
 			status.Diagnostics = append(status.Diagnostics, Diagnostic{
@@ -531,6 +541,68 @@ func markdownMigrationImportableCount(plan MarkdownMigrationPlan) int {
 		plan.Sessions +
 		plan.Reports +
 		plan.Relationships
+}
+
+func inspectEphemeralMarkdownCutover(root project.Root) ([]Diagnostic, error) {
+	markdownFiles, err := countEphemeralMarkdownFiles(filepath.Join(root.Path(), ".agents"))
+	if err != nil {
+		return nil, err
+	}
+	tasksJSONPresent := false
+	tasksJSONPath := filepath.Join(root.Path(), ".agents", "TASKS.json")
+	if info, err := os.Stat(tasksJSONPath); err == nil && !info.IsDir() {
+		tasksJSONPresent = true
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("inspect .agents/TASKS.json: %w", err)
+	}
+	details := map[string]any{
+		"ephemeral_markdown_files": markdownFiles,
+		"tasks_json_present":       tasksJSONPresent,
+	}
+	if markdownFiles == 0 && !tasksJSONPresent {
+		return []Diagnostic{{
+			Severity: "info",
+			Code:     "ephemeral-markdown-cutover-clear",
+			Category: RepairCategoryMarkdownImport,
+			Message:  "Ephemeral Markdown cutover surface is clear: 0 ephemeral Markdown file(s); .agents/TASKS.json absent",
+			Details:  details,
+		}}, nil
+	}
+	return []Diagnostic{{
+		Severity: "warn",
+		Code:     "ephemeral-markdown-cutover-drift",
+		Category: RepairCategoryMarkdownImport,
+		Policy:   DiagnosticPolicyWarningDrift,
+		Message:  fmt.Sprintf("ephemeral Markdown cutover surface has %d legacy Markdown file(s); .agents/TASKS.json present: %t", markdownFiles, tasksJSONPresent),
+		Details:  details,
+	}}, nil
+}
+
+func countEphemeralMarkdownFiles(agentsPath string) (int, error) {
+	total := 0
+	for _, root := range []string{"tasks", "ideas", "sparks", "sessions", "brainstorms", "drafts"} {
+		dir := filepath.Join(agentsPath, root)
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return 0, fmt.Errorf("inspect .agents/%s: %w", root, err)
+		}
+		if err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			if strings.HasSuffix(entry.Name(), ".md") {
+				total++
+			}
+			return nil
+		}); err != nil {
+			return 0, fmt.Errorf("inspect .agents/%s: %w", root, err)
+		}
+	}
+	return total, nil
 }
 
 func inspectSQLiteIntegrity(ctx context.Context, store *Store) ([]Diagnostic, bool, error) {

@@ -73,7 +73,7 @@ Knowledge accumulates across 5+ surfaces that don't coordinate:
 2. `docs/decisions/` — immutable ADRs
 3. Claude Code `MEMORY.md` — cross-session AI context (drifts)
 4. Serena `.serena/memories/` — separate AI memory (goes stale)
-5. `.agents/sessions/` + draft docs — temporary but become permanent
+5. SQLite sessions + temporary draft context — temporary but may become permanent
 
 Same facts recorded in 2-3 places. Nothing triggers updates when code changes. Memory layers drift silently. The knowledge management system consolidates these into clear ownership (see Memory Surface Policy below).
 
@@ -115,7 +115,7 @@ PERSISTENT (this person)     — crosses all projects, grows over career
 |----------|------|-------|
 | **Persistent** | User preferences, expertise, patterns | `~/.config/claude/` (CLAUDE.md, PROFILE.md, memory/) |
 | **Durable** | Domain knowledge, conventions, decisions | `docs/knowledge/` + `docs/decisions/` + CLAUDE.md |
-| **Ephemeral** | Active task context, working hypotheses | `.agents/sessions/` + conversation |
+| **Ephemeral** | Active task context, working hypotheses | SQLite sessions + conversation |
 
 Flow: persistent informs durable, durable informs ephemeral. Upward: session insights consolidate into durable knowledge, durable patterns graduate to persistent memory.
 
@@ -130,7 +130,7 @@ The knowledge base is primarily for agents — it's their extended memory. This 
 | `docs/knowledge/` | Domain rules, contracts, architectural patterns, roadmap context |
 | `docs/decisions/` | Immutable ADRs |
 | `MEMORY.md` | User preferences, session pointers |
-| `.agents/sessions/` | Ephemeral work context |
+| SQLite sessions | Ephemeral work context |
 | Serena memories | **Deprecated for knowledge** — code analysis state only |
 
 **Serena:** Keep code intelligence tools (find_symbol, get_symbols_overview). Deprecate memory system for knowledge persistence — with knowledge files + MEMORY.md, Serena memories become a redundant third layer.
@@ -209,4 +209,4 @@ QMD works without models (BM25-only):
 - [cli-design.md](cli-design.md) — the `loaf kb` commands
 - [../decisions/ADR-003-qmd-as-retrieval-backend.md](../decisions/ADR-003-qmd-as-retrieval-backend.md) — QMD decision
 - [../ARCHITECTURE.md#authorship-model--agents-create-humans-curate](../ARCHITECTURE.md#authorship-model--agents-create-humans-curate) — authoring model
-- Full brainstorm: `.agents/drafts/brainstorm-loaf-cli-knowledge-harness.md`
+- Full brainstorm: SQLite brainstorm/spark records or an explicitly durable report

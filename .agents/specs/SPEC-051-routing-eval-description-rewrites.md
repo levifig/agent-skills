@@ -1,7 +1,7 @@
 ---
 id: SPEC-051
 title: Routing Eval & Validated Description Rewrites
-source: "/Users/levifig/Code/levifig/projects/loaf/.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md (WS-E)"
+source: "roadmap:20260621-020342-loaf-restructuring-roadmap (WS-E)"
 created: 2026-06-22T09:13:21Z
 status: complete
 branch: feat/routing-eval-description-rewrites

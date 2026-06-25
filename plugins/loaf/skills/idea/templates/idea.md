@@ -1,6 +1,7 @@
 # Idea File Template
 
-**Location:** `.agents/ideas/{YYYYMMDD}-{HHMMSS}-{slug}.md`
+**Location:** Markdown-only compatibility archive. SQLite-backed projects use
+`loaf idea capture` and do not create `.agents/ideas/` files.
 
 **Filename timestamp:** `date -u +"%Y%m%d-%H%M%S"`
 

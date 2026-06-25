@@ -19,7 +19,7 @@ Generative thinking — expanding possibilities before narrowing through structu
 - Connect exploration to VISION.md and STRATEGY.md context
 - Document discarded options — they hold valuable reasoning
 - Log invocation first: `loaf session log "skill(brainstorm): <topic>"`
-- Capture sparks (speculative byproducts) with `loaf spark capture --scope <scope> --text <text>`; brainstorm documents may render or summarize them
+- Capture sparks (speculative byproducts) with `loaf spark capture --scope <scope> --text <text>`; brainstorm summaries may render or summarize them
 - Set boundaries on exploration time
 - Log outcome to session journal: `loaf session log "decision(scope): direction chosen and rationale"`
 
@@ -32,7 +32,7 @@ Generative thinking — expanding possibilities before narrowing through structu
 ## Verification
 
 After work completes, verify:
-- Brainstorm document created at `.agents/drafts/{YYYYMMDD}-{HHMMSS}-brainstorm-{slug}.md`
+- Brainstorm captured in SQLite or summarized in an explicitly durable report
 - Sparks captured with `loaf spark capture` and optionally summarized in `## Sparks`
 - Spark lifecycle documented: unprocessed → promoted/discarded
 - Brainstorm references strategic context from VISION/STRATEGY

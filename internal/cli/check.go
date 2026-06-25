@@ -79,13 +79,14 @@ var nativeCheckSecretPatterns = []secretPattern{
 }
 
 var validCheckHooks = map[string]bool{
-	"artifact-body-write": true,
-	"check-secrets":       true,
-	"render-drift":        true,
-	"validate-push":       true,
-	"workflow-pre-pr":     true,
-	"validate-commit":     true,
-	"security-audit":      true,
+	"artifact-body-write":  true,
+	"check-secrets":        true,
+	"ephemeral-provenance": true,
+	"render-drift":         true,
+	"validate-push":        true,
+	"workflow-pre-pr":      true,
+	"validate-commit":      true,
+	"security-audit":       true,
 }
 
 func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error {
@@ -110,6 +111,8 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 		result = runNativeArtifactBodyWriteGuard(context)
 	case "check-secrets":
 		result = runNativeCheckSecrets(context)
+	case "ephemeral-provenance":
+		result = runNativeEphemeralProvenance(runtimeRoot)
 	case "render-drift":
 		result = runNativeRenderDrift(runtimeRoot)
 	case "validate-commit":
@@ -137,7 +140,7 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 }
 
 func writeCheckHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf check --hook <id> [--json]", "Run one registered hook check.", "--hook      Hook id: artifact-body-write, check-secrets, render-drift, validate-commit, security-audit, workflow-pre-pr, validate-push", "--json      Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON")
+	writeUsageHelp(out, "loaf check --hook <id> [--json]", "Run one registered hook check.", "--hook      Hook id: artifact-body-write, check-secrets, ephemeral-provenance, render-drift, validate-commit, security-audit, workflow-pre-pr, validate-push", "--json      Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON")
 }
 
 func parseCheckArgs(args []string) (checkOptions, error) {
@@ -288,6 +291,80 @@ func runNativeRenderDrift(cwd string) checkResult {
 		}
 	}
 	return result
+}
+
+var ephemeralProvenanceRefRE = regexp.MustCompile(`\.agents/(?:tasks|ideas|sparks|sessions|brainstorms|drafts)/(?:archive/)?[A-Za-z0-9][^\s)'"]*|\.agents/TASKS\.json`)
+
+func runNativeEphemeralProvenance(cwd string) checkResult {
+	result := checkResult{Passed: true, Warnings: []string{}, Errors: []string{}, Findings: []string{}}
+	root := firstNonEmpty(strings.TrimSpace(cwd), ".")
+	tracked, err := trackedEphemeralMarkdownPaths(root)
+	if err != nil {
+		result.Passed = false
+		result.Blocked = true
+		result.Errors = append(result.Errors, fmt.Sprintf("Check tracked ephemeral files: %v", err))
+		return result
+	}
+	if len(tracked) > 0 {
+		result.Passed = false
+		result.Blocked = true
+		result.Errors = append(result.Errors, "Tracked ephemeral Markdown is not allowed after SQLite cutover")
+		result.Findings = append(result.Findings, tracked...)
+		return result
+	}
+
+	specsDir := filepath.Join(root, ".agents", "specs")
+	entries, err := os.ReadDir(specsDir)
+	if os.IsNotExist(err) {
+		return result
+	}
+	if err != nil {
+		result.Passed = false
+		result.Blocked = true
+		result.Errors = append(result.Errors, fmt.Sprintf("Read active specs: %v", err))
+		return result
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") || strings.HasPrefix(entry.Name(), "SPEC-045-") {
+			continue
+		}
+		path := filepath.Join(specsDir, entry.Name())
+		content, err := os.ReadFile(path)
+		if err != nil {
+			result.Passed = false
+			result.Blocked = true
+			result.Errors = append(result.Errors, fmt.Sprintf("Read active spec %s: %v", renderDriftRelativePath(root, path), err))
+			continue
+		}
+		for lineNumber, line := range strings.Split(string(content), "\n") {
+			if ephemeralProvenanceRefRE.MatchString(line) {
+				result.Passed = false
+				result.Blocked = true
+				result.Findings = append(result.Findings, fmt.Sprintf("%s:%d: %s", renderDriftRelativePath(root, path), lineNumber+1, strings.TrimSpace(line)))
+			}
+		}
+	}
+	if len(result.Findings) > 0 {
+		result.Errors = append(result.Errors, "Dangling active-spec provenance points at ephemeral Markdown slated for SQLite cutover")
+	}
+	return result
+}
+
+func trackedEphemeralMarkdownPaths(root string) ([]string, error) {
+	args := []string{"-C", root, "ls-files", "--", ".agents/TASKS.json", ".agents/tasks", ".agents/ideas", ".agents/sparks", ".agents/sessions", ".agents/brainstorms", ".agents/drafts"}
+	output, err := exec.Command("git", args...).Output()
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		paths = append(paths, filepath.ToSlash(line))
+	}
+	return paths, nil
 }
 
 func hasFinalDurableRenderStamp(content string) bool {

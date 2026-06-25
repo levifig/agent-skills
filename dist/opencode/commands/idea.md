@@ -76,9 +76,9 @@ Use the CLI capture path:
 loaf idea capture --title "..."
 ```
 
-In Markdown-only compatibility mode, this may create a file in `.agents/ideas/`
-following [idea template](../skills/idea/templates/idea.md). In SQLite-backed mode, the row is
-stored in SQLite and Markdown is only a source/export artifact.
+In SQLite-backed mode, the row is stored in SQLite and no `.agents/ideas/`
+markdown file is created. The [idea template](../skills/idea/templates/idea.md) is retained
+only for markdown-only compatibility and historical restore review.
 
 ### Step 3: Create and Announce
 

@@ -108,7 +108,7 @@ This extends the "CLI is the correct protocol layer" principle to filesystem con
 
 Skills that orchestrate specs and tasks (`/breakdown`, `/implement`, `/housekeeping`, `/shape`, `/council`) branch on `integrations.linear.enabled` in `.agents/loaf.json`:
 
-- **Local-tasks mode** (default): specs in `.agents/specs/`, tasks in `.agents/tasks/`, `TASKS.json` as the programmatic index.
+- **Local-tasks mode** (default): specs stay in `.agents/specs/`; task, session, idea, spark, brainstorm, and draft records live in the global SQLite database.
 - **Linear-native mode**: specs stay in `.agents/specs/` (canonical, deliberation layer); tasks move to Linear as sub-issues under a `spec`-labeled parent rollup issue (execution layer).
 
 The split reflects an architectural principle from ADR-010's consolidation pattern extended to the spec/task artifact model:
@@ -204,24 +204,28 @@ This pattern generalizes beyond ADRs. When any Loaf artifact is later judged to 
 The execution model is a three-artifact pipeline. No separate "plan" artifact — the journal serves as both execution trace and resumption protocol.
 
 ```
-/shape → SPEC file → /breakdown → TASK files → /implement → Session/Journal → Done
+/shape → SPEC file → /breakdown → SQLite tasks → /implement → SQLite session journal → Done
 ```
 
 ### Task System
 
 ```
 .agents/specs/SPEC-XXX.md       # Bounded work definitions (scope, test conditions, priority order)
-.agents/tasks/TASK-XXX-slug.md  # Individual work items (criteria, file hints, verification)
-.agents/tasks/TASKS.json        # Programmatic index (CLI readable)
-.agents/sessions/               # Active session journals
-.agents/sessions/archive/       # Completed sessions
+SQLite tasks                     # Individual work items (criteria, file hints, verification)
+SQLite sessions + journal rows   # Active and archived execution journals
 ```
 
 **Specs** define *what* to build — problem, solution direction, boundaries, test conditions. Multi-part specs use priority ordering with go/no-go gates between tracks (ship in order, drop from end). Sized by complexity (small/medium/large), not time.
 
 **Tasks** define *what to do* — one concern per task, file hints, verification command, observable done condition. Created by `/breakdown`, worked by `/implement`.
 
-**Sessions** capture *what happened* — the journal records decisions, discoveries, commits, and progress as structured entries. The `## Current State` section provides handoff-ready context for compaction recovery and cross-conversation resumption.
+**Sessions** capture *what happened* — SQLite journal rows record decisions, discoveries, commits, and progress as structured entries. `loaf session show` provides handoff-ready context for compaction recovery and cross-conversation resumption.
+
+`.agents/tasks/`, `.agents/sessions/`, `.agents/ideas/`, `.agents/sparks/`,
+`.agents/brainstorms/`, `.agents/drafts/`, and `.agents/TASKS.json` are
+rollback material after SPEC-045, not compatibility mirrors. A stale branch that
+reintroduces them should keep the deletion side and rerun
+`loaf check --hook ephemeral-provenance`.
 
 ### Session Lifecycle
 

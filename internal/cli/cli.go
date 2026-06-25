@@ -53,6 +53,8 @@ type compatibilityCommandSummary struct {
 
 type compatibilityCommandOptions struct {
 	jsonOutput bool
+	dryRun     bool
+	sessionRef string
 }
 
 type projectRenameOptions struct {
@@ -70,6 +72,16 @@ type projectMoveOptions struct {
 
 type backupVerifyOptions struct {
 	path       string
+	jsonOutput bool
+}
+
+type restoreEphemeralsOptions struct {
+	target     string
+	jsonOutput bool
+}
+
+type verifyEphemeralsOptions struct {
+	target     string
 	jsonOutput bool
 }
 
@@ -1489,6 +1501,18 @@ func (r Runner) runState(args []string, out io.Writer, runtime state.Runtime) er
 			return nil
 		}
 		return r.runStateBackup(args[1:], out, runtime)
+	case "restore-ephemerals":
+		if isHelpArg(args[1:]) {
+			writeStateRestoreEphemeralsHelp(out)
+			return nil
+		}
+		return r.runStateRestoreEphemerals(args[1:], out, runtime)
+	case "verify-ephemerals":
+		if isHelpArg(args[1:]) {
+			writeStateVerifyEphemeralsHelp(out)
+			return nil
+		}
+		return r.runStateVerifyEphemerals(args[1:], out, runtime)
 	case "export":
 		if len(args) == 1 || isHelpArg(args[1:]) {
 			writeStateExportHelp(out)
@@ -1514,6 +1538,8 @@ func writeStateHelp(out io.Writer) {
 	fmt.Fprintln(out, "  migrate       Run state migrations")
 	fmt.Fprintln(out, "  backup        Create a SQLite database backup")
 	fmt.Fprintln(out, "  backup verify Verify an existing SQLite backup")
+	fmt.Fprintln(out, "  restore-ephemerals Restore .agents ephemeral Markdown from a rollback backup")
+	fmt.Fprintln(out, "  verify-ephemerals Verify .agents ephemeral Markdown before cutover")
 	fmt.Fprintln(out, "  export        Export SQLite state")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
@@ -1605,6 +1631,14 @@ func writeStateBackupHelp(out io.Writer) {
 
 func writeStateBackupVerifyHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf state backup verify <backup> [--json]", "Verify an existing SQLite database backup without reading or mutating live state.", "--json       Output backup verification, restore guidance, schema version, and captured project identities as JSON")
+}
+
+func writeStateRestoreEphemeralsHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf state restore-ephemerals <manifest|backup-dir|backup-id> [--json]", "Restore .agents ephemeral Markdown files from a checksum-verified rollback manifest and stage them when inside a Git worktree.", "--json       Output rollback contract, project path, manifest path, restored file list, and restored status as JSON")
+}
+
+func writeStateVerifyEphemeralsHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf state verify-ephemerals <manifest|backup-dir|backup-id> [--json]", "Verify .agents ephemeral Markdown files still match checksum-verified rollback backup bytes before cutover.", "--json       Output verification contract, project context, manifest path, per-file checks, and failures as JSON")
 }
 
 func writeStateExportHelp(out io.Writer) {
@@ -2519,6 +2553,172 @@ func (r Runner) runStateBackupVerify(args []string, out io.Writer, runtime state
 		fmt.Fprintf(out, "next: if present, preserve current database as %s, copy this verified backup to %s, then run `loaf state doctor` and `loaf state status`\n", result.RestorePreservePath, result.RestoreDatabasePath)
 	} else {
 		fmt.Fprintln(out, "next: if present, preserve current database, copy this verified backup to `loaf state path`, then run `loaf state doctor` and `loaf state status`")
+	}
+	return nil
+}
+
+func (r Runner) runStateRestoreEphemerals(args []string, out io.Writer, runtime state.Runtime) error {
+	jsonRequested := hasFlag(args, "--json")
+	options, err := parseStateRestoreEphemeralsArgs(args)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, "state restore-ephemerals", err)
+		}
+		return err
+	}
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "state restore-ephemerals", err)
+		}
+		return err
+	}
+	manifestPath, err := r.resolveEphemeralRestoreManifest(projectRoot, options.target)
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "state restore-ephemerals", err)
+		}
+		return err
+	}
+	result, err := state.RestoreEphemeralMarkdownBackup(context.Background(), projectRoot, manifestPath)
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "state restore-ephemerals", err)
+		}
+		return err
+	}
+	if err := stageRestoredEphemeralFiles(projectRoot, result.RestoredFiles); err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "state restore-ephemerals", err)
+		}
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeMarkdownRollbackResultHuman(out, "loaf state restore-ephemerals", result)
+	return nil
+}
+
+func (r Runner) runStateVerifyEphemerals(args []string, out io.Writer, runtime state.Runtime) error {
+	jsonRequested := hasFlag(args, "--json")
+	options, err := parseStateVerifyEphemeralsArgs(args)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, "state verify-ephemerals", err)
+		}
+		return err
+	}
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "state verify-ephemerals", err)
+		}
+		return err
+	}
+	manifestPath, err := r.resolveEphemeralRestoreManifest(projectRoot, options.target)
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "state verify-ephemerals", err)
+		}
+		return err
+	}
+	result, err := state.VerifyEphemeralMarkdownBackup(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, manifestPath)
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "state verify-ephemerals", err)
+		}
+		return err
+	}
+	if options.jsonOutput {
+		if err := writeJSON(out, result); err != nil {
+			return err
+		}
+		if !result.Verified {
+			return ExitError{Code: 1}
+		}
+		return nil
+	}
+	writeEphemeralVerificationHuman(out, result)
+	if !result.Verified {
+		return ExitError{Code: 1}
+	}
+	return nil
+}
+
+func (r Runner) resolveEphemeralRestoreManifest(projectRoot project.Root, target string) (string, error) {
+	if info, err := os.Stat(target); err == nil {
+		if info.IsDir() {
+			return filepath.Join(target, "manifest.json"), nil
+		}
+		return target, nil
+	} else if filepath.IsAbs(target) || strings.Contains(target, string(filepath.Separator)) || strings.Contains(target, "/") || strings.Contains(target, "\\") {
+		return target, nil
+	}
+
+	databasePath, err := (state.PathResolver{StateHome: r.StateHome}).DatabasePath(projectRoot)
+	if err != nil {
+		return "", err
+	}
+	backupDir := filepath.Join(filepath.Dir(databasePath), "backups")
+	candidates := []string{
+		filepath.Join(backupDir, target, "manifest.json"),
+		filepath.Join(backupDir, target+"-markdown", "manifest.json"),
+	}
+	if ext := filepath.Ext(target); ext != "" {
+		base := strings.TrimSuffix(target, ext)
+		candidates = append(candidates, filepath.Join(backupDir, base+"-markdown", "manifest.json"))
+	}
+	seen := map[string]bool{}
+	for _, candidate := range candidates {
+		if seen[candidate] {
+			continue
+		}
+		seen[candidate] = true
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("ephemeral backup target %q not found; pass a manifest path, backup directory, or backup id under %s", target, backupDir)
+}
+
+func writeEphemeralVerificationHuman(out io.Writer, result state.EphemeralVerificationResult) {
+	fmt.Fprintln(out, "loaf state verify-ephemerals")
+	fmt.Fprintf(out, "scope: %s database\n", result.DatabaseScope)
+	fmt.Fprintf(out, "database: %s\n", result.DatabasePath)
+	if result.ProjectID != "" {
+		fmt.Fprintf(out, "project: %s\n", result.ProjectID)
+	}
+	if result.ProjectName != "" {
+		fmt.Fprintf(out, "project name: %s\n", result.ProjectName)
+	}
+	if result.ProjectCurrentPath != "" {
+		fmt.Fprintf(out, "project path: %s\n", result.ProjectCurrentPath)
+	}
+	fmt.Fprintf(out, "rollback manifest: %s\n", result.RollbackManifestPath)
+	fmt.Fprintf(out, "verified: %t\n", result.Verified)
+	fmt.Fprintf(out, "verified files: %d/%d\n", result.VerifiedFiles, result.TotalFiles)
+	if len(result.Failures) > 0 {
+		fmt.Fprintf(out, "failures: %d\n", len(result.Failures))
+		for _, failure := range result.Failures {
+			fmt.Fprintf(out, "  - %s: %s\n", failure.Path, failure.Reason)
+		}
+	}
+}
+
+func stageRestoredEphemeralFiles(projectRoot project.Root, restoredFiles []string) error {
+	if len(restoredFiles) == 0 {
+		return nil
+	}
+	check := exec.Command("git", "-C", projectRoot.Path(), "rev-parse", "--is-inside-work-tree")
+	if err := check.Run(); err != nil {
+		return nil
+	}
+	args := []string{"-C", projectRoot.Path(), "add", "--"}
+	args = append(args, restoredFiles...)
+	cmd := exec.Command("git", args...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("stage restored ephemeral files: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }
@@ -7702,7 +7902,7 @@ func writeSessionHelp(out io.Writer) {
 	fmt.Fprintln(out, "  list          List sessions")
 	fmt.Fprintln(out, "  show          Show one session")
 	fmt.Fprintln(out, "  log           Append a journal entry")
-	fmt.Fprintln(out, "  enrich        Summarize markdown enrichment compatibility in SQLite mode")
+	fmt.Fprintln(out, "  enrich        Record a native SQLite enrichment checkpoint")
 	fmt.Fprintln(out, "  housekeeping  Summarize markdown housekeeping compatibility in SQLite mode")
 	fmt.Fprintln(out, "  state         Compatibility session-state helpers")
 	fmt.Fprintln(out, "  context       Render hook context prompts")
@@ -7737,7 +7937,7 @@ func writeSessionLogHelp(out io.Writer) {
 }
 
 func writeSessionEnrichHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf session enrich [--json]", "Summarize markdown enrichment compatibility.", "--json        Output compatibility mode, action, reason, and counts as JSON")
+	writeUsageHelp(out, "loaf session enrich [--dry-run] [--json]", "Record a native SQLite enrichment checkpoint without editing session Markdown.", "--dry-run     Preview enrichment state without writing a checkpoint", "--json        Output compatibility mode, action, reason, and counts as JSON")
 }
 
 func writeSessionHousekeepingHelp(out io.Writer) {
@@ -8059,17 +8259,51 @@ func (r Runner) runSessionEnrich(args []string, out io.Writer, runtime state.Run
 	if err != nil {
 		return err
 	}
+	if options.dryRun {
+		summary := compatibilityCommandSummary{
+			ContractVersion: state.StateJSONContractVersion,
+			Version:         1,
+			Command:         "session enrich",
+			Mode:            "sqlite",
+			Action:          "skipped",
+			Reason:          "Dry run requested; SQLite journal enrichment checkpoint was not written.",
+			Counts: map[string]int{
+				"sessions": len(sessions.Sessions),
+			},
+		}
+		if options.jsonOutput {
+			return writeJSON(out, summary)
+		}
+		writeCompatibilityCommandSummary(out, summary)
+		return nil
+	}
+	message := "recorded native SQLite enrichment checkpoint"
+	if options.sessionRef != "" {
+		message = fmt.Sprintf("recorded native SQLite enrichment checkpoint for %s", options.sessionRef)
+	}
+	journal, err := state.LogJournal(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.JournalLogOptions{
+		Entry:            fmt.Sprintf("session(enrich): %s", message),
+		SessionRef:       options.sessionRef,
+		ObservedBranch:   state.ObservedGitBranch(runtime.RootPath()),
+		ObservedWorktree: runtime.RootPath(),
+		LinkSession:      options.sessionRef != "",
+	})
+	if err != nil {
+		return err
+	}
 	summary := compatibilityCommandSummary{
 		ContractVersion: state.StateJSONContractVersion,
 		Version:         1,
 		Command:         "session enrich",
 		Mode:            "sqlite",
-		Action:          "skipped",
-		Reason:          "SQLite journal state is written through `loaf session log`; Markdown JSONL enrichment is a compatibility path and is not run in SQLite mode.",
+		Action:          "logged",
+		Reason:          "SQLite journal enrichment checkpoint written natively; no session Markdown file is edited.",
 		Counts: map[string]int{
-			"sessions": len(sessions.Sessions),
+			"sessions":        len(sessions.Sessions),
+			"journal_entries": 1,
 		},
 	}
+	_ = journal
 	if options.jsonOutput {
 		return writeJSON(out, summary)
 	}
@@ -11959,6 +12193,50 @@ func parseStateBackupVerifyArgs(args []string) (backupVerifyOptions, error) {
 	return options, nil
 }
 
+func parseStateRestoreEphemeralsArgs(args []string) (restoreEphemeralsOptions, error) {
+	var options restoreEphemeralsOptions
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			options.jsonOutput = true
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return restoreEphemeralsOptions{}, fmt.Errorf("unknown option %q", arg)
+			}
+			if options.target != "" {
+				return restoreEphemeralsOptions{}, fmt.Errorf("state restore-ephemerals accepts exactly one manifest path, backup directory, or backup id")
+			}
+			options.target = arg
+		}
+	}
+	if options.target == "" {
+		return restoreEphemeralsOptions{}, fmt.Errorf("state restore-ephemerals requires a manifest path, backup directory, or backup id")
+	}
+	return options, nil
+}
+
+func parseStateVerifyEphemeralsArgs(args []string) (verifyEphemeralsOptions, error) {
+	var options verifyEphemeralsOptions
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			options.jsonOutput = true
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return verifyEphemeralsOptions{}, fmt.Errorf("unknown option %q", arg)
+			}
+			if options.target != "" {
+				return verifyEphemeralsOptions{}, fmt.Errorf("state verify-ephemerals accepts exactly one manifest path, backup directory, or backup id")
+			}
+			options.target = arg
+		}
+	}
+	if options.target == "" {
+		return verifyEphemeralsOptions{}, fmt.Errorf("state verify-ephemerals requires a manifest path, backup directory, or backup id")
+	}
+	return options, nil
+}
+
 func parseCompatibilityCommandArgs(command string, args []string, allowedFlags map[string]bool) (compatibilityCommandOptions, error) {
 	var options compatibilityCommandOptions
 	positional := 0
@@ -11967,6 +12245,12 @@ func parseCompatibilityCommandArgs(command string, args []string, allowedFlags m
 		switch arg {
 		case "--json":
 			options.jsonOutput = true
+		case "--dry-run":
+			if allowedFlags != nil && allowedFlags[arg] {
+				options.dryRun = true
+				continue
+			}
+			return compatibilityCommandOptions{}, fmt.Errorf("unknown %s option %q", command, arg)
 		case "--model", "--session-id":
 			if command != "session enrich" {
 				return compatibilityCommandOptions{}, fmt.Errorf("%s does not support %s", command, arg)
@@ -11988,6 +12272,7 @@ func parseCompatibilityCommandArgs(command string, args []string, allowedFlags m
 			if positional > 1 {
 				return compatibilityCommandOptions{}, fmt.Errorf("%s accepts at most one session file", command)
 			}
+			options.sessionRef = arg
 		}
 	}
 	return options, nil

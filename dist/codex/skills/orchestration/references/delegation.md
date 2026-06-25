@@ -145,8 +145,8 @@ Agent(agent_type="implementer", prompt="Build UI... Follow typescript-developmen
 
 1. **Be specific in prompts** - Include file paths, requirements, constraints
 2. **One concern per agent** - Don't ask a backend implementer to also write tests
-3. **Include context** - Session file, issue ID, previous outcomes
-4. **Reference session** - `Session: .agents/sessions/YYYYMMDD-HHMMSS-name.md`
+3. **Include context** - Session alias, issue ID, previous outcomes
+4. **Reference session** - `Session: <session-alias from loaf session show>`
 5. **Include skill hints** - Name the skills that should guide the agent's work
 
 ### Skill Hints
@@ -192,7 +192,7 @@ Task(
     - src/api/users.py
     - src/models/user.py
 
-    Session: .agents/sessions/20251210-143052-user-registration.md
+    Session: 20251210-143052-user-registration
     Linear: BACK-123
     """
 )

@@ -326,6 +326,32 @@ status: todo
 	assertDiagnosticDetail(t, status.Diagnostics, "local-markdown-not-imported", "tasks", 1)
 }
 
+func TestInspectReportsEphemeralMarkdownCutoverSurface(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	if _, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	status, err := Inspect(root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	assertDiagnostic(t, status.Diagnostics, "ephemeral-markdown-cutover-clear")
+	assertDiagnosticDetail(t, status.Diagnostics, "ephemeral-markdown-cutover-clear", "ephemeral_markdown_files", 0)
+	assertDiagnosticDetail(t, status.Diagnostics, "ephemeral-markdown-cutover-clear", "tasks_json_present", false)
+
+	writeAgentsFile(t, root.Path(), "sessions/20260528-session.md", "# Session\n")
+	writeAgentsFile(t, root.Path(), "TASKS.json", `{"tasks":{}}`)
+	drifted, err := Inspect(root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Inspect(drifted) error = %v", err)
+	}
+	assertDiagnosticPolicy(t, drifted.Diagnostics, "ephemeral-markdown-cutover-drift", RepairCategoryMarkdownImport, DiagnosticPolicyWarningDrift, false)
+	assertDiagnosticDetail(t, drifted.Diagnostics, "ephemeral-markdown-cutover-drift", "ephemeral_markdown_files", 1)
+	assertDiagnosticDetail(t, drifted.Diagnostics, "ephemeral-markdown-cutover-drift", "tasks_json_present", true)
+}
+
 func TestInspectReportsInvalidWhenDatabaseFileIsNotSQLite(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()

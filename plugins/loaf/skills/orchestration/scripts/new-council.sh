@@ -1,12 +1,12 @@
 #!/bin/bash
 # Generate a new council file with correct format
-# Usage: new-council.sh <topic> <session-filename> <participant1> <participant2> ...
+# Usage: new-council.sh <topic> <session-ref> <participant1> <participant2> ...
 # Example: new-council.sh database-schema-choice 20251204-143000-auth-system architect dba-specialist ops-lead security
 
 set -e
 
 TOPIC="${1:?Usage: new-council.sh <topic> <session-filename> <participant1> <participant2> ...}"
-SESSION="${2:?Session filename required}"
+SESSION="${2:?Session ref required}"
 shift 2
 PARTICIPANTS=("$@")
 
@@ -31,10 +31,9 @@ if [[ ! "$TOPIC" =~ ^[a-z0-9-]+$ ]]; then
     exit 1
 fi
 
-# Validate session file exists
-SESSION_PATH=".agents/sessions/${SESSION}.md"
-if [[ ! -f "$SESSION_PATH" ]]; then
-    echo "Error: Session file not found: $SESSION_PATH" >&2
+# Validate session exists in native SQLite state when loaf is available.
+if command -v loaf >/dev/null 2>&1 && ! loaf session show "$SESSION" >/dev/null 2>&1; then
+    echo "Error: Session not found in SQLite state: $SESSION" >&2
     exit 1
 fi
 

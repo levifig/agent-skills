@@ -9,8 +9,8 @@ template when terminating the `/loaf:refactor-deepen` grilling loop.
 
 The filename **is** the plan's identity. Use the timestamp at write-time and
 slugify the title (lowercase, hyphens, no punctuation). PLAN files follow the
-same temporal-record naming as `.agents/sessions/`, `.agents/ideas/`,
-`.agents/drafts/`, and `.agents/councils/` — write-once snapshots, not
+same temporal-record naming as durable `.agents/councils/` and SQLite session
+aliases — write-once snapshots, not
 sequentially-numbered contracts. Subsequent deepenings of the same module
 write a new file rather than updating an existing one.
 
@@ -107,8 +107,7 @@ the plan file, not at skill load time and not as part of any setup step.
 
 Rationale: a repository that never invokes `/loaf:refactor-deepen` should never
 acquire an empty `.agents/plans/` directory. Lazy creation keeps tree noise
-proportional to actual usage, matching how `.agents/specs/` and
-`.agents/sessions/` already behave.
+proportional to actual usage, matching how `.agents/specs/` behaves.
 
 ## Linear-Native Mode: Fail Fast
 

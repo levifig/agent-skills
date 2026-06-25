@@ -19,5 +19,7 @@ Immutable records of significant architectural decisions.
 | [ADR-013](ADR-013-agentic-state-storage-model.md) | Agentic State Is Project-Scoped, Not Branch-Scoped | Accepted | 2026-05-19 |
 | [ADR-014](ADR-014-go-for-stateful-runtime.md) | Go for Loaf Stateful Runtime | Accepted | 2026-05-28 |
 | [ADR-015](ADR-015-portable-launcher-during-go-port.md) | Portable Launcher During Go Port | Accepted | 2026-05-29 |
+| [ADR-016](ADR-016-artifact-storage-trichotomy.md) | Artifact Storage Trichotomy — Nouns in SQLite, Verbs in Git, Markdown is a Render | Accepted | 2026-06-24 |
+| [ADR-017](ADR-017-ephemeral-agent-markdown-cutover.md) | Ephemeral Agent Markdown Cutover | Accepted | 2026-06-25 |
 
 See [../knowledge/](../knowledge/) for domain knowledge files.

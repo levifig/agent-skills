@@ -1,7 +1,7 @@
 ---
 id: SPEC-046
 title: "docs/ Tier-2 Indexing & Cross-Project Search"
-source: "/Users/levifig/Code/levifig/projects/loaf/.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md (WS-B)"
+source: "roadmap:20260621-020342-loaf-restructuring-roadmap (WS-B)"
 source_sessions:
   - id: 20260621-001541-session
     role: shaped

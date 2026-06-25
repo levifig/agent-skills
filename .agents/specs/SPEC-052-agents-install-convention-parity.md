@@ -1,7 +1,7 @@
 ---
 id: SPEC-052
 title: "~/.agents Install Convention & Harness Install Parity"
-source: "/Users/levifig/Code/levifig/projects/loaf/.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md (WS-F)"
+source: "roadmap:20260621-020342-loaf-restructuring-roadmap (WS-F)"
 source_sessions:
   - id: 20260621-001541-session
     role: shaped

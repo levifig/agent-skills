@@ -1,7 +1,7 @@
 ---
 id: SPEC-050
 title: Skill De-bloat & Content Hygiene
-source: "/Users/levifig/Code/levifig/projects/loaf/.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md (WS-D)"
+source: "roadmap:20260621-020342-loaf-restructuring-roadmap (WS-D)"
 created: 2026-06-22T09:13:21Z
 status: complete
 branch: feat/skill-debloat-content-hygiene
@@ -65,7 +65,7 @@ Concretely, the audit verified (and this spec re-verified against source):
 ## Strategic Alignment
 
 **Vision/Architecture.** This is the low-risk content-hygiene workstream of the Loaf restructuring
-roadmap (`.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md` §2 WS-D, §5). It does not
+roadmap (`roadmap:20260621-020342-loaf-restructuring-roadmap` §2 WS-D, §5). It does not
 change the SQLite-native runtime, targets, or install convention; it tightens the shipped content
 so the structural work landing in earlier specs is not re-buried under duplicated prose.
 

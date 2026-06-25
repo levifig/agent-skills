@@ -1,6 +1,8 @@
 # Brainstorm Document Template
 
-**Location:** `.agents/drafts/{YYYYMMDD}-{HHMMSS}-brainstorm-{slug}.md`
+**Location:** Markdown-only compatibility archive. SQLite-backed projects keep
+brainstorm state in SQLite or summarize outcomes in an explicitly durable
+report.
 
 **Filename timestamp:** `date -u +"%Y%m%d-%H%M%S"`
 
