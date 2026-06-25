@@ -32,6 +32,16 @@
       {
         "loaf-managed": true,
         "matcher": "Bash",
+        "command": "loaf check --hook render-drift",
+        "timeout": 30,
+        "failClosed": true,
+        "blocking": true,
+        "if": "Bash(git push:*)",
+        "description": "Validate stamped durable renders are self-consistent before push"
+      },
+      {
+        "loaf-managed": true,
+        "matcher": "Bash",
         "command": "loaf check --hook validate-push",
         "timeout": 60,
         "failClosed": false,

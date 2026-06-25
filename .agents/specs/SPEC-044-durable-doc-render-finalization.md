@@ -6,8 +6,8 @@ source_sessions:
   - id: 20260621-001541-session
     role: shaped
 created: 2026-06-22T09:13:21Z
-status: drafting
-branch: feat/durable-doc-render-finalization
+status: complete
+branch: feat/durable-doc-render
 related_specs:
   - SPEC-043
   - SPEC-045
@@ -22,7 +22,7 @@ related_specs:
 ## Problem Statement
 
 Once SPEC-043 makes SQLite the source of truth for Loaf-managed artifact bodies, durable docs
-(specs, reports, and the spec-/report-shaped projections of ADRs) still need to exist as
+(specs and reports) still need to exist as
 **PR-reviewable markdown in git** — that is the whole point of keeping them durable rather than
 ephemeral. But "render SQLite to a committed `.md`" is harder than it sounds, and the existing
 machinery cannot do it safely:
@@ -105,9 +105,9 @@ Four pieces, layered:
    ephemeral scratch outputs (`loaf <entity> render`), never committed, never authoritative.
 
 3. **Render templates + a finalization commit.** Render templates define the markdown projection
-   for each durable kind (spec, report, ADR-projection). At ship time, a **single finalization
+   for each durable kind (spec, report). At ship time, a **single finalization
    step** renders the durable docs deterministically and writes them into their git locations
-   (`.agents/specs/…`, `docs/decisions/…`) as one reviewable commit — the same
+   (`.agents/specs/…` and report durable locations) as one reviewable commit — the same
    generated-artifact-committed-with-source pattern Loaf already uses for `dist`/`plugins`. Each
    committed render carries a **renderer-contract-version stamp** (e.g. a trailing HTML comment or
    frontmatter field) recording the renderer version that produced it.
@@ -129,17 +129,40 @@ hand-edited committed render, it **fails** with a message instructing the author
 silently re-imports a hand edit back into SQLite — that would make the render a covert write path
 and reopen the dual-source drift this whole program closes.
 
+## Resolved Decisions
+
+1. **Renderer stamp location:** use the shared-contract trailing stamp exactly:
+   `<!-- loaf:render kind=<kind> contract=durable-doc-v1 -->`. The stamp is intentionally outside
+   authored prose, stable under markdown parsing, and visible enough for review.
+2. **Durable kinds:** SPEC-044 covers SQLite-sourced `spec` and `report` renders. ADR files under
+   `docs/decisions/` stay Tier-2 git-native source and are indexed by SPEC-046; this spec does not
+   move ADRs into SQLite or render them from SQLite.
+3. **Round-trip representation:** the drift gate parses a committed render into a minimal
+   deterministic render document: kind, contract, stable metadata, and a normalized LF body block.
+   It then re-renders that parsed representation and byte-compares. The parser is for
+   self-consistency only; it never writes SQLite and never imports hand edits.
+4. **Local hook delivery:** expose the gate as `loaf check --hook render-drift --json` and wire
+   supported pre-push hook surfaces to that hook. CI invokes the same check in a standalone step.
+5. **Command surface:** add deterministic scratch render commands for durable entities:
+   `loaf spec render <ref>` and `loaf report render <ref>`, writing to the XDG cache by default.
+   Add `loaf spec finalize <ref>` and migrate/extend existing `loaf report finalize <ref>` to write
+   deterministic committed renders. Existing human-facing export/generate commands may remain, but
+   they are not the durable renderer contract.
+6. **Finalization enforcement:** explicit finalization commands are non-breaking and land in this
+   spec. Making `/ship` require finalization for every durable doc is coordination work and must not
+   become a hidden write-on-mutation side effect.
+
 ## Scope
 
 ### In Scope
-- A **new deterministic body renderer** for durable docs (specs, reports, ADR-projections),
+- A **new deterministic body renderer** for durable docs (specs, reports),
   separate from the live-summary renderers in `export.go`. No timestamps, no live counts, no
   absolute paths; locked ordering.
 - **Render templates** for each durable kind (the markdown projection).
 - An **out-of-tree render store** under `$XDG_CACHE_HOME/loaf/renders/`, namespaced by project ID +
-  branch; `loaf <entity> render` writes there.
+  branch; `loaf spec render` / `loaf report render` write there.
 - A **single finalization commit** step that renders durable docs into their git locations at ship
-  time (`.agents/specs/…`, `docs/decisions/…`).
+  time (`.agents/specs/…` and report durable locations).
 - A **renderer-contract-version stamp** on every committed render + a sweep command to re-render all
   committed durable docs when the renderer version changes.
 - A **render-drift gate** as a **new, independent CI workflow step** implemented as a
@@ -196,50 +219,51 @@ and reopen the dual-source drift this whole program closes.
 
 ## Open Questions
 
-- [ ] Renderer-contract-version stamp location: frontmatter field vs trailing HTML comment vs both
-      (must survive markdown round-trip and be invisible-ish in review).
-- [ ] Exact set of durable kinds that get committed renders: specs + reports confirmed; do ADRs
-      render from SQLite (Tier-1 projection) or stay git-native Tier-2 source (SPEC-046)? Align with
-      SPEC-043's two-tier model (ADRs are Tier-2 git-native).
-- [ ] How the round-trip stores/normalizes the body so re-render is byte-identical (normalized body
-      column vs canonicalization pass on parse).
-- [ ] Pre-push check delivery: dedicated git pre-push hook vs `loaf check --hook render-drift`
-      invoked from existing hook wiring.
-- [ ] Whether `loaf <entity> render` (scratch) and the finalization render share one code path with
-      a "commit" flag, or are distinct commands.
-- [ ] Finalization trigger: explicit `loaf <entity> finalize` / `loaf ship` step vs a `/ship` skill
-      action (coordinate with ship/release workflows).
+- [x] Renderer-contract-version stamp location: trailing HTML comment per shared contract:
+      `<!-- loaf:render kind=<kind> contract=durable-doc-v1 -->`.
+- [x] Exact set of durable kinds that get committed renders: SQLite-sourced specs and reports.
+      ADRs stay git-native Tier-2 source under `docs/decisions/` and are indexed by SPEC-046.
+- [x] How the round-trip stores/normalizes the body so re-render is byte-identical: parse into a
+      minimal deterministic render document with LF-normalized body; re-render that representation
+      only for verification, never for SQLite import.
+- [x] Pre-push check delivery: `loaf check --hook render-drift` invoked from supported pre-push hook
+      wiring and from a standalone CI step.
+- [x] Whether `loaf <entity> render` (scratch) and the finalization render share one code path with
+      a "commit" flag, or are distinct commands: one deterministic renderer library with separate
+      scratch render and finalize call sites.
+- [x] Finalization trigger: explicit `loaf spec finalize <ref>` / `loaf report finalize <ref>` in
+      this spec; mandatory `/ship` enforcement remains coordinated workflow work, not an implicit
+      mutation side effect.
 
 ## Test Conditions
 
-- [ ] Rendering the same durable artifact twice produces **byte-identical** output (no timestamps,
+- [x] Rendering the same durable artifact twice produces **byte-identical** output (no timestamps,
       counts, or absolute paths differ).
-- [ ] Rendering the same artifact under two different `$XDG_DATA_HOME` homes produces
+- [x] Rendering the same artifact under two different `$XDG_DATA_HOME` homes produces
       **byte-identical** output.
-- [ ] `loaf <entity> render <ref>` writes a markdown file under `$XDG_CACHE_HOME/loaf/renders/`
-      namespaced by project + branch, and creates **no** in-tree file.
-- [ ] The finalization step writes the deterministic render into its git location
-      (`.agents/specs/…` or `docs/…`) as a reviewable change.
-- [ ] Each committed render carries a renderer-contract-version stamp.
-- [ ] The render-drift gate **passes** when a committed render matches a fresh deterministic
+- [x] `loaf spec render <ref>` and `loaf report render <ref>` write markdown files under
+      `$XDG_CACHE_HOME/loaf/renders/` namespaced by project + branch, and create **no** in-tree file.
+- [x] The finalization step writes the deterministic render into its git location
+      (`.agents/specs/…` or report durable locations) as a reviewable change.
+- [x] Each committed render carries a renderer-contract-version stamp.
+- [x] The render-drift gate **passes** when a committed render matches a fresh deterministic
       re-render (self-consistency round-trip).
-- [ ] The render-drift gate **fails** when a committed render is hand-edited, with a message
+- [x] The render-drift gate **fails** when a committed render is hand-edited, with a message
       instructing `loaf <entity> edit` then re-render (REJECT + redirect; no silent re-import).
-- [ ] The render-drift gate is a standalone CI step that does **not** invoke or share code with the
+- [x] The render-drift gate is a standalone CI step that does **not** invoke or share code with the
       `dist`/`plugins` verifier and passes on a fresh checkout with **no SQLite DB present**.
-- [ ] The local pre-push check fails on a hand-edited committed render before push.
-- [ ] Bumping the renderer-contract-version flags affected committed renders as
+- [x] The local pre-push check fails on a hand-edited committed render before push.
+- [x] Bumping the renderer-contract-version flags affected committed renders as
       upgrade-needed (not hand-edited) and a single sweep re-renders them into one finalization
       commit.
-- [ ] The deterministic durable renderer output passes `ValidateExternalMarkdownExport` only where
+- [x] The deterministic durable renderer output passes `ValidateExternalMarkdownExport` only where
       an external audience is targeted; internal renders may retain `SPEC-*`/`TASK-*` (SPEC-038).
 
 ## Priority Order
 
-Tracks ship in order; if scope tightens, drop from the end. Tracks 1–3 are **non-breaking**
-(renderer/store/gate add capability without changing existing behavior). Track 4 (finalization
-commit behavior, i.e. writing durable renders into git as the shipping flow) is **gated** —
-coordinate with SPEC-045 cutover sequencing and ship/release workflows. Hard dependency on SPEC-043
+Tracks ship in order; if scope tightens, drop from the end. All tracks here are **non-breaking**
+when exposed as explicit commands/checks. Mandatory ship-flow enforcement is coordination work and
+must remain explicit; it must not become write-on-mutation behavior. Hard dependency on SPEC-043
 (body store) throughout.
 
 1. **Track 1 — Deterministic renderer + render store (non-breaking).** New deterministic body
@@ -253,7 +277,76 @@ coordinate with SPEC-045 cutover sequencing and ship/release workflows. Hard dep
 3. **Track 3 — Renderer-version sweep (non-breaking).** One-command re-render of all committed
    durable docs on a renderer-version bump; distinguishes upgrade from hand-edit. *Go/no-go:* a
    version bump flags + re-renders affected docs into a single finalization commit.
-4. **Track 4 — Finalization commit flow (gated).** Wire the finalization render-commit into the
-   ship flow for durable docs (specs, reports). *Go/no-go (sign-off):* durable docs land in git via
-   finalization only; coordinates with SPEC-045 cutover and ship/release workflows; no
-   write-on-mutation side effects.
+4. **Track 4 — Finalization commands.** Implement explicit finalization render writes for durable
+   docs (`loaf spec finalize`, `loaf report finalize`) and document the handoff point for `/ship`.
+   *Go/no-go:* durable docs can land in git via finalization only; no write-on-mutation side
+   effects; ship/release workflow integration is named but not silently enforced.
+
+## Task Breakdown
+
+Local task rows exist in SQLite for scheduling; markdown task files are intentionally not generated
+in SQLite mode.
+
+1. **TASK-354 — Add deterministic durable render core** (P1)
+   - Depends on: none.
+   - File hints: `internal/state`, `internal/cli`, `docs/schema`, renderer tests near existing
+     export/report/spec tests.
+   - Scope: introduce the durable render document model, `durable-doc-v1` contract constant,
+     trailing stamp renderer, LF normalization, stable field/section ordering, and parser for the
+     self-consistency round-trip. No command surface yet.
+   - Acceptance: rendering the same parsed/spec/report body twice is byte-identical; output has no
+     `time.Now()`, live counts, absolute DB/project paths, or map-order dependence; the parser
+     rejects missing/wrong stamps and never writes SQLite.
+   - Verification: targeted Go tests for deterministic render output and parser/re-render
+     byte-equality; `go test ./internal/state ./internal/cli -run 'DurableRender|RenderDocument' -count=1`.
+
+2. **TASK-355 — Add XDG scratch render commands** (P1)
+   - Depends on: TASK-354.
+   - File hints: `internal/cli/cli.go`, `internal/cli/cli_reference.go`, `internal/state`,
+     generated `content/skills/cli-reference/SKILL.md`, `dist/**/cli-reference/SKILL.md`,
+     `plugins/loaf/skills/cli-reference/SKILL.md`.
+   - Scope: add `loaf spec render <ref>` and `loaf report render <ref>` that use the deterministic
+     renderer and write scratch markdown under `$XDG_CACHE_HOME/loaf/renders/<project-id>/<branch>/`.
+   - Acceptance: scratch render writes no in-tree file, returns the cache path in human/JSON output,
+     creates branch/project-separated paths, and produces byte-identical output across two
+     `$XDG_DATA_HOME` homes.
+   - Verification: CLI tests with temp XDG cache/data homes plus `git status --short` assertions;
+     `go test ./internal/cli ./internal/state -run 'Render|Durable' -count=1`.
+
+3. **TASK-356 — Add deterministic finalization commands** (P1)
+   - Depends on: TASK-354.
+   - File hints: `internal/cli/cli.go`, report lifecycle/finalize code, spec command code,
+     CLI reference generated artifacts.
+   - Scope: add `loaf spec finalize <ref>` and migrate/extend `loaf report finalize <ref>` so they
+     write deterministic committed renders to the tracked durable locations only when explicitly
+     invoked.
+   - Acceptance: finalization writes `.agents/specs/...` / report durable locations with the
+     trailing stamp, preserves SQLite as source, does not run on ordinary body mutations, and
+     produces a reviewable git diff.
+   - Verification: CLI tests that create/edit bodies in SQLite, finalize explicitly, inspect the
+     written file bytes/stamp, and prove mutation without finalization leaves git untouched.
+
+4. **TASK-357 — Add durable render drift gate** (P1)
+   - Depends on: TASK-354, TASK-355, TASK-356.
+   - File hints: `internal/cli/check.go`, `internal/cli/check_test.go`, `config/hooks.yaml`,
+     generated hook outputs under `dist/` and `plugins/`, `.github/workflows/*` if a CI step exists.
+   - Scope: expose `loaf check --hook render-drift --json`, wire supported pre-push hooks, and add
+     a standalone CI step that self-checks committed renders without opening the SQLite DB.
+   - Acceptance: the gate passes matching stamped renders on a fresh checkout with no DB, fails
+     hand-edited renders with guidance to run `loaf <entity> edit` then render/finalize, and never
+     invokes or shares the dist/plugins verifier.
+   - Verification: hook tests with fixture renders, no-DB environment test, generated hook parity
+     tests, and `npm run build` to refresh hook artifacts.
+
+5. **TASK-358 — Add renderer contract version sweep** (P2)
+   - Depends on: TASK-357.
+   - File hints: durable renderer package, finalize/render command code, CLI reference generated
+     artifacts.
+   - Scope: add a one-command sweep for renderer-contract-version bumps that identifies stale
+     committed durable renders and re-renders affected specs/reports into one explicit finalization
+     change.
+   - Acceptance: a simulated `durable-doc-v2` bump reports upgrade-needed separately from
+     hand-edited drift, rewrites all affected committed durable docs deterministically, and leaves
+     clean matching renders after the gate.
+   - Verification: version-bump fixture tests, sweep command CLI test, render-drift check after the
+     sweep, plus standard `go test`, `npm run typecheck`, and `npm run build` gates.

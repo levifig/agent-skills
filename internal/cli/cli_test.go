@@ -148,6 +148,134 @@ status: complete
 	}
 }
 
+func TestRunnerSpecRenderWritesScratchFileToXDGCache(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	cacheHome := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cacheHome)
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-render.md", `---
+id: SPEC-001
+title: Render Spec
+status: implementing
+---
+# Render Spec
+
+Spec body.
+`)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
+		t.Fatalf("state migrate markdown --apply error = %v", err)
+	}
+
+	var jsonOut bytes.Buffer
+	err := Runner{
+		Stdout:     &jsonOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"spec", "render", "SPEC-001", "--json"})
+	if err != nil {
+		t.Fatalf("spec render --json error = %v", err)
+	}
+	var result state.DurableRenderResult
+	if err := json.Unmarshal(jsonOut.Bytes(), &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", jsonOut.String(), err)
+	}
+	if result.Kind != "spec" || result.Ref != "SPEC-001" || result.Contract != state.DurableRenderContract {
+		t.Fatalf("result = %#v, want spec durable render metadata", result)
+	}
+	if !strings.HasPrefix(result.Path, filepath.Join(cacheHome, "loaf", "renders")+string(filepath.Separator)) {
+		t.Fatalf("Path = %q, want XDG cache under %q", result.Path, cacheHome)
+	}
+	if strings.Contains(result.Path, workingDir) {
+		t.Fatalf("Path = %q, want out-of-tree render", result.Path)
+	}
+	content, err := os.ReadFile(result.Path)
+	if err != nil {
+		t.Fatalf("read render path error = %v", err)
+	}
+	text := string(content)
+	if !strings.Contains(text, "# Render Spec") || !strings.Contains(text, "<!-- loaf:render kind=spec contract=durable-doc-v1 -->") {
+		t.Fatalf("render content = %q, want body and stamp", text)
+	}
+}
+
+func TestRunnerSpecFinalizeWritesTrackedRender(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-finalize.md", `---
+id: SPEC-001
+title: Finalize Spec
+status: implementing
+---
+# Finalize Spec
+
+Spec body.
+`)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
+		t.Fatalf("state migrate markdown --apply error = %v", err)
+	}
+
+	var jsonOut bytes.Buffer
+	err := Runner{
+		Stdout:     &jsonOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"spec", "finalize", "SPEC-001", "--json"})
+	if err != nil {
+		t.Fatalf("spec finalize --json error = %v", err)
+	}
+	var result state.DurableFinalizeResult
+	if err := json.Unmarshal(jsonOut.Bytes(), &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", jsonOut.String(), err)
+	}
+	if result.Kind != "spec" || result.Ref != "SPEC-001" || result.RelativePath != ".agents/specs/SPEC-001-finalize.md" {
+		t.Fatalf("result = %#v, want tracked spec finalize path", result)
+	}
+	content, err := os.ReadFile(filepath.Join(workingDir, filepath.FromSlash(result.RelativePath)))
+	if err != nil {
+		t.Fatalf("read finalized spec error = %v", err)
+	}
+	text := string(content)
+	if !strings.Contains(text, "# Finalize Spec") || !strings.Contains(text, "<!-- loaf:render kind=spec contract=durable-doc-v1 -->") {
+		t.Fatalf("finalized spec = %q, want body and render stamp", text)
+	}
+}
+
+func TestRunnerRenderSweepScansCommittedRendersWithoutDatabase(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-sweep.md", `---
+id: SPEC-001
+status: implementing
+title: Sweep Spec
+---
+
+# Sweep Spec
+
+Body.
+
+<!-- loaf:render kind=spec contract=durable-doc-v1 -->
+`)
+
+	var jsonOut bytes.Buffer
+	err := Runner{
+		Stdout:     &jsonOut,
+		WorkingDir: workingDir,
+		StateHome:  t.TempDir(),
+	}.Run([]string{"render", "sweep", "--json"})
+	if err != nil {
+		t.Fatalf("render sweep --json error = %v", err)
+	}
+	var result state.DurableRenderSweepResult
+	if err := json.Unmarshal(jsonOut.Bytes(), &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", jsonOut.String(), err)
+	}
+	if result.Contract != state.DurableRenderContract || result.Scanned != 1 || result.Current != 1 || result.UpgradeNeeded != 0 || result.Drift != 0 || result.Invalid != 0 {
+		t.Fatalf("result = %#v, want one current durable render", result)
+	}
+	if len(result.Files) != 1 || result.Files[0].RelativePath != ".agents/specs/SPEC-001-sweep.md" || result.Files[0].Status != "current" {
+		t.Fatalf("files = %#v, want current committed spec render", result.Files)
+	}
+}
+
 func TestRunnerHousekeepingUsesMarkdownArtifactsWhenMarkdownOnly(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -5618,6 +5746,16 @@ func TestRunnerReportLifecycleUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("finalized = %#v, want final transition", finalized)
 	}
 	assertCLIReportContext(t, finalized.ContractVersion, finalized.DatabaseScope, finalized.DatabasePath, finalized.ProjectID, finalized.ProjectName, finalized.ProjectCurrentPath, workingDir)
+	if finalized.Render == nil || finalized.Render.RelativePath != ".agents/reports/report-release-readiness.md" {
+		t.Fatalf("finalized render = %#v, want tracked report render", finalized.Render)
+	}
+	reportRender, err := os.ReadFile(filepath.Join(workingDir, filepath.FromSlash(finalized.Render.RelativePath)))
+	if err != nil {
+		t.Fatalf("ReadFile(finalized report render) error = %v", err)
+	}
+	if !strings.Contains(string(reportRender), "<!-- loaf:render kind=report contract=durable-doc-v1 -->") {
+		t.Fatalf("finalized report render = %q, want durable render stamp", string(reportRender))
+	}
 
 	var archiveOut bytes.Buffer
 	if err := (Runner{Stdout: &archiveOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "archive", "report-release-readiness", "--json"}); err != nil {
@@ -5640,8 +5778,9 @@ func TestRunnerReportLifecycleUsesSQLiteStateWhenInitialized(t *testing.T) {
 	assertCLIReportContext(t, archivedReports.ContractVersion, archivedReports.DatabaseScope, archivedReports.DatabasePath, archivedReports.ProjectID, archivedReports.ProjectName, archivedReports.ProjectCurrentPath, workingDir)
 
 	afterFiles := repoFileList(t, workingDir)
-	if strings.Join(afterFiles, "\n") != strings.Join(beforeFiles, "\n") {
-		t.Fatalf("report lifecycle created repository files:\nbefore=%v\nafter=%v", beforeFiles, afterFiles)
+	wantFiles := append(append([]string{}, beforeFiles...), ".agents/reports/report-release-readiness.md")
+	if strings.Join(afterFiles, "\n") != strings.Join(wantFiles, "\n") {
+		t.Fatalf("report lifecycle repository files:\nwant=%v\nafter=%v", wantFiles, afterFiles)
 	}
 }
 

@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/levifig/loaf/internal/state"
 )
 
 type checkOptions struct {
@@ -79,6 +81,7 @@ var nativeCheckSecretPatterns = []secretPattern{
 var validCheckHooks = map[string]bool{
 	"artifact-body-write": true,
 	"check-secrets":       true,
+	"render-drift":        true,
 	"validate-push":       true,
 	"workflow-pre-pr":     true,
 	"validate-commit":     true,
@@ -107,6 +110,8 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 		result = runNativeArtifactBodyWriteGuard(context)
 	case "check-secrets":
 		result = runNativeCheckSecrets(context)
+	case "render-drift":
+		result = runNativeRenderDrift(runtimeRoot)
 	case "validate-commit":
 		result = runNativeValidateCommit(context, runtimeRoot)
 	case "security-audit":
@@ -132,7 +137,7 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 }
 
 func writeCheckHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf check --hook <id> [--json]", "Run one registered hook check.", "--hook      Hook id: artifact-body-write, check-secrets, validate-commit, security-audit, workflow-pre-pr, validate-push", "--json      Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON")
+	writeUsageHelp(out, "loaf check --hook <id> [--json]", "Run one registered hook check.", "--hook      Hook id: artifact-body-write, check-secrets, render-drift, validate-commit, security-audit, workflow-pre-pr, validate-push", "--json      Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON")
 }
 
 func parseCheckArgs(args []string) (checkOptions, error) {
@@ -236,6 +241,71 @@ func runNativeArtifactBodyWriteGuard(context checkHookContext) checkResult {
 	return result
 }
 
+func runNativeRenderDrift(cwd string) checkResult {
+	result := checkResult{Passed: true, Warnings: []string{}, Errors: []string{}, Findings: []string{}}
+	root := firstNonEmpty(strings.TrimSpace(cwd), ".")
+	for _, dir := range []string{filepath.Join(root, ".agents", "specs"), filepath.Join(root, ".agents", "reports")} {
+		entries, err := os.ReadDir(dir)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			result.Passed = false
+			result.Blocked = true
+			result.Errors = append(result.Errors, fmt.Sprintf("Read render directory %s: %v", dir, err))
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+				continue
+			}
+			path := filepath.Join(dir, entry.Name())
+			content, err := os.ReadFile(path)
+			if err != nil {
+				result.Passed = false
+				result.Blocked = true
+				result.Errors = append(result.Errors, fmt.Sprintf("Read durable render %s: %v", renderDriftRelativePath(root, path), err))
+				continue
+			}
+			if !hasFinalDurableRenderStamp(string(content)) {
+				continue
+			}
+			rerendered, err := state.ReRenderDurableRender(string(content))
+			if err != nil {
+				result.Passed = false
+				result.Blocked = true
+				result.Errors = append(result.Errors, fmt.Sprintf("Durable render %s is invalid: %v", renderDriftRelativePath(root, path), err))
+				result.Findings = append(result.Findings, "Edit via `loaf <entity> edit`, then run `loaf <entity> finalize`.")
+				continue
+			}
+			if rerendered != string(content) {
+				result.Passed = false
+				result.Blocked = true
+				result.Errors = append(result.Errors, fmt.Sprintf("Durable render drift detected in %s", renderDriftRelativePath(root, path)))
+				result.Findings = append(result.Findings, "Committed render is not byte-identical to its deterministic self-render.")
+				result.Findings = append(result.Findings, "Edit via `loaf <entity> edit`, then run `loaf <entity> finalize`.")
+			}
+		}
+	}
+	return result
+}
+
+func hasFinalDurableRenderStamp(content string) bool {
+	lines := strings.Split(strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(content, "\r\n", "\n"), "\r", "\n")), "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(lines[len(lines)-1]), "<!-- loaf:render ")
+}
+
+func renderDriftRelativePath(root string, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+	return filepath.ToSlash(rel)
+}
+
 func artifactBodyWriteTargets(context checkHookContext) []artifactBodyWriteTarget {
 	tool := checkContextToolName(context)
 	if tool == "Bash" {
@@ -333,6 +403,7 @@ func artifactBodyWriteAllowed(path string, content string) bool {
 func artifactBodyWriteIsGeneratedRender(content string) bool {
 	lower := strings.ToLower(content)
 	for _, marker := range []string{
+		"<!-- loaf:render ",
 		"<!-- loaf:rendered",
 		"loaf_renderer_version:",
 		"renderer_contract_version:",

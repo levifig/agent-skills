@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/levifig/loaf/internal/state"
 )
 
 func TestRunnerCheckHelp(t *testing.T) {
@@ -197,6 +199,80 @@ func TestRunnerCheckValidHooksAreHandledNatively(t *testing.T) {
 				t.Fatalf("check --hook %s error = %v", hook, err)
 			}
 		})
+	}
+}
+
+func TestRunnerCheckRenderDriftPassesStampedRenderWithoutDatabase(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	rendered, err := state.RenderDurableDocument(state.DurableRenderDocument{
+		Kind: "spec",
+		Fields: []state.DurableRenderField{
+			{Key: "id", Value: "SPEC-001"},
+			{Key: "status", Value: "implementing"},
+			{Key: "title", Value: "Render Drift"},
+		},
+		Body: "# Render Drift\n\nCanonical body.",
+	})
+	if err != nil {
+		t.Fatalf("RenderDurableDocument() error = %v", err)
+	}
+	writeCheckFile(t, repo, ".agents/specs/SPEC-001-render.md", rendered)
+
+	var stdout bytes.Buffer
+	err = Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+	}.Run([]string{"check", "--hook", "render-drift", "--json"})
+	if err != nil {
+		t.Fatalf("render-drift error = %v", err)
+	}
+	var output checkJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	if !output.Passed || output.Blocked {
+		t.Fatalf("render-drift output = %#v, want pass", output)
+	}
+}
+
+func TestRunnerCheckRenderDriftBlocksHandEditedRender(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeCheckFile(t, repo, ".agents/specs/SPEC-001-render.md", "---\ntitle: Render Drift\nid: SPEC-001\n---\n\n# Render Drift\n\n<!-- loaf:render kind=spec contract=durable-doc-v1 -->\n")
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+	}.Run([]string{"check", "--hook", "render-drift", "--json"})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("render-drift error = %v, want exit code 2", err)
+	}
+	var output checkJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	joined := strings.Join(append(output.Errors, output.Findings...), "\n")
+	for _, want := range []string{
+		".agents/specs/SPEC-001-render.md",
+		"not byte-identical",
+		"loaf <entity> edit",
+		"loaf <entity> finalize",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("render-drift output = %#v, want %q", output, want)
+		}
+	}
+}
+
+func writeCheckFile(t *testing.T, root string, rel string, content string) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
 	}
 }
 

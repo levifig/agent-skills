@@ -32,6 +32,14 @@
           },
           {
             "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook render-drift",
+            "if": "Bash(git push:*)",
+            "timeout": 30,
+            "description": "Validate stamped durable renders are self-consistent before push",
+            "failClosed": true
+          },
+          {
+            "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook validate-push",
             "if": "Bash(git push:*)",
             "timeout": 60,

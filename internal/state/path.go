@@ -18,6 +18,7 @@ const databaseFileName = "loaf.sqlite"
 type PathResolver struct {
 	DataHome  string
 	StateHome string
+	CacheHome string
 }
 
 // DatabasePath returns the intended global SQLite database path.
@@ -44,6 +45,19 @@ func (r PathResolver) ProjectDatabasePath(root project.Root) (string, error) {
 	}
 	projectID := ProjectID(root)
 	return filepath.Join(dataHome, "loaf", "projects", projectID, databaseFileName), nil
+}
+
+// RenderCachePath returns a path under the XDG cache home for disposable render output.
+func (r PathResolver) RenderCachePath(root project.Root, parts ...string) (string, error) {
+	cacheHome, err := r.cacheHome()
+	if err != nil {
+		return "", err
+	}
+	if isWithinRoot(cacheHome, root.Path()) {
+		return "", fmt.Errorf("cache home must be outside project root")
+	}
+	segments := append([]string{cacheHome, "loaf", "renders"}, parts...)
+	return filepath.Join(segments...), nil
 }
 
 // LegacyDatabasePath returns the old XDG_STATE_HOME SQLite location used before
@@ -102,6 +116,28 @@ func (r PathResolver) legacyStateHome() (string, error) {
 		return "", fmt.Errorf("resolve state home: %w", err)
 	}
 	return filepath.Join(home, ".local", "state"), nil
+}
+
+func (r PathResolver) cacheHome() (string, error) {
+	if r.CacheHome != "" {
+		return cleanAbsoluteHome("cache home", r.CacheHome)
+	}
+	if value := os.Getenv("XDG_CACHE_HOME"); value != "" {
+		if cacheHome, ok := cleanAbsoluteXDGHome(value); ok {
+			return cacheHome, nil
+		}
+	}
+	if runtime.GOOS == "windows" {
+		if value := os.Getenv("LOCALAPPDATA"); value != "" {
+			return filepath.Join(value, "loaf", "cache"), nil
+		}
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve cache home: %w", err)
+	}
+	return filepath.Join(home, ".cache"), nil
 }
 
 func cleanAbsoluteHome(name string, value string) (string, error) {

@@ -47,6 +47,9 @@ jobs:
       - name: Verify Go tests
         run: go test ./...
 
+      - name: Verify durable render drift
+        run: bin/loaf check --hook render-drift --json
+
       - name: Verify build artifacts are in sync
         run: |
           npm run verify:go-artifacts

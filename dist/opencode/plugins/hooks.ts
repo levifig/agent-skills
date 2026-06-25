@@ -246,6 +246,13 @@ const preToolHooks: Record<string, HookEntry[]> = {
       "failClosed": true
     },
     {
+      "id": "render-drift",
+      "command": "loaf check --hook render-drift",
+      "timeout": 30000,
+      "failClosed": true,
+      "if": "Bash(git push:*)"
+    },
+    {
       "id": "validate-push",
       "command": "loaf check --hook validate-push",
       "timeout": 60000,

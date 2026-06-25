@@ -95,6 +95,16 @@ func cliReferenceCommands() []cliReferenceCommand {
 			},
 		},
 		{
+			Name:        "render",
+			Description: "Maintain committed durable Markdown renders",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "sweep", Description: "Upgrade committed durable renders to the current renderer contract", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Report upgrade-needed files without rewriting them"},
+					{Flags: "--json", Description: "Output scanned files, upgrade counts, drift counts, and target contract as JSON"},
+				}},
+			},
+		},
+		{
 			Name:        "state",
 			Description: "Manage native SQLite state",
 			Subcommands: []cliReferenceSubcommand{
@@ -241,6 +251,8 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "list", Description: "Show specs with status and task counts", Options: []cliReferenceOption{{Flags: "--json", Description: "Output specs, diagnostics, task counts, global database scope, and project identity as JSON"}}},
 				{Name: "show", Description: "Show spec details", Options: []cliReferenceOption{{Flags: "--json", Description: "Output spec details, task counts, relationships, global database scope, and project identity as JSON"}}},
+				{Name: "render", Description: "Render deterministic spec Markdown to the XDG cache", Options: []cliReferenceOption{{Flags: "--json", Description: "Output render path, content hash, contract, global database scope, and project identity as JSON"}}},
+				{Name: "finalize", Description: "Write deterministic spec Markdown to its tracked git location", Options: []cliReferenceOption{{Flags: "--json", Description: "Output render path, content hash, contract, global database scope, and project identity as JSON"}}},
 				{Name: "archive", Description: "Archive a completed spec", Options: []cliReferenceOption{{Flags: "--json", Description: "Output archive result, archived specs, global database scope, and project identity as JSON"}}},
 			},
 		},
@@ -254,6 +266,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--json", Description: "Output reports, diagnostics, global database scope, and project identity as JSON"},
 				}},
 				{Name: "show", Description: "Show one report", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report details, relationships, global database scope, and project identity as JSON"}}},
+				{Name: "render", Description: "Render deterministic report Markdown to the XDG cache", Options: []cliReferenceOption{{Flags: "--json", Description: "Output render path, content hash, contract, global database scope, and project identity as JSON"}}},
 				{Name: "generate", Description: "Generate a report from state", Options: []cliReferenceOption{
 					{Flags: "--format <format>", Description: "Output format: markdown"},
 					{Flags: "--json", Description: "Output contract, command, project context, and markdown content as JSON"},
@@ -266,7 +279,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--message <text>", Description: "Use inline Markdown body text"},
 					{Flags: "--json", Description: "Output created report, event, global database scope, and project identity as JSON"},
 				}},
-				{Name: "finalize", Description: "Mark a report draft as final", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
+				{Name: "finalize", Description: "Mark a report draft as final and write its deterministic tracked render", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, render path, event, global database scope, and project identity as JSON"}}},
 				{Name: "archive", Description: "Archive a finalized report", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
 			},
 		},
@@ -757,6 +770,12 @@ func cliReferenceCommandUsageExamples(commandName string) []string {
 			"loaf migrate markdown --dry-run",
 			"loaf migrate markdown --apply",
 			"loaf migrate storage-home --dry-run",
+		}
+	case "render":
+		return []string{
+			"loaf render sweep --dry-run",
+			"loaf render sweep --json",
+			"loaf check --hook render-drift --json",
 		}
 	case "report":
 		return []string{

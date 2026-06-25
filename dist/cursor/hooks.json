@@ -25,6 +25,14 @@
       },
       {
         "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook render-drift",
+        "if": "Bash(git push:*)"
+      },
+      {
+        "loaf-managed": true,
         "timeout": 60,
         "matcher": "Bash",
         "command": "loaf check --hook validate-push",

@@ -6,8 +6,8 @@
 #   post-tool: Runs AFTER tool execution (informational)
 #   session: Lifecycle hooks (SessionStart, SessionEnd, PreCompact)
 #
-# Enforcement hooks (6) are implemented via `loaf check --hook <id>`:
-#   - artifact-body-write, check-secrets, validate-push, validate-commit, workflow-pre-pr, security-audit
+# Enforcement hooks (7) are implemented via `loaf check --hook <id>`:
+#   - artifact-body-write, check-secrets, render-drift, validate-push, validate-commit, workflow-pre-pr, security-audit
 #
 # Migrated to skill instructions (removed from hooks.yaml):
 #   - Language hooks: python-*, typescript-*, rails-*
@@ -41,6 +41,15 @@ hooks:
       timeout: 600000
       failClosed: true
       description: Run security audit on bash commands
+
+    - id: render-drift
+      skill: orchestration
+      matcher: "Bash"
+      if: "Bash(git push:*)"
+      blocking: true
+      timeout: 30000
+      failClosed: true
+      description: Validate stamped durable renders are self-consistent before push
 
     # Git Workflow - Push and PR guards (ADVISORY)
     # These are safety nets, not gates — ship/release skills orchestrate the same checks.

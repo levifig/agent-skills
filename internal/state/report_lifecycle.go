@@ -39,16 +39,17 @@ type ReportCreateResult struct {
 
 // ReportStatusResult describes a SQLite-backed report status transition.
 type ReportStatusResult struct {
-	ContractVersion    int         `json:"contract_version,omitempty"`
-	DatabaseScope      string      `json:"database_scope,omitempty"`
-	DatabasePath       string      `json:"database_path,omitempty"`
-	ProjectID          string      `json:"project_id,omitempty"`
-	ProjectName        string      `json:"project_name,omitempty"`
-	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
-	Report             TraceEntity `json:"report"`
-	Previous           string      `json:"previous"`
-	Status             string      `json:"status"`
-	EventID            string      `json:"event_id"`
+	ContractVersion    int                    `json:"contract_version,omitempty"`
+	DatabaseScope      string                 `json:"database_scope,omitempty"`
+	DatabasePath       string                 `json:"database_path,omitempty"`
+	ProjectID          string                 `json:"project_id,omitempty"`
+	ProjectName        string                 `json:"project_name,omitempty"`
+	ProjectCurrentPath string                 `json:"project_current_path,omitempty"`
+	Report             TraceEntity            `json:"report"`
+	Previous           string                 `json:"previous"`
+	Status             string                 `json:"status"`
+	EventID            string                 `json:"event_id"`
+	Render             *DurableFinalizeResult `json:"render,omitempty"`
 }
 
 // CreateReport creates a draft report in initialized SQLite state.
