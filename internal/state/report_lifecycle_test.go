@@ -70,6 +70,36 @@ func TestReportLifecycleCreatesFinalizesAndArchivesReport(t *testing.T) {
 	}
 }
 
+func TestReportShowReadsSQLiteBody(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	if _, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	created, err := CreateReport(context.Background(), root, PathResolver{StateHome: stateHome}, ReportCreateOptions{
+		Slug:    "body-roundtrip",
+		Kind:    "audit",
+		Source:  "manual",
+		Body:    "# Body Roundtrip\n\nSQLite report body.",
+		SetBody: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateReport() error = %v", err)
+	}
+	show, err := ShowReport(context.Background(), root, PathResolver{StateHome: stateHome}, created.Report.Alias)
+	if err != nil {
+		t.Fatalf("ShowReport() error = %v", err)
+	}
+	if show.Report.Body != "# Body Roundtrip\n\nSQLite report body." {
+		t.Fatalf("Body = %q, want SQLite report body", show.Report.Body)
+	}
+	if show.Report.Kind != "audit" || show.Report.Status != "draft" || show.Report.Alias != "report-body-roundtrip" {
+		t.Fatalf("Report = %#v, want created report metadata", show.Report)
+	}
+	assertReportProjectContext(t, root, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath)
+}
+
 func TestReportLifecycleRejectsInvalidTransitionsWithoutMutation(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()

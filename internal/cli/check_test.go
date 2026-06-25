@@ -200,6 +200,128 @@ func TestRunnerCheckValidHooksAreHandledNatively(t *testing.T) {
 	}
 }
 
+func TestRunnerCheckArtifactBodyWriteBlocksDirectWriteWithJSON(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	var stdout bytes.Buffer
+
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+		Stdin: bytes.NewBufferString(`{
+			"tool": {"name": "Write"},
+			"tool_input": {
+				"file_path": ` + strconv.Quote(filepath.Join(repo, ".agents", "reports", "20260624-audit.md")) + `,
+				"content": "# Audit\n\nDirect markdown body."
+			}
+		}`),
+	}.Run([]string{"check", "--hook", "artifact-body-write", "--json"})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("artifact-body-write error = %v, want exit code 2", err)
+	}
+	var output checkJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	joined := strings.Join(append(output.Errors, output.Findings...), "\n")
+	for _, want := range []string{
+		".agents/reports/20260624-audit.md",
+		"loaf report create <slug> --body-file <path>",
+		"body-capable report artifact path",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("artifact-body-write output = %#v, want %q", output, want)
+		}
+	}
+}
+
+func TestRunnerCheckArtifactBodyWriteBlocksBashRedirection(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	var stderr bytes.Buffer
+
+	command := "cat <<'EOF' > .agents/plans/PLAN-001-cutover.md\n# Plan\n\nDirect body.\nEOF"
+	err := Runner{
+		Stderr:     &stderr,
+		WorkingDir: repo,
+		Stdin:      bytes.NewBufferString(checkBashContext(command)),
+	}.Run([]string{"check", "--hook", "artifact-body-write"})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("artifact-body-write bash error = %v, want exit code 2", err)
+	}
+	for _, want := range []string{".agents/plans/PLAN-001-cutover.md", "loaf plan new --title <title> --body-file <path>"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+}
+
+func TestRunnerCheckArtifactBodyWriteAllowsExplicitExceptions(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	cases := []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "task-metadata-snippet",
+			payload: `{
+				"tool": {"name": "Edit"},
+				"tool_input": {
+					"file_path": ".agents/tasks/TASK-001-example.md",
+					"new_string": "status: done\nupdated: '2026-06-24T12:00:00Z'"
+				}
+			}`,
+		},
+		{
+			name: "render-stamped-durable-doc",
+			payload: `{
+				"tool": {"name": "Write"},
+				"tool_input": {
+					"file_path": ".agents/specs/SPEC-001-example.md",
+					"content": "---\nid: SPEC-001\nrenderer_contract_version: 1\n---\n\n# SPEC-001\n\nRendered body."
+				}
+			}`,
+		},
+		{
+			name: "non-artifact-doc",
+			payload: `{
+				"tool": {"name": "Write"},
+				"tool_input": {
+					"file_path": "docs/decisions/ADR-999-example.md",
+					"content": "# ADR\n\nGit-native doc body."
+				}
+			}`,
+		},
+		{
+			name: "template-doc",
+			payload: `{
+				"tool": {"name": "Write"},
+				"tool_input": {
+					"file_path": "content/templates/session.md",
+					"content": "# Template\n\nTemplate body."
+				}
+			}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: repo,
+				Stdin:      bytes.NewBufferString(tc.payload),
+			}.Run([]string{"check", "--hook", "artifact-body-write"})
+			if err != nil {
+				t.Fatalf("artifact-body-write %s error = %v", tc.name, err)
+			}
+			if !strings.Contains(stdout.String(), "passed") {
+				t.Fatalf("stdout = %q, want passed", stdout.String())
+			}
+		})
+	}
+}
+
 func TestRunnerCheckValidateCommitPassesNatively(t *testing.T) {
 	repo := initCLIGitRepo(t)
 	var stdout bytes.Buffer

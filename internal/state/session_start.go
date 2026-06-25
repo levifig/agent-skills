@@ -285,6 +285,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	if err != nil {
 		return "", fmt.Errorf("insert session journal entry: %w", err)
 	}
+	if err := insertJournalSearchTx(ctx, tx, projectID, id, sessionID, entryType, scope, message); err != nil {
+		return "", err
+	}
 	return id, nil
 }
 

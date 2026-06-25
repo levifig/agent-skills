@@ -6,7 +6,7 @@ source_sessions:
   - id: 20260621-001541-session
     role: shaped
 created: 2026-06-22T08:56:30Z
-status: drafting
+status: complete
 branch: feat/sqlite-native-content
 ---
 
@@ -46,9 +46,9 @@ Tier-2 indexing is SPEC-046; status-vocabulary unification is SPEC-049.
 
 ## Solution Direction
 
-- **Body store.** Generalize `session_state_snapshots.content` into a body store for Loaf-managed
-  entities. `sources` becomes **provenance-only**; `body_source_id` FK kept **nullable**; add a
-  body column/table (decide in Track 0). **Precedence (dual-source, non-breaking):** if a SQLite
+- **Body store.** Generalize `session_state_snapshots.content` into the shared-contract
+  `artifact_bodies` table for Loaf-managed entities. `sources` becomes **provenance-only**;
+  `body_source_id` FK stays **nullable**. **Precedence (dual-source, non-breaking):** if a SQLite
   body exists for an entity, it wins; otherwise fall back to the `.md` via `body_source_id`. So
   existing entities keep working unchanged, new ones can be SQLite-bodied.
 - **Un-stub `plan`/`handoff`/`council` storage** (`markdown_migration.go:361`) so the live
@@ -72,11 +72,21 @@ Tier-2 indexing is SPEC-046; status-vocabulary unification is SPEC-049.
 1. **Body-edit input channel:** support all three — `--body-file`/`--body -` (stdin), `$EDITOR`
    round-trip, `--message`. Without an input channel, `new`/`edit` are untestable for multi-line
    bodies and agents route around the CLI.
-2. **`sources` fate:** provenance-only; keep `body_source_id` nullable; bodies live in a new column
-   or `bodies` table (Track 0 picks the shape; both keep the FK for provenance).
-3. **FTS maintenance:** external-content FTS5 with **Go-side upserts in the same code path as body
+2. **Body store shape:** use the shared-contract `artifact_bodies` table:
+   `id`, `project_id`, `entity_kind`, `entity_id`, `body_kind`, `content`, `content_hash`,
+   `source_id`, `created_at`, `updated_at`, with
+   `UNIQUE(project_id, entity_kind, entity_id, body_kind)`. Do not add per-entity body columns.
+3. **`sources` fate:** provenance-only; keep `body_source_id` nullable; `sources` stores path/hash/
+   line/import metadata only and never stores body content.
+4. **FTS maintenance:** external-content FTS5 with **Go-side upserts in the same code path as body
    writes** (single source of truth, no triggers to drift).
-4. **Status vocabulary:** **unchanged** here. SPEC-043 only preserves existing per-entity
+5. **Search defaults:** `loaf search` queries the current project by default; `--all-projects` is
+   explicit. Tier-1 results are entity-addressed, JSON includes a `tier` discriminator, and snippets
+   must redact or omit planted secret-like content.
+6. **Body CLI precedence:** explicit body flags win in this order: `--body-file <path>`, `--body -`,
+   `--message <text>`, then `$EDITOR` when no non-interactive body input is supplied. Non-UTF8 input
+   is rejected before it reaches SQLite or FTS.
+7. **Status vocabulary:** **unchanged** here. SPEC-043 only preserves existing per-entity
    validation; unification is SPEC-049.
 
 ## Scope
@@ -120,47 +130,59 @@ Tier-2 indexing is SPEC-046; status-vocabulary unification is SPEC-049.
 | Unbounded body TEXT in global DB (pasted logs) | Med | Med | Soft size limit + on-disk-with-`sources`-pointer escape hatch; reject non-UTF8 on ingest |
 
 ## Open Questions
-- [ ] Body column vs `bodies` table (Track 0).
-- [ ] FTS field set + ranking (bm25) + snippet/redaction; `loaf search` default scope
-      (current-project vs `--all-projects`).
-- [ ] `--body` stdin vs `--body-file` ergonomics for agents (both supported; confirm default).
+- [x] Body column vs `bodies` table: use `artifact_bodies` per shared-contract lock.
+- [x] FTS field set + ranking + snippet/redaction: index entity kind/id/body kind/content plus
+      journal entry type/scope/message; start with SQLite `bm25` ordering and snippets that omit or
+      redact secret-like content; default scope is current project.
+- [x] `--body` stdin vs `--body-file` ergonomics: support both; `--body-file` has highest
+      precedence for file-backed multi-line input, `--body -` is the agent-primary stdin path.
 
 ## Test Conditions
-- [ ] A spec/report created via `loaf <entity> new` stores its body in SQLite; `loaf <entity> show`
+- [x] A spec/report created via `loaf <entity> new` stores its body in SQLite; `loaf <entity> show`
       displays it with **no in-tree file present**; a multi-paragraph body round-trips byte-exact.
-- [ ] Existing entities with only a `.md` still `show` correctly (dual-source fallback) — **nothing
+- [x] Existing entities with only a `.md` still `show` correctly (dual-source fallback) — **nothing
       regresses**; `git status` shows no deletions.
-- [ ] `loaf search "<term>"` returns hits across ideas/sparks/sessions/specs/reports + journals,
+- [x] `loaf search "<term>"` returns hits across ideas/sparks/sessions/specs/reports + journals,
       including a report body `loaf report list` cannot surface today.
-- [ ] Edit-then-search: an old term stops matching and a new term matches after `loaf <entity> edit`.
-- [ ] `report show` and `brainstorm capture` exist; `plan`/`handoff`/`council` have SQLite storage
+- [x] Edit-then-search: an old term stops matching and a new term matches after `loaf <entity> edit`.
+- [x] `report show` and `brainstorm capture` exist; `plan`/`handoff`/`council` have SQLite storage
       and appear correctly in `loaf state doctor`.
-- [ ] `CGO_ENABLED=0 go build` + `govulncheck` pass with FTS5 enabled.
-- [ ] A planted secret in a body is excluded from / redacted in FTS results (privacy test).
-- [ ] Concurrency stress: parallel `loaf session log` + a long write transaction do not drop
+- [x] `CGO_ENABLED=0 go build` + `govulncheck` pass with FTS5 enabled.
+- [x] A planted secret in a body is excluded from / redacted in FTS results (privacy test).
+- [x] Concurrency stress: parallel `loaf session log` + a long write transaction do not drop
       journal writes.
 
 ## Priority Order
 
 Tracks ship in order; non-breaking throughout. Drop from the end if scope tightens.
 
-1. **Track 0 — Body-store schema + FTS5.** Migration: body store (generalize
-   `session_state_snapshots.content`), `sources`→provenance (FK nullable), `plan`/`handoff`/
-   `council` tables, FTS5 virtual table, `status.go` allowlist/CTE updates. *Go/no-go:*
-   `CREATE VIRTUAL TABLE … USING fts5` runs under `CGO_ENABLED=0`; `govulncheck` green; migrates
-   cleanly on a copy of real data. *(non-breaking)*
-2. **Track 1 — Bodies + uniform verbs + edit UX + Write-hook.** Dual-source body read/write;
-   `new/edit/show/list/link`; `report show`; `brainstorm capture`; `plan`/`handoff`/`council`
-   storage; body-edit UX; Write-side enforcement hook; `cli-reference` regeneration. *Go/no-go:*
-   create→show round-trips with no in-tree file; multi-paragraph body byte-exact; existing `.md`
-   entities unaffected. *(non-breaking)*
-3. **Track 2 — Search.** `loaf search` (FTS5) over bodies + journals; ranking/snippet/redaction +
-   default scope decided. *Go/no-go:* correct cross-entity hits incl. a body `loaf report list`
-   cannot surface today. *(non-breaking)*
+1. **Track 0 — Body-store schema + FTS5.** Migration: `artifact_bodies`,
+   `artifact_search`, `plan`/`handoff`/`council` tables, indexes, schema docs, and `status.go`
+   allowlist/CTE updates. *Go/no-go:* `CREATE VIRTUAL TABLE … USING fts5` runs under
+   `CGO_ENABLED=0`; migration docs mirror executable SQL; `go test ./internal/state` is green.
+   *(non-breaking)*
+2. **Track 1 — Dual-source body access + import backfill.** Shared read/write accessor,
+   Markdown-import population of `artifact_bodies`, source fallback when no SQLite body exists, and
+   Go-side FTS upserts/deletes in the same transaction. *Go/no-go:* imported Markdown bodies
+   round-trip byte-exact; existing `.md` entities unaffected; no repo files are deleted or written
+   by state mutations. *(non-breaking)*
+3. **Track 2 — Body write UX + missing entity verbs.** `new/edit/show/list/link` body paths for
+   body-capable entities; `report show`; `brainstorm capture`; first-class `plan`/`handoff`/
+   `council` storage; CLI reference regeneration. *Go/no-go:* create→show works with no in-tree
+   file; multi-paragraph bodies round-trip; body input precedence is covered by tests.
+   *(non-breaking)*
+4. **Track 3 — Write-side registration enforcement.** Harness-portable hook/check that warns or
+   blocks direct `.agents` artifact-body writes that bypass SQLite registration, without blocking
+   generated durable renders or non-artifact docs. *Go/no-go:* direct unregistered body write is
+   caught; generated/source-controlled exceptions are explicit and tested. *(non-breaking)*
+5. **Track 4 — Tier-1 search.** `loaf search` (FTS5) over SQLite bodies + journals; current-project
+   default, `--all-projects`, JSON `tier`, ranking, snippets, and planted-secret redaction.
+   *Go/no-go:* correct cross-entity hits incl. a body `loaf report list` cannot surface today;
+   edit-then-search updates the index. *(non-breaking)*
 
-**First shippable PR = Track 0 + the body half of Track 1 + Track 2** — kills the motivating pain
-("no search"; "written report invisible to state") with zero file removal, zero status change, zero
-render. Everything irreversible lives in SPEC-044/045/049.
+**First shippable PR = Tracks 0-4 in this spec branch** — kills the motivating pain ("no search";
+"written report invisible to state") with zero file removal, zero status change, zero render.
+Everything irreversible lives in SPEC-044/045/049.
 
 ## Coordination notes (named, not solved here)
 - **SPEC-035 / `TASKS.json`:** tasks remain **dual-source** in SPEC-043 (no removal). Retiring the

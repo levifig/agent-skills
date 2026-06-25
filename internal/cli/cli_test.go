@@ -13833,6 +13833,157 @@ func assertCLIReportContext(t *testing.T, contractVersion int, databaseScope str
 	}
 }
 
+func TestRunnerReportCreateAndShowSQLiteBody(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+
+	var createOut bytes.Buffer
+	err := Runner{Stdout: &createOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"report", "create", "sqlite-body", "--message", "# SQLite Body\n\nCreated from CLI.", "--json"})
+	if err != nil {
+		t.Fatalf("report create --message error = %v", err)
+	}
+	created := decodeReportCreateResult(t, createOut.Bytes())
+	if created.Report.Alias != "report-sqlite-body" {
+		t.Fatalf("created.Report = %#v, want report-sqlite-body", created.Report)
+	}
+	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "reports", "sqlite-body.md")); !os.IsNotExist(err) {
+		t.Fatalf("markdown report file exists or stat failed: %v", err)
+	}
+
+	var showOut bytes.Buffer
+	err = Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"report", "show", created.Report.Alias, "--json"})
+	if err != nil {
+		t.Fatalf("report show --json error = %v", err)
+	}
+	show := decodeReportShow(t, showOut.Bytes())
+	if show.Report.Body != "# SQLite Body\n\nCreated from CLI." {
+		t.Fatalf("show.Report.Body = %q, want CLI body", show.Report.Body)
+	}
+	assertCLIReportContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
+}
+
+func TestRunnerReportShowUsesMarkdownFallbackWhenMarkdownOnly(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "reports/fallback.md", `---
+title: Fallback Report
+type: audit
+status: final
+---
+# Fallback Report
+
+Markdown report body.
+`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"report", "show", "fallback", "--json"})
+	if err != nil {
+		t.Fatalf("report show markdown fallback error = %v", err)
+	}
+	show := decodeReportShow(t, stdout.Bytes())
+	if show.Report.Title != "Fallback Report" || show.Report.Kind != "audit" || !strings.Contains(show.Report.Body, "Markdown report body.") {
+		t.Fatalf("show.Report = %#v, want markdown fallback report", show.Report)
+	}
+	if show.ContractVersion != 0 || show.DatabaseScope != "" {
+		t.Fatalf("show context = %#v, want markdown fallback without SQLite context", show)
+	}
+}
+
+func TestRunnerBodyFileRejectsNonUTF8BeforeWrite(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	bodyPath := filepath.Join(workingDir, "bad-body.md")
+	if err := os.WriteFile(bodyPath, []byte{0xff, 0xfe}, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"report", "create", "bad-body", "--body-file", bodyPath})
+	if err == nil || !strings.Contains(err.Error(), "UTF-8") {
+		t.Fatalf("report create non-UTF8 error = %v, want UTF-8 rejection", err)
+	}
+	var listOut bytes.Buffer
+	if err := (Runner{Stdout: &listOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "list", "--json"}); err != nil {
+		t.Fatalf("report list --json error = %v", err)
+	}
+	reports := decodeReportList(t, listOut.Bytes())
+	if len(reports.Reports) != 0 {
+		t.Fatalf("reports = %#v, want no report written after non-UTF8 body", reports.Reports)
+	}
+}
+
+func TestRunnerBrainstormCaptureReadsBodyFromStdin(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+
+	var captureOut bytes.Buffer
+	err := Runner{
+		Stdout:     &captureOut,
+		Stdin:      strings.NewReader("# CLI Brainstorm\n\nstdin body"),
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"brainstorm", "capture", "--title", "CLI Brainstorm", "--body", "-", "--json"})
+	if err != nil {
+		t.Fatalf("brainstorm capture --body - error = %v", err)
+	}
+	created := decodeBrainstormCaptureResult(t, captureOut.Bytes())
+	var showOut bytes.Buffer
+	err = Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"brainstorm", "show", created.Brainstorm.Alias, "--json"})
+	if err != nil {
+		t.Fatalf("brainstorm show --json error = %v", err)
+	}
+	show := decodeBrainstormShow(t, showOut.Bytes())
+	if show.Brainstorm.Body != "# CLI Brainstorm\n\nstdin body" || len(show.Brainstorm.Sources) != 0 {
+		t.Fatalf("show.Brainstorm = %#v, want stdin SQLite body without source", show.Brainstorm)
+	}
+}
+
+func TestRunnerArtifactEntityVerbsUseSQLiteBodiesAndLinks(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+
+	created := map[string]state.ArtifactEntityCreateResult{}
+	for _, kind := range []string{"plan", "handoff", "council"} {
+		var stdout bytes.Buffer
+		err := Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{kind, "new", "--title", "CLI " + kind, "--message", "# CLI " + kind, "--json"})
+		if err != nil {
+			t.Fatalf("%s new error = %v", kind, err)
+		}
+		created[kind] = decodeArtifactEntityCreateResult(t, stdout.Bytes())
+
+		var showOut bytes.Buffer
+		err = Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{kind, "show", created[kind].Entity.Alias, "--json"})
+		if err != nil {
+			t.Fatalf("%s show error = %v", kind, err)
+		}
+		show := decodeArtifactEntityShow(t, showOut.Bytes())
+		if !strings.Contains(show.Entity.Body, "# CLI "+kind) {
+			t.Fatalf("%s body = %q, want SQLite body", kind, show.Entity.Body)
+		}
+	}
+
+	var linkOut bytes.Buffer
+	err := Runner{Stdout: &linkOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"plan", "link", created["plan"].Entity.Alias, created["council"].Entity.Alias, "--type", "reviewed_by", "--json"})
+	if err != nil {
+		t.Fatalf("plan link error = %v", err)
+	}
+	linked := decodeLinkMutationResult(t, linkOut.Bytes())
+	if linked.Type != "reviewed_by" || linked.From.Kind != "plan" || linked.To.Kind != "council" {
+		t.Fatalf("linked = %#v, want plan reviewed_by council", linked)
+	}
+}
+
 func TestRunnerReportListReportsInvalidSQLiteState(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -14147,6 +14298,15 @@ func decodeBrainstormShow(t *testing.T, data []byte) state.BrainstormShow {
 	return result
 }
 
+func decodeBrainstormCaptureResult(t *testing.T, data []byte) state.BrainstormCaptureResult {
+	t.Helper()
+	var result state.BrainstormCaptureResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
 func decodeBrainstormPromoteResult(t *testing.T, data []byte) state.BrainstormPromoteResult {
 	t.Helper()
 	var result state.BrainstormPromoteResult
@@ -14450,6 +14610,33 @@ func decodeReportList(t *testing.T, data []byte) state.ReportList {
 func decodeReportCreateResult(t *testing.T, data []byte) state.ReportCreateResult {
 	t.Helper()
 	var result state.ReportCreateResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeReportShow(t *testing.T, data []byte) state.ReportShow {
+	t.Helper()
+	var result state.ReportShow
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeArtifactEntityCreateResult(t *testing.T, data []byte) state.ArtifactEntityCreateResult {
+	t.Helper()
+	var result state.ArtifactEntityCreateResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeArtifactEntityShow(t *testing.T, data []byte) state.ArtifactEntityShow {
+	t.Helper()
+	var result state.ArtifactEntityShow
 	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
 	}
@@ -14798,6 +14985,7 @@ func TestRunnerNestedStateBackedHelpDoesNotParseAsOption(t *testing.T) {
 		{name: "bundle update", args: []string{"bundle", "update", "--help"}, want: "Usage: loaf bundle update <slug>"},
 		{name: "link create", args: []string{"link", "create", "--help"}, want: "Usage: loaf link create --from <entity>"},
 		{name: "trace", args: []string{"trace", "--help"}, want: "Usage: loaf trace <entity>"},
+		{name: "search", args: []string{"search", "--help"}, want: "Usage: loaf search <query>"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -14904,8 +15092,9 @@ func TestRunnerReportCreateHelpMatchesParser(t *testing.T) {
 		t.Fatalf("Run(report create --help) error = %v", err)
 	}
 	for _, want := range []string{
-		"Usage: loaf report create <slug> [--type <type>] [--source <source>] [--json]",
+		"Usage: loaf report create <slug> [--type <type>] [--source <source>] [--body-file <path>|--body -|--message <text>] [--json]",
 		"--source     Report source",
+		"--body-file  Read Markdown body from a UTF-8 file",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
@@ -14986,7 +15175,7 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 		}
 		commands[command.Name] = entry
 	}
-	for _, want := range []string{"build", "state", "project", "session", "task", "spec", "report", "kb", "release", "version"} {
+	for _, want := range []string{"build", "state", "project", "session", "task", "spec", "report", "plan", "handoff", "council", "kb", "release", "version"} {
 		if _, ok := commands[want]; !ok {
 			t.Fatalf("agent help commands missing %q: %#v", want, commands)
 		}
@@ -15240,12 +15429,15 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 		t.Fatalf("project list json description = %q, want global project identity fields", got)
 	}
 	for command, wants := range map[string][]string{
-		"brainstorm": {"list", "show", "promote", "archive"},
+		"brainstorm": {"capture", "list", "show", "promote", "archive"},
 		"idea":       {"list", "show", "capture", "promote", "resolve", "archive"},
 		"spark":      {"list", "show", "capture", "resolve", "promote"},
 		"tag":        {"list", "show", "add", "remove"},
 		"bundle":     {"list", "create", "update", "show", "add", "remove"},
 		"link":       {"create", "list", "remove"},
+		"plan":       {"new", "show", "list", "link"},
+		"handoff":    {"new", "show", "list", "link"},
+		"council":    {"new", "show", "list", "link"},
 	} {
 		for _, want := range wants {
 			if !stringSliceContains(commands[command].subcommands, want) {
@@ -15255,6 +15447,13 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 	}
 	for _, want := range []string{
 		"idea capture --title <title>",
+		"brainstorm capture --title <title>",
+		"brainstorm capture --body -",
+		"report create --body-file <path>",
+		"plan new --message <text>",
+		"handoff new --message <text>",
+		"council new --message <text>",
+		"plan link --type <type>",
 		"idea resolve --by <entity>",
 		"spark capture --scope <scope>",
 		"spark capture --text <text>",
@@ -15301,6 +15500,36 @@ func assertAgentHelpJSONMatchesLiveHelp(t *testing.T, commandArgs []string, agen
 	}
 	if strings.Contains(stdout.String(), "--json") && !stringSliceContains(agentOptions, jsonOption) {
 		t.Fatalf("live help for %q includes --json, but agent help options = %#v missing %q", strings.Join(commandArgs, " "), agentOptions, jsonOption)
+	}
+}
+
+func TestRunnerSearchReturnsTier1SQLiteHits(t *testing.T) {
+	workingDir := initCLIGitRepo(t)
+	stateHome := t.TempDir()
+	if err := (Runner{WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	if err := (Runner{WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "create", "search-report", "--message", "cliuniqueterm report body"}); err != nil {
+		t.Fatalf("report create error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"search", "cliuniqueterm", "--json"}); err != nil {
+		t.Fatalf("search --json error = %v", err)
+	}
+	var result state.SearchResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	if result.Query != "cliuniqueterm" || result.AllProjects {
+		t.Fatalf("search result = %#v, want current-project query", result)
+	}
+	if len(result.Results) != 1 {
+		t.Fatalf("results = %#v, want one report hit", result.Results)
+	}
+	hit := result.Results[0]
+	if hit.Tier != "tier1" || hit.Source != "artifact_body" || hit.EntityKind != "report" || hit.EntityID == "" || !strings.Contains(hit.Snippet, "cliuniqueterm") {
+		t.Fatalf("hit = %#v, want Tier-1 report artifact hit with snippet", hit)
 	}
 }
 

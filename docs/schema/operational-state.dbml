@@ -141,6 +141,43 @@ Table session_state_snapshots {
   }
 }
 
+Table artifact_bodies {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  entity_kind text [not null]
+  entity_id text [not null]
+  body_kind text [not null, default: 'markdown']
+  content text [not null]
+  content_hash text [not null]
+  source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, entity_kind, entity_id, body_kind) [unique]
+    (project_id, entity_kind, entity_id)
+    (project_id, source_id)
+  }
+}
+
+Table artifact_search {
+  rowid integer [pk]
+  project_id text
+  entity_kind text
+  entity_id text
+  body_kind text
+  content text
+}
+
+Table journal_search {
+  rowid integer [pk]
+  project_id text
+  journal_entry_id text
+  session_id text
+  entry_type text
+  scope text
+  message text
+}
+
 Table reports {
   id text [pk, not null]
   project_id text [not null, ref: > projects.id]
@@ -150,6 +187,49 @@ Table reports {
   body_source_id text [ref: > sources.id]
   created_at text [not null]
   updated_at text [not null]
+}
+
+Table plans {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  spec_id text [ref: > specs.id]
+  title text [not null]
+  status text [not null]
+  body_source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, spec_id)
+  }
+}
+
+Table handoffs {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  session_id text [ref: > sessions.id]
+  task_id text [ref: > tasks.id]
+  title text [not null]
+  status text [not null]
+  body_source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, session_id, task_id)
+  }
+}
+
+Table councils {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  spec_id text [ref: > specs.id]
+  title text [not null]
+  status text [not null]
+  body_source_id text [ref: > sources.id]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, spec_id)
+  }
 }
 
 Table journal_entries {

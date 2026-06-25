@@ -815,6 +815,7 @@ FROM backend_mappings
 WHERE entity_kind NOT IN (
   'project',
   'alias',
+  'artifact_body',
   'spec',
   'task',
   'idea',
@@ -823,6 +824,9 @@ WHERE entity_kind NOT IN (
   'shaping_draft',
   'session',
   'report',
+  'plan',
+  'handoff',
+  'council',
   'journal_entry',
   'event',
   'relationship',
@@ -902,6 +906,7 @@ ORDER BY sync_status
 WITH local_entities(entity_kind, project_id, entity_id) AS (
   SELECT 'project', id, id FROM projects
   UNION ALL SELECT 'alias', project_id, id FROM aliases
+  UNION ALL SELECT 'artifact_body', project_id, id FROM artifact_bodies
   UNION ALL SELECT 'spec', project_id, id FROM specs
   UNION ALL SELECT 'task', project_id, id FROM tasks
   UNION ALL SELECT 'idea', project_id, id FROM ideas
@@ -910,6 +915,9 @@ WITH local_entities(entity_kind, project_id, entity_id) AS (
   UNION ALL SELECT 'shaping_draft', project_id, id FROM shaping_drafts
   UNION ALL SELECT 'session', project_id, id FROM sessions
   UNION ALL SELECT 'report', project_id, id FROM reports
+  UNION ALL SELECT 'plan', project_id, id FROM plans
+  UNION ALL SELECT 'handoff', project_id, id FROM handoffs
+  UNION ALL SELECT 'council', project_id, id FROM councils
   UNION ALL SELECT 'journal_entry', project_id, id FROM journal_entries
   UNION ALL SELECT 'event', project_id, id FROM events
   UNION ALL SELECT 'relationship', project_id, id FROM relationships
@@ -931,6 +939,7 @@ WHERE local_entities.entity_id IS NULL
   AND backend_mappings.entity_kind IN (
     'project',
     'alias',
+    'artifact_body',
     'spec',
     'task',
     'idea',
@@ -939,6 +948,9 @@ WHERE local_entities.entity_id IS NULL
     'shaping_draft',
     'session',
     'report',
+    'plan',
+    'handoff',
+    'council',
     'journal_entry',
     'event',
     'relationship',

@@ -6,6 +6,13 @@
         "hooks": [
           {
             "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook artifact-body-write",
+            "timeout": 30,
+            "description": "Block direct .agents artifact body writes that bypass SQLite registration",
+            "failClosed": true
+          },
+          {
+            "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook check-secrets",
             "timeout": 30,
             "description": "Check for hardcoded secrets before writing",

@@ -118,6 +118,25 @@ loaf release
 
 ---
 
+## Search Management
+
+### `loaf search`
+Search Tier-1 SQLite artifact bodies and journal entries
+
+**Options:**
+
+- `<query>` - Search terms matched through SQLite FTS5
+- `--all-projects` - Search every registered project instead of only the current project
+- `--limit <n>` - Maximum results to return (default: 20)
+- `--json` - Output tiered hits, stable entity addresses, snippets, global database scope, and project identity as JSON
+
+**Usage:**
+```bash
+loaf search
+```
+
+---
+
 ## State Management
 
 ### `loaf state`
@@ -451,6 +470,7 @@ only when a durable prose artifact is explicitly needed.
 | Subcommand | Purpose |
 |------------|---------|
 | `loaf report list` | List reports |
+| `loaf report show` | Show one report |
 | `loaf report generate` | Generate a report from state |
 | `loaf report create` | Create a report draft |
 | `loaf report finalize` | Mark a report draft as final |
@@ -463,6 +483,9 @@ only when a durable prose artifact is explicitly needed.
   - `--status <status>` - Filter by status; Loaf lifecycle statuses: draft, final, archived
   - `--json` - Output reports, diagnostics, global database scope, and project identity as JSON
 
+- `loaf report show`:
+  - `--json` - Output report details, relationships, global database scope, and project identity as JSON
+
 - `loaf report generate`:
   - `--format <format>` - Output format: markdown
   - `--json` - Output contract, command, project context, and markdown content as JSON
@@ -470,6 +493,9 @@ only when a durable prose artifact is explicitly needed.
 - `loaf report create`:
   - `--type <type>` - Report type
   - `--source <source>` - Report source
+  - `--body-file <path>` - Read Markdown body from a UTF-8 file
+  - `--body -` - Read Markdown body from stdin
+  - `--message <text>` - Use inline Markdown body text
   - `--json` - Output created report, event, global database scope, and project identity as JSON
 
 - `loaf report finalize`:
@@ -485,6 +511,145 @@ loaf report create release-readiness --type audit --source manual
 loaf report finalize report-release-readiness
 loaf report archive report-release-readiness
 loaf report generate release-readiness
+```
+
+---
+
+## Plan Management
+
+### `loaf plan`
+Manage plans in native SQLite state
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf plan new` | Create a plan in SQLite state |
+| `loaf plan show` | Show one plan from SQLite state |
+| `loaf plan list` | List plans from SQLite state |
+| `loaf plan link` | Link a plan to another entity |
+
+**Options:**
+
+- `loaf plan new`:
+  - `--title <title>` - Artifact title
+  - `--body-file <path>` - Read Markdown body from a UTF-8 file
+  - `--body -` - Read Markdown body from stdin
+  - `--message <text>` - Use inline Markdown body text
+  - `--spec <spec>` - Optional related spec
+  - `--json` - Output created artifact, event, global database scope, and project identity as JSON
+
+- `loaf plan show`:
+  - `--json` - Output artifact details, relationships, global database scope, and project identity as JSON
+
+- `loaf plan list`:
+  - `--all` - Include archived artifacts
+  - `--status <status>` - Filter by status
+  - `--json` - Output artifacts, global database scope, and project identity as JSON
+
+- `loaf plan link`:
+  - `--type <type>` - Relationship type; defaults to related_to
+  - `--reason <text>` - Relationship reason
+  - `--json` - Output relationship ID, source/target, global database scope, and project identity as JSON
+
+**Usage:**
+```bash
+loaf plan new
+loaf plan show
+loaf plan list
+```
+
+---
+
+## Handoff Management
+
+### `loaf handoff`
+Manage handoffs in native SQLite state
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf handoff new` | Create a handoff in SQLite state |
+| `loaf handoff show` | Show one handoff from SQLite state |
+| `loaf handoff list` | List handoffs from SQLite state |
+| `loaf handoff link` | Link a handoff to another entity |
+
+**Options:**
+
+- `loaf handoff new`:
+  - `--title <title>` - Artifact title
+  - `--body-file <path>` - Read Markdown body from a UTF-8 file
+  - `--body -` - Read Markdown body from stdin
+  - `--message <text>` - Use inline Markdown body text
+  - `--session <session>` - Optional related session
+  - `--task <task>` - Optional related task
+  - `--json` - Output created artifact, event, global database scope, and project identity as JSON
+
+- `loaf handoff show`:
+  - `--json` - Output artifact details, relationships, global database scope, and project identity as JSON
+
+- `loaf handoff list`:
+  - `--all` - Include archived artifacts
+  - `--status <status>` - Filter by status
+  - `--json` - Output artifacts, global database scope, and project identity as JSON
+
+- `loaf handoff link`:
+  - `--type <type>` - Relationship type; defaults to related_to
+  - `--reason <text>` - Relationship reason
+  - `--json` - Output relationship ID, source/target, global database scope, and project identity as JSON
+
+**Usage:**
+```bash
+loaf handoff new
+loaf handoff show
+loaf handoff list
+```
+
+---
+
+## Council Management
+
+### `loaf council`
+Manage councils in native SQLite state
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf council new` | Create a council in SQLite state |
+| `loaf council show` | Show one council from SQLite state |
+| `loaf council list` | List councils from SQLite state |
+| `loaf council link` | Link a council to another entity |
+
+**Options:**
+
+- `loaf council new`:
+  - `--title <title>` - Artifact title
+  - `--body-file <path>` - Read Markdown body from a UTF-8 file
+  - `--body -` - Read Markdown body from stdin
+  - `--message <text>` - Use inline Markdown body text
+  - `--spec <spec>` - Optional related spec
+  - `--json` - Output created artifact, event, global database scope, and project identity as JSON
+
+- `loaf council show`:
+  - `--json` - Output artifact details, relationships, global database scope, and project identity as JSON
+
+- `loaf council list`:
+  - `--all` - Include archived artifacts
+  - `--status <status>` - Filter by status
+  - `--json` - Output artifacts, global database scope, and project identity as JSON
+
+- `loaf council link`:
+  - `--type <type>` - Relationship type; defaults to related_to
+  - `--reason <text>` - Relationship reason
+  - `--json` - Output relationship ID, source/target, global database scope, and project identity as JSON
+
+**Usage:**
+```bash
+loaf council new
+loaf council show
+loaf council list
 ```
 
 ---
@@ -608,12 +773,20 @@ Manage brainstorms in native SQLite state
 
 | Subcommand | Purpose |
 |------------|---------|
+| `loaf brainstorm capture` | Capture a brainstorm in SQLite state |
 | `loaf brainstorm list` | List brainstorms from SQLite state |
 | `loaf brainstorm show` | Show one brainstorm from SQLite state |
 | `loaf brainstorm promote` | Record brainstorm-to-idea promotion |
 | `loaf brainstorm archive` | Archive one or more brainstorms |
 
 **Options:**
+
+- `loaf brainstorm capture`:
+  - `--title <title>` - Brainstorm title
+  - `--body-file <path>` - Read Markdown body from a UTF-8 file
+  - `--body -` - Read Markdown body from stdin
+  - `--message <text>` - Use inline Markdown body text
+  - `--json` - Output created brainstorm, event, global database scope, and project identity as JSON
 
 - `loaf brainstorm list`:
   - `--all` - Include archived brainstorms
@@ -633,9 +806,9 @@ Manage brainstorms in native SQLite state
 
 **Usage:**
 ```bash
+loaf brainstorm capture
 loaf brainstorm list
 loaf brainstorm show
-loaf brainstorm promote
 ```
 
 ---

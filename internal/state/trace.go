@@ -50,7 +50,7 @@ type TraceRelationship struct {
 
 func validateResolutionTargetKind(kind string, ref string) error {
 	switch kind {
-	case "spec", "task", "idea", "brainstorm", "shaping_draft", "session", "report":
+	case "spec", "task", "idea", "brainstorm", "shaping_draft", "session", "report", "plan", "handoff", "council":
 		return nil
 	default:
 		return fmt.Errorf("%q resolves to %s, which cannot resolve another entity", ref, kind)
@@ -145,7 +145,7 @@ LIMIT 1
 }
 
 func (s *Store) resolveEntityByInternalID(ctx context.Context, projectID string, ref string) (string, string, error) {
-	for _, kind := range []string{"spec", "task", "idea", "spark", "brainstorm", "shaping_draft", "session", "report", "journal_entry"} {
+	for _, kind := range []string{"spec", "task", "idea", "spark", "brainstorm", "shaping_draft", "session", "report", "plan", "handoff", "council", "journal_entry"} {
 		table := traceTable(kind)
 		var id string
 		err := s.db.QueryRowContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE project_id = ? AND id = ?`, table), projectID, ref).Scan(&id)
@@ -162,7 +162,7 @@ func (s *Store) resolveEntityByInternalID(ctx context.Context, projectID string,
 func (s *Store) entityDetails(ctx context.Context, projectID string, kind string, id string) (TraceEntity, error) {
 	entity := TraceEntity{Kind: kind, ID: id}
 	switch kind {
-	case "spec", "task", "idea", "brainstorm", "shaping_draft", "report":
+	case "spec", "task", "idea", "brainstorm", "shaping_draft", "report", "plan", "handoff", "council":
 		table := traceTable(kind)
 		var title, status sql.NullString
 		err := s.db.QueryRowContext(ctx, fmt.Sprintf(`SELECT title, status FROM %s WHERE project_id = ? AND id = ?`, table), projectID, id).Scan(&title, &status)
@@ -242,7 +242,7 @@ func (s *Store) traceSources(ctx context.Context, entity TraceEntity) ([]TraceSo
 
 func traceSourceQuery(entity TraceEntity) (string, []any, bool) {
 	switch entity.Kind {
-	case "spec", "task", "idea", "brainstorm", "shaping_draft", "report":
+	case "spec", "task", "idea", "brainstorm", "shaping_draft", "report", "plan", "handoff", "council":
 		return fmt.Sprintf(`SELECT sources.path, sources.hash FROM %s JOIN sources ON sources.id = %s.body_source_id WHERE %s.id = ?`, traceTable(entity.Kind), traceTable(entity.Kind), traceTable(entity.Kind)), []any{entity.ID}, true
 	case "spark":
 		return `SELECT sources.path, sources.hash FROM sparks JOIN sources ON sources.id = sparks.source_id WHERE sparks.id = ?`, []any{entity.ID}, true
@@ -363,6 +363,12 @@ func traceTable(kind string) string {
 		return "sessions"
 	case "report":
 		return "reports"
+	case "plan":
+		return "plans"
+	case "handoff":
+		return "handoffs"
+	case "council":
+		return "councils"
 	case "journal_entry":
 		return "journal_entries"
 	default:

@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
@@ -144,9 +145,12 @@ INSERT INTO journal_entries (
   created_at,
   updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
-`, id, projectID, entryType, emptyToNil(scope), message, emptyToNil(options.ObservedBranch), emptyToNil(options.ObservedWorktree), emptyToNil(options.HarnessSessionID), session.ID, now, now)
+		`, id, projectID, entryType, emptyToNil(scope), message, emptyToNil(options.ObservedBranch), emptyToNil(options.ObservedWorktree), emptyToNil(options.HarnessSessionID), session.ID, now, now)
 		if err != nil {
 			return JournalLogResult{}, fmt.Errorf("insert journal entry: %w", err)
+		}
+		if err := insertJournalSearchTx(ctx, tx, projectID, id, session.ID, entryType, scope, message); err != nil {
+			return JournalLogResult{}, err
 		}
 		if err := tx.Commit(); err != nil {
 			return JournalLogResult{}, fmt.Errorf("commit journal transaction: %w", err)
@@ -169,7 +173,12 @@ INSERT INTO journal_entries (
 		}, nil
 	}
 	id := stableMigrationID("journal", projectID, now, entryType, scope, message)
-	_, err = s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return JournalLogResult{}, fmt.Errorf("begin journal transaction: %w", err)
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO journal_entries (
   id,
   project_id,
@@ -188,6 +197,12 @@ INSERT INTO journal_entries (
 `, id, projectID, entryType, emptyToNil(scope), message, emptyToNil(options.ObservedBranch), emptyToNil(options.ObservedWorktree), emptyToNil(options.HarnessSessionID), now, now)
 	if err != nil {
 		return JournalLogResult{}, fmt.Errorf("insert journal entry: %w", err)
+	}
+	if err := insertJournalSearchTx(ctx, tx, projectID, id, "", entryType, scope, message); err != nil {
+		return JournalLogResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return JournalLogResult{}, fmt.Errorf("commit journal transaction: %w", err)
 	}
 	return JournalLogResult{
 		ContractVersion:    StateJSONContractVersion,
@@ -229,4 +244,21 @@ func parseJournalEntry(entry string) (string, string, string, error) {
 		return "", "", "", fmt.Errorf("session log entry must look like type(scope): message")
 	}
 	return matches[1], strings.TrimSpace(matches[2]), strings.TrimSpace(matches[3]), nil
+}
+
+func insertJournalSearchTx(ctx context.Context, tx *sql.Tx, projectID string, journalEntryID string, sessionID string, entryType string, scope string, message string) error {
+	var rowID int64
+	if err := tx.QueryRowContext(ctx, `
+SELECT rowid FROM journal_entries
+WHERE project_id = ? AND id = ?
+`, projectID, journalEntryID).Scan(&rowID); err != nil {
+		return fmt.Errorf("read journal entry rowid %s: %w", journalEntryID, err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO journal_search(rowid, project_id, journal_entry_id, session_id, entry_type, scope, message)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+`, rowID, projectID, journalEntryID, firstNonEmpty(sessionID, ""), entryType, firstNonEmpty(scope, ""), message); err != nil {
+		return fmt.Errorf("insert journal search row %s: %w", journalEntryID, err)
+	}
+	return nil
 }

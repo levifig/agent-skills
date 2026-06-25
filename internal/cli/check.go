@@ -34,6 +34,7 @@ type checkHookInput struct {
 	Command   string `json:"command"`
 	FilePath  string `json:"file_path"`
 	Content   string `json:"content"`
+	OldString string `json:"old_string"`
 	NewString string `json:"new_string"`
 }
 
@@ -76,11 +77,12 @@ var nativeCheckSecretPatterns = []secretPattern{
 }
 
 var validCheckHooks = map[string]bool{
-	"check-secrets":   true,
-	"validate-push":   true,
-	"workflow-pre-pr": true,
-	"validate-commit": true,
-	"security-audit":  true,
+	"artifact-body-write": true,
+	"check-secrets":       true,
+	"validate-push":       true,
+	"workflow-pre-pr":     true,
+	"validate-commit":     true,
+	"security-audit":      true,
 }
 
 func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error {
@@ -101,6 +103,8 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 	context := r.readCheckContext()
 	var result checkResult
 	switch options.hook {
+	case "artifact-body-write":
+		result = runNativeArtifactBodyWriteGuard(context)
 	case "check-secrets":
 		result = runNativeCheckSecrets(context)
 	case "validate-commit":
@@ -128,7 +132,7 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 }
 
 func writeCheckHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf check --hook <id> [--json]", "Run one registered hook check.", "--hook      Hook id: check-secrets, validate-commit, security-audit, workflow-pre-pr, validate-push", "--json      Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON")
+	writeUsageHelp(out, "loaf check --hook <id> [--json]", "Run one registered hook check.", "--hook      Hook id: artifact-body-write, check-secrets, validate-commit, security-audit, workflow-pre-pr, validate-push", "--json      Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON")
 }
 
 func parseCheckArgs(args []string) (checkOptions, error) {
@@ -193,6 +197,235 @@ func runNativeCheckSecrets(context checkHookContext) checkResult {
 		result.Errors = append(result.Errors, fmt.Sprintf("Potential secrets detected in %s", firstNonEmpty(filePath, "input")))
 	}
 	return result
+}
+
+type artifactBodyWriteTarget struct {
+	path    string
+	kind    string
+	command string
+	content string
+}
+
+var artifactBodyPathDirs = map[string]string{
+	"brainstorms": "brainstorm",
+	"councils":    "council",
+	"drafts":      "draft",
+	"handoffs":    "handoff",
+	"ideas":       "idea",
+	"plans":       "plan",
+	"reports":     "report",
+	"sessions":    "session",
+	"specs":       "spec",
+	"tasks":       "task",
+}
+
+var artifactBodyWriteBashPathRE = regexp.MustCompile(`(?:^|[\s"'=])(\.agents/(?:brainstorms|councils|drafts|handoffs|ideas|plans|reports|sessions|specs|tasks)(?:/archive)?/[^\s"'` + "`" + `;|&<>]+\.md)`)
+
+func runNativeArtifactBodyWriteGuard(context checkHookContext) checkResult {
+	result := checkResult{Passed: true, Warnings: []string{}, Errors: []string{}, Findings: []string{}}
+	for _, target := range artifactBodyWriteTargets(context) {
+		if artifactBodyWriteAllowed(target.path, target.content) {
+			continue
+		}
+		result.Passed = false
+		result.Blocked = true
+		result.Errors = append(result.Errors, fmt.Sprintf("Direct artifact body write blocked for %s", target.path))
+		result.Errors = append(result.Errors, fmt.Sprintf("Use `%s` so the SQLite artifact body is registered.", target.command))
+		result.Findings = append(result.Findings, fmt.Sprintf("%s is a body-capable %s artifact path", target.path, target.kind))
+	}
+	return result
+}
+
+func artifactBodyWriteTargets(context checkHookContext) []artifactBodyWriteTarget {
+	tool := checkContextToolName(context)
+	if tool == "Bash" {
+		return artifactBodyWriteBashTargets(checkContextCommand(context))
+	}
+	if tool != "Edit" && tool != "Write" && tool != "MultiEdit" {
+		return nil
+	}
+	path := checkContextFilePath(context)
+	kind, ok := artifactBodyPathKind(path)
+	if !ok {
+		return nil
+	}
+	path = artifactBodyRelativePath(path)
+	return []artifactBodyWriteTarget{{
+		path:    path,
+		kind:    kind,
+		command: artifactBodyWriteCommand(kind, path),
+		content: checkContextContent(context),
+	}}
+}
+
+func artifactBodyWriteBashTargets(command string) []artifactBodyWriteTarget {
+	if strings.TrimSpace(command) == "" || bashCommandUsesLoafCLI(command) {
+		return nil
+	}
+	var targets []artifactBodyWriteTarget
+	seen := map[string]bool{}
+	for _, match := range artifactBodyWriteBashPathRE.FindAllStringSubmatch(command, -1) {
+		if len(match) != 2 || seen[match[1]] || !bashCommandWritesPath(command, match[1]) {
+			continue
+		}
+		seen[match[1]] = true
+		kind, ok := artifactBodyPathKind(match[1])
+		if !ok {
+			continue
+		}
+		targets = append(targets, artifactBodyWriteTarget{
+			path:    artifactBodyRelativePath(match[1]),
+			kind:    kind,
+			command: artifactBodyWriteCommand(kind, match[1]),
+			content: command,
+		})
+	}
+	return targets
+}
+
+func artifactBodyPathKind(path string) (string, bool) {
+	path = artifactBodyRelativePath(path)
+	if !strings.HasSuffix(path, ".md") || strings.Contains(path, "/templates/") {
+		return "", false
+	}
+	parts := strings.Split(path, "/")
+	if len(parts) < 3 || parts[0] != ".agents" {
+		return "", false
+	}
+	kind, ok := artifactBodyPathDirs[parts[1]]
+	return kind, ok
+}
+
+func normalizeHookPath(path string) string {
+	path = strings.TrimSpace(path)
+	path = strings.Trim(path, `"'`)
+	path = filepath.ToSlash(filepath.Clean(path))
+	if path == "." {
+		return ""
+	}
+	return path
+}
+
+func artifactBodyRelativePath(path string) string {
+	path = normalizeHookPath(path)
+	if strings.HasPrefix(path, "./") {
+		path = strings.TrimPrefix(path, "./")
+	}
+	if strings.HasPrefix(path, "/") {
+		if idx := strings.Index(path, "/.agents/"); idx >= 0 {
+			return strings.TrimPrefix(path[idx+1:], "/")
+		}
+	}
+	return path
+}
+
+func artifactBodyWriteAllowed(path string, content string) bool {
+	path = artifactBodyRelativePath(path)
+	if path == "" || !strings.HasPrefix(path, ".agents/") {
+		return true
+	}
+	if artifactBodyWriteIsGeneratedRender(content) {
+		return true
+	}
+	return artifactBodyWriteIsMetadataOnly(content)
+}
+
+func artifactBodyWriteIsGeneratedRender(content string) bool {
+	lower := strings.ToLower(content)
+	for _, marker := range []string{
+		"<!-- loaf:rendered",
+		"loaf_renderer_version:",
+		"renderer_contract_version:",
+		"renderer-contract-version:",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func artifactBodyWriteIsMetadataOnly(content string) bool {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return true
+	}
+	if strings.HasPrefix(content, "---") {
+		_, body := splitMarkdownDocument(content)
+		return strings.TrimSpace(body) == ""
+	}
+	hasMetadataKey := regexp.MustCompile(`(?m)^\s*[A-Za-z0-9_-]+:\s*`).MatchString(content)
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "---" {
+			continue
+		}
+		if strings.HasPrefix(line, "- ") {
+			if hasMetadataKey {
+				continue
+			}
+			return false
+		}
+		if !regexp.MustCompile(`^[A-Za-z0-9_-]+:\s*.*$`).MatchString(line) {
+			return false
+		}
+	}
+	return true
+}
+
+func bashCommandUsesLoafCLI(command string) bool {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return false
+	}
+	base := filepath.Base(fields[0])
+	return base == "loaf" || (len(fields) > 1 && (fields[0] == "bin/loaf" || fields[0] == "./bin/loaf"))
+}
+
+func bashCommandWritesPath(command string, path string) bool {
+	if strings.Contains(command, "> "+path) || strings.Contains(command, ">"+path) || strings.Contains(command, "tee "+path) || strings.Contains(command, "tee -a "+path) {
+		return true
+	}
+	for _, writeVerb := range []string{"sed -i", "perl -pi", "python -c", "python3 -c", "node -e"} {
+		if strings.Contains(command, writeVerb) && strings.Contains(command, path) {
+			return true
+		}
+	}
+	return false
+}
+
+func artifactBodyWriteCommand(kind string, path string) string {
+	ref := artifactBodyRefFromPath(path)
+	switch kind {
+	case "brainstorm", "draft":
+		return "loaf brainstorm capture --title <title> --body-file <path>"
+	case "council":
+		return "loaf council new --title <title> --body-file <path>"
+	case "handoff":
+		return "loaf handoff new --title <title> --body-file <path>"
+	case "idea":
+		return "loaf idea capture --title <title> --body-file <path>"
+	case "plan":
+		return "loaf plan new --title <title> --body-file <path>"
+	case "report":
+		return "loaf report create <slug> --body-file <path>"
+	case "session":
+		return "loaf session log \"type(scope): message\""
+	case "spec":
+		return "loaf spec show " + firstNonEmpty(ref, "<ref>") + " --json"
+	case "task":
+		return "loaf task update " + firstNonEmpty(ref, "<ref>") + " --status <status>"
+	default:
+		return "loaf <entity> <verb> --body-file <path>"
+	}
+}
+
+func artifactBodyRefFromPath(path string) string {
+	stem := strings.TrimSuffix(filepath.Base(normalizeHookPath(path)), ".md")
+	if matches := regexp.MustCompile(`^(SPEC-\d+|TASK-\d+)`).FindStringSubmatch(stem); len(matches) == 2 {
+		return matches[1]
+	}
+	return stem
 }
 
 var conventionalCommitRE = regexp.MustCompile(`^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)!?: .+`)

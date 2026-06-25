@@ -75,6 +75,36 @@ status: archived
 	}
 }
 
+func TestCaptureBrainstormCreatesSQLiteBody(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	if _, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	created, err := CaptureBrainstorm(context.Background(), root, PathResolver{StateHome: stateHome}, BrainstormCaptureOptions{
+		Title: "Native Brainstorm",
+		Body:  "# Native Brainstorm\n\nNo markdown file required.",
+	})
+	if err != nil {
+		t.Fatalf("CaptureBrainstorm() error = %v", err)
+	}
+	if created.Brainstorm.Kind != "brainstorm" || created.Brainstorm.Alias == "" || created.EventID == "" {
+		t.Fatalf("created = %#v, want brainstorm alias and event", created)
+	}
+	show, err := ShowBrainstorm(context.Background(), root, PathResolver{StateHome: stateHome}, created.Brainstorm.Alias)
+	if err != nil {
+		t.Fatalf("ShowBrainstorm() error = %v", err)
+	}
+	if show.Brainstorm.Body != "# Native Brainstorm\n\nNo markdown file required." {
+		t.Fatalf("Body = %q, want SQLite body", show.Brainstorm.Body)
+	}
+	if len(show.Brainstorm.Sources) != 0 {
+		t.Fatalf("Sources = %#v, want no in-tree markdown source", show.Brainstorm.Sources)
+	}
+	assertBrainstormProjectContext(t, root, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath)
+}
+
 func TestShowBrainstormReadsImportedSQLiteBrainstorm(t *testing.T) {
 	repo := initGitRepo(t)
 	root, err := project.ResolveRoot(repo)

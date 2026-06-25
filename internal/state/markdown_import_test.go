@@ -8,13 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
 func TestApplyMarkdownMigrationImportsArtifactsAndPreservesSources(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()
-	taskBody := "# Task body\n"
+	taskBody := "# Task body\n\nFirst paragraph.\n\nSecond paragraph.\n"
 	writeMarkdownImportFixture(t, root.Path(), taskBody)
 
 	result, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome})
@@ -69,8 +70,10 @@ func TestApplyMarkdownMigrationImportsArtifactsAndPreservesSources(t *testing.T)
 	assertTableCount(t, store, "sessions", 1)
 	assertTableCount(t, store, "reports", 1)
 	assertTableCount(t, store, "sparks", 1)
+	assertTableCount(t, store, "artifact_bodies", 6)
 	assertTableCount(t, store, "journal_entries", 1)
 	assertTableCount(t, store, "relationships", 2)
+	assertArtifactSearchHitCount(t, store, "Second", 1)
 
 	var sourceHash string
 	err = store.db.QueryRowContext(
@@ -85,6 +88,24 @@ func TestApplyMarkdownMigrationImportsArtifactsAndPreservesSources(t *testing.T)
 	if sourceHash != hex.EncodeToString(sum[:]) {
 		t.Fatalf("source hash = %q, want task body hash", sourceHash)
 	}
+	var importedTaskBody string
+	err = store.db.QueryRowContext(
+		context.Background(),
+		`SELECT artifact_bodies.content
+FROM artifact_bodies
+JOIN tasks ON tasks.project_id = artifact_bodies.project_id
+ AND tasks.id = artifact_bodies.entity_id
+WHERE tasks.project_id = ?
+  AND artifact_bodies.entity_kind = 'task'
+  AND artifact_bodies.body_kind = 'markdown'`,
+		result.ProjectID,
+	).Scan(&importedTaskBody)
+	if err != nil {
+		t.Fatalf("read imported task body error = %v", err)
+	}
+	if importedTaskBody != strings.TrimSpace(taskBody) {
+		t.Fatalf("artifact body = %q, want byte-exact frontmatter-stripped task body", importedTaskBody)
+	}
 	taskPath := filepath.Join(root.Path(), ".agents", "tasks", "TASK-001-example.md")
 	contentAfterApply, err := os.ReadFile(taskPath)
 	if err != nil {
@@ -92,6 +113,16 @@ func TestApplyMarkdownMigrationImportsArtifactsAndPreservesSources(t *testing.T)
 	}
 	if string(contentAfterApply) != taskBody {
 		t.Fatalf("task source was mutated: %q", string(contentAfterApply))
+	}
+	if _, err := store.db.ExecContext(
+		context.Background(),
+		`UPDATE aliases SET id = ? WHERE project_id = ? AND namespace = ? AND alias = ?`,
+		"legacy-spec-alias-id",
+		result.ProjectID,
+		"spec",
+		"SPEC-001",
+	); err != nil {
+		t.Fatalf("seed legacy alias id error = %v", err)
 	}
 
 	second, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome})
@@ -104,6 +135,7 @@ func TestApplyMarkdownMigrationImportsArtifactsAndPreservesSources(t *testing.T)
 	assertTableCount(t, store, "specs", 1)
 	assertTableCount(t, store, "tasks", 1)
 	assertTableCount(t, store, "relationships", 2)
+	assertTableCount(t, store, "aliases", 8)
 }
 
 func TestApplyMarkdownMigrationDoesNotRequireTasksJSON(t *testing.T) {

@@ -227,6 +227,12 @@ interface HookEntry {
 const preToolHooks: Record<string, HookEntry[]> = {
   "Edit|Write|Bash": [
     {
+      "id": "artifact-body-write",
+      "command": "loaf check --hook artifact-body-write",
+      "timeout": 30000,
+      "failClosed": true
+    },
+    {
       "id": "check-secrets",
       "command": "loaf check --hook check-secrets",
       "timeout": 30000,

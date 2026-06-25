@@ -786,6 +786,99 @@ VALUES ('backend-mapping-linear-project', ?, 'linear', 'project', ?, 'project', 
 	assertNoDiagnostic(t, status.Diagnostics, "backend-mapping-entity-missing")
 }
 
+func TestInspectAcceptsNewArtifactEntityBackendMappings(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	if _, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+
+	projectID := projectIDForTest(t, store, root)
+	now := "2026-06-24T13:00:00Z"
+	if _, err := store.db.ExecContext(context.Background(), `
+INSERT INTO specs (id, project_id, title, status, body_source_id, created_at, updated_at)
+VALUES ('spec-artifact-entities', ?, 'Artifact entities', 'drafting', NULL, ?, ?)
+`, projectID, now, now); err != nil {
+		t.Fatalf("insert spec fixture error = %v", err)
+	}
+	if _, err := store.db.ExecContext(context.Background(), `
+INSERT INTO tasks (id, project_id, spec_id, title, status, priority, body_source_id, created_at, updated_at)
+VALUES ('task-artifact-entities', ?, 'spec-artifact-entities', 'todo', 'todo', 'P2', NULL, ?, ?)
+`, projectID, now, now); err != nil {
+		t.Fatalf("insert task fixture error = %v", err)
+	}
+	if _, err := store.db.ExecContext(context.Background(), `
+INSERT INTO sessions (id, project_id, harness_session_id, branch, status, body_source_id, created_at, updated_at)
+VALUES ('session-artifact-entities', ?, NULL, NULL, 'active', NULL, ?, ?)
+`, projectID, now, now); err != nil {
+		t.Fatalf("insert session fixture error = %v", err)
+	}
+	fixtures := []struct {
+		table string
+		query string
+		args  []any
+	}{
+		{
+			table: "artifact_bodies",
+			query: `INSERT INTO artifact_bodies (id, project_id, entity_kind, entity_id, body_kind, content, content_hash, source_id, created_at, updated_at)
+VALUES ('artifact-body-one', ?, 'spec', 'spec-artifact-entities', 'markdown', 'body text', 'hash-body', NULL, ?, ?)`,
+			args: []any{projectID, now, now},
+		},
+		{
+			table: "plans",
+			query: `INSERT INTO plans (id, project_id, spec_id, title, status, body_source_id, created_at, updated_at)
+VALUES ('plan-one', ?, 'spec-artifact-entities', 'Plan one', 'draft', NULL, ?, ?)`,
+			args: []any{projectID, now, now},
+		},
+		{
+			table: "handoffs",
+			query: `INSERT INTO handoffs (id, project_id, session_id, task_id, title, status, body_source_id, created_at, updated_at)
+VALUES ('handoff-one', ?, 'session-artifact-entities', 'task-artifact-entities', 'Handoff one', 'final', NULL, ?, ?)`,
+			args: []any{projectID, now, now},
+		},
+		{
+			table: "councils",
+			query: `INSERT INTO councils (id, project_id, spec_id, title, status, body_source_id, created_at, updated_at)
+VALUES ('council-one', ?, 'spec-artifact-entities', 'Council one', 'archived', NULL, ?, ?)`,
+			args: []any{projectID, now, now},
+		},
+	}
+	for _, fixture := range fixtures {
+		if _, err := store.db.ExecContext(context.Background(), fixture.query, fixture.args...); err != nil {
+			t.Fatalf("insert %s fixture error = %v", fixture.table, err)
+		}
+	}
+	for _, mapping := range []struct {
+		id         string
+		entityKind string
+		entityID   string
+	}{
+		{"backend-mapping-artifact-body", "artifact_body", "artifact-body-one"},
+		{"backend-mapping-plan", "plan", "plan-one"},
+		{"backend-mapping-handoff", "handoff", "handoff-one"},
+		{"backend-mapping-council", "council", "council-one"},
+	} {
+		if _, err := store.db.ExecContext(context.Background(), `
+INSERT INTO backend_mappings (id, project_id, backend, entity_kind, entity_id, external_kind, external_id, external_url, sync_status, created_at, updated_at)
+VALUES (?, ?, 'linear', ?, ?, 'artifact', ?, NULL, 'linked', ?, ?)
+`, mapping.id, projectID, mapping.entityKind, mapping.entityID, "EXT-"+mapping.entityID, now, now); err != nil {
+			t.Fatalf("insert backend mapping %s error = %v", mapping.id, err)
+		}
+	}
+
+	status, err := Inspect(root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if status.Mode != ModeSQLiteReady {
+		t.Fatalf("Mode = %q, want %q for new artifact entity backend mappings", status.Mode, ModeSQLiteReady)
+	}
+	assertNoDiagnostic(t, status.Diagnostics, "backend-mapping-entity-kind-unknown")
+	assertNoDiagnostic(t, status.Diagnostics, "backend-mapping-entity-missing")
+}
+
 func TestInspectRejectsProjectBackendMappingToDifferentProjectID(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()

@@ -4841,6 +4841,128 @@
       "updated": "2026-06-24T12:53:35Z",
       "completed_at": "2026-06-24T12:53:35Z",
       "file": "TASK-259-source-derived-five-target-parity-matrix.md"
+    },
+    "TASK-349": {
+      "title": "Add artifact body schema and FTS foundation",
+      "slug": "artifact-body-schema-fts-foundation",
+      "spec": "SPEC-043",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [
+        "internal/state/schema.go",
+        "internal/state/migrations/",
+        "internal/state/schema_test.go",
+        "internal/state/status.go",
+        "docs/schema/",
+        ".agents/tasks/TASK-349-artifact-body-schema-fts-foundation.md"
+      ],
+      "verify": "go test ./internal/state -run 'Schema|FTS|Status' -count=1 && CGO_ENABLED=0 go test ./internal/state -run 'FTS|Schema' -count=1",
+      "done": "Schema migration adds artifact_bodies, artifact_search FTS5, plan/handoff/council tables, schema docs, and state-doctor entity visibility without new Go module dependencies.",
+      "session": null,
+      "created": "2026-06-24T13:04:19Z",
+      "updated": "2026-06-24T13:16:26Z",
+      "completed_at": "2026-06-24T13:16:26Z",
+      "file": "TASK-349-artifact-body-schema-fts-foundation.md"
+    },
+    "TASK-350": {
+      "title": "Implement dual-source artifact body access",
+      "slug": "dual-source-artifact-body-access",
+      "spec": "SPEC-043",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-349"
+      ],
+      "files": [
+        "internal/state/",
+        "internal/state/markdown_import.go",
+        "internal/state/*_show.go",
+        ".agents/tasks/TASK-350-dual-source-artifact-body-access.md"
+      ],
+      "verify": "go test ./internal/state -run 'ArtifactBody|MarkdownMigration|Show|Trace' -count=1",
+      "done": "Body-capable entities read SQLite artifact bodies first, fall back to imported Markdown sources, and keep FTS rows synchronized by Go-side writes in the same transaction.",
+      "session": null,
+      "created": "2026-06-24T13:04:19Z",
+      "updated": "2026-06-24T13:28:11Z",
+      "completed_at": "2026-06-24T13:28:11Z",
+      "file": "TASK-350-dual-source-artifact-body-access.md"
+    },
+    "TASK-351": {
+      "title": "Add body write UX and missing entity verbs",
+      "slug": "body-write-ux-missing-entity-verbs",
+      "spec": "SPEC-043",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-350"
+      ],
+      "files": [
+        "internal/cli/cli.go",
+        "internal/state/",
+        "internal/cli/cli_reference.go",
+        "content/skills/cli-reference/SKILL.md",
+        "dist/",
+        "plugins/",
+        ".agents/tasks/TASK-351-body-write-ux-missing-entity-verbs.md"
+      ],
+      "verify": "go test ./internal/cli ./internal/state -run 'Body|ReportShow|BrainstormCapture|Plan|Handoff|Council' -count=1 && npm run build",
+      "done": "Body-capable entities support non-file body creation/editing, report show, brainstorm capture, and first-class plan/handoff/council storage with generated CLI reference output in sync.",
+      "session": null,
+      "created": "2026-06-24T13:04:19Z",
+      "updated": "2026-06-24T13:57:17Z",
+      "completed_at": "2026-06-24T13:57:17Z",
+      "file": "TASK-351-body-write-ux-missing-entity-verbs.md"
+    },
+    "TASK-352": {
+      "title": "Enforce registered artifact body writes",
+      "slug": "registered-artifact-body-write-enforcement",
+      "spec": "SPEC-043",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-351"
+      ],
+      "files": [
+        "internal/cli/check.go",
+        "internal/cli/build_*.go",
+        "config/hooks.yaml",
+        "content/hooks/",
+        ".agents/tasks/TASK-352-registered-artifact-body-write-enforcement.md"
+      ],
+      "verify": "go test ./internal/cli -run 'ArtifactBodyWrite|Check|Hook|BuildTarget' -count=1 && npm run build",
+      "done": "Harness-portable enforcement catches direct unregistered .agents artifact-body writes while allowing explicit generated/rendered exceptions.",
+      "session": null,
+      "created": "2026-06-24T13:04:19Z",
+      "updated": "2026-06-24T14:07:27Z",
+      "completed_at": "2026-06-24T14:07:27Z",
+      "file": "TASK-352-registered-artifact-body-write-enforcement.md"
+    },
+    "TASK-353": {
+      "title": "Implement Tier-1 SQLite search",
+      "slug": "tier1-sqlite-search",
+      "spec": "SPEC-043",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-352"
+      ],
+      "files": [
+        "internal/state/search.go",
+        "internal/cli/cli.go",
+        "internal/cli/cli_reference.go",
+        "content/skills/cli-reference/SKILL.md",
+        "dist/",
+        "plugins/",
+        ".agents/tasks/TASK-353-tier1-sqlite-search.md"
+      ],
+      "verify": "go test ./internal/cli ./internal/state -run 'Search|ArtifactBody|Journal' -count=1 && npm run build",
+      "done": "`loaf search` queries current-project SQLite artifact bodies and journal entries through FTS5, supports explicit all-project scope, returns tiered JSON, and redacts secret-like snippets.",
+      "session": null,
+      "created": "2026-06-24T13:04:19Z",
+      "updated": "2026-06-24T14:16:44Z",
+      "completed_at": "2026-06-24T14:16:44Z",
+      "file": "TASK-353-tier1-sqlite-search.md"
     }
   },
   "specs": {
@@ -4947,6 +5069,14 @@
       "source": "direct \u2014 bug reports from GridSight release-agent flows (v0.16.0)",
       "created": "2026-05-28T00:18:00Z",
       "file": "archive/SPEC-042-worktree-aware-config-and-session-fallback.md"
+    },
+    "SPEC-043": {
+      "title": "SQLite-Native Artifact Bodies, Retrieval & Search",
+      "status": "implementing",
+      "requirement": null,
+      "source": "/Users/levifig/Code/levifig/projects/loaf/.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md (WS-B)",
+      "created": "2026-06-22T08:56:30Z",
+      "file": "SPEC-043-sqlite-native-content.md"
     },
     "SPEC-047": {
       "title": "Build Integrity, Parity Contract & Target Simplification",

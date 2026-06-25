@@ -15,8 +15,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/levifig/loaf/internal/project"
 	"github.com/levifig/loaf/internal/state"
@@ -88,6 +90,13 @@ type statePathOptions struct {
 	verboseOutput bool
 }
 
+type searchOptions struct {
+	query       string
+	allProjects bool
+	limit       int
+	jsonOutput  bool
+}
+
 // Run dispatches a loaf command.
 func (r Runner) Run(args []string) error {
 	out := r.Stdout
@@ -150,10 +159,18 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runState(args[1:], out, runtime)
 	case "project":
 		dispatchErr = r.runProject(args[1:], out, runtime)
+	case "search":
+		dispatchErr = r.runSearch(args[1:], out, runtime)
 	case "trace":
 		dispatchErr = r.runTrace(args[1:], out, runtime)
 	case "brainstorm":
 		dispatchErr = r.runBrainstorm(args[1:], out, runtime)
+	case "plan":
+		dispatchErr = r.runArtifactEntityCommand("plan", args[1:], out, runtime)
+	case "handoff":
+		dispatchErr = r.runArtifactEntityCommand("handoff", args[1:], out, runtime)
+	case "council":
+		dispatchErr = r.runArtifactEntityCommand("council", args[1:], out, runtime)
 	case "idea":
 		dispatchErr = r.runIdea(args[1:], out, runtime)
 	case "spark":
@@ -236,11 +253,15 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  setup         Initialize, build, and install")
 	fmt.Fprintln(out, "  state         Manage native SQLite state")
 	fmt.Fprintln(out, "  project       Manage project identity")
+	fmt.Fprintln(out, "  search        Search SQLite-resident artifacts and journals")
 	fmt.Fprintln(out, "  migrate       Run migration workflows")
 	fmt.Fprintln(out, "  session       Manage sessions")
 	fmt.Fprintln(out, "  task          Manage tasks")
 	fmt.Fprintln(out, "  spec          Manage specs")
 	fmt.Fprintln(out, "  report        Manage reports")
+	fmt.Fprintln(out, "  plan          Manage plans")
+	fmt.Fprintln(out, "  handoff       Manage handoffs")
+	fmt.Fprintln(out, "  council       Manage councils")
 	fmt.Fprintln(out, "  kb            Manage knowledge base")
 	fmt.Fprintln(out, "  check         Run hook checks")
 	fmt.Fprintln(out, "  doctor        Diagnose project alignment")
@@ -601,6 +622,7 @@ func (r Runner) runBrainstorm(args []string, out io.Writer, runtime state.Runtim
 		return nil
 	}
 	if writeNestedHelp(out, args, map[string]func(io.Writer){
+		"capture": writeBrainstormCaptureHelp,
 		"list":    writeBrainstormListHelp,
 		"show":    writeBrainstormShowHelp,
 		"promote": writeBrainstormPromoteHelp,
@@ -609,6 +631,8 @@ func (r Runner) runBrainstorm(args []string, out io.Writer, runtime state.Runtim
 		return nil
 	}
 	switch args[0] {
+	case "capture":
+		return r.runBrainstormCapture(args[1:], out, runtime)
 	case "list":
 		return r.runBrainstormList(args[1:], out, runtime)
 	case "show":
@@ -624,11 +648,16 @@ func (r Runner) runBrainstorm(args []string, out io.Writer, runtime state.Runtim
 
 func writeBrainstormHelp(out io.Writer) {
 	writeCommandGroupHelp(out, "loaf brainstorm <subcommand> [options]", "Manage brainstorms in native SQLite state.", []subcommandHelpItem{
+		{Name: "capture", Summary: "Capture a brainstorm"},
 		{Name: "list", Summary: "List brainstorms"},
 		{Name: "show", Summary: "Show one brainstorm"},
 		{Name: "promote", Summary: "Promote a brainstorm to an idea"},
 		{Name: "archive", Summary: "Archive brainstorms"},
 	})
+}
+
+func writeBrainstormCaptureHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf brainstorm capture --title <title> [--body-file <path>|--body -|--message <text>] [--json]", "Capture a brainstorm in SQLite state.", "--title      Brainstorm title", "--body-file  Read Markdown body from a UTF-8 file", "--body       Use '-' to read Markdown body from stdin", "--message    Inline Markdown body; lower precedence than --body-file and --body -", "--json       Output created brainstorm, event, global database scope, and project identity as JSON")
 }
 
 func writeBrainstormListHelp(out io.Writer) {
@@ -645,6 +674,78 @@ func writeBrainstormPromoteHelp(out io.Writer) {
 
 func writeBrainstormArchiveHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf brainstorm archive <brainstorm...> [--reason <text>] [--json]", "Archive one or more brainstorms.", "--reason     Archive reason", "--json       Output archive result, archived brainstorms, global database scope, and project identity as JSON")
+}
+
+func (r Runner) runBrainstormCapture(args []string, out io.Writer, runtime state.Runtime) error {
+	jsonRequested := hasFlag(args, "--json")
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, "brainstorm capture", err)
+		}
+		return err
+	}
+	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, "brainstorm capture", err)
+		}
+		return err
+	}
+	switch status.Mode {
+	case state.ModeMarkdownOnly:
+		err := sqliteStateRequiredError("brainstorm capture")
+		if jsonRequested {
+			return writeJSONCommandError(out, "brainstorm capture", err)
+		}
+		return err
+	case state.ModeInvalid:
+		err := fmt.Errorf("state database is invalid; run `loaf state doctor`")
+		if jsonRequested {
+			return writeJSONCommandError(out, "brainstorm capture", err)
+		}
+		return err
+	}
+
+	options, err := parseBrainstormCaptureArgs(args)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, "brainstorm capture", err)
+		}
+		return err
+	}
+	body, ok, err := r.resolveBodyInput("brainstorm capture", options.body, true)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, "brainstorm capture", err)
+		}
+		return err
+	}
+	if !ok {
+		err := fmt.Errorf("brainstorm capture requires body content")
+		if jsonRequested {
+			return writeJSONCommandError(out, "brainstorm capture", err)
+		}
+		return err
+	}
+	options.capture.Body = body
+	result, err := state.CaptureBrainstorm(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.capture)
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "brainstorm capture", err)
+		}
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	fmt.Fprintf(out, "captured brainstorm %s\n", firstNonEmpty(result.Brainstorm.Alias, result.Brainstorm.ID))
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	fmt.Fprintf(out, "title: %s\n", result.Brainstorm.Title)
+	if result.EventID != "" {
+		fmt.Fprintf(out, "event: %s\n", result.EventID)
+	}
+	return nil
 }
 
 func (r Runner) runBrainstormList(args []string, out io.Writer, runtime state.Runtime) error {
@@ -868,6 +969,300 @@ func writeBrainstormArchive(out io.Writer, result state.BrainstormArchiveResult)
 		fmt.Fprintf(out, "  Skipped %d brainstorm(s)\n", len(result.Skipped))
 	}
 	fmt.Fprintln(out)
+}
+
+func (r Runner) runArtifactEntityCommand(kind string, args []string, out io.Writer, runtime state.Runtime) error {
+	if len(args) == 0 || isHelpArg(args) {
+		writeArtifactEntityHelp(out, kind)
+		return nil
+	}
+	if writeNestedHelp(out, args, map[string]func(io.Writer){
+		"new":  func(out io.Writer) { writeArtifactEntityNewHelp(out, kind) },
+		"show": func(out io.Writer) { writeArtifactEntityShowHelp(out, kind) },
+		"list": func(out io.Writer) { writeArtifactEntityListHelp(out, kind) },
+		"link": func(out io.Writer) { writeArtifactEntityLinkHelp(out, kind) },
+	}) {
+		return nil
+	}
+	switch args[0] {
+	case "new":
+		return r.runArtifactEntityNew(kind, args[1:], out, runtime)
+	case "show":
+		return r.runArtifactEntityShow(kind, args[1:], out, runtime)
+	case "list":
+		return r.runArtifactEntityList(kind, args[1:], out, runtime)
+	case "link":
+		return r.runArtifactEntityLink(kind, args[1:], out, runtime)
+	default:
+		return unknownSubcommandError(kind, args[0])
+	}
+}
+
+func writeArtifactEntityHelp(out io.Writer, kind string) {
+	writeCommandGroupHelp(out, fmt.Sprintf("loaf %s <subcommand> [options]", kind), fmt.Sprintf("Manage %ss in native SQLite state.", kind), []subcommandHelpItem{
+		{Name: "new", Summary: "Create an artifact"},
+		{Name: "show", Summary: "Show one artifact"},
+		{Name: "list", Summary: "List artifacts"},
+		{Name: "link", Summary: "Link this artifact to another entity"},
+	})
+}
+
+func writeArtifactEntityNewHelp(out io.Writer, kind string) {
+	options := []string{
+		"--title      Artifact title",
+		"--body-file  Read Markdown body from a UTF-8 file",
+		"--body       Use '-' to read Markdown body from stdin",
+		"--message    Inline Markdown body; lower precedence than --body-file and --body -",
+	}
+	switch kind {
+	case "plan", "council":
+		options = append(options, "--spec       Optional related spec")
+	case "handoff":
+		options = append(options, "--session    Optional related session", "--task       Optional related task")
+	}
+	options = append(options, "--json       Output created artifact, event, global database scope, and project identity as JSON")
+	writeUsageHelp(out, fmt.Sprintf("loaf %s new --title <title> [--body-file <path>|--body -|--message <text>] [--json]", kind), fmt.Sprintf("Create a %s in SQLite state.", kind), options...)
+}
+
+func writeArtifactEntityShowHelp(out io.Writer, kind string) {
+	writeUsageHelp(out, fmt.Sprintf("loaf %s show <%s> [--json]", kind, kind), fmt.Sprintf("Show one %s from SQLite state.", kind), "--json       Output artifact details, relationships, global database scope, and project identity as JSON")
+}
+
+func writeArtifactEntityListHelp(out io.Writer, kind string) {
+	writeUsageHelp(out, fmt.Sprintf("loaf %s list [--all|--status <status>] [--json]", kind), fmt.Sprintf("List %ss from SQLite state.", kind), "--all        Include archived artifacts", "--status     Filter by status", "--json       Output artifacts, global database scope, and project identity as JSON")
+}
+
+func writeArtifactEntityLinkHelp(out io.Writer, kind string) {
+	writeUsageHelp(out, fmt.Sprintf("loaf %s link <%s> <entity> [--type <type>] [--reason <text>] [--json]", kind, kind), fmt.Sprintf("Link a %s to another entity.", kind), "--type       Relationship type; defaults to related_to", "--reason     Relationship reason", "--json       Output relationship ID, source/target, global database scope, and project identity as JSON")
+}
+
+func (r Runner) runArtifactEntityNew(kind string, args []string, out io.Writer, runtime state.Runtime) error {
+	jsonRequested := hasFlag(args, "--json")
+	projectRoot, mode, err := r.stateMode(runtime)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, kind+" new", err)
+		}
+		return err
+	}
+	if mode == state.ModeMarkdownOnly {
+		err := sqliteStateRequiredError(kind + " new")
+		if jsonRequested {
+			return writeJSONCommandError(out, kind+" new", err)
+		}
+		return err
+	}
+	if mode == state.ModeInvalid {
+		err := fmt.Errorf("state database is invalid; run `loaf state doctor`")
+		if jsonRequested {
+			return writeJSONCommandError(out, kind+" new", err)
+		}
+		return err
+	}
+	options, err := parseArtifactEntityNewArgs(kind, args)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, kind+" new", err)
+		}
+		return err
+	}
+	body, ok, err := r.resolveBodyInput(kind+" new", options.body, true)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, kind+" new", err)
+		}
+		return err
+	}
+	if !ok {
+		err := fmt.Errorf("%s new requires body content", kind)
+		if jsonRequested {
+			return writeJSONCommandError(out, kind+" new", err)
+		}
+		return err
+	}
+	options.create.Body = body
+	result, err := state.CreateArtifactEntity(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.create)
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, kind+" new", err)
+		}
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	fmt.Fprintf(out, "created %s %s\n", kind, firstNonEmpty(result.Entity.Alias, result.Entity.ID))
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	fmt.Fprintf(out, "title: %s\n", result.Entity.Title)
+	fmt.Fprintf(out, "status: %s\n", result.Entity.Status)
+	if result.EventID != "" {
+		fmt.Fprintf(out, "event: %s\n", result.EventID)
+	}
+	return nil
+}
+
+func (r Runner) runArtifactEntityShow(kind string, args []string, out io.Writer, runtime state.Runtime) error {
+	ref, jsonOutput, err := parseSingleRefArgs(kind+" show", args)
+	if err != nil {
+		return err
+	}
+	projectRoot, mode, err := r.stateMode(runtime)
+	if err != nil {
+		return err
+	}
+	if mode == state.ModeMarkdownOnly {
+		return sqliteStateRequiredError(kind + " show")
+	}
+	if mode == state.ModeInvalid {
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+	result, err := state.ShowArtifactEntity(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, kind, ref)
+	if err != nil {
+		return err
+	}
+	if jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeArtifactEntityShow(out, result)
+	return nil
+}
+
+func (r Runner) runArtifactEntityList(kind string, args []string, out io.Writer, runtime state.Runtime) error {
+	options, err := parseArtifactEntityListArgs(kind, args)
+	if err != nil {
+		return err
+	}
+	projectRoot, mode, err := r.stateMode(runtime)
+	if err != nil {
+		return err
+	}
+	if mode == state.ModeMarkdownOnly {
+		return sqliteStateRequiredError(kind + " list")
+	}
+	if mode == state.ModeInvalid {
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+	result, err := state.ListArtifactEntities(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.list)
+	if err != nil {
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeArtifactEntityList(out, result, options.list)
+	return nil
+}
+
+func (r Runner) runArtifactEntityLink(kind string, args []string, out io.Writer, runtime state.Runtime) error {
+	jsonRequested := hasFlag(args, "--json")
+	options, err := parseArtifactEntityLinkArgs(kind, args)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, kind+" link", err)
+		}
+		return err
+	}
+	projectRoot, mode, err := r.stateMode(runtime)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, kind+" link", err)
+		}
+		return err
+	}
+	if mode == state.ModeMarkdownOnly {
+		err := sqliteStateRequiredError(kind + " link")
+		if jsonRequested {
+			return writeJSONCommandError(out, kind+" link", err)
+		}
+		return err
+	}
+	if mode == state.ModeInvalid {
+		err := fmt.Errorf("state database is invalid; run `loaf state doctor`")
+		if jsonRequested {
+			return writeJSONCommandError(out, kind+" link", err)
+		}
+		return err
+	}
+	result, err := state.CreateLink(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.LinkMutationOptions{
+		From:   options.from,
+		To:     options.to,
+		Type:   firstNonEmpty(options.relationshipType, "related_to"),
+		Reason: options.reason,
+	})
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, kind+" link", err)
+		}
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	fmt.Fprintf(out, "linked %s %s %s %s %s\n", result.From.Kind, firstNonEmpty(result.From.Alias, result.From.ID), result.Type, result.To.Kind, firstNonEmpty(result.To.Alias, result.To.ID))
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	return nil
+}
+
+func writeArtifactEntityShow(out io.Writer, result state.ArtifactEntityShow) {
+	entity := result.Entity
+	fmt.Fprintf(out, "%s %s\n", entity.Kind, firstNonEmpty(entity.Alias, entity.ID))
+	fmt.Fprintf(out, "title: %s\n", entity.Title)
+	fmt.Fprintf(out, "status: %s\n", entity.Status)
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	for _, source := range entity.Sources {
+		fmt.Fprintf(out, "source: %s\n", source.Path)
+		if source.Hash != "" {
+			fmt.Fprintf(out, "source hash: %s\n", source.Hash)
+		}
+	}
+	if len(entity.Relationships) == 0 {
+		fmt.Fprintln(out, "relationships: none")
+	} else {
+		fmt.Fprintln(out, "relationships:")
+		for _, relationship := range entity.Relationships {
+			target := firstNonEmpty(relationship.Entity.Alias, relationship.Entity.ID)
+			fmt.Fprintf(out, "  - %s %s %s %s", relationship.Direction, relationship.Type, relationship.Entity.Kind, target)
+			if relationship.Reason != "" {
+				fmt.Fprintf(out, " (%s)", relationship.Reason)
+			}
+			fmt.Fprintln(out)
+		}
+	}
+	fmt.Fprintf(out, "created: %s\n", entity.CreatedAt)
+	fmt.Fprintf(out, "updated: %s\n", entity.UpdatedAt)
+	if entity.Body != "" {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, entity.Body)
+	}
+}
+
+func writeArtifactEntityList(out io.Writer, result state.ArtifactEntityList, filters state.ArtifactEntityListOptions) {
+	fmt.Fprintf(out, "\n  loaf %s list\n\n", result.Kind)
+	writeProjectMutationContext(out, "  ", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	if len(result.Entities) == 0 {
+		if result.DatabaseScope != "" || result.DatabasePath != "" || result.ProjectID != "" || result.ProjectName != "" || result.ProjectCurrentPath != "" {
+			fmt.Fprintln(out)
+		}
+		fmt.Fprintf(out, "  No %ss found.\n\n", result.Kind)
+		return
+	}
+	if result.DatabaseScope != "" || result.DatabasePath != "" || result.ProjectID != "" || result.ProjectName != "" || result.ProjectCurrentPath != "" {
+		fmt.Fprintln(out)
+	}
+	aliases := make([]string, 0, len(result.Entities))
+	for alias := range result.Entities {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	for _, alias := range aliases {
+		entity := result.Entities[alias]
+		fmt.Fprintf(out, "    %-32s%s", alias, entity.Title)
+		if filters.All || filters.Status != "" {
+			fmt.Fprintf(out, "  [%s]", entity.Status)
+		}
+		fmt.Fprintln(out)
+	}
+	fmt.Fprintf(out, "\n  %d %s(s)\n\n", len(result.Entities), result.Kind)
 }
 
 func (r Runner) runState(args []string, out io.Writer, runtime state.Runtime) error {
@@ -2347,6 +2742,113 @@ func (r Runner) initializeState(runtime state.Runtime) (state.Status, error) {
 		return state.Status{}, err
 	}
 	return state.Initialize(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome})
+}
+
+func (r Runner) runSearch(args []string, out io.Writer, runtime state.Runtime) error {
+	if isHelpArg(args) {
+		writeSearchHelp(out)
+		return nil
+	}
+	jsonRequested := hasFlag(args, "--json")
+	options, err := parseSearchArgs(args)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, "search", err)
+		}
+		return err
+	}
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "search", err)
+		}
+		return err
+	}
+	result, err := state.Search(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.SearchOptions{
+		Query:       options.query,
+		AllProjects: options.allProjects,
+		Limit:       options.limit,
+	})
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, "search", err)
+		}
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	fmt.Fprintf(out, "search %q\n", result.Query)
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	if result.AllProjects {
+		fmt.Fprintln(out, "scope: all projects")
+	} else {
+		fmt.Fprintln(out, "scope: current project")
+	}
+	fmt.Fprintf(out, "results: %d\n", len(result.Results))
+	for _, hit := range result.Results {
+		fmt.Fprintf(out, "- [%s] %s %s", hit.Tier, hit.Source, searchHitAddress(hit))
+		if hit.Snippet != "" {
+			fmt.Fprintf(out, " — %s", hit.Snippet)
+		}
+		fmt.Fprintln(out)
+	}
+	return nil
+}
+
+func writeSearchHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf search <query> [--all-projects] [--limit <n>] [--json]", "Search Tier-1 SQLite artifact bodies and journal entries.", "--all-projects  Search every registered project instead of only the current project", "--limit         Maximum results to return (default: 20)", "--json          Output tiered hits, stable entity addresses, snippets, global database scope, and project identity as JSON")
+}
+
+func parseSearchArgs(args []string) (searchOptions, error) {
+	var options searchOptions
+	var queryParts []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			options.jsonOutput = true
+		case "--all-projects":
+			options.allProjects = true
+		case "--limit":
+			value, err := consumeFlagValue(args, &i, "--limit")
+			if err != nil {
+				return searchOptions{}, err
+			}
+			limit, err := strconv.Atoi(value)
+			if err != nil || limit <= 0 {
+				return searchOptions{}, fmt.Errorf("--limit must be a positive integer")
+			}
+			options.limit = limit
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				return searchOptions{}, fmt.Errorf("unknown search option %q", args[i])
+			}
+			queryParts = append(queryParts, args[i])
+		}
+	}
+	options.query = strings.TrimSpace(strings.Join(queryParts, " "))
+	if options.query == "" {
+		return searchOptions{}, fmt.Errorf("search requires a query")
+	}
+	return options, nil
+}
+
+func searchHitAddress(hit state.SearchHit) string {
+	if hit.Source == "journal_entry" {
+		address := hit.JournalEntryID
+		if hit.SessionID != "" {
+			address = hit.SessionID + "/" + address
+		}
+		if hit.EntryType != "" {
+			address = hit.EntryType + ":" + address
+		}
+		return address
+	}
+	address := hit.EntityKind + "/" + hit.EntityID
+	if hit.BodyKind != "" {
+		address += "#" + hit.BodyKind
+	}
+	return address
 }
 
 func (r Runner) runTrace(args []string, out io.Writer, runtime state.Runtime) error {
@@ -9049,6 +9551,7 @@ func (r Runner) runReport(args []string, out io.Writer, runtime state.Runtime) e
 	}
 	if writeNestedHelp(out, args, map[string]func(io.Writer){
 		"list":     writeReportListHelp,
+		"show":     writeReportShowHelp,
 		"generate": writeReportGenerateHelp,
 		"create":   writeReportCreateHelp,
 		"finalize": writeReportFinalizeHelp,
@@ -9059,6 +9562,8 @@ func (r Runner) runReport(args []string, out io.Writer, runtime state.Runtime) e
 	switch args[0] {
 	case "list":
 		return r.runReportList(args[1:], out, runtime)
+	case "show":
+		return r.runReportShow(args[1:], out, runtime)
 	case "generate":
 		return r.runReportGenerate(args[1:], out, runtime)
 	case "create":
@@ -9088,6 +9593,7 @@ func writeReportHelp(out io.Writer) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Subcommands:")
 	fmt.Fprintln(out, "  list      List reports")
+	fmt.Fprintln(out, "  show      Show one report")
 	fmt.Fprintln(out, "  generate  Generate read-only markdown exports")
 	fmt.Fprintln(out, "  create    Create a report")
 	fmt.Fprintln(out, "  finalize  Finalize a report")
@@ -9101,12 +9607,16 @@ func writeReportListHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf report list [--type <type>|--status <status>] [--json]", "List reports.", "--type       Filter by report type", "--status     Filter by status; Loaf lifecycle statuses: draft, final, archived", "--json       Output reports, diagnostics, global database scope, and project identity as JSON")
 }
 
+func writeReportShowHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf report show <report> [--json]", "Show one report.", "--json       Output report details, relationships, global database scope, and project identity as JSON")
+}
+
 func writeReportGenerateHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf report generate <kind> [ref] [--format markdown] [--json]", "Generate a read-only markdown report.", "--format     Output format: markdown", "--json       Output contract, command, project context, and markdown content as JSON")
 }
 
 func writeReportCreateHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf report create <slug> [--type <type>] [--source <source>] [--json]", "Create a report.", "--type       Report type", "--source     Report source", "--json       Output created report, event, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf report create <slug> [--type <type>] [--source <source>] [--body-file <path>|--body -|--message <text>] [--json]", "Create a report.", "--type       Report type", "--source     Report source", "--body-file  Read Markdown body from a UTF-8 file", "--body       Use '-' to read Markdown body from stdin", "--message    Inline Markdown body; lower precedence than --body-file and --body -", "--json       Output created report, event, global database scope, and project identity as JSON")
 }
 
 func writeReportFinalizeHelp(out io.Writer) {
@@ -9157,6 +9667,40 @@ func (r Runner) runReportList(args []string, out io.Writer, runtime state.Runtim
 	return nil
 }
 
+func (r Runner) runReportShow(args []string, out io.Writer, runtime state.Runtime) error {
+	ref, jsonOutput, err := parseSingleRefArgs("report show", args)
+	if err != nil {
+		return err
+	}
+	projectRoot, mode, err := r.reportStateMode(runtime)
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		result, err := markdownReportShow(projectRoot.Path(), ref)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return writeJSON(out, result)
+		}
+		writeReportShow(out, result)
+		return nil
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+	result, err := state.ShowReport(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
+	if err != nil {
+		return err
+	}
+	if jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeReportShow(out, result)
+	return nil
+}
+
 func (r Runner) runReportGenerate(args []string, out io.Writer, runtime state.Runtime) error {
 	options, err := parseReportGenerateArgs(args)
 	if err != nil {
@@ -9203,6 +9747,9 @@ func (r Runner) runReportCreate(args []string, out io.Writer, runtime state.Runt
 		if err != nil {
 			return err
 		}
+		if bodyInputProvided(options.body) {
+			return sqliteStateRequiredError("report create with body input")
+		}
 		result, err := markdownReportCreate(projectRoot.Path(), options.create)
 		if err != nil {
 			return err
@@ -9219,6 +9766,14 @@ func (r Runner) runReportCreate(args []string, out io.Writer, runtime state.Runt
 	options, err := parseReportCreateArgs(args)
 	if err != nil {
 		return err
+	}
+	body, ok, err := r.resolveBodyInput("report create", options.body, false)
+	if err != nil {
+		return err
+	}
+	if ok {
+		options.create.Body = body
+		options.create.SetBody = true
 	}
 	result, err := state.CreateReport(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.create)
 	if err != nil {
@@ -9324,6 +9879,44 @@ func writeReportCreate(out io.Writer, result state.ReportCreateResult) {
 	}
 }
 
+func writeReportShow(out io.Writer, result state.ReportShow) {
+	report := result.Report
+	fmt.Fprintf(out, "report %s\n", firstNonEmpty(report.Alias, report.ID))
+	fmt.Fprintf(out, "title: %s\n", report.Title)
+	fmt.Fprintf(out, "status: %s\n", report.Status)
+	fmt.Fprintf(out, "type: %s\n", report.Kind)
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	for _, source := range report.Sources {
+		fmt.Fprintf(out, "source: %s\n", source.Path)
+		if source.Hash != "" {
+			fmt.Fprintf(out, "source hash: %s\n", source.Hash)
+		}
+	}
+	if len(report.Relationships) == 0 {
+		fmt.Fprintln(out, "relationships: none")
+	} else {
+		fmt.Fprintln(out, "relationships:")
+		for _, relationship := range report.Relationships {
+			target := firstNonEmpty(relationship.Entity.Alias, relationship.Entity.ID)
+			fmt.Fprintf(out, "  - %s %s %s %s", relationship.Direction, relationship.Type, relationship.Entity.Kind, target)
+			if relationship.Reason != "" {
+				fmt.Fprintf(out, " (%s)", relationship.Reason)
+			}
+			fmt.Fprintln(out)
+		}
+	}
+	if report.CreatedAt != "" {
+		fmt.Fprintf(out, "created: %s\n", report.CreatedAt)
+	}
+	if report.UpdatedAt != "" {
+		fmt.Fprintf(out, "updated: %s\n", report.UpdatedAt)
+	}
+	if report.Body != "" {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, report.Body)
+	}
+}
+
 func writeReportStatus(out io.Writer, action string, result state.ReportStatusResult) {
 	fmt.Fprintf(out, "%s report %s: %s\n", action, firstNonEmpty(result.Report.Alias, result.Report.ID), result.Report.Title)
 	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
@@ -9402,6 +9995,62 @@ func markdownReportList(rootPath string, options state.ReportListOptions) (state
 		reports.Reports[alias] = item
 	}
 	return reports, nil
+}
+
+func markdownReportShow(rootPath string, ref string) (state.ReportShow, error) {
+	path, item, alias, err := findMarkdownReport(rootPath, ref)
+	if err != nil {
+		return state.ReportShow{}, err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return state.ReportShow{}, fmt.Errorf("read markdown report %s: %w", path, err)
+	}
+	info, _ := os.Stat(path)
+	updatedAt := ""
+	if info != nil {
+		updatedAt = info.ModTime().UTC().Format(time.RFC3339)
+	}
+	body := markdownContentWithoutFrontmatter(string(content))
+	return state.ReportShow{
+		Query: ref,
+		Report: state.ReportDetail{
+			ID:        alias,
+			Alias:     alias,
+			Title:     item.Title,
+			Kind:      item.Kind,
+			Status:    item.Status,
+			Sources:   []state.TraceSource{{Path: item.SourcePath}},
+			Body:      body,
+			CreatedAt: updatedAt,
+			UpdatedAt: updatedAt,
+		},
+	}, nil
+}
+
+func findMarkdownReport(rootPath string, ref string) (string, state.ReportItem, string, error) {
+	agentsDir := filepath.Join(rootPath, ".agents")
+	patterns := []string{
+		filepath.Join(agentsDir, "reports", "*.md"),
+		filepath.Join(agentsDir, "reports", "archive", "*.md"),
+	}
+	for _, pattern := range patterns {
+		files, err := filepath.Glob(pattern)
+		if err != nil {
+			return "", state.ReportItem{}, "", fmt.Errorf("find markdown reports: %w", err)
+		}
+		sort.Strings(files)
+		for _, path := range files {
+			item, alias, err := readMarkdownReport(rootPath, path)
+			if err != nil {
+				return "", state.ReportItem{}, "", err
+			}
+			if ref == alias || ref == item.SourcePath || ref == strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)) {
+				return path, item, alias, nil
+			}
+		}
+	}
+	return "", state.ReportItem{}, "", fmt.Errorf("report %q not found", ref)
 }
 
 func readMarkdownReport(rootPath string, path string) (state.ReportItem, string, error) {
@@ -10089,6 +10738,18 @@ type brainstormListOptions struct {
 	filters    state.BrainstormListOptions
 }
 
+type bodyInputOptions struct {
+	bodyFile string
+	body     string
+	message  string
+}
+
+type brainstormCaptureOptions struct {
+	jsonOutput bool
+	capture    state.BrainstormCaptureOptions
+	body       bodyInputOptions
+}
+
 type brainstormPromoteOptions struct {
 	jsonOutput bool
 	promote    state.BrainstormPromoteOptions
@@ -10176,6 +10837,17 @@ type linkMutationOptions struct {
 	reason           string
 }
 
+type artifactEntityNewOptions struct {
+	jsonOutput bool
+	create     state.ArtifactEntityCreateOptions
+	body       bodyInputOptions
+}
+
+type artifactEntityListOptions struct {
+	jsonOutput bool
+	list       state.ArtifactEntityListOptions
+}
+
 type sessionListOptions struct {
 	jsonOutput bool
 	filters    state.SessionListOptions
@@ -10217,6 +10889,7 @@ type reportListOptions struct {
 type reportCreateOptions struct {
 	jsonOutput bool
 	create     state.ReportCreateOptions
+	body       bodyInputOptions
 }
 
 type reportGenerateOptions struct {
@@ -10409,6 +11082,133 @@ func consumeFlagValue(args []string, index *int, flag string) (string, error) {
 	return args[next], nil
 }
 
+func parseBodyInputFlag(args []string, index *int, options *bodyInputOptions) (bool, error) {
+	switch args[*index] {
+	case "--body-file":
+		value, err := consumeFlagValue(args, index, "--body-file")
+		if err != nil {
+			return true, err
+		}
+		options.bodyFile = value
+		return true, nil
+	case "--body":
+		value, err := consumeFlagValue(args, index, "--body")
+		if err != nil {
+			return true, err
+		}
+		if value != "-" {
+			return true, fmt.Errorf("--body only supports '-' for stdin input")
+		}
+		options.body = value
+		return true, nil
+	case "--message":
+		value, err := consumeFlagValue(args, index, "--message")
+		if err != nil {
+			return true, err
+		}
+		options.message = value
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+func bodyInputProvided(options bodyInputOptions) bool {
+	return strings.TrimSpace(options.bodyFile) != "" || options.body == "-" || options.message != ""
+}
+
+func (r Runner) resolveBodyInput(command string, options bodyInputOptions, requireBody bool) (string, bool, error) {
+	switch {
+	case strings.TrimSpace(options.bodyFile) != "":
+		content, err := os.ReadFile(options.bodyFile)
+		if err != nil {
+			return "", false, fmt.Errorf("read %s --body-file: %w", command, err)
+		}
+		if !utf8.Valid(content) {
+			return "", false, fmt.Errorf("%s --body-file must be valid UTF-8", command)
+		}
+		return string(content), true, nil
+	case options.body == "-":
+		reader := r.Stdin
+		if reader == nil {
+			reader = os.Stdin
+		}
+		content, err := io.ReadAll(reader)
+		if err != nil {
+			return "", false, fmt.Errorf("read %s --body -: %w", command, err)
+		}
+		if !utf8.Valid(content) {
+			return "", false, fmt.Errorf("%s --body - input must be valid UTF-8", command)
+		}
+		return string(content), true, nil
+	case options.message != "":
+		content := []byte(options.message)
+		if !utf8.Valid(content) {
+			return "", false, fmt.Errorf("%s --message must be valid UTF-8", command)
+		}
+		return options.message, true, nil
+	}
+
+	if !requireBody {
+		return "", false, nil
+	}
+	if body, ok, err := r.readBodyFromEditor(command); ok || err != nil {
+		return body, ok, err
+	}
+	if requireBody {
+		return "", false, fmt.Errorf("%s requires body content via --body-file, --body -, --message, or $EDITOR", command)
+	}
+	return "", false, nil
+}
+
+func (r Runner) readBodyFromEditor(command string) (string, bool, error) {
+	editor := strings.TrimSpace(os.Getenv("EDITOR"))
+	if editor == "" || !stdinIsTerminal(r.Stdin) {
+		return "", false, nil
+	}
+	file, err := os.CreateTemp("", "loaf-body-*.md")
+	if err != nil {
+		return "", false, fmt.Errorf("create %s editor buffer: %w", command, err)
+	}
+	path := file.Name()
+	file.Close()
+	defer os.Remove(path)
+
+	parts := strings.Fields(editor)
+	if len(parts) == 0 {
+		return "", false, nil
+	}
+	cmd := exec.Command(parts[0], append(parts[1:], path)...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return "", false, fmt.Errorf("run $EDITOR for %s: %w", command, err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", false, fmt.Errorf("read %s editor buffer: %w", command, err)
+	}
+	if !utf8.Valid(content) {
+		return "", false, fmt.Errorf("%s editor buffer must be valid UTF-8", command)
+	}
+	if strings.TrimSpace(string(content)) == "" {
+		return "", false, nil
+	}
+	return string(content), true, nil
+}
+
+func stdinIsTerminal(reader io.Reader) bool {
+	if reader != nil && reader != os.Stdin {
+		return false
+	}
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
 func parseIdeaListArgs(args []string) (ideaListOptions, error) {
 	var options ideaListOptions
 	for i := 0; i < len(args); i++ {
@@ -10447,6 +11247,34 @@ func parseBrainstormListArgs(args []string) (brainstormListOptions, error) {
 		default:
 			return brainstormListOptions{}, fmt.Errorf("unknown option %q", args[i])
 		}
+	}
+	return options, nil
+}
+
+func parseBrainstormCaptureArgs(args []string) (brainstormCaptureOptions, error) {
+	var options brainstormCaptureOptions
+	for i := 0; i < len(args); i++ {
+		if ok, err := parseBodyInputFlag(args, &i, &options.body); ok || err != nil {
+			if err != nil {
+				return brainstormCaptureOptions{}, err
+			}
+			continue
+		}
+		switch args[i] {
+		case "--json":
+			options.jsonOutput = true
+		case "--title":
+			value, err := consumeFlagValue(args, &i, "--title")
+			if err != nil {
+				return brainstormCaptureOptions{}, err
+			}
+			options.capture.Title = value
+		default:
+			return brainstormCaptureOptions{}, fmt.Errorf("unknown option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(options.capture.Title) == "" {
+		return brainstormCaptureOptions{}, fmt.Errorf("brainstorm capture requires --title")
 	}
 	return options, nil
 }
@@ -10947,6 +11775,107 @@ func parseLinkMutationArgs(command string, args []string) (linkMutationOptions, 
 	return options, nil
 }
 
+func parseArtifactEntityNewArgs(kind string, args []string) (artifactEntityNewOptions, error) {
+	options := artifactEntityNewOptions{create: state.ArtifactEntityCreateOptions{Kind: kind}}
+	for i := 0; i < len(args); i++ {
+		if ok, err := parseBodyInputFlag(args, &i, &options.body); ok || err != nil {
+			if err != nil {
+				return artifactEntityNewOptions{}, err
+			}
+			continue
+		}
+		switch args[i] {
+		case "--json":
+			options.jsonOutput = true
+		case "--title":
+			value, err := consumeFlagValue(args, &i, "--title")
+			if err != nil {
+				return artifactEntityNewOptions{}, err
+			}
+			options.create.Title = value
+		case "--spec":
+			value, err := consumeFlagValue(args, &i, "--spec")
+			if err != nil {
+				return artifactEntityNewOptions{}, err
+			}
+			options.create.Spec = value
+		case "--session":
+			value, err := consumeFlagValue(args, &i, "--session")
+			if err != nil {
+				return artifactEntityNewOptions{}, err
+			}
+			options.create.Session = value
+		case "--task":
+			value, err := consumeFlagValue(args, &i, "--task")
+			if err != nil {
+				return artifactEntityNewOptions{}, err
+			}
+			options.create.Task = value
+		default:
+			return artifactEntityNewOptions{}, fmt.Errorf("unknown option %q", args[i])
+		}
+	}
+	if strings.TrimSpace(options.create.Title) == "" {
+		return artifactEntityNewOptions{}, fmt.Errorf("%s new requires --title", kind)
+	}
+	return options, nil
+}
+
+func parseArtifactEntityListArgs(kind string, args []string) (artifactEntityListOptions, error) {
+	options := artifactEntityListOptions{list: state.ArtifactEntityListOptions{Kind: kind}}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			options.jsonOutput = true
+		case "--all":
+			options.list.All = true
+		case "--status":
+			value, err := consumeFlagValue(args, &i, "--status")
+			if err != nil {
+				return artifactEntityListOptions{}, err
+			}
+			options.list.Status = value
+		default:
+			return artifactEntityListOptions{}, fmt.Errorf("unknown option %q", args[i])
+		}
+	}
+	return options, nil
+}
+
+func parseArtifactEntityLinkArgs(kind string, args []string) (linkMutationOptions, error) {
+	var options linkMutationOptions
+	var positional []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			options.jsonOutput = true
+		case "--type":
+			value, err := consumeFlagValue(args, &i, "--type")
+			if err != nil {
+				return linkMutationOptions{}, err
+			}
+			options.relationshipType = value
+		case "--reason":
+			value, err := consumeFlagValue(args, &i, "--reason")
+			if err != nil {
+				return linkMutationOptions{}, err
+			}
+			options.reason = value
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				return linkMutationOptions{}, fmt.Errorf("unknown option %q", args[i])
+			}
+			positional = append(positional, args[i])
+		}
+	}
+	if len(positional) != 2 {
+		return linkMutationOptions{}, fmt.Errorf("%s link requires a %s and target entity", kind, kind)
+	}
+	options.from = positional[0]
+	options.to = positional[1]
+	return options, nil
+}
+
 func parseSessionListArgs(args []string) (sessionListOptions, error) {
 	var options sessionListOptions
 	for _, arg := range args {
@@ -11093,6 +12022,12 @@ func parseReportCreateArgs(args []string) (reportCreateOptions, error) {
 	options := reportCreateOptions{create: state.ReportCreateOptions{Kind: "research", Source: "ad-hoc"}}
 	var positional []string
 	for i := 0; i < len(args); i++ {
+		if ok, err := parseBodyInputFlag(args, &i, &options.body); ok || err != nil {
+			if err != nil {
+				return reportCreateOptions{}, err
+			}
+			continue
+		}
 		switch args[i] {
 		case "--json":
 			options.jsonOutput = true

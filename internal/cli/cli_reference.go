@@ -85,6 +85,16 @@ func cliReferenceCommands() []cliReferenceCommand {
 			},
 		},
 		{
+			Name:        "search",
+			Description: "Search Tier-1 SQLite artifact bodies and journal entries",
+			Options: []cliReferenceOption{
+				{Flags: "<query>", Description: "Search terms matched through SQLite FTS5"},
+				{Flags: "--all-projects", Description: "Search every registered project instead of only the current project"},
+				{Flags: "--limit <n>", Description: "Maximum results to return (default: 20)"},
+				{Flags: "--json", Description: "Output tiered hits, stable entity addresses, snippets, global database scope, and project identity as JSON"},
+			},
+		},
+		{
 			Name:        "state",
 			Description: "Manage native SQLite state",
 			Subcommands: []cliReferenceSubcommand{
@@ -243,6 +253,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--status <status>", Description: "Filter by status; Loaf lifecycle statuses: draft, final, archived"},
 					{Flags: "--json", Description: "Output reports, diagnostics, global database scope, and project identity as JSON"},
 				}},
+				{Name: "show", Description: "Show one report", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report details, relationships, global database scope, and project identity as JSON"}}},
 				{Name: "generate", Description: "Generate a report from state", Options: []cliReferenceOption{
 					{Flags: "--format <format>", Description: "Output format: markdown"},
 					{Flags: "--json", Description: "Output contract, command, project context, and markdown content as JSON"},
@@ -250,11 +261,29 @@ func cliReferenceCommands() []cliReferenceCommand {
 				{Name: "create", Description: "Create a report draft", Options: []cliReferenceOption{
 					{Flags: "--type <type>", Description: "Report type"},
 					{Flags: "--source <source>", Description: "Report source"},
+					{Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"},
+					{Flags: "--body -", Description: "Read Markdown body from stdin"},
+					{Flags: "--message <text>", Description: "Use inline Markdown body text"},
 					{Flags: "--json", Description: "Output created report, event, global database scope, and project identity as JSON"},
 				}},
 				{Name: "finalize", Description: "Mark a report draft as final", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
 				{Name: "archive", Description: "Archive a finalized report", Options: []cliReferenceOption{{Flags: "--json", Description: "Output report status transition, event, global database scope, and project identity as JSON"}}},
 			},
+		},
+		{
+			Name:        "plan",
+			Description: "Manage plans in native SQLite state",
+			Subcommands: nativeArtifactReferenceSubcommands("plan"),
+		},
+		{
+			Name:        "handoff",
+			Description: "Manage handoffs in native SQLite state",
+			Subcommands: nativeArtifactReferenceSubcommands("handoff"),
+		},
+		{
+			Name:        "council",
+			Description: "Manage councils in native SQLite state",
+			Subcommands: nativeArtifactReferenceSubcommands("council"),
 		},
 		{
 			Name:        "kb",
@@ -307,6 +336,13 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Name:        "brainstorm",
 			Description: "Manage brainstorms in native SQLite state",
 			Subcommands: []cliReferenceSubcommand{
+				{Name: "capture", Description: "Capture a brainstorm in SQLite state", Options: []cliReferenceOption{
+					{Flags: "--title <title>", Description: "Brainstorm title"},
+					{Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"},
+					{Flags: "--body -", Description: "Read Markdown body from stdin"},
+					{Flags: "--message <text>", Description: "Use inline Markdown body text"},
+					{Flags: "--json", Description: "Output created brainstorm, event, global database scope, and project identity as JSON"},
+				}},
 				{Name: "list", Description: "List brainstorms from SQLite state", Options: []cliReferenceOption{
 					{Flags: "--all", Description: "Include archived brainstorms"},
 					{Flags: "--status <status>", Description: "Filter by status"},
@@ -603,6 +639,39 @@ func cliReferenceSubcommands(cmd cliReferenceCommand) []cliReferenceSubcommand {
 		{Name: "show", Description: "Display one session from state"},
 		{Name: "report", Description: "Generate a session report from SQLite state"},
 	})
+}
+
+func nativeArtifactReferenceSubcommands(kind string) []cliReferenceSubcommand {
+	options := []cliReferenceOption{
+		{Flags: "--title <title>", Description: "Artifact title"},
+		{Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"},
+		{Flags: "--body -", Description: "Read Markdown body from stdin"},
+		{Flags: "--message <text>", Description: "Use inline Markdown body text"},
+	}
+	switch kind {
+	case "plan", "council":
+		options = append(options, cliReferenceOption{Flags: "--spec <spec>", Description: "Optional related spec"})
+	case "handoff":
+		options = append(options,
+			cliReferenceOption{Flags: "--session <session>", Description: "Optional related session"},
+			cliReferenceOption{Flags: "--task <task>", Description: "Optional related task"},
+		)
+	}
+	options = append(options, cliReferenceOption{Flags: "--json", Description: "Output created artifact, event, global database scope, and project identity as JSON"})
+	return []cliReferenceSubcommand{
+		{Name: "new", Description: "Create a " + kind + " in SQLite state", Options: options},
+		{Name: "show", Description: "Show one " + kind + " from SQLite state", Options: []cliReferenceOption{{Flags: "--json", Description: "Output artifact details, relationships, global database scope, and project identity as JSON"}}},
+		{Name: "list", Description: "List " + kind + "s from SQLite state", Options: []cliReferenceOption{
+			{Flags: "--all", Description: "Include archived artifacts"},
+			{Flags: "--status <status>", Description: "Filter by status"},
+			{Flags: "--json", Description: "Output artifacts, global database scope, and project identity as JSON"},
+		}},
+		{Name: "link", Description: "Link a " + kind + " to another entity", Options: []cliReferenceOption{
+			{Flags: "--type <type>", Description: "Relationship type; defaults to related_to"},
+			{Flags: "--reason <text>", Description: "Relationship reason"},
+			{Flags: "--json", Description: "Output relationship ID, source/target, global database scope, and project identity as JSON"},
+		}},
+	}
 }
 
 func supplementalCLIReferenceCommands(commands []cliReferenceCommand) []cliReferenceCommand {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/levifig/loaf/internal/project"
 )
@@ -142,9 +141,10 @@ WHERE tasks.project_id = ? AND tasks.id = ?
 	if sourcePath.Valid && sourcePath.String != "" {
 		path := filepath.ToSlash(sourcePath.String)
 		sources = append(sources, TraceSource{Path: path, Hash: sourceHash.String})
-		if content, err := readImportedSourceBody(root.Path(), path); err == nil {
-			body = content
-		}
+	}
+	body, err = s.artifactBodyOrSourceBody(ctx, root.Path(), projectID, "task", entity.ID, sourcePath)
+	if err != nil {
+		return TaskDetail{}, err
 	}
 
 	return TaskDetail{
@@ -161,21 +161,6 @@ WHERE tasks.project_id = ? AND tasks.id = ?
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
 	}, nil
-}
-
-func readImportedSourceBody(rootPath string, relPath string) (string, error) {
-	if filepath.IsAbs(relPath) {
-		return "", fmt.Errorf("source path %q is absolute", relPath)
-	}
-	clean := filepath.Clean(filepath.FromSlash(relPath))
-	if clean == "." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == ".." {
-		return "", fmt.Errorf("source path %q escapes project root", relPath)
-	}
-	content, err := os.ReadFile(filepath.Join(rootPath, clean))
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(markdownBody(content)), nil
 }
 
 func (s *Store) taskSessionAliases(ctx context.Context, projectID string, alias string) ([]string, error) {
@@ -218,18 +203,4 @@ ORDER BY session_alias.alias, relationships.to_entity_id
 		return nil, fmt.Errorf("iterate task sessions: %w", err)
 	}
 	return sessions, nil
-}
-
-func markdownBody(content []byte) string {
-	text := string(content)
-	lines := strings.Split(text, "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-		return text
-	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			return strings.Join(lines[i+1:], "\n")
-		}
-	}
-	return text
 }

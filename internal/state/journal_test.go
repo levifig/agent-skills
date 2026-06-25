@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/levifig/loaf/internal/project"
 )
@@ -76,6 +77,77 @@ func TestLogJournalRejectsMalformedEntry(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("LogJournal() error = nil, want malformed entry error")
+	}
+}
+
+func TestLogJournalWaitsForConcurrentWriteTransaction(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	status, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	blocker, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore(blocker) error = %v", err)
+	}
+	defer blocker.Close()
+
+	tx, err := blocker.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("BeginTx(blocker) error = %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(context.Background(), `UPDATE projects SET updated_at = updated_at`); err != nil {
+		t.Fatalf("hold write transaction error = %v", err)
+	}
+
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		_, err := LogJournal(context.Background(), root, PathResolver{StateHome: stateHome}, JournalLogOptions{
+			Entry: "discover(concurrency): queued while writer holds lock",
+		})
+		done <- err
+	}()
+	<-started
+
+	select {
+	case err := <-done:
+		t.Fatalf("LogJournal returned before writer released lock: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit(blocker) error = %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("LogJournal() error = %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("LogJournal did not complete after writer released lock")
+	}
+
+	reader, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore(reader) error = %v", err)
+	}
+	defer reader.Close()
+	var count int
+	if err := reader.db.QueryRowContext(context.Background(), `
+SELECT COUNT(*) FROM journal_entries
+WHERE entry_type = 'discover'
+  AND scope = 'concurrency'
+  AND message = 'queued while writer holds lock'
+`).Scan(&count); err != nil {
+		t.Fatalf("count journal entries error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("journal entry count = %d, want 1", count)
 	}
 }
 

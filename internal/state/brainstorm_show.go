@@ -113,9 +113,10 @@ WHERE brainstorms.project_id = ? AND brainstorms.id = ?
 	if sourcePath.Valid && sourcePath.String != "" {
 		path := filepath.ToSlash(sourcePath.String)
 		sources = append(sources, TraceSource{Path: path, Hash: sourceHash.String})
-		if content, err := readImportedSourceBody(root.Path(), path); err == nil {
-			body = content
-		}
+	}
+	body, err = s.artifactBodyOrSourceBody(ctx, root.Path(), projectID, "brainstorm", entity.ID, sourcePath)
+	if err != nil {
+		return BrainstormDetail{}, err
 	}
 
 	relationships, err := s.traceRelationships(ctx, projectID, TraceEntity{

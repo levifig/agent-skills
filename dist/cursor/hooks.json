@@ -7,6 +7,13 @@
         "timeout": 30,
         "matcher": "Edit|Write|Bash",
         "failClosed": true,
+        "command": "loaf check --hook artifact-body-write"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Edit|Write|Bash",
+        "failClosed": true,
         "command": "loaf check --hook check-secrets"
       },
       {

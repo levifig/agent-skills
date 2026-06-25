@@ -176,6 +176,9 @@ func (m markdownImporter) importSpecs(ctx context.Context, agentsPath string) er
 		if err := m.upsertSpec(ctx, id, title, status, sourceID); err != nil {
 			return err
 		}
+		if err := m.upsertArtifactBody(ctx, "spec", id, sourceID, artifact); err != nil {
+			return err
+		}
 		if err := m.upsertAlias(ctx, "spec", id, "spec", alias); err != nil {
 			return err
 		}
@@ -221,6 +224,9 @@ func (m markdownImporter) importTasks(ctx context.Context, agentsPath string) er
 		status := firstNonEmpty(meta.Status, artifact.Frontmatter["status"], "unknown")
 		priority := firstNonEmpty(meta.Priority, artifact.Frontmatter["priority"])
 		if err := m.upsertTask(ctx, id, specID, title, status, priority, sourceID); err != nil {
+			return err
+		}
+		if err := m.upsertArtifactBody(ctx, "task", id, sourceID, artifact); err != nil {
 			return err
 		}
 		if err := m.upsertAlias(ctx, "task", id, "task", alias); err != nil {
@@ -276,6 +282,9 @@ func (m markdownImporter) importSimpleMarkdown(ctx context.Context, agentsPath s
 		if err := m.upsertSimpleEntity(ctx, table, id, title, status, sourceID); err != nil {
 			return err
 		}
+		if err := m.upsertArtifactBody(ctx, kind, id, sourceID, artifact); err != nil {
+			return err
+		}
 		if err := m.upsertAlias(ctx, kind, id, kind, alias); err != nil {
 			return err
 		}
@@ -311,6 +320,9 @@ func (m markdownImporter) importShapingDrafts(ctx context.Context, agentsPath st
 		title := firstNonEmpty(artifact.Frontmatter["title"], artifact.Heading, alias)
 		status := firstNonEmpty(artifact.Frontmatter["status"], "draft")
 		if err := m.upsertSimpleEntity(ctx, "shaping_drafts", id, title, status, sourceID); err != nil {
+			return err
+		}
+		if err := m.upsertArtifactBody(ctx, "shaping_draft", id, sourceID, artifact); err != nil {
 			return err
 		}
 		if err := m.upsertAlias(ctx, "shaping_draft", id, "shaping_draft", alias); err != nil {
@@ -353,6 +365,9 @@ func (m markdownImporter) importSessions(ctx context.Context, agentsPath string)
 		if err := m.upsertSession(ctx, id, branch, status, harnessSessionID, sourceID); err != nil {
 			return err
 		}
+		if err := m.upsertArtifactBody(ctx, "session", id, sourceID, artifact); err != nil {
+			return err
+		}
 		if err := m.upsertAlias(ctx, "session", id, "session", alias); err != nil {
 			return err
 		}
@@ -388,6 +403,9 @@ func (m markdownImporter) importReports(ctx context.Context, agentsPath string) 
 		status := reportStatus(artifact)
 		reportKind := firstNonEmpty(artifact.Frontmatter["type"], artifact.Frontmatter["report_kind"], artifact.Frontmatter["kind"], "markdown")
 		if err := m.upsertReport(ctx, id, reportKind, title, status, sourceID); err != nil {
+			return err
+		}
+		if err := m.upsertArtifactBody(ctx, "report", id, sourceID, artifact); err != nil {
 			return err
 		}
 		if err := m.upsertAlias(ctx, "report", id, "report", alias); err != nil {
@@ -582,6 +600,14 @@ ON CONFLICT(id) DO UPDATE SET
 	return id, nil
 }
 
+func (m markdownImporter) upsertArtifactBody(ctx context.Context, entityKind string, entityID string, sourceID string, artifact sourceArtifact) error {
+	_, err := upsertArtifactBodyTx(ctx, m.tx, m.projectID, entityKind, entityID, ArtifactBodyKindMarkdown, markdownArtifactBodyContent(artifact.Content), sourceID, m.now)
+	if err != nil {
+		return fmt.Errorf("upsert %s artifact body %s: %w", entityKind, entityID, err)
+	}
+	return nil
+}
+
 func (m markdownImporter) upsertSpec(ctx context.Context, id string, title string, status string, sourceID any) error {
 	_, err := m.tx.ExecContext(ctx, `
 INSERT INTO specs (id, project_id, title, status, body_source_id, created_at, updated_at)
@@ -736,7 +762,7 @@ func (m markdownImporter) upsertAlias(ctx context.Context, entityKind string, en
 	_, err := m.tx.ExecContext(ctx, `
 INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
+ON CONFLICT(project_id, namespace, alias) DO UPDATE SET
   entity_kind = excluded.entity_kind,
   entity_id = excluded.entity_id,
   updated_at = excluded.updated_at

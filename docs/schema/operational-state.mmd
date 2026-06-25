@@ -111,10 +111,70 @@ erDiagram
     text created_at
     text updated_at
   }
+  artifact_bodies {
+    text id PK
+    text project_id FK
+    text entity_kind
+    text entity_id
+    text body_kind
+    text content
+    text content_hash
+    text source_id FK
+    text created_at
+    text updated_at
+  }
+  artifact_search {
+    integer rowid PK
+    text project_id
+    text entity_kind
+    text entity_id
+    text body_kind
+    text content
+  }
+  journal_search {
+    integer rowid PK
+    text project_id
+    text journal_entry_id
+    text session_id
+    text entry_type
+    text scope
+    text message
+  }
   reports {
     text id PK
     text project_id FK
     text report_kind
+    text title
+    text status
+    text body_source_id FK
+    text created_at
+    text updated_at
+  }
+  plans {
+    text id PK
+    text project_id FK
+    text spec_id FK
+    text title
+    text status
+    text body_source_id FK
+    text created_at
+    text updated_at
+  }
+  handoffs {
+    text id PK
+    text project_id FK
+    text session_id FK
+    text task_id FK
+    text title
+    text status
+    text body_source_id FK
+    text created_at
+    text updated_at
+  }
+  councils {
+    text id PK
+    text project_id FK
+    text spec_id FK
     text title
     text status
     text body_source_id FK
@@ -248,6 +308,7 @@ erDiagram
   }
 
   projects ||--o{ aliases : scopes
+  projects ||--o{ artifact_bodies : scopes
   projects ||--o{ specs : scopes
   projects ||--o{ tasks : scopes
   projects ||--o{ ideas : scopes
@@ -257,6 +318,9 @@ erDiagram
   projects ||--o{ sessions : scopes
   projects ||--o{ session_state_snapshots : scopes
   projects ||--o{ reports : scopes
+  projects ||--o{ plans : scopes
+  projects ||--o{ handoffs : scopes
+  projects ||--o{ councils : scopes
   projects ||--o{ journal_entries : scopes
   projects ||--o{ project_paths : locates
   projects ||--o{ events : scopes
@@ -270,12 +334,17 @@ erDiagram
   projects ||--o{ hook_events : scopes
   projects ||--o{ exports : scopes
   specs ||--o{ tasks : contains
+  specs ||--o{ plans : shapes
+  specs ||--o{ councils : contextualizes
   sessions ||--o{ journal_entries : records
+  sessions ||--o{ handoffs : transfers
   sessions ||--o{ session_state_snapshots : summarizes
+  tasks ||--o{ handoffs : transfers
   specs ||--o{ journal_entries : contextualizes
   tasks ||--o{ journal_entries : contextualizes
   tags ||--o{ entity_tags : labels
   bundles ||--o{ bundle_members : contains
+  sources ||--o{ artifact_bodies : provenance
   sources ||--o{ specs : bodies
   sources ||--o{ tasks : bodies
   sources ||--o{ ideas : bodies
@@ -284,3 +353,6 @@ erDiagram
   sources ||--o{ shaping_drafts : bodies
   sources ||--o{ sessions : bodies
   sources ||--o{ reports : bodies
+  sources ||--o{ plans : bodies
+  sources ||--o{ handoffs : bodies
+  sources ||--o{ councils : bodies

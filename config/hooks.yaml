@@ -6,8 +6,8 @@
 #   post-tool: Runs AFTER tool execution (informational)
 #   session: Lifecycle hooks (SessionStart, SessionEnd, PreCompact)
 #
-# Enforcement hooks (5) are implemented via `loaf check --hook <id>`:
-#   - check-secrets, validate-push, validate-commit, workflow-pre-pr, security-audit
+# Enforcement hooks (6) are implemented via `loaf check --hook <id>`:
+#   - artifact-body-write, check-secrets, validate-push, validate-commit, workflow-pre-pr, security-audit
 #
 # Migrated to skill instructions (removed from hooks.yaml):
 #   - Language hooks: python-*, typescript-*, rails-*
@@ -18,6 +18,14 @@
 hooks:
   pre-tool:
     # Security Compliance - Secret scanning and security auditing (ENFORCEMENT)
+    - id: artifact-body-write
+      skill: orchestration
+      matcher: "Edit|Write|Bash"
+      blocking: true
+      timeout: 30000
+      failClosed: true
+      description: Block direct .agents artifact body writes that bypass SQLite registration
+
     - id: check-secrets
       skill: security-compliance
       matcher: "Edit|Write|Bash"

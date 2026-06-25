@@ -5,6 +5,15 @@
       {
         "loaf-managed": true,
         "matcher": "Bash",
+        "command": "loaf check --hook artifact-body-write",
+        "timeout": 30,
+        "failClosed": true,
+        "blocking": true,
+        "description": "Block direct .agents artifact body writes that bypass SQLite registration"
+      },
+      {
+        "loaf-managed": true,
+        "matcher": "Bash",
         "command": "loaf check --hook check-secrets",
         "timeout": 30,
         "failClosed": true,

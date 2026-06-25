@@ -118,9 +118,10 @@ WHERE specs.project_id = ? AND specs.id = ?
 	if sourcePath.Valid && sourcePath.String != "" {
 		path := filepath.ToSlash(sourcePath.String)
 		sources = append(sources, TraceSource{Path: path, Hash: sourceHash.String})
-		if content, err := readImportedSourceBody(root.Path(), path); err == nil {
-			body = content
-		}
+	}
+	body, err = s.artifactBodyOrSourceBody(ctx, root.Path(), projectID, "spec", entity.ID, sourcePath)
+	if err != nil {
+		return SpecDetail{}, err
 	}
 
 	relationships, err := s.traceRelationships(ctx, projectID, TraceEntity{

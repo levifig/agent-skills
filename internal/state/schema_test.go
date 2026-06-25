@@ -1,6 +1,8 @@
 package state
 
 import (
+	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,13 +35,17 @@ var requiredInitialTables = []string{
 	"hook_events",
 	"exports",
 	"session_state_snapshots",
+	"artifact_bodies",
+	"plans",
+	"handoffs",
+	"councils",
 	"schema_migrations",
 }
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 4 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 4", len(migrations))
+	if len(migrations) != 6 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 6", len(migrations))
 	}
 
 	for i, migration := range migrations {
@@ -58,6 +64,12 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[3].Name != "project_path_current_uniqueness" {
 		t.Fatalf("migration[3].Name = %q, want project_path_current_uniqueness", migrations[3].Name)
+	}
+	if migrations[4].Name != "artifact_bodies_and_search" {
+		t.Fatalf("migration[4].Name = %q, want artifact_bodies_and_search", migrations[4].Name)
+	}
+	if migrations[5].Name != "journal_search" {
+		t.Fatalf("migration[5].Name = %q, want journal_search", migrations[5].Name)
 	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
@@ -113,6 +125,10 @@ func TestInitialSchemaPreservesLineageAndExports(t *testing.T) {
 		"sources":                 {"source_kind", "path", "hash", "imported_at"},
 		"exports":                 {"export_kind", "format", "state_version", "generated_at"},
 		"session_state_snapshots": {"content", "observed_branch", "observed_worktree"},
+		"artifact_bodies":         {"entity_kind", "entity_id", "body_kind", "content", "content_hash", "source_id"},
+		"plans":                   {"spec_id", "body_source_id"},
+		"handoffs":                {"session_id", "task_id", "body_source_id"},
+		"councils":                {"spec_id", "body_source_id"},
 	} {
 		body := tableBody(t, sql, table)
 		for _, column := range columns {
@@ -194,6 +210,14 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	if sqlDoc != SchemaMigrations()[3].SQL {
 		t.Fatal("docs/schema/0004_project_path_current_uniqueness.sql must match embedded migration 0004 exactly")
 	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0005_artifact_bodies_and_search.sql")
+	if sqlDoc != SchemaMigrations()[4].SQL {
+		t.Fatal("docs/schema/0005_artifact_bodies_and_search.sql must match embedded migration 0005 exactly")
+	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0006_journal_search.sql")
+	if sqlDoc != SchemaMigrations()[5].SQL {
+		t.Fatal("docs/schema/0006_journal_search.sql must match embedded migration 0006 exactly")
+	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
 	mermaidDoc := readRepoFile(t, "docs", "schema", "operational-state.mmd")
@@ -219,16 +243,20 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	wantMermaidRelationships := []string{
 		"bundles ||--o{ bundle_members : contains",
 		"projects ||--o{ aliases : scopes",
+		"projects ||--o{ artifact_bodies : scopes",
 		"projects ||--o{ backend_mappings : scopes",
 		"projects ||--o{ brainstorms : scopes",
 		"projects ||--o{ bundle_members : scopes",
 		"projects ||--o{ bundles : scopes",
+		"projects ||--o{ councils : scopes",
 		"projects ||--o{ entity_tags : scopes",
 		"projects ||--o{ events : scopes",
 		"projects ||--o{ exports : scopes",
+		"projects ||--o{ handoffs : scopes",
 		"projects ||--o{ hook_events : scopes",
 		"projects ||--o{ ideas : scopes",
 		"projects ||--o{ journal_entries : scopes",
+		"projects ||--o{ plans : scopes",
 		"projects ||--o{ project_paths : locates",
 		"projects ||--o{ relationships : scopes",
 		"projects ||--o{ reports : scopes",
@@ -240,24 +268,118 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ specs : scopes",
 		"projects ||--o{ tags : scopes",
 		"projects ||--o{ tasks : scopes",
+		"sessions ||--o{ handoffs : transfers",
 		"sessions ||--o{ journal_entries : records",
 		"sessions ||--o{ session_state_snapshots : summarizes",
+		"sources ||--o{ artifact_bodies : provenance",
 		"sources ||--o{ brainstorms : bodies",
+		"sources ||--o{ councils : bodies",
+		"sources ||--o{ handoffs : bodies",
 		"sources ||--o{ ideas : bodies",
+		"sources ||--o{ plans : bodies",
 		"sources ||--o{ reports : bodies",
 		"sources ||--o{ sessions : bodies",
 		"sources ||--o{ shaping_drafts : bodies",
 		"sources ||--o{ sparks : origins",
 		"sources ||--o{ specs : bodies",
 		"sources ||--o{ tasks : bodies",
+		"specs ||--o{ councils : contextualizes",
 		"specs ||--o{ journal_entries : contextualizes",
+		"specs ||--o{ plans : shapes",
 		"specs ||--o{ tasks : contains",
 		"tags ||--o{ entity_tags : labels",
+		"tasks ||--o{ handoffs : transfers",
 		"tasks ||--o{ journal_entries : contextualizes",
 	}
 	gotMermaidRelationships := mermaidRelationships(t, mermaidDoc)
 	if got := strings.Join(gotMermaidRelationships, "\n"); got != strings.Join(wantMermaidRelationships, "\n") {
 		t.Fatalf("operational-state.mmd relationships:\n got: %v\nwant: %v", gotMermaidRelationships, wantMermaidRelationships)
+	}
+}
+
+func TestArtifactSearchFTS5VirtualTableWorks(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open(sqliteDriverName, filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	if err := ApplyMigrations(ctx, db, SchemaMigrations()); err != nil {
+		t.Fatalf("ApplyMigrations() error = %v", err)
+	}
+
+	now := "2026-06-24T13:00:00Z"
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO projects (id, identity_hash, created_at, updated_at) VALUES ('project-one', 'hash-one', ?, ?)
+`, now, now); err != nil {
+		t.Fatalf("insert project fixture error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO artifact_bodies (id, project_id, entity_kind, entity_id, body_kind, content, content_hash, source_id, created_at, updated_at)
+VALUES ('body-one', 'project-one', 'report', 'report-one', 'markdown', 'alpha needle omega', 'hash-body', NULL, ?, ?)
+`, now, now); err != nil {
+		t.Fatalf("insert artifact body fixture error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO artifact_search(rowid, project_id, entity_kind, entity_id, body_kind, content)
+SELECT rowid, project_id, entity_kind, entity_id, body_kind, content FROM artifact_bodies WHERE id = 'body-one'
+`); err != nil {
+		t.Fatalf("insert artifact_search fixture error = %v", err)
+	}
+
+	var entityKind, entityID string
+	if err := db.QueryRowContext(ctx, `
+SELECT entity_kind, entity_id FROM artifact_search WHERE artifact_search MATCH 'needle'
+`).Scan(&entityKind, &entityID); err != nil {
+		t.Fatalf("artifact_search MATCH error = %v", err)
+	}
+	if entityKind != "report" || entityID != "report-one" {
+		t.Fatalf("artifact_search hit = %s/%s, want report/report-one", entityKind, entityID)
+	}
+}
+
+func TestJournalSearchFTS5VirtualTableWorks(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open(sqliteDriverName, filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	if err := ApplyMigrations(ctx, db, SchemaMigrations()); err != nil {
+		t.Fatalf("ApplyMigrations() error = %v", err)
+	}
+
+	now := "2026-06-24T13:00:00Z"
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO projects (id, identity_hash, created_at, updated_at) VALUES ('project-one', 'hash-one', ?, ?)
+`, now, now); err != nil {
+		t.Fatalf("insert project fixture error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO journal_entries (id, project_id, entry_type, scope, message, created_at, updated_at)
+VALUES ('journal-one', 'project-one', 'decision', 'search', 'alpha journal needle', ?, ?)
+`, now, now); err != nil {
+		t.Fatalf("insert journal entry fixture error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO journal_search(rowid, project_id, journal_entry_id, session_id, entry_type, scope, message)
+SELECT rowid, project_id, id, COALESCE(session_id, ''), entry_type, COALESCE(scope, ''), message FROM journal_entries WHERE id = 'journal-one'
+`); err != nil {
+		t.Fatalf("insert journal_search fixture error = %v", err)
+	}
+
+	var entryType, entryID string
+	if err := db.QueryRowContext(ctx, `
+SELECT entry_type, journal_entry_id FROM journal_search WHERE journal_search MATCH 'needle'
+`).Scan(&entryType, &entryID); err != nil {
+		t.Fatalf("journal_search MATCH error = %v", err)
+	}
+	if entryType != "decision" || entryID != "journal-one" {
+		t.Fatalf("journal_search hit = %s/%s, want decision/journal-one", entryType, entryID)
 	}
 }
 

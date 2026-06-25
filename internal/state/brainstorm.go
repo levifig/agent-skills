@@ -2,7 +2,11 @@ package state
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/levifig/loaf/internal/project"
 )
@@ -30,6 +34,24 @@ type BrainstormItem struct {
 type BrainstormListOptions struct {
 	All    bool
 	Status string
+}
+
+// BrainstormCaptureOptions describes a SQLite-backed brainstorm capture request.
+type BrainstormCaptureOptions struct {
+	Title string
+	Body  string
+}
+
+// BrainstormCaptureResult describes a captured SQLite-backed brainstorm.
+type BrainstormCaptureResult struct {
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Brainstorm         TraceEntity `json:"brainstorm"`
+	EventID            string      `json:"event_id"`
 }
 
 // ListBrainstorms returns imported brainstorms from initialized SQLite state.
@@ -117,4 +139,102 @@ func includeBrainstormStatus(status string, options BrainstormListOptions) bool 
 		return false
 	}
 	return true
+}
+
+// CaptureBrainstorm captures a brainstorm in initialized SQLite state.
+func CaptureBrainstorm(ctx context.Context, root project.Root, resolver PathResolver, options BrainstormCaptureOptions) (BrainstormCaptureResult, error) {
+	store, err := openInitializedStore(root, resolver)
+	if err != nil {
+		return BrainstormCaptureResult{}, err
+	}
+	defer store.Close()
+	return store.CaptureBrainstorm(ctx, root, options)
+}
+
+// CaptureBrainstorm captures a brainstorm in an open store.
+func (s *Store) CaptureBrainstorm(ctx context.Context, root project.Root, options BrainstormCaptureOptions) (BrainstormCaptureResult, error) {
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return BrainstormCaptureResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return BrainstormCaptureResult{}, err
+	}
+	title := strings.TrimSpace(options.Title)
+	if title == "" {
+		return BrainstormCaptureResult{}, fmt.Errorf("brainstorm capture requires --title")
+	}
+	if strings.TrimSpace(options.Body) == "" {
+		return BrainstormCaptureResult{}, fmt.Errorf("brainstorm capture requires body content")
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return BrainstormCaptureResult{}, fmt.Errorf("begin brainstorm capture transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+	alias, err := s.nextBrainstormAlias(ctx, tx, projectID, title, now)
+	if err != nil {
+		return BrainstormCaptureResult{}, err
+	}
+	brainstormID := stableMigrationID("brainstorm", projectID, alias)
+	timestamp := now.Format(time.RFC3339)
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO brainstorms (id, project_id, title, status, body_source_id, created_at, updated_at)
+VALUES (?, ?, ?, 'open', NULL, ?, ?)
+`, brainstormID, projectID, title, timestamp, timestamp); err != nil {
+		return BrainstormCaptureResult{}, fmt.Errorf("insert brainstorm %s: %w", alias, err)
+	}
+	if err := insertAlias(ctx, tx, projectID, "brainstorm", brainstormID, "brainstorm", alias, timestamp); err != nil {
+		return BrainstormCaptureResult{}, err
+	}
+	eventID := stableMigrationID("event", projectID, "brainstorm", brainstormID, "created", "open")
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
+VALUES (?, ?, 'brainstorm', ?, 'status_changed', NULL, 'open', 'recorded by brainstorm capture', ?, ?)
+`, eventID, projectID, brainstormID, timestamp, timestamp); err != nil {
+		return BrainstormCaptureResult{}, fmt.Errorf("record brainstorm capture event: %w", err)
+	}
+	if _, err := upsertArtifactBodyTx(ctx, tx, projectID, "brainstorm", brainstormID, ArtifactBodyKindMarkdown, options.Body, nil, timestamp); err != nil {
+		return BrainstormCaptureResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return BrainstormCaptureResult{}, fmt.Errorf("commit brainstorm capture transaction: %w", err)
+	}
+
+	return BrainstormCaptureResult{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Brainstorm:         TraceEntity{Kind: "brainstorm", ID: brainstormID, Alias: alias, Title: title, Status: "open"},
+		EventID:            eventID,
+	}, nil
+}
+
+func (s *Store) nextBrainstormAlias(ctx context.Context, tx *sql.Tx, projectID string, title string, now time.Time) (string, error) {
+	slug := normalizeSparkSlug(title)
+	if slug == "" {
+		slug = "brainstorm"
+	}
+	prefix := "BRAINSTORM-" + now.UTC().Format("20060102") + "-" + slug
+	for next := 1; ; next++ {
+		alias := prefix
+		if next > 1 {
+			alias = fmt.Sprintf("%s-%d", prefix, next)
+		}
+		var existing string
+		err := tx.QueryRowContext(ctx, `SELECT id FROM aliases WHERE project_id = ? AND namespace = 'brainstorm' AND alias = ?`, projectID, alias).Scan(&existing)
+		if errors.Is(err, sql.ErrNoRows) {
+			return alias, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("check brainstorm alias %s: %w", alias, err)
+		}
+	}
 }

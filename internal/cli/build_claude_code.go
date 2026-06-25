@@ -430,6 +430,7 @@ func nativeClaudeHookCommand(hook nativeBuildHook) string {
 }
 
 var nativeClaudeBinaryPathHooks = map[string]bool{
+	"artifact-body-write":     true,
 	"check-" + "sec" + "rets": true,
 	"validate-push":           true,
 	"validate-commit":         true,

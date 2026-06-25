@@ -113,9 +113,10 @@ WHERE ideas.project_id = ? AND ideas.id = ?
 	if sourcePath.Valid && sourcePath.String != "" {
 		path := filepath.ToSlash(sourcePath.String)
 		sources = append(sources, TraceSource{Path: path, Hash: sourceHash.String})
-		if content, err := readImportedSourceBody(root.Path(), path); err == nil {
-			body = content
-		}
+	}
+	body, err = s.artifactBodyOrSourceBody(ctx, root.Path(), projectID, "idea", entity.ID, sourcePath)
+	if err != nil {
+		return IdeaDetail{}, err
 	}
 
 	relationships, err := s.traceRelationships(ctx, projectID, TraceEntity{

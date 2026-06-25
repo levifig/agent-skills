@@ -16,9 +16,11 @@ var reportSlugCleaner = regexp.MustCompile(`[^a-z0-9]+`)
 
 // ReportCreateOptions describes a SQLite-backed report creation request.
 type ReportCreateOptions struct {
-	Slug   string
-	Kind   string
-	Source string
+	Slug    string
+	Kind    string
+	Source  string
+	Body    string
+	SetBody bool
 }
 
 // ReportCreateResult describes a created SQLite-backed report.
@@ -133,6 +135,11 @@ INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_sta
 VALUES (?, ?, 'report', ?, 'status_changed', NULL, 'draft', ?, ?, ?)
 `, eventID, projectID, reportID, reportCreateEventNote(source), now, now); err != nil {
 		return ReportCreateResult{}, fmt.Errorf("record report create event: %w", err)
+	}
+	if options.SetBody {
+		if _, err := upsertArtifactBodyTx(ctx, tx, projectID, "report", reportID, ArtifactBodyKindMarkdown, options.Body, nil, now); err != nil {
+			return ReportCreateResult{}, err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

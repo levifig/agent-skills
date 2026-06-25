@@ -52,6 +52,46 @@ Imported task prose.
 	}
 }
 
+func TestShowTaskPrefersSQLiteBodyOverMarkdownSource(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	writeMarkdownImportFixture(t, root.Path(), `---
+id: TASK-001
+title: Frontmatter Task
+status: todo
+---
+# SQLite Body
+
+Imported SQLite prose.
+`)
+	if _, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	writeAgentsFile(t, root.Path(), "tasks/TASK-001-example.md", `---
+id: TASK-001
+title: Frontmatter Task
+status: todo
+---
+# Markdown Body
+
+Changed file prose.
+`)
+
+	result, err := ShowTask(context.Background(), root, PathResolver{StateHome: stateHome}, "TASK-001")
+	if err != nil {
+		t.Fatalf("ShowTask() error = %v", err)
+	}
+	if !strings.Contains(result.Task.Body, "Imported SQLite prose.") {
+		t.Fatalf("Body = %q, want SQLite artifact body", result.Task.Body)
+	}
+	if strings.Contains(result.Task.Body, "Changed file prose.") {
+		t.Fatalf("Body = %q, want SQLite body to win over markdown source", result.Task.Body)
+	}
+	if len(result.Task.Sources) != 1 || result.Task.Sources[0].Path != ".agents/tasks/TASK-001-example.md" {
+		t.Fatalf("Sources = %#v, want provenance source retained", result.Task.Sources)
+	}
+}
+
 func TestShowTaskRejectsMissingAndNonTaskTargets(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()

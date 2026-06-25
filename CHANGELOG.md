@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+### Added
+
+- Added SQLite-native artifact bodies and Tier-1 FTS search in SPEC-043, including artifact body schema, dual-source Markdown fallback, body write verbs, direct-write guardrails, and generated CLI reference coverage.
+
 ### Changed
 
 - Completed SPEC-047 build integrity and parity hardening, including real JS/TS output validation, first-class Amp TypeScript plugin output, Gemini target removal, Codex hook semantics, OpenCode command reachability, and cross-harness parity linting.

@@ -491,6 +491,7 @@ func nativeCursorHookCommand(hook nativeBuildHook) string {
 }
 
 var nativeBuildCursorBinaryPathHooks = map[string]bool{
+	"artifact-body-write":     true,
 	"check-" + "sec" + "rets": true,
 	"validate-push":           true,
 	"validate-commit":         true,
