@@ -54,7 +54,7 @@ func buildNativeOpenCodeTarget(root string) error {
 		targetName:    "opencode",
 		version:       version,
 		targetsConfig: targetsConfig,
-		transformMd:   substituteNativeBuildCursorCommands,
+		transformMd:   func(content string) string { return substituteNativeBuildHarnessLanguage(content, "opencode") },
 	}); err != nil {
 		return err
 	}
@@ -86,13 +86,17 @@ func generateNativeOpenCodeCommands(root string, version string) error {
 			continue
 		}
 		skill := entry.Name()
+		invocable, err := isNativeOpenCodeCommandSkill(sidecarsSrc, skill)
+		if err != nil {
+			return err
+		}
+		if !invocable {
+			continue
+		}
 		sidecarPath := filepath.Join(sidecarsSrc, skill, "SKILL.opencode.yaml")
 		sidecarFields, err := readNativeBuildAgentSidecar(sidecarPath, false)
 		if err != nil {
 			return err
-		}
-		if len(sidecarFields) == 0 {
-			continue
 		}
 		skillPath := filepath.Join(skillsSrc, skill, "SKILL.md")
 		body, err := os.ReadFile(skillPath)
@@ -113,7 +117,7 @@ func generateNativeOpenCodeCommands(root string, version string) error {
 		fields = setNativeBuildYAMLFieldValue(fields, "version", nativeBuildStringValue(version))
 		content = strings.ReplaceAll(content, "](templates/", "](../skills/"+skill+"/templates/")
 		content = strings.ReplaceAll(content, "](references/", "](../skills/"+skill+"/references/")
-		output := "---\n" + renderNativeBuildYAMLFieldValues(fields) + "---\n" + substituteNativeBuildCursorCommands(content)
+		output := "---\n" + renderNativeBuildYAMLFieldValues(fields) + "---\n" + substituteNativeBuildHarnessLanguage(content, "opencode")
 		if err := os.MkdirAll(commandsDest, 0o755); err != nil {
 			return err
 		}
@@ -122,6 +126,19 @@ func generateNativeOpenCodeCommands(root string, version string) error {
 		}
 	}
 	return nil
+}
+
+func isNativeOpenCodeCommandSkill(sidecarsSrc string, skill string) (bool, error) {
+	fields, err := readNativeBuildAgentSidecar(filepath.Join(sidecarsSrc, skill, "SKILL.claude-code.yaml"), false)
+	if err != nil {
+		return false, err
+	}
+	for _, field := range fields {
+		if field.key == "user-invocable" && field.value.kind == "bool" {
+			return field.value.scalar == "true", nil
+		}
+	}
+	return false, nil
 }
 
 func generateNativeOpenCodePlugin(hooksPath string, dist string, version string) error {
@@ -140,7 +157,7 @@ func renderNativeOpenCodePlugin(hooks []nativeBuildHook, version string) string 
 	return nativeOpenCodeHeader(version) + "\n\n" +
 		nativeAmpCoreFunctions() + "\n\n" +
 		nativeAmpHookData(hooks) + "\n\n" +
-		"export default async function AgentSkillsPlugin({ client, $ }) {\n  return {\n" +
+		"export default async function AgentSkillsPlugin({ client, $ }: { client?: unknown; $?: unknown }) {\n  void client;\n  void $;\n  return {\n" +
 		nativeOpenCodePluginBody() + "\n  };\n}"
 }
 
@@ -162,7 +179,7 @@ const execFileAsync = promisify(execFile);`
 
 func nativeOpenCodePluginBody() string {
 	body := `    // Pre-tool hook handler
-    'tool.execute.before': async (input) => {
+    'tool.execute.before': async (input: { tool?: { name?: string; input?: unknown } }) => {
       const toolName = input?.tool?.name;
       const toolInput = input?.tool?.input;
       if (!toolName) return;
@@ -190,7 +207,7 @@ func nativeOpenCodePluginBody() string {
     },
 
     // Post-tool hook handler
-    'tool.execute.after': async (input) => {
+    'tool.execute.after': async (input: { tool?: { name?: string; input?: unknown } }) => {
       const toolName = input?.tool?.name;
       const toolInput = input?.tool?.input;
       if (!toolName) return;
@@ -211,7 +228,7 @@ func nativeOpenCodePluginBody() string {
       }
     },
     // Session lifecycle event handler
-    'event': async ({ event }) => {
+    'event': async ({ event }: { event: { type?: string } }) => {
       if (event.type === 'session.created' && sessionHooks.sessionstart) {
         for (const hook of sessionHooks.sessionstart) {
           await runHook('session', 'session', hook.id, hook.command, hook.script, undefined, hook.timeout, hook.failClosed);

@@ -1,6 +1,6 @@
 # Session Resume Patterns
 
-Patterns for resuming work across Claude Code sessions using CLI flags and session files.
+Patterns for resuming work across Codex sessions using CLI flags and session files.
 
 ## Contents
 
@@ -17,7 +17,7 @@ Patterns for resuming work across Claude Code sessions using CLI flags and sessi
 
 ## CLI Resume Flags
 
-Claude Code provides built-in session continuation:
+Codex provides built-in session continuation:
 
 | Flag | Purpose |
 |------|---------|

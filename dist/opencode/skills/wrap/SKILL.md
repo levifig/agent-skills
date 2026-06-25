@@ -30,7 +30,7 @@ Responsible session shutdown — everything that needs a conscious model before 
 ## Critical Rules
 
 - Log `skill(wrap): <context>` to the session journal as the first action (e.g. "end-of-session summary" or "user requested wrap-up")
-- **Use `AskUserQuestion` for all decisions and confirmations** — commit, push, stash, or skip choices. Never use inline text questions for permission prompts
+- **Use `prompt the user in chat` for all decisions and confirmations** — commit, push, stash, or skip choices. Never use inline text questions for permission prompts
 - Never commit, push, or archive without explicit user confirmation
 - Flush journal entries BEFORE generating the report — unrecorded decisions are lost after this conversation
 - Pull from live data (git, filesystem), not memory or assumptions
@@ -95,7 +95,7 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 | Stale KB files | "N stale knowledge file(s) — address now or defer?" |
 | Unresolved blocks | "Block on <scope> still open — note for next session?" |
 | No changelog entries | "N commit(s) on branch but `[Unreleased]` is empty — add changelog entries?" |
-| No `/loaf:housekeeping` this session | "No housekeeping run this session — run `/loaf:housekeeping` now?" |
+| No `/housekeeping` this session | "No housekeeping run this session — run `/housekeeping` now?" |
 
 **Detection logic:**
 - **Changelog entries:** check if the current branch has commits vs the base branch (e.g., `git rev-list --count origin/main..HEAD`) AND `CHANGELOG.md` `[Unreleased]` section has no list items (`^[-*]\s`). If both are true, prompt. **Skip when HEAD is tagged** (post-release state).

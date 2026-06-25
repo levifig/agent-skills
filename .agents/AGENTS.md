@@ -25,7 +25,7 @@ cli/                            # CLI tool (TypeScript, bundled by tsup)
 └── lib/
     ├── build/                  # Build system
     │   ├── types.ts            # Shared types
-    │   ├── targets/            # Target transformers (claude-code, opencode, cursor, codex, gemini, amp)
+    │   ├── targets/            # Target transformers (claude-code, opencode, cursor, codex, amp)
     │   └── lib/                # Build utilities (version, sidecar, shared-templates, etc.)
     ├── detect/                 # Tool detection
     └── install/                # Installation logic
@@ -392,7 +392,6 @@ npm link                       # Make `loaf` available globally
 | opencode | `dist/opencode/` | Skills, agents, and commands (from skills) |
 | cursor | `dist/cursor/` | Skills, agents, and hooks |
 | codex | `dist/codex/` | Skills only |
-| gemini | `dist/gemini/` | Skills only |
 | amp | `dist/amp/` | Skills, runtime plugin |
 
 ### Before Committing

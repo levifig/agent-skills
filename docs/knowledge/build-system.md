@@ -38,13 +38,12 @@ Loaf compiles skills, agents, and hooks from a single source tree into multiple 
 | cursor | `dist/cursor/` | Yes | Yes | Yes | No |
 | opencode | `dist/opencode/` | Yes | Yes | Yes | Yes (`hooks.ts`) |
 | codex | `dist/codex/` | No | Yes | Yes | No |
-| gemini | `dist/gemini/` | No | Yes | No | No |
-| amp | `dist/amp/` | No | Yes | No | Yes (`loaf.js`) |
+| amp | `dist/amp/` | No | Yes | No | Yes (`.amp/plugins/loaf.ts`) |
 
 ### Notes
 
 - **Claude Code** bundles a self-contained `loaf` binary in `plugins/loaf/bin/loaf` for hook execution. Hooks are registered in `hooks/hooks.json` (inside the plugin directory), not in `plugin.json`. `plugin.json` silently drops non-matcher session lifecycle events — a key SPEC-030 finding.
-- **OpenCode and Amp** generate runtime plugins (`hooks.ts` / `loaf.js`) that implement enforcement hooks via subprocess calls to `loaf check`.
+- **OpenCode and Amp** generate runtime plugins (`hooks.ts` / `.amp/plugins/loaf.ts`) that implement enforcement hooks via subprocess calls to `loaf check`.
 - **Codex** generates `.codex/hooks.json` for Bash-matching enforcement hooks.
 - **MCP servers** are not bundled. `loaf install` detects and recommends MCPs at install time; integration state stored in `.agents/loaf.json`.
 
@@ -60,7 +59,7 @@ Claude Code has a split registration model: `plugin.json` handles the plugin man
 
 | Script | Command | Purpose |
 |--------|---------|---------|
-| `cli/scripts/smoke-test.js` | `npm run test:smoke` | Validates built hook artifacts across all 6 targets (structure, `if` conditions, `failClosed` flags). Run after build changes. |
+| `cli/scripts/smoke-test.js` | `npm run test:smoke` | Validates built hook artifacts across supported targets (structure, `if` conditions, `failClosed` flags). Run after build changes. |
 | `cli/scripts/eval-skill-routing.mjs` | `npm run eval:routing` | Tests whether Claude routes prompts to correct skills. Requires `ANTHROPIC_API_KEY`. Use `--model` for cheaper runs, `--skill` to test one skill. |
 
 **Smoke test** is a build output integration test for script-level artifact assertions that are not yet worth moving into native Go tests. **Routing eval** is a non-deterministic quality tool for tuning skill descriptions; test cases need updating when skills are added/removed/renamed.

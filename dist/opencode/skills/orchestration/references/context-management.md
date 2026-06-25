@@ -11,7 +11,7 @@ Patterns for managing context efficiently across sessions and agent spawns.
 - The 2-Correction Rule
 - Context Compaction
 - Session Files as Context Anchors
-- Subagents for Context Isolation
+- subtask agent for Context Isolation
 - Context Budget Guidelines
 - Preventing Context Bloat
 - Session Context Patterns
@@ -27,7 +27,7 @@ Compaction is a normal part of long workflows, not an emergency measure. Any wor
 1. **The journal IS external memory** — Session journal entries (decisions, discoveries, progress) survive compaction. Compaction can be lossy because all important state is already on disk.
 2. **`## Current State` is the resumption context** — Keep this section handoff-ready at all times. The PreCompact hook requires writing a state summary here before compaction.
 3. **Decisions go to disk, not context** — Record key decisions in the session journal immediately via `loaf session log`. Context may be compressed; journal entries persist.
-4. **Subagents absorb exploration** — Investigation and exploration should happen in subagents. Only the summary returns to the main context.
+4. **subtask agent absorb exploration** — Investigation and exploration should happen in subtask agent. Only the summary returns to the main context.
 
 ### Compaction Lifecycle
 
@@ -133,21 +133,21 @@ Session files provide persistent context that survives `/clear`:
 4. Continue with clean context
 ```
 
-## Subagents for Context Isolation
+## subtask agent for Context Isolation
 
-Use subagents (Task tool) to investigate without polluting main context:
+Use subtask agent (subtask agent) to investigate without polluting main context:
 
 ```
 # Instead of exploring in main conversation:
 Let me look at how auth works...
 [reads 10 files, fills context]
 
-# Use subagent for investigation:
+# Use subtask agent for investigation:
 Task(Explore, "How does authentication work in this codebase?")
 [returns focused summary, main context stays clean]
 ```
 
-### When to Use Subagents
+### When to Use subtask agent
 
 | Situation | Approach |
 |-----------|----------|
@@ -166,13 +166,13 @@ Task(Explore, "How does authentication work in this codebase?")
 ### Medium Conversations (10-30 exchanges)
 
 - Consider `/compact` at midpoint
-- Delegate investigations to subagents
+- Delegate investigations to subtask agent
 - Keep session file updated
 
 ### Long Conversations (30+ exchanges)
 
 - `/compact` every 15-20 exchanges
-- Heavy use of subagents for exploration
+- Heavy use of subtask agent for exploration
 - Session file as primary state holder
 - Consider `/clear` + restart if degraded
 
@@ -237,13 +237,13 @@ When pausing or handing off:
 |---------|--------------|--------|
 | Repeating same mistakes | Context pollution | `/clear` + restart |
 | Forgetting recent decisions | Overcrowded context | `/compact` |
-| Slow responses | Large context | Use subagents |
+| Slow responses | Large context | Use subtask agent |
 | Confusion about task | Too many pivots | Update session, `/clear` |
 
 ## Best Practices
 
 1. **Update session files continuously** - they survive context resets
-2. **Use subagents for exploration** - keep main context clean
+2. **Use subtask agent for exploration** - keep main context clean
 3. **Clear between unrelated tasks** - fresh start beats polluted context
 4. **Compact mid-task if needed** - preserve decisions, discard noise
 5. **Monitor for pollution** - 2-correction rule catches degradation early

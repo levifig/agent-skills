@@ -36,13 +36,8 @@ targets:
     # Skills only (no commands, agents, or hooks)
     # Skills use SKILL.md frontmatter + .codex.yaml extensions (globs)
 
-  gemini:
-    output: dist/gemini/
-    # Skills only (structure TBD, similar to codex)
-    # Gemini doesn't support XDG yet - uses ~/.gemini/ directly
-
   amp:
     output: dist/amp/
     # Experimental Amp target
     # Skills only - no sidecar merge, standard SKILL.md
-    # Runtime plugin at plugins/loaf.js (auto-generated)
+    # Runtime plugin at .amp/plugins/loaf.ts (auto-generated)

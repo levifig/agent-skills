@@ -884,7 +884,7 @@ loaf check
 
 The following placeholders are substituted at build time per target:
 
-| Placeholder | Claude Code | OpenCode | Cursor |
+| Placeholder | Codex | OpenCode | Cursor |
 |-------------|-------------|----------|--------|
 | `/implement` | `/implement` | `/implement` | `@loaf/implement` |
 | `/implement` | `/implement` | `/implement` | `@loaf/implement` |

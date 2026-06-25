@@ -16,7 +16,7 @@ Permission patterns for autonomous operation and interactive workflows.
 
 ## Overview
 
-Claude Code uses permission prompts to protect against unintended actions. Configure permissions to reduce interruptions while maintaining appropriate safety.
+Codex uses permission prompts to protect against unintended actions. Configure permissions to reduce interruptions while maintaining appropriate safety.
 
 ## Permission Commands
 
@@ -83,7 +83,7 @@ Bash(npm run lint), Bash(pytest --collect-only)
 ```
 # Coordination only - no implementation
 Read, Glob, Grep
-TodoWrite, TodoRead
+update_plan, update_plan
 Linear MCP tools (if configured)
 Bash(date *), Bash(git status)
 ```

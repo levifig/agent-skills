@@ -11,9 +11,9 @@
   - Do not report issues requiring context outside the diff unless you can validate with certainty.
   - Do not report pre-existing issues.
   - Do not run tests/linters/builds unless explicitly requested.
-  - Subagents must **never** post comments; only the main agent posts comments.
+  - separate Codex thread or explicit multi-agent tool when available must **never** post comments; only the main agent posts comments.
   - Use `gh` for GitHub interactions and `git` for local diff/context.
-  - Do not use AskUserQuestion or equivalent user-interrupt flow.
+  - Do not use request_user_input or equivalent user-interrupt flow.
 
   ---
 
@@ -43,7 +43,7 @@
 
   ### 2) Discover Applicable Policy Files
 
-  Find all relevant `AGENTS.md` and `CLAUDE.md` files:
+  Find all relevant `AGENTS.md` and `AGENTS.md` files:
   - Root-level policy files, if present.
   - For each changed file, include policy files in that file’s directory ancestry.
   - Only enforce policy rules that are in scope for that file path.
@@ -74,7 +74,7 @@
   Each pass must return issues in this structure:
   - `title`
   - `description`
-  - `reason_flagged` (e.g. `AGENTS.md violation`, `CLAUDE.md violation`, `bug`, `security bug`)
+  - `reason_flagged` (e.g. `AGENTS.md violation`, `AGENTS.md violation`, `bug`, `security bug`)
   - `file`
   - `line` (or nearest changed line)
   - `confidence` (`high` only)
@@ -84,7 +84,7 @@
 
   ### 5) Validate Every Candidate Issue
 
-  For each candidate issue, run a validator subagent:
+  For each candidate issue, run a validator separate Codex thread or explicit multi-agent tool when available:
   - Policy issues: validate rule exists, rule is in scope for file path, and violation is clear.
   - Bug issues: validate defect is real from changed code with high confidence.
 
@@ -175,9 +175,9 @@
 
   ---
 
-  ### Fallback: No Subagents Available
+  ### Fallback: No separate Codex thread or explicit multi-agent tool when available Available
 
-  If subagents are unavailable, perform the same process sequentially yourself:
+  If separate Codex thread or explicit multi-agent tool when available are unavailable, perform the same process sequentially yourself:
   - Policy pass #1
   - Policy pass #2
   - Bug pass #1

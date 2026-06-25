@@ -46,7 +46,7 @@ for (const target of targets) {
   }
 
   mkdirSync(dirname(nativeOutput), { recursive: true });
-  const result = spawnSync("go", ["build", "-trimpath", "-ldflags", "-buildid=", "-o", nativeOutput, "./cmd/loaf"], {
+  const result = spawnSync("go", ["build", "-trimpath", "-buildvcs=false", "-ldflags", "-buildid=", "-o", nativeOutput, "./cmd/loaf"], {
     cwd: rootDir,
     env: {
       ...baseEnv,

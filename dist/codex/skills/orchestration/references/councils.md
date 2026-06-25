@@ -134,7 +134,7 @@ Each agent receives:
 
 ```python
 Task(
-  subagent_type="implementer",
+  agent_type="implementer",
   prompt="""
   Provide database perspective on session storage.
 

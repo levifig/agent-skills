@@ -27,7 +27,6 @@ var agentsMDInstallTargets = map[string]bool{
 	"codex":    true,
 	"opencode": true,
 	"amp":      true,
-	"gemini":   true,
 }
 
 func ensureInstallSymlink(linkPath string, relativeTarget string, description string, options installSymlinkOptions) installSymlinkResult {

@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -28,7 +30,6 @@ func TestRunnerBuildHelpIsNative(t *testing.T) {
 
 func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
-	nodeLog := setupFakeNodeForBuild(t, 0)
 	seedNativeCodexBuildFixture(t, root)
 	seedNativeCursorBuildFixture(t, root)
 	seedNativeOpenCodeBuildFixture(t, root)
@@ -38,7 +39,6 @@ func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 		filepath.Join(root, "dist", "opencode", "stale.txt"),
 		filepath.Join(root, "dist", "cursor", "stale.txt"),
 		filepath.Join(root, "dist", "codex", "stale.txt"),
-		filepath.Join(root, "dist", "gemini", "stale.txt"),
 		filepath.Join(root, "dist", "amp", "stale.txt"),
 	} {
 		mkdirAll(t, filepath.Dir(staleFile))
@@ -53,10 +53,7 @@ func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build error = %v", err)
 	}
-	if _, statErr := os.Stat(nodeLog); !os.IsNotExist(statErr) {
-		t.Fatalf("node log stat = %v, want native all-target build without content-builder invocation", statErr)
-	}
-	for _, want := range []string{"loaf build", "shared skills intermediate", "claude-code", "opencode", "cursor", "codex", "gemini", "amp", "Build complete"} {
+	for _, want := range []string{"loaf build", "shared skills intermediate", "claude-code", "opencode", "cursor", "codex", "amp", "Build complete"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 		}
@@ -66,7 +63,6 @@ func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 		filepath.Join(root, "dist", "opencode", "stale.txt"),
 		filepath.Join(root, "dist", "cursor", "stale.txt"),
 		filepath.Join(root, "dist", "codex", "stale.txt"),
-		filepath.Join(root, "dist", "gemini", "stale.txt"),
 		filepath.Join(root, "dist", "amp", "stale.txt"),
 	} {
 		if _, err := os.Stat(staleFile); !os.IsNotExist(err) {
@@ -78,8 +74,7 @@ func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 		filepath.Join(root, "dist", "opencode", "plugins", "hooks.ts"),
 		filepath.Join(root, "dist", "cursor", "hooks.json"),
 		filepath.Join(root, "dist", "codex", ".codex", "hooks.json"),
-		filepath.Join(root, "dist", "gemini", "skills", "demo", "SKILL.md"),
-		filepath.Join(root, "dist", "amp", "plugins", "loaf.js"),
+		filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("Stat(%s) error = %v", path, err)
@@ -89,7 +84,6 @@ func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 
 func TestRunnerBuildTargetCodexRunsNativeTarget(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
-	nodeLog := setupFakeNodeForBuild(t, 0)
 	seedNativeCodexBuildFixture(t, root)
 	var stdout bytes.Buffer
 
@@ -99,9 +93,6 @@ func TestRunnerBuildTargetCodexRunsNativeTarget(t *testing.T) {
 	}.Run([]string{"build", "--target", "codex"})
 	if err != nil {
 		t.Fatalf("build --target codex error = %v\n%s", err, stdout.String())
-	}
-	if _, statErr := os.Stat(nodeLog); !os.IsNotExist(statErr) {
-		t.Fatalf("node log stat = %v, want native codex target without content-builder invocation", statErr)
 	}
 	for _, want := range []string{"loaf build", "shared skills intermediate", "codex", "Build complete"} {
 		if !strings.Contains(stdout.String(), want) {
@@ -123,7 +114,7 @@ func TestRunnerBuildTargetCodexRunsNativeTarget(t *testing.T) {
 		t.Fatalf("shared skill frontmatter = %q, want prefix %q", sharedSkill, wantSharedFrontmatter)
 	}
 	if strings.Contains(sharedSkill, "{{IMPLEMENT_CMD}}") || !strings.Contains(sharedSkill, "/implement") {
-		t.Fatalf("shared skill = %q, want command substitution", sharedSkill)
+		t.Fatalf("shared skill = %q, want shared command substitution", sharedSkill)
 	}
 	if strings.Contains(sharedSkill, "version: 9.8.7-test.1") {
 		t.Fatalf("shared skill = %q, should not inject version into shared intermediate", sharedSkill)
@@ -166,12 +157,41 @@ func TestRunnerBuildTargetCodexRunsNativeTarget(t *testing.T) {
 	if !strings.HasPrefix(hooksJSON, "{\n  \"version\": 1,\n  \"hooks\": {") {
 		t.Fatalf("hooks.json = %q, want TypeScript-compatible top-level field order", hooksJSON)
 	}
-	if !strings.Contains(hooksJSON, "{\n        \"loaf-managed\": true,\n        \"matcher\": \"Bash\",\n        \"command\": \"loaf check --hook check-secrets\",\n        \"timeout\": 30,\n        \"failClosed\": true,\n        \"description\": \"Check for hardcoded secrets before writing\"\n      }") {
+	if !strings.Contains(hooksJSON, "{\n        \"loaf-managed\": true,\n        \"matcher\": \"Bash\",\n        \"command\": \"loaf check --hook check-secrets\",\n        \"timeout\": 30,\n        \"failClosed\": true,\n        \"blocking\": true,\n        \"description\": \"Check for hardcoded secrets before writing\"\n      }") {
 		t.Fatalf("hooks.json = %q, want TypeScript-compatible hook field order", hooksJSON)
 	}
-	for _, want := range []string{`"matcher": "Bash"`, `"command": "loaf check --hook check-secrets"`, `"timeout": 30`, `"failClosed": true`} {
+	for _, want := range []string{`"matcher": "Bash"`, `"command": "loaf check --hook check-secrets"`, `"timeout": 30`, `"failClosed": true`, `"blocking": true`} {
 		if !strings.Contains(hooksJSON, want) {
 			t.Fatalf("hooks.json = %q, want %q", hooksJSON, want)
+		}
+	}
+	var hooks nativeCodexHooksJSON
+	if err := json.Unmarshal([]byte(hooksJSON), &hooks); err != nil {
+		t.Fatalf("Unmarshal(codex hooks) error = %v\n%s", err, hooksJSON)
+	}
+	hooksByID := map[string]nativeCodexPreToolHookJSON{}
+	for _, hook := range hooks.Hooks.PreToolUse {
+		id := strings.TrimPrefix(hook.Command, "loaf check --hook ")
+		hooksByID[id] = hook
+	}
+	for _, tc := range []struct {
+		id         string
+		failClosed bool
+		blocking   bool
+		ifValue    string
+	}{
+		{id: "check-secrets", failClosed: true, blocking: true},
+		{id: "security-audit", failClosed: true, blocking: true},
+		{id: "validate-commit", failClosed: true, blocking: true, ifValue: "Bash(git commit:*)"},
+		{id: "validate-push", failClosed: false, blocking: false, ifValue: "Bash(git push:*)"},
+		{id: "workflow-pre-pr", failClosed: false, blocking: false, ifValue: "Bash(gh pr create:*)"},
+	} {
+		hook, ok := hooksByID[tc.id]
+		if !ok {
+			t.Fatalf("codex hooks = %#v, missing %s", hooksByID, tc.id)
+		}
+		if hook.FailClosed != tc.failClosed || hook.Blocking != tc.blocking || hook.If != tc.ifValue {
+			t.Fatalf("codex hook %s = %#v, want failClosed=%v blocking=%v if=%q", tc.id, hook, tc.failClosed, tc.blocking, tc.ifValue)
 		}
 	}
 	if strings.Contains(hooksJSON, "workflow-pre-merge") || strings.Contains(hooksJSON, "detect-linear-magic") {
@@ -179,73 +199,8 @@ func TestRunnerBuildTargetCodexRunsNativeTarget(t *testing.T) {
 	}
 }
 
-func TestRunnerBuildTargetGeminiRunsNativeSkillOnlyTarget(t *testing.T) {
-	root := setupBuildCommandLoafRoot(t)
-	nodeLog := setupFakeNodeForBuild(t, 0)
-	seedNativeCodexBuildFixture(t, root)
-	staleGeminiFile := filepath.Join(root, "dist", "gemini", "stale.txt")
-	mkdirAll(t, filepath.Dir(staleGeminiFile))
-	writeFile(t, staleGeminiFile, "old target output\n")
-	var stdout bytes.Buffer
-
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: root,
-	}.Run([]string{"build", "--target", "gemini"})
-	if err != nil {
-		t.Fatalf("build --target gemini error = %v\n%s", err, stdout.String())
-	}
-	if _, statErr := os.Stat(nodeLog); !os.IsNotExist(statErr) {
-		t.Fatalf("node log stat = %v, want native gemini target without content-builder invocation", statErr)
-	}
-	for _, want := range []string{"loaf build", "shared skills intermediate", "gemini", "Build complete"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
-		}
-	}
-	if _, err := os.Stat(staleGeminiFile); !os.IsNotExist(err) {
-		t.Fatalf("stale gemini file stat = %v, want target output reset", err)
-	}
-
-	geminiSkill := readBuildFileString(t, filepath.Join(root, "dist", "gemini", "skills", "demo", "SKILL.md"))
-	wantGeminiFrontmatter := strings.Join([]string{
-		"---",
-		"name: demo",
-		"description: >-",
-		"  Demo skill that has enough words to require folded YAML output from gray",
-		"  matter when the native builder writes frontmatter for generated skills.",
-		"version: 9.8.7-test.1",
-		"---",
-		"",
-	}, "\n")
-	if !strings.HasPrefix(geminiSkill, wantGeminiFrontmatter) {
-		t.Fatalf("gemini skill frontmatter = %q, want prefix %q", geminiSkill, wantGeminiFrontmatter)
-	}
-	if strings.Contains(geminiSkill, "{{IMPLEMENT_CMD}}") || !strings.Contains(geminiSkill, "/implement") {
-		t.Fatalf("gemini skill = %q, want shared command substitution", geminiSkill)
-	}
-	if !strings.Contains(readBuildFileString(t, filepath.Join(root, "dist", "gemini", "skills", "demo", "references", "guide.md")), "/implement") {
-		t.Fatalf("gemini reference was not copied from substituted shared intermediate")
-	}
-	if !strings.Contains(readBuildFileString(t, filepath.Join(root, "dist", "gemini", "skills", "demo", "templates", "session.md")), "/implement") {
-		t.Fatalf("gemini shared template was not copied from substituted shared intermediate")
-	}
-	scriptPath := filepath.Join(root, "dist", "gemini", "skills", "demo", "scripts", "demo.sh")
-	info, err := os.Stat(scriptPath)
-	if err != nil {
-		t.Fatalf("Stat(%s) error = %v", scriptPath, err)
-	}
-	if info.Mode().Perm() != 0o755 {
-		t.Fatalf("script mode = %v, want executable source mode preserved", info.Mode().Perm())
-	}
-	if _, err := os.Stat(filepath.Join(root, "dist", "gemini", ".codex", "hooks.json")); !os.IsNotExist(err) {
-		t.Fatalf("gemini hooks stat = %v, want skill-only target without Codex hooks", err)
-	}
-}
-
 func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
-	nodeLog := setupFakeNodeForBuild(t, 0)
 	seedNativeCodexBuildFixture(t, root)
 	staleAmpFile := filepath.Join(root, "dist", "amp", "stale.txt")
 	mkdirAll(t, filepath.Dir(staleAmpFile))
@@ -258,9 +213,6 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 	}.Run([]string{"build", "--target", "amp"})
 	if err != nil {
 		t.Fatalf("build --target amp error = %v\n%s", err, stdout.String())
-	}
-	if _, statErr := os.Stat(nodeLog); !os.IsNotExist(statErr) {
-		t.Fatalf("node log stat = %v, want native amp target without content-builder invocation", statErr)
 	}
 	for _, want := range []string{"loaf build", "shared skills intermediate", "amp", "Build complete"} {
 		if !strings.Contains(stdout.String(), want) {
@@ -275,10 +227,12 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 	if !strings.Contains(ampSkill, "version: 9.8.7-test.1") || strings.Contains(ampSkill, "{{IMPLEMENT_CMD}}") || !strings.Contains(ampSkill, "/implement") {
 		t.Fatalf("amp skill = %q, want version injection and shared command substitution", ampSkill)
 	}
-	plugin := readBuildFileString(t, filepath.Join(root, "dist", "amp", "plugins", "loaf.js"))
+	plugin := readBuildFileString(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"))
 	for _, want := range []string{
 		"@version 9.8.7-test.1",
-		"'tool.call': async (input) =>",
+		"import type { PluginAPI } from '@ampcode/plugin';",
+		"export default function (amp: PluginAPI)",
+		"amp.on('tool.call', async (event: { tool?: string; input?: unknown; arguments?: unknown }) =>",
 		`"command": "loaf check --hook check-secrets"`,
 		`"command": "cat \"$LOAF_PLUGIN_DIR/hooks/instructions/pre-merge.md\""`,
 		`const postToolHooks: Record<string, HookEntry[]> = {`,
@@ -290,6 +244,12 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 			t.Fatalf("amp plugin = %q, want %q", plugin, want)
 		}
 	}
+	if strings.Contains(plugin, "@i-know-the-amp-plugin-api-is-wip") || strings.Contains(plugin, "call.toolName") {
+		t.Fatalf("amp plugin = %q, want documented plugin API without WIP header or undefined call reference", plugin)
+	}
+	if _, err := os.Stat(filepath.Join(root, "dist", "amp", "plugins", "loaf.js")); !os.IsNotExist(err) {
+		t.Fatalf("amp loaf.js stat = %v, want TypeScript project plugin only", err)
+	}
 	if !strings.Contains(readBuildFileString(t, filepath.Join(root, "dist", "amp", "skills", "demo", "templates", "session.md")), "/implement") {
 		t.Fatalf("amp shared template was not copied from substituted shared intermediate")
 	}
@@ -300,7 +260,6 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 
 func TestRunnerBuildTargetCursorRunsNativeTarget(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
-	nodeLog := setupFakeNodeForBuild(t, 0)
 	seedNativeCodexBuildFixture(t, root)
 	seedNativeCursorBuildFixture(t, root)
 	staleCursorFile := filepath.Join(root, "dist", "cursor", "stale.txt")
@@ -314,9 +273,6 @@ func TestRunnerBuildTargetCursorRunsNativeTarget(t *testing.T) {
 	}.Run([]string{"build", "--target", "cursor"})
 	if err != nil {
 		t.Fatalf("build --target cursor error = %v\n%s", err, stdout.String())
-	}
-	if _, statErr := os.Stat(nodeLog); !os.IsNotExist(statErr) {
-		t.Fatalf("node log stat = %v, want native cursor target without content-builder invocation", statErr)
 	}
 	for _, want := range []string{"loaf build", "shared skills intermediate", "cursor", "Build complete"} {
 		if !strings.Contains(stdout.String(), want) {
@@ -366,7 +322,6 @@ func TestRunnerBuildTargetCursorRunsNativeTarget(t *testing.T) {
 
 func TestRunnerBuildTargetOpenCodeRunsNativeTarget(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
-	nodeLog := setupFakeNodeForBuild(t, 0)
 	seedNativeCodexBuildFixture(t, root)
 	seedNativeOpenCodeBuildFixture(t, root)
 	staleOpenCodeFile := filepath.Join(root, "dist", "opencode", "stale.txt")
@@ -380,9 +335,6 @@ func TestRunnerBuildTargetOpenCodeRunsNativeTarget(t *testing.T) {
 	}.Run([]string{"build", "--target", "opencode"})
 	if err != nil {
 		t.Fatalf("build --target opencode error = %v\n%s", err, stdout.String())
-	}
-	if _, statErr := os.Stat(nodeLog); !os.IsNotExist(statErr) {
-		t.Fatalf("node log stat = %v, want native opencode target without content-builder invocation", statErr)
 	}
 	for _, want := range []string{"loaf build", "shared skills intermediate", "opencode", "Build complete"} {
 		if !strings.Contains(stdout.String(), want) {
@@ -408,6 +360,19 @@ func TestRunnerBuildTargetOpenCodeRunsNativeTarget(t *testing.T) {
 			t.Fatalf("opencode command = %q, want %q", command, want)
 		}
 	}
+	workflowCommand := readBuildFileString(t, filepath.Join(root, "dist", "opencode", "commands", "workflow-only.md"))
+	for _, want := range []string{
+		"description: Workflow-only skill without an OpenCode sidecar.",
+		"version: 9.8.7-test.1",
+		"/implement",
+	} {
+		if !strings.Contains(workflowCommand, want) {
+			t.Fatalf("opencode workflow-only command = %q, want %q", workflowCommand, want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "dist", "opencode", "commands", "reference-only.md")); !os.IsNotExist(err) {
+		t.Fatalf("reference-only command stat = %v, want no OpenCode command for non-invocable skill", err)
+	}
 	agent := readBuildFileString(t, filepath.Join(root, "dist", "opencode", "agents", "background-runner.md"))
 	for _, want := range []string{
 		"mode: subagent",
@@ -424,7 +389,7 @@ func TestRunnerBuildTargetOpenCodeRunsNativeTarget(t *testing.T) {
 	plugin := readBuildFileString(t, filepath.Join(root, "dist", "opencode", "plugins", "hooks.ts"))
 	for _, want := range []string{
 		"@version 9.8.7-test.1",
-		"'tool.execute.before': async (input) =>",
+		"'tool.execute.before': async (input: { tool?: { name?: string; input?: unknown } }) =>",
 		`"command": "loaf check --hook check-secrets"`,
 		`"command": "cat \"$LOAF_PLUGIN_DIR/hooks/instructions/pre-merge.md\""`,
 		`"script": "post-tool/kb-staleness-nudge.sh"`,
@@ -441,7 +406,6 @@ func TestRunnerBuildTargetOpenCodeRunsNativeTarget(t *testing.T) {
 
 func TestRunnerBuildTargetClaudeCodeRunsNativeTarget(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
-	nodeLog := setupFakeNodeForBuild(t, 0)
 	seedNativeCodexBuildFixture(t, root)
 	seedNativeCursorBuildFixture(t, root)
 	seedNativeClaudeCodeBuildFixture(t, root)
@@ -456,9 +420,6 @@ func TestRunnerBuildTargetClaudeCodeRunsNativeTarget(t *testing.T) {
 	}.Run([]string{"build", "--target", "claude-code"})
 	if err != nil {
 		t.Fatalf("build --target claude-code error = %v\n%s", err, stdout.String())
-	}
-	if _, statErr := os.Stat(nodeLog); !os.IsNotExist(statErr) {
-		t.Fatalf("node log stat = %v, want native claude-code target without content-builder invocation", statErr)
 	}
 	for _, want := range []string{"loaf build", "shared skills intermediate", "claude-code", "Build complete"} {
 		if !strings.Contains(stdout.String(), want) {
@@ -545,7 +506,6 @@ func TestRunnerBuildTargetClaudeCodeRunsNativeTarget(t *testing.T) {
 
 func TestRunnerBuildRejectsUnknownTargetBeforeContentBuilder(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
-	nodeLog := setupFakeNodeForBuild(t, 0)
 
 	err := Runner{
 		Stdout:     &bytes.Buffer{},
@@ -554,13 +514,10 @@ func TestRunnerBuildRejectsUnknownTargetBeforeContentBuilder(t *testing.T) {
 	if err == nil {
 		t.Fatal("build --target bogus error = nil, want native target validation")
 	}
-	for _, want := range []string{"Unknown target bogus", "Valid targets: claude-code, opencode, cursor, codex, gemini, amp"} {
+	for _, want := range []string{"Unknown target bogus", "Valid targets: claude-code, opencode, cursor, codex, amp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error = %v, want %q", err, want)
 		}
-	}
-	if _, statErr := os.Stat(nodeLog); !os.IsNotExist(statErr) {
-		t.Fatalf("node log stat = %v, want no content-builder invocation", statErr)
 	}
 }
 
@@ -605,7 +562,6 @@ func TestRunnerBuildRejectsMissingTargetValue(t *testing.T) {
 
 func TestRunnerBuildReportsNativeAllTargetFailure(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
-	nodeLog := setupFakeNodeForBuild(t, 0)
 	seedNativeCodexBuildFixture(t, root)
 	seedNativeCursorBuildFixture(t, root)
 	seedNativeOpenCodeBuildFixture(t, root)
@@ -622,14 +578,238 @@ func TestRunnerBuildReportsNativeAllTargetFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("build error = nil, want native target failure")
 	}
-	if _, statErr := os.Stat(nodeLog); !os.IsNotExist(statErr) {
-		t.Fatalf("node log stat = %v, want native all-target failure without content-builder invocation", statErr)
-	}
 	if !strings.Contains(err.Error(), "Build failed") {
 		t.Fatalf("error = %v, want native build failure", err)
 	}
 	if !strings.Contains(stdout.String(), "Loaf launcher not found at bin/loaf") {
 		t.Fatalf("stdout = %q, want target failure detail", stdout.String())
+	}
+}
+
+func TestNativeBuildValidationRejectsMalformedJavaScript(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	mkdirAll(t, filepath.Join(root, "dist", "opencode", "plugins"))
+	writeFile(t, filepath.Join(root, "dist", "opencode", "plugins", "bad.js"), "function {\n")
+
+	warnings, err := validateNativeBuildArtifacts(root, "opencode")
+	if err == nil {
+		t.Fatal("validateNativeBuildArtifacts error = nil, want malformed JavaScript failure")
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none on JavaScript failure", warnings)
+	}
+	if !strings.Contains(err.Error(), "JavaScript validation failed") || !strings.Contains(err.Error(), "dist/opencode/plugins/bad.js") {
+		t.Fatalf("error = %v, want JavaScript validation path", err)
+	}
+}
+
+func TestNativeBuildValidationWarnsWhenTypeScriptToolMissingOutsideCI(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	mkdirAll(t, filepath.Join(root, "dist", "opencode", "plugins"))
+	writeFile(t, filepath.Join(root, "dist", "opencode", "plugins", "hooks.ts"), "const ok: string = 'ok';\n")
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("CI", "")
+
+	warnings, err := validateNativeBuildArtifacts(root, "opencode")
+	if err != nil {
+		t.Fatalf("validateNativeBuildArtifacts error = %v, want local warning only", err)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "TypeScript validation skipped") || !strings.Contains(warnings[0], "dist/opencode/plugins/hooks.ts") {
+		t.Fatalf("warnings = %#v, want missing tsc warning with file path", warnings)
+	}
+}
+
+func TestNativeBuildValidationRequiresTypeScriptToolInCI(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	mkdirAll(t, filepath.Join(root, "dist", "opencode", "plugins"))
+	writeFile(t, filepath.Join(root, "dist", "opencode", "plugins", "hooks.ts"), "const ok: string = 'ok';\n")
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("CI", "true")
+
+	warnings, err := validateNativeBuildArtifacts(root, "opencode")
+	if err == nil {
+		t.Fatal("validateNativeBuildArtifacts error = nil, want missing tsc CI failure")
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none on CI failure", warnings)
+	}
+	if !strings.Contains(err.Error(), "TypeScript validation requires tsc in CI") {
+		t.Fatalf("error = %v, want CI tsc requirement", err)
+	}
+}
+
+func TestNativeBuildValidationRunsTypeScriptToolWhenPresent(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	mkdirAll(t, filepath.Join(root, "dist", "opencode", "plugins"))
+	writeFile(t, filepath.Join(root, "dist", "opencode", "plugins", "hooks.ts"), "const ok: string = 'ok';\n")
+	bin := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "tsc.log")
+	writeFile(t, filepath.Join(bin, "tsc"), strings.Join([]string{
+		"#!/bin/sh",
+		`printf '%s\n' "$*" > "` + logPath + `"`,
+		"exit 0",
+		"",
+	}, "\n"))
+	if err := os.Chmod(filepath.Join(bin, "tsc"), 0o755); err != nil {
+		t.Fatalf("Chmod(tsc) error = %v", err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("LOAF_VALIDATE_TYPESCRIPT", "1")
+
+	warnings, err := validateNativeBuildArtifacts(root, "opencode")
+	if err != nil {
+		t.Fatalf("validateNativeBuildArtifacts error = %v, want fake tsc success", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none when tsc is present", warnings)
+	}
+	log := readBuildFileString(t, logPath)
+	for _, want := range []string{"--noEmit", "--allowJs false", filepath.Join(root, "dist", "opencode", "plugins", "hooks.ts")} {
+		if !strings.Contains(log, want) {
+			t.Fatalf("tsc log = %q, want %q", log, want)
+		}
+	}
+}
+
+func TestNativeBuildValidationRejectsMalformedTypeScriptWhenEnabled(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	mkdirAll(t, filepath.Join(root, "dist", "opencode", "plugins"))
+	writeFile(t, filepath.Join(root, "dist", "opencode", "plugins", "hooks.ts"), "const broken: = true;\n")
+	bin := t.TempDir()
+	writeFile(t, filepath.Join(bin, "tsc"), strings.Join([]string{
+		"#!/bin/sh",
+		"echo 'error TS1005: type expected.'",
+		"exit 2",
+		"",
+	}, "\n"))
+	if err := os.Chmod(filepath.Join(bin, "tsc"), 0o755); err != nil {
+		t.Fatalf("Chmod(tsc) error = %v", err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("LOAF_VALIDATE_TYPESCRIPT", "1")
+
+	warnings, err := validateNativeBuildArtifacts(root, "opencode")
+	if err == nil {
+		t.Fatal("validateNativeBuildArtifacts error = nil, want TypeScript validation failure")
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none on TypeScript validation failure", warnings)
+	}
+	if !strings.Contains(err.Error(), "TypeScript validation failed") || !strings.Contains(err.Error(), "TS1005") {
+		t.Fatalf("error = %v, want TypeScript diagnostic", err)
+	}
+}
+
+func TestNativeBuildHarnessLanguageReportsFileAndLine(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "codex", "skills", "bad", "SKILL.md")
+	mkdirAll(t, filepath.Dir(path))
+	writeFile(t, path, "# Bad\n\nUse AskUserQuestion here.\n")
+
+	err := validateNativeBuildHarnessLanguage(root, "codex", []string{path})
+	if err == nil {
+		t.Fatal("validateNativeBuildHarnessLanguage error = nil, want Claudeism failure")
+	}
+	for _, want := range []string{"dist/codex/skills/bad/SKILL.md:3", "AskUserQuestion"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %v, want %q", err, want)
+		}
+	}
+}
+
+func TestNativeBuildHarnessLanguageAllowsOpenCodeSubagentMode(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "opencode", "agents", "reviewer.md")
+	mkdirAll(t, filepath.Dir(path))
+	writeFile(t, path, "---\nmode: subagent\n---\n")
+
+	if err := validateNativeBuildHarnessLanguage(root, "opencode", []string{path}); err != nil {
+		t.Fatalf("validateNativeBuildHarnessLanguage error = %v, want allowlisted OpenCode agent mode", err)
+	}
+}
+
+func TestNativeBuildParityMatrixDerivesFromSource(t *testing.T) {
+	root := setupBuildCommandLoafRoot(t)
+	seedNativeBuildParityFixture(t, root)
+	var stdout bytes.Buffer
+
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+	expectations, err := nativeBuildParityExpectationsFromSource(root)
+	if err != nil {
+		t.Fatalf("nativeBuildParityExpectationsFromSource error = %v", err)
+	}
+	if err := assertNativeBuildParityReachability(root, expectations); err != nil {
+		t.Fatalf("assertNativeBuildParityReachability error = %v", err)
+	}
+	if err := assertNativeBuildParityHookSemantics(root, expectations); err != nil {
+		t.Fatalf("assertNativeBuildParityHookSemantics error = %v", err)
+	}
+	if err := assertNativeBuildParityHarnessLanguage(root, expectations.targets); err != nil {
+		t.Fatalf("assertNativeBuildParityHarnessLanguage error = %v", err)
+	}
+}
+
+func TestNativeBuildParityMatrixDetectsSeededReachabilityGap(t *testing.T) {
+	root := setupBuildCommandLoafRoot(t)
+	seedNativeBuildParityFixture(t, root)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+	expectations, err := nativeBuildParityExpectationsFromSource(root)
+	if err != nil {
+		t.Fatalf("nativeBuildParityExpectationsFromSource error = %v", err)
+	}
+	if err := os.Remove(filepath.Join(root, "dist", "opencode", "commands", "workflow-only.md")); err != nil {
+		t.Fatalf("Remove(workflow-only command) error = %v", err)
+	}
+
+	err = assertNativeBuildParityReachability(root, expectations)
+	if err == nil || !strings.Contains(err.Error(), "opencode command workflow-only") {
+		t.Fatalf("assertNativeBuildParityReachability error = %v, want seeded opencode command gap", err)
+	}
+}
+
+func TestNativeBuildParityMatrixDetectsSeededHookSemanticGap(t *testing.T) {
+	root := setupBuildCommandLoafRoot(t)
+	seedNativeBuildParityFixture(t, root)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+	expectations, err := nativeBuildParityExpectationsFromSource(root)
+	if err != nil {
+		t.Fatalf("nativeBuildParityExpectationsFromSource error = %v", err)
+	}
+	path := filepath.Join(root, "dist", "codex", ".codex", "hooks.json")
+	body := readBuildFileString(t, path)
+	body = strings.Replace(body, "\"command\": \"loaf check --hook validate-push\",\n        \"timeout\": 60,\n        \"failClosed\": false", "\"command\": \"loaf check --hook validate-push\",\n        \"timeout\": 60,\n        \"failClosed\": true", 1)
+	writeFile(t, path, body)
+
+	err = assertNativeBuildParityHookSemantics(root, expectations)
+	if err == nil || !strings.Contains(err.Error(), "codex hook validate-push failClosed") {
+		t.Fatalf("assertNativeBuildParityHookSemantics error = %v, want seeded hook semantic gap", err)
+	}
+}
+
+func TestNativeBuildParityMatrixDetectsSeededHarnessLanguageLeak(t *testing.T) {
+	root := setupBuildCommandLoafRoot(t)
+	seedNativeBuildParityFixture(t, root)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+	expectations, err := nativeBuildParityExpectationsFromSource(root)
+	if err != nil {
+		t.Fatalf("nativeBuildParityExpectationsFromSource error = %v", err)
+	}
+	writeFile(t, filepath.Join(root, "dist", "codex", "skills", "workflow-only", "SKILL.md"), "AskUserQuestion\n")
+
+	err = assertNativeBuildParityHarnessLanguage(root, expectations.targets)
+	if err == nil || !strings.Contains(err.Error(), "AskUserQuestion") {
+		t.Fatalf("assertNativeBuildParityHarnessLanguage error = %v, want seeded harness leak", err)
 	}
 }
 
@@ -643,7 +823,7 @@ func setupBuildCommandLoafRoot(t *testing.T) string {
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatalf("MkdirAll(bin) error = %v", err)
 	}
-	t.Setenv("PATH", bin)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"name":"loaf","version":"9.8.7-test.1"}`+"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(package.json) error = %v", err)
 	}
@@ -657,8 +837,6 @@ func setupBuildCommandLoafRoot(t *testing.T) string {
 		"    output: dist/cursor/",
 		"  codex:",
 		"    output: dist/codex/",
-		"  gemini:",
-		"    output: dist/gemini/",
 		"  amp:",
 		"    output: dist/amp/",
 		"",
@@ -685,8 +863,6 @@ func seedNativeCodexBuildFixture(t *testing.T, root string) {
 		"    output: dist/cursor/",
 		"  codex:",
 		"    output: dist/codex/",
-		"  gemini:",
-		"    output: dist/gemini/",
 		"  amp:",
 		"    output: dist/amp/",
 		"",
@@ -696,9 +872,35 @@ func seedNativeCodexBuildFixture(t *testing.T, root string) {
 		"  pre-tool:",
 		"    - id: check-secrets",
 		"      matcher: \"Edit|Write|Bash\"",
+		"      blocking: true",
 		"      timeout: 30000",
 		"      failClosed: true",
 		"      description: Check for hardcoded secrets before writing",
+		"    - id: security-audit",
+		"      matcher: \"Bash\"",
+		"      blocking: true",
+		"      timeout: 600000",
+		"      failClosed: true",
+		"      description: Run security audit on bash commands",
+		"    - id: validate-push",
+		"      matcher: \"Bash\"",
+		"      if: \"Bash(git push:*)\"",
+		"      blocking: false",
+		"      timeout: 60000",
+		"      description: Validates version bump, CHANGELOG, and build before git push",
+		"    - id: workflow-pre-pr",
+		"      matcher: \"Bash\"",
+		"      if: \"Bash(gh pr create:*)\"",
+		"      blocking: false",
+		"      timeout: 5000",
+		"      description: Remind about PR format before gh pr create",
+		"    - id: validate-commit",
+		"      matcher: \"Bash\"",
+		"      if: \"Bash(git commit:*)\"",
+		"      blocking: true",
+		"      timeout: 30000",
+		"      failClosed: true",
+		"      description: Validate commit messages follow conventions",
 		"    - id: workflow-pre-merge",
 		"      type: command",
 		"      instruction: instructions/pre-merge.md",
@@ -786,8 +988,42 @@ func seedNativeOpenCodeBuildFixture(t *testing.T, root string) {
 	mkdirAll(t, filepath.Join(root, "content", "agents"))
 	mkdirAll(t, filepath.Join(root, "content", "hooks", "instructions"))
 	mkdirAll(t, filepath.Join(root, "content", "hooks", "post-tool"))
+	writeFile(t, filepath.Join(root, "content", "skills", "demo", "SKILL.claude-code.yaml"), strings.Join([]string{
+		"user-invocable: true",
+		"",
+	}, "\n"))
 	writeFile(t, filepath.Join(root, "content", "skills", "demo", "SKILL.opencode.yaml"), strings.Join([]string{
 		"subtask: false",
+		"",
+	}, "\n"))
+	mkdirAll(t, filepath.Join(root, "content", "skills", "workflow-only"))
+	writeFile(t, filepath.Join(root, "content", "skills", "workflow-only", "SKILL.md"), strings.Join([]string{
+		"---",
+		"name: workflow-only",
+		"description: Workflow-only skill without an OpenCode sidecar.",
+		"---",
+		"",
+		"# Workflow Only",
+		"",
+		"Run {{IMPLEMENT_CMD}} from a command generated by reachability.",
+		"",
+	}, "\n"))
+	writeFile(t, filepath.Join(root, "content", "skills", "workflow-only", "SKILL.claude-code.yaml"), strings.Join([]string{
+		"user-invocable: true",
+		"",
+	}, "\n"))
+	mkdirAll(t, filepath.Join(root, "content", "skills", "reference-only"))
+	writeFile(t, filepath.Join(root, "content", "skills", "reference-only", "SKILL.md"), strings.Join([]string{
+		"---",
+		"name: reference-only",
+		"description: Reference-only skill.",
+		"---",
+		"",
+		"# Reference Only",
+		"",
+	}, "\n"))
+	writeFile(t, filepath.Join(root, "content", "skills", "reference-only", "SKILL.claude-code.yaml"), strings.Join([]string{
+		"user-invocable: false",
 		"",
 	}, "\n"))
 	writeFile(t, filepath.Join(root, "content", "agents", "background-runner.md"), strings.Join([]string{
@@ -862,6 +1098,302 @@ func seedNativeClaudeCodeBuildFixture(t *testing.T, root string) {
 	}
 }
 
+func seedNativeBuildParityFixture(t *testing.T, root string) {
+	t.Helper()
+	seedNativeCodexBuildFixture(t, root)
+	seedNativeCursorBuildFixture(t, root)
+	seedNativeOpenCodeBuildFixture(t, root)
+	seedNativeClaudeCodeBuildFixture(t, root)
+	writeFile(t, filepath.Join(root, "content", "skills", "demo", "SKILL.claude-code.yaml"), strings.Join([]string{
+		"user-invocable: true",
+		"allowed-tools: Bash",
+		"",
+	}, "\n"))
+	writeFile(t, filepath.Join(root, "content", "skills", "workflow-only", "SKILL.md"), strings.Join([]string{
+		"---",
+		"name: workflow-only",
+		"description: Workflow-only skill without target-specific command sidecars.",
+		"---",
+		"",
+		"# Workflow Only",
+		"",
+		"Use AskUserQuestionTool, TodoWrite, CLAUDE.md, /loaf:implement, and subagent language.",
+		"",
+	}, "\n"))
+}
+
+type nativeBuildParityExpectations struct {
+	targets        []string
+	workflowSkills []string
+	preToolHooks   []nativeBuildHook
+}
+
+func nativeBuildParityExpectationsFromSource(root string) (nativeBuildParityExpectations, error) {
+	targets, err := nativeBuildTargetNames(root)
+	if err != nil {
+		return nativeBuildParityExpectations{}, err
+	}
+	if strings.Join(targets, ",") != strings.Join(defaultBuildTargets, ",") {
+		return nativeBuildParityExpectations{}, fmt.Errorf("targets = %v, want exactly %v", targets, defaultBuildTargets)
+	}
+	workflowSkills, err := nativeBuildParityUserInvocableSkills(root)
+	if err != nil {
+		return nativeBuildParityExpectations{}, err
+	}
+	hooks, err := readNativeBuildHooks(filepath.Join(root, "config", "hooks.yaml"))
+	if err != nil {
+		return nativeBuildParityExpectations{}, err
+	}
+	var preToolHooks []nativeBuildHook
+	for _, hook := range hooks {
+		if hook.section == "pre-tool" && hook.typeName != "prompt" {
+			preToolHooks = append(preToolHooks, hook)
+		}
+	}
+	return nativeBuildParityExpectations{
+		targets:        targets,
+		workflowSkills: workflowSkills,
+		preToolHooks:   preToolHooks,
+	}, nil
+}
+
+func nativeBuildParityUserInvocableSkills(root string) ([]string, error) {
+	skillsDir := filepath.Join(root, "content", "skills")
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		return nil, err
+	}
+	var skills []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		sidecarPath := filepath.Join(skillsDir, entry.Name(), "SKILL.claude-code.yaml")
+		fields, err := readNativeBuildAgentSidecar(sidecarPath, false)
+		if err != nil {
+			return nil, err
+		}
+		for _, field := range fields {
+			if field.key == "user-invocable" && field.value.kind == "bool" && field.value.scalar == "true" {
+				skills = append(skills, entry.Name())
+			}
+		}
+	}
+	sort.Strings(skills)
+	return skills, nil
+}
+
+func assertNativeBuildParityReachability(root string, expectations nativeBuildParityExpectations) error {
+	if len(expectations.workflowSkills) == 0 {
+		return fmt.Errorf("no source user-invocable workflow skills found")
+	}
+	for _, target := range expectations.targets {
+		for _, skill := range expectations.workflowSkills {
+			skillPath := filepath.Join(nativeBuildTargetOutputDir(root, target), "skills", skill, "SKILL.md")
+			if _, err := os.Stat(skillPath); err != nil {
+				return fmt.Errorf("%s skill %s not reachable at %s: %w", target, skill, nativeBuildRelativePath(root, skillPath), err)
+			}
+			if target == "opencode" {
+				commandPath := filepath.Join(root, "dist", "opencode", "commands", skill+".md")
+				if _, err := os.Stat(commandPath); err != nil {
+					return fmt.Errorf("opencode command %s not reachable at %s: %w", skill, nativeBuildRelativePath(root, commandPath), err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func assertNativeBuildParityHookSemantics(root string, expectations nativeBuildParityExpectations) error {
+	for _, hook := range expectations.preToolHooks {
+		if err := assertNativeBuildClaudeHookSemantics(root, hook); err != nil {
+			return err
+		}
+		if err := assertNativeBuildCursorHookSemantics(root, hook); err != nil {
+			return err
+		}
+		if err := assertNativeBuildOpenCodeHookSemantics(root, hook); err != nil {
+			return err
+		}
+		if err := assertNativeBuildAmpHookSemantics(root, hook); err != nil {
+			return err
+		}
+		if hook.section == "pre-tool" && codexEnforcementHooks[hook.id] && strings.Contains(hook.matcher, "Bash") {
+			if err := assertNativeBuildCodexHookSemantics(root, hook); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func assertNativeBuildClaudeHookSemantics(root string, hook nativeBuildHook) error {
+	var payload struct {
+		Hooks struct {
+			PreToolUse []struct {
+				Hooks []map[string]any `json:"hooks"`
+			} `json:"PreToolUse"`
+		} `json:"hooks"`
+	}
+	if err := readNativeBuildJSON(filepath.Join(root, "plugins", "loaf", "hooks", "hooks.json"), &payload); err != nil {
+		return err
+	}
+	entry, ok := findNativeBuildGenericHook(payload.Hooks.PreToolUse, "command", nativeClaudeHookCommand(hook))
+	if !ok {
+		return fmt.Errorf("claude-code hook %s missing command %q", hook.id, nativeClaudeHookCommand(hook))
+	}
+	if got := nativeBuildGenericBool(entry, "failClosed"); got != hook.failClosed {
+		return fmt.Errorf("claude-code hook %s failClosed = %v, want %v", hook.id, got, hook.failClosed)
+	}
+	return nil
+}
+
+func assertNativeBuildCursorHookSemantics(root string, hook nativeBuildHook) error {
+	var payload nativeCursorHooksJSON
+	if err := readNativeBuildJSON(filepath.Join(root, "dist", "cursor", "hooks.json"), &payload); err != nil {
+		return err
+	}
+	command := nativeCursorHookCommand(hook)
+	for _, entry := range payload.Hooks.PreToolUse {
+		if entry.Command == command {
+			if entry.FailClosed != hook.failClosed {
+				return fmt.Errorf("cursor hook %s failClosed = %v, want %v", hook.id, entry.FailClosed, hook.failClosed)
+			}
+			if entry.If != hook.ifCondition {
+				return fmt.Errorf("cursor hook %s if = %q, want %q", hook.id, entry.If, hook.ifCondition)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("cursor hook %s missing command %q", hook.id, command)
+}
+
+func assertNativeBuildCodexHookSemantics(root string, hook nativeBuildHook) error {
+	var payload nativeCodexHooksJSON
+	if err := readNativeBuildJSON(filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), &payload); err != nil {
+		return err
+	}
+	command := "loaf check --hook " + hook.id
+	for _, entry := range payload.Hooks.PreToolUse {
+		if entry.Command == command {
+			if entry.FailClosed != hook.failClosed {
+				return fmt.Errorf("codex hook %s failClosed = %v, want %v", hook.id, entry.FailClosed, hook.failClosed)
+			}
+			if entry.Blocking != hook.blocking {
+				return fmt.Errorf("codex hook %s blocking = %v, want %v", hook.id, entry.Blocking, hook.blocking)
+			}
+			if entry.If != hook.ifCondition {
+				return fmt.Errorf("codex hook %s if = %q, want %q", hook.id, entry.If, hook.ifCondition)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("codex hook %s missing command %q", hook.id, command)
+}
+
+func assertNativeBuildOpenCodeHookSemantics(root string, hook nativeBuildHook) error {
+	return assertNativeBuildPluginHookSemantics(filepath.Join(root, "dist", "opencode", "plugins", "hooks.ts"), "opencode", hook)
+}
+
+func assertNativeBuildAmpHookSemantics(root string, hook nativeBuildHook) error {
+	return assertNativeBuildPluginHookSemantics(filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"), "amp", hook)
+}
+
+func assertNativeBuildPluginHookSemantics(path string, target string, hook nativeBuildHook) error {
+	hooks, err := readNativeBuildPluginPreToolHooks(path)
+	if err != nil {
+		return err
+	}
+	for _, entries := range hooks {
+		for _, entry := range entries {
+			if entry.ID == hook.id {
+				if entry.FailClosed != hook.failClosed {
+					return fmt.Errorf("%s hook %s failClosed = %v, want %v", target, hook.id, entry.FailClosed, hook.failClosed)
+				}
+				if entry.If != hook.ifCondition {
+					return fmt.Errorf("%s hook %s if = %q, want %q", target, hook.id, entry.If, hook.ifCondition)
+				}
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("%s hook %s missing", target, hook.id)
+}
+
+func readNativeBuildPluginPreToolHooks(path string) (map[string][]nativeAmpHookEntry, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	startMarker := "const preToolHooks: Record<string, HookEntry[]> = "
+	start := strings.Index(string(body), startMarker)
+	if start < 0 {
+		return nil, fmt.Errorf("%s missing preToolHooks", path)
+	}
+	rest := string(body)[start+len(startMarker):]
+	end := strings.Index(rest, ";\n\nconst postToolHooks")
+	if end < 0 {
+		return nil, fmt.Errorf("%s missing postToolHooks delimiter", path)
+	}
+	var hooks map[string][]nativeAmpHookEntry
+	if err := json.Unmarshal([]byte(rest[:end]), &hooks); err != nil {
+		return nil, err
+	}
+	return hooks, nil
+}
+
+func assertNativeBuildParityHarnessLanguage(root string, targets []string) error {
+	for _, target := range targets {
+		outputDir := nativeBuildTargetOutputDir(root, target)
+		var paths []string
+		if err := filepath.WalkDir(outputDir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			switch strings.ToLower(filepath.Ext(path)) {
+			case ".md", ".json", ".yaml", ".yml", ".toml", ".ts":
+				paths = append(paths, path)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		if err := validateNativeBuildHarnessLanguage(root, target, paths); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func readNativeBuildJSON(path string, out any) error {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(body, out)
+}
+
+func findNativeBuildGenericHook(groups []struct {
+	Hooks []map[string]any `json:"hooks"`
+}, key string, value string) (map[string]any, bool) {
+	for _, group := range groups {
+		for _, entry := range group.Hooks {
+			if got, ok := entry[key].(string); ok && got == value {
+				return entry, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func nativeBuildGenericBool(entry map[string]any, key string) bool {
+	value, _ := entry[key].(bool)
+	return value
+}
+
 func readBuildFileString(t *testing.T, path string) string {
 	t.Helper()
 	body, err := os.ReadFile(path)
@@ -869,22 +1401,4 @@ func readBuildFileString(t *testing.T, path string) string {
 		t.Fatalf("ReadFile(%s) error = %v", path, err)
 	}
 	return string(body)
-}
-
-func setupFakeNodeForBuild(t *testing.T, exitCode int) string {
-	t.Helper()
-	bin := strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))[0]
-	log := filepath.Join(t.TempDir(), "node.log")
-	t.Setenv("LOAF_TEST_NODE_LOG", log)
-	script := strings.Join([]string{
-		"#!/bin/sh",
-		`printf 'cwd=%s\n' "$PWD" >> "$LOAF_TEST_NODE_LOG"`,
-		`printf 'args=%s\n' "$*" >> "$LOAF_TEST_NODE_LOG"`,
-		"exit " + fmt.Sprint(exitCode),
-		"",
-	}, "\n")
-	if err := os.WriteFile(filepath.Join(bin, "node"), []byte(script), 0o755); err != nil {
-		t.Fatalf("WriteFile(node) error = %v", err)
-	}
-	return log
 }

@@ -72,19 +72,19 @@ These sessions may not have a linked task but still follow standard session form
 
 **Transcripts location:** `.agents/transcripts/`
 
-Transcripts are Claude Code conversation exports (`.jsonl` files) archived after context compaction. They preserve the full audit trail of agent interactions.
+Transcripts are Cursor conversation exports (`.jsonl` files) archived after context compaction. They preserve the full audit trail of agent interactions.
 
 ```
 .agents/
 ├── sessions/
 │   ├── YYYYMMDD-HHMMSS-session.md
 │   └── archive/
-└── transcripts/              # Claude Code transcripts
+└── transcripts/              # Cursor transcripts
     ├── 2a244262-8599-4bef-8bb8-3feea33d14e2.jsonl
     └── archive/
 ```
 
-**Why keep original filenames:** The UUID-like hash is unique and matches Claude Code's internal reference, making correlation easier if needed.
+**Why keep original filenames:** The UUID-like hash is unique and matches Cursor's internal reference, making correlation easier if needed.
 
 **Generate timestamps:**
 
@@ -118,7 +118,7 @@ session:
   linear_issue: "BACK-123"                     # Optional
   linear_url: "https://linear.app/..."         # Optional
   branch: "username/back-123-feature"          # Optional: working branch
-  transcripts: []                              # Archived Claude Code transcripts (filenames only)
+  transcripts: []                              # Archived Cursor transcripts (filenames only)
                                                # Example: ["2a244262-8599-4bef-8bb8-3feea33d14e2.jsonl"]
   referenced_sessions: []                      # Cross-session references (see below)
 
@@ -203,7 +203,7 @@ Where we are right now. What just happened.
 >
 > **Blockers**: [Any blockers, or "None"]
 >
-> **Transcript Archive**: If Claude Code provided a transcript path after compaction,
+> **Transcript Archive**: If Cursor provided a transcript path after compaction,
 > copy it to `.agents/transcripts/` and add the filename to this session's
 > `transcripts:` array in frontmatter.
 

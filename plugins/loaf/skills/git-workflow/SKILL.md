@@ -31,7 +31,7 @@ Git conventions for branching, commits, PRs, and merge workflow.
 
 ## Verification
 
-- Commit messages follow Conventional Commits format (`type(scope): description`)
+- Commit messages follow unscoped Conventional Commits format (`type: description`)
 - Branch is up to date with base branch before creating PR
 - PR title is under 70 characters with PR# suffix convention
 
@@ -40,7 +40,7 @@ Git conventions for branching, commits, PRs, and merge workflow.
 | Action | Command/Pattern |
 |--------|----------------|
 | Branch naming | `feat/{slug}`, `fix/{slug}`, `chore/{slug}` |
-| Commit format | `type(scope): description` |
+| Commit format | `type: description` |
 | Squash merge | `gh pr merge --squash` |
 | PR creation | `gh pr create --title "..." --body "..."` |
 

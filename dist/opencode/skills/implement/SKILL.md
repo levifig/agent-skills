@@ -40,7 +40,7 @@ You are the coordinator. Start by understanding the task:
 
 ### Orchestrator Can Do Directly
 - Create/edit session files, council files
-- Use TodoWrite/TodoRead; **if `integrations.linear.enabled` is `true` in `.agents/loaf.json`**, use Linear MCP tools when helpful
+- Use native task/todo surface when available; **if `integrations.linear.enabled` is `true` in `.agents/loaf.json`**, use Linear MCP tools when helpful
 - Read any file for context
 - Ask clarifying questions
 
@@ -50,7 +50,7 @@ You are the coordinator. Start by understanding the task:
 ## Verification
 
 - Session file exists before any implementation work begins
-- All code changes delegated via Task tool -- no direct edits by orchestrator
+- All code changes delegated via subtask agent -- no direct edits by orchestrator
 - Session file is continuously updated with spawns, progress, and current state
 - Spec artifacts closed out on branch before PR creation
 - **Linear-native mode:** `blockedBy` of the target sub-issue is fully `completed` before any session file is created; starting a sub-issue also promotes an unstarted parent rollup to active; parent rollup is auto-closed only when all sub-issues are `completed`
@@ -155,7 +155,7 @@ The issue represents a spec. Do **not** implement it directly — spec-level
      in-progress sub-issue. Resume that.
    - Else, if one unblocked `unstarted` sub-issue exists, pick it.
    - Else, if multiple unblocked `unstarted` sub-issues exist, use
-     `AskUserQuestion` to let the user choose: pick one, or delegate N in
+     `prompt the user in chat` to let the user choose: pick one, or delegate N in
      parallel via parallel agents. List each sub-issue's title + ID.
    - Else (all remaining sub-issues are blocked), refuse with a summary:
      "All remaining sub-issues under <parent-id> are blocked. Blockers:
@@ -232,7 +232,7 @@ When the sub-issue's implementation passes review and tests:
 
 ## Agent Spawning
 
-Use the **Task tool** with appropriate `subagent_type`:
+Use the **subtask agent** with appropriate `agent_type`:
 
 | Work Type | Profile | Skills to Load |
 |-----------|---------|---------------|
@@ -256,7 +256,7 @@ Use the **Task tool** with appropriate `subagent_type`:
 1. Generate timestamps: `date -u +"%Y%m%d-%H%M%S"` and `date -u +"%Y-%m-%dT%H:%M:%SZ"`
 2. Create session file following [session template](templates/session.md)
 3. Verify session file exists with valid frontmatter
-4. Suggest renaming Claude Code session with a meaningful name derived from context:
+4. Suggest renaming OpenCode session with a meaningful name derived from context:
    - From spec: `Suggestion: /rename SPEC-027-session-stability`
    - From task: `Suggestion: /rename TASK-042-login-fix`
    - From ad-hoc: `Suggestion: /rename {short-slug-from-description}`
@@ -267,10 +267,10 @@ Use the **Task tool** with appropriate `subagent_type`:
 
 ## Session Guardrails
 
-1. **Strict delegation** -- ALL implementation via Task tool
+1. **Strict delegation** -- ALL implementation via subtask agent
 2. **Keep this session lean** -- focus on planning, coordination, oversight
 3. **When uncertain** -- convene council, present results, **wait for user approval**
-4. **Ensure quality** -- spawn implementer for tests, route reviews to reviewer subagents
+4. **Ensure quality** -- spawn implementer for tests, route reviews to reviewer subtask agent
 5. **When debugging** -- if a test failure or error isn't immediately obvious, load the **debugging** skill for structured hypothesis tracking before retrying
 6. **Update session file continuously** -- log spawns, update current_task, keep handoff-ready
 6. **Clean up** -- no ephemeral files, archive completed sessions (status + `archived_at` + `archived_by` + move to archive/)
@@ -302,7 +302,7 @@ After creating session file:
 5. [ ] Create dedicated branch (see [session-management.md](references/session-management.md))
 6. [ ] Suggest team based on task context
 7. [ ] Populate session Context section
-8. [ ] Break down work using TodoWrite
+8. [ ] Break down work using native task/todo surface when available
 9. [ ] Identify needed specialized agents
 10. [ ] Update session Next Steps
 11. [ ] **Get user approval** before spawning
@@ -319,7 +319,7 @@ After creating session file:
 5. Get user approval
 
 ### DURING (Execution)
-1. Spawn specialized agents via Task tool
+1. Spawn specialized agents via subtask agent
 2. Log each spawn in session `orchestration.spawned_agents`
 3. Update Linear with progress (no emoji, no file paths)
 4. Keep session `## Current State` handoff-ready

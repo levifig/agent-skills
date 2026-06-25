@@ -223,7 +223,7 @@ After `/compact` or `/clear`, archive conversation transcripts for future refere
 
 ### Process
 
-1. **Get transcript path** from Claude Code output after compaction
+1. **Get transcript path** from Amp output after compaction
 2. **Create transcripts directory** if needed:
    ```bash
    mkdir -p .agents/transcripts

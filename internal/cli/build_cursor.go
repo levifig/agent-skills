@@ -92,7 +92,7 @@ func buildNativeCursorTarget(root string) error {
 		targetName:    "cursor",
 		version:       version,
 		targetsConfig: targetsConfig,
-		transformMd:   substituteNativeBuildCursorCommands,
+		transformMd:   func(content string) string { return substituteNativeBuildHarnessLanguage(content, "cursor") },
 	}); err != nil {
 		return err
 	}
@@ -110,12 +110,7 @@ func buildNativeCursorTarget(root string) error {
 }
 
 func substituteNativeBuildCursorCommands(content string) string {
-	replacer := strings.NewReplacer(
-		"{{IMPLEMENT_CMD}}", "/implement",
-		"{{RESUME_CMD}}", "/resume",
-		"{{ORCHESTRATE_CMD}}", "/implement",
-	)
-	return replacer.Replace(content)
+	return substituteNativeBuildHarnessLanguage(content, "cursor")
 }
 
 func copyNativeBuildAgents(srcDir string, destDir string, targetName string, version string, defaults []nativeBuildYAMLFieldValue, sidecarRequired bool) error {
@@ -157,6 +152,7 @@ func copyNativeBuildAgents(srcDir string, destDir string, targetName string, ver
 		for _, field := range sidecarFields {
 			fields = setNativeBuildYAMLFieldValue(fields, field.key, field.value)
 		}
+		content = substituteNativeBuildHarnessLanguage(content, targetName)
 		content = strings.TrimSpace(content) + "\n\n---\nversion: " + version + "\n"
 		output := "---\n" + renderNativeBuildYAMLFieldValues(fields) + "---\n" + content
 		if err := os.WriteFile(filepath.Join(destDir, file), []byte(output), 0o644); err != nil {

@@ -34,11 +34,10 @@ var installDisplayNames = map[string]string{
 	"opencode":    "OpenCode",
 	"cursor":      "Cursor",
 	"codex":       "Codex",
-	"gemini":      "Gemini",
 	"amp":         "Amp",
 }
 
-var installValidTargets = []string{"opencode", "cursor", "codex", "gemini", "amp"}
+var installValidTargets = []string{"opencode", "cursor", "codex", "amp"}
 
 func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) error {
 	options, err := parseInstallArgs(args)
@@ -464,10 +463,6 @@ func detectInstallTools() []detectedInstallTool {
 	if installCommandExists("codex") || dirExistsForInstall(codexConfig) || dirExistsForInstall(filepath.Join(home, ".codex")) {
 		tools = append(tools, newDetectedInstallTool("codex", codexConfig, "config"))
 	}
-	geminiConfig := defaults["gemini"]
-	if installCommandExists("gemini") || dirExistsForInstall(geminiConfig) {
-		tools = append(tools, newDetectedInstallTool("gemini", geminiConfig, "config"))
-	}
 	ampConfig := defaults["amp"]
 	if installCommandExists("amp") || dirExistsForInstall(ampConfig) {
 		tools = append(tools, newDetectedInstallTool("amp", ampConfig, "config"))
@@ -499,7 +494,6 @@ func defaultInstallConfigDirs() map[string]string {
 		"opencode": filepath.Join(xdgConfig, "opencode"),
 		"cursor":   filepath.Join(home, ".cursor"),
 		"codex":    codexHome,
-		"gemini":   filepath.Join(home, ".gemini"),
 		"amp":      filepath.Join(home, ".amp"),
 	}
 }

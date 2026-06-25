@@ -98,8 +98,6 @@ func installTargetDistribution(options targetInstallOptions) error {
 		return installCursorTarget(options)
 	case "codex":
 		return installCodexTarget(options)
-	case "gemini":
-		return installGeminiTarget(options)
 	case "amp":
 		return installAmpTarget(options)
 	default:
@@ -161,14 +159,6 @@ func installCodexTarget(options targetInstallOptions) error {
 	return writeInstallMarker(options.ConfigDir, options.Version)
 }
 
-func installGeminiTarget(options targetInstallOptions) error {
-	homeDir := installHomeDir(options)
-	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "skills"), filepath.Join(homeDir, ".agents", "skills")); err != nil {
-		return err
-	}
-	return writeInstallMarker(options.ConfigDir, options.Version)
-}
-
 func installAmpTarget(options targetInstallOptions) error {
 	homeDir := installHomeDir(options)
 	skillsDest := options.AmpSkillsDir
@@ -178,7 +168,7 @@ func installAmpTarget(options targetInstallOptions) error {
 	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
 		return err
 	}
-	pluginSrc := filepath.Join(options.DistDir, "plugins", "loaf.js")
+	pluginSrc := filepath.Join(options.DistDir, ".amp", "plugins", "loaf.ts")
 	if fileExistsForInstall(pluginSrc) {
 		pluginsDest := options.AmpPluginsDir
 		if pluginsDest == "" {
@@ -187,7 +177,7 @@ func installAmpTarget(options targetInstallOptions) error {
 		if err := os.MkdirAll(pluginsDest, 0o755); err != nil {
 			return err
 		}
-		if err := copyFileForInstall(pluginSrc, filepath.Join(pluginsDest, "loaf.js")); err != nil {
+		if err := copyFileForInstall(pluginSrc, filepath.Join(pluginsDest, "loaf.ts")); err != nil {
 			return err
 		}
 	}

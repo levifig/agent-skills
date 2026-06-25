@@ -20,7 +20,6 @@ var versionTargetOutputs = []builtTarget{
 	{name: "cursor", path: "dist/cursor/"},
 	{name: "opencode", path: "dist/opencode/"},
 	{name: "codex", path: "dist/codex/"},
-	{name: "gemini", path: "dist/gemini/"},
 }
 
 func (r Runner) runVersion(out io.Writer, runtimeRoot string) error {

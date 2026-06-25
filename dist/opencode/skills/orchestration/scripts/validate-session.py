@@ -128,7 +128,7 @@ def validate_journal_entries(body: str) -> list[str]:
                     scope = None
                 else:
                     errors.append(
-                        f"Line {i}: Invalid entry format. Expected: `- YYYY-MM-DD HH:MM type(scope): description` or `- YYYY-MM-DD HH:MM type: description`"
+                        f"Line {i}: Invalid entry format. Expected: `- YYYY-MM-DD HH:MM entry(scope): description` or `- YYYY-MM-DD HH:MM entry: description`"
                     )
                     continue
 

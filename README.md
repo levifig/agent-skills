@@ -2,7 +2,7 @@
 
 > "Why have just a slice when you can get the whole loaf?"
 
-Loaf is an opinionated agentic framework that gives AI coding assistants structured knowledge, enforced tool boundaries, and a complete pipeline from idea to implementation to learning. Write your skills once, deploy to Claude Code, OpenCode, Cursor, Codex, and Gemini.
+Loaf is an opinionated agentic framework that gives AI coding assistants structured knowledge, enforced tool boundaries, and a complete pipeline from idea to implementation to learning. Write your skills once, deploy to Claude Code, OpenCode, Cursor, Codex, and Amp.
 
 ## Why Loaf?
 
@@ -182,7 +182,7 @@ Build once, deploy everywhere. Skills are the universal layer; profiles and hook
 | OpenCode | ✓ | ✓ | ✓ | Full support |
 | Cursor | ✓ | ✓ | ✓ | Full support |
 | Codex | — | ✓ | ✓ | Skills + hooks |
-| Gemini | — | ✓ | — | Skills only |
+| Amp | — | ✓ | — | Skills + runtime plugin |
 
 *Note: `council-session` skill renamed to `council` for consistency. Removed skills: `resume-session`, `reference-session`.*
 
@@ -205,7 +205,7 @@ Homebrew installs the native `loaf` binary plus Loaf's packaged content under th
 
 Updates happen automatically via plugin marketplace. Commands are scoped under `loaf:` (e.g., `/loaf:implement`).
 
-### OpenCode, Cursor, Codex, Gemini
+### OpenCode, Cursor, Codex, Amp
 
 ```bash
 npx github:levifig/loaf install
@@ -250,7 +250,7 @@ Only copy a backup after `loaf state backup verify` reports `verified: true`, `i
 | OpenCode | `~/.config/opencode/` or `~/.opencode/` |
 | Cursor | `~/.cursor/` |
 | Codex | `$CODEX_HOME/skills/` or `~/.codex/skills/` |
-| Gemini | `~/.gemini/skills/` |
+| Amp | `~/.amp/` plus configured skill/plugin locations |
 
 ## Integrations
 

@@ -36,13 +36,13 @@ Background agents handle low-priority, long-running, or non-interactive work tha
 
 ## Spawning Background Agents
 
-### Claude Code
+### Amp
 
-Use the Task tool with `run_in_background: true`:
+Use the Amp check/agent mode or new thread with `run_in_background: true`:
 
 ```python
 Task(
-    subagent_type="background-runner",
+    agent_type="background-runner",
     prompt="""
     Run full security audit on backend codebase.
 
@@ -138,7 +138,7 @@ During auth feature implementation, orchestrator identifies need for security au
 
 ```python
 Task(
-    subagent_type="background-runner",
+    agent_type="background-runner",
     prompt="""
     Run comprehensive security audit on auth implementation.
 

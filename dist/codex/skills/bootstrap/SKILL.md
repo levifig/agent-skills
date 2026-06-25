@@ -37,7 +37,7 @@ First-contact project setup: detect state, interview the builder, populate proje
 
 - **Detect, don't ask** -- auto-classify project mode (brownfield/greenfield+brief/greenfield+empty), confirm briefly, let the user correct
 - **Never overwrite existing documents** without explicit confirmation -- read first, note what exists, ask before changing
-- **Always interview** -- even with a rich brief, confirm understanding through structured questions using `AskUserQuestion`
+- **Always interview** -- even with a rich brief, confirm understanding through structured questions using `request_user_input`
 - **BRIEF is input, not output** -- the BRIEF is raw intake. Extract every useful fact into VISION/STRATEGY/ARCHITECTURE/AGENTS during bootstrap.
 - **BRIEF is archeological after bootstrap** -- once extraction completes, the BRIEF is a frozen historical snapshot. No skill, agent, command, or template should reference `docs/BRIEF.md` post-bootstrap. Operating documents must stand on their own.
 - **Suggest, don't execute** -- recommend next skills at the end, never auto-run them
@@ -49,7 +49,7 @@ First-contact project setup: detect state, interview the builder, populate proje
 
 - All expected operating documents (`docs/VISION.md`, `.agents/AGENTS.md` at minimum) exist and contain populated content
 - Useful BRIEF content has been extracted into operating documents (no future reader should need to open the BRIEF)
-- Symlinks are correct: `.claude/CLAUDE.md -> .agents/AGENTS.md` and `./AGENTS.md -> .agents/AGENTS.md`
+- Symlinks are correct: `.agents/AGENTS.md` and `./AGENTS.md -> .agents/AGENTS.md`
 - A session file was saved in `.agents/sessions/` capturing key decisions and interview exchanges
 
 ---
@@ -184,7 +184,7 @@ If `docs/BRIEF.md` already exists and no new brief was provided:
 
 ## Interview Flow
 
-Interview depth adapts to the detected mode. All interviews use `AskUserQuestion`. The full interview framework is in [references/interview-guide.md](references/interview-guide.md).
+Interview depth adapts to the detected mode. All interviews use `request_user_input`. The full interview framework is in [references/interview-guide.md](references/interview-guide.md).
 
 ### Brownfield: Nuance-Capturing Interview
 
@@ -295,7 +295,7 @@ Start with detected/discussed stack info and build up:
 
 ## Structured Review
 
-After drafting each document, present it section-by-section for iteration using `AskUserQuestion`.
+After drafting each document, present it section-by-section for iteration using `request_user_input`.
 
 ### Review Pattern
 
@@ -357,9 +357,9 @@ After scaffolding, ask the builder if they have other Loaf projects they would l
 Create symlinks per Loaf convention:
 
 ```bash
-# .claude/CLAUDE.md -> .agents/AGENTS.md
+# .agents/AGENTS.md
 mkdir -p .claude
-ln -sf ../.agents/AGENTS.md .claude/CLAUDE.md
+ln -sf ../.agents/AGENTS.md .agents/AGENTS.md
 
 # ./AGENTS.md -> .agents/AGENTS.md (root convenience symlink)
 ln -sf .agents/AGENTS.md ./AGENTS.md
@@ -401,13 +401,13 @@ Suggest at least 2 relevant paths. Don't auto-run any of them.
 
 ## Cross-Harness Support
 
-This skill is designed for Claude Code (uses `AskUserQuestion`, Write/Edit tools). For other harnesses, the equivalent workflow is:
+This skill is designed for Codex (uses `request_user_input`, Write/Edit tools). For other harnesses, the equivalent workflow is:
 
 1. Run `loaf setup` (or `loaf init && loaf build && loaf install --to all` manually)
 2. Create `docs/VISION.md`, `docs/STRATEGY.md`, `docs/ARCHITECTURE.md` manually -- these are the load-bearing operating documents
 3. Populate `.agents/AGENTS.md` with build commands, test commands, and project structure
 4. Optionally snapshot intake (problem, users, constraints) to `docs/BRIEF.md` as a historical record -- not referenced again after bootstrap
-5. Create symlinks: `.claude/CLAUDE.md -> .agents/AGENTS.md` and `./AGENTS.md -> .agents/AGENTS.md`
+5. Create symlinks: `.agents/AGENTS.md` and `./AGENTS.md -> .agents/AGENTS.md`
 6. Run `loaf kb init` if available, or create `docs/knowledge/` with a README
 
 ---
@@ -421,7 +421,7 @@ This skill is designed for Claude Code (uses `AskUserQuestion`, Write/Edit tools
 5. **Extract, don't preserve** -- pull every useful fact from the BRIEF into operating docs. The BRIEF is archeological after bootstrap; nothing should reference it again.
 6. **Record the session** -- decisions and rationale are preserved
 7. **Suggest, don't execute** -- recommend next skills, don't auto-run them
-8. **Use AskUserQuestion** -- structured, conversational interaction throughout
+8. **Use request_user_input** -- structured, conversational interaction throughout
 
 ---
 

@@ -47,9 +47,7 @@ func TestRunnerInstallExplicitCursorTargetRunsNatively(t *testing.T) {
 func TestRunnerInstallUpgradeOnlyInstallsDetectedLoafTargets(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
-	writeInstallFile(t, filepath.Join(root, "dist", "gemini", "skills", "knowledge-base", "SKILL.md"), "# KB\n")
 	mkdirAll(t, filepath.Join(home, ".config", "opencode"))
-	mkdirAll(t, filepath.Join(home, ".gemini"))
 	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 
 	var stdout bytes.Buffer
@@ -61,9 +59,6 @@ func TestRunnerInstallUpgradeOnlyInstallsDetectedLoafTargets(t *testing.T) {
 		t.Fatalf("stdout = %q, want cursor-only upgrade", stdout.String())
 	}
 	assertInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "9.8.7-test.1\n")
-	if _, err := os.Stat(filepath.Join(home, ".gemini", loafInstallMarkerFile)); !os.IsNotExist(err) {
-		t.Fatalf("gemini marker stat = %v, want not installed during upgrade", err)
-	}
 	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", loafInstallMarkerFile)); !os.IsNotExist(err) {
 		t.Fatalf("opencode marker stat = %v, want not installed during upgrade", err)
 	}
@@ -122,14 +117,12 @@ func TestRunnerInstallOffersBinarySelfInstall(t *testing.T) {
 func TestRunnerInstallInteractiveSelectionRunsNatively(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
-	writeInstallFile(t, filepath.Join(root, "dist", "gemini", "skills", "knowledge-base", "SKILL.md"), "# KB\n")
 	mkdirAll(t, filepath.Join(home, ".cursor"))
-	mkdirAll(t, filepath.Join(home, ".gemini"))
 
 	var stdout bytes.Buffer
 	err := Runner{
 		Stdout:     &stdout,
-		Stdin:      strings.NewReader("y\nn\n"),
+		Stdin:      strings.NewReader("y\n"),
 		WorkingDir: root,
 	}.Run([]string{"install"})
 	if err != nil {
@@ -142,9 +135,6 @@ func TestRunnerInstallInteractiveSelectionRunsNatively(t *testing.T) {
 		t.Fatalf("stdout = %q, want prompts and cursor install", stdout.String())
 	}
 	assertInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "9.8.7-test.1\n")
-	if _, err := os.Stat(filepath.Join(home, ".gemini", loafInstallMarkerFile)); !os.IsNotExist(err) {
-		t.Fatalf("gemini marker stat = %v, want declined target not installed", err)
-	}
 }
 
 func TestRunnerInstallInteractiveNoTargetsStillUpdatesClaudeProjectFile(t *testing.T) {

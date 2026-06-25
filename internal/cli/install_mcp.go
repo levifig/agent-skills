@@ -58,7 +58,6 @@ var installMcpTargetConfigs = map[string]installMcpTargetConfig{
 	"cursor":      {globalPath: "~/.cursor/mcp.json", projectPath: ".cursor/mcp.json", mcpKey: "mcpServers", format: "json"},
 	"opencode":    {globalPath: "~/.config/opencode/opencode.json", projectPath: "opencode.json", mcpKey: "mcp", format: "json"},
 	"codex":       {globalPath: "~/.codex/config.toml", projectPath: ".codex/config.toml", mcpKey: "mcp_servers", format: "toml"},
-	"gemini":      {globalPath: "~/.gemini/settings.json", projectPath: ".gemini/settings.json", mcpKey: "mcpServers", format: "json"},
 	"amp":         {globalPath: "~/.config/amp/settings.json", projectPath: ".amp/settings.json", mcpKey: "amp.mcpServers", format: "json"},
 }
 

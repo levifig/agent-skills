@@ -8,6 +8,7 @@
         "command": "loaf check --hook check-secrets",
         "timeout": 30,
         "failClosed": true,
+        "blocking": true,
         "description": "Check for hardcoded secrets before writing"
       },
       {
@@ -16,6 +17,7 @@
         "command": "loaf check --hook security-audit",
         "timeout": 600,
         "failClosed": true,
+        "blocking": true,
         "description": "Run security audit on bash commands"
       },
       {
@@ -23,7 +25,9 @@
         "matcher": "Bash",
         "command": "loaf check --hook validate-push",
         "timeout": 60,
-        "failClosed": true,
+        "failClosed": false,
+        "blocking": false,
+        "if": "Bash(git push:*)",
         "description": "Validates version bump, CHANGELOG, and build before git push"
       },
       {
@@ -31,7 +35,9 @@
         "matcher": "Bash",
         "command": "loaf check --hook workflow-pre-pr",
         "timeout": 5,
-        "failClosed": true,
+        "failClosed": false,
+        "blocking": false,
+        "if": "Bash(gh pr create:*)",
         "description": "Remind about PR format and CHANGELOG entry before gh pr create"
       },
       {
@@ -40,6 +46,8 @@
         "command": "loaf check --hook validate-commit",
         "timeout": 30,
         "failClosed": true,
+        "blocking": true,
+        "if": "Bash(git commit:*)",
         "description": "Validate commit messages follow conventions"
       }
     ]

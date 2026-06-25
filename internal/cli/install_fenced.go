@@ -20,7 +20,6 @@ var fencedTargetFiles = map[string]string{
 	"codex":       ".agents/AGENTS.md",
 	"opencode":    ".agents/AGENTS.md",
 	"amp":         ".agents/AGENTS.md",
-	"gemini":      ".agents/AGENTS.md",
 }
 
 type fencedSectionRange struct {

@@ -223,7 +223,7 @@ Before approving a release bump, compare `[Unreleased]` against the actual relea
 - Commit partial or in-progress work — if feedback is likely, wait for it before committing
 - Skip commit signing (wait for user if it fails)
 - Push without explicit user confirmation
-- Use scoped commits (`feat(scope):` - use `feat:` instead)
+- Use scoped commit subjects (for example, `feat(auth):`; write `feat:` instead)
 - Include file lists in message
 - Add agent attribution
 - Mix unrelated changes

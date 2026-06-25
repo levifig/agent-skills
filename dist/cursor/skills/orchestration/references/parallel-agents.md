@@ -78,10 +78,10 @@ For each parallel task:
 
 ### 3. Dispatch
 
-Use the Task tool with multiple parallel invocations:
+Use the background agent with multiple parallel invocations:
 
 ```
-[Single message with multiple Task tool calls]
+[Single message with multiple background agent calls]
 - Task 1: Backend API implementation
 - Task 2: Frontend component implementation
 - Task 3: Database migration

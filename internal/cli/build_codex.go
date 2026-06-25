@@ -21,14 +21,6 @@ var codexEnforcementHooks = map[string]bool{
 	"security-audit":          true,
 }
 
-type nativeBuildCodexHook struct {
-	id          string
-	matcher     string
-	timeout     int
-	failClosed  bool
-	description string
-}
-
 type nativeBuildYAMLField struct {
 	key   string
 	value string
@@ -49,6 +41,8 @@ type nativeCodexPreToolHookJSON struct {
 	Command     string `json:"command"`
 	Timeout     int    `json:"timeout"`
 	FailClosed  bool   `json:"failClosed"`
+	Blocking    bool   `json:"blocking"`
+	If          string `json:"if,omitempty"`
 	Description string `json:"description,omitempty"`
 }
 
@@ -142,7 +136,7 @@ func buildNativeCodexTarget(root string) error {
 		targetName:    "codex",
 		version:       version,
 		targetsConfig: targetsConfig,
-		transformMd:   func(content string) string { return content },
+		transformMd:   func(content string) string { return substituteNativeBuildHarnessLanguage(content, "codex") },
 	}); err != nil {
 		return err
 	}
@@ -168,7 +162,7 @@ func buildNativeSkillOnlyTarget(root string, targetName string) error {
 		targetName:    targetName,
 		version:       version,
 		targetsConfig: targetsConfig,
-		transformMd:   func(content string) string { return content },
+		transformMd:   func(content string) string { return substituteNativeBuildHarnessLanguage(content, targetName) },
 	})
 }
 
@@ -483,12 +477,93 @@ func copyNativeSharedTemplates(skill string, skillDest string, srcDir string, co
 }
 
 func substituteNativeBuildCommands(content string) string {
-	replacer := strings.NewReplacer(
+	return substituteNativeBuildHarnessLanguage(content, "claude-code")
+}
+
+type nativeBuildHarnessLanguage struct {
+	harnessName       string
+	interviewTool     string
+	subagentMechanism string
+	todoTool          string
+	agentsFile        string
+}
+
+var nativeBuildHarnessLanguages = map[string]nativeBuildHarnessLanguage{
+	"claude-code": {
+		harnessName:       "Claude Code",
+		interviewTool:     "AskUserQuestionTool",
+		subagentMechanism: "Task subagents",
+		todoTool:          "TodoWrite",
+		agentsFile:        "CLAUDE.md",
+	},
+	"codex": {
+		harnessName:       "Codex",
+		interviewTool:     "request_user_input",
+		subagentMechanism: "separate Codex thread or explicit multi-agent tool when available",
+		todoTool:          "update_plan",
+		agentsFile:        "AGENTS.md",
+	},
+	"cursor": {
+		harnessName:       "Cursor",
+		interviewTool:     "built-in chat clarification",
+		subagentMechanism: "background agent",
+		todoTool:          "task list or chat checklist",
+		agentsFile:        "AGENTS.md",
+	},
+	"opencode": {
+		harnessName:       "OpenCode",
+		interviewTool:     "prompt the user in chat",
+		subagentMechanism: "subtask agent",
+		todoTool:          "native task/todo surface when available",
+		agentsFile:        "AGENTS.md",
+	},
+	"amp": {
+		harnessName:       "Amp",
+		interviewTool:     "Amp UI input",
+		subagentMechanism: "Amp check/agent mode or new thread",
+		todoTool:          "Amp thread checklist",
+		agentsFile:        "AGENTS.md",
+	},
+}
+
+func substituteNativeBuildHarnessLanguage(content string, targetName string) string {
+	language, ok := nativeBuildHarnessLanguages[targetName]
+	if !ok {
+		language = nativeBuildHarnessLanguages["claude-code"]
+	}
+	content = strings.NewReplacer(
 		"{{IMPLEMENT_CMD}}", "/implement",
 		"{{RESUME_CMD}}", "/implement",
 		"{{ORCHESTRATE_CMD}}", "/implement",
-	)
-	return replacer.Replace(content)
+		"{{HARNESS_NAME}}", language.harnessName,
+		"{{INTERVIEW_TOOL}}", language.interviewTool,
+		"{{SUBAGENT_MECHANISM}}", language.subagentMechanism,
+		"{{TODO_TOOL}}", language.todoTool,
+		"{{AGENTS_FILE}}", language.agentsFile,
+	).Replace(content)
+	if targetName == "claude-code" {
+		return content
+	}
+	return strings.NewReplacer(
+		".claude/CLAUDE.md -> .agents/AGENTS.md", ".agents/AGENTS.md",
+		".claude/CLAUDE.md", ".agents/AGENTS.md",
+		"Claude Code", language.harnessName,
+		"CLAUDE.md", language.agentsFile,
+		"AskUserQuestionTool", language.interviewTool,
+		"AskUserQuestion", language.interviewTool,
+		"TodoWrite/TodoRead", language.todoTool,
+		"TodoWrite", language.todoTool,
+		"TodoRead", language.todoTool,
+		"/loaf:", "/",
+		"Task subagents", language.subagentMechanism,
+		"Task tool", language.subagentMechanism,
+		"Task(subagent_type=", "Agent(agent_type=",
+		"subagent_type", "agent_type",
+		"Subagents", language.subagentMechanism,
+		"subagents", language.subagentMechanism,
+		"Subagent", language.subagentMechanism,
+		"subagent", language.subagentMechanism,
+	).Replace(content)
 }
 
 func readNativeBuildTargetsConfig(root string) (nativeBuildTargetsConfig, error) {
@@ -553,13 +628,13 @@ func nativeBuildPackageVersion(root string) (string, error) {
 }
 
 func generateNativeCodexHooksJSON(root string, dist string) error {
-	hooks, err := readNativeCodexHooks(filepath.Join(root, "config", "hooks.yaml"))
+	hooks, err := readNativeBuildHooks(filepath.Join(root, "config", "hooks.yaml"))
 	if err != nil {
 		return err
 	}
 	var preTool []nativeCodexPreToolHookJSON
 	for _, hook := range hooks {
-		if !codexEnforcementHooks[hook.id] || !strings.Contains(hook.matcher, "Bash") {
+		if hook.section != "pre-tool" || !codexEnforcementHooks[hook.id] || !strings.Contains(hook.matcher, "Bash") {
 			continue
 		}
 		timeout := hook.timeout
@@ -572,6 +647,8 @@ func generateNativeCodexHooksJSON(root string, dist string) error {
 			Command:     "loaf check --hook " + hook.id,
 			Timeout:     timeout / 1000,
 			FailClosed:  hook.failClosed,
+			Blocking:    hook.blocking,
+			If:          hook.ifCondition,
 		}
 		if hook.description != "" {
 			entry.Description = hook.description
@@ -596,62 +673,6 @@ func generateNativeCodexHooksJSON(root string, dist string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(codexDir, "hooks.json"), body, 0o644)
-}
-
-func readNativeCodexHooks(path string) ([]nativeBuildCodexHook, error) {
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var hooks []nativeBuildCodexHook
-	inPreTool := false
-	var current *nativeBuildCodexHook
-	for _, line := range strings.Split(string(body), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		if strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") && strings.HasSuffix(trimmed, ":") {
-			if current != nil {
-				hooks = append(hooks, *current)
-				current = nil
-			}
-			inPreTool = trimmed == "pre-tool:"
-			continue
-		}
-		if !inPreTool {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "- id:") {
-			if current != nil {
-				hooks = append(hooks, *current)
-			}
-			current = &nativeBuildCodexHook{failClosed: true}
-			current.id = unquoteNativeBuildYAML(strings.TrimSpace(strings.TrimPrefix(trimmed, "- id:")))
-			continue
-		}
-		if current == nil || !strings.Contains(trimmed, ":") {
-			continue
-		}
-		key, value, _ := strings.Cut(trimmed, ":")
-		value = unquoteNativeBuildYAML(strings.TrimSpace(value))
-		switch key {
-		case "matcher":
-			current.matcher = value
-		case "timeout":
-			if parsed, err := strconv.Atoi(value); err == nil {
-				current.timeout = parsed
-			}
-		case "failClosed":
-			current.failClosed = value != "false"
-		case "description":
-			current.description = value
-		}
-	}
-	if current != nil {
-		hooks = append(hooks, *current)
-	}
-	return hooks, nil
 }
 
 func parseNativeBuildSimpleYAMLScalars(content string) map[string]string {

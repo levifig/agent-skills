@@ -96,12 +96,12 @@ async function runHook(
       const result = await new Promise<HookResult>((resolve) => {
         let stdoutStr = '';
         let stderrStr = '';
-        child.stdout?.on('data', (data) => stdoutStr += data);
-        child.stderr?.on('data', (data) => stderrStr += data);
-        child.on('close', (code) => {
+        child.stdout?.on('data', (data: string) => stdoutStr += data);
+        child.stderr?.on('data', (data: string) => stderrStr += data);
+        child.on('close', (code: number | null) => {
           resolve({ exitCode: code ?? 1, stdout: stdoutStr, stderr: stderrStr }); // null means signal-killed; fail closed
         });
-        child.on('error', (err) => {
+        child.on('error', (err: Error) => {
           resolve({ exitCode: failClosed ? 2 : 1, stdout: stdoutStr, stderr: stderrStr || err.message, error: err.message });
         });
       });
@@ -126,12 +126,12 @@ async function runHook(
       const result = await new Promise<HookResult>((resolve) => {
         let stdoutStr = '';
         let stderrStr = '';
-        child.stdout?.on('data', (data) => stdoutStr += data);
-        child.stderr?.on('data', (data) => stderrStr += data);
-        child.on('close', (code) => {
+        child.stdout?.on('data', (data: string) => stdoutStr += data);
+        child.stderr?.on('data', (data: string) => stderrStr += data);
+        child.on('close', (code: number | null) => {
           resolve({ exitCode: code ?? 1, stdout: stdoutStr, stderr: stderrStr }); // null means signal-killed; fail closed
         });
-        child.on('error', (err) => {
+        child.on('error', (err: Error) => {
           resolve({ exitCode: failClosed ? 2 : 1, stdout: stdoutStr, stderr: stderrStr || err.message, error: err.message });
         });
       });
@@ -375,10 +375,12 @@ const sessionHooks: Record<string, HookEntry[]> = {
   ]
 };
 
-export default async function AgentSkillsPlugin({ client, $ }) {
+export default async function AgentSkillsPlugin({ client, $ }: { client?: unknown; $?: unknown }) {
+  void client;
+  void $;
   return {
     // Pre-tool hook handler
-    'tool.execute.before': async (input) => {
+    'tool.execute.before': async (input: { tool?: { name?: string; input?: unknown } }) => {
       const toolName = input?.tool?.name;
       const toolInput = input?.tool?.input;
       if (!toolName) return;
@@ -406,7 +408,7 @@ export default async function AgentSkillsPlugin({ client, $ }) {
     },
 
     // Post-tool hook handler
-    'tool.execute.after': async (input) => {
+    'tool.execute.after': async (input: { tool?: { name?: string; input?: unknown } }) => {
       const toolName = input?.tool?.name;
       const toolInput = input?.tool?.input;
       if (!toolName) return;
@@ -427,7 +429,7 @@ export default async function AgentSkillsPlugin({ client, $ }) {
       }
     },
     // Session lifecycle event handler
-    'event': async ({ event }) => {
+    'event': async ({ event }: { event: { type?: string } }) => {
       if (event.type === 'session.created' && sessionHooks.sessionstart) {
         for (const hook of sessionHooks.sessionstart) {
           await runHook('session', 'session', hook.id, hook.command, hook.script, undefined, hook.timeout, hook.failClosed);

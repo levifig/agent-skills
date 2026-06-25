@@ -42,7 +42,7 @@ Publish a coherent version from work that has already landed.
 - **Keep landed and released distinct** -- a PR may be landed without being released; a release may contain multiple landed PRs.
 - **Block on release-readiness failure** -- do not publish if build, tests, version files, changelog, tag, or GitHub release state is inconsistent.
 - **Never push, tag, or publish without confirmation** -- present the exact actions first.
-- **Use `AskUserQuestion` for release decisions when available** -- version bump type, release PR handoff, push/tag/GitHub Release confirmation.
+- **Use `Amp UI input` for release decisions when available** -- version bump type, release PR handoff, push/tag/GitHub Release confirmation.
 - **Log release** -- after publication, run `loaf session log "decision(release): vX.Y.Z published from <base> with <summary>"` when session state is available.
 
 ## Verification

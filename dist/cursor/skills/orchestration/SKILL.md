@@ -28,7 +28,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 ### Sessions
 - Create following [session template](templates/session.md) — compact inline journal format
 - Use `loaf session log` for journal entries: `decide(scope)`, `discover(scope)`, `block(scope)`, `spark(scope)`, `todo(scope)`
-- **SESSION JOURNAL NUDGE**: When you see this hook trigger, log unrecorded decisions or findings before responding. Use `loaf session log "type(scope): description"`. Only log actions (decisions made, things discovered, conclusions reached) — not thoughts or read-only work.
+- **SESSION JOURNAL NUDGE**: When you see this hook trigger, log unrecorded decisions or findings before responding. Use `loaf session log "entry(scope): description"`. Only log actions (decisions made, things discovered, conclusions reached) — not thoughts or read-only work.
 - Archive when complete (status + `archived_at` + `archived_by` + move to `.agents/sessions/archive/`)
 - PreCompact hook: appends `compact` entry with context summary
 - Post-compaction: `loaf session start` outputs recent journal entries for recovery
@@ -81,9 +81,9 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 | Product Development | [references/product-development.md](references/product-development.md) | Following Research -> Vision -> Architecture -> Specs workflow |
 | Specifications | [references/specs.md](references/specs.md) | Creating specs, shaping work, defining test conditions |
 | Local Tasks | [references/local-tasks.md](references/local-tasks.md) | Managing tasks locally or with Linear backend |
-| Agent Delegation | [references/delegation.md](references/delegation.md) | Choosing agents, spawning subagents, decision trees |
+| Agent Delegation | [references/delegation.md](references/delegation.md) | Choosing agents, spawning background agent, decision trees |
 | Parallel Agents | [references/parallel-agents.md](references/parallel-agents.md) | Dispatching independent work concurrently |
-| Subagent Development | [references/subagent-development.md](references/subagent-development.md) | Delegating to specialized agents |
+| background agent Development | [references/background agent-development.md](references/background agent-development.md) | Delegating to specialized agents |
 | Background Agents | [references/background-agents.md](references/background-agents.md) | Running non-interactive work in background |
 | Council Workflow | [references/councils.md](references/councils.md) | Convening councils for complex decisions |
 | Session Management | [references/sessions.md](references/sessions.md) | Creating sessions and keeping live work resumable |

@@ -222,7 +222,7 @@ traceability:
 
 | Rule | Guideline |
 |------|-----------|
-| **One agent type** | Task completable by ONE subagent (implementer, reviewer, researcher) |
+| **One agent type** | Task completable by ONE subtask agent (implementer, reviewer, researcher) |
 | **One concern** | Task touches one layer, one service, or one component |
 | **Context-appropriate** | Fits in model context with room for exploration |
 | **Not over-fragmented** | Don't split what naturally belongs together |

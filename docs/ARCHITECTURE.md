@@ -23,7 +23,7 @@ Output:
 ├── bin/loaf                    # Portable launcher
 ├── bin/native/{platform}/loaf   # Native Go runtime
 ├── plugins/loaf/               # Claude Code plugin (hooks, skills, agents, binary)
-└── dist/{target}/              # Other targets (cursor, opencode, codex, gemini, amp)
+└── dist/{target}/              # Other targets (cursor, opencode, codex, amp)
 ```
 
 ### Build Flow
@@ -64,8 +64,7 @@ Loaf stores operational state in one global SQLite database at `$XDG_DATA_HOME/l
 | cursor | dist/cursor/ | Yes | Yes | Yes | hooks.json |
 | opencode | dist/opencode/ | Yes | Yes | Yes | hooks.ts |
 | codex | dist/codex/ | No | Yes | Yes | hooks.json |
-| gemini | dist/gemini/ | No | Yes | No | — |
-| amp | dist/amp/ | No | Yes | No | loaf.js |
+| amp | dist/amp/ | No | Yes | No | .amp/plugins/loaf.ts |
 
 ### Amp Plugin API Constraints
 
@@ -162,7 +161,7 @@ Councils convene implementers and researchers for deliberation; reviewers join o
 
 **Skills as Universal Knowledge Layer:**
 
-Skills are the only knowledge mechanism that works across all targets (Claude Code, Cursor, Codex, Gemini, Amp). Profiles are Claude Code infrastructure — other targets activate knowledge through skills alone. This makes skills the primary investment surface: better skill descriptions and organization improve all targets simultaneously.
+Skills are the only knowledge mechanism that works across all targets (Claude Code, Cursor, Codex, Amp). Profiles are Claude Code infrastructure — other targets activate knowledge through skills alone. This makes skills the primary investment surface: better skill descriptions and organization improve all targets simultaneously.
 
 ## Operating Principles
 

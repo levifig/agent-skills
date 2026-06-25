@@ -78,7 +78,7 @@ Distinct from:
 
 ### Step 2: Interview Deeply
 
-Strategy discovery requires **extensive interviewing**. Use `AskUserQuestion` frequently. Ask non-obvious questions about users, competitors, problem space, and domain language.
+Strategy discovery requires **extensive interviewing**. Use `prompt the user in chat` frequently. Ask non-obvious questions about users, competitors, problem space, and domain language.
 
 **Full Discovery** covers: users/personas, problem space, market landscape, domain language.
 

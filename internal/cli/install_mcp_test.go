@@ -14,7 +14,6 @@ func TestInstallMcpDetectionFindsProjectConfiguredTargets(t *testing.T) {
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 
 	writeInstallFile(t, filepath.Join(root, ".cursor", "mcp.json"), `{"mcpServers":{"linear":{"command":"npx","args":["-y","mcp-remote","https://mcp.linear.app/mcp"]}}}`+"\n")
-	writeInstallFile(t, filepath.Join(root, ".gemini", "settings.json"), `{"mcpServers":{"linear":{"command":"npx","args":["-y","mcp-remote","https://mcp.linear.app/mcp"]}}}`+"\n")
 	writeInstallFile(t, filepath.Join(root, "opencode.json"), `{"mcp":{"serena":{"type":"local","command":["uvx","serena","start-mcp-server"]}}}`+"\n")
 	writeInstallFile(t, filepath.Join(root, ".amp", "settings.json"), `{"amp":{"mcpServers":{"linear":{"command":"npx","args":["-y","mcp-remote","https://mcp.linear.app/mcp"]}}}}`+"\n")
 	writeInstallFile(t, filepath.Join(root, ".codex", "config.toml"), "[mcp_servers.linear]\ncommand = \"npx\"\nargs = [\"-y\", \"mcp-remote\", \"https://mcp.linear.app/mcp\"]\n")
@@ -24,7 +23,6 @@ func TestInstallMcpDetectionFindsProjectConfiguredTargets(t *testing.T) {
 		mcpID  string
 	}{
 		{target: "cursor", mcpID: "linear"},
-		{target: "gemini", mcpID: "linear"},
 		{target: "opencode", mcpID: "serena"},
 		{target: "amp", mcpID: "linear"},
 		{target: "codex", mcpID: "linear"},

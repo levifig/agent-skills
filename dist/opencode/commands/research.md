@@ -102,7 +102,7 @@ Always check project context first. Rate findings: **High** (official/verified),
 
 **Trigger:** Specific topic or question
 
-1. **Interview** with AskUserQuestion: what are you trying to understand? What context do you have? What decision will this inform?
+1. **Interview** with prompt the user in chat: what are you trying to understand? What context do you have? What decision will this inform?
 2. Check project context first (ADRs, ARCHITECTURE, sessions)
 3. Apply confidence hierarchy for external sources
 4. For a transient review artifact, use `loaf report generate` when an existing

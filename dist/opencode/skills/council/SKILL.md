@@ -96,4 +96,4 @@ When a council resolves a spec's open questions:
 |-------|-----------|----------|
 | Council Template | [templates/council.md](templates/council.md) | Creating council files |
 | Composition | `orchestration/references/councils.md` | Selecting council agents |
-| Delegation | `orchestration/references/delegation.md` | Spawning subagents |
+| Delegation | `orchestration/references/delegation.md` | Spawning subtask agent |

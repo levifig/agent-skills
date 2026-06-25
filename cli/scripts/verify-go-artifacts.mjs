@@ -93,7 +93,7 @@ function assertReproducibleGoBinary(target) {
   const tempDir = mkdtempSync(join(tmpdir(), "loaf-go-verify-"));
   const tempBinary = join(tempDir, nativeBinaryName(target));
   try {
-    const result = spawnSync("go", ["build", "-trimpath", "-ldflags", "-buildid=", "-o", tempBinary, "./cmd/loaf"], {
+    const result = spawnSync("go", ["build", "-trimpath", "-buildvcs=false", "-ldflags", "-buildid=", "-o", tempBinary, "./cmd/loaf"], {
       cwd: rootDir,
       env: {
         ...baseEnv,

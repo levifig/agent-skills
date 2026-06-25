@@ -195,7 +195,7 @@ func buildNativeClaudeCodeTarget(root string) error {
 		return err
 	}
 	transformMd := func(content string) string {
-		return nativeClaudeScopeCommands(substituteNativeBuildCommands(content), knownCommands)
+		return nativeClaudeScopeCommands(substituteNativeBuildHarnessLanguage(content, "claude-code"), knownCommands)
 	}
 	if err := copyNativeBuildSkills(nativeBuildSkillCopyOptions{
 		srcDir:        filepath.Join(root, "dist"),

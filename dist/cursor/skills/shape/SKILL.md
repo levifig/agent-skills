@@ -29,7 +29,7 @@ Develop ideas into bounded, buildable specifications.
 
 ## Critical Rules
 
-Unlike `/idea` (quick capture), shaping requires **deep understanding**. Ask about edge cases, conflicts with existing patterns, hidden complexity, and scope boundaries. Use `AskUserQuestion` throughout.
+Unlike `/idea` (quick capture), shaping requires **deep understanding**. Ask about edge cases, conflicts with existing patterns, hidden complexity, and scope boundaries. Use `built-in chat clarification` throughout.
 
 1. **Interview extensively** -- not quick capture
 2. **Evaluate strategic fit** -- don't shape in a vacuum

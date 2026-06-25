@@ -8,13 +8,13 @@ last_reviewed: '2026-05-02'
 
 ### Skill
 
-A domain-knowledge unit following the Agent Skills standard. Loaf's universal knowledge layer — distributed across all 6 build targets without target-specific code.
+A domain-knowledge unit following the Agent Skills standard. Loaf's universal knowledge layer — distributed across all build targets without target-specific code.
 
 _Avoid_: module, knowledge file, doc
 
 ### Target
 
-A build output destination: claude-code, opencode, cursor, codex, gemini, amp. Each target has its own native builder in `internal/cli/build_{target}.go`.
+A build output destination: claude-code, opencode, cursor, codex, amp. Each target has its own native builder in `internal/cli/build_{target}.go`.
 
 _Avoid_: platform, backend, tool
 

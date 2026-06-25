@@ -78,10 +78,10 @@ For each parallel task:
 
 ### 3. Dispatch
 
-Use the Task tool with multiple parallel invocations:
+Use the separate Codex thread or explicit multi-agent tool when available with multiple parallel invocations:
 
 ```
-[Single message with multiple Task tool calls]
+[Single message with multiple separate Codex thread or explicit multi-agent tool when available calls]
 - Task 1: Backend API implementation
 - Task 2: Frontend component implementation
 - Task 3: Database migration

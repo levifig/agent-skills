@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 253,
+  "next_id": 260,
   "tasks": {
     "TASK-001": {
       "title": "Create verification reference",
@@ -4662,6 +4662,185 @@
       "updated": "2026-05-28T23:39:54Z",
       "completed_at": "2026-05-28T23:39:54Z",
       "file": "TASK-252-state-migrate-markdown-resume.md"
+    },
+    "TASK-253": {
+      "title": "Add build artifact JS/TS validation gate",
+      "slug": "build-artifact-js-ts-validation-gate",
+      "spec": "SPEC-047",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [],
+      "files": [
+        "internal/cli/build_test.go",
+        "internal/cli/build.go",
+        "internal/cli/build_amp.go",
+        "internal/cli/build_opencode.go",
+        "package.json",
+        ".agents/tasks/TASK-253-build-artifact-js-ts-validation-gate.md"
+      ],
+      "verify": "go test ./internal/cli -run 'TestRunnerBuild|NativeBuild.*Validation' -count=1 && npm run typecheck",
+      "done": "The native build/test gate validates emitted JavaScript and TypeScript artifacts with real tooling, removes the fake node shim, and preserves the explicit dependency-approval hold before adding any new npm dev dependency.",
+      "session": null,
+      "created": "2026-06-24T12:03:41Z",
+      "updated": "2026-06-24T12:17:12Z",
+      "completed_at": "2026-06-24T12:17:12Z",
+      "file": "TASK-253-build-artifact-js-ts-validation-gate.md"
+    },
+    "TASK-254": {
+      "title": "Emit first-class Amp TypeScript plugin",
+      "slug": "amp-first-class-typescript-plugin",
+      "spec": "SPEC-047",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-253"
+      ],
+      "files": [
+        "internal/cli/build_amp.go",
+        "internal/cli/build_test.go",
+        "config/targets.yaml",
+        "dist/amp/",
+        ".agents/tasks/TASK-254-amp-first-class-typescript-plugin.md"
+      ],
+      "verify": "go test ./internal/cli -run 'TestRunnerBuildTargetAmp|NativeBuildAmp' -count=1 && npm run build",
+      "done": "Amp build output emits dist/amp/.amp/plugins/loaf.ts, uses the documented PluginAPI default-function shape, fixes tool.call/tool.result event handling, drops the WIP header, and passes the JS/TS validation gate.",
+      "session": null,
+      "created": "2026-06-24T12:03:41Z",
+      "updated": "2026-06-24T12:17:12Z",
+      "completed_at": null,
+      "file": "TASK-254-amp-first-class-typescript-plugin.md"
+    },
+    "TASK-255": {
+      "title": "Remove Gemini from in-repo build and install surfaces",
+      "slug": "remove-gemini-in-repo-build-install-surfaces",
+      "spec": "SPEC-047",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-254"
+      ],
+      "files": [
+        "config/targets.yaml",
+        "internal/cli/build.go",
+        "internal/cli/build_test.go",
+        "internal/cli/install_fenced.go",
+        "internal/cli/install_mcp.go",
+        "dist/gemini/",
+        ".agents/tasks/TASK-255-remove-gemini-in-repo-build-install-surfaces.md"
+      ],
+      "verify": "! rg -n 'gemini|Gemini' config/targets.yaml internal/cli/build.go internal/cli/build_test.go internal/cli/install.go internal/cli/install_target.go internal/cli/install_target_test.go internal/cli/install_fenced.go internal/cli/install_mcp.go internal/cli/install_mcp_test.go internal/cli/install_command_test.go internal/cli/install_symlink.go internal/cli/version.go package.json README.md docs/ARCHITECTURE.md docs/knowledge/build-system.md docs/knowledge/glossary.md .agents/AGENTS.md && test ! -e dist/gemini && npm run build && npm run test",
+      "done": "Gemini is absent from source build/install wiring and generated in-repo output while user-side cleanup remains deferred to SPEC-053.",
+      "session": null,
+      "created": "2026-06-24T12:03:41Z",
+      "updated": "2026-06-24T12:25:48Z",
+      "completed_at": "2026-06-24T12:25:48Z",
+      "file": "TASK-255-remove-gemini-in-repo-build-install-surfaces.md"
+    },
+    "TASK-256": {
+      "title": "Preserve Codex hook semantics and OpenCode command reachability",
+      "slug": "codex-opencode-parity-semantics",
+      "spec": "SPEC-047",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-255"
+      ],
+      "files": [
+        "internal/cli/build_codex.go",
+        "internal/cli/build_opencode.go",
+        "internal/cli/build_test.go",
+        "config/hooks.yaml",
+        ".agents/tasks/TASK-256-codex-opencode-parity-semantics.md"
+      ],
+      "verify": "go test ./internal/cli -run 'TestRunnerBuildTargetCodex|TestRunnerBuildTargetOpenCode|CodexHook|OpenCodeCommand' -count=1",
+      "done": "Codex preserves advisory/enforcement and conditional hook fields, and OpenCode generates commands for every user-invocable workflow skill rather than only sidecar-bearing skills.",
+      "session": null,
+      "created": "2026-06-24T12:03:41Z",
+      "updated": "2026-06-24T12:32:20Z",
+      "completed_at": "2026-06-24T12:32:20Z",
+      "file": "TASK-256-codex-opencode-parity-semantics.md"
+    },
+    "TASK-257": {
+      "title": "Add harness-language tokens and Claude-ism lint",
+      "slug": "harness-language-tokens-claudeism-lint",
+      "spec": "SPEC-047",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-256"
+      ],
+      "files": [
+        "internal/cli/build_codex.go",
+        "internal/cli/build_cursor.go",
+        "internal/cli/build_opencode.go",
+        "internal/cli/build_amp.go",
+        "content/skills/",
+        "dist/",
+        ".agents/tasks/TASK-257-harness-language-tokens-claudeism-lint.md"
+      ],
+      "verify": "go test ./internal/cli -run 'HarnessLanguage|Claudeism|BuildTarget' -count=1 && npm run build",
+      "done": "The fixed SPEC-047 harness token set resolves per target and the build fails with file:line output for unresolved tokens or non-Claude leakage outside an explicit allowlist.",
+      "session": null,
+      "created": "2026-06-24T12:03:41Z",
+      "updated": "2026-06-24T12:41:10Z",
+      "completed_at": "2026-06-24T12:41:10Z",
+      "file": "TASK-257-harness-language-tokens-claudeism-lint.md"
+    },
+    "TASK-258": {
+      "title": "Align git-workflow commit-format guidance with enforcement",
+      "slug": "git-workflow-unscoped-commit-format",
+      "spec": "SPEC-047",
+      "status": "done",
+      "priority": "P2",
+      "depends_on": [
+        "TASK-257"
+      ],
+      "files": [
+        "content/skills/git-workflow/SKILL.md",
+        "content/skills/git-workflow/references/commits.md",
+        "dist/",
+        "plugins/",
+        ".agents/tasks/TASK-258-git-workflow-unscoped-commit-format.md"
+      ],
+      "verify": "! rg -n 'type\\(scope\\): description' content/skills/git-workflow dist plugins && npm run build",
+      "done": "git-workflow source and generated copies teach the unscoped Conventional Commit format enforced by the native hook.",
+      "session": null,
+      "created": "2026-06-24T12:03:41Z",
+      "updated": "2026-06-24T12:45:00Z",
+      "completed_at": "2026-06-24T12:45:00Z",
+      "file": "TASK-258-git-workflow-unscoped-commit-format.md"
+    },
+    "TASK-259": {
+      "title": "Add source-derived five-target parity matrix test",
+      "slug": "source-derived-five-target-parity-matrix",
+      "spec": "SPEC-047",
+      "status": "done",
+      "priority": "P1",
+      "depends_on": [
+        "TASK-253",
+        "TASK-254",
+        "TASK-255",
+        "TASK-256",
+        "TASK-257",
+        "TASK-258"
+      ],
+      "files": [
+        "internal/cli/build_test.go",
+        "cli/scripts/build-go.mjs",
+        "cli/scripts/verify-go-artifacts.mjs",
+        "bin/native/darwin-arm64/loaf",
+        "plugins/loaf/bin/native/darwin-arm64/loaf",
+        "config/hooks.yaml",
+        "content/skills/",
+        ".agents/tasks/TASK-259-source-derived-five-target-parity-matrix.md"
+      ],
+      "verify": "go test ./internal/cli -run 'ParityMatrix|BuildTarget' -count=1 && npm run build && npm run test && git diff --exit-code -- dist plugins",
+      "done": "A source-derived parity matrix test enumerates exactly Claude Code, Codex, Cursor, OpenCode, and Amp and fails on skill reachability, hook semantic, or harness-language gaps.",
+      "session": null,
+      "created": "2026-06-24T12:03:41Z",
+      "updated": "2026-06-24T12:53:35Z",
+      "completed_at": "2026-06-24T12:53:35Z",
+      "file": "TASK-259-source-derived-five-target-parity-matrix.md"
     }
   },
   "specs": {
@@ -4768,6 +4947,14 @@
       "source": "direct \u2014 bug reports from GridSight release-agent flows (v0.16.0)",
       "created": "2026-05-28T00:18:00Z",
       "file": "archive/SPEC-042-worktree-aware-config-and-session-fallback.md"
+    },
+    "SPEC-047": {
+      "title": "Build Integrity, Parity Contract & Target Simplification",
+      "status": "complete",
+      "requirement": null,
+      "source": "/Users/levifig/Code/levifig/projects/loaf/.agents/drafts/20260621-020342-loaf-restructuring-roadmap.md (WS-A)",
+      "created": "2026-06-22T09:13:21Z",
+      "file": "SPEC-047-build-integrity-parity-targets.md"
     },
     "SPEC-001": {
       "title": "Loaf Self-Sufficiency",
