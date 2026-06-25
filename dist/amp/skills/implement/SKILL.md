@@ -6,7 +6,7 @@ description: >-
   and code changes. Produces SQLite-backed session journals, agent spawn plans,
   and progress tracking. Not for shaping (use shape), breakdown (use breakdown),
   research, or review.
-version: 2.0.0-pre.20260614235428
+version: 2.0.0-pre.20260625183349
 ---
 
 # Implement

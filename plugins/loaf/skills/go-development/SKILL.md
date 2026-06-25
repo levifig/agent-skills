@@ -7,7 +7,7 @@ description: >-
   schema design (use...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 2.0.0-pre.20260614235428
+version: 2.0.0-pre.20260625183349
 ---
 
 # Go Skill

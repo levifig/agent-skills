@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-pre.20260625183349] - 2026-06-25
+
 ### Added
 
 - Added the SPEC-054 rich artifact entity model for reports, findings, verdicts, and provenance runs, including row-shaped JSON imports and multi-format finding exports.

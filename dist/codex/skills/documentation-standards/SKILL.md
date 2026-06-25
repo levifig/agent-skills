@@ -6,7 +6,7 @@ description: >-
   reviewing documentation quality, or creating architecture diagrams. Not for
   inline code comments (use code style guides) or project READMEs (use
   project-specific conventions).
-version: 2.0.0-pre.20260614235428
+version: 2.0.0-pre.20260625183349
 ---
 
 # Documentation Standards

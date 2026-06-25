@@ -5,7 +5,7 @@ description: >-
   options," or is exploring tradeoffs. Produces docs with sparks. Not for quick
   ideas or shaping.
 subtask: false
-version: 2.0.0-pre.20260614235428
+version: 2.0.0-pre.20260625183349
 ---
 
 # Brainstorm

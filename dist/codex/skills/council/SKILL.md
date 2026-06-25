@@ -7,7 +7,7 @@ description: >-
   the user wants a structured debate between domain-specific viewpoints. Not for
   single-perspective research (use research) or architectural decisions that
   don't need multi-agent deliberation (use architecture).
-version: 2.0.0-pre.20260614235428
+version: 2.0.0-pre.20260625183349
 ---
 
 # Council
