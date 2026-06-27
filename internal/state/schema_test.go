@@ -48,8 +48,8 @@ var requiredInitialTables = []string{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 8 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 8", len(migrations))
+	if len(migrations) != 9 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 9", len(migrations))
 	}
 
 	for i, migration := range migrations {
@@ -80,6 +80,9 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[7].Name != "docs_index" {
 		t.Fatalf("migration[7].Name = %q, want docs_index", migrations[7].Name)
+	}
+	if migrations[8].Name != "spec_branch_and_source" {
+		t.Fatalf("migration[8].Name = %q, want spec_branch_and_source", migrations[8].Name)
 	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
@@ -239,6 +242,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	sqlDoc = readRepoFile(t, "docs", "schema", "0008_docs_index.sql")
 	if sqlDoc != SchemaMigrations()[7].SQL {
 		t.Fatal("docs/schema/0008_docs_index.sql must match embedded migration 0008 exactly")
+	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0009_spec_branch_and_source.sql")
+	if sqlDoc != SchemaMigrations()[8].SQL {
+		t.Fatal("docs/schema/0009_spec_branch_and_source.sql must match embedded migration 0009 exactly")
 	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")

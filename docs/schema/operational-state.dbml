@@ -57,6 +57,8 @@ Table specs {
   body_source_id text [ref: > sources.id]
   created_at text [not null]
   updated_at text [not null]
+  branch text
+  source text
 }
 
 Table tasks {

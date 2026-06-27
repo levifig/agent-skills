@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/levifig/loaf/internal/project"
 )
@@ -28,9 +30,13 @@ type SpecDetail struct {
 	Alias         string              `json:"alias,omitempty"`
 	Title         string              `json:"title"`
 	Status        string              `json:"status"`
+	Branch        string              `json:"branch,omitempty"`
+	Source        string              `json:"source,omitempty"`
 	Tasks         SpecTaskCounts      `json:"tasks"`
 	Sources       []TraceSource       `json:"sources"`
+	Related       []TraceEntity       `json:"related"`
 	Body          string              `json:"body,omitempty"`
+	HasBody       bool                `json:"has_body"`
 	Relationships []TraceRelationship `json:"relationships"`
 	CreatedAt     string              `json:"created_at"`
 	UpdatedAt     string              `json:"updated_at"`
@@ -82,11 +88,13 @@ func (s *Store) ShowSpec(ctx context.Context, root project.Root, ref string) (Sp
 
 func (s *Store) specDetail(ctx context.Context, root project.Root, projectID string, entity TraceEntity) (SpecDetail, error) {
 	var title, status, createdAt, updatedAt string
-	var sourcePath, sourceHash sql.NullString
+	var branch, source, sourcePath, sourceHash sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 SELECT
   specs.title,
   specs.status,
+  specs.branch,
+  specs.source,
   specs.created_at,
   specs.updated_at,
   sources.path,
@@ -94,7 +102,7 @@ SELECT
 FROM specs
 LEFT JOIN sources ON sources.id = specs.body_source_id
 WHERE specs.project_id = ? AND specs.id = ?
-`, projectID, entity.ID).Scan(&title, &status, &createdAt, &updatedAt, &sourcePath, &sourceHash)
+`, projectID, entity.ID).Scan(&title, &status, &branch, &source, &createdAt, &updatedAt, &sourcePath, &sourceHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SpecDetail{}, fmt.Errorf("spec %q not found in SQLite state", firstNonEmpty(entity.Alias, entity.ID))
 	}
@@ -141,13 +149,38 @@ WHERE specs.project_id = ? AND specs.id = ?
 		Alias:         alias,
 		Title:         title,
 		Status:        status,
+		Branch:        branch.String,
+		Source:        source.String,
 		Tasks:         tasks,
 		Sources:       sources,
+		Related:       relatedSpecsFromRelationships(relationships),
 		Body:          body,
+		HasBody:       strings.TrimSpace(body) != "",
 		Relationships: relationships,
 		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,
 	}, nil
+}
+
+// relatedSpecsFromRelationships resolves the specs connected to this spec via a
+// related_to relationship in either direction, deduplicated and sorted by alias.
+func relatedSpecsFromRelationships(relationships []TraceRelationship) []TraceEntity {
+	related := []TraceEntity{}
+	seen := map[string]bool{}
+	for _, relationship := range relationships {
+		if relationship.Type != "related_to" || relationship.Entity.Kind != "spec" {
+			continue
+		}
+		if seen[relationship.Entity.ID] {
+			continue
+		}
+		seen[relationship.Entity.ID] = true
+		related = append(related, relationship.Entity)
+	}
+	sort.Slice(related, func(i, j int) bool {
+		return firstNonEmpty(related[i].Alias, related[i].ID) < firstNonEmpty(related[j].Alias, related[j].ID)
+	})
+	return related
 }
 
 func (s *Store) specTaskCountsByID(ctx context.Context, projectID string, specID string) (SpecTaskCounts, error) {

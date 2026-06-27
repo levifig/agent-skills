@@ -1,0 +1,2 @@
+ALTER TABLE specs ADD COLUMN branch TEXT;
+ALTER TABLE specs ADD COLUMN source TEXT;

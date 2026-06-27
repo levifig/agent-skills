@@ -31,6 +31,9 @@ var findingsVerdictsRunsSQL string
 //go:embed migrations/0008_docs_index.sql
 var docsIndexSQL string
 
+//go:embed migrations/0009_spec_branch_and_source.sql
+var specBranchAndSourceSQL string
+
 const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -88,6 +91,11 @@ func SchemaMigrations() []SchemaMigration {
 			Version: 8,
 			Name:    "docs_index",
 			SQL:     normalizeMigrationSQL(docsIndexSQL),
+		},
+		{
+			Version: 9,
+			Name:    "spec_branch_and_source",
+			SQL:     normalizeMigrationSQL(specBranchAndSourceSQL),
 		},
 	}
 }
