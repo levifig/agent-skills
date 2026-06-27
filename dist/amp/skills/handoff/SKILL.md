@@ -7,7 +7,7 @@ description: >-
   parked for later. Not for routine session continuity (use orchestration) or
   session shutdown (use wrap). Produces a disposable handoff artifact that
   housekeeping deletes after confirmed deprecation.
-version: 2.0.0-pre.20260625192947
+version: 2.0.0-alpha.1
 ---
 
 # Handoff

@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-alpha.1] - 2026-06-27
+
 ### Added
 
 - Added build metadata (short git commit + UTC build timestamp) to `loaf --version` / `loaf version`, injected at link time via `-ldflags "-X main.buildCommit=... -X main.buildDate=..."` and wired into the release workflow. The semver identifier is unchanged; build info renders as `loaf <version> (built <date> · git <commit>)` only on release builds, while plain `go build`, `go run`, and `go test` keep the clean `loaf <version>` line (TASK-21).
