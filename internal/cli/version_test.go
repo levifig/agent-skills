@@ -78,6 +78,82 @@ func TestRunnerVersionFlagsDoNotRequireLegacyBridge(t *testing.T) {
 	}
 }
 
+func TestBuildInfoSuffixFormatsBothPartsDateThenCommit(t *testing.T) {
+	got := buildInfoSuffix("abc1234", "2026-06-27T12:00:00Z")
+	want := " (built 2026-06-27T12:00:00Z · git abc1234)"
+	if got != want {
+		t.Fatalf("buildInfoSuffix = %q, want %q", got, want)
+	}
+}
+
+func TestBuildInfoSuffixEmptyWhenNeitherSet(t *testing.T) {
+	if got := buildInfoSuffix("", ""); got != "" {
+		t.Fatalf("buildInfoSuffix = %q, want empty string", got)
+	}
+}
+
+func TestBuildInfoSuffixOnlyCommit(t *testing.T) {
+	got := buildInfoSuffix("abc1234", "")
+	want := " (git abc1234)"
+	if got != want {
+		t.Fatalf("buildInfoSuffix = %q, want %q", got, want)
+	}
+}
+
+func TestBuildInfoSuffixOnlyDate(t *testing.T) {
+	got := buildInfoSuffix("", "2026-06-27T12:00:00Z")
+	want := " (built 2026-06-27T12:00:00Z)"
+	if got != want {
+		t.Fatalf("buildInfoSuffix = %q, want %q", got, want)
+	}
+}
+
+func TestRunnerVersionIncludesBuildInfoWhenSet(t *testing.T) {
+	root := writeVersionFixture(t)
+	var stdout bytes.Buffer
+
+	err := Runner{
+		Stdout:      &stdout,
+		WorkingDir:  root,
+		BuildCommit: "abc1234",
+		BuildDate:   "2026-06-27T12:00:00Z",
+	}.Run([]string{"version"})
+	if err != nil {
+		t.Fatalf("version error = %v", err)
+	}
+
+	// ansiBold("loaf") renders as "\x1b[1mloaf\x1b[0m"; assert the exact rendered
+	// first line so the build-info suffix sits immediately after the version.
+	want := "loaf\x1b[0m 9.8.7-test.1 (built 2026-06-27T12:00:00Z · git abc1234)\n"
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("version output = %q, want to contain %q", stdout.String(), want)
+	}
+}
+
+func TestRunnerVersionCleanWithoutBuildInfo(t *testing.T) {
+	root := writeVersionFixture(t)
+	var stdout bytes.Buffer
+
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: root,
+	}.Run([]string{"version"})
+	if err != nil {
+		t.Fatalf("version error = %v", err)
+	}
+
+	output := stdout.String()
+	cleanLine := "loaf\x1b[0m 9.8.7-test.1\n"
+	if !strings.Contains(output, cleanLine) {
+		t.Fatalf("version output = %q, want clean version line %q (no regression)", output, cleanLine)
+	}
+	for _, forbidden := range []string{"(built", "· git", "(git "} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("version output = %q, must not contain %q without build info", output, forbidden)
+		}
+	}
+}
+
 func writeVersionFixture(t *testing.T) string {
 	t.Helper()
 	root := realpath(t, t.TempDir())

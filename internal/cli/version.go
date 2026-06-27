@@ -29,7 +29,7 @@ func (r Runner) runVersion(out io.Writer, runtimeRoot string) error {
 	}
 	version := packageVersion(root)
 
-	fmt.Fprintf(out, "\n%s %s\n", ansiBold("loaf"), version)
+	fmt.Fprintf(out, "\n%s %s%s\n", ansiBold("loaf"), version, buildInfoSuffix(r.BuildCommit, r.BuildDate))
 	fmt.Fprintf(out, "%s %s\n", ansiGray("go"), strings.TrimPrefix(runtimeVersion(), "go"))
 
 	targets := builtTargets(root)
@@ -51,6 +51,26 @@ func (r Runner) runVersion(out io.Writer, runtimeRoot string) error {
 	fmt.Fprintf(out, "  Agents:  %d\n", countAgentFiles(root))
 	fmt.Fprintf(out, "  Hooks:   %d\n\n", countHookEntries(root))
 	return nil
+}
+
+// buildInfoSuffix renders optional build metadata for the version line. The
+// semver identifier is build-independent, so commit/date are appended as a
+// parenthetical suffix only when supplied (release builds). It returns an empty
+// string when neither is set, preserving the clean `loaf <version>` output.
+func buildInfoSuffix(commit, date string) string {
+	commit = strings.TrimSpace(commit)
+	date = strings.TrimSpace(date)
+	var parts []string
+	if date != "" {
+		parts = append(parts, "built "+date)
+	}
+	if commit != "" {
+		parts = append(parts, "git "+commit)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, " · ") + ")"
 }
 
 func resolveLoafPackageRoot(paths ...string) (string, error) {

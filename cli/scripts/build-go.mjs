@@ -6,6 +6,7 @@
 import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { goBuildArgs } from "./go-build-flags.mjs";
 
 const rootDir = process.cwd();
 const launcherSource = join(rootDir, "cli", "runtime", "loaf-launcher.cjs");
@@ -46,7 +47,7 @@ for (const target of targets) {
   }
 
   mkdirSync(dirname(nativeOutput), { recursive: true });
-  const result = spawnSync("go", ["build", "-trimpath", "-buildvcs=false", "-ldflags", "-buildid=", "-o", nativeOutput, "./cmd/loaf"], {
+  const result = spawnSync("go", goBuildArgs(nativeOutput, baseEnv), {
     cwd: rootDir,
     env: {
       ...baseEnv,

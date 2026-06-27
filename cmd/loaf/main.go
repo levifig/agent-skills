@@ -3,9 +3,21 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/levifig/loaf/internal/cli"
+)
+
+// Build metadata injected at link time via
+//
+//	-ldflags "-X main.buildCommit=<sha> -X main.buildDate=<iso8601>"
+//
+// These stay empty for plain `go build`, `go run`, and `go test`, keeping the
+// version output clean unless a release build supplies them.
+var (
+	buildCommit string
+	buildDate   string
 )
 
 func main() {
@@ -23,9 +35,14 @@ func main() {
 }
 
 func run(args []string) error {
-	runner := cli.Runner{
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
+	return newRunner(os.Stdout, os.Stderr).Run(args)
+}
+
+func newRunner(stdout, stderr io.Writer) cli.Runner {
+	return cli.Runner{
+		Stdout:      stdout,
+		Stderr:      stderr,
+		BuildCommit: buildCommit,
+		BuildDate:   buildDate,
 	}
-	return runner.Run(args)
 }

@@ -33,6 +33,11 @@ type Runner struct {
 	Stdin      io.Reader
 	WorkingDir string
 	StateHome  string
+	// BuildCommit and BuildDate carry optional build metadata injected at link
+	// time (see cmd/loaf/main.go). They are empty for plain builds, `go run`,
+	// and `go test`, and surface in `loaf --version` / `loaf version` when set.
+	BuildCommit string
+	BuildDate   string
 }
 
 type housekeepingOptions struct {

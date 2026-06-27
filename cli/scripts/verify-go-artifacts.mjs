@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
+import { goBuildArgs } from "./go-build-flags.mjs";
 
 const rootDir = process.cwd();
 const packageJSON = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
@@ -93,7 +94,7 @@ function assertReproducibleGoBinary(target) {
   const tempDir = mkdtempSync(join(tmpdir(), "loaf-go-verify-"));
   const tempBinary = join(tempDir, nativeBinaryName(target));
   try {
-    const result = spawnSync("go", ["build", "-trimpath", "-buildvcs=false", "-ldflags", "-buildid=", "-o", tempBinary, "./cmd/loaf"], {
+    const result = spawnSync("go", goBuildArgs(tempBinary, baseEnv), {
       cwd: rootDir,
       env: {
         ...baseEnv,

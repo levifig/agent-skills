@@ -2,12 +2,63 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestNewRunnerWiresBuildInfo(t *testing.T) {
+	originalCommit, originalDate := buildCommit, buildDate
+	t.Cleanup(func() {
+		buildCommit, buildDate = originalCommit, originalDate
+	})
+	buildCommit = "abc1234"
+	buildDate = "2026-06-27T12:00:00Z"
+
+	runner := newRunner(io.Discard, io.Discard)
+	if runner.BuildCommit != "abc1234" {
+		t.Fatalf("runner.BuildCommit = %q, want %q", runner.BuildCommit, "abc1234")
+	}
+	if runner.BuildDate != "2026-06-27T12:00:00Z" {
+		t.Fatalf("runner.BuildDate = %q, want %q", runner.BuildDate, "2026-06-27T12:00:00Z")
+	}
+}
+
+func TestPublicBinaryVersionShowsInjectedBuildInfoNatively(t *testing.T) {
+	repoRoot := repoRoot(t)
+	binary := filepath.Join(t.TempDir(), "loaf")
+	ldflags := "-X main.buildCommit=abc1234 -X main.buildDate=2026-06-27T12:00:00Z"
+	if output, err := runCommand(repoRoot, "go", "build", "-ldflags", ldflags, "-o", binary, "./cmd/loaf"); err != nil {
+		t.Fatalf("go build with ldflags error = %v\n%s", err, output)
+	}
+
+	env := envWith("LOAF_DB=" + filepath.Join(t.TempDir(), "loaf.sqlite"))
+	output, err := runBinary(binary, repoRoot, env, "--version")
+	if err != nil {
+		t.Fatalf("loaf --version error = %v\n%s", err, output)
+	}
+	for _, want := range []string{"built 2026-06-27T12:00:00Z", "git abc1234"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("--version output = %q, want to contain %q", output, want)
+		}
+	}
+
+	// A plain build (no ldflags) must keep the clean version line.
+	cleanBinary := filepath.Join(t.TempDir(), "loaf-clean")
+	if output, err := runCommand(repoRoot, "go", "build", "-o", cleanBinary, "./cmd/loaf"); err != nil {
+		t.Fatalf("go build (clean) error = %v\n%s", err, output)
+	}
+	cleanOutput, err := runBinary(cleanBinary, repoRoot, env, "--version")
+	if err != nil {
+		t.Fatalf("clean loaf --version error = %v\n%s", err, cleanOutput)
+	}
+	if strings.Contains(cleanOutput, "(built") || strings.Contains(cleanOutput, "git abc1234") {
+		t.Fatalf("clean --version output = %q, want no injected build info", cleanOutput)
+	}
+}
 
 func TestPublicBinaryDispatchesStateVersionAndReleasePostMergeNatively(t *testing.T) {
 	repoRoot := repoRoot(t)
