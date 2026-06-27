@@ -3,6 +3,8 @@ package state
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -148,6 +150,128 @@ WHERE entry_type = 'discover'
 	}
 	if count != 1 {
 		t.Fatalf("journal entry count = %d, want 1", count)
+	}
+}
+
+// TestLogJournalConcurrentWritersDropNoEntriesUnderLongWriteTxn drives many
+// independent loggers (each opening its own store, mimicking separate CLI
+// invocations) against a single database while a long-held write transaction
+// blocks them at the start. WAL plus busy_timeout (store.go) must serialize the
+// contended writes so that every queued entry lands exactly once with zero
+// drops, duplicates, or SQLITE_BUSY failures.
+func TestLogJournalConcurrentWritersDropNoEntriesUnderLongWriteTxn(t *testing.T) {
+	const (
+		writers          = 16
+		entriesPerWriter = 8
+		blockHold        = 250 * time.Millisecond
+	)
+
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	status, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	// Hold a long write transaction so every concurrent logger must wait on the
+	// WAL write lock and rely on busy_timeout to retry rather than fail.
+	blocker, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore(blocker) error = %v", err)
+	}
+	defer blocker.Close()
+	tx, err := blocker.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("BeginTx(blocker) error = %v", err)
+	}
+	if _, err := tx.ExecContext(context.Background(), `UPDATE projects SET updated_at = updated_at`); err != nil {
+		t.Fatalf("hold write transaction error = %v", err)
+	}
+
+	resolver := PathResolver{StateHome: stateHome}
+	var (
+		wg      sync.WaitGroup
+		errMu   sync.Mutex
+		logErrs []error
+		ready   sync.WaitGroup
+		release = make(chan struct{})
+	)
+	ready.Add(writers)
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func(writerID int) {
+			defer wg.Done()
+			ready.Done()
+			<-release
+			for e := 0; e < entriesPerWriter; e++ {
+				entry := fmt.Sprintf("discover(stress): writer-%02d-entry-%02d", writerID, e)
+				if _, err := LogJournal(context.Background(), root, resolver, JournalLogOptions{Entry: entry}); err != nil {
+					errMu.Lock()
+					logErrs = append(logErrs, fmt.Errorf("writer %d entry %d: %w", writerID, e, err))
+					errMu.Unlock()
+					return
+				}
+			}
+		}(w)
+	}
+
+	// Unblock all writers simultaneously, let them contend briefly against the
+	// held write lock, then release it so the queued writes can drain.
+	ready.Wait()
+	close(release)
+	time.Sleep(blockHold)
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit(blocker) error = %v", err)
+	}
+
+	wg.Wait()
+	if len(logErrs) != 0 {
+		t.Fatalf("concurrent LogJournal errors = %v", logErrs)
+	}
+
+	reader, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore(reader) error = %v", err)
+	}
+	defer reader.Close()
+
+	wantTotal := writers * entriesPerWriter
+
+	var total int
+	if err := reader.db.QueryRowContext(context.Background(), `
+SELECT COUNT(*) FROM journal_entries
+WHERE entry_type = 'discover' AND scope = 'stress'
+`).Scan(&total); err != nil {
+		t.Fatalf("count journal entries error = %v", err)
+	}
+	if total != wantTotal {
+		t.Fatalf("journal entry count = %d, want %d (dropped or duplicated entries)", total, wantTotal)
+	}
+
+	// Every (writer, entry) message must be present exactly once: distinct count
+	// equal to the total proves no drops and no duplicate inserts.
+	var distinct int
+	if err := reader.db.QueryRowContext(context.Background(), `
+SELECT COUNT(DISTINCT message) FROM journal_entries
+WHERE entry_type = 'discover' AND scope = 'stress'
+`).Scan(&distinct); err != nil {
+		t.Fatalf("count distinct journal messages error = %v", err)
+	}
+	if distinct != wantTotal {
+		t.Fatalf("distinct journal messages = %d, want %d", distinct, wantTotal)
+	}
+
+	// The FTS mirror table must stay in lockstep with the base table under
+	// concurrency; a mismatch signals a partially-applied transaction.
+	var searchCount int
+	if err := reader.db.QueryRowContext(context.Background(), `
+SELECT COUNT(*) FROM journal_search
+WHERE entry_type = 'discover' AND scope = 'stress'
+`).Scan(&searchCount); err != nil {
+		t.Fatalf("count journal_search rows error = %v", err)
+	}
+	if searchCount != wantTotal {
+		t.Fatalf("journal_search rows = %d, want %d (FTS mirror drifted under concurrency)", searchCount, wantTotal)
 	}
 }
 

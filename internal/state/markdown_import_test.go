@@ -196,7 +196,7 @@ func TestMarkdownRollbackBackupRemovesAndRestoresEphemeralSources(t *testing.T) 
 		t.Fatalf("CreateMarkdownRollbackBackup() error = %v", err)
 	}
 
-	removed, err := RemoveMarkdownMigrationSources(root, rollbackBackup.RollbackManifestPath)
+	removed, err := RemoveMarkdownMigrationSources(context.Background(), root, PathResolver{StateHome: stateHome}, rollbackBackup.RollbackManifestPath)
 	if err != nil {
 		t.Fatalf("RemoveMarkdownMigrationSources() error = %v", err)
 	}
@@ -290,7 +290,7 @@ func TestMarkdownRollbackRemoveRequiresIntactBackup(t *testing.T) {
 		}
 	}
 
-	_, err = RemoveMarkdownMigrationSources(root, rollbackBackup.RollbackManifestPath)
+	_, err = RemoveMarkdownMigrationSources(context.Background(), root, PathResolver{StateHome: stateHome}, rollbackBackup.RollbackManifestPath)
 	if err == nil {
 		t.Fatal("RemoveMarkdownMigrationSources() error = nil, want checksum rejection")
 	}
@@ -299,6 +299,81 @@ func TestMarkdownRollbackRemoveRequiresIntactBackup(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root.Path(), ".agents", "tasks", "TASK-001-example.md")); err != nil {
 		t.Fatalf("task source should remain after failed removal: %v", err)
+	}
+}
+
+func TestMarkdownRollbackRemoveAbortsAtomicallyOnLaterMismatch(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	taskBody := "# Task body\n\nFirst paragraph.\n"
+	// Multiple ephemeral sources spanning several roots so the corrupted entry
+	// is *not* the first one removed in manifest (sorted) order.
+	writeMarkdownImportFixture(t, root.Path(), taskBody)
+	writeAgentsFile(t, root.Path(), "drafts/20260528-research-note.md", "# Research Note\n")
+	writeAgentsFile(t, root.Path(), "tasks/archive/TASK-999-archived.md", "# Archived Task\n")
+	writeAgentsFile(t, root.Path(), "ideas/archive/.gitkeep", "")
+
+	if _, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	backup, err := Backup(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Backup() error = %v", err)
+	}
+	rollbackBackup, err := CreateMarkdownRollbackBackup(context.Background(), root, backup.BackupPath)
+	if err != nil {
+		t.Fatalf("CreateMarkdownRollbackBackup() error = %v", err)
+	}
+	manifest, err := readMarkdownRollbackManifest(rollbackBackup.RollbackManifestPath)
+	if err != nil {
+		t.Fatalf("readMarkdownRollbackManifest() error = %v", err)
+	}
+
+	// Collect every ephemeral source in the order RemoveMarkdownMigrationSources
+	// would delete them, then corrupt the backup of the *last* one. With a
+	// non-atomic implementation the earlier files would already be deleted by
+	// the time this mismatch is hit.
+	var ephemeral []string
+	for _, file := range manifest.Files {
+		if isEphemeralMarkdownMigrationSource(file.Path) {
+			ephemeral = append(ephemeral, file.Path)
+		}
+	}
+	if len(ephemeral) < 2 {
+		t.Fatalf("expected multiple ephemeral sources, got %#v", ephemeral)
+	}
+	lastPath := ephemeral[len(ephemeral)-1]
+	corrupted := false
+	for _, file := range manifest.Files {
+		if file.Path == lastPath {
+			if err := os.WriteFile(file.BackupPath, []byte("corrupt\n"), 0o600); err != nil {
+				t.Fatalf("corrupt rollback backup file error = %v", err)
+			}
+			corrupted = true
+			break
+		}
+	}
+	if !corrupted {
+		t.Fatalf("failed to locate backup for %q", lastPath)
+	}
+
+	_, err = RemoveMarkdownMigrationSources(context.Background(), root, PathResolver{StateHome: stateHome}, rollbackBackup.RollbackManifestPath)
+	if err == nil {
+		t.Fatal("RemoveMarkdownMigrationSources() error = nil, want atomic checksum rejection")
+	}
+	if !strings.Contains(err.Error(), "checksum mismatch before removal") {
+		t.Fatalf("error = %v, want checksum mismatch before removal", err)
+	}
+	if !strings.Contains(err.Error(), lastPath) {
+		t.Fatalf("error = %v, want reference to corrupted file %q", err, lastPath)
+	}
+
+	// Atomicity: no ephemeral source may be deleted when the abort fires,
+	// including the ones that would have been processed before the mismatch.
+	for _, rel := range ephemeral {
+		if _, err := os.Stat(filepath.Join(root.Path(), filepath.FromSlash(rel))); err != nil {
+			t.Fatalf("%s was deleted despite atomic abort: %v", rel, err)
+		}
 	}
 }
 

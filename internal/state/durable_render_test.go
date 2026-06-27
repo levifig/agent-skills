@@ -96,8 +96,13 @@ func TestDurableSpecAndReportDocumentsOmitVolatileFields(t *testing.T) {
 			t.Fatalf("spec render contains volatile %q:\n%s", forbidden, specRender)
 		}
 	}
-	if !strings.Contains(specRender, `state_id: "spec:internal"`) {
-		t.Fatalf("spec render missing state_id provenance:\n%s", specRender)
+	// The internal state ID is a random per-database surrogate; it must never
+	// leak into a committed render or byte-reproducibility breaks (SPEC-044).
+	if strings.Contains(specRender, "state_id") || strings.Contains(specRender, "spec:internal") {
+		t.Fatalf("spec render leaks volatile internal state ID:\n%s", specRender)
+	}
+	if !strings.Contains(specRender, "id: SPEC-044") {
+		t.Fatalf("spec render missing stable alias id:\n%s", specRender)
 	}
 
 	reportRender, err := RenderDurableDocument(DurableReportRenderDocument(ReportDetail{
@@ -118,6 +123,9 @@ func TestDurableSpecAndReportDocumentsOmitVolatileFields(t *testing.T) {
 	}
 	if strings.Contains(reportRender, "2026-06-24T00:00:00Z") || strings.Contains(reportRender, "2026-06-24T01:00:00Z") {
 		t.Fatalf("report render contains timestamps:\n%s", reportRender)
+	}
+	if strings.Contains(reportRender, "state_id") || strings.Contains(reportRender, "report:internal") {
+		t.Fatalf("report render leaks volatile internal state ID:\n%s", reportRender)
 	}
 }
 

@@ -197,12 +197,28 @@ func CreateMarkdownRollbackBackup(ctx context.Context, root project.Root, stateB
 
 // RemoveMarkdownMigrationSources removes only ephemeral Markdown files that are
 // covered by a rollback manifest. Durable renders remain tracked Markdown.
-func RemoveMarkdownMigrationSources(root project.Root, manifestPath string) ([]string, error) {
-	manifest, err := readMarkdownRollbackManifest(manifestPath)
+//
+// Removal is atomic: every ephemeral source is verified against its captured
+// backup (via VerifyEphemeralMarkdownBackup) before any file is deleted. If a
+// later file fails verification, the function returns an error and deletes
+// nothing, so a partial removal can never leave the manifest's earlier sources
+// gone while the migration is aborted.
+func RemoveMarkdownMigrationSources(ctx context.Context, root project.Root, resolver PathResolver, manifestPath string) ([]string, error) {
+	verification, err := VerifyEphemeralMarkdownBackup(ctx, root, resolver, manifestPath)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateMarkdownRollbackManifestRoot(root, manifest); err != nil {
+	if !verification.Verified {
+		failed := make([]string, 0, len(verification.Failures))
+		for _, failure := range verification.Failures {
+			failed = append(failed, failure.Path)
+		}
+		sort.Strings(failed)
+		return nil, fmt.Errorf("rollback source checksum mismatch before removal: %s", strings.Join(failed, ", "))
+	}
+
+	manifest, err := readMarkdownRollbackManifest(manifestPath)
+	if err != nil {
 		return nil, err
 	}
 	removed := []string{}
@@ -213,13 +229,6 @@ func RemoveMarkdownMigrationSources(root project.Root, manifestPath string) ([]s
 		path, err := rollbackProjectPath(root, file.Path)
 		if err != nil {
 			return nil, err
-		}
-		sum, err := fileSHA256(file.BackupPath)
-		if err != nil {
-			return nil, fmt.Errorf("checksum rollback source before removal %s: %w", file.Path, err)
-		}
-		if sum != file.SHA256 {
-			return nil, fmt.Errorf("rollback source checksum mismatch before removal for %s", file.Path)
 		}
 		if err := os.Remove(path); err != nil {
 			if os.IsNotExist(err) {

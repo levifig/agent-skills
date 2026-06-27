@@ -47,6 +47,12 @@ jobs:
       - name: Verify Go tests
         run: go test ./...
 
+      - name: Verify CGO-free build
+        run: CGO_ENABLED=0 go build ./...
+
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
       - name: Verify durable render drift
         run: bin/loaf check --hook render-drift --json
 

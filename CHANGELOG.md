@@ -6,12 +6,19 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+### Added
+
+- Added a CI gate that runs `CGO_ENABLED=0 go build ./...` and `govulncheck` (closes the unproven half of SPEC-043's CGO-free + vulnerability-scan condition).
+- Added an N-writer journal concurrency stress test proving no journal writes are dropped under contention (SPEC-043 concurrency condition).
+- Added a two-`$XDG_DATA_HOME` byte-identical durable-render test (SPEC-044 acceptance condition).
+
 ### Fixed
 
 - Corrected the stale `config/targets.yaml` amp target comment to reflect that Amp is a first-class target emitting skills plus an auto-generated TypeScript runtime plugin, not an experimental skills-only target.
 - Aligned SPEC-049 frontmatter status to `complete`, matching sibling specs and the canonical spec lifecycle vocabulary.
 - Renumbered the duplicate `ADR-017` install-convention decision to `ADR-018` and listed it in the decisions README.
 - Corrected ADR-017 to record that ADRs and knowledge live under `docs/`, not `.agents/`, fixing an ADR-013 factual error.
+- Made `migrate markdown --remove-source` atomic: it now byte-verifies the entire ephemeral set before deleting any file, so a later-file mismatch leaves earlier files intact (SPEC-045 "deletes nothing on failure" invariant for the reusable primitive).
 
 ## [2.0.0-pre.20260625192947] - 2026-06-25
 

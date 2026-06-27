@@ -3018,7 +3018,7 @@ func (r Runner) runMarkdownMigration(args []string, out io.Writer, runtime state
 			result.RollbackManifestPath = rollbackBackup.RollbackManifestPath
 			result.AgentsBackupPath = rollbackBackup.AgentsBackupPath
 			if options.removeSource {
-				removed, err := state.RemoveMarkdownMigrationSources(projectRoot, rollbackBackup.RollbackManifestPath)
+				removed, err := state.RemoveMarkdownMigrationSources(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, rollbackBackup.RollbackManifestPath)
 				if err != nil {
 					if options.jsonOutput {
 						return writeJSONCommandError(out, command, err)

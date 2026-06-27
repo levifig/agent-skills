@@ -26,14 +26,18 @@ type DurableRenderDocument struct {
 }
 
 // DurableSpecRenderDocument converts a spec detail into the deterministic render model.
+//
+// The internal state ID (spec.ID) is intentionally excluded: it is a random,
+// per-database surrogate key (see newProjectID) that differs between
+// environments, so emitting it would make the same logical spec render to
+// different bytes depending on where the state database lives. Committed durable
+// renders must contain only reproducible content so CI can re-render against a
+// fresh database in any location (SPEC-044).
 func DurableSpecRenderDocument(spec SpecDetail) DurableRenderDocument {
 	fields := []DurableRenderField{
 		{Key: "id", Value: firstNonEmpty(spec.Alias, spec.ID)},
 		{Key: "title", Value: spec.Title},
 		{Key: "status", Value: spec.Status},
-	}
-	if spec.Alias != "" && spec.ID != "" && spec.Alias != spec.ID {
-		fields = append(fields, DurableRenderField{Key: "state_id", Value: spec.ID})
 	}
 	return DurableRenderDocument{
 		Kind:   "spec",
@@ -51,9 +55,6 @@ func DurableReportRenderDocument(report ReportDetail) DurableRenderDocument {
 	}
 	if report.Kind != "" {
 		fields = append(fields, DurableRenderField{Key: "report_kind", Value: report.Kind})
-	}
-	if report.Alias != "" && report.ID != "" && report.Alias != report.ID {
-		fields = append(fields, DurableRenderField{Key: "state_id", Value: report.ID})
 	}
 	return DurableRenderDocument{
 		Kind:   "report",
