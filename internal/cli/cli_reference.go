@@ -247,6 +247,11 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--dry-run", Description: "Validate and preview without writing"},
 					{Flags: "--json", Description: "Output project ID, friendly name, current path, database path, and applied status as JSON"},
 				}},
+				{Name: "delete", Description: "Permanently delete a project and every dependent row across all entity tables", Options: []cliReferenceOption{
+					{Flags: "<project-id>", Description: "Project id, friendly name, or current path"},
+					{Flags: "--yes", Description: "Confirm the destructive delete (required)"},
+					{Flags: "--json", Description: "Output removed-row counts and global database scope as JSON"},
+				}},
 			},
 		},
 		{
@@ -339,9 +344,15 @@ func cliReferenceCommands() []cliReferenceCommand {
 				}},
 				{Name: "list", Description: "Show specs with status and task counts", Options: []cliReferenceOption{{Flags: "--json", Description: "Output specs, diagnostics, task counts, global database scope, and project identity as JSON"}}},
 				{Name: "show", Description: "Show spec details", Options: []cliReferenceOption{{Flags: "--json", Description: "Output spec details, branch, source, resolved related specs, task counts, relationships, global database scope, and project identity as JSON"}}},
+				{Name: "status", Description: "Set a spec's lifecycle status (draft, todo, in_progress, done, archived)", Options: []cliReferenceOption{{Flags: "--json", Description: "Output spec status transition, event, global database scope, and project identity as JSON"}}},
 				{Name: "render", Description: "Render deterministic spec Markdown to the XDG cache", Options: []cliReferenceOption{{Flags: "--json", Description: "Output render path, content hash, contract, global database scope, and project identity as JSON"}}},
 				{Name: "finalize", Description: "Write deterministic spec Markdown to its tracked git location", Options: []cliReferenceOption{{Flags: "--json", Description: "Output render path, content hash, contract, global database scope, and project identity as JSON"}}},
 				{Name: "archive", Description: "Archive a completed spec", Options: []cliReferenceOption{{Flags: "--json", Description: "Output archive result, archived specs, global database scope, and project identity as JSON"}}},
+				{Name: "delete", Description: "Permanently delete a spec and every dependent row (aliases, bodies, search index, events, sources); leaves the on-disk render in place", Options: []cliReferenceOption{
+					{Flags: "<spec>", Description: "Spec ref to delete"},
+					{Flags: "--yes", Description: "Confirm the destructive delete (required)"},
+					{Flags: "--json", Description: "Output removed-row counts, global database scope, and project identity as JSON"},
+				}},
 			},
 		},
 		{

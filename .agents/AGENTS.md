@@ -388,6 +388,24 @@ npm run typecheck              # Type check (tsc --noEmit)
 npm link                       # Make `loaf` available globally
 ```
 
+### Dev Isolation (avoid polluting the global DB)
+
+The global SQLite DB resolves via `XDG_DATA_HOME` to `~/.local/share/loaf/loaf.sqlite`.
+Any real `loaf` command — dogfooding, manual smokes, scratch experiments — writes to
+that production database unless redirected. Before running the real binary against
+throwaway state, set `LOAF_DB` to an absolute path on a temp file:
+
+```bash
+export LOAF_DB="$(mktemp -d)/loaf.sqlite"
+loaf session list        # operates on the isolated DB
+rm -f "$LOAF_DB"         # clean up when done
+```
+
+When `LOAF_DB` is set to an absolute path it is used verbatim as the SQLite file
+and overrides `XDG_DATA_HOME`. A relative value is ignored (standard XDG resolution
+applies). Go unit tests isolate via temp dirs and `t.Setenv`, so no global state is
+touched during `go test`.
+
 ### Targets
 
 | Target | Output | Notes |

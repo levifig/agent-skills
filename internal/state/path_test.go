@@ -219,6 +219,50 @@ func TestPathResolverIgnoresRelativeXDGDataHome(t *testing.T) {
 	}
 }
 
+func TestPathResolverHonorsLoafDBOverride(t *testing.T) {
+	dir := t.TempDir()
+	dataHome := t.TempDir()
+	override := filepath.Join(t.TempDir(), "isolated.sqlite")
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("LOAF_DB", override)
+
+	root, err := project.ResolveRoot(dir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	got, err := PathResolver{}.DatabasePath(root)
+	if err != nil {
+		t.Fatalf("DatabasePath() error = %v", err)
+	}
+
+	if got != override {
+		t.Fatalf("DatabasePath() = %q, want LOAF_DB override %q", got, override)
+	}
+	if strings.HasPrefix(got, dataHome+string(filepath.Separator)) {
+		t.Fatalf("DatabasePath() = %q, want redirected away from XDG_DATA_HOME %q", got, dataHome)
+	}
+}
+
+func TestPathResolverIgnoresRelativeLoafDBOverride(t *testing.T) {
+	dir := t.TempDir()
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("LOAF_DB", "relative.sqlite")
+
+	root, err := project.ResolveRoot(dir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	got, err := PathResolver{}.DatabasePath(root)
+	if err != nil {
+		t.Fatalf("DatabasePath() error = %v", err)
+	}
+
+	if !strings.HasPrefix(got, dataHome+string(filepath.Separator)) {
+		t.Fatalf("DatabasePath() = %q, want XDG_DATA_HOME fallback when LOAF_DB is relative", got)
+	}
+}
+
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {

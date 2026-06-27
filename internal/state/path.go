@@ -14,6 +14,12 @@ import (
 
 const databaseFileName = "loaf.sqlite"
 
+// databaseOverrideEnv lets developers redirect the global SQLite database to an
+// explicit file, isolating dogfooding and smoke runs from production state. When
+// set to an absolute path it is used verbatim; otherwise the standard
+// XDG_DATA_HOME resolution applies.
+const databaseOverrideEnv = "LOAF_DB"
+
 // PathResolver computes the project-scoped SQLite path without creating it.
 type PathResolver struct {
 	DataHome  string
@@ -23,6 +29,11 @@ type PathResolver struct {
 
 // DatabasePath returns the intended global SQLite database path.
 func (r PathResolver) DatabasePath(root project.Root) (string, error) {
+	if value := os.Getenv(databaseOverrideEnv); value != "" {
+		if filepath.IsAbs(value) {
+			return filepath.Clean(value), nil
+		}
+	}
 	dataHome, err := r.dataHome()
 	if err != nil {
 		return "", err

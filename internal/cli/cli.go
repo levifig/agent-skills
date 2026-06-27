@@ -1709,6 +1709,12 @@ func (r Runner) runProject(args []string, out io.Writer, runtime state.Runtime) 
 			return nil
 		}
 		return r.runProjectMove(args[1:], out, runtime)
+	case "delete":
+		if isHelpArg(args[1:]) {
+			writeProjectDeleteHelp(out)
+			return nil
+		}
+		return r.runProjectDelete(args[1:], out, runtime)
 	default:
 		return fmt.Errorf("project subcommand %q is not implemented yet", args[0])
 	}
@@ -1725,6 +1731,7 @@ func writeProjectHelp(out io.Writer) {
 	fmt.Fprintln(out, "  identity  Alias for show")
 	fmt.Fprintln(out, "  rename    Rename the friendly project name")
 	fmt.Fprintln(out, "  move      Record a project path move")
+	fmt.Fprintln(out, "  delete    Permanently delete a project and all its rows")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
 	fmt.Fprintln(out, "  -h, --help    Show help")
@@ -1969,6 +1976,63 @@ func (r Runner) runProjectMove(args []string, out io.Writer, runtime state.Runti
 	}
 	writeProjectMoveHuman(out, result, !options.dryRun)
 	return nil
+}
+
+func writeProjectDeleteHelp(out io.Writer) {
+	fmt.Fprintln(out, "Usage: loaf project delete <project-id> [--yes] [--json]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Permanently delete a project and every dependent row across all entity tables.")
+	fmt.Fprintln(out, "Destructive: requires --yes. Accepts a project id, friendly name, or current path.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "  --yes        Confirm the destructive delete")
+	fmt.Fprintln(out, "  --json       Output removed-row counts and global database scope as JSON")
+	fmt.Fprintln(out, "  -h, --help   Show help")
+}
+
+func (r Runner) runProjectDelete(args []string, out io.Writer, runtime state.Runtime) error {
+	jsonRequested := hasFlag(args, "--json")
+	ref, confirm, jsonOutput, err := parseDeleteRefArgs("project delete", args)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, "project delete", err)
+		}
+		return err
+	}
+	if !confirm {
+		err := fmt.Errorf("confirmation-required: refusing to delete project %q without --yes; this permanently removes the project and every dependent row", ref)
+		if jsonOutput {
+			return writeJSONCommandError(out, "project delete", err)
+		}
+		return err
+	}
+	_, store, err := r.openProjectStore(runtime)
+	if err != nil {
+		if jsonOutput {
+			return writeJSONCommandError(out, "project delete", err)
+		}
+		return err
+	}
+	defer store.Close()
+	result, err := store.DeleteProject(context.Background(), ref)
+	if err != nil {
+		if jsonOutput {
+			return writeJSONCommandError(out, "project delete", err)
+		}
+		return err
+	}
+	if jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeProjectDelete(out, result)
+	return nil
+}
+
+func writeProjectDelete(out io.Writer, result state.ProjectDeleteResult) {
+	name := firstNonEmpty(result.ProjectName, result.ProjectID)
+	fmt.Fprintf(out, "deleted project %s\n", name)
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	writeDeleteCounts(out, "removed", result.Removed)
 }
 
 func (r Runner) openProjectIdentityStore(runtime state.Runtime) (project.Root, *state.Store, error) {
@@ -6997,9 +7061,11 @@ func (r Runner) runSpec(args []string, out io.Writer, runtime state.Runtime) err
 		"new":      writeSpecNewHelp,
 		"list":     writeSpecListHelp,
 		"show":     writeSpecShowHelp,
+		"status":   writeSpecStatusHelp,
 		"render":   writeSpecRenderHelp,
 		"finalize": writeSpecFinalizeHelp,
 		"archive":  writeSpecArchiveHelp,
+		"delete":   writeSpecDeleteHelp,
 	}) {
 		return nil
 	}
@@ -7010,12 +7076,16 @@ func (r Runner) runSpec(args []string, out io.Writer, runtime state.Runtime) err
 		return r.runSpecList(args[1:], out, runtime)
 	case "show":
 		return r.runSpecShow(args[1:], out, runtime)
+	case "status":
+		return r.runSpecStatus(args[1:], out, runtime)
 	case "render":
 		return r.runSpecRender(args[1:], out, runtime)
 	case "finalize":
 		return r.runSpecFinalize(args[1:], out, runtime)
 	case "archive":
 		return r.runSpecArchive(args[1:], out, runtime)
+	case "delete":
+		return r.runSpecDelete(args[1:], out, runtime)
 	default:
 		return unknownSubcommandError("spec", args[0])
 	}
@@ -7030,9 +7100,11 @@ func writeSpecHelp(out io.Writer) {
 	fmt.Fprintln(out, "  new      Create a spec in SQLite state")
 	fmt.Fprintln(out, "  list     List specs")
 	fmt.Fprintln(out, "  show     Show one spec")
+	fmt.Fprintln(out, "  status   Set a spec's lifecycle status")
 	fmt.Fprintln(out, "  render   Render a spec to the XDG cache")
 	fmt.Fprintln(out, "  finalize Write a deterministic spec render to git")
 	fmt.Fprintln(out, "  archive  Archive completed specs")
+	fmt.Fprintln(out, "  delete   Permanently delete a spec and its dependent rows")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
 	fmt.Fprintln(out, "  -h, --help  Show help")
@@ -7059,6 +7131,14 @@ func writeSpecShowHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf spec show <spec> [--json]", "Show one spec.", "--json       Output spec details, task counts, relationships, global database scope, and project identity as JSON")
 }
 
+func writeSpecStatusHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf spec status <spec> <status> [--json]", "Set a spec's lifecycle status: "+validSpecStatusText()+".", "--json       Output spec status transition, event, global database scope, and project identity as JSON")
+}
+
+func validSpecStatusText() string {
+	return strings.Join(state.LifecycleStatusesForEntity(state.LifecycleEntitySpec), ", ")
+}
+
 func writeSpecRenderHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf spec render <spec> [--json]", "Render a deterministic spec Markdown file to the XDG cache.", "--json       Output render path, content hash, contract, global database scope, and project identity as JSON")
 }
@@ -7069,6 +7149,10 @@ func writeSpecFinalizeHelp(out io.Writer) {
 
 func writeSpecArchiveHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf spec archive <spec...> [--json]", "Archive completed specs.", "--json       Output archive result, archived specs, global database scope, and project identity as JSON")
+}
+
+func writeSpecDeleteHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf spec delete <spec> [--yes] [--json]", "Permanently delete a spec and every dependent row (aliases, bodies, search index, events, sources). Destructive: requires --yes. The on-disk render file, if any, is left in place.", "--yes        Confirm the destructive delete", "--json       Output removed-row counts, global database scope, and project identity as JSON")
 }
 
 func (r Runner) runSpecList(args []string, out io.Writer, runtime state.Runtime) error {
@@ -7189,6 +7273,78 @@ func (r Runner) runSpecShow(args []string, out io.Writer, runtime state.Runtime)
 	return nil
 }
 
+func (r Runner) runSpecStatus(args []string, out io.Writer, runtime state.Runtime) error {
+	jsonRequested := hasFlag(args, "--json")
+	ref, newStatus, jsonOutput, err := parseSpecStatusArgs(args)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, "spec status", err)
+		}
+		return err
+	}
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		if jsonOutput {
+			return writeJSONCommandError(out, "spec status", err)
+		}
+		return err
+	}
+	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
+	if err != nil {
+		if jsonOutput {
+			return writeJSONCommandError(out, "spec status", err)
+		}
+		return err
+	}
+	switch status.Mode {
+	case state.ModeMarkdownOnly:
+		err := sqliteStateRequiredError("spec status")
+		if jsonOutput {
+			return writeJSONCommandError(out, "spec status", err)
+		}
+		return err
+	case state.ModeInvalid:
+		err := fmt.Errorf("state database is invalid; run `loaf state doctor`")
+		if jsonOutput {
+			return writeJSONCommandError(out, "spec status", err)
+		}
+		return err
+	}
+
+	result, err := state.SetSpecStatus(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref, newStatus)
+	if err != nil {
+		if jsonOutput {
+			return writeJSONCommandError(out, "spec status", err)
+		}
+		return err
+	}
+	if jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeSpecStatus(out, result)
+	return nil
+}
+
+func parseSpecStatusArgs(args []string) (string, string, bool, error) {
+	var positional []string
+	jsonOutput := false
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonOutput = true
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return "", "", false, fmt.Errorf("unknown option %q", arg)
+			}
+			positional = append(positional, arg)
+		}
+	}
+	if len(positional) != 2 {
+		return "", "", false, fmt.Errorf("spec status requires a spec and a status")
+	}
+	return positional[0], positional[1], jsonOutput, nil
+}
+
 func (r Runner) runSpecRender(args []string, out io.Writer, runtime state.Runtime) error {
 	ref, jsonOutput, err := parseSingleRefArgs("spec render", args)
 	if err != nil {
@@ -7296,6 +7452,95 @@ func (r Runner) runSpecArchive(args []string, out io.Writer, runtime state.Runti
 	}
 	writeSpecArchive(out, result)
 	return nil
+}
+
+func (r Runner) runSpecDelete(args []string, out io.Writer, runtime state.Runtime) error {
+	jsonRequested := hasFlag(args, "--json")
+	ref, confirm, jsonOutput, err := parseDeleteRefArgs("spec delete", args)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, "spec delete", err)
+		}
+		return err
+	}
+	if !confirm {
+		err := fmt.Errorf("confirmation-required: refusing to delete spec %q without --yes; this permanently removes the spec and every dependent row", ref)
+		if jsonOutput {
+			return writeJSONCommandError(out, "spec delete", err)
+		}
+		return err
+	}
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		if jsonOutput {
+			return writeJSONCommandError(out, "spec delete", err)
+		}
+		return err
+	}
+	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
+	if err != nil {
+		if jsonOutput {
+			return writeJSONCommandError(out, "spec delete", err)
+		}
+		return err
+	}
+	switch status.Mode {
+	case state.ModeMarkdownOnly:
+		err := sqliteStateRequiredError("spec delete")
+		if jsonOutput {
+			return writeJSONCommandError(out, "spec delete", err)
+		}
+		return err
+	case state.ModeInvalid:
+		err := fmt.Errorf("state database is invalid; run `loaf state doctor`")
+		if jsonOutput {
+			return writeJSONCommandError(out, "spec delete", err)
+		}
+		return err
+	}
+	result, err := state.DeleteSpec(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
+	if err != nil {
+		if jsonOutput {
+			return writeJSONCommandError(out, "spec delete", err)
+		}
+		return err
+	}
+	if jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeSpecDelete(out, result)
+	return nil
+}
+
+func writeSpecDelete(out io.Writer, result state.SpecDeleteResult) {
+	ref := result.Ref
+	if result.Spec != nil {
+		ref = firstNonEmpty(result.Spec.Alias, result.Ref, result.Spec.ID)
+	}
+	fmt.Fprintf(out, "deleted spec %s\n", ref)
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	writeDeleteCounts(out, "removed", result.Removed)
+	writeDeleteCounts(out, "unlinked", result.Unlinked)
+	if result.RenderRetained {
+		fmt.Fprintf(out, "render left in place: %s\n", result.RenderPath)
+	}
+}
+
+func writeDeleteCounts(out io.Writer, label string, counts []state.DeleteCount) {
+	total := 0
+	for _, count := range counts {
+		total += count.Rows
+	}
+	if total == 0 {
+		return
+	}
+	fmt.Fprintf(out, "%s:\n", label)
+	for _, count := range counts {
+		if count.Rows == 0 {
+			continue
+		}
+		fmt.Fprintf(out, "  %-18s %d\n", count.Table, count.Rows)
+	}
 }
 
 func writeSpecList(out io.Writer, specs state.SpecList) {
@@ -7878,6 +8123,23 @@ func writeSpecShow(out io.Writer, result state.SpecShow) {
 	if spec.Body != "" {
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, spec.Body)
+	}
+}
+
+func writeSpecStatus(out io.Writer, result state.SpecStatusResult) {
+	spec := result.Ref
+	if result.Spec != nil {
+		spec = firstNonEmpty(result.Spec.Alias, result.Ref, result.Spec.ID)
+	}
+	fmt.Fprintf(out, "spec %s\n", spec)
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	if result.Previous != result.Status {
+		fmt.Fprintf(out, "status: %s -> %s\n", result.Previous, result.Status)
+	} else {
+		fmt.Fprintf(out, "status: %s\n", result.Status)
+	}
+	if result.EventID != "" {
+		fmt.Fprintf(out, "event: %s\n", result.EventID)
 	}
 }
 
@@ -13429,6 +13691,29 @@ func parseSingleRefArgs(command string, args []string) (string, bool, error) {
 		return "", false, fmt.Errorf("%s requires an argument", command)
 	}
 	return ref, jsonOutput, nil
+}
+
+func parseDeleteRefArgs(command string, args []string) (ref string, confirm bool, jsonOutput bool, err error) {
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonOutput = true
+		case "--yes", "-y":
+			confirm = true
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return "", false, false, fmt.Errorf("unknown option %q", arg)
+			}
+			if ref != "" {
+				return "", false, false, fmt.Errorf("%s accepts exactly one argument", command)
+			}
+			ref = arg
+		}
+	}
+	if ref == "" {
+		return "", false, false, fmt.Errorf("%s requires an argument", command)
+	}
+	return ref, confirm, jsonOutput, nil
 }
 
 func parseArchiveArgs(command string, args []string) ([]string, bool, error) {

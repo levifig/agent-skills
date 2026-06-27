@@ -13035,6 +13035,99 @@ status: drafting
 	}
 }
 
+func TestRunnerSpecStatusTransitionsThroughLifecycle(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-draft.md", `---
+id: SPEC-001
+title: Draft Spec
+status: draft
+---
+# Draft Spec
+`)
+	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}`)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
+		t.Fatalf("state migrate markdown --apply error = %v", err)
+	}
+
+	var firstOut bytes.Buffer
+	if err := (Runner{Stdout: &firstOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "status", "SPEC-001", "implementing", "--json"}); err != nil {
+		t.Fatalf("spec status implementing --json error = %v", err)
+	}
+	first := decodeSpecStatusResult(t, firstOut.Bytes())
+	if first.Previous != state.LifecycleStatusDraft || first.Status != state.LifecycleStatusInProgress {
+		t.Fatalf("first transition = %s -> %s, want draft -> in_progress", first.Previous, first.Status)
+	}
+	if first.EventID == "" {
+		t.Fatal("first transition missing event id")
+	}
+	if first.ContractVersion != state.StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", first.ContractVersion, state.StateJSONContractVersion)
+	}
+	if first.DatabaseScope != "global" || first.DatabasePath == "" || first.ProjectID == "" {
+		t.Fatalf("project context = %#v, want populated", first)
+	}
+
+	var secondOut bytes.Buffer
+	if err := (Runner{Stdout: &secondOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "status", "SPEC-001", "complete", "--json"}); err != nil {
+		t.Fatalf("spec status complete --json error = %v", err)
+	}
+	second := decodeSpecStatusResult(t, secondOut.Bytes())
+	if second.Previous != state.LifecycleStatusInProgress || second.Status != state.LifecycleStatusDone {
+		t.Fatalf("second transition = %s -> %s, want in_progress -> done", second.Previous, second.Status)
+	}
+
+	var showOut bytes.Buffer
+	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "show", "SPEC-001", "--json"}); err != nil {
+		t.Fatalf("spec show --json error = %v", err)
+	}
+	show := decodeSpecShow(t, showOut.Bytes())
+	if show.Spec.Status != state.LifecycleStatusDone {
+		t.Fatalf("spec show status = %q, want done", show.Spec.Status)
+	}
+
+	var humanOut bytes.Buffer
+	if err := (Runner{Stdout: &humanOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "status", "SPEC-001", "todo"}); err != nil {
+		t.Fatalf("spec status human error = %v", err)
+	}
+	output := humanOut.String()
+	for _, want := range []string{"spec SPEC-001", "scope: global database", "status: done -> todo", "event:"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
+	}
+}
+
+func TestRunnerSpecStatusRejectsInvalidStatus(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-draft.md", `---
+id: SPEC-001
+title: Draft Spec
+status: draft
+---
+# Draft Spec
+`)
+	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}`)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
+		t.Fatalf("state migrate markdown --apply error = %v", err)
+	}
+
+	err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "status", "SPEC-001", "bogus"})
+	if err == nil {
+		t.Fatal("spec status bogus error = nil, want error")
+	}
+
+	var showOut bytes.Buffer
+	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "show", "SPEC-001", "--json"}); err != nil {
+		t.Fatalf("spec show --json error = %v", err)
+	}
+	show := decodeSpecShow(t, showOut.Bytes())
+	if show.Spec.Status != state.LifecycleStatusDraft {
+		t.Fatalf("spec show status = %q, want draft (unchanged)", show.Spec.Status)
+	}
+}
+
 func TestRunnerSpecArchiveUsesMarkdownIndexWhenMarkdownOnly(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -15518,6 +15611,15 @@ func decodeSpecCreateResult(t *testing.T, data []byte) state.SpecCreateResult {
 func decodeSpecShow(t *testing.T, data []byte) state.SpecShow {
 	t.Helper()
 	var result state.SpecShow
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeSpecStatusResult(t *testing.T, data []byte) state.SpecStatusResult {
+	t.Helper()
+	var result state.SpecStatusResult
 	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
 	}

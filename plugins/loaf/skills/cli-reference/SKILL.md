@@ -417,6 +417,7 @@ Project IDs are stable SQLite identities, not path or name hashes. Use
 | `loaf project identity` | Alias for project show |
 | `loaf project rename` | Rename the friendly project name |
 | `loaf project move` | Record a checkout path move |
+| `loaf project delete` | Permanently delete a project and every dependent row across all entity tables |
 
 **Options:**
 
@@ -439,6 +440,11 @@ Project IDs are stable SQLite identities, not path or name hashes. Use
   - `--to <path>` - New absolute project path; defaults to the current project root
   - `--dry-run` - Validate and preview without writing
   - `--json` - Output project ID, friendly name, current path, database path, and applied status as JSON
+
+- `loaf project delete`:
+  - `<project-id>` - Project id, friendly name, or current path
+  - `--yes` - Confirm the destructive delete (required)
+  - `--json` - Output removed-row counts and global database scope as JSON
 
 **Usage:**
 ```bash
@@ -593,9 +599,11 @@ status and relationship data when initialized.
 | `loaf spec new` | Create a spec in SQLite state |
 | `loaf spec list` | Show specs with status and task counts |
 | `loaf spec show` | Show spec details |
+| `loaf spec status` | Set a spec's lifecycle status (draft, todo, in_progress, done, archived) |
 | `loaf spec render` | Render deterministic spec Markdown to the XDG cache |
 | `loaf spec finalize` | Write deterministic spec Markdown to its tracked git location |
 | `loaf spec archive` | Archive a completed spec |
+| `loaf spec delete` | Permanently delete a spec and every dependent row (aliases, bodies, search index, events, sources); leaves the on-disk render in place |
 
 **Options:**
 
@@ -616,6 +624,9 @@ status and relationship data when initialized.
 - `loaf spec show`:
   - `--json` - Output spec details, branch, source, resolved related specs, task counts, relationships, global database scope, and project identity as JSON
 
+- `loaf spec status`:
+  - `--json` - Output spec status transition, event, global database scope, and project identity as JSON
+
 - `loaf spec render`:
   - `--json` - Output render path, content hash, contract, global database scope, and project identity as JSON
 
@@ -624,6 +635,11 @@ status and relationship data when initialized.
 
 - `loaf spec archive`:
   - `--json` - Output archive result, archived specs, global database scope, and project identity as JSON
+
+- `loaf spec delete`:
+  - `<spec>` - Spec ref to delete
+  - `--yes` - Confirm the destructive delete (required)
+  - `--json` - Output removed-row counts, global database scope, and project identity as JSON
 
 **Usage:**
 ```bash
