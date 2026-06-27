@@ -6,7 +6,12 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Fixed
+
+- Corrected the stale `config/targets.yaml` amp target comment to reflect that Amp is a first-class target emitting skills plus an auto-generated TypeScript runtime plugin, not an experimental skills-only target.
+- Aligned SPEC-049 frontmatter status to `complete`, matching sibling specs and the canonical spec lifecycle vocabulary.
+- Renumbered the duplicate `ADR-017` install-convention decision to `ADR-018` and listed it in the decisions README.
+- Corrected ADR-017 to record that ADRs and knowledge live under `docs/`, not `.agents/`, fixing an ADR-013 factual error.
 
 ## [2.0.0-pre.20260625192947] - 2026-06-25
 

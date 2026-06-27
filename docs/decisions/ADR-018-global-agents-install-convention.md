@@ -1,4 +1,4 @@
-# ADR-017: Global Agents Install Convention
+# ADR-018: Global Agents Install Convention
 
 ## Status
 

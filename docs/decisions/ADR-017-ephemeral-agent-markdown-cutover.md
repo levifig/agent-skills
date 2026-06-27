@@ -44,6 +44,13 @@ the operational routing surface. Project-scoped state still stands; the state is
 now the SQLite noun model, with Markdown only as compatibility import, export,
 or deterministic render.
 
+This also corrects a factual error in ADR-013's Decision, which lists "ADRs,
+knowledge" among the artifact kinds that "all live in one place" under
+`.agents/`. They do not: ADRs live in `docs/decisions/` and knowledge lives in
+`docs/` (Tier-2, git-native). ADR-013's project-scoped-resolution rule governs
+only the artifact kinds that actually live under `.agents/`; the `docs/` tree is
+git-native and outside that resolver.
+
 ## Consequences
 
 ### Positive

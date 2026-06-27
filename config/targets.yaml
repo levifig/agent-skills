@@ -38,6 +38,6 @@ targets:
 
   amp:
     output: dist/amp/
-    # Experimental Amp target
-    # Skills only - no sidecar merge, standard SKILL.md
-    # Runtime plugin at .amp/plugins/loaf.ts (auto-generated)
+    # First-class Amp target
+    # Skills (standard SKILL.md, no sidecar merge) + auto-generated runtime
+    # plugin at .amp/plugins/loaf.ts

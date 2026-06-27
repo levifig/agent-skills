@@ -6,7 +6,7 @@ source_sessions:
   - id: 20260621-001541-session
     role: shaped
 created: 2026-06-22T09:13:21Z
-status: done
+status: complete
 branch: feat/status-vocabulary-unification
 ---
 
