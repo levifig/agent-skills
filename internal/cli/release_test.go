@@ -323,6 +323,39 @@ func TestRunnerReleaseDryRunIsNative(t *testing.T) {
 	}
 }
 
+func TestRunnerReleaseDryRunStopsWhenNoUnreleasedChanges(t *testing.T) {
+	repo := seedReleaseTaggedRepo(t)
+	var stdout bytes.Buffer
+
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+	}.Run([]string{"release", "--dry-run"})
+	if err != nil {
+		t.Fatalf("release --dry-run error = %v\n%s", err, stdout.String())
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"Commits since tag:",
+		"No unreleased changes found.",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("stdout = %q, want %q", output, want)
+		}
+	}
+	for _, unwanted := range []string{
+		"Generated changelog:",
+		"Version files:",
+		"Suggested bump:",
+		"New version:",
+		"Actions:",
+	} {
+		if strings.Contains(output, unwanted) {
+			t.Fatalf("stdout = %q, did not want %q for empty release range", output, unwanted)
+		}
+	}
+}
+
 func TestRunnerReleaseDryRunValidatesFlagsNatively(t *testing.T) {
 	repo := seedReleaseDryRunRepo(t, "fix: keep validation native")
 	err := Runner{
@@ -385,7 +418,7 @@ func TestRunnerReleaseDryRunNormalizesSkipFlagsNatively(t *testing.T) {
 
 func TestRunnerReleaseDryRunPreMergeOverridesAreNative(t *testing.T) {
 	repo := seedReleaseDryRunRepo(t, "fix: prepare release branch natively")
-	gitCLI(t, repo, "config", "loaf.release.base", "HEAD")
+	gitCLI(t, repo, "config", "loaf.release.base", "v1.0.0")
 
 	tests := []struct {
 		name       string
@@ -401,19 +434,19 @@ func TestRunnerReleaseDryRunPreMergeOverridesAreNative(t *testing.T) {
 		},
 		{
 			name:       "tag override",
-			args:       []string{"release", "--dry-run", "--pre-merge", "--tag", "--base", "HEAD"},
+			args:       []string{"release", "--dry-run", "--pre-merge", "--tag", "--base", "v1.0.0"},
 			wantErr:    []string{"--tag overrides --pre-merge default"},
 			wantOut:    []string{"--no-gh — skipped"},
 			notWantOut: []string{"--no-tag — skipped"},
 		},
 		{
 			name:    "gh override warning",
-			args:    []string{"release", "--dry-run", "--pre-merge", "--gh", "--base", "HEAD"},
+			args:    []string{"release", "--dry-run", "--pre-merge", "--gh", "--base", "v1.0.0"},
 			wantErr: []string{"--gh overrides --pre-merge default"},
 		},
 		{
 			name:       "tag and gh override",
-			args:       []string{"release", "--dry-run", "--pre-merge", "--tag", "--gh", "--base", "HEAD"},
+			args:       []string{"release", "--dry-run", "--pre-merge", "--tag", "--gh", "--base", "v1.0.0"},
 			wantErr:    []string{"--tag overrides --pre-merge default", "--gh overrides --pre-merge default"},
 			notWantOut: []string{"--no-tag — skipped", "--no-gh — skipped"},
 		},
@@ -601,6 +634,15 @@ func TestRunnerReleaseRefusesUnignoredVirtualenvFromUvSyncNatively(t *testing.T)
 
 func seedReleaseDryRunRepo(t *testing.T, commitSubject string) string {
 	t.Helper()
+	repo := seedReleaseTaggedRepo(t)
+	writeFile(t, filepath.Join(repo, "feature.txt"), commitSubject+"\n")
+	gitCLI(t, repo, "add", "feature.txt")
+	gitCLI(t, repo, "commit", "-m", commitSubject)
+	return repo
+}
+
+func seedReleaseTaggedRepo(t *testing.T) string {
+	t.Helper()
 	repo := realpath(t, t.TempDir())
 	gitCLI(t, repo, "init", "-b", "main")
 	gitCLI(t, repo, "config", "user.name", "Loaf Test")
@@ -619,9 +661,6 @@ func seedReleaseDryRunRepo(t *testing.T, commitSubject string) string {
 	gitCLI(t, repo, "add", ".")
 	gitCLI(t, repo, "commit", "-m", "chore: initial release")
 	gitCLI(t, repo, "tag", "v1.0.0")
-	writeFile(t, filepath.Join(repo, "feature.txt"), commitSubject+"\n")
-	gitCLI(t, repo, "add", "feature.txt")
-	gitCLI(t, repo, "commit", "-m", commitSubject)
 	return repo
 }
 

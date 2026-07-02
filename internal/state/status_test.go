@@ -613,6 +613,30 @@ VALUES ('relationship-without-origin', ?, 'task', 'task-one', 'spec', 'spec-one'
 	}
 }
 
+func TestInspectAcceptsCommandRelationshipOrigin(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	if _, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+
+	projectID := projectIDForTest(t, store, root)
+	if _, err := store.db.ExecContext(context.Background(), `
+	INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+	VALUES ('relationship-from-command', ?, 'task', 'task-one', 'spec', 'spec-one', 'implements', 'recorded by task create', 'command', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+	`, projectID); err != nil {
+		t.Fatalf("insert command relationship error = %v", err)
+	}
+
+	status, err := Inspect(root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	assertNoDiagnostic(t, status.Diagnostics, "relationship-origin-unknown")
+}
+
 func TestInspectReportsInvalidBackendMappingMissingEntity(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()

@@ -790,7 +790,7 @@ WHERE origin IS NULL OR TRIM(origin) = ''
 	unknownRows, err := store.db.QueryContext(ctx, `
 SELECT origin, COUNT(*)
 FROM relationships
-WHERE origin IS NOT NULL AND TRIM(origin) != '' AND origin NOT IN ('imported', 'manual')
+WHERE origin IS NOT NULL AND TRIM(origin) != '' AND origin NOT IN ('imported', 'manual', 'command')
 GROUP BY origin
 ORDER BY origin
 `)

@@ -19,6 +19,11 @@ is a Loaf workflow staging section for curated entries before release.
 
 - **The entire `loaf session` command namespace, including `loaf session enrich`, with no compatibility alias** — `loaf session <anything>` now resolves to an unknown command. The SessionEnd hook and the `session` journal entry type are removed; hooks no longer write start/stop marker entries, and the SessionStart hook emits the derived continuity digest instead of mutating a session record.
 
+### Fixed
+
+- Treat command-authored relationship provenance as valid in `loaf state doctor`, avoiding a misleading `relationship-origin-unknown` repair prompt for rows created by current Loaf commands.
+- Stop `loaf release --dry-run` after reporting that no unreleased changes exist, instead of generating a bogus next-version release plan.
+
 ## [2.0.0-alpha.1] - 2026-06-27
 
 ### Added

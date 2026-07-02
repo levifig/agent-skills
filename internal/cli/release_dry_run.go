@@ -247,6 +247,7 @@ func runReleaseDryRun(root string, options releaseOptions, out io.Writer, errOut
 	}
 	if len(commits) == 0 {
 		fmt.Fprintf(out, "  %s\n\n", ansiGray("No unreleased changes found."))
+		return nil
 	}
 	for _, commit := range commits {
 		if commit.Section == "" {
