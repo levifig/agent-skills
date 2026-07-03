@@ -10,7 +10,7 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-05-22'
+last_reviewed: '2026-07-03'
 ---
 
 # Build System
@@ -42,14 +42,14 @@ Loaf compiles skills, agents, and hooks from a single source tree into multiple 
 
 ### Notes
 
-- **Claude Code** bundles a self-contained `loaf` binary in `plugins/loaf/bin/loaf` for hook execution. Hooks are registered in `hooks/hooks.json` (inside the plugin directory), not in `plugin.json`. `plugin.json` silently drops non-matcher session lifecycle events — a key SPEC-030 finding.
+- **Claude Code** bundles a self-contained `loaf` binary in `plugins/loaf/bin/loaf` for hook execution. Hooks are registered in `hooks/hooks.json` (inside the plugin directory), not in `plugin.json`. `plugin.json` silently drops non-matcher session events — a key SPEC-030 finding.
 - **OpenCode and Amp** generate runtime plugins (`hooks.ts` / `.amp/plugins/loaf.ts`) that implement enforcement hooks via subprocess calls to `loaf check`.
 - **Codex** generates `.codex/hooks.json` for Bash-matching enforcement hooks.
 - **MCP servers** are not bundled. `loaf install` detects and recommends MCPs at install time; integration state stored in `.agents/loaf.json`.
 
 ### Hook Registration (Claude Code)
 
-Claude Code has a split registration model: `plugin.json` handles the plugin manifest (skills, agents, metadata) while `hooks/hooks.json` handles all hook registrations. This split exists because `plugin.json` silently drops session lifecycle events (SessionStart, SessionEnd, TaskCompleted, etc.) that lack a `matcher` field. All hooks — enforcement, instruction, journal, and session lifecycle — are registered in `hooks/hooks.json` for reliable dispatch.
+Claude Code has a split registration model: `plugin.json` handles the plugin manifest (skills, agents, metadata) while `hooks/hooks.json` handles all hook registrations. This split exists because `plugin.json` silently drops session events (SessionStart, PreCompact, PostCompact, TaskCompleted, etc.) that lack a `matcher` field. All hooks — enforcement, instruction, journal, and conversation — are registered in `hooks/hooks.json` for reliable dispatch.
 
 ## Fenced Sections
 

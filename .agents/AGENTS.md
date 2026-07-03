@@ -21,7 +21,7 @@ cli/                            # CLI tool (TypeScript, bundled by tsup)
 │   ├── build.ts                # loaf build
 │   ├── check.ts                # loaf check
 │   ├── install.ts              # loaf install
-│   └── session.ts              # loaf session
+│   └── journal.ts              # loaf journal
 └── lib/
     ├── build/                  # Build system
     │   ├── types.ts            # Shared types
@@ -62,7 +62,7 @@ See [SOUL.md](../SOUL.md) for the Warden identity and fellowship conventions.
 | **implementer** | Smith (Dwarf) | Full write | Code, tests, config, docs — speciality via skills |
 | **reviewer** | Sentinel (Elf) | Read-only | Audits, reviews — mechanical independence |
 | **researcher** | Ranger (Human) | Read + web | Research, comparison — structured reports |
-| **librarian** | Librarian (Ent) | Read + Edit (.agents/) | Session lifecycle, state, wrap, pre-compaction preservation |
+| **librarian** | Librarian (Ent) | Read + Edit (.agents/) | Project journal, durable artifacts, wrap checkpoints, pre-compaction preservation |
 | **background-runner** | System | Read + Edit | Async non-blocking tasks |
 
 ## Common Tasks
@@ -77,22 +77,26 @@ See [SOUL.md](../SOUL.md) for the Warden identity and fellowship conventions.
 
 ## Skill Development
 
-### Session Journal Self-Logging
+### Journal Self-Logging
 
-User-invocable workflow skills must log their invocation to the session journal as their first action. Include context — arguments, intent, or what triggered the invocation:
+User-invocable workflow skills must log their invocation to the project journal as their first action. Include context — arguments, intent, or what triggered the invocation:
 
 ```bash
-loaf session log "skill(shape): shaping auth token rotation idea into spec"
-loaf session log "skill(housekeeping): routine cleanup, no specific trigger"
-loaf session log "skill(wrap): end-of-session summary"
-loaf session log "skill(implement): TASK-042 — add PAUSE headers to session end"
+loaf journal log "skill(shape): shaping auth token rotation idea into spec"
+loaf journal log "skill(housekeeping): routine cleanup, no specific trigger"
+loaf journal log "skill(wrap): end-of-conversation checkpoint"
+loaf journal log "skill(implement): TASK-042 — journal-first hook rewrite"
 ```
 
-This creates an audit trail of which skills ran during a session. `/wrap` uses these entries to check whether housekeeping or other periodic skills were run.
+There is no start step and no "active session" to find — the current branch and an opaque `harness_session_id` are attached automatically. This creates an audit trail of which skills ran; `/wrap` reads recent entries to check whether housekeeping or other periodic skills were run.
 
 ### Canonical Session Model
 
-`wrap` is the canonical session model. Operational session truth lives in SQLite; use `loaf session start` to find or create the active session, `loaf session log "type(scope): desc"` for journal entries, and `loaf session end --wrap` to close a wrapped session. Markdown is a rendered view or compatibility export, not a hand-authored source surface.
+The project journal is the canonical session model, and it is the only session-related structure. Journal entries are project-scoped events stored in SQLite (`journal_entries`, `project_id NOT NULL`), each tagged with a `harness_session_id` that correlates one conversation's entries. There is no session entity, no lifecycle, and no status — nobody opens, closes, or transitions anything, so concurrent conversations across branches, worktrees, and harnesses are safe by construction. Log entries with `loaf journal log "type(scope): desc"`; read with `loaf journal recent`, `loaf journal context`, `loaf journal search`, and `loaf journal show`. Rendered markdown is a projection, not a hand-authored source surface.
+
+**Wrap is an optional checkpoint, not a lifecycle transition.** Write a `wrap` entry only when a conversation holds synthesis worth saving — "tried X, abandoned because Y, next is Z" — the connective narrative that evaporates with the context window. Nothing is ever "unwrapped"; a conversation that ends without one leaves a perfectly valid journal.
+
+**Continuity is derived and ephemeral.** At conversation start the SessionStart hook runs `loaf journal context --from-hook` to emit a layered digest — the latest project wrap, recent branch entries, and open tasks — computed at read time and never persisted. Subagent invocations exit silently and write nothing.
 
 ### Naming Conventions
 
@@ -233,14 +237,13 @@ Artifact format templates (session renders, specs, ADRs, task files) live in `te
 ```yaml
 # targets.yaml
 shared-templates:
-  session.md: [implement, orchestration, review-sessions]
-  plan.md: [implement, council]
+  journal.md: [implement, orchestration, housekeeping, bootstrap]
   adr.md: [architecture, reflect]
 ```
 
 **Reference pattern in SKILL.md:**
 ```markdown
-Use [templates/session.md](templates/session.md) for rendered session journal format.
+Use [templates/journal.md](templates/journal.md) for the project journal render and entry-format reference.
 ```
 
 **Templates vs references:**
@@ -329,38 +332,31 @@ Brief intro paragraph.
 Reference skills provide background knowledge Claude loads automatically.
 Users shouldn't invoke `/python-development` directly.
 
-### Session Journal Vocabulary
+### Journal Vocabulary
 
-Session journals live in SQLite and render to a **compact inline format** — append-only structured logs. Think "conventional commits meets bullet journal."
+The project journal lives in SQLite and renders to a **compact inline format** — append-only structured logs. Think "conventional commits meets bullet journal." It is project-scoped, not session-scoped; there is no session entity, status, or lifecycle.
 
 | Term | Meaning |
 |------|---------|
-| **Session** | A SQLite-backed work record with compact inline journal entries |
-| **Session Render** | Markdown view produced from SQLite state |
-| **Session Row** | SQLite record containing branch, status, timestamps, and harness identity |
-| **Journal Entry** | `[YYYY-MM-DD HH:MM] type(scope): description` |
-| **Entry Type** | `session`, `commit`, `decision`, `discover`, `block`, `unblock`, `spark`, `todo`, etc. |
+| **Project Journal** | The SQLite `journal_entries` record for a project — every conversation writes into it |
+| **Journal Render** | Markdown projection produced from SQLite state (`loaf journal export`) |
+| **Journal Entry** | `[YYYY-MM-DD HH:MM] type(scope): description`, tagged with an opaque `harness_session_id` |
+| **Entry Type** | `skill`, `commit`, `decision`, `discover`, `block`, `unblock`, `spark`, `todo`, `finding`, `wrap` |
+| **Wrap** | Optional end-of-conversation checkpoint entry — synthesis worth saving, never a transition |
 | **Burst** | Entries grouped without blank lines |
-| **Archive** | Completed sessions marked archived with `loaf session archive` |
 
-**Session Status Values:** `active`, `stopped`, `done`, `archived` until SPEC-049 unifies vocabulary.
+There are no session statuses: nothing is `active`, `paused`, `stopped`, `done`, or `archived`, because there is no session to be in a state.
 
 **Entry Format:**
 ```markdown
-[YYYY-MM-DD HH:MM] session(start):  === SESSION STARTED ===
-[YYYY-MM-DD HH:MM] decision(scope): description
+[YYYY-MM-DD HH:MM] skill(implement): implementing TASK-042
+[YYYY-MM-DD HH:MM] decision(scope): chose X because Y
 [YYYY-MM-DD HH:MM] commit(abc1234): message
-[YYYY-MM-DD HH:MM] session(end): at commit abc1234, 3 commits, 1 decision
-[YYYY-MM-DD HH:MM] session(stop):   === SESSION STOPPED ===
-
-[YYYY-MM-DD HH:MM] session(resume): === SESSION RESUMED ===
-[YYYY-MM-DD HH:MM] session(context): from commit abc1234
+[YYYY-MM-DD HH:MM] discover(scope): learned Z from file/path
+[YYYY-MM-DD HH:MM] wrap(scope): tried X, abandoned because Y, next is Z
 ```
 
-**Blank line rules:**
-- `session(stop)` has one blank line after, not before
-- `session(start)` and `session(resume)` have no blank line after
-- No other automatic blank lines
+See [templates/journal.md](../content/templates/journal.md) for the full entry-type table and format rules.
 
 ## Build System
 
@@ -373,9 +369,9 @@ loaf install --to all          # Install to all detected tools
 loaf install --to cursor       # Install to specific tool
 loaf install --upgrade         # Update already-installed targets
 loaf check                     # Run enforcement hooks manually
-loaf session list              # List active sessions
-loaf session start <desc>      # Start new session
-loaf session end <file>        # End/archive session
+loaf journal log "type(scope): desc"  # Append a project journal entry
+loaf journal recent            # Show the recent journal timeline
+loaf journal context           # Emit the layered continuity digest
 ```
 
 ### Development
@@ -397,7 +393,7 @@ throwaway state, set `LOAF_DB` to an absolute path on a temp file:
 
 ```bash
 export LOAF_DB="$(mktemp -d)/loaf.sqlite"
-loaf session list        # operates on the isolated DB
+loaf journal recent      # operates on the isolated DB
 rm -f "$LOAF_DB"         # clean up when done
 ```
 
@@ -455,7 +451,7 @@ Three dispatch types control how a hook executes:
 | Type | Field | Behavior |
 |------|-------|----------|
 | `script` (default) | `script:` | Runs a shell script |
-| `command` | `command:` | Runs a CLI command (e.g., `loaf session log --from-hook`) |
+| `command` | `command:` | Runs a CLI command (e.g., `loaf journal log --from-hook`) |
 | `prompt` | `prompt:` | Injects text directly to the AI model |
 
 ### Hook Fields
@@ -488,10 +484,10 @@ hooks:
       command: loaf check --hook check-secrets
       failClosed: true
       matcher: "Bash"
-    - id: session-nudge
+    - id: journal-nudge
       skill: orchestration
       type: prompt
-      prompt: "Log important decisions to the session journal."
+      prompt: "Log important decisions to the project journal."
       if: "Bash(git commit:*)"
 ```
 
@@ -529,10 +525,10 @@ Configure target-specific behavior and sidecars.
 - [Claude Code Skills Documentation](https://code.claude.com/docs/en/skills)
 
 <!-- loaf:managed:start v2.0.0-dev.44 -->
-<!-- Maintained by loaf install/upgrade — do not edit manually -->
+<!-- Maintained by loaf install/upgrade - do not edit manually -->
 ## Loaf Framework
 
-**Session Journal Entry Types:**
+**Journal Entry Types:**
 - `decision(scope)`: Key decisions with rationale
 - `discover(scope)`: Something learned
 - `block(scope)` / `unblock(scope)`: Blockers and resolutions
@@ -540,12 +536,12 @@ Configure target-specific behavior and sidecars.
 - `todo(scope)`: Action items to promote to tasks
 
 **CLI Commands:**
-- `loaf session start/end/log/archive` — Session management
-- `loaf check` — Run enforcement hooks
-- `loaf task/spec/kb` — Task and knowledge management
+- `loaf journal log/recent/search/context` - Project journal
+- `loaf check` - Run enforcement hooks
+- `loaf task/spec/kb` - Task and knowledge management
 
 **Journal Discipline:**
-Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf session log "type(scope): description"`. Entry types: `decision`, `discover`, `wrap`. Do not defer journaling — log before responding.
+Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf journal log "type(scope): description"`. Entry types: `decision`, `discover`, `wrap`. Do not defer journaling - log before responding.
 
 See [orchestration skill](skills/orchestration/SKILL.md) for full details.
 <!-- loaf:managed:end -->

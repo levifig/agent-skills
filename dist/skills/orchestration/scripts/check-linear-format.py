@@ -57,7 +57,6 @@ def check_linear_format(content: str) -> tuple[list[str], list[str]]:
         agent_patterns = [
             r'\bspawned\s+(implementer|reviewer|researcher)',
             r'\bcouncil\s+decision',
-            r'\bsession\s+file',
         ]
         for pattern in agent_patterns:
             if re.search(pattern, line, re.IGNORECASE):

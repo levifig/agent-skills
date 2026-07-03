@@ -36,7 +36,7 @@ Capture ideas quickly with minimal friction.
 - One idea per captured row/artifact -- keep them atomic
 - No shaping here -- that's what `/shape` is for
 - Capture through `loaf idea capture --title ...` when SQLite state is
-  initialized; log notable context with `loaf session log`
+  initialized; log notable context with `loaf journal log`
 
 ## Verification
 

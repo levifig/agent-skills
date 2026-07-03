@@ -13,7 +13,7 @@ type: brainstorm
 created: YYYY-MM-DDTHH:MM:SSZ
 status: active         # active (has unprocessed sparks) | archived
 tags: []
-related: []            # Optional: idea aliases, spec IDs, session aliases, report refs
+related: []            # Optional: idea aliases, spec IDs, journal entries, report refs
 ---
 
 # Brainstorm: [Topic]

@@ -238,7 +238,7 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 		`const postToolHooks: Record<string, HookEntry[]> = {`,
 		`"script": "post-tool/kb-staleness-nudge.sh"`,
 		`const sessionHooks: Record<string, HookEntry[]> = {`,
-		`"command": "loaf session start"`,
+		`"command": "loaf journal context --from-hook"`,
 	} {
 		if !strings.Contains(plugin, want) {
 			t.Fatalf("amp plugin = %q, want %q", plugin, want)
@@ -312,7 +312,7 @@ func TestRunnerBuildTargetCursorRunsNativeTarget(t *testing.T) {
 		`"postToolUse": [`,
 		`"command": "bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh"`,
 		`"sessionStart": [`,
-		`"command": "loaf session start"`,
+		`"command": "loaf journal context --from-hook"`,
 	} {
 		if !strings.Contains(hooksJSON, want) {
 			t.Fatalf("cursor hooks.json = %q, want %q", hooksJSON, want)
@@ -476,7 +476,7 @@ func TestRunnerBuildTargetClaudeCodeRunsNativeTarget(t *testing.T) {
 		`"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" task refresh"`,
 		`"command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/kb-staleness-nudge.sh"`,
 		`"SessionStart": [`,
-		`"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" session start"`,
+		`"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" journal context --from-hook"`,
 	} {
 		if !strings.Contains(hooksJSON, want) {
 			t.Fatalf("claude hooks.json = %q, want %q", hooksJSON, want)
@@ -927,9 +927,9 @@ func seedNativeCodexBuildFixture(t *testing.T, root string) {
 		"  session:",
 		"    - id: session-start-loaf",
 		"      type: command",
-		"      command: 'loaf session start'",
+		"      command: 'loaf journal context --from-hook'",
 		"      event: SessionStart",
-		"      description: Start session journal",
+		"      description: Emit the layered continuity digest at conversation start",
 		"",
 	}, "\n"))
 	writeFile(t, filepath.Join(root, "content", "skills", "demo", "SKILL.md"), strings.Join([]string{

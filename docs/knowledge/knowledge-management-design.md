@@ -8,7 +8,7 @@ topics:
 covers:
   - internal/cli/kb.go
   - docs/knowledge/*.md
-last_reviewed: '2026-06-11'
+last_reviewed: '2026-07-03'
 ---
 
 # Knowledge Management Design
@@ -60,11 +60,11 @@ No AI coding tool does this today. The `covers:` field links knowledge to code p
 
 This reminds the agent that exploration artifacts exist and may need processing.
 
-**SessionEnd hook** prompts for both knowledge consolidation AND spark capture:
+**PreCompact hook and `/wrap`** prompt for both knowledge consolidation AND spark capture:
 - "You modified 3 paths covered by knowledge files. Any updates needed?"
-- "This session involved exploration. Any sparks worth noting?"
+- "This conversation involved exploration. Any sparks worth noting?"
 
-If the session produced a brainstorm document, reminds about the `## Sparks` section.
+Journal-first (SPEC-056) removed the SessionEnd hook, so this nudge lives at the PreCompact journal-flush point and in the voluntary `/wrap` checkpoint rather than a session-close event. If the conversation produced a brainstorm document, it reminds about the `## Sparks` section.
 
 ## The Original Problem (5 Overlapping Surfaces)
 

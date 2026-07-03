@@ -295,7 +295,7 @@ const preToolHooks: Record<string, HookEntry[]> = {
     },
     {
       "id": "detect-linear-magic",
-      "command": "loaf session log --detect-linear",
+      "command": "loaf journal log --detect-linear",
       "timeout": 30000,
       "failClosed": false,
       "if": "Bash(git commit:*)"
@@ -328,14 +328,14 @@ const postToolHooks: Record<string, HookEntry[]> = {
     },
     {
       "id": "journal-git-events",
-      "command": "loaf session log --from-hook",
+      "command": "loaf journal log --from-hook",
       "timeout": 30000,
       "failClosed": false,
       "if": "Bash(git commit:*)"
     },
     {
       "id": "journal-gh-events",
-      "command": "loaf session log --from-hook",
+      "command": "loaf journal log --from-hook",
       "timeout": 30000,
       "failClosed": false,
       "if": "Bash(gh pr:*)"
@@ -347,15 +347,7 @@ const sessionHooks: Record<string, HookEntry[]> = {
   "sessionstart": [
     {
       "id": "session-start-loaf",
-      "command": "loaf session start",
-      "timeout": 60000,
-      "failClosed": false
-    }
-  ],
-  "sessionend": [
-    {
-      "id": "session-end-loaf",
-      "command": "loaf session end --if-active",
+      "command": "loaf journal context --from-hook",
       "timeout": 60000,
       "failClosed": false
     }
@@ -363,7 +355,7 @@ const sessionHooks: Record<string, HookEntry[]> = {
   "taskcompleted": [
     {
       "id": "journal-task-completed",
-      "command": "loaf session log --from-hook",
+      "command": "loaf journal log --from-hook",
       "timeout": 30000,
       "failClosed": false
     }
@@ -371,7 +363,7 @@ const sessionHooks: Record<string, HookEntry[]> = {
   "userpromptsubmit": [
     {
       "id": "session-context-inject",
-      "command": "loaf session context for-prompt",
+      "command": "loaf journal context for-prompt",
       "timeout": 5000,
       "failClosed": false
     }
@@ -379,7 +371,7 @@ const sessionHooks: Record<string, HookEntry[]> = {
   "precompact": [
     {
       "id": "pre-compact",
-      "command": "loaf session context for-compact",
+      "command": "loaf journal context for-compact",
       "timeout": 60000,
       "failClosed": false
     }
@@ -387,7 +379,7 @@ const sessionHooks: Record<string, HookEntry[]> = {
   "postcompact": [
     {
       "id": "post-compact",
-      "command": "loaf session context for-resumption",
+      "command": "loaf journal context for-resumption",
       "timeout": 60000,
       "failClosed": false
     }

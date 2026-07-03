@@ -37,7 +37,7 @@ Decompose specifications into atomic, implementable tasks.
 - **Update spec status** -- mark the spec as `implementing` after tasks are created
 - **One backend only** -- in Linear-native mode create Linear issues and NO local `TASK-NNN.md`; in local mode create local tasks and make NO Linear calls
 - **Spec file is always local** -- in both modes, the spec stays in `.agents/specs/`. The Linear parent issue, when present, is a rollup pointing to the spec, not a re-host of it
-- **Log outcome** -- log breakdown to session journal: `loaf session log "decision(breakdown): SPEC-NNN → N tasks created"`
+- **Log outcome** -- log breakdown to the project journal: `loaf journal log "decision(breakdown): SPEC-NNN → N tasks created"`
 
 ---
 
@@ -119,7 +119,7 @@ If `integrations.linear.enabled` is `true`, proceed in **Linear-native mode**.
 Otherwise, proceed in **Local-tasks mode**.
 
 If `.agents/loaf.json` is missing, default to local-tasks and note the
-assumption in the session journal.
+assumption in the project journal.
 
 ---
 

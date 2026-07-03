@@ -61,9 +61,9 @@ const TEST_CASES = {
     "Decompose this plan into atomic work items",
   ],
   "cli-reference": [
-    "Which loaf command lists native sessions?",
+    "Which loaf command shows the recent project journal?",
     "Show me the Loaf CLI command for task status",
-    "What flags does loaf session show support?",
+    "What flags does loaf journal recent support?",
   ],
   council: [
     "Convene a council on this architecture decision",

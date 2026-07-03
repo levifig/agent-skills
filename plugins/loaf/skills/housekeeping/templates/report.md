@@ -20,5 +20,4 @@ tags: []
 
 **Archive prerequisites:**
 - Status is `done`
-- Linked session is archived
 - `archived_at` and `archived_by` are set

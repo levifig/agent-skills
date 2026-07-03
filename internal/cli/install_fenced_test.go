@@ -7,6 +7,19 @@ import (
 	"testing"
 )
 
+func TestGenerateFencedContentIsJournalFirst(t *testing.T) {
+	content := generateFencedContent("2.0.0-test.1")
+	if strings.Contains(content, "loaf session") {
+		t.Fatalf("fenced content references deleted `loaf session` command:\n%s", content)
+	}
+	if !strings.Contains(content, "loaf journal log") {
+		t.Fatalf("fenced content missing `loaf journal log` guidance:\n%s", content)
+	}
+	if !strings.Contains(content, "loaf journal log/recent/search/context") {
+		t.Fatalf("fenced content missing journal CLI command listing:\n%s", content)
+	}
+}
+
 func TestInstallFencedSectionCreatesAppendsUpdatesAndSkips(t *testing.T) {
 	root := realpath(t, t.TempDir())
 	target := filepath.Join(root, ".agents", "AGENTS.md")

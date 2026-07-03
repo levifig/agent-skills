@@ -11,7 +11,7 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-05-22'
+last_reviewed: '2026-07-03'
 ---
 
 # Hook System
@@ -25,7 +25,7 @@ Hooks run at lifecycle events to enforce rules, inject context, and capture jour
 | **command** | `command:` | Runs a CLI command | `loaf check --hook check-secrets` |
 | **command** | `instruction:` | Injects markdown file content (rendered at build time) | `instructions/pre-merge.md` |
 | **prompt** | `prompt:` | Injects inline text into model context | Journal nudge reminder |
-| **script** | `script:` | Runs a shell/Python script | `hooks/session/compact.sh` |
+| **script** | `script:` | Runs a shell/Python script | `hooks/pre-commit/scan-secrets.sh` |
 
 Enforcement hooks without explicit `type:` auto-dispatch as `loaf check --hook <id>` at build time. Command hooks with `instruction:` instead of `command:` inject a markdown file's content as the hook output -- used for advisory checklists (pre-merge, pre-push, post-merge).
 
@@ -35,13 +35,13 @@ Enforcement hooks without explicit `type:` auto-dispatch as `loaf check --hook <
 |-------|--------|:---------:|----------|
 | PreToolUse | Before Edit/Write/Bash | Yes | Secrets check, security audit, commit validation |
 | PostToolUse | After Edit/Write/Bash | No | Task board refresh, KB staleness, journal auto-entries |
-| SessionStart | Session begins | No | Start session journal, surface context |
-| SessionEnd | Session ends | No | End session with progress summary |
-| PreCompact | Before context archival | No | State preservation, journal flush |
-| PostCompact | After context compaction | No | Resume from session file, restore working context |
+| SessionStart | Conversation begins | No | Emit the layered continuity digest |
+| PreCompact | Before context archival | No | Inject journal-flush guidance |
+| PostCompact | After context compaction | No | Re-emit the continuity digest |
 | UserPromptSubmit | Every user message | No | Context injection, orchestration conventions |
 | TaskCompleted | Task marked complete | No | Journal auto-entry for task events |
-| Stop | Session stops | No | Session state cleanup (caution: circularity risk) |
+
+There is no SessionEnd or Stop journal obligation under journal-first (SPEC-056): the SessionEnd hook was removed, and no hook writes back to a session record (the general Stop-circularity caution still governs any future stateful hook — see [ARCHITECTURE.md](../ARCHITECTURE.md#hook-type-behavioral-constraints)).
 
 ### Hook JSON Context
 
@@ -52,8 +52,8 @@ Harnesses pass JSON on stdin to hooks. Key fields:
 | `tool.name` / `tool_name` | pre-tool, post-tool | Which tool triggered the hook |
 | `tool.input` / `tool_input` | pre-tool, post-tool | Tool arguments (command, file_path, content) |
 | `tool_response` | post-tool only | Tool output (stdout/stderr); used by `--from-hook` to extract PR URLs |
-| `session_id` | session hooks | Claude session identifier; used for new-conversation detection |
-| `agent_id` | session hooks | Present only for subagents; `session start` skips when set (prevents subagent session creation) |
+| `session_id` | session hooks | Claude conversation identifier; recorded as the journal entry's `harness_session_id` |
+| `agent_id` | session hooks | Present only for subagents; journal `--from-hook` exits silently when set (subagents write nothing) |
 | `hook_event_name` | session events (TaskCompleted, etc.) | Event type identifier — session events use this instead of `tool_name` |
 | `task_subject`, `task_description` | TaskCompleted | Task details for journal logging |
 
@@ -73,7 +73,7 @@ Hooks are defined in `config/hooks.yaml` grouped under `pre-tool`, `post-tool`, 
 | `blocking` | No | `true` if hook can block tool execution |
 | `failClosed` | No | `true` to block on hook failure (enforcement hooks) |
 | `timeout` | No | Timeout in milliseconds |
-| `event` | No | Session event: `SessionStart`, `SessionEnd`, `PreCompact`, `PostCompact` |
+| `event` | No | Session event: `SessionStart`, `PreCompact`, `PostCompact`, `TaskCompleted`, `UserPromptSubmit` |
 
 ## Enforcement Hooks
 
@@ -107,12 +107,12 @@ Inject inline text into the model's context. Prompt hooks are binary gates — a
 
 | Hook | Event/Condition | Purpose |
 |------|-----------------|---------|
-| `session-pre-compact-nudge` | PreCompact | Require journal flush and state summary before compaction |
-| `session-post-compact-nudge` | PostCompact | Resume from session file after compaction |
+| `session-pre-compact-nudge` | PreCompact | Require journal flush and next-actions summary before compaction |
+| `session-post-compact-nudge` | PostCompact | Re-read the continuity digest after compaction |
 
 ## Journal Auto-Entry Hooks
 
-Command hooks that auto-log to the session journal via `loaf session log --from-hook`, which parses the hook JSON (including `tool_response` for PR URLs) to determine entry type:
+Command hooks that auto-log to the project journal via `loaf journal log --from-hook`, which parses the hook JSON (including `tool_response` for PR URLs) to determine entry type. `--from-hook` reads the harness payload on stdin and exits silently for subagent invocations:
 
 | Hook | Condition | Logs |
 |------|-----------|------|
@@ -120,24 +120,23 @@ Command hooks that auto-log to the session journal via `loaf session log --from-
 | `journal-gh-events` | `Bash(gh pr:*)` | PR creation and merges — `pr(create): title (#N)`, `pr(merge): #N merged` |
 | `journal-task-completed` | TaskCompleted event | Task completions — `task(complete): subject` |
 
-The `detect-linear-magic` hook runs as a pre-tool command (`loaf session log --detect-linear`) and only fires when Linear integration is enabled in `.agents/loaf.json`.
+The `detect-linear-magic` hook runs as a pre-tool command (`loaf journal log --detect-linear`) and only fires when Linear integration is enabled in `.agents/loaf.json`.
 
-## Session Lifecycle Hooks
+## Conversation Hooks
 
-Registered under `session:` in hooks.yaml with an `event:` field:
+Registered under `session:` in hooks.yaml with an `event:` field. Journal-first (SPEC-056) removed the session entity, so these hooks emit the derived continuity digest or auto-log events — none of them open, close, or mutate a session record:
 
 | Hook | Event | Dispatch | Purpose |
 |------|-------|----------|---------|
-| `session-start-loaf` | SessionStart | command (`loaf session start`) | Create/resume session, surface context |
-| `session-end-loaf` | SessionEnd | command (`loaf session end --if-active`) | End session with progress summary and KB follow-up |
-| `session-context-inject` | UserPromptSubmit | command (`loaf session context for-prompt`) | Injects session state and orchestration conventions on every user message |
-| `pre-compact` | PreCompact | command (`loaf session context for-compact`) | Log compact marker and inject journal flush instructions before compaction |
-| `post-compact` | PostCompact | command (`loaf session context for-resumption`) | Print session state, spec, journal, and git context for post-compaction resumption |
-| `session-pre-compact-nudge` | PreCompact | prompt | Require journal flush + state summary (see Prompt Hooks) |
-| `session-post-compact-nudge` | PostCompact | prompt | Resume from session file (see Prompt Hooks) |
-| `journal-task-completed` | TaskCompleted | command (`loaf session log --from-hook`) | Auto-logs task completions to journal |
+| `session-start-loaf` | SessionStart | command (`loaf journal context --from-hook`) | Emit the layered continuity digest (latest wrap + branch entries + open tasks); silent for subagents |
+| `session-context-inject` | UserPromptSubmit | command (`loaf journal context for-prompt`) | Inject implementation conventions on prompt submit |
+| `pre-compact` | PreCompact | command (`loaf journal context for-compact`) | Inject journal-flush guidance before compaction; writes nothing itself |
+| `post-compact` | PostCompact | command (`loaf journal context for-resumption`) | Re-emit the continuity digest for post-compaction resumption |
+| `session-pre-compact-nudge` | PreCompact | prompt | Require journal flush + next-actions summary (see Prompt Hooks) |
+| `session-post-compact-nudge` | PostCompact | prompt | Re-read the digest after compaction (see Prompt Hooks) |
+| `journal-task-completed` | TaskCompleted | command (`loaf journal log --from-hook`) | Auto-logs task completions to the journal |
 
-The `session start` command uses `agent_id` from hook JSON to detect subagents -- subagents skip session creation to avoid polluting the parent session.
+`loaf journal context --from-hook` and `loaf journal log --from-hook` use `agent_id` from hook JSON to detect subagents — subagent invocations exit silently and write nothing.
 
 ## Side-Effect Hooks
 

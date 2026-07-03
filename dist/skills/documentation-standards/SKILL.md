@@ -45,11 +45,11 @@ Standards for ADRs, API docs, changelogs, and diagrams.
   - File paths (`backend/`, `frontend/`, `.py`, `.ts`)
   - Implementation details without user benefit
   - Lists of file paths
-  - Internal spec/task/session IDs
+  - Internal spec/task IDs
   - Verbatim commit or PR-title dumps
 - **Good examples:**
   - "Add `loaf release --post-merge` guardrails for tagged GitHub releases"
-  - "Fix session journal routing when hook payloads are empty"
+  - "Fix journal context routing when hook payloads are empty"
   - "Document worktree-aware `.agents/` storage for linked checkouts"
 - **Version protection:**
   - Never modify version numbers (## [X.Y.Z]) without explicit user approval

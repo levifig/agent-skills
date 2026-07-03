@@ -32,7 +32,6 @@ type TaskDetail struct {
 	Priority  string        `json:"priority,omitempty"`
 	Spec      string        `json:"spec,omitempty"`
 	DependsOn []string      `json:"depends_on"`
-	Sessions  []string      `json:"sessions,omitempty"`
 	Sources   []TraceSource `json:"sources"`
 	Body      string        `json:"body,omitempty"`
 	CreatedAt string        `json:"created_at"`
@@ -132,10 +131,6 @@ WHERE tasks.project_id = ? AND tasks.id = ?
 	if err != nil {
 		return TaskDetail{}, err
 	}
-	sessions, err := s.taskSessionAliases(ctx, projectID, alias)
-	if err != nil {
-		return TaskDetail{}, err
-	}
 
 	sources := []TraceSource{}
 	body := ""
@@ -156,52 +151,9 @@ WHERE tasks.project_id = ? AND tasks.id = ?
 		Priority:  priority.String,
 		Spec:      specAlias.String,
 		DependsOn: dependencies,
-		Sessions:  sessions,
 		Sources:   sources,
 		Body:      body,
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
 	}, nil
-}
-
-func (s *Store) taskSessionAliases(ctx context.Context, projectID string, alias string) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `
-SELECT COALESCE(session_alias.alias, relationships.to_entity_id)
-FROM relationships
-JOIN aliases task_alias
-  ON task_alias.project_id = relationships.project_id
- AND task_alias.entity_kind = 'task'
- AND task_alias.entity_id = relationships.from_entity_id
- AND task_alias.namespace = 'task'
-LEFT JOIN aliases session_alias
-  ON session_alias.project_id = relationships.project_id
- AND session_alias.entity_kind = relationships.to_entity_kind
- AND session_alias.entity_id = relationships.to_entity_id
- AND session_alias.namespace = 'session'
-WHERE relationships.project_id = ?
-  AND relationships.from_entity_kind = 'task'
-  AND relationships.to_entity_kind = 'session'
-  AND relationships.relationship_type = 'associated_with'
-  AND task_alias.alias = ?
-ORDER BY session_alias.alias, relationships.to_entity_id
-`, projectID, alias)
-	if err != nil {
-		return nil, fmt.Errorf("query task sessions: %w", err)
-	}
-	defer rows.Close()
-
-	sessions := []string{}
-	for rows.Next() {
-		var session sql.NullString
-		if err := rows.Scan(&session); err != nil {
-			return nil, fmt.Errorf("scan task session: %w", err)
-		}
-		if session.Valid {
-			sessions = append(sessions, session.String)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate task sessions: %w", err)
-	}
-	return sessions, nil
 }

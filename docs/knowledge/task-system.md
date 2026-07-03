@@ -3,7 +3,7 @@ topics:
   - tasks
   - specs
   - shape-up
-  - sessions
+  - journal
   - orchestration
 covers:
   - .agents/specs/**/*.md
@@ -15,12 +15,12 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-05-22'
+last_reviewed: '2026-07-03'
 ---
 
 # Task System
 
-Loaf implements a Shape Up-inspired task management system: specs define bounded work, tasks break it down, sessions track execution.
+Loaf implements a Shape Up-inspired task management system: specs define bounded work, tasks break it down, the project journal records execution.
 
 ## Key Rules
 
@@ -33,7 +33,7 @@ Loaf implements a Shape Up-inspired task management system: specs define bounded
 ## Pipeline
 
 ```
-/shape → SPEC file → /breakdown → SQLite tasks → /implement → SQLite sessions → Done
+/shape → SPEC file → /breakdown → SQLite tasks → /implement → project journal → Done
 ```
 
 ## Structure
@@ -42,12 +42,12 @@ Loaf implements a Shape Up-inspired task management system: specs define bounded
 |----------|----------|---------|
 | Specs | `.agents/specs/SPEC-XXX-slug.md` | Bounded work definitions (scope, test conditions, priority order) |
 | Tasks | SQLite (`loaf task show/list`) | Individual work items (acceptance criteria, verification) |
-| Sessions | SQLite (`loaf session show/list`) | Execution context (linked to branch/spec) |
+| Journal | SQLite (`loaf journal recent/show`) | Project-scoped execution record across every conversation |
 
 `findAgentsDir()` remains relevant for durable `.agents/` content such as
 specs, reports, councils, handoffs, and project config. Ephemeral task,
-session, idea, spark, brainstorm, and draft records live in the global SQLite
-store after the SPEC-045 cutover.
+idea, spark, brainstorm, and draft records live in the global SQLite
+store after the SPEC-045 cutover; the journal is SQLite-native as well.
 
 ## TASKS.json
 
@@ -68,7 +68,7 @@ tracked ephemeral markdown returns.
 | `show <id>` | Display single task details |
 | `status` | Summary counts |
 | `create` | Create new task |
-| `update <id>` | Update metadata (status, priority, depends_on, session, spec) |
+| `update <id>` | Update metadata (status, priority, depends_on, spec) |
 | `archive [ids...]` | Archive completed tasks in SQLite state |
 | `refresh` | Compatibility diagnostic; no-op in SQLite-backed projects |
 | `sync` | Compatibility diagnostic; no-op in SQLite-backed projects |
@@ -80,28 +80,26 @@ tracked ephemeral markdown returns.
 | `list` | Show specs with status |
 | `archive [ids...]` | Move completed specs to `archive/` |
 
-### `loaf session`
+### `loaf journal`
 
 | Subcommand | Purpose |
 |------------|---------|
-| `start` | Start/resume session for current branch |
-| `end` | End session with progress summary |
-| `log [entry]` | Log entry to session journal |
-| `archive` | Archive completed session |
-| `housekeeping` | Detect orphan/split sessions and archive old done sessions |
-| `enrich [file]` | Record a native SQLite enrichment checkpoint; no markdown edit |
-| `list` | List all active and archived sessions |
+| `log [entry]` | Append a project-scoped journal entry |
+| `recent` | Show the recent journal timeline (`--branch`, `--since-last-wrap`) |
+| `search <query>` | Full-text search across the project journal |
+| `show <id>` | Read one journal entry |
+| `context` | Emit the layered continuity digest (latest wrap + branch entries + open tasks) |
+| `export` | Export the journal to Markdown or JSONL |
 
-## Session Lifecycle
+## Journal Model (SPEC-056)
 
-Sessions track execution context per branch in SQLite. Key behaviors:
+The project journal is the only session-related structure. There is no session
+entity, status, or lifecycle. Key behaviors:
 
-- **One session per harness session ID, not per branch.** `loaf session start` routes on the harness conversation id from the SessionStart hook. One conversation = one SQLite session record, regardless of branches visited.
-- **3-tier session routing (SPEC-032).** Session-mutating commands (`loaf session log`, `archive`, `enrich`, `end --wrap`) resolve their target through the native Go session router: `--session-id <id>` flag → hook stdin payload (`--from-hook` opt-in only) → branch-fallback (Tier 3 emits a visible stderr WARN so misroutes surface immediately).
-- **New-conversation detection.** When a new session starts with an id differing from the stored harness session id, the session writes resume entries. `loaf session end --wrap` persists wrapped state in SQLite.
-- **Subagent detection.** `agent_id` in hook JSON is only present for subagents. `session start` exits early when `agent_id` is set, preventing subagent sessions from polluting the parent journal.
-- **Branch rename recovery.** If a branch is renamed via `git branch -m`, session start detects the rename via reflog and updates both session and spec frontmatter.
-- **Session status values:** `active`, `stopped`, `done`, `blocked`, `archived`
+- **Project-scoped events, correlated by harness id.** `journal_entries` rows carry `project_id NOT NULL` and an opaque `harness_session_id` that groups one conversation's entries. Nobody opens, closes, or transitions anything.
+- **Concurrency-safe by construction.** Two conversations logging at once — across branches, worktrees, or harnesses — interleave rows with different `harness_session_id` tags, which is correct rather than corrupt. There is no router to misroute and no branch-fallback tier (SPEC-032's session router was superseded).
+- **Wrap is an optional checkpoint.** `loaf journal log "wrap(scope): …"` records synthesis worth saving; nothing is ever "unwrapped," and a conversation that ends without one leaves a valid journal.
+- **Continuity is derived and ephemeral.** The SessionStart hook runs `loaf journal context --from-hook` to emit a read-time digest that is shown, then discarded. Subagent invocations (`agent_id` present in hook JSON) exit silently and write nothing.
 
 ### Cross-Branch Reconciliation
 

@@ -222,12 +222,11 @@ var artifactBodyPathDirs = map[string]string{
 	"ideas":       "idea",
 	"plans":       "plan",
 	"reports":     "report",
-	"sessions":    "session",
 	"specs":       "spec",
 	"tasks":       "task",
 }
 
-var artifactBodyWriteBashPathRE = regexp.MustCompile(`(?:^|[\s"'=])(\.agents/(?:brainstorms|councils|drafts|handoffs|ideas|plans|reports|sessions|specs|tasks)(?:/archive)?/[^\s"'` + "`" + `;|&<>]+\.md)`)
+var artifactBodyWriteBashPathRE = regexp.MustCompile(`(?:^|[\s"'=])(\.agents/(?:brainstorms|councils|drafts|handoffs|ideas|plans|reports|specs|tasks)(?:/archive)?/[^\s"'` + "`" + `;|&<>]+\.md)`)
 
 func runNativeArtifactBodyWriteGuard(context checkHookContext) checkResult {
 	result := checkResult{Passed: true, Warnings: []string{}, Errors: []string{}, Findings: []string{}}
@@ -557,8 +556,6 @@ func artifactBodyWriteCommand(kind string, path string) string {
 		return "loaf plan new --title <title> --body-file <path>"
 	case "report":
 		return "loaf report create <slug> --body-file <path>"
-	case "session":
-		return "loaf session log \"type(scope): message\""
 	case "spec":
 		return "loaf spec show " + firstNonEmpty(ref, "<ref>") + " --json"
 	case "task":

@@ -6,7 +6,7 @@
 # resolve in build output but not in raw source (by design: source is build-input).
 # Format: template-filename: [list of skill names that receive it]
 shared-templates:
-  session.md: [implement, orchestration, housekeeping, bootstrap]
+  journal.md: [implement, orchestration, housekeeping, bootstrap]
   adr.md: [architecture, reflect]
   grilling.md: [architecture, refactor-deepen]
 

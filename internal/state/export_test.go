@@ -405,12 +405,6 @@ status: implementing
 # Example Spec
 `)
 	writeAgentsFile(t, root.Path(), "tasks/TASK-001-example.md", "# Example Task\n")
-	writeAgentsFile(t, root.Path(), "sessions/20260528-session.md", `---
-branch: feature/SPEC-001-Phase-2
-status: active
----
-[2026-05-28 10:00] decision(sqlite): release readiness
-`)
 	writeAgentsFile(t, root.Path(), "reports/release.md", `---
 kind: session
 title: Release SPEC-001 Track A report
@@ -449,14 +443,12 @@ status: final
 		"Release readiness: not ready",
 		"Specs: 1 active, 0 complete, 0 archived",
 		"Tasks: 1 unresolved, 0 done, 0 archived",
-		"Sessions: 1 active, 1 total",
 		"Reports: 0 draft, 1 total",
 		"Specs: 1/1 with source",
 		"Tasks: 1/1 with source",
 		"Total relationships:",
 		"release-readiness/markdown: 1",
 		"session/done: Release internal reference internal reference report",
-		"in_progress session on feature/internal reference-internal reference with 1 journal entry",
 	} {
 		if !strings.Contains(export.Content, want) {
 			t.Fatalf("content = %q, want %q", export.Content, want)
@@ -645,123 +637,6 @@ func TestExportSpecMarkdownRejectsInvalidSQLiteState(t *testing.T) {
 	_, err := ExportSpecMarkdown(context.Background(), root, PathResolver{StateHome: stateHome}, "SPEC-001")
 	if err == nil {
 		t.Fatal("ExportSpecMarkdown() error = nil, want invalid-state error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid; run `loaf state doctor`") {
-		t.Fatalf("error = %v, want doctor message", err)
-	}
-}
-
-func TestExportSessionMarkdownRendersSessionSummary(t *testing.T) {
-	root := projectRoot(t)
-	stateHome := t.TempDir()
-	writeAgentsFile(t, root.Path(), "sessions/20260528-session.md", `---
-branch: feature/session-export
-status: active
-claude_session_id: harness-export
----
-[2026-05-28 10:00] decision(sqlite): render this session
-`)
-	writeAgentsFile(t, root.Path(), "tasks/TASK-001-session.md", "# Session Task\n")
-	writeAgentsFile(t, root.Path(), "TASKS.json", `{"tasks":{
-  "TASK-001":{"title":"Session Task","status":"todo","priority":"P2"}
-}}`)
-	if _, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
-	}
-	if _, err := UpdateTask(context.Background(), root, PathResolver{StateHome: stateHome}, TaskUpdateOptions{
-		Ref:        "TASK-001",
-		Session:    "20260528-session",
-		SetSession: true,
-	}); err != nil {
-		t.Fatalf("UpdateTask() error = %v", err)
-	}
-
-	export, err := ExportSessionMarkdown(context.Background(), root, PathResolver{StateHome: stateHome}, "20260528-session")
-	if err != nil {
-		t.Fatalf("ExportSessionMarkdown() error = %v", err)
-	}
-
-	if export.ExportKind != ExportKindSession {
-		t.Fatalf("ExportKind = %q, want %q", export.ExportKind, ExportKindSession)
-	}
-	if export.Format != ExportFormatMarkdown {
-		t.Fatalf("Format = %q, want %q", export.Format, ExportFormatMarkdown)
-	}
-	if export.Audience != ExportAudienceLocal {
-		t.Fatalf("Audience = %q, want internal marker", export.Audience)
-	}
-	for _, want := range []string{
-		"# Session Export",
-		"Audience: internal",
-		"Session: `20260528-session`",
-		"Branch: `feature/session-export`",
-		"Harness session: `harness-export`",
-		"`.agents/sessions/20260528-session.md`",
-		"`decision(sqlite)`: render this session",
-		"inbound `associated_with` task `TASK-001`",
-	} {
-		if !strings.Contains(export.Content, want) {
-			t.Fatalf("content = %q, want %q", export.Content, want)
-		}
-	}
-	assertInternalMarkdownProjectContext(t, root, stateHome, export.Content)
-}
-
-func TestExportSessionMarkdownIsDeterministicAndDoesNotMutateDatabase(t *testing.T) {
-	root := projectRoot(t)
-	stateHome := t.TempDir()
-	writeAgentsFile(t, root.Path(), "sessions/20260528-session.md", `---
-branch: feature/session-export
-status: active
----
-[2026-05-28 10:00] decision(sqlite): render this session
-`)
-	writeAgentsFile(t, root.Path(), "TASKS.json", `{"tasks":{}}
-`)
-	if _, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
-	}
-
-	first, err := ExportSessionMarkdown(context.Background(), root, PathResolver{StateHome: stateHome}, "20260528-session")
-	if err != nil {
-		t.Fatalf("first ExportSessionMarkdown() error = %v", err)
-	}
-	second, err := ExportSessionMarkdown(context.Background(), root, PathResolver{StateHome: stateHome}, "20260528-session")
-	if err != nil {
-		t.Fatalf("second ExportSessionMarkdown() error = %v", err)
-	}
-	if first.Content != second.Content {
-		t.Fatalf("content changed:\nfirst=%s\nsecond=%s", first.Content, second.Content)
-	}
-	snapshot, err := ExportAllJSON(context.Background(), root, PathResolver{StateHome: stateHome})
-	if err != nil {
-		t.Fatalf("ExportAllJSON() error = %v", err)
-	}
-	if len(snapshot.Tables["exports"]) != 0 {
-		t.Fatalf("exports table mutated: %#v", snapshot.Tables["exports"])
-	}
-}
-
-func TestExportSessionMarkdownRequiresInitializedSQLiteState(t *testing.T) {
-	root := projectRoot(t)
-	_, err := ExportSessionMarkdown(context.Background(), root, PathResolver{StateHome: t.TempDir()}, "20260528-session")
-	if err == nil {
-		t.Fatal("ExportSessionMarkdown() error = nil, want missing-state error")
-	}
-	if !strings.Contains(err.Error(), "SQLite state database is not initialized") {
-		t.Fatalf("error = %v, want initialized-state message", err)
-	}
-}
-
-func TestExportSessionMarkdownRejectsInvalidSQLiteState(t *testing.T) {
-	root := projectRoot(t)
-	stateHome := t.TempDir()
-	path := mustDatabasePath(t, root, stateHome)
-	writeInvalidDatabaseFile(t, path)
-
-	_, err := ExportSessionMarkdown(context.Background(), root, PathResolver{StateHome: stateHome}, "20260528-session")
-	if err == nil {
-		t.Fatal("ExportSessionMarkdown() error = nil, want invalid-state error")
 	}
 	if !strings.Contains(err.Error(), "state database is invalid; run `loaf state doctor`") {
 		t.Fatalf("error = %v, want doctor message", err)

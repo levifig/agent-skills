@@ -6,7 +6,18 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Changed
+
+- **Breaking: the session entity is gone; the project journal is now the only session-related structure (SPEC-056).** Journal entries are project-scoped events tagged with an opaque `harness_session_id`, with no session lifecycle, statuses, or rotation — so concurrent conversations across branches, worktrees, and harnesses are conflict-free by construction. `wrap` becomes an optional checkpoint entry written only when a conversation holds synthesis worth saving; nothing is ever "unwrapped." Continuity is a derived, ephemeral digest (latest wrap + recent branch entries + open tasks) emitted at conversation start and never persisted.
+
+### Added
+
+- **`loaf journal` command namespace** — `log`, `recent`, `search`, `show`, `context`, and `export`. `loaf journal context` emits the layered continuity digest; `loaf journal export` renders the project journal to Markdown or JSONL (SQLite stays canonical).
+- **`loaf state migrate journal-first` (alias `loaf migrate journal-first`)** — an explicit, opt-in `--dry-run`/`--apply` migration that transforms the global database to the journal-first model: backfills `harness_session_id` onto journal rows, purges lifecycle-noise entries, drops the `sessions` and `session_state_snapshots` tables, and rebuilds journal search. A pre-migration database backup is mandatory, and the step is excluded from automatic apply on database open.
+
+### Removed
+
+- **The entire `loaf session` command namespace, including `loaf session enrich`, with no compatibility alias** — `loaf session <anything>` now resolves to an unknown command. The SessionEnd hook and the `session` journal entry type are removed; hooks no longer write start/stop marker entries, and the SessionStart hook emits the derived continuity digest instead of mutating a session record.
 
 ## [2.0.0-alpha.1] - 2026-06-27
 

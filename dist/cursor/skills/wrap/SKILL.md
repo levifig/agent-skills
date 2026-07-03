@@ -1,18 +1,18 @@
 ---
 name: wrap
 description: >-
-  Responsible session shutdown: flushes journal entries, surfaces loose ends,
-  prompts for action on uncommitted/unpushed work, and generates a structured
-  summary that replaces Current State. Use at the end of a work session or when
-  the user asks "wrap up." Not for archiving (use housekeeping) or capturing
-  ideas (use idea). Produces a Session Wrap-Up section and closes the session
-  with done status.
+  Optional end-of-conversation checkpoint: flushes journal entries, surfaces
+  loose ends, prompts for action on uncommitted/unpushed work, and writes a wrap
+  entry to the project journal when there is synthesis worth saving. Use at the
+  end of a work session or when the user asks "wrap up." Not for archiving (use
+  housekeeping) or capturing ideas (use idea). Produces a Session Wrap-Up
+  summary and an optional wrap journal entry.
 version: 2.0.0-alpha.1
 ---
 
 # Wrap
 
-Responsible session shutdown — everything that needs a conscious model before the conversation ends.
+An optional checkpoint before the conversation ends — the conscious review of loose ends plus a wrap entry when there is synthesis worth saving.
 
 **Input:** $ARGUMENTS
 
@@ -23,41 +23,39 @@ Responsible session shutdown — everything that needs a conscious model before 
 - Verification
 - Quick Reference
 - Interactive Steps
-- Scripted Close
+- Wrap Entry
 - Report Format
 
 ## Critical Rules
 
-- Log `skill(wrap): <context>` to the session journal as the first action (e.g. "end-of-session summary" or "user requested wrap-up")
+- Log `skill(wrap): <context>` to the project journal as the first action (e.g. "end-of-session summary" or "user requested wrap-up")
 - **Use `built-in chat clarification` for all decisions and confirmations** — commit, push, stash, or skip choices. Never use inline text questions for permission prompts
-- Never commit, push, or archive without explicit user confirmation
+- Never commit or push without explicit user confirmation
 - Flush journal entries BEFORE generating the report — unrecorded decisions are lost after this conversation
 - Pull from live data (git, filesystem), not memory or assumptions
 - Keep the report concise — one screen, not a wall of text
-- Scope to THIS session, not the full backlog
+- Scope to THIS conversation, not the full backlog
 - When delegated background agent are available, use the `librarian` profile as the
-  durable artifact handler for `.agents/`-scoped wrap cleanup, report/session
-  hygiene, and knowledge note preservation. The main wrap flow remains
-  responsible for user-facing decisions and commit/push/archive prompts.
-- Do NOT archive — session stays with `done` status. Archival is housekeeping's job
+  durable artifact handler for `.agents/`-scoped wrap cleanup, report hygiene,
+  and knowledge note preservation. The main wrap flow remains responsible for
+  user-facing decisions and commit/push prompts.
+- A wrap is optional. Write a `wrap(scope)` entry only when there is synthesis worth saving; a conversation that ends without one leaves a perfectly valid journal. Nothing is ever ended or archived — archival is housekeeping's job
 
 ## Verification
 
-- All decisions and discoveries from this session are in the journal
+- All decisions and discoveries from this conversation are in the journal
 - Uncommitted/unpushed state is surfaced with clear action prompts
 - Stale KB files are flagged if any
-- `## Session Wrap-Up` section persisted in the canonical session surface; in SQLite mode this is represented by wrapped session/report state rather than an active `.md` file
-- `loaf session end --wrap` run after generating or writing the summary
-- Session status is `done` (session stays open for further journal entries until `SessionEnd` fires)
+- A `wrap(scope)` journal entry is written when the conversation holds synthesis worth saving (intentions, abandoned paths, next steps); otherwise it is deliberately skipped
 
 ## Quick Reference
 
 | Section | Source |
 |---------|--------|
-| Shipped | `git log` since session start |
+| Shipped | `git log` since conversation start |
 | Pending | `git status` + unpushed commits |
-| Decisions | Session journal `decision()` entries |
-| Ideas | Session journal `spark()` entries + SQLite idea/spark records |
+| Decisions | Journal `decision()` entries |
+| Ideas | Journal `spark()` entries + SQLite idea/spark records |
 | Loose ends | Unresolved `todo()`/`block()`, stale KB |
 
 ## Interactive Steps
@@ -66,21 +64,20 @@ These steps require conversation context — only the model can do them.
 
 ### Step 1: Flush Journal
 
-Before anything else, complete the session journal:
+Before anything else, complete the journal for this conversation:
 
-1. **Check enrichment state** — run `loaf session enrich --json`. In SQLite mode this records a native enrichment checkpoint and edits no session Markdown; in markdown-only compatibility mode it summarizes legacy JSONL enrichment status. If enrichment is skipped or fails, continue — manual flush is the fallback.
-2. **Manual review** — review the conversation for anything enrichment missed:
+1. **Review what wasn't logged** — scan the conversation for anything not yet recorded:
    - Decisions — design choices, trade-offs, direction changes not yet logged as `decision()` entries
-   - Discoveries — anything learned that future sessions would benefit from
+   - Discoveries — anything learned that future conversations would benefit from
    - Todos — action items that came up but weren't captured
-3. **Log each** via `loaf session log` before proceeding. This is the last chance — the journal IS the external memory.
+2. **Log each** via `loaf journal log` before proceeding. This is the last chance — the journal IS the external memory.
 
 ### Step 2: Gather Data
 
 Run in parallel:
 
-1. **Session journal** — run `loaf session list --json`, choose the active session for the current branch or explicit harness session, then run `loaf session show <session-ref> --json`; if SQLite state is unavailable, fall back to the active markdown session file for this branch
-2. **Commits this session** — `git log --oneline` since session start
+1. **This conversation's entries** — `loaf journal recent --since-last-wrap` (the entries this wrap will synthesize); widen with `loaf journal recent` or `loaf journal context` when more context is needed
+2. **Commits this session** — `git log --oneline` since work began
 3. **Working tree** — `git status --short`
 4. **Unpushed commits** — `git log --oneline origin/<branch>..HEAD`
 5. **Ideas this session** — SQLite idea/spark records created today
@@ -102,48 +99,24 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 
 **Detection logic:**
 - **Changelog entries:** check if the current branch has commits vs the base branch (e.g., `git rev-list --count origin/main..HEAD`) AND `CHANGELOG.md` `[Unreleased]` section has no list items (`^[-*]\s`). If both are true, prompt. **Skip when HEAD is tagged** (post-release state).
-- **Housekeeping:** scan session journal for `skill(housekeeping)` entry. If absent and the session had significant work, suggest it.
-- **Release candidate:** scan session journal for `decision(release)` entry. If absent and the session has landed commits, suggest `/release` only when the work forms a coherent release batch.
+- **Housekeeping:** scan the journal for a `skill(housekeeping)` entry. If absent and the session had significant work, suggest it.
+- **Release candidate:** scan the journal for a `decision(release)` entry. If absent and the session has landed commits, suggest `/release` only when the work forms a coherent release batch.
 
 ### Step 4: Generate Report
 
-Assemble the report per the format below. Omit empty sections — don't show "None" placeholders.
+Assemble the report per the format below. Omit empty sections — don't show "None" placeholders. Keep the summary in the conversation response.
 
-### Step 5: Persist Wrap Summary
+## Wrap Entry
 
-In SQLite mode, keep the generated wrap summary in the conversation response and let `loaf session end --wrap` persist the mechanical wrapped state. Do not invent or edit a missing active `.md` session file; `loaf session show <session-ref> --json` is the canonical read surface.
+A wrap is a voluntary checkpoint, not a lifecycle step. After surfacing loose ends, decide whether the conversation holds synthesis worth saving — intentions, abandoned paths, next steps: the connective narrative that evaporates with the context window. Almost everything else is already derivable from the raw entries you logged.
 
-In markdown-only compatibility mode, write the `## Session Wrap-Up` section into the active session file, **replacing** `## Current State`. The wrap summary IS the final state — it's a superset that includes everything Current State had plus the structured report.
-
-Use the Edit tool to replace `## Current State (...)` and everything below it (up to `## Journal`) with the wrap-up section. The session file layout after wrap should be:
-
-```
-# Session: Title
-
-## Session Wrap-Up        ← you write this (replaces Current State)
-...
-
-## Journal                ← append-only log
-```
-
-## Scripted Close
-
-After writing the wrap summary, run:
+When it does, write a single wrap entry:
 
 ```bash
-loaf session end --wrap
+loaf journal log "wrap(scope): shipped X; abandoned Y because Z; next is W"
 ```
 
-This handles the mechanical bookkeeping:
-- Appends `session(wrap)` marker to the journal (NOT `session(end)` or `session(stop)`)
-- Sets session status to `done`
-- Persists decisions to linked spec changelog
-- Strips any remaining `## Current State` section (if the Edit didn't fully replace it)
-- Flags stale knowledge files
-
-**The session stays open for further work** (merge commits, changelog fixes, etc.). The `SessionEnd` hook writes the actual `session(stop)` marker when the conversation ends. This prevents journal entries appearing after stop markers.
-
-**Do not archive.** The session stays in `sessions/` with `done` status. Archival is housekeeping's job.
+Entries are project-scoped and tagged with this conversation's harness id automatically — there is nothing to open, close, or archive. When the conversation holds no synthesis beyond what the raw entries already say, skip the wrap entirely; the journal is complete without it. The next conversation's start digest surfaces the latest wrap alongside recent branch entries and open tasks.
 
 ## Composability
 

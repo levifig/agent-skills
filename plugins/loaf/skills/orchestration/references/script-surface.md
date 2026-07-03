@@ -4,6 +4,7 @@
 - Current Efficiency
 - CLI Migration Rule
 - Candidate Commands
+- Retired Session Scripts
 - Keep as Skill-Local Scripts
 
 Orchestration still carries useful helper scripts, but several now duplicate
@@ -17,9 +18,9 @@ The orchestration skill is split into a compact `SKILL.md` plus references,
 which is directionally efficient for routing. The inefficient part is the
 script surface:
 
-- The source currently has 13 orchestration scripts out of 25 skill-local
+- The source currently has 10 orchestration scripts out of 22 skill-local
   scripts overall.
-- Several scripts overlap existing `loaf session`, `loaf task`, `loaf check`,
+- Several scripts overlap existing `loaf journal`, `loaf task`, `loaf check`,
   and Linear-aware behavior.
 - Shell/Python helpers are harder to discover than `loaf <noun> <verb>` and
   are not consistently covered by CLI tests.
@@ -43,21 +44,29 @@ transform, or depends on harness-only context unavailable to the CLI.
 
 | Current Script | Candidate CLI | Priority | Rationale |
 |----------------|---------------|----------|-----------|
-| `validate-session.py` | `loaf session validate <file>` | High | Session schema is core state, already managed by `loaf session`. |
-| `new-session.sh` | `loaf session start` / `loaf session create` | High | Session creation already belongs to the CLI; avoid duplicate templates. |
 | `validate-council.py` | `loaf council validate <file>` | High | Council lifecycle should not depend on direct script execution. |
 | `new-council.sh` | `loaf council create` | High | Creates first-class `.agents/councils/` artifacts. |
 | `check-linear-format.py` | `loaf linear check-format` | Medium | Linear hygiene should be reusable outside orchestration. |
 | `format-progress.sh` | `loaf linear format-progress` | Medium | Useful user-facing formatter with simple inputs. |
 | `extract-magic-words.sh` | `loaf linear refs` | Medium | Git-to-Linear reference extraction is runtime behavior. |
-| `git-context-summary.sh` | `loaf session context git` | Medium | Similar context already powers session hooks. |
+| `git-context-summary.sh` | `loaf journal context` | Medium | The continuity digest already surfaces git-derived context. |
 | `get-config.py` | `loaf config get` | Medium | Configuration lookup is cross-skill. |
 | `suggest-team.py` | `loaf linear suggest-team` | Low | Needs clearer Linear-native contract before promotion. |
+
+## Retired Session Scripts
+
+The journal-first model deleted the session entity, so the scripts built on it
+are gone (not migrated). `validate-session.py` validated a session-status
+vocabulary (`active`/`stopped`/`done`/`archived`) that no longer exists;
+`extract-decisions.py` and `list-session-decisions.sh` parsed a session *file*
+and produced Serena decision-memory-at-archive — a model with no successor.
+Decisions now live in the journal (`loaf journal search`) and in durable
+artifacts (ADRs, spec changelogs, reports). There is no session to create, so
+`new-session.sh` remains only as a stub that redirects to `loaf journal log`.
 
 ## Keep as Skill-Local Scripts
 
 | Script | Reason |
 |--------|--------|
-| `extract-decisions.py` | Transitional Serena-memory helper; not a core Loaf storage contract. |
-| `list-session-decisions.sh` | Serena-specific discovery helper; MCP access is the real interface. |
+| `new-session.sh` | Obsolete stub; redirects callers to `loaf journal log` / `loaf journal context`. |
 | `validate-roadmap.py` | Planning-reference utility; promote only if roadmap artifacts become first-class. |

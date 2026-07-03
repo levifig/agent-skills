@@ -20,7 +20,7 @@
 
 | Action | Tool |
 |--------|------|
-| Create/edit session files | Write |
+| Log journal entries | `loaf journal log` |
 | Create/edit council files | Write |
 | Track tasks | TodoWrite/TodoRead |
 | Manage external issues | Linear, GitHub |
@@ -145,8 +145,8 @@ Task(subagent_type="implementer", prompt="Build UI... Follow typescript-developm
 
 1. **Be specific in prompts** - Include file paths, requirements, constraints
 2. **One concern per agent** - Don't ask a backend implementer to also write tests
-3. **Include context** - Session alias, issue ID, previous outcomes
-4. **Reference session** - `Session: <session-alias from loaf session show>`
+3. **Include context** - Task/spec IDs, issue ID, previous outcomes
+4. **Reference durable artifacts** - Task, spec, and report IDs; the subagent's journal entries are harness-id tagged automatically
 5. **Include skill hints** - Name the skills that should guide the agent's work
 
 ### Skill Hints
@@ -192,7 +192,7 @@ Task(
     - src/api/users.py
     - src/models/user.py
 
-    Session: 20251210-143052-user-registration
+    Task: TASK-042
     Linear: BACK-123
     """
 )
@@ -206,7 +206,7 @@ Task(
 | Asking backend implementer for React | Spawn implementer with frontend skills |
 | Single agent for database + backend + tests | Sequential: implementer (database-design), implementer (language skill), implementer (foundations) |
 | Parallel spawns with hidden dependencies | Make dependencies explicit, spawn sequentially |
-| Spawning without session context | Create session first, reference in prompts |
+| Spawning without context | Reference task/spec/report IDs in prompts |
 | Council for simple decisions | Single agent or orchestrator judgment |
 
 ## Agent Access Hierarchy
@@ -214,8 +214,8 @@ Task(
 | Agent Type | External Issue Access | Reports To |
 |------------|----------------------|------------|
 | Orchestrator | Read/Write | User |
-| Implementation agents | None | Orchestrator (via session) |
-| Review agents (backend/frontend devs) | None | Orchestrator (via session) |
+| Implementation agents | None | Orchestrator (via return value + journal) |
+| Review agents (backend/frontend devs) | None | Orchestrator (via return value + journal) |
 | Product agent | Read-only | Orchestrator |
 
-**Key**: Only orchestrator writes to external issue trackers. All other agents report through session files.
+**Key**: Only orchestrator writes to external issue trackers. All other agents report back through their return value and journal entries.

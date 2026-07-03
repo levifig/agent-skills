@@ -22,8 +22,8 @@ Convene multi-agent councils for complex decisions requiring diverse expert pers
 - Select and state the council composition, then proceed directly to spawning
 - Document each perspective and create synthesis with consensus/disagreements
 - Wait for explicit user decision — council advises, user decides
-- Archive council after decision recorded in session
-- Log decision to session journal: `loaf session log "decision(scope): council outcome and user's choice"`
+- Archive council after decision recorded in the journal
+- Log decision to the project journal: `loaf journal log "decision(scope): council outcome and user's choice"`
 
 **Never**
 - Use even number of agents (risks ties)
@@ -39,8 +39,8 @@ After work completes, verify:
 - All 5-7 agents spawned and perspectives collected
 - Synthesis includes consensus points, disagreements, trade-offs
 - User decision recorded in council file
-- Session updated with council outcome summary
-- Council archived after session includes outcome
+- Decision logged to the project journal
+- Council archived after the decision is recorded in the journal
 
 ## Quick Reference
 

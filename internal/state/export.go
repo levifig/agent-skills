@@ -16,7 +16,6 @@ const (
 	ExportKindAll              = "all"
 	ExportKindReleaseReadiness = "release-readiness"
 	ExportKindSpec             = "spec"
-	ExportKindSession          = "session"
 	ExportKindTriage           = "triage"
 	ExportFormatJSON           = "json"
 	ExportFormatMarkdown       = "markdown"
@@ -92,13 +91,11 @@ type releaseReadinessExportData struct {
 	SchemaVersion      int
 	Specs              SpecList
 	Tasks              TaskList
-	Sessions           SessionList
 	Reports            ReportList
 	SourceCoverage     []releaseReadinessSourceCoverage
 	RelationshipCounts []releaseReadinessCount
 	ExportCounts       []releaseReadinessCount
 	RecentReports      []releaseReadinessReport
-	RecentSessions     []releaseReadinessSession
 }
 
 type markdownExportContext struct {
@@ -128,12 +125,6 @@ type releaseReadinessReport struct {
 	Status string
 }
 
-type releaseReadinessSession struct {
-	Branch         string
-	Status         string
-	JournalEntries int
-}
-
 var externalLeakPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\bSPEC-\d+\b`),
 	regexp.MustCompile(`\bTASK-\d+\b`),
@@ -153,8 +144,6 @@ var exportAllTables = []exportTable{
 	{Name: "sparks", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "brainstorms", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "shaping_drafts", OrderBy: "id", FilterColumn: "project_id"},
-	{Name: "sessions", OrderBy: "id", FilterColumn: "project_id"},
-	{Name: "session_state_snapshots", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "reports", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "journal_entries", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "events", OrderBy: "id", FilterColumn: "project_id"},
@@ -357,43 +346,12 @@ func ExportSpecMarkdown(ctx context.Context, root project.Root, resolver PathRes
 	return markdownExportResult(ExportKindSpec, exportContext, renderSpecMarkdown(exportContext, show.Spec)), nil
 }
 
-// ExportSessionMarkdown returns an internal Markdown summary for one session.
-func ExportSessionMarkdown(ctx context.Context, root project.Root, resolver PathResolver, ref string) (MarkdownExport, error) {
-	status, err := Inspect(root, resolver)
-	if err != nil {
-		return MarkdownExport{}, err
-	}
-	switch status.Mode {
-	case ModeMarkdownOnly:
-		return MarkdownExport{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state init` or `loaf state migrate markdown --apply` first")
-	case ModeInvalid:
-		return MarkdownExport{}, fmt.Errorf("state database is invalid; run `loaf state doctor`")
-	}
-
-	store, err := OpenStoreReadOnly(status.DatabasePath)
-	if err != nil {
-		return MarkdownExport{}, fmt.Errorf("open state database for export: %w", err)
-	}
-	defer store.Close()
-
-	show, err := store.ShowSession(ctx, root, ref)
-	if err != nil {
-		return MarkdownExport{}, err
-	}
-	exportContext := markdownExportContextFromStatus(status, ExportAudienceLocal)
-	return markdownExportResult(ExportKindSession, exportContext, renderSessionMarkdown(exportContext, show.Session)), nil
-}
-
 func (s *Store) releaseReadinessExportData(ctx context.Context, root project.Root, schemaVersion int) (releaseReadinessExportData, error) {
 	specs, err := s.ListSpecs(ctx, root)
 	if err != nil {
 		return releaseReadinessExportData{}, err
 	}
 	tasks, err := s.ListTasks(ctx, root, TaskListOptions{})
-	if err != nil {
-		return releaseReadinessExportData{}, err
-	}
-	sessions, err := s.ListSessions(ctx, root, SessionListOptions{All: true})
 	if err != nil {
 		return releaseReadinessExportData{}, err
 	}
@@ -434,21 +392,15 @@ ORDER BY export_kind, format
 	if err != nil {
 		return releaseReadinessExportData{}, err
 	}
-	recentSessions, err := s.releaseReadinessRecentSessions(ctx, projectID)
-	if err != nil {
-		return releaseReadinessExportData{}, err
-	}
 	return releaseReadinessExportData{
 		SchemaVersion:      schemaVersion,
 		Specs:              specs,
 		Tasks:              tasks,
-		Sessions:           sessions,
 		Reports:            reports,
 		SourceCoverage:     sourceCoverage,
 		RelationshipCounts: relationshipCounts,
 		ExportCounts:       exportCounts,
 		RecentReports:      recentReports,
-		RecentSessions:     recentSessions,
 	}, nil
 }
 
@@ -460,7 +412,6 @@ func (s *Store) releaseReadinessSourceCoverage(ctx context.Context, projectID st
 	}{
 		{Label: "Specs", Table: "specs", Column: "body_source_id"},
 		{Label: "Tasks", Table: "tasks", Column: "body_source_id"},
-		{Label: "Sessions", Table: "sessions", Column: "body_source_id"},
 		{Label: "Reports", Table: "reports", Column: "body_source_id"},
 	}
 	coverage := make([]releaseReadinessSourceCoverage, 0, len(tables))
@@ -521,37 +472,6 @@ LIMIT 5
 		return nil, fmt.Errorf("iterate release recent reports: %w", err)
 	}
 	return reports, nil
-}
-
-func (s *Store) releaseReadinessRecentSessions(ctx context.Context, projectID string) ([]releaseReadinessSession, error) {
-	rows, err := s.db.QueryContext(ctx, `
-SELECT COALESCE(sessions.branch, ''), sessions.status, COUNT(journal_entries.id)
-FROM sessions
-LEFT JOIN journal_entries
-  ON journal_entries.project_id = sessions.project_id
- AND journal_entries.session_id = sessions.id
-WHERE sessions.project_id = ?
-GROUP BY sessions.id, sessions.branch, sessions.status, sessions.created_at
-ORDER BY sessions.created_at DESC, sessions.id DESC
-LIMIT 5
-`, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("query release recent sessions: %w", err)
-	}
-	defer rows.Close()
-	sessions := []releaseReadinessSession{}
-	for rows.Next() {
-		var session releaseReadinessSession
-		if err := rows.Scan(&session.Branch, &session.Status, &session.JournalEntries); err != nil {
-			return nil, fmt.Errorf("scan release recent session: %w", err)
-		}
-		session.Status = LifecycleStatusForDisplay(LifecycleEntitySession, session.Status)
-		sessions = append(sessions, session)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate release recent sessions: %w", err)
-	}
-	return sessions, nil
 }
 
 func (s *Store) validateExportTableFilters(ctx context.Context, tables []exportTable) error {
@@ -743,9 +663,8 @@ func renderTriageMarkdown(ctx markdownExportContext, ideas IdeaList, sparks Spar
 func renderReleaseReadinessMarkdown(ctx markdownExportContext, data releaseReadinessExportData) string {
 	specActive, specComplete, specArchived := releaseSpecStatusCounts(data.Specs)
 	taskUnresolved, taskDone, taskArchived := releaseTaskStatusCounts(data.Tasks)
-	activeSessions := releaseSessionStatusCount(data.Sessions, "active")
 	draftReports := releaseReportStatusCount(data.Reports, "draft")
-	warnings := releaseReadinessWarnings(data, specActive, specComplete, taskUnresolved, taskDone, activeSessions, draftReports)
+	warnings := releaseReadinessWarnings(data, specActive, specComplete, taskUnresolved, taskDone, draftReports)
 	ready := len(warnings) == 0
 
 	var b strings.Builder
@@ -766,7 +685,6 @@ func renderReleaseReadinessMarkdown(ctx markdownExportContext, data releaseReadi
 	b.WriteString("## Work Status\n\n")
 	fmt.Fprintf(&b, "- Specs: %d active, %d complete, %d archived\n", specActive, specComplete, specArchived)
 	fmt.Fprintf(&b, "- Tasks: %d unresolved, %d done, %d archived\n", taskUnresolved, taskDone, taskArchived)
-	fmt.Fprintf(&b, "- Sessions: %d active, %d total\n", activeSessions, len(data.Sessions.Sessions))
 	fmt.Fprintf(&b, "- Reports: %d draft, %d total\n\n", draftReports, len(data.Reports.Reports))
 
 	b.WriteString("## Warnings\n\n")
@@ -818,20 +736,6 @@ func renderReleaseReadinessMarkdown(ctx markdownExportContext, data releaseReadi
 			fmt.Fprintf(&b, "- %s/%s: %s\n", sanitizeExternalText(report.Kind), sanitizeExternalText(report.Status), sanitizeExternalText(report.Title))
 		}
 		b.WriteString("\n")
-	}
-
-	b.WriteString("## Recent Sessions\n\n")
-	if len(data.RecentSessions) == 0 {
-		b.WriteString("No sessions recorded.\n")
-	} else {
-		for _, session := range data.RecentSessions {
-			branch := sanitizeExternalText(session.Branch)
-			if branch == "" {
-				fmt.Fprintf(&b, "- %s session with %d journal %s\n", sanitizeExternalText(session.Status), session.JournalEntries, pluralize(session.JournalEntries, "entry", "entries"))
-			} else {
-				fmt.Fprintf(&b, "- %s session on %s with %d journal %s\n", sanitizeExternalText(session.Status), branch, session.JournalEntries, pluralize(session.JournalEntries, "entry", "entries"))
-			}
-		}
 	}
 	return b.String()
 }
@@ -890,73 +794,6 @@ func renderSpecMarkdown(ctx markdownExportContext, spec SpecDetail) string {
 	} else {
 		b.WriteString(strings.TrimSpace(spec.Body))
 		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-func renderSessionMarkdown(ctx markdownExportContext, session SessionDetail) string {
-	var b strings.Builder
-	b.WriteString("# Session Export\n\n")
-	b.WriteString("Audience: internal\n")
-	b.WriteString("Source: Loaf SQLite state\n\n")
-	renderMarkdownExportContext(&b, ctx)
-	b.WriteString("## Session\n\n")
-	fmt.Fprintf(&b, "- Session: `%s`\n", firstNonEmpty(session.Alias, session.ID))
-	fmt.Fprintf(&b, "- Status: %s\n", session.Status)
-	if session.Branch != "" {
-		fmt.Fprintf(&b, "- Branch: `%s`\n", session.Branch)
-	}
-	if session.HarnessSessionID != "" {
-		fmt.Fprintf(&b, "- Harness session: `%s`\n", session.HarnessSessionID)
-	}
-	if session.CreatedAt != "" {
-		fmt.Fprintf(&b, "- Created: %s\n", session.CreatedAt)
-	}
-	if session.UpdatedAt != "" {
-		fmt.Fprintf(&b, "- Updated: %s\n", session.UpdatedAt)
-	}
-	b.WriteString("\n")
-
-	b.WriteString("## Sources\n\n")
-	if len(session.Sources) == 0 {
-		b.WriteString("No sources recorded.\n\n")
-	} else {
-		for _, source := range session.Sources {
-			fmt.Fprintf(&b, "- `%s`", source.Path)
-			if source.Hash != "" {
-				fmt.Fprintf(&b, " `%s`", source.Hash)
-			}
-			b.WriteString("\n")
-		}
-		b.WriteString("\n")
-	}
-
-	b.WriteString("## Journal Entries\n\n")
-	if len(session.JournalEntries) == 0 {
-		b.WriteString("No journal entries recorded.\n\n")
-	} else {
-		for _, entry := range session.JournalEntries {
-			label := entry.EntryType
-			if entry.Scope != "" {
-				label = fmt.Sprintf("%s(%s)", entry.EntryType, entry.Scope)
-			}
-			fmt.Fprintf(&b, "- `%s`: %s\n", label, entry.Message)
-		}
-		b.WriteString("\n")
-	}
-
-	b.WriteString("## Relationships\n\n")
-	if len(session.Relationships) == 0 {
-		b.WriteString("No relationships recorded.\n")
-	} else {
-		for _, relationship := range session.Relationships {
-			target := firstNonEmpty(relationship.Entity.Alias, relationship.Entity.ID)
-			fmt.Fprintf(&b, "- %s `%s` %s `%s`", relationship.Direction, relationship.Type, relationship.Entity.Kind, target)
-			if relationship.Reason != "" {
-				fmt.Fprintf(&b, " - %s", relationship.Reason)
-			}
-			b.WriteString("\n")
-		}
 	}
 	return b.String()
 }
@@ -1034,16 +871,6 @@ func releaseTaskStatusCounts(tasks TaskList) (unresolved int, done int, archived
 	return unresolved, done, archived
 }
 
-func releaseSessionStatusCount(sessions SessionList, status string) int {
-	count := 0
-	for _, session := range sessions.Sessions {
-		if LifecycleStatusFilterMatches(LifecycleEntitySession, session.Status, status) {
-			count++
-		}
-	}
-	return count
-}
-
 func releaseReportStatusCount(reports ReportList, status string) int {
 	count := 0
 	for _, report := range reports.Reports {
@@ -1054,7 +881,7 @@ func releaseReportStatusCount(reports ReportList, status string) int {
 	return count
 }
 
-func releaseReadinessWarnings(data releaseReadinessExportData, specActive int, specComplete int, taskUnresolved int, taskDone int, activeSessions int, draftReports int) []string {
+func releaseReadinessWarnings(data releaseReadinessExportData, specActive int, specComplete int, taskUnresolved int, taskDone int, draftReports int) []string {
 	warnings := []string{}
 	if taskUnresolved > 0 {
 		warnings = append(warnings, fmt.Sprintf("Unresolved work remains: %d task %s not done or archived.", taskUnresolved, pluralize(taskUnresolved, "is", "are")))
@@ -1067,9 +894,6 @@ func releaseReadinessWarnings(data releaseReadinessExportData, specActive int, s
 	}
 	if specComplete > 0 {
 		warnings = append(warnings, fmt.Sprintf("Archive candidate: %d complete spec %s still active.", specComplete, pluralize(specComplete, "is", "are")))
-	}
-	if activeSessions > 0 {
-		warnings = append(warnings, fmt.Sprintf("Active sessions remain: %d session %s active.", activeSessions, pluralize(activeSessions, "is", "are")))
 	}
 	if draftReports > 0 {
 		warnings = append(warnings, fmt.Sprintf("Draft reports remain: %d report %s not final.", draftReports, pluralize(draftReports, "is", "are")))

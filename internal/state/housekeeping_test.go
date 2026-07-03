@@ -26,7 +26,6 @@ func TestHousekeepingSummarizesSQLiteLifecycleState(t *testing.T) {
 	insertHousekeepingSpark(t, store, projectID, "spark-resolved", "resolved spark", "resolved", now)
 	insertHousekeepingEntity(t, store, "brainstorms", projectID, "brainstorm-archived", "Archived Brainstorm", "archived", now)
 	insertHousekeepingEntity(t, store, "shaping_drafts", projectID, "draft-absorbed", "Absorbed Draft", "absorbed", now)
-	insertHousekeepingSession(t, store, projectID, "session-done", "done", now)
 	insertHousekeepingReport(t, store, projectID, "report-final", "Final Report", "final", now)
 
 	summary, err := Housekeeping(context.Background(), root, PathResolver{StateHome: stateHome})
@@ -44,7 +43,6 @@ func TestHousekeepingSummarizesSQLiteLifecycleState(t *testing.T) {
 		"sparks":         "resolved",
 		"brainstorms":    "archived",
 		"shaping_drafts": "absorbed",
-		"sessions":       "done",
 		"reports":        "final",
 	} {
 		section := summary.Sections[name]
@@ -52,7 +50,7 @@ func TestHousekeepingSummarizesSQLiteLifecycleState(t *testing.T) {
 			t.Fatalf("section %s = %#v, want one %s cleanup candidate", name, section, status)
 		}
 	}
-	if len(summary.Signals) != 8 {
+	if len(summary.Signals) != 7 {
 		t.Fatalf("Signals = %#v, want one signal per populated cleanup section", summary.Signals)
 	}
 }
@@ -68,13 +66,6 @@ func insertHousekeepingSpark(t *testing.T, store *Store, projectID string, id st
 	t.Helper()
 	if _, err := store.db.ExecContext(context.Background(), `INSERT INTO sparks (id, project_id, text, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, id, projectID, text, status, now, now); err != nil {
 		t.Fatalf("insert spark %s error = %v", id, err)
-	}
-}
-
-func insertHousekeepingSession(t *testing.T, store *Store, projectID string, id string, status string, now string) {
-	t.Helper()
-	if _, err := store.db.ExecContext(context.Background(), `INSERT INTO sessions (id, project_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, id, projectID, status, now, now); err != nil {
-		t.Fatalf("insert session %s error = %v", id, err)
 	}
 }
 

@@ -24,7 +24,7 @@ Quick reference for all Loaf CLI commands. Each command includes its purpose, co
 ## Global Commands
 
 ### /loaf:implement
-Orchestrates implementation sessions through agent delegation and batch execution.
+Orchestrates implementation work through agent delegation and batch execution. Logs to the project journal.
 
 **Use when:**
 - User asks "implement this" or "start working on TASK-XXX"
@@ -32,18 +32,18 @@ Orchestrates implementation sessions through agent delegation and batch executio
 - Resuming work after context loss
 
 **Usage:**
-- /loaf:implement TASK-XXX - Load task, auto-create session
+- /loaf:implement TASK-XXX - Load one task and build its plan
 - /loaf:implement SPEC-XXX - Resolve all tasks, build dependency waves
 - /loaf:implement TASK-XXX..YYY - Expand range, build waves
-- /loaf:implement "description" - Ad-hoc session
+- /loaf:implement "description" - Ad-hoc implementation work
 
 ### /loaf:implement
-Coordinates multi-agent work: agent delegation, session management, Linear integration.
+Coordinates multi-agent work: agent delegation, journal continuity, Linear integration.
 
 **Use when:**
-- Managing sessions and delegating to agents
+- Delegating to agents and coordinating cross-cutting work
 - Running council workflows
-- Coordinating cross-cutting work
+- Keeping journal continuity across parallel conversations
 
 ---
 
@@ -233,7 +233,6 @@ and restored and staged with `loaf state restore-ephemerals <manifest|backup-dir
 | `loaf state export` | Export SQLite state for review or migration |
 | `loaf state export all` | Export a complete project-scoped SQLite snapshot |
 | `loaf state export triage` | Export a triage summary from SQLite state |
-| `loaf state export session` | Export one session from SQLite state |
 | `loaf state export spec` | Export one spec from SQLite state |
 | `loaf state export release-readiness` | Export a release-readiness report from SQLite state |
 
@@ -309,9 +308,6 @@ and restored and staged with `loaf state restore-ephemerals <manifest|backup-dir
 - `loaf state export triage`:
   - `--format <format>` - Output format: markdown
 
-- `loaf state export session`:
-  - `--format <format>` - Output format: markdown
-
 - `loaf state export spec`:
   - `--format <format>` - Output format: markdown
 
@@ -333,68 +329,66 @@ loaf state status
 
 ---
 
-## Session Management
+## Journal Management
 
-### `loaf session`
-Manage session journals and native SQLite session state
+### `loaf journal`
+Record and read the project-scoped journal (the durable record across all conversations)
 
-Session list/show/log/report/enrich commands are SQLite-aware. Prefer these
-commands over manual session frontmatter edits when changing lifecycle or
-journal state; `session enrich` records a native journal checkpoint and edits no
-session Markdown.
+The project journal is the only session-related structure: entries are
+project-scoped events tagged with an opaque harness_session_id. There is no
+session entity to open, close, or transition. Use `loaf journal log` to append
+entries, `loaf journal context` for the layered continuity digest, and
+`loaf journal recent`/`search`/`show` to read.
 
 **Subcommands:**
 
 | Subcommand | Purpose |
 |------------|---------|
-| `loaf session start` | Start or resume a session for the current branch |
-| `loaf session end` | End, wrap, or clear a session |
-| `loaf session archive` | Archive a stopped or targeted session |
-| `loaf session list` | List sessions |
-| `loaf session show` | Show one session |
-| `loaf session log` | Append a session journal entry |
-| `loaf session report` | Export a session report |
+| `loaf journal log` | Append a project-scoped journal entry |
+| `loaf journal recent` | Show the recent project journal timeline |
+| `loaf journal search` | Full-text search journal entries |
+| `loaf journal show` | Show one journal entry by id |
+| `loaf journal context` | Emit the layered continuity digest (latest wrap, recent branch entries, open tasks) |
+| `loaf journal export` | Export the project journal to markdown or JSONL |
 
 **Options:**
 
-- `loaf session start`:
-  - `--resume` - Resume if possible
-  - `--session-id <id>` - Harness session ID
-  - `--force` - Ignore hook agent adoption guard
-  - `--json` - Output action, session, journal IDs, global database scope, and project identity as JSON
+- `loaf journal log`:
+  - `--harness-session-id <id>` - Opaque conversation correlation tag
+  - `--branch <branch>` - Observed branch (defaults to current git branch)
+  - `--worktree <path>` - Observed worktree path
+  - `--from-hook` - Derive the entry from a harness hook payload on stdin; exits silently for subagents
+  - `--detect-linear` - Scan recent commits for Linear magic words and log a discovery entry
+  - `--json` - Output the written entry and project identity as JSON
 
-- `loaf session end`:
-  - `--if-active` - No-op when no active session exists
-  - `--wrap` - Mark as wrapped
-  - `--from-hook` - Read hook input
-  - `--session-id <id>` - Harness session ID
-  - `--json` - Output action/noop, session, journal IDs, global database scope, and project identity as JSON
+- `loaf journal recent`:
+  - `--branch <branch>` - Restrict to entries observed on one branch
+  - `--since-last-wrap` - Trim to entries logged after the most recent wrap
+  - `--limit <n>` - Maximum entries to return
+  - `--json` - Output the timeline and project identity as JSON
 
-- `loaf session archive`:
-  - `--branch <branch>` - Branch to archive
-  - `--session-id <id>` - Harness session ID
-  - `--json` - Output archive result, affected sessions, global database scope, and project identity as JSON
+- `loaf journal search`:
+  - `--all` - Search across all projects
+  - `--limit <n>` - Maximum hits to return
+  - `--json` - Output hits and project identity as JSON
 
-- `loaf session list`:
-  - `--all` - Include archived sessions
-  - `--json` - Output sessions, diagnostics, global database scope, and project identity as JSON
+- `loaf journal show`:
+  - `--json` - Output the entry and project identity as JSON
 
-- `loaf session show`:
-  - `--json` - Output session details, journal entries, relationships, global database scope, and project identity as JSON
+- `loaf journal context`:
+  - `--branch <branch>` - Branch scope for the recent-entries layer
+  - `--from-hook` - Read the harness hook payload on stdin; exits silently for subagents (SessionStart/PostCompact)
+  - `--json` - Output the digest and project identity as JSON
+  - `for-prompt|for-compact|for-resumption` - Hook subcommands: inject implementation principles, journal-flush guidance, or the resumption digest
 
-- `loaf session log`:
-  - `--from-hook` - Read hook input
-  - `--session-id <id>` - Harness session ID
-  - `--json` - Output journal entry, linked session, global database scope, and project identity as JSON
-
-- `loaf session report`:
-  - `--json` - Output export contract, command, project context, and markdown content as JSON
+- `loaf journal export`:
+  - `--format <format>` - Output format: markdown (default) or jsonl
 
 **Usage:**
 ```bash
-loaf session start
-loaf session end
-loaf session archive
+loaf journal log
+loaf journal recent
+loaf journal search
 ```
 
 ---
@@ -558,7 +552,6 @@ after the SPEC-045 cutover; do not recreate them as compatibility mirrors.
   - `--status <status>` - New status: in_progress, blocked, todo, review, done
   - `--priority <level>` - New priority: P0, P1, P2, P3
   - `--depends-on <ids>` - Replace depends_on (comma-separated task IDs)
-  - `--session <file>` - Set or clear session reference (use "none" to clear)
   - `--spec <id>` - Set or change associated spec
   - `--json` - Output updated task, event, global database scope, and project identity as JSON
 
@@ -902,7 +895,7 @@ Manage handoffs in native SQLite state
   - `--body-file <path>` - Read Markdown body from a UTF-8 file
   - `--body -` - Read Markdown body from stdin
   - `--message <text>` - Use inline Markdown body text
-  - `--session <session>` - Optional related session
+  - `--harness-session-id <id>` - Optional conversation correlation tag
   - `--task <task>` - Optional related task
   - `--json` - Output created artifact, event, global database scope, and project identity as JSON
 
@@ -1055,7 +1048,6 @@ Scan project artifacts and recommend housekeeping actions
 
 - `--dry-run` - Show recommendations without prompting for actions
 - `--json` - Output housekeeping sections, cleanup candidates, signals, and SQLite-backed project identity when available as JSON
-- `--sessions` - Only review sessions
 - `--specs` - Only review specs
 - `--plans` - Only review plans
 - `--drafts` - Only review drafts
@@ -1389,7 +1381,7 @@ The following placeholders are substituted at build time per target:
 
 **Need to start working?** -> `/loaf:implement TASK-XXX`
 
-**Need to continue after restart?** -> `loaf session start` then `/loaf:implement`
+**Need to continue after restart?** -> `loaf journal context` then `/loaf:implement`
 
 **Need to coordinate agents?** -> `/loaf:implement`
 

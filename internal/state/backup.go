@@ -154,7 +154,7 @@ func VerifyBackup(ctx context.Context, backupPath string) (BackupVerificationRes
 	if err != nil {
 		return BackupVerificationResult{}, fmt.Errorf("verify state backup schema version: %w", err)
 	}
-	if version != CurrentSchemaVersion() {
+	if !acceptableSchemaVersion(version) {
 		return BackupVerificationResult{}, fmt.Errorf("verify state backup schema version: got %d, want %d", version, CurrentSchemaVersion())
 	}
 	projects, err := store.ListProjects(ctx)
@@ -223,7 +223,7 @@ func verifyBackup(ctx context.Context, backupPath string, root project.Root) (ba
 	if err != nil {
 		return backupVerification{}, fmt.Errorf("verify state backup schema version: %w", err)
 	}
-	if version != CurrentSchemaVersion() {
+	if !acceptableSchemaVersion(version) {
 		return backupVerification{}, fmt.Errorf("verify state backup schema version: got %d, want %d", version, CurrentSchemaVersion())
 	}
 	var projectCount int

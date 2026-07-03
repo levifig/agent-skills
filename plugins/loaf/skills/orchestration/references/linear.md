@@ -214,7 +214,7 @@ None currently.
 | `Working on API` | `- [ ] API implementation` |
 | `Done with schema` | `- [x] Schema updated` |
 | `Phase 1: Discovery` | `Discovery - COMPLETE` |
-| `Session file: .agents/sessions/...` | *(omit entirely)* |
+| `Journal entry: ...` | *(omit entirely)* |
 | `Council decision: ...` | *(omit entirely)* |
 | `Week 1 deliverables` | `Initial deliverables` |
 | `BACK-52 Port Itera TEM...` | `BACK-52` *(Linear auto-expands)* |
@@ -256,7 +256,7 @@ Any relevant context (keep brief).
 **Backlog -> In Progress:**
 - Work has actively started
 - Developer is assigned
-- Session file created (for non-trivial work)
+- Invocation logged to the project journal (for non-trivial work)
 
 **In Progress -> In Review:**
 - Implementation is complete

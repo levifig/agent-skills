@@ -13,7 +13,7 @@ import (
 func TestRunnerInstallExplicitCursorTargetRunsNatively(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
-	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf session log --from-hook","matcher":"Bash","loaf-managed":true}]}}`)
+	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf journal log --from-hook","matcher":"Bash","loaf-managed":true}]}}`)
 
 	var stdout bytes.Buffer
 	err := Runner{
@@ -665,7 +665,7 @@ func TestRunnerInstallCodexUsesCodeXHomeNatively(t *testing.T) {
 	codexHome := filepath.Join(home, "custom-codex")
 	t.Setenv("CODEX_HOME", codexHome)
 	writeInstallFile(t, filepath.Join(root, "dist", "codex", "skills", "go-development", "SKILL.md"), "# Go\n")
-	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf session log --from-hook","matcher":"Bash","if":"Bash(git commit:*)","loaf-managed":true}]}}`)
+	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf journal log --from-hook","matcher":"Bash","if":"Bash(git commit:*)","loaf-managed":true}]}}`)
 
 	var stdout bytes.Buffer
 	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", "codex", "--yes"})
@@ -675,7 +675,7 @@ func TestRunnerInstallCodexUsesCodeXHomeNatively(t *testing.T) {
 	assertInstallFile(t, filepath.Join(codexHome, loafInstallMarkerFile), "9.8.7-test.1\n")
 	assertInstallFile(t, filepath.Join(home, ".agents", "skills", "go-development", "SKILL.md"), "# Go\n")
 	hooks := readInstallHooks(t, filepath.Join(codexHome, "hooks.json"))
-	if len(hooks.Hooks["PostToolUse"]) != 1 || hooks.Hooks["PostToolUse"][0]["command"] != "loaf session log --from-hook" {
+	if len(hooks.Hooks["PostToolUse"]) != 1 || hooks.Hooks["PostToolUse"][0]["command"] != "loaf journal log --from-hook" {
 		t.Fatalf("codex hooks = %#v, want native hook merge in CODEX_HOME", hooks.Hooks)
 	}
 }

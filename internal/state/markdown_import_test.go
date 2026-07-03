@@ -67,10 +67,9 @@ func TestApplyMarkdownMigrationImportsArtifactsAndPreservesSources(t *testing.T)
 	assertTableCount(t, store, "tasks", 1)
 	assertTableCount(t, store, "ideas", 1)
 	assertTableCount(t, store, "brainstorms", 1)
-	assertTableCount(t, store, "sessions", 1)
 	assertTableCount(t, store, "reports", 1)
 	assertTableCount(t, store, "sparks", 1)
-	assertTableCount(t, store, "artifact_bodies", 6)
+	assertTableCount(t, store, "artifact_bodies", 5)
 	assertTableCount(t, store, "journal_entries", 1)
 	assertTableCount(t, store, "relationships", 2)
 	assertArtifactSearchHitCount(t, store, "Second", 1)
@@ -135,7 +134,7 @@ WHERE tasks.project_id = ?
 	assertTableCount(t, store, "specs", 1)
 	assertTableCount(t, store, "tasks", 1)
 	assertTableCount(t, store, "relationships", 2)
-	assertTableCount(t, store, "aliases", 8)
+	assertTableCount(t, store, "aliases", 7)
 }
 
 func TestApplyMarkdownMigrationDoesNotRequireTasksJSON(t *testing.T) {

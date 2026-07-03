@@ -57,7 +57,7 @@ Each endpoint must include:
 [ ] Entries use imperative, self-describing release-facing prose
 [ ] Entries link to the best public reference when available
 [ ] Dates in ISO format (YYYY-MM-DD)
-[ ] No internal spec/task/session IDs or verbatim commit dumps
+[ ] No internal spec/task IDs or verbatim commit dumps
 ```
 
 ## Quality Indicators

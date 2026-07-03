@@ -40,8 +40,8 @@ First-contact project setup: detect state, interview the builder, populate proje
 - **BRIEF is input, not output** -- the BRIEF is raw intake. Extract every useful fact into VISION/STRATEGY/ARCHITECTURE/AGENTS during bootstrap.
 - **BRIEF is archeological after bootstrap** -- once extraction completes, the BRIEF is a frozen historical snapshot. No skill, agent, command, or template should reference `docs/BRIEF.md` post-bootstrap. Operating documents must stand on their own.
 - **Suggest, don't execute** -- recommend next skills at the end, never auto-run them
-- **Log first** -- log invocation before interviewing: `loaf session log "skill(bootstrap): <project or intake>"`
-- **Log outcome** -- log bootstrap completion to session journal: `loaf session log "decision(bootstrap): project bootstrapped, mode detected"`
+- **Log first** -- log invocation before interviewing: `loaf journal log "skill(bootstrap): <project or intake>"`
+- **Log outcome** -- log bootstrap completion to the project journal: `loaf journal log "decision(bootstrap): project bootstrapped, mode detected"`
 
 ---
 
@@ -50,7 +50,7 @@ First-contact project setup: detect state, interview the builder, populate proje
 - All expected operating documents (`docs/VISION.md`, `.agents/AGENTS.md` at minimum) exist and contain populated content
 - Useful BRIEF content has been extracted into operating documents (no future reader should need to open the BRIEF)
 - Symlinks are correct: `.agents/AGENTS.md` and `./AGENTS.md -> .agents/AGENTS.md`
-- Key decisions and interview outcomes were logged with `loaf session log` and are readable with `loaf session show`
+- Key decisions and interview outcomes were logged with `loaf journal log` and are readable with `loaf journal recent`
 
 ---
 
@@ -367,15 +367,14 @@ ln -sf .agents/AGENTS.md ./AGENTS.md
 
 If symlinks already exist and point to the right targets, skip silently. If they exist but point elsewhere, warn the user and ask before changing.
 
-### 3. Session Recording
+### 3. Journal Recording
 
-Record the bootstrap interview in the active SQLite-backed session:
+Record the bootstrap interview in the project journal:
 
-1. Run `loaf session start` if there is no active session.
-2. Log mode detection and key interview decisions with `loaf session log`.
-3. Use `loaf session show <session-ref>` to inspect the rendered session view.
+1. Log mode detection and key interview decisions with `loaf journal log`.
+2. Use `loaf journal recent` to inspect what was captured.
 
-The session journal should capture:
+The journal should capture:
 - Mode detected and why
 - Key decisions made during the interview
 - Key interview exchanges that informed those decisions
@@ -383,8 +382,8 @@ The session journal should capture:
 - The original problem framing and user intent
 - Any open questions or deferred decisions
 
-Use [templates/session.md](../skills/bootstrap/templates/session.md) only as the rendered journal
-format reference; do not hand-author session markdown as the source of truth.
+Use [templates/journal.md](../skills/bootstrap/templates/journal.md) only as the rendered entry
+format reference; do not hand-author journal markdown as the source of truth.
 
 ### 4. Next Steps
 

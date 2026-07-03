@@ -149,6 +149,70 @@ status: complete
 	}
 }
 
+// TestDeleteSpecGarbageCollectsSourceAfterJournalFirstMigration reproduces the
+// regression where sourceStillReferencedTx probed the dropped `sessions` table.
+// After the journal-first migration removes `sessions`, deleting a spec whose
+// body source has become orphaned must still garbage-collect that source instead
+// of aborting the transaction with "no such table: sessions".
+func TestDeleteSpecGarbageCollectsSourceAfterJournalFirstMigration(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	writeAgentsFile(t, root.Path(), "specs/SPEC-050-orphan.md", `---
+id: SPEC-050
+title: Orphan Source Spec
+status: complete
+---
+# Orphan Source Spec
+
+Body content whose source becomes orphaned on delete.
+`)
+	writeAgentsFile(t, root.Path(), "TASKS.json", `{"tasks":{}}`)
+	if _, err := ApplyMarkdownMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+
+	// Journal-first migration drops the sessions table.
+	if _, err := ApplyJournalFirstMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("ApplyJournalFirstMigration() error = %v", err)
+	}
+	databasePath, err := resolver.DatabasePath(root)
+	if err != nil {
+		t.Fatalf("DatabasePath() error = %v", err)
+	}
+	if rawTableExists(t, databasePath, "sessions") {
+		t.Fatal("sessions table still present after journal-first migration; fixture precondition failed")
+	}
+
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	projectID := projectIDForTest(t, store, root)
+	specID := stableMigrationID("spec", projectID, "SPEC-050")
+
+	var sourceID string
+	if err := store.db.QueryRowContext(ctx, `SELECT body_source_id FROM specs WHERE project_id = ? AND id = ?`, projectID, specID).Scan(&sourceID); err != nil {
+		t.Fatalf("read spec body_source_id: %v", err)
+	}
+	if sourceID == "" {
+		t.Fatal("spec has no body source; fixture precondition failed")
+	}
+
+	result, err := store.DeleteSpec(ctx, root, "SPEC-050")
+	if err != nil {
+		t.Fatalf("DeleteSpec() after journal-first migration error = %v", err)
+	}
+	if result.Spec == nil || result.Spec.ID != specID {
+		t.Fatalf("result.Spec = %#v, want spec %s", result.Spec, specID)
+	}
+
+	// The now-orphaned source must be garbage-collected.
+	if got := countRows(t, store, `SELECT COUNT(*) FROM sources WHERE project_id = ? AND id = ?`, projectID, sourceID); got != 0 {
+		t.Fatalf("orphaned spec source rows = %d after delete, want 0", got)
+	}
+	assertNoIntegrityViolations(t, store)
+}
+
 func TestDeleteSpecRejectsNonSpecRef(t *testing.T) {
 	ctx := context.Background()
 	root := projectRoot(t)
@@ -177,6 +241,15 @@ func mustExec(t *testing.T, store *Store, query string, args ...any) {
 	if _, err := store.db.ExecContext(context.Background(), query, args...); err != nil {
 		t.Fatalf("exec %q: %v", query, err)
 	}
+}
+
+func countRows(t *testing.T, store *Store, query string, args ...any) int {
+	t.Helper()
+	var count int
+	if err := store.db.QueryRowContext(context.Background(), query, args...).Scan(&count); err != nil {
+		t.Fatalf("count query error = %v", err)
+	}
+	return count
 }
 
 func assertNoIntegrityViolations(t *testing.T, store *Store) {

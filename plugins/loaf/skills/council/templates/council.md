@@ -14,7 +14,6 @@ council:
     - [agent3]
     - [agent4]
     - [agent5]
-  session_reference: "[loaf session alias if applicable]"
   linear_issue: "[ISSUE-ID if applicable]"
 ---
 

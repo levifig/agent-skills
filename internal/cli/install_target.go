@@ -21,15 +21,23 @@ var legacyLoafHookSignatures = map[string]bool{
 	"command:loaf check --hook validate-push|matcher:Bash|if:":                                true,
 	"command:loaf check --hook workflow-pre-pr|matcher:Bash|if:":                              true,
 	"command:loaf check --hook validate-commit|matcher:Bash|if:":                              true,
-	"command:loaf session log --detect-linear|matcher:Bash|if:":                               true,
 	"command:loaf task refresh|matcher:Edit|Write|if:":                                        true,
-	"command:loaf session log --from-hook|matcher:Bash|if:Bash(git commit:*)":                 true,
-	"command:loaf session log --from-hook|matcher:Bash|if:Bash(gh pr create:*)":               true,
-	"command:loaf session log --from-hook|matcher:Bash|if:Bash(gh pr merge:*)":                true,
-	"command:loaf session start|matcher:|if:":                                                 true,
-	"command:loaf session end|matcher:|if:":                                                   true,
 	"command:bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh|matcher:Edit|Write|if:": true,
-	"command:bash $HOME/.cursor/hooks/session/compact.sh|matcher:|if:":                        true,
+	// Journal-first hook signatures (SPEC-056).
+	"command:loaf journal log --detect-linear|matcher:Bash|if:":                 true,
+	"command:loaf journal log --from-hook|matcher:Bash|if:Bash(git commit:*)":   true,
+	"command:loaf journal log --from-hook|matcher:Bash|if:Bash(gh pr create:*)": true,
+	"command:loaf journal log --from-hook|matcher:Bash|if:Bash(gh pr merge:*)":  true,
+	"command:loaf journal context|matcher:|if:":                                 true,
+	// Legacy session-entity hook signatures — retained so `loaf install` cleans
+	// them from existing installs during the journal-first migration.
+	"command:loaf session log --detect-linear|matcher:Bash|if:":                 true,
+	"command:loaf session log --from-hook|matcher:Bash|if:Bash(git commit:*)":   true,
+	"command:loaf session log --from-hook|matcher:Bash|if:Bash(gh pr create:*)": true,
+	"command:loaf session log --from-hook|matcher:Bash|if:Bash(gh pr merge:*)":  true,
+	"command:loaf session start|matcher:|if:":                                   true,
+	"command:loaf session end|matcher:|if:":                                     true,
+	"command:bash $HOME/.cursor/hooks/session/compact.sh|matcher:|if:":          true,
 }
 
 var legacyLoafCommands = map[string]bool{

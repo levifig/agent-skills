@@ -22,8 +22,6 @@ type TaskUpdateOptions struct {
 	SetSpec      bool
 	DependsOn    []string
 	SetDependsOn bool
-	Session      string
-	SetSession   bool
 }
 
 // TaskStatusUpdateResult describes a task status mutation.
@@ -40,7 +38,6 @@ type TaskStatusUpdateResult struct {
 	Priority           string        `json:"priority,omitempty"`
 	Spec               *TraceEntity  `json:"spec,omitempty"`
 	Depends            []TraceEntity `json:"depends_on,omitempty"`
-	Session            *TraceEntity  `json:"session,omitempty"`
 	EventID            string        `json:"event_id,omitempty"`
 }
 
@@ -74,7 +71,7 @@ func (s *Store) UpdateTask(ctx context.Context, root project.Root, options TaskU
 	if err != nil {
 		return TaskStatusUpdateResult{}, err
 	}
-	if !options.SetStatus && !options.SetPriority && !options.SetSpec && !options.SetDependsOn && !options.SetSession {
+	if !options.SetStatus && !options.SetPriority && !options.SetSpec && !options.SetDependsOn {
 		return TaskStatusUpdateResult{}, fmt.Errorf("task update requires at least one update")
 	}
 	if options.SetStatus && !ValidTaskStatus(options.Status) {
@@ -118,18 +115,6 @@ func (s *Store) UpdateTask(ctx context.Context, root project.Root, options TaskU
 			}
 			dependencies = append(dependencies, dependency)
 		}
-	}
-
-	var session *TraceEntity
-	if options.SetSession && !isNoneValue(options.Session) {
-		resolved, err := s.resolveTraceEntity(ctx, projectID, options.Session)
-		if err != nil {
-			return TaskStatusUpdateResult{}, fmt.Errorf("resolve session %q: %w", options.Session, err)
-		}
-		if resolved.Kind != "session" {
-			return TaskStatusUpdateResult{}, fmt.Errorf("%q resolves to %s, not session", options.Session, resolved.Kind)
-		}
-		session = &resolved
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -186,16 +171,6 @@ func (s *Store) UpdateTask(ctx context.Context, root project.Root, options TaskU
 			return TaskStatusUpdateResult{}, err
 		}
 	}
-	if options.SetSession {
-		if err := replaceTaskRelationships(ctx, tx, projectID, task.ID, "associated_with", "session", nil, now); err != nil {
-			return TaskStatusUpdateResult{}, err
-		}
-		if session != nil {
-			if err := insertTaskRelationship(ctx, tx, projectID, task.ID, "associated_with", "session", session.ID, "recorded by task update", now); err != nil {
-				return TaskStatusUpdateResult{}, err
-			}
-		}
-	}
 
 	eventID := ""
 	if options.SetStatus && previousStatus != finalStatus {
@@ -228,7 +203,6 @@ ON CONFLICT(id) DO NOTHING
 	if !options.SetDependsOn {
 		resultDepends = nil
 	}
-	resultSession := session
 	return TaskStatusUpdateResult{
 		ContractVersion:    StateJSONContractVersion,
 		DatabaseScope:      identity.DatabaseScope,
@@ -242,7 +216,6 @@ ON CONFLICT(id) DO NOTHING
 		Priority:           finalPriority,
 		Spec:               resultSpec,
 		Depends:            resultDepends,
-		Session:            resultSession,
 		EventID:            eventID,
 	}, nil
 }

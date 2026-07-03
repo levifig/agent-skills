@@ -1,7 +1,7 @@
 name: librarian
 description: >-
   Durable artifact handler for SQLite-backed Loaf state and .agents/ artifacts.
-  Use from wrap, housekeeping, or orchestration when session journals, reports,
+  Use from wrap, housekeeping, or orchestration when the project journal, reports,
   specs, handoffs, or knowledge notes need lifecycle-safe tending.
 mode: subagent
 skills:

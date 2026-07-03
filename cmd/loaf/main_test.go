@@ -167,9 +167,9 @@ func TestPublicBinaryPreA3WorktreeRefusalNudgeNatively(t *testing.T) {
 	main := createMainRepo(t, "nudge-refuse")
 	linked := addLinkedWorktree(t, main, "nudge-refuse")
 	seedPreA3WorktreeLayout(t, linked)
-	output, err := runBinary(binary, linked, envWith(), "session", "list")
+	output, err := runBinary(binary, linked, envWith(), "journal", "recent")
 	if exitCode(err) != 2 {
-		t.Fatalf("loaf session list exit = %d, want 2\n%s", exitCode(err), output)
+		t.Fatalf("loaf journal recent exit = %d, want 2\n%s", exitCode(err), output)
 	}
 	for _, want := range []string{"SPEC-036", "loaf migrate worktree-storage", "LOAF_DEBUG_RESOLVE"} {
 		if !strings.Contains(output, want) {
@@ -239,7 +239,7 @@ func TestPublicBinaryPreA3WorktreeRefusalNudgeNatively(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(linked, ".agents", ".moved-to"), []byte("/this/does/not/exist\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(stale .moved-to) error = %v", err)
 	}
-	output, err = runBinary(binary, linked, envWith(), "session", "list")
+	output, err = runBinary(binary, linked, envWith(), "journal", "recent")
 	if exitCode(err) != 2 || !strings.Contains(output, "SPEC-036") {
 		t.Fatalf("stale pointer output = %q, error = %v, want pre-A3 refusal", output, err)
 	}
@@ -274,7 +274,7 @@ func TestPublicBinaryRootHelpAndUnknownCommandAreNative(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loaf root help error = %v\n%s", err, output)
 	}
-	for _, want := range []string{"Usage: loaf <command> [options]", "Commands:", "session", "task", "release"} {
+	for _, want := range []string{"Usage: loaf <command> [options]", "Commands:", "journal", "task", "release"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("root help output = %q, want %q", output, want)
 		}

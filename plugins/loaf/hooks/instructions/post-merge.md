@@ -10,7 +10,7 @@ Complete these steps on the feature branch before creating the PR.
    loaf task archive --spec SPEC-XXX
    loaf spec archive SPEC-XXX
    ```
-   Archive session file (status: done, `archived_at`, `archived_by`, move to archive/).
+   Write an optional `wrap(scope)` journal entry with `loaf journal log` if the work produced synthesis worth saving.
 
 2. **Update CHANGELOG.md when the PR has release-facing impact:**
    Add curated entries under `[Unreleased]` describing what the PR lands. Do not move entries to a versioned section here; `/release` publishes the batch later.

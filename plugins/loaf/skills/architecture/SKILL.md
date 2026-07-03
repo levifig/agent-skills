@@ -18,7 +18,7 @@ version: 2.0.0-alpha.1
 - Quick Reference
 - Topics
 
-Guides decision-making for **architecturally significant** choices through structured interviews, options analysis, and Architecture Decision Records. ADRs are **rare yet binding** — they record the rationale for choices that shape the system's structure, quality attributes, dependencies, interfaces, or construction techniques, and that the team agrees to honor until explicitly superseded. Most technical decisions do not warrant an ADR; the skill routes those to their proper destination (session log, SPEC, ARCHITECTURE.md, or owning skill) and stops.
+Guides decision-making for **architecturally significant** choices through structured interviews, options analysis, and Architecture Decision Records. ADRs are **rare yet binding** — they record the rationale for choices that shape the system's structure, quality attributes, dependencies, interfaces, or construction techniques, and that the team agrees to honor until explicitly superseded. Most technical decisions do not warrant an ADR; the skill routes those to their proper destination (project journal, SPEC, ARCHITECTURE.md, or owning skill) and stops.
 
 Stabilizes canonical vocabulary in `docs/knowledge/glossary.md` when load-bearing terms surface mid-interview — additive to ADR creation, never a gate on it.
 
@@ -62,7 +62,7 @@ Q1 and Q2 form a disjunction (matches Microsoft's bar — either canonical-domai
 | Development pattern, direction, implementation evidence | SPEC via `/loaf:shape` |
 | Guiding principle, philosophy, operating model (stance, not architectural choice) | `ARCHITECTURE.md` / `VISION.md` (mutable, `/loaf:reflect`-revisable) |
 | Workflow convention, skill-specific lore | Owning skill's `SKILL.md` or references |
-| Local choice, single-PR scope, no consequence to divergence | Session-log `decision(scope)` + code comment if needed |
+| Local choice, single-PR scope, no consequence to divergence | Log a `decision(scope)` entry to the project journal + code comment if needed |
 
 ### Skip ADR When
 
@@ -70,7 +70,7 @@ Q1 and Q2 form a disjunction (matches Microsoft's bar — either canonical-domai
 - Decision is a stance, principle, philosophy, or vision — even if alternatives are named, the choice is being made on philosophical or operational grounds rather than architectural ones (specific quality attributes, dependencies, interfaces, or construction techniques). Record in `ARCHITECTURE.md` or `VISION.md` (strategic), where principles can evolve via `/loaf:reflect`. ADRs are immutable post-acceptance and reserved for architectural choices.
 - Decision is workflow lore belonging to a specific skill — document in that skill, not in `docs/decisions/`
 - Decision is exploration of alternatives without a chosen direction — that's a SPEC via `/loaf:shape`; the ADR comes after if the chosen direction is architecturally significant
-- Decision can be changed in a single PR with no downstream coordination — session-log `decision(scope)` and a code comment if needed
+- Decision can be changed in a single PR with no downstream coordination — log a `decision(scope)` entry to the project journal and a code comment if needed
 - Rationale is aesthetic ("looks/feels better", "scans nicer", "more consistent visually") — never an ADR
 
 ### Lifecycle
@@ -125,7 +125,7 @@ Supersession is healthy. The bar for *writing* an ADR is high; once written, the
 - Follow the shared interview protocol in [templates/grilling.md](templates/grilling.md)
 - Present multiple options with pros/cons and "fits when" context
 - Wait for explicit user decision before proceeding with documentation
-- Log decision to session journal: `loaf session log "decision(architecture): ADR-NNN adopted for X"`
+- Log decision to the project journal: `loaf journal log "decision(architecture): ADR-NNN adopted for X"`
 
 **Never**
 - Make architectural decisions without user input
@@ -161,7 +161,7 @@ After work completes, verify:
 | Development pattern, direction, implementation evidence | SPEC via `/loaf:shape` |
 | Guiding principle, philosophy, operating model (stance, not architectural choice) | `ARCHITECTURE.md` / `VISION.md` (mutable, `/loaf:reflect`-revisable) |
 | Workflow convention, skill-specific lore | Owning skill's `SKILL.md` or references |
-| Local choice, single-PR scope, no consequence to divergence | Session-log `decision(scope)` + code comment if needed |
+| Local choice, single-PR scope, no consequence to divergence | Log a `decision(scope)` entry to the project journal + code comment if needed |
 
 ### ADR Numbering
 

@@ -43,7 +43,7 @@ Publish a coherent version from work that has already landed.
 - **Block on release-readiness failure** -- do not publish if build, tests, version files, changelog, tag, or GitHub release state is inconsistent.
 - **Never push, tag, or publish without confirmation** -- present the exact actions first.
 - **Use `built-in chat clarification` for release decisions when available** -- version bump type, release PR handoff, push/tag/GitHub Release confirmation.
-- **Log release** -- after publication, run `loaf session log "decision(release): vX.Y.Z published from <base> with <summary>"` when session state is available.
+- **Log release** -- after publication, run `loaf journal log "decision(release): vX.Y.Z published from <base> with <summary>"`.
 
 ## Verification
 
@@ -148,7 +148,7 @@ Collect landed work since the last release and group it for release notes.
    - feature/fix/documentation/build themes
    - operational release work, when it affects users or maintainers
 4. Drop noise:
-   - purely internal task/session labels
+   - purely internal task labels
    - reverted work that is not present in `HEAD`
    - individual commit mechanics that collapse into one user-facing change
 
@@ -250,12 +250,12 @@ If publication partially completes, do not retag casually. Name the exact state 
 
 After verification:
 
-1. Log the release decision when session state is healthy:
+1. Log the release decision to the project journal:
    ```bash
-   loaf session log "decision(release): vX.Y.Z published from <base> with <summary>"
+   loaf journal log "decision(release): vX.Y.Z published from <base> with <summary>"
    ```
 2. Suggest `/reflect` when the release produced durable product or workflow learnings.
-3. Suggest `/housekeeping` when session artifacts, release branches, or temporary reports need cleanup.
+3. Suggest `/housekeeping` when release branches or temporary reports need cleanup.
 4. Keep future-work discoveries out of the release notes; capture them as tasks, ideas, or sparks instead.
 
 ---
@@ -287,4 +287,4 @@ After a successful release, suggest `/reflect` for durable learnings and `/house
 - **git-workflow** -- Branching, PR, commit, and squash merge conventions
 - **documentation-standards** -- Changelog and release-note quality
 - **reflect** -- Updates strategy from shipped/released learnings
-- **housekeeping** -- Cleans up completed session and release artifacts
+- **housekeeping** -- Cleans up completed spec, report, and handoff artifacts

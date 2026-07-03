@@ -40,7 +40,7 @@ Review, verify, and land one PR. Shipping is the PR gate; releasing is the versi
 - **Never merge without explicit confirmation** -- present the PR, checks, findings, and squash body first.
 - **Clean squash body** -- write an intentional squash commit body; never accept the automatic commit dump.
 - **Keep landed and released distinct** -- after merge, describe the PR as landed or shipped, not necessarily released.
-- **Log shipping** -- after merge, run `loaf session log "decision(ship): PR #N landed via squash merge"` when session state is available.
+- **Log shipping** -- after merge, run `loaf journal log "decision(ship): PR #N landed via squash merge"`.
 
 ## Verification
 
@@ -192,9 +192,9 @@ After a successful merge:
    ```bash
    gh pr view <N> --json headRefName,state
    ```
-4. Log the landing when session state is healthy:
+4. Log the landing to the project journal:
    ```bash
-   loaf session log "decision(ship): PR #N landed via squash merge"
+   loaf journal log "decision(ship): PR #N landed via squash merge"
    ```
 
 If cleanup fails, report the exact residual state. Do not force-delete without user confirmation.

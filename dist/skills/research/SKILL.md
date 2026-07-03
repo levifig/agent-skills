@@ -32,8 +32,8 @@ Patterns for zooming out, investigating topics, and evolving project direction.
 - Cite sources with confidence levels
 - Present options, let user decide
 - Get approval before editing VISION
-- Log invocation first: `loaf session log "skill(research): <topic or mode>"`
-- Log findings to session journal: `loaf session log "discover(scope): summary of finding"`
+- Log invocation first: `loaf journal log "skill(research): <topic or mode>"`
+- Log findings to the project journal: `loaf journal log "discover(scope): summary of finding"`
 
 ### Never
 - Edit VISION without explicit approval
@@ -79,7 +79,7 @@ Parse `$ARGUMENTS` to determine mode:
 
 Prioritize sources in this order:
 
-1. **Project context** (highest) -- VISION.md, ARCHITECTURE.md, SQLite sessions, codebase patterns
+1. **Project context** (highest) -- VISION.md, ARCHITECTURE.md, the project journal, codebase patterns
 2. **Authoritative docs** -- Context7, official docs, RFCs
 3. **Community knowledge** -- Stack Overflow (verified), GitHub issues, expert blogs
 4. **General web** (lowest) -- Search results, unverified sources
@@ -94,7 +94,7 @@ Always check project context first. Rate findings: **High** (official/verified),
 
 1. Read project documents: VISION.md, STRATEGY.md, ARCHITECTURE.md
 2. Check ideas with `loaf idea list --json` and specs with `loaf spec list --json`
-3. Review recent sessions with `loaf session list --all --json` and `loaf session show <ref> --json`
+3. Review recent journal activity with `loaf journal recent --json` and `loaf journal context`
 4. Check recent commits: `git log --oneline -20`
 5. Synthesize following [state-assessment template](templates/state-assessment.md)
 
@@ -103,7 +103,7 @@ Always check project context first. Rate findings: **High** (official/verified),
 **Trigger:** Specific topic or question
 
 1. **Interview** with AskUserQuestion: what are you trying to understand? What context do you have? What decision will this inform?
-2. Check project context first (ADRs, ARCHITECTURE, SQLite sessions)
+2. Check project context first (ADRs, ARCHITECTURE, the project journal)
 3. Apply confidence hierarchy for external sources
 4. For a transient review artifact, use `loaf report generate` when an existing
    SQLite-backed export kind fits; for authored long-form research, create a
@@ -131,7 +131,7 @@ frontmatter to represent operational status.
 
 **Trigger:** "Should we change direction?" / "Update VISION"
 
-1. Gather evidence (sessions, feedback, market changes)
+1. Gather evidence (journal entries, feedback, market changes)
 2. Identify what's changed since last VISION update
 3. Propose specific changes with rationale
 4. **Get user approval before any edits**

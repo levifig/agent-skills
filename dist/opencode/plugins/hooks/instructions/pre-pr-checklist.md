@@ -14,7 +14,7 @@ Add an entry under `## [Unreleased]` in `CHANGELOG.md`, categorized by Common Ch
 
 One line per meaningful change. Write imperative, self-describing,
 release-facing prose; include public references when available, and do not
-include internal spec/task/session IDs.
+include internal spec/task IDs.
 
 ```markdown
 ### Added

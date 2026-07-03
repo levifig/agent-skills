@@ -4,7 +4,12 @@
 # Structure:
 #   pre-tool: Runs BEFORE tool execution (can block)
 #   post-tool: Runs AFTER tool execution (informational)
-#   session: Lifecycle hooks (SessionStart, SessionEnd, PreCompact)
+#   session: Conversation hooks (SessionStart, UserPromptSubmit, PreCompact, PostCompact, TaskCompleted)
+#
+# Journal-first (SPEC-056): there is no session entity. Conversation hooks emit
+# the layered continuity digest and journal-flush guidance, or auto-log events
+# to the project journal. All journal hooks read the harness payload on stdin
+# and exit silently for subagent invocations (agent_id present).
 #
 # Enforcement hooks (8) are implemented via `loaf check --hook <id>`:
 #   - artifact-body-write, check-secrets, ephemeral-provenance, render-drift, validate-push, validate-commit, workflow-pre-pr, security-audit
@@ -112,7 +117,7 @@ hooks:
     - id: detect-linear-magic
       skill: orchestration
       type: command
-      command: 'loaf session log --detect-linear'
+      command: 'loaf journal log --detect-linear'
       matcher: "Bash"
       if: "Bash(git commit:*)"
       blocking: false
@@ -147,50 +152,48 @@ hooks:
       timeout: 5000
       description: Inject housekeeping checklist after successful gh pr merge
 
-    # Session Journal Auto-Entry — Git Events
+    # Journal Auto-Entry — Git Events
     # --from-hook parses stdin JSON to determine entry type (commit, PR, merge),
-    # exits silently for unrecognized commands. Split into git/gh for efficient matching.
+    # exits silently for unrecognized commands and subagents. Split into git/gh
+    # for efficient matching.
     - id: journal-git-events
       skill: orchestration
       type: command
-      command: 'loaf session log --from-hook'
+      command: 'loaf journal log --from-hook'
       matcher: "Bash"
       if: "Bash(git commit:*)"
       timeout: 30000
-      description: Auto-log git commits to session journal
+      description: Auto-log git commits to the project journal
 
     - id: journal-gh-events
       skill: orchestration
       type: command
-      command: 'loaf session log --from-hook'
+      command: 'loaf journal log --from-hook'
       matcher: "Bash"
       if: "Bash(gh pr:*)"
       timeout: 30000
-      description: Auto-log GitHub PR events (create, merge) to session journal
+      description: Auto-log GitHub PR events (create, merge) to the project journal
 
   session:
+    # SessionStart — emit the layered continuity digest (latest project wrap +
+    # recent branch entries + open tasks). --from-hook preserves the subagent
+    # silent-exit guard: no start marker is ever written. The session entity is
+    # dead; the digest is a deterministic read-time query, never persisted.
     - id: session-start-loaf
       skill: orchestration
       type: command
-      command: 'loaf session start'
+      command: 'loaf journal context --from-hook'
       event: SessionStart
-      description: Start session journal and surface session context
+      description: Emit the layered continuity digest at conversation start
 
-    - id: session-end-loaf
-      skill: orchestration
-      type: command
-      command: 'loaf session end --if-active'
-      event: SessionEnd
-      description: End session with progress summary and KB follow-up
-
-    # Task lifecycle — auto-log completions and cancellations
+    # Task lifecycle — auto-log completions and cancellations to the journal
     - id: journal-task-completed
       skill: orchestration
       type: command
-      command: 'loaf session log --from-hook'
+      command: 'loaf journal log --from-hook'
       event: TaskCompleted
       timeout: 30000
-      description: Auto-log task completion or cancellation to session journal
+      description: Auto-log task completion or cancellation to the project journal
 
     # Context injection — implementation principles on every user prompt
     # Must be type: command (exit 0 = inject stdout as context).
@@ -198,28 +201,27 @@ hooks:
     - id: session-context-inject
       skill: orchestration
       type: command
-      command: 'loaf session context for-prompt'
+      command: 'loaf journal context for-prompt'
       event: UserPromptSubmit
       timeout: 5000
-      description: Inject session context and implementation conventions on prompt submit
+      description: Inject implementation conventions on prompt submit
 
-    # PreCompact — log compact marker + inject journal flush instructions
-    # Single command replaces compact.sh + prompt nudge. Must be type: command,
-    # not prompt (prompt stop hooks not supported outside REPL).
+    # PreCompact — inject journal-flush guidance before compaction.
+    # Writes nothing itself: only the entries the model logs in response persist.
+    # Must be type: command, not prompt (prompt stop hooks not supported outside REPL).
     - id: pre-compact
       skill: orchestration
       type: command
-      command: 'loaf session context for-compact'
+      command: 'loaf journal context for-compact'
       event: PreCompact
       timeout: 60000
-      description: Log compact marker and inject journal flush instructions before compaction
+      description: Inject journal flush guidance before compaction
 
-
-    # PostCompact — print rich resumption context for model and user
+    # PostCompact — re-emit the layered continuity digest for resumption
     - id: post-compact
       skill: orchestration
       type: command
-      command: 'loaf session context for-resumption'
+      command: 'loaf journal context for-resumption'
       event: PostCompact
       timeout: 60000
-      description: Print session state, spec, journal, and git context for post-compaction resumption
+      description: Emit the layered continuity digest for post-compaction resumption

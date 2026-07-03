@@ -13,7 +13,7 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-05-22'
+last_reviewed: '2026-07-03'
 ---
 
 # Skill Architecture
@@ -42,16 +42,16 @@ content/skills/{name}/
 
 Skills compile to a shared intermediate at `dist/skills/` (base frontmatter, command substitution, shared templates merged), then each target reads from the intermediate.
 
-## Session Journal Self-Logging
+## Journal Self-Logging
 
-User-invocable workflow skills must log their invocation to the session journal as their first action. This creates an audit trail of which skills ran during a session:
+User-invocable workflow skills must log their invocation to the project journal as their first action. This creates an audit trail of which skills ran; the current branch and an opaque `harness_session_id` are attached automatically:
 
 ```bash
-loaf session log "skill(shape): shaping auth token rotation idea into spec"
-loaf session log "skill(wrap): end-of-session summary"
+loaf journal log "skill(shape): shaping auth token rotation idea into spec"
+loaf journal log "skill(wrap): end-of-conversation checkpoint"
 ```
 
-The `/wrap` skill uses these entries to check whether housekeeping or other periodic skills were run.
+The `/wrap` skill reads recent entries to check whether housekeeping or other periodic skills were run.
 
 ## Shared Templates
 

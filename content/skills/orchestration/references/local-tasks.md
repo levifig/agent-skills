@@ -12,7 +12,7 @@ isn't available.
 - Cutover Reconciliation
 - Task ID Generation
 - Archiving Tasks
-- Session Integration
+- Journal Integration
 - Task Sizing
 - Priority Levels
 - Listing Tasks
@@ -134,20 +134,21 @@ When a task is done:
 1. Mark complete via CLI: `loaf task update TASK-XXX --status done`
 2. Archive: `loaf task archive TASK-XXX`
 
-## Session Integration
+## Journal Integration
 
 When `{{IMPLEMENT_CMD}} TASK-001`:
 
 1. Load task metadata via `loaf task show TASK-001` for context
 2. Read linked spec for full picture
-3. Create or resume a SQLite session automatically
-4. Update task with session reference:
+3. Log the task coupling as the first action:
 
 ```bash
-loaf task update TASK-001 --session <session-alias>
+loaf journal log "decision(implement): implementing TASK-001"
 ```
 
-Session state and journal entries are read through `loaf session show/list`.
+There is no session to create or couple to. Task progress is read through
+`loaf task show/list`; the surrounding decisions and blockers live in the
+project journal (`loaf journal recent`, `loaf journal search`).
 
 ## Task Sizing
 

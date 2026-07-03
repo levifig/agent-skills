@@ -1214,6 +1214,30 @@ func projectIDForTest(t *testing.T, store *Store, root project.Root) string {
 	return identity.ID
 }
 
+// assertSessionProjectContext validates the shared project-context envelope
+// carried by journal read/write results.
+func assertSessionProjectContext(t *testing.T, root project.Root, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string) {
+	t.Helper()
+	if contractVersion != StateJSONContractVersion {
+		t.Fatalf("ContractVersion = %d, want %d", contractVersion, StateJSONContractVersion)
+	}
+	if databaseScope != "global" {
+		t.Fatalf("DatabaseScope = %q, want global", databaseScope)
+	}
+	if databasePath == "" {
+		t.Fatal("DatabasePath is empty")
+	}
+	if projectID == "" {
+		t.Fatal("ProjectID is empty")
+	}
+	if projectName != filepath.Base(root.Path()) {
+		t.Fatalf("ProjectName = %q, want %q", projectName, filepath.Base(root.Path()))
+	}
+	if projectCurrentPath != root.Path() {
+		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, root.Path())
+	}
+}
+
 func assertDiagnostic(t *testing.T, diagnostics []Diagnostic, code string) {
 	t.Helper()
 	_ = findDiagnostic(t, diagnostics, code)

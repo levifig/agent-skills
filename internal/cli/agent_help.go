@@ -91,7 +91,6 @@ func agentHelpCommands() []agentHelpCommand {
 				{Name: "export", Description: "Export state data", Options: []agentHelpOption{{Flags: "--format <format>", Description: "Output format for the selected export kind"}}},
 				{Name: "export all", Description: "Export a complete project-scoped SQLite snapshot", Options: []agentHelpOption{{Flags: "--format <format>", Description: "Output format: json"}, {Flags: "--json", Description: "Alias for --format json"}}},
 				{Name: "export triage", Description: "Export a triage summary from SQLite state", Options: []agentHelpOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
-				{Name: "export session", Description: "Export one session from SQLite state", Options: []agentHelpOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
 				{Name: "export spec", Description: "Export one spec from SQLite state", Options: []agentHelpOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
 				{Name: "export release-readiness", Description: "Export a release-readiness report from SQLite state", Options: []agentHelpOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
 			},
@@ -124,20 +123,15 @@ func agentHelpCommands() []agentHelpCommand {
 			},
 		},
 		{
-			Name:        "session",
-			Description: "Manage sessions",
+			Name:        "journal",
+			Description: "Record and read the project journal",
 			Subcommands: []agentHelpSubcommand{
-				{Name: "start", Description: "Start or resume a session", Options: []agentHelpOption{{Flags: "--resume", Description: "Resume if possible"}, {Flags: "--session-id <id>", Description: "Harness session ID"}, {Flags: "--force", Description: "Ignore hook agent adoption guard"}, {Flags: "--json", Description: "Output action, session, journal IDs, global database scope, and project identity as JSON"}}},
-				{Name: "end", Description: "End the current session", Options: []agentHelpOption{{Flags: "--if-active", Description: "No-op when no active session exists"}, {Flags: "--wrap", Description: "Mark as wrapped"}, {Flags: "--from-hook", Description: "Read hook input"}, {Flags: "--session-id <id>", Description: "Harness session ID"}, {Flags: "--json", Description: "Output action/noop, session, journal IDs, global database scope, and project identity as JSON"}}},
-				{Name: "archive", Description: "Archive completed sessions", Options: []agentHelpOption{{Flags: "--branch <branch>", Description: "Branch to archive"}, {Flags: "--session-id <id>", Description: "Harness session ID"}, {Flags: "--json", Description: "Output archive result, affected sessions, global database scope, and project identity as JSON"}}},
-				{Name: "list", Description: "List sessions", Options: []agentHelpOption{{Flags: "--all", Description: "Include archived sessions"}, {Flags: "--json", Description: "Output sessions, diagnostics, global database scope, and project identity as JSON"}}},
-				{Name: "show", Description: "Display one session", Options: []agentHelpOption{{Flags: "--json", Description: "Output session details, journal entries, relationships, global database scope, and project identity as JSON"}}},
-				{Name: "log", Description: "Append a journal entry", Options: []agentHelpOption{{Flags: "--from-hook", Description: "Read hook input"}, {Flags: "--session-id <id>", Description: "Harness session ID"}, {Flags: "--json", Description: "Output journal entry, linked session, global database scope, and project identity as JSON"}}},
-				{Name: "report", Description: "Generate a session report", Options: []agentHelpOption{{Flags: "--json", Description: "Output export contract, command, project context, and markdown content as JSON"}}},
-				{Name: "enrich", Description: "Record a native SQLite enrichment checkpoint", Options: []agentHelpOption{{Flags: "--dry-run", Description: "Preview enrichment state without writing a checkpoint"}, {Flags: "--json", Description: "Output compatibility mode, action, reason, and counts as JSON"}}},
-				{Name: "housekeeping", Description: "Summarize session housekeeping status", Options: []agentHelpOption{{Flags: "--json", Description: "Output compatibility mode, action, reason, and counts as JSON"}}},
-				{Name: "state", Description: "Manage session current-state metadata"},
-				{Name: "context", Description: "Render session context for compaction or resumption"},
+				{Name: "log", Description: "Append a project-scoped journal entry", Options: []agentHelpOption{{Flags: "--harness-session-id <id>", Description: "Opaque conversation correlation tag"}, {Flags: "--branch <branch>", Description: "Observed branch (defaults to current git branch)"}, {Flags: "--worktree <path>", Description: "Observed worktree path"}, {Flags: "--json", Description: "Output the written entry and project identity as JSON"}}},
+				{Name: "recent", Description: "Show the recent project journal timeline", Options: []agentHelpOption{{Flags: "--branch <branch>", Description: "Restrict to entries observed on one branch"}, {Flags: "--since-last-wrap", Description: "Trim to entries logged after the most recent wrap"}, {Flags: "--limit <n>", Description: "Maximum entries to return"}, {Flags: "--json", Description: "Output the timeline and project identity as JSON"}}},
+				{Name: "search", Description: "Full-text search journal entries", Options: []agentHelpOption{{Flags: "--all", Description: "Search across all projects"}, {Flags: "--limit <n>", Description: "Maximum hits to return"}, {Flags: "--json", Description: "Output hits and project identity as JSON"}}},
+				{Name: "show", Description: "Show one journal entry by id", Options: []agentHelpOption{{Flags: "--json", Description: "Output the entry and project identity as JSON"}}},
+				{Name: "context", Description: "Emit the layered continuity digest", Options: []agentHelpOption{{Flags: "--branch <branch>", Description: "Branch scope for the recent-entries layer"}, {Flags: "--json", Description: "Output the digest and project identity as JSON"}}},
+				{Name: "export", Description: "Export the project journal to markdown or JSONL", Options: []agentHelpOption{{Flags: "--format <format>", Description: "Output format: markdown (default) or jsonl"}}},
 			},
 		},
 		{
@@ -148,7 +142,7 @@ func agentHelpCommands() []agentHelpCommand {
 				{Name: "show", Description: "Display a single task's details", Options: []agentHelpOption{{Flags: "--json", Description: "Output task details, relationships, global database scope, and project identity as JSON"}}},
 				{Name: "status", Description: "Show task summary counts"},
 				{Name: "create", Description: "Create a new task", Options: []agentHelpOption{{Flags: "--title <title>", Description: "Task title"}, {Flags: "--spec <id>", Description: "Associated spec ID"}, {Flags: "--priority <level>", Description: "Task priority: " + strings.Join(state.TaskPriorities(), ", ")}, {Flags: "--depends-on <ids>", Description: "Comma-separated dependency task IDs"}, {Flags: "--json", Description: "Output created task, event, global database scope, and project identity as JSON"}}},
-				{Name: "update", Description: "Update a task's metadata", Options: []agentHelpOption{{Flags: "--status <status>", Description: "New task status: " + strings.Join(state.TaskStatuses(), ", ")}, {Flags: "--priority <level>", Description: "New task priority: " + strings.Join(state.TaskPriorities(), ", ")}, {Flags: "--spec <id>", Description: "Set or clear associated spec"}, {Flags: "--depends-on <ids>", Description: "Replace dependencies"}, {Flags: "--session <file>", Description: "Set or clear session reference"}, {Flags: "--json", Description: "Output updated task, event, global database scope, and project identity as JSON"}}},
+				{Name: "update", Description: "Update a task's metadata", Options: []agentHelpOption{{Flags: "--status <status>", Description: "New task status: " + strings.Join(state.TaskStatuses(), ", ")}, {Flags: "--priority <level>", Description: "New task priority: " + strings.Join(state.TaskPriorities(), ", ")}, {Flags: "--spec <id>", Description: "Set or clear associated spec"}, {Flags: "--depends-on <ids>", Description: "Replace dependencies"}, {Flags: "--json", Description: "Output updated task, event, global database scope, and project identity as JSON"}}},
 				{Name: "archive", Description: "Archive completed tasks", Options: []agentHelpOption{{Flags: "--spec <id>", Description: "Archive done tasks for a spec"}, {Flags: "--json", Description: "Output archive result, archived tasks, global database scope, and project identity as JSON"}}},
 				{Name: "refresh", Description: "Rebuild the Markdown task index from task/spec files", Options: []agentHelpOption{{Flags: "--json", Description: "Output compatibility mode, action, reason, and counts as JSON"}}},
 				{Name: "sync", Description: "Sync the Markdown task index and task files", Options: []agentHelpOption{{Flags: "--import", Description: "Import orphan markdown files"}, {Flags: "--push", Description: "Push index metadata into markdown frontmatter"}, {Flags: "--json", Description: "Output compatibility mode, action, reason, and counts as JSON"}}},
@@ -239,7 +233,7 @@ func agentHelpCommands() []agentHelpCommand {
 			},
 		},
 		{Name: "version", Description: "Show version and content counts"},
-		{Name: "housekeeping", Description: "Scan agent artifacts and summarize housekeeping recommendations", Options: []agentHelpOption{{Flags: "--json", Description: "Output housekeeping sections, cleanup candidates, signals, and SQLite-backed project identity when available as JSON"}, {Flags: "--dry-run", Description: "Show recommendations without applying actions"}, {Flags: "--sessions", Description: "Only review sessions"}, {Flags: "--specs", Description: "Only review specs"}, {Flags: "--drafts", Description: "Only review shaping drafts"}, {Flags: "--plans", Description: "Accept legacy plans filter for compatibility"}, {Flags: "--handoffs", Description: "Accept legacy handoffs filter for compatibility"}}},
+		{Name: "housekeeping", Description: "Scan agent artifacts and summarize housekeeping recommendations", Options: []agentHelpOption{{Flags: "--json", Description: "Output housekeeping sections, cleanup candidates, signals, and SQLite-backed project identity when available as JSON"}, {Flags: "--dry-run", Description: "Show recommendations without applying actions"}, {Flags: "--specs", Description: "Only review specs"}, {Flags: "--drafts", Description: "Only review shaping drafts"}, {Flags: "--plans", Description: "Accept legacy plans filter for compatibility"}, {Flags: "--handoffs", Description: "Accept legacy handoffs filter for compatibility"}}},
 		{Name: "trace", Description: "Trace relationships for an entity", Options: []agentHelpOption{{Flags: "--json", Description: "Output traced entity, sources, relationships, global database scope, and project identity as JSON"}}},
 		{
 			Name:        "brainstorm",
@@ -321,7 +315,7 @@ func nativeArtifactAgentHelpCommand(kind string) agentHelpCommand {
 		options = append(options, agentHelpOption{Flags: "--spec <spec>", Description: "Optional related spec"})
 	case "handoff":
 		options = append(options,
-			agentHelpOption{Flags: "--session <session>", Description: "Optional related session"},
+			agentHelpOption{Flags: "--harness-session-id <id>", Description: "Optional conversation correlation tag"},
 			agentHelpOption{Flags: "--task <task>", Description: "Optional related task"},
 		)
 	}

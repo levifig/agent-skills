@@ -39,11 +39,10 @@ spec: SPEC-001
 
 	mustExec(t, store, `INSERT INTO journal_entries (id, project_id, entry_type, message, created_at, updated_at) VALUES (?, ?, 'decision', 'noted', ?, ?)`, "je-1", projectID, now, now)
 	mustExec(t, store, `INSERT INTO journal_search (rowid, project_id, journal_entry_id, session_id, entry_type, scope, message) VALUES (1, ?, 'je-1', '', 'decision', '', 'noted')`, projectID)
-	mustExec(t, store, `INSERT INTO sessions (id, project_id, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)`, "sess-1", projectID, now, now)
 	mustExec(t, store, `INSERT INTO docs_index (id, project_id, path, content, content_hash, indexed_worktree, indexed_at, created_at, updated_at) VALUES (?, ?, 'README.md', 'doc body', 'hash', 'wt', ?, ?, ?)`, "doc-1", projectID, now, now, now)
 	mustExec(t, store, `INSERT INTO docs_search (rowid, project_id, id, path, content) SELECT rowid, project_id, id, path, content FROM docs_index WHERE id = 'doc-1'`)
 
-	tablesWithRows := []string{"specs", "tasks", "sources", "aliases", "artifact_bodies", "journal_entries", "sessions", "docs_index", "relationships"}
+	tablesWithRows := []string{"specs", "tasks", "sources", "aliases", "artifact_bodies", "journal_entries", "docs_index", "relationships"}
 	for _, table := range tablesWithRows {
 		if got := countRows(t, store, `SELECT COUNT(*) FROM `+table+` WHERE project_id = ?`, projectID); got == 0 {
 			t.Fatalf("precondition: %s has 0 rows for project, want >0", table)

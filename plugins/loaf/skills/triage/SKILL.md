@@ -1,10 +1,10 @@
 ---
 name: triage
 description: >-
-  Surfaces and processes the intake queue: unresolved sparks from session
-  journals and brainstorm documents, plus raw ideas awaiting evaluation. Use
-  when the user asks "what sparks do I have?", "review my ideas", "triage", or
-  "what's in my backlog?"...
+  Surfaces and processes the intake queue: unresolved sparks from the project
+  journal and brainstorm documents, plus raw ideas awaiting evaluation. Use when
+  the user asks "what sparks do I have?", "review my ideas", "triage", or
+  "what's in my backlo...
 user-invocable: true
 version: 2.0.0-alpha.1
 ---
@@ -80,7 +80,7 @@ Show a summary table:
 
 ```
 Intake Queue:
-  Sparks (sessions):    3 unresolved
+  Sparks (journal):     3 unresolved
   Sparks (brainstorms): 1 unprocessed
   Raw ideas:            2 awaiting evaluation
   Total:                6 items
@@ -176,5 +176,5 @@ After triage completes, suggest `/loaf:shape` for any ideas promoted to shaping.
 - **idea** -- Capture a new idea (fast, minimal friction)
 - **shape** -- Develop an idea into a SPEC
 - **brainstorm** -- Deep exploration of a problem space (produces sparks)
-- **housekeeping** -- Flags sessions with unprocessed sparks
+- **housekeeping** -- Flags brainstorm drafts with unprocessed sparks before deletion
 - **reflect** -- Strategic document updates (separate from triage)

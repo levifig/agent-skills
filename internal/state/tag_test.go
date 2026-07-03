@@ -36,7 +36,6 @@ func TestTagsClassifyRequiredEntityKindsThroughManyToManyTable(t *testing.T) {
 		"idea":          "20260528-tag-idea",
 		"spark":         "SPARK-tag-me",
 		"brainstorm":    "20260528-brainstorm",
-		"session":       "20260528-session",
 		"report":        "20260528-report",
 		"journal_entry": journal.ID,
 	}

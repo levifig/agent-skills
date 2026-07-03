@@ -149,9 +149,8 @@ func (s *Store) ValidateCurrentSchema(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	current := CurrentSchemaVersion()
-	if version != current {
-		return version, fmt.Errorf("schema version %d does not match expected version %d", version, current)
+	if !acceptableSchemaVersion(version) {
+		return version, fmt.Errorf("schema version %d does not match expected version %d", version, CurrentSchemaVersion())
 	}
 	for _, migration := range SchemaMigrations() {
 		var checksum string
@@ -165,7 +164,30 @@ func (s *Store) ValidateCurrentSchema(ctx context.Context) (int, error) {
 			return version, fmt.Errorf("read schema migration %d: %w", migration.Version, err)
 		}
 	}
+	if err := s.validateOptionalJournalFirstMigration(ctx); err != nil {
+		return version, err
+	}
 	return version, nil
+}
+
+// validateOptionalJournalFirstMigration verifies the journal-first migration
+// row, when present, matches the Go-owned migration checksum. The migration is
+// applied out-of-band (never auto-applied on open), so its absence is valid on
+// a pre-migration database; only a recorded-but-drifted checksum is an error.
+func (s *Store) validateOptionalJournalFirstMigration(ctx context.Context) error {
+	migration := JournalFirstMigration()
+	var checksum string
+	err := s.db.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE version = ?`, migration.Version).Scan(&checksum)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil
+	case err != nil:
+		return fmt.Errorf("read schema migration %d: %w", migration.Version, err)
+	case checksum != migration.Checksum():
+		return fmt.Errorf("schema migration %d checksum does not match Go-owned migration", migration.Version)
+	default:
+		return nil
+	}
 }
 
 // ValidateProjectPathInvariants rejects inconsistent durable project path metadata.

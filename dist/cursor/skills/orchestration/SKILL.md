@@ -1,11 +1,10 @@
 ---
 name: orchestration
 description: >-
-  Coordinates multi-agent work: agent delegation, session management, Linear
-  integration, and council workflows. Use when managing sessions, delegating to
-  agents, or coordinating cross-cutting work across multiple agents. Not for
-  single-task implementation (use direct tool delegation) or solo research (use
-  research).
+  Coordinates multi-agent work: agent delegation, journal continuity, Linear
+  integration, and council workflows. Use when delegating to agents or
+  coordinating cross-cutting work across multiple agents. Not for single-task
+  implementation (use direct tool delegation) or solo research (use research).
 version: 2.0.0-alpha.1
 ---
 
@@ -21,17 +20,16 @@ version: 2.0.0-alpha.1
 - Artifact Locations
 - Three-Phase Workflow
 
-Comprehensive patterns for orchestration: coordinating multi-agent work, managing sessions, running councils, delegating to specialized agents, and integrating with Linear.
+Comprehensive patterns for orchestration: coordinating multi-agent work, keeping the project journal current, running councils, delegating to specialized agents, and integrating with Linear.
 
 ## Critical Rules
 
-### Sessions
-- Start or resume with `loaf session start`; SQLite is the operational source.
-- Use `loaf session log` for journal entries: `decision(scope)`, `discover(scope)`, `block(scope)`, `spark(scope)`, `todo(scope)`
-- **SESSION JOURNAL NUDGE**: When you see this hook trigger, log unrecorded decisions or findings before responding. Use `loaf session log "entry(scope): description"`. Only log actions (decisions made, things discovered, conclusions reached) — not thoughts or read-only work.
-- Wrap with `loaf session end --wrap`; archive with `loaf session archive` when complete.
-- PreCompact hook: flushes journal-worthy state before compaction.
-- Post-compaction: `loaf session start` and `loaf session show` expose recent journal context for recovery.
+### Journal
+- Log `loaf journal log "skill(orchestration): <intent>"` as the first action. There is no session to start — journaling is continuous.
+- Use `loaf journal log` for entries: `decision(scope)`, `discover(scope)`, `block(scope)`, `spark(scope)`, `todo(scope)`
+- **JOURNAL NUDGE**: When you see this hook trigger, log unrecorded decisions or findings before responding. Use `loaf journal log "entry(scope): description"`. Only log actions (decisions made, things discovered, conclusions reached) — not thoughts or read-only work.
+- Write an optional `wrap(scope)` entry only when the conversation holds synthesis worth saving. Nothing is ever ended or archived; a conversation without a wrap leaves a valid journal.
+- Continuity is derived and ephemeral: the SessionStart hook emits a layered digest at conversation start. Pull more on demand with `loaf journal recent`, `loaf journal search`, or `loaf journal context`.
 
 ### Councils
 - Always odd number: 5 or 7 agents
@@ -46,7 +44,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 
 **If `integrations.linear.enabled` is `true` in `.agents/loaf.json`:** use Linear MCP workflows and [references/linear.md](references/linear.md) for issue updates and status.
 
-**Otherwise:** coordinate with local sessions and `loaf task` / file-based tracking only; do not assume Linear MCP tools are available.
+**Otherwise:** coordinate with the project journal and `loaf task` / file-based tracking only; do not assume Linear MCP tools are available.
 
 ### Planning (Shape Up)
 - Complexity-based sizing (small / medium / large)
@@ -56,7 +54,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 
 ## Verification
 
-- Verify `loaf session list --json` / `loaf session show <ref> --json` reflect the active work before archiving
+- Verify `loaf journal recent` / `loaf journal context` reflect the current work
 - Validate council files with `validate-council.py` before concluding
 - Confirm Linear issue updates are self-contained (no local paths, no emoji)
 
@@ -64,14 +62,14 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 
 | Task | Action |
 |------|--------|
-| Multi-step work | Start/resume session, spawn agents |
+| Multi-step work | Log the intent, spawn agents |
 | Complex decision | Convene council (5-7 agents, odd) |
 | Linear update | Checkboxes, no emoji, no local paths |
 | Feature planning | Size by complexity, shape before building |
 | Agent selection | Match domain expertise to task |
 | Stuck on task | Check priority order, consider reshaping |
-| Pre-compaction | CLI hooks handle journal flush + resumption context |
-| Durable artifact handling | Delegate `.agents/`-scoped session/report/spec/handoff/knowledge tending to `librarian` |
+| Pre-compaction | CLI hooks nudge a journal flush + emit the digest afterward |
+| Durable artifact handling | Delegate `.agents/`-scoped report/spec/handoff/knowledge tending to `librarian` |
 | Low-priority work | Spawn background-runner with run_in_background |
 | New feature workflow | Research -> Architecture -> Shape -> Breakdown -> Implement |
 
@@ -87,8 +85,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 | background agent Development | [references/background agent-development.md](references/background agent-development.md) | Delegating to specialized agents |
 | Background Agents | [references/background-agents.md](references/background-agents.md) | Running non-interactive work in background |
 | Council Workflow | [../council/SKILL.md](../council/SKILL.md) | Convening councils for complex decisions |
-| Session Management | [references/sessions.md](references/sessions.md) | Starting sessions and keeping live work resumable |
-| Session Resume | [references/session-resume.md](references/session-resume.md) | Resuming sessions, checkpoints, context recovery |
+| Journal Continuity | [references/journal.md](references/journal.md) | Journal-first model, logging protocol, derived continuity, recovery |
 | Context Management | [references/context-management.md](references/context-management.md) | Using /clear, /compact, managing context limits |
 | Linear Integration | [references/linear.md](references/linear.md) | Updating Linear issues, magic words, status conventions |
 | Script Surface | [references/script-surface.md](references/script-surface.md) | Deciding whether helper scripts should become CLI commands |
@@ -98,7 +95,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, managin
 **You are the orchestrator, not the implementer.**
 
 The orchestrator:
-1. Creates issues and starts sessions for tracking
+1. Creates issues and logs the orchestration intent for tracking
 2. Breaks down work into delegable tasks
 3. Spawns specialized agents for implementation
 4. Coordinates outcomes and updates external systems
@@ -112,9 +109,7 @@ This skill uses paths from `.agents/loaf.json`:
 
 ```json
 {
-  "sessions": {
-    "councils_directory": ".agents/councils"
-  },
+  "councils_directory": ".agents/councils",
   "linear": {
     "workspace": "your-workspace-slug",
     "project": { "id": "...", "name": "..." },
@@ -127,7 +122,7 @@ This skill uses paths from `.agents/loaf.json`:
 
 | Artifact | Location | Archive | Naming |
 |----------|----------|---------|--------|
-| Sessions | SQLite (`loaf session show`) | `loaf session archive` | CLI alias / session ID |
+| Journal | Global SQLite (`loaf journal recent/search`) | N/A — continuous project-scoped log | Project-scoped, harness-id tagged |
 | Councils | `.agents/councils/` | `.agents/councils/archive/` | `YYYYMMDD-HHMMSS-topic.md` |
 | Handoffs | `.agents/handoffs/` | delete after deprecated | Created by `/handoff` |
 | Reports | `.agents/reports/` | N/A | `YYYYMMDD-HHMMSS-subject.md` |
@@ -139,16 +134,16 @@ This skill uses paths from `.agents/loaf.json`:
 
 ### BEFORE (Planning)
 - Create/check external issue (Linear, GitHub)
-- Run `loaf session start` and log the orchestration intent
+- Log the orchestration intent with `loaf journal log`
 - Break down into tasks, identify agents, get user approval
 
 ### DURING (Execution)
 - Spawn specialized agents (never implement directly)
-- Track progress with `loaf session log` and external issue updates
+- Track progress with `loaf journal log` and external issue updates
 - Convene councils for uncertain decisions
 
 ### AFTER (Completion)
 - Code review + QA testing
 - Update external issue to Done
 - Ensure knowledge captured in permanent locations
-- Run `loaf session end --wrap`; archive with `loaf session archive` after merge/closure
+- Write an optional `wrap` journal entry if the conversation holds synthesis worth saving

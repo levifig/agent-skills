@@ -14,12 +14,12 @@ import (
 
 // ArtifactEntityCreateOptions describes a native plan, handoff, or council creation request.
 type ArtifactEntityCreateOptions struct {
-	Kind    string
-	Title   string
-	Body    string
-	Spec    string
-	Session string
-	Task    string
+	Kind             string
+	Title            string
+	Body             string
+	Spec             string
+	HarnessSessionID string
+	Task             string
 }
 
 // ArtifactEntityListOptions filters native plan, handoff, or council lists.
@@ -136,7 +136,7 @@ func (s *Store) CreateArtifactEntity(ctx context.Context, root project.Root, opt
 	if strings.TrimSpace(options.Body) == "" {
 		return ArtifactEntityCreateResult{}, fmt.Errorf("%s new requires body content", kind)
 	}
-	specID, sessionID, taskID, err := s.resolveArtifactEntityContext(ctx, projectID, kind, options)
+	specID, harnessSessionID, taskID, err := s.resolveArtifactEntityContext(ctx, projectID, kind, options)
 	if err != nil {
 		return ArtifactEntityCreateResult{}, err
 	}
@@ -163,10 +163,18 @@ VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
 			return ArtifactEntityCreateResult{}, fmt.Errorf("insert %s %s: %w", kind, alias, err)
 		}
 	case "handoff":
-		if _, err := tx.ExecContext(ctx, `
-INSERT INTO handoffs (id, project_id, session_id, task_id, title, status, body_source_id, created_at, updated_at)
+		// The handoff correlation column is journal-first (harness_session_id)
+		// after the SPEC-056 migration but session_id on the pre-migration
+		// schema. Match the live table so the write works on both shapes.
+		correlationColumn, err := handoffCorrelationColumn(ctx, tx)
+		if err != nil {
+			return ArtifactEntityCreateResult{}, err
+		}
+		insertHandoff := fmt.Sprintf(`
+INSERT INTO handoffs (id, project_id, %s, task_id, title, status, body_source_id, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
-`, id, projectID, emptyToNil(sessionID), emptyToNil(taskID), title, LifecycleStatusDraft, timestamp, timestamp); err != nil {
+`, correlationColumn)
+		if _, err := tx.ExecContext(ctx, insertHandoff, id, projectID, emptyToNil(harnessSessionID), emptyToNil(taskID), title, LifecycleStatusDraft, timestamp, timestamp); err != nil {
 			return ArtifactEntityCreateResult{}, fmt.Errorf("insert handoff %s: %w", alias, err)
 		}
 	default:
@@ -349,7 +357,7 @@ WHERE %s.project_id = ? AND %s.id = ?
 }
 
 func (s *Store) resolveArtifactEntityContext(ctx context.Context, projectID string, kind string, options ArtifactEntityCreateOptions) (string, string, string, error) {
-	var specID, sessionID, taskID string
+	var specID, taskID string
 	if options.Spec != "" {
 		entity, err := s.resolveTraceEntity(ctx, projectID, options.Spec)
 		if err != nil {
@@ -359,16 +367,6 @@ func (s *Store) resolveArtifactEntityContext(ctx context.Context, projectID stri
 			return "", "", "", fmt.Errorf("--spec %q resolves to %s, not spec", options.Spec, entity.Kind)
 		}
 		specID = entity.ID
-	}
-	if options.Session != "" {
-		entity, err := s.resolveTraceEntity(ctx, projectID, options.Session)
-		if err != nil {
-			return "", "", "", err
-		}
-		if entity.Kind != "session" {
-			return "", "", "", fmt.Errorf("--session %q resolves to %s, not session", options.Session, entity.Kind)
-		}
-		sessionID = entity.ID
 	}
 	if options.Task != "" {
 		entity, err := s.resolveTraceEntity(ctx, projectID, options.Task)
@@ -381,9 +379,39 @@ func (s *Store) resolveArtifactEntityContext(ctx context.Context, projectID stri
 		taskID = entity.ID
 	}
 	if kind == "handoff" {
-		return "", sessionID, taskID, nil
+		// The harness session id is an opaque provenance tag, not an entity
+		// reference: pass it through without resolution.
+		return "", strings.TrimSpace(options.HarnessSessionID), taskID, nil
 	}
 	return specID, "", "", nil
+}
+
+// handoffCorrelationColumn returns the name of the handoffs correlation column,
+// tolerating both the journal-first schema (harness_session_id) and the
+// pre-migration schema (session_id).
+func handoffCorrelationColumn(ctx context.Context, tx *sql.Tx) (string, error) {
+	rows, err := tx.QueryContext(ctx, `PRAGMA table_info(handoffs)`)
+	if err != nil {
+		return "", fmt.Errorf("inspect handoffs columns: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return "", fmt.Errorf("scan handoffs columns: %w", err)
+		}
+		if name == "harness_session_id" {
+			return "harness_session_id", nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("iterate handoffs columns: %w", err)
+	}
+	return "session_id", nil
 }
 
 func (s *Store) nextArtifactEntityAlias(ctx context.Context, tx *sql.Tx, projectID string, kind string, title string, now time.Time) (string, error) {

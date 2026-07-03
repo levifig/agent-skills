@@ -183,21 +183,26 @@ func TestOrchestrationDuplicateAuthorityReferencesRetired(t *testing.T) {
 	}
 }
 
-func TestCliReferenceCatalogsSessionFamily(t *testing.T) {
+func TestCliReferenceCatalogsJournalFamily(t *testing.T) {
 	root := repoRoot(t)
 	rel := filepath.FromSlash("content/skills/cli-reference/SKILL.md")
 	body := readTextFile(t, filepath.Join(root, rel))
 	for _, command := range []string{
-		"loaf session start",
-		"loaf session log",
-		"loaf session end",
-		"loaf session list",
-		"loaf session show",
-		"loaf session archive",
+		"loaf journal log",
+		"loaf journal recent",
+		"loaf journal search",
+		"loaf journal show",
+		"loaf journal context",
+		"loaf journal export",
 	} {
 		if !strings.Contains(body, command) {
-			t.Fatalf("%s missing session command %q", filepath.ToSlash(rel), command)
+			t.Fatalf("%s missing journal command %q", filepath.ToSlash(rel), command)
 		}
+	}
+	// Journal-first (SPEC-056): the session entity is gone; no session command
+	// should survive in the generated CLI reference.
+	if strings.Contains(body, "loaf session") {
+		t.Fatalf("%s still references the deleted `loaf session` namespace", filepath.ToSlash(rel))
 	}
 }
 

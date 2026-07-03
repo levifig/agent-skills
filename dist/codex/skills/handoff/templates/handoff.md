@@ -7,8 +7,7 @@
 title: "[Handoff Title]"
 created: YYYY-MM-DDTHH:MM:SSZ
 status: draft | final | deprecated
-source: session | branch | task | ad-hoc
-session: session alias or loaf session show reference
+source: conversation | branch | task | ad-hoc
 branch: branch-name
 deprecated_at: YYYY-MM-DDTHH:MM:SSZ  # Set only when confirmed obsolete
 deprecated_by: orchestrator
@@ -32,7 +31,7 @@ tags: []
 
 ## Existing Artifacts
 
-- [Relevant specs, tasks, ADRs, reports, issues, sessions, commits, branches, or diffs]
+- [Relevant specs, tasks, ADRs, reports, issues, journal entries, commits, branches, or diffs]
 
 ## Decisions
 

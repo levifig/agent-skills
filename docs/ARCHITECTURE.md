@@ -12,11 +12,11 @@ cli/                            # Portable launcher plus JS build/verifier/smoke
 content/                        # Distributable content (separated from tooling)
 ├── skills/{name}/SKILL.md      # Domain knowledge (Agent Skills standard)
 ├── agents/{name}.md            # Functional profiles (tool boundaries + behavioral contracts)
-├── hooks/session/              # Session lifecycle scripts (compact.sh)
+├── hooks/                      # Enforcement + instruction hook scripts
 └── templates/                  # Shared templates (distributed at build time)
 
 config/
-├── hooks.yaml                  # Hook definitions (enforcement, instruction, session lifecycle)
+├── hooks.yaml                  # Hook definitions (enforcement, instruction, SessionStart digest)
 └── targets.yaml                # Target defaults + shared-templates mapping
 
 Output:
@@ -75,7 +75,7 @@ Amp's plugin API is intentionally minimal. Plugin handlers are dispatched via `h
 - `agent.start` — when an agent begins a turn
 - `agent.end` — when an agent finishes a turn
 
-There is no session-lifecycle dispatch. Amp's binary internally emits `emitEvent("session.start", ...)` for telemetry purposes, but this is not exposed to plugins. Features that require session-start or session-end hooks (SOUL.md self-healing, PreCompact flushes, etc.) are not viable on Amp without upstream support. Loaf's Amp target is scoped to tool events only; session lifecycle features that other targets ship are intentionally absent here.
+There is no session-lifecycle dispatch. Amp's binary internally emits `emitEvent("session.start", ...)` for telemetry purposes, but this is not exposed to plugins. Features that require a SessionStart hook (the journal continuity digest, SOUL.md self-healing) or PreCompact flushes are not viable on Amp without upstream support. Loaf's Amp target is scoped to tool events only; the SessionStart digest that other targets ship is intentionally absent here.
 
 This was discovered during SPEC-033 review (PR #40). An earlier wiring attempted to map `sessionEnd` to `agent.end` (turn-end) — semantically wrong and now reverted.
 
@@ -108,7 +108,7 @@ This extends the "CLI is the correct protocol layer" principle to filesystem con
 
 Skills that orchestrate specs and tasks (`/breakdown`, `/implement`, `/housekeeping`, `/shape`, `/council`) branch on `integrations.linear.enabled` in `.agents/loaf.json`:
 
-- **Local-tasks mode** (default): specs stay in `.agents/specs/`; task, session, idea, spark, brainstorm, and draft records live in the global SQLite database.
+- **Local-tasks mode** (default): specs stay in `.agents/specs/`; task, journal, idea, spark, brainstorm, and draft records live in the global SQLite database.
 - **Linear-native mode**: specs stay in `.agents/specs/` (canonical, deliberation layer); tasks move to Linear as sub-issues under a `spec`-labeled parent rollup issue (execution layer).
 
 The split reflects an architectural principle from ADR-010's consolidation pattern extended to the spec/task artifact model:
@@ -122,7 +122,7 @@ Skills detect the mode and branch accordingly. No skill edits are required to sw
 
 ### Pre-Flight Dependency Gate
 
-`/implement`'s Linear-native routing enforces `blockedBy` as a **hard pre-flight gate**: before moving a sub-issue to `in_progress` or creating a session, every issue in its `blockedBy` field must be in a `completed`-type state. If not, the skill refuses to start — no session created, no issue moved.
+`/implement`'s Linear-native routing enforces `blockedBy` as a **hard pre-flight gate**: before moving a sub-issue to `in_progress` or starting work, every issue in its `blockedBy` field must be in a `completed`-type state. If not, the skill refuses to start — no work begun, no issue moved.
 
 This is different from advisory dependency ordering: the dependency graph becomes a runtime invariant, not a suggestion. The orchestrator cannot implement through open blockers even by accident.
 
@@ -136,7 +136,7 @@ Loaf uses **functional profiles** defined by tool access boundaries, not role-ba
 
 **The Orchestrator:**
 
-The main session is the **orchestrator** — the coordinator that plans and delegates but does not directly implement, review, research, or curate session state.
+The main conversation is the **orchestrator** — the coordinator that plans and delegates but does not directly implement, review, research, or curate durable artifacts.
 
 **4 Functional Profiles:**
 
@@ -145,7 +145,7 @@ The main session is the **orchestrator** — the coordinator that plans and dele
 | implementer | Full write | Writes code, tests, config, docs. Speciality via skills at spawn time. |
 | reviewer | Read-only | Audits and verifies. Cannot modify what it reviews — independence is structural. |
 | researcher | Read + Web | Investigates options, compares approaches, returns structured reports. No write or execute. |
-| librarian | Read + Edit (.agents/) | Tends session lifecycle, state, wrap summaries. Does not implement or research. |
+| librarian | Read + Edit (.agents/) | Tends the project journal and durable `.agents/` artifacts, including wrap checkpoints. Does not implement or research. |
 
 Each profile is defined in `content/agents/{implementer,reviewer,researcher,librarian}.md` — a minimal behavioral contract and tool boundary, not domain knowledge. A spawned implementer becomes a backend engineer, DBA, or devops engineer depending entirely on the skills loaded at spawn time.
 
@@ -173,7 +173,7 @@ Agents are the primary authors of knowledge files, ADRs, tasks, and specs. Human
 
 The principle inverts the traditional "humans write docs, agents consume them" model. Agents are already doing the work and are closest to what's being learned; pulling knowledge creation into the work itself ("maintenance as side effect of work") is cheaper than treating documentation as a separate sprint. Humans are better at judgment — *is this worth recording?* — than at the writing.
 
-The growth loop is concrete: agent discovers an insight during brainstorming, development, or debugging → proposes a knowledge file, ADR, task, or spec → human reviews and accepts, edits, or rejects → committed. Quality control depends on human review; agents may write redundant or low-quality material that the curator catches. Hooks (PostToolUse, SessionEnd) prompt agents at the moments where insights are freshest, so the proposal isn't deferred until the context is gone.
+The growth loop is concrete: agent discovers an insight during brainstorming, development, or debugging → proposes a knowledge file, ADR, task, or spec → human reviews and accepts, edits, or rejects → committed. Quality control depends on human review; agents may write redundant or low-quality material that the curator catches. Hooks (PostToolUse, PreCompact) prompt agents at the moments where insights are freshest, so the proposal isn't deferred until the context is gone.
 
 This principle shapes skill design and CLI surface; it is mutable and evolves via `/reflect`.
 
@@ -204,7 +204,7 @@ This pattern generalizes beyond ADRs. When any Loaf artifact is later judged to 
 The execution model is a three-artifact pipeline. No separate "plan" artifact — the journal serves as both execution trace and resumption protocol.
 
 ```
-/shape → SPEC file → /breakdown → SQLite tasks → /implement → SQLite session journal → Done
+/shape → SPEC file → /breakdown → SQLite tasks → /implement → project journal → Done
 ```
 
 ### Task System
@@ -212,63 +212,64 @@ The execution model is a three-artifact pipeline. No separate "plan" artifact �
 ```
 .agents/specs/SPEC-XXX.md       # Bounded work definitions (scope, test conditions, priority order)
 SQLite tasks                     # Individual work items (criteria, file hints, verification)
-SQLite sessions + journal rows   # Active and archived execution journals
+SQLite journal_entries           # Project-scoped event record across every conversation
 ```
 
 **Specs** define *what* to build — problem, solution direction, boundaries, test conditions. Multi-part specs use priority ordering with go/no-go gates between tracks (ship in order, drop from end). Sized by complexity (small/medium/large), not time.
 
 **Tasks** define *what to do* — one concern per task, file hints, verification command, observable done condition. Created by `/breakdown`, worked by `/implement`.
 
-**Sessions** capture *what happened* — SQLite journal rows record decisions, discoveries, commits, and progress as structured entries. `loaf session show` provides handoff-ready context for compaction recovery and cross-conversation resumption.
+**The journal** captures *what happened* — `journal_entries` rows are project-scoped events (`project_id NOT NULL`), each tagged with an opaque `harness_session_id` that correlates one conversation's entries. Decisions, discoveries, commits, and progress land as structured entries; `loaf journal recent`/`show`/`search` and the `loaf journal context` digest provide handoff-ready context for compaction recovery and cross-conversation resumption. There is no session entity — see [Session Model: Journal-First](#session-model-journal-first).
 
-`.agents/tasks/`, `.agents/sessions/`, `.agents/ideas/`, `.agents/sparks/`,
+`.agents/tasks/`, `.agents/ideas/`, `.agents/sparks/`,
 `.agents/brainstorms/`, `.agents/drafts/`, and `.agents/TASKS.json` are
 rollback material after SPEC-045, not compatibility mirrors. A stale branch that
 reintroduces them should keep the deletion side and rerun
-`loaf check --hook ephemeral-provenance`.
+`loaf check --hook ephemeral-provenance`. Legacy `.agents/sessions/` markdown is
+also gone: the journal is SQLite-native and never rendered to a hand-authored
+source file.
 
-### Session Lifecycle
+### Session Model: Journal-First
 
-Sessions are keyed by `claude_session_id` (the JSONL identity), **not** by branch. A session file's `branch:` frontmatter is a property recorded at start, not its identifier. One Claude conversation = one session file, regardless of how many branches that conversation visits; multiple Claude conversations on the same branch produce multiple session files. `loaf session start` routes on `claude_session_id`, consolidating splits when the same id appears across branch contexts.
+The project journal is the **only** session-related structure (SPEC-056). There is no session entity — no `sessions` table, no statuses, no lifecycle, no rotation. `journal_entries` are project-scoped events (`project_id NOT NULL`) in the global SQLite database, each carrying an opaque `harness_session_id` column that correlates the entries written by one conversation. Nobody opens, closes, or transitions a session; nothing is ever "unwrapped."
 
-`loaf session start` (SessionStart hook) and `loaf session end` (SessionEnd hook) manage the lifecycle programmatically.
+This supersedes the SPEC-048 `start → log → end --wrap` session lifecycle and its six-state entity: production data showed the lifecycle never maintained itself (stuck `active`/`paused` records, empty snapshots, ~24% lifecycle-noise entries), and its rotation semantics actively fought concurrency. **Concurrent conversations on the same project — across branches, worktrees, even harnesses — are safe by construction:** two conversations logging at once simply interleave rows with different `harness_session_id` tags, which is correct rather than corrupt.
 
-**Subagent detection:** Hook JSON from Claude Code includes `agent_id` only for subagents. `loaf session start` checks for this and exits silently — subagents are session-unaware, preventing the session churn that occurs when Task tool spawns trigger SessionStart.
+**Logging:** `loaf journal log "type(scope): description"` appends a durable entry; the current branch and harness id are attached automatically. Skills self-log their invocation as their first action; the `session` entry type is gone.
 
-**Cross-conversation continuity:** `session_id` from hook JSON is stored as `claude_session_id` in session frontmatter. On SessionStart, if the incoming session_id differs from the stored one, the session knows it's a new conversation and writes resume entries. `loaf session end` writes the `--- PAUSE ---` separator with the correct timestamp.
+**Wrap is an optional checkpoint, not a transition.** A `wrap` entry is written only when a conversation holds synthesis worth saving — "tried X, abandoned because Y, next is Z" — the connective narrative that evaporates with the context window. Everything else is derivable from raw entries. A conversation that ends abruptly leaves a perfectly valid journal. A wrap claims the writing conversation's own entries (its `harness_session_id`); a manual/untagged wrap falls back to branch scope.
 
-**Session enrichment:** `loaf session enrich` reviews JSONL conversation logs and fills in missing journal entries via the librarian agent. The CLI extracts a deterministic summary (filtering noise types, applying timestamp cutoffs, discovering subagent transcripts), writes it to `.agents/tmp/`, and spawns `claude --agent librarian -p` with `LOAF_ENRICHMENT=1` for hook isolation. The librarian reads the summary and session file, identifies gaps, and appends entries. `enriched_at` in session frontmatter tracks the watermark.
+**Continuity is derived, layered, and ephemeral.** At conversation start the SessionStart hook runs `loaf journal context --from-hook`, which emits a digest computed at read time: the latest project-level `wrap` + recent entries scoped to the current branch/worktree + open (`in_progress`/`pending`) tasks. The digest is shown, then discarded — never persisted, because auto-persisting arrival syntheses would re-pollute the journal with derived noise.
 
-**Compaction resilience:** The session journal is external memory that survives context compaction. PreCompact requires flushing unrecorded entries and writing a state summary to `## Current State`. PostCompact nudges the model to re-read the session file for resumption context. No separate snapshot mechanism needed.
+**Subagent detection:** Hook JSON from Claude Code includes `agent_id` only for subagents. `loaf journal context --from-hook` checks for this and exits silently, writing nothing — subagents get no digest and create no entries, preventing churn when the Task tool spawns them.
 
-**Session routing (SPEC-032, v2.0.0-dev.31):** User-facing session-mutating commands (`loaf session log`, `archive`, `enrich`, `end --wrap`) resolve their target through the native Go session router — a 3-tier priority chain: `--session-id <id>` flag → hook stdin payload (`--from-hook` opt-in only) → branch-fallback. Tier 3 emits a stderr WARN naming the branch and the silencing flag, so misroutes are visible in real time instead of corrupting state silently.
-
-Hook-aware code paths (Stop event handlers, SessionStart resumption, PreCompact context, internal create-lock re-checks) keep the older inline pattern (harness-session lookup, then branch fallback) and exit silently on no-match — they fire frequently and silent failure is correct hook behavior. The public `loaf session` surface and markdown compatibility paths are native Go; the obsolete TypeScript session helpers have been removed.
+**Compaction resilience:** The journal is external memory that survives context compaction. PreCompact nudges a flush of unrecorded decisions and next actions. PostCompact re-emits the continuity digest. No separate snapshot mechanism, and no Stop/SessionEnd obligation — the SessionEnd hook was removed entirely.
 
 ### Journal Entry Sources
 
-Session journals receive entries from multiple layered sources:
+The journal receives entries from multiple layered sources:
 
 | Source | Mechanism | When |
 |--------|-----------|------|
-| Skills | `loaf session log` in skill Critical Rules | Self-logging on invocation |
-| Git events | PostToolUse command hooks | Commits, PRs, merges (automatic) |
-| Task events | TaskCompleted session hook | Task completed/cancelled (automatic) |
-| Context | UserPromptSubmit command hook | Every user prompt |
-| Compaction | PreCompact prompt hook | Emergency journal flush |
-| Enrichment | `loaf session enrich` → librarian agent | Lifecycle points (wrap, housekeeping) |
+| Skills | `loaf journal log` in skill Critical Rules | Self-logging on invocation |
+| Git events | PostToolUse command hooks (`loaf journal log --from-hook`) | Commits, PRs, merges (automatic) |
+| Task events | TaskCompleted hook (`loaf journal log --from-hook`) | Task completed/cancelled (automatic) |
+| Compaction | PreCompact command hook | Journal flush nudge before compaction |
+| Wrap | `loaf journal log "wrap(scope): …"` | Voluntary end-of-conversation synthesis |
 
-Skills self-log as their first action. Git and task events are captured automatically by hooks. The UserPromptSubmit hook injects session context and orchestration conventions on every prompt.
+Skills self-log as their first action. Git and task events are captured automatically by hooks. Continuity is read, not written: the SessionStart and PostCompact hooks emit the derived digest rather than logging entries.
 
-**Session management policy:**
+**Continuation policy:**
 
 | Scenario | Action |
 |----------|--------|
 | Same scope, continuing work | Compact (journal survives) |
-| Different scope entirely | New conversation (new session) |
+| Different scope entirely | New conversation (journal persists project-wide) |
 | Finished and archived a spec | New conversation |
 | Context full mid-task | Auto-compact |
 | Quick unrelated question | New conversation |
+
+A new conversation is never a new "session" — it is just a new `harness_session_id` writing into the same project journal. Whether to wrap before switching is a judgment call about whether synthesis is worth saving, not a lifecycle requirement.
 
 ### Forward-Only In-Flight Pivots
 
@@ -284,7 +285,7 @@ SPEC-033 (PR #40, v2.0.0-dev.32) is the canonical example: 13 feature commits + 
 
 ## Hook Architecture
 
-Hooks are defined in `config/hooks.yaml` and distributed to target-specific formats at build time. For Claude Code, the canonical hook registration file is `hooks/hooks.json` (inside the plugin output directory). `plugin.json` silently drops non-matcher session lifecycle events — all hooks should be registered in `hooks.json`.
+Hooks are defined in `config/hooks.yaml` and distributed to target-specific formats at build time. For Claude Code, the canonical hook registration file is `hooks/hooks.json` (inside the plugin output directory). `plugin.json` silently drops non-matcher session events (SessionStart, PreCompact, PostCompact, TaskCompleted) — all hooks should be registered in `hooks.json`.
 
 ### Dispatch Types
 
@@ -301,13 +302,13 @@ Hard-won constraints validated during SPEC-030 implementation:
 - **`type: prompt`** — Binary gate. Any non-empty LLM response is treated as rejection (`ok: false`). Cannot express "this looks fine, proceed" — the response itself blocks. Unusable for advisory hooks or hooks requiring LLM judgment. Use only for validation that returns empty on success.
 - **`type: agent`** — Read-only tool access (Read, Grep, Glob, WebFetch, WebSearch). No Edit, Write, or Bash. Max 50 turns. Useful for observation, not mutation.
 - **`type: command`** — Correct primitive for context injection and side effects. Exit 0 with stdout for context injection. Exit 1 for non-blocking warning. Exit 2 to block the action.
-- **Stop event circularity** — Writing to session files from a Stop hook can re-trigger the hook chain. State writes must be idempotent or guarded against re-entry.
+- **Stop-event circularity (general caution)** — A hook that mutates state the hook chain itself monitors can re-trigger that chain. Any hook write must be idempotent or guarded against re-entry. Journal-first removes the specific hazard (there is no Stop/SessionEnd hook writing back to a session record), but the constraint still governs any future stateful hook.
 - **PreCompact prompt hooks** — Not supported outside REPL sessions. Use `type: command` for PreCompact context injection.
-- **`plugin.json` drops non-matcher events** — Session lifecycle events (SessionStart, SessionEnd, TaskCompleted) must be registered in `hooks/hooks.json`, not `plugin.json`.
+- **`plugin.json` drops non-matcher events** — Session events (SessionStart, PreCompact, PostCompact, TaskCompleted) must be registered in `hooks/hooks.json`, not `plugin.json`.
 - **UserPromptSubmit has no matcher** — Fires on every user message, cannot be filtered by tool name or input.
 - **Session events use different JSON shape** — `hook_event_name` field instead of `tool_name`. TaskCompleted passes `task_subject` and `task_description`.
 - **Plugin caching** — Cached plugin versions serve stale hook handlers during development. Marketplace remove/re-add is the reliable cache-busting path.
-- **CLI-spawned agents need hook isolation** — When the CLI spawns `claude --agent <name> -p`, the child process triggers SessionStart/SessionEnd hooks. Set `LOAF_ENRICHMENT=1` (or similar) in the child env to suppress Loaf hooks. Do NOT use `--bare` — it breaks OAuth for subscription users.
+- **CLI-spawned agents need hook isolation** — When the CLI spawns `claude --agent <name> -p`, the child process triggers the SessionStart hook. Set an isolation env var in the child so Loaf's SessionStart digest does not fire in the subprocess. Do NOT use `--bare` — it breaks OAuth for subscription users.
 - **`--bare` skips OAuth** — `--bare` mode requires API key auth (`ANTHROPIC_API_KEY`). Subscription users on OAuth cannot use `--bare`. Use env var isolation instead.
 
 ### Hook Categories
@@ -316,7 +317,7 @@ Hard-won constraints validated during SPEC-030 implementation:
 
 **Instruction hooks** — context injection at tool invocation. Triggered by `matcher` patterns (tool name) and optionally filtered by `if` conditions (tool input). Inject relevant skill instructions or nudges.
 
-**Session lifecycle hooks** — tied to events (`SessionStart`, `SessionEnd`, `PreCompact`, `PostCompact`, `Stop`). Manage session journals and compaction.
+**Session event hooks** — tied to events (`SessionStart`, `PreCompact`, `PostCompact`, `TaskCompleted`). SessionStart emits the journal continuity digest (`loaf journal context --from-hook`); PreCompact nudges a journal flush; PostCompact re-emits the digest; TaskCompleted auto-logs completions. There is no SessionEnd or Stop journal obligation.
 
 ### Hook JSON Data Model
 
@@ -331,7 +332,7 @@ Claude Code passes JSON to hooks via stdin. Key fields for post-tool hooks:
 | `tool_response` | Result/output returned by the tool (post-tool only) |
 | `cwd` | Working directory |
 
-`loaf session log --from-hook` uses `tool_input.command` to detect commit/PR/merge patterns and `tool_response` to extract PR numbers from output.
+`loaf journal log --from-hook` uses `tool_input.command` to detect commit/PR/merge patterns and `tool_response` to extract PR numbers from output.
 
 ## Knowledge Management
 
@@ -387,6 +388,6 @@ Template-literal escape bugs are invisible at the source-string level: the forme
 
 When strict invariant enforcement would break existing callers but silent fallback corrupts data, emit a stderr WARN naming the missing signal and the silencing flag. The action proceeds (preserving compatibility) but the WARN makes the misroute visible in real time and provides a regression-testable surface for the eventual cutover.
 
-SPEC-032 used this pattern for branch-fallback session routing in `loaf session log`, `archive`, `enrich`, and `end --wrap`. The 3-tier resolution chain emits `WARN: no session_id signal — falling back to branch routing for branch '<branch>'. Pass --session-id <id> to silence.` only when neither the `--session-id` flag nor the hook stdin payload provided a session id. Skill self-logging trips this WARN today; a future skill refactor will source `session_id` per-process and remove the branch tier, with the WARN serving as the cutover's regression gate.
+SPEC-032 used this pattern for the branch-fallback session router that resolved a target session for `loaf session log`, `archive`, and `end --wrap`. **SPEC-056 superseded that mechanism:** journal-first removed the session entity the router resolved against, so there is nothing to misroute — `loaf journal log` attaches the current branch and `harness_session_id` automatically, and concurrent conversations interleave rows by construction. The WARN it emitted was the regression gate for exactly this cutover; the cutover has now landed. The pattern is retained here as a general design tool, not as a description of live session routing.
 
 The pattern generalizes: any compatibility carve-out that violates a stated invariant should be observable in real time, not invisible. The cost (one extra stderr line for legacy callers) is paid once per invocation; the benefit (every misroute surfaces immediately) is paid forward to whoever next opens an issue saying "my entry didn't land where I expected."

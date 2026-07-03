@@ -15,7 +15,7 @@ Use this structure for each document that needs updating after reflection.
 
 **Evidence:**
 - [What we learned that justifies this]
-- [Reference to spec/session]
+- [Reference to spec/journal entry]
 
 **Impact:**
 - [How this affects future work]

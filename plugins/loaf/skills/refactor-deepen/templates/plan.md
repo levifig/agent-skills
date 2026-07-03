@@ -9,8 +9,8 @@ template when terminating the `/loaf:refactor-deepen` grilling loop.
 
 The filename **is** the plan's identity. Use the timestamp at write-time and
 slugify the title (lowercase, hyphens, no punctuation). PLAN files follow the
-same temporal-record naming as durable `.agents/councils/` and SQLite session
-aliases — write-once snapshots, not
+same temporal-record naming as durable `.agents/councils/` — write-once
+snapshots, not
 sequentially-numbered contracts. Subsequent deepenings of the same module
 write a new file rather than updating an existing one.
 
@@ -32,7 +32,7 @@ write a new file rather than updating an existing one.
 | `related` | No | List of related artifact IDs (`ADR-*`, `SPEC-*`, idea filenames, other plan filenames) |
 
 PLAN files do **not** carry an `id` frontmatter field. The filename is the
-identity, mirroring sessions and ideas.
+identity, mirroring councils and ideas.
 
 ## Required Sections
 
@@ -127,11 +127,11 @@ not to the artifact format. See `../SKILL.md` for the canonical rule.
 
 ## Example
 
-Filename: `.agents/plans/20260502-013000-deepen-session-journal-append.md`
+Filename: `.agents/plans/20260502-013000-deepen-journal-append.md`
 
 ```yaml
 ---
-title: "Deepen session journal append into a self-managing module"
+title: "Deepen journal append into a self-managing module"
 created: "2026-05-02T01:30:00Z"
 status: drafting
 spec: SPEC-034
@@ -139,11 +139,11 @@ related:
   - 20260501-231922-plan-lifecycle-cli-doctor-housekeeping
 ---
 
-# Deepen session journal append into a self-managing module
+# Deepen journal append into a self-managing module
 
 ## Candidate
 
-The session-journal append path currently lives as a free function in
+The journal append path currently lives as a free function in
 `internal/cli/cli.go` with callers reaching past it to format timestamps and
 classify entry types. Interface surface is roughly equal to implementation
 surface — every caller that wants to log re-derives the entry-shape rules.
@@ -156,7 +156,7 @@ fakes.
 
 ## Proposed Deepened Module
 
-A `SessionJournal` module exposing a single `append(entry)` interface.
+A `Journal` module exposing a single `append(entry)` interface.
 Implementation hides timestamp formatting, entry-type validation, blank-line
 rules, and frontmatter `last_entry` updates. Seam: the public `append`
 function. Leverage: every caller drops to one line; locality: blank-line and
@@ -185,6 +185,6 @@ is meant to hide.
 ### Streaming writer (sub-agent variant 3)
 
 A `JournalWriter` class with `open`/`write`/`close`. Rejected because the
-session journal's write pattern is one-entry-at-a-time on demand, not a
+project journal's write pattern is one-entry-at-a-time on demand, not a
 streamed batch — the lifecycle methods would be vestigial.
 ```

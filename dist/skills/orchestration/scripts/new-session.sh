@@ -1,9 +1,10 @@
 #!/bin/bash
-# Compatibility shim. Sessions are SQLite-native after SPEC-045.
+# Retired shim. There is no session to create — journaling is continuous.
 
 set -euo pipefail
 
-echo "Error: new-session.sh no longer creates .agents/sessions/*.md files." >&2
-echo "Use: loaf session start" >&2
-echo "Then inspect with: loaf session show <session-ref>" >&2
+echo "Error: new-session.sh is obsolete. There is no 'session' to start." >&2
+echo "The project journal is the only session-related structure." >&2
+echo "Log your first entry: loaf journal log \"skill(<name>): <purpose>\"" >&2
+echo "Read continuity with: loaf journal context / loaf journal recent" >&2
 exit 1

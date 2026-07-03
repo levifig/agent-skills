@@ -179,47 +179,44 @@ func cliReferenceCommands() []cliReferenceCommand {
 				{Name: "export", Description: "Export SQLite state for review or migration", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format for the selected export kind"}}},
 				{Name: "export all", Description: "Export a complete project-scoped SQLite snapshot", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format: json"}, {Flags: "--json", Description: "Alias for --format json"}}},
 				{Name: "export triage", Description: "Export a triage summary from SQLite state", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
-				{Name: "export session", Description: "Export one session from SQLite state", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
 				{Name: "export spec", Description: "Export one spec from SQLite state", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
 				{Name: "export release-readiness", Description: "Export a release-readiness report from SQLite state", Options: []cliReferenceOption{{Flags: "--format <format>", Description: "Output format: markdown"}}},
 			},
 		},
 		{
-			Name:        "session",
-			Description: "Manage session journals and native SQLite session state",
+			Name:        "journal",
+			Description: "Record and read the project-scoped journal (the durable record across all conversations)",
 			Subcommands: []cliReferenceSubcommand{
-				{Name: "start", Description: "Start or resume a session for the current branch", Options: []cliReferenceOption{
-					{Flags: "--resume", Description: "Resume if possible"},
-					{Flags: "--session-id <id>", Description: "Harness session ID"},
-					{Flags: "--force", Description: "Ignore hook agent adoption guard"},
-					{Flags: "--json", Description: "Output action, session, journal IDs, global database scope, and project identity as JSON"},
+				{Name: "log", Description: "Append a project-scoped journal entry", Options: []cliReferenceOption{
+					{Flags: "--harness-session-id <id>", Description: "Opaque conversation correlation tag"},
+					{Flags: "--branch <branch>", Description: "Observed branch (defaults to current git branch)"},
+					{Flags: "--worktree <path>", Description: "Observed worktree path"},
+					{Flags: "--from-hook", Description: "Derive the entry from a harness hook payload on stdin; exits silently for subagents"},
+					{Flags: "--detect-linear", Description: "Scan recent commits for Linear magic words and log a discovery entry"},
+					{Flags: "--json", Description: "Output the written entry and project identity as JSON"},
 				}},
-				{Name: "end", Description: "End, wrap, or clear a session", Options: []cliReferenceOption{
-					{Flags: "--if-active", Description: "No-op when no active session exists"},
-					{Flags: "--wrap", Description: "Mark as wrapped"},
-					{Flags: "--from-hook", Description: "Read hook input"},
-					{Flags: "--session-id <id>", Description: "Harness session ID"},
-					{Flags: "--json", Description: "Output action/noop, session, journal IDs, global database scope, and project identity as JSON"},
+				{Name: "recent", Description: "Show the recent project journal timeline", Options: []cliReferenceOption{
+					{Flags: "--branch <branch>", Description: "Restrict to entries observed on one branch"},
+					{Flags: "--since-last-wrap", Description: "Trim to entries logged after the most recent wrap"},
+					{Flags: "--limit <n>", Description: "Maximum entries to return"},
+					{Flags: "--json", Description: "Output the timeline and project identity as JSON"},
 				}},
-				{Name: "archive", Description: "Archive a stopped or targeted session", Options: []cliReferenceOption{
-					{Flags: "--branch <branch>", Description: "Branch to archive"},
-					{Flags: "--session-id <id>", Description: "Harness session ID"},
-					{Flags: "--json", Description: "Output archive result, affected sessions, global database scope, and project identity as JSON"},
+				{Name: "search", Description: "Full-text search journal entries", Options: []cliReferenceOption{
+					{Flags: "--all", Description: "Search across all projects"},
+					{Flags: "--limit <n>", Description: "Maximum hits to return"},
+					{Flags: "--json", Description: "Output hits and project identity as JSON"},
 				}},
-				{Name: "list", Description: "List sessions", Options: []cliReferenceOption{
-					{Flags: "--all", Description: "Include archived sessions"},
-					{Flags: "--json", Description: "Output sessions, diagnostics, global database scope, and project identity as JSON"},
+				{Name: "show", Description: "Show one journal entry by id", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the entry and project identity as JSON"},
 				}},
-				{Name: "show", Description: "Show one session", Options: []cliReferenceOption{
-					{Flags: "--json", Description: "Output session details, journal entries, relationships, global database scope, and project identity as JSON"},
+				{Name: "context", Description: "Emit the layered continuity digest (latest wrap, recent branch entries, open tasks)", Options: []cliReferenceOption{
+					{Flags: "--branch <branch>", Description: "Branch scope for the recent-entries layer"},
+					{Flags: "--from-hook", Description: "Read the harness hook payload on stdin; exits silently for subagents (SessionStart/PostCompact)"},
+					{Flags: "--json", Description: "Output the digest and project identity as JSON"},
+					{Flags: "for-prompt|for-compact|for-resumption", Description: "Hook subcommands: inject implementation principles, journal-flush guidance, or the resumption digest"},
 				}},
-				{Name: "log", Description: "Append a session journal entry", Options: []cliReferenceOption{
-					{Flags: "--from-hook", Description: "Read hook input"},
-					{Flags: "--session-id <id>", Description: "Harness session ID"},
-					{Flags: "--json", Description: "Output journal entry, linked session, global database scope, and project identity as JSON"},
-				}},
-				{Name: "report", Description: "Export a session report", Options: []cliReferenceOption{
-					{Flags: "--json", Description: "Output export contract, command, project context, and markdown content as JSON"},
+				{Name: "export", Description: "Export the project journal to markdown or JSONL", Options: []cliReferenceOption{
+					{Flags: "--format <format>", Description: "Output format: markdown (default) or jsonl"},
 				}},
 			},
 		},
@@ -309,7 +306,6 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--status <status>", Description: "New status: " + validTaskStatusText()},
 					{Flags: "--priority <level>", Description: "New priority: " + validTaskPriorityText()},
 					{Flags: "--depends-on <ids>", Description: "Replace depends_on (comma-separated task IDs)"},
-					{Flags: "--session <file>", Description: `Set or clear session reference (use "none" to clear)`},
 					{Flags: "--spec <id>", Description: "Set or change associated spec"},
 					{Flags: "--json", Description: "Output updated task, event, global database scope, and project identity as JSON"},
 				}},
@@ -510,7 +506,6 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Options: []cliReferenceOption{
 				{Flags: "--dry-run", Description: "Show recommendations without prompting for actions"},
 				{Flags: "--json", Description: "Output housekeeping sections, cleanup candidates, signals, and SQLite-backed project identity when available as JSON"},
-				{Flags: "--sessions", Description: "Only review sessions"},
 				{Flags: "--specs", Description: "Only review specs"},
 				{Flags: "--plans", Description: "Only review plans"},
 				{Flags: "--drafts", Description: "Only review drafts"},
@@ -691,7 +686,7 @@ Quick reference for all Loaf CLI commands. Each command includes its purpose, co
 		`## Global Commands
 
 ### {{IMPLEMENT_CMD}}
-Orchestrates implementation sessions through agent delegation and batch execution.
+Orchestrates implementation work through agent delegation and batch execution. Logs to the project journal.
 
 **Use when:**
 - User asks "implement this" or "start working on TASK-XXX"
@@ -699,18 +694,18 @@ Orchestrates implementation sessions through agent delegation and batch executio
 - Resuming work after context loss
 
 **Usage:**
-- {{IMPLEMENT_CMD}} TASK-XXX - Load task, auto-create session
+- {{IMPLEMENT_CMD}} TASK-XXX - Load one task and build its plan
 - {{IMPLEMENT_CMD}} SPEC-XXX - Resolve all tasks, build dependency waves
 - {{IMPLEMENT_CMD}} TASK-XXX..YYY - Expand range, build waves
-- {{IMPLEMENT_CMD}} "description" - Ad-hoc session
+- {{IMPLEMENT_CMD}} "description" - Ad-hoc implementation work
 
 ### {{ORCHESTRATE_CMD}}
-Coordinates multi-agent work: agent delegation, session management, Linear integration.
+Coordinates multi-agent work: agent delegation, journal continuity, Linear integration.
 
 **Use when:**
-- Managing sessions and delegating to agents
+- Delegating to agents and coordinating cross-cutting work
 - Running council workflows
-- Coordinating cross-cutting work
+- Keeping journal continuity across parallel conversations
 
 ---
 `,
@@ -739,7 +734,7 @@ Coordinates multi-agent work: agent delegation, session management, Linear integ
 		"",
 		"**Need to start working?** -> `{{IMPLEMENT_CMD}} TASK-XXX`",
 		"",
-		"**Need to continue after restart?** -> `loaf session start` then `{{IMPLEMENT_CMD}}`",
+		"**Need to continue after restart?** -> `loaf journal context` then `{{IMPLEMENT_CMD}}`",
 		"",
 		"**Need to coordinate agents?** -> `{{ORCHESTRATE_CMD}}`",
 		"",
@@ -830,13 +825,7 @@ func generateCLIReferenceCommandSection(cmd cliReferenceCommand) string {
 }
 
 func cliReferenceSubcommands(cmd cliReferenceCommand) []cliReferenceSubcommand {
-	if cmd.Name != "session" {
-		return cmd.Subcommands
-	}
-	return withMissingCLIReferenceSubcommands(cmd.Subcommands, []cliReferenceSubcommand{
-		{Name: "show", Description: "Display one session from state"},
-		{Name: "report", Description: "Generate a session report from SQLite state"},
-	})
+	return cmd.Subcommands
 }
 
 func nativeArtifactReferenceSubcommands(kind string) []cliReferenceSubcommand {
@@ -851,7 +840,7 @@ func nativeArtifactReferenceSubcommands(kind string) []cliReferenceSubcommand {
 		options = append(options, cliReferenceOption{Flags: "--spec <spec>", Description: "Optional related spec"})
 	case "handoff":
 		options = append(options,
-			cliReferenceOption{Flags: "--session <session>", Description: "Optional related session"},
+			cliReferenceOption{Flags: "--harness-session-id <id>", Description: "Optional conversation correlation tag"},
 			cliReferenceOption{Flags: "--task <task>", Description: "Optional related task"},
 		)
 	}
@@ -891,28 +880,14 @@ func supplementalCLIReferenceCommands(commands []cliReferenceCommand) []cliRefer
 	}}
 }
 
-func withMissingCLIReferenceSubcommands(subcommands []cliReferenceSubcommand, supplemental []cliReferenceSubcommand) []cliReferenceSubcommand {
-	seen := map[string]bool{}
-	for _, sub := range subcommands {
-		seen[sub.Name] = true
-	}
-	result := append([]cliReferenceSubcommand{}, subcommands...)
-	for _, sub := range supplemental {
-		if !seen[sub.Name] {
-			result = append(result, sub)
-		}
-	}
-	return result
-}
-
 func cliReferenceCommandGuidance(commandName string) string {
 	switch commandName {
 	case "task":
 		return "In SQLite-backed projects, task metadata mutations go through the Go-native\nstate store. `.agents/tasks/` and `.agents/TASKS.json` are rollback material\nafter the SPEC-045 cutover; do not recreate them as compatibility mirrors."
 	case "spec":
 		return "Spec lifecycle changes go through `loaf spec` commands. Markdown spec files\nremain the authored prose artifact, while SQLite state carries operational\nstatus and relationship data when initialized."
-	case "session":
-		return "Session list/show/log/report/enrich commands are SQLite-aware. Prefer these\ncommands over manual session frontmatter edits when changing lifecycle or\njournal state; `session enrich` records a native journal checkpoint and edits no\nsession Markdown."
+	case "journal":
+		return "The project journal is the only session-related structure: entries are\nproject-scoped events tagged with an opaque harness_session_id. There is no\nsession entity to open, close, or transition. Use `loaf journal log` to append\nentries, `loaf journal context` for the layered continuity digest, and\n`loaf journal recent`/`search`/`show` to read."
 	case "report":
 		return "In SQLite-backed projects, report lifecycle state is stored in SQLite. Use\ngenerated report commands for review output; create authored Markdown reports\nonly when a durable prose artifact is explicitly needed."
 	case "state":

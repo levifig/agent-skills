@@ -77,11 +77,6 @@ func (s *Store) Housekeeping(ctx context.Context, root project.Root, databasePat
 		return HousekeepingSummary{}, err
 	}
 	sections["brainstorms"] = brainstorms
-	sessions, err := s.housekeepingStatusSection(ctx, "sessions", projectID, "done", "stopped", "archived")
-	if err != nil {
-		return HousekeepingSummary{}, err
-	}
-	sections["sessions"] = sessions
 	reports, err := s.housekeepingStatusSection(ctx, "reports", projectID, "final", "archived")
 	if err != nil {
 		return HousekeepingSummary{}, err
@@ -138,7 +133,7 @@ func (s *Store) housekeepingStatusSection(ctx context.Context, table string, pro
 
 func housekeepingSignals(sections map[string]HousekeepingSection) []string {
 	var signals []string
-	for _, name := range []string{"specs", "tasks", "ideas", "sparks", "brainstorms", "sessions", "reports", "shaping_drafts"} {
+	for _, name := range []string{"specs", "tasks", "ideas", "sparks", "brainstorms", "reports", "shaping_drafts"} {
 		section := sections[name]
 		if section.CleanupCandidate > 0 {
 			signals = append(signals, fmt.Sprintf("%s:%d", name, section.CleanupCandidate))

@@ -52,7 +52,7 @@ def validate_frontmatter(fm: dict) -> list[str]:
         return errors
 
     # Required council fields
-    required_fields = ['topic', 'timestamp', 'status', 'session', 'participants', 'decision']
+    required_fields = ['topic', 'timestamp', 'status', 'participants', 'decision']
     for field in required_fields:
         if field not in council:
             errors.append(f"Missing required field: council.{field}")
@@ -77,13 +77,6 @@ def validate_frontmatter(fm: dict) -> list[str]:
             errors.append(f"Council requires at least 5 participants (got {len(participants)})")
         if len(participants) % 2 == 0:
             errors.append(f"Council requires an ODD number of participants (got {len(participants)})")
-
-    # Validate session link (file should exist, but we just check format here)
-    session = council.get('session', '')
-    if session:
-        session_pattern = r'^\d{8}-\d{6}-[a-z0-9-]+$'
-        if not re.match(session_pattern, session):
-            errors.append(f"Invalid session reference format: {session}")
 
     return errors
 

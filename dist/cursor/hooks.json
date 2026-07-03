@@ -79,7 +79,7 @@
         "loaf-managed": true,
         "timeout": 30,
         "matcher": "Bash",
-        "command": "loaf session log --detect-linear",
+        "command": "loaf journal log --detect-linear",
         "if": "Bash(git commit:*)"
       }
     ],
@@ -107,14 +107,14 @@
         "loaf-managed": true,
         "timeout": 30,
         "matcher": "Bash",
-        "command": "loaf session log --from-hook",
+        "command": "loaf journal log --from-hook",
         "if": "Bash(git commit:*)"
       },
       {
         "loaf-managed": true,
         "timeout": 30,
         "matcher": "Bash",
-        "command": "loaf session log --from-hook",
+        "command": "loaf journal log --from-hook",
         "if": "Bash(gh pr:*)"
       }
     ],
@@ -122,28 +122,21 @@
       {
         "loaf-managed": true,
         "timeout": 60,
-        "command": "loaf session start"
-      }
-    ],
-    "sessionEnd": [
-      {
-        "loaf-managed": true,
-        "timeout": 60,
-        "command": "loaf session end --if-active"
+        "command": "loaf journal context --from-hook"
       }
     ],
     "beforeSubmitPrompt": [
       {
         "loaf-managed": true,
         "timeout": 5,
-        "command": "loaf session context for-prompt"
+        "command": "loaf journal context for-prompt"
       }
     ],
     "preCompact": [
       {
         "loaf-managed": true,
         "timeout": 60,
-        "command": "loaf session context for-compact"
+        "command": "loaf journal context for-compact"
       }
     ]
   }

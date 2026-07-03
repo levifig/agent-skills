@@ -19,10 +19,10 @@ Generative thinking — expanding possibilities before narrowing through structu
 - Diverge before converging — generate options before judging
 - Connect exploration to VISION.md and STRATEGY.md context
 - Document discarded options — they hold valuable reasoning
-- Log invocation first: `loaf session log "skill(brainstorm): <topic>"`
+- Log invocation first: `loaf journal log "skill(brainstorm): <topic>"`
 - Capture sparks (speculative byproducts) with `loaf spark capture --scope <scope> --text <text>`; brainstorm summaries may render or summarize them
 - Set boundaries on exploration time
-- Log outcome to session journal: `loaf session log "decision(scope): direction chosen and rationale"`
+- Log outcome to the project journal: `loaf journal log "decision(scope): direction chosen and rationale"`
 
 **Never**
 - Prematurely commit to an option before full exploration

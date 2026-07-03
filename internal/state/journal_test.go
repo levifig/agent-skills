@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -79,6 +80,24 @@ func TestLogJournalRejectsMalformedEntry(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("LogJournal() error = nil, want malformed entry error")
+	}
+	// The parser vocabulary is journal-first: the message must not reference the
+	// removed "session log" concept (SPEC-056 NIT).
+	if !strings.Contains(err.Error(), "journal entry must look like") {
+		t.Fatalf("LogJournal() error = %v, want journal-entry wording", err)
+	}
+	if strings.Contains(err.Error(), "session log entry") {
+		t.Fatalf("LogJournal() error = %v, must not use removed session-log wording", err)
+	}
+}
+
+func TestParseJournalEntryEmptyUsesJournalVocabulary(t *testing.T) {
+	_, _, _, err := parseJournalEntry("   ")
+	if err == nil {
+		t.Fatal("parseJournalEntry(blank) error = nil, want empty-entry error")
+	}
+	if !strings.Contains(err.Error(), "journal entry cannot be empty") {
+		t.Fatalf("parseJournalEntry(blank) error = %v, want journal-entry wording", err)
 	}
 }
 
@@ -273,65 +292,4 @@ WHERE entry_type = 'discover' AND scope = 'stress'
 	if searchCount != wantTotal {
 		t.Fatalf("journal_search rows = %d, want %d (FTS mirror drifted under concurrency)", searchCount, wantTotal)
 	}
-}
-
-func TestLogJournalLinksHookEntryToHarnessSession(t *testing.T) {
-	root := projectRoot(t)
-	stateHome := t.TempDir()
-	if _, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	start, err := StartSession(context.Background(), root, PathResolver{StateHome: stateHome}, SessionStartOptions{
-		Branch:           "main",
-		HarnessSessionID: "harness-linked",
-	})
-	if err != nil {
-		t.Fatalf("StartSession() error = %v", err)
-	}
-
-	result, err := LogJournal(context.Background(), root, PathResolver{StateHome: stateHome}, JournalLogOptions{
-		Entry:            "task(completed): wire hook logging",
-		ObservedBranch:   "main",
-		ObservedWorktree: root.Path(),
-		HarnessSessionID: "harness-linked",
-		LinkSession:      true,
-		IfSessionActive:  true,
-	})
-	if err != nil {
-		t.Fatalf("LogJournal() error = %v", err)
-	}
-	if result.Session == nil || result.Session.ID != start.Session.ID {
-		t.Fatalf("result session = %#v, want linked session %s", result.Session, start.Session.ID)
-	}
-	assertSessionProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
-
-	show, err := ShowSession(context.Background(), root, PathResolver{StateHome: stateHome}, start.Session.Alias)
-	if err != nil {
-		t.Fatalf("ShowSession() error = %v", err)
-	}
-	if !hasJournalEntry(show.Session.JournalEntries, "task", "completed", "wire hook logging") {
-		t.Fatalf("journal entries = %#v, want linked hook entry", show.Session.JournalEntries)
-	}
-}
-
-func TestLogJournalHookNoopsWhenNoActiveSessionExists(t *testing.T) {
-	root := projectRoot(t)
-	stateHome := t.TempDir()
-	if _, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-
-	result, err := LogJournal(context.Background(), root, PathResolver{StateHome: stateHome}, JournalLogOptions{
-		Entry:           "task(completed): nothing to route",
-		ObservedBranch:  "main",
-		LinkSession:     true,
-		IfSessionActive: true,
-	})
-	if err != nil {
-		t.Fatalf("LogJournal() error = %v", err)
-	}
-	if result.ID != "" || result.NoopReason == "" {
-		t.Fatalf("result = %#v, want noop without inserted journal", result)
-	}
-	assertSessionProjectContext(t, root, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 }

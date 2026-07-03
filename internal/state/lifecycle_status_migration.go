@@ -95,7 +95,6 @@ var lifecycleStatusTables = []lifecycleStatusTable{
 	{kind: LifecycleEntityIdea, table: "ideas"},
 	{kind: LifecycleEntitySpark, table: "sparks"},
 	{kind: LifecycleEntityBrainstorm, table: "brainstorms"},
-	{kind: LifecycleEntitySession, table: "sessions"},
 	{kind: LifecycleEntityReport, table: "reports"},
 	{kind: LifecycleEntityPlan, table: "plans"},
 	{kind: LifecycleEntityHandoff, table: "handoffs"},

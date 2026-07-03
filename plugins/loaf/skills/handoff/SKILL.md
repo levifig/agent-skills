@@ -2,9 +2,9 @@
 name: handoff
 description: >-
   Creates explicit context-transfer packets in .agents/handoffs/ for another
-  agent, branch, task, or future session. Use when the user asks "handoff this,"
-  "prepare the next session," "write transfer context," or when work is being
-  parked for later....
+  agent, branch, task, or future conversation. Use when the user asks "handoff
+  this," "prepare the next session," "write transfer context," or when work is
+  being parked for l...
 user-invocable: true
 argument-hint: '[next-session focus]'
 version: 2.0.0-alpha.1
@@ -28,10 +28,10 @@ Create a concise transfer packet for a fresh agent or future conversation.
 
 ## Critical Rules
 
-- Log invocation as the first action when possible: `loaf session log "skill(handoff): <focus>"`
+- Log invocation as the first action when possible: `loaf journal log "skill(handoff): <focus>"`
 - Save handoffs to `.agents/handoffs/`, never `.agents/reports/` or an OS temp directory
-- Treat `$ARGUMENTS` as the intended next-session focus
-- Reference existing specs, tasks, ADRs, reports, commits, branches, and session files instead of duplicating them
+- Treat `$ARGUMENTS` as the intended next-conversation focus
+- Reference existing specs, tasks, ADRs, reports, commits, branches, and journal entries instead of duplicating them
 - Include suggested skills for the next agent/session
 - Redact secrets, PII, tokens, credentials, customer data, and private external identifiers
 - Do not make handoffs canonical state; they are transfer packets
@@ -40,11 +40,11 @@ Create a concise transfer packet for a fresh agent or future conversation.
 ## Verification
 
 - Handoff file exists at `.agents/handoffs/YYYYMMDD-HHMMSS-{slug}.md`
-- Frontmatter includes `title`, `created`, `status`, `source`, `session`, `branch`, and `tags`
+- Frontmatter includes `title`, `created`, `status`, `source`, `branch`, and `tags`
 - `status` is `final` unless the user explicitly requested a draft
 - The body includes current state, suggested skills, existing artifacts, decisions, next actions, open questions, and deprecation criteria
 - Sensitive data has been redacted
-- Session journal contains `handoff(slug)` if journaling is available
+- The project journal contains `handoff(slug)` if journaling is available
 
 ## Quick Reference
 
@@ -70,7 +70,7 @@ clarifying question if the handoff target is ambiguous.
 Prefer live project context over conversation memory:
 
 1. Current branch and git status
-2. Active session file and recent journal entries
+2. Recent journal entries (`loaf journal recent`, `loaf journal context`)
 3. Relevant specs, tasks, ADRs, reports, and issues
 4. Recent commits or diffs when they explain current state
 
@@ -97,10 +97,10 @@ Required body sections:
 
 ### Step 4: Log and Announce
 
-If `loaf session log` works, log:
+If `loaf journal log` works, log:
 
 ```bash
-loaf session log "handoff(slug): created .agents/handoffs/<filename>"
+loaf journal log "handoff(slug): created .agents/handoffs/<filename>"
 ```
 
 Then report the handoff path and the intended next action.
@@ -117,6 +117,6 @@ Set `deprecated_at` and `deprecated_by` only when moving to `deprecated`.
 
 ## Related Skills
 
-- **orchestration** — Maintains live session continuity and cross-agent coordination
-- **wrap** — Shuts down a session and writes the final session summary
+- **orchestration** — Maintains journal continuity and cross-agent coordination
+- **wrap** — Writes an optional end-of-conversation checkpoint to the journal
 - **housekeeping** — Deletes deprecated handoffs after confirmation

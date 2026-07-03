@@ -16,7 +16,6 @@ const (
 	LifecycleEntitySpec       = "spec"
 	LifecycleEntityTask       = "task"
 	LifecycleEntityReport     = "report"
-	LifecycleEntitySession    = "session"
 	LifecycleEntityIdea       = "idea"
 	LifecycleEntitySpark      = "spark"
 	LifecycleEntityBrainstorm = "brainstorm"
@@ -41,7 +40,6 @@ var lifecycleEntityOrder = []string{
 	LifecycleEntitySpec,
 	LifecycleEntityTask,
 	LifecycleEntityReport,
-	LifecycleEntitySession,
 	LifecycleEntityIdea,
 	LifecycleEntitySpark,
 	LifecycleEntityBrainstorm,
@@ -68,13 +66,6 @@ var lifecycleEntityStatuses = map[string][]string{
 	},
 	LifecycleEntityReport: {
 		LifecycleStatusDraft,
-		LifecycleStatusDone,
-		LifecycleStatusArchived,
-	},
-	LifecycleEntitySession: {
-		LifecycleStatusInProgress,
-		LifecycleStatusPaused,
-		LifecycleStatusBlocked,
 		LifecycleStatusDone,
 		LifecycleStatusArchived,
 	},
@@ -129,13 +120,6 @@ var lifecycleLegacyStatusMap = map[string]map[string]string{
 	LifecycleEntityReport: {
 		"draft":    LifecycleStatusDraft,
 		"final":    LifecycleStatusDone,
-		"archived": LifecycleStatusArchived,
-	},
-	LifecycleEntitySession: {
-		"active":   LifecycleStatusInProgress,
-		"stopped":  LifecycleStatusPaused,
-		"blocked":  LifecycleStatusBlocked,
-		"done":     LifecycleStatusDone,
 		"archived": LifecycleStatusArchived,
 	},
 	LifecycleEntityIdea: {

@@ -31,10 +31,10 @@ narrow, stable interfaces. Vocabulary discipline is load-bearing: drift to
 
 ### First Action: Self-Log
 
-Before anything else, log invocation to the session journal:
+Before anything else, log invocation to the project journal:
 
 ```bash
-loaf session log "skill(refactor-deepen): <module or area>"
+loaf journal log "skill(refactor-deepen): <module or area>"
 ```
 
 ### Vocabulary Discipline
@@ -202,7 +202,7 @@ surface adds plugin-level detection, this rule can switch to it.
 
 ## Verification
 
-- Session journal contains `skill(refactor-deepen):` entry as the first action
+- The project journal contains a `skill(refactor-deepen):` entry as the first action
 - `docs/knowledge/glossary.md`, `docs/decisions/ADR-*.md`, and
   `docs/ARCHITECTURE.md` were read before the candidate list was presented
 - Every candidate module name was checked via `loaf kb glossary check` before

@@ -8,13 +8,13 @@ Loaf is an opinionated agentic framework that gives AI coding assistants structu
 
 **Portable knowledge** — 33 skills (31 active, 2 deprecated) covering workflows, engineering standards, and language expertise. Build once, deploy to five AI coding tools without rewriting anything.
 
-**Session journal model** — Session files in `.agents/sessions/` capture state and decisions with frontmatter tracking. Handoff artifacts live separately in `.agents/handoffs/`. Work survives context loss, compaction, and `/clear`.
+**Project journal model** — A single SQLite-backed journal captures decisions and progress across every conversation, project-scoped and correlated by an opaque harness id. There is no session entity to open or close, so concurrent conversations across branches and worktrees stay conflict-free. Handoff artifacts live separately in `.agents/handoffs/`. Work survives context loss, compaction, and `/clear`.
 
 **Spec-first pipeline** — Ideas are shaped into bounded specs before any code is written. Every change flows: Idea → Spec → Tasks → Code → Learnings. Nothing gets lost.
 
 **Profile-based agents** — Three functional profiles defined by tool access, not job titles. A Smith with `python-development` skills becomes a backend engineer; the same Smith with `infrastructure-management` becomes a DevOps engineer. Skills determine what an agent knows; the profile determines what it can touch.
 
-**Session continuity** — Pick up exactly where you left off with full traceability. Session journals capture state and decisions in `.agents/sessions/`; explicit transfer packets live in `.agents/handoffs/` until housekeeping deletes them after deprecation.
+**Session continuity** — Pick up exactly where you left off with full traceability. The project journal captures decisions and progress in SQLite; a derived, ephemeral digest (latest wrap + recent branch entries + open tasks) is emitted at conversation start. Explicit transfer packets live in `.agents/handoffs/` until housekeeping deletes them after deprecation.
 
 **Hooks as quality gates** — Two hook types: enforcement hooks (pre-commit secrets scanning, pre-push linting) block bad commits automatically; skill instruction hooks inject context at tool invocation time. Language-aware and automatic.
 
@@ -73,7 +73,7 @@ Integrate outcomes into strategic knowledge.
 
 | Command | What It Does |
 |---------|--------------|
-| `/housekeeping` | Review completed sessions, archive or delete lifecycle-complete artifacts |
+| `/housekeeping` | Review and archive or delete lifecycle-complete artifacts |
 | `/reflect` | Integrate learnings into strategic documents |
 | `/handoff` | Package context for another agent, branch, task, or future session |
 | `/wrap` | Session summary: what shipped, what's pending, what's next |
@@ -91,9 +91,8 @@ CLI commands that support the workflow pipeline:
 | `loaf task` | Manage project tasks (list, show, update, archive) |
 | `loaf spec` | Manage spec lifecycle |
 | `loaf kb` | Knowledge base management |
-| `loaf session` | Session journal management (list, start, end, log) |
-| `loaf session enrich` | Enrich session journal from JSONL conversation logs |
-| `loaf session housekeeping` | Review and archive agent artifacts |
+| `loaf journal` | Project journal: log, recent, search, show, context, export |
+| `loaf housekeeping` | Review and archive agent artifacts |
 | `loaf release` | Publish a release: version bump, changelog, tag, and release artifacts |
 
 ## Profiles
@@ -105,7 +104,7 @@ Loaf uses four functional profiles defined by mechanically enforced tool boundar
 | **Smith** | Implementer | Full write | Forges code, tests, config, and docs. Speciality determined by skills. |
 | **Sentinel** | Reviewer | Read-only | Watches, guards, and verifies. Cannot modify what it reviews — by design. |
 | **Ranger** | Researcher | Read + web | Scouts far, gathers intelligence, reports structured findings. |
-| **Librarian** | Librarian | Read + Edit (.agents/) | Tends session lifecycle, state, and wrap summaries. Does not forge code or scout. |
+| **Librarian** | Librarian | Read + Edit (.agents/) | Tends the project journal and durable `.agents/` artifacts, including wrap checkpoints. Does not forge code or scout. |
 
 The main session is the **Warden** — it coordinates and delegates but never implements directly. See [SOUL.md](.agents/SOUL.md) for the full fellowship identity.
 
@@ -132,7 +131,7 @@ Skills you invoke directly to drive work forward.
 | `housekeeping` | Reviewing and archiving agent artifacts |
 | `handoff` | Creating disposable transfer packets in `.agents/handoffs/` |
 | `bootstrap` | Bootstrapping new or existing projects |
-| `wrap` | End-of-session summary: shipped, pending, next |
+| `wrap` | Optional end-of-conversation checkpoint: shipped, pending, next |
 
 ### Orchestration & Knowledge
 
@@ -140,7 +139,7 @@ Background skills that activate automatically during agent coordination and proj
 
 | Skill | Activates When |
 |-------|----------------|
-| `orchestration` | Managing sessions, delegating agents, Linear integration |
+| `orchestration` | Journal continuity, delegating agents, Linear integration |
 | `council` | Multi-perspective deliberation during complex decisions |
 | `knowledge-base` | Managing project knowledge files |
 | `cli-reference` | Looking up which CLI command to use |
@@ -215,7 +214,7 @@ Detects installed tools, lets you select targets, and installs pre-built distrib
 
 ### Upgrading Existing Projects
 
-Projects created with the older TypeScript runtime can keep using their existing `.agents/` Markdown files after installing the native Go runtime. If no SQLite database exists yet, Loaf runs supported task, spec, report, session, and housekeeping commands in `markdown-only` compatibility mode.
+Projects created with the older TypeScript runtime can keep using their existing `.agents/` Markdown files after installing the native Go runtime. If no SQLite database exists yet, Loaf runs supported task, spec, report, journal, and housekeeping commands in `markdown-only` compatibility mode.
 
 Use this sequence when you are ready to adopt SQLite-backed state:
 

@@ -150,7 +150,7 @@ func (m markdownImporter) importAll(ctx context.Context) error {
 	if err := m.importShapingDrafts(ctx, agentsPath); err != nil {
 		return err
 	}
-	if err := m.importSessions(ctx, agentsPath); err != nil {
+	if err := m.importSessionJournals(ctx, agentsPath); err != nil {
 		return err
 	}
 	if err := m.importReports(ctx, agentsPath); err != nil {
@@ -342,7 +342,12 @@ func (m markdownImporter) importShapingDrafts(ctx context.Context, agentsPath st
 	return nil
 }
 
-func (m markdownImporter) importSessions(ctx context.Context, agentsPath string) error {
+// importSessionJournals imports legacy .agents/sessions/*.md files as
+// project-scoped journal entries. Under the journal-first model (SPEC-056) the
+// session entity no longer exists: each session file's journal lines become
+// project-scoped journal_entries tagged with the file's harness session id, and
+// its spark lines become sparks. No session row, body, or alias is created.
+func (m markdownImporter) importSessionJournals(ctx context.Context, agentsPath string) error {
 	files, err := filepath.Glob(filepath.Join(agentsPath, "sessions", "*.md"))
 	if err != nil {
 		return fmt.Errorf("find sessions: %w", err)
@@ -357,25 +362,13 @@ func (m markdownImporter) importSessions(ctx context.Context, agentsPath string)
 		if err != nil {
 			return err
 		}
-		alias := firstNonEmpty(artifact.Frontmatter["id"], artifact.Stem)
-		id := stableMigrationID("session", m.projectID, alias)
 		sourceID, err := m.upsertSource(ctx, artifact, "markdown")
 		if err != nil {
 			return err
 		}
-		status := sessionStatus(artifact)
-		branch := firstNonEmpty(artifact.Frontmatter["branch"])
+		observedBranch := firstNonEmpty(artifact.Frontmatter["branch"])
 		harnessSessionID := firstNonEmpty(artifact.Frontmatter["claude_session_id"], artifact.Frontmatter["harness_session_id"], artifact.Frontmatter["session_id"])
-		if err := m.upsertSession(ctx, id, branch, status, harnessSessionID, sourceID); err != nil {
-			return err
-		}
-		if err := m.upsertArtifactBody(ctx, "session", id, sourceID, artifact); err != nil {
-			return err
-		}
-		if err := m.upsertAlias(ctx, "session", id, "session", alias); err != nil {
-			return err
-		}
-		if err := m.importSessionJournal(ctx, artifact, id, sourceID); err != nil {
+		if err := m.importSessionJournal(ctx, artifact, observedBranch, harnessSessionID, sourceID); err != nil {
 			return err
 		}
 	}
@@ -437,7 +430,7 @@ func (m markdownImporter) importJSONSource(ctx context.Context, path string) err
 	return err
 }
 
-func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sourceArtifact, sessionID string, sourceID string) error {
+func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sourceArtifact, observedBranch string, harnessSessionID string, sourceID string) error {
 	re := regexp.MustCompile(`^\[(?P<time>[^\]]+)\]\s+(?P<type>[a-zA-Z0-9_-]+)\((?P<scope>[^)]*)\):\s*(?P<message>.*)$`)
 	for lineNumber, line := range strings.Split(string(artifact.Content), "\n") {
 		matches := re.FindStringSubmatch(line)
@@ -447,8 +440,13 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 		entryType := matches[2]
 		scope := matches[3]
 		message := matches[4]
+		// Skip lifecycle-noise markers: they are the exact rows the journal-first
+		// migration purges, so importing them would just re-seed noise.
+		if entryType == "session" {
+			continue
+		}
 		entryID := stableMigrationID("journal", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
-		if err := m.upsertJournalEntry(ctx, entryID, entryType, scope, message, sessionID); err != nil {
+		if err := m.upsertJournalEntry(ctx, entryID, entryType, scope, message, observedBranch, harnessSessionID); err != nil {
 			return err
 		}
 		if entryType == "spark" {
@@ -662,23 +660,6 @@ ON CONFLICT(id) DO UPDATE SET
 	return nil
 }
 
-func (m markdownImporter) upsertSession(ctx context.Context, id string, branch string, status string, harnessSessionID string, sourceID string) error {
-	_, err := m.tx.ExecContext(ctx, `
-INSERT INTO sessions (id, project_id, harness_session_id, branch, status, body_source_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-  harness_session_id = excluded.harness_session_id,
-  branch = excluded.branch,
-  status = excluded.status,
-  body_source_id = excluded.body_source_id,
-  updated_at = excluded.updated_at
-`, id, m.projectID, emptyToNil(harnessSessionID), emptyToNil(branch), status, sourceID, m.now, m.now)
-	if err != nil {
-		return fmt.Errorf("upsert session %s: %w", id, err)
-	}
-	return nil
-}
-
 func (m markdownImporter) upsertReport(ctx context.Context, id string, reportKind string, title string, status string, sourceID string) error {
 	_, err := m.tx.ExecContext(ctx, `
 INSERT INTO reports (id, project_id, report_kind, title, status, body_source_id, created_at, updated_at)
@@ -712,17 +693,18 @@ ON CONFLICT(id) DO UPDATE SET
 	return nil
 }
 
-func (m markdownImporter) upsertJournalEntry(ctx context.Context, id string, entryType string, scope string, message string, sessionID string) error {
+func (m markdownImporter) upsertJournalEntry(ctx context.Context, id string, entryType string, scope string, message string, observedBranch string, harnessSessionID string) error {
 	_, err := m.tx.ExecContext(ctx, `
-INSERT INTO journal_entries (id, project_id, entry_type, scope, message, session_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO journal_entries (id, project_id, entry_type, scope, message, observed_branch, harness_session_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   entry_type = excluded.entry_type,
   scope = excluded.scope,
   message = excluded.message,
-  session_id = excluded.session_id,
+  observed_branch = excluded.observed_branch,
+  harness_session_id = excluded.harness_session_id,
   updated_at = excluded.updated_at
-`, id, m.projectID, entryType, emptyToNil(scope), message, sessionID, m.now, m.now)
+`, id, m.projectID, entryType, emptyToNil(scope), message, emptyToNil(observedBranch), emptyToNil(harnessSessionID), m.now, m.now)
 	if err != nil {
 		return fmt.Errorf("upsert journal entry %s: %w", id, err)
 	}
@@ -862,20 +844,6 @@ func firstHeading(content []byte) string {
 		}
 	}
 	return ""
-}
-
-func archivedStatus(artifact sourceArtifact) string {
-	if strings.HasPrefix(artifact.RelPath, ".agents/sessions/archive/") {
-		return "archived"
-	}
-	return ""
-}
-
-func sessionStatus(artifact sourceArtifact) string {
-	if status := archivedStatus(artifact); status != "" {
-		return status
-	}
-	return firstNonEmpty(artifact.Frontmatter["status"], "unknown")
 }
 
 func reportStatus(artifact sourceArtifact) string {

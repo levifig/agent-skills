@@ -84,7 +84,7 @@
           },
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" session log --detect-linear",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" journal log --detect-linear",
             "if": "Bash(git commit:*)",
             "timeout": 30,
             "description": "Detect Linear magic words for auto-status updates"
@@ -122,16 +122,16 @@
           },
           {
             "type": "command",
-            "command": "loaf session log --from-hook",
+            "command": "loaf journal log --from-hook",
             "if": "Bash(git commit:*)",
-            "description": "Auto-log git commits to session journal",
+            "description": "Auto-log git commits to the project journal",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "loaf session log --from-hook",
+            "command": "loaf journal log --from-hook",
             "if": "Bash(gh pr:*)",
-            "description": "Auto-log GitHub PR events (create, merge) to session journal",
+            "description": "Auto-log GitHub PR events (create, merge) to the project journal",
             "timeout": 30
           }
         ]
@@ -142,19 +142,8 @@
         "hooks": [
           {
             "type": "command",
-            "description": "Start session journal and surface session context",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" session start"
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "description": "End session with progress summary and KB follow-up",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" session end --if-active"
+            "description": "Emit the layered continuity digest at conversation start",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" journal context --from-hook"
           }
         ]
       }
@@ -165,8 +154,8 @@
           {
             "type": "command",
             "timeout": 30,
-            "description": "Auto-log task completion or cancellation to session journal",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" session log --from-hook"
+            "description": "Auto-log task completion or cancellation to the project journal",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" journal log --from-hook"
           }
         ]
       }
@@ -177,8 +166,8 @@
           {
             "type": "command",
             "timeout": 5,
-            "description": "Inject session context and implementation conventions on prompt submit",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" session context for-prompt"
+            "description": "Inject implementation conventions on prompt submit",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" journal context for-prompt"
           }
         ]
       }
@@ -189,8 +178,8 @@
           {
             "type": "command",
             "timeout": 60,
-            "description": "Log compact marker and inject journal flush instructions before compaction",
-            "command": "loaf session context for-compact"
+            "description": "Inject journal flush guidance before compaction",
+            "command": "loaf journal context for-compact"
           }
         ]
       }
@@ -201,8 +190,8 @@
           {
             "type": "command",
             "timeout": 60,
-            "description": "Print session state, spec, journal, and git context for post-compaction resumption",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" session context for-resumption"
+            "description": "Emit the layered continuity digest for post-compaction resumption",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" journal context for-resumption"
           }
         ]
       }

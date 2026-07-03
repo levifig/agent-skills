@@ -26,7 +26,7 @@ You execute specific tasks in the background, writing results to a specified loc
 
 1. **Execute assigned task** - Security audits, coverage analysis, code reviews, etc.
 2. **Write results** - Output to specified `.agents/reports/` location
-3. **Report completion** - Write completion status in the report and log a concise session entry when session context is available
+3. **Report completion** - Write completion status in the report and log a concise journal entry when the `loaf` CLI is available
 
 ## Input You Receive
 
@@ -34,7 +34,7 @@ The spawning agent provides:
 - Specific task to execute
 - Files or scope to analyze
 - Output location (`.agents/reports/YYYYMMDD-HHMMSS-<name>.md`)
-- Session alias or task/spec reference when available
+- Task/spec reference when available
 
 ## Execution Process
 
@@ -44,7 +44,7 @@ Extract from prompt:
 - What to do (audit, analyze, review)
 - Scope (files, directories)
 - Output location
-- Session alias, task ID, or spec ID when provided
+- Task ID or spec ID when provided
 
 ### 2. Execute Work
 
@@ -66,7 +66,7 @@ report:
   status: unprocessed
   created: "2026-01-23T14:30:00Z"
   background_agent_id: "bg-YYYYMMDD-HHMMSS-description"
-  session_reference: "session alias or task/spec reference"
+  task_reference: "task or spec reference when provided"
 ---
 
 # Report Title
@@ -95,11 +95,10 @@ Prioritized list of actions.
 
 ### 4. Report Completion
 
-If the prompt supplied an active session alias and the `loaf` CLI is available,
-log the result:
+If the `loaf` CLI is available, log the result to the project journal:
 
 ```bash
-loaf session log "discover(background): bg-YYYYMMDD-HHMMSS-description completed; report .agents/reports/..."
+loaf journal log "discover(background): bg-YYYYMMDD-HHMMSS-description completed; report .agents/reports/..."
 ```
 
 ## Constraints
@@ -116,7 +115,7 @@ Before completing:
 - [ ] Task executed per prompt instructions
 - [ ] Report written to specified location
 - [ ] Report has valid frontmatter with `background_agent_id`
-- [ ] Completion logged to session journal when session context was provided
+- [ ] Completion logged to the project journal when the `loaf` CLI was available
 - [ ] No user interaction attempted
 
 ## Error Handling
@@ -125,11 +124,11 @@ If task cannot be completed:
 
 1. Write partial report with what was accomplished
 2. Document blockers in report
-3. Log failure to session journal when session context was provided
+3. Log failure to the project journal when the `loaf` CLI is available
 4. Include error details in report
 
 ```bash
-loaf session log "block(background): bg-YYYYMMDD-HHMMSS-description failed; partial report .agents/reports/..."
+loaf journal log "block(background): bg-YYYYMMDD-HHMMSS-description failed; partial report .agents/reports/..."
 ```
 
 ## Example Task
@@ -146,7 +145,6 @@ Check for OWASP Top 10 vulnerabilities.
 
 Write report to: .agents/reports/20260123-143000-auth-security.md
 
-Session: active session alias if available
 Background Agent ID: bg-20260123-143000-auth-security
 ```
 
@@ -154,7 +152,7 @@ Background Agent ID: bg-20260123-143000-auth-security
 1. Read `src/auth/endpoints.py` and `src/auth/token.py`
 2. Analyze for OWASP vulnerabilities
 3. Write findings to `.agents/reports/20260123-143000-auth-security.md`
-4. Log completion to the session journal if session context was provided
+4. Log completion to the project journal if the `loaf` CLI is available
 
 ---
 version: 2.0.0-alpha.1

@@ -291,16 +291,6 @@ status: done
 ---
 # Done Task
 `)
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-active.md", `---
-status: active
----
-# Active Session
-`)
-	writeCLIAgentsFile(t, workingDir, "sessions/archive/20260527-stopped.md", `---
-status: stopped
----
-# Archived Session
-`)
 	writeCLIAgentsFile(t, workingDir, "drafts/20260528-absorbed.md", `---
 status: absorbed
 ---
@@ -323,10 +313,13 @@ status: absorbed
 	if summary.ContractVersion != 0 || summary.DatabaseScope != "" || summary.ProjectID != "" || summary.ProjectName != "" || summary.ProjectCurrentPath != "" {
 		t.Fatalf("markdown housekeeping context = %#v, want empty", summary)
 	}
-	if summary.Sections["specs"].ByStatus["complete"] != 1 || summary.Sections["tasks"].ByStatus["done"] != 1 || summary.Sections["sessions"].ByStatus["active"] != 1 || summary.Sections["sessions"].ByStatus["archived"] != 1 || summary.Sections["shaping_drafts"].ByStatus["absorbed"] != 1 {
+	if summary.Sections["specs"].ByStatus["complete"] != 1 || summary.Sections["tasks"].ByStatus["done"] != 1 || summary.Sections["shaping_drafts"].ByStatus["absorbed"] != 1 {
 		t.Fatalf("summary = %#v, want markdown artifact lifecycle counts", summary)
 	}
-	if summary.Sections["specs"].CleanupCandidate != 1 || summary.Sections["tasks"].CleanupCandidate != 1 || summary.Sections["sessions"].CleanupCandidate != 1 || summary.Sections["shaping_drafts"].CleanupCandidate != 1 {
+	if _, ok := summary.Sections["sessions"]; ok {
+		t.Fatalf("summary = %#v, want no sessions housekeeping section", summary)
+	}
+	if summary.Sections["specs"].CleanupCandidate != 1 || summary.Sections["tasks"].CleanupCandidate != 1 || summary.Sections["shaping_drafts"].CleanupCandidate != 1 {
 		t.Fatalf("summary = %#v, want markdown cleanup candidates", summary)
 	}
 
@@ -335,11 +328,11 @@ status: absorbed
 		Stdout:     &humanOut,
 		WorkingDir: workingDir,
 		StateHome:  stateHome,
-	}.Run([]string{"housekeeping", "--dry-run", "--sessions"})
+	}.Run([]string{"housekeeping", "--dry-run", "--specs"})
 	if err != nil {
 		t.Fatalf("housekeeping markdown human summary error = %v", err)
 	}
-	for _, want := range []string{"loaf housekeeping (markdown, dry run)", "artifacts:", "sessions", "cleanup candidate"} {
+	for _, want := range []string{"loaf housekeeping (markdown, dry run)", "artifacts:", "specs", "cleanup candidate"} {
 		if !strings.Contains(humanOut.String(), want) {
 			t.Fatalf("stdout = %q, want %q", humanOut.String(), want)
 		}
@@ -347,8 +340,8 @@ status: absorbed
 	if strings.Contains(humanOut.String(), "scope: global database") || strings.Contains(humanOut.String(), "project path:") {
 		t.Fatalf("stdout = %q, want markdown fallback without database context", humanOut.String())
 	}
-	if strings.Contains(humanOut.String(), "specs") {
-		t.Fatalf("stdout = %q, want --sessions filter to hide specs", humanOut.String())
+	if strings.Contains(humanOut.String(), "tasks") {
+		t.Fatalf("stdout = %q, want --specs filter to hide tasks", humanOut.String())
 	}
 	assertNoStateDatabase(t, workingDir, stateHome)
 }
@@ -720,7 +713,7 @@ func TestRunnerRefusesPreA3LinkedWorktreeBeforeDispatch(t *testing.T) {
 	err := Runner{
 		Stderr:     &stderr,
 		WorkingDir: linked,
-	}.Run([]string{"session", "list"})
+	}.Run([]string{"journal", "recent"})
 
 	exitErr, ok := err.(interface {
 		ExitCode() int
@@ -1024,7 +1017,6 @@ depends_on: [TASK-000]
 files: [internal/cli/cli.go]
 verify: go test ./...
 done: Refresh works
-session: 20260611-refresh
 created: 2026-06-01
 updated: 2026-06-02T12:00:00Z
 ---
@@ -1089,7 +1081,7 @@ created: 2026-06-01
 		t.Fatalf("tasks = %#v, want stale TASK-042 dropped", tasks)
 	}
 	task := tasks["TASK-001"].(map[string]any)
-	if task["title"] != "Refresh Task" || task["status"] != "in_progress" || task["priority"] != "P1" || task["spec"] != "SPEC-001" || task["file"] != "TASK-001-refresh.md" || task["verify"] != "go test ./..." || task["done"] != "Refresh works" || task["session"] != "20260611-refresh" {
+	if task["title"] != "Refresh Task" || task["status"] != "in_progress" || task["priority"] != "P1" || task["spec"] != "SPEC-001" || task["file"] != "TASK-001-refresh.md" || task["verify"] != "go test ./..." || task["done"] != "Refresh works" {
 		t.Fatalf("TASK-001 = %#v, want normalized task metadata", task)
 	}
 	if task["created"] != "2026-06-01T00:00:00Z" || task["updated"] != "2026-06-02T12:00:00Z" {
@@ -1274,7 +1266,6 @@ Preserve spec body.
       "files": ["go.mod"],
       "verify": "go test ./...",
       "done": "All green",
-      "session": "20260611-sync",
       "created": "2026-06-01T10:00:00Z",
       "updated": "2026-06-02T11:00:00Z",
       "completed_at": "2026-06-03T12:00:00Z",
@@ -1321,7 +1312,6 @@ Preserve spec body.
 		"spec":         "SPEC-001",
 		"verify":       "go test ./...",
 		"done":         "All green",
-		"session":      "20260611-sync",
 		"completed_at": "2026-06-03T12:00:00Z",
 		"custom_task":  "keep me",
 	} {
@@ -1462,785 +1452,6 @@ func TestRunnerTaskRefreshAndSyncReportInvalidSQLiteState(t *testing.T) {
 	}
 }
 
-func TestRunnerSessionEnrichUsesSQLiteStateWhenInitialized(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-session.md", `---
-status: done
-branch: main
-claude_session_id: abc123
----
-# Session
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "enrich", "20260528-session.md", "--dry-run", "--json"})
-	if err != nil {
-		t.Fatalf("session enrich --json error = %v", err)
-	}
-	summary := decodeCompatibilityCommandSummary(t, stdout.Bytes())
-	if summary.Command != "session enrich" || summary.Action != "skipped" || summary.Counts["sessions"] != 1 {
-		t.Fatalf("summary = %#v, want skipped SQLite session enrich summary", summary)
-	}
-}
-
-func TestRunnerSessionEnrichWritesSQLiteJournalWithoutMarkdown(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	sessionRel := filepath.Join("sessions", "20260528-session.md")
-	writeCLIAgentsFile(t, workingDir, sessionRel, `---
-status: done
-branch: main
-claude_session_id: abc123
----
-# Session
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-	sessionPath := filepath.Join(workingDir, ".agents", sessionRel)
-	if err := os.Remove(sessionPath); err != nil {
-		t.Fatalf("remove session markdown after migration error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "enrich", "20260528-session.md", "--json"})
-	if err != nil {
-		t.Fatalf("session enrich --json error = %v", err)
-	}
-	summary := decodeCompatibilityCommandSummary(t, stdout.Bytes())
-	if summary.Command != "session enrich" || summary.Action != "logged" || summary.Counts["journal_entries"] != 1 {
-		t.Fatalf("summary = %#v, want logged SQLite enrichment checkpoint", summary)
-	}
-	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
-		t.Fatalf("session markdown stat = %v, want no recreated markdown file", err)
-	}
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	databasePath, err := (state.PathResolver{StateHome: stateHome}).DatabasePath(root)
-	if err != nil {
-		t.Fatalf("DatabasePath() error = %v", err)
-	}
-	db, err := sql.Open("sqlite3", databasePath)
-	if err != nil {
-		t.Fatalf("sql.Open() error = %v", err)
-	}
-	defer db.Close()
-	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM journal_entries WHERE entry_type = ? AND scope = ? AND message = ?`, "session", "enrich", "recorded native SQLite enrichment checkpoint for 20260528-session.md"); got != 1 {
-		t.Fatalf("journal entry count = %d, want enrichment checkpoint", got)
-	}
-	show, err := state.ShowSession(context.Background(), root, state.PathResolver{StateHome: stateHome}, "20260528-session")
-	if err != nil {
-		t.Fatalf("ShowSession() error = %v", err)
-	}
-	found := false
-	for _, entry := range show.Session.JournalEntries {
-		if entry.EntryType == "session" && entry.Scope == "enrich" && entry.Message == "recorded native SQLite enrichment checkpoint for 20260528-session.md" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("journal entries = %#v, want enrichment checkpoint linked to session", show.Session.JournalEntries)
-	}
-}
-
-func TestRunnerSessionEnrichSummarizesMarkdownOnly(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell fixture is POSIX-only")
-	}
-
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-session.md", `---
-status: done
-branch: main
-claude_session_id: markdown-enrich-session
----
-# Session
-`)
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "enrich", "20260528-session.md", "--dry-run", "--json"})
-	if err != nil {
-		t.Fatalf("session enrich markdown summary error = %v", err)
-	}
-	if strings.Contains(stdout.String(), "args=session enrich") {
-		t.Fatalf("stdout = %q, want native markdown enrich without legacy delegation", stdout.String())
-	}
-	summary := decodeCompatibilityCommandSummary(t, stdout.Bytes())
-	if summary.Command != "session enrich" || summary.Mode != "markdown" || summary.Action != "skipped" || summary.Counts["sessions"] != 1 || summary.Counts["done"] != 1 {
-		t.Fatalf("summary = %#v, want markdown enrich compatibility counts", summary)
-	}
-	if !strings.Contains(summary.Reason, "TypeScript bridge") {
-		t.Fatalf("reason = %q, want explicit bridge-removal explanation", summary.Reason)
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-}
-
-func TestRunnerSessionEnrichReportsInvalidSQLiteState(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeInvalidStateDatabase(t, workingDir, stateHome)
-
-	err := Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "enrich"})
-	if err == nil {
-		t.Fatal("session enrich invalid state error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
-	}
-}
-
-func TestRunnerSessionHousekeepingUsesSQLiteStateWhenInitialized(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-session.md", `---
-status: active
-branch: main
-claude_session_id: abc123
----
-# Session
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}`)
-	before := readCLIAgentsFile(t, workingDir, "sessions/20260528-session.md")
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "housekeeping", "--dry-run", "--json"})
-	if err != nil {
-		t.Fatalf("session housekeeping --dry-run --json error = %v", err)
-	}
-	summary := decodeCompatibilityCommandSummary(t, stdout.Bytes())
-	if summary.Command != "session housekeeping" || summary.Action != "skipped" || summary.Mode != "sqlite" || summary.Counts["sessions"] != 1 {
-		t.Fatalf("summary = %#v, want skipped SQLite session housekeeping summary", summary)
-	}
-	if !strings.Contains(summary.Reason, "markdown session housekeeping") {
-		t.Fatalf("reason = %q, want markdown compatibility explanation", summary.Reason)
-	}
-	if after := readCLIAgentsFile(t, workingDir, "sessions/20260528-session.md"); after != before {
-		t.Fatalf("session markdown changed:\nbefore=%s\nafter=%s", before, after)
-	}
-}
-
-func TestRunnerSessionHousekeepingSummarizesMarkdownOnly(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell fixture is POSIX-only")
-	}
-
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-active.md", `---
-status: active
-branch: main
-claude_session_id: markdown-housekeeping-active
----
-# Session
-`)
-	writeCLIAgentsFile(t, workingDir, "sessions/archive/20260527-archived.md", `---
-status: active
-branch: old/session
-claude_session_id: markdown-housekeeping-archived
----
-# Session
-`)
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "housekeeping", "--dry-run", "--json"})
-	if err != nil {
-		t.Fatalf("session housekeeping markdown summary error = %v", err)
-	}
-	if strings.Contains(stdout.String(), "args=session housekeeping") {
-		t.Fatalf("stdout = %q, want native markdown housekeeping without legacy delegation", stdout.String())
-	}
-	summary := decodeCompatibilityCommandSummary(t, stdout.Bytes())
-	if summary.Command != "session housekeeping" || summary.Mode != "markdown" || summary.Action != "skipped" || summary.Counts["sessions"] != 2 || summary.Counts["active"] != 1 || summary.Counts["archived"] != 1 {
-		t.Fatalf("summary = %#v, want markdown housekeeping compatibility counts", summary)
-	}
-	if !strings.Contains(summary.Reason, "Native markdown session lifecycle") {
-		t.Fatalf("reason = %q, want native lifecycle explanation", summary.Reason)
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-}
-
-func TestRunnerSessionHousekeepingReportsInvalidSQLiteState(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeInvalidStateDatabase(t, workingDir, stateHome)
-
-	err := Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "housekeeping"})
-	if err == nil {
-		t.Fatal("session housekeeping invalid state error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
-	}
-}
-
-func TestRunnerSessionStateUpdateWritesSQLiteSnapshot(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-session.md", `---
-status: active
-branch: main
-claude_session_id: abc123
----
-# Session
-
-## Journal
-
-[2026-05-28 10:00] session(start):  === SESSION STARTED ===
-`)
-	markdownBefore := readCLIAgentsFile(t, workingDir, "sessions/20260528-session.md")
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	start, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch:           "main",
-		HarnessSessionID: "sqlite-state-session",
-	})
-	if err != nil {
-		t.Fatalf("StartSession() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(workingDir, "dirty.txt"), []byte("dirty\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(dirty.txt) error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"sqlite-state-session"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "state", "update"})
-	if err != nil {
-		t.Fatalf("session state update error = %v", err)
-	}
-	if stdout.String() != "" {
-		t.Fatalf("stdout = %q, want silent SQLite hook no-op", stdout.String())
-	}
-	if markdownAfter := readCLIAgentsFile(t, workingDir, "sessions/20260528-session.md"); markdownAfter != markdownBefore {
-		t.Fatalf("session markdown changed:\nbefore=%s\nafter=%s", markdownBefore, markdownAfter)
-	}
-	after, err := state.ShowSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, "20260528-session")
-	if err == nil {
-		t.Fatalf("ShowSession(legacy markdown alias) error = nil, want SQLite state not to mutate markdown session")
-	}
-	after, err = state.ShowSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, start.Session.Alias)
-	if err != nil {
-		t.Fatalf("ShowSession(SQLite) error = %v", err)
-	}
-	if after.Session.StateSnapshot == nil {
-		t.Fatalf("StateSnapshot = nil, want SQLite state update snapshot")
-	}
-	for _, want := range []string{"## Current State (", "Branch: main", "Last commit:", "Uncommitted:"} {
-		if !strings.Contains(after.Session.StateSnapshot.Content, want) {
-			t.Fatalf("snapshot content = %q, want %q", after.Session.StateSnapshot.Content, want)
-		}
-	}
-}
-
-func TestRunnerSessionStateUpdateUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-session.md", `---
-status: active
-branch: main
-claude_session_id: markdown-state-session
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:00:00Z
----
-# Session
-
-## Current State (2026-06-10 10:00)
-
-old state text
-
-## Journal
-
-[2026-06-10 10:00] session(start):  === SESSION STARTED ===
-`)
-	if err := os.WriteFile(filepath.Join(workingDir, "dirty.txt"), []byte("dirty\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(dirty.txt) error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"markdown-state-session"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "state", "update"})
-	if err != nil {
-		t.Fatalf("session state update markdown error = %v", err)
-	}
-	if stdout.String() != "" {
-		t.Fatalf("stdout = %q, want silent hook update", stdout.String())
-	}
-	after := readCLIAgentsFile(t, workingDir, "sessions/20260610-session.md")
-	for _, want := range []string{
-		"## Current State (",
-		"Branch: main",
-		"Last commit:",
-		"Uncommitted:",
-		"## Journal",
-		"session(start):  === SESSION STARTED ===",
-	} {
-		if !strings.Contains(after, want) {
-			t.Fatalf("session markdown = %q, want %q", after, want)
-		}
-	}
-	for _, notWant := range []string{
-		"old state text",
-		"last_updated: 2026-06-10T10:00:00Z",
-	} {
-		if strings.Contains(after, notWant) {
-			t.Fatalf("session markdown = %q, did not want %q", after, notWant)
-		}
-	}
-	if _, err := os.Stat(stateDBPathForWorkingDir(t, workingDir, stateHome)); !os.IsNotExist(err) {
-		t.Fatalf("state db stat = %v, want markdown state update not to create SQLite database", err)
-	}
-}
-
-func TestRunnerSessionStateUpdateSkipsMarkdownSubagents(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-session.md", `---
-status: active
-branch: main
-claude_session_id: markdown-state-session
----
-# Session
-
-## Journal
-`)
-	before := readCLIAgentsFile(t, workingDir, "sessions/20260610-session.md")
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"agent_id":"subagent","session_id":"markdown-state-session"}`),
-		WorkingDir: workingDir,
-		StateHome:  t.TempDir(),
-	}.Run([]string{"session", "state", "update"})
-	if err != nil {
-		t.Fatalf("session state update markdown subagent error = %v", err)
-	}
-	if stdout.String() != "" {
-		t.Fatalf("stdout = %q, want subagent skip", stdout.String())
-	}
-	if after := readCLIAgentsFile(t, workingDir, "sessions/20260610-session.md"); after != before {
-		t.Fatalf("session markdown changed for subagent:\nbefore=%s\nafter=%s", before, after)
-	}
-}
-
-func TestRunnerSessionStateUpdateReportsInvalidSQLiteState(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeInvalidStateDatabase(t, workingDir, stateHome)
-
-	err := Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "state", "update"})
-	if err == nil {
-		t.Fatal("session state update invalid state error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
-	}
-}
-
-func TestRunnerSessionContextForPromptIsNativeAndSkipsSubagents(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "context", "for-prompt"})
-	if err != nil {
-		t.Fatalf("session context for-prompt error = %v", err)
-	}
-	for _, want := range []string{"[Implementation Principles]", "When the user's message is a QUESTION", "loaf session log"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
-		}
-	}
-
-	stdout.Reset()
-	err = Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"agent_id":"agent-123"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "context", "--for-prompt"})
-	if err != nil {
-		t.Fatalf("session context --for-prompt subagent error = %v", err)
-	}
-	if stdout.String() != "" {
-		t.Fatalf("stdout = %q, want subagent prompt skip", stdout.String())
-	}
-}
-
-func TestRunnerSessionContextForCompactLogsSQLiteSessionMarker(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	start, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch:           "main",
-		HarnessSessionID: "compact-session",
-	})
-	if err != nil {
-		t.Fatalf("StartSession() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"compact-session"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "context", "for-compact"})
-	if err != nil {
-		t.Fatalf("session context for-compact error = %v", err)
-	}
-	if !strings.Contains(stdout.String(), "CONTEXT COMPACTION IMMINENT") || !strings.Contains(stdout.String(), "loaf session log") {
-		t.Fatalf("stdout = %q, want compact instructions", stdout.String())
-	}
-
-	show, err := state.ShowSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, start.Session.Alias)
-	if err != nil {
-		t.Fatalf("ShowSession() error = %v", err)
-	}
-	if !hasSessionJournalEntry(show.Session.JournalEntries, "compact", "session", "context compaction triggered") {
-		t.Fatalf("journal entries = %#v, want compact marker", show.Session.JournalEntries)
-	}
-}
-
-func TestRunnerSessionContextForResumptionUsesSQLiteState(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	start, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch:           "main",
-		HarnessSessionID: "resume-session",
-	})
-	if err != nil {
-		t.Fatalf("StartSession() error = %v", err)
-	}
-	if _, err := state.LogJournal(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.JournalLogOptions{
-		Entry:            "decision(sqlite): render resumption from state",
-		ObservedBranch:   "main",
-		ObservedWorktree: workingDir,
-		HarnessSessionID: "resume-session",
-		LinkSession:      true,
-	}); err != nil {
-		t.Fatalf("LogJournal() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"resume-session"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "context", "for-resumption"})
-	if err != nil {
-		t.Fatalf("session context for-resumption error = %v", err)
-	}
-	output := stdout.String()
-	for _, want := range []string{"=== POST-COMPACTION RESUMPTION ===", "Session: " + start.Session.Alias, "Branch: main", "WARNING: No SQLite session state snapshot was written before compaction.", "## Recent Journal", "decision(sqlite): render resumption from state"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("stdout = %q, want %q", output, want)
-		}
-	}
-}
-
-func TestRunnerSessionContextForResumptionUsesSQLiteStateSnapshot(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	start, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch:           "main",
-		HarnessSessionID: "snapshot-resume-session",
-	})
-	if err != nil {
-		t.Fatalf("StartSession() error = %v", err)
-	}
-	if _, err := state.RecordSessionStateSnapshot(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStateSnapshotOptions{
-		SessionRef: start.Session.Alias,
-		Content:    "## Current State (2026-06-11 12:55)\n\n**Working on:** SQLite resumption snapshots\n**Status:** stored in native state",
-	}); err != nil {
-		t.Fatalf("RecordSessionStateSnapshot() error = %v", err)
-	}
-	if _, err := state.LogJournal(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.JournalLogOptions{
-		Entry:            "decision(sqlite): render snapshot before journal",
-		ObservedBranch:   "main",
-		ObservedWorktree: workingDir,
-		HarnessSessionID: "snapshot-resume-session",
-		LinkSession:      true,
-	}); err != nil {
-		t.Fatalf("LogJournal() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"snapshot-resume-session"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "context", "for-resumption"})
-	if err != nil {
-		t.Fatalf("session context for-resumption error = %v", err)
-	}
-	output := stdout.String()
-	for _, want := range []string{
-		"=== POST-COMPACTION RESUMPTION ===",
-		"Session: " + start.Session.Alias,
-		"## Current State (2026-06-11 12:55)",
-		"**Working on:** SQLite resumption snapshots",
-		"## Recent Journal",
-		"decision(sqlite): render snapshot before journal",
-	} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("stdout = %q, want %q", output, want)
-		}
-	}
-	if strings.Contains(output, "No SQLite session state snapshot") {
-		t.Fatalf("stdout = %q, did not want missing-snapshot warning", output)
-	}
-}
-
-func TestRunnerSessionContextForResumptionWarnsWhenNoSQLiteSession(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "context", "for-resumption"})
-	if err != nil {
-		t.Fatalf("session context for-resumption error = %v", err)
-	}
-	for _, want := range []string{"=== POST-COMPACTION RESUMPTION ===", "WARNING: No active session found. Run `loaf session list --all`"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
-		}
-	}
-}
-
-func TestRunnerSessionContextForCompactUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-session.md", `---
-status: active
-branch: main
-claude_session_id: markdown-compact-session
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:00:00Z
-last_entry: 2026-06-10T10:00:00Z
----
-# Session
-
-## Journal
-
-[2026-06-10 10:00] session(start):  === SESSION STARTED ===
-`)
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"markdown-compact-session"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "context", "for-compact"})
-	if err != nil {
-		t.Fatalf("session context for-compact markdown error = %v", err)
-	}
-	if !strings.Contains(stdout.String(), "CONTEXT COMPACTION IMMINENT") || !strings.Contains(stdout.String(), "loaf session log") {
-		t.Fatalf("stdout = %q, want compact instructions", stdout.String())
-	}
-	after := readCLIAgentsFile(t, workingDir, "sessions/20260610-session.md")
-	if !strings.Contains(after, "compact(session): context compaction triggered") {
-		t.Fatalf("session markdown = %q, want compact marker", after)
-	}
-	if strings.Contains(after, "last_updated: 2026-06-10T10:00:00Z") || strings.Contains(after, "last_entry: 2026-06-10T10:00:00Z") {
-		t.Fatalf("session markdown = %q, want updated frontmatter timestamps", after)
-	}
-	if _, err := os.Stat(stateDBPathForWorkingDir(t, workingDir, stateHome)); !os.IsNotExist(err) {
-		t.Fatalf("state db stat = %v, want markdown compact path not to create SQLite database", err)
-	}
-}
-
-func TestRunnerSessionContextForCompactSkipsMarkdownSubagents(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-session.md", `---
-status: active
-branch: main
-claude_session_id: markdown-compact-session
----
-# Session
-
-## Journal
-`)
-	before := readCLIAgentsFile(t, workingDir, "sessions/20260610-session.md")
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"agent_id":"subagent","session_id":"markdown-compact-session"}`),
-		WorkingDir: workingDir,
-		StateHome:  t.TempDir(),
-	}.Run([]string{"session", "context", "for-compact"})
-	if err != nil {
-		t.Fatalf("session context for-compact markdown subagent error = %v", err)
-	}
-	if stdout.String() != "" {
-		t.Fatalf("stdout = %q, want subagent skip", stdout.String())
-	}
-	if after := readCLIAgentsFile(t, workingDir, "sessions/20260610-session.md"); after != before {
-		t.Fatalf("session markdown changed for subagent:\nbefore=%s\nafter=%s", before, after)
-	}
-}
-
-func TestRunnerSessionContextForResumptionUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-session.md", `---
-status: active
-branch: main
-spec: SPEC-123
-claude_session_id: markdown-resume-session
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:05:00Z
-last_entry: 2026-06-10T10:05:00Z
----
-# Session
-
-## Current State (2026-06-10 10:05)
-
-**Working on:** native markdown resumption
-**Status:** focused test fixture
-
-## Journal
-
-[2026-06-10 10:00] session(start):  === SESSION STARTED ===
-[2026-06-10 10:04] decision(session): port markdown resumption
-[2026-06-10 10:05] discover(session): recent journal is rendered
-`)
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"markdown-resume-session"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "context", "for-resumption"})
-	if err != nil {
-		t.Fatalf("session context for-resumption markdown error = %v", err)
-	}
-	output := stdout.String()
-	for _, want := range []string{
-		"=== POST-COMPACTION RESUMPTION ===",
-		"Session: .agents/sessions/20260610-session.md",
-		"Branch: main",
-		"Spec: SPEC-123",
-		"## Current State (2026-06-10 10:05)",
-		"**Working on:** native markdown resumption",
-		"## Recent Journal",
-		"decision(session): port markdown resumption",
-		"discover(session): recent journal is rendered",
-		"read the full session file: .agents/sessions/20260610-session.md",
-	} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("stdout = %q, want %q", output, want)
-		}
-	}
-	if _, err := os.Stat(stateDBPathForWorkingDir(t, workingDir, stateHome)); !os.IsNotExist(err) {
-		t.Fatalf("state db stat = %v, want markdown resumption path not to create SQLite database", err)
-	}
-}
-
 func initializeCLILegacyStateDatabase(t *testing.T, root project.Root) string {
 	t.Helper()
 	resolver := state.PathResolver{}
@@ -2265,27 +1476,6 @@ func initializeCLILegacyStateDatabase(t *testing.T, root project.Root) string {
 		t.Fatalf("Close(legacy) error = %v", err)
 	}
 	return legacyPath
-}
-
-func TestRunnerSessionContextForResumptionWarnsWithoutMarkdownSession(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"missing-session"}`),
-		WorkingDir: workingDir,
-		StateHome:  t.TempDir(),
-	}.Run([]string{"session", "context", "for-resumption"})
-	if err != nil {
-		t.Fatalf("session context for-resumption missing markdown error = %v", err)
-	}
-	for _, want := range []string{"=== POST-COMPACTION RESUMPTION ===", "WARNING: No active session found. Read .agents/sessions/ manually."} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
-		}
-	}
 }
 
 func TestRunnerLinkedWorktreesShareSQLiteState(t *testing.T) {
@@ -5347,12 +4537,6 @@ status: implementing
 # Example Spec
 `)
 	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-example.md", "# Example Task\n")
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-session.md", `---
-branch: feature/SPEC-001-Phase-2
-status: active
----
-[2026-05-28 10:00] decision(sqlite): release readiness
-`)
 	writeCLIAgentsFile(t, workingDir, "reports/release.md", `---
 kind: session
 title: Release SPEC-001 Track A report
@@ -5391,11 +4575,9 @@ status: final
 		"Release readiness: not ready",
 		"Specs: 1 active, 0 complete, 0 archived",
 		"Tasks: 1 unresolved, 0 done, 0 archived",
-		"Sessions: 1 active, 1 total",
 		"Reports: 0 draft, 1 total",
 		"No generated exports recorded.",
 		"session/done: Release internal reference internal reference report",
-		"in_progress session on feature/internal reference-internal reference with 1 journal entry",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
@@ -5471,125 +4653,6 @@ Imported spec prose.
 	if strings.Contains(output, "status: implementing") || strings.Contains(output, "---") {
 		t.Fatalf("output = %q, want stripped frontmatter", output)
 	}
-}
-
-func TestRunnerStateExportSessionMarkdown(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-session.md", `---
-branch: feature/session-export
-status: active
-claude_session_id: harness-export
----
-[2026-05-28 10:00] decision(sqlite): render this session
-`)
-	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-session.md", "# Session Task\n")
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{
-  "TASK-001":{"title":"Session Task","status":"todo","priority":"P2"}
-}}`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"task", "update", "TASK-001", "--session", "20260528-session"}); err != nil {
-		t.Fatalf("task update --session error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"state", "export", "session", "20260528-session", "--format", "markdown"})
-	if err != nil {
-		t.Fatalf("state export session --format markdown error = %v", err)
-	}
-
-	output := stdout.String()
-	for _, want := range []string{
-		"# Session Export",
-		"Audience: internal",
-		"## Project Context",
-		"- Scope: global database, project export",
-		"- Project: `proj_",
-		"- Project name: " + filepath.Base(workingDir),
-		"- Project path: `" + workingDir + "`",
-		"- Database: `" + filepath.Join(stateHome, "loaf", "loaf.sqlite") + "`",
-		"Session: `20260528-session`",
-		"Branch: `feature/session-export`",
-		"Harness session: `harness-export`",
-		"`.agents/sessions/20260528-session.md`",
-		"`decision(sqlite)`: render this session",
-		"inbound `associated_with` task `TASK-001`",
-	} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("output = %q, want %q", output, want)
-		}
-	}
-}
-
-func TestRunnerReportGenerateSessionAndSessionReportMatchStateExport(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-session.md", `---
-branch: feature/session-report
-status: active
----
-[2026-05-28 10:00] decision(sqlite): render this session report
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}
-`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var exportOut bytes.Buffer
-	if err := (Runner{Stdout: &exportOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "export", "session", "20260528-session", "--format", "markdown"}); err != nil {
-		t.Fatalf("state export session error = %v", err)
-	}
-	var reportOut bytes.Buffer
-	if err := (Runner{Stdout: &reportOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "generate", "session", "20260528-session"}); err != nil {
-		t.Fatalf("report generate session error = %v", err)
-	}
-	var sessionReportOut bytes.Buffer
-	if err := (Runner{Stdout: &sessionReportOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "report", "20260528-session"}); err != nil {
-		t.Fatalf("session report error = %v", err)
-	}
-
-	if reportOut.String() != exportOut.String() {
-		t.Fatalf("report generate output differs from state export:\nreport=%s\nexport=%s", reportOut.String(), exportOut.String())
-	}
-	if sessionReportOut.String() != exportOut.String() {
-		t.Fatalf("session report output differs from state export:\nsession=%s\nexport=%s", sessionReportOut.String(), exportOut.String())
-	}
-	if !strings.Contains(reportOut.String(), "# Session Export") {
-		t.Fatalf("report output = %q, want session export markdown", reportOut.String())
-	}
-
-	var sessionJSONOut bytes.Buffer
-	if err := (Runner{Stdout: &sessionJSONOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "generate", "session", "20260528-session", "--json"}); err != nil {
-		t.Fatalf("report generate session --json error = %v", err)
-	}
-	var sessionJSON state.MarkdownExport
-	if err := json.Unmarshal(sessionJSONOut.Bytes(), &sessionJSON); err != nil {
-		t.Fatalf("json.Unmarshal(%q) error = %v", sessionJSONOut.String(), err)
-	}
-	if sessionJSON.Command != "report generate session" || sessionJSON.ExportKind != state.ExportKindSession || sessionJSON.Audience != state.ExportAudienceLocal {
-		t.Fatalf("session JSON wrapper = %#v, want session report command and local audience", sessionJSON)
-	}
-	assertCLIProjectContext(t, workingDir, sessionJSON.ContractVersion, sessionJSON.DatabaseScope, sessionJSON.DatabasePath, sessionJSON.ProjectID, sessionJSON.ProjectName, sessionJSON.ProjectCurrentPath)
-
-	var sessionReportJSONOut bytes.Buffer
-	if err := (Runner{Stdout: &sessionReportJSONOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "report", "20260528-session", "--json"}); err != nil {
-		t.Fatalf("session report --json error = %v", err)
-	}
-	var sessionReportJSON state.MarkdownExport
-	if err := json.Unmarshal(sessionReportJSONOut.Bytes(), &sessionReportJSON); err != nil {
-		t.Fatalf("json.Unmarshal(%q) error = %v", sessionReportJSONOut.String(), err)
-	}
-	if sessionReportJSON.Command != "session report" || sessionReportJSON.ExportKind != state.ExportKindSession || sessionReportJSON.Content != sessionJSON.Content {
-		t.Fatalf("session report JSON wrapper = %#v, want session report command and export content parity", sessionReportJSON)
-	}
-	assertCLIProjectContext(t, workingDir, sessionReportJSON.ContractVersion, sessionReportJSON.DatabaseScope, sessionReportJSON.DatabasePath, sessionReportJSON.ProjectID, sessionReportJSON.ProjectName, sessionReportJSON.ProjectCurrentPath)
 }
 
 func TestRunnerReportGenerateTriageAndReleaseReadinessMatchStateExports(t *testing.T) {
@@ -6150,62 +5213,6 @@ status: implementing
 	}
 }
 
-func TestRunnerStateExportSessionMarkdownDoesNotMutateStateOrCreateRepoFiles(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-session.md", `---
-branch: feature/session-export
-status: active
----
-[2026-05-28 10:00] decision(sqlite): render this session
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}
-`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-	beforeFiles := repoFileList(t, workingDir)
-
-	var firstOut bytes.Buffer
-	err := Runner{
-		Stdout:     &firstOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"state", "export", "session", "20260528-session", "--format=markdown"})
-	if err != nil {
-		t.Fatalf("first state export session error = %v", err)
-	}
-	var secondOut bytes.Buffer
-	err = Runner{
-		Stdout:     &secondOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"state", "export", "session", "20260528-session", "--format", "markdown"})
-	if err != nil {
-		t.Fatalf("second state export session error = %v", err)
-	}
-	if firstOut.String() != secondOut.String() {
-		t.Fatalf("export output changed:\nfirst=%s\nsecond=%s", firstOut.String(), secondOut.String())
-	}
-	afterFiles := repoFileList(t, workingDir)
-	if !reflect.DeepEqual(beforeFiles, afterFiles) {
-		t.Fatalf("repository files changed:\nbefore=%#v\nafter=%#v", beforeFiles, afterFiles)
-	}
-	var snapshotOut bytes.Buffer
-	err = Runner{
-		Stdout:     &snapshotOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"state", "export", "all", "--format", "json"})
-	if err != nil {
-		t.Fatalf("state export all error = %v", err)
-	}
-	snapshot := decodeStateExportSnapshot(t, snapshotOut.Bytes())
-	if len(snapshot.Tables["exports"]) != 0 {
-		t.Fatalf("exports table mutated: %#v", snapshot.Tables["exports"])
-	}
-}
-
 func TestRunnerStateExportTriageMarkdownDoesNotCreateRepoFiles(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -6297,10 +5304,10 @@ func TestRunnerStateExportRejectsMissingInvalidUnsupportedState(t *testing.T) {
 		StateHome:  stateHome,
 	}.Run([]string{"state", "export", "session", "--format", "markdown"})
 	if err == nil {
-		t.Fatal("state export session missing ref error = nil, want rejection")
+		t.Fatal("state export session error = nil, want rejection of removed kind")
 	}
-	if !strings.Contains(err.Error(), "state export session requires exactly one session") {
-		t.Fatalf("error = %v, want missing session message", err)
+	if !strings.Contains(err.Error(), "state export kind \"session\" is not implemented yet") {
+		t.Fatalf("error = %v, want removed-kind message", err)
 	}
 
 	err = Runner{
@@ -6447,71 +5454,6 @@ func TestRunnerStateExportJSONErrorsAreMachineReadable(t *testing.T) {
 	}
 }
 
-func TestRunnerSessionHelpAndUnknownSubcommandAreNative(t *testing.T) {
-	for _, args := range [][]string{{"session"}, {"session", "--help"}, {"session", "help"}} {
-		t.Run(strings.Join(args, "_"), func(t *testing.T) {
-			var stdout bytes.Buffer
-			err := Runner{
-				Stdout:     &stdout,
-				WorkingDir: t.TempDir(),
-			}.Run(args)
-			if err != nil {
-				t.Fatalf("%v error = %v", args, err)
-			}
-			if !strings.Contains(stdout.String(), "Usage: loaf session <subcommand>") || !strings.Contains(stdout.String(), "start") {
-				t.Fatalf("stdout = %q, want native session help", stdout.String())
-			}
-		})
-	}
-
-	err := Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: t.TempDir(),
-	}.Run([]string{"session", "legacy-tail"})
-	if err == nil || !strings.Contains(err.Error(), `unknown loaf session subcommand "legacy-tail"`) {
-		t.Fatalf("session unknown error = %v, want native unknown subcommand", err)
-	}
-}
-
-func TestRunnerSessionNestedHelpAndUnknownSubcommandsAreNative(t *testing.T) {
-	cases := []struct {
-		command        string
-		args           []string
-		wantHelp       string
-		wantSubcommand string
-	}{
-		{command: "session state", args: []string{"session", "state"}, wantHelp: "Usage: loaf session state <subcommand>", wantSubcommand: "update"},
-		{command: "session context", args: []string{"session", "context"}, wantHelp: "Usage: loaf session context <subcommand>", wantSubcommand: "for-resumption"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.command, func(t *testing.T) {
-			for _, args := range [][]string{tc.args, append(append([]string{}, tc.args...), "--help"), append(append([]string{}, tc.args...), "help")} {
-				var stdout bytes.Buffer
-				err := Runner{
-					Stdout:     &stdout,
-					WorkingDir: t.TempDir(),
-				}.Run(args)
-				if err != nil {
-					t.Fatalf("%v error = %v", args, err)
-				}
-				if !strings.Contains(stdout.String(), tc.wantHelp) || !strings.Contains(stdout.String(), tc.wantSubcommand) {
-					t.Fatalf("stdout = %q, want %q and %q", stdout.String(), tc.wantHelp, tc.wantSubcommand)
-				}
-			}
-
-			err := Runner{
-				Stdout:     &bytes.Buffer{},
-				WorkingDir: t.TempDir(),
-			}.Run(append(append([]string{}, tc.args...), "legacy-tail"))
-			wantErr := fmt.Sprintf("unknown loaf %s subcommand \"legacy-tail\"", tc.command)
-			if err == nil || !strings.Contains(err.Error(), wantErr) {
-				t.Fatalf("%s unknown error = %v, want %q", tc.command, err, wantErr)
-			}
-		})
-	}
-}
-
 func TestRunnerHybridCommandHelpAndUnknownSubcommandsAreNative(t *testing.T) {
 	cases := []struct {
 		command        string
@@ -6562,574 +5504,10 @@ func TestRunnerHousekeepingHelpIsNative(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%v error = %v", args, err)
 			}
-			if !strings.Contains(stdout.String(), "Usage: loaf housekeeping [options]") || !strings.Contains(stdout.String(), "--sessions") {
+			if !strings.Contains(stdout.String(), "Usage: loaf housekeeping [options]") || !strings.Contains(stdout.String(), "--specs") {
 				t.Fatalf("stdout = %q, want native housekeeping help", stdout.String())
 			}
 		})
-	}
-}
-
-func TestRunnerSessionStartUsesSQLiteStateWhenInitialized(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"harness-cli-123456"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "start", "--json"})
-	if err != nil {
-		t.Fatalf("session start --json error = %v", err)
-	}
-	start := decodeSessionStart(t, stdout.Bytes())
-	if start.Action != state.SessionStartActionCreated || start.Session.Alias == "" || start.HarnessSessionID != "harness-cli-123456" {
-		t.Fatalf("start = %#v, want created harness-backed session", start)
-	}
-	assertCLISessionContext(t, start.ContractVersion, start.DatabaseScope, start.DatabasePath, start.ProjectID, start.ProjectName, start.ProjectCurrentPath, workingDir)
-
-	var showOut bytes.Buffer
-	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "show", start.Session.Alias, "--json"}); err != nil {
-		t.Fatalf("session show --json error = %v", err)
-	}
-	show := decodeSessionShow(t, showOut.Bytes())
-	if show.Session.Branch != "main" || show.Session.Status != "in_progress" || show.Session.HarnessSessionID != "harness-cli-123456" {
-		t.Fatalf("session = %#v, want native active session", show.Session)
-	}
-	if len(show.Session.JournalEntries) != 1 || show.Session.JournalEntries[0].EntryType != "session" || show.Session.JournalEntries[0].Scope != "start" {
-		t.Fatalf("journal entries = %#v, want linked session(start)", show.Session.JournalEntries)
-	}
-	assertCLISessionContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
-}
-
-func TestRunnerSessionStartUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell fixture is POSIX-only")
-	}
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"markdown-start-111111"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "start", "--json"})
-	if err != nil {
-		t.Fatalf("session start markdown --json error = %v", err)
-	}
-	if strings.Contains(stdout.String(), "args=session start") {
-		t.Fatalf("stdout = %q, want native markdown start without legacy delegation", stdout.String())
-	}
-	start := decodeSessionStart(t, stdout.Bytes())
-	if start.Action != state.SessionStartActionCreated || start.Session.Alias == "" || start.HarnessSessionID != "markdown-start-111111" {
-		t.Fatalf("start = %#v, want created markdown session", start)
-	}
-	if start.ContractVersion != 0 || start.DatabaseScope != "" || start.DatabasePath != "" || start.ProjectID != "" || start.ProjectName != "" || start.ProjectCurrentPath != "" {
-		t.Fatalf("markdown start context = %#v, want no SQLite context", start)
-	}
-	sessionRel := filepath.ToSlash(filepath.Join("sessions", start.Session.Alias+".md"))
-	created := readCLIAgentsFile(t, workingDir, sessionRel)
-	for _, want := range []string{"status: active", "branch: main", "claude_session_id: markdown-start-111111", "session(start):  === SESSION STARTED === (session markdown)"} {
-		if !strings.Contains(created, want) {
-			t.Fatalf("created markdown = %q, want %q", created, want)
-		}
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-
-	var resumeOut bytes.Buffer
-	err = Runner{
-		Stdout:     &resumeOut,
-		Stdin:      strings.NewReader(`{"session_id":"markdown-start-111111"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "start", "--json"})
-	if err != nil {
-		t.Fatalf("session start existing markdown error = %v", err)
-	}
-	resumed := decodeSessionStart(t, resumeOut.Bytes())
-	if resumed.Action != state.SessionStartActionAlreadyActive || resumed.Session.Alias != start.Session.Alias {
-		t.Fatalf("resumed = %#v, want same already-active session", resumed)
-	}
-
-	var rotateOut bytes.Buffer
-	err = Runner{
-		Stdout:     &rotateOut,
-		Stdin:      strings.NewReader(`{"session_id":"markdown-start-222222"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "start", "--json"})
-	if err != nil {
-		t.Fatalf("session start rotate markdown error = %v", err)
-	}
-	rotated := decodeSessionStart(t, rotateOut.Bytes())
-	if rotated.Action != state.SessionStartActionRotated || rotated.Session.Alias == start.Session.Alias || rotated.PreviousSession == nil {
-		t.Fatalf("rotated = %#v, want new session and stopped previous", rotated)
-	}
-	previous := readCLIAgentsFile(t, workingDir, sessionRel)
-	for _, want := range []string{"status: stopped", "session(end): closed by new conversation", "session(stop):   === SESSION STOPPED ==="} {
-		if !strings.Contains(previous, want) {
-			t.Fatalf("previous markdown = %q, want %q", previous, want)
-		}
-	}
-
-	rotatedRel := filepath.ToSlash(filepath.Join("sessions", rotated.Session.Alias+".md"))
-	beforeSubagent := readCLIAgentsFile(t, workingDir, rotatedRel)
-	var subagentOut bytes.Buffer
-	err = Runner{
-		Stdout:     &subagentOut,
-		Stdin:      strings.NewReader(`{"session_id":"markdown-start-333333","agent_id":"subagent"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "start", "--json"})
-	if err != nil {
-		t.Fatalf("session start markdown subagent error = %v", err)
-	}
-	if subagentOut.String() != "" {
-		t.Fatalf("subagent stdout = %q, want silent skip", subagentOut.String())
-	}
-	afterSubagent := readCLIAgentsFile(t, workingDir, rotatedRel)
-	if afterSubagent != beforeSubagent {
-		t.Fatalf("subagent changed markdown session:\nbefore=%s\nafter=%s", beforeSubagent, afterSubagent)
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-}
-
-func TestRunnerSessionEndTargetsHarnessSessionInSQLiteState(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	target, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch:           "feature/target",
-		HarnessSessionID: "harness-target",
-	})
-	if err != nil {
-		t.Fatalf("target StartSession() error = %v", err)
-	}
-	other, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch:           "main",
-		HarnessSessionID: "harness-main",
-	})
-	if err != nil {
-		t.Fatalf("main StartSession() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "end", "--json", "--session-id", "harness-target"})
-	if err != nil {
-		t.Fatalf("session end --json --session-id error = %v", err)
-	}
-	ended := decodeSessionEnd(t, stdout.Bytes())
-	if ended.Action != state.SessionEndActionStopped || ended.Session.ID != target.Session.ID || len(ended.JournalEntryIDs) != 2 {
-		t.Fatalf("ended = %#v, want stopped target session", ended)
-	}
-	assertCLISessionContext(t, ended.ContractVersion, ended.DatabaseScope, ended.DatabasePath, ended.ProjectID, ended.ProjectName, ended.ProjectCurrentPath, workingDir)
-
-	var targetShowOut bytes.Buffer
-	if err := (Runner{Stdout: &targetShowOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "show", target.Session.Alias, "--json"}); err != nil {
-		t.Fatalf("session show target error = %v", err)
-	}
-	targetShow := decodeSessionShow(t, targetShowOut.Bytes())
-	if targetShow.Session.Status != "paused" {
-		t.Fatalf("target status = %q, want paused", targetShow.Session.Status)
-	}
-	assertCLISessionContext(t, targetShow.ContractVersion, targetShow.DatabaseScope, targetShow.DatabasePath, targetShow.ProjectID, targetShow.ProjectName, targetShow.ProjectCurrentPath, workingDir)
-
-	var otherShowOut bytes.Buffer
-	if err := (Runner{Stdout: &otherShowOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "show", other.Session.Alias, "--json"}); err != nil {
-		t.Fatalf("session show other error = %v", err)
-	}
-	otherShow := decodeSessionShow(t, otherShowOut.Bytes())
-	if otherShow.Session.Status != "in_progress" {
-		t.Fatalf("other status = %q, want in_progress", otherShow.Session.Status)
-	}
-
-	var listOut bytes.Buffer
-	if err := (Runner{Stdout: &listOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "list", "--json"}); err != nil {
-		t.Fatalf("session list --json error = %v", err)
-	}
-	list := decodeSessionList(t, listOut.Bytes())
-	if _, ok := list.Sessions[target.Session.Alias]; ok {
-		t.Fatalf("active session list includes stopped target %#v", list.Sessions[target.Session.Alias])
-	}
-	if _, ok := list.Sessions[other.Session.Alias]; !ok {
-		t.Fatalf("active session list missing active session %s", other.Session.Alias)
-	}
-	assertCLISessionContext(t, list.ContractVersion, list.DatabaseScope, list.DatabasePath, list.ProjectID, list.ProjectName, list.ProjectCurrentPath, workingDir)
-}
-
-func TestRunnerSessionEndIfActiveNoopsInSQLiteState(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "end", "--if-active", "--json"})
-	if err != nil {
-		t.Fatalf("session end --if-active --json error = %v", err)
-	}
-	ended := decodeSessionEnd(t, stdout.Bytes())
-	if ended.Action != state.SessionEndActionNoop || ended.NoopReason == "" {
-		t.Fatalf("ended = %#v, want noop with reason", ended)
-	}
-	assertCLISessionContext(t, ended.ContractVersion, ended.DatabaseScope, ended.DatabasePath, ended.ProjectID, ended.ProjectName, ended.ProjectCurrentPath, workingDir)
-}
-
-func TestRunnerSessionEndUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell fixture is POSIX-only")
-	}
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-active.md", `---
-status: active
-branch: main
-claude_session_id: markdown-end-111111
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:00:00Z
----
-# Session
-
-## Journal
-
-[2026-06-10 10:00] session(start):  === SESSION STARTED ===
-`)
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "end", "--json", "--session-id", "markdown-end-111111"})
-	if err != nil {
-		t.Fatalf("session end markdown --json error = %v", err)
-	}
-	if strings.Contains(stdout.String(), "args=session end") {
-		t.Fatalf("stdout = %q, want native markdown end without legacy delegation", stdout.String())
-	}
-	ended := decodeSessionEnd(t, stdout.Bytes())
-	if ended.Action != state.SessionEndActionStopped || ended.Session.Alias != "20260610-active" || ended.Session.Status != "stopped" || len(ended.JournalEntryIDs) != 2 {
-		t.Fatalf("ended = %#v, want stopped markdown session", ended)
-	}
-	if ended.ContractVersion != 0 || ended.DatabaseScope != "" || ended.DatabasePath != "" || ended.ProjectID != "" || ended.ProjectName != "" || ended.ProjectCurrentPath != "" {
-		t.Fatalf("markdown end context = %#v, want no SQLite context", ended)
-	}
-	stopped := readCLIAgentsFile(t, workingDir, "sessions/20260610-active.md")
-	for _, want := range []string{"status: stopped", "session(end): session ended", "session(stop):   === SESSION STOPPED ==="} {
-		if !strings.Contains(stopped, want) {
-			t.Fatalf("stopped markdown = %q, want %q", stopped, want)
-		}
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-
-	var noopOut bytes.Buffer
-	err = Runner{
-		Stdout:     &noopOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "end", "--if-active", "--json"})
-	if err != nil {
-		t.Fatalf("session end markdown --if-active --json error = %v", err)
-	}
-	noop := decodeSessionEnd(t, noopOut.Bytes())
-	if noop.Action != state.SessionEndActionNoop || noop.NoopReason == "" {
-		t.Fatalf("noop = %#v, want noop when no active markdown session exists", noop)
-	}
-}
-
-func TestRunnerSessionEndMarkdownClearAndWrap(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell fixture is POSIX-only")
-	}
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-clear.md", `---
-status: active
-branch: main
-claude_session_id: markdown-clear
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:00:00Z
----
-# Session
-
-## Journal
-
-[2026-06-10 10:00] session(start):  === SESSION STARTED ===
-`)
-
-	var clearOut bytes.Buffer
-	err := Runner{
-		Stdout:     &clearOut,
-		Stdin:      strings.NewReader(`{"session_id":"markdown-clear","reason":"clear"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "end", "--json"})
-	if err != nil {
-		t.Fatalf("session end markdown clear error = %v", err)
-	}
-	cleared := decodeSessionEnd(t, clearOut.Bytes())
-	if cleared.Action != state.SessionEndActionCleared || cleared.Session.Status != "active" {
-		t.Fatalf("cleared = %#v, want active clear marker", cleared)
-	}
-	clearMarkdown := readCLIAgentsFile(t, workingDir, "sessions/20260610-clear.md")
-	for _, want := range []string{"status: active", "session(clear):  === CONTEXT CLEARED ==="} {
-		if !strings.Contains(clearMarkdown, want) {
-			t.Fatalf("clear markdown = %q, want %q", clearMarkdown, want)
-		}
-	}
-
-	var wrapOut bytes.Buffer
-	err = Runner{
-		Stdout:     &wrapOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "end", "--wrap", "--json", "--session-id", "markdown-clear"})
-	if err != nil {
-		t.Fatalf("session end markdown wrap error = %v", err)
-	}
-	wrapped := decodeSessionEnd(t, wrapOut.Bytes())
-	if wrapped.Action != state.SessionEndActionDone || wrapped.Session.Status != "done" {
-		t.Fatalf("wrapped = %#v, want done session", wrapped)
-	}
-	wrapMarkdown := readCLIAgentsFile(t, workingDir, "sessions/20260610-clear.md")
-	for _, want := range []string{"status: done", "session(wrap): session ended"} {
-		if !strings.Contains(wrapMarkdown, want) {
-			t.Fatalf("wrap markdown = %q, want %q", wrapMarkdown, want)
-		}
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-}
-
-func TestRunnerSessionArchiveTargetsHarnessSessionInSQLiteState(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	target, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch:           "feature/archive-target",
-		HarnessSessionID: "archive-target",
-	})
-	if err != nil {
-		t.Fatalf("target StartSession() error = %v", err)
-	}
-	other, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch:           "main",
-		HarnessSessionID: "archive-main",
-	})
-	if err != nil {
-		t.Fatalf("main StartSession() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "archive", "--json", "--session-id", "archive-target"})
-	if err != nil {
-		t.Fatalf("session archive --json --session-id error = %v", err)
-	}
-	archived := decodeSessionArchive(t, stdout.Bytes())
-	if archived.Action != state.SessionArchiveActionArchived || archived.Session.ID != target.Session.ID || archived.Session.Status != "archived" {
-		t.Fatalf("archived = %#v, want archived target session", archived)
-	}
-	assertCLISessionContext(t, archived.ContractVersion, archived.DatabaseScope, archived.DatabasePath, archived.ProjectID, archived.ProjectName, archived.ProjectCurrentPath, workingDir)
-
-	var listOut bytes.Buffer
-	if err := (Runner{Stdout: &listOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "list", "--json"}); err != nil {
-		t.Fatalf("session list --json error = %v", err)
-	}
-	activeOnly := decodeSessionList(t, listOut.Bytes())
-	if _, ok := activeOnly.Sessions[target.Session.Alias]; ok {
-		t.Fatalf("active session list includes archived target %#v", activeOnly.Sessions[target.Session.Alias])
-	}
-	if _, ok := activeOnly.Sessions[other.Session.Alias]; !ok {
-		t.Fatalf("active session list missing active session %s", other.Session.Alias)
-	}
-
-	var allOut bytes.Buffer
-	if err := (Runner{Stdout: &allOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "list", "--json", "--all"}); err != nil {
-		t.Fatalf("session list --json --all error = %v", err)
-	}
-	all := decodeSessionList(t, allOut.Bytes())
-	if all.Sessions[target.Session.Alias].Status != "archived" {
-		t.Fatalf("archived session = %#v, want archived status", all.Sessions[target.Session.Alias])
-	}
-}
-
-func TestRunnerSessionArchiveUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-session.md", `---
-status: active
-branch: main
-spec: SPEC-123
-claude_session_id: markdown-archive-session
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:00:00Z
----
-# Session
-
-## Journal
-
-[2026-06-10 10:00] session(start):  === SESSION STARTED ===
-[2026-06-10 10:01] decision(archive): keep this decision visible
-`)
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-123-archive.md", `---
-status: implementing
----
-# Archive Spec
-
-## Changelog
-
-- existing entry
-`)
-	writeCLIAgentsFile(t, workingDir, "tmp/markdown-archive-session-enrichment.txt", "temporary\n")
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "archive", "--session-id", "markdown-archive-session"})
-	if err != nil {
-		t.Fatalf("session archive markdown error = %v", err)
-	}
-	for _, want := range []string{
-		"loaf session archive",
-		"decision: [2026-06-10 10:01] decision(archive): keep this decision visible",
-		"Appended decisions to SPEC-123-archive.md",
-		"Archived: .agents/sessions/archive/20260610-session.md",
-	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "sessions", "20260610-session.md")); !os.IsNotExist(err) {
-		t.Fatalf("active session stat = %v, want moved from active sessions dir", err)
-	}
-	archived := readCLIAgentsFile(t, workingDir, "sessions/archive/20260610-session.md")
-	for _, want := range []string{
-		"status: archived",
-		"archived_at:",
-		"[2026-06-10 10:01] decision(archive): keep this decision visible",
-	} {
-		if !strings.Contains(archived, want) {
-			t.Fatalf("archived markdown = %q, want %q", archived, want)
-		}
-	}
-	if strings.Contains(archived, "last_updated: 2026-06-10T10:00:00Z") {
-		t.Fatalf("archived markdown = %q, want updated last_updated", archived)
-	}
-	spec := readCLIAgentsFile(t, workingDir, "specs/SPEC-123-archive.md")
-	for _, want := range []string{
-		"## Changelog",
-		"Session main archived: 1 decision(s) extracted",
-		"[2026-06-10 10:01] decision(archive): keep this decision visible",
-		"- existing entry",
-	} {
-		if !strings.Contains(spec, want) {
-			t.Fatalf("spec markdown = %q, want %q", spec, want)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "tmp", "markdown-archive-session-enrichment.txt")); !os.IsNotExist(err) {
-		t.Fatalf("enrichment temp stat = %v, want removed", err)
-	}
-	if _, err := os.Stat(stateDBPathForWorkingDir(t, workingDir, stateHome)); !os.IsNotExist(err) {
-		t.Fatalf("state db stat = %v, want markdown archive not to create SQLite database", err)
-	}
-}
-
-func TestRunnerSessionArchiveAdoptsMostRecentMarkdownSession(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-older-session.md", `---
-status: active
-branch: older-branch
-created: 2026-06-10T09:00:00Z
-last_updated: 2026-06-10T09:00:00Z
----
-# Session
-
-## Journal
-`)
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-newer-session.md", `---
-status: active
-branch: newer-branch
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:30:00Z
----
-# Session
-
-## Journal
-`)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		Stderr:     &stderr,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "archive"})
-	if err != nil {
-		t.Fatalf("session archive markdown adoption error = %v", err)
-	}
-	if !strings.Contains(stderr.String(), "WARN: no session for branch 'main'; logging to most-recent active session '20260610-newer-session.md' (origin branch 'newer-branch')") {
-		t.Fatalf("stderr = %q, want most-recent active adoption warning", stderr.String())
-	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "sessions", "20260610-newer-session.md")); !os.IsNotExist(err) {
-		t.Fatalf("newer active session stat = %v, want archived", err)
-	}
-	newer := readCLIAgentsFile(t, workingDir, "sessions/archive/20260610-newer-session.md")
-	if !strings.Contains(newer, "status: archived") {
-		t.Fatalf("newer archived markdown = %q, want archived status", newer)
-	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "sessions", "20260610-older-session.md")); err != nil {
-		t.Fatalf("older active session stat = %v, want still active", err)
 	}
 }
 
@@ -7325,7 +5703,7 @@ status: open
 	run("brainstorm", "promote", "20260528-brainstorm-matrix", "--to-idea", "20260528-target-idea", "--json")
 	run("brainstorm", "archive", "20260528-brainstorm-matrix", "--reason", "matrix archived", "--json")
 	run("spec", "archive", "SPEC-002", "--json")
-	run("session", "log", "--json", "--session-id", "matrix-harness", "decision(sqlite): matrix write")
+	run("journal", "log", "--json", "--harness-session-id", "matrix-harness", "decision(sqlite): matrix write")
 	run("tag", "add", "SPEC-001", "matrix", "--json")
 	run("tag", "remove", "SPEC-001", "matrix", "--json")
 	run("bundle", "create", "matrix-bundle", "--tag", "matrix", "--json")
@@ -9192,7 +7570,6 @@ func TestRunnerTaskCreateUsesMarkdownIndexWhenMarkdownOnly(t *testing.T) {
       "files": ["keep.go"],
       "verify": null,
       "done": null,
-      "session": null,
       "created": "2026-05-01T10:00:00Z",
       "updated": "2026-05-01T10:00:00Z",
       "completed_at": null,
@@ -9338,7 +7715,6 @@ Markdown details.
       "status": "todo",
       "priority": "P1",
       "depends_on": ["TASK-000"],
-      "session": "20260528-session",
       "created": "2026-05-28T10:00:00Z",
       "updated": "2026-05-29T11:00:00Z"
     }
@@ -9365,9 +7741,6 @@ Markdown details.
 	if len(task.DependsOn) != 1 || task.DependsOn[0] != "TASK-000" {
 		t.Fatalf("DependsOn = %#v, want TASK-000", task.DependsOn)
 	}
-	if len(task.Sessions) != 1 || task.Sessions[0] != "20260528-session" {
-		t.Fatalf("Sessions = %#v, want 20260528-session", task.Sessions)
-	}
 	if len(task.Sources) != 1 || task.Sources[0].Path != ".agents/tasks/TASK-001-example.md" || task.Sources[0].Hash == "" {
 		t.Fatalf("Sources = %#v, want task source with hash", task.Sources)
 	}
@@ -9388,7 +7761,7 @@ Markdown details.
 		t.Fatalf("task show markdown human error = %v", err)
 	}
 	output := humanOut.String()
-	for _, want := range []string{"task TASK-001", "title: Example Task", "status: todo", "priority: P1", "spec: SPEC-001", "depends on: TASK-000", "sessions: 20260528-session", "source: .agents/tasks/TASK-001-example.md", "source hash:", "# Task Body", "Markdown details."} {
+	for _, want := range []string{"task TASK-001", "title: Example Task", "status: todo", "priority: P1", "spec: SPEC-001", "depends on: TASK-000", "source: .agents/tasks/TASK-001-example.md", "source hash:", "# Task Body", "Markdown details."} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
@@ -9628,7 +8001,6 @@ func TestRunnerTaskUpdateMetadataUsesSQLiteStateWhenInitialized(t *testing.T) {
 	writeCLIAgentsFile(t, workingDir, "specs/SPEC-002-new.md", "# New Spec\n")
 	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-update.md", "# Updated Task\n")
 	writeCLIAgentsFile(t, workingDir, "tasks/TASK-002-dependency.md", "# Dependency Task\n")
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-session.md", "# Session\n")
 	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{
   "TASK-001":{"title":"Updated Task","spec":"SPEC-001","status":"todo","priority":"P2"},
   "TASK-002":{"title":"Dependency Task","status":"todo","priority":"P3"}
@@ -9642,13 +8014,13 @@ func TestRunnerTaskUpdateMetadataUsesSQLiteStateWhenInitialized(t *testing.T) {
 		Stdout:     &updateOut,
 		WorkingDir: workingDir,
 		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--priority", "P0", "--spec", "SPEC-002", "--depends-on", "TASK-002", "--session", "20260528-session", "--json"})
+	}.Run([]string{"task", "update", "TASK-001", "--priority", "P0", "--spec", "SPEC-002", "--depends-on", "TASK-002", "--json"})
 	if err != nil {
 		t.Fatalf("task update metadata error = %v", err)
 	}
 	updated := decodeTaskStatusUpdateResult(t, updateOut.Bytes())
-	if updated.Priority != "P0" || updated.Spec == nil || updated.Spec.Alias != "SPEC-002" || updated.Session == nil || updated.Session.Alias != "20260528-session" {
-		t.Fatalf("updated = %#v, want priority/spec/session update", updated)
+	if updated.Priority != "P0" || updated.Spec == nil || updated.Spec.Alias != "SPEC-002" {
+		t.Fatalf("updated = %#v, want priority/spec update", updated)
 	}
 	if len(updated.Depends) != 1 || updated.Depends[0].Alias != "TASK-002" {
 		t.Fatalf("updated.Depends = %#v, want TASK-002", updated.Depends)
@@ -9664,7 +8036,7 @@ func TestRunnerTaskUpdateMetadataUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("task show after metadata update error = %v", err)
 	}
 	show := decodeTaskShow(t, showOut.Bytes())
-	if show.Task.Priority != "P0" || show.Task.Spec != "SPEC-002" || len(show.Task.DependsOn) != 1 || show.Task.DependsOn[0] != "TASK-002" || len(show.Task.Sessions) != 1 || show.Task.Sessions[0] != "20260528-session" {
+	if show.Task.Priority != "P0" || show.Task.Spec != "SPEC-002" || len(show.Task.DependsOn) != 1 || show.Task.DependsOn[0] != "TASK-002" {
 		t.Fatalf("show = %#v, want updated metadata", show)
 	}
 
@@ -9681,8 +8053,8 @@ func TestRunnerTaskUpdateMetadataUsesSQLiteStateWhenInitialized(t *testing.T) {
 	if hasTraceRelationship(trace.Relationships, "outbound", "implements", "spec", "SPEC-001") {
 		t.Fatalf("trace relationships = %#v, still has old SPEC-001", trace.Relationships)
 	}
-	if !hasTraceRelationship(trace.Relationships, "outbound", "implements", "spec", "SPEC-002") || !hasTraceRelationship(trace.Relationships, "outbound", "blocked_by", "task", "TASK-002") || !hasTraceRelationship(trace.Relationships, "outbound", "associated_with", "session", "20260528-session") {
-		t.Fatalf("trace relationships = %#v, want spec, dependency, and session relationships", trace.Relationships)
+	if !hasTraceRelationship(trace.Relationships, "outbound", "implements", "spec", "SPEC-002") || !hasTraceRelationship(trace.Relationships, "outbound", "blocked_by", "task", "TASK-002") {
+		t.Fatalf("trace relationships = %#v, want spec and dependency relationships", trace.Relationships)
 	}
 
 	var clearOut bytes.Buffer
@@ -9690,7 +8062,7 @@ func TestRunnerTaskUpdateMetadataUsesSQLiteStateWhenInitialized(t *testing.T) {
 		Stdout:     &clearOut,
 		WorkingDir: workingDir,
 		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--spec", "none", "--depends-on", "none", "--session", "none"})
+	}.Run([]string{"task", "update", "TASK-001", "--spec", "none", "--depends-on", "none"})
 	if err != nil {
 		t.Fatalf("task update clear metadata error = %v", err)
 	}
@@ -9708,7 +8080,7 @@ func TestRunnerTaskUpdateMetadataUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("task show after clear error = %v", err)
 	}
 	show = decodeTaskShow(t, showOut.Bytes())
-	if show.Task.Spec != "" || len(show.Task.DependsOn) != 0 || len(show.Task.Sessions) != 0 {
+	if show.Task.Spec != "" || len(show.Task.DependsOn) != 0 {
 		t.Fatalf("show after clear = %#v, want cleared metadata", show)
 	}
 }
@@ -9723,7 +8095,6 @@ status: todo
 priority: P3
 spec: SPEC-001
 depends_on: [TASK-002]
-session: old-session
 created: 2026-05-01T10:00:00Z
 updated: 2026-05-01T10:00:00Z
 ---
@@ -9747,7 +8118,6 @@ Preserve this body.
       "files": ["keep.go"],
       "verify": "go test ./...",
       "done": null,
-      "session": "old-session",
       "created": "2026-05-01T10:00:00Z",
       "updated": "2026-05-01T10:00:00Z",
       "completed_at": null,
@@ -9768,12 +8138,12 @@ Preserve this body.
 		Stdout:     &updateOut,
 		WorkingDir: workingDir,
 		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--status", "done", "--priority", "P0", "--spec", "SPEC-002", "--depends-on", "TASK-003", "--session", "new-session", "--json"})
+	}.Run([]string{"task", "update", "TASK-001", "--status", "done", "--priority", "P0", "--spec", "SPEC-002", "--depends-on", "TASK-003", "--json"})
 	if err != nil {
 		t.Fatalf("task update markdown --json error = %v", err)
 	}
 	updated := decodeTaskStatusUpdateResult(t, updateOut.Bytes())
-	if updated.Task.Alias != "TASK-001" || updated.Previous != "todo" || updated.Status != "done" || updated.Priority != "P0" || updated.Spec == nil || updated.Spec.Alias != "SPEC-002" || updated.Session == nil || updated.Session.Alias != "new-session" {
+	if updated.Task.Alias != "TASK-001" || updated.Previous != "todo" || updated.Status != "done" || updated.Priority != "P0" || updated.Spec == nil || updated.Spec.Alias != "SPEC-002" {
 		t.Fatalf("updated = %#v, want markdown metadata update", updated)
 	}
 	if len(updated.Depends) != 1 || updated.Depends[0].Alias != "TASK-003" {
@@ -9798,7 +8168,7 @@ Preserve this body.
 		t.Fatalf("index custom_root = %#v, want preserved", index["custom_root"])
 	}
 	task := index["tasks"].(map[string]any)["TASK-001"].(map[string]any)
-	if task["status"] != "done" || task["priority"] != "P0" || task["spec"] != "SPEC-002" || task["session"] != "new-session" || task["completed_at"] == nil || task["verify"] != "go test ./..." {
+	if task["status"] != "done" || task["priority"] != "P0" || task["spec"] != "SPEC-002" || task["completed_at"] == nil || task["verify"] != "go test ./..." {
 		t.Fatalf("TASK-001 index = %#v, want updated metadata with unknown fields preserved", task)
 	}
 	deps := task["depends_on"].([]any)
@@ -9813,7 +8183,7 @@ Preserve this body.
 	if !ok {
 		t.Fatal("updated task frontmatter missing")
 	}
-	if firstFieldValue(frontmatter["status"]) != "done" || firstFieldValue(frontmatter["priority"]) != "P0" || firstFieldValue(frontmatter["spec"]) != "SPEC-002" || firstFieldValue(frontmatter["session"]) != "new-session" || strings.Join(frontmatter["depends_on"].Values, ",") != "TASK-003" {
+	if firstFieldValue(frontmatter["status"]) != "done" || firstFieldValue(frontmatter["priority"]) != "P0" || firstFieldValue(frontmatter["spec"]) != "SPEC-002" || strings.Join(frontmatter["depends_on"].Values, ",") != "TASK-003" {
 		t.Fatalf("frontmatter = %#v, want synced updated metadata", frontmatter)
 	}
 	if !strings.Contains(markdownContentWithoutFrontmatter(string(body)), "Preserve this body.") {
@@ -9825,12 +8195,12 @@ Preserve this body.
 		Stdout:     &clearOut,
 		WorkingDir: workingDir,
 		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--status", "todo", "--spec", "none", "--depends-on", "none", "--session", "none", "--json"})
+	}.Run([]string{"task", "update", "TASK-001", "--status", "todo", "--spec", "none", "--depends-on", "none", "--json"})
 	if err != nil {
 		t.Fatalf("task update markdown clear error = %v", err)
 	}
 	cleared := decodeTaskStatusUpdateResult(t, clearOut.Bytes())
-	if cleared.Previous != "done" || cleared.Status != "todo" || cleared.Spec != nil || cleared.Session != nil || len(cleared.Depends) != 0 {
+	if cleared.Previous != "done" || cleared.Status != "todo" || cleared.Spec != nil || len(cleared.Depends) != 0 {
 		t.Fatalf("cleared = %#v, want cleared metadata", cleared)
 	}
 	rawIndex, err = os.ReadFile(filepath.Join(workingDir, ".agents", "TASKS.json"))
@@ -9841,7 +8211,7 @@ Preserve this body.
 		t.Fatalf("Unmarshal(TASKS.json after clear) error = %v", err)
 	}
 	task = index["tasks"].(map[string]any)["TASK-001"].(map[string]any)
-	if task["status"] != "todo" || task["completed_at"] != nil || task["spec"] != nil || task["session"] != nil || len(task["depends_on"].([]any)) != 0 {
+	if task["status"] != "todo" || task["completed_at"] != nil || task["spec"] != nil || len(task["depends_on"].([]any)) != 0 {
 		t.Fatalf("TASK-001 after clear = %#v, want cleared index metadata", task)
 	}
 	body, err = os.ReadFile(filepath.Join(workingDir, ".agents", "tasks", "TASK-001-update.md"))
@@ -9852,7 +8222,7 @@ Preserve this body.
 	if !ok {
 		t.Fatal("cleared task frontmatter missing")
 	}
-	if firstFieldValue(frontmatter["spec"]) != "" || firstFieldValue(frontmatter["session"]) != "" || len(frontmatter["depends_on"].Values) != 0 || firstFieldValue(frontmatter["status"]) != "todo" {
+	if firstFieldValue(frontmatter["spec"]) != "" || len(frontmatter["depends_on"].Values) != 0 || firstFieldValue(frontmatter["status"]) != "todo" {
 		t.Fatalf("frontmatter after clear = %#v, want cleared frontmatter metadata", frontmatter)
 	}
 
@@ -13271,199 +11641,6 @@ func TestRunnerSpecArchiveReportsInvalidSQLiteState(t *testing.T) {
 	}
 }
 
-func TestRunnerSessionListJSONUsesSQLiteStateWhenInitialized(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-active.md", `---
-branch: feature/session-list
-status: active
-claude_session_id: session-active
----
-[2026-05-28 10:00] decision(scope): active entry
-`)
-	writeCLIAgentsFile(t, workingDir, "sessions/archive/20260527-archived.md", `---
-branch: old/session
-status: active
-claude_session_id: session-archived
----
-[2026-05-27 10:00] discover(scope): archived entry
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}
-`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "list", "--json", "--all"})
-	if err != nil {
-		t.Fatalf("session list --json --all error = %v", err)
-	}
-
-	sessions := decodeSessionList(t, stdout.Bytes())
-	active := sessions.Sessions["20260528-active"]
-	if active.Branch != "feature/session-list" || active.Status != "in_progress" || active.HarnessSessionID != "session-active" {
-		t.Fatalf("active session = %#v, want imported metadata", active)
-	}
-	if active.SourcePath != ".agents/sessions/20260528-active.md" || active.JournalEntries != 1 {
-		t.Fatalf("active session provenance = %#v, want source path and journal count", active)
-	}
-	archived := sessions.Sessions["20260527-archived"]
-	if archived.Status != "archived" || archived.SourcePath != ".agents/sessions/archive/20260527-archived.md" {
-		t.Fatalf("archived session = %#v, want archived imported session", archived)
-	}
-	assertCLISessionContext(t, sessions.ContractVersion, sessions.DatabaseScope, sessions.DatabasePath, sessions.ProjectID, sessions.ProjectName, sessions.ProjectCurrentPath, workingDir)
-}
-
-func TestRunnerSessionListHumanUsesSQLiteStateWhenInitialized(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-active.md", `---
-branch: feature/session-list
-status: active
-claude_session_id: session-active
----
-[2026-05-28 10:00] decision(scope): active entry
-`)
-	writeCLIAgentsFile(t, workingDir, "sessions/archive/20260527-archived.md", `---
-branch: old/session
-status: active
-claude_session_id: session-archived
----
-[2026-05-27 10:00] discover(scope): archived entry
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}
-`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var activeOnly bytes.Buffer
-	err := Runner{
-		Stdout:     &activeOnly,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "list"})
-	if err != nil {
-		t.Fatalf("session list error = %v", err)
-	}
-	output := activeOnly.String()
-	for _, want := range []string{"loaf session list", "scope: global database", "database:", "project:", "project name:", "project path:", "Active Sessions", "feature/session-list", ".agents/sessions/20260528-active.md", "1 active"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("output = %q, want %q", output, want)
-		}
-	}
-	if strings.Contains(output, "old/session") {
-		t.Fatalf("output = %q, want archived session hidden without --all", output)
-	}
-
-	var all bytes.Buffer
-	err = Runner{
-		Stdout:     &all,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "list", "--all"})
-	if err != nil {
-		t.Fatalf("session list --all error = %v", err)
-	}
-	allOutput := all.String()
-	for _, want := range []string{"Archived Sessions", "old/session", ".agents/sessions/archive/20260527-archived.md", "1 active, 1 archived"} {
-		if !strings.Contains(allOutput, want) {
-			t.Fatalf("output = %q, want %q", allOutput, want)
-		}
-	}
-}
-
-func TestRunnerSessionListUsesMarkdownSessionsWhenMarkdownOnly(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell fixture is POSIX-only")
-	}
-
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-active.md", `---
-branch: feature/session-list
-status: active
-claude_session_id: session-active
-last_updated: 2026-05-28T10:05:00Z
----
-[2026-05-28 10:00] decision(scope): active entry
-`)
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-stopped.md", `---
-branch: feature/stopped-session
-status: stopped
-claude_session_id: session-stopped
----
-[2026-05-28 10:10] session(stop): stopped for handoff
-`)
-	writeCLIAgentsFile(t, workingDir, "sessions/archive/20260527-archived.md", `---
-branch: old/session
-status: active
-claude_session_id: session-archived
----
-[2026-05-27 10:00] discover(scope): archived entry
-`)
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "list", "--json", "--all"})
-	if err != nil {
-		t.Fatalf("session list markdown-only error = %v", err)
-	}
-	if strings.Contains(stdout.String(), "args=session list") {
-		t.Fatalf("stdout = %q, want native markdown session list without legacy delegation", stdout.String())
-	}
-	sessions := decodeSessionList(t, stdout.Bytes())
-	active := sessions.Sessions["20260528-active"]
-	if active.Branch != "feature/session-list" || active.Status != "active" || active.HarnessSessionID != "session-active" {
-		t.Fatalf("active session = %#v, want markdown frontmatter metadata", active)
-	}
-	if active.SourcePath != ".agents/sessions/20260528-active.md" || active.JournalEntries != 1 {
-		t.Fatalf("active session provenance = %#v, want markdown source and journal count", active)
-	}
-	stopped := sessions.Sessions["20260528-stopped"]
-	if stopped.Status != "stopped" || stopped.Branch != "feature/stopped-session" {
-		t.Fatalf("stopped session = %#v, want non-archived markdown session included", stopped)
-	}
-	archived := sessions.Sessions["20260527-archived"]
-	if archived.Status != "archived" || archived.SourcePath != ".agents/sessions/archive/20260527-archived.md" {
-		t.Fatalf("archived session = %#v, want archive directory to force archived status", archived)
-	}
-	if sessions.ContractVersion != 0 || sessions.DatabaseScope != "" || sessions.DatabasePath != "" || sessions.ProjectID != "" || sessions.ProjectName != "" || sessions.ProjectCurrentPath != "" {
-		t.Fatalf("markdown session list context = %#v, want no SQLite context", sessions)
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-
-	var activeOnly bytes.Buffer
-	err = Runner{
-		Stdout:     &activeOnly,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "list"})
-	if err != nil {
-		t.Fatalf("session list markdown-only human error = %v", err)
-	}
-	output := activeOnly.String()
-	for _, want := range []string{"loaf session list", "Active Sessions", "feature/session-list", ".agents/sessions/20260528-active.md", "feature/stopped-session", "2 active"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("output = %q, want %q", output, want)
-		}
-	}
-	if strings.Contains(output, "old/session") || strings.Contains(output, "args=session list") {
-		t.Fatalf("output = %q, want archive hidden and no legacy delegation", output)
-	}
-	if strings.Contains(output, "scope: global database") || strings.Contains(output, "project name:") {
-		t.Fatalf("output = %q, want markdown fallback without SQLite context", output)
-	}
-}
-
 func assertCLISessionContext(t *testing.T, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string, workingDir string) {
 	t.Helper()
 	if contractVersion != state.StateJSONContractVersion {
@@ -13483,726 +11660,6 @@ func assertCLISessionContext(t *testing.T, contractVersion int, databaseScope st
 	}
 	if projectCurrentPath != workingDir {
 		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, workingDir)
-	}
-}
-
-func TestRunnerSessionListReportsInvalidSQLiteState(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	databasePath, err := (state.PathResolver{StateHome: stateHome}).DatabasePath(root)
-	if err != nil {
-		t.Fatalf("DatabasePath() error = %v", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(databasePath, []byte("not sqlite"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "list"})
-	if err == nil {
-		t.Fatal("session list error = nil, want invalid state error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
-	}
-}
-
-func TestRunnerSessionShowUsesSQLiteStateWhenInitialized(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-active.md", `---
-branch: feature/session-show
-status: active
-claude_session_id: session-active
----
-[2026-05-28 10:00] decision(sqlite): keep session state queryable
-[2026-05-28 10:05] discover(sqlite): imported journal entries
-`)
-	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-session.md", "# Session Task\n")
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{
-  "TASK-001":{"title":"Session Task","status":"todo","priority":"P2"}
-}}`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"task", "update", "TASK-001", "--session", "20260528-active"}); err != nil {
-		t.Fatalf("task update --session error = %v", err)
-	}
-
-	var jsonOut bytes.Buffer
-	err := Runner{
-		Stdout:     &jsonOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "show", "20260528-active", "--json"})
-	if err != nil {
-		t.Fatalf("session show --json error = %v", err)
-	}
-	show := decodeSessionShow(t, jsonOut.Bytes())
-	session := show.Session
-	if show.Query != "20260528-active" || session.Alias != "20260528-active" {
-		t.Fatalf("show = %#v, want query and alias", show)
-	}
-	assertCLISessionContext(t, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath, workingDir)
-	if session.Branch != "feature/session-show" || session.Status != "in_progress" || session.HarnessSessionID != "session-active" {
-		t.Fatalf("session metadata = %#v, want imported frontmatter", session)
-	}
-	if len(session.Sources) != 1 || session.Sources[0].Path != ".agents/sessions/20260528-active.md" || session.Sources[0].Hash == "" {
-		t.Fatalf("sources = %#v, want imported source provenance", session.Sources)
-	}
-	if len(session.JournalEntries) != 2 {
-		t.Fatalf("journal entries = %#v, want two imported entries", session.JournalEntries)
-	}
-	if !hasTraceRelationship(session.Relationships, "inbound", "associated_with", "task", "TASK-001") {
-		t.Fatalf("relationships = %#v, want associated task", session.Relationships)
-	}
-
-	var humanOut bytes.Buffer
-	err = Runner{
-		Stdout:     &humanOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "show", "20260528-active"})
-	if err != nil {
-		t.Fatalf("session show error = %v", err)
-	}
-	output := humanOut.String()
-	for _, want := range []string{"session 20260528-active", "scope: global database", "database:", "project:", "project name:", "project path:", "branch: feature/session-show", "status: in_progress", "harness session: session-active", ".agents/sessions/20260528-active.md", "decision(sqlite): keep session state queryable", "inbound associated_with task TASK-001"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("output = %q, want %q", output, want)
-		}
-	}
-}
-
-func TestRunnerSessionShowUsesMarkdownSessionsWhenMarkdownOnly(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell fixture is POSIX-only")
-	}
-
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260528-active.md", `---
-branch: feature/session-show
-status: active
-claude_session_id: session-active
-created: 2026-05-28T10:00:00Z
-last_updated: 2026-05-28T10:05:00Z
----
-[2026-05-28 10:00] decision(markdown): keep session readable before SQLite import
-[2026-05-28 10:05] discover(markdown): parsed compact journal entries
-`)
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "show", "20260528-active", "--json"})
-	if err != nil {
-		t.Fatalf("session show markdown-only error = %v", err)
-	}
-	if strings.Contains(stdout.String(), "args=session show") {
-		t.Fatalf("stdout = %q, want native markdown session show without legacy delegation", stdout.String())
-	}
-	show := decodeSessionShow(t, stdout.Bytes())
-	session := show.Session
-	if show.Query != "20260528-active" || session.Alias != "20260528-active" {
-		t.Fatalf("show = %#v, want query and alias", show)
-	}
-	if show.ContractVersion != 0 || show.DatabaseScope != "" || show.DatabasePath != "" || show.ProjectID != "" || show.ProjectName != "" || show.ProjectCurrentPath != "" {
-		t.Fatalf("markdown show context = %#v, want no SQLite context", show)
-	}
-	if session.Branch != "feature/session-show" || session.Status != "active" || session.HarnessSessionID != "session-active" {
-		t.Fatalf("session metadata = %#v, want markdown frontmatter metadata", session)
-	}
-	if len(session.Sources) != 1 || session.Sources[0].Path != ".agents/sessions/20260528-active.md" || session.Sources[0].Hash == "" {
-		t.Fatalf("sources = %#v, want markdown source provenance", session.Sources)
-	}
-	if len(session.JournalEntries) != 2 || session.JournalEntries[0].EntryType != "decision" || session.JournalEntries[0].Scope != "markdown" {
-		t.Fatalf("journal entries = %#v, want parsed compact journal entries", session.JournalEntries)
-	}
-	if session.CreatedAt != "2026-05-28T10:00:00Z" || session.UpdatedAt != "2026-05-28T10:05:00Z" {
-		t.Fatalf("session timestamps = %#v, want frontmatter timestamps", session)
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-
-	var branchOut bytes.Buffer
-	err = Runner{
-		Stdout:     &branchOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "show", "feature/session-show"})
-	if err != nil {
-		t.Fatalf("session show markdown-only branch error = %v", err)
-	}
-	output := branchOut.String()
-	for _, want := range []string{"session 20260528-active", "branch: feature/session-show", "status: active", "harness session: session-active", ".agents/sessions/20260528-active.md", "decision(markdown): keep session readable before SQLite import"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("output = %q, want %q", output, want)
-		}
-	}
-	if strings.Contains(output, "args=session show") {
-		t.Fatalf("output = %q, want no legacy delegation", output)
-	}
-}
-
-func TestRunnerSessionShowReportsInvalidSQLiteState(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	databasePath, err := (state.PathResolver{StateHome: stateHome}).DatabasePath(root)
-	if err != nil {
-		t.Fatalf("DatabasePath() error = %v", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(databasePath, []byte("not sqlite"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "show", "20260528-active"})
-	if err == nil {
-		t.Fatal("session show error = nil, want invalid state error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
-	}
-}
-
-func TestRunnerSessionLogJSONUsesSQLiteStateWhenInitialized(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
-		t.Fatalf("state init error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "--json", "--session-id", "harness-123", "decision(sqlite): write to state"})
-	if err != nil {
-		t.Fatalf("session log --json error = %v", err)
-	}
-
-	result := decodeJournalLogResult(t, stdout.Bytes())
-	if result.EntryType != "decision" || result.Scope != "sqlite" || result.Message != "write to state" {
-		t.Fatalf("result = %#v, want parsed journal entry", result)
-	}
-	assertCLISessionContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
-	if result.ObservedWorktree != workingDir || result.HarnessSessionID != "harness-123" {
-		t.Fatalf("result context = %#v, want observed worktree and harness id", result)
-	}
-
-	var sessions state.SessionList
-	var listOut bytes.Buffer
-	err = Runner{
-		Stdout:     &listOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "list", "--json", "--all"})
-	if err != nil {
-		t.Fatalf("session list --json --all error = %v", err)
-	}
-	sessions = decodeSessionList(t, listOut.Bytes())
-	if len(sessions.Sessions) != 0 {
-		t.Fatalf("sessions = %#v, want no synthetic session row from unresolved log", sessions.Sessions)
-	}
-}
-
-func TestRunnerSessionLogUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-session.md", `---
-status: active
-branch: main
-claude_session_id: markdown-log-session
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:00:00Z
-last_entry: 2026-06-10T10:00:00Z
----
-# Session
-
-## Journal
-
-[2026-06-10 10:00] session(start):  === SESSION STARTED ===
-`)
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "--session-id", "markdown-log-session", "decision(markdown): native append"})
-	if err != nil {
-		t.Fatalf("session log markdown error = %v", err)
-	}
-	if !strings.Contains(stdout.String(), "Logged: decision(markdown): native append") {
-		t.Fatalf("stdout = %q, want native logged message", stdout.String())
-	}
-	after := readCLIAgentsFile(t, workingDir, "sessions/20260610-session.md")
-	for _, want := range []string{
-		"[2026-06-10 10:00] session(start):  === SESSION STARTED ===",
-		"decision(markdown): native append",
-	} {
-		if !strings.Contains(after, want) {
-			t.Fatalf("session markdown = %q, want %q", after, want)
-		}
-	}
-	for _, notWant := range []string{
-		"last_updated: 2026-06-10T10:00:00Z",
-		"last_entry: 2026-06-10T10:00:00Z",
-	} {
-		if strings.Contains(after, notWant) {
-			t.Fatalf("session markdown = %q, did not want stale %q", after, notWant)
-		}
-	}
-	if _, err := os.Stat(stateDBPathForWorkingDir(t, workingDir, stateHome)); !os.IsNotExist(err) {
-		t.Fatalf("state db stat = %v, want markdown log not to create SQLite database", err)
-	}
-}
-
-func TestRunnerSessionLogFromHookUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-session.md", `---
-status: active
-branch: main
-claude_session_id: markdown-hook-session
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:00:00Z
-last_entry: 2026-06-10T10:00:00Z
----
-# Session
-
-## Journal
-
-[2026-06-10 10:00] session(start):  === SESSION STARTED ===
-`)
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"markdown-hook-session","hook_event_name":"TaskCompleted","task_description":"write native markdown hook log"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "--from-hook", "--session-id", "missing-session"})
-	if err != nil {
-		t.Fatalf("session log markdown hook error = %v", err)
-	}
-	if !strings.Contains(stdout.String(), "Logged: task(completed): write native markdown hook log") {
-		t.Fatalf("stdout = %q, want native hook logged message", stdout.String())
-	}
-	after := readCLIAgentsFile(t, workingDir, "sessions/20260610-session.md")
-	if !strings.Contains(after, "task(completed): write native markdown hook log") {
-		t.Fatalf("session markdown = %q, want hook entry", after)
-	}
-	if _, err := os.Stat(stateDBPathForWorkingDir(t, workingDir, stateHome)); !os.IsNotExist(err) {
-		t.Fatalf("state db stat = %v, want markdown hook log not to create SQLite database", err)
-	}
-}
-
-func TestRunnerSessionLogAutoResumesStoppedMarkdownSession(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-session.md", `---
-status: stopped
-branch: main
-claude_session_id: markdown-stopped-session
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:00:00Z
-last_entry: 2026-06-10T10:00:00Z
----
-# Session
-
-## Journal
-
-[2026-06-10 10:00] session(start):  === SESSION STARTED ===
-[2026-06-10 10:05] session(stop):   === SESSION STOPPED ===
-`)
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "discover(markdown): resumed by native log"})
-	if err != nil {
-		t.Fatalf("session log stopped markdown error = %v", err)
-	}
-	if !strings.Contains(stdout.String(), "Auto-resumed stopped session") || !strings.Contains(stdout.String(), "Logged: discover(markdown): resumed by native log") {
-		t.Fatalf("stdout = %q, want auto-resume and logged messages", stdout.String())
-	}
-	after := readCLIAgentsFile(t, workingDir, "sessions/20260610-session.md")
-	for _, want := range []string{
-		"status: active",
-		"session(resume): === SESSION RESUMED ===",
-		"discover(markdown): resumed by native log",
-	} {
-		if !strings.Contains(after, want) {
-			t.Fatalf("session markdown = %q, want %q", after, want)
-		}
-	}
-	if _, err := os.Stat(stateDBPathForWorkingDir(t, workingDir, stateHome)); !os.IsNotExist(err) {
-		t.Fatalf("state db stat = %v, want markdown stopped log not to create SQLite database", err)
-	}
-}
-
-func TestRunnerSessionLogDetectLinearUsesMarkdownSessionWhenMarkdownOnly(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-session.md", `---
-status: active
-branch: main
-claude_session_id: markdown-linear-session
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:00:00Z
-last_entry: 2026-06-10T10:00:00Z
----
-# Session
-
-## Journal
-
-[2026-06-10 10:00] session(start):  === SESSION STARTED ===
-`)
-	if err := os.WriteFile(filepath.Join(workingDir, "linear-markdown.txt"), []byte("linear\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(linear-markdown.txt) error = %v", err)
-	}
-	gitCLI(t, workingDir, "add", "linear-markdown.txt")
-	gitCLI(t, workingDir, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "Resolves ENG-777")
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "--detect-linear"})
-	if err != nil {
-		t.Fatalf("session log markdown detect-linear error = %v", err)
-	}
-	if !strings.Contains(stdout.String(), "Logged: discover(linear): found magic words for ENG-777") {
-		t.Fatalf("stdout = %q, want native Linear detection logged message", stdout.String())
-	}
-	after := readCLIAgentsFile(t, workingDir, "sessions/20260610-session.md")
-	if !strings.Contains(after, "discover(linear): found magic words for ENG-777") {
-		t.Fatalf("session markdown = %q, want Linear detection entry", after)
-	}
-	if _, err := os.Stat(stateDBPathForWorkingDir(t, workingDir, stateHome)); !os.IsNotExist(err) {
-		t.Fatalf("state db stat = %v, want markdown detect-linear log not to create SQLite database", err)
-	}
-}
-
-func TestRunnerSessionLogAdoptsMostRecentActiveMarkdownSession(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-older-session.md", `---
-status: active
-branch: older-branch
-created: 2026-06-10T09:00:00Z
-last_updated: 2026-06-10T09:00:00Z
----
-# Session
-
-## Journal
-`)
-	writeCLIAgentsFile(t, workingDir, "sessions/20260610-newer-session.md", `---
-status: active
-branch: newer-branch
-created: 2026-06-10T10:00:00Z
-last_updated: 2026-06-10T10:30:00Z
----
-# Session
-
-## Journal
-`)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		Stderr:     &stderr,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "decision(markdown): adopted active session"})
-	if err != nil {
-		t.Fatalf("session log markdown adoption error = %v", err)
-	}
-	if !strings.Contains(stderr.String(), "WARN: no session for branch 'main'; logging to most-recent active session '20260610-newer-session.md' (origin branch 'newer-branch')") {
-		t.Fatalf("stderr = %q, want most-recent active adoption warning", stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "Logged: decision(markdown): adopted active session") {
-		t.Fatalf("stdout = %q, want native logged message", stdout.String())
-	}
-	newer := readCLIAgentsFile(t, workingDir, "sessions/20260610-newer-session.md")
-	if !strings.Contains(newer, "decision(markdown): adopted active session") {
-		t.Fatalf("newer session markdown = %q, want adopted entry", newer)
-	}
-	older := readCLIAgentsFile(t, workingDir, "sessions/20260610-older-session.md")
-	if strings.Contains(older, "decision(markdown): adopted active session") {
-		t.Fatalf("older session markdown = %q, did not want adopted entry", older)
-	}
-	if _, err := os.Stat(stateDBPathForWorkingDir(t, workingDir, stateHome)); !os.IsNotExist(err) {
-		t.Fatalf("state db stat = %v, want markdown adoption log not to create SQLite database", err)
-	}
-}
-
-func TestRunnerSessionLogFromHookUsesSQLiteStateWhenInitialized(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	start, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch:           "main",
-		HarnessSessionID: "hook-session",
-	})
-	if err != nil {
-		t.Fatalf("StartSession() error = %v", err)
-	}
-
-	hookPayload := `{"session_id":"hook-session","hook_event_name":"TaskCompleted","task_description":"port hook logging"}`
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(hookPayload),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "--from-hook", "--json"})
-	if err != nil {
-		t.Fatalf("session log --from-hook --json error = %v", err)
-	}
-	result := decodeJournalLogResult(t, stdout.Bytes())
-	if result.EntryType != "task" || result.Scope != "completed" || result.Message != "port hook logging" {
-		t.Fatalf("result = %#v, want TaskCompleted entry", result)
-	}
-	assertCLISessionContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
-	if result.Session == nil || result.Session.ID != start.Session.ID {
-		t.Fatalf("result session = %#v, want linked started session", result.Session)
-	}
-
-	var showOut bytes.Buffer
-	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"session", "show", start.Session.Alias, "--json"}); err != nil {
-		t.Fatalf("session show error = %v", err)
-	}
-	show := decodeSessionShow(t, showOut.Bytes())
-	if !hasSessionJournalEntry(show.Session.JournalEntries, "task", "completed", "port hook logging") {
-		t.Fatalf("journal entries = %#v, want linked hook entry", show.Session.JournalEntries)
-	}
-}
-
-func TestRunnerSessionLogFromHookNoopsWithoutPayloadOrSession(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		Stdin:      strings.NewReader(`{"session_id":"missing","hook_event_name":"TaskCompleted","task_description":"nothing"}`),
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "--from-hook"})
-	if err != nil {
-		t.Fatalf("session log --from-hook missing session error = %v", err)
-	}
-	if stdout.String() != "" {
-		t.Fatalf("stdout = %q, want silent noop", stdout.String())
-	}
-}
-
-func TestRunnerSessionLogDetectLinearUsesSQLiteStateWhenInitialized(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	start, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch: "main",
-	})
-	if err != nil {
-		t.Fatalf("StartSession() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(workingDir, "linear.txt"), []byte("linear\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(linear.txt) error = %v", err)
-	}
-	gitCLI(t, workingDir, "add", "linear.txt")
-	gitCLI(t, workingDir, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "Fixes ENG-123 and closes PLT-456")
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "--detect-linear"})
-	if err != nil {
-		t.Fatalf("session log --detect-linear error = %v", err)
-	}
-	if !strings.Contains(stdout.String(), "logged journal entry:") {
-		t.Fatalf("stdout = %q, want logged journal entry", stdout.String())
-	}
-
-	show, err := state.ShowSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, start.Session.Alias)
-	if err != nil {
-		t.Fatalf("ShowSession() error = %v", err)
-	}
-	if !hasSessionJournalEntry(show.Session.JournalEntries, "discover", "linear", "found magic words for ENG-123, PLT-456") {
-		t.Fatalf("journal entries = %#v, want Linear detection entry", show.Session.JournalEntries)
-	}
-}
-
-func TestRunnerSessionLogDetectLinearNoopsWithoutMagicWords(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	start, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch: "main",
-	})
-	if err != nil {
-		t.Fatalf("StartSession() error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "--detect-linear"})
-	if err != nil {
-		t.Fatalf("session log --detect-linear error = %v", err)
-	}
-	if !strings.Contains(stdout.String(), "No Linear magic words detected") {
-		t.Fatalf("stdout = %q, want no-detection message", stdout.String())
-	}
-	show, err := state.ShowSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, start.Session.Alias)
-	if err != nil {
-		t.Fatalf("ShowSession() error = %v", err)
-	}
-	if hasSessionJournalEntry(show.Session.JournalEntries, "discover", "linear", "found magic words for") {
-		t.Fatalf("journal entries = %#v, want no Linear detection entry", show.Session.JournalEntries)
-	}
-}
-
-func TestRunnerSessionLogDetectLinearNoopsWhenIntegrationDisabled(t *testing.T) {
-	requireCLIGit(t)
-	workingDir := initCLIGitRepo(t)
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	if _, err := state.Initialize(t.Context(), root, state.PathResolver{StateHome: stateHome}); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	start, err := state.StartSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, state.SessionStartOptions{
-		Branch: "main",
-	})
-	if err != nil {
-		t.Fatalf("StartSession() error = %v", err)
-	}
-	writeCLIAgentsFile(t, workingDir, "loaf.json", `{"integrations":{"linear":{"enabled":false}}}`)
-	if err := os.WriteFile(filepath.Join(workingDir, "disabled-linear.txt"), []byte("linear\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(disabled-linear.txt) error = %v", err)
-	}
-	gitCLI(t, workingDir, "add", "disabled-linear.txt", ".agents/loaf.json")
-	gitCLI(t, workingDir, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "Resolves ENG-999")
-
-	var stdout bytes.Buffer
-	err = Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "--detect-linear"})
-	if err != nil {
-		t.Fatalf("session log --detect-linear error = %v", err)
-	}
-	if stdout.String() != "" {
-		t.Fatalf("stdout = %q, want silent disabled noop", stdout.String())
-	}
-	show, err := state.ShowSession(t.Context(), root, state.PathResolver{StateHome: stateHome}, start.Session.Alias)
-	if err != nil {
-		t.Fatalf("ShowSession() error = %v", err)
-	}
-	if hasSessionJournalEntry(show.Session.JournalEntries, "discover", "linear", "found magic words for ENG-999") {
-		t.Fatalf("journal entries = %#v, want no Linear detection entry when disabled", show.Session.JournalEntries)
-	}
-}
-
-func TestRunnerSessionLogReportsInvalidSQLiteState(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	databasePath, err := (state.PathResolver{StateHome: stateHome}).DatabasePath(root)
-	if err != nil {
-		t.Fatalf("DatabasePath() error = %v", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(databasePath, []byte("not sqlite"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"session", "log", "decision(sqlite): invalid"})
-	if err == nil {
-		t.Fatal("session log error = nil, want invalid state error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
 	}
 }
 
@@ -15635,51 +13092,6 @@ func decodeSpecArchiveResult(t *testing.T, data []byte) state.SpecArchiveResult 
 	return result
 }
 
-func decodeSessionList(t *testing.T, data []byte) state.SessionList {
-	t.Helper()
-	var result state.SessionList
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
-	}
-	return result
-}
-
-func decodeSessionShow(t *testing.T, data []byte) state.SessionShow {
-	t.Helper()
-	var result state.SessionShow
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
-	}
-	return result
-}
-
-func decodeSessionStart(t *testing.T, data []byte) state.SessionStartResult {
-	t.Helper()
-	var result state.SessionStartResult
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
-	}
-	return result
-}
-
-func decodeSessionEnd(t *testing.T, data []byte) state.SessionEndResult {
-	t.Helper()
-	var result state.SessionEndResult
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
-	}
-	return result
-}
-
-func decodeSessionArchive(t *testing.T, data []byte) state.SessionArchiveResult {
-	t.Helper()
-	var result state.SessionArchiveResult
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
-	}
-	return result
-}
-
 func decodeJournalLogResult(t *testing.T, data []byte) state.JournalLogResult {
 	t.Helper()
 	var result state.JournalLogResult
@@ -15687,15 +13099,6 @@ func decodeJournalLogResult(t *testing.T, data []byte) state.JournalLogResult {
 		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
 	}
 	return result
-}
-
-func hasSessionJournalEntry(entries []state.SessionJournalEntry, entryType string, scope string, message string) bool {
-	for _, entry := range entries {
-		if entry.EntryType == entryType && entry.Scope == scope && entry.Message == message {
-			return true
-		}
-	}
-	return false
 }
 
 func decodeReportList(t *testing.T, data []byte) state.ReportList {
@@ -16189,7 +13592,7 @@ func TestRunnerNestedStateBackedHelpDoesNotParseAsOption(t *testing.T) {
 		{name: "task update", args: []string{"task", "update", "--help"}, want: "Usage: loaf task update <task>"},
 		{name: "task create", args: []string{"task", "create", "--help"}, want: "Usage: loaf task create --title <title>"},
 		{name: "spec show", args: []string{"spec", "show", "--help"}, want: "Usage: loaf spec show <spec>"},
-		{name: "session log", args: []string{"session", "log", "--help"}, want: "Usage: loaf session log <entry>"},
+		{name: "journal log", args: []string{"journal", "log", "--help"}, want: "Usage: loaf journal log"},
 		{name: "report create", args: []string{"report", "create", "--help"}, want: "Usage: loaf report create <slug>"},
 		{name: "brainstorm archive", args: []string{"brainstorm", "archive", "--help"}, want: "Usage: loaf brainstorm archive <brainstorm...>"},
 		{name: "idea capture", args: []string{"idea", "capture", "--help"}, want: "Usage: loaf idea capture --title <title>"},
@@ -16228,7 +13631,7 @@ func TestRunnerRootHelpIsNative(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run(%v) error = %v", args, err)
 		}
-		for _, want := range []string{"Usage: loaf <command> [options]", "Commands:", "session", "task", "release"} {
+		for _, want := range []string{"Usage: loaf <command> [options]", "Commands:", "journal", "task", "release"} {
 			if !strings.Contains(stdout.String(), want) {
 				t.Fatalf("Run(%v) stdout = %q, want %q", args, stdout.String(), want)
 			}
@@ -16412,7 +13815,7 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 		}
 		commands[command.Name] = entry
 	}
-	for _, want := range []string{"build", "state", "project", "docs", "session", "task", "spec", "report", "plan", "handoff", "council", "kb", "release", "version"} {
+	for _, want := range []string{"build", "state", "project", "docs", "journal", "task", "spec", "report", "plan", "handoff", "council", "kb", "release", "version"} {
 		if _, ok := commands[want]; !ok {
 			t.Fatalf("agent help commands missing %q: %#v", want, commands)
 		}
@@ -16465,7 +13868,7 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 			t.Fatalf("state subcommands = %#v, want %q", commands["state"].subcommands, subcommand)
 		}
 	}
-	for _, want := range []string{"backup verify", "restore-ephemerals", "verify-ephemerals", "export all", "export triage", "export session", "export spec", "export release-readiness"} {
+	for _, want := range []string{"backup verify", "restore-ephemerals", "verify-ephemerals", "export all", "export triage", "export spec", "export release-readiness"} {
 		if !stringSliceContains(commands["state"].subcommands, want) {
 			t.Fatalf("state subcommands = %#v, want %q", commands["state"].subcommands, want)
 		}
@@ -16577,20 +13980,14 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 	if got := commands["migrate"].optionDescriptions["migrate worktree-storage --apply"]; !strings.Contains(got, "dry-run") {
 		t.Fatalf("worktree-storage apply description = %q, want dry-run guidance", got)
 	}
-	if got := commands["session"].optionDescriptions["session start --json"]; !strings.Contains(got, "action") || !strings.Contains(got, "journal IDs") || !strings.Contains(got, "project identity") {
-		t.Fatalf("session start json description = %q, want action/journal/project identity guidance", got)
+	if got := commands["journal"].optionDescriptions["journal log --json"]; !strings.Contains(got, "written entry") || !strings.Contains(got, "project identity") {
+		t.Fatalf("journal log json description = %q, want written-entry/project identity guidance", got)
 	}
-	if got := commands["session"].optionDescriptions["session list --json"]; !strings.Contains(got, "sessions") || !strings.Contains(got, "diagnostics") || !strings.Contains(got, "global database scope") {
-		t.Fatalf("session list json description = %q, want sessions/diagnostics/scope guidance", got)
+	if got := commands["journal"].optionDescriptions["journal recent --json"]; !strings.Contains(got, "timeline") || !strings.Contains(got, "project identity") {
+		t.Fatalf("journal recent json description = %q, want timeline/project identity guidance", got)
 	}
-	if got := commands["session"].optionDescriptions["session show --json"]; !strings.Contains(got, "journal entries") || !strings.Contains(got, "relationships") || !strings.Contains(got, "project identity") {
-		t.Fatalf("session show json description = %q, want journal/relationship/project identity guidance", got)
-	}
-	if got := commands["session"].optionDescriptions["session report --json"]; !strings.Contains(got, "export contract") || !strings.Contains(got, "markdown content") {
-		t.Fatalf("session report json description = %q, want export/markdown guidance", got)
-	}
-	if got := commands["session"].optionDescriptions["session enrich --json"]; !strings.Contains(got, "compatibility mode") || !strings.Contains(got, "counts") {
-		t.Fatalf("session enrich json description = %q, want compatibility/count guidance", got)
+	if got := commands["journal"].optionDescriptions["journal context --json"]; !strings.Contains(got, "digest") || !strings.Contains(got, "project identity") {
+		t.Fatalf("journal context json description = %q, want digest/project identity guidance", got)
 	}
 	for _, want := range []string{
 		"housekeeping --plans",

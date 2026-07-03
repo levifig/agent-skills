@@ -88,8 +88,8 @@ func TestInstallTargetCodexUsesCodexHomeForHooksAndSharedSkillsHome(t *testing.T
 	dist := filepath.Join(root, "dist", "codex")
 	config := filepath.Join(root, "reported-config")
 	writeInstallFile(t, filepath.Join(dist, "skills", "go-development", "SKILL.md"), "# Go\n")
-	writeInstallFile(t, filepath.Join(dist, ".codex", "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf session log --from-hook","matcher":"Bash","if":"Bash(git commit:*)","loaf-managed":true}]}}`)
-	writeInstallFile(t, filepath.Join(codexHome, "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"user codex hook"},{"command":"loaf session log --from-hook","matcher":"Bash","if":"Bash(git commit:*)"}]}}`)
+	writeInstallFile(t, filepath.Join(dist, ".codex", "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf journal log --from-hook","matcher":"Bash","if":"Bash(git commit:*)","loaf-managed":true}]}}`)
+	writeInstallFile(t, filepath.Join(codexHome, "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"user codex hook"},{"command":"loaf journal log --from-hook","matcher":"Bash","if":"Bash(git commit:*)"}]}}`)
 
 	err := installTargetDistribution(targetInstallOptions{
 		Target:    "codex",
@@ -105,7 +105,7 @@ func TestInstallTargetCodexUsesCodexHomeForHooksAndSharedSkillsHome(t *testing.T
 	assertInstallFile(t, filepath.Join(home, ".agents", "skills", "go-development", "SKILL.md"), "# Go\n")
 	hooks := readInstallHooks(t, filepath.Join(codexHome, "hooks.json"))
 	postTool := hooks.Hooks["PostToolUse"]
-	if len(postTool) != 2 || postTool[0]["command"] != "user codex hook" || postTool[1]["command"] != "loaf session log --from-hook" {
+	if len(postTool) != 2 || postTool[0]["command"] != "user codex hook" || postTool[1]["command"] != "loaf journal log --from-hook" {
 		t.Fatalf("codex hooks = %#v, want user hook preserved and loaf hook replaced", postTool)
 	}
 	assertInstallFile(t, filepath.Join(config, loafInstallMarkerFile), "9.8.7-test.1\n")

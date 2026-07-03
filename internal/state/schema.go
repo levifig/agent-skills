@@ -34,6 +34,9 @@ var docsIndexSQL string
 //go:embed migrations/0009_spec_branch_and_source.sql
 var specBranchAndSourceSQL string
 
+//go:embed migrations/0010_journal_first.sql
+var journalFirstSQL string
+
 const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -100,13 +103,47 @@ func SchemaMigrations() []SchemaMigration {
 	}
 }
 
-// CurrentSchemaVersion returns the highest Go-owned migration version.
+// journalFirstMigrationVersion is the schema version introduced by the
+// journal-first (SPEC-056) transformation. It is intentionally excluded from
+// SchemaMigrations() so that opening a store does not auto-apply this
+// destructive migration; it runs only through the explicit journal-first
+// migrate command, which takes a mandatory pre-migration backup first.
+const journalFirstMigrationVersion = 10
+
+// JournalFirstMigration returns the destructive SPEC-056 journal-first
+// migration. It is applied explicitly (not on store open) and is recorded in
+// schema_migrations like any other migration.
+func JournalFirstMigration() SchemaMigration {
+	return SchemaMigration{
+		Version: journalFirstMigrationVersion,
+		Name:    "journal_first",
+		SQL:     normalizeMigrationSQL(journalFirstSQL),
+	}
+}
+
+// CurrentSchemaVersion returns the highest auto-applied Go-owned migration
+// version. The journal-first migration (SPEC-056) is intentionally excluded
+// from SchemaMigrations() so it never auto-applies on store open, so it does
+// not raise this baseline; a database that has applied it reports
+// journalFirstMigrationVersion instead. Use acceptableSchemaVersion to test
+// whether an applied version is valid.
 func CurrentSchemaVersion() int {
 	migrations := SchemaMigrations()
 	if len(migrations) == 0 {
 		return 0
 	}
 	return migrations[len(migrations)-1].Version
+}
+
+// acceptableSchemaVersion reports whether an applied schema version is a valid
+// ready state. The baseline (CurrentSchemaVersion) is always acceptable; a
+// database that has explicitly applied the journal-first migration reports
+// journalFirstMigrationVersion, which is equally valid — that migration is
+// applied out-of-band by the journal-first migrate command, not on store open,
+// so it never appears in SchemaMigrations() and therefore never raises the
+// baseline.
+func acceptableSchemaVersion(version int) bool {
+	return version == CurrentSchemaVersion() || version == journalFirstMigrationVersion
 }
 
 // Checksum returns the deterministic content hash stored with applied migrations.

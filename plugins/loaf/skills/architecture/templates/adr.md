@@ -11,7 +11,7 @@ direction, use a SPEC via /loaf:shape instead.
 If it's a guiding principle or operating philosophy, update ARCHITECTURE.md
 or VISION.md.
 If it's workflow lore for a specific skill, document it in that skill.
-If it's a local choice changeable in a single PR, session-log it.
+If it's a local choice changeable in a single PR, log a `decision(scope)` entry to the project journal.
 
 Run the architecture skill's Triage Gate if unsure.
 

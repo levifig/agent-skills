@@ -33,13 +33,13 @@ Guidelines for creating Mermaid diagrams in project documentation.
 
 ## Storage Patterns
 
-### Inline in Session File
+### Inline in the current work
 
 For diagrams specific to current work or temporary visualizations. Include purpose, files involved, and limitations alongside the diagram.
 
 ### Stored in `.agents/diagrams/`
 
-For reusable, cross-session diagrams:
+For reusable diagrams shared across conversations:
 
 ```
 .agents/diagrams/

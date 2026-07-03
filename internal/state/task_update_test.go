@@ -125,7 +125,6 @@ func TestUpdateTaskMetadataMutatesRelationships(t *testing.T) {
 	writeAgentsFile(t, root.Path(), "specs/SPEC-002-new.md", "# New Spec\n")
 	writeAgentsFile(t, root.Path(), "tasks/TASK-001-update.md", "# Updated Task\n")
 	writeAgentsFile(t, root.Path(), "tasks/TASK-002-dependency.md", "# Dependency Task\n")
-	writeAgentsFile(t, root.Path(), "sessions/20260528-session.md", "# Session\n")
 	writeAgentsFile(t, root.Path(), "TASKS.json", `{"tasks":{
   "TASK-001":{"title":"Updated Task","spec":"SPEC-001","status":"todo","priority":"P2"},
   "TASK-002":{"title":"Dependency Task","status":"todo","priority":"P3"}
@@ -142,14 +141,12 @@ func TestUpdateTaskMetadataMutatesRelationships(t *testing.T) {
 		SetSpec:      true,
 		DependsOn:    []string{"TASK-002"},
 		SetDependsOn: true,
-		Session:      "20260528-session",
-		SetSession:   true,
 	})
 	if err != nil {
 		t.Fatalf("UpdateTask() error = %v", err)
 	}
-	if updated.Task.Alias != "TASK-001" || updated.Priority != "P0" || updated.Spec == nil || updated.Spec.Alias != "SPEC-002" || updated.Session == nil || updated.Session.Alias != "20260528-session" {
-		t.Fatalf("updated = %#v, want priority/spec/session metadata", updated)
+	if updated.Task.Alias != "TASK-001" || updated.Priority != "P0" || updated.Spec == nil || updated.Spec.Alias != "SPEC-002" {
+		t.Fatalf("updated = %#v, want priority/spec metadata", updated)
 	}
 	if len(updated.Depends) != 1 || updated.Depends[0].Alias != "TASK-002" {
 		t.Fatalf("Depends = %#v, want TASK-002", updated.Depends)
@@ -159,7 +156,7 @@ func TestUpdateTaskMetadataMutatesRelationships(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ShowTask() error = %v", err)
 	}
-	if show.Task.Priority != "P0" || show.Task.Spec != "SPEC-002" || len(show.Task.DependsOn) != 1 || show.Task.DependsOn[0] != "TASK-002" || len(show.Task.Sessions) != 1 || show.Task.Sessions[0] != "20260528-session" {
+	if show.Task.Priority != "P0" || show.Task.Spec != "SPEC-002" || len(show.Task.DependsOn) != 1 || show.Task.DependsOn[0] != "TASK-002" {
 		t.Fatalf("show = %#v, want updated metadata", show)
 	}
 
@@ -176,29 +173,24 @@ func TestUpdateTaskMetadataMutatesRelationships(t *testing.T) {
 	if !hasRelationship(trace.Relationships, "outbound", "blocked_by", "task", "TASK-002") {
 		t.Fatalf("trace relationships = %#v, want blocked_by TASK-002", trace.Relationships)
 	}
-	if !hasRelationship(trace.Relationships, "outbound", "associated_with", "session", "20260528-session") {
-		t.Fatalf("trace relationships = %#v, want associated_with session", trace.Relationships)
-	}
 
 	cleared, err := UpdateTask(context.Background(), root, PathResolver{StateHome: stateHome}, TaskUpdateOptions{
 		Ref:          "TASK-001",
 		Spec:         "none",
 		SetSpec:      true,
 		SetDependsOn: true,
-		Session:      "none",
-		SetSession:   true,
 	})
 	if err != nil {
 		t.Fatalf("clearing UpdateTask() error = %v", err)
 	}
-	if cleared.Spec != nil || len(cleared.Depends) != 0 || cleared.Session != nil {
-		t.Fatalf("cleared = %#v, want cleared spec, depends, and session", cleared)
+	if cleared.Spec != nil || len(cleared.Depends) != 0 {
+		t.Fatalf("cleared = %#v, want cleared spec and depends", cleared)
 	}
 	show, err = ShowTask(context.Background(), root, PathResolver{StateHome: stateHome}, "TASK-001")
 	if err != nil {
 		t.Fatalf("ShowTask() after clear error = %v", err)
 	}
-	if show.Task.Spec != "" || len(show.Task.DependsOn) != 0 || len(show.Task.Sessions) != 0 {
+	if show.Task.Spec != "" || len(show.Task.DependsOn) != 0 {
 		t.Fatalf("show after clear = %#v, want cleared metadata", show)
 	}
 }
@@ -212,7 +204,6 @@ func TestUpdateTaskMetadataRejectsInvalidRefs(t *testing.T) {
 	stateHome := t.TempDir()
 	writeAgentsFile(t, root.Path(), "specs/SPEC-001-status.md", "# Status Spec\n")
 	writeAgentsFile(t, root.Path(), "tasks/TASK-001-status.md", "# Status Task\n")
-	writeAgentsFile(t, root.Path(), "sessions/20260528-session.md", "# Session\n")
 	writeAgentsFile(t, root.Path(), "TASKS.json", `{"tasks":{"TASK-001":{"title":"Status Task","spec":"SPEC-001","status":"todo"}}}`)
 	if _, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
 		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
@@ -224,10 +215,8 @@ func TestUpdateTaskMetadataRejectsInvalidRefs(t *testing.T) {
 	}{
 		{name: "invalid priority", options: TaskUpdateOptions{Ref: "TASK-001", Priority: "P9", SetPriority: true}},
 		{name: "missing spec", options: TaskUpdateOptions{Ref: "TASK-001", Spec: "SPEC-999", SetSpec: true}},
-		{name: "wrong kind spec", options: TaskUpdateOptions{Ref: "TASK-001", Spec: "20260528-session", SetSpec: true}},
 		{name: "missing dependency", options: TaskUpdateOptions{Ref: "TASK-001", DependsOn: []string{"TASK-999"}, SetDependsOn: true}},
 		{name: "wrong kind dependency", options: TaskUpdateOptions{Ref: "TASK-001", DependsOn: []string{"SPEC-001"}, SetDependsOn: true}},
-		{name: "wrong kind session", options: TaskUpdateOptions{Ref: "TASK-001", Session: "SPEC-001", SetSession: true}},
 		{name: "empty update", options: TaskUpdateOptions{Ref: "TASK-001"}},
 	}
 	for _, tc := range cases {

@@ -43,7 +43,7 @@ Task(
     - src/services/
 
     Write report to: .agents/reports/YYYYMMDD-HHMMSS-security-audit.md
-    Active session: SESSION-ALIAS if available from loaf session list/show
+    Reference: TASK-123, SPEC-045 if relevant
     """,
     run_in_background=True
 )
@@ -52,19 +52,22 @@ Task(
 ### Cursor
 
 Background agents are configured via the `is_background: true` YAML property.
-When spawning, specify the report destination and any task/spec/session IDs:
+When spawning, specify the report destination and any task/spec IDs:
 
 ```
 @background-runner Run security audit on backend codebase.
 Write report to .agents/reports/.
-Reference TASK-123 and the active session alias if available.
+Reference TASK-123 if relevant.
 ```
+
+The background agent's journal entries are tagged with its own harness id
+automatically — there is no session alias to pass.
 
 ## Tracking
 
 Track background work with durable references:
 
-1. Log the spawn with `loaf session log "todo(background): started <id> for <task>"`.
+1. Log the spawn with `loaf journal log "todo(background): started <id> for <task>"`.
 2. Ask the background agent to write a report under `.agents/reports/`.
 3. When complete, log `discover(background): <id> wrote <report>`.
 4. Process findings into tasks, specs, ADRs, or report verdicts as appropriate.
@@ -82,7 +85,7 @@ state is available.
 ## Workflow Example
 
 1. Orchestrator identifies non-blocking security audit work.
-2. Orchestrator logs the background spawn in the active session.
+2. Orchestrator logs the background spawn to the journal.
 3. Background agent writes `.agents/reports/YYYYMMDD-HHMMSS-auth-security.md`.
 4. Orchestrator reviews the report, creates follow-up tasks, and logs the
    outcome.
@@ -101,7 +104,7 @@ state is available.
 
 ## Integration Points
 
-- `loaf session log` records spawn and completion facts.
-- `loaf session show` exposes recent background-work journal entries.
+- `loaf journal log` records spawn and completion facts.
+- `loaf journal recent` surfaces recent background-work entries.
 - `loaf report` commands own durable report lifecycle when available.
-- `/wrap` should mention unprocessed background reports before ending a session.
+- `/wrap` should mention unprocessed background reports when writing a wrap.
