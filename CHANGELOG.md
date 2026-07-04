@@ -8,6 +8,12 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
+## [2.0.0-alpha.3] - 2026-07-04
+
+### Fixed
+- Honor advisory hook contract and scope release checks to release-flow pushes (#89) (f5c1d56d)
+- Bootstrap identical worktree agents state (#90) (7c9c298c)
+
 ## [2.0.0-alpha.2] - 2026-07-04
 
 ### Changed

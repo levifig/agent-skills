@@ -7,7 +7,7 @@ description: >-
   resolve(spark) journal entries. Not for capturing new ideas (use idea) or
   shaping (use shape).
 user-invocable: true
-version: 2.0.0-alpha.2
+version: 2.0.0-alpha.3
 ---
 
 # Triage
