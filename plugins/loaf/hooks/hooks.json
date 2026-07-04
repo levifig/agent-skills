@@ -40,7 +40,7 @@
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/.",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook ephemeral-provenance",
             "if": "Bash(git push:*)",
             "timeout": 30,
             "description": "Block active specs from pointing at deleted ephemeral Markdown after cutover",
@@ -48,14 +48,14 @@
           },
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook validate-push",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook validate-push --advisory",
             "if": "Bash(git push:*)",
             "timeout": 60,
             "description": "Validates version bump, CHANGELOG, and build before git push"
           },
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook workflow-pre-pr",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook workflow-pre-pr --advisory",
             "if": "Bash(gh pr create:*)",
             "timeout": 5,
             "description": "Remind about PR format and CHANGELOG entry before gh pr create"

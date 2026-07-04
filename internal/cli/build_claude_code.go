@@ -415,7 +415,7 @@ func nativeClaudeHookCommand(hook nativeBuildHook) string {
 	}
 	if nativeClaudeBinaryPathHooks[hook.id] {
 		if hook.command == "" {
-			return `"${CLAUDE_PLUGIN_ROOT}/bin/loaf" check --hook ` + hook.id
+			return `"${CLAUDE_PLUGIN_ROOT}/bin/loaf" check --hook ` + hook.id + nativeCheckAdvisorySuffix(hook)
 		}
 		return strings.ReplaceAll(hook.command, "loaf", `"${CLAUDE_PLUGIN_ROOT}/bin/loaf"`)
 	}
@@ -429,9 +429,19 @@ func nativeClaudeHookCommand(hook nativeBuildHook) string {
 	return "bash ${CLAUDE_PLUGIN_ROOT}/hooks/" + filename
 }
 
+// nativeCheckAdvisorySuffix keeps `loaf check` hook commands aligned with the
+// blocking flag in hooks.yaml: advisory hooks surface findings but exit 0.
+func nativeCheckAdvisorySuffix(hook nativeBuildHook) string {
+	if hook.section == "pre-tool" && !hook.blocking {
+		return " --advisory"
+	}
+	return ""
+}
+
 var nativeClaudeBinaryPathHooks = map[string]bool{
 	"artifact-body-write":     true,
 	"check-" + "sec" + "rets": true,
+	"ephemeral-provenance":    true,
 	"render-drift":            true,
 	"validate-push":           true,
 	"validate-commit":         true,

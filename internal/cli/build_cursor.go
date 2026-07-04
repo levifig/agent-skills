@@ -471,7 +471,7 @@ func nativeCursorHookCommand(hook nativeBuildHook) string {
 	}
 	if nativeBuildCursorBinaryPathHooks[hook.id] {
 		if hook.command == "" {
-			return "loaf check --hook " + hook.id
+			return "loaf check --hook " + hook.id + nativeCheckAdvisorySuffix(hook)
 		}
 		return hook.command
 	}
@@ -493,6 +493,7 @@ func nativeCursorHookCommand(hook nativeBuildHook) string {
 var nativeBuildCursorBinaryPathHooks = map[string]bool{
 	"artifact-body-write":     true,
 	"check-" + "sec" + "rets": true,
+	"ephemeral-provenance":    true,
 	"render-drift":            true,
 	"validate-push":           true,
 	"validate-commit":         true,

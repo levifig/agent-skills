@@ -18,6 +18,7 @@ import (
 type checkOptions struct {
 	hook       string
 	jsonOutput bool
+	advisory   bool
 }
 
 type checkHookContext struct {
@@ -52,6 +53,7 @@ type checkJSONOutput struct {
 	Hook     string   `json:"hook"`
 	Passed   bool     `json:"passed"`
 	Blocked  bool     `json:"blocked"`
+	Advisory bool     `json:"advisory,omitempty"`
 	ExitCode int      `json:"exitCode"`
 	Warnings []string `json:"warnings"`
 	Errors   []string `json:"errors"`
@@ -127,20 +129,20 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 		return fmt.Errorf("Unknown hook: %s", options.hook)
 	}
 	if options.jsonOutput {
-		if err := writeCheckJSON(out, options.hook, result); err != nil {
+		if err := writeCheckJSON(out, options.hook, result, options.advisory); err != nil {
 			return err
 		}
 	} else {
-		writeCheckText(out, firstWriter(r.Stderr, os.Stderr), options.hook, result)
+		writeCheckText(out, firstWriter(r.Stderr, os.Stderr), options.hook, result, options.advisory)
 	}
-	if result.Blocked {
+	if result.Blocked && !options.advisory {
 		return ExitError{Code: 2}
 	}
 	return nil
 }
 
 func writeCheckHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf check --hook <id> [--json]", "Run one registered hook check.", "--hook      Hook id: artifact-body-write, check-secrets, ephemeral-provenance, render-drift, validate-commit, security-audit, workflow-pre-pr, validate-push", "--json      Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON")
+	writeUsageHelp(out, "loaf check --hook <id> [--advisory] [--json]", "Run one registered hook check.", "--hook      Hook id: artifact-body-write, check-secrets, ephemeral-provenance, render-drift, validate-commit, security-audit, workflow-pre-pr, validate-push", "--advisory  Surface findings without blocking: always exit 0, even when the check fails", "--json      Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON")
 }
 
 func parseCheckArgs(args []string) (checkOptions, error) {
@@ -155,6 +157,8 @@ func parseCheckArgs(args []string) (checkOptions, error) {
 			options.hook = value
 		case "--json":
 			options.jsonOutput = true
+		case "--advisory":
+			options.advisory = true
 		default:
 			return checkOptions{}, fmt.Errorf("unknown check option %q", args[i])
 		}
@@ -772,31 +776,35 @@ func runNativeValidatePush(hookContext checkHookContext, cwd string) checkResult
 		return result
 	}
 
-	if pushIsAllowedOperationalMainPush(cwd, &result) {
-		return result
-	}
+	checkDirectMainSourcePush(cwd, &result)
 
 	packageVersion, hasPackageJSON, hasBuildScript := headPackageInfo(cwd)
-	lastTag := lastGitTag(cwd)
-	isReleaseCommit := false
-	if lastTag != "" {
-		isReleaseCommit = tagPointsAtHEAD(cwd, lastTag)
-	}
-	if !isReleaseCommit && releaseCommitSubjectRE.MatchString(headSubject(cwd)) {
-		isReleaseCommit = true
-	}
 
-	if lastTag != "" && hasPackageJSON && !isReleaseCommit {
-		if tagVersion, ok := tagPackageVersion(cwd, lastTag); ok && packageVersion != "" && packageVersion == tagVersion {
-			result.Errors = append(result.Errors, fmt.Sprintf("Version not bumped since %s (still %s)", lastTag, packageVersion))
+	// Version-bump and CHANGELOG checks are release readiness: they only apply to
+	// release-flow pushes (default branch or tags). Feature-branch pushes happen
+	// between releases, where the version legitimately still matches the last tag.
+	if pushIsReleaseFlow(command, cwd) {
+		lastTag := lastGitTag(cwd)
+		isReleaseCommit := false
+		if lastTag != "" {
+			isReleaseCommit = tagPointsAtHEAD(cwd, lastTag)
 		}
-	}
+		if !isReleaseCommit && releaseCommitSubjectRE.MatchString(headSubject(cwd)) {
+			isReleaseCommit = true
+		}
 
-	if lastTag != "" && !isReleaseCommit {
-		if !headHasFile(cwd, "CHANGELOG.md") {
-			result.Errors = append(result.Errors, "CHANGELOG.md not found in HEAD (required for tagged releases)")
-		} else if !fileChangedSinceTag(cwd, lastTag, "CHANGELOG.md") {
-			result.Errors = append(result.Errors, fmt.Sprintf("CHANGELOG.md not updated since %s", lastTag))
+		if lastTag != "" && hasPackageJSON && !isReleaseCommit {
+			if tagVersion, ok := tagPackageVersion(cwd, lastTag); ok && packageVersion != "" && packageVersion == tagVersion {
+				result.Errors = append(result.Errors, fmt.Sprintf("Version not bumped since %s (still %s)", lastTag, packageVersion))
+			}
+		}
+
+		if lastTag != "" && !isReleaseCommit {
+			if !headHasFile(cwd, "CHANGELOG.md") {
+				result.Errors = append(result.Errors, "CHANGELOG.md not found in HEAD (required for tagged releases)")
+			} else if !fileChangedSinceTag(cwd, lastTag, "CHANGELOG.md") {
+				result.Errors = append(result.Errors, fmt.Sprintf("CHANGELOG.md not updated since %s", lastTag))
+			}
 		}
 	}
 
@@ -811,29 +819,48 @@ func runNativeValidatePush(hookContext checkHookContext, cwd string) checkResult
 	return result
 }
 
-func pushIsAllowedOperationalMainPush(cwd string, result *checkResult) bool {
+var pushTagRefspecRE = regexp.MustCompile(`(?:^|\s)\+?(?:refs/tags/\S+|\S+:refs/tags/\S+|v\d+\.\d+\.\d+[^\s:]*)(?:\s|$)`)
+
+// pushIsReleaseFlow reports whether a push participates in the release flow:
+// pushing tags or pushing the default branch.
+func pushIsReleaseFlow(command string, cwd string) bool {
+	if strings.Contains(command, "--tags") || strings.Contains(command, "--follow-tags") || pushTagRefspecRE.MatchString(command) {
+		return true
+	}
 	currentBranch, err := commandOutput(cwd, "git", "branch", "--show-current")
 	if err != nil {
 		return false
 	}
 	currentBranch = strings.TrimSpace(currentBranch)
-	defaultBranch := "main"
+	return currentBranch != "" && currentBranch == gitDefaultBranch(cwd)
+}
+
+func gitDefaultBranch(cwd string) string {
 	if output, err := commandOutput(cwd, "git", "symbolic-ref", "refs/remotes/origin/HEAD"); err == nil {
 		ref := strings.TrimSpace(output)
 		if strings.HasPrefix(ref, "refs/remotes/origin/") {
-			defaultBranch = strings.TrimPrefix(ref, "refs/remotes/origin/")
+			return strings.TrimPrefix(ref, "refs/remotes/origin/")
 		}
 	}
-	if currentBranch == "" || currentBranch != defaultBranch {
-		return false
+	return "main"
+}
+
+func checkDirectMainSourcePush(cwd string, result *checkResult) {
+	currentBranch, err := commandOutput(cwd, "git", "branch", "--show-current")
+	if err != nil {
+		return
+	}
+	currentBranch = strings.TrimSpace(currentBranch)
+	if currentBranch == "" || currentBranch != gitDefaultBranch(cwd) {
+		return
 	}
 	changedFilesOutput, err := commandOutput(cwd, "git", "diff", "origin/"+currentBranch+"..HEAD", "--name-only")
 	if err != nil {
-		return false
+		return
 	}
 	files := nonEmptyLines(changedFilesOutput)
 	if len(files) == 0 {
-		return true
+		return
 	}
 	var disallowed []string
 	for _, file := range files {
@@ -853,9 +880,7 @@ func pushIsAllowedOperationalMainPush(cwd string, result *checkResult) bool {
 			message += fmt.Sprintf(" (and %d more)", len(disallowed)-5)
 		}
 		result.Errors = append(result.Errors, message)
-		return true
 	}
-	return true
 }
 
 func headPackageInfo(cwd string) (version string, exists bool, hasBuildScript bool) {
@@ -1481,15 +1506,16 @@ func checkContextContent(context checkHookContext) string {
 	)
 }
 
-func writeCheckJSON(out io.Writer, hook string, result checkResult) error {
+func writeCheckJSON(out io.Writer, hook string, result checkResult, advisory bool) error {
 	exitCode := 0
-	if result.Blocked {
+	if result.Blocked && !advisory {
 		exitCode = 2
 	}
 	return writeJSON(out, checkJSONOutput{
 		Hook:     hook,
 		Passed:   result.Passed && !result.Blocked,
 		Blocked:  result.Blocked,
+		Advisory: advisory,
 		ExitCode: exitCode,
 		Warnings: result.Warnings,
 		Errors:   result.Errors,
@@ -1497,9 +1523,13 @@ func writeCheckJSON(out io.Writer, hook string, result checkResult) error {
 	})
 }
 
-func writeCheckText(out io.Writer, errOut io.Writer, hook string, result checkResult) {
+func writeCheckText(out io.Writer, errOut io.Writer, hook string, result checkResult, advisory bool) {
 	if result.Blocked {
-		fmt.Fprintf(errOut, "\n%s %s: blocked\n", ansiRed("x"), ansiBold(hook))
+		if advisory {
+			fmt.Fprintf(errOut, "\n%s %s: advisory findings (not blocking)\n", ansiYellow("!"), ansiBold(hook))
+		} else {
+			fmt.Fprintf(errOut, "\n%s %s: blocked\n", ansiRed("x"), ansiBold(hook))
+		}
 		for _, checkErr := range result.Errors {
 			fmt.Fprintf(errOut, "   %s %s\n", ansiRed("-"), checkErr)
 		}

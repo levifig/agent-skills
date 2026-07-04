@@ -308,6 +308,9 @@ func TestRunnerBuildTargetCursorRunsNativeTarget(t *testing.T) {
 		`"preToolUse": [`,
 		`"loaf-managed": true`,
 		`"command": "loaf check --hook check-secrets"`,
+		`"command": "loaf check --hook ephemeral-provenance"`,
+		`"command": "loaf check --hook validate-push --advisory"`,
+		`"command": "loaf check --hook workflow-pre-pr --advisory"`,
 		`"command": "cat \"$HOME/.cursor/hooks/instructions/pre-merge.md\""`,
 		`"postToolUse": [`,
 		`"command": "bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh"`,
@@ -471,6 +474,9 @@ func TestRunnerBuildTargetClaudeCodeRunsNativeTarget(t *testing.T) {
 	for _, want := range []string{
 		`"PreToolUse": [`,
 		`"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook check-secrets"`,
+		`"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook ephemeral-provenance"`,
+		`"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook validate-push --advisory"`,
+		`"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook workflow-pre-pr --advisory"`,
 		`"command": "cat \"${CLAUDE_PLUGIN_ROOT}/hooks/instructions/pre-merge.md\""`,
 		`"PostToolUse": [`,
 		`"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" task refresh"`,
@@ -480,6 +486,14 @@ func TestRunnerBuildTargetClaudeCodeRunsNativeTarget(t *testing.T) {
 	} {
 		if !strings.Contains(hooksJSON, want) {
 			t.Fatalf("claude hooks.json = %q, want %q", hooksJSON, want)
+		}
+	}
+	for _, reject := range []string{
+		`check --hook check-secrets --advisory`,
+		`bash ${CLAUDE_PLUGIN_ROOT}/hooks/.`,
+	} {
+		if strings.Contains(hooksJSON, reject) {
+			t.Fatalf("claude hooks.json = %q, must not contain %q", hooksJSON, reject)
 		}
 	}
 	if readBuildFileString(t, filepath.Join(root, "plugins", "loaf", "hooks", "subagent-notify.sh")) != "#!/bin/sh\necho subagent\n" {
@@ -882,6 +896,13 @@ func seedNativeCodexBuildFixture(t *testing.T, root string) {
 		"      timeout: 600000",
 		"      failClosed: true",
 		"      description: Run security audit on bash commands",
+		"    - id: ephemeral-provenance",
+		"      matcher: \"Bash\"",
+		"      if: \"Bash(git push:*)\"",
+		"      blocking: true",
+		"      timeout: 30000",
+		"      failClosed: true",
+		"      description: Block active specs from pointing at deleted ephemeral Markdown",
 		"    - id: validate-push",
 		"      matcher: \"Bash\"",
 		"      if: \"Bash(git push:*)\"",

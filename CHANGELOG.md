@@ -26,6 +26,9 @@ is a Loaf workflow staging section for curated entries before release.
 
 ### Fixed
 
+- Honor `blocking: false` end-to-end for git-workflow guard hooks: `loaf check` gains an `--advisory` flag (surface findings, exit 0), and the Claude Code and Cursor hook generators wire it into `validate-push`/`workflow-pre-pr`, so advisory hooks warn instead of hard-blocking `git push`/`gh pr create`, including direct-main source-push and build findings.
+- Scope `validate-push` version-bump and CHANGELOG release-readiness checks to release-flow pushes (default branch or tag pushes). Feature-branch pushes are no longer blocked between releases under numbered pre-release versioning; the build check still runs for every push but is advisory in generated git-push hook wiring.
+- Generate a valid `loaf check --hook ephemeral-provenance` command in Claude Code and Cursor hook wiring instead of the broken `bash …/hooks/.` produced when the hook was missing from the binary-path maps.
 - Treat command-authored relationship provenance as valid in `loaf state doctor`, avoiding a misleading `relationship-origin-unknown` repair prompt for rows created by current Loaf commands.
 - Stop `loaf release --dry-run` after reporting that no unreleased changes exist, instead of generating a bogus next-version release plan.
 

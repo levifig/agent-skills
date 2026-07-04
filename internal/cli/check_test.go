@@ -24,7 +24,7 @@ func TestRunnerCheckHelp(t *testing.T) {
 		t.Fatalf("check --help error = %v", err)
 	}
 	output := stdout.String()
-	for _, want := range []string{"Usage: loaf check --hook <id> [--json]", "--hook", "--json", "validate-commit"} {
+	for _, want := range []string{"Usage: loaf check --hook <id> [--advisory] [--json]", "--hook", "--advisory", "--json", "validate-commit"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stdout = %q, want %q", output, want)
 		}
@@ -1175,6 +1175,30 @@ func TestRunnerCheckValidatePushBlocksUnbumpedVersionSinceTag(t *testing.T) {
 	}
 }
 
+func TestRunnerCheckValidatePushBlocksUnbumpedVersionOnDefaultBranchPush(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeFile(t, filepath.Join(repo, "package.json"), `{"name":"fixture","version":"1.0.0"}`+"\n")
+	writeFile(t, filepath.Join(repo, "CHANGELOG.md"), workflowChangelog("- Initial package\n"))
+	gitCLI(t, repo, "add", "package.json", "CHANGELOG.md")
+	gitCLI(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "chore: add release files")
+	gitCLI(t, repo, "-c", "tag.gpgsign=false", "tag", "v1.0.0")
+	addOriginTrackingMain(t, repo)
+	writeFile(t, filepath.Join(repo, "feature.txt"), "feature\n")
+	gitCLI(t, repo, "add", "feature.txt")
+	gitCLI(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "feat: add feature")
+	var stderr bytes.Buffer
+
+	err := Runner{
+		Stderr:     &stderr,
+		WorkingDir: repo,
+		Stdin:      bytes.NewBufferString(checkBashContext("git push origin main")),
+	}.Run([]string{"check", "--hook", "validate-push"})
+	assertCheckExitCode(t, err, 2)
+	if !strings.Contains(stderr.String(), "Version not bumped since v1.0.0") {
+		t.Fatalf("stderr = %q, want version bump error on default branch push", stderr.String())
+	}
+}
+
 func TestRunnerCheckValidatePushBlocksUnchangedChangelogSinceTag(t *testing.T) {
 	repo := initCLIGitRepo(t)
 	writeFile(t, filepath.Join(repo, "package.json"), `{"name":"fixture","version":"1.0.0"}`+"\n")
@@ -1300,6 +1324,161 @@ func TestRunnerCheckValidatePushBlocksDirectMainSourcePush(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "Direct push to main") || !strings.Contains(stderr.String(), "cli/source.ts") {
 		t.Fatalf("stderr = %q, want direct-main source block", stderr.String())
+	}
+}
+
+func TestRunnerCheckValidatePushAdvisoryReportsDirectMainSourcePushWithoutBlocking(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	addOriginTrackingMain(t, repo)
+	mkdirAll(t, filepath.Join(repo, "cli"))
+	writeFile(t, filepath.Join(repo, "cli", "source.ts"), "source\n")
+	gitCLI(t, repo, "add", "cli/source.ts")
+	gitCLI(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "feat: update source")
+	var stderr bytes.Buffer
+
+	err := Runner{
+		Stderr:     &stderr,
+		WorkingDir: repo,
+		Stdin:      bytes.NewBufferString(checkBashContext("git push origin main")),
+	}.Run([]string{"check", "--hook", "validate-push", "--advisory"})
+	if err != nil {
+		t.Fatalf("validate-push direct main advisory error = %v, want exit 0", err)
+	}
+	for _, want := range []string{"advisory findings (not blocking)", "Direct push to main", "cli/source.ts"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+}
+
+func setUpUnbumpedFeatureBranchFixture(t *testing.T) string {
+	t.Helper()
+	repo := initCLIGitRepo(t)
+	writeFile(t, filepath.Join(repo, "package.json"), `{"name":"fixture","version":"1.0.0"}`+"\n")
+	writeFile(t, filepath.Join(repo, "CHANGELOG.md"), workflowChangelog("- Initial package\n"))
+	gitCLI(t, repo, "add", "package.json", "CHANGELOG.md")
+	gitCLI(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "chore: add release files")
+	gitCLI(t, repo, "-c", "tag.gpgsign=false", "tag", "v1.0.0")
+	gitCLI(t, repo, "checkout", "-b", "feat/no-bump")
+	writeFile(t, filepath.Join(repo, "feature.txt"), "feature\n")
+	gitCLI(t, repo, "add", "feature.txt")
+	gitCLI(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "feat: add feature")
+	return repo
+}
+
+func TestRunnerCheckValidatePushSkipsReleaseChecksOnFeatureBranch(t *testing.T) {
+	repo := setUpUnbumpedFeatureBranchFixture(t)
+	var stdout bytes.Buffer
+
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+		Stdin:      bytes.NewBufferString(checkBashContext("git push -u origin feat/no-bump")),
+	}.Run([]string{"check", "--hook", "validate-push"})
+	if err != nil {
+		t.Fatalf("validate-push feature branch error = %v, want release checks skipped", err)
+	}
+	if !strings.Contains(stdout.String(), "passed") {
+		t.Fatalf("stdout = %q, want passed validate-push output", stdout.String())
+	}
+}
+
+func TestRunnerCheckValidatePushBlocksUnbumpedVersionOnTagPush(t *testing.T) {
+	repo := setUpUnbumpedFeatureBranchFixture(t)
+	var stderr bytes.Buffer
+
+	err := Runner{
+		Stderr:     &stderr,
+		WorkingDir: repo,
+		Stdin:      bytes.NewBufferString(checkBashContext("git push origin --tags")),
+	}.Run([]string{"check", "--hook", "validate-push"})
+	assertCheckExitCode(t, err, 2)
+	if !strings.Contains(stderr.String(), "Version not bumped since v1.0.0") {
+		t.Fatalf("stderr = %q, want version bump error on tag push", stderr.String())
+	}
+}
+
+func TestRunnerCheckValidatePushBlocksUnbumpedVersionOnTagRefspecPush(t *testing.T) {
+	repo := setUpUnbumpedFeatureBranchFixture(t)
+	var stderr bytes.Buffer
+
+	for _, command := range []string{
+		"git push origin v1.1.0",
+		"git push origin 2026.07:refs/tags/2026.07",
+		"git push origin +refs/tags/v1.1.0",
+	} {
+		stderr.Reset()
+		err := Runner{
+			Stderr:     &stderr,
+			WorkingDir: repo,
+			Stdin:      bytes.NewBufferString(checkBashContext(command)),
+		}.Run([]string{"check", "--hook", "validate-push"})
+		assertCheckExitCode(t, err, 2)
+		if !strings.Contains(stderr.String(), "Version not bumped since v1.0.0") {
+			t.Fatalf("%s stderr = %q, want version bump error on tag refspec push", command, stderr.String())
+		}
+	}
+}
+
+func TestRunnerCheckValidatePushStillChecksBuildOnFeatureBranch(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeFile(t, filepath.Join(repo, "package.json"), `{"name":"fixture","version":"1.0.0","scripts":{"build":"node -e \"process.exit(1)\""}}`+"\n")
+	gitCLI(t, repo, "add", "package.json")
+	gitCLI(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "chore: add package")
+	gitCLI(t, repo, "checkout", "-b", "feat/broken-build")
+	var stderr bytes.Buffer
+
+	err := Runner{
+		Stderr:     &stderr,
+		WorkingDir: repo,
+		Stdin:      bytes.NewBufferString(checkBashContext("git push -u origin feat/broken-build")),
+	}.Run([]string{"check", "--hook", "validate-push"})
+	assertCheckExitCode(t, err, 2)
+	if !strings.Contains(stderr.String(), "Build failed") {
+		t.Fatalf("stderr = %q, want build failure error on feature branch", stderr.String())
+	}
+}
+
+func TestRunnerCheckAdvisoryReportsFindingsWithoutBlocking(t *testing.T) {
+	repo := setUpUnbumpedFeatureBranchFixture(t)
+	var stderr bytes.Buffer
+
+	err := Runner{
+		Stderr:     &stderr,
+		WorkingDir: repo,
+		Stdin:      bytes.NewBufferString(checkBashContext("git push origin --tags")),
+	}.Run([]string{"check", "--hook", "validate-push", "--advisory"})
+	if err != nil {
+		t.Fatalf("validate-push --advisory error = %v, want exit 0", err)
+	}
+	for _, want := range []string{"advisory findings (not blocking)", "Version not bumped since v1.0.0"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+}
+
+func TestRunnerCheckAdvisoryJSONKeepsExitCodeZero(t *testing.T) {
+	repo := setUpUnbumpedFeatureBranchFixture(t)
+	var stdout bytes.Buffer
+
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+		Stdin:      bytes.NewBufferString(checkBashContext("git push origin --tags")),
+	}.Run([]string{"check", "--hook", "validate-push", "--advisory", "--json"})
+	if err != nil {
+		t.Fatalf("validate-push --advisory --json error = %v, want exit 0", err)
+	}
+	var output checkJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	if !output.Blocked || !output.Advisory || output.ExitCode != 0 || output.Passed {
+		t.Fatalf("output = %+v, want blocked advisory result with exit code 0", output)
+	}
+	if len(output.Errors) == 0 || !strings.Contains(output.Errors[0], "Version not bumped since v1.0.0") {
+		t.Fatalf("output.Errors = %v, want version bump error preserved", output.Errors)
 	}
 }
 
