@@ -164,10 +164,44 @@ func TestPublicBinaryPreA3WorktreeRefusalNudgeNatively(t *testing.T) {
 	repoRoot := repoRoot(t)
 	binary := buildLoafBinary(t, repoRoot)
 
-	main := createMainRepo(t, "nudge-refuse")
-	linked := addLinkedWorktree(t, main, "nudge-refuse")
+	main := createMainRepo(t, "nudge-identical")
+	linked := addLinkedWorktree(t, main, "nudge-identical")
+	seedIdenticalAgentsCheckout(t, main, linked)
+	output, err := runBinary(binary, linked, envWith(), "doctor")
+	if exitCode(err) == 2 {
+		t.Fatalf("loaf doctor in identical worktree hit pre-A3 refusal\n%s", output)
+	}
+	if strings.Contains(output, "SPEC-036 centralizes") {
+		t.Fatalf("identical worktree output = %q, want no pre-A3 refusal", output)
+	}
+	raw, err := os.ReadFile(filepath.Join(linked, ".agents", ".moved-to"))
+	if err != nil {
+		t.Fatalf("ReadFile(.moved-to) error = %v", err)
+	}
+	if string(raw) != main+"\n" {
+		t.Fatalf(".moved-to = %q, want %q", raw, main+"\n")
+	}
+
+	main = createMainRepo(t, "nudge-divergent")
+	linked = addLinkedWorktree(t, main, "nudge-divergent")
+	seedIdenticalAgentsCheckout(t, main, linked)
+	if err := os.WriteFile(filepath.Join(linked, ".agents", "AGENTS.md"), []byte("# Divergent\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(divergent AGENTS.md) error = %v", err)
+	}
+	output, err = runBinary(binary, linked, envWith(), "journal", "recent")
+	if exitCode(err) != 2 {
+		t.Fatalf("loaf journal recent divergent exit = %d, want 2\n%s", exitCode(err), output)
+	}
+	for _, want := range []string{"SPEC-036", "loaf migrate worktree-storage"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("divergent refusal output = %q, want %q", output, want)
+		}
+	}
+
+	main = createMainRepo(t, "nudge-refuse")
+	linked = addLinkedWorktree(t, main, "nudge-refuse")
 	seedPreA3WorktreeLayout(t, linked)
-	output, err := runBinary(binary, linked, envWith(), "journal", "recent")
+	output, err = runBinary(binary, linked, envWith(), "journal", "recent")
 	if exitCode(err) != 2 {
 		t.Fatalf("loaf journal recent exit = %d, want 2\n%s", exitCode(err), output)
 	}
@@ -365,6 +399,26 @@ func seedPreA3WorktreeLayout(t *testing.T, worktreePath string) {
 	} {
 		if err := os.WriteFile(filepath.Join(agents, filepath.FromSlash(rel)), []byte(body), 0o644); err != nil {
 			t.Fatalf("WriteFile(%s) error = %v", rel, err)
+		}
+	}
+}
+
+func seedIdenticalAgentsCheckout(t *testing.T, mainPath string, worktreePath string) {
+	t.Helper()
+	for rel, body := range map[string]string{
+		"AGENTS.md": "# Project Instructions\n",
+		"loaf.json": "{\"project\":\"loaf\"}\n",
+		"specs/SPEC-036-worktree-aware-agents-storage.md":     "# SPEC-036\n",
+		"reports/report-codex-handoff-journal-first-audit.md": "# Report\n",
+	} {
+		for _, root := range []string{mainPath, worktreePath} {
+			target := filepath.Join(root, ".agents", filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(target), err)
+			}
+			if err := os.WriteFile(target, []byte(body), 0o644); err != nil {
+				t.Fatalf("WriteFile(%s) error = %v", target, err)
+			}
 		}
 	}
 }

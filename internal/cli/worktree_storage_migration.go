@@ -34,6 +34,14 @@ const (
 	worktreeConflictWorktree worktreeConflictPolicy = "worktree"
 )
 
+type worktreeAgentsState string
+
+const (
+	worktreeAgentsNone                worktreeAgentsState = "none"
+	worktreeAgentsIdenticalCheckout   worktreeAgentsState = "identical-checkout"
+	worktreeAgentsDivergentLocalState worktreeAgentsState = "divergent-local-state"
+)
+
 type worktreeMigrationOptions struct {
 	apply          bool
 	conflictPolicy worktreeConflictPolicy
@@ -319,17 +327,58 @@ func detectPreA3StateNative(startDir string) bool {
 	if mainRoot == "" {
 		return false
 	}
-	if !worktreeAgentsHasContentNative(localAgents) {
+	mainAgents := filepath.Join(mainRoot, ".agents")
+
+	switch classifyWorktreeAgentsStateNative(localAgents, mainAgents, mainRoot) {
+	case worktreeAgentsNone:
 		return false
+	case worktreeAgentsIdenticalCheckout:
+		_ = writeWorktreeBackPointerNative(localAgents, mainRoot)
+		return false
+	default:
+		return true
 	}
+}
+
+func classifyWorktreeAgentsStateNative(localAgents string, mainAgents string, mainRoot string) worktreeAgentsState {
 	pointer := readBackPointerNative(localAgents)
-	if pointer == "" {
-		return true
+	pointerMatchesMain := false
+	if pointer != "" {
+		if _, err := os.Stat(pointer); err != nil {
+			return worktreeAgentsDivergentLocalState
+		}
+		pointerMatchesMain = normalizePathForComparisonNative(pointer) == normalizePathForComparisonNative(mainRoot)
+		if !pointerMatchesMain {
+			return worktreeAgentsDivergentLocalState
+		}
 	}
-	if _, err := os.Stat(pointer); err != nil {
-		return true
+
+	files := enumerateWorktreeAgentFiles(localAgents)
+	if len(findWorktreeSymlinkPaths(localAgents)) > 0 {
+		return worktreeAgentsDivergentLocalState
 	}
-	return normalizePathForComparisonNative(pointer) != normalizePathForComparisonNative(mainRoot)
+	if len(files) == 0 {
+		return worktreeAgentsNone
+	}
+
+	for _, rel := range files {
+		localFile := filepath.Join(localAgents, filepath.FromSlash(rel))
+		mainFile := filepath.Join(mainAgents, filepath.FromSlash(rel))
+		if _, err := os.Stat(mainFile); err != nil {
+			return worktreeAgentsDivergentLocalState
+		}
+		if !filesHaveSameContent(localFile, mainFile) {
+			return worktreeAgentsDivergentLocalState
+		}
+	}
+	return worktreeAgentsIdenticalCheckout
+}
+
+func writeWorktreeBackPointerNative(localAgents string, mainRoot string) error {
+	if err := os.MkdirAll(localAgents, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(localAgents, worktreeBackPointerFile), []byte(mainRoot+"\n"), 0o644)
 }
 
 func formatWorktreeMigrationResult(result worktreeMigrationResult, apply bool) string {
