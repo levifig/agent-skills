@@ -76,7 +76,7 @@ function testCursor() {
   test("journal-post-commit hook has if condition", () => {
     const postTool = hooks.hooks.postToolUse || [];
     const journalCommit = postTool.find(
-      h => h.command?.includes("session log --from-hook") && h.if?.includes("git commit")
+      h => h.command?.includes("journal log --from-hook") && h.if?.includes("git commit")
     );
     assert(journalCommit, "journal-post-commit not found");
     assert(journalCommit.if === "Bash(git commit:*)", `Expected if: Bash(git commit:*), got: ${journalCommit.if}`);
@@ -85,7 +85,7 @@ function testCursor() {
   test("journal-post-pr hook has if condition", () => {
     const postTool = hooks.hooks.postToolUse || [];
     const journalPr = postTool.find(
-      h => h.command?.includes("session log --from-hook") && h.if === "Bash(gh pr:*)"
+      h => h.command?.includes("journal log --from-hook") && h.if === "Bash(gh pr:*)"
     );
     assert(journalPr, "journal-post-pr not found");
     assert(journalPr.if === "Bash(gh pr:*)", `Expected if: Bash(gh pr:*), got: ${journalPr.if}`);
@@ -136,7 +136,7 @@ function testClaudeCode() {
   test("journal-post-commit hook has if condition", () => {
     const postTool = flattenClaudeHookMatchers(plugin.hooks.PostToolUse);
     const journalCommit = postTool.find(
-      h => h.command?.includes("session log --from-hook") && h.if?.includes("git commit")
+      h => h.command?.includes("journal log --from-hook") && h.if?.includes("git commit")
     );
     assert(journalCommit, "journal-post-commit not found");
     assert(journalCommit.if === "Bash(git commit:*)", `Expected if: Bash(git commit:*), got: ${journalCommit.if}`);
@@ -145,7 +145,7 @@ function testClaudeCode() {
   test("journal-post-pr hook has if condition", () => {
     const postTool = flattenClaudeHookMatchers(plugin.hooks.PostToolUse);
     const journalPr = postTool.find(
-      h => h.command?.includes("session log --from-hook") && h.if === "Bash(gh pr:*)"
+      h => h.command?.includes("journal log --from-hook") && h.if === "Bash(gh pr:*)"
     );
     assert(journalPr, "journal-post-pr not found");
     assert(journalPr.if === "Bash(gh pr:*)", `Expected if: Bash(gh pr:*), got: ${journalPr.if}`);
