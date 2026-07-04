@@ -40,7 +40,7 @@ By April 2026, AGENTS.md reached critical adoption — 23 tools listed at agents
 
 - **Keep per-target files, no consolidation.** Rejected: duplication risk, maintenance overhead, no benefit given AGENTS.md adoption.
 - **Cursor-specific `.mdc` rule.** Rejected: `alwaysApply: true` fence in a dedicated rules file gives no feature beyond AGENTS.md for Loaf's current content.
-- **Drop fenced section for Gemini entirely.** Rejected: Gemini CLI now supports AGENTS.md; excluding it leaves users without the session-journal discipline block.
+- **Drop fenced section for Gemini entirely.** Rejected: Gemini CLI now supports AGENTS.md; excluding it leaves users without the project-journal discipline block.
 
 ## Consequences
 

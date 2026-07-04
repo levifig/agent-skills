@@ -5,6 +5,7 @@ status: Accepted
 date: 2026-06-25
 supersedes: null
 superseded_by: null
+amended_by: ADR-019
 ---
 
 # ADR-017: Ephemeral Agent Markdown Cutover
@@ -21,7 +22,8 @@ The remaining tracked Markdown under `.agents/tasks/`, `.agents/sessions/`,
 `.agents/brainstorms/` predates that model. Those files are no longer the right
 operational source of truth: they duplicate SQLite rows, create stale
 cross-branch provenance, and leave agents unsure whether to mutate Markdown or
-the database.
+the database. (`.agents/sessions/` is a historical migration source; the
+session entity itself was later removed by SPEC-056 / ADR-019.)
 
 ## Decision
 
@@ -58,7 +60,8 @@ git-native and outside that resolver.
 - Agents have one mutation surface for operational artifacts: Loaf SQLite
   commands.
 - Branches stop carrying divergent copies of task, session, idea, spark, and
-  brainstorm state.
+  brainstorm state (the session entity was later removed outright by
+  SPEC-056 / ADR-019).
 - Rollback remains byte-exact because restore uses stored backup bytes, not a
   renderer.
 - ADR-016 has a concrete enforcement point for legacy agent Markdown.

@@ -16,9 +16,9 @@ Every change flows through a deliberate pipeline: Idea, Spec, Tasks, Code, Learn
 
 Functional profiles define what agents can mechanically touch (tool access). Skills define what they know (domain knowledge). The Warden coordinates but never implements. This separation makes agent behavior predictable and auditable.
 
-### Session Continuity
+### Continuity
 
-Work survives context loss, compaction, tool restarts, and cross-conversation handoffs. Session journals are external memory. The pipeline's three-artifact model (spec, tasks, journal) means no single failure point can lose the thread.
+Work survives context loss, compaction, tool restarts, and cross-conversation handoffs. The project journal is external memory. The pipeline's three-artifact model (spec, tasks, journal) means no single failure point can lose the thread.
 
 ## What Success Looks Like
 
@@ -26,7 +26,7 @@ A developer installs Loaf and immediately gets:
 
 - **Consistent agent behavior across tools** -- same skills, same conventions, different runtimes
 - **A pipeline that prevents scope creep** -- specs bound the work before code is written
-- **Session history that enables handoff** -- pick up where you left off, or hand off to a colleague
+- **Project journal history that enables handoff** -- pick up where you left off, or hand off to a colleague
 - **Hooks that enforce quality without friction** -- secrets scanning, commit conventions, push guards
 - **Domain expertise that loads automatically** -- the right engineering standards for the current task
 

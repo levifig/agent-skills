@@ -9,7 +9,7 @@ date: 2026-05-19
 
 ## Decision
 
-`.agents/` is project-scoped state. It always resolves to the **main worktree's** `.agents/` directory, regardless of which linked worktree a `loaf` command is invoked from. No artifact kind is exempt — sessions, specs, tasks, plans, councils, ADRs, knowledge, and ideas all live in one place.
+`.agents/` is project-scoped state. It always resolves to the **main worktree's** `.agents/` directory, regardless of which linked worktree a `loaf` command is invoked from. No artifact kind is exempt — sessions (an entity later removed by SPEC-056 / ADR-019), specs, tasks, plans, councils, ADRs, knowledge, and ideas all live in one place.
 
 The native project resolver (`internal/project/project.go`) probes via `git rev-parse --git-dir` vs `--git-common-dir`. When they differ, the caller is in a linked worktree, and Loaf resolves `.agents/` through the main worktree. In the main checkout, in submodules, and outside any git context, the original parent-walk behavior is preserved.
 
@@ -21,7 +21,7 @@ Migration is a hard cut. `loaf migrate worktree-storage` moves a linked worktree
 
 Three concrete fallouts, all observed in real use on the `feat/worktree-storage` branch itself:
 
-1. **Session misrouting.** A session created in worktree A was invisible to worktree B. `claude_session_id` Tier 1/2 routing fell through to branch-based routing or spawned a duplicate session.
+1. **Session misrouting.** A session created in worktree A was invisible to worktree B. `claude_session_id` Tier 1/2 routing fell through to branch-based routing or spawned a duplicate session. (The session entity and its tier routing were later removed by SPEC-056 / ADR-019.)
 2. **ID allocation clashes.** Two worktrees could each mint `TASK-166` in parallel, producing collisions at merge.
 3. **Knowledge fragmentation.** KB, ideas, drafts, councils, reports — branch-scoped by accident, project-scoped by intent.
 
@@ -29,7 +29,7 @@ The underlying error was categorical. `.agents/` is not branch content; it's pro
 
 ## Alternatives Considered
 
-- **A1: sessions-only routing.** Make only `.agents/sessions/` resolve to the main worktree; leave specs/tasks/plans/KB branch-local. Rejected: addresses misrouting but leaves the ID-clash and knowledge-fragmentation fallouts. Partial fix to a categorical bug.
+- **A1: sessions-only routing.** Make only `.agents/sessions/` resolve to the main worktree; leave specs/tasks/plans/KB branch-local. Rejected: addresses misrouting but leaves the ID-clash and knowledge-fragmentation fallouts. Partial fix to a categorical bug. (Moot since SPEC-056 / ADR-019 removed the session entity.)
 
 - **A2: per-artifact-kind split.** Sessions, KB, and ID allocators centralized; specs, tasks, and plans branch-local. Rejected: requires per-call-site refactor and dual-view scanning. The deeper property A2 would buy is that mutations to specs, tasks, and plans would flow through the same git-native gates as code — PR review, conflict resolution via three-way merge, and atomic landing on main. Under A3, those mutations happen out-of-band: they land directly in the main worktree's `.agents/` without traversing a PR, and reviewers won't see them as diff entries. The tradeoff is acknowledged and accepted (see *Consequences → Negative*); under the squash-merge workflow, reviewers reach spec/task context via the PR description and canonical archive paths rather than the diff, and the complexity cost of A2 wasn't being repaid by review value that was actually getting collected.
 
@@ -41,7 +41,7 @@ The underlying error was categorical. `.agents/` is not branch content; it's pro
 
 ### Positive
 
-- **Cross-worktree session continuity.** Sessions, journal entries, and `claude_session_id` routing all converge on one store regardless of which worktree is active.
+- **Cross-worktree session continuity.** Sessions, journal entries, and `claude_session_id` routing all converge on one store regardless of which worktree is active. (Journal entries still do; the session entity and `claude_session_id` routing were later removed by SPEC-056 / ADR-019.)
 - **Collision-free IDs.** Parallel `loaf task new` calls from different worktrees against one shared `TASKS.json` allocate distinct IDs.
 - **Single shared knowledge view.** KB, ideas, councils, drafts, and reports are reachable from any worktree without sync.
 - **No per-call-site refactor.** Every existing caller of `findAgentsDir()` picks up the new behavior transparently.

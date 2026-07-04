@@ -22,5 +22,6 @@ Immutable records of significant architectural decisions.
 | [ADR-016](ADR-016-artifact-storage-trichotomy.md) | Artifact Storage Trichotomy — Nouns in SQLite, Verbs in Git, Markdown is a Render | Accepted | 2026-06-24 |
 | [ADR-017](ADR-017-ephemeral-agent-markdown-cutover.md) | Ephemeral Agent Markdown Cutover | Accepted | 2026-06-25 |
 | [ADR-018](ADR-018-global-agents-install-convention.md) | Global Agents Install Convention | Accepted | 2026-06-25 |
+| [ADR-019](ADR-019-journal-first-session-model.md) | Journal-first: the project journal replaces the session entity | Accepted | 2026-07-04 |
 
 See [../knowledge/](../knowledge/) for domain knowledge files.

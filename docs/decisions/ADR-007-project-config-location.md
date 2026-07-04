@@ -17,7 +17,7 @@ Loaf needs a project-level config for knowledge imports, staleness thresholds, a
 
 ## Rationale
 
-- `.agents/` is Loaf's established project directory (already has specs, tasks, sessions)
+- `.agents/` is Loaf's established project directory (already had specs, tasks, and sessions at the time; the session entity was later removed by SPEC-056 / ADR-019)
 - `loaf.json` is namespaced — no conflicts with `.eslintrc`, `tsconfig.json`, etc.
 - JSON: machine-readable, parseable by agents and CLI, no YAML ambiguity
 - Designed to grow: v1 uses `knowledge` section, future adds `implementation`, `defaults`

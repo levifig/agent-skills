@@ -5,6 +5,7 @@ status: Accepted
 date: 2026-06-24
 supersedes: null
 superseded_by: null
+amended_by: ADR-019
 ---
 
 # ADR-016: Artifact Storage Trichotomy — Nouns in SQLite, Verbs in Git, Markdown is a Render
@@ -37,8 +38,10 @@ Every Loaf-managed artifact resolves into exactly one of three categories, each 
 
 1. **Nouns → SQLite rows (the things you query).**
    Entities you `list / filter / show / link / export`: reports, **findings**, **verdicts**,
-   sessions, specs, tasks, ideas, sparks, relationships, **runs**. These are the source of truth
-   and live as structured rows in the global SQLite database.
+   journal entries, specs, tasks, ideas, sparks, relationships, **runs**. These are the source of
+   truth and live as structured rows in the global SQLite database. (The enumeration originally
+   included sessions; the session entity was later removed by SPEC-056 / ADR-019 — journal entries
+   remain the queryable record.)
 
 2. **Verbs → git, never SQLite (the code you run).**
    Generator scripts, orchestration/stint runners, build tooling. Code lives in git — either as
