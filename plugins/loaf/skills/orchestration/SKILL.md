@@ -7,7 +7,7 @@ description: >-
   implementation (use direct ...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep, TodoWrite, TodoRead'
-version: 2.0.0-alpha.1
+version: 2.0.0-alpha.2
 ---
 
 # Orchestration

@@ -6,9 +6,14 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-alpha.2] - 2026-07-04
+
 ### Changed
 
 - **Breaking: the session entity is gone; the project journal is now the only session-related structure (SPEC-056).** Journal entries are project-scoped events tagged with an opaque `harness_session_id`, with no session lifecycle, statuses, or rotation — so concurrent conversations across branches, worktrees, and harnesses are conflict-free by construction. `wrap` becomes an optional checkpoint entry written only when a conversation holds synthesis worth saving; nothing is ever "unwrapped." Continuity is a derived, ephemeral digest (latest wrap + recent branch entries + open tasks) emitted at conversation start and never persisted.
+- Converged the strategic docs with the journal-first model and recorded the decision as ADR-019; ADR-007/010/013/016/017 carry amendment clarifiers, and the superseded SPEC-048/SPEC-049 are archived.
 
 ### Added
 

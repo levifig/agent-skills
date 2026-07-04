@@ -7,7 +7,7 @@ description: >-
   processing the intake qu...
 user-invocable: true
 argument-hint: '[idea description]'
-version: 2.0.0-alpha.1
+version: 2.0.0-alpha.2
 ---
 
 # Idea
