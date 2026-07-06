@@ -494,6 +494,7 @@ var nativeBuildCursorBinaryPathHooks = map[string]bool{
 	"artifact-body-write":     true,
 	"check-" + "sec" + "rets": true,
 	"ephemeral-provenance":    true,
+	"github-account":          true,
 	"render-drift":            true,
 	"validate-push":           true,
 	"validate-commit":         true,

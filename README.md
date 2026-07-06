@@ -86,6 +86,7 @@ CLI commands that support the workflow pipeline:
 |---------|--------------|
 | `loaf build` | Build all targets after modifying skills/agents |
 | `loaf install` | Install to detected AI tools |
+| `loaf config check` | Validate project config and installed Loaf-managed hooks |
 | `loaf check` | Run enforcement hooks manually |
 | `loaf project` | Manage durable project identity (show, rename, move) |
 | `loaf task` | Manage project tasks (list, show, update, archive) |

@@ -77,17 +77,18 @@ Hooks are defined in `config/hooks.yaml` grouped under `pre-tool`, `post-tool`, 
 
 ## Enforcement Hooks
 
-Five hooks run natively via `loaf check --hook <id>` in `internal/cli/check.go`:
+Native enforcement and workflow checks run via `loaf check --hook <id>` in `internal/cli/check.go`:
 
 | Hook | Skill | Matcher | Blocking | What It Does |
 |------|-------|---------|:--------:|-------------|
 | `check-secrets` | security-compliance | Edit\|Write\|Bash | Yes (failClosed) | Scans file content and Bash commands for hardcoded secrets |
 | `security-audit` | security-compliance | Bash | Yes (failClosed) | Blocks dangerous shell patterns; runs Trivy/Semgrep/npm-audit when available |
+| `github-account` | git-workflow | Bash | Yes (failClosed) | Blocks `gh` commands when the active GitHub CLI account differs from `.agents/loaf.json` |
 | `validate-push` | git-workflow | Bash | Advisory | Verifies version bump, CHANGELOG, build before push |
 | `workflow-pre-pr` | git-workflow | Bash | Advisory | Checks PR format, CHANGELOG entry, unpushed base-branch commits |
 | `validate-commit` | orchestration | Bash | Yes (failClosed) | Validates Conventional Commits format, blocks AI attribution |
 
-Security hooks (`check-secrets`, `security-audit`) and `validate-commit` use `failClosed: true`. Workflow hooks (`validate-push`, `workflow-pre-pr`) are advisory (`blocking: false`) -- they warn but do not block, since `/ship` and `/release` orchestrate the same checks at their respective PR-landing and publication gates.
+Security hooks (`check-secrets`, `security-audit`), `github-account`, and `validate-commit` use `failClosed: true`. Workflow hooks (`validate-push`, `workflow-pre-pr`) are advisory (`blocking: false`) -- they warn but do not block, since `/ship` and `/release` orchestrate the same checks at their respective PR-landing and publication gates.
 
 ## Instruction Hooks
 

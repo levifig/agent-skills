@@ -79,6 +79,28 @@ func TestReleasePostMergeGuardrailsAbortOnLocalTagCollision(t *testing.T) {
 	}
 }
 
+func TestReleasePostMergeGuardrailsAbortOnGitHubAccountMismatch(t *testing.T) {
+	repo := seedReleasePostMergeFiles(t, "1.2.3")
+	mkdirAll(t, filepath.Join(repo, ".agents"))
+	writeFile(t, filepath.Join(repo, ".agents", "loaf.json"), `{"integrations":{"github":{"account":"levifig"}}}`+"\n")
+	responses := releasePostMergeHappyResponses("1.2.3")
+	responses["gh auth status --active --hostname github.com --json hosts"] = releasePostMergeOK(githubAuthStatusJSON("work-account"))
+	runner, calls := scriptedReleasePostMergeRunner(responses)
+
+	result := checkReleasePostMergeGuardrails(repo, runner)
+	if result.ok {
+		t.Fatalf("result ok = true, want GitHub account guardrail failure")
+	}
+	if result.guardrail != 2 || !strings.Contains(result.message, `project requires GitHub account "levifig"`) || !strings.Contains(result.message, `active gh account is "work-account"`) {
+		t.Fatalf("result = %#v, want guardrail 2 account diagnostic", result)
+	}
+	for _, call := range releasePostMergeCallKeys(calls()) {
+		if strings.HasPrefix(call, "gh repo view") || strings.HasPrefix(call, "gh release view") {
+			t.Fatalf("calls = %#v, want account check to abort before GitHub repo/release lookup", releasePostMergeCallKeys(calls()))
+		}
+	}
+}
+
 func TestReleasePostMergeActionsHappyPath(t *testing.T) {
 	repo := seedReleasePostMergeFiles(t, "1.2.3")
 	runner, calls := scriptedReleasePostMergeRunner(releasePostMergeHappyResponses("1.2.3"))

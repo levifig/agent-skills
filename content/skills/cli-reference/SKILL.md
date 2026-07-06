@@ -81,6 +81,30 @@ loaf install
 
 ---
 
+## Config Management
+
+### `loaf config`
+Validate and refresh project Loaf config
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf config check` | Validate .agents/loaf.json and installed Loaf-managed hook config |
+
+**Options:**
+
+- `loaf config check`:
+  - `--fix` - Create missing safe defaults and refresh stale installed target config
+  - `--json` - Output config status, target hook status, warnings, and errors as JSON
+
+**Usage:**
+```bash
+loaf config check
+```
+
+---
+
 ## Init Management
 
 ### `loaf init`

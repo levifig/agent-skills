@@ -84,6 +84,7 @@ var validCheckHooks = map[string]bool{
 	"artifact-body-write":  true,
 	"check-secrets":        true,
 	"ephemeral-provenance": true,
+	"github-account":       true,
 	"render-drift":         true,
 	"validate-push":        true,
 	"workflow-pre-pr":      true,
@@ -115,6 +116,8 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 		result = runNativeCheckSecrets(context)
 	case "ephemeral-provenance":
 		result = runNativeEphemeralProvenance(context, runtimeRoot)
+	case "github-account":
+		result = runNativeGitHubAccount(context, runtimeRoot)
 	case "render-drift":
 		result = runNativeRenderDrift(context, runtimeRoot)
 	case "validate-commit":
@@ -142,7 +145,7 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 }
 
 func writeCheckHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf check --hook <id> [--advisory] [--json]", "Run one registered hook check.", "--hook      Hook id: artifact-body-write, check-secrets, ephemeral-provenance, render-drift, validate-commit, security-audit, workflow-pre-pr, validate-push", "--advisory  Surface findings without blocking: always exit 0, even when the check fails", "--json      Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON")
+	writeUsageHelp(out, "loaf check --hook <id> [--advisory] [--json]", "Run one registered hook check.", "--hook      Hook id: artifact-body-write, check-secrets, ephemeral-provenance, github-account, render-drift, validate-commit, security-audit, workflow-pre-pr, validate-push", "--advisory  Surface findings without blocking: always exit 0, even when the check fails", "--json      Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON")
 }
 
 func parseCheckArgs(args []string) (checkOptions, error) {
@@ -786,6 +789,35 @@ func runNativeWorkflowPrePR(hookContext checkHookContext, cwd string) checkResul
 
 	result.Warnings = append(result.Warnings, baseBranchAbsorptionWarnings(cwd)...)
 	validatePRCreateCommand(command, &result)
+	return result
+}
+
+func runNativeGitHubAccount(hookContext checkHookContext, cwd string) checkResult {
+	return runNativeGitHubAccountWithRunner(hookContext, cwd, activeGitHubAccount)
+}
+
+func runNativeGitHubAccountWithRunner(hookContext checkHookContext, cwd string, runner func(string) githubAccountCommandResult) checkResult {
+	result := checkResult{Passed: true, Warnings: []string{}, Errors: []string{}, Findings: []string{}}
+	command := checkContextCommand(hookContext)
+	if checkContextToolName(hookContext) != "Bash" || !shellCommandUsesGitHubCLI(command) {
+		return result
+	}
+	expected, err := configuredGitHubAccount(cwd)
+	if err != nil {
+		result.Passed = false
+		result.Blocked = true
+		result.Errors = append(result.Errors, err.Error())
+		return result
+	}
+	if expected == "" {
+		return result
+	}
+	if diagnostic := githubAccountDiagnostic(expected, runner(cwd)); diagnostic != "" {
+		result.Passed = false
+		result.Blocked = true
+		result.Errors = append(result.Errors, diagnostic)
+		result.Findings = append(result.Findings, "GitHub account mismatch would run gh with the wrong project identity")
+	}
 	return result
 }
 

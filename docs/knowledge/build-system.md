@@ -55,6 +55,8 @@ Claude Code has a split registration model: `plugin.json` handles the plugin man
 
 `loaf install` writes fenced Loaf sections into project instruction files (CLAUDE.md, .cursorrules, AGENTS.md, etc.) using markers to identify managed content. This is separate from the build — it runs during installation to inject project-level configuration.
 
+`loaf config check` is the focused health gate for project Loaf configuration. It validates `.agents/loaf.json` and compares installed Loaf-managed target hook registrations against the current distribution. Use `loaf config check --fix` to add missing safe project-config defaults and refresh stale installed target artifacts when a release adds hooks such as `github-account`.
+
 ## Dev Tooling
 
 | Script | Command | Purpose |

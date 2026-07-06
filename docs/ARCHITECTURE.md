@@ -100,6 +100,8 @@ The managed fenced section is written once to a canonical file (`.agents/AGENTS.
 
 Fresh installs pre-create an empty canonical shell so symlinks are never dangling. `--yes` flag and non-TTY auto-detection allow the flow to run under CI/skills without interactive prompts.
 
+**Config health (`loaf config check`):** the native CLI validates `.agents/loaf.json` and installed Loaf-managed hook config separately. `--fix` creates missing safe project-config defaults and refreshes stale installed target artifacts through the same target installers as `loaf install`, so new hooks such as `github-account` can be propagated without hand-editing target config files.
+
 **Drift detection (`loaf doctor`):** Six checks — canonical presence, per-harness symlink target, stale `.cursor/rules/loaf.mdc`, fenced-section version match, duplicate-resolved writes, and target coverage. `loaf doctor --fix` applies safe repairs non-interactively.
 
 This extends the "CLI is the correct protocol layer" principle to filesystem convention enforcement: the CLI owns the on-disk overlay state, not the skills or the user. When ADR-010 shipped, five harnesses went from "each writes its own file" to "each resolves to the same file" without any skill edits.
@@ -313,7 +315,7 @@ Hard-won constraints validated during SPEC-030 implementation:
 
 ### Hook Categories
 
-**Enforcement hooks** — quality gates that block bad actions. Run by `loaf check` through the native Go backend. Exit non-zero to block. `failClosed: true` means failures block the action. `validate-push` (pre-push) restricts direct pushes to the default branch to `.agents/` and `docs/` files only. Code changes require a feature branch and pull request.
+**Enforcement hooks** — quality gates that block bad actions. Run by `loaf check` through the native Go backend. Exit non-zero to block. `failClosed: true` means failures block the action. `github-account` blocks `gh` commands when the active GitHub CLI account differs from `.agents/loaf.json`; `validate-push` restricts direct pushes to the default branch to `.agents/` and `docs/` files only. Code changes require a feature branch and pull request.
 
 **Instruction hooks** — context injection at tool invocation. Triggered by `matcher` patterns (tool name) and optionally filtered by `if` conditions (tool input). Inject relevant skill instructions or nudges.
 

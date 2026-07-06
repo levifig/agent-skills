@@ -11,8 +11,8 @@
 # to the project journal. All journal hooks read the harness payload on stdin
 # and exit silently for subagent invocations (agent_id present).
 #
-# Enforcement hooks (8) are implemented via `loaf check --hook <id>`:
-#   - artifact-body-write, check-secrets, ephemeral-provenance, render-drift, validate-push, validate-commit, workflow-pre-pr, security-audit
+# Enforcement hooks (9) are implemented via `loaf check --hook <id>`:
+#   - artifact-body-write, check-secrets, ephemeral-provenance, github-account, render-drift, validate-push, validate-commit, workflow-pre-pr, security-audit
 #
 # Migrated to skill instructions (removed from hooks.yaml):
 #   - Language hooks: python-*, typescript-*, rails-*
@@ -64,6 +64,14 @@ hooks:
       timeout: 30000
       failClosed: true
       description: Block active specs from pointing at deleted ephemeral Markdown after cutover
+
+    - id: github-account
+      skill: git-workflow
+      matcher: "Bash"
+      blocking: true
+      timeout: 5000
+      failClosed: true
+      description: Block gh commands when the active GitHub account differs from project config
 
     # Git Workflow - Push and PR guards (ADVISORY)
     # These are safety nets, not gates — ship/release skills orchestrate the same checks.

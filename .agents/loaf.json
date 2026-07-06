@@ -1,4 +1,6 @@
 {
+  "version": "1.0.0",
+  "initialized": "2026-07-06T22:22:46Z",
   "knowledge": {
     "local": [
       "docs/knowledge",
@@ -8,6 +10,9 @@
     "imports": []
   },
   "integrations": {
+    "github": {
+      "account": "levifig"
+    },
     "linear": {
       "enabled": false
     },

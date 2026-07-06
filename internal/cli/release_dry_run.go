@@ -526,6 +526,9 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	if skipGh {
 		fmt.Fprintf(out, "    %s GitHub release skipped (--no-gh)\n", ansiGray("-"))
 	} else if releaseGhAvailable() {
+		if err := verifyConfiguredGitHubAccount(root); err != nil {
+			return fmt.Errorf("Refusing to create GitHub release with the wrong account: %w", err)
+		}
 		if err := releaseCommandRun(root, "gh", "release", "create", tagName, "--draft", "--title", "v"+newVersion, "--notes", changelog); err != nil {
 			return fmt.Errorf("Failed to create GitHub release: %w", err)
 		}

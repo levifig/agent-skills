@@ -202,6 +202,90 @@ func TestRunnerCheckValidHooksAreHandledNatively(t *testing.T) {
 	}
 }
 
+func TestGitHubAccountHookBlocksMismatchedConfiguredAccount(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeCheckFile(t, repo, ".agents/loaf.json", `{"integrations":{"github":{"account":"levifig"}}}`+"\n")
+	hookContext := checkHookContext{
+		ToolName: "Bash",
+		ToolInput: checkHookInput{
+			Command: "cd /tmp && gh pr comment 91 --body-file review.md",
+		},
+	}
+
+	result := runNativeGitHubAccountWithRunner(hookContext, repo, func(root string) githubAccountCommandResult {
+		return githubAccountCommandResult{stdout: githubAuthStatusJSON("work-account"), exitCode: 0}
+	})
+	if result.Passed || !result.Blocked {
+		t.Fatalf("result = %#v, want blocked account mismatch", result)
+	}
+	joined := strings.Join(append(result.Errors, result.Findings...), "\n")
+	for _, want := range []string{`project requires GitHub account "levifig"`, `active gh account is "work-account"`, "gh auth switch --hostname github.com --user levifig"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("result = %#v, want %q", result, want)
+		}
+	}
+}
+
+func TestGitHubAccountHookSkipsWhenUnconfigured(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	hookContext := checkHookContext{
+		ToolName: "Bash",
+		ToolInput: checkHookInput{
+			Command: "gh pr view 91",
+		},
+	}
+	called := false
+
+	result := runNativeGitHubAccountWithRunner(hookContext, repo, func(root string) githubAccountCommandResult {
+		called = true
+		return githubAccountCommandResult{stdout: githubAuthStatusJSON("work-account"), exitCode: 0}
+	})
+	if called {
+		t.Fatalf("runner called for unconfigured repo, want no account probe")
+	}
+	if !result.Passed || result.Blocked || len(result.Errors) != 0 {
+		t.Fatalf("result = %#v, want unconfigured pass-through", result)
+	}
+}
+
+func TestGitHubAccountHookPassesMatchingConfiguredAccount(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeCheckFile(t, repo, ".agents/loaf.json", `{"integrations":{"github":{"account":"levifig"}}}`+"\n")
+	hookContext := checkHookContext{
+		ToolName: "Bash",
+		ToolInput: checkHookInput{
+			Command: "env GH_HOST=github.com gh pr view 91",
+		},
+	}
+
+	result := runNativeGitHubAccountWithRunner(hookContext, repo, func(root string) githubAccountCommandResult {
+		return githubAccountCommandResult{stdout: githubAuthStatusJSON("levifig"), exitCode: 0}
+	})
+	if !result.Passed || result.Blocked || len(result.Errors) != 0 {
+		t.Fatalf("result = %#v, want matching account pass", result)
+	}
+}
+
+func TestShellCommandUsesGitHubCLI(t *testing.T) {
+	cases := []struct {
+		command string
+		want    bool
+	}{
+		{command: "gh pr view 91", want: true},
+		{command: "cd repo && gh pr comment 91 --body ok", want: true},
+		{command: "env GH_HOST=github.com gh release view v1.2.3", want: true},
+		{command: "GH_HOST=github.com gh release view v1.2.3", want: true},
+		{command: "command gh api user", want: true},
+		{command: "echo gh pr view 91", want: false},
+		{command: "grep ghp_ fixture.txt", want: false},
+	}
+	for _, tc := range cases {
+		if got := shellCommandUsesGitHubCLI(tc.command); got != tc.want {
+			t.Fatalf("shellCommandUsesGitHubCLI(%q) = %v, want %v", tc.command, got, tc.want)
+		}
+	}
+}
+
 func TestRunnerCheckEphemeralProvenanceBlocksTrackedEphemeralMarkdown(t *testing.T) {
 	repo := initCLIGitRepo(t)
 	writeCheckFile(t, repo, ".agents/tasks/TASK-001-example.md", "# Task\n")
@@ -1564,6 +1648,10 @@ func checkBashContext(command string) string {
 		panic(err)
 	}
 	return string(body)
+}
+
+func githubAuthStatusJSON(login string) string {
+	return fmt.Sprintf(`{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":%q,"tokenSource":"keyring","scopes":"repo","gitProtocol":"ssh"}]}}`, login)
 }
 
 func stageCheckFiles(t *testing.T, repo string, paths ...string) {

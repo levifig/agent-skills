@@ -41,6 +41,13 @@
       },
       {
         "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook github-account"
+      },
+      {
+        "loaf-managed": true,
         "timeout": 60,
         "matcher": "Bash",
         "command": "loaf check --hook validate-push --advisory",

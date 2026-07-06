@@ -484,6 +484,7 @@ func nativeAmpHookEntryFor(hook nativeBuildHook) nativeAmpHookEntry {
 var nativeBuildRuntimePluginCheckHooks = map[string]bool{
 	"artifact-body-write":     true,
 	"check-" + "sec" + "rets": true,
+	"github-account":          true,
 	"render-drift":            true,
 	"validate-push":           true,
 	"validate-commit":         true,

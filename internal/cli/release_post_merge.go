@@ -81,6 +81,10 @@ func checkReleasePostMergeGuardrails(root string, runner releasePostMergeCommand
 	}
 	current := strings.TrimSpace(currentResult.stdout)
 
+	if accountAbort := checkReleasePostMergeGitHubAccount(root, runner); accountAbort != "" {
+		return releasePostMergeAbort(2, accountAbort)
+	}
+
 	base, err := detectReleasePostMergeBase(root, runner)
 	if err != nil {
 		return releasePostMergeAbort(2, err.Error())
@@ -322,6 +326,22 @@ func checkReleasePostMergeHeadNotTagged(root string, runner releasePostMergeComm
 		}
 	}
 	return ""
+}
+
+func checkReleasePostMergeGitHubAccount(root string, runner releasePostMergeCommandRunner) string {
+	expected, err := configuredGitHubAccount(root)
+	if err != nil {
+		return err.Error()
+	}
+	if expected == "" {
+		return ""
+	}
+	result := runner(root, "gh", "auth", "status", "--active", "--hostname", githubAccountHostname, "--json", "hosts")
+	return githubAccountDiagnostic(expected, githubAccountCommandResult{
+		stdout:   result.stdout,
+		exitCode: result.exitCode,
+		notFound: result.notFound,
+	})
 }
 
 func lookupReleasePostMergeFeatureBranch(root string, runner releasePostMergeCommandRunner, prNumber string) string {

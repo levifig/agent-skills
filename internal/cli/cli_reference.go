@@ -63,6 +63,16 @@ func cliReferenceCommands() []cliReferenceCommand {
 			},
 		},
 		{
+			Name:        "config",
+			Description: "Validate and refresh project Loaf config",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "check", Description: "Validate .agents/loaf.json and installed Loaf-managed hook config", Options: []cliReferenceOption{
+					{Flags: "--fix", Description: "Create missing safe defaults and refresh stale installed target config"},
+					{Flags: "--json", Description: "Output config status, target hook status, warnings, and errors as JSON"},
+				}},
+			},
+		},
+		{
 			Name:        "init",
 			Description: "Initialize a project with Loaf structure",
 			Options: []cliReferenceOption{

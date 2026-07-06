@@ -250,10 +250,11 @@ MAJOR.MINOR.PATCH[-PRERELEASE]
 
 ## Workflow Enforcement Hooks
 
-Three hooks automatically enforce the conventions documented in this file:
+Four hooks automatically enforce the conventions documented in this file:
 
 | Hook | Phase | Behavior |
 |------|-------|----------|
+| `github-account` | Pre-tool (Bash) | Blocking: prevents `gh` commands from using the wrong configured GitHub account. |
 | `workflow-pre-pr` | Pre-tool (Bash) | Advisory: reminds about CHANGELOG [Unreleased] entries and PR format. Non-blocking. |
 | `workflow-pre-push` | Pre-tool (Bash) | Advisory: reminders on `git push` — branch naming, uncommitted files, force-push safety. Non-blocking. |
 | `workflow-post-merge` | Post-tool (Bash) | Advisory: injects housekeeping checklist after successful `gh pr merge`. Non-blocking. |

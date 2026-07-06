@@ -48,6 +48,13 @@
           },
           {
             "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook github-account",
+            "timeout": 5,
+            "description": "Block gh commands when the active GitHub account differs from project config",
+            "failClosed": true
+          },
+          {
+            "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook validate-push --advisory",
             "if": "Bash(git push:*)",
             "timeout": 60,
