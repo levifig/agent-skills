@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-alpha.5",
   "description": "Loaf - An Opinionated Agentic Framework for Claude Code, OpenCode, Cursor, Codex, and Amp",
   "type": "module",
   "bin": {

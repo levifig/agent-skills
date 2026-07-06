@@ -7,7 +7,7 @@ description: >-
   workflows. Not for code...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 2.0.0-alpha.4
+version: 2.0.0-alpha.5
 ---
 
 # Git Workflow

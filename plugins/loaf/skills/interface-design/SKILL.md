@@ -7,7 +7,7 @@ description: >-
   typescript-development) or AP...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep'
-version: 2.0.0-alpha.4
+version: 2.0.0-alpha.5
 ---
 
 # Design Principles

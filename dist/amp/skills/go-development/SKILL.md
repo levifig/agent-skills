@@ -6,7 +6,7 @@ description: >-
   Follows Effective Go principles and community conventions. Not for database
   schema design (use database-design) or infrastructure orchestration (use
   infrastructure-management).
-version: 2.0.0-alpha.4
+version: 2.0.0-alpha.5
 ---
 
 # Go Skill

@@ -6,7 +6,7 @@ description: >-
   improvements, or when the user asks "is this module too shallow?" or "where
   should we deepen this code?" Produces either a read-only report or a PLAN file
   with candidates, dependency categories, and proposed deepened modules.
-version: 2.0.0-alpha.4
+version: 2.0.0-alpha.5
 ---
 
 # Refactor-Deepen

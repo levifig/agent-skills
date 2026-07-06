@@ -6,7 +6,7 @@ description: >-
   change proposals. Not for multi-agent coordination (use orchestration) or
   implementation.
 subtask: false
-version: 2.0.0-alpha.4
+version: 2.0.0-alpha.5
 ---
 
 # Research

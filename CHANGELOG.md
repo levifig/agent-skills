@@ -8,6 +8,14 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
+## [2.0.0-alpha.5] - 2026-07-06
+
+### Added
+- Enforce configured GitHub account (357ebcbc)
+
+### Fixed
+- Generate audit-safe Homebrew formula (b1392bca)
+
 ## [2.0.0-alpha.4] - 2026-07-06
 
 ### Added

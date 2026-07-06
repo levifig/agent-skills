@@ -6,7 +6,7 @@ description: >-
   Produces state assessments, research findings with ranked options, or vision
   change proposals. Not for multi-agent coordination (use orchestration) or
   implementation.
-version: 2.0.0-alpha.4
+version: 2.0.0-alpha.5
 ---
 
 # Research
