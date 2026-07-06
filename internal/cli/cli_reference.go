@@ -107,6 +107,20 @@ func cliReferenceCommands() []cliReferenceCommand {
 			},
 		},
 		{
+			Name:        "change",
+			Description: "Shape-first Change artifacts: git-canonical work context under docs/changes/",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "init", Description: "Scaffold a new Change folder from the template", Options: []cliReferenceOption{
+					{Flags: "<slug>", Description: "Change slug: lowercase letters, digits, and single hyphens"},
+				}},
+				{Name: "check", Description: "Validate a Change and report derived executability", Options: []cliReferenceOption{
+					{Flags: "[folder]", Description: "Change folder path; an explicit path wins, otherwise resolves from the current branch"},
+					{Flags: "--require-executable", Description: "Exit non-zero unless the Change is implementation-ready (CI gate for non-draft PRs)"},
+					{Flags: "--json", Description: "Output folder, passed, executable, findings, warnings, and gaps as JSON"},
+				}},
+			},
+		},
+		{
 			Name:        "render",
 			Description: "Maintain committed durable Markdown renders",
 			Subcommands: []cliReferenceSubcommand{

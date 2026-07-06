@@ -1,0 +1,558 @@
+<title>change.md structure — decision aid</title>
+<style>
+  :root {
+    --bg: #FAF9F5;
+    --surface: #FFFFFF;
+    --ink: #26231D;
+    --ink-2: #6B665C;
+    --line: #E4E1D8;
+    --doc-bg: #FDFCF9;
+    --doc-line: #EAE7DD;
+
+    --prod: #A06818;
+    --prod-bg: rgba(176, 125, 43, 0.09);
+    --plan: #3E6486;
+    --plan-bg: rgba(74, 107, 138, 0.10);
+    --exec: #3A7249;
+    --exec-bg: rgba(62, 122, 78, 0.10);
+    --cross: #7A5E8A;
+    --cross-bg: rgba(122, 94, 138, 0.10);
+
+    --term-bg: #16140F;
+    --term-ink: #D8D5CC;
+    --term-dim: #8A867C;
+    --ok: #7BC98A;
+    --bad: #E0796F;
+    --info: #8FB8D8;
+
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1C1A16;
+      --surface: #232019;
+      --ink: #E6E2D8;
+      --ink-2: #9B968A;
+      --line: #38342B;
+      --doc-bg: #201D17;
+      --doc-line: #322E25;
+      --prod: #D4A04C;
+      --prod-bg: rgba(212, 160, 76, 0.12);
+      --plan: #7FA6C9;
+      --plan-bg: rgba(127, 166, 201, 0.12);
+      --exec: #7FBB8E;
+      --exec-bg: rgba(127, 187, 142, 0.12);
+      --cross: #B295C4;
+      --cross-bg: rgba(178, 149, 196, 0.12);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1C1A16; --surface: #232019; --ink: #E6E2D8; --ink-2: #9B968A;
+    --line: #38342B; --doc-bg: #201D17; --doc-line: #322E25;
+    --prod: #D4A04C; --prod-bg: rgba(212,160,76,0.12);
+    --plan: #7FA6C9; --plan-bg: rgba(127,166,201,0.12);
+    --exec: #7FBB8E; --exec-bg: rgba(127,187,142,0.12);
+    --cross: #B295C4; --cross-bg: rgba(178,149,196,0.12);
+  }
+  :root[data-theme="light"] {
+    --bg: #FAF9F5; --surface: #FFFFFF; --ink: #26231D; --ink-2: #6B665C;
+    --line: #E4E1D8; --doc-bg: #FDFCF9; --doc-line: #EAE7DD;
+    --prod: #A06818; --prod-bg: rgba(176,125,43,0.09);
+    --plan: #3E6486; --plan-bg: rgba(74,107,138,0.10);
+    --exec: #3A7249; --exec-bg: rgba(62,122,78,0.10);
+    --cross: #7A5E8A; --cross-bg: rgba(122,94,138,0.10);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.55;
+    margin: 0; padding: 0 24px 96px;
+  }
+  main { max-width: 1480px; margin: 0 auto; }
+
+  header.page { padding: 44px 0 12px; border-bottom: 1px solid var(--line); margin-bottom: 36px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--ink-2); margin: 0 0 10px;
+  }
+  h1 {
+    font-family: var(--mono); font-size: clamp(22px, 3vw, 30px);
+    font-weight: 600; letter-spacing: -0.01em; margin: 0 0 8px; text-wrap: balance;
+  }
+  .lede { color: var(--ink-2); max-width: 68ch; margin: 0 0 20px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; padding-bottom: 22px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--mono); font-size: 12px; padding: 4px 11px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  }
+  .chip i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .chip.prod i { background: var(--prod); } .chip.plan i { background: var(--plan); }
+  .chip.exec i { background: var(--exec); } .chip.cross i { background: var(--cross); }
+
+  h2.q {
+    font-family: var(--mono); font-size: 19px; font-weight: 600;
+    margin: 54px 0 6px; letter-spacing: -0.01em;
+  }
+  h2.q .qnum { color: var(--ink-2); font-weight: 400; }
+  .qsub { color: var(--ink-2); margin: 0 0 24px; max-width: 78ch; }
+
+  h3.ex {
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2);
+    margin: 34px 0 14px;
+  }
+
+  .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  @media (max-width: 1120px) { .cols { grid-template-columns: 1fr; } }
+
+  .col {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;
+  }
+  .col.reco { border-color: var(--exec); box-shadow: 0 0 0 1px var(--exec); }
+  .colhead { padding: 14px 16px 12px; border-bottom: 1px solid var(--line); }
+  .colhead .name { font-family: var(--mono); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tag {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px; color: var(--bg); background: var(--exec);
+  }
+  .colhead .desc { color: var(--ink-2); font-size: 13px; margin-top: 5px; }
+  .metrics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+  .metric {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 4px; padding: 2px 7px; background: var(--doc-bg);
+  }
+
+  .doc {
+    font-family: var(--mono); font-size: 12.4px; line-height: 1.52;
+    background: var(--doc-bg); padding: 14px 0; flex: 1; overflow-x: auto;
+  }
+  .rg { padding: 5px 16px 6px; border-left: 3px solid transparent; margin: 2px 8px; border-radius: 4px; }
+  .rg.prod { background: var(--prod-bg); border-left-color: var(--prod); }
+  .rg.plan { background: var(--plan-bg); border-left-color: var(--plan); }
+  .rg.exec { background: var(--exec-bg); border-left-color: var(--exec); }
+  .rg.cross { background: var(--cross-bg); border-left-color: var(--cross); }
+  .rg.meta { color: var(--ink-2); }
+  .h { font-weight: 700; white-space: pre-wrap; }
+  .rg.prod .h { color: var(--prod); } .rg.plan .h { color: var(--plan); }
+  .rg.exec .h { color: var(--exec); } .rg.cross .h { color: var(--cross); }
+  .b { white-space: pre-wrap; color: var(--ink); }
+  .dim { color: var(--ink-2); }
+  .note {
+    margin: 10px 16px 4px; padding: 9px 12px; border: 1px dashed var(--line);
+    border-radius: 6px; font-size: 12px; color: var(--ink-2); font-family: var(--mono);
+    white-space: pre-wrap;
+  }
+
+  .verdict { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 14px; }
+  @media (max-width: 1120px) { .verdict { grid-template-columns: 1fr; } }
+  .verdict > div {
+    font-size: 13px; color: var(--ink-2); padding: 10px 14px;
+    border-left: 2px solid var(--line);
+  }
+  .verdict b { color: var(--ink); font-weight: 600; }
+
+  .term {
+    background: var(--term-bg); color: var(--term-ink);
+    font-family: var(--mono); font-size: 12.2px; line-height: 1.55;
+    border-radius: 6px; padding: 12px 14px; margin: 10px 16px;
+    white-space: pre-wrap; overflow-x: auto;
+  }
+  .term .p { color: var(--term-dim); }
+  .term .ok { color: var(--ok); } .term .bad { color: var(--bad); } .term .in { color: var(--info); }
+  .exit { display: inline-block; margin-top: 4px; font-size: 11px; padding: 1px 8px; border-radius: 999px; }
+  .exit.ok { background: rgba(123,201,138,.15); color: var(--ok); }
+  .exit.bad { background: rgba(224,121,111,.15); color: var(--bad); }
+  .scen {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-2); margin: 16px 16px 0;
+  }
+  .warnnote {
+    margin: 12px 16px; padding: 9px 12px; font-size: 12.5px; border-radius: 6px;
+    background: rgba(224,121,111,.09); border: 1px solid rgba(224,121,111,.35); color: var(--ink);
+  }
+  .cardpad { padding-bottom: 14px; }
+
+  footer { margin-top: 70px; color: var(--ink-2); font-size: 12.5px; font-family: var(--mono); border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+<header class="page">
+  <p class="eyebrow">loaf · shape-first change model · working decision aid</p>
+  <h1>Two blockers, worked examples</h1>
+  <p class="lede">The same two Changes — one small, one medium, both real follow-ups — written in each candidate structure, and the same three scenarios run against each <code>loaf change check</code> semantics. Content is identical everywhere; only the skeleton moves.</p>
+  <div class="legend">
+    <span class="chip prod"><i></i>Product Contract — the WHAT</span>
+    <span class="chip plan"><i></i>Planning Contract — the HOW</span>
+    <span class="chip exec"><i></i>Executable tail — what check verifies</span>
+    <span class="chip cross"><i></i>Cross-cutting — decision log</span>
+  </div>
+</header>
+
+<h2 class="q"><span class="qnum">Q1 ·</span> Section structure</h2>
+<p class="qsub">Watch the colors, not the headings: the content regroups identically in all three. What changes is nesting depth, wayfinding, and what <code>check</code> has to know.</p>
+
+<h3 class="ex">Example 1 — small change: <code>spark-bulk-resolve</code> (full document)</h3>
+<div class="cols">
+
+  <!-- OPTION C -->
+  <div class="col reco">
+    <div class="colhead">
+      <div class="name">C · Flat product + Planning container <span class="tag">recommended</span></div>
+      <div class="desc">Product truth reads as narrative; the HOW collects under one heading; the tail stands alone. Matches the pilot as-written.</div>
+      <div class="metrics"><span class="metric">11 × H2</span><span class="metric">1 container</span><span class="metric">check knows 4 tail names</span></div>
+    </div>
+    <div class="doc">
+      <div class="rg meta"><span class="b">---
+change: spark-bulk-resolve
+created: 2026-07-06
+branch: spark-bulk-resolve
+---
+
+# Bulk Spark Resolution</span></div>
+      <div class="rg prod"><span class="h">## Problem</span><span class="b">
+Triage leaves dozens of stale open sparks;
+resolve takes one ref at a time, so cleanup
+gets skipped and the queue rots.</span></div>
+      <div class="rg prod"><span class="h">## Hypothesis</span><span class="b">
+Bulk resolution with filters lets a triage
+pass end clean in one command.</span></div>
+      <div class="rg prod"><span class="h">## Scope</span><span class="b">
+In: --scope, --before, --all filters; one
+confirmation; one journal entry per op.
+Out: bulk promote; undo.
+Cut: interactive picker TUI.</span></div>
+      <div class="rg prod"><span class="h">## Observable Workflow</span><span class="b">
+$ loaf spark resolve --scope cli --before 2026-06-01
+14 matches → confirm → resolved, logged.</span></div>
+      <div class="rg prod"><span class="h">## Rabbit Holes &amp; No-Gos</span><span class="b">
+Never cascade into promoted ideas.
+No soft-delete — resolve stays terminal.</span></div>
+      <div class="rg cross"><span class="h">## Decisions</span><span class="b">
+1. Reuse the single-resolve path, batched
+   in one transaction. (interview)</span></div>
+      <div class="rg plan"><span class="h">## Planning Contract</span><span class="b">
+Approach — extend ResolveSpark with a
+  filter loop; one tx, one journal entry.
+Placement — internal/state/spark.go;
+  spark dispatch in internal/cli/cli.go.
+Risks — over-broad matching → require ≥1
+  filter; --all is the explicit override.
+Sequencing — flags → state fn → tests.</span></div>
+      <div class="rg exec"><span class="h">## Implementation Units</span><span class="b">
+U1 — filter flags + resolution loop.
+U2 — fixture tests: empty, partial, --all.</span></div>
+      <div class="rg exec"><span class="h">## Verification Contract</span><span class="b">
+V1 — fixture DB: --scope cli resolves only
+  cli-scoped open sparks; exit 0.
+V2 — zero matches → exit 0, "nothing to
+  resolve", no journal entry.
+V3 — no filter and no --all → exit non-zero.</span></div>
+      <div class="rg exec"><span class="h">## Definition of Done</span><span class="b">
+V1–V3 in the test suite; journal entry per
+bulk op; cli-reference updated.</span></div>
+      <div class="rg exec"><span class="h">## Durable Outputs</span><span class="b">
+cli-reference skill: spark section.</span></div>
+    </div>
+  </div>
+
+  <!-- OPTION A -->
+  <div class="col">
+    <div class="colhead">
+      <div class="name">A · Two containers (CE-style)</div>
+      <div class="desc">Everything nests under two explicit contracts plus the tail. Clearest for tooling; deepest for humans — content lives at H3.</div>
+      <div class="metrics"><span class="metric">7 × H2</span><span class="metric">2 containers</span><span class="metric">content at H3</span></div>
+    </div>
+    <div class="doc">
+      <div class="rg meta"><span class="b">---
+change: spark-bulk-resolve
+created: 2026-07-06
+branch: spark-bulk-resolve
+---
+
+# Bulk Spark Resolution</span></div>
+      <div class="rg prod"><span class="h">## Product Contract</span><span class="b">
+</span><span class="h">### Problem</span><span class="b">
+Triage leaves dozens of stale open sparks;
+resolve takes one ref at a time…
+</span><span class="h">### Hypothesis</span><span class="b">
+Bulk resolution with filters lets a triage
+pass end clean in one command.
+</span><span class="h">### Scope</span><span class="b">
+In: --scope, --before, --all… Out: bulk
+promote; undo. Cut: picker TUI.
+</span><span class="h">### Observable Workflow</span><span class="b">
+$ loaf spark resolve --scope cli …
+</span><span class="h">### Rabbit Holes &amp; No-Gos</span><span class="b">
+Never cascade into promoted ideas…</span></div>
+      <div class="rg cross"><span class="h">## Decisions</span><span class="b">
+1. Reuse the single-resolve path, batched
+   in one transaction. (interview)</span></div>
+      <div class="rg plan"><span class="h">## Planning Contract</span><span class="b">
+</span><span class="h">### Approach</span><span class="b">
+Extend ResolveSpark with a filter loop;
+one tx, one journal entry.
+</span><span class="h">### Placement</span><span class="b">
+internal/state/spark.go; cli dispatch.
+</span><span class="h">### Risks</span><span class="b">
+Over-broad matching → require ≥1 filter.
+</span><span class="h">### Sequencing</span><span class="b">
+Flags → state fn → tests.</span></div>
+      <div class="rg exec"><span class="h">## Implementation Units</span><span class="b">
+U1 — filter flags + resolution loop.
+U2 — fixture tests: empty, partial, --all.</span></div>
+      <div class="rg exec"><span class="h">## Verification Contract</span><span class="b">
+V1 — fixture DB: --scope cli resolves only
+  cli-scoped open sparks; exit 0.
+V2 — zero matches → exit 0, no entry.
+V3 — no filter, no --all → exit non-zero.</span></div>
+      <div class="rg exec"><span class="h">## Definition of Done</span><span class="b">
+V1–V3 in suite; journal entry per bulk op;
+cli-reference updated.</span></div>
+      <div class="rg exec"><span class="h">## Durable Outputs</span><span class="b">
+cli-reference skill: spark section.</span></div>
+    </div>
+  </div>
+
+  <!-- OPTION B -->
+  <div class="col">
+    <div class="colhead">
+      <div class="name">B · All flat, mapped views</div>
+      <div class="desc">No containers — every section a flat H2. The contracts exist only in the template's mapping, which check must carry as lists.</div>
+      <div class="metrics"><span class="metric">13 × H2</span><span class="metric">0 containers</span><span class="metric">check knows 12+ names</span></div>
+    </div>
+    <div class="doc">
+      <div class="rg meta"><span class="b">---
+change: spark-bulk-resolve
+created: 2026-07-06
+branch: spark-bulk-resolve
+---
+
+# Bulk Spark Resolution</span></div>
+      <div class="rg prod"><span class="h">## Problem</span><span class="b">
+Triage leaves dozens of stale open sparks…</span></div>
+      <div class="rg prod"><span class="h">## Hypothesis</span><span class="b">
+Bulk resolution with filters lets a triage
+pass end clean in one command.</span></div>
+      <div class="rg prod"><span class="h">## Scope</span><span class="b">
+In: --scope, --before, --all… Cut: TUI.</span></div>
+      <div class="rg prod"><span class="h">## Observable Workflow</span><span class="b">
+$ loaf spark resolve --scope cli …</span></div>
+      <div class="rg prod"><span class="h">## Rabbit Holes &amp; No-Gos</span><span class="b">
+Never cascade into promoted ideas…</span></div>
+      <div class="rg cross"><span class="h">## Decisions</span><span class="b">
+1. Reuse the single-resolve path… (interview)</span></div>
+      <div class="rg plan"><span class="h">## Approach</span><span class="b">
+Extend ResolveSpark with a filter loop;
+one tx, one journal entry.</span></div>
+      <div class="rg plan"><span class="h">## Placement</span><span class="b">
+internal/state/spark.go; cli dispatch.</span></div>
+      <div class="rg plan"><span class="h">## Risks</span><span class="b">
+Over-broad matching → require ≥1 filter.</span></div>
+      <div class="rg plan"><span class="h">## Sequencing</span><span class="b">
+Flags → state fn → tests.</span></div>
+      <div class="rg exec"><span class="h">## Implementation Units</span><span class="b">
+U1 — filter flags + loop. U2 — tests.</span></div>
+      <div class="rg exec"><span class="h">## Verification Contract</span><span class="b">
+V1 — fixture DB… V2 — zero matches…
+V3 — no filter, no --all → non-zero.</span></div>
+      <div class="rg exec"><span class="h">## Definition of Done</span><span class="b">
+V1–V3 in suite; journal entry per op.</span></div>
+      <div class="rg exec"><span class="h">## Durable Outputs</span><span class="b">
+cli-reference skill: spark section.</span></div>
+      <div class="note">template mapping (lives in the template, not the doc):
+Product Contract  := {Problem, Hypothesis, Scope,
+                      Observable Workflow, Rabbit Holes}
+Planning Contract := {Approach, Placement, Risks, Sequencing}</div>
+    </div>
+  </div>
+</div>
+
+<h3 class="ex">Example 2 — medium change: <code>spike-harness</code> (skeleton, content elided)</h3>
+<div class="cols">
+  <div class="col reco">
+    <div class="colhead"><div class="name">C · Flat product + Planning container</div></div>
+    <div class="doc">
+      <div class="rg prod"><span class="h">## Problem</span><span class="b"> No disposable pre-implementation
+step; agents overbuild first attempts and
+learnings never reach the Change. ⋯</span></div>
+      <div class="rg prod"><span class="h">## Hypothesis</span><span class="b"> An isolated-worktree spike with
+a discard default converts unknowns into
+Planning/Verification edits before real work. ⋯</span></div>
+      <div class="rg prod"><span class="h">## Scope</span><span class="b"> In: spike skill; provision/teardown;
+writeback. Out: parallel multi-spike. ⋯</span></div>
+      <div class="rg prod"><span class="h">## Observable Workflow</span><span class="b"> /spike → .worktrees/
+spike-slug → explore → findings land in
+change.md → worktree removed. ⋯</span></div>
+      <div class="rg prod"><span class="h">## Rabbit Holes &amp; No-Gos</span><span class="b"> Stop condition is
+"enough unknowns to revise the Change,"
+never "it works." ⋯</span></div>
+      <div class="rg cross"><span class="h">## Decisions</span><span class="b"> ⋯</span></div>
+      <div class="rg plan"><span class="h">## Planning Contract</span><span class="b">
+Approach — EnterWorktree vs `git worktree
+  add` wrapper (open) ⋯
+Teardown — removal is the discard guarantee ⋯
+Writeback — findings land under Planning
+  Contract → spike findings ⋯
+Risks — spike growing into the implementation ⋯</span></div>
+      <div class="rg exec"><span class="h">## Implementation Units</span><span class="b"> U1 provisioning ·
+U2 skill · U3 writeback ceremony ⋯</span></div>
+      <div class="rg exec"><span class="h">## Verification Contract</span><span class="b">
+V1 — a spike leaves no worktree behind.
+V2 — a spike session produces ≥1 change.md
+  edit or an explicit "no unknowns" note. ⋯</span></div>
+      <div class="rg exec"><span class="h">## Definition of Done</span><span class="b"> ⋯</span></div>
+      <div class="rg exec"><span class="h">## Durable Outputs</span><span class="b"> ⋯</span></div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="colhead"><div class="name">A · Two containers</div></div>
+    <div class="doc">
+      <div class="rg prod"><span class="h">## Product Contract</span><span class="b">
+</span><span class="h">### Problem</span><span class="b"> ⋯
+</span><span class="h">### Hypothesis</span><span class="b"> ⋯
+</span><span class="h">### Scope</span><span class="b"> ⋯
+</span><span class="h">### Observable Workflow</span><span class="b"> ⋯
+</span><span class="h">### Rabbit Holes &amp; No-Gos</span><span class="b"> ⋯</span></div>
+      <div class="rg cross"><span class="h">## Decisions</span><span class="b"> ⋯</span></div>
+      <div class="rg plan"><span class="h">## Planning Contract</span><span class="b">
+</span><span class="h">### Approach</span><span class="b"> ⋯
+</span><span class="h">### Teardown</span><span class="b"> ⋯
+</span><span class="h">### Writeback</span><span class="b"> ⋯
+</span><span class="h">### Risks</span><span class="b"> ⋯</span></div>
+      <div class="rg exec"><span class="h">## Implementation Units</span><span class="b"> ⋯</span></div>
+      <div class="rg exec"><span class="h">## Verification Contract</span><span class="b"> ⋯</span></div>
+      <div class="rg exec"><span class="h">## Definition of Done</span><span class="b"> ⋯</span></div>
+      <div class="rg exec"><span class="h">## Durable Outputs</span><span class="b"> ⋯</span></div>
+      <div class="note">medium changes fit containers naturally —
+the nesting cost shows mainly on small ones</div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="colhead"><div class="name">B · All flat</div></div>
+    <div class="doc">
+      <div class="rg prod"><span class="h">## Problem</span><span class="b"> ⋯</span></div>
+      <div class="rg prod"><span class="h">## Hypothesis</span><span class="b"> ⋯</span></div>
+      <div class="rg prod"><span class="h">## Scope</span><span class="b"> ⋯</span></div>
+      <div class="rg prod"><span class="h">## Observable Workflow</span><span class="b"> ⋯</span></div>
+      <div class="rg prod"><span class="h">## Rabbit Holes &amp; No-Gos</span><span class="b"> ⋯</span></div>
+      <div class="rg cross"><span class="h">## Decisions</span><span class="b"> ⋯</span></div>
+      <div class="rg plan"><span class="h">## Approach</span><span class="b"> ⋯</span></div>
+      <div class="rg plan"><span class="h">## Teardown</span><span class="b"> ⋯</span></div>
+      <div class="rg plan"><span class="h">## Writeback</span><span class="b"> ⋯</span></div>
+      <div class="rg plan"><span class="h">## Risks</span><span class="b"> ⋯</span></div>
+      <div class="rg exec"><span class="h">## Implementation Units</span><span class="b"> ⋯</span></div>
+      <div class="rg exec"><span class="h">## Verification Contract</span><span class="b"> ⋯</span></div>
+      <div class="rg exec"><span class="h">## Definition of Done</span><span class="b"> ⋯</span></div>
+      <div class="rg exec"><span class="h">## Durable Outputs</span><span class="b"> ⋯</span></div>
+      <div class="note">planning sections multiply per change — the
+mapping list grows with every new HOW heading</div>
+    </div>
+  </div>
+</div>
+
+<div class="verdict">
+  <div><b>C:</b> narrative WHAT, contained HOW, fixed tail. Check needs only the container + 3 tail names. Small changes stay light; the pilot already proves it at medium size.</div>
+  <div><b>A:</b> best machine wayfinding, worst reading depth. Every product edit happens at H3; small changes feel bureaucratic.</div>
+  <div><b>B:</b> lightest on the page, heaviest on convention — contracts exist only in the template and check's lists, which grow per-change as planning headings vary.</div>
+</div>
+
+<h2 class="q"><span class="qnum">Q2 ·</span> <code>loaf change check</code> failure semantics</h2>
+<p class="qsub">Same three scenarios against each option: a valid shaping-stage doc, a banned-frontmatter violation, and an executable doc under the CI gate. The crux is scenario 1 — shaping is a <em>valid</em> state.</p>
+
+<div class="cols">
+  <div class="col reco">
+    <div class="colhead">
+      <div class="name">A · Two-tier + opt-in gate <span class="tag">recommended</span></div>
+      <div class="desc">Violations always fail; executability is a report; the flag becomes the CI gate on non-draft PRs.</div>
+    </div>
+    <div class="cardpad">
+      <p class="scen">S1 — shaping-stage doc (product only)</p>
+      <div class="term"><span class="p">$</span> loaf change check
+<span class="ok">✓</span> structure valid — no violations
+<span class="in">ℹ</span> executable: no — missing Planning Contract,
+  Implementation Units, Verification Contract,
+  Definition of Done
+<span class="exit ok">exit 0</span></div>
+      <p class="scen">S2 — banned frontmatter present</p>
+      <div class="term"><span class="p">$</span> loaf change check
+<span class="bad">✗</span> violation: status-like frontmatter
+  `readiness: shaping` — banned field class (V1)
+<span class="exit bad">exit 1</span></div>
+      <p class="scen">S3 — executable doc, CI gate</p>
+      <div class="term"><span class="p">$</span> loaf change check --require-executable
+<span class="ok">✓</span> structure valid · executable: yes
+<span class="exit ok">exit 0</span></div>
+      <p class="scen">CI wiring — the D12 payoff</p>
+      <div class="term"><span class="p"># draft PR = shaping; ready PR must be executable</span>
+- run: loaf change check
+- if: <span class="in">!pull_request.draft</span>
+  run: loaf change check --require-executable</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="colhead">
+      <div class="name">B · Strict by default</div>
+      <div class="desc">Non-executable fails unless --shaping is passed. Inverts the common case.</div>
+    </div>
+    <div class="cardpad">
+      <p class="scen">S1 — shaping-stage doc</p>
+      <div class="term"><span class="p">$</span> loaf change check
+<span class="bad">✗</span> not executable (4 sections missing)
+<span class="exit bad">exit 1</span>
+
+<span class="p">$</span> loaf change check --shaping
+<span class="ok">✓</span> structure valid
+<span class="exit ok">exit 0</span></div>
+      <p class="scen">S2 — banned frontmatter</p>
+      <div class="term"><span class="p">$</span> loaf change check
+<span class="bad">✗</span> violation: `readiness:` banned
+<span class="exit bad">exit 1</span></div>
+      <p class="scen">S3 — executable doc</p>
+      <div class="term"><span class="p">$</span> loaf change check
+<span class="ok">✓</span> valid · executable
+<span class="exit ok">exit 0</span></div>
+      <div class="warnnote">Every draft PR runs red until each caller remembers --shaping — hooks, CI, and skills all carry the flag for the majority case.</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="colhead">
+      <div class="name">C · Report-only + separate gate verb</div>
+      <div class="desc">check never fails; a second command owns enforcement.</div>
+    </div>
+    <div class="cardpad">
+      <p class="scen">S1 — shaping-stage doc</p>
+      <div class="term"><span class="p">$</span> loaf change check
+<span class="in">ℹ</span> executable: no (4 missing)
+<span class="exit ok">exit 0</span></div>
+      <p class="scen">S2 — banned frontmatter</p>
+      <div class="term"><span class="p">$</span> loaf change check
+<span class="in">ℹ</span> found: `readiness:` frontmatter
+<span class="exit ok">exit 0</span>  <span class="p">← violation reported, not enforced</span>
+
+<span class="p">$</span> loaf change gate
+<span class="bad">✗</span> `readiness:` banned
+<span class="exit bad">exit 1</span></div>
+      <p class="scen">S3 — executable doc</p>
+      <div class="term"><span class="p">$</span> loaf change gate --require-executable
+<span class="ok">✓</span> pass
+<span class="exit ok">exit 0</span></div>
+      <div class="warnnote">Contradicts V1 as written (check promises exit non-zero on banned frontmatter) — and `gate` is a new verb with no ceremony of its own yet.</div>
+    </div>
+  </div>
+</div>
+
+<div class="verdict">
+  <div><b>A:</b> one command, honest defaults — shaping passes, violations never do, and the flag maps 1:1 onto the draft/ready PR state. The gate the model promised, wired to GitHub.</div>
+  <div><b>B:</b> stronger-looking default that punishes the most common state; the flag burden lands on every caller instead of only on CI.</div>
+  <div><b>C:</b> cleanest separation on paper, but it breaks V1's existing promise and mints a verb that fails the "name the ceremony" test.</div>
+</div>
+
+<footer>Working aid for the shape-first Change pilot (PR #91) · content identical across columns by construction · ephemeral, not committed</footer>
+</main>

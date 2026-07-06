@@ -165,6 +165,36 @@ loaf docs index
 
 ---
 
+## Change Management
+
+### `loaf change`
+Shape-first Change artifacts: git-canonical work context under docs/changes/
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `loaf change init` | Scaffold a new Change folder from the template |
+| `loaf change check` | Validate a Change and report derived executability |
+
+**Options:**
+
+- `loaf change init`:
+  - `<slug>` - Change slug: lowercase letters, digits, and single hyphens
+
+- `loaf change check`:
+  - `[folder]` - Change folder path; an explicit path wins, otherwise resolves from the current branch
+  - `--require-executable` - Exit non-zero unless the Change is implementation-ready (CI gate for non-draft PRs)
+  - `--json` - Output folder, passed, executable, findings, warnings, and gaps as JSON
+
+**Usage:**
+```bash
+loaf change init
+loaf change check
+```
+
+---
+
 ## Render Management
 
 ### `loaf render`

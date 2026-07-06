@@ -259,6 +259,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runTag(args[1:], out, runtime)
 	case "bundle":
 		dispatchErr = r.runBundle(args[1:], out, runtime)
+	case "change":
+		dispatchErr = r.runChange(args[1:], out, runtime)
 	case "check":
 		dispatchErr = r.runCheck(args[1:], out, runtime.RootPath())
 	case "doctor":
@@ -347,6 +349,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  handoff       Manage handoffs")
 	fmt.Fprintln(out, "  council       Manage councils")
 	fmt.Fprintln(out, "  kb            Manage knowledge base")
+	fmt.Fprintln(out, "  change        Manage shape-first Change artifacts")
 	fmt.Fprintln(out, "  check         Run hook checks")
 	fmt.Fprintln(out, "  doctor        Diagnose project alignment")
 	fmt.Fprintln(out, "  release       Create a release")

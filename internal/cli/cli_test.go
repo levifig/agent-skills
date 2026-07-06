@@ -14035,7 +14035,7 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 		}
 		commands[command.Name] = entry
 	}
-	for _, want := range []string{"build", "state", "project", "docs", "journal", "task", "spec", "report", "plan", "handoff", "council", "kb", "release", "version"} {
+	for _, want := range []string{"build", "state", "project", "docs", "change", "journal", "task", "spec", "report", "plan", "handoff", "council", "kb", "release", "version"} {
 		if _, ok := commands[want]; !ok {
 			t.Fatalf("agent help commands missing %q: %#v", want, commands)
 		}

@@ -265,6 +265,7 @@ func knownTopLevelCommandNative(command string) bool {
 	case "brainstorm",
 		"build",
 		"bundle",
+		"change",
 		"check",
 		"doctor",
 		"housekeeping",
