@@ -7,7 +7,7 @@ description: >-
   Not for infras...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep, Bash(python:*), Bash(*.sh)'
-version: 2.0.0-alpha.3
+version: 2.0.0-alpha.4
 ---
 
 # Power Systems Reference

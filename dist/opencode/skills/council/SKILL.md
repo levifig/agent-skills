@@ -8,7 +8,7 @@ description: >-
   single-perspective research (use research) or architectural decisions that
   don't need multi-agent deliberation (use architecture).
 subtask: false
-version: 2.0.0-alpha.3
+version: 2.0.0-alpha.4
 ---
 
 # Council

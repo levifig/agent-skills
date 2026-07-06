@@ -7,7 +7,7 @@ description: >-
   a release," "pu...
 user-invocable: true
 argument-hint: '[version, base, or release intent]'
-version: 2.0.0-alpha.3
+version: 2.0.0-alpha.4
 ---
 
 # Release

@@ -8,6 +8,17 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
+## [2.0.0-alpha.4] - 2026-07-06
+
+### Added
+
+- Added the shape-first hybrid Change workflow pilot: `loaf change init`, `loaf change check`, executable Change-package gates, reusable Change/PR templates, PR-template guidance, generated CLI reference updates, and distributed target artifacts for the new workflow (#91) (8a10c0d8).
+- Added the first self-contained Change packages under `docs/changes/`, including the shape-first pilot and hook-provenance scoping work, so dogfooding changes carry their contract, decisions, verification plan, and research evidence in the branch diff (#91, #92) (8a10c0d8, 6ce08acc).
+
+### Fixed
+
+- Scoped `render-drift` and `ephemeral-provenance` hook checks to real Bash `git push` hook contexts while preserving manual `loaf check --hook ...` behavior, removing noisy non-push interruptions during normal tool use (#92) (6ce08acc).
+
 ## [2.0.0-alpha.3] - 2026-07-04
 
 ### Fixed
