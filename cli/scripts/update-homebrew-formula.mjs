@@ -27,27 +27,26 @@ function formula(versionValue, repoValue, values) {
   return `class Loaf < Formula
   desc "Opinionated agentic framework for AI coding assistants"
   homepage "https://github.com/${repoValue}"
-  version "${versionValue}"
   license "MIT"
 
   depends_on "git"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/${repoValue}/releases/download/v#{version}/loaf_#{version}_darwin-arm64.tar.gz"
+      url "https://github.com/${repoValue}/releases/download/v${versionValue}/loaf_${versionValue}_darwin-arm64.tar.gz"
       sha256 "${values["darwin-arm64"]}"
     else
-      url "https://github.com/${repoValue}/releases/download/v#{version}/loaf_#{version}_darwin-x64.tar.gz"
+      url "https://github.com/${repoValue}/releases/download/v${versionValue}/loaf_${versionValue}_darwin-x64.tar.gz"
       sha256 "${values["darwin-x64"]}"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/${repoValue}/releases/download/v#{version}/loaf_#{version}_linux-arm64.tar.gz"
+      url "https://github.com/${repoValue}/releases/download/v${versionValue}/loaf_${versionValue}_linux-arm64.tar.gz"
       sha256 "${values["linux-arm64"]}"
     else
-      url "https://github.com/${repoValue}/releases/download/v#{version}/loaf_#{version}_linux-x64.tar.gz"
+      url "https://github.com/${repoValue}/releases/download/v${versionValue}/loaf_${versionValue}_linux-x64.tar.gz"
       sha256 "${values["linux-x64"]}"
     end
   end

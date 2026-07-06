@@ -241,6 +241,69 @@ func TestNativeGoReleaseBuildUsesPublishTargetPolicy(t *testing.T) {
 	}
 }
 
+func TestHomebrewFormulaUpdaterGeneratesAuditSafePrereleaseURLs(t *testing.T) {
+	node := requireNode(t)
+	root := repoRoot(t)
+	tempDir := t.TempDir()
+	formulaPath := filepath.Join(tempDir, "loaf.rb")
+	checksumsPath := filepath.Join(tempDir, "checksums.txt")
+	version := "2.0.0-alpha.4"
+	checksums := map[string]string{
+		"darwin-arm64": strings.Repeat("a", 64),
+		"darwin-x64":   strings.Repeat("b", 64),
+		"linux-arm64":  strings.Repeat("c", 64),
+		"linux-x64":    strings.Repeat("d", 64),
+	}
+	checksumLines := []string{
+		checksums["darwin-arm64"] + "  loaf_" + version + "_darwin-arm64.tar.gz",
+		checksums["darwin-x64"] + "  loaf_" + version + "_darwin-x64.tar.gz",
+		checksums["linux-arm64"] + "  loaf_" + version + "_linux-arm64.tar.gz",
+		checksums["linux-x64"] + "  loaf_" + version + "_linux-x64.tar.gz",
+	}
+	if err := os.WriteFile(checksumsPath, []byte(strings.Join(checksumLines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(checksums.txt) error = %v", err)
+	}
+
+	output, err := runNodeScriptArgs(t, node, root, nil, "cli/scripts/update-homebrew-formula.mjs",
+		"--formula", formulaPath,
+		"--checksums", checksumsPath,
+		"--version", version,
+	)
+	if err != nil {
+		t.Fatalf("update-homebrew-formula error = %v\n%s", err, output)
+	}
+	if !strings.Contains(output, "Updated "+formulaPath) || !strings.Contains(output, "Loaf "+version) {
+		t.Fatalf("update-homebrew-formula output = %q, want successful update message", output)
+	}
+
+	data, err := os.ReadFile(formulaPath)
+	if err != nil {
+		t.Fatalf("ReadFile(generated formula) error = %v", err)
+	}
+	formula := string(data)
+	for _, forbidden := range []string{`version "`, "#{version}"} {
+		if strings.Contains(formula, forbidden) {
+			t.Fatalf("generated formula contains %q:\n%s", forbidden, formula)
+		}
+	}
+	for _, want := range []string{
+		`url "https://github.com/levifig/loaf/releases/download/v2.0.0-alpha.4/loaf_2.0.0-alpha.4_darwin-arm64.tar.gz"`,
+		`url "https://github.com/levifig/loaf/releases/download/v2.0.0-alpha.4/loaf_2.0.0-alpha.4_darwin-x64.tar.gz"`,
+		`url "https://github.com/levifig/loaf/releases/download/v2.0.0-alpha.4/loaf_2.0.0-alpha.4_linux-arm64.tar.gz"`,
+		`url "https://github.com/levifig/loaf/releases/download/v2.0.0-alpha.4/loaf_2.0.0-alpha.4_linux-x64.tar.gz"`,
+	} {
+		if !strings.Contains(formula, want) {
+			t.Fatalf("generated formula missing %q:\n%s", want, formula)
+		}
+	}
+	for target, checksum := range checksums {
+		want := `sha256 "` + checksum + `"`
+		if !strings.Contains(formula, want) {
+			t.Fatalf("generated formula missing checksum for %s: %q\n%s", target, want, formula)
+		}
+	}
+}
+
 type packageManifest struct {
 	Scripts         map[string]string      `json:"scripts"`
 	Exports         map[string]interface{} `json:"exports"`
@@ -264,7 +327,13 @@ func readPackageManifest(t *testing.T, root string) packageManifest {
 
 func runNodeScript(t *testing.T, node string, root string, env []string, script string) (string, error) {
 	t.Helper()
-	cmd := exec.Command(node, script)
+	return runNodeScriptArgs(t, node, root, env, script)
+}
+
+func runNodeScriptArgs(t *testing.T, node string, root string, env []string, script string, args ...string) (string, error) {
+	t.Helper()
+	cmdArgs := append([]string{script}, args...)
+	cmd := exec.Command(node, cmdArgs...)
 	cmd.Dir = root
 	cmd.Env = envWith(env...)
 	output, err := cmd.CombinedOutput()
