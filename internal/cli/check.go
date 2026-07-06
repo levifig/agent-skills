@@ -114,9 +114,9 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 	case "check-secrets":
 		result = runNativeCheckSecrets(context)
 	case "ephemeral-provenance":
-		result = runNativeEphemeralProvenance(runtimeRoot)
+		result = runNativeEphemeralProvenance(context, runtimeRoot)
 	case "render-drift":
-		result = runNativeRenderDrift(runtimeRoot)
+		result = runNativeRenderDrift(context, runtimeRoot)
 	case "validate-commit":
 		result = runNativeValidateCommit(context, runtimeRoot)
 	case "security-audit":
@@ -247,8 +247,25 @@ func runNativeArtifactBodyWriteGuard(context checkHookContext) checkResult {
 	return result
 }
 
-func runNativeRenderDrift(cwd string) checkResult {
+var gitPushCommandRE = regexp.MustCompile(`^git\s+push(?:\s|$)`)
+
+func shouldRunPushScopedCheck(context checkHookContext) bool {
+	tool := checkContextToolName(context)
+	command := strings.TrimSpace(checkContextCommand(context))
+	if tool == "" && command == "" {
+		return true
+	}
+	if tool != "Bash" {
+		return false
+	}
+	return gitPushCommandRE.MatchString(command)
+}
+
+func runNativeRenderDrift(context checkHookContext, cwd string) checkResult {
 	result := checkResult{Passed: true, Warnings: []string{}, Errors: []string{}, Findings: []string{}}
+	if !shouldRunPushScopedCheck(context) {
+		return result
+	}
 	root := firstNonEmpty(strings.TrimSpace(cwd), ".")
 	for _, dir := range []string{filepath.Join(root, ".agents", "specs"), filepath.Join(root, ".agents", "reports")} {
 		entries, err := os.ReadDir(dir)
@@ -298,8 +315,11 @@ func runNativeRenderDrift(cwd string) checkResult {
 
 var ephemeralProvenanceRefRE = regexp.MustCompile(`\.agents/(?:tasks|ideas|sparks|sessions|brainstorms|drafts)/(?:archive/)?[A-Za-z0-9][^\s)'"]*|\.agents/TASKS\.json`)
 
-func runNativeEphemeralProvenance(cwd string) checkResult {
+func runNativeEphemeralProvenance(context checkHookContext, cwd string) checkResult {
 	result := checkResult{Passed: true, Warnings: []string{}, Errors: []string{}, Findings: []string{}}
+	if !shouldRunPushScopedCheck(context) {
+		return result
+	}
 	root := firstNonEmpty(strings.TrimSpace(cwd), ".")
 	tracked, err := trackedEphemeralMarkdownPaths(root)
 	if err != nil {
@@ -772,7 +792,7 @@ func runNativeWorkflowPrePR(hookContext checkHookContext, cwd string) checkResul
 func runNativeValidatePush(hookContext checkHookContext, cwd string) checkResult {
 	result := checkResult{Passed: true, Warnings: []string{}, Errors: []string{}, Findings: []string{}}
 	command := checkContextCommand(hookContext)
-	if checkContextToolName(hookContext) != "Bash" || !regexp.MustCompile(`^git\s+push`).MatchString(command) {
+	if checkContextToolName(hookContext) != "Bash" || !gitPushCommandRE.MatchString(strings.TrimSpace(command)) {
 		return result
 	}
 
