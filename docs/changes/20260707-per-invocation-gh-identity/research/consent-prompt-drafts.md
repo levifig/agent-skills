@@ -17,7 +17,7 @@ every filesystem/profile mutation enable performs.*
 ```
 loaf shim enable gh will make these changes on this machine:
 
-  1. Create symlink:
+  1. Create symlink (replacing any existing entry at this path):
        /Users/levifig/.local/share/loaf/shims/gh -> /opt/homebrew/bin/loaf
 
   2. Record in /Users/levifig/.config/loaf/config.json:

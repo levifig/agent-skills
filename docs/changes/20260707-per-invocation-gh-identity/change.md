@@ -112,6 +112,7 @@ Walk-up semantics *(implementation clarification, U2)*: an iterative directory w
 | **git-over-HTTPS via `gh auth setup-git`'s credential helper** | absolute-path (`!/opt/homebrew/bin/gh auth git-credential`) — bypasses the shim for plain `git push/pull`; the near-universal residual trigger. SSH remotes (this user's setup) unaffected; documented in U4 |
 | **GUI-launched apps / launchd** | never source shell profiles; resolve gh via `/etc/paths.d` — shim invisible to Dock-launched IDEs and git clients; inherent PATH-shim limit (same as rbenv/direnv) |
 | `gh auth switch` under shim | passes through to real gh; mutates pointer (env-precedence only — spike confirmed zero disk writes from `GH_TOKEN` itself); shimmed calls keep ignoring it |
+| **Untrusted repo selects the identity** | a cloned repo's committed `.agents/loaf.json` silently picks *which* of the user's own authenticated identities shimmed `gh` runs as — the policy/mechanism split's dark side (external review, round 1). Bounded: only identities the user already holds tokens for, never new credentials. Mitigation candidates (first-resolution-per-project trust prompt, doctor listing of identity-configured projects) deferred to follow-up; documented in U4 |
 
 ### Sequencing
 

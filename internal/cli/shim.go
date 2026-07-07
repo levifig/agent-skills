@@ -18,7 +18,7 @@ import (
 // ghShimMinVersion is the lowest gh release this CLI will shim against. gh
 // v2.40.0 (2023-12-07, PR cli/cli#8425 "Support multiple accounts on a
 // single host") is the release that introduced `--user` on `gh auth token`,
-// `gh auth switch`, and `gh auth status` — the named-account resolution the
+// `gh auth switch`, and `gh auth logout` — the named-account resolution the
 // shim's token step depends on. Older gh binaries don't have the flag at
 // all, so enable refuses rather than falling back to "whichever account is
 // active" (a wrong-identity success is worse than a visible refusal).
@@ -220,7 +220,7 @@ func printShimConsentPrompt(out io.Writer, symlinkPath string, targetLoafBinary 
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, ansiBold("loaf shim enable gh")+" will make these changes on this machine:")
 	fmt.Fprintln(out)
-	fmt.Fprintf(out, "  1. Create symlink:\n       %s -> %s\n\n", symlinkPath, targetLoafBinary)
+	fmt.Fprintf(out, "  1. Create symlink (replacing any existing entry at this path):\n       %s -> %s\n\n", symlinkPath, targetLoafBinary)
 	fmt.Fprintf(out, "  2. Record in %s:\n       shims.gh.real_path = %q\n       shims.gh.enabled_at = <now, UTC>\n\n", configPath, realGH)
 	if hasProfile {
 		fmt.Fprintf(out, "  3. Offer to add this line to your shell profile (%s):\n       %s\n\n", profilePath, profileLine)

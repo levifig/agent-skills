@@ -24,7 +24,9 @@ import (
 // to $INVOCATION_LOG (when set, letting a test assert an `auth status
 // --active` call never happened), answers `auth token` calls with a
 // deterministic per-account token, and otherwise records its final argv and
-// GH_TOKEN to $RECORD_FILE (when set).
+// GH_TOKEN to $RECORD_FILE (when set). When $AUTH_TOKEN_FAILS is set, the
+// `auth token` branch instead writes to its own stderr and exits non-zero, so
+// a test can exercise the token-unavailable fall-through.
 const ghRecordingStubScript = `#!/bin/sh
 if [ -n "$INVOCATION_LOG" ]; then
   { printf 'CALL:'; for a in "$@"; do printf ' %s' "$a"; done; printf '\n'; } >> "$INVOCATION_LOG"
@@ -34,6 +36,10 @@ if [ "$1" = "--version" ]; then
   exit 0
 fi
 if [ "$1" = "auth" ] && [ "$2" = "token" ]; then
+  if [ -n "$AUTH_TOKEN_FAILS" ]; then
+    echo "gh: no token found for the requested account" >&2
+    exit 1
+  fi
   shift 2
   user=""
   while [ $# -gt 0 ]; do
@@ -334,6 +340,101 @@ func TestGHShimIntegrationNeverTouchesHostsYML(t *testing.T) {
 		t.Fatalf("shim exec error = %v, output=%s", err, output)
 	}
 
+	after, err := os.Stat(hostsPath)
+	if err != nil {
+		t.Fatalf("Stat(hosts.yml) after error = %v", err)
+	}
+	afterContent, err := os.ReadFile(hostsPath)
+	if err != nil {
+		t.Fatalf("ReadFile(hosts.yml) after error = %v", err)
+	}
+	if string(afterContent) != fixtureContent {
+		t.Fatalf("hosts.yml content changed:\n got:  %q\n want: %q", afterContent, fixtureContent)
+	}
+	if !before.ModTime().Equal(after.ModTime()) {
+		t.Fatalf("hosts.yml mtime changed: before=%v after=%v", before.ModTime(), after.ModTime())
+	}
+}
+
+// TestGHShimIntegrationTokenUnavailableFallsThroughWithNote closes the other
+// half of V3: when the named-account token read fails (the stub's `auth token`
+// exits non-zero), the shim must fall through to the real gh with the caller's
+// argv and env untouched — no GH_TOKEN — emit exactly one stderr note naming
+// the account (never the token or the underlying exec error), and still leave
+// gh's hosts.yml byte-for-byte and mtime-identical.
+func TestGHShimIntegrationTokenUnavailableFallsThroughWithNote(t *testing.T) {
+	loafBinary := buildShimTestBinary(t)
+	tempRoot := realpath(t, t.TempDir())
+	home := filepath.Join(tempRoot, "home")
+	realGHDir := filepath.Join(tempRoot, "real-gh-dir")
+	projectDir := filepath.Join(tempRoot, "configured-project")
+	ghConfigDir := filepath.Join(tempRoot, "gh-config")
+	for _, d := range []string{home, ghConfigDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s) error = %v", d, err)
+		}
+	}
+	writeConfiguredProjectFixture(t, projectDir, "levifig")
+
+	hostsPath := filepath.Join(ghConfigDir, "hosts.yml")
+	fixtureContent := "github.com:\n    user: someone\n    oauth_token: not-a-real-token\n"
+	if err := os.WriteFile(hostsPath, []byte(fixtureContent), 0o600); err != nil {
+		t.Fatalf("WriteFile(hosts.yml) error = %v", err)
+	}
+	before, err := os.Stat(hostsPath)
+	if err != nil {
+		t.Fatalf("Stat(hosts.yml) error = %v", err)
+	}
+
+	recordFile := filepath.Join(tempRoot, "record.txt")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("XDG_DATA_HOME", "")
+	configPath, err := shimUserConfigPath()
+	if err != nil {
+		t.Fatalf("shimUserConfigPath() error = %v", err)
+	}
+	stubGH := writeStubGH(t, realGHDir, ghRecordingStubScript)
+	if err := writeShimUserConfig(configPath, stubGH, "now"); err != nil {
+		t.Fatalf("writeShimUserConfig() error = %v", err)
+	}
+
+	shimGH := symlinkShimGH(t, home, loafBinary)
+
+	cmd := exec.Command(shimGH, "pr", "list")
+	cmd.Dir = projectDir
+	cmd.Env = []string{
+		"HOME=" + home,
+		"PATH=" + realGHDir,
+		"RECORD_FILE=" + recordFile,
+		"GH_CONFIG_DIR=" + ghConfigDir,
+		"AUTH_TOKEN_FAILS=1",
+	}
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("shim exec error = %v, stderr=%s", err, stderr.String())
+	}
+
+	// Fell through to the real gh with the caller's argv and no GH_TOKEN.
+	recorded, err := os.ReadFile(recordFile)
+	if err != nil {
+		t.Fatalf("record file missing: %v", err)
+	}
+	want := "ARGV: pr list\nGH_TOKEN:\n"
+	if string(recorded) != want {
+		t.Fatalf("recorded invocation = %q, want %q (untouched fall-through, no token)", recorded, want)
+	}
+
+	// Exactly the one account-naming note on stderr — no token value, no exec
+	// error detail from the failed `auth token` sub-invocation.
+	wantNote := "loaf gh-shim: token for \"levifig\" unavailable; running unshimmed\n"
+	if stderr.String() != wantNote {
+		t.Fatalf("stderr = %q, want exactly %q", stderr.String(), wantNote)
+	}
+
+	// gh's own hosts.yml is untouched, exactly as on the happy path.
 	after, err := os.Stat(hostsPath)
 	if err != nil {
 		t.Fatalf("Stat(hosts.yml) after error = %v", err)
