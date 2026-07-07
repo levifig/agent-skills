@@ -1,25 +1,29 @@
 ---
 name: shape
 description: >-
-  Shapes ideas into implementable specs with scope boundaries and test conditions.
-  Use when the user asks "shape this" or "write a spec," or when an idea has
-  accumulated enough constraints to bound. Produces specs with acceptance criteria.
-  Not for brainstorming (use brainstorm) or task breakdown (use breakdown).
+  Shapes messy input into a bounded, reviewable Change under docs/changes/YYYYMMDD-slug/,
+  validated by loaf change check. Runs a fog-routed narrowing protocol — gather context,
+  an optional blindspot pass, grilling for known unknowns, reaction artifacts for
+  unknown-knowns — decomposes Implementation Units ordered by likelihood-of-change, runs
+  a critique gate, and offers an opt-in draft PR. Use when the user asks "shape this,"
+  "turn this into a Change," or an idea has accumulated enough constraints to bound.
+  Recognizes journal entries, sparks, ideas, brainstorms, Linear issues, PR conversations,
+  and plain conversation as input. Produces a Change, never a numbered spec or task file.
+  Not for quick capture (use idea) or open-ended divergent thinking before scope exists
+  (use brainstorm).
 ---
 
 # Shape
 
-Develop ideas into bounded, buildable specifications.
+Turn messy input into a bounded, reviewable Change.
 
 ## Contents
 - Critical Rules
 - Verification
-- Purpose
+- Quick Reference
 - Process
-- Spec Lifecycle
-- Strategic Tensions
-- Guardrails
 - Related Skills
+- Topics
 
 **Input:** $ARGUMENTS
 
@@ -27,141 +31,134 @@ Develop ideas into bounded, buildable specifications.
 
 ## Critical Rules
 
-Unlike `/idea` (quick capture), shaping requires **deep understanding**. Ask about edge cases, conflicts with existing patterns, hidden complexity, and scope boundaries. Use `AskUserQuestion` throughout.
-
-1. **Interview extensively** -- not quick capture
-2. **Evaluate strategic fit** -- don't shape in a vacuum
-3. **Document rabbit holes** -- prevent scope creep
-4. **Clear test conditions** -- observable outcomes
-5. **Priority order** -- for multi-part specs, define track order and go/no-go gates
-6. **Get approval** -- don't create spec file without explicit confirmation
-7. **Note tensions, don't fix** -- strategy evolves via /reflect
-8. **Log outcome** -- log spec creation to the project journal: `loaf journal log "decision(shape): SPEC-NNN created for feature"`
+1. **Log invocation first** — `loaf journal log "skill(shape): <input being shaped>"` before doing anything else.
+2. **Produces a Change, never a spec** — the artifact is `docs/changes/YYYYMMDD-slug/change.md`. No sequentially-numbered spec file, no task entity, no status-like frontmatter.
+3. **The fog register routes, you don't guess** — every named unknown carries a quadrant tag that dispatches it to exactly one technique (see Quick Reference). Technique-by-vibes is the failure mode this replaces.
+4. **Blindspot pass precedes grilling, offered not imposed** — run it when the territory is unfamiliar; skip it when the shaper is the domain expert. Never impose it as a mandatory step.
+5. **Grill one question at a time, with a recommendation** — via `AskUserQuestion` (or one inline question per message on harnesses without it — same semantics). Never a form to fill in one pass. Order by architectural impact: questions whose answer would change the architecture go first, cosmetic questions last.
+6. **Techniques return fog entries, not decisions** — blindspot passes, grilling, and reaction artifacts hand back named unknowns and evidence for the human to adjudicate. Reconnaissance, not orders.
+7. **Own the decomposition** — decide Implementation Unit boundaries and granularity autonomously (absorbed from the retired breakdown step); ask only when two orderings carry genuinely different trade-offs.
+8. **Order units by likelihood-of-change** — data models, interfaces, and user-facing flows lead; mechanical work collapses at the bottom, so review attention lands on what's most likely to need changing.
+9. **Surface misalignment, never silently adjust** — when the idea conflicts with strategic docs, prior Changes, or the journal, tell the user and let them decide. Don't quietly reshape their idea.
+10. **Critique before finalizing** — run the Critique Gate as the last shaping step, before `loaf change check` and the PR offer.
+11. **Get approval before `loaf change init`** — don't scaffold the folder without explicit confirmation of scope.
+12. **Log the outcome** — `loaf journal log "decision(shape): <slug> shaped — N units, N open fog entries"`.
 
 ---
 
 ## Verification
 
-- Spec has a clear problem statement, solution direction, hard boundaries, and identified rabbit holes
-- All test conditions are observable and measurable outcomes
-- User has explicitly approved the spec before the file is created
+- `docs/changes/YYYYMMDD-slug/change.md` exists with Problem, Hypothesis, Scope, Observable Workflow, and Rabbit Holes and No-Gos all non-empty (the Product Contract set `loaf change check` requires)
+- Every Open Questions entry carries a quadrant tag (`[KU]`, `[UK]`, or `[UU]`) and a route
+- `loaf change check` reports zero violations; its executability report was read, not ignored
+- The Critique Gate ran, and its answers changed the document where they applied — not just spoken aloud
+- No sequentially-numbered spec or task file, and no status-like frontmatter (`readiness`, `status`, `state`), exists anywhere in the Change
 
 ---
 
-## Purpose
+## Quick Reference
 
-Shaping transforms raw ideas into **well-defined SPECs** with clear problem statement, solution direction (not blueprint), hard boundaries, identified rabbit holes, and enough direction without too much constraint.
+### Fog register format
 
-Evaluates ideas against strategic context (VISION, STRATEGY, ARCHITECTURE) to ensure alignment.
+Open Questions entries take one of three forms:
+
+```text
+- [KU] <the unknown> → <route: grilling | research spike | owner section>
+- [UK] <the recognize-it-when-seen criterion> → reaction artifact in research/
+- [UU] <the suspected blind area> → blindspot pass over <territory>
+```
+
+An entry resolves by becoming a Decision, a Planning Contract subsection, or a named follow-up — visible in the diff, never silently deleted. A `[UU]` that gets named becomes a `[KU]` or `[UK]` and re-routes through the table below.
+
+### Quadrant routing
+
+| Tag | Meaning | Routes to |
+|-----|---------|-----------|
+| `[KU]` known unknown | A question you can state precisely | [Grilling](references/grilling.md) (architecture-changing answers first) or a research spike |
+| `[UK]` unknown known | You'd recognize the right answer if you saw it, but can't state it yet | [Reaction artifact](references/reaction-artifact.md) — a variant or mock in `research/`, react and pick |
+| `[UU]` suspected blind spot | Unfamiliar territory; you don't yet know what you don't know | [Blindspot pass](references/blindspot-pass.md) |
+
+No route names a skill invocation. Research re-interviews an already-scoped question and writes to `.agents/reports/`; brainstorm forces a strategic frame onto a Change-local question and sends resolutions to intake. Shape runs all three techniques itself, in-session, and writes evidence into the Change's own `research/` — never `.agents/reports/`.
+
+### Defined terms
+
+- **Rabbit holes** — tempting expansions of scope that would consume disproportionate effort for marginal value; name them so nobody wanders in unknowingly.
+- **No-gos** — approaches explicitly forbidden for this Change, stated so they aren't silently reconsidered mid-implementation.
+
+### Source inputs recognized
+
+Step 1 reads whatever `$ARGUMENTS` names, or asks. Recognized sources: a journal entry (cite by ID), a spark, an idea, a brainstorm document, a Linear issue, a PR conversation, a prior Change, or plain conversation with no artifact behind it yet.
 
 ---
 
 ## Process
 
-### Step 1: Parse Input
+### Step 1: Gather Context
 
-`$ARGUMENTS` should reference an idea file, problem description, or requirement area. If unclear, ask what to shape.
+Parse `$ARGUMENTS` against the source inputs above. Read the journal (`loaf journal recent` / `search`) for related history, and check for a prior Change touching the same area. When VISION.md, STRATEGY.md, and ARCHITECTURE.md exist, read them for strategic fit. Most consumer projects don't have them yet — when absent, shape against the journal, recent Changes, and the conversation instead, and say so in the Change's Source Inputs.
 
-### Step 2: Gather Strategic Context
+### Step 2: Evaluate Strategic Fit
 
-Read in order: VISION.md, STRATEGY.md, ARCHITECTURE.md, existing specs.
+When strategic docs exist, check: does this advance the vision, serve the target personas, fit technical constraints, avoid conflicting with in-flight Changes? On misalignment, **surface it to the user — never silently adjust the idea**. The user decides whether to proceed, narrow scope, or defer to `/reflect` after this ships.
 
-### Step 3: Evaluate Strategic Fit
+### Step 3: Name the Change and Initialize
 
-| Question | Source |
-|----------|--------|
-| Does this advance our vision? | VISION.md |
-| Does this serve our target personas? | STRATEGY.md |
-| Does this fit our technical constraints? | ARCHITECTURE.md |
-| Does this conflict with existing work? | .agents/specs/ |
-
-If misaligned: surface the tension, adjust idea, or note for `/reflect` later.
-
-### Step 4: Interview for Shaping
-
-Define boundaries, not tasks:
-- Core problem, in/out scope, rabbit holes, no-gos
-- Test conditions, risks, open questions
-- For multi-part specs: priority ordering and go/no-go gates between tracks
-
-### Step 5: Draft the Spec
-
-Create spec following [spec template](templates/spec.md).
-
-### Step 6: Generate Spec ID
+Once the shape of the work is nameable, confirm scope with the user, then:
 
 ```bash
-ls .agents/specs/SPEC-*.md .agents/specs/archive/SPEC-*.md 2>/dev/null | \
-  grep -oE 'SPEC-[0-9]+' | sort -t- -k2 -n | tail -1 | awk -F- '{print $2 + 1}'
+loaf change init <slug>
 ```
 
-If none exist, start with `SPEC-001`.
+This scaffolds `docs/changes/YYYYMMDD-slug/change.md` from [the Change template](templates/change.md) and prints the branch to use — **it does not switch branches**. Create or switch to it yourself (`git switch -c <slug>`) before committing anything: branch-at-shaping, not deferred to implementation. A Change grows toward executability from here: the flat Product Contract sections (Problem, Hypothesis, Scope, Observable Workflow, Rabbit Holes and No-Gos) fill in as understanding solidifies through the steps below, not all at once. See [references/cli-boundary.md](references/cli-boundary.md) for what `init` writes and how `check` reads it.
 
-### Step 7: Present for Approval
+### Step 4: Narrow the Unknowns
 
-Present full spec. **Do NOT create spec file without explicit approval.** User may adjust scope, add constraints, request splitting, or decide not to proceed.
+Offer the blindspot pass when the territory is unfamiliar (a new domain, an unfamiliar subsystem, a first collaboration) — skip it when the shaper is the expert. Its fog entries, and any others surfaced in interview, route by quadrant (Quick Reference above). Loop: grill `[KU]` entries, react to `[UK]` entries, run blindspot reconnaissance on `[UU]` entries until each gets a name and re-routes. Stop grilling when no unrouted `[KU]` entries remain or answers stop changing the contract. Entries still open at the end of the session are fine — each names its owner (a section, a spike, a follow-up).
 
-After approval, remind the user: *"Next, run `/breakdown SPEC-NNN` to
-decompose this. If Linear is enabled, breakdown will also mint a parent
-rollup issue and sub-issues; the spec file itself stays local."*
+### Step 5: Decompose into Implementation Units
 
-### Step 8: Create Spec File
+Absorbed from the retired breakdown step — see [references/decomposition.md](references/decomposition.md) for the Right Size Test and per-unit verification discipline. Order units by likelihood-of-change; state real sequencing constraints in prose, never by list order alone.
 
-After approval: create `.agents/specs/SPEC-{id}-{slug}.md`, update idea file status if applicable.
+### Step 6: Fill the Planning Contract
 
-The spec file is **always local**, whether or not Linear is enabled. Breakdown
-may later add `linear_parent` and `linear_parent_url` keys to the spec's
-frontmatter when it mints the parent issue — shape does not populate those
-fields.
+Write the free-form `###` subsections the work actually needs (approach, placement, risks, sequencing) inside the Planning Contract container. Its subsection names are yours; the container itself, plus Implementation Units, Verification Contract, and Definition of Done, is what `loaf change check` looks for. Durable Outputs stays forward-looking here — name what a final spec, ADR, or knowledge doc will need to capture, but don't write it now. Durable artifacts get created after implementation proves what's true, not during shaping.
 
-### Step 9: Flag for Post-Implementation Reflection
+### Step 7: Run the Critique Gate
 
-If shaping surfaced strategic tensions (noted in the spec's "Strategic Alignment" section per the Strategic Tensions guidelines below), remind the user: *"This spec has strategic tensions. After implementation ships, run `/reflect` to update strategic docs."* Don't suggest running `/reflect` now — strategy updates come from shipped work, not planning.
+Before finalizing, challenge the draft — see [references/critique-gate.md](references/critique-gate.md). Is scope still bounded, does every new command or state name its ceremony, is a status field creeping back in under another name, is the CLI/skill boundary drawn correctly, and could this be smaller and still deliver the Hypothesis?
 
----
+### Step 8: Validate
 
-## Spec Lifecycle
-
-```
-drafting -> approved -> implementing -> complete -> archived
+```bash
+loaf change check
 ```
 
-### Splitting Large Specs
+Read violations (always block — fix them) separately from the executability report (derived, informational unless `--require-executable` is passed — that flag is implement's preflight and CI's non-draft gate, not shape's business). See [references/cli-boundary.md](references/cli-boundary.md).
 
-When scope exceeds a single track, split into sub-specs or use priority ordering within the spec. Each sub-spec can be worked independently and references the parent.
+### Step 9: Offer the Draft PR
 
----
+Offer to push the branch and open a draft PR, using [the PR template](templates/pr.md) — opt-in, never automatic. `loaf change check` (with no `--require-executable`) plus `gh pr list` is the cross-branch index either way.
 
-## Strategic Tensions
+### Step 10: Log the Outcome
 
-**Don't fix strategy during shaping.** Instead:
-1. Note the tension in the spec's "Strategic Alignment" section
-2. Document what might need to change
-3. Proceed with shaping (or pause if blocking)
-4. Use `/reflect` after implementation to evolve strategy
+`loaf journal log "decision(shape): <slug> shaped — N units, N open fog entries"`.
 
 ---
-
-## Guardrails
-
-1. **Interview extensively** -- not quick capture
-2. **Evaluate strategic fit** -- don't shape in a vacuum
-3. **Document rabbit holes** -- prevent scope creep
-4. **Clear test conditions** -- observable outcomes
-5. **Priority order** -- for multi-part specs, define track order and go/no-go gates
-6. **Get approval** -- don't create without confirmation
-7. **Note tensions, don't fix** -- strategy evolves via /reflect
-
----
-
-## Suggests Next
-
-After a spec is approved, suggest `/breakdown` to decompose it into tasks.
 
 ## Related Skills
 
-- **idea** -- Quick capture (feeds into /shape)
-- **brainstorm** -- Deep thinking before shaping
-- **breakdown** -- Decompose spec into work items
-- **implement** -- Start implementation session
-- **reflect** -- Update strategy after shipping
+- **idea** — Quick capture; feeds into `/shape` once a concept has enough weight
+- **brainstorm** — Open-ended divergent thinking before scope narrows enough to shape
+- **implement** — Starts execution once a Change is implementation-ready
+- **reflect** — Updates strategic docs after the shipped work proves what changed
+
+## Topics
+
+| Topic | Reference | Use When |
+|-------|-----------|----------|
+| Blindspot pass | [references/blindspot-pass.md](references/blindspot-pass.md) | Deciding whether to offer reconnaissance, and how to prompt it |
+| Grilling | [references/grilling.md](references/grilling.md) | Running the one-question-at-a-time interview for `[KU]` entries |
+| Reaction artifacts | [references/reaction-artifact.md](references/reaction-artifact.md) | Resolving `[UK]` entries with a variant, mock, or prototype |
+| Decomposition | [references/decomposition.md](references/decomposition.md) | Sizing and ordering Implementation Units |
+| CLI boundary | [references/cli-boundary.md](references/cli-boundary.md) | Reading `loaf change init`/`check` output, or explaining `--require-executable` |
+| Critique Gate | [references/critique-gate.md](references/critique-gate.md) | Self-challenging scope and boundaries before finalizing |

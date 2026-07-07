@@ -202,7 +202,7 @@ After execution, verify generated artifacts are current:
 
 ```bash
 npm run build
-git diff --exit-code -- dist plugins content/skills/cli-reference/SKILL.md
+git diff --exit-code -- dist plugins content/skills/loaf-reference/SKILL.md
 ```
 
 Adjust the path list to the project. For Loaf itself, tracked generated outputs under `dist/`, `plugins/`, and native binaries must match the source changes.

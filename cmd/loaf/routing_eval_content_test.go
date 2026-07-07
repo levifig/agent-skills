@@ -24,7 +24,7 @@ func TestRoutingEvalDryRunValidatesCurrentSkillSuite(t *testing.T) {
 
 	for _, want := range []string{
 		"Loaded 34 skills",
-		"Selected cases: 115",
+		"Selected cases: 119",
 		"Suite validation passed.",
 	} {
 		if !strings.Contains(output, want) {

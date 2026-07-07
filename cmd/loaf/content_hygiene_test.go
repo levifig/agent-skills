@@ -185,19 +185,15 @@ func TestOrchestrationDuplicateAuthorityReferencesRetired(t *testing.T) {
 
 func TestCliReferenceCatalogsJournalFamily(t *testing.T) {
 	root := repoRoot(t)
-	rel := filepath.FromSlash("content/skills/cli-reference/SKILL.md")
+	rel := filepath.FromSlash("content/skills/loaf-reference/SKILL.md")
 	body := readTextFile(t, filepath.Join(root, rel))
-	for _, command := range []string{
-		"loaf journal log",
-		"loaf journal recent",
-		"loaf journal search",
-		"loaf journal show",
-		"loaf journal context",
-		"loaf journal export",
-	} {
-		if !strings.Contains(body, command) {
-			t.Fatalf("%s missing journal command %q", filepath.ToSlash(rel), command)
-		}
+	// The thinned router lists each command once with its subcommands
+	// comma-joined; the journal row must catalog the whole family.
+	if !strings.Contains(body, "`loaf journal`") {
+		t.Fatalf("%s missing the `loaf journal` command index row", filepath.ToSlash(rel))
+	}
+	if !strings.Contains(body, "log, recent, search, show, context, export") {
+		t.Fatalf("%s missing the journal subcommand family in the command index", filepath.ToSlash(rel))
 	}
 	// Journal-first (SPEC-056): the session entity is gone; no session command
 	// should survive in the generated CLI reference.
