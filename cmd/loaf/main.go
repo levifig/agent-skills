@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/levifig/loaf/internal/cli"
 )
@@ -21,6 +22,12 @@ var (
 )
 
 func main() {
+	// argv[0] dispatch: `loaf shim enable gh` symlinks a file named "gh" to
+	// this binary. Invoked that way, skip the normal CLI parser entirely and
+	// hand off to the per-invocation identity shim (see change.md).
+	if filepath.Base(os.Args[0]) == "gh" {
+		os.Exit(cli.RunGHShim(os.Args, os.Environ()))
+	}
 	if err := run(os.Args[1:]); err != nil {
 		var silent interface {
 			ExitCode() int

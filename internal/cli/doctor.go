@@ -133,7 +133,73 @@ func doctorChecks(cliVersion string) []doctorCheck {
 		checkStaleCursorMdc(),
 		checkFencedVersion(cliVersion),
 		checkDuplicateFencedSections(),
+		checkGHShim(),
 	}
+}
+
+func checkGHShim() doctorCheck {
+	return doctorCheck{
+		Name:        "gh-shim",
+		Description: "gh shim (if enabled) is symlinked, resolvable first on PATH, and points at a live real gh",
+		Run: func(_ doctorContext) doctorResult {
+			diag, err := diagnoseGHShim()
+			if err != nil {
+				return doctorResult{Status: doctorFail, Message: fmt.Sprintf("could not diagnose gh shim: %v", err)}
+			}
+			switch diag.State {
+			case ghShimAbsent:
+				return doctorResult{Status: doctorSkip, Message: "gh shim not enabled"}
+			case ghShimHealthy:
+				return doctorResult{Status: doctorPass, Message: diag.Detail}
+			case ghShimPathShadowed:
+				return doctorResult{Status: doctorWarn, Message: "gh shim configured but not first on PATH", Detail: diag.Detail}
+			case ghShimBrokenSymlink:
+				return doctorResult{Status: doctorFail, Message: "gh shim symlink is broken", Detail: diag.Detail, Fixable: true}
+			case ghShimRealGHMissing:
+				return doctorResult{Status: doctorFail, Message: "gh shim's recorded real gh is missing", Detail: diag.Detail}
+			default:
+				return doctorResult{Status: doctorFail, Message: fmt.Sprintf("unknown gh shim state %q", diag.State)}
+			}
+		},
+		Fix: func(_ doctorContext, _ doctorResult) doctorFixResult {
+			return fixGHShimSymlink()
+		},
+	}
+}
+
+// fixGHShimSymlink repairs a broken symlink from already-recorded, already-
+// consented config. It never (re)writes shims.gh itself — that would be a
+// fresh enable, which needs its own consent prompt, not a --fix side effect.
+func fixGHShimSymlink() doctorFixResult {
+	diag, err := diagnoseGHShim()
+	if err != nil {
+		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("could not re-diagnose: %v", err)}
+	}
+	if diag.State != ghShimBrokenSymlink {
+		return doctorFixResult{Fixed: false, Message: "state no longer matches - re-run doctor"}
+	}
+	if diag.RealGHPath == "" {
+		return doctorFixResult{Fixed: false, Message: "no recorded gh shim configuration to repair from; run `loaf shim enable gh`"}
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("could not determine loaf binary path: %v", err)}
+	}
+	if resolved, everr := filepath.EvalSymlinks(self); everr == nil {
+		self = resolved
+	}
+	if err := os.MkdirAll(filepath.Dir(diag.SymlinkPath), 0o755); err != nil {
+		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("could not prepare shim directory: %v", err)}
+	}
+	if pathExistsForDoctor(diag.SymlinkPath) {
+		if err := os.Remove(diag.SymlinkPath); err != nil {
+			return doctorFixResult{Fixed: false, Message: fmt.Sprintf("could not remove stale symlink: %v", err)}
+		}
+	}
+	if err := os.Symlink(self, diag.SymlinkPath); err != nil {
+		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("symlink failed: %v", err)}
+	}
+	return doctorFixResult{Fixed: true, Message: fmt.Sprintf("Recreated %s -> %s", diag.SymlinkPath, self)}
 }
 
 func checkAgentsSymlink() doctorCheck {

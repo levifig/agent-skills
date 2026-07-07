@@ -267,6 +267,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runCheck(args[1:], out, runtime.RootPath())
 	case "doctor":
 		dispatchErr = r.runDoctor(args[1:], out, runtime.RootPath())
+	case "shim":
+		dispatchErr = r.runShim(args[1:], out)
 	case "link":
 		dispatchErr = r.runLink(args[1:], out, runtime)
 	case "report":
@@ -355,6 +357,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  change        Manage shape-first Change artifacts")
 	fmt.Fprintln(out, "  check         Run hook checks")
 	fmt.Fprintln(out, "  doctor        Diagnose project alignment")
+	fmt.Fprintln(out, "  shim          Manage the opt-in per-invocation gh identity shim")
 	fmt.Fprintln(out, "  release       Create a release")
 	fmt.Fprintln(out, "  version       Show version and content counts")
 	fmt.Fprintln(out)

@@ -94,7 +94,9 @@ Provenance: all accepted 2026-07-07 in the design conversation following the liv
 
 ### Config schema
 
-Repo side (exists): `integrations.github.account`. User side (new, XDG config): `shims.gh: {real_path, enabled_at}`. No repo-side knob can enable, request, or nag about the shim — the policy/mechanism boundary (Decision 1).
+Repo side (exists): `integrations.github.account`. User side (new): `shims.gh: {real_path, enabled_at}` in `$XDG_CONFIG_HOME/loaf/config.json` (fallback `~/.config/loaf/config.json`) — a new generic user-config file, deliberately distinct from the SQLite state DB (data-home, project-scoped) and the install-target records; writes preserve unrelated keys for forward compatibility *(implementation clarification, U1)*. No repo-side knob can enable, request, or nag about the shim — the policy/mechanism boundary (Decision 1).
+
+Walk-up semantics *(implementation clarification, U2)*: an iterative directory walk from CWD checking `.agents/loaf.json` at each level, bounded by the first `.git` entry (file or dir — worktrees included) or the filesystem root; pure `os.Lstat`, no subprocesses. The git boundary prevents an unrelated ancestor's loaf.json from leaking into a nested repo. `enable` is idempotent over both `healthy` and `path-shadowed` states — the freshly-enabled current shell hasn't sourced the new PATH line yet, and must not re-trigger the consent flow.
 
 ### Failure and residual matrix
 
@@ -102,10 +104,14 @@ Repo side (exists): `integrations.github.account`. User side (new, XDG config): 
 |---|---|
 | Non-Loaf dir | exec real gh, silent, byte-identical behavior |
 | Loaf dir, no account configured | exec real gh, silent |
+| Malformed `.agents/loaf.json` | exec real gh, silent fall-through; `loaf config check` owns the diagnosis |
 | Configured, keychain entry missing | exec real gh + one stderr note (visible failure over wrong-identity success) |
 | Configured, resolution succeeds | exec real gh with `GH_TOKEN`, global pointer untouched |
+| Recorded `real_path` stale (gh moved/uninstalled) | last-resort PATH-minus-shim-dir walk; `loaf doctor` flags `real-gh-missing` |
 | Absolute-path gh invocation | shim never sees it; tier 1 catches Loaf-hooked sessions |
-| `gh auth switch` under shim | passes through to real gh; mutates pointer; shimmed calls keep ignoring it |
+| **git-over-HTTPS via `gh auth setup-git`'s credential helper** | absolute-path (`!/opt/homebrew/bin/gh auth git-credential`) — bypasses the shim for plain `git push/pull`; the near-universal residual trigger. SSH remotes (this user's setup) unaffected; documented in U4 |
+| **GUI-launched apps / launchd** | never source shell profiles; resolve gh via `/etc/paths.d` — shim invisible to Dock-launched IDEs and git clients; inherent PATH-shim limit (same as rbenv/direnv) |
+| `gh auth switch` under shim | passes through to real gh; mutates pointer (env-precedence only — spike confirmed zero disk writes from `GH_TOKEN` itself); shimmed calls keep ignoring it |
 
 ### Sequencing
 
@@ -150,11 +156,13 @@ Human review:
 
 ## Open Questions
 
-- [KU] Minimum gh version: `gh auth token --user` and multi-account keyring semantics across gh releases — which version gates the shim, and what does `enable` do on older gh? → research spike at U2 start; recommended: hard version check in `enable` with a clear refusal message.
-- [KU] `gh auth switch`/`gh auth status` behavior when `GH_TOKEN` is set (warnings? refusals?) — affects the failure matrix's last row wording → research spike at U2; document verbatim observed behavior in troubleshooting.
-- [KU] Where the PATH line lands per shell (zsh/bash/fish; login vs interactive) and whether agent harness shells inherit it reliably → grilling question at U1 review; recommended: profile append per shell with the user's confirmation, and `loaf doctor` verifying *effective* resolution rather than trusting the profile edit.
-- [UK] Consent-prompt and stderr-note wording — recognize-on-sight → reaction artifact at U1: two or three prompt drafts in `research/`, pick in review.
-- [UU] What else on a dev machine resolves gh via PATH in ways that would surprise under a shim — IDE GitHub integrations, other CLIs shelling out to `gh` → blindspot pass over the shim's blast radius during U3; findings land in the residual matrix.
+- ~~[KU] Minimum gh version~~ → resolved by U2 spike: `--user` on `auth token`/`switch`/`status` shipped together in **gh v2.40.0** (cli/cli PR #8425, 2023-12-07). `enable` hard-refuses below 2.40.0, naming the installed version and the requirement.
+- ~~[KU] `gh auth` behavior under `GH_TOKEN`~~ → resolved by U2 spike, empirically and read-only: `GH_TOKEN` is pure runtime precedence — **zero disk mutation** (`gh help environment`: "takes precedence over previously stored credentials"). With a valid named token, `gh auth status` exits 0 and shows the account source-tagged `(GH_TOKEN)` instead of `(keyring)` — cosmetic; one line in U4's troubleshooting doc covers it.
+- ~~[KU] PATH-line placement per shell~~ → resolved by U1 implementation: shell detection via `$SHELL` (zsh/bash/fish), explicit y/n profile-append offer, and `loaf doctor`/`shim status` verify *effective* resolution (the `path-shadowed` state) rather than trusting the profile edit; `enable` treats `path-shadowed` as already-enabled so the not-yet-sourced current shell doesn't re-trigger consent. Review confirms the wording.
+- ~~[UK] Consent-prompt wording~~ → reaction artifact delivered: three drafts in `research/consent-prompt-drafts.md`; Draft A (itemized mutation checklist + one safety paragraph, including the explicit "hosts.yml is read-only, never written" line) implemented as the recommendation. **Final pick is a veto point at PR review.**
+- ~~[UU] What else resolves gh via PATH~~ → blindspot pass returned two machine-verified findings, folded into the residual matrix below: (1) `gh auth setup-git` bakes an **absolute-path** credential helper into gitconfig, so plain HTTPS `git push/pull` bypasses the shim and still races the pointer — the near-universal trigger for the absolute-path residual; (2) macOS GUI-launched apps (Dock/Spotlight) never source shell profiles and resolve gh via `/etc/paths.d` — IDEs and GUI git clients see the real gh unless launched from a shim-aware terminal. Non-login shells (cron, bare ssh) and processes started pre-enable share the same inherent PATH-shim limit, as with rbenv/direnv.
+
+The register is empty; the consent-prompt pick and H1–H2 remain for the PR review round.
 
 ## Source Inputs
 

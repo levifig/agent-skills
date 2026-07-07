@@ -279,6 +279,7 @@ func knownTopLevelCommandNative(command string) bool {
 		"report",
 		"session",
 		"setup",
+		"shim",
 		"spark",
 		"spec",
 		"state",
