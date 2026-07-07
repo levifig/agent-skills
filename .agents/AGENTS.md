@@ -18,20 +18,23 @@ loaf install --to all          # Install to detected tools
 ## Project Structure
 
 ```
-cli/                            # CLI tool (TypeScript, bundled by tsup)
-├── index.ts                    # Entry point (Commander.js)
-├── commands/
-│   ├── build.ts                # loaf build
-│   ├── check.ts                # loaf check
-│   ├── install.ts              # loaf install
-│   └── journal.ts              # loaf journal
-└── lib/
-    ├── build/                  # Build system
-    │   ├── types.ts            # Shared types
-    │   ├── targets/            # Target transformers (claude-code, opencode, cursor, codex, amp)
-    │   └── lib/                # Build utilities (version, sidecar, shared-templates, etc.)
-    ├── detect/                 # Tool detection
-    └── install/                # Installation logic
+cmd/loaf/main.go                # CLI entry point (func main → internal/cli Runner)
+
+internal/                       # CLI implementation (Go)
+├── cli/                        # Command surface: Runner dispatch (cli.go), one runX per command
+│   ├── build.go                # loaf build
+│   ├── build_{target}.go       # Per-target builders (claude-code, opencode, cursor, codex, amp)
+│   ├── check.go                # loaf check
+│   ├── install.go              # loaf install
+│   └── journal.go              # loaf journal
+├── state/                      # SQLite-backed state (journal, specs, tasks, findings, ...)
+└── project/                    # Project identity and root resolution
+
+cli/                            # Node-side build tooling (not the CLI itself)
+├── runtime/loaf-launcher.cjs   # Node launcher shim (copied to bin/loaf)
+└── scripts/                    # build-go, build-release, verify-go-artifacts, etc.
+
+bin/loaf                        # Installed Node launcher; execs the native binary in bin/native/
 
 content/                        # Distributable content
 ├── skills/{name}/SKILL.md      # Domain knowledge + references/ + templates/
@@ -54,7 +57,7 @@ config/                         # Build configuration
 | Agents | `content/agents/{name}.md` | - |
 | Hooks | `content/hooks/{pre,post}-tool/` | - |
 | Config | `config/` | `hooks.yaml`, `targets.yaml` |
-| CLI | `cli/` | `index.ts` |
+| CLI | `internal/cli/` | `cli.go` |
 
 ## Agent Profiles
 
@@ -76,7 +79,7 @@ See [SOUL.md](../SOUL.md) for the Warden identity and fellowship conventions.
 
 **Add template:** Create in `content/skills/{name}/templates/` (skill-specific) or `content/templates/` + register in `shared-templates` in `targets.yaml`
 
-**Add target:** Create `cli/lib/build/targets/{target}.ts`, register in `cli/commands/build.ts`
+**Add target:** Create `internal/cli/build_{target}.go`, add the name to `defaultBuildTargets` and the target switch in `internal/cli/build.go` (see `build_amp.go` for the pattern)
 
 ## Skill Development
 
@@ -381,10 +384,11 @@ loaf journal context           # Emit the layered continuity digest
 
 ```bash
 npm install                    # Install dependencies
-npm run build:cli              # Build CLI only (tsup)
-npm run build                  # Build CLI + all content targets
-npm run typecheck              # Type check (tsc --noEmit)
-npm link                       # Make `loaf` available globally
+npm run build:go               # Build the native Go binary only (cli/scripts/build-go.mjs)
+npm run build                  # Build binary + CLI reference + all content targets, then verify
+npm run typecheck              # Compile check (go test ./... -run=^$)
+npm run test                   # Run Go tests (go test ./...)
+npm link                       # Make `loaf` available globally (symlinks bin/loaf onto PATH)
 ```
 
 ### Dev Isolation (avoid polluting the global DB)
