@@ -72,6 +72,7 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf link` | Manage explicit relationships in native SQLite state | create, list, remove |
 | `loaf check` | Run enforcement hook checks | — |
 | `loaf doctor` | Diagnose Loaf project alignment (symlinks, stale files, version drift) | — |
+| `loaf shim` | Manage the opt-in per-invocation gh identity shim | enable gh, disable gh, status |
 
 ## Topics
 
