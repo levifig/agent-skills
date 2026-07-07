@@ -793,13 +793,24 @@ func runNativeWorkflowPrePR(hookContext checkHookContext, cwd string) checkResul
 }
 
 func runNativeGitHubAccount(hookContext checkHookContext, cwd string) checkResult {
-	return runNativeGitHubAccountWithRunner(hookContext, cwd, activeGitHubAccount)
+	return runNativeGitHubAccountWithRunner(hookContext, cwd, activeGitHubAccount, switchGitHubAccount)
 }
 
-func runNativeGitHubAccountWithRunner(hookContext checkHookContext, cwd string, runner func(string) githubAccountCommandResult) checkResult {
+func runNativeGitHubAccountWithRunner(
+	hookContext checkHookContext,
+	cwd string,
+	status func(string) githubAccountCommandResult,
+	switcher func(string, string) githubAccountCommandResult,
+) checkResult {
 	result := checkResult{Passed: true, Warnings: []string{}, Errors: []string{}, Findings: []string{}}
 	command := checkContextCommand(hookContext)
 	if checkContextToolName(hookContext) != "Bash" || !shellCommandUsesGitHubCLI(command) {
+		return result
+	}
+	// Identity administration (`gh auth ...`) is the user's domain: pass it
+	// through untouched — no status probe, no switch — so convergence never
+	// misdirects the command onto the configured account.
+	if shellCommandOnlyManagesGitHubAuth(command) {
 		return result
 	}
 	expected, err := configuredGitHubAccount(cwd)
@@ -812,13 +823,27 @@ func runNativeGitHubAccountWithRunner(hookContext checkHookContext, cwd string, 
 	if expected == "" {
 		return result
 	}
-	if diagnostic := githubAccountDiagnostic(expected, runner(cwd)); diagnostic != "" {
+	resolution := resolveGitHubAccount(cwd, expected, status, switcher)
+	switch resolution.outcome {
+	case githubAccountOutcomeMatch:
+		return result
+	case githubAccountOutcomeSwitched:
+		// Converge instead of dead-ending, but surface the mutation as a
+		// pass-with-warnings finding so the switch is never silent.
+		result.Warnings = append(result.Warnings, githubAccountSwitchNotice(resolution))
+		return result
+	case githubAccountOutcomeUnavailable:
 		result.Passed = false
 		result.Blocked = true
-		result.Errors = append(result.Errors, diagnostic)
-		result.Findings = append(result.Findings, "GitHub account mismatch would run gh with the wrong project identity")
+		result.Errors = append(result.Errors, resolution.reason)
+		return result
+	default:
+		result.Passed = false
+		result.Blocked = true
+		result.Errors = append(result.Errors, githubAccountSwitchFailureMessages(resolution)...)
+		result.Findings = append(result.Findings, "gh could not switch to the configured account, so gh would run with the wrong project identity")
+		return result
 	}
-	return result
 }
 
 func runNativeValidatePush(hookContext checkHookContext, cwd string) checkResult {

@@ -143,7 +143,7 @@ Background skills that activate automatically during agent coordination and proj
 | `orchestration` | Journal continuity, delegating agents, Linear integration |
 | `council` | Multi-perspective deliberation during complex decisions |
 | `knowledge-base` | Managing project knowledge files |
-| `cli-reference` | Looking up which CLI command to use |
+| `loaf-reference` | Looking up which CLI command to use |
 
 ### Engineering Standards
 

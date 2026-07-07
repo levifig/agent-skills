@@ -11,7 +11,20 @@
       ]
     }
   ],
-  "retired_skills": [],
+  "retired_skills": [
+    {
+      "skill": "cli-reference",
+      "since": "v2.0.0-alpha.6",
+      "window": "one-release",
+      "reason": "renamed to loaf-reference by 20260707-shape-skill-rewrite",
+      "signoff": "20260707-shape-skill-rewrite",
+      "skill_homes": [
+        "${HOME}/.agents/skills",
+        "${HOME}/.config/agents/skills",
+        "${HOME}/.config/opencode/skills"
+      ]
+    }
+  ],
   "retired_agents": [],
   "externalized_skills": [
     {

@@ -32,7 +32,7 @@ func (r Runner) runGenerateCLIReference(args []string, out io.Writer, rootPath s
 	if len(args) > 0 {
 		return fmt.Errorf("__generate-cli-ref does not accept arguments")
 	}
-	outputPath := filepath.Join(rootPath, "content", "skills", "cli-reference", "SKILL.md")
+	outputPath := filepath.Join(rootPath, "content", "skills", "loaf-reference", "SKILL.md")
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return fmt.Errorf("create CLI reference directory: %w", err)
 	}
@@ -681,175 +681,95 @@ func cliReferenceCommands() []cliReferenceCommand {
 				{Flags: "--json", Description: "Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON"},
 			},
 		},
+		{
+			Name:        "doctor",
+			Description: "Diagnose Loaf project alignment (symlinks, stale files, version drift)",
+			Options: []cliReferenceOption{
+				{Flags: "--fix", Description: "Apply safe auto-fixes for failing checks"},
+				{Flags: "--verbose", Description: "Print each check name even when passing"},
+			},
+		},
 	}
 }
 
 func generateCLIReferenceSkill(commands []cliReferenceCommand) string {
-	sections := []string{`---
-name: cli-reference
+	header := `---
+name: loaf-reference
 description: >-
-  Documents the Loaf CLI commands and when to use them. Reference for
-  {{IMPLEMENT_CMD}}, {{ORCHESTRATE_CMD}}, and all loaf
-  subcommands. Use when you need to know which CLI command to invoke.
-  Not for skill documentation (use the skill's own SKILL.md) or for
-  understanding build internals.
+  Documents how agents operate the Loaf CLI: command discovery via loaf --help,
+  JSON diagnosis surfaces, guided config maintenance, and troubleshooting. Use
+  when unsure which loaf command to invoke or how to validate project state.
+  Not for workflow guidance (workflow skills own their CLI contracts) or build
+  internals.
 ---
 
-# Loaf CLI Reference
+# Loaf Reference
 
 ## Contents
-- Global Commands
-- Command Reference
-- Command Substitution Reference
-- Quick Decision Guide
+- Operating Rules
+- Command Index
+- Topics
 
-Quick reference for all Loaf CLI commands. Each command includes its purpose, common usage patterns, and when to use it.
+The Loaf operating manual for agents: how to discover commands, diagnose project
+state, and keep configuration current. It teaches reading the CLI, not
+memorizing it.
 
 **Note:** This file is auto-generated from native CLI reference metadata. Do not edit manually.
-`,
-		`## Global Commands
+`
 
-### {{IMPLEMENT_CMD}}
-Orchestrates implementation work through agent delegation and batch execution. Logs to the project journal.
-
-**Use when:**
-- User asks "implement this" or "start working on TASK-XXX"
-- Starting a new spec implementation
-- Resuming work after context loss
-
-**Usage:**
-- {{IMPLEMENT_CMD}} TASK-XXX - Load one task and build its plan
-- {{IMPLEMENT_CMD}} SPEC-XXX - Resolve all tasks, build dependency waves
-- {{IMPLEMENT_CMD}} TASK-XXX..YYY - Expand range, build waves
-- {{IMPLEMENT_CMD}} "description" - Ad-hoc implementation work
-
-### {{ORCHESTRATE_CMD}}
-Coordinates multi-agent work: agent delegation, journal continuity, Linear integration.
-
-**Use when:**
-- Delegating to agents and coordinating cross-cutting work
-- Running council workflows
-- Keeping journal continuity across parallel conversations
-
----
-`,
+	lines := []string{
+		"",
+		"## Operating Rules",
+		"",
+		"- Get exact, current syntax live: `loaf --help` lists every command, `loaf <command> --help` details one. This index is a map, not the contract.",
+		"- Prefer `--json` surfaces when diagnosing: `loaf config check --json`, `loaf state doctor --json`, `loaf change check --json`. Parse the structured output instead of scraping human-readable text.",
+		"- Run the deterministic CLI command before hand-editing anything it manages; the command owns its files.",
+		"- Use `--fix` only for safe, mechanical repairs, and review what it changed.",
+		"- Ask the user for project-owned choices — GitHub account, tracker or integration election, which harnesses to install — never guess them.",
+		"- Never hand-edit Loaf-managed hook files; regenerate them through `loaf build` and `loaf install`.",
+		"- Re-run the relevant check after any change and confirm it passes.",
+		"- Log meaningful decisions to the journal: `loaf journal log \"decision(scope): ...\"`.",
+		"",
+		"## Command Index",
+		"",
+		"Names and one-line purposes only. Run `loaf <command> --help` for options, arguments, and current usage.",
+		"",
+		"| Command | Purpose | Subcommands |",
+		"|---------|---------|-------------|",
 	}
 
 	for _, cmd := range commands {
-		sections = append(sections, generateCLIReferenceCommandSection(cmd))
+		lines = append(lines, cliReferenceIndexRow(cmd))
 	}
 	for _, cmd := range supplementalCLIReferenceCommands(commands) {
-		sections = append(sections, generateCLIReferenceCommandSection(cmd))
+		lines = append(lines, cliReferenceIndexRow(cmd))
 	}
 
-	sections = append(sections, strings.Join([]string{
-		"## Command Substitution Reference",
+	lines = append(lines,
 		"",
-		"The following placeholders are substituted at build time per target:",
+		"## Topics",
 		"",
-		"| Placeholder | Claude Code | OpenCode | Cursor |",
-		"|-------------|-------------|----------|--------|",
-		"| `{{IMPLEMENT_CMD}}` | `/implement` | `/implement` | `@loaf/implement` |",
-		"| `{{ORCHESTRATE_CMD}}` | `/implement` | `/implement` | `@loaf/implement` |",
-		"",
-		"---",
-		"",
-		"## Quick Decision Guide",
-		"",
-		"**Need to start working?** -> `{{IMPLEMENT_CMD}} TASK-XXX`",
-		"",
-		"**Need to continue after restart?** -> `loaf journal context` then `{{IMPLEMENT_CMD}}`",
-		"",
-		"**Need to coordinate agents?** -> `{{ORCHESTRATE_CMD}}`",
-		"",
-		"**Made changes to skills?** -> `loaf build && loaf install --to <target>`",
-		"",
-		"**Want to see what's in progress?** -> `loaf task list --active`",
-		"",
-		"**Ready to archive completed work?** -> `loaf task archive TASK-XXX`",
-		"",
-		"**Need to check knowledge freshness?** -> `loaf kb check`",
-		"",
-	}, "\n"))
-
-	return strings.Join(sections, "\n")
-}
-
-func generateCLIReferenceCommandSection(cmd cliReferenceCommand) string {
-	var parts []string
-	subcommands := cliReferenceSubcommands(cmd)
-
-	parts = append(parts,
-		fmt.Sprintf("## %s Management", capitalizeFirst(cmd.Name)),
-		"",
-		fmt.Sprintf("### `loaf %s`", cmd.Name),
-		cmd.Description,
+		"| Topic | Reference | Use When |",
+		"|-------|-----------|----------|",
+		"| Configuration maintenance | [references/configuration.md](references/configuration.md) | Checking whether a project's Loaf config is current and repairing it; wiring project-owned choices |",
+		"| Command routing | [references/command-routing.md](references/command-routing.md) | Deciding which command a task needs; locating the JSON diagnosis surfaces |",
+		"| Troubleshooting | [references/troubleshooting.md](references/troubleshooting.md) | Diagnosing state, config, or alignment failures; isolating a throwaway database |",
 		"",
 	)
 
-	if guidance := cliReferenceCommandGuidance(cmd.Name); guidance != "" {
-		parts = append(parts, guidance, "")
-	}
-
-	if len(subcommands) > 0 {
-		parts = append(parts,
-			"**Subcommands:**",
-			"",
-			"| Subcommand | Purpose |",
-			"|------------|---------|",
-		)
-		for _, sub := range subcommands {
-			parts = append(parts, fmt.Sprintf("| `loaf %s %s` | %s |", cmd.Name, sub.Name, sub.Description))
-		}
-		parts = append(parts, "")
-
-		var withOptions []cliReferenceSubcommand
-		for _, sub := range subcommands {
-			if len(sub.Options) > 0 {
-				withOptions = append(withOptions, sub)
-			}
-		}
-		if len(withOptions) > 0 {
-			parts = append(parts, "**Options:**", "")
-			for _, sub := range withOptions {
-				parts = append(parts, fmt.Sprintf("- `loaf %s %s`:", cmd.Name, sub.Name))
-				for _, opt := range sub.Options {
-					parts = append(parts, fmt.Sprintf("  - `%s` - %s", opt.Flags, opt.Description))
-				}
-				parts = append(parts, "")
-			}
-		}
-	}
-
-	if len(cmd.Options) > 0 {
-		parts = append(parts, "**Options:**", "")
-		for _, opt := range cmd.Options {
-			parts = append(parts, fmt.Sprintf("- `%s` - %s", opt.Flags, opt.Description))
-		}
-		parts = append(parts, "")
-	}
-
-	parts = append(parts, "**Usage:**", "```bash")
-	if examples := cliReferenceCommandUsageExamples(cmd.Name); len(examples) > 0 {
-		parts = append(parts, examples...)
-	} else if len(subcommands) > 0 {
-		limit := len(subcommands)
-		if limit > 3 {
-			limit = 3
-		}
-		for _, sub := range subcommands[:limit] {
-			parts = append(parts, fmt.Sprintf("loaf %s %s", cmd.Name, sub.Name))
-		}
-	} else {
-		parts = append(parts, fmt.Sprintf("loaf %s", cmd.Name))
-	}
-	parts = append(parts, "```", "", "---", "")
-
-	return strings.Join(parts, "\n")
+	return header + strings.Join(lines, "\n")
 }
 
-func cliReferenceSubcommands(cmd cliReferenceCommand) []cliReferenceSubcommand {
-	return cmd.Subcommands
+func cliReferenceIndexRow(cmd cliReferenceCommand) string {
+	subcommands := "—"
+	if len(cmd.Subcommands) > 0 {
+		names := make([]string, 0, len(cmd.Subcommands))
+		for _, sub := range cmd.Subcommands {
+			names = append(names, sub.Name)
+		}
+		subcommands = strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("| `loaf %s` | %s | %s |", cmd.Name, cmd.Description, subcommands)
 }
 
 func nativeArtifactReferenceSubcommands(kind string) []cliReferenceSubcommand {
@@ -902,85 +822,4 @@ func supplementalCLIReferenceCommands(commands []cliReferenceCommand) []cliRefer
 			{Name: "generate", Description: "Generate report Markdown from SQLite state to stdout"},
 		},
 	}}
-}
-
-func cliReferenceCommandGuidance(commandName string) string {
-	switch commandName {
-	case "task":
-		return "In SQLite-backed projects, task metadata mutations go through the Go-native\nstate store. `.agents/tasks/` and `.agents/TASKS.json` are rollback material\nafter the SPEC-045 cutover; do not recreate them as compatibility mirrors."
-	case "spec":
-		return "Spec lifecycle changes go through `loaf spec` commands. Markdown spec files\nremain the authored prose artifact, while SQLite state carries operational\nstatus and relationship data when initialized."
-	case "journal":
-		return "The project journal is the only session-related structure: entries are\nproject-scoped events tagged with an opaque harness_session_id. There is no\nsession entity to open, close, or transition. Use `loaf journal log` to append\nentries, `loaf journal context` for the layered continuity digest, and\n`loaf journal recent`/`search`/`show` to read."
-	case "report":
-		return "In SQLite-backed projects, report lifecycle state is stored in SQLite. Use\ngenerated report commands for review output; create authored Markdown reports\nonly when a durable prose artifact is explicitly needed."
-	case "state":
-		return "Existing TypeScript-era projects can keep running supported commands in\nmarkdown-only compatibility mode until SQLite is initialized. Use\n`loaf state migrate markdown --apply` to import `.agents/` Markdown into SQLite\nwithout rewriting the source Markdown files." +
-			"\n\nManual restore from a backup is explicit until a guarded restore command exists:\nverify the backup with `loaf state backup verify <backup>`, preserve the current\n`$(loaf state path)` file, copy the verified backup to that path, then run\n`loaf state doctor` and `loaf state status`." +
-			"\nFor agents, `loaf state backup verify <backup> --json` also returns\n`restore_database_path`, `restore_preserve_path`, and\n`restore_validation_commands` for the current checkout. Ephemeral Markdown can\nbe verified with `loaf state verify-ephemerals <manifest|backup-dir|backup-id>`\nand restored and staged with `loaf state restore-ephemerals <manifest|backup-dir|backup-id>`."
-	case "project":
-		return "Project IDs are stable SQLite identities, not path or name hashes. Use\n`loaf project rename --dry-run` for display-name previews and\n`loaf project move --dry-run` before recording checkout path moves."
-	case "migrate":
-		return "`loaf migrate markdown` is the upgrade path for existing `.agents/`\nprojects with no SQLite database. Start with `--dry-run`, then use `--apply`\nwhen the artifact counts and unimported file classifications look right."
-	default:
-		return ""
-	}
-}
-
-func cliReferenceCommandUsageExamples(commandName string) []string {
-	switch commandName {
-	case "state":
-		return []string{
-			"loaf state status",
-			"loaf state migrate markdown --dry-run",
-			"loaf state migrate markdown --apply",
-			"loaf state migrate lifecycle-statuses --dry-run",
-			"loaf state backup",
-			"loaf state backup verify /path/to/backup.sqlite",
-			"loaf state verify-ephemerals loaf-20260625-120000-000000000",
-			"loaf state restore-ephemerals loaf-20260625-120000-000000000",
-			"loaf state status",
-		}
-	case "project":
-		return []string{
-			"loaf project show",
-			"loaf project identity --json",
-			"loaf project rename \"Loaf\" --dry-run",
-			"loaf project rename \"Loaf\"",
-			"loaf project move /old/path/to/loaf /new/path/to/loaf --dry-run",
-			"loaf project move --from /old/path/to/loaf --dry-run",
-			"loaf project move --from /old/path/to/loaf",
-			"loaf project show --json",
-		}
-	case "migrate":
-		return []string{
-			"loaf migrate markdown --dry-run",
-			"loaf migrate markdown --apply",
-			"loaf migrate storage-home --dry-run",
-			"loaf migrate lifecycle-statuses --dry-run",
-		}
-	case "render":
-		return []string{
-			"loaf render sweep --dry-run",
-			"loaf render sweep --json",
-			"loaf check --hook render-drift --json",
-		}
-	case "report":
-		return []string{
-			"loaf report list",
-			"loaf report create release-readiness --type audit --source manual",
-			"loaf report finalize report-release-readiness",
-			"loaf report archive report-release-readiness",
-			"loaf report generate release-readiness",
-		}
-	default:
-		return nil
-	}
-}
-
-func capitalizeFirst(value string) string {
-	if value == "" {
-		return ""
-	}
-	return strings.ToUpper(value[:1]) + value[1:]
 }

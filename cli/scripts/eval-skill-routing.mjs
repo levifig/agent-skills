@@ -60,7 +60,7 @@ const TEST_CASES = {
     "Create tasks for SPEC-015",
     "Decompose this plan into atomic work items",
   ],
-  "cli-reference": [
+  "loaf-reference": [
     "Which loaf command shows the recent project journal?",
     "Show me the Loaf CLI command for task status",
     "What flags does loaf journal recent support?",
@@ -181,8 +181,8 @@ const TEST_CASES = {
     "Perform a threat analysis on the auth flow",
   ],
   shape: [
-    "Shape this idea into a spec",
-    "Write a bounded spec for the auth feature",
+    "Shape this idea into a Change",
+    "Write a bounded proposal for the auth feature",
     "Turn this rough concept into an implementable proposal",
   ],
   ship: [
@@ -271,7 +271,31 @@ const CONFLICT_PROBES = [
     group: "architecture-shape",
     choices: ["architecture", "shape"],
     expected: "shape",
-    prompt: "Turn this rough storage idea into an implementable spec with risks and scope",
+    prompt: "Turn this rough storage idea into a bounded Change with risks and scope",
+  },
+  {
+    group: "idea-shape",
+    choices: ["idea", "shape"],
+    expected: "idea",
+    prompt: "Quick — jot down this notification idea before I forget it",
+  },
+  {
+    group: "idea-shape",
+    choices: ["idea", "shape"],
+    expected: "shape",
+    prompt: "This notification concept has enough constraints now — bound it into a Change with scope and rabbit holes",
+  },
+  {
+    group: "brainstorm-shape",
+    choices: ["brainstorm", "shape"],
+    expected: "brainstorm",
+    prompt: "I don't know which direction to take on notifications yet — help me explore a few before we commit to one",
+  },
+  {
+    group: "brainstorm-shape",
+    choices: ["brainstorm", "shape"],
+    expected: "shape",
+    prompt: "We've settled on push notifications — bound the scope, risks, and Implementation Units for it",
   },
   {
     group: "foundations-git-workflow-documentation-standards",

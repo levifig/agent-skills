@@ -315,7 +315,7 @@ Hard-won constraints validated during SPEC-030 implementation:
 
 ### Hook Categories
 
-**Enforcement hooks** — quality gates that block bad actions. Run by `loaf check` through the native Go backend. Exit non-zero to block. `failClosed: true` means failures block the action. `github-account` blocks `gh` commands when the active GitHub CLI account differs from `.agents/loaf.json`; `validate-push` restricts direct pushes to the default branch to `.agents/` and `docs/` files only. Code changes require a feature branch and pull request.
+**Enforcement hooks** — quality gates that block bad actions. Run by `loaf check` through the native Go backend. Exit non-zero to block. `failClosed: true` means failures block the action. `github-account` converges the active GitHub CLI account on `.agents/loaf.json` before `gh` commands run — switching accounts when they differ (passing with a warning so the mutation is visible) and blocking only when the switch cannot be performed; `validate-push` restricts direct pushes to the default branch to `.agents/` and `docs/` files only. Code changes require a feature branch and pull request.
 
 **Instruction hooks** — context injection at tool invocation. Triggered by `matcher` patterns (tool name) and optionally filtered by `if` conditions (tool input). Inject relevant skill instructions or nudges.
 

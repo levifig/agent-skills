@@ -78,6 +78,8 @@ Provenance: [how each decision was accepted — interview, review, dogfooding.]
 
 ## Open Questions
 
+<!-- Fog register: tag entries [KU]/[UK]/[UU] with a route — see the shape skill's quadrant table. Tags are convention, never parsed by check. -->
+
 - [Known unknowns, each owned by a section, a spike, or a follow-up.]
 
 ## Source Inputs

@@ -69,9 +69,9 @@ hooks:
       skill: git-workflow
       matcher: "Bash"
       blocking: true
-      timeout: 5000
+      timeout: 10000
       failClosed: true
-      description: Block gh commands when the active GitHub account differs from project config
+      description: Switch the active GitHub account to project config before gh commands; block only if the switch fails
 
     # Git Workflow - Push and PR guards (ADVISORY)
     # These are safety nets, not gates — ship/release skills orchestrate the same checks.

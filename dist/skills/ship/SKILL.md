@@ -219,7 +219,7 @@ This skill coexists with existing hooks.
 
 | Hook | Type | When `/ship` Runs |
 |------|------|------------------|
-| `github-account` | Blocking | Validates configured GitHub account before `gh` PR operations |
+| `github-account` | Force-switch | Switches to the configured GitHub account before `gh` PR operations; blocks only if the switch fails |
 | `workflow-pre-merge` | Advisory | Fires on `gh pr merge`; use it as a final squash reminder |
 | `workflow-post-merge` | Advisory | Fires after merge; use it as a cleanup reminder |
 | `validate-push` | Advisory | May fire if branch updates are needed before merge |

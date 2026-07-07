@@ -202,7 +202,7 @@ After execution, verify generated artifacts are current:
 
 ```bash
 npm run build
-git diff --exit-code -- dist plugins content/skills/cli-reference/SKILL.md
+git diff --exit-code -- dist plugins content/skills/loaf-reference/SKILL.md
 ```
 
 Adjust the path list to the project. For Loaf itself, tracked generated outputs under `dist/`, `plugins/`, and native binaries must match the source changes.
@@ -266,7 +266,7 @@ configured otherwise; security and secret-scanning hooks remain blocking.
 
 | Hook | Type | When `/release` Runs |
 |------|------|---------------------|
-| `github-account` | Blocking | Validates configured GitHub account before `gh` release operations |
+| `github-account` | Force-switch | Switches to the configured GitHub account before `gh` release operations; blocks only if the switch fails |
 | `validate-push` | Advisory | Cross-checks version bump, changelog, and build on push |
 | `workflow-pre-pr` | Advisory | May fire only for protected-branch release PRs |
 | `workflow-pre-merge` | Advisory | Belongs to `/ship` when a release PR must land |
