@@ -262,7 +262,7 @@ const preToolHooks: Record<string, HookEntry[]> = {
     {
       "id": "github-account",
       "command": "loaf check --hook github-account",
-      "timeout": 5000,
+      "timeout": 10000,
       "failClosed": true
     },
     {

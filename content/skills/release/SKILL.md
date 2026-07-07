@@ -266,7 +266,7 @@ configured otherwise; security and secret-scanning hooks remain blocking.
 
 | Hook | Type | When `/release` Runs |
 |------|------|---------------------|
-| `github-account` | Blocking | Validates configured GitHub account before `gh` release operations |
+| `github-account` | Force-switch | Switches to the configured GitHub account before `gh` release operations; blocks only if the switch fails |
 | `validate-push` | Advisory | Cross-checks version bump, changelog, and build on push |
 | `workflow-pre-pr` | Advisory | May fire only for protected-branch release PRs |
 | `workflow-pre-merge` | Advisory | Belongs to `/ship` when a release PR must land |

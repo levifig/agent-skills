@@ -83,12 +83,14 @@ Native enforcement and workflow checks run via `loaf check --hook <id>` in `inte
 |------|-------|---------|:--------:|-------------|
 | `check-secrets` | security-compliance | Edit\|Write\|Bash | Yes (failClosed) | Scans file content and Bash commands for hardcoded secrets |
 | `security-audit` | security-compliance | Bash | Yes (failClosed) | Blocks dangerous shell patterns; runs Trivy/Semgrep/npm-audit when available |
-| `github-account` | git-workflow | Bash | Yes (failClosed) | Blocks `gh` commands when the active GitHub CLI account differs from `.agents/loaf.json` |
+| `github-account` | git-workflow | Bash | Yes (failClosed) | Switches the active GitHub CLI account to match `.agents/loaf.json` before `gh` commands (pass-with-warning), exempting `gh auth` administration; blocks only when the switch fails |
 | `validate-push` | git-workflow | Bash | Advisory | Verifies version bump, CHANGELOG, build before push |
 | `workflow-pre-pr` | git-workflow | Bash | Advisory | Checks PR format, CHANGELOG entry, unpushed base-branch commits |
 | `validate-commit` | orchestration | Bash | Yes (failClosed) | Validates Conventional Commits format, blocks AI attribution |
 
 Security hooks (`check-secrets`, `security-audit`), `github-account`, and `validate-commit` use `failClosed: true`. Workflow hooks (`validate-push`, `workflow-pre-pr`) are advisory (`blocking: false`) -- they warn but do not block, since `/ship` and `/release` orchestrate the same checks at their respective PR-landing and publication gates.
+
+Residual risk on `github-account`: convergence *writes* the shared global gh account pointer on every mismatched `gh` call -- including read-only ones like `gh pr view`, which the earlier pure-read check only observed -- so concurrent sessions on different identities collide on that pointer more frequently; the race window's shape is unchanged, its trigger rate is not. `gh auth` administration is exempt (identity management is the user's domain), passing through with no probe or switch.
 
 ## Instruction Hooks
 

@@ -43,10 +43,10 @@
         "loaf-managed": true,
         "matcher": "Bash",
         "command": "loaf check --hook github-account",
-        "timeout": 5,
+        "timeout": 10,
         "failClosed": true,
         "blocking": true,
-        "description": "Block gh commands when the active GitHub account differs from project config"
+        "description": "Switch the active GitHub account to project config before gh commands; block only if the switch fails"
       },
       {
         "loaf-managed": true,
