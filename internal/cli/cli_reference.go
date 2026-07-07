@@ -689,6 +689,19 @@ func cliReferenceCommands() []cliReferenceCommand {
 				{Flags: "--verbose", Description: "Print each check name even when passing"},
 			},
 		},
+		{
+			Name:        "shim",
+			Description: "Manage the opt-in per-invocation gh identity shim",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "enable gh", Description: "Symlink gh through loaf and record the real gh path (asks for consent)", Options: []cliReferenceOption{
+					{Flags: "-y, --yes", Description: "Confirm non-interactively (required when stdin isn't a terminal)"},
+				}},
+				{Name: "disable gh", Description: "Remove the symlink and forget the recorded gh path"},
+				{Name: "status", Description: "Report shim health: absent, healthy, broken-symlink, path-shadowed, real-gh-missing", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the shim diagnosis as JSON"},
+				}},
+			},
+		},
 	}
 }
 

@@ -231,6 +231,15 @@ func agentHelpCommands() []agentHelpCommand {
 		},
 		{Name: "doctor", Description: "Diagnose project alignment", Options: []agentHelpOption{{Flags: "--fix", Description: "Apply safe fixes"}, {Flags: "--verbose", Description: "Show details"}}},
 		{
+			Name:        "shim",
+			Description: "Manage the opt-in per-invocation gh identity shim",
+			Subcommands: []agentHelpSubcommand{
+				{Name: "enable gh", Description: "Symlink gh through loaf and record the real gh path (asks for consent)", Options: []agentHelpOption{{Flags: "-y, --yes", Description: "Confirm non-interactively (required when stdin isn't a terminal)"}}},
+				{Name: "disable gh", Description: "Remove the symlink and forget the recorded gh path"},
+				{Name: "status", Description: "Report shim health: absent, healthy, broken-symlink, path-shadowed, real-gh-missing", Options: []agentHelpOption{{Flags: "--json", Description: "Output the shim diagnosis as JSON"}}},
+			},
+		},
+		{
 			Name:        "release",
 			Description: "Create a new release with changelog, version bump, and tag",
 			Options: []agentHelpOption{

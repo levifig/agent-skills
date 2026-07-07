@@ -83,7 +83,7 @@ Native enforcement and workflow checks run via `loaf check --hook <id>` in `inte
 |------|-------|---------|:--------:|-------------|
 | `check-secrets` | security-compliance | Edit\|Write\|Bash | Yes (failClosed) | Scans file content and Bash commands for hardcoded secrets |
 | `security-audit` | security-compliance | Bash | Yes (failClosed) | Blocks dangerous shell patterns; runs Trivy/Semgrep/npm-audit when available |
-| `github-account` | git-workflow | Bash | Yes (failClosed) | Switches the active GitHub CLI account to match `.agents/loaf.json` before `gh` commands (pass-with-warning), exempting `gh auth` administration; blocks only when the switch fails |
+| `github-account` | git-workflow | Bash | Yes (failClosed) | **Tier 1** (default identity mechanism): converges the active GitHub CLI account to match `.agents/loaf.json` before `gh` commands (pass-with-warning), exempting `gh auth` administration; blocks only when the switch fails. The zero-footprint fallback beneath the opt-in `loaf shim enable gh` shim (tier 3) |
 | `validate-push` | git-workflow | Bash | Advisory | Verifies version bump, CHANGELOG, build before push |
 | `workflow-pre-pr` | git-workflow | Bash | Advisory | Checks PR format, CHANGELOG entry, unpushed base-branch commits |
 | `validate-commit` | orchestration | Bash | Yes (failClosed) | Validates Conventional Commits format, blocks AI attribution |
@@ -91,6 +91,8 @@ Native enforcement and workflow checks run via `loaf check --hook <id>` in `inte
 Security hooks (`check-secrets`, `security-audit`), `github-account`, and `validate-commit` use `failClosed: true`. Workflow hooks (`validate-push`, `workflow-pre-pr`) are advisory (`blocking: false`) -- they warn but do not block, since `/ship` and `/release` orchestrate the same checks at their respective PR-landing and publication gates.
 
 Residual risk on `github-account`: convergence *writes* the shared global gh account pointer on every mismatched `gh` call -- including read-only ones like `gh pr view`, which the earlier pure-read check only observed -- so concurrent sessions on different identities collide on that pointer more frequently; the race window's shape is unchanged, its trigger rate is not. `gh auth` administration is exempt (identity management is the user's domain), passing through with no probe or switch.
+
+This convergence is **tier 1** of the tiered identity model (tier 2, harness-level command rewriting, is deliberately deferred): the default, zero-footprint mechanism, always on wherever Loaf hooks run, that mutates the shared pointer and accepts the disclosed frequency cost as its price. **Tier 3** is the opt-in per-invocation shim (`loaf shim enable gh`): it resolves the configured account's token into `GH_TOKEN` for a single `gh` child process and never writes gh's global state, so concurrent sessions on different identities stop racing the pointer entirely -- and agents keep typing bare `gh`. The tiers coexist rather than compete: tier 1 stays the net wherever the shim can't reach (absolute-path `gh` invocations, non-shim machines, GUI-launched apps). The shim's enable/disable/consent model and its residual-exposure matrix live in the loaf-reference configuration and troubleshooting references.
 
 ## Instruction Hooks
 
