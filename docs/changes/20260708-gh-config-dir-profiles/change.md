@@ -145,8 +145,8 @@ Human review:
 
 ## Open Questions
 
-- [KU] Keyring isolation mechanics: how does gh's secure storage key entries across config dirs — per-dir, or per host+user shared? → U1 spike; determines whether profiles for the *same* account on one machine collide (maintainer comment implies per-profile logins).
-- [KU] Credential-helper inheritance: does `gh auth git-credential` invoked by git actually receive the session's `GH_CONFIG_DIR`? → U1 spike; gates the HTTPS matrix row.
+- [KU] Keyring isolation mechanics: how does gh's secure storage key entries across config dirs — per-dir, or per host+user shared in the OS keychain? → U1 spike; determines whether profiles for the *same* account collide, and whether git-credential lookups can resolve by-host regardless of profile context (the suspected mechanism behind the Discussion #188559 failure below). Maintainer comment implies per-profile logins; the keychain is machine-global, so verify, don't trust.
+- [KU] Credential-helper inheritance: does `gh auth git-credential` invoked by git honor the session's `GH_CONFIG_DIR`? → U1 spike; gates the HTTPS matrix row — **with a documented counterexample to reproduce first**: GitHub Community Discussion #188559 reports exactly this failing (`gh auth status` shows the profile account, `git push` authenticates as the previously logged-in one). The spike must reproduce that report, identify the mechanism (keychain by-host lookup vs. a coexisting `osxkeychain` helper vs. env non-propagation), and only then decide whether the HTTPS row ships, ships-with-caveats, or moves to the residual list. Core scope survives a failed spike — agent `gh` commands and SSH remotes don't touch this path.
 - [KU] Hook-side detection: can the check see the tool's effective env, or must it read `.claude/settings.local.json` (and equivalents) from disk? → owned by U4; recommended: read the settings file — deterministic, no env-passing dependency on harness hook payloads.
 - [KU] Command naming: `loaf gh-profile` vs a subcommand under an existing noun — does a second gh-adjacent surface (after the parked `loaf shim`) warrant a shared `loaf gh …` namespace? → grilling question at review; recommended: `loaf gh-profile`, flat, renameable before release.
 - [UK] Consent/offer wording for the per-project wiring → reaction artifact at U2: drafts in `research/`, pick at review.
@@ -156,6 +156,7 @@ Human review:
 
 - The parked Change `docs/changes/20260707-per-invocation-gh-identity/` (branch `per-invocation-gh-identity`, PR #100 closed with the park rationale) — contract decisions, spike findings, residual matrix, and two external review rounds carried forward.
 - cli/cli#12145 and its maintainer comment (2025-11-14) endorsing `GH_CONFIG_DIR` profiles; cli/cli#12853 (`--account`/`GH_ACCOUNT`) closed unmerged — the native path not taken by upstream.
+- GitHub Community Discussion #188559 (via devactivity.com write-up, evaluated 2026-07-08) — a **disconfirming input** for the HTTPS credential-helper row: `GH_CONFIG_DIR` respected by gh itself but reportedly not by `git push` credential resolution. Sharpened both U1 spikes; per the pilot's survivorship-bias practice, deliberately kept alongside the confirming maintainer comment.
 - The 2026-07-08 pivot conversation: shim rejection grounds, the no-PATH constraint made explicit, profile mechanism evaluation, tier simplification — user-approved.
 - PR #99 (merged) — tier-1 convergence with the `gh auth` exemption and the disclosed collision-frequency cost this Change lets wired projects escape.
 - Journal decisions of 2026-07-07/08 under `decision(github-identity)` and `decision(hooks)`.
