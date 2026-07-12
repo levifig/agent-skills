@@ -8,6 +8,23 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
+## [2.0.0-alpha.6] - 2026-07-12
+
+### Changed
+
+- Shape new work through retained Change artifacts with fog-routed discovery, critique, and likelihood-of-change decomposition, and replace the generated command catalog with the compact `loaf-reference` operational guide (#97).
+- Permit explicit prerelease dogfood builds while a Change lineage is incomplete, while continuing to block stable releases until its declared terminal Change lands (#103, #104).
+
+### Added
+
+- Add explicit project identity, atomic deferred-intent capture, active-truth continuity context, deterministic journal-search repair, and verified backup and restore workflows (#103).
+- Add an opt-in, executable-pinned Codex Auto-mode policy for basic Loaf commands via `loaf install --to codex --codex-basic-commands` (#103).
+
+### Fixed
+
+- Keep journal logging, recent entries, and SessionStart continuity available when only the derived search index is divergent, while journal search remains fail-closed until repaired (#103).
+- Converge the configured GitHub CLI account automatically before guarded commands instead of blocking the command needed to switch accounts (#99).
+
 ## [2.0.0-alpha.5] - 2026-07-06
 
 ### Added

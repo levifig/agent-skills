@@ -7,7 +7,7 @@ description: >-
   a release," "publish a version," "release from main," or asks whether enough
   landed work should become a release. Not for reviewing or merging a PR (use
   ship).
-version: 2.0.0-alpha.5
+version: 2.0.0-alpha.6
 ---
 
 # Release

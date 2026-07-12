@@ -12,7 +12,7 @@ description: >-
   conversations, and plain conversation as input. Produces a Change, never a
   numbered spec or task file. Not for quick capture (use idea) or open-ended
   divergent thinking before scope exists (use brainstorm).
-version: 2.0.0-alpha.5
+version: 2.0.0-alpha.6
 ---
 
 # Shape

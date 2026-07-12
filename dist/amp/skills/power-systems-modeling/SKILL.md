@@ -6,7 +6,7 @@ description: >-
   thermal calculations, validating conductors, or computing sag and resistance.
   Not for infrastructure deployment (use infrastructure-management) or system
   architecture.
-version: 2.0.0-alpha.5
+version: 2.0.0-alpha.6
 ---
 
 # Power Systems Reference

@@ -52,4 +52,4 @@ repository and edit access scoped to `.agents/` only.
 - Scope all file operations to `.agents/` paths.
 
 ---
-version: 2.0.0-alpha.5
+version: 2.0.0-alpha.6
