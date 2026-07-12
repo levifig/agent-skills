@@ -154,46 +154,15 @@ func TestRunnerBuildTargetCodexRunsNativeTarget(t *testing.T) {
 		t.Fatalf("script mode = %v, want executable source mode preserved", info.Mode().Perm())
 	}
 	hooksJSON := readBuildFileString(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"))
-	if !strings.HasPrefix(hooksJSON, "{\n  \"version\": 1,\n  \"hooks\": {") {
-		t.Fatalf("hooks.json = %q, want TypeScript-compatible top-level field order", hooksJSON)
-	}
-	if !strings.Contains(hooksJSON, "{\n        \"loaf-managed\": true,\n        \"matcher\": \"Bash\",\n        \"command\": \"loaf check --hook check-secrets\",\n        \"timeout\": 30,\n        \"failClosed\": true,\n        \"blocking\": true,\n        \"description\": \"Check for hardcoded secrets before writing\"\n      }") {
-		t.Fatalf("hooks.json = %q, want TypeScript-compatible hook field order", hooksJSON)
-	}
-	for _, want := range []string{`"matcher": "Bash"`, `"command": "loaf check --hook check-secrets"`, `"timeout": 30`, `"failClosed": true`, `"blocking": true`} {
-		if !strings.Contains(hooksJSON, want) {
-			t.Fatalf("hooks.json = %q, want %q", hooksJSON, want)
-		}
+	if hooksJSON != "{\n  \"hooks\": {}\n}\n" {
+		t.Fatalf("hooks.json = %q, want current empty Codex hooks schema", hooksJSON)
 	}
 	var hooks nativeCodexHooksJSON
 	if err := json.Unmarshal([]byte(hooksJSON), &hooks); err != nil {
 		t.Fatalf("Unmarshal(codex hooks) error = %v\n%s", err, hooksJSON)
 	}
-	hooksByID := map[string]nativeCodexPreToolHookJSON{}
-	for _, hook := range hooks.Hooks.PreToolUse {
-		id := strings.TrimPrefix(hook.Command, "loaf check --hook ")
-		hooksByID[id] = hook
-	}
-	for _, tc := range []struct {
-		id         string
-		failClosed bool
-		blocking   bool
-		ifValue    string
-	}{
-		{id: "check-secrets", failClosed: true, blocking: true},
-		{id: "security-audit", failClosed: true, blocking: true},
-		{id: "github-account", failClosed: true, blocking: true},
-		{id: "validate-commit", failClosed: true, blocking: true, ifValue: "Bash(git commit:*)"},
-		{id: "validate-push", failClosed: false, blocking: false, ifValue: "Bash(git push:*)"},
-		{id: "workflow-pre-pr", failClosed: false, blocking: false, ifValue: "Bash(gh pr create:*)"},
-	} {
-		hook, ok := hooksByID[tc.id]
-		if !ok {
-			t.Fatalf("codex hooks = %#v, missing %s", hooksByID, tc.id)
-		}
-		if hook.FailClosed != tc.failClosed || hook.Blocking != tc.blocking || hook.If != tc.ifValue {
-			t.Fatalf("codex hook %s = %#v, want failClosed=%v blocking=%v if=%q", tc.id, hook, tc.failClosed, tc.blocking, tc.ifValue)
-		}
+	if len(hooks.Hooks.PreToolUse) != 0 || strings.Contains(hooksJSON, "version") || strings.Contains(hooksJSON, "loaf check --hook") {
+		t.Fatalf("codex hooks = %q, want no Loaf handlers or legacy version", hooksJSON)
 	}
 	if strings.Contains(hooksJSON, "workflow-pre-merge") || strings.Contains(hooksJSON, "detect-linear-magic") {
 		t.Fatalf("hooks.json = %q, want only Bash enforcement hooks", hooksJSON)
@@ -802,11 +771,11 @@ func TestNativeBuildParityMatrixDetectsSeededHookSemanticGap(t *testing.T) {
 	}
 	path := filepath.Join(root, "dist", "codex", ".codex", "hooks.json")
 	body := readBuildFileString(t, path)
-	body = strings.Replace(body, "\"command\": \"loaf check --hook validate-push\",\n        \"timeout\": 60,\n        \"failClosed\": false", "\"command\": \"loaf check --hook validate-push\",\n        \"timeout\": 60,\n        \"failClosed\": true", 1)
+	body = strings.Replace(body, "\"hooks\": {}", "\"hooks\": {\"PreToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"loaf check --hook validate-push\"}]}]}", 1)
 	writeFile(t, path, body)
 
 	err = assertNativeBuildParityHookSemantics(root, expectations)
-	if err == nil || !strings.Contains(err.Error(), "codex hook validate-push failClosed") {
+	if err == nil || !strings.Contains(err.Error(), "codex hook check-secrets unexpectedly has Loaf handlers") {
 		t.Fatalf("assertNativeBuildParityHookSemantics error = %v, want seeded hook semantic gap", err)
 	}
 }
@@ -868,6 +837,8 @@ func seedNativeCodexBuildFixture(t *testing.T, root string) {
 	mkdirAll(t, filepath.Join(root, "content", "skills", "demo", "references"))
 	mkdirAll(t, filepath.Join(root, "content", "skills", "demo", "scripts"))
 	mkdirAll(t, filepath.Join(root, "content", "templates"))
+	mkdirAll(t, filepath.Join(root, "content", "codex", "rules"))
+	writeFile(t, filepath.Join(root, "content", "codex", "rules", "loaf.rules.tmpl"), "# Loaf Codex policy\n{{LOAF_BASIC_RULES}}\n")
 	writeFile(t, filepath.Join(root, "config", "targets.yaml"), strings.Join([]string{
 		"shared-templates:",
 		"  session.md: [demo]",
@@ -1303,22 +1274,10 @@ func assertNativeBuildCodexHookSemantics(root string, hook nativeBuildHook) erro
 	if err := readNativeBuildJSON(filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), &payload); err != nil {
 		return err
 	}
-	command := "loaf check --hook " + hook.id
-	for _, entry := range payload.Hooks.PreToolUse {
-		if entry.Command == command {
-			if entry.FailClosed != hook.failClosed {
-				return fmt.Errorf("codex hook %s failClosed = %v, want %v", hook.id, entry.FailClosed, hook.failClosed)
-			}
-			if entry.Blocking != hook.blocking {
-				return fmt.Errorf("codex hook %s blocking = %v, want %v", hook.id, entry.Blocking, hook.blocking)
-			}
-			if entry.If != hook.ifCondition {
-				return fmt.Errorf("codex hook %s if = %q, want %q", hook.id, entry.If, hook.ifCondition)
-			}
-			return nil
-		}
+	if len(payload.Hooks.PreToolUse) > 0 {
+		return fmt.Errorf("codex hook %s unexpectedly has Loaf handlers", hook.id)
 	}
-	return fmt.Errorf("codex hook %s missing command %q", hook.id, command)
+	return nil
 }
 
 func assertNativeBuildOpenCodeHookSemantics(root string, hook nativeBuildHook) error {

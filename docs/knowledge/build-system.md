@@ -21,7 +21,7 @@ Loaf compiles skills, agents, and hooks from a single source tree into multiple 
 
 - **Single source, multiple outputs.** Content is authored in `content/`. The build system transforms it per-target.
 - **Two-phase build.** Skills first compile to a shared intermediate (`dist/skills/`), then each target reads from the intermediate.
-- **Targets are additive.** Each target gets what it supports — Claude Code gets everything, Codex gets skills only.
+- **Targets are additive.** Each target gets what it supports — Claude Code gets everything, while Codex gets skills plus its policy template and hook fallback.
 - **Sidecars carry target-specific fields.** SKILL.md has standard fields only. `.claude-code.yaml`, `.opencode.yaml`, etc. carry extensions. Build merges them.
 - **Shared templates distribute at build time.** `content/templates/` files (`session.md`, `adr.md`) are copied to specified skills via `shared-templates` in `targets.yaml`.
 - **Command substitution.** `{{IMPLEMENT_CMD}}`, `{{ORCHESTRATE_CMD}}` placeholders in skill content are replaced per-target (e.g., `/implement` for Claude Code, OpenCode command name for OpenCode).
@@ -37,14 +37,14 @@ Loaf compiles skills, agents, and hooks from a single source tree into multiple 
 | claude-code | `plugins/loaf/` | Yes | Yes | Yes | `plugin.json` + `hooks.json` |
 | cursor | `dist/cursor/` | Yes | Yes | Yes | No |
 | opencode | `dist/opencode/` | Yes | Yes | Yes | Yes (`hooks.ts`) |
-| codex | `dist/codex/` | No | Yes | Yes | No |
+| codex | `dist/codex/` | No | Yes | Empty fallback | No |
 | amp | `dist/amp/` | No | Yes | No | Yes (`.amp/plugins/loaf.ts`) |
 
 ### Notes
 
 - **Claude Code** bundles a self-contained `loaf` binary in `plugins/loaf/bin/loaf` for hook execution. Hooks are registered in `hooks/hooks.json` (inside the plugin directory), not in `plugin.json`. `plugin.json` silently drops non-matcher session events — a key SPEC-030 finding.
 - **OpenCode and Amp** generate runtime plugins (`hooks.ts` / `.amp/plugins/loaf.ts`) that implement enforcement hooks via subprocess calls to `loaf check`.
-- **Codex** generates `.codex/hooks.json` for Bash-matching enforcement hooks.
+- **Codex** generates a valid empty `.codex/hooks.json` fallback because Codex `0.144.1` rejects Loaf's legacy flat hook projection. Native lifecycle enforcement is not claimed until the matcher-group adapter is runtime-proven; the separately opted-in basic command policy renders one absolute-executable prefix per explicitly classified leaf, while body/file-consuming leaves and path-taking `change check` remain operator-gated. Other harness adapters are not implied.
 - **MCP servers** are not bundled. `loaf install` detects and recommends MCPs at install time; integration state stored in `.agents/loaf.json`.
 
 ### Hook Registration (Claude Code)

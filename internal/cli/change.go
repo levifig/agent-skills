@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/levifig/loaf/internal/project"
 	"github.com/levifig/loaf/internal/state"
 )
 
@@ -47,8 +49,7 @@ var changeProductSections = []string{
 	"Rabbit Holes and No-Gos",
 }
 
-// changeExecutableSections drive derived executability (V2): present and
-// non-empty makes a Change implementation-ready.
+// changeExecutableSections drive derived structural executability (V2).
 var changeExecutableSections = []string{
 	"Planning Contract",
 	"Implementation Units",
@@ -123,12 +124,54 @@ type changeFrontmatterField struct {
 	Value string
 }
 
+type changeFrontmatterParse struct {
+	Fields    []changeFrontmatterField
+	AtByteOne bool
+	Findings  []string
+}
+
 type changeCheckReport struct {
 	Violations []string
 	Warnings   []string
 	Gaps       []string
 	Executable bool
 }
+
+// changeNode is the git-canonical portion of a materialized Change. It is
+// deliberately derived from retained files; no lineage state is persisted.
+type changeNode struct {
+	Slug         string `json:"slug"`
+	Branch       string `json:"branch,omitempty"`
+	Lineage      string `json:"lineage"`
+	Predecessor  string `json:"predecessor,omitempty"`
+	ReleaseAfter string `json:"releaseAfter,omitempty"`
+	Folder       string `json:"folder"`
+	ChangeFile   string `json:"-"`
+	Content      string `json:"-"`
+}
+
+type changeListOptions struct {
+	lineage    string
+	jsonOutput bool
+}
+
+type changeListJSON struct {
+	Command          string       `json:"command"`
+	Lineage          string       `json:"lineage"`
+	Nodes            []changeNode `json:"nodes"`
+	Root             string       `json:"root,omitempty"`
+	ReleaseAfter     string       `json:"releaseAfter,omitempty"`
+	Findings         []string     `json:"findings"`
+	Warnings         []string     `json:"warnings"`
+	Gaps             []string     `json:"gaps"`
+	JournalAvailable bool         `json:"journalAvailable"`
+	LineageDecision  string       `json:"lineageDecision,omitempty"`
+}
+
+const (
+	changeListProjectResolutionWarning = "journal-enrichment-project-resolution-failed: run change list from a resolvable project root"
+	changeListJournalReadWarning       = "journal-enrichment-read-failed: inspect native state with `loaf state status`"
+)
 
 func (r Runner) runChange(args []string, out io.Writer, runtime state.Runtime) error {
 	if len(args) == 0 || isHelpArg(args) {
@@ -138,6 +181,7 @@ func (r Runner) runChange(args []string, out io.Writer, runtime state.Runtime) e
 	if writeNestedHelp(out, args, map[string]func(io.Writer){
 		"init":  writeChangeInitHelp,
 		"check": writeChangeCheckHelp,
+		"list":  writeChangeListHelp,
 	}) {
 		return nil
 	}
@@ -146,6 +190,8 @@ func (r Runner) runChange(args []string, out io.Writer, runtime state.Runtime) e
 		return r.runChangeInit(args[1:], out, runtime.RootPath())
 	case "check":
 		return r.runChangeCheck(args[1:], out, runtime.RootPath())
+	case "list":
+		return r.runChangeList(args[1:], out, runtime)
 	default:
 		return unknownSubcommandError("change", args[0])
 	}
@@ -157,7 +203,14 @@ func writeChangeHelp(out io.Writer) {
 		[]subcommandHelpItem{
 			{Name: "init", Summary: "Scaffold a new Change folder from the template"},
 			{Name: "check", Summary: "Validate a Change and report derived executability"},
+			{Name: "list", Summary: "List a retained Change lineage without relying on branches"},
 		})
+}
+
+func writeChangeListHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf change list --lineage <key> [--json]",
+		"List retained Change files for one lineage. Branch names are provenance only, so this remains usable after merge or branch deletion.",
+		"--lineage  Required lineage key", "--json     Output the derived graph, gaps, and optional journal enrichment")
 }
 
 func writeChangeInitHelp(out io.Writer) {
@@ -167,11 +220,11 @@ func writeChangeInitHelp(out io.Writer) {
 
 func writeChangeCheckHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf change check [folder] [--require-executable] [--json]",
-		"Validate a Change and report derived executability. Folder resolution: an "+
+		"Validate a Change and report derived structural executability, not implementation completion. Folder resolution: an "+
 			"explicit [folder] path always wins; otherwise the current git branch is "+
 			"matched against the branch: frontmatter across docs/changes/*/change.md.",
 		"[folder]              Change folder (or change.md) path; resolves from the current branch when omitted",
-		"--require-executable  Exit non-zero unless the Change is implementation-ready (CI gate for non-draft PRs)",
+		"--require-executable  Exit non-zero unless the Change is structurally executable (CI gate for non-draft PRs)",
 		"--json                Output folder, passed, executable, findings, warnings, and gaps as JSON")
 }
 
@@ -195,6 +248,11 @@ func (r Runner) runChangeInit(args []string, out io.Writer, rootPath string) err
 	}
 	if !changeSlugRE.MatchString(slug) {
 		return fmt.Errorf("invalid slug %q: use lowercase letters, digits, and single hyphens (e.g. auth-token-rotation)", slug)
+	}
+	if existing, err := findChangeSlug(rootPath, slug); err != nil {
+		return err
+	} else if existing != "" {
+		return fmt.Errorf("change slug %q already exists in %s", slug, existing)
 	}
 
 	now := time.Now()
@@ -252,12 +310,18 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 		return fmt.Errorf("read %s: %w", relFromRoot(rootPath, changeFile), err)
 	}
 
-	report := evaluateChangeDoc(string(content), filepath.Base(folder), currentChangeBranch(rootPath))
+	changePath := filepath.ToSlash(relFromRoot(rootPath, changeFile))
+	report := evaluateChangeDocAtPath(string(content), filepath.Base(folder), currentChangeBranch(rootPath), changePath)
+	nodes, indexErr := loadChangeNodes(rootPath)
+	if indexErr != nil {
+		return indexErr
+	}
+	report = applyLineageValidation(report, nodes, changePath, rootPath, options.requireExecutable)
 
 	requireFail := options.requireExecutable && !report.Executable
 	findings := append([]string{}, report.Violations...)
 	if requireFail {
-		findings = append(findings, "not implementation-ready (--require-executable): missing "+strings.Join(report.Gaps, ", "))
+		findings = append(findings, "not structurally executable (--require-executable; implementation completion is not implied): missing "+strings.Join(report.Gaps, ", "))
 	}
 	exitCode := 0
 	switch {
@@ -292,6 +356,113 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 	return nil
 }
 
+func (r Runner) runChangeList(args []string, out io.Writer, runtime state.Runtime) error {
+	options, err := parseChangeListArgs(args)
+	if err != nil {
+		return err
+	}
+	nodes, err := loadChangeNodes(runtime.RootPath())
+	if err != nil {
+		return err
+	}
+	graph := deriveChangeGraph(nodes)
+	result := changeListJSON{Command: "change list", Lineage: options.lineage, Nodes: []changeNode{}, Findings: graph.findingsForLineage(options.lineage), Warnings: []string{}, Gaps: graph.gapsForLineage(options.lineage)}
+	for _, node := range nodes {
+		if node.Lineage == options.lineage {
+			result.Nodes = append(result.Nodes, node)
+		}
+	}
+	if len(result.Nodes) == 0 {
+		return fmt.Errorf("no retained Changes found for lineage %q", options.lineage)
+	}
+	sort.Slice(result.Nodes, func(i, j int) bool { return result.Nodes[i].Folder < result.Nodes[j].Folder })
+	for _, node := range result.Nodes {
+		if node.Predecessor == "" {
+			if result.Root == "" {
+				result.Root = node.Slug
+			}
+		}
+		if node.ReleaseAfter != "" {
+			if result.ReleaseAfter == "" {
+				result.ReleaseAfter = node.ReleaseAfter
+			}
+		}
+	}
+	// Journal intent enriches this derived view when available. State is never a
+	// prerequisite: missing/uninitialized state simply leaves it unavailable.
+	if root, rootErr := project.ResolveRoot(runtime.RootPath()); rootErr != nil {
+		result.Warnings = append(result.Warnings, changeListProjectResolutionWarning)
+	} else {
+		entry, found, available, recentErr := state.LatestJournalEntryForScope(context.Background(), root, state.PathResolver{StateHome: r.StateHome}, "decision", "lineage/"+options.lineage)
+		if recentErr != nil {
+			result.Warnings = append(result.Warnings, changeListJournalReadWarning)
+		} else {
+			result.JournalAvailable = available
+			if found {
+				result.LineageDecision = entry.Message
+			}
+		}
+	}
+	result.Warnings = sortedUnique(result.Warnings)
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	fmt.Fprintf(out, "\n%s %s\n", ansiBold("change lineage"), result.Lineage)
+	for _, node := range result.Nodes {
+		fmt.Fprintf(out, "  %s  %s\n", node.Slug, filepath.ToSlash(node.Folder))
+		if node.Predecessor != "" {
+			fmt.Fprintf(out, "    predecessor: %s\n", node.Predecessor)
+		}
+	}
+	if result.Root != "" {
+		fmt.Fprintf(out, "root: %s\n", result.Root)
+	}
+	if result.ReleaseAfter != "" {
+		fmt.Fprintf(out, "release after: %s\n", result.ReleaseAfter)
+	}
+	for _, gap := range result.Gaps {
+		fmt.Fprintf(out, "gap: %s\n", gap)
+	}
+	for _, finding := range result.Findings {
+		fmt.Fprintf(out, "finding: %s\n", finding)
+	}
+	for _, warning := range result.Warnings {
+		fmt.Fprintf(out, "warning: %s\n", warning)
+	}
+	if result.JournalAvailable && result.LineageDecision != "" {
+		fmt.Fprintf(out, "latest lineage decision: %s\n", result.LineageDecision)
+	} else if !result.JournalAvailable {
+		fmt.Fprintln(out, "lineage decision: unavailable (native state is not required)")
+	}
+	return nil
+}
+
+func parseChangeListArgs(args []string) (changeListOptions, error) {
+	var options changeListOptions
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			options.jsonOutput = true
+		case "--lineage":
+			if i+1 >= len(args) {
+				return options, fmt.Errorf("--lineage requires a value")
+			}
+			i++
+			options.lineage = args[i]
+		default:
+			if strings.HasPrefix(args[i], "--lineage=") {
+				options.lineage = strings.TrimPrefix(args[i], "--lineage=")
+			} else {
+				return options, fmt.Errorf("unknown change list option %q", args[i])
+			}
+		}
+	}
+	if options.lineage == "" {
+		return options, fmt.Errorf("change list requires --lineage <key>")
+	}
+	return options, nil
+}
+
 func parseChangeCheckArgs(args []string) (changeCheckOptions, error) {
 	var options changeCheckOptions
 	for _, arg := range args {
@@ -311,6 +482,39 @@ func parseChangeCheckArgs(args []string) (changeCheckOptions, error) {
 		}
 	}
 	return options, nil
+}
+
+func findChangeSlug(rootPath, slug string) (string, error) {
+	matches, err := filepath.Glob(filepath.Join(rootPath, "docs", "changes", "*", "change.md"))
+	if err != nil {
+		return "", err
+	}
+	for _, changeFile := range matches {
+		match := changeFolderRE.FindStringSubmatch(filepath.Base(filepath.Dir(changeFile)))
+		if match != nil && match[2] == slug {
+			return relFromRoot(rootPath, filepath.Dir(changeFile)), nil
+		}
+	}
+	return "", nil
+}
+
+func loadChangeNodes(rootPath string) ([]changeNode, error) {
+	matches, err := filepath.Glob(filepath.Join(rootPath, "docs", "changes", "*", "change.md"))
+	if err != nil {
+		return nil, err
+	}
+	nodes := make([]changeNode, 0, len(matches))
+	for _, changeFile := range matches {
+		content, err := os.ReadFile(changeFile)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", relFromRoot(rootPath, changeFile), err)
+		}
+		fields, _ := changeFrontmatterFields(string(content))
+		folder := filepath.Dir(changeFile)
+		nodes = append(nodes, changeNode{Slug: changeFieldValue(fields, "change"), Branch: changeFieldValue(fields, "branch"), Lineage: changeFieldValue(fields, "lineage"), Predecessor: changeFieldValue(fields, "predecessor"), ReleaseAfter: changeFieldValue(fields, "release-after"), Folder: relFromRoot(rootPath, folder), ChangeFile: relFromRoot(rootPath, changeFile), Content: string(content)})
+	}
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ChangeFile < nodes[j].ChangeFile })
+	return nodes, nil
 }
 
 // resolveChangeFolder returns the Change folder and its change.md path. An
@@ -407,15 +611,28 @@ func formatAvailableChanges(entries []changeBranchEntry) string {
 
 // evaluateChangeDoc runs the Verification Contract against one change.md.
 func evaluateChangeDoc(content string, folderBase string, currentBranch string) changeCheckReport {
+	return evaluateChangeDocAtPath(content, folderBase, currentBranch, "")
+}
+
+func evaluateChangeDocAtPath(content string, folderBase string, currentBranch string, changePath string) changeCheckReport {
 	report := changeCheckReport{
 		Violations: []string{},
 		Warnings:   []string{},
 		Gaps:       []string{},
 	}
 
-	fields, atByteOne := changeFrontmatterFields(content)
+	parsed := parseChangeFrontmatter(content)
+	fields, atByteOne := parsed.Fields, parsed.AtByteOne
 	if !atByteOne {
-		report.Violations = append(report.Violations, "frontmatter must open the file at byte one")
+		report.Violations = append(report.Violations, prefixChangeFinding(changePath, "frontmatter must open the file at byte one"))
+	}
+	for _, finding := range parsed.Findings {
+		report.Violations = append(report.Violations, prefixChangeFinding(changePath, finding))
+	}
+	for _, key := range []string{"change", "created", "lineage", "predecessor", "release-after"} {
+		if countChangeFields(fields, key) > 1 {
+			report.Violations = append(report.Violations, prefixChangeFinding(changePath, fmt.Sprintf("duplicate frontmatter field %q", key)))
+		}
 	}
 
 	// V1a: status-like keys and the canonical change-state vocabulary as values.
@@ -487,14 +704,27 @@ func evaluateChangeDoc(content string, folderBase string, currentBranch string) 
 	return report
 }
 
+func prefixChangeFinding(changePath, finding string) string {
+	if changePath == "" {
+		return finding
+	}
+	return filepath.ToSlash(changePath) + ": " + finding
+}
+
 // changeFrontmatterFields parses the leading YAML frontmatter into ordered
 // key/value fields. The second return reports whether frontmatter opens the
 // file at byte one — parsers depend on it, so this is checkable on its own.
 func changeFrontmatterFields(content string) ([]changeFrontmatterField, bool) {
+	parsed := parseChangeFrontmatter(content)
+	return parsed.Fields, parsed.AtByteOne
+}
+
+func parseChangeFrontmatter(content string) changeFrontmatterParse {
 	normalized := strings.ReplaceAll(content, "\r\n", "\n")
 	if !strings.HasPrefix(normalized, "---\n") {
-		return nil, false
+		return changeFrontmatterParse{Fields: []changeFrontmatterField{}, Findings: []string{}}
 	}
+	result := changeFrontmatterParse{Fields: []changeFrontmatterField{}, AtByteOne: true, Findings: []string{}}
 	lines := strings.Split(normalized, "\n")
 	end := -1
 	for i := 1; i < len(lines); i++ {
@@ -504,24 +734,30 @@ func changeFrontmatterFields(content string) ([]changeFrontmatterField, bool) {
 		}
 	}
 	if end < 0 {
-		return nil, true
+		result.Findings = append(result.Findings, "frontmatter is not closed with ---")
+		return result
 	}
-	var fields []changeFrontmatterField
-	for _, line := range lines[1:end] {
+	for index, line := range lines[1:end] {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 		key, value, ok := strings.Cut(trimmed, ":")
 		if !ok {
+			result.Findings = append(result.Findings, fmt.Sprintf("malformed frontmatter line %d: expected key: value", index+2))
 			continue
 		}
-		fields = append(fields, changeFrontmatterField{
-			Key:   strings.TrimSpace(key),
+		key = strings.TrimSpace(key)
+		if key == "" {
+			result.Findings = append(result.Findings, fmt.Sprintf("malformed frontmatter line %d: key cannot be empty", index+2))
+			continue
+		}
+		result.Fields = append(result.Fields, changeFrontmatterField{
+			Key:   key,
 			Value: cleanChangeScalar(strings.TrimSpace(value)),
 		})
 	}
-	return fields, true
+	return result
 }
 
 // normalizeChangeStateValue lowercases, trims, and collapses underscore/space

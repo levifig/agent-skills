@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,6 +41,19 @@ var legacyLoafHookSignatures = map[string]bool{
 	"command:bash $HOME/.cursor/hooks/session/compact.sh|matcher:|if:":          true,
 }
 
+var codexHookEvents = map[string]bool{
+	"SessionStart":      true,
+	"SubagentStart":     true,
+	"PreToolUse":        true,
+	"PermissionRequest": true,
+	"PostToolUse":       true,
+	"PreCompact":        true,
+	"PostCompact":       true,
+	"UserPromptSubmit":  true,
+	"SubagentStop":      true,
+	"Stop":              true,
+}
+
 var legacyLoafCommands = map[string]bool{
 	"bash $HOME/.cursor/hooks/session/session-start-soul.sh":  true,
 	"bash $HOME/.cursor/hooks/session/session-start.sh":       true,
@@ -70,20 +84,29 @@ var obsoleteCursorHookFiles = []string{
 }
 
 type targetInstallOptions struct {
-	Target        string
-	DistDir       string
-	ConfigDir     string
-	Upgrade       bool
-	Version       string
-	HomeDir       string
-	CodexHome     string
-	AmpSkillsDir  string
-	AmpPluginsDir string
+	Target             string
+	DistDir            string
+	ConfigDir          string
+	Upgrade            bool
+	CodexBasicCommands bool
+	Version            string
+	HomeDir            string
+	CodexHome          string
+	ProjectRoot        string
+	AmpSkillsDir       string
+	AmpPluginsDir      string
 }
 
 type codexHooksFile struct {
-	Version int                         `json:"version,omitempty"`
-	Hooks   map[string][]map[string]any `json:"hooks,omitempty"`
+	Version     int                         `json:"version,omitempty"`
+	Description string                      `json:"description,omitempty"`
+	Hooks       map[string][]map[string]any `json:"hooks"`
+}
+
+type codexHooksRawFile struct {
+	Description json.RawMessage              `json:"description,omitempty"`
+	Version     json.RawMessage              `json:"-"`
+	Hooks       map[string][]json.RawMessage `json:"hooks"`
 }
 
 type installTargetRecord struct {
@@ -185,7 +208,10 @@ func installCodexTarget(options targetInstallOptions) error {
 	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
 		return err
 	}
-	if err := mergeHookFiles(filepath.Join(codexHome, "hooks.json"), filepath.Join(options.DistDir, ".codex", "hooks.json")); err != nil {
+	if err := mergeCodexHookFiles(filepath.Join(codexHome, "hooks.json"), filepath.Join(options.DistDir, ".codex", "hooks.json")); err != nil {
+		return err
+	}
+	if err := installCodexJournalRule(options, codexHome); err != nil {
 		return err
 	}
 	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {
@@ -465,9 +491,133 @@ func mergeHookFiles(destPath string, loafPath string) error {
 	return os.WriteFile(destPath, body, 0o644)
 }
 
+// mergeCodexHookFiles writes the current Codex hooks schema. The distributed
+// Loaf artifact is intentionally empty until Loaf has a proven translation for
+// Codex's matcher-group handlers. Existing valid user groups survive; legacy
+// flat entries are discarded because Codex 0.144.1 cannot parse them.
+func mergeCodexHookFiles(destPath string, loafPath string) error {
+	if !fileExistsForInstall(loafPath) {
+		return nil
+	}
+	if _, err := loadCodexHooksRawFileStrict(loafPath); err != nil {
+		return err
+	}
+	existing, err := loadCodexHooksRawFileStrict(destPath)
+	if err != nil {
+		return err
+	}
+	merged := codexHooksRawFile{Description: existing.Description, Hooks: map[string][]json.RawMessage{}}
+	retiredLegacy := false
+	for hookType, hooks := range existing.Hooks {
+		if len(hooks) == 0 {
+			merged.Hooks[hookType] = []json.RawMessage{}
+			continue
+		}
+		for _, rawHook := range hooks {
+			var hook map[string]any
+			if err := json.Unmarshal(rawHook, &hook); err != nil {
+				return fmt.Errorf("parse Codex hooks matcher group in %s: %w", destPath, err)
+			}
+			if !isValidCodexMatcherGroup(hook) {
+				if isLoafInstallHook(hook) {
+					retiredLegacy = true
+					continue
+				}
+				return fmt.Errorf("Codex hooks file %s contains an unsupported matcher entry in %s; preserve it manually or remove it before installing Loaf", destPath, hookType)
+			}
+			// Preserve a valid matcher group as a whole, including any user
+			// handlers adjacent to a legacy Loaf handler. Loaf's fallback
+			// adapter does not have enough schema knowledge to edit a group
+			// safely without risking user behavior.
+			merged.Hooks[hookType] = append(merged.Hooks[hookType], rawHook)
+		}
+	}
+	if len(existing.Version) > 0 && !retiredLegacy {
+		return fmt.Errorf("Codex hooks file %s contains legacy version metadata without a recognized Loaf hook to retire; refusing to rewrite user/current content", destPath)
+	}
+	body, err := json.MarshalIndent(merged, "", "  ")
+	if err != nil {
+		return err
+	}
+	body = append(body, '\n')
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(destPath, body, 0o644)
+}
+
+func loadCodexHooksRawFileStrict(path string) (codexHooksRawFile, error) {
+	if !fileExistsForInstall(path) {
+		return codexHooksRawFile{Hooks: map[string][]json.RawMessage{}}, nil
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return codexHooksRawFile{}, err
+	}
+	var topLevel map[string]json.RawMessage
+	if err := json.Unmarshal(body, &topLevel); err != nil {
+		return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: %w", path, err)
+	}
+	if topLevel == nil {
+		return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: top-level value must be an object", path)
+	}
+	for key := range topLevel {
+		if key != "version" && key != "description" && key != "hooks" {
+			return codexHooksRawFile{}, fmt.Errorf("Codex hooks file %s contains unsupported top-level field %q", path, key)
+		}
+	}
+	version := topLevel["version"]
+	if len(version) > 0 {
+		var value float64
+		if strings.HasPrefix(strings.TrimSpace(string(version)), "\"") || json.Unmarshal(version, &value) != nil || value != 1 {
+			return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: legacy version must be numeric 1", path)
+		}
+	}
+	var hooks map[string][]json.RawMessage
+	if raw, ok := topLevel["hooks"]; ok {
+		if strings.TrimSpace(string(raw)) == "null" {
+			return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: hooks must be an object", path)
+		}
+		var rawHooks map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &rawHooks); err != nil {
+			return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: %w", path, err)
+		}
+		hooks = make(map[string][]json.RawMessage, len(rawHooks))
+		for event, rawEvent := range rawHooks {
+			if strings.TrimSpace(string(rawEvent)) == "null" {
+				return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: event %q must be an array", path, event)
+			}
+			var eventHooks []json.RawMessage
+			if err := json.Unmarshal(rawEvent, &eventHooks); err != nil {
+				return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: event %q must be an array", path, event)
+			}
+			if eventHooks == nil {
+				eventHooks = []json.RawMessage{}
+			}
+			hooks[event] = eventHooks
+		}
+	}
+	if hooks == nil {
+		hooks = map[string][]json.RawMessage{}
+	}
+	for event := range hooks {
+		if !codexHookEvents[event] {
+			return codexHooksRawFile{}, fmt.Errorf("Codex hooks file %s contains unsupported hook event %q", path, event)
+		}
+	}
+	description := topLevel["description"]
+	if len(description) > 0 {
+		var value string
+		if err := json.Unmarshal(description, &value); err != nil {
+			return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: description must be a string", path)
+		}
+	}
+	return codexHooksRawFile{Description: description, Version: version, Hooks: hooks}, nil
+}
+
 func loadCodexHooksFile(path string) (codexHooksFile, error) {
 	if !fileExistsForInstall(path) {
-		return codexHooksFile{Version: 1, Hooks: map[string][]map[string]any{}}, nil
+		return codexHooksFile{Hooks: map[string][]map[string]any{}}, nil
 	}
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -475,15 +625,73 @@ func loadCodexHooksFile(path string) (codexHooksFile, error) {
 	}
 	var hooks codexHooksFile
 	if err := json.Unmarshal(body, &hooks); err != nil {
-		return codexHooksFile{Version: 1, Hooks: map[string][]map[string]any{}}, nil
-	}
-	if hooks.Version == 0 {
-		hooks.Version = 1
+		return codexHooksFile{Hooks: map[string][]map[string]any{}}, nil
 	}
 	if hooks.Hooks == nil {
 		hooks.Hooks = map[string][]map[string]any{}
 	}
 	return hooks, nil
+}
+
+func isValidCodexMatcherGroup(hook map[string]any) bool {
+	if hook == nil {
+		return false
+	}
+	for key, value := range hook {
+		switch key {
+		case "matcher":
+			if _, ok := value.(string); !ok {
+				return false
+			}
+		case "hooks":
+		default:
+			return false
+		}
+	}
+	handlers, ok := hook["hooks"].([]any)
+	if !ok || len(handlers) == 0 {
+		return false
+	}
+	for _, handler := range handlers {
+		handlerMap, ok := handler.(map[string]any)
+		if !ok || len(handlerMap) == 0 {
+			return false
+		}
+		for key, value := range handlerMap {
+			switch key {
+			case "type":
+				if handlerType, ok := value.(string); !ok || handlerType != "command" {
+					return false
+				}
+			case "command":
+				if command, ok := value.(string); !ok || strings.TrimSpace(command) == "" {
+					return false
+				}
+			case "statusMessage", "commandWindows":
+				if _, ok := value.(string); !ok {
+					return false
+				}
+			case "timeout":
+				timeout, ok := value.(float64)
+				if !ok || math.IsNaN(timeout) || math.IsInf(timeout, 0) || timeout <= 0 || math.Trunc(timeout) != timeout {
+					return false
+				}
+			case "async":
+				if _, ok := value.(bool); !ok {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+		if _, ok := handlerMap["type"]; !ok {
+			return false
+		}
+		if _, ok := handlerMap["command"]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func isLoafInstallHook(hook map[string]any) bool {

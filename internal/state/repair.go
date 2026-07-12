@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,198 @@ const (
 	LegacyProjectDatabaseArchiveAction = "archive-legacy-project-database"
 	LegacyProjectDatabaseNoopAction    = "no-legacy-project-database"
 )
+
+// JournalSearchRepairOptions controls a global derived journal-search rebuild.
+// The default is a read-only dry run; Apply requires a verified pre-repair
+// backup before changing the live database.
+type JournalSearchRepairOptions struct {
+	Apply bool
+}
+
+// JournalSearchRepairError preserves the partial repair result, including a
+// verified backup, when an apply fails before commit.
+type JournalSearchRepairError struct {
+	Result JournalSearchRepairResult
+	Err    error
+}
+
+func (e *JournalSearchRepairError) Error() string {
+	if e == nil || e.Err == nil {
+		return "journal search repair failed"
+	}
+	message := e.Err.Error()
+	if e.Result.BackupPath != "" {
+		message += fmt.Sprintf("; preserved backup: %s (verified=%t)", e.Result.BackupPath, e.Result.BackupVerified)
+	}
+	return message
+}
+
+func (e *JournalSearchRepairError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// JournalSearchRepairResult describes the pre-repair parity and any rebuild.
+type JournalSearchRepairResult struct {
+	ContractVersion    int    `json:"contract_version"`
+	DatabaseScope      string `json:"database_scope"`
+	DatabasePath       string `json:"database_path"`
+	ProjectID          string `json:"project_id"`
+	ProjectName        string `json:"project_name"`
+	ProjectCurrentPath string `json:"project_current_path"`
+	CanonicalRows      int    `json:"canonical_rows"`
+	IndexRows          int    `json:"index_rows"`
+	Missing            int    `json:"missing"`
+	Extra              int    `json:"extra"`
+	Changed            int    `json:"changed"`
+	Applied            bool   `json:"applied"`
+	BackupPath         string `json:"backup_path,omitempty"`
+	BackupVerified     bool   `json:"backup_verified"`
+	Rebuilt            int    `json:"rebuilt"`
+	ParityVerified     bool   `json:"parity_verified"`
+	GeneratedAt        string `json:"generated_at"`
+}
+
+// RepairJournalSearch rebuilds the derived journal-search index globally from
+// canonical journal entries. Dry-run is read-only; apply is backup-first and
+// verifies exact parity after the transaction commits.
+func RepairJournalSearch(ctx context.Context, root project.Root, resolver PathResolver, options JournalSearchRepairOptions) (JournalSearchRepairResult, error) {
+	return repairJournalSearch(ctx, root, resolver, options, nil)
+}
+
+type journalSearchRepairHook func(context.Context, *sql.Conn) error
+
+func repairJournalSearch(ctx context.Context, root project.Root, resolver PathResolver, options JournalSearchRepairOptions, hook journalSearchRepairHook) (JournalSearchRepairResult, error) {
+	status, err := Inspect(root, resolver)
+	if err != nil {
+		return JournalSearchRepairResult{}, err
+	}
+	switch status.Mode {
+	case ModeMarkdownOnly:
+		return JournalSearchRepairResult{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state init` or `loaf state migrate markdown --apply` first")
+	case ModeInvalid:
+		return JournalSearchRepairResult{}, fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+
+	result := JournalSearchRepairResult{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      status.DatabaseScope,
+		DatabasePath:       status.DatabasePath,
+		ProjectID:          status.ProjectID,
+		ProjectName:        status.ProjectName,
+		ProjectCurrentPath: status.ProjectCurrentPath,
+		GeneratedAt:        time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if !options.Apply {
+		preParity, err := inspectJournalSearchParityReadOnly(ctx, status.DatabasePath)
+		if err != nil {
+			return JournalSearchRepairResult{}, err
+		}
+		populateJournalSearchRepairParity(&result, preParity)
+		return result, nil
+	}
+
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("open state database for journal search repair: %w", err)}
+	}
+	defer store.Close()
+	conn, err := store.db.Conn(ctx)
+	if err != nil {
+		return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("obtain state database connection for journal search repair: %w", err)}
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+		return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("begin immediate journal search repair: %w", err)}
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.Background(), `ROLLBACK`)
+		}
+	}()
+
+	preParity, err := inspectJournalSearchParity(ctx, conn)
+	if err != nil {
+		return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("inspect pre-repair journal search parity: %w", err)}
+	}
+	populateJournalSearchRepairParity(&result, preParity)
+	result.CanonicalRows = preParity.CanonicalRows
+	result.IndexRows = preParity.IndexRows
+	result.Missing = preParity.Missing
+	result.Extra = preParity.Extra
+	result.Changed = preParity.Changed
+
+	if preParity.Ready {
+		if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+			return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("commit journal search no-op: %w", err)}
+		}
+		committed = true
+		result.Applied = true
+		result.ParityVerified = true
+		return result, nil
+	}
+
+	backup, err := Backup(ctx, root, resolver)
+	if err != nil {
+		result.BackupPath = backup.BackupPath
+		result.BackupVerified = backup.Verified
+		return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("backup state database before journal search repair: %w", err)}
+	}
+	result.BackupPath = backup.BackupPath
+	result.BackupVerified = backup.Verified
+	if !backup.Verified || backup.JournalRetrievalReady || backup.JournalSearchParity != preParity {
+		return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("state database backup before journal search repair was not verified or did not match pre-repair parity")}
+	}
+
+	rebuilt, err := rebuildJournalSearch(ctx, conn)
+	if err != nil {
+		return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("rebuild journal search: %w", err)}
+	}
+	result.Rebuilt = rebuilt
+	if hook != nil {
+		if err := hook(ctx, conn); err != nil {
+			return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("journal search repair hook: %w", err)}
+		}
+	}
+	postParity, err := inspectJournalSearchParity(ctx, conn)
+	if err != nil {
+		return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("verify journal search repair parity: %w", err)}
+	}
+	if !postParity.Ready {
+		return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("journal search repair did not produce ready parity: canonical_rows=%d, index_rows=%d, missing=%d, extra=%d, changed=%d", postParity.CanonicalRows, postParity.IndexRows, postParity.Missing, postParity.Extra, postParity.Changed)}
+	}
+	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+		return result, &JournalSearchRepairError{Result: result, Err: fmt.Errorf("commit journal search repair: %w", err)}
+	}
+	committed = true
+	result.Applied = true
+	result.ParityVerified = true
+	return result, nil
+}
+
+func populateJournalSearchRepairParity(result *JournalSearchRepairResult, parity JournalSearchParity) {
+	result.CanonicalRows = parity.CanonicalRows
+	result.IndexRows = parity.IndexRows
+	result.Missing = parity.Missing
+	result.Extra = parity.Extra
+	result.Changed = parity.Changed
+}
+
+func inspectJournalSearchParityReadOnly(ctx context.Context, databasePath string) (JournalSearchParity, error) {
+	store, err := OpenStoreReadOnly(databasePath)
+	if err != nil {
+		return JournalSearchParity{}, fmt.Errorf("open state database read-only for journal search repair: %w", err)
+	}
+	defer store.Close()
+	parity, err := InspectJournalSearchParity(ctx, store)
+	if err != nil {
+		return JournalSearchParity{}, fmt.Errorf("inspect journal search parity: %w", err)
+	}
+	return parity, nil
+}
 
 // RelationshipOriginRepairOptions controls a guarded relationship provenance backfill.
 type RelationshipOriginRepairOptions struct {

@@ -3,7 +3,6 @@ package state
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -316,31 +315,6 @@ WHERE project_id = ? AND tag_id = ? AND entity_kind = ? AND entity_id = ?
 		Name:               tagName,
 		Entity:             entity,
 	}, nil
-}
-
-func openInitializedStore(root project.Root, resolver PathResolver) (*Store, error) {
-	databasePath, err := resolver.DatabasePath(root)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("SQLite state database is not initialized; run `loaf state migrate markdown --apply` first")
-	} else if err != nil {
-		return nil, fmt.Errorf("inspect state database: %w", err)
-	}
-	store, err := OpenStore(databasePath)
-	if err != nil {
-		return nil, err
-	}
-	if err := store.ApplyMigrations(context.Background()); err != nil {
-		store.Close()
-		return nil, err
-	}
-	if err := store.UpsertProject(context.Background(), root); err != nil {
-		store.Close()
-		return nil, err
-	}
-	return store, nil
 }
 
 func normalizeTagName(name string) (string, error) {

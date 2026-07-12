@@ -11,7 +11,7 @@ import (
 // joined to journal_entries: it never touches the docs index, so a journal read
 // cannot refresh docs state or fail on unrelated docs scanning (SPEC-056 M1).
 func SearchJournal(ctx context.Context, root project.Root, resolver PathResolver, options SearchOptions) (SearchResult, error) {
-	store, err := openInitializedStore(root, resolver)
+	store, err := openProjectStoreReadExistingForJournalSearch(ctx, root, resolver)
 	if err != nil {
 		return SearchResult{}, err
 	}
@@ -29,6 +29,9 @@ func (s *Store) SearchJournal(ctx context.Context, root project.Root, options Se
 	}
 	identity, err := s.projectIdentity(ctx, projectID)
 	if err != nil {
+		return SearchResult{}, err
+	}
+	if err := s.requireJournalSearchReady(ctx); err != nil {
 		return SearchResult{}, err
 	}
 	ftsQuery, err := searchFTSQuery(options.Query)

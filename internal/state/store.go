@@ -11,12 +11,19 @@ import (
 	"strings"
 	"time"
 
+	sqlite3 "github.com/ncruces/go-sqlite3"
 	_ "github.com/ncruces/go-sqlite3/driver"
 
 	"github.com/levifig/loaf/internal/project"
 )
 
 const sqliteDriverName = "sqlite3"
+
+const (
+	openStoreRetryBudget = 5 * time.Second
+	openStoreRetryStart  = 10 * time.Millisecond
+	openStoreRetryCap    = 100 * time.Millisecond
+)
 
 // Store owns a SQLite connection for Loaf operational state.
 type Store struct {
@@ -27,21 +34,76 @@ type Store struct {
 
 // OpenStore opens an existing SQLite database path.
 func OpenStore(path string) (*Store, error) {
-	db, err := sql.Open(sqliteDriverName, sqliteDSN(path))
-	if err != nil {
-		return nil, fmt.Errorf("open state database: %w", err)
+	deadline := time.Now().Add(openStoreRetryBudget)
+	delay := openStoreRetryStart
+	for {
+		db, openErr := sql.Open(sqliteDriverName, sqliteDSN(path))
+		if openErr != nil {
+			if !retryableSQLiteOpenError(openErr) || time.Now().After(deadline) {
+				return nil, fmt.Errorf("open state database: %w", openErr)
+			}
+			if sleepErr := sleepBeforeSQLiteRetry(deadline, delay); sleepErr != nil {
+				return nil, fmt.Errorf("open state database: %w", openErr)
+			}
+			delay = nextSQLiteRetryDelay(delay)
+			continue
+		}
+		db.SetMaxOpenConns(1)
+		pingErr := db.Ping()
+		if pingErr == nil {
+			return &Store{db: db, path: path}, nil
+		} else {
+			if closeErr := db.Close(); closeErr != nil {
+				return nil, fmt.Errorf("ping state database: %w (close state database: %v)", pingErr, closeErr)
+			}
+			if !retryableSQLiteOpenError(pingErr) || time.Now().After(deadline) {
+				return nil, fmt.Errorf("ping state database: %w", pingErr)
+			}
+			if sleepErr := sleepBeforeSQLiteRetry(deadline, delay); sleepErr != nil {
+				return nil, fmt.Errorf("ping state database: %w", pingErr)
+			}
+			delay = nextSQLiteRetryDelay(delay)
+		}
 	}
-	db.SetMaxOpenConns(1)
-	if err := db.Ping(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("ping state database: %w", err)
+}
+
+func retryableSQLiteOpenError(err error) bool {
+	return errors.Is(err, sqlite3.BUSY) || errors.Is(err, sqlite3.LOCKED)
+}
+
+func sleepBeforeSQLiteRetry(deadline time.Time, delay time.Duration) error {
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return context.DeadlineExceeded
 	}
-	return &Store{db: db, path: path}, nil
+	if delay >= remaining {
+		delay = remaining
+		time.Sleep(delay)
+		return context.DeadlineExceeded
+	}
+	time.Sleep(delay)
+	return nil
+}
+
+func nextSQLiteRetryDelay(delay time.Duration) time.Duration {
+	delay *= 2
+	if delay > openStoreRetryCap {
+		return openStoreRetryCap
+	}
+	return delay
 }
 
 // OpenStoreReadOnly opens an existing SQLite database without creating or mutating it.
 func OpenStoreReadOnly(path string) (*Store, error) {
-	db, err := sql.Open(sqliteDriverName, sqliteReadOnlyDSN(path))
+	return openStoreReadOnly(path, sqliteReadOnlyDSN(path))
+}
+
+func openStoreReadOnlyForBackup(path string) (*Store, error) {
+	return openStoreReadOnly(path, sqliteReadOnlyBackupDSN(path))
+}
+
+func openStoreReadOnly(path, dsn string) (*Store, error) {
+	db, err := sql.Open(sqliteDriverName, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open state database read-only: %w", err)
 	}
@@ -62,6 +124,7 @@ func sqliteDSN(path string) string {
 	values := url.Values{}
 	values.Add("_pragma", "busy_timeout(5000)")
 	values.Add("_pragma", "journal_mode(wal)")
+	values.Add("_pragma", "synchronous(full)")
 	values.Add("_pragma", "foreign_keys(on)")
 	return (&url.URL{
 		Scheme:   "file",
@@ -74,6 +137,19 @@ func sqliteReadOnlyDSN(path string) string {
 	values := url.Values{}
 	values.Add("mode", "ro")
 	values.Add("_pragma", "busy_timeout(5000)")
+	values.Add("_pragma", "foreign_keys(on)")
+	return (&url.URL{
+		Scheme:   "file",
+		Path:     filepath.ToSlash(path),
+		RawQuery: values.Encode(),
+	}).String()
+}
+
+func sqliteReadOnlyBackupDSN(path string) string {
+	values := url.Values{}
+	values.Add("mode", "ro")
+	values.Add("_pragma", "busy_timeout(5000)")
+	values.Add("_pragma", "synchronous(full)")
 	values.Add("_pragma", "foreign_keys(on)")
 	return (&url.URL{
 		Scheme:   "file",
@@ -111,8 +187,14 @@ func Initialize(ctx context.Context, root project.Root, resolver PathResolver) (
 	}
 	defer store.Close()
 
-	if err := store.ApplyMigrations(ctx); err != nil {
+	bootstrapped, err := store.BootstrapIfEmpty(ctx)
+	if err != nil {
 		return Status{}, err
+	}
+	if !bootstrapped {
+		if err := store.RequireCurrentSchema(ctx); err != nil {
+			return Status{}, err
+		}
 	}
 	if err := store.UpsertProject(ctx, root); err != nil {
 		return Status{}, err

@@ -25,6 +25,8 @@ type ProjectDeleteResult struct {
 // be cleared when a project is removed. artifact_bodies and docs_index are handled
 // separately because they back FTS5 indexes.
 var projectScopedDeleteTables = []string{
+	"journal_deferrals",
+	"journal_origins",
 	"verdicts",
 	"findings",
 	"runs",
@@ -105,6 +107,13 @@ func (s *Store) DeleteProject(ctx context.Context, ref string) (ProjectDeleteRes
 	removed = append(removed, DeleteCount{Table: "journal_search", Rows: journalSearchCount})
 
 	for _, table := range projectScopedDeleteTables {
+		var tableExists int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&tableExists); err != nil {
+			return ProjectDeleteResult{}, fmt.Errorf("inspect %s table: %w", table, err)
+		}
+		if tableExists == 0 {
+			continue
+		}
 		count, err := execCountTx(ctx, tx, fmt.Sprintf(`DELETE FROM %s WHERE project_id = ?`, quoteSQLiteIdentifier(table)), projectID)
 		if err != nil {
 			return ProjectDeleteResult{}, fmt.Errorf("delete %s rows for project: %w", table, err)

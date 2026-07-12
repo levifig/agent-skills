@@ -97,3 +97,41 @@ func TestDeleteProjectUnknownRef(t *testing.T) {
 		t.Fatal("DeleteProject() with unknown ref = nil error, want failure")
 	}
 }
+
+func TestDeleteProjectRemovesOnlyItsJournalProvenance(t *testing.T) {
+	ctx := context.Background()
+	resolver := PathResolver{StateHome: t.TempDir()}
+	rootA := projectRoot(t)
+	rootB := projectRoot(t)
+	if _, err := Initialize(ctx, rootA, resolver); err != nil {
+		t.Fatalf("Initialize(project A) error = %v", err)
+	}
+	if _, err := Initialize(ctx, rootB, resolver); err != nil {
+		t.Fatalf("Initialize(project B) error = %v", err)
+	}
+	store := openTestStore(t, rootA, resolver.StateHome)
+	defer store.Close()
+	resultA, err := store.DeferJournal(ctx, rootA, JournalDeferOptions{Intent: "delete A", Why: "project scope", Boundary: "A only", Trigger: "now", OperationID: "delete-op", Origin: &JournalOriginInput{EnvelopeVersion: 1, CaptureMechanism: JournalOriginMechanismHook}})
+	if err != nil {
+		t.Fatalf("DeferJournal(A) error = %v", err)
+	}
+	resultB, err := store.DeferJournal(ctx, rootB, JournalDeferOptions{Intent: "delete B", Why: "project scope", Boundary: "B only", Trigger: "now", OperationID: "delete-op", Origin: &JournalOriginInput{EnvelopeVersion: 1, CaptureMechanism: JournalOriginMechanismHook}})
+	if err != nil {
+		t.Fatalf("DeferJournal(B) error = %v", err)
+	}
+	if _, err := store.DeleteProject(ctx, resultA.ProjectID); err != nil {
+		t.Fatalf("DeleteProject(A) error = %v", err)
+	}
+	if got := countRows(t, store, `SELECT COUNT(*) FROM journal_deferrals WHERE project_id = ?`, resultA.ProjectID); got != 0 {
+		t.Fatalf("project A deferrals after delete = %d, want 0", got)
+	}
+	if got := countRows(t, store, `SELECT COUNT(*) FROM journal_origins WHERE project_id = ?`, resultA.ProjectID); got != 0 {
+		t.Fatalf("project A origins after delete = %d, want 0", got)
+	}
+	if got := countRows(t, store, `SELECT COUNT(*) FROM journal_deferrals WHERE project_id = ?`, resultB.ProjectID); got != 1 {
+		t.Fatalf("project B deferrals after A delete = %d, want 1", got)
+	}
+	if got := countRows(t, store, `SELECT COUNT(*) FROM sparks WHERE project_id = ? AND id = ?`, resultB.ProjectID, resultB.Spark.ID); got != 1 {
+		t.Fatalf("project B spark after A delete = %d, want 1", got)
+	}
+}

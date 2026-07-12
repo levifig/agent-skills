@@ -146,6 +146,8 @@ var exportAllTables = []exportTable{
 	{Name: "shaping_drafts", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "reports", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "journal_entries", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "journal_origins", OrderBy: "journal_entry_id", FilterColumn: "project_id"},
+	{Name: "journal_deferrals", OrderBy: "operation_key", FilterColumn: "project_id"},
 	{Name: "events", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "relationships", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "tags", OrderBy: "id", FilterColumn: "project_id"},
@@ -476,6 +478,13 @@ LIMIT 5
 
 func (s *Store) validateExportTableFilters(ctx context.Context, tables []exportTable) error {
 	for _, table := range tables {
+		exists, err := s.exportTableExists(ctx, table.Name)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			continue
+		}
 		hasProjectID, hasFilterColumn, err := s.exportTableColumnCoverage(ctx, table.Name, table.FilterColumn)
 		if err != nil {
 			return err
@@ -488,6 +497,14 @@ func (s *Store) validateExportTableFilters(ctx context.Context, tables []exportT
 		}
 	}
 	return nil
+}
+
+func (s *Store) exportTableExists(ctx context.Context, tableName string) (bool, error) {
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, tableName).Scan(&count); err != nil {
+		return false, fmt.Errorf("inspect export table %s: %w", tableName, err)
+	}
+	return count != 0, nil
 }
 
 func (s *Store) exportTableColumnCoverage(ctx context.Context, tableName string, filterColumn string) (bool, bool, error) {
@@ -522,6 +539,13 @@ func (s *Store) exportTableColumnCoverage(ctx context.Context, tableName string,
 }
 
 func (s *Store) exportRows(ctx context.Context, table exportTable, projectID string) ([]map[string]any, error) {
+	exists, err := s.exportTableExists(ctx, table.Name)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return []map[string]any{}, nil
+	}
 	query := fmt.Sprintf("SELECT * FROM %s", table.Name)
 	args := []any{}
 	if table.FilterColumn != "" {

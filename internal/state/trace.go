@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/levifig/loaf/internal/project"
@@ -59,17 +58,7 @@ func validateResolutionTargetKind(kind string, ref string) error {
 
 // Trace resolves a human-facing alias or internal row ID from initialized SQLite state.
 func Trace(ctx context.Context, root project.Root, resolver PathResolver, ref string) (TraceResult, error) {
-	databasePath, err := resolver.DatabasePath(root)
-	if err != nil {
-		return TraceResult{}, err
-	}
-	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
-		return TraceResult{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state migrate markdown --apply` or `loaf state init` first")
-	} else if err != nil {
-		return TraceResult{}, fmt.Errorf("inspect state database: %w", err)
-	}
-
-	store, err := OpenStore(databasePath)
+	store, err := openProjectStoreReadExisting(ctx, root, resolver)
 	if err != nil {
 		return TraceResult{}, err
 	}

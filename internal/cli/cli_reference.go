@@ -58,6 +58,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Options: []cliReferenceOption{
 				{Flags: "--to <target>", Description: `Target to install to (or "all")`},
 				{Flags: "--upgrade", Description: "Update installed targets and apply deprecation-manifest cleanup"},
+				{Flags: "--codex-basic-commands", Description: "Explicitly install the least-privilege Codex basic command policy (requires --to codex or --to all)"},
 				{Flags: "-y, --yes", Description: "Assume 'yes' to safe migrations and destructive deprecation cleanup"},
 				{Flags: "--no-yes", Description: "Force interactive prompts even when stdin is not a TTY (testing)"},
 			},
@@ -125,8 +126,12 @@ func cliReferenceCommands() []cliReferenceCommand {
 				}},
 				{Name: "check", Description: "Validate a Change and report derived executability", Options: []cliReferenceOption{
 					{Flags: "[folder]", Description: "Change folder path; an explicit path wins, otherwise resolves from the current branch"},
-					{Flags: "--require-executable", Description: "Exit non-zero unless the Change is implementation-ready (CI gate for non-draft PRs)"},
+					{Flags: "--require-executable", Description: "Exit non-zero unless the Change is structurally executable; this does not prove implementation completion (CI gate for non-draft PRs)"},
 					{Flags: "--json", Description: "Output folder, passed, executable, findings, warnings, and gaps as JSON"},
+				}},
+				{Name: "list", Description: "List a retained lineage after merge or branch deletion", Options: []cliReferenceOption{
+					{Flags: "--lineage <key>", Description: "Required lineage key"},
+					{Flags: "--json", Description: "Output derived nodes, gaps, and optional journal enrichment"},
 				}},
 			},
 		},
@@ -170,6 +175,11 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--apply", Description: "Backfill missing origins after creating a SQLite backup"},
 					{Flags: "--json", Description: "Output repair plan/result, global database scope, and project identity as JSON"},
 				}},
+				{Name: "repair journal-search", Description: "Preview or apply a backup-first rebuild of the derived journal search index", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Preview canonical/index parity counts without writing"},
+					{Flags: "--apply", Description: "Create a verified backup, rebuild the index, and verify exact parity"},
+					{Flags: "--json", Description: "Output parity counts, backup verification, and repair result as JSON"},
+				}},
 				{Name: "migrate markdown", Description: "Import existing .agents Markdown artifacts into SQLite", Options: []cliReferenceOption{
 					{Flags: "--dry-run", Description: "Preview import counts without creating a database"},
 					{Flags: "--apply", Description: "Initialize SQLite and import Markdown artifacts"},
@@ -184,14 +194,20 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--apply", Description: "Copy the legacy database without deleting it"},
 					{Flags: "--json", Description: "Output migration contract, global database paths, action, and project identity when available"},
 				}},
+				{Name: "migrate schema", Description: "Preview or apply pending SQLite schema upgrades with a verified backup before mutation", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Preview pending schema upgrades without writing"},
+					{Flags: "--apply", Description: "Apply pending schema upgrades after creating and verifying a backup"},
+					{Flags: "--json", Description: "Output schema upgrade action, versions, pending migrations, backup, and verification as JSON"},
+				}},
 				{Name: "migrate lifecycle-statuses", Description: "Normalize legacy lifecycle statuses in SQLite", Options: []cliReferenceOption{
 					{Flags: "--dry-run", Description: "Preview status normalization on a temporary database copy"},
 					{Flags: "--apply", Description: "Normalize live SQLite statuses after creating a backup"},
 					{Flags: "--rollback <manifest>", Description: "Restore statuses from a lifecycle-statuses rollback manifest"},
 					{Flags: "--json", Description: "Output migration contract, project context, counts, backup, and rollback fields as JSON"},
 				}},
-				{Name: "backup", Description: "Create a SQLite database backup under the global data-home backups directory", Options: []cliReferenceOption{{Flags: "--json", Description: "Output backup verification, checksum, schema version, project count, and current project identity as JSON"}}},
-				{Name: "backup verify", Description: "Verify an existing SQLite database backup", Options: []cliReferenceOption{{Flags: "--json", Description: "Output backup verification, restore guidance, schema version, and captured project identities as JSON"}}},
+				{Name: "backup", Description: "Create a SQLite database backup with local rollback or operator-selected non-temporary external destination classification", Options: []cliReferenceOption{{Flags: "--to <DIRECTORY>", Description: "Operator-selected non-temporary external destination directory; not proof of off-device protection"}, {Flags: "--json", Description: "Output backup verification, classification, readiness, checksum, journal watermark, and current project identity as JSON"}}},
+				{Name: "backup verify", Description: "Verify an existing SQLite database backup and report retrieval/recovery readiness", Options: []cliReferenceOption{{Flags: "--json", Description: "Output schema version, SQLite validity, journal retrieval readiness, recovery readiness, watermark, and captured project identities as JSON"}}},
+				{Name: "backup restore", Description: "Run an isolated disposable restore rehearsal without activating or replacing the live database", Options: []cliReferenceOption{{Flags: "<backup>", Description: "Verified backup path"}, {Flags: "--to <absolute-empty-database-path>", Description: "Required empty disposable restore target; never the live database"}, {Flags: "--json", Description: "Output isolated disposable rehearsal, exact-copy, integrity, retrieval, watermark, and live-database safety evidence; never activates the live database"}}},
 				{Name: "restore-ephemerals", Description: "Restore and stage .agents ephemeral Markdown from a rollback manifest or backup id", Options: []cliReferenceOption{
 					{Flags: "<manifest|backup-dir|backup-id>", Description: "Rollback manifest path, directory containing manifest.json, or backup id under the global backups directory"},
 					{Flags: "--json", Description: "Output rollback contract, project path, manifest path, restored file list, and restored status as JSON"},
@@ -212,6 +228,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Description: "Record and read the project-scoped journal (the durable record across all conversations)",
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "log", Description: "Append a project-scoped journal entry", Options: []cliReferenceOption{
+					{Flags: "--execpolicy-safe", Description: "Codex Auto mode: place immediately after journal log; require the registered project and derive database/provenance from the current runtime or hook payload"},
 					{Flags: "--harness-session-id <id>", Description: "Opaque conversation correlation tag"},
 					{Flags: "--branch <branch>", Description: "Observed branch (defaults to current git branch)"},
 					{Flags: "--worktree <path>", Description: "Observed worktree path"},
@@ -233,14 +250,25 @@ func cliReferenceCommands() []cliReferenceCommand {
 				{Name: "show", Description: "Show one journal entry by id", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output the entry and project identity as JSON"},
 				}},
-				{Name: "context", Description: "Emit the layered continuity digest (latest wrap, recent branch entries, open tasks)", Options: []cliReferenceOption{
-					{Flags: "--branch <branch>", Description: "Branch scope for the recent-entries layer"},
+				{Name: "context", Description: "Emit the contract-v2 active-truth continuity digest", Options: []cliReferenceOption{
+					{Flags: "--branch <branch>", Description: "Select branch-recency scope and bind state cursors; active Change provenance remains derived from the actual Git branch"},
+					{Flags: "--layer <name>", Description: "Select one canonical layer: project-synthesis, scoped-checkpoint, active-lineage, unresolved-blockers, deferred-intent, active-changes, branch-recency, or transitional-tasks"},
+					{Flags: "--limit <n>", Description: "Maximum 1..100 items for the selected layer; requires --layer"},
+					{Flags: "--cursor <token>", Description: "Continue the selected layer; requires --layer and is unavailable for intrinsic one-item project-synthesis and scoped-checkpoint"},
 					{Flags: "--from-hook", Description: "Read the harness hook payload on stdin; exits silently for subagents (SessionStart/PostCompact)"},
-					{Flags: "--json", Description: "Output the digest and project identity as JSON"},
+					{Flags: "--json", Description: "Output contract-v2 project metadata, named layers with availability/counts/truncation/expansion, and diagnostics as JSON"},
 					{Flags: "for-prompt|for-compact|for-resumption", Description: "Hook subcommands: inject implementation principles, journal-flush guidance, or the resumption digest"},
 				}},
 				{Name: "export", Description: "Export the project journal to markdown or JSONL", Options: []cliReferenceOption{
 					{Flags: "--format <format>", Description: "Output format: markdown (default) or jsonl"},
+				}},
+				{Name: "defer", Description: "Capture a self-sufficient deferred intent as a decision and open spark pair; stable operation IDs make first writes idempotent and reworded retries visible", Options: []cliReferenceOption{
+					{Flags: "--why <text>", Description: "Why this intent was deferred"},
+					{Flags: "--boundary <text>", Description: "What remains outside this packet"},
+					{Flags: "--trigger <text>", Description: "What should cause revisit"},
+					{Flags: "--operation-id <id>", Description: "Stable retry/idempotency key"},
+					{Flags: "--change <slug|path>", Description: "Optional retained Change local evidence"},
+					{Flags: "--json", Description: "Output the state result as JSON"},
 				}},
 			},
 		},
@@ -292,6 +320,11 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--dry-run", Description: "Preview the storage-home migration"},
 					{Flags: "--apply", Description: "Copy the legacy database without deleting it"},
 					{Flags: "--json", Description: "Output migration contract, global database paths, action, and project identity when available"},
+				}},
+				{Name: "schema", Description: "Preview or apply pending SQLite schema upgrades with a verified backup before mutation", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Preview pending schema upgrades without writing"},
+					{Flags: "--apply", Description: "Apply pending schema upgrades after creating and verifying a backup"},
+					{Flags: "--json", Description: "Output schema upgrade action, versions, pending migrations, backup, and verification as JSON"},
 				}},
 				{Name: "lifecycle-statuses", Description: "Normalize legacy lifecycle statuses in SQLite", Options: []cliReferenceOption{
 					{Flags: "--dry-run", Description: "Preview status normalization on a temporary database copy"},
@@ -696,23 +729,18 @@ func generateCLIReferenceSkill(commands []cliReferenceCommand) string {
 	header := `---
 name: loaf-reference
 description: >-
-  Documents how agents operate the Loaf CLI: command discovery via loaf --help,
-  JSON diagnosis surfaces, guided config maintenance, and troubleshooting. Use
-  when unsure which loaf command to invoke or how to validate project state.
-  Not for workflow guidance (workflow skills own their CLI contracts) or build
-  internals.
+  Documents how agents operate the Loaf CLI: command discovery via loaf --help, JSON diagnosis surfaces, guided config maintenance, and troubleshooting. Use when unsure which loaf command to invoke or how to validate project state. Not for workflow guidance (workflow skills own their CLI contracts) or build internals.
 ---
 
 # Loaf Reference
 
 ## Contents
 - Operating Rules
+- Journal Context (contract v2)
 - Command Index
 - Topics
 
-The Loaf operating manual for agents: how to discover commands, diagnose project
-state, and keep configuration current. It teaches reading the CLI, not
-memorizing it.
+The Loaf operating manual for agents: how to discover commands, diagnose project state, and keep configuration current. It teaches reading the CLI, not memorizing it.
 
 **Note:** This file is auto-generated from native CLI reference metadata. Do not edit manually.
 `
@@ -729,6 +757,25 @@ memorizing it.
 		"- Never hand-edit Loaf-managed hook files; regenerate them through `loaf build` and `loaf install`.",
 		"- Re-run the relevant check after any change and confirm it passes.",
 		"- Log meaningful decisions to the journal: `loaf journal log \"decision(scope): ...\"`.",
+		"",
+		"## Journal Context (contract v2)",
+		"",
+		"`loaf journal context` is an active-truth read model, not the former latest-arbitrary-wrap plus branch entries plus open tasks summary. Consume its named layers and diagnostics rather than inferring state from an omitted layer.",
+		"",
+		"| Layer | Truth it supplies |",
+		"|-------|-------------------|",
+		"| `project-synthesis` | The latest `wrap(project)` synthesis. |",
+		"| `scoped-checkpoint` | The latest non-project wrap, only when no project synthesis exists; it is explicitly labeled as a fallback. |",
+		"| `active-lineage` | Journal evidence associated with active Change lineage. |",
+		"| `unresolved-blockers` | Blocks that do not have a later exact-scope unblock. |",
+		"| `deferred-intent` | Open deferred-intent decision and spark pairs. |",
+		"| `active-changes` | Git-derived active Change evidence and worktree state. |",
+		"| `branch-recency` | Recent entries on the selected branch after entries already surfaced as active truth are removed. |",
+		"| `transitional-tasks` | Open task-board records during the Markdown-to-native transition. |",
+		"",
+		"Each layer reports `source_available`, `available_count`, `shown_count`, `truncated`, and an exact `expand_command`; paginated layers also return a cursor. `source_available: false` means the source could not be derived and is not an empty result. In particular, an unavailable Change source marks both `active-changes` and `active-lineage` unavailable and emits a diagnostic.",
+		"",
+		"Use `--branch` to select `branch-recency` scope and bind state cursors. It does not override active Change provenance or reasons, which always use the actual Git branch. Use `--layer` to request one canonical layer. `--limit` accepts 1 through 100 only with `--layer`; `--cursor` also requires `--layer` and cannot expand the intrinsic one-item `project-synthesis` or `scoped-checkpoint` layers. Reuse the returned `expand_command` verbatim: cursors are bound to their layer, project, branch, snapshot, and limit. `--json` is the stable machine surface; human output retains the same counts, unavailable markers, and expansion command.",
 		"",
 		"## Command Index",
 		"",

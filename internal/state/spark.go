@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -126,16 +125,7 @@ type SparkCaptureResult struct {
 
 // ListSparks returns imported sparks from initialized SQLite state.
 func ListSparks(ctx context.Context, root project.Root, resolver PathResolver, options SparkListOptions) (SparkList, error) {
-	databasePath, err := resolver.DatabasePath(root)
-	if err != nil {
-		return SparkList{}, err
-	}
-	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
-		return SparkList{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state migrate markdown --apply` first")
-	} else if err != nil {
-		return SparkList{}, fmt.Errorf("inspect state database: %w", err)
-	}
-	store, err := OpenStore(databasePath)
+	store, err := openProjectStoreReadExisting(ctx, root, resolver)
 	if err != nil {
 		return SparkList{}, err
 	}
@@ -417,16 +407,7 @@ func ResolveSpark(ctx context.Context, root project.Root, resolver PathResolver,
 
 // ResolveSparkWithOptions marks a spark resolved and records optional rationale.
 func ResolveSparkWithOptions(ctx context.Context, root project.Root, resolver PathResolver, options SparkResolveOptions) (SparkResolveResult, error) {
-	databasePath, err := resolver.DatabasePath(root)
-	if err != nil {
-		return SparkResolveResult{}, err
-	}
-	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
-		return SparkResolveResult{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state migrate markdown --apply` first")
-	} else if err != nil {
-		return SparkResolveResult{}, fmt.Errorf("inspect state database: %w", err)
-	}
-	store, err := OpenStore(databasePath)
+	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
 	if err != nil {
 		return SparkResolveResult{}, err
 	}

@@ -3,7 +3,9 @@ package state
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/levifig/loaf/internal/project"
@@ -50,12 +52,53 @@ const defaultJournalRecentLimit = 20
 
 // RecentJournal returns the project journal timeline from initialized SQLite state.
 func RecentJournal(ctx context.Context, root project.Root, resolver PathResolver, options JournalRecentOptions) (JournalRecent, error) {
-	store, err := openInitializedStore(root, resolver)
+	store, err := openProjectStoreReadExisting(ctx, root, resolver)
 	if err != nil {
 		return JournalRecent{}, err
 	}
 	defer store.Close()
 	return store.RecentJournal(ctx, root, options)
+}
+
+// LatestJournalEntryForScope returns the newest entry for one exact type/scope
+// pair. It is intentionally a narrow read so derived projections do not infer
+// lineage intent by parsing prose or requiring callers to scan a bounded feed.
+func LatestJournalEntryForScope(ctx context.Context, root project.Root, resolver PathResolver, entryType, scope string) (JournalEntryRecord, bool, bool, error) {
+	databasePath, err := resolver.DatabasePath(root)
+	if err != nil {
+		return JournalEntryRecord{}, false, false, err
+	}
+	if _, err := os.Stat(databasePath); errors.Is(err, os.ErrNotExist) {
+		return JournalEntryRecord{}, false, false, nil
+	} else if err != nil {
+		return JournalEntryRecord{}, false, false, fmt.Errorf("inspect state database: %w", err)
+	}
+	store, err := OpenStoreReadOnly(databasePath)
+	if err != nil {
+		return JournalEntryRecord{}, false, false, err
+	}
+	defer store.Close()
+	identity, err := store.LookupProjectIdentityForRoot(ctx, root)
+	if errors.Is(err, sql.ErrNoRows) {
+		return JournalEntryRecord{}, false, false, nil
+	}
+	if err != nil {
+		return JournalEntryRecord{}, false, false, err
+	}
+	var entry JournalEntryRecord
+	err = store.db.QueryRowContext(ctx, `
+SELECT id, entry_type, COALESCE(scope, ''), message, COALESCE(observed_branch, ''), COALESCE(observed_worktree, ''), COALESCE(harness_session_id, ''), created_at
+FROM journal_entries
+WHERE project_id = ? AND entry_type = ? AND scope = ?
+ORDER BY created_at DESC, rowid DESC
+LIMIT 1`, identity.ID, entryType, scope).Scan(&entry.ID, &entry.EntryType, &entry.Scope, &entry.Message, &entry.ObservedBranch, &entry.ObservedWorktree, &entry.HarnessSessionID, &entry.CreatedAt)
+	if err == sql.ErrNoRows {
+		return JournalEntryRecord{}, false, true, nil
+	}
+	if err != nil {
+		return JournalEntryRecord{}, false, true, err
+	}
+	return entry, true, true, nil
 }
 
 // RecentJournal returns the project journal timeline from an open store.

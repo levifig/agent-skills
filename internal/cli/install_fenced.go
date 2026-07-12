@@ -156,6 +156,7 @@ func generateFencedContent(version string) string {
 		"",
 		"**Journal Discipline:**",
 		"Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf journal log \"type(scope): description\"`. Entry types: `decision`, `discover`, `wrap`. Do not defer journaling - log before responding.",
+		"In Codex Auto mode, when the user explicitly installed the managed basic-command policy, use the exact path-pinned Loaf executable in the managed `CODEX_HOME/AGENTS.md` block; do not substitute a bare `loaf`. The policy authorizes only explicitly classified basic Loaf command leaves and does not grant unclassified/operator commands, a bare Loaf namespace, or general filesystem access. Other harness adapters are not implied.",
 		"",
 		"See [orchestration skill](skills/orchestration/SKILL.md) for full details.",
 		fencedEndMarker,

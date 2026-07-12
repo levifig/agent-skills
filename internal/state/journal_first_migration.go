@@ -2,9 +2,13 @@ package state
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/levifig/loaf/internal/project"
 )
@@ -134,9 +138,9 @@ func PreviewJournalFirstMigration(ctx context.Context, root project.Root, resolv
 	}
 	defer copyStore.Close()
 
-	// runJournalFirstMigration applies SchemaMigrations() (1..9) plus the
-	// journal-first migration (10) in one transaction, so a behind-schema copy
-	// is brought current and previewed in a single pass. The live database is
+	// runJournalFirstMigration applies the pre-journal migrations (1..9),
+	// journal-first migration (10), and origins migration (11) in order, so a
+	// behind-schema copy is brought current and previewed in a single pass. The live database is
 	// never touched — only this temporary copy.
 	result := journalFirstMigrationBaseResult(gate.status, JournalFirstMigrationActionDryRun)
 	if err := runJournalFirstMigration(ctx, copyStore, &result); err != nil {
@@ -149,66 +153,44 @@ func PreviewJournalFirstMigration(ctx context.Context, root project.Root, resolv
 // ApplyJournalFirstMigration takes a mandatory pre-migration backup and then
 // applies the journal-first migration to the live database.
 func ApplyJournalFirstMigration(ctx context.Context, root project.Root, resolver PathResolver) (JournalFirstMigrationResult, error) {
+	return applyJournalFirstMigrationWithHooks(ctx, root, resolver, nil)
+}
+
+type journalFirstApplyHooks struct {
+	afterBackup func(string) error
+}
+
+func applyJournalFirstMigrationWithHooks(ctx context.Context, root project.Root, resolver PathResolver, hooks *journalFirstApplyHooks) (JournalFirstMigrationResult, error) {
 	gate, err := requireJournalFirstMigrationStatus(root, resolver)
 	if err != nil {
 		return JournalFirstMigrationResult{}, err
 	}
-	// Behind-schema install: apply the pending non-destructive schema migrations
-	// (1..9) to the live database first, so the mandatory pre-migration backup
-	// below captures a schema-current (and verifiable) snapshot before the
-	// destructive journal-first step runs. These migrations are purely additive
-	// — they preserve every existing session/handoff/journal row — so the backup
-	// remains a complete, reversible pre-journal-first checkpoint.
-	if gate.pendingSchema {
-		if err := applyPendingSchemaMigrations(ctx, root, resolver); err != nil {
-			return JournalFirstMigrationResult{}, err
-		}
-		// Re-inspect now that the database is schema-current so the result
-		// carries resolved project identity.
-		refreshed, err := Inspect(root, resolver)
-		if err != nil {
-			return JournalFirstMigrationResult{}, err
-		}
-		gate.status = refreshed
-	}
-
-	backup, err := Backup(ctx, root, resolver)
+	source, err := classifyJournalFirstSource(ctx, gate.status.DatabasePath, root)
 	if err != nil {
 		return JournalFirstMigrationResult{}, err
 	}
-	store, err := openInitializedStore(root, resolver)
+	backupPath, err := createJournalFirstMigrationBackup(ctx, root, gate.status.DatabasePath, source.Fingerprint, nil)
+	if err != nil {
+		return JournalFirstMigrationResult{}, err
+	}
+	result := journalFirstMigrationBaseResult(gate.status, JournalFirstMigrationActionApply)
+	result.BackupPath = backupPath
+	if hooks != nil && hooks.afterBackup != nil {
+		if err := hooks.afterBackup(backupPath); err != nil {
+			return result, err
+		}
+	}
+	store, err := OpenStore(gate.status.DatabasePath)
 	if err != nil {
 		return JournalFirstMigrationResult{}, err
 	}
 	defer store.Close()
 
-	result := journalFirstMigrationBaseResult(gate.status, JournalFirstMigrationActionApply)
-	result.BackupPath = backup.BackupPath
-	if err := runJournalFirstMigration(ctx, store, &result); err != nil {
-		return JournalFirstMigrationResult{}, err
+	if err := runJournalFirstMigrationWithSource(ctx, store, &result, source.Fingerprint, root); err != nil {
+		return result, err
 	}
 	result.Applied = true
 	return result, nil
-}
-
-// applyPendingSchemaMigrations opens the live database and applies the
-// auto-applied Go-owned schema migrations (SchemaMigrations(), versions 1..9).
-// Already-applied migrations are checksum-skipped, so this is a no-op on a
-// schema-current database and only fills the gap on a behind-schema install.
-func applyPendingSchemaMigrations(ctx context.Context, root project.Root, resolver PathResolver) error {
-	databasePath, err := resolver.DatabasePath(root)
-	if err != nil {
-		return err
-	}
-	store, err := OpenStore(databasePath)
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-	if err := store.ApplyMigrations(ctx); err != nil {
-		return fmt.Errorf("apply pending schema migrations before journal-first migration: %w", err)
-	}
-	return nil
 }
 
 func journalFirstMigrationBaseResult(status Status, action string) JournalFirstMigrationResult {
@@ -227,27 +209,13 @@ func journalFirstMigrationBaseResult(status Status, action string) JournalFirstM
 // journal-first migration run.
 type journalFirstMigrationGate struct {
 	status Status
-	// pendingSchema is true when the database is not yet schema-current but is
-	// safely behind schema — every recorded migration matches the Go-owned
-	// checksum, integrity is clean, and only known migrations (versions up to
-	// the current baseline) remain to be applied. The migration runner applies
-	// those pending migrations before the destructive journal-first step: on the
-	// copy for dry-run, and on the live target BEFORE Backup for apply. The
-	// pre-backup ordering is deliberate — Backup/VerifyBackup reject any schema
-	// version that is not acceptableSchemaVersion (the baseline or the
-	// journal-first version), so a behind-schema live database must be brought
-	// current first for the mandatory pre-migration backup to verify. Those
-	// pending migrations (1..9) are purely additive, so applying them before the
-	// backup keeps it a complete, reversible pre-journal-first checkpoint.
-	pendingSchema bool
 }
 
 // requireJournalFirstMigrationStatus classifies the target database for a
 // journal-first migration. A schema-current database is ready as-is. A database
 // that is only *behind* schema — pending known non-destructive migrations, with
-// no checksum drift or corruption — is also accepted; the pending migrations are
-// applied before the journal-first step. Genuinely invalid or uninitialized
-// databases are refused with a clear error.
+// no checksum drift, corruption, or invariant divergence — is also accepted.
+// Genuinely invalid or uninitialized databases are refused with a clear error.
 func requireJournalFirstMigrationStatus(root project.Root, resolver PathResolver) (journalFirstMigrationGate, error) {
 	status, err := Inspect(root, resolver)
 	if err != nil {
@@ -259,12 +227,26 @@ func requireJournalFirstMigrationStatus(root project.Root, resolver PathResolver
 	case ModeMarkdownOnly:
 		return journalFirstMigrationGate{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state init` first")
 	case ModeInvalid:
+		if status.SchemaVersion == journalFirstMigrationVersion {
+			// Journal-first is the sole destructive bulk path that rebuilds this
+			// derived FTS index transactionally. Its gate permits only that known
+			// divergence; checksum, integrity, and all other invariants remain
+			// strict in the classifier.
+			behind, err := classifyJournalFirstSchema10TargetWithPolicy(status.DatabasePath, true)
+			if err != nil {
+				return journalFirstMigrationGate{}, err
+			}
+			if behind {
+				return journalFirstMigrationGate{status: status}, nil
+			}
+			return journalFirstMigrationGate{}, fmt.Errorf("state database is invalid; run `loaf state doctor`")
+		}
 		behind, err := classifyBehindSchemaTarget(status.DatabasePath)
 		if err != nil {
 			return journalFirstMigrationGate{}, err
 		}
 		if behind {
-			return journalFirstMigrationGate{status: status, pendingSchema: true}, nil
+			return journalFirstMigrationGate{status: status}, nil
 		}
 		return journalFirstMigrationGate{}, fmt.Errorf("state database is invalid; run `loaf state doctor`")
 	default:
@@ -272,10 +254,97 @@ func requireJournalFirstMigrationStatus(root project.Root, resolver PathResolver
 	}
 }
 
+func classifyJournalFirstSchema10Target(databasePath string) (bool, error) {
+	return classifyJournalFirstSchema10TargetWithPolicy(databasePath, false)
+}
+
+func classifyJournalFirstSchema10TargetWithPolicy(databasePath string, allowJournalSearchDivergence bool) (bool, error) {
+	store, err := OpenStoreReadOnly(databasePath)
+	if err != nil {
+		return false, nil
+	}
+	defer store.Close()
+	ctx := context.Background()
+	version, err := store.SchemaVersion(ctx)
+	if err != nil || version != journalFirstMigrationVersion {
+		return false, nil
+	}
+	known := make(map[int]SchemaMigration, len(SchemaMigrations())+1)
+	for _, migration := range SchemaMigrations() {
+		known[migration.Version] = migration
+	}
+	known[journalFirstMigrationVersion] = JournalFirstMigration()
+	rows, err := store.db.QueryContext(ctx, `SELECT version, checksum FROM schema_migrations ORDER BY version`)
+	if err != nil {
+		return false, nil
+	}
+	defer rows.Close()
+	recorded := 0
+	for rows.Next() {
+		var recordedVersion int
+		var recordedChecksum string
+		if err := rows.Scan(&recordedVersion, &recordedChecksum); err != nil {
+			return false, fmt.Errorf("scan schema-10 migration row: %w", err)
+		}
+		migration, ok := known[recordedVersion]
+		if !ok || migration.Checksum() != recordedChecksum {
+			return false, nil
+		}
+		recorded++
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("iterate schema-10 migration rows: %w", err)
+	}
+	if recorded != journalFirstMigrationVersion {
+		return false, nil
+	}
+	_, integrityValid, err := inspectSQLiteIntegrity(ctx, store)
+	if err != nil {
+		return false, fmt.Errorf("classify schema-10 integrity: %w", err)
+	}
+	if !integrityValid {
+		return false, nil
+	}
+	if _, operationalValid, err := inspectOperationalInvariants(ctx, store); err != nil {
+		return false, fmt.Errorf("classify schema-10 operational invariants: %w", err)
+	} else if !operationalValid {
+		return false, nil
+	}
+	parity, err := inspectJournalSearchParity(ctx, store)
+	if err != nil {
+		return false, fmt.Errorf("classify schema-10 journal search parity: %w", err)
+	}
+	if !parity.Ready && !allowJournalSearchDivergence {
+		return false, nil
+	}
+	return true, nil
+}
+
 // runJournalFirstMigration measures pre-migration counts, applies migration 10
 // through the shared migration runner (recording it in schema_migrations), and
 // measures the post-migration shape.
 func runJournalFirstMigration(ctx context.Context, store *Store, result *JournalFirstMigrationResult) error {
+	return runJournalFirstMigrationWithHooks(ctx, store, result, nil)
+}
+
+// runJournalFirstMigrationWithSource binds an apply to the exact source that
+// was backed up. It takes SQLite's write lock before comparing the transaction
+// snapshot, so a concurrent writer is either represented in that snapshot and
+// backup fingerprint or blocked until this migration commits or rolls back.
+func runJournalFirstMigrationWithSource(ctx context.Context, store *Store, result *JournalFirstMigrationResult, source schemaUpgradeFingerprint, root project.Root) error {
+	return runJournalFirstMigrationWithHooksAndSource(ctx, store, result, nil, &source, root)
+}
+
+type journalFirstMigrationHooks struct {
+	afterMigration10 func(*sql.Tx) error
+	afterPrune       func(*sql.Tx) error
+}
+
+func runJournalFirstMigrationWithHooks(ctx context.Context, store *Store, result *JournalFirstMigrationResult, hooks *journalFirstMigrationHooks) error {
+	return runJournalFirstMigrationWithHooksAndSource(ctx, store, result, hooks, nil, project.Root{})
+}
+
+func runJournalFirstMigrationWithHooksAndSource(ctx context.Context, store *Store, result *JournalFirstMigrationResult, hooks *journalFirstMigrationHooks, source *schemaUpgradeFingerprint, root project.Root) error {
 	before, err := measureJournalFirstBefore(ctx, store)
 	if err != nil {
 		return err
@@ -291,21 +360,199 @@ func runJournalFirstMigration(ctx context.Context, store *Store, result *Journal
 	result.SessionsDropped = before.sessions
 	result.SnapshotsDropped = before.snapshots
 
-	// Apply migrations 1-9 (idempotent, checksum-skipped) plus migration 10.
-	// The shared runner records version 10 in schema_migrations.
-	migrations := append(SchemaMigrations(), JournalFirstMigration())
-	if err := ApplyMigrations(ctx, store.db, migrations); err != nil {
-		return fmt.Errorf("apply journal-first migration: %w", err)
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin journal-first migration transaction: %w", err)
 	}
-
-	after, err := measureJournalFirstAfter(ctx, store)
+	defer tx.Rollback()
+	if source != nil {
+		// Acquire the writer lock before reading the transaction snapshot. This
+		// is intentionally a no-op ledger write; no destructive migration work
+		// occurs until the backed-up source fingerprint is proven unchanged.
+		if _, err := tx.ExecContext(ctx, `UPDATE schema_migrations SET checksum = checksum WHERE version = ?`, journalFirstMigrationVersion); err != nil {
+			return fmt.Errorf("lock journal-first migration source: %w", err)
+		}
+		matches, err := journalFirstSourceMatchesTx(ctx, tx, root, *source)
+		if err != nil {
+			return fmt.Errorf("validate journal-first migration source: %w", err)
+		}
+		if !matches {
+			return fmt.Errorf("journal-first migration source changed after backup; refusing stale apply")
+		}
+	}
+	// Apply migrations 1-9 plus migration 10 in order, then prune optional
+	// provenance and apply migration 11 if absent. All destructive work,
+	// migration records, pruning, and parity verification remain uncommitted
+	// until every pre-commit check succeeds.
+	preJournalMigrations := make([]SchemaMigration, 0, len(SchemaMigrations())+1)
+	for _, migration := range SchemaMigrations() {
+		if migration.Version < journalFirstMigrationVersion {
+			preJournalMigrations = append(preJournalMigrations, migration)
+		}
+	}
+	preJournalMigrations = append(preJournalMigrations, JournalFirstMigration())
+	if _, err := tx.ExecContext(ctx, schemaMigrationsDDL); err != nil {
+		return fmt.Errorf("ensure schema_migrations: %w", err)
+	}
+	for _, migration := range preJournalMigrations {
+		if err := applyMigration(ctx, tx, migration); err != nil {
+			return fmt.Errorf("apply journal-first migration: %w", err)
+		}
+	}
+	if hooks != nil && hooks.afterMigration10 != nil {
+		if err := hooks.afterMigration10(tx); err != nil {
+			return fmt.Errorf("journal-first after-migration-10 seam: %w", err)
+		}
+	}
+	if err := pruneOptionalProvenanceTx(ctx, tx); err != nil {
+		return fmt.Errorf("prune optional provenance after journal-first migration: %w", err)
+	}
+	if hooks != nil && hooks.afterPrune != nil {
+		if err := hooks.afterPrune(tx); err != nil {
+			return fmt.Errorf("journal-first after-prune seam: %w", err)
+		}
+	}
+	if err := applyMigration(ctx, tx, journalOriginsMigration()); err != nil {
+		return fmt.Errorf("apply journal origins migration after journal-first migration: %w", err)
+	}
+	if _, err := rebuildAndVerifyJournalSearch(ctx, tx); err != nil {
+		return fmt.Errorf("rebuild journal search after journal-first migration: %w", err)
+	}
+	parity, err := inspectJournalSearchParity(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("verify journal search parity after journal-first migration: %w", err)
+	}
+	if !parity.Ready {
+		return fmt.Errorf("journal search parity after journal-first migration is not ready: canonical_rows=%d, index_rows=%d, missing=%d, extra=%d, changed=%d", parity.CanonicalRows, parity.IndexRows, parity.Missing, parity.Extra, parity.Changed)
+	}
+	after, err := measureJournalFirstAfterQuery(ctx, tx)
 	if err != nil {
 		return err
 	}
 	result.JournalEntriesAfter = after.journalEntries
 	result.JournalSearchRows = after.journalSearch
 	result.SchemaVersion = after.schemaVersion
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit journal-first migration: %w", err)
+	}
 	return nil
+}
+
+func journalOriginsMigration() SchemaMigration {
+	for _, migration := range SchemaMigrations() {
+		if migration.Version == journalOriginsMigrationVersion {
+			return migration
+		}
+	}
+	panic("journal origins migration is not registered")
+}
+
+func journalFirstSourceMatchesTx(ctx context.Context, tx *sql.Tx, root project.Root, want schemaUpgradeFingerprint) (bool, error) {
+	var version, projectCount int
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0), COUNT(*) FROM schema_migrations`).Scan(&version, &projectCount); err != nil {
+		return false, err
+	}
+	checksums := map[int]string{}
+	rows, err := tx.QueryContext(ctx, `SELECT version, checksum FROM schema_migrations ORDER BY version`)
+	if err != nil {
+		return false, err
+	}
+	for rows.Next() {
+		var migrationVersion int
+		var checksum string
+		if err := rows.Scan(&migrationVersion, &checksum); err != nil {
+			rows.Close()
+			return false, err
+		}
+		checksums[migrationVersion] = checksum
+	}
+	if err := rows.Close(); err != nil {
+		return false, err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects`).Scan(&projectCount); err != nil {
+		return false, err
+	}
+	actual := schemaUpgradeFingerprint{Version: version, Checksums: checksums, ProjectCount: projectCount}
+	if err := tx.QueryRowContext(ctx, `
+SELECT p.id, p.friendly_name, COALESCE(cp.path, p.current_path, '')
+FROM projects AS p
+JOIN project_paths AS cp ON cp.project_id = p.id AND cp.is_current = 1
+WHERE cp.path = ?`, root.Path()).Scan(&actual.ProjectID, &actual.ProjectName, &actual.CurrentPath); err != nil {
+		return false, err
+	}
+	parity, err := inspectJournalSearchParity(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	actual.JournalParity = parity
+	if err := tx.QueryRowContext(ctx, `SELECT id, created_at FROM journal_entries ORDER BY created_at DESC, id DESC LIMIT 1`).Scan(&actual.Watermark.JournalEntryID, &actual.Watermark.CreatedAt); err == nil {
+		actual.Watermark.Present = true
+	} else if err != sql.ErrNoRows {
+		return false, err
+	}
+	digest, err := journalFirstDestructiveDigest(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	actual.JournalDestructiveDigest = digest
+	return schemaUpgradeFingerprintsEqual(want, actual), nil
+}
+
+// journalFirstDestructiveDigest fingerprints every table that migration 10
+// deletes, rebuilds, or retargets. Values are emitted with their Go/SQLite type
+// marker in a stable table and rowid order, so equal counts or watermarks cannot
+// hide a concurrent update to a surviving row.
+func journalFirstDestructiveDigest(ctx context.Context, queryer queryContext) (string, error) {
+	hash := sha256.New()
+	for _, table := range []string{"journal_entries", "sessions", "handoffs", "session_state_snapshots", "events", "aliases", "journal_search", "journal_origins", "journal_deferrals"} {
+		exists, err := provenanceTableExists(ctx, queryer, table)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			continue
+		}
+		rows, err := queryer.QueryContext(ctx, `SELECT rowid, * FROM `+table+` ORDER BY rowid`)
+		if err != nil {
+			return "", err
+		}
+		columns, err := rows.Columns()
+		if err != nil {
+			rows.Close()
+			return "", err
+		}
+		_, _ = hash.Write([]byte(table + "\x00" + strings.Join(columns, "\x00") + "\n"))
+		for rows.Next() {
+			values := make([]any, len(columns))
+			dest := make([]any, len(columns))
+			for i := range values {
+				dest[i] = &values[i]
+			}
+			if err := rows.Scan(dest...); err != nil {
+				rows.Close()
+				return "", err
+			}
+			for _, value := range values {
+				switch typed := value.(type) {
+				case nil:
+					_, _ = hash.Write([]byte("nil\x00"))
+				case []byte:
+					_, _ = hash.Write([]byte("bytes:" + hex.EncodeToString(typed) + "\x00"))
+				default:
+					_, _ = hash.Write([]byte(fmt.Sprintf("%T:%v\x00", typed, typed)))
+				}
+			}
+			_, _ = hash.Write([]byte("\n"))
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return "", err
+		}
+		if err := rows.Close(); err != nil {
+			return "", err
+		}
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 type journalFirstBeforeCounts struct {
@@ -397,6 +644,10 @@ type journalFirstAfterCounts struct {
 }
 
 func measureJournalFirstAfter(ctx context.Context, store *Store) (journalFirstAfterCounts, error) {
+	return measureJournalFirstAfterQuery(ctx, store.db)
+}
+
+func measureJournalFirstAfterQuery(ctx context.Context, queryer queryContext) (journalFirstAfterCounts, error) {
 	var counts journalFirstAfterCounts
 	scans := []struct {
 		dst *int
@@ -406,14 +657,12 @@ func measureJournalFirstAfter(ctx context.Context, store *Store) (journalFirstAf
 		{&counts.journalSearch, `SELECT COUNT(*) FROM journal_search`},
 	}
 	for _, scan := range scans {
-		if err := store.db.QueryRowContext(ctx, scan.sql).Scan(scan.dst); err != nil {
+		if err := queryer.QueryRowContext(ctx, scan.sql).Scan(scan.dst); err != nil {
 			return journalFirstAfterCounts{}, fmt.Errorf("measure journal-first post-migration counts: %w", err)
 		}
 	}
-	version, err := store.SchemaVersion(ctx)
-	if err != nil {
-		return journalFirstAfterCounts{}, err
+	if err := queryer.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&counts.schemaVersion); err != nil {
+		return journalFirstAfterCounts{}, fmt.Errorf("read schema version: %w", err)
 	}
-	counts.schemaVersion = version
 	return counts, nil
 }

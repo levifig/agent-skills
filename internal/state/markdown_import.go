@@ -116,6 +116,9 @@ func (s *Store) ImportMarkdown(ctx context.Context, root project.Root) error {
 	if err := importer.importAll(ctx); err != nil {
 		return err
 	}
+	if _, err := rebuildAndVerifyJournalSearch(ctx, tx); err != nil {
+		return fmt.Errorf("rebuild journal search after markdown import: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit markdown import: %w", err)
 	}
@@ -367,8 +370,9 @@ func (m markdownImporter) importSessionJournals(ctx context.Context, agentsPath 
 			return err
 		}
 		observedBranch := firstNonEmpty(artifact.Frontmatter["branch"])
+		observedWorktree := firstNonEmpty(artifact.Frontmatter["worktree"], artifact.Frontmatter["observed_worktree"])
 		harnessSessionID := firstNonEmpty(artifact.Frontmatter["claude_session_id"], artifact.Frontmatter["harness_session_id"], artifact.Frontmatter["session_id"])
-		if err := m.importSessionJournal(ctx, artifact, observedBranch, harnessSessionID, sourceID); err != nil {
+		if err := m.importSessionJournal(ctx, artifact, observedBranch, observedWorktree, harnessSessionID, sourceID); err != nil {
 			return err
 		}
 	}
@@ -430,7 +434,7 @@ func (m markdownImporter) importJSONSource(ctx context.Context, path string) err
 	return err
 }
 
-func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sourceArtifact, observedBranch string, harnessSessionID string, sourceID string) error {
+func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sourceArtifact, observedBranch string, observedWorktree string, harnessSessionID string, sourceID string) error {
 	re := regexp.MustCompile(`^\[(?P<time>[^\]]+)\]\s+(?P<type>[a-zA-Z0-9_-]+)\((?P<scope>[^)]*)\):\s*(?P<message>.*)$`)
 	for lineNumber, line := range strings.Split(string(artifact.Content), "\n") {
 		matches := re.FindStringSubmatch(line)
@@ -446,7 +450,7 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 			continue
 		}
 		entryID := stableMigrationID("journal", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
-		if err := m.upsertJournalEntry(ctx, entryID, entryType, scope, message, observedBranch, harnessSessionID); err != nil {
+		if err := m.upsertJournalEntry(ctx, entryID, entryType, scope, message, observedBranch, observedWorktree, harnessSessionID); err != nil {
 			return err
 		}
 		if entryType == "spark" {
@@ -693,20 +697,73 @@ ON CONFLICT(id) DO UPDATE SET
 	return nil
 }
 
-func (m markdownImporter) upsertJournalEntry(ctx context.Context, id string, entryType string, scope string, message string, observedBranch string, harnessSessionID string) error {
+func (m markdownImporter) upsertJournalEntry(ctx context.Context, id string, entryType string, scope string, message string, observedBranch string, observedWorktree string, harnessSessionID string) error {
 	_, err := m.tx.ExecContext(ctx, `
-INSERT INTO journal_entries (id, project_id, entry_type, scope, message, observed_branch, harness_session_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO journal_entries (id, project_id, entry_type, scope, message, observed_branch, observed_worktree, harness_session_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   entry_type = excluded.entry_type,
   scope = excluded.scope,
   message = excluded.message,
   observed_branch = excluded.observed_branch,
+  observed_worktree = excluded.observed_worktree,
   harness_session_id = excluded.harness_session_id,
   updated_at = excluded.updated_at
-`, id, m.projectID, entryType, emptyToNil(scope), message, emptyToNil(observedBranch), emptyToNil(harnessSessionID), m.now, m.now)
+`, id, m.projectID, entryType, emptyToNil(scope), message, emptyToNil(observedBranch), emptyToNil(observedWorktree), emptyToNil(harnessSessionID), m.now, m.now)
 	if err != nil {
 		return fmt.Errorf("upsert journal entry %s: %w", id, err)
+	}
+	return m.upsertJournalOrigin(ctx, id, observedBranch, observedWorktree, harnessSessionID)
+}
+
+func (m markdownImporter) upsertJournalOrigin(ctx context.Context, journalEntryID string, branch string, worktree string, harnessSessionID string) error {
+	var createdAt string
+	if err := m.tx.QueryRowContext(ctx, `SELECT created_at FROM journal_entries WHERE project_id = ? AND id = ?`, m.projectID, journalEntryID).Scan(&createdAt); err != nil {
+		return fmt.Errorf("read imported journal entry %s for origin: %w", journalEntryID, err)
+	}
+	var mechanism string
+	err := m.tx.QueryRowContext(ctx, `SELECT capture_mechanism FROM journal_origins WHERE project_id = ? AND journal_entry_id = ?`, m.projectID, journalEntryID).Scan(&mechanism)
+	switch {
+	case err == nil:
+		if mechanism != JournalOriginMechanismMigration {
+			return fmt.Errorf("refusing to overwrite non-migration journal origin %s (%s)", journalEntryID, mechanism)
+		}
+		if _, err := m.tx.ExecContext(ctx, `
+UPDATE journal_origins
+SET envelope_version = 1,
+    capture_mechanism = ?,
+    observed_harness = NULL,
+    observed_harness_version = NULL,
+    harness_session_id = ?,
+    agent_id = NULL,
+    source_event = 'markdown_import',
+    branch = ?,
+    worktree = ?,
+    head = NULL,
+    change_path = NULL,
+    change_sha256 = NULL,
+    dirty = NULL,
+    reconstructable = NULL,
+    durable_result_kind = NULL,
+    durable_result_id = NULL,
+    created_at = ?
+WHERE project_id = ? AND journal_entry_id = ?
+`, JournalOriginMechanismMigration, emptyToNil(harnessSessionID), emptyToNil(branch), emptyToNil(worktree), createdAt, m.projectID, journalEntryID); err != nil {
+			return fmt.Errorf("update imported journal origin %s: %w", journalEntryID, err)
+		}
+		return nil
+	case !errors.Is(err, sql.ErrNoRows):
+		return fmt.Errorf("read imported journal origin %s: %w", journalEntryID, err)
+	}
+	if _, err := m.tx.ExecContext(ctx, `
+INSERT INTO journal_origins (
+  journal_entry_id, project_id, envelope_version, capture_mechanism,
+  observed_harness, observed_harness_version, harness_session_id, agent_id,
+  source_event, branch, worktree, head, change_path, change_sha256,
+  dirty, reconstructable, durable_result_kind, durable_result_id, created_at
+) VALUES (?, ?, 1, ?, NULL, NULL, ?, NULL, 'markdown_import', ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?)
+`, journalEntryID, m.projectID, JournalOriginMechanismMigration, emptyToNil(harnessSessionID), emptyToNil(branch), emptyToNil(worktree), createdAt); err != nil {
+		return fmt.Errorf("insert imported journal origin %s: %w", journalEntryID, err)
 	}
 	return nil
 }

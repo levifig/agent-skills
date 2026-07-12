@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -70,6 +71,20 @@ SELECT rowid, project_id, id, COALESCE(session_id, ''), entry_type, COALESCE(sco
 `); err != nil {
 		t.Fatalf("seed journal_search error = %v", err)
 	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		store.Close()
+		t.Fatalf("begin seeded journal-search rebuild: %v", err)
+	}
+	if _, err := rebuildAndVerifyJournalSearch(ctx, tx); err != nil {
+		tx.Rollback()
+		store.Close()
+		t.Fatalf("rebuild seeded journal-search fixture: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		store.Close()
+		t.Fatalf("commit seeded journal-search rebuild: %v", err)
+	}
 }
 
 const journalInsertSQL = `INSERT INTO journal_entries (
@@ -122,8 +137,8 @@ func TestPreviewJournalFirstMigrationUsesCopyRun(t *testing.T) {
 	if result.JournalSearchRows != 5 {
 		t.Fatalf("preview journal_search rows = %d, want 5", result.JournalSearchRows)
 	}
-	if result.SchemaVersion != journalFirstMigrationVersion {
-		t.Fatalf("preview schema version = %d, want %d", result.SchemaVersion, journalFirstMigrationVersion)
+	if result.SchemaVersion != CurrentSchemaVersion() {
+		t.Fatalf("preview schema version = %d, want %d", result.SchemaVersion, CurrentSchemaVersion())
 	}
 
 	// The live database must be untouched by a dry-run.
@@ -161,8 +176,8 @@ func TestApplyJournalFirstMigrationTransformsLiveDatabase(t *testing.T) {
 	if applied.NoiseEntriesPurged != 3 || applied.JournalEntriesAfter != 5 || applied.HarnessSessionBackfill != 4 {
 		t.Fatalf("apply counts purged/after/backfill = %d/%d/%d, want 3/5/4", applied.NoiseEntriesPurged, applied.JournalEntriesAfter, applied.HarnessSessionBackfill)
 	}
-	if applied.SchemaVersion != journalFirstMigrationVersion {
-		t.Fatalf("apply schema version = %d, want %d", applied.SchemaVersion, journalFirstMigrationVersion)
+	if applied.SchemaVersion != CurrentSchemaVersion() {
+		t.Fatalf("apply schema version = %d, want %d", applied.SchemaVersion, CurrentSchemaVersion())
 	}
 
 	// sessions and session_state_snapshots must be gone.
@@ -274,8 +289,11 @@ func TestApplyJournalFirstMigrationIsIdempotent(t *testing.T) {
 		t.Fatalf("OpenStore() error = %v", err)
 	}
 	defer store.Close()
-	if err := ApplyMigrations(ctx, store.db, append(SchemaMigrations(), JournalFirstMigration())); err != nil {
-		t.Fatalf("idempotent re-apply error = %v", err)
+	if err := ApplyMigrations(ctx, store.db, []SchemaMigration{JournalFirstMigration()}); err != nil {
+		t.Fatalf("idempotent journal-first re-apply error = %v", err)
+	}
+	if err := ApplyMigrations(ctx, store.db, []SchemaMigration{journalOriginsMigration()}); err != nil {
+		t.Fatalf("idempotent journal-origins re-apply error = %v", err)
 	}
 	if got := rawCount(t, status.DatabasePath, `SELECT COUNT(*) FROM schema_migrations WHERE version = 10`); got != 1 {
 		t.Fatalf("schema_migrations version 10 rows after re-apply = %d, want 1", got)
@@ -285,6 +303,78 @@ func TestApplyJournalFirstMigrationIsIdempotent(t *testing.T) {
 	}
 	if got := rawCount(t, status.DatabasePath, `SELECT COUNT(*) FROM journal_search`); got != 5 {
 		t.Fatalf("journal_search after re-apply = %d, want 5 (unchanged)", got)
+	}
+}
+
+func TestJournalFirstMigrationRebuildsModifiedDerivedState(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	seedJournalFirstFixture(t, status.DatabasePath, status.ProjectID)
+	if _, err := ApplyJournalFirstMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("ApplyJournalFirstMigration() error = %v", err)
+	}
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+	if _, err := store.db.ExecContext(ctx, `UPDATE journal_search SET message = 'diverged derived content' WHERE journal_entry_id = 'j-wrap'`); err != nil {
+		t.Fatalf("modify derived journal row: %v", err)
+	}
+	result := journalFirstMigrationBaseResult(status, JournalFirstMigrationActionApply)
+	if err := runJournalFirstMigration(ctx, store, &result); err != nil {
+		t.Fatalf("runJournalFirstMigration() error = %v", err)
+	}
+	parity, err := InspectJournalSearchParity(ctx, store)
+	if err != nil {
+		t.Fatalf("InspectJournalSearchParity() error = %v", err)
+	}
+	if !parity.Ready {
+		t.Fatalf("post-rebuild journal parity = %#v, want ready", parity)
+	}
+}
+
+func TestJournalFirstMigrationRefusesAfterBackupConcurrentCanonicalUpdate(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	seedJournalFirstFixture(t, status.DatabasePath, status.ProjectID)
+	result, err := applyJournalFirstMigrationWithHooks(ctx, root, resolver, &journalFirstApplyHooks{afterBackup: func(string) error {
+		writer, openErr := OpenStore(status.DatabasePath)
+		if openErr != nil {
+			return openErr
+		}
+		defer writer.Close()
+		_, execErr := writer.db.ExecContext(ctx, `UPDATE journal_entries SET message = 'changed after backup' WHERE id = 'j-wrap'`)
+		return execErr
+	}})
+	if err == nil || result.BackupPath == "" {
+		t.Fatalf("apply result=%#v err=%v, want stale-source refusal with retained backup", result, err)
+	}
+	if got := rawString(t, status.DatabasePath, `SELECT message FROM journal_entries WHERE id = 'j-wrap'`); got != "changed after backup" {
+		t.Fatalf("live canonical update = %q, want retained concurrent change", got)
+	}
+	backup, openErr := OpenStoreReadOnly(result.BackupPath)
+	if openErr != nil {
+		t.Fatalf("OpenStoreReadOnly(backup) error = %v", openErr)
+	}
+	defer backup.Close()
+	if got := rawString(t, result.BackupPath, `SELECT message FROM journal_entries WHERE id = 'j-wrap'`); got == "changed after backup" {
+		t.Fatalf("backup unexpectedly contains post-backup update")
+	}
+	if got := rawCount(t, status.DatabasePath, `SELECT COUNT(*) FROM sessions`); got == 0 {
+		t.Fatalf("stale refusal ran destructive migration; sessions=%d", got)
 	}
 }
 
@@ -310,8 +400,8 @@ func TestInspectAcceptsMigratedJournalFirstDatabase(t *testing.T) {
 	if migrated.Mode != ModeSQLiteReady {
 		t.Fatalf("Inspect().Mode after migration = %q, want %q; diagnostics = %+v", migrated.Mode, ModeSQLiteReady, migrated.Diagnostics)
 	}
-	if migrated.SchemaVersion != journalFirstMigrationVersion {
-		t.Fatalf("Inspect().SchemaVersion after migration = %d, want %d", migrated.SchemaVersion, journalFirstMigrationVersion)
+	if migrated.SchemaVersion != CurrentSchemaVersion() {
+		t.Fatalf("Inspect().SchemaVersion after migration = %d, want %d", migrated.SchemaVersion, CurrentSchemaVersion())
 	}
 	for _, diagnostic := range migrated.Diagnostics {
 		if diagnostic.Code == "schema-version-mismatch" || diagnostic.Code == "schema-checksum-mismatch" || diagnostic.Code == "schema-migration-missing" {
@@ -336,7 +426,7 @@ func TestApplyJournalFirstMigrationReRunIsCleanNoOp(t *testing.T) {
 	}
 
 	// The real command entry point must remain reachable on an already-migrated
-	// (v10) database: Inspect must report ModeSQLiteReady, not ModeInvalid, so
+	// (post-0011) database: Inspect must report ModeSQLiteReady, not ModeInvalid, so
 	// the re-run is an idempotent no-op rather than an "invalid database" error.
 	second, err := ApplyJournalFirstMigration(ctx, root, resolver)
 	if err != nil {
@@ -345,8 +435,8 @@ func TestApplyJournalFirstMigrationReRunIsCleanNoOp(t *testing.T) {
 	if second.JournalEntriesAfter != 5 || second.NoiseEntriesPurged != 0 {
 		t.Fatalf("re-run counts after/purged = %d/%d, want 5/0 (noise already purged)", second.JournalEntriesAfter, second.NoiseEntriesPurged)
 	}
-	if second.SchemaVersion != journalFirstMigrationVersion {
-		t.Fatalf("re-run schema version = %d, want %d", second.SchemaVersion, journalFirstMigrationVersion)
+	if second.SchemaVersion != CurrentSchemaVersion() {
+		t.Fatalf("re-run schema version = %d, want %d", second.SchemaVersion, CurrentSchemaVersion())
 	}
 
 	// Dry-run must also stay reachable on a migrated database.
@@ -382,7 +472,7 @@ func TestJournalExportSucceedsAfterJournalFirstMigration(t *testing.T) {
 	}
 
 	// Spec Test Condition (line 91): `loaf journal export` produces valid
-	// markdown and JSONL for a project — including on a migrated (v10) database.
+	// markdown and JSONL for a project — including on a migrated database.
 	md, err := ExportJournalMarkdown(ctx, root, resolver)
 	if err != nil {
 		t.Fatalf("ExportJournalMarkdown() after migration error = %v", err)
@@ -429,31 +519,34 @@ func TestBackupVerifiesMigratedJournalFirstDatabase(t *testing.T) {
 		t.Fatalf("ApplyJournalFirstMigration() error = %v", err)
 	}
 
-	// Backup of a migrated (v10) database must verify, not reject on version.
+	// Backup of a migrated database must verify, not reject on version.
 	backup, err := Backup(ctx, root, resolver)
 	if err != nil {
 		t.Fatalf("Backup() on migrated database error = %v", err)
 	}
-	if backup.SchemaVersion != journalFirstMigrationVersion {
-		t.Fatalf("Backup().SchemaVersion = %d, want %d", backup.SchemaVersion, journalFirstMigrationVersion)
+	if backup.SchemaVersion != CurrentSchemaVersion() {
+		t.Fatalf("Backup().SchemaVersion = %d, want %d", backup.SchemaVersion, CurrentSchemaVersion())
 	}
 	verification, err := VerifyBackup(ctx, backup.BackupPath)
 	if err != nil {
 		t.Fatalf("VerifyBackup() on migrated backup error = %v", err)
 	}
-	if verification.SchemaVersion != journalFirstMigrationVersion {
-		t.Fatalf("VerifyBackup().SchemaVersion = %d, want %d", verification.SchemaVersion, journalFirstMigrationVersion)
+	if verification.SchemaVersion != CurrentSchemaVersion() {
+		t.Fatalf("VerifyBackup().SchemaVersion = %d, want %d", verification.SchemaVersion, CurrentSchemaVersion())
 	}
 }
 
 func TestJournalFirstMigrationExcludedFromAutoApply(t *testing.T) {
-	if CurrentSchemaVersion() != 9 {
-		t.Fatalf("CurrentSchemaVersion() = %d, want 9 (migration 10 must not auto-apply on store open)", CurrentSchemaVersion())
+	if CurrentSchemaVersion() != 11 {
+		t.Fatalf("CurrentSchemaVersion() = %d, want 11 (migration 10 must not auto-apply on store open)", CurrentSchemaVersion())
 	}
 	for _, m := range SchemaMigrations() {
 		if m.Version == journalFirstMigrationVersion {
 			t.Fatalf("journal-first migration %d must be excluded from SchemaMigrations()", journalFirstMigrationVersion)
 		}
+	}
+	if got := SchemaMigrations()[len(SchemaMigrations())-1].Version; got != journalOriginsMigrationVersion {
+		t.Fatalf("last auto-applied migration = %d, want %d", got, journalOriginsMigrationVersion)
 	}
 	m := JournalFirstMigration()
 	if m.Version != 10 || m.Name != "journal_first" {
@@ -531,6 +624,7 @@ func TestJournalFirstMigrationPreservesUnknownSessionRows(t *testing.T) {
 	}
 	seedJournalFirstFixture(t, status.DatabasePath, status.ProjectID)
 	seedSessionPreserveFixture(t, status.DatabasePath, status.ProjectID)
+	rebuildJournalSearchFixture(t, status.DatabasePath)
 
 	// Baseline fixture seeds 3 machine session rows; preserve fixture adds 6
 	// machine + 1 user row + 2 NULL-scope rows. So 9 purged, 3 preserved as
@@ -707,8 +801,8 @@ func TestJournalFirstMigrationRunsOnBehindSchemaDatabase(t *testing.T) {
 		if preview.NoiseEntriesPurged != 3 || preview.JournalEntriesAfter != 5 {
 			t.Fatalf("preview purged/after = %d/%d, want 3/5", preview.NoiseEntriesPurged, preview.JournalEntriesAfter)
 		}
-		if preview.SchemaVersion != journalFirstMigrationVersion {
-			t.Fatalf("preview schema version = %d, want %d", preview.SchemaVersion, journalFirstMigrationVersion)
+		if preview.SchemaVersion != CurrentSchemaVersion() {
+			t.Fatalf("preview schema version = %d, want %d", preview.SchemaVersion, CurrentSchemaVersion())
 		}
 		// Live database must be untouched by the dry-run: still v7, sessions intact.
 		if got := rawTableExists(t, databasePath, "sessions"); !got {
@@ -742,23 +836,23 @@ func TestJournalFirstMigrationRunsOnBehindSchemaDatabase(t *testing.T) {
 		if applied.NoiseEntriesPurged != 3 || applied.JournalEntriesAfter != 5 {
 			t.Fatalf("apply purged/after = %d/%d, want 3/5", applied.NoiseEntriesPurged, applied.JournalEntriesAfter)
 		}
-		if applied.SchemaVersion != journalFirstMigrationVersion {
-			t.Fatalf("apply schema version = %d, want %d", applied.SchemaVersion, journalFirstMigrationVersion)
+		if applied.SchemaVersion != CurrentSchemaVersion() {
+			t.Fatalf("apply schema version = %d, want %d", applied.SchemaVersion, CurrentSchemaVersion())
 		}
 		// Live database is now fully migrated and Inspect-ready.
 		final, err := Inspect(root, resolver)
 		if err != nil {
 			t.Fatalf("Inspect() after apply error = %v", err)
 		}
-		if final.Mode != ModeSQLiteReady || final.SchemaVersion != journalFirstMigrationVersion {
-			t.Fatalf("post-apply mode/version = %q/%d, want sqlite-ready/%d", final.Mode, final.SchemaVersion, journalFirstMigrationVersion)
+		if final.Mode != ModeSQLiteReady || final.SchemaVersion != CurrentSchemaVersion() {
+			t.Fatalf("post-apply mode/version = %q/%d, want sqlite-ready/%d", final.Mode, final.SchemaVersion, CurrentSchemaVersion())
 		}
 		if rawTableExists(t, databasePath, "sessions") {
 			t.Fatalf("sessions table still present after apply on behind-schema database")
 		}
 		// Pending migrations 8 and 9 were recorded on the way through.
-		if got := rawCount(t, databasePath, `SELECT COUNT(*) FROM schema_migrations WHERE version IN (8, 9, 10)`); got != 3 {
-			t.Fatalf("recorded migrations 8/9/10 = %d, want 3", got)
+		if got := rawCount(t, databasePath, `SELECT COUNT(*) FROM schema_migrations WHERE version IN (8, 9, 10, 11)`); got != 4 {
+			t.Fatalf("recorded migrations 8/9/10/11 = %d, want 4", got)
 		}
 	})
 }
@@ -808,7 +902,183 @@ func TestJournalFirstMigrationRefusesGenuinelyInvalidDatabase(t *testing.T) {
 	}
 }
 
+func TestJournalFirstMigrationClassifiesSchema10BeforeMigration11(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("legitimate schema10 advances to schema11", func(t *testing.T) {
+		root := projectRoot(t)
+		resolver := PathResolver{StateHome: t.TempDir()}
+		_, databasePath := initializeBehindSchemaFixture(t, root, resolver, 9)
+		store, err := OpenStore(databasePath)
+		if err != nil {
+			t.Fatalf("OpenStore() error = %v", err)
+		}
+		if err := ApplyMigrations(ctx, store.db, []SchemaMigration{JournalFirstMigration()}); err != nil {
+			store.Close()
+			t.Fatalf("apply migration 10 error = %v", err)
+		}
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+		result, err := ApplyJournalFirstMigration(ctx, root, resolver)
+		if err != nil {
+			t.Fatalf("ApplyJournalFirstMigration() error = %v", err)
+		}
+		if !result.Applied || result.SchemaVersion != CurrentSchemaVersion() {
+			t.Fatalf("result applied/schema = %t/%d, want true/%d", result.Applied, result.SchemaVersion, CurrentSchemaVersion())
+		}
+	})
+
+	t.Run("drifted schema10 refuses without mutation", func(t *testing.T) {
+		root := projectRoot(t)
+		resolver := PathResolver{StateHome: t.TempDir()}
+		_, databasePath := initializeBehindSchemaFixture(t, root, resolver, 9)
+		store, err := OpenStore(databasePath)
+		if err != nil {
+			t.Fatalf("OpenStore() error = %v", err)
+		}
+		if err := ApplyMigrations(ctx, store.db, []SchemaMigration{JournalFirstMigration()}); err != nil {
+			store.Close()
+			t.Fatalf("apply migration 10 error = %v", err)
+		}
+		if _, err := store.db.ExecContext(ctx, `UPDATE schema_migrations SET checksum = 'drifted' WHERE version = 10`); err != nil {
+			store.Close()
+			t.Fatalf("drift migration 10 checksum: %v", err)
+		}
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+		before, err := os.ReadFile(databasePath)
+		if err != nil {
+			t.Fatalf("read drifted database before refusal: %v", err)
+		}
+		if _, err := ApplyJournalFirstMigration(ctx, root, resolver); err == nil {
+			t.Fatal("ApplyJournalFirstMigration() error = nil, want schema-10 checksum refusal")
+		}
+		after, err := os.ReadFile(databasePath)
+		if err != nil {
+			t.Fatalf("read drifted database after refusal: %v", err)
+		}
+		if !bytes.Equal(before, after) {
+			t.Fatal("drifted schema-10 database bytes changed after refusal")
+		}
+		if got := rawCount(t, databasePath, `SELECT COUNT(*) FROM schema_migrations WHERE version = 11`); got != 0 {
+			t.Fatalf("migration 11 rows after refusal = %d, want zero", got)
+		}
+		if got := rawCount(t, databasePath, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'journal_origins'`); got != 0 {
+			t.Fatalf("journal_origins table after refusal = %d, want zero", got)
+		}
+	})
+
+	for name, mutate := range map[string]func(context.Context, *Store) error{
+		"missing current project path": func(ctx context.Context, store *Store) error {
+			_, err := store.db.ExecContext(ctx, `DELETE FROM project_paths WHERE is_current = 1`)
+			return err
+		},
+		"divergent journal search": func(ctx context.Context, store *Store) error {
+			_, err := store.db.ExecContext(ctx, `DELETE FROM journal_search WHERE journal_entry_id = 'j-backfill'`)
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := projectRoot(t)
+			resolver := PathResolver{StateHome: t.TempDir()}
+			_, databasePath := initializeBehindSchemaFixture(t, root, resolver, 9)
+			store, err := OpenStore(databasePath)
+			if err != nil {
+				t.Fatalf("OpenStore() error = %v", err)
+			}
+			if err := ApplyMigrations(ctx, store.db, []SchemaMigration{JournalFirstMigration()}); err != nil {
+				store.Close()
+				t.Fatalf("apply migration 10 error = %v", err)
+			}
+			if err := mutate(ctx, store); err != nil {
+				store.Close()
+				t.Fatalf("mutate schema10 fixture: %v", err)
+			}
+			if parity, err := InspectJournalSearchParity(ctx, store); err == nil && name == "divergent journal search" && parity.Ready {
+				store.Close()
+				t.Fatalf("divergent journal search parity = %#v, want not ready", parity)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatalf("Close() error = %v", err)
+			}
+			before, err := os.ReadFile(databasePath)
+			if err != nil {
+				t.Fatalf("read schema10 database before refusal: %v", err)
+			}
+			beforeSearchRows := rawCount(t, databasePath, `SELECT COUNT(*) FROM journal_search WHERE journal_entry_id = 'j-backfill'`)
+			beforeSearchMessage := ""
+			if beforeSearchRows > 0 {
+				beforeSearchMessage = rawString(t, databasePath, `SELECT message FROM journal_search WHERE journal_entry_id = 'j-backfill'`)
+			}
+			beforePathRows := rawCount(t, databasePath, `SELECT COUNT(*) FROM project_paths`)
+			applied, applyErr := ApplyJournalFirstMigration(ctx, root, resolver)
+			if name == "divergent journal search" {
+				if applyErr != nil || !applied.Applied || applied.SchemaVersion != CurrentSchemaVersion() {
+					t.Fatalf("ApplyJournalFirstMigration() result=%#v error=%v, want FTS-only divergence repaired", applied, applyErr)
+				}
+				postStore, openErr := OpenStoreReadOnly(databasePath)
+				if openErr != nil {
+					t.Fatalf("OpenStoreReadOnly() error = %v", openErr)
+				}
+				parity, parityErr := InspectJournalSearchParity(ctx, postStore)
+				postStore.Close()
+				if parityErr != nil || !parity.Ready {
+					t.Fatalf("post-journal-first parity=%#v error=%v, want ready", parity, parityErr)
+				}
+				return
+			}
+			if applyErr == nil {
+				t.Fatal("ApplyJournalFirstMigration() error = nil, want schema10 invariant refusal")
+			}
+			after, err := os.ReadFile(databasePath)
+			if err != nil {
+				t.Fatalf("read schema10 database after refusal: %v", err)
+			}
+			afterSearchRows := rawCount(t, databasePath, `SELECT COUNT(*) FROM journal_search WHERE journal_entry_id = 'j-backfill'`)
+			afterSearchMessage := ""
+			if afterSearchRows > 0 {
+				afterSearchMessage = rawString(t, databasePath, `SELECT message FROM journal_search WHERE journal_entry_id = 'j-backfill'`)
+			}
+			afterPathRows := rawCount(t, databasePath, `SELECT COUNT(*) FROM project_paths`)
+			if !bytes.Equal(before, after) && (beforeSearchRows != afterSearchRows || beforeSearchMessage != afterSearchMessage || beforePathRows != afterPathRows) {
+				t.Fatal("schema10 invariant database tables changed after refusal")
+			}
+			if beforeSearchRows != afterSearchRows || beforeSearchMessage != afterSearchMessage || beforePathRows != afterPathRows {
+				t.Fatalf("schema10 invariant table state changed after refusal: search rows %d/%d message %q/%q paths %d/%d", beforeSearchRows, afterSearchRows, beforeSearchMessage, afterSearchMessage, beforePathRows, afterPathRows)
+			}
+			if got := rawCount(t, databasePath, `SELECT COUNT(*) FROM schema_migrations WHERE version = 11`); got != 0 {
+				t.Fatalf("migration 11 rows after schema10 invariant refusal = %d, want zero", got)
+			}
+			if got := rawCount(t, databasePath, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'journal_origins'`); got != 0 {
+				t.Fatalf("journal_origins table after schema10 invariant refusal = %d, want zero", got)
+			}
+		})
+	}
+}
+
 // --- raw read helpers (temp-DB house pattern) ---
+
+func rebuildJournalSearchFixture(t *testing.T, databasePath string) {
+	t.Helper()
+	store, err := OpenStore(databasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+	tx, err := store.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("begin journal-search rebuild: %v", err)
+	}
+	if _, err := rebuildAndVerifyJournalSearch(context.Background(), tx); err != nil {
+		tx.Rollback()
+		t.Fatalf("rebuild journal-search fixture: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit journal-search fixture: %v", err)
+	}
+}
 
 func rawCount(t *testing.T, databasePath string, query string, args ...any) int {
 	t.Helper()

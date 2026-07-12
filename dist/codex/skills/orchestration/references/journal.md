@@ -10,6 +10,7 @@ interleave rows with different tags, which is correct by construction.
 
 - Core Model
 - Logging Protocol
+- Codex Auto Mode
 - Wrap: Optional Checkpoint
 - Derived Continuity
 - Recovery
@@ -44,6 +45,12 @@ loaf journal log "todo(scope): concrete follow-up action"
 Log durable facts, not thoughts. Reference task IDs, spec IDs, report IDs, and
 commit refs rather than pasting long prose. The journal should let another agent
 resume without reading the whole conversation.
+
+## Codex Auto Mode
+
+When the user has explicitly enabled Loaf's managed Codex Auto-journal capability, use the exact path-pinned command shown in the Loaf-managed block of `CODEX_HOME/AGENTS.md`; its form is `'<canonical-loaf-path>' journal log --execpolicy-safe "decision(scope): chose X because Y"`. Do not substitute a bare `loaf`, alternate executable, or shell/environment wrapper. The installed Codex rule authorizes only explicitly classified basic Loaf command leaves outside the workspace sandbox, including this hardened journal writer and approved readers; ordinary `journal log`, body/file-consuming leaves, and path-taking `change check` remain operator-gated, and the policy does not authorize a general Loaf data-directory writable root. Other harness adapters are not implied and continue to use their own ordinary surfaces.
+
+Enable the capability once with `loaf install --to codex --codex-basic-commands`. Installation is an explicit trust decision. If the rules are absent, stale, locally modified, or conflict with user-owned `loaf.rules`, Loaf reports the condition instead of overwriting it or asking for full system access.
 
 ## Wrap: Optional Checkpoint
 

@@ -54,7 +54,7 @@ func TestRunnerConfigCheckFixCreatesProjectConfig(t *testing.T) {
 	}
 }
 
-func TestRunnerConfigCheckFixRefreshesMissingManagedHooks(t *testing.T) {
+func TestRunnerConfigCheckFixAcceptsCurrentCodexHooksSchema(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, ".agents", "loaf.json"), strings.Join([]string{
 		`{`,
@@ -72,23 +72,22 @@ func TestRunnerConfigCheckFixRefreshesMissingManagedHooks(t *testing.T) {
 		`  }`,
 		`}`,
 	}, "\n")+"\n")
-	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), `{"version":1,"hooks":{"PreToolUse":[{"command":"loaf check --hook check-secrets","loaf-managed":true},{"command":"loaf check --hook github-account","loaf-managed":true}]}}`+"\n")
+	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), `{"hooks":{}}`+"\n")
 	writeInstallFile(t, filepath.Join(home, ".codex", loafInstallMarkerFile), "old\n")
-	writeInstallFile(t, filepath.Join(home, ".codex", "hooks.json"), `{"version":1,"hooks":{"PreToolUse":[{"command":"loaf check --hook check-secrets","loaf-managed":true}]}}`+"\n")
+	writeInstallFile(t, filepath.Join(home, ".codex", "hooks.json"), `{"hooks":{"SessionStart":[{"matcher":"startup","hooks":[{"type":"command","command":"user codex hook"}]}]}}`+"\n")
 
 	var checkOut bytes.Buffer
 	err := Runner{Stdout: &checkOut, WorkingDir: root}.Run([]string{"config", "check", "--json"})
-	var exitErr ExitError
-	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
-		t.Fatalf("config check error = %v, want exit code 2", err)
+	if err != nil {
+		t.Fatalf("config check error = %v, want current schema to pass", err)
 	}
 	var before configCheckResult
 	if err := json.Unmarshal(checkOut.Bytes(), &before); err != nil {
 		t.Fatalf("Unmarshal(check output) error = %v\n%s", err, checkOut.String())
 	}
 	codexBefore := findConfigTargetStatus(before.Targets, "codex")
-	if codexBefore.Status != "stale" || strings.Join(codexBefore.MissingHooks, ",") != "github-account" {
-		t.Fatalf("codexBefore = %#v, want missing github-account", codexBefore)
+	if codexBefore.Status != "ok" || len(codexBefore.MissingHooks) != 0 {
+		t.Fatalf("codexBefore = %#v, want current empty Loaf hook contract", codexBefore)
 	}
 
 	var fixOut bytes.Buffer
@@ -101,15 +100,15 @@ func TestRunnerConfigCheckFixRefreshesMissingManagedHooks(t *testing.T) {
 		t.Fatalf("Unmarshal(fix output) error = %v\n%s", err, fixOut.String())
 	}
 	codexAfter := findConfigTargetStatus(after.Targets, "codex")
-	if !after.OK || codexAfter.Status != "updated" || len(codexAfter.MissingHooks) != 0 {
-		t.Fatalf("after = %#v codexAfter = %#v, want refreshed codex hooks", after, codexAfter)
+	if !after.OK || codexAfter.Status != "ok" || len(codexAfter.MissingHooks) != 0 {
+		t.Fatalf("after = %#v codexAfter = %#v, want current codex hooks", after, codexAfter)
 	}
 	body, err := os.ReadFile(filepath.Join(home, ".codex", "hooks.json"))
 	if err != nil {
 		t.Fatalf("ReadFile(hooks.json) error = %v", err)
 	}
-	if !strings.Contains(string(body), "loaf check --hook github-account") {
-		t.Fatalf("hooks.json = %s, want github-account hook", body)
+	if strings.Contains(string(body), "loaf check --hook") || !strings.Contains(string(body), "user codex hook") {
+		t.Fatalf("hooks.json = %s, want user hook preserved without Loaf handlers", body)
 	}
 }
 

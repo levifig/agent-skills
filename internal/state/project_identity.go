@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -55,24 +56,63 @@ type ProjectRenameResult struct {
 	Action          string          `json:"action"`
 }
 
-// ProjectIdentityForRoot returns the DB-backed project identity.
-// Writable stores refresh current path metadata; read-only stores only look up
-// an existing mapping.
-func (s *Store) ProjectIdentityForRoot(ctx context.Context, root project.Root) (ProjectIdentity, error) {
-	if s.readOnly {
-		return s.LookupProjectIdentityForRoot(ctx, root)
+// ProjectIdentityUnregisteredCode is the stable diagnostic code for an
+// unregistered current project path.
+const ProjectIdentityUnregisteredCode = "project-identity-unregistered"
+
+// UnregisteredProjectIdentityError reports that the current checkout has no
+// registered project-path mapping. It unwraps to sql.ErrNoRows so callers that
+// only need the lookup outcome retain the standard database contract.
+type UnregisteredProjectIdentityError struct {
+	Code              string   `json:"code"`
+	CurrentPath       string   `json:"current_path"`
+	KnownCurrentPaths []string `json:"known_current_paths"`
+	MoveCommands      []string `json:"move_commands"`
+	InitCommand       string   `json:"init_command"`
+}
+
+func (e *UnregisteredProjectIdentityError) Error() string {
+	if e == nil {
+		return sql.ErrNoRows.Error()
 	}
-	return s.EnsureProject(ctx, root)
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "project identity is not registered for %s", e.CurrentPath)
+	if len(e.MoveCommands) > 0 {
+		builder.WriteString("\nif this checkout moved, run one of:")
+		for _, command := range e.MoveCommands {
+			builder.WriteString("\n  ")
+			builder.WriteString(command)
+		}
+	}
+	initCommand := e.InitCommand
+	if initCommand == "" {
+		initCommand = "loaf state init"
+	}
+	builder.WriteString("\notherwise initialize it explicitly with:\n  ")
+	builder.WriteString(initCommand)
+	return builder.String()
+}
+
+func (e *UnregisteredProjectIdentityError) Unwrap() error {
+	return sql.ErrNoRows
+}
+
+// ProjectIdentityForRoot returns the DB-backed project identity without
+// registering or refreshing path metadata. Explicit registration callers use
+// EnsureProject or UpsertProject.
+func (s *Store) ProjectIdentityForRoot(ctx context.Context, root project.Root) (ProjectIdentity, error) {
+	return s.LookupProjectIdentityForRoot(ctx, root)
 }
 
 // LookupProjectIdentityForRoot reads project identity without refreshing paths.
 func (s *Store) LookupProjectIdentityForRoot(ctx context.Context, root project.Root) (ProjectIdentity, error) {
-	projectID, err := s.projectIDByPath(ctx, root.Path())
+	currentPath := root.Path()
+	projectID, err := s.projectIDByPath(ctx, currentPath)
 	if err != nil {
 		return ProjectIdentity{}, err
 	}
 	if projectID == "" {
-		return ProjectIdentity{}, sql.ErrNoRows
+		return ProjectIdentity{}, s.unregisteredProjectIdentityError(ctx, currentPath)
 	}
 	return s.projectIdentity(ctx, projectID)
 }
@@ -121,40 +161,62 @@ func (s *Store) EnsureProject(ctx context.Context, root project.Root) (ProjectId
 	currentPath := root.Path()
 	now := time.Now().UTC().Format(time.RFC3339)
 	friendlyName := defaultProjectFriendlyName(currentPath)
-
-	projectID, err := s.projectIDByPath(ctx, currentPath)
+	candidateID, err := newProjectID()
 	if err != nil {
 		return ProjectIdentity{}, err
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ProjectIdentity{}, fmt.Errorf("begin project registration: %w", err)
+	}
+	defer tx.Rollback()
+	// The candidate insert is deliberately the first SQL operation after
+	// BeginTx. It upgrades SQLite to a write transaction before the mapping
+	// lookup, so independent initializers serialize on the same durable state.
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO projects (id, identity_hash, friendly_name, current_path, last_seen_at, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+`, candidateID, candidateID, friendlyName, currentPath, now, now, now); err != nil {
+		return ProjectIdentity{}, fmt.Errorf("create project identity candidate: %w", err)
+	}
+
+	projectID, err := projectIDByPathTx(ctx, tx, currentPath)
+	if err != nil {
+		return ProjectIdentity{}, err
+	}
+	rekeyed := false
 	if projectID == "" {
 		legacyID := ProjectID(root)
-		if exists, err := s.projectExists(ctx, legacyID); err != nil {
+		exists, err := projectExistsTx(ctx, tx, legacyID)
+		if err != nil {
 			return ProjectIdentity{}, err
-		} else if exists {
-			projectID, err = s.rekeyLegacyProject(ctx, legacyID, currentPath, friendlyName, now)
+		}
+		if exists {
+			if err := deleteProjectTx(ctx, tx, candidateID); err != nil {
+				return ProjectIdentity{}, err
+			}
+			projectID, err = rekeyLegacyProjectTx(ctx, tx, legacyID, currentPath, friendlyName, now)
 			if err != nil {
 				return ProjectIdentity{}, err
 			}
-		}
-	} else if projectID == ProjectID(root) {
-		projectID, err = s.rekeyLegacyProject(ctx, projectID, currentPath, friendlyName, now)
-		if err != nil {
-			return ProjectIdentity{}, err
-		}
-	}
-	if projectID == "" {
-		projectID, err = newProjectID()
-		if err != nil {
-			return ProjectIdentity{}, err
-		}
-		if _, err := s.db.ExecContext(ctx, `
-INSERT INTO projects (id, identity_hash, friendly_name, current_path, last_seen_at, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-`, projectID, projectID, friendlyName, currentPath, now, now, now); err != nil {
-			return ProjectIdentity{}, fmt.Errorf("create project identity: %w", err)
+			rekeyed = true
+		} else {
+			projectID = candidateID
 		}
 	} else {
-		if _, err := s.db.ExecContext(ctx, `
+		if err := deleteProjectTx(ctx, tx, candidateID); err != nil {
+			return ProjectIdentity{}, err
+		}
+		if projectID == ProjectID(root) {
+			projectID, err = rekeyLegacyProjectTx(ctx, tx, projectID, currentPath, friendlyName, now)
+			if err != nil {
+				return ProjectIdentity{}, err
+			}
+			rekeyed = true
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `
 UPDATE projects
 SET friendly_name = COALESCE(NULLIF(friendly_name, ''), ?),
     current_path = ?,
@@ -162,12 +224,18 @@ SET friendly_name = COALESCE(NULLIF(friendly_name, ''), ?),
     updated_at = ?
 WHERE id = ?
 `, friendlyName, currentPath, now, now, projectID); err != nil {
-			return ProjectIdentity{}, fmt.Errorf("refresh project identity: %w", err)
+		return ProjectIdentity{}, fmt.Errorf("refresh project identity: %w", err)
+	}
+	if err := markCurrentProjectPathTx(ctx, tx, projectID, currentPath, now); err != nil {
+		return ProjectIdentity{}, err
+	}
+	if rekeyed {
+		if _, err := rebuildAndVerifyJournalSearch(ctx, tx); err != nil {
+			return ProjectIdentity{}, fmt.Errorf("rebuild journal search after legacy project rekey: %w", err)
 		}
 	}
-
-	if err := s.markCurrentProjectPath(ctx, projectID, currentPath, now); err != nil {
-		return ProjectIdentity{}, err
+	if err := tx.Commit(); err != nil {
+		return ProjectIdentity{}, fmt.Errorf("commit project registration: %w", err)
 	}
 	return s.projectIdentity(ctx, projectID)
 }
@@ -228,15 +296,15 @@ func (s *Store) PreviewRenameProject(ctx context.Context, root project.Root, fri
 
 // MoveProject changes the current path mapping with safeguards against collisions.
 func (s *Store) MoveProject(ctx context.Context, root project.Root, fromPath string, toPath string) (ProjectMoveResult, error) {
-	return s.moveProject(ctx, root, fromPath, toPath, false)
+	return s.moveProject(ctx, root, fromPath, toPath, false, nil)
 }
 
 // PreviewMoveProject validates a path remapping without mutating project identity rows.
 func (s *Store) PreviewMoveProject(ctx context.Context, root project.Root, fromPath string, toPath string) (ProjectMoveResult, error) {
-	return s.moveProject(ctx, root, fromPath, toPath, true)
+	return s.moveProject(ctx, root, fromPath, toPath, true, nil)
 }
 
-func (s *Store) moveProject(ctx context.Context, root project.Root, fromPath string, toPath string, dryRun bool) (ProjectMoveResult, error) {
+func (s *Store) moveProject(ctx context.Context, root project.Root, fromPath string, toPath string, dryRun bool, beforeTransaction func()) (ProjectMoveResult, error) {
 	fromPath = filepath.Clean(fromPath)
 	toPath = filepath.Clean(toPath)
 	if fromPath == "." || toPath == "." || fromPath == "" || toPath == "" {
@@ -299,6 +367,9 @@ func (s *Store) moveProject(ctx context.Context, root project.Root, fromPath str
 			Action:          "dry-run",
 		}, nil
 	}
+	if beforeTransaction != nil {
+		beforeTransaction()
+	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -306,6 +377,27 @@ func (s *Store) moveProject(ctx context.Context, root project.Root, fromPath str
 		return ProjectMoveResult{}, fmt.Errorf("begin project move: %w", err)
 	}
 	defer tx.Rollback()
+	// Re-read both path owners in the write transaction. The preflight reads
+	// above are advisory only; applying from stale ownership must fail visibly.
+	var transactionalProjectID string
+	err = tx.QueryRowContext(ctx, `SELECT project_id FROM project_paths WHERE path = ?`, fromPath).Scan(&transactionalProjectID)
+	if errors.Is(err, sql.ErrNoRows) && fromPath == root.Path() {
+		transactionalProjectID, err = projectID, nil
+	}
+	if err != nil {
+		return ProjectMoveResult{}, fmt.Errorf("read source project path in move transaction: %w", err)
+	}
+	if transactionalProjectID != projectID {
+		return ProjectMoveResult{}, fmt.Errorf("source path %s changed ownership during move", fromPath)
+	}
+	var transactionalTargetOwner string
+	err = tx.QueryRowContext(ctx, `SELECT project_id FROM project_paths WHERE path = ?`, toPath).Scan(&transactionalTargetOwner)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return ProjectMoveResult{}, fmt.Errorf("read target project path in move transaction: %w", err)
+	}
+	if err == nil && transactionalTargetOwner != projectID {
+		return ProjectMoveResult{}, fmt.Errorf("target path %s is already registered to project %s", toPath, transactionalTargetOwner)
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE project_paths
 SET is_current = 0, updated_at = ?
@@ -316,9 +408,8 @@ WHERE project_id = ?
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO project_paths (id, project_id, path, is_current, first_seen_at, last_seen_at, created_at, updated_at)
 VALUES (?, ?, ?, 1, ?, ?, ?, ?)
-ON CONFLICT(path) DO UPDATE SET
-  project_id = excluded.project_id,
-  is_current = excluded.is_current,
+	ON CONFLICT(path) DO UPDATE SET
+	  is_current = excluded.is_current,
   last_seen_at = excluded.last_seen_at,
   updated_at = excluded.updated_at
 `, stableMigrationID("project-path", projectID, toPath), projectID, toPath, now, now, now, now); err != nil {
@@ -349,7 +440,7 @@ WHERE id = ?
 }
 
 func (s *Store) projectID(ctx context.Context, root project.Root) (string, error) {
-	identity, err := s.ProjectIdentityForRoot(ctx, root)
+	identity, err := s.LookupProjectIdentityForRoot(ctx, root)
 	if err != nil {
 		return "", err
 	}
@@ -389,6 +480,68 @@ func (s *Store) projectIDByPath(ctx context.Context, path string) (string, error
 	}
 }
 
+func (s *Store) unregisteredProjectIdentityError(ctx context.Context, currentPath string) error {
+	knownPaths, err := s.knownCurrentProjectPaths(ctx)
+	if err != nil {
+		return fmt.Errorf("read known project paths: %w", err)
+	}
+	commands := make([]string, 0, len(knownPaths))
+	for _, knownPath := range knownPaths {
+		commands = append(commands, fmt.Sprintf("loaf project move --from %s --to %s --dry-run", posixShellQuote(knownPath), posixShellQuote(currentPath)))
+	}
+	return &UnregisteredProjectIdentityError{
+		Code:              ProjectIdentityUnregisteredCode,
+		CurrentPath:       currentPath,
+		KnownCurrentPaths: knownPaths,
+		MoveCommands:      commands,
+		InitCommand:       "loaf state init",
+	}
+}
+
+func posixShellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func (s *Store) knownCurrentProjectPaths(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT path
+FROM project_paths
+WHERE is_current = 1
+ORDER BY path
+`)
+	if err != nil {
+		return nil, fmt.Errorf("list known current project paths: %w", err)
+	}
+	defer rows.Close()
+
+	paths := []string{}
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, fmt.Errorf("scan known current project path: %w", err)
+		}
+		paths = append(paths, path)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate known current project paths: %w", err)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func projectIDByPathTx(ctx context.Context, tx *sql.Tx, path string) (string, error) {
+	var projectID string
+	err := tx.QueryRowContext(ctx, `SELECT project_id FROM project_paths WHERE path = ?`, path).Scan(&projectID)
+	switch {
+	case err == nil:
+		return projectID, nil
+	case errors.Is(err, sql.ErrNoRows):
+		return "", nil
+	default:
+		return "", fmt.Errorf("read project path mapping: %w", err)
+	}
+}
+
 func (s *Store) projectExists(ctx context.Context, projectID string) (bool, error) {
 	var count int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE id = ?`, projectID).Scan(&count); err != nil {
@@ -397,12 +550,34 @@ func (s *Store) projectExists(ctx context.Context, projectID string) (bool, erro
 	return count > 0, nil
 }
 
+func projectExistsTx(ctx context.Context, tx *sql.Tx, projectID string) (bool, error) {
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE id = ?`, projectID).Scan(&count); err != nil {
+		return false, fmt.Errorf("read project row: %w", err)
+	}
+	return count > 0, nil
+}
+
+func deleteProjectTx(ctx context.Context, tx *sql.Tx, projectID string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, projectID); err != nil {
+		return fmt.Errorf("delete project identity candidate: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) markCurrentProjectPath(ctx context.Context, projectID string, path string, now string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin project path refresh: %w", err)
 	}
 	defer tx.Rollback()
+	if err := markCurrentProjectPathTx(ctx, tx, projectID, path, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func markCurrentProjectPathTx(ctx context.Context, tx *sql.Tx, projectID string, path string, now string) error {
 	if _, err := tx.ExecContext(ctx, `
 UPDATE project_paths
 SET is_current = 0, updated_at = ?
@@ -420,27 +595,22 @@ ON CONFLICT(path) DO UPDATE SET
 `, stableMigrationID("project-path", projectID, path), projectID, path, now, now, now, now); err != nil {
 		return fmt.Errorf("upsert project path: %w", err)
 	}
-	return tx.Commit()
+	return nil
 }
 
-func (s *Store) rekeyLegacyProject(ctx context.Context, legacyID string, currentPath string, friendlyName string, now string) (string, error) {
+func rekeyLegacyProjectTx(ctx context.Context, tx *sql.Tx, legacyID string, currentPath string, friendlyName string, now string) (string, error) {
 	nextID, err := newProjectID()
 	if err != nil {
 		return "", err
 	}
 	var createdAt string
 	var storedFriendly sql.NullString
-	if err := s.db.QueryRowContext(ctx, `SELECT created_at, friendly_name FROM projects WHERE id = ?`, legacyID).Scan(&createdAt, &storedFriendly); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT created_at, friendly_name FROM projects WHERE id = ?`, legacyID).Scan(&createdAt, &storedFriendly); err != nil {
 		return "", fmt.Errorf("read legacy project before rekey: %w", err)
 	}
 	if storedFriendly.Valid && strings.TrimSpace(storedFriendly.String) != "" {
 		friendlyName = storedFriendly.String
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", fmt.Errorf("begin project rekey: %w", err)
-	}
-	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO projects (id, identity_hash, friendly_name, current_path, last_seen_at, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -458,9 +628,6 @@ WHERE project_id = ?
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, legacyID); err != nil {
 		return "", fmt.Errorf("delete legacy project row: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return "", fmt.Errorf("commit project rekey: %w", err)
 	}
 	return nextID, nil
 }
@@ -506,6 +673,9 @@ func isMissingProjectIdentitySchema(err error) bool {
 	message := err.Error()
 	return strings.Contains(message, "no such table: project_paths") ||
 		strings.Contains(message, "no such column: friendly_name") ||
+		strings.Contains(message, "no column named friendly_name") ||
 		strings.Contains(message, "no such column: current_path") ||
-		strings.Contains(message, "no such column: last_seen_at")
+		strings.Contains(message, "no column named current_path") ||
+		strings.Contains(message, "no such column: last_seen_at") ||
+		strings.Contains(message, "no column named last_seen_at")
 }

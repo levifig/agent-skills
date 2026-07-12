@@ -354,6 +354,9 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	if !releaseIsGitRepo(root) {
 		return fmt.Errorf("Not a git repository")
 	}
+	if err := requireReleaseCleanWorktree(root); err != nil {
+		return err
+	}
 	for _, declared := range options.versionFile {
 		if !pathExistsNative(filepath.Join(root, declared)) {
 			return fmt.Errorf("version file %s not found", declared)
@@ -479,6 +482,9 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 		}
 		fmt.Fprintln(out)
 	}
+	if err := requireReleaseCleanWorktree(root); err != nil {
+		return err
+	}
 	fmt.Fprintf(out, "  %s\n", ansiBold("Executing:"))
 
 	updates, err := prepareReleaseVersionUpdates(versionFiles, newVersion)
@@ -504,6 +510,13 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	}
 	if paths := unignoredReleaseVirtualEnvStatusPaths(root); len(paths) > 0 {
 		return fmt.Errorf("Refusing to commit release artifacts: unignored virtual environment path detected: %s", strings.Join(paths, ", "))
+	}
+	changePaths, err := releaseUnignoredStatusPaths(root, "docs/changes")
+	if err != nil {
+		return fmt.Errorf("Refusing to commit release artifacts: cannot inspect generated Change paths: %w", err)
+	}
+	if len(changePaths) != 0 {
+		return fmt.Errorf("Refusing to commit release artifacts: artifact generation modified docs/changes; reconcile and commit separately before release: %s", strings.Join(changePaths, ", "))
 	}
 
 	if err := releaseCommandRun(root, "git", "add", "-A"); err != nil {
@@ -539,6 +552,51 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "  %s Release %s complete\n\n", ansiGreen("✓"), ansiBold(tagName))
+	return nil
+}
+
+func releaseUnignoredStatusPaths(root string, pathspec ...string) ([]string, error) {
+	args := []string{"status", "--porcelain=v1", "--untracked-files=all", "-z"}
+	if len(pathspec) != 0 {
+		args = append(args, "--")
+		args = append(args, pathspec...)
+	}
+	cmd := exec.Command("git", args...)
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	entries := strings.Split(string(output), "\x00")
+	paths := map[string]bool{}
+	for index := 0; index < len(entries); index++ {
+		entry := entries[index]
+		if entry == "" {
+			continue
+		}
+		if len(entry) < 4 || entry[2] != ' ' {
+			return nil, fmt.Errorf("parse git status entry %q", entry)
+		}
+		paths[filepath.ToSlash(entry[3:])] = true
+		if entry[0] == 'R' || entry[0] == 'C' || entry[1] == 'R' || entry[1] == 'C' {
+			index++
+			if index >= len(entries) || entries[index] == "" {
+				return nil, fmt.Errorf("parse renamed git status entry %q", entry)
+			}
+			paths[filepath.ToSlash(entries[index])] = true
+		}
+	}
+	return sortedKeys(paths), nil
+}
+
+func requireReleaseCleanWorktree(root string) error {
+	dirtyPaths, err := releaseUnignoredStatusPaths(root)
+	if err != nil {
+		return fmt.Errorf("Refusing to prepare release: cannot inspect worktree cleanliness: %w", err)
+	}
+	if len(dirtyPaths) != 0 {
+		return fmt.Errorf("Refusing to prepare release: mutating release modes require a clean unignored worktree; commit, stash, or remove: %s", strings.Join(dirtyPaths, ", "))
+	}
 	return nil
 }
 

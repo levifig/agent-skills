@@ -13,7 +13,7 @@ Which command a task needs. For exact flags, run `loaf <command> --help`.
 | See what is in progress | `loaf task list --active` |
 | Archive completed work | `loaf task archive` |
 | Check knowledge freshness | `loaf kb check` |
-| Validate a Change is ready | `loaf change check --require-executable` |
+| Validate a Change is structurally executable, not implementation-complete | `loaf change check --require-executable` |
 
 ## JSON diagnosis surfaces
 

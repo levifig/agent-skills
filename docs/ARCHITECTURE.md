@@ -56,6 +56,14 @@ This changes the construction technique, not the product contract: skills still 
 
 Loaf stores operational state in one global SQLite database at `$XDG_DATA_HOME/loaf/loaf.sqlite`, partitioned by project ID. New project IDs are generated and stored in SQLite; they are not derived from checkout path or friendly name. The `projects` row carries the friendly display name and current path, while `project_paths` records path mappings so a checkout can move without changing identity. Legacy path-hash IDs remain only as an adoption key for migrated pre-stable-identity data.
 
+### Recovery Tiers and Restore Safety
+
+Recovery has three named tiers: `local_rollback` snapshots remain in the same data home for local corruption rollback, project-scoped replay is the ordinary rollback mechanism for later migrations, and `external_disaster_copy` is an operator-selected non-temporary external destination for a point-in-time copy. An explicit destination is resolved through symlinks and rejected when it is absolute-but-volatile; the path check does not prove that the destination is physically remote or durable, so `device_loss_protected` remains false. Backup and verification results include SQLite validity, journal retrieval readiness, search parity, project evidence, checksum, and the latest canonical journal watermark.
+
+`loaf state backup restore <backup> --to <absolute-empty-database-path>` is an isolated disposable rehearsal. It creates an exact copy at an empty target, verifies integrity, foreign keys, schema, projects, canonical journal rows, derived search parity, and the watermark, and leaves the live database untouched. There is no automated live activation, no universal mutation lease honored by every writer, and no claim that a concurrent restore is safe.
+
+Live activation is therefore a quiesced operator procedure: stop or terminate every harness, Loaf process, background writer, and process that might retain an open database connection; verify the backup and isolated rehearsal; retain a preserve-current backup; while quiesced move the old main database and any matching `-wal` and `-shm` sidecars together into durable quarantine; install the verified copy with mode `0600`; start current Loaf; run `loaf state doctor`, `loaf state status`, and a known journal retrieval check; and, on failure, quiesce again and activate the preserve-current copy. Sidecars from different database files must never be mixed.
+
 ### Targets
 
 | Target | Output | Agents | Skills | Hooks | Runtime Plugin |

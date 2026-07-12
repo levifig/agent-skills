@@ -38,12 +38,10 @@ An absolute `LOAF_DB` is used verbatim as the SQLite file and overrides
 
 ## State backup and restore
 
-- Back up: `loaf state backup` writes under the global data-home backups directory.
-- Verify: `loaf state backup verify <backup>` — add `--json` for
-  `restore_database_path`, `restore_preserve_path`, and `restore_validation_commands`.
-- Restore is explicit until a guarded restore command exists: verify the backup,
-  preserve the current `$(loaf state path)` file, copy the verified backup to that
-  path, then run `loaf state doctor` and `loaf state status`.
-- Ephemeral Markdown: verify with
-  `loaf state verify-ephemerals <manifest|backup-dir|backup-id>`, then restore and
-  stage with `loaf state restore-ephemerals <manifest|backup-dir|backup-id>`.
+Backups have explicit tiers. `loaf state backup` creates a `local_rollback` snapshot under the global data-home backup directory; project-scoped replay is the ordinary rollback path for later migrations; and `loaf state backup --to /absolute/external/directory` creates an `external_disaster_copy` at an operator-selected non-temporary external destination. The external path is not proof of off-device durability, so `device_loss_protected` remains false. Verify with `loaf state backup verify <backup>` and inspect SQLite validity, journal retrieval readiness, recovery readiness, checksum, and the journal watermark.
+
+Use `loaf state backup restore <backup> --to /absolute/empty/rehearsal/loaf.sqlite` for an isolated disposable restore rehearsal. The command requires an empty absolute target, proves exact bytes and table/search/watermark parity, and never activates or replaces the live database. There is no automated live mutation lease and no concurrent restore claim.
+
+If a verified copy must be activated, stop or terminate every harness, Loaf process, background writer, and process that might retain an open database connection, then verify universal quiescence first. Verify the durable backup and isolated rehearsal, retain a preserve-current backup, then while quiesced move the old main database and any matching `-wal` and `-shm` sidecars together into durable quarantine; never mix sidecars from different databases. Install the verified copy with mode `0600`, start current Loaf, run `loaf state doctor`, `loaf state status`, and a known journal retrieval check, and if validation fails re-quiesce and activate the preserve-current copy.
+
+Ephemeral Markdown remains separate: verify with `loaf state verify-ephemerals <manifest|backup-dir|backup-id>`, then restore and stage with `loaf state restore-ephemerals <manifest|backup-dir|backup-id>`.

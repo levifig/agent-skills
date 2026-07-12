@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 
 	"github.com/levifig/loaf/internal/project"
 )
@@ -43,16 +42,7 @@ type TaskListOptions struct {
 
 // ListTasks returns imported tasks from initialized SQLite state.
 func ListTasks(ctx context.Context, root project.Root, resolver PathResolver, options TaskListOptions) (TaskList, error) {
-	databasePath, err := resolver.DatabasePath(root)
-	if err != nil {
-		return TaskList{}, err
-	}
-	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
-		return TaskList{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state migrate markdown --apply` first")
-	} else if err != nil {
-		return TaskList{}, fmt.Errorf("inspect state database: %w", err)
-	}
-	store, err := OpenStore(databasePath)
+	store, err := openProjectStoreReadExisting(ctx, root, resolver)
 	if err != nil {
 		return TaskList{}, err
 	}

@@ -22,6 +22,32 @@ type journalHookInput struct {
 	Raw       map[string]any
 }
 
+type journalHookWarning struct {
+	ContractVersion  int    `json:"contract_version"`
+	Kind             string `json:"kind"`
+	Severity         string `json:"severity"`
+	Code             string `json:"code"`
+	Message          string `json:"message"`
+	Key              string `json:"key"`
+	LatestSourceID   string `json:"latest_source_id"`
+	LatestSourceType string `json:"latest_source_type"`
+	NonBlocking      bool   `json:"non_blocking"`
+}
+
+func writeJournalHookUnmatchedUnblockWarning(out io.Writer, unmatched *state.JournalUnmatchedUnblockError) error {
+	return writeJSON(out, journalHookWarning{
+		ContractVersion:  state.StateJSONContractVersion,
+		Kind:             "journal-diagnostic",
+		Severity:         "warning",
+		Code:             unmatched.Code,
+		Message:          unmatched.Error(),
+		Key:              unmatched.Key,
+		LatestSourceID:   unmatched.LatestSourceID,
+		LatestSourceType: unmatched.LatestSourceType,
+		NonBlocking:      true,
+	})
+}
+
 // readJournalHookInput parses the hook JSON on stdin. A missing or empty stdin
 // yields a zero-value input (no error) so hooks degrade gracefully when invoked
 // outside a harness.

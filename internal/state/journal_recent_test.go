@@ -1,9 +1,14 @@
 package state
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/levifig/loaf/internal/project"
 )
 
 // seedJournalEntry inserts a project-scoped journal entry directly, giving tests
@@ -50,6 +55,114 @@ func seedRecentFixture(t *testing.T, store *Store, projectID string) {
 	seedJournalEntry(t, store, projectID, "wrap", "", "wrapped the feature checkpoint", "feat/x", "2026-07-01T11:00:00Z")
 	seedJournalEntry(t, store, projectID, "task", "feat", "post-wrap feature note", "feat/x", "2026-07-01T12:00:00Z")
 	seedJournalEntry(t, store, projectID, "note", "main", "latest main note", "main", "2026-07-01T13:00:00Z")
+}
+
+func TestLatestJournalEntryForScopeIsOptionalWithoutDatabase(t *testing.T) {
+	root := projectRoot(t)
+	resolver := PathResolver{DataHome: t.TempDir()}
+	entry, found, available, err := LatestJournalEntryForScope(context.Background(), root, resolver, "decision", "lineage/demo")
+	if err != nil || found || available || entry.ID != "" {
+		t.Fatalf("entry = %+v found = %t available = %t err = %v", entry, found, available, err)
+	}
+	path, _ := resolver.DatabasePath(root)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("database was created at %s", path)
+	}
+}
+
+func TestLatestJournalEntryForScopeIsReadOnlyForUnknownAndKnownProjects(t *testing.T) {
+	ctx := context.Background()
+	dataHome := t.TempDir()
+	resolver := PathResolver{DataHome: dataHome}
+	root := projectRoot(t)
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknownPath := filepath.Join(t.TempDir(), "unknown")
+	if err := os.MkdirAll(unknownPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	unknown, err := project.ResolveRoot(unknownPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLatestScopeReadOnly(t, status.DatabasePath, func() {
+		entry, found, available, err := LatestJournalEntryForScope(ctx, unknown, resolver, "decision", "lineage/demo")
+		if err != nil || found || available || entry.ID != "" {
+			t.Fatalf("unknown entry = %+v found = %t available = %t err = %v", entry, found, available, err)
+		}
+	})
+	assertLatestScopeReadOnly(t, status.DatabasePath, func() {
+		entry, found, available, err := LatestJournalEntryForScope(ctx, root, resolver, "decision", "lineage/demo")
+		if err != nil || found || !available || entry.ID != "" {
+			t.Fatalf("empty entry = %+v found = %t available = %t err = %v", entry, found, available, err)
+		}
+	})
+}
+
+func TestLatestJournalEntryForScopeFindsNewestExactScopeBeyondRecentLimit(t *testing.T) {
+	ctx := context.Background()
+	resolver := PathResolver{DataHome: t.TempDir()}
+	root := projectRoot(t)
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectID := projectIDForTest(t, store, root)
+	seedJournalEntry(t, store, projectID, "decision", "lineage/demo", "older exact decision", "main", "2026-07-01T00:00:00Z")
+	for i := 0; i < 205; i++ {
+		seedJournalEntry(t, store, projectID, "decision", fmt.Sprintf("lineage/noise-%03d", i), "distractor", "main", fmt.Sprintf("2026-07-02T00:%02d:%02dZ", i/60, i%60))
+	}
+	seedJournalEntry(t, store, projectID, "decision", "lineage/demo", "newest exact decision", "main", "2026-07-03T00:00:00Z")
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertLatestScopeReadOnly(t, status.DatabasePath, func() {
+		entry, found, available, err := LatestJournalEntryForScope(ctx, root, resolver, "decision", "lineage/demo")
+		if err != nil || !found || !available || entry.Message != "newest exact decision" {
+			t.Fatalf("entry = %+v found = %t available = %t err = %v", entry, found, available, err)
+		}
+	})
+}
+
+func assertLatestScopeReadOnly(t *testing.T, databasePath string, query func()) {
+	t.Helper()
+	beforeBytes, err := os.ReadFile(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeProjects, beforePaths := stateIdentityCounts(t, databasePath)
+	query()
+	afterBytes, err := os.ReadFile(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterProjects, afterPaths := stateIdentityCounts(t, databasePath)
+	if beforeProjects != afterProjects || beforePaths != afterPaths || !bytes.Equal(beforeBytes, afterBytes) {
+		t.Fatalf("read mutated state: projects %d->%d paths %d->%d bytes_equal=%t", beforeProjects, afterProjects, beforePaths, afterPaths, bytes.Equal(beforeBytes, afterBytes))
+	}
+}
+
+func stateIdentityCounts(t *testing.T, databasePath string) (int, int) {
+	t.Helper()
+	store, err := OpenStoreReadOnly(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var projects, paths int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM projects`).Scan(&projects); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM project_paths`).Scan(&paths); err != nil {
+		t.Fatal(err)
+	}
+	return projects, paths
 }
 
 func TestRecentJournalReturnsProjectTimelineNewestFirst(t *testing.T) {

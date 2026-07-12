@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -27,7 +28,372 @@ func TestRunnerReleaseHelpIsNative(t *testing.T) {
 	}
 }
 
-func TestRunnerReleasePostMergeRunsNatively(t *testing.T) {
+func TestReleaseLineagePreflightScopesFreezeToHEADAncestry(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	if err := releaseLineagePreflight(repo); err != nil {
+		t.Fatalf("ancestry before first lineage node should pass: %v", err)
+	}
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	commitAllChangeTest(t, repo, "docs: add lineage root")
+	if err := releaseLineagePreflight(repo); err == nil || !strings.Contains(err.Error(), "release-after terminal \"terminal\" is unsatisfied") {
+		t.Fatalf("preflight error = %v", err)
+	}
+	writeChangeFolder(t, repo, "20260711-terminal", strings.Replace(executableLineageDoc("terminal", "line", "root", ""), "created: 2026-07-10", "created: 2026-07-11", 1))
+	commitAllChangeTest(t, repo, "docs: add lineage terminal")
+	if err := releaseLineagePreflight(repo); err != nil {
+		t.Fatalf("terminal in HEAD should unblock release: %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightRunsBeforeEveryEntryModeAndIgnoresBaseForFreeze(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	commitAllChangeTest(t, repo, "docs: add frozen lineage")
+	before := gitOutputReleaseTest(t, repo, "status", "--porcelain=v1")
+	cases := [][]string{
+		{"release"},
+		{"release", "--dry-run"},
+		{"release", "--pre-merge"},
+		{"release", "--post-merge"},
+		{"release", "--dry-run", "--base", "HEAD~1"},
+	}
+	for _, args := range cases {
+		var stdout bytes.Buffer
+		err := (Runner{Stdout: &stdout, Stderr: &bytes.Buffer{}, Stdin: strings.NewReader("n\n"), WorkingDir: repo}).Run(args)
+		if err == nil || !strings.Contains(err.Error(), "release-after terminal \"terminal\" is unsatisfied") {
+			t.Fatalf("Run(%v) error = %v output = %s", args, err, stdout.String())
+		}
+		if after := gitOutputReleaseTest(t, repo, "status", "--porcelain=v1"); after != before {
+			t.Fatalf("Run(%v) mutated repository: before=%q after=%q", args, before, after)
+		}
+	}
+}
+
+func TestReleaseLineagePreflightRejectsStructurallyInvalidCommittedAncestor(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	invalidRoot := changeDoc(lineageFrontmatter("root", "2026-07-10", "root", "line", "", "terminal"), productSections()...)
+	writeChangeFolder(t, repo, "20260710-root", invalidRoot)
+	writeChangeFolder(t, repo, "20260710-terminal", executableLineageDoc("terminal", "line", "root", ""))
+	commitAllChangeTest(t, repo, "docs: add invalid lineage")
+	if err := releaseLineagePreflight(repo); err == nil || !strings.Contains(err.Error(), "structurally invalid Change \"root\"") {
+		t.Fatalf("preflight error = %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightRejectsDeletedRetainedNode(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+	commitAllChangeTest(t, repo, "docs: add retained lineage")
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: delete retained lineage")
+	if err := releaseLineagePreflight(repo); err == nil || !strings.Contains(err.Error(), "deleted or renamed in HEAD ancestry") {
+		t.Fatalf("preflight error = %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightRejectsMergeResolutionOnlyDeletion(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+	commitAllChangeTest(t, repo, "docs: add retained lineage")
+	gitCLI(t, repo, "switch", "-c", "side")
+	sideDoc := strings.Replace(executableLineageDoc("root", "line", "", "root"), "The friction.", "Side branch friction.", 1)
+	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(sideDoc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: edit lineage on side")
+	gitCLI(t, repo, "switch", "main")
+	mainDoc := strings.Replace(executableLineageDoc("root", "line", "", "root"), "The friction.", "Main branch friction.", 1)
+	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(mainDoc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: edit lineage on main")
+	merge := exec.Command("git", "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "merge", "--no-edit", "side")
+	merge.Dir = repo
+	if output, err := merge.CombinedOutput(); err == nil {
+		t.Fatalf("merge unexpectedly succeeded; want conflict before deletion resolution:\n%s", output)
+	}
+	gitCLI(t, repo, "rm", "docs/changes/20260710-root/change.md")
+	commitAllChangeTest(t, repo, "docs: resolve merge by deleting lineage Change")
+	parents := strings.Fields(gitOutputReleaseTest(t, repo, "rev-list", "--parents", "-n", "1", "HEAD"))
+	if len(parents) != 3 {
+		t.Fatalf("merge ancestry = %v, want commit plus two parents", parents)
+	}
+	for _, parent := range []string{"HEAD^1", "HEAD^2"} {
+		if err := exec.Command("git", "-C", repo, "cat-file", "-e", parent+":docs/changes/20260710-root/change.md").Run(); err != nil {
+			t.Fatalf("%s does not retain lineage Change: %v", parent, err)
+		}
+	}
+	if err := exec.Command("git", "-C", repo, "cat-file", "-e", "HEAD:docs/changes/20260710-root/change.md").Run(); err == nil {
+		t.Fatal("merge result unexpectedly retains lineage Change")
+	}
+	if err := releaseLineagePreflight(repo); err == nil || !strings.Contains(err.Error(), "deleted or renamed in HEAD ancestry") {
+		t.Fatalf("preflight error = %v, want merge-result deletion refusal", err)
+	}
+}
+
+func TestReleaseLineagePreflightRejectsLineageWithoutReleaseAfter(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", ""))
+	commitAllChangeTest(t, repo, "docs: add ungated lineage")
+	if err := releaseLineagePreflight(repo); err == nil || !strings.Contains(err.Error(), "has no release-after terminal") {
+		t.Fatalf("preflight error = %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightIgnoresDirtyTerminalAndReleaseAfterRewrite(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	commitAllChangeTest(t, repo, "docs: add frozen lineage")
+	writeChangeFolder(t, repo, "20260711-terminal", strings.Replace(executableLineageDoc("terminal", "line", "root", ""), "created: 2026-07-10", "created: 2026-07-11", 1))
+	if err := releaseLineagePreflight(repo); err == nil || !strings.Contains(err.Error(), "terminal \"terminal\" is unsatisfied") {
+		t.Fatalf("uncommitted terminal bypassed freeze: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(executableLineageDoc("root", "line", "", "root")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := releaseLineagePreflight(repo); err == nil || !strings.Contains(err.Error(), "terminal \"terminal\" is unsatisfied") {
+		t.Fatalf("dirty release-after rewrite bypassed freeze: %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightRejectsCommittedReleaseAfterRewrite(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	commitAllChangeTest(t, repo, "docs: add immutable release terminal")
+	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(executableLineageDoc("root", "line", "", "root")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: rewrite release terminal")
+	err := releaseLineagePreflight(repo)
+	if err == nil || !strings.Contains(err.Error(), "immutable dependency metadata changed") || !strings.Contains(err.Error(), "changed release-after") || !strings.Contains(err.Error(), `from "terminal"`) || !strings.Contains(err.Error(), `to "root"`) {
+		t.Fatalf("preflight error = %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightAllowsFirstCommittedReleaseAfterValue(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", ""))
+	commitAllChangeTest(t, repo, "docs: add lineage before release policy")
+	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(executableLineageDoc("root", "line", "", "root")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: set release terminal")
+	if err := releaseLineagePreflight(repo); err != nil {
+		t.Fatalf("first non-empty release-after should be accepted: %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightRejectsRemovingLineageWithReleaseAfter(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	commitAllChangeTest(t, repo, "docs: add immutable release terminal")
+	withoutLineage := strings.Replace(executableLineageDoc("root", "line", "", "terminal"), "lineage: line\n", "", 1)
+	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(withoutLineage), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: strip lineage metadata")
+	err := releaseLineagePreflight(repo)
+	if err == nil || !strings.Contains(err.Error(), "immutable dependency metadata changed") || !strings.Contains(err.Error(), "changed lineage") || !strings.Contains(err.Error(), `from "line"`) || !strings.Contains(err.Error(), `to ""`) {
+		t.Fatalf("preflight error = %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightRejectsCommittedLineageRewrite(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+	commitAllChangeTest(t, repo, "docs: add immutable lineage")
+	rewritten := strings.Replace(executableLineageDoc("root", "line", "", "root"), "lineage: line", "lineage: other-line", 1)
+	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(rewritten), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: rewrite lineage key")
+	err := releaseLineagePreflight(repo)
+	if err == nil || !strings.Contains(err.Error(), "immutable dependency metadata changed") || !strings.Contains(err.Error(), "changed lineage") || !strings.Contains(err.Error(), `to "other-line"`) {
+		t.Fatalf("preflight error = %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightAllowsFirstCommittedLineageValue(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	sections := append(productSections(), executableSections()...)
+	root := writeChangeFolder(t, repo, "20260710-root", changeDoc(changeFrontmatter("root", "2026-07-10", "root"), sections...))
+	commitAllChangeTest(t, repo, "docs: retain pre-lineage Change")
+	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(executableLineageDoc("root", "line", "", "root")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: assign first lineage key")
+	if err := releaseLineagePreflight(repo); err != nil {
+		t.Fatalf("first non-empty lineage should be accepted: %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightRejectsDependencyMetadataWithoutLineage(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	malformed := strings.Replace(executableLineageDoc("root", "line", "", "root"), "lineage: line\n", "", 1)
+	writeChangeFolder(t, repo, "20260710-root", malformed)
+	commitAllChangeTest(t, repo, "docs: add dependency metadata without lineage")
+	err := releaseLineagePreflight(repo)
+	if err == nil || !strings.Contains(err.Error(), "declares predecessor or release-after without lineage") || !strings.Contains(err.Error(), "docs/changes/20260710-root/change.md") {
+		t.Fatalf("preflight error = %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightIgnoresUnrelatedMalformedLegacyChange(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+	legacy := changeDoc(changeFrontmatter("legacy", "2026-07-10", "legacy"), productSections()...)
+	legacy = strings.Replace(legacy, "\n---\n# Title", "\nmalformed legacy frontmatter\n---\n# Title", 1)
+	writeChangeFolder(t, repo, "20260710-legacy", legacy)
+	commitAllChangeTest(t, repo, "docs: retain lineage beside malformed legacy Change")
+	if err := releaseLineagePreflight(repo); err != nil {
+		t.Fatalf("unrelated malformed legacy Change blocked valid lineage: %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightIgnoresDeletedMalformedUnlineagedChange(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+	legacy := changeDoc(changeFrontmatter("legacy", "2026-07-10", "legacy"), productSections()...)
+	legacy = strings.Replace(legacy, "\n---\n# Title", "\nmalformed legacy frontmatter\n---\n# Title", 1)
+	legacyFolder := writeChangeFolder(t, repo, "20260710-legacy", legacy)
+	commitAllChangeTest(t, repo, "docs: retain lineage beside malformed legacy Change")
+	if err := os.RemoveAll(legacyFolder); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: remove malformed unlineaged Change")
+	if err := releaseLineagePreflight(repo); err != nil {
+		t.Fatalf("deleted malformed unlineaged Change blocked valid lineage: %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightRejectsDeletionAfterMalformedVersionHidesLineage(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+	commitAllChangeTest(t, repo, "docs: add retained lineage")
+
+	malformed := strings.Replace(executableLineageDoc("root", "line", "", "root"), "\n---\n# Title", "\n# Title", 1)
+	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(malformed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: leave lineage frontmatter unclosed")
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: delete hidden lineage Change")
+
+	err := releaseLineagePreflight(repo)
+	if err == nil || !strings.Contains(err.Error(), "deleted or renamed in HEAD ancestry") || !strings.Contains(err.Error(), "docs/changes/20260710-root/change.md") {
+		t.Fatalf("malformed intermediate version bypassed lineage freeze: %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightFailsClosedWhenDeletedPathVersionCannotBeInspected(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+	commitAllChangeTest(t, repo, "docs: add retained lineage")
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: delete retained lineage")
+
+	output := func(cwd, name string, args ...string) (string, error) {
+		if strings.Contains(strings.Join(args, " "), "ls-tree --name-only") {
+			return "", errors.New("forced deleted path inspection failure")
+		}
+		return commandOutput(cwd, name, args...)
+	}
+	err := releaseLineagePreflightWithOutput(repo, output)
+	if err == nil || !strings.Contains(err.Error(), "cannot inspect deleted or renamed Change history") || !strings.Contains(err.Error(), "forced deleted path inspection failure") {
+		t.Fatalf("preflight error = %v, want fail-closed deleted path inspection", err)
+	}
+}
+
+func TestReleaseLineagePreflightAllowsCommittedPredecessorEvolution(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	terminal := writeChangeFolder(t, repo, "20260711-terminal", strings.Replace(executableLineageDoc("terminal", "line", "root", ""), "created: 2026-07-10", "created: 2026-07-11", 1))
+	commitAllChangeTest(t, repo, "docs: add two-node lineage")
+	if err := releaseLineagePreflight(repo); err != nil {
+		t.Fatalf("two-node lineage preflight = %v", err)
+	}
+	writeChangeFolder(t, repo, "20260712-middle", strings.Replace(executableLineageDoc("middle", "line", "root", ""), "created: 2026-07-10", "created: 2026-07-12", 1))
+	terminalDoc := strings.Replace(executableLineageDoc("terminal", "line", "middle", ""), "created: 2026-07-10", "created: 2026-07-11", 1)
+	if err := os.WriteFile(filepath.Join(terminal, "change.md"), []byte(terminalDoc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: insert middle lineage node")
+	if err := releaseLineagePreflight(repo); err != nil {
+		t.Fatalf("predecessor-only evolution should remain allowed: %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightDetectsFolderRenameWithGitRenameDetectionEnabled(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+	commitAllChangeTest(t, repo, "docs: add retained lineage")
+	gitCLI(t, repo, "config", "diff.renames", "true")
+	gitCLI(t, repo, "mv", "docs/changes/20260710-root", "docs/changes/20260710-root-renamed")
+	renamedPath := filepath.Join(repo, "docs", "changes", "20260710-root-renamed", "change.md")
+	renamed := executableLineageDoc("root-renamed", "line", "", "root-renamed")
+	if err := os.WriteFile(renamedPath, []byte(renamed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: rename retained lineage")
+	if err := releaseLineagePreflight(repo); err == nil || !strings.Contains(err.Error(), "deleted or renamed") || !strings.Contains(err.Error(), "docs/changes/20260710-root/change.md") {
+		t.Fatalf("preflight error = %v", err)
+	}
+}
+
+func TestReleaseLineagePreflightFailsClosedOnGitInspectionErrors(t *testing.T) {
+	cases := []struct {
+		name         string
+		failFragment string
+		want         string
+		seedLineage  bool
+	}{
+		{name: "head-graph", failFragment: "ls-tree", want: "cannot inspect committed Change graph at HEAD"},
+		{name: "history-depth", failFragment: "--is-shallow-repository", want: "cannot confirm complete Change history"},
+		{name: "deletion-history", failFragment: "rev-list --full-history --topo-order", want: "cannot inspect deleted or renamed Change history at HEAD"},
+		{name: "release-metadata-history", failFragment: "--topo-order --reverse", want: "cannot inspect immutable dependency metadata history", seedLineage: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := initCLIGitRepo(t)
+			if tc.seedLineage {
+				writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+				commitAllChangeTest(t, repo, "docs: add lineage")
+			}
+			output := func(cwd, name string, args ...string) (string, error) {
+				if strings.Contains(strings.Join(args, " "), tc.failFragment) {
+					return "", errors.New("forced git inspection failure")
+				}
+				return commandOutput(cwd, name, args...)
+			}
+			err := releaseLineagePreflightWithOutput(repo, output)
+			if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "forced git inspection failure") {
+				t.Fatalf("preflight error = %v, want actionable fail-closed %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestReleaseLineagePreflightRejectsShallowHistory(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	output := func(cwd, name string, args ...string) (string, error) {
+		if strings.Contains(strings.Join(args, " "), "--is-shallow-repository") {
+			return "true\n", nil
+		}
+		return commandOutput(cwd, name, args...)
+	}
+	err := releaseLineagePreflightWithOutput(repo, output)
+	if err == nil || !strings.Contains(err.Error(), "repository is shallow") || !strings.Contains(err.Error(), "git fetch --unshallow") {
+		t.Fatalf("preflight error = %v, want actionable shallow-history refusal", err)
+	}
+}
+
+func TestRunnerReleasePostMergeFailsClosedOutsideGit(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	var stdout bytes.Buffer
 
@@ -35,11 +401,11 @@ func TestRunnerReleasePostMergeRunsNatively(t *testing.T) {
 		Stdout:     &stdout,
 		WorkingDir: workingDir,
 	}.Run([]string{"release", "--post-merge"})
-	if err == nil || !strings.Contains(err.Error(), "guardrail 1 failed") {
-		t.Fatalf("release --post-merge error = %v, want native guardrail failure", err)
+	if err == nil || !strings.Contains(err.Error(), "cannot inspect committed Change graph at HEAD") {
+		t.Fatalf("release --post-merge error = %v, want fail-closed ancestry inspection", err)
 	}
-	if !strings.Contains(stdout.String(), "Verifying post-merge state") {
-		t.Fatalf("stdout = %q, want native post-merge verification output", stdout.String())
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want no release actions before ancestry inspection", stdout.String())
 	}
 }
 
@@ -200,6 +566,84 @@ func TestRunnerReleaseInteractiveConfirmationExecutesNatively(t *testing.T) {
 	subject := gitOutputReleaseTest(t, repo, "log", "-1", "--pretty=%s")
 	if subject != "chore: release v1.1.0" {
 		t.Fatalf("release commit subject = %q, want chore: release v1.1.0", subject)
+	}
+}
+
+func TestRunnerReleaseMutatingModesRefuseDirtyChangeWithoutMutation(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{name: "apply", args: []string{"release", "--yes", "--no-gh"}},
+		{name: "pre-merge", args: []string{"release", "--pre-merge", "--base", "HEAD~1", "--yes", "--no-gh"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := seedReleaseApplyRepo(t, "feat: keep dirty Change out of release")
+			writeChangeFolder(t, repo, "20260710-dirty-lineage", executableLineageDoc("dirty-lineage", "line", "", "terminal"))
+			beforeHEAD := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD")
+			beforePackage, err := os.ReadFile(filepath.Join(repo, "package.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			beforeChangelog, err := os.ReadFile(filepath.Join(repo, "CHANGELOG.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(tc.args)
+			if err == nil || !strings.Contains(err.Error(), "require a clean unignored worktree") || !strings.Contains(err.Error(), "docs/changes/20260710-dirty-lineage/change.md") {
+				t.Fatalf("Run(%v) error = %v, want dirty-Change refusal", tc.args, err)
+			}
+			afterPackage, _ := os.ReadFile(filepath.Join(repo, "package.json"))
+			afterChangelog, _ := os.ReadFile(filepath.Join(repo, "CHANGELOG.md"))
+			if !bytes.Equal(beforePackage, afterPackage) || !bytes.Equal(beforeChangelog, afterChangelog) {
+				t.Fatalf("Run(%v) mutated version or changelog before dirty refusal", tc.args)
+			}
+			if head := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD"); head != beforeHEAD {
+				t.Fatalf("Run(%v) created release commit %s, want HEAD %s", tc.args, head, beforeHEAD)
+			}
+			if tag := gitOutputReleaseTest(t, repo, "tag", "--list", "v1.1.0"); tag != "" {
+				t.Fatalf("Run(%v) created tag %q", tc.args, tag)
+			}
+			if tc.name == "apply" {
+				if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"release", "--dry-run"}); err != nil {
+					t.Fatalf("dry-run should remain available for dirty inspection: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestRunnerReleaseRefusesGeneratedChangeBeforeStaging(t *testing.T) {
+	repo := seedReleaseApplyRepo(t, "feat: generate release artifacts")
+	packageBody := strings.Join([]string{
+		"{",
+		`  "name": "release-fixture",`,
+		`  "version": "1.0.0",`,
+		`  "scripts": {`,
+		`    "build": "mkdir -p docs/changes/20260710-generated && printf generated > docs/changes/20260710-generated/change.md"`,
+		"  }",
+		"}",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(repo, "package.json"), []byte(packageBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCLI(t, repo, "add", "package.json")
+	gitCLI(t, repo, "commit", "-m", "fix: generate Change during build")
+	beforeHEAD := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD")
+	err := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"release", "--yes", "--no-tag", "--no-gh"})
+	if err == nil || !strings.Contains(err.Error(), "artifact generation modified docs/changes") || !strings.Contains(err.Error(), "docs/changes/20260710-generated/change.md") {
+		t.Fatalf("release error = %v, want generated Change refusal", err)
+	}
+	if staged := gitOutputReleaseTest(t, repo, "diff", "--cached", "--name-only"); staged != "" {
+		t.Fatalf("release staged files before refusal: %q", staged)
+	}
+	if head := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD"); head != beforeHEAD {
+		t.Fatalf("release created commit %s, want HEAD %s", head, beforeHEAD)
+	}
+	if tag := gitOutputReleaseTest(t, repo, "tag", "--list", "v1.1.0"); tag != "" {
+		t.Fatalf("release created tag %q", tag)
 	}
 }
 

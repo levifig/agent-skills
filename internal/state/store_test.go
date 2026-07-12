@@ -482,7 +482,7 @@ VALUES ('idea-legacy', ?, 'Legacy Idea', 'open', ?, ?)
 		t.Fatalf("insert legacy idea error = %v", err)
 	}
 
-	identity, err := store.ProjectIdentityForRoot(context.Background(), root)
+	identity, err := store.EnsureProject(context.Background(), root)
 	if err != nil {
 		t.Fatalf("ProjectIdentityForRoot() error = %v", err)
 	}
@@ -566,6 +566,60 @@ func TestOpenStoreAppliesConnectionPragmas(t *testing.T) {
 	}
 	if journalMode != "wal" {
 		t.Fatalf("journal_mode = %q, want wal", journalMode)
+	}
+
+	var synchronous int
+	if err := store.db.QueryRowContext(context.Background(), `PRAGMA synchronous`).Scan(&synchronous); err != nil {
+		t.Fatalf("PRAGMA synchronous error = %v", err)
+	}
+	if synchronous != 2 {
+		t.Fatalf("synchronous = %d, want 2 (FULL)", synchronous)
+	}
+}
+
+func TestOpenStoreReadOnlyForBackupAppliesSafeSnapshotPragmas(t *testing.T) {
+	root := projectRoot(t)
+	status, err := Initialize(context.Background(), root, PathResolver{StateHome: t.TempDir()})
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	beforeDigest := testFileSHA256(t, status.DatabasePath)
+	store, err := openStoreReadOnlyForBackup(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("openStoreReadOnlyForBackup() error = %v", err)
+	}
+	defer store.Close()
+	var synchronous, foreignKeys, busyTimeout int
+	if err := store.db.QueryRowContext(context.Background(), `PRAGMA synchronous`).Scan(&synchronous); err != nil {
+		t.Fatalf("PRAGMA synchronous error = %v", err)
+	}
+	if synchronous != 2 {
+		t.Fatalf("synchronous = %d, want 2 (FULL)", synchronous)
+	}
+	if err := store.db.QueryRowContext(context.Background(), `PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
+		t.Fatalf("PRAGMA foreign_keys error = %v", err)
+	}
+	if foreignKeys != 1 {
+		t.Fatalf("foreign_keys = %d, want 1", foreignKeys)
+	}
+	if err := store.db.QueryRowContext(context.Background(), `PRAGMA busy_timeout`).Scan(&busyTimeout); err != nil {
+		t.Fatalf("PRAGMA busy_timeout error = %v", err)
+	}
+	if busyTimeout < 5000 {
+		t.Fatalf("busy_timeout = %d, want at least 5000", busyTimeout)
+	}
+	var journalMode string
+	if err := store.db.QueryRowContext(context.Background(), `PRAGMA journal_mode`).Scan(&journalMode); err != nil {
+		t.Fatalf("PRAGMA journal_mode error = %v", err)
+	}
+	if journalMode != "wal" {
+		t.Fatalf("journal_mode = %q, want wal", journalMode)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if afterDigest := testFileSHA256(t, status.DatabasePath); afterDigest != beforeDigest {
+		t.Fatalf("source database digest changed from %s to %s", beforeDigest, afterDigest)
 	}
 }
 

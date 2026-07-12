@@ -1,4 +1,4 @@
-<!-- Draft = still shaping. Ready for review = implementation-ready. -->
+<!-- Draft = still shaping. Ready for review = structurally executable, not proof of implementation completion. -->
 
 ## Change
 

@@ -15,6 +15,9 @@ func TestGenerateFencedContentIsJournalFirst(t *testing.T) {
 	if !strings.Contains(content, "loaf journal log") {
 		t.Fatalf("fenced content missing `loaf journal log` guidance:\n%s", content)
 	}
+	if !strings.Contains(content, "exact path-pinned Loaf executable") || !strings.Contains(content, "CODEX_HOME/AGENTS.md") || !strings.Contains(content, "Codex Auto mode") {
+		t.Fatalf("fenced content missing conditional Codex basic-command guidance:\n%s", content)
+	}
 	if !strings.Contains(content, "loaf journal log/recent/search/context") {
 		t.Fatalf("fenced content missing journal CLI command listing:\n%s", content)
 	}

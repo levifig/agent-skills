@@ -30,12 +30,11 @@ type nativeBuildYAMLField struct {
 }
 
 type nativeCodexHooksJSON struct {
-	Version int                  `json:"version"`
-	Hooks   nativeCodexHookTypes `json:"hooks"`
+	Hooks nativeCodexHookTypes `json:"hooks"`
 }
 
 type nativeCodexHookTypes struct {
-	PreToolUse []nativeCodexPreToolHookJSON `json:"PreToolUse"`
+	PreToolUse []nativeCodexPreToolHookJSON `json:"PreToolUse,omitempty"`
 }
 
 type nativeCodexPreToolHookJSON struct {
@@ -143,7 +142,29 @@ func buildNativeCodexTarget(root string) error {
 	}); err != nil {
 		return err
 	}
-	return generateNativeCodexHooksJSON(root, dist)
+	if err := generateNativeCodexHooksJSON(root, dist); err != nil {
+		return err
+	}
+	return copyNativeCodexRules(root, dist)
+}
+
+// copyNativeCodexRules copies the Loaf-owned Codex policy template into the
+// target bundle. Rendering is deliberately deferred until installation, when
+// the trusted absolute Loaf executable is known.
+func copyNativeCodexRules(root string, dist string) error {
+	src := filepath.Join(root, "content", "codex", "rules", "loaf.rules.tmpl")
+	body, err := os.ReadFile(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("Codex journal rule template missing at %s", src)
+		}
+		return err
+	}
+	dest := filepath.Join(dist, ".codex", "rules", "loaf.rules.tmpl")
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(dest, body, 0o644)
 }
 
 func buildNativeSkillOnlyTarget(root string, targetName string) error {
@@ -631,42 +652,11 @@ func nativeBuildPackageVersion(root string) (string, error) {
 }
 
 func generateNativeCodexHooksJSON(root string, dist string) error {
-	hooks, err := readNativeBuildHooks(filepath.Join(root, "config", "hooks.yaml"))
-	if err != nil {
-		return err
-	}
-	var preTool []nativeCodexPreToolHookJSON
-	for _, hook := range hooks {
-		if hook.section != "pre-tool" || !codexEnforcementHooks[hook.id] || !strings.Contains(hook.matcher, "Bash") {
-			continue
-		}
-		timeout := hook.timeout
-		if timeout == 0 {
-			timeout = 30000
-		}
-		entry := nativeCodexPreToolHookJSON{
-			LoafManaged: true,
-			Matcher:     "Bash",
-			Command:     "loaf check --hook " + hook.id,
-			Timeout:     timeout / 1000,
-			FailClosed:  hook.failClosed,
-			Blocking:    hook.blocking,
-			If:          hook.ifCondition,
-		}
-		if hook.description != "" {
-			entry.Description = hook.description
-		}
-		preTool = append(preTool, entry)
-	}
-	if len(preTool) == 0 {
-		return nil
-	}
-	payload := nativeCodexHooksJSON{
-		Version: 1,
-		Hooks: nativeCodexHookTypes{
-			PreToolUse: preTool,
-		},
-	}
+	_ = root
+	// Codex 0.144.1 uses matcher groups with nested hook handlers. Loaf does
+	// not yet have a trustworthy translation for its existing hook semantics,
+	// so ship an explicit no-op adapter rather than an invalid legacy payload.
+	payload := nativeCodexHooksJSON{Hooks: nativeCodexHookTypes{}}
 	body, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return err
@@ -675,6 +665,7 @@ func generateNativeCodexHooksJSON(root string, dist string) error {
 	if err := os.MkdirAll(codexDir, 0o755); err != nil {
 		return err
 	}
+	body = append(body, '\n')
 	return os.WriteFile(filepath.Join(codexDir, "hooks.json"), body, 0o644)
 }
 

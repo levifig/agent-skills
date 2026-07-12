@@ -37,6 +37,9 @@ var specBranchAndSourceSQL string
 //go:embed migrations/0010_journal_first.sql
 var journalFirstSQL string
 
+//go:embed migrations/0011_journal_origins_and_deferrals.sql
+var journalOriginsAndDeferralsSQL string
+
 const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -100,6 +103,11 @@ func SchemaMigrations() []SchemaMigration {
 			Name:    "spec_branch_and_source",
 			SQL:     normalizeMigrationSQL(specBranchAndSourceSQL),
 		},
+		{
+			Version: 11,
+			Name:    "journal_origins_and_deferrals",
+			SQL:     normalizeMigrationSQL(journalOriginsAndDeferralsSQL),
+		},
 	}
 }
 
@@ -122,11 +130,8 @@ func JournalFirstMigration() SchemaMigration {
 }
 
 // CurrentSchemaVersion returns the highest auto-applied Go-owned migration
-// version. The journal-first migration (SPEC-056) is intentionally excluded
-// from SchemaMigrations() so it never auto-applies on store open, so it does
-// not raise this baseline; a database that has applied it reports
-// journalFirstMigrationVersion instead. Use acceptableSchemaVersion to test
-// whether an applied version is valid.
+// version. The journal-first migration (SPEC-056) remains intentionally
+// excluded from SchemaMigrations() so it never auto-applies on store open.
 func CurrentSchemaVersion() int {
 	migrations := SchemaMigrations()
 	if len(migrations) == 0 {
@@ -136,12 +141,9 @@ func CurrentSchemaVersion() int {
 }
 
 // acceptableSchemaVersion reports whether an applied schema version is a valid
-// ready state. The baseline (CurrentSchemaVersion) is always acceptable; a
-// database that has explicitly applied the journal-first migration reports
-// journalFirstMigrationVersion, which is equally valid — that migration is
-// applied out-of-band by the journal-first migrate command, not on store open,
-// so it never appears in SchemaMigrations() and therefore never raises the
-// baseline.
+// ready state. The baseline and an explicitly journal-first-transformed
+// database are both acceptable; schema 9 remains a behind-schema state until
+// migration 11 is applied.
 func acceptableSchemaVersion(version int) bool {
 	return version == CurrentSchemaVersion() || version == journalFirstMigrationVersion
 }

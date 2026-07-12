@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -255,6 +256,99 @@ func TestInspectReportsSQLiteReadyWhenDatabaseIsInitialized(t *testing.T) {
 		t.Fatalf("ProjectCurrentPath = %q, want %q", status.ProjectCurrentPath, root.Path())
 	}
 	assertDiagnostic(t, status.Diagnostics, "sqlite-ready")
+}
+
+func TestInspectReportsJournalSearchDivergenceAndRepairPlanWithoutInvalidatingSQLite(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*testing.T, context.Context, *Store, string, string)
+		want   map[string]any
+	}{
+		{
+			name: "missing",
+			mutate: func(t *testing.T, ctx context.Context, store *Store, _, journalID string) {
+				if _, err := store.db.ExecContext(ctx, `DELETE FROM journal_search WHERE journal_entry_id = ?`, journalID); err != nil {
+					t.Fatalf("delete derived row error = %v", err)
+				}
+			},
+			want: map[string]any{"canonical_rows": 1, "index_rows": 0, "missing": 1, "extra": 0, "changed": 0},
+		},
+		{
+			name: "extra",
+			mutate: func(t *testing.T, ctx context.Context, store *Store, projectID, _ string) {
+				correlationColumn, err := journalSearchCorrelationColumn(ctx, store)
+				if err != nil {
+					t.Fatalf("journal correlation column error = %v", err)
+				}
+				query := fmt.Sprintf(`INSERT INTO journal_search(rowid, project_id, journal_entry_id, %s, entry_type, scope, message)
+VALUES ((SELECT COALESCE(MAX(rowid), 0) + 1 FROM journal_search), ?, 'rogue-journal', '', 'rogue', '', 'rogue')`, correlationColumn)
+				if _, err := store.db.ExecContext(ctx, query, projectID); err != nil {
+					t.Fatalf("insert extra derived row error = %v", err)
+				}
+			},
+			want: map[string]any{"canonical_rows": 1, "index_rows": 2, "missing": 0, "extra": 1, "changed": 0},
+		},
+		{
+			name: "changed",
+			mutate: func(t *testing.T, ctx context.Context, store *Store, _, journalID string) {
+				if _, err := store.db.ExecContext(ctx, `UPDATE journal_search SET message = 'changed' WHERE journal_entry_id = ?`, journalID); err != nil {
+					t.Fatalf("update derived row error = %v", err)
+				}
+			},
+			want: map[string]any{"canonical_rows": 1, "index_rows": 1, "missing": 0, "extra": 0, "changed": 1},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			root := projectRoot(t)
+			stateHome := t.TempDir()
+			resolver := PathResolver{StateHome: stateHome}
+			if _, err := Initialize(ctx, root, resolver); err != nil {
+				t.Fatalf("Initialize() error = %v", err)
+			}
+			if _, err := LogJournal(ctx, root, resolver, JournalLogOptions{Entry: "decision(status): parity"}); err != nil {
+				t.Fatalf("LogJournal() error = %v", err)
+			}
+			store := openTestStore(t, root, stateHome)
+			projectID := projectIDForTest(t, store, root)
+			var journalID string
+			if err := store.db.QueryRowContext(ctx, `SELECT id FROM journal_entries LIMIT 1`).Scan(&journalID); err != nil {
+				store.Close()
+				t.Fatalf("read journal ID error = %v", err)
+			}
+			test.mutate(t, ctx, store, projectID, journalID)
+			if err := store.Close(); err != nil {
+				t.Fatalf("Close() error = %v", err)
+			}
+
+			status, err := Inspect(root, resolver)
+			if err != nil {
+				t.Fatalf("Inspect() error = %v", err)
+			}
+			if status.Mode != ModeSQLiteReady {
+				t.Fatalf("Mode = %q, want %q", status.Mode, ModeSQLiteReady)
+			}
+			diagnostic := findDiagnostic(t, status.Diagnostics, JournalSearchDivergenceCode)
+			if diagnostic.Severity != "error" || diagnostic.Category != RepairCategoryJournalSearch || diagnostic.Policy != DiagnosticPolicyDerivedIndexDiverged {
+				t.Fatalf("journal divergence diagnostic = %#v, want error/category/policy", diagnostic)
+			}
+			for key, want := range test.want {
+				if got := diagnostic.Details[key]; got != want {
+					t.Fatalf("diagnostic detail %q = %#v, want %#v", key, got, want)
+				}
+			}
+			for _, fragment := range []string{"canonical_rows=", "index_rows=", "missing=", "extra=", "changed=", "loaf state repair journal-search --dry-run"} {
+				if !strings.Contains(diagnostic.Message, fragment) {
+					t.Fatalf("diagnostic message %q missing %q", diagnostic.Message, fragment)
+				}
+			}
+			action := findRepairAction(t, RepairPlanForStatus(Status{DatabasePath: status.DatabasePath, Diagnostics: status.Diagnostics}), "repair-journal-search")
+			if action.DiagnosticCode != JournalSearchDivergenceCode || action.Category != RepairCategoryJournalSearch || action.Safe || action.Command != "loaf state repair journal-search --dry-run --json" {
+				t.Fatalf("repair action = %#v, want unsafe journal-search dry-run command", action)
+			}
+		})
+	}
 }
 
 func TestInspectWarnsWhenGlobalDatabaseHasNotImportedCurrentMarkdown(t *testing.T) {

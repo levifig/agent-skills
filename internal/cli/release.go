@@ -16,6 +16,9 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 		writeReleaseHelp(out)
 		return nil
 	}
+	if err := releaseLineagePreflight(runtimeRoot); err != nil {
+		return err
+	}
 	if options.dryRun {
 		errOut := r.Stderr
 		if errOut == nil {

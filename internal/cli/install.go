@@ -15,10 +15,11 @@ import (
 )
 
 type installOptions struct {
-	target  string
-	upgrade bool
-	yes     *bool
-	help    bool
+	target             string
+	upgrade            bool
+	codexBasicCommands bool
+	yes                *bool
+	help               bool
 }
 
 type detectedInstallTool struct {
@@ -72,6 +73,9 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 	if err != nil {
 		return err
 	}
+	if options.codexBasicCommands && !containsString(selectedTargets, "codex") {
+		return fmt.Errorf("Codex basic command policy requested, but Codex is not selected or detected")
+	}
 	if options.upgrade && len(selectedTargets) > 0 {
 		fmt.Fprintf(out, "  %s %s\n", ansiGray("Upgrading:"), strings.Join(selectedTargets, ", "))
 	}
@@ -108,12 +112,16 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 	}
 
 	var installedTargets []string
+	var codexBasicCommandsErr error
 	defaults := defaultInstallConfigDirs()
 	toolByKey := installToolsByKey(tools)
 	for _, target := range selectedTargets {
 		distDir := filepath.Join(distRoot, target)
 		if !dirExistsForInstall(distDir) {
 			fmt.Fprintf(out, "  %s %s - no build output found. Run %s first.\n", ansiRed("✗"), installDisplayName(target), ansiBold("loaf build"))
+			if target == "codex" && options.codexBasicCommands {
+				codexBasicCommandsErr = fmt.Errorf("Codex basic command policy requires built Codex output")
+			}
 			continue
 		}
 		configDir := defaults[target]
@@ -121,19 +129,31 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 			configDir = tool.configDir
 		}
 		err := installTargetDistribution(targetInstallOptions{
-			Target:    target,
-			DistDir:   distDir,
-			ConfigDir: configDir,
-			Upgrade:   options.upgrade,
-			Version:   version,
-			HomeDir:   installHome(),
-			CodexHome: os.Getenv("CODEX_HOME"),
+			Target:             target,
+			DistDir:            distDir,
+			ConfigDir:          configDir,
+			Upgrade:            options.upgrade,
+			CodexBasicCommands: options.codexBasicCommands,
+			Version:            version,
+			HomeDir:            installHome(),
+			CodexHome:          os.Getenv("CODEX_HOME"),
+			ProjectRoot:        projectRoot.Path(),
 		})
 		if err != nil {
 			fmt.Fprintf(out, "  %s %s - %v\n", ansiRed("✗"), installDisplayName(target), err)
+			if target == "codex" && options.codexBasicCommands {
+				codexBasicCommandsErr = fmt.Errorf("Codex basic command policy installation failed: %w", err)
+			}
 			continue
 		}
 		fmt.Fprintf(out, "  %s %s installed to %s\n", ansiGreen("✓"), installDisplayName(target), ansiGray(configDir))
+		if target == "codex" {
+			if options.codexBasicCommands {
+				fmt.Fprintf(out, "  %s Codex basic command policy explicitly enabled (Loaf-owned exact-prefix rules)\n", ansiGreen("✓"))
+			} else if !options.upgrade {
+				fmt.Fprintf(out, "  %s Codex basic command policy not installed; opt in with --codex-basic-commands\n", ansiGray("○"))
+			}
+		}
 		installedTargets = append(installedTargets, target)
 	}
 	fmt.Fprintln(out)
@@ -149,6 +169,9 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 	}
 	if err := r.runInstallMcpRecommendations(out, projectRoot.Path(), options.upgrade, mcpTargets); err != nil {
 		return err
+	}
+	if codexBasicCommandsErr != nil {
+		return codexBasicCommandsErr
 	}
 	return nil
 }
@@ -166,6 +189,8 @@ func parseInstallArgs(args []string) (installOptions, error) {
 			options.target = args[i]
 		case "--upgrade":
 			options.upgrade = true
+		case "--codex-basic-commands":
+			options.codexBasicCommands = true
 		case "-y", "--yes":
 			value := true
 			options.yes = &value
@@ -177,6 +202,9 @@ func parseInstallArgs(args []string) (installOptions, error) {
 		default:
 			return installOptions{}, fmt.Errorf("unknown install option %q", arg)
 		}
+	}
+	if options.codexBasicCommands && options.target != "codex" && options.target != "all" {
+		return installOptions{}, fmt.Errorf("--codex-basic-commands requires --to codex or --to all")
 	}
 	return options, nil
 }
@@ -190,6 +218,7 @@ func writeInstallHelp(out io.Writer) {
 		"Options:",
 		"  --to <target>  Target to install to (or \"all\")",
 		"  --upgrade      Update installed targets and apply deprecation-manifest cleanup",
+		"  --codex-basic-commands  Explicitly install the least-privilege Codex basic command policy (requires --to codex or --to all)",
 		"  -y, --yes      Assume yes to safe project-file symlink migrations and destructive deprecation cleanup",
 		"  --no-yes       Force prompt-style declines in non-interactive mode",
 		"  -h, --help     Show help",

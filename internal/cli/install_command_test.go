@@ -665,7 +665,7 @@ func TestRunnerInstallCodexUsesCodeXHomeNatively(t *testing.T) {
 	codexHome := filepath.Join(home, "custom-codex")
 	t.Setenv("CODEX_HOME", codexHome)
 	writeInstallFile(t, filepath.Join(root, "dist", "codex", "skills", "go-development", "SKILL.md"), "# Go\n")
-	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf journal log --from-hook","matcher":"Bash","if":"Bash(git commit:*)","loaf-managed":true}]}}`)
+	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), `{"hooks":{}}`)
 
 	var stdout bytes.Buffer
 	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", "codex", "--yes"})
@@ -675,9 +675,26 @@ func TestRunnerInstallCodexUsesCodeXHomeNatively(t *testing.T) {
 	assertInstallFile(t, filepath.Join(codexHome, loafInstallMarkerFile), "9.8.7-test.1\n")
 	assertInstallFile(t, filepath.Join(home, ".agents", "skills", "go-development", "SKILL.md"), "# Go\n")
 	hooks := readInstallHooks(t, filepath.Join(codexHome, "hooks.json"))
-	if len(hooks.Hooks["PostToolUse"]) != 1 || hooks.Hooks["PostToolUse"][0]["command"] != "loaf journal log --from-hook" {
-		t.Fatalf("codex hooks = %#v, want native hook merge in CODEX_HOME", hooks.Hooks)
+	if hooks.Version != 0 || len(hooks.Hooks) != 0 {
+		t.Fatalf("codex hooks = %#v, want current empty Codex schema", hooks)
 	}
+}
+
+func TestRunnerInstallCodexBasicCommandsFailsWhenCapabilityCannotBeInstalled(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	codexHome := filepath.Join(home, "custom-codex")
+	t.Setenv("CODEX_HOME", codexHome)
+	writeInstallFile(t, filepath.Join(root, "dist", "codex", "skills", "go-development", "SKILL.md"), "# Go\n")
+	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), `{"version":1,"hooks":{}}`)
+	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "rules", "loaf.rules.tmpl"), "# Loaf Codex policy\n{{LOAF_BASIC_RULES}}\n")
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", "codex", "--codex-basic-commands", "--yes"})
+	if err == nil || !strings.Contains(err.Error(), "not on PATH") {
+		t.Fatalf("Codex basic command policy install error = %v, want visible executable trust failure\n%s", err, stdout.String())
+	}
+	assertInstallPathMissing(t, filepath.Join(codexHome, "rules", "loaf.rules"))
+	assertInstallPathMissing(t, filepath.Join(codexHome, loafInstallMarkerFile))
 }
 
 func TestRunnerInstallOffersBinarySelfInstall(t *testing.T) {

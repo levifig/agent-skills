@@ -146,7 +146,7 @@ Offer to push the branch and open a draft PR, using [the PR template](templates/
 
 - **idea** — Quick capture; feeds into `/loaf:shape` once a concept has enough weight
 - **brainstorm** — Open-ended divergent thinking before scope narrows enough to shape
-- **implement** — Starts execution once a Change is implementation-ready
+- **implement** — Starts execution once a Change is structurally executable; this does not prove implementation completion
 - **reflect** — Updates strategic docs after the shipped work proves what changed
 
 ## Topics

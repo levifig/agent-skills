@@ -181,7 +181,7 @@ Build once, deploy everywhere. Skills are the universal layer; profiles and hook
 | Claude Code | ✓ | ✓ | ✓ | Primary |
 | OpenCode | ✓ | ✓ | ✓ | Full support |
 | Cursor | ✓ | ✓ | ✓ | Full support |
-| Codex | — | ✓ | ✓ | Skills + hooks |
+| Codex | — | ✓ | Fallback | Skills + opt-in basic command policy |
 | Amp | — | ✓ | — | Skills + runtime plugin |
 
 *Note: `council-session` skill renamed to `council` for consistency. Removed skills: `resume-session`, `reference-session`.*
@@ -211,7 +211,7 @@ Updates happen automatically via plugin marketplace. Commands are scoped under `
 npx github:levifig/loaf install
 ```
 
-Detects installed tools, lets you select targets, and installs pre-built distributions. Re-run with `--upgrade` to update.
+Detects installed tools, lets you select targets, and installs pre-built distributions. Re-run with `--upgrade` to update. Codex's optional outside-sandbox policy is explicit: `loaf install --to codex --codex-basic-commands` installs only centrally classified basic command leaves with absolute executable prefixes; unclassified and operator commands remain gated. Other harness adapters are not implied by this policy.
 
 ### Upgrading Existing Projects
 
@@ -228,20 +228,19 @@ loaf state status
 
 The dry run counts importable artifacts and skipped files without creating a database. The apply step imports `.agents/` Markdown into the XDG data-home SQLite database without rewriting the source Markdown files. Loaf uses one global SQLite file and partitions rows by stable project ID, so multiple projects share the same database path while project queries stay isolated. Project IDs are not bound to the checkout path or friendly name; use `loaf project rename <name>` for display names and `loaf project move --from <old-path>` after moving a checkout. Newer graph-oriented commands such as `loaf idea`, `loaf spark`, `loaf tag`, `loaf bundle`, and `loaf link` require initialized SQLite state; run `loaf state init` for a fresh project or `loaf migrate markdown --apply` for an existing Markdown project.
 
-### Recovering SQLite State From A Backup
+### Recovery Tiers and Isolated Restore
 
-Loaf backups are full SQLite database copies stored outside the repository. There is not yet a `loaf state restore` command, so restore is an explicit manual procedure:
+Loaf keeps recovery claims explicit. `local_rollback` is the default same-data-home snapshot for local corruption rollback; project-scoped replay remains the ordinary migration rollback path; and `external_disaster_copy` is an operator-selected non-temporary external destination that may help with data-home or device loss but does not prove physical off-device durability. Every backup reports its resolved destination, checksum, SQLite validity, journal retrieval readiness, recovery readiness, and latest canonical journal watermark. `device_loss_protected` remains false because selecting a path is not evidence that it is remote or durable.
 
-```bash
-loaf state backup verify /path/to/backup.sqlite
-DB="$(loaf state path)"
-cp "$DB" "$DB.before-restore"
-cp /path/to/backup.sqlite "$DB"
-loaf state doctor
-loaf state status
-```
+Create and verify backups with `loaf state backup`, `loaf state backup --to /absolute/external/directory`, and `loaf state backup verify <backup>`. Use `loaf state backup restore <backup> --to /absolute/empty/rehearsal/loaf.sqlite` for an isolated disposable rehearsal; the command proves an exact copy, integrity, foreign-key, schema, project, journal, search-parity, and watermark match without opening or mutating the live database.
 
-Only copy a backup after `loaf state backup verify` reports `verified: true`, `integrity: ok`, `foreign keys: ok`, and the expected project identities. Preserve the current global database first so a bad restore can be reversed. For agentic restore flows, `loaf state backup verify --json` includes `restore_database_path`, `restore_preserve_path`, and `restore_validation_commands` for the current checkout. After copying the backup into `$XDG_DATA_HOME/loaf/loaf.sqlite`, run `loaf state doctor` and `loaf state status` from the affected checkout before continuing work.
+Activating a verified copy is a manual, quiesced operator procedure, not an automated restore command:
+
+1. Stop or terminate every Loaf process, harness, background writer, and related service, then verify universal quiescence before any quarantine or activation step. Loaf has no automated live mutation lease and makes no concurrent-restore claim.
+2. Verify the durable backup and complete the isolated disposable rehearsal, then create and retain a preserve-current backup before changing the live data home.
+3. While all writers remain quiesced, move the old main database and any matching `-wal` and `-shm` sidecars together into a durable quarantine. Never mix sidecars from different database files, and never move only the main file when a sidecar belongs to it.
+4. Install the verified copy at the resolved live database path with mode `0600`, start current Loaf, and run `loaf state doctor`, `loaf state status`, and a known journal retrieval check.
+5. If validation fails, quiesce again and activate the preserve-current copy using the same procedure; do not continue with concurrent writers.
 
 **Install locations:**
 

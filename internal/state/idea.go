@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -118,16 +117,7 @@ type IdeaArchiveItem struct {
 
 // ListIdeas returns imported ideas from initialized SQLite state.
 func ListIdeas(ctx context.Context, root project.Root, resolver PathResolver, options IdeaListOptions) (IdeaList, error) {
-	databasePath, err := resolver.DatabasePath(root)
-	if err != nil {
-		return IdeaList{}, err
-	}
-	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
-		return IdeaList{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state migrate markdown --apply` first")
-	} else if err != nil {
-		return IdeaList{}, fmt.Errorf("inspect state database: %w", err)
-	}
-	store, err := OpenStore(databasePath)
+	store, err := openProjectStoreReadExisting(ctx, root, resolver)
 	if err != nil {
 		return IdeaList{}, err
 	}
@@ -298,16 +288,7 @@ func (s *Store) nextIdeaAlias(ctx context.Context, tx *sql.Tx, projectID string,
 
 // ResolveIdea marks an idea resolved and records the resolving relationship.
 func ResolveIdea(ctx context.Context, root project.Root, resolver PathResolver, ideaRef string, byRef string) (IdeaResolveResult, error) {
-	databasePath, err := resolver.DatabasePath(root)
-	if err != nil {
-		return IdeaResolveResult{}, err
-	}
-	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
-		return IdeaResolveResult{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state migrate markdown --apply` first")
-	} else if err != nil {
-		return IdeaResolveResult{}, fmt.Errorf("inspect state database: %w", err)
-	}
-	store, err := OpenStore(databasePath)
+	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
 	if err != nil {
 		return IdeaResolveResult{}, err
 	}

@@ -43,18 +43,21 @@ var requiredInitialTables = []string{
 	"plans",
 	"handoffs",
 	"councils",
+	"journal_origins",
+	"journal_deferrals",
 	"schema_migrations",
 }
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 9 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 9", len(migrations))
+	if len(migrations) != 10 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 10", len(migrations))
 	}
 
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
 	for i, migration := range migrations {
-		if migration.Version != i+1 {
-			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, i+1)
+		if migration.Version != wantVersions[i] {
+			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
 		}
 	}
 	if migrations[0].Name != "initial_operational_state" {
@@ -84,6 +87,9 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	if migrations[8].Name != "spec_branch_and_source" {
 		t.Fatalf("migration[8].Name = %q, want spec_branch_and_source", migrations[8].Name)
 	}
+	if migrations[9].Name != "journal_origins_and_deferrals" {
+		t.Fatalf("migration[9].Name = %q, want journal_origins_and_deferrals", migrations[9].Name)
+	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
 			t.Fatalf("migration %d SQL is empty", migration.Version)
@@ -94,7 +100,14 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 		if len(migration.Checksum()) != 64 {
 			t.Fatalf("migration %d Checksum() length = %d, want 64", migration.Version, len(migration.Checksum()))
 		}
-		if migration.Checksum() != SchemaMigrations()[migration.Version-1].Checksum() {
+		var repeated SchemaMigration
+		for _, candidate := range SchemaMigrations() {
+			if candidate.Version == migration.Version {
+				repeated = candidate
+				break
+			}
+		}
+		if migration.Checksum() != repeated.Checksum() {
 			t.Fatalf("migration %d Checksum() is not deterministic", migration.Version)
 		}
 	}
@@ -113,7 +126,7 @@ func TestInitialSchemaContainsRequiredTableSet(t *testing.T) {
 func TestOperationalTablesHaveStableIDsAndTimestamps(t *testing.T) {
 	sql := currentSchemaSQL()
 	for _, table := range requiredInitialTables {
-		if table == "schema_migrations" {
+		if table == "schema_migrations" || table == "journal_origins" || table == "journal_deferrals" {
 			continue
 		}
 		body := tableBody(t, sql, table)
@@ -156,6 +169,16 @@ func TestInitialSchemaPreservesLineageAndExports(t *testing.T) {
 	}
 }
 
+func TestJournalOriginTablesDoNotForeignKeyOptionalRows(t *testing.T) {
+	sql := currentSchemaSQL()
+	for _, table := range []string{"journal_origins", "journal_deferrals"} {
+		body := tableBody(t, sql, table)
+		if strings.Contains(body, "REFERENCES journal_entries") || strings.Contains(body, "REFERENCES sparks") {
+			t.Fatalf("%s must not hard-link optional journal/spark rows:\n%s", table, body)
+		}
+	}
+}
+
 func TestProjectScopedTablesUseForeignKeys(t *testing.T) {
 	sql := currentSchemaSQL()
 	for _, table := range requiredInitialTables {
@@ -182,6 +205,9 @@ func TestInitialSchemaDoesNotDefineSecretStorageColumns(t *testing.T) {
 	} {
 		for table, columns := range columnsByTable {
 			for _, column := range columns {
+				if column == "operation_key" {
+					continue
+				}
 				if strings.Contains(column, forbidden) {
 					t.Fatalf("%s column %q contains forbidden secret-storage term %q", table, column, forbidden)
 				}
@@ -247,6 +273,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	if sqlDoc != SchemaMigrations()[8].SQL {
 		t.Fatal("docs/schema/0009_spec_branch_and_source.sql must match embedded migration 0009 exactly")
 	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0011_journal_origins_and_deferrals.sql")
+	if sqlDoc != SchemaMigrations()[9].SQL {
+		t.Fatal("docs/schema/0011_journal_origins_and_deferrals.sql must match embedded migration 0011 exactly")
+	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
 	mermaidDoc := readRepoFile(t, "docs", "schema", "operational-state.mmd")
@@ -287,7 +317,9 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ handoffs : scopes",
 		"projects ||--o{ hook_events : scopes",
 		"projects ||--o{ ideas : scopes",
+		"projects ||--o{ journal_deferrals : scopes",
 		"projects ||--o{ journal_entries : scopes",
+		"projects ||--o{ journal_origins : scopes",
 		"projects ||--o{ plans : scopes",
 		"projects ||--o{ project_paths : locates",
 		"projects ||--o{ relationships : scopes",

@@ -71,6 +71,14 @@ func TestApplyMarkdownMigrationImportsArtifactsAndPreservesSources(t *testing.T)
 	assertTableCount(t, store, "sparks", 1)
 	assertTableCount(t, store, "artifact_bodies", 5)
 	assertTableCount(t, store, "journal_entries", 1)
+	assertTableCount(t, store, "journal_origins", 1)
+	var mechanism, sourceEvent, branch, worktree, harnessSessionID string
+	if err := store.db.QueryRowContext(context.Background(), `SELECT capture_mechanism, source_event, COALESCE(branch, ''), COALESCE(worktree, ''), COALESCE(harness_session_id, '') FROM journal_origins`).Scan(&mechanism, &sourceEvent, &branch, &worktree, &harnessSessionID); err != nil {
+		t.Fatalf("read imported journal origin: %v", err)
+	}
+	if mechanism != JournalOriginMechanismMigration || sourceEvent != "markdown_import" || branch != "feature/example" || worktree != "" || harnessSessionID != "" {
+		t.Fatalf("imported origin = %q/%q/%q/%q/%q, want migration/markdown_import and observable legacy fields", mechanism, sourceEvent, branch, worktree, harnessSessionID)
+	}
 	assertTableCount(t, store, "relationships", 2)
 	assertArtifactSearchHitCount(t, store, "Second", 1)
 
@@ -135,6 +143,54 @@ WHERE tasks.project_id = ?
 	assertTableCount(t, store, "tasks", 1)
 	assertTableCount(t, store, "relationships", 2)
 	assertTableCount(t, store, "aliases", 7)
+	assertTableCount(t, store, "journal_origins", 1)
+}
+
+func TestImportMarkdownBackfillsMissingOriginAndProtectsNonMigrationOrigin(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	writeAgentsFile(t, root.Path(), "sessions/import-origin.md", `---
+branch: feature/origin
+harness_session_id: hsid-origin
+---
+[2026-07-10 10:00] decision(import): preserve origin
+`)
+	result, err := ApplyMarkdownMigration(ctx, root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	store, err := OpenStore(result.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+	var journalID string
+	if err := store.db.QueryRowContext(ctx, `SELECT id FROM journal_entries`).Scan(&journalID); err != nil {
+		t.Fatalf("read imported journal ID: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM journal_origins WHERE project_id = ? AND journal_entry_id = ?`, result.ProjectID, journalID); err != nil {
+		t.Fatalf("delete origin fixture: %v", err)
+	}
+	if err := store.ImportMarkdown(ctx, root); err != nil {
+		t.Fatalf("ImportMarkdown(backfill) error = %v", err)
+	}
+	if got := countIdentityRows(t, store, `SELECT COUNT(*) FROM journal_origins WHERE project_id = ? AND journal_entry_id = ?`, result.ProjectID, journalID); got != 1 {
+		t.Fatalf("backfilled origin rows = %d, want 1", got)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE journal_origins SET capture_mechanism = 'manual', source_event = 'manual' WHERE project_id = ? AND journal_entry_id = ?`, result.ProjectID, journalID); err != nil {
+		t.Fatalf("mark non-migration origin: %v", err)
+	}
+	if err := store.ImportMarkdown(ctx, root); err == nil || !strings.Contains(err.Error(), "refusing to overwrite non-migration journal origin") {
+		t.Fatalf("ImportMarkdown(non-migration origin) error = %v, want deterministic refusal", err)
+	}
+	var mechanism string
+	if err := store.db.QueryRowContext(ctx, `SELECT capture_mechanism FROM journal_origins WHERE project_id = ? AND journal_entry_id = ?`, result.ProjectID, journalID).Scan(&mechanism); err != nil {
+		t.Fatalf("read protected origin: %v", err)
+	}
+	if mechanism != "manual" {
+		t.Fatalf("protected origin mechanism = %q, want manual", mechanism)
+	}
 }
 
 func TestApplyMarkdownMigrationDoesNotRequireTasksJSON(t *testing.T) {
@@ -171,6 +227,135 @@ depends_on: []
 	assertTableCount(t, store, "tasks", 1)
 	assertTableCount(t, store, "sources", 1)
 	assertTableCount(t, store, "relationships", 0)
+}
+
+func TestImportMarkdownRebuildsChangedJournalContentWithoutStaleRows(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	writeAgentsFile(t, root.Path(), "sessions/20260710-journal.md", `---
+harness_session_id: hsid-markdown
+---
+[2026-07-10 10:00] decision(import): original content
+`)
+	result, err := ApplyMarkdownMigration(ctx, root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	store, err := OpenStore(result.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+
+	writeAgentsFile(t, root.Path(), "sessions/20260710-journal.md", `---
+harness_session_id: hsid-markdown
+---
+[2026-07-10 10:00] decision(import): updated content
+`)
+	if err := store.ImportMarkdown(ctx, root); err != nil {
+		t.Fatalf("ImportMarkdown(updated) error = %v", err)
+	}
+
+	parity, err := InspectJournalSearchParity(ctx, store)
+	if err != nil {
+		t.Fatalf("InspectJournalSearchParity() error = %v", err)
+	}
+	if !parity.Ready || parity.CanonicalRows != 1 || parity.IndexRows != 1 {
+		t.Fatalf("journal parity = %#v, want one exact ready row", parity)
+	}
+	var journalID, message string
+	if err := store.db.QueryRowContext(ctx, `SELECT id, message FROM journal_entries`).Scan(&journalID, &message); err != nil {
+		t.Fatalf("read canonical journal row: %v", err)
+	}
+	if message != "updated content" {
+		t.Fatalf("canonical message = %q, want updated content", message)
+	}
+	var matching, stale, derivedCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM journal_search WHERE journal_search MATCH 'updated'`).Scan(&matching); err != nil {
+		t.Fatalf("query updated journal_search row: %v", err)
+	}
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM journal_search WHERE journal_search MATCH 'original'`).Scan(&stale); err != nil {
+		t.Fatalf("query stale journal_search row: %v", err)
+	}
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM journal_search WHERE journal_entry_id = ?`, journalID).Scan(&derivedCount); err != nil {
+		t.Fatalf("count derived journal row: %v", err)
+	}
+	if matching != 1 || stale != 0 || derivedCount != 1 {
+		t.Fatalf("journal_search updated=%d stale=%d derived=%d, want 1/0/1", matching, stale, derivedCount)
+	}
+}
+
+func TestImportMarkdownParityFailureRollsBackCanonicalAndDerivedState(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	writeAgentsFile(t, root.Path(), "sessions/20260710-journal.md", `---
+harness_session_id: hsid-markdown
+---
+[2026-07-10 10:00] decision(import): capture this
+`)
+	result, err := ApplyMarkdownMigration(ctx, root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	store, err := OpenStore(result.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+
+	var journalID, projectID, entryType, scope, message, harnessSessionID string
+	var rowID int64
+	if err := store.db.QueryRowContext(ctx, `
+SELECT rowid, id, project_id, entry_type, COALESCE(scope, ''), message, COALESCE(harness_session_id, '')
+FROM journal_entries`).Scan(&rowID, &journalID, &projectID, &entryType, &scope, &message, &harnessSessionID); err != nil {
+		t.Fatalf("read initial journal row: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `DROP TABLE journal_search`); err != nil {
+		t.Fatalf("drop derived journal_search fixture: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+CREATE TABLE journal_search (
+  rowid INTEGER PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  journal_entry_id TEXT NOT NULL,
+  harness_session_id TEXT,
+  entry_type TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  message TEXT NOT NULL CHECK(message = 'capture this')
+)`); err != nil {
+		t.Fatalf("create failing journal_search fixture: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO journal_search(rowid, project_id, journal_entry_id, harness_session_id, entry_type, scope, message)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+`, rowID, projectID, journalID, harnessSessionID, entryType, scope, message); err != nil {
+		t.Fatalf("seed derived journal_search fixture: %v", err)
+	}
+
+	writeAgentsFile(t, root.Path(), "sessions/20260710-journal.md", `---
+harness_session_id: hsid-markdown
+---
+[2026-07-10 10:00] decision(import): changed and should fail
+`)
+	if err := store.ImportMarkdown(ctx, root); err == nil {
+		t.Fatal("ImportMarkdown() error = nil, want parity/rebuild failure")
+	}
+	var gotMessage string
+	if err := store.db.QueryRowContext(ctx, `SELECT message FROM journal_entries WHERE id = ?`, journalID).Scan(&gotMessage); err != nil {
+		t.Fatalf("read canonical journal row after rollback: %v", err)
+	}
+	if gotMessage != message {
+		t.Fatalf("canonical message after rollback = %q, want %q", gotMessage, message)
+	}
+	var derivedCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM journal_search WHERE journal_entry_id = ? AND message = ?`, journalID, message).Scan(&derivedCount); err != nil {
+		t.Fatalf("read derived journal row after rollback: %v", err)
+	}
+	if derivedCount != 1 {
+		t.Fatalf("derived rows after rollback = %d, want one preserved row", derivedCount)
+	}
 }
 
 func TestMarkdownRollbackBackupRemovesAndRestoresEphemeralSources(t *testing.T) {

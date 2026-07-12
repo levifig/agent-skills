@@ -1,6 +1,6 @@
 erDiagram
 %% Guarded by TestSchemaDocumentationMirrorsExecutableMigration against the
-%% auto-applied baseline (migrations 0001-0009).
+%% auto-applied baseline (migrations 0001-0009 and 0011).
 %%
 %% Journal-first end state (migration 0010, SPEC-056): migration 0010 is the
 %% explicit, out-of-band journal-first transformation, deliberately excluded
@@ -17,6 +17,9 @@ erDiagram
 %% The sessions/session_state_snapshots entities and the sessions--* / *_session
 %% relationships below are retained solely to mirror the guarded baseline.
 %% Migration SQL (source of truth): internal/state/migrations/0010_journal_first.sql.
+%% Journal provenance exception (migration 0011): journal_origins and
+%% journal_deferrals intentionally do not foreign-key journal_entries or sparks,
+%% because migration 0010 may rebuild journal_entries after 0011 has applied.
   projects {
     text id PK
     text identity_hash UK
@@ -159,6 +162,35 @@ erDiagram
     text entry_type
     text scope
     text message
+  }
+  journal_origins {
+    text journal_entry_id PK
+    text project_id FK
+    integer envelope_version
+    text capture_mechanism
+    text observed_harness
+    text observed_harness_version
+    text harness_session_id
+    text agent_id
+    text source_event
+    text branch
+    text worktree
+    text head
+    text change_path
+    text change_sha256
+    integer dirty
+    integer reconstructable
+    text durable_result_kind
+    text durable_result_id
+    text created_at
+  }
+  journal_deferrals {
+    text project_id FK
+    text operation_key
+    text journal_entry_id UK
+    text spark_id UK
+    text stored_digest
+    text created_at
   }
   docs_index {
     text id PK
@@ -408,6 +440,8 @@ erDiagram
   projects ||--o{ handoffs : scopes
   projects ||--o{ councils : scopes
   projects ||--o{ journal_entries : scopes
+  projects ||--o{ journal_origins : scopes
+  projects ||--o{ journal_deferrals : scopes
   projects ||--o{ project_paths : locates
   projects ||--o{ events : scopes
   projects ||--o{ relationships : scopes

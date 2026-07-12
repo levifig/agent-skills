@@ -1,7 +1,8 @@
 // Loaf operational state schema.
 // Source of truth: internal/state/migrations/*.sql.
 // This mirror is guarded by TestSchemaDocumentationMirrorsExecutableMigration,
-// which validates it against the auto-applied baseline (migrations 0001-0009).
+// which validates it against the auto-applied baseline (migrations 0001-0009
+// and 0011).
 //
 // Journal-first end state (migration 0010, SPEC-056):
 //   Migration 0010 is the explicit, out-of-band journal-first transformation. It
@@ -19,6 +20,10 @@
 //     - journal_search (FTS5): the session_id UNINDEXED column is renamed to
 //       harness_session_id UNINDEXED
 //   Migration SQL (source of truth): internal/state/migrations/0010_journal_first.sql.
+//
+// Journal provenance exception (migration 0011): journal_origins and
+// journal_deferrals intentionally do not foreign-key journal_entries or sparks,
+// because migration 0010 may rebuild journal_entries after 0011 has applied.
 
 Table schema_migrations {
   version integer [pk, not null]
@@ -352,6 +357,46 @@ Table journal_entries {
   updated_at text [not null]
   indexes {
     (project_id, session_id, spec_id, task_id)
+  }
+}
+
+Table journal_origins {
+  journal_entry_id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  envelope_version integer [not null]
+  capture_mechanism text [not null]
+  observed_harness text
+  observed_harness_version text
+  harness_session_id text
+  agent_id text
+  source_event text
+  branch text
+  worktree text
+  head text
+  change_path text
+  change_sha256 text
+  dirty integer
+  reconstructable integer
+  durable_result_kind text
+  durable_result_id text
+  created_at text [not null]
+  indexes {
+    (project_id, capture_mechanism, created_at)
+    (project_id, observed_harness, harness_session_id)
+    (project_id, change_path)
+    (project_id, durable_result_kind, durable_result_id)
+  }
+}
+
+Table journal_deferrals {
+  project_id text [not null, ref: > projects.id]
+  operation_key text [not null]
+  journal_entry_id text [not null, unique]
+  spark_id text [not null, unique]
+  stored_digest text [not null]
+  created_at text [not null]
+  indexes {
+    (project_id, operation_key) [pk]
   }
 }
 

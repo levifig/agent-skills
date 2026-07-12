@@ -133,6 +133,59 @@ func TestExportAllJSONReturnsInternalSnapshot(t *testing.T) {
 	assertExportManifestCounts(t, snapshot)
 }
 
+func TestExportAllJSONIncludesProjectScopedJournalProvenance(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	otherRoot := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	if _, err := Initialize(ctx, root, resolver); err != nil {
+		t.Fatalf("Initialize(root) error = %v", err)
+	}
+	if _, err := Initialize(ctx, otherRoot, resolver); err != nil {
+		t.Fatalf("Initialize(other) error = %v", err)
+	}
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	dirty := false
+	reconstructable := false
+	logged, err := store.LogJournal(ctx, root, JournalLogOptions{Entry: "decision(export): preserve provenance", Origin: &JournalOriginInput{EnvelopeVersion: 2, CaptureMechanism: "future", ChangePath: "docs/change.md", ChangeSHA256: strings.Repeat("a", 64), Head: "abc123", Dirty: &dirty, Reconstructable: &reconstructable}})
+	if err != nil {
+		t.Fatalf("LogJournal(root) error = %v", err)
+	}
+	if _, err := store.DeferJournal(ctx, root, JournalDeferOptions{Intent: "export intent", Why: "export reason", Boundary: "export boundary", Trigger: "export trigger", OperationID: "export-op"}); err != nil {
+		t.Fatalf("DeferJournal(root) error = %v", err)
+	}
+	if _, err := store.LogJournal(ctx, otherRoot, JournalLogOptions{Entry: "decision(export): other project"}); err != nil {
+		t.Fatalf("LogJournal(other) error = %v", err)
+	}
+	snapshot, err := ExportAllJSON(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("ExportAllJSON() error = %v", err)
+	}
+	if len(snapshot.Tables["journal_origins"]) != 1 || len(snapshot.Tables["journal_deferrals"]) != 1 {
+		t.Fatalf("exported provenance counts = origins:%d deferrals:%d, want 1/1", len(snapshot.Tables["journal_origins"]), len(snapshot.Tables["journal_deferrals"]))
+	}
+	originFound := false
+	for _, row := range snapshot.Tables["journal_origins"] {
+		if row["journal_entry_id"] == logged.ID {
+			originFound = true
+			if row["project_id"] != snapshot.ProjectID || row["envelope_version"] != int64(2) || row["capture_mechanism"] != "future" || row["dirty"] != int64(0) || row["reconstructable"] != int64(0) {
+				t.Fatalf("exported origin = %#v, want exact nullable/unknown fields", row)
+			}
+			if row["agent_id"] != nil || row["source_event"] != nil {
+				t.Fatalf("exported origin fabricated nullable fields: %#v", row)
+			}
+		}
+	}
+	if !originFound {
+		t.Fatalf("exported origins = %#v, missing logged origin", snapshot.Tables["journal_origins"])
+	}
+	if snapshot.Tables["journal_deferrals"][0]["project_id"] != snapshot.ProjectID || snapshot.Tables["journal_deferrals"][0]["operation_key"] != "export-op" {
+		t.Fatalf("exported deferral = %#v, want project-scoped operation", snapshot.Tables["journal_deferrals"][0])
+	}
+}
+
 func TestExportAllJSONIncludesProjectPathHistory(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()

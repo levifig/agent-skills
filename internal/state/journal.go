@@ -3,8 +3,8 @@ package state
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -21,6 +21,7 @@ type JournalLogOptions struct {
 	ObservedBranch   string
 	ObservedWorktree string
 	HarnessSessionID string
+	Origin           *JournalOriginInput
 }
 
 // JournalLogResult is returned after a state-backed journal entry write.
@@ -40,18 +41,54 @@ type JournalLogResult struct {
 	HarnessSessionID   string `json:"harness_session_id,omitempty"`
 }
 
+const JournalUnmatchedUnblockCode = "journal-unmatched-unblock"
+
+// JournalUnmatchedUnblockError reports an unblock write whose exact key is not
+// currently open. LatestSourceID and LatestSourceType are empty when the key
+// has no historical block/unblock outcome.
+type JournalUnmatchedUnblockError struct {
+	Code             string
+	Key              string
+	LatestSourceID   string
+	LatestSourceType string
+}
+
+func (e *JournalUnmatchedUnblockError) Error() string {
+	if e.LatestSourceID == "" {
+		return fmt.Sprintf("cannot unblock journal key %q: no matching block exists", e.Key)
+	}
+	return fmt.Sprintf("cannot unblock journal key %q: latest outcome is %s from %s", e.Key, e.LatestSourceType, e.LatestSourceID)
+}
+
+type journalLogHooks struct {
+	afterCanonical func(*sql.Tx) error
+	afterSearch    func(*sql.Tx) error
+	afterOrigin    func(*sql.Tx) error
+}
+
+// queryContext is the minimal database surface needed to inspect SQLite
+// metadata. Both *sql.Tx and *Store implement QueryContext, which lets the
+// journal helpers operate against a transaction or a read-only store.
+type queryContext interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+// QueryContext exposes the store's read query surface for helpers that need to
+// work with either an open store or a transaction.
+func (s *Store) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return s.db.QueryContext(ctx, query, args...)
+}
+
+// QueryRowContext exposes the store's single-row query surface for parity
+// helpers that need to work with either an open store or a transaction.
+func (s *Store) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return s.db.QueryRowContext(ctx, query, args...)
+}
+
 // LogJournal writes a journal entry into initialized SQLite state.
 func LogJournal(ctx context.Context, root project.Root, resolver PathResolver, options JournalLogOptions) (JournalLogResult, error) {
-	databasePath, err := resolver.DatabasePath(root)
-	if err != nil {
-		return JournalLogResult{}, err
-	}
-	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
-		return JournalLogResult{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state init` first")
-	} else if err != nil {
-		return JournalLogResult{}, fmt.Errorf("inspect state database: %w", err)
-	}
-	store, err := OpenStore(databasePath)
+	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
 	if err != nil {
 		return JournalLogResult{}, err
 	}
@@ -63,9 +100,23 @@ func LogJournal(ctx context.Context, root project.Root, resolver PathResolver, o
 // carries an optional opaque harness_session_id correlation tag; nothing is
 // opened, closed, or transitioned.
 func (s *Store) LogJournal(ctx context.Context, root project.Root, options JournalLogOptions) (JournalLogResult, error) {
+	return s.logJournalWithHooks(ctx, root, options, nil)
+}
+
+func (s *Store) logJournalWithHooks(ctx context.Context, root project.Root, options JournalLogOptions, hooks *journalLogHooks) (JournalLogResult, error) {
 	entryType, scope, message, err := parseJournalEntry(options.Entry)
 	if err != nil {
 		return JournalLogResult{}, err
+	}
+	if (entryType == "block" || entryType == "unblock") && scope == "" {
+		return JournalLogResult{}, fmt.Errorf("journal %s entries require a nonempty key in %s(<key>)", entryType, entryType)
+	}
+	var origin JournalOriginInput
+	if options.Origin != nil {
+		origin, err = normalizeJournalOriginInput(*options.Origin)
+		if err != nil {
+			return JournalLogResult{}, err
+		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	projectID, err := s.projectID(ctx, root)
@@ -77,11 +128,19 @@ func (s *Store) LogJournal(ctx context.Context, root project.Root, options Journ
 		return JournalLogResult{}, err
 	}
 	id := stableMigrationID("journal", projectID, now, entryType, scope, message)
-	tx, err := s.db.BeginTx(ctx, nil)
+	// SQLite maps serializable transactions to BEGIN IMMEDIATE. Taking the write
+	// lock before inspecting the latest exact key outcome makes validation and
+	// insertion one atomic operation across independent stores and processes.
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return JournalLogResult{}, fmt.Errorf("begin journal transaction: %w", err)
 	}
 	defer tx.Rollback()
+	if entryType == "unblock" {
+		if err := validateJournalUnblockTx(ctx, tx, projectID, scope); err != nil {
+			return JournalLogResult{}, err
+		}
+	}
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO journal_entries (
   id,
@@ -101,7 +160,21 @@ INSERT INTO journal_entries (
 	if err != nil {
 		return JournalLogResult{}, fmt.Errorf("insert journal entry: %w", err)
 	}
+	if err := runJournalLogHook(hooks, func(h *journalLogHooks) func(*sql.Tx) error { return h.afterCanonical }, tx); err != nil {
+		return JournalLogResult{}, err
+	}
 	if err := insertJournalSearchTx(ctx, tx, projectID, id, options.HarnessSessionID, entryType, scope, message); err != nil {
+		return JournalLogResult{}, err
+	}
+	if err := runJournalLogHook(hooks, func(h *journalLogHooks) func(*sql.Tx) error { return h.afterSearch }, tx); err != nil {
+		return JournalLogResult{}, err
+	}
+	if options.Origin != nil {
+		if err := insertJournalOriginTx(ctx, tx, id, origin); err != nil {
+			return JournalLogResult{}, err
+		}
+	}
+	if err := runJournalLogHook(hooks, func(h *journalLogHooks) func(*sql.Tx) error { return h.afterOrigin }, tx); err != nil {
 		return JournalLogResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -122,6 +195,42 @@ INSERT INTO journal_entries (
 		ObservedWorktree:   options.ObservedWorktree,
 		HarnessSessionID:   options.HarnessSessionID,
 	}, nil
+}
+
+func validateJournalUnblockTx(ctx context.Context, tx *sql.Tx, projectID, key string) error {
+	var latestID, latestType string
+	err := tx.QueryRowContext(ctx, `
+SELECT id, entry_type
+FROM journal_entries
+WHERE project_id = ?
+  AND scope = ?
+  AND entry_type IN ('block', 'unblock')
+ORDER BY created_at DESC, rowid DESC
+LIMIT 1
+`, projectID, key).Scan(&latestID, &latestType)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("inspect latest journal blocker outcome for key %q: %w", key, err)
+	}
+	if err == nil && latestType == "block" {
+		return nil
+	}
+	return &JournalUnmatchedUnblockError{
+		Code:             JournalUnmatchedUnblockCode,
+		Key:              key,
+		LatestSourceID:   latestID,
+		LatestSourceType: latestType,
+	}
+}
+
+func runJournalLogHook(hooks *journalLogHooks, selectHook func(*journalLogHooks) func(*sql.Tx) error, tx *sql.Tx) error {
+	if hooks == nil {
+		return nil
+	}
+	hook := selectHook(hooks)
+	if hook == nil {
+		return nil
+	}
+	return hook(tx)
 }
 
 // ObservedGitBranch returns the current branch name for context capture. It
@@ -177,8 +286,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?)
 // journalSearchCorrelationColumn returns the name of the journal_search FTS
 // correlation column, tolerating both the journal-first schema
 // (harness_session_id) and the pre-migration schema (session_id).
-func journalSearchCorrelationColumn(ctx context.Context, tx *sql.Tx) (string, error) {
-	rows, err := tx.QueryContext(ctx, `PRAGMA table_info(journal_search)`)
+func journalSearchCorrelationColumn(ctx context.Context, queryer queryContext) (string, error) {
+	rows, err := queryer.QueryContext(ctx, `PRAGMA table_info(journal_search)`)
 	if err != nil {
 		return "", fmt.Errorf("inspect journal_search columns: %w", err)
 	}

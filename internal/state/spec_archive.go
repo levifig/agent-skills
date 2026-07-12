@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/levifig/loaf/internal/project"
@@ -35,16 +34,7 @@ type SpecArchiveItem struct {
 
 // ArchiveSpecs archives complete specs in initialized SQLite state.
 func ArchiveSpecs(ctx context.Context, root project.Root, resolver PathResolver, refs []string) (SpecArchiveResult, error) {
-	databasePath, err := resolver.DatabasePath(root)
-	if err != nil {
-		return SpecArchiveResult{}, err
-	}
-	if _, err := os.Stat(databasePath); os.IsNotExist(err) {
-		return SpecArchiveResult{}, fmt.Errorf("SQLite state database is not initialized; run `loaf state migrate markdown --apply` first")
-	} else if err != nil {
-		return SpecArchiveResult{}, fmt.Errorf("inspect state database: %w", err)
-	}
-	store, err := OpenStore(databasePath)
+	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
 	if err != nil {
 		return SpecArchiveResult{}, err
 	}

@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -9,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/levifig/loaf/internal/project"
+	"github.com/levifig/loaf/internal/state"
 )
 
 // changeDoc assembles a change.md body from frontmatter and section blocks so
@@ -32,6 +37,17 @@ func changeFrontmatter(change, created, branch string) string {
 		"branch: " + branch,
 		"---",
 	}, "\n")
+}
+
+func lineageFrontmatter(change, created, branch, lineage, predecessor, releaseAfter string) string {
+	lines := []string{"---", "change: " + change, "created: " + created, "branch: " + branch, "lineage: " + lineage}
+	if predecessor != "" {
+		lines = append(lines, "predecessor: "+predecessor)
+	}
+	if releaseAfter != "" {
+		lines = append(lines, "release-after: "+releaseAfter)
+	}
+	return strings.Join(append(lines, "---"), "\n")
 }
 
 // productSections returns the five required Product Contract H2s, each with a
@@ -81,6 +97,541 @@ func runChangeCheckJSON(t *testing.T, repo string, args ...string) (changeCheckJ
 		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), decodeErr)
 	}
 	return out, err
+}
+
+func executableLineageDoc(slug, lineage, predecessor, releaseAfter string) string {
+	sections := append(productSections(), executableSections()...)
+	return changeDoc(lineageFrontmatter(slug, "2026-07-10", slug, lineage, predecessor, releaseAfter), sections...)
+}
+
+func commitAllChangeTest(t *testing.T, repo, message string) {
+	t.Helper()
+	gitCLI(t, repo, "add", ".")
+	gitCLI(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "commit", "-m", message)
+}
+
+func TestChangeLineageValidation(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, repo string) string
+		want  string
+	}{
+		{"duplicate-slug", func(t *testing.T, repo string) string {
+			writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", ""))
+			return writeChangeFolder(t, repo, "20260711-root", strings.Replace(executableLineageDoc("root", "line", "", ""), "created: 2026-07-10", "created: 2026-07-11", 1))
+		}, "duplicate Change slug"},
+		{"multiple-roots", func(t *testing.T, repo string) string {
+			writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", ""))
+			return writeChangeFolder(t, repo, "20260710-other", executableLineageDoc("other", "line", "", ""))
+		}, "multiple roots"},
+		{"self-reference", func(t *testing.T, repo string) string {
+			return writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "root", ""))
+		}, "cannot name itself"},
+		{"missing-predecessor", func(t *testing.T, repo string) string {
+			return writeChangeFolder(t, repo, "20260710-child", executableLineageDoc("child", "line", "missing", ""))
+		}, "predecessor \"missing\" is not materialized"},
+		{"lineage-mismatch", func(t *testing.T, repo string) string {
+			writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "other", "", ""))
+			return writeChangeFolder(t, repo, "20260710-next", executableLineageDoc("next", "line", "root", ""))
+		}, "has lineage \"other\", want \"line\""},
+		{"cycle", func(t *testing.T, repo string) string {
+			writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "next", ""))
+			return writeChangeFolder(t, repo, "20260710-next", executableLineageDoc("next", "line", "root", ""))
+		}, "predecessor cycle"},
+		{"longer-cycle", func(t *testing.T, repo string) string {
+			writeChangeFolder(t, repo, "20260710-one", executableLineageDoc("one", "line", "three", ""))
+			writeChangeFolder(t, repo, "20260710-two", executableLineageDoc("two", "line", "one", ""))
+			return writeChangeFolder(t, repo, "20260710-three", executableLineageDoc("three", "line", "two", ""))
+		}, "predecessor cycle"},
+		{"duplicate-lineage-key", func(t *testing.T, repo string) string {
+			doc := strings.Replace(executableLineageDoc("root", "line", "", ""), "lineage: line", "lineage: line\nlineage: other", 1)
+			return writeChangeFolder(t, repo, "20260710-root", doc)
+		}, "duplicate frontmatter field \"lineage\""},
+		{"dependency-without-lineage", func(t *testing.T, repo string) string {
+			doc := strings.Replace(executableLineageDoc("child", "line", "root", ""), "lineage: line\n", "", 1)
+			return writeChangeFolder(t, repo, "20260710-child", doc)
+		}, "predecessor and release-after require lineage"},
+		{"multiple-children", func(t *testing.T, repo string) string {
+			writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", ""))
+			writeChangeFolder(t, repo, "20260710-left", executableLineageDoc("left", "line", "root", ""))
+			return writeChangeFolder(t, repo, "20260710-right", executableLineageDoc("right", "line", "root", ""))
+		}, "multiple materialized children"},
+		{"conflicting-release-after", func(t *testing.T, repo string) string {
+			writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+			return writeChangeFolder(t, repo, "20260710-terminal", executableLineageDoc("terminal", "line", "root", "root"))
+		}, "conflicting release-after terminals"},
+		{"release-after-not-terminal", func(t *testing.T, repo string) string {
+			writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+			return writeChangeFolder(t, repo, "20260710-child", executableLineageDoc("child", "line", "root", ""))
+		}, "release-after \"root\" is not the lineage terminal"},
+		{"release-after-on-non-root", func(t *testing.T, repo string) string {
+			writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "child"))
+			return writeChangeFolder(t, repo, "20260710-child", executableLineageDoc("child", "line", "root", "child"))
+		}, "root \"root\" must own the declaration"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := initCLIGitRepo(t)
+			folder := tc.setup(t, repo)
+			out, err := runChangeCheckJSON(t, repo, folder)
+			all := append(append(append([]string{}, out.Findings...), out.Warnings...), out.Gaps...)
+			if (tc.name != "missing-predecessor" && err == nil) || !findingsContain(all, tc.want) {
+				t.Fatalf("err = %v findings = %v warnings = %v, want %q", err, out.Findings, out.Warnings, tc.want)
+			}
+		})
+	}
+}
+
+func TestChangeCheckRejectsMixedCaseDuplicateIdentityAndLineageFields(t *testing.T) {
+	cases := []struct {
+		key         string
+		replacement string
+	}{
+		{key: "change", replacement: "change: root\nChAnGe: root"},
+		{key: "created", replacement: "created: 2026-07-10\nCrEaTeD: 2026-07-10"},
+		{key: "lineage", replacement: "lineage: line\nLiNeAgE: line"},
+		{key: "predecessor", replacement: "predecessor: prior\nPrEdEcEsSoR: prior"},
+		{key: "release-after", replacement: "release-after: terminal\nReLeAsE-AfTeR: terminal"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.key, func(t *testing.T) {
+			repo := initCLIGitRepo(t)
+			doc := executableLineageDoc("root", "line", "prior", "terminal")
+			original := map[string]string{
+				"change":        "change: root",
+				"created":       "created: 2026-07-10",
+				"lineage":       "lineage: line",
+				"predecessor":   "predecessor: prior",
+				"release-after": "release-after: terminal",
+			}[tc.key]
+			doc = strings.Replace(doc, original, tc.replacement, 1)
+			folder := writeChangeFolder(t, repo, "20260710-root", doc)
+			out, err := runChangeCheckJSON(t, repo, folder)
+			want := "duplicate frontmatter field \"" + tc.key + "\""
+			if err == nil || !findingsContain(out.Findings, want) || !findingsContain(out.Findings, "docs/changes/20260710-root/change.md:") {
+				t.Fatalf("err = %v findings = %v, want repo-relative %q", err, out.Findings, want)
+			}
+		})
+	}
+}
+
+func TestChangeCheckRejectsMalformedAndUnclosedFrontmatter(t *testing.T) {
+	cases := []struct {
+		name string
+		doc  func() string
+		want string
+	}{
+		{name: "lineage-without-colon", doc: func() string {
+			return strings.Replace(executableLineageDoc("root", "line", "", ""), "lineage: line", "lineage line", 1)
+		}, want: "malformed frontmatter line"},
+		{name: "predecessor-without-colon", doc: func() string {
+			return strings.Replace(executableLineageDoc("child", "line", "root", ""), "predecessor: root", "predecessor root", 1)
+		}, want: "malformed frontmatter line"},
+		{name: "empty-key", doc: func() string {
+			return strings.Replace(executableLineageDoc("root", "line", "", ""), "lineage: line", "lineage: line\n: value", 1)
+		}, want: "key cannot be empty"},
+		{name: "unclosed", doc: func() string {
+			return strings.Replace(executableLineageDoc("root", "line", "", ""), "\n---\n# Title", "\n# Title", 1)
+		}, want: "frontmatter is not closed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := initCLIGitRepo(t)
+			folder := writeChangeFolder(t, repo, "20260710-root", tc.doc())
+			out, err := runChangeCheckJSON(t, repo, folder)
+			if err == nil || !findingsContain(out.Findings, tc.want) || !findingsContain(out.Findings, "docs/changes/20260710-root/change.md:") {
+				t.Fatalf("err = %v findings = %v, want repo-relative %q", err, out.Findings, tc.want)
+			}
+		})
+	}
+}
+
+func TestChangeCheckDoesNotLeakUnrelatedLineageFindings(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	good := writeChangeFolder(t, repo, "20260710-good", executableLineageDoc("good", "good-line", "", ""))
+	badOne := writeChangeFolder(t, repo, "20260710-bad-one", executableLineageDoc("bad-one", "bad-line", "bad-two", ""))
+	writeChangeFolder(t, repo, "20260710-bad-two", executableLineageDoc("bad-two", "bad-line", "bad-one", ""))
+	goodOut, err := runChangeCheckJSON(t, repo, good)
+	if err != nil || !goodOut.Passed || findingsContain(goodOut.Findings, "predecessor cycle") {
+		t.Fatalf("good lineage err = %v out = %+v", err, goodOut)
+	}
+	badOut, err := runChangeCheckJSON(t, repo, badOne)
+	if err == nil || !findingsContain(badOut.Findings, "predecessor cycle") {
+		t.Fatalf("bad lineage err = %v out = %+v", err, badOut)
+	}
+}
+
+func TestChangeCheckIncludesLocalFindingsFromItsWholeLineage(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "child"))
+	malformedChild := strings.Replace(executableLineageDoc("child", "line", "root", ""), "\n---\n# Title", "\nmalformed child frontmatter\n---\n# Title", 1)
+	writeChangeFolder(t, repo, "20260710-child", malformedChild)
+
+	out, err := runChangeCheckJSON(t, repo, root)
+	if err == nil || !findingsContain(out.Findings, "docs/changes/20260710-child/change.md: malformed frontmatter") {
+		t.Fatalf("same-lineage local finding was omitted: err = %v out = %+v", err, out)
+	}
+}
+
+func TestChangeCheckDoesNotTreatUnlineagedMalformedFileAsGlobal(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	good := writeChangeFolder(t, repo, "20260710-good", executableLineageDoc("good", "good-line", "", "good"))
+	malformed := strings.Replace(changeDoc(changeFrontmatter("legacy", "2026-07-10", "legacy"), productSections()...), "\n---\n# Title", "\nmalformed legacy frontmatter\n---\n# Title", 1)
+	legacy := writeChangeFolder(t, repo, "20260710-legacy", malformed)
+	goodOut, err := runChangeCheckJSON(t, repo, good)
+	if err != nil || !goodOut.Passed || !goodOut.Executable || len(goodOut.Findings) != 0 {
+		t.Fatalf("unrelated unlineaged file blocked good lineage: err = %v out = %+v", err, goodOut)
+	}
+	legacyOut, err := runChangeCheckJSON(t, repo, legacy)
+	if err == nil || !findingsContain(legacyOut.Findings, "malformed frontmatter") {
+		t.Fatalf("malformed file should fail its own check: err = %v out = %+v", err, legacyOut)
+	}
+}
+
+func TestChangeCheckScopesUnlineagedFindingsToTheirChange(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	sections := append(productSections(), executableSections()...)
+	good := writeChangeFolder(t, repo, "20260710-good", changeDoc(changeFrontmatter("good", "2026-07-10", "good"), sections...))
+	malformed := strings.Replace(changeDoc(changeFrontmatter("legacy", "2026-07-10", "legacy"), productSections()...), "\n---\n# Title", "\nmalformed legacy frontmatter\n---\n# Title", 1)
+	legacy := writeChangeFolder(t, repo, "20260710-legacy", malformed)
+
+	goodOut, err := runChangeCheckJSON(t, repo, good, "--require-executable")
+	if err != nil || !goodOut.Passed || !goodOut.Executable || len(goodOut.Findings) != 0 {
+		t.Fatalf("unrelated unlineaged file blocked valid unlineaged Change: err = %v out = %+v", err, goodOut)
+	}
+	legacyOut, err := runChangeCheckJSON(t, repo, legacy)
+	if err == nil || !findingsContain(legacyOut.Findings, "malformed frontmatter") {
+		t.Fatalf("malformed unlineaged Change should fail its own check: err = %v out = %+v", err, legacyOut)
+	}
+}
+
+func TestChangeCheckIncludesGlobalFindingsForEveryLineage(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	good := writeChangeFolder(t, repo, "20260710-good", executableLineageDoc("good", "good-line", "", ""))
+	writeChangeFolder(t, repo, "20260710-duplicate", executableLineageDoc("duplicate", "first-line", "", ""))
+	duplicate := strings.Replace(executableLineageDoc("duplicate", "second-line", "", ""), "created: 2026-07-10", "created: 2026-07-11", 1)
+	writeChangeFolder(t, repo, "20260711-duplicate", duplicate)
+	out, err := runChangeCheckJSON(t, repo, good)
+	if err == nil || !findingsContain(out.Findings, "duplicate Change slug") {
+		t.Fatalf("global finding was omitted: err = %v out = %+v", err, out)
+	}
+}
+
+func TestChangeInitRejectsSlugExistingOnAnotherDate(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeChangeFolder(t, repo, "20260709-reused", strings.Replace(executableLineageDoc("reused", "line", "", ""), "created: 2026-07-10", "created: 2026-07-09", 1))
+	err := Runner{WorkingDir: repo}.Run([]string{"change", "init", "reused"})
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("init error = %v", err)
+	}
+}
+
+func TestChangeCheckRequiresCommittedPredecessorButNotCompletion(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "child"))
+	commitAllChangeTest(t, repo, "docs: add root")
+	child := writeChangeFolder(t, repo, "20260710-child", executableLineageDoc("child", "line", "root", ""))
+	out, err := runChangeCheckJSON(t, repo, child, "--require-executable")
+	if err != nil || !out.Executable {
+		t.Fatalf("committed predecessor err = %v out = %+v", err, out)
+	}
+	if root == "" {
+		t.Fatal("root should be materialized")
+	}
+	// A root that is only in the working tree cannot satisfy another Change's ancestry.
+	repo = initCLIGitRepo(t)
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "child"))
+	child = writeChangeFolder(t, repo, "20260710-child", executableLineageDoc("child", "line", "root", ""))
+	out, err = runChangeCheckJSON(t, repo, child, "--require-executable")
+	if err == nil || !findingsContain(out.Findings, "not structurally executable") || !findingsContain(out.Findings, "implementation completion is not implied") {
+		t.Fatalf("err = %v findings = %v", err, out.Findings)
+	}
+}
+
+func TestChangeCheckRequiresCommittedPredecessorGraphToBeExecutable(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", ""))
+	commitAllChangeTest(t, repo, "docs: add root without release terminal")
+
+	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(executableLineageDoc("root", "line", "", "child")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	child := writeChangeFolder(t, repo, "20260710-child", executableLineageDoc("child", "line", "root", ""))
+	out, err := runChangeCheckJSON(t, repo, child, "--require-executable")
+	if err == nil || out.Executable || !findingsContain(out.Gaps, "committed predecessor \"root\" is not structurally executable") {
+		t.Fatalf("dirty graph repair bypassed committed predecessor validation: err = %v out = %+v", err, out)
+	}
+}
+
+func TestChangeCheckRequireExecutableRejectsMissingPredecessor(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	child := writeChangeFolder(t, repo, "20260710-child", executableLineageDoc("child", "line", "missing", ""))
+	out, err := runChangeCheckJSON(t, repo, child, "--require-executable")
+	if err == nil || !findingsContain(out.Gaps, "predecessor \"missing\" is not materialized") {
+		t.Fatalf("err = %v findings = %v", err, out.Findings)
+	}
+}
+
+func TestChangeCheckBareReportsMissingPredecessorAsExecutionGap(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	child := writeChangeFolder(t, repo, "20260710-child", executableLineageDoc("child", "line", "missing", ""))
+	bare, err := runChangeCheckJSON(t, repo, child)
+	if err != nil || !bare.Passed || bare.Executable || !findingsContain(bare.Gaps, "predecessor \"missing\" is not materialized") {
+		t.Fatalf("bare check err = %v out = %+v", err, bare)
+	}
+	required, err := runChangeCheckJSON(t, repo, child, "--require-executable")
+	if err == nil || required.Passed || required.Executable || !findingsContain(required.Gaps, "predecessor \"missing\" is not materialized") {
+		t.Fatalf("required check err = %v out = %+v", err, required)
+	}
+}
+
+func TestChangeCheckParkedTerminalInIsolationNeedsRootReleaseDeclaration(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	parked := writeChangeFolder(t, repo, "20260710-spec-conversion-and-guidance-sweep", executableLineageDoc("spec-conversion-and-guidance-sweep", "change-model-hard-cut", "", ""))
+	want := "root \"spec-conversion-and-guidance-sweep\" must declare release-after"
+	bare, err := runChangeCheckJSON(t, repo, parked)
+	if err != nil || !bare.Passed || bare.Executable || !findingsContain(bare.Gaps, want) {
+		t.Fatalf("parked bare check err = %v out = %+v", err, bare)
+	}
+	required, err := runChangeCheckJSON(t, repo, parked, "--require-executable")
+	if err == nil || required.Passed || required.Executable || !findingsContain(required.Gaps, want) {
+		t.Fatalf("parked required check err = %v out = %+v", err, required)
+	}
+}
+
+func TestChangeCheckRootRemainsExecutableWithUnmaterializedReleaseAfter(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	out, err := runChangeCheckJSON(t, repo, root, "--require-executable")
+	if err != nil || !out.Executable || findingsContain(out.Gaps, "release-after terminal") {
+		t.Fatalf("root structural check err = %v out = %+v", err, out)
+	}
+}
+
+func TestChangeCheckRequireExecutableTraversesCommittedThreeNodeChain(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	terminal := writeChangeFolder(t, repo, "20260710-terminal", executableLineageDoc("terminal", "line", "", ""))
+	out, err := runChangeCheckJSON(t, repo, terminal, "--require-executable")
+	if err == nil || !findingsContain(out.Findings, "multiple roots") {
+		t.Fatalf("stale terminal err = %v out = %+v", err, out)
+	}
+	writeChangeFolder(t, repo, "20260710-terminal", executableLineageDoc("terminal", "line", "middle", ""))
+	out, err = runChangeCheckJSON(t, repo, terminal, "--require-executable")
+	if err == nil || !findingsContain(out.Gaps, "predecessor \"middle\" is not materialized") {
+		t.Fatalf("absent middle err = %v out = %+v", err, out)
+	}
+	middle := writeChangeFolder(t, repo, "20260710-middle", executableLineageDoc("middle", "line", "root", ""))
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	gitCLI(t, repo, "add", filepath.Join(middle, "change.md"))
+	gitCLI(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "commit", "-m", "docs: add middle only")
+	out, err = runChangeCheckJSON(t, repo, terminal, "--require-executable")
+	if err == nil || !findingsContain(out.Gaps, "predecessor \"root\" is not committed and retained in HEAD") {
+		t.Fatalf("absent committed root err = %v out = %+v", err, out)
+	}
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	commitAllChangeTest(t, repo, "docs: complete lineage")
+	out, err = runChangeCheckJSON(t, repo, terminal, "--require-executable")
+	if err != nil || !out.Executable {
+		t.Fatalf("complete chain err = %v out = %+v", err, out)
+	}
+}
+
+func TestChangeListFindsRetainedLineageWithoutBranch(t *testing.T) {
+	t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
+	repo := initCLIGitRepo(t)
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	commitAllChangeTest(t, repo, "docs: retain root")
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: repo, StateHome: t.TempDir()}.Run([]string{"change", "list", "--lineage", "line", "--json"})
+	if err != nil {
+		t.Fatalf("list error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "\"root\"") || !strings.Contains(stdout.String(), "\"journalAvailable\": false") {
+		t.Fatalf("list output = %s", stdout.String())
+	}
+}
+
+func TestChangeListReadsExactScopeDecisionWithoutMutatingState(t *testing.T) {
+	ctx := context.Background()
+	repo := initCLIGitRepo(t)
+	databasePath := filepath.Join(t.TempDir(), "loaf.sqlite")
+	t.Setenv("LOAF_DB", databasePath)
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	commitAllChangeTest(t, repo, "docs: retain root")
+	projectRoot, err := project.ResolveRoot(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.Initialize(ctx, projectRoot, state.PathResolver{}); err != nil {
+		t.Fatal(err)
+	}
+	const decision = "root then terminal; no release between nodes"
+	if _, err := state.LogJournal(ctx, projectRoot, state.PathResolver{}, state.JournalLogOptions{Entry: "decision(lineage/line): " + decision}); err != nil {
+		t.Fatal(err)
+	}
+	beforeBytes, err := os.ReadFile(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeProjects, beforePaths := changeTestIdentityCounts(t, databasePath)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "list", "--lineage", "line", "--json"}); err != nil {
+		t.Fatalf("change list error = %v", err)
+	}
+	var result changeListJSON
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	if !result.JournalAvailable || result.LineageDecision != decision {
+		t.Fatalf("result = %+v, want exact-scope journal decision", result)
+	}
+	afterBytes, err := os.ReadFile(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterProjects, afterPaths := changeTestIdentityCounts(t, databasePath)
+	if !bytes.Equal(beforeBytes, afterBytes) || beforeProjects != afterProjects || beforePaths != afterPaths {
+		t.Fatalf("change list mutated state: bytes_equal=%t projects=%d->%d paths=%d->%d", bytes.Equal(beforeBytes, afterBytes), beforeProjects, afterProjects, beforePaths, afterPaths)
+	}
+}
+
+func TestChangeListWarnsWhenJournalEnrichmentReadFails(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	databasePath := filepath.Join(t.TempDir(), "loaf.sqlite")
+	t.Setenv("LOAF_DB", databasePath)
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+	if err := os.WriteFile(databasePath, []byte("not a sqlite database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var jsonOutput bytes.Buffer
+	if err := (Runner{Stdout: &jsonOutput, WorkingDir: repo}).Run([]string{"change", "list", "--lineage", "line", "--json"}); err != nil {
+		t.Fatalf("change list --json error = %v", err)
+	}
+	var result changeListJSON
+	if err := json.Unmarshal(jsonOutput.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.JournalAvailable || len(result.Warnings) != 1 || result.Warnings[0] != changeListJournalReadWarning {
+		t.Fatalf("result = %+v, want deterministic journal read warning", result)
+	}
+	var human bytes.Buffer
+	if err := (Runner{Stdout: &human, WorkingDir: repo}).Run([]string{"change", "list", "--lineage", "line"}); err != nil {
+		t.Fatalf("change list error = %v", err)
+	}
+	if !strings.Contains(human.String(), "warning: "+changeListJournalReadWarning) {
+		t.Fatalf("human output = %q, want visible warning", human.String())
+	}
+}
+
+func changeTestIdentityCounts(t *testing.T, databasePath string) (int, int) {
+	t.Helper()
+	database, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(databasePath)+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	var projects, paths int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM projects`).Scan(&projects); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM project_paths`).Scan(&paths); err != nil {
+		t.Fatal(err)
+	}
+	return projects, paths
+}
+
+func TestChangeListJSONIsRelativeAndByteDeterministicAfterBranchRenameAndDelete(t *testing.T) {
+	t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
+	repo := initCLIGitRepo(t)
+	gitCLI(t, repo, "switch", "-c", "lineage-work")
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
+	commitAllChangeTest(t, repo, "docs: retain lineage")
+	gitCLI(t, repo, "branch", "-m", "renamed-lineage-work")
+	gitCLI(t, repo, "switch", "main")
+	gitCLI(t, repo, "merge", "--ff-only", "renamed-lineage-work")
+	gitCLI(t, repo, "branch", "-D", "renamed-lineage-work")
+	run := func() string {
+		var stdout bytes.Buffer
+		if err := (Runner{Stdout: &stdout, WorkingDir: repo, StateHome: t.TempDir()}).Run([]string{"change", "list", "--lineage", "line", "--json"}); err != nil {
+			t.Fatal(err)
+		}
+		return stdout.String()
+	}
+	first, second := run(), run()
+	if first != second {
+		t.Fatalf("repeated JSON differs:\n%s\n%s", first, second)
+	}
+	var decoded changeListJSON
+	if err := json.Unmarshal([]byte(first), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Nodes) != 1 || decoded.Nodes[0].Folder != "docs/changes/20260710-root" || strings.Contains(first, repo) {
+		t.Fatalf("decoded = %+v output = %s", decoded, first)
+	}
+}
+
+func TestChangeExecutableWordingParityAcrossEveryCommandSurface(t *testing.T) {
+	var native, agent bytes.Buffer
+	writeChangeCheckHelp(&native)
+	if err := writeAgentHelpJSON(&agent); err != nil {
+		t.Fatal(err)
+	}
+	nativeSnippets := []string{
+		"Validate a Change and report derived structural executability, not implementation completion.",
+		"--require-executable  Exit non-zero unless the Change is structurally executable (CI gate for non-draft PRs)",
+	}
+	for _, snippet := range nativeSnippets {
+		if !strings.Contains(native.String(), snippet) {
+			t.Fatalf("native change check help = %q, want exact snippet %q", native.String(), snippet)
+		}
+	}
+	const agentSnippet = "Exit non-zero unless the Change is structurally executable; this does not prove implementation completion"
+	if !strings.Contains(agent.String(), agentSnippet) {
+		t.Fatalf("agent help = %q, want exact change check snippet %q", agent.String(), agentSnippet)
+	}
+	referenceJSON, err := json.Marshal(cliReferenceCommands())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const referenceSnippet = "Exit non-zero unless the Change is structurally executable; this does not prove implementation completion (CI gate for non-draft PRs)"
+	if !strings.Contains(string(referenceJSON), referenceSnippet) {
+		t.Fatalf("CLI reference metadata = %s, want exact change check snippet %q", referenceJSON, referenceSnippet)
+	}
+
+	root := filepath.Join("..", "..")
+	const shapeSnippet = "**implement** — Starts execution once a Change is structurally executable; this does not prove implementation completion"
+	const boundarySnippet = "`--require-executable` turns structural executability into a gate (exit code 1 if not structurally executable); it does not prove implementation completion."
+	const prSnippet = "<!-- Draft = still shaping. Ready for review = structurally executable, not proof of implementation completion. -->"
+	const routingSnippet = "| Validate a Change is structurally executable, not implementation-complete | `loaf change check --require-executable` |"
+	skillRoots := []string{
+		"content/skills",
+		"plugins/loaf/skills",
+		"dist/amp/skills",
+		"dist/codex/skills",
+		"dist/cursor/skills",
+		"dist/opencode/skills",
+		"dist/skills",
+	}
+	expected := map[string]string{}
+	for _, skillRoot := range skillRoots {
+		expected[filepath.Join(skillRoot, "shape", "SKILL.md")] = shapeSnippet
+		expected[filepath.Join(skillRoot, "shape", "references", "cli-boundary.md")] = boundarySnippet
+		expected[filepath.Join(skillRoot, "shape", "templates", "pr.md")] = prSnippet
+		expected[filepath.Join(skillRoot, "loaf-reference", "references", "command-routing.md")] = routingSnippet
+	}
+	expected[filepath.Join("dist", "opencode", "commands", "shape.md")] = shapeSnippet
+	for path, snippet := range expected {
+		body, err := os.ReadFile(filepath.Join(root, path))
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if !strings.Contains(string(body), snippet) {
+			t.Fatalf("%s wording drifted; want exact snippet %q", path, snippet)
+		}
+	}
 }
 
 // --- V1: violations, exit non-zero -----------------------------------------

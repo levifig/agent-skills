@@ -13,12 +13,11 @@ version: 2.0.0-alpha.5
 
 ## Contents
 - Operating Rules
+- Journal Context (contract v2)
 - Command Index
 - Topics
 
-The Loaf operating manual for agents: how to discover commands, diagnose project
-state, and keep configuration current. It teaches reading the CLI, not
-memorizing it.
+The Loaf operating manual for agents: how to discover commands, diagnose project state, and keep configuration current. It teaches reading the CLI, not memorizing it.
 
 **Note:** This file is auto-generated from native CLI reference metadata. Do not edit manually.
 
@@ -33,6 +32,25 @@ memorizing it.
 - Re-run the relevant check after any change and confirm it passes.
 - Log meaningful decisions to the journal: `loaf journal log "decision(scope): ..."`.
 
+## Journal Context (contract v2)
+
+`loaf journal context` is an active-truth read model, not the former latest-arbitrary-wrap plus branch entries plus open tasks summary. Consume its named layers and diagnostics rather than inferring state from an omitted layer.
+
+| Layer | Truth it supplies |
+|-------|-------------------|
+| `project-synthesis` | The latest `wrap(project)` synthesis. |
+| `scoped-checkpoint` | The latest non-project wrap, only when no project synthesis exists; it is explicitly labeled as a fallback. |
+| `active-lineage` | Journal evidence associated with active Change lineage. |
+| `unresolved-blockers` | Blocks that do not have a later exact-scope unblock. |
+| `deferred-intent` | Open deferred-intent decision and spark pairs. |
+| `active-changes` | Git-derived active Change evidence and worktree state. |
+| `branch-recency` | Recent entries on the selected branch after entries already surfaced as active truth are removed. |
+| `transitional-tasks` | Open task-board records during the Markdown-to-native transition. |
+
+Each layer reports `source_available`, `available_count`, `shown_count`, `truncated`, and an exact `expand_command`; paginated layers also return a cursor. `source_available: false` means the source could not be derived and is not an empty result. In particular, an unavailable Change source marks both `active-changes` and `active-lineage` unavailable and emits a diagnostic.
+
+Use `--branch` to select `branch-recency` scope and bind state cursors. It does not override active Change provenance or reasons, which always use the actual Git branch. Use `--layer` to request one canonical layer. `--limit` accepts 1 through 100 only with `--layer`; `--cursor` also requires `--layer` and cannot expand the intrinsic one-item `project-synthesis` or `scoped-checkpoint` layers. Reuse the returned `expand_command` verbatim: cursors are bound to their layer, project, branch, snapshot, and limit. `--json` is the stable machine surface; human output retains the same counts, unavailable markers, and expansion command.
+
 ## Command Index
 
 Names and one-line purposes only. Run `loaf <command> --help` for options, arguments, and current usage.
@@ -46,12 +64,12 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf release` | Create a new release with changelog, version bump, and tag | — |
 | `loaf search` | Search SQLite artifact bodies, journal entries, and indexed docs | — |
 | `loaf docs` | Manage docs/ indexing | index |
-| `loaf change` | Shape-first Change artifacts: git-canonical work context under docs/changes/ | init, check |
+| `loaf change` | Shape-first Change artifacts: git-canonical work context under docs/changes/ | init, check, list |
 | `loaf render` | Maintain committed durable Markdown renders | sweep |
-| `loaf state` | Manage native SQLite state | path, status, init, doctor, repair legacy-project-database, repair relationship-origin, migrate markdown, migrate storage-home, migrate lifecycle-statuses, backup, backup verify, restore-ephemerals, verify-ephemerals, export, export all, export triage, export spec, export release-readiness |
-| `loaf journal` | Record and read the project-scoped journal (the durable record across all conversations) | log, recent, search, show, context, export |
+| `loaf state` | Manage native SQLite state | path, status, init, doctor, repair legacy-project-database, repair relationship-origin, repair journal-search, migrate markdown, migrate storage-home, migrate schema, migrate lifecycle-statuses, backup, backup verify, backup restore, restore-ephemerals, verify-ephemerals, export, export all, export triage, export spec, export release-readiness |
+| `loaf journal` | Record and read the project-scoped journal (the durable record across all conversations) | log, recent, search, show, context, export, defer |
 | `loaf project` | Manage durable project identity | list, show, identity, rename, move, delete |
-| `loaf migrate` | Run native migration workflows | markdown, storage-home, lifecycle-statuses, worktree-storage |
+| `loaf migrate` | Run native migration workflows | markdown, storage-home, schema, lifecycle-statuses, worktree-storage |
 | `loaf task` | Manage project tasks | list, show, status, create, update, archive, refresh, sync |
 | `loaf spec` | Manage project specs | new, list, show, status, render, finalize, archive, delete |
 | `loaf report` | Manage durable reports (research, audits, investigations) | list, show, render, generate, create, finalize, archive |

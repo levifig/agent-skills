@@ -20,11 +20,12 @@ type JournalShow struct {
 	ProjectCurrentPath string             `json:"project_current_path,omitempty"`
 	Query              string             `json:"query"`
 	Entry              JournalEntryRecord `json:"entry"`
+	Origin             *JournalOrigin     `json:"origin,omitempty"`
 }
 
 // ShowJournal returns one journal entry from initialized SQLite state.
 func ShowJournal(ctx context.Context, root project.Root, resolver PathResolver, ref string) (JournalShow, error) {
-	store, err := openInitializedStore(root, resolver)
+	store, err := openProjectStoreReadExisting(ctx, root, resolver)
 	if err != nil {
 		return JournalShow{}, err
 	}
@@ -76,6 +77,10 @@ WHERE project_id = ? AND id = ?
 	if err != nil {
 		return JournalShow{}, fmt.Errorf("read journal entry %s: %w", id, err)
 	}
+	origin, err := loadJournalOrigin(ctx, s, projectID, entry.ID)
+	if err != nil {
+		return JournalShow{}, err
+	}
 
 	return JournalShow{
 		ContractVersion:    StateJSONContractVersion,
@@ -86,5 +91,6 @@ WHERE project_id = ? AND id = ?
 		ProjectCurrentPath: identity.CurrentPath,
 		Query:              ref,
 		Entry:              entry,
+		Origin:             origin,
 	}, nil
 }
