@@ -16,7 +16,7 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 		writeReleaseHelp(out)
 		return nil
 	}
-	if err := releaseLineagePreflight(runtimeRoot); err != nil {
+	if err := releaseLineagePreflightWithOptions(runtimeRoot, releaseAllowsPrereleaseLineageBypass(runtimeRoot, options)); err != nil {
 		return err
 	}
 	if options.dryRun {
@@ -40,6 +40,39 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 	return runReleasePostMerge(runtimeRoot, out, errOut)
 }
 
+func releaseAllowsPrereleaseLineageBypass(root string, options releaseOptions) bool {
+	if options.postMerge {
+		if options.bump != "" {
+			return false
+		}
+	} else if options.bump != "prerelease" {
+		return false
+	}
+	configOverrides, err := releaseConfigVersionFiles(root)
+	if err != nil {
+		return false
+	}
+	versionOverrides := options.versionFile
+	if len(versionOverrides) == 0 {
+		versionOverrides = configOverrides
+	}
+	versionFiles, err := detectReleaseVersionFiles(root, versionOverrides)
+	if err != nil || len(versionFiles) == 0 {
+		return false
+	}
+	currentVersion := versionFiles[0].CurrentVersion
+	for _, file := range versionFiles {
+		if file.CurrentVersion != currentVersion {
+			return false
+		}
+		version, ok := parseReleaseSemver(file.CurrentVersion)
+		if !ok || version.prerelease == "" {
+			return false
+		}
+	}
+	return true
+}
+
 func writeReleaseHelp(out io.Writer) {
 	fmt.Fprintln(out, strings.Join([]string{
 		"Usage: loaf release [options]",
@@ -48,7 +81,7 @@ func writeReleaseHelp(out io.Writer) {
 		"",
 		"Options:",
 		"  --dry-run              Preview release without making changes",
-		"  --bump <type>          Skip interactive bump choice (prerelease, release, major, minor, patch)",
+		"  --bump <type>          Skip interactive bump choice; only explicit prerelease advances an existing prerelease during a lineage freeze; --post-merge may finalize that prepared prerelease",
 		"  --base <ref>           Use commits since <ref> instead of last tag",
 		"  --no-tag               Skip git tag creation",
 		"  --tag                  Force git tag creation",

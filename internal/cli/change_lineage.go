@@ -265,10 +265,18 @@ func committedPredecessorGaps(rootPath string, target changeNode) []string {
 }
 
 func releaseLineagePreflight(rootPath string) error {
-	return releaseLineagePreflightWithOutput(rootPath, commandOutput)
+	return releaseLineagePreflightWithOutputAndOptions(rootPath, commandOutput, false)
 }
 
 func releaseLineagePreflightWithOutput(rootPath string, outputCommand changeGitOutput) error {
+	return releaseLineagePreflightWithOutputAndOptions(rootPath, outputCommand, false)
+}
+
+func releaseLineagePreflightWithOptions(rootPath string, allowPrerelease bool) error {
+	return releaseLineagePreflightWithOutputAndOptions(rootPath, commandOutput, allowPrerelease)
+}
+
+func releaseLineagePreflightWithOutputAndOptions(rootPath string, outputCommand changeGitOutput, allowPrerelease bool) error {
 	nodes, err := loadChangeNodesAtHEADWithOutput(rootPath, outputCommand)
 	if err != nil {
 		return fmt.Errorf("release blocked: cannot inspect committed Change graph at HEAD: %w", err)
@@ -334,14 +342,29 @@ func releaseLineagePreflightWithOutput(rootPath string, outputCommand changeGitO
 				}
 			}
 		}
-		if !found {
+		if !found && !allowPrerelease {
 			return fmt.Errorf("release blocked: lineage %q is present in HEAD ancestry but release-after terminal %q is unsatisfied", lineage, terminal)
 		}
-		if gaps := graph.gapsForLineage(lineage); len(gaps) != 0 {
+		gaps := graph.gapsForLineage(lineage)
+		if allowPrerelease {
+			unsatisfiedTerminalGap := fmt.Sprintf("release-after terminal %q is not materialized", terminal)
+			gaps = removeChangeGraphGap(gaps, unsatisfiedTerminalGap)
+		}
+		if len(gaps) != 0 {
 			return fmt.Errorf("release blocked: lineage %q is incomplete: %s", lineage, strings.Join(gaps, "; "))
 		}
 	}
 	return nil
+}
+
+func removeChangeGraphGap(gaps []string, ignored string) []string {
+	filtered := make([]string, 0, len(gaps))
+	for _, gap := range gaps {
+		if gap != ignored {
+			filtered = append(filtered, gap)
+		}
+	}
+	return filtered
 }
 
 func requireCompleteChangeHistory(rootPath string, outputCommand changeGitOutput) error {

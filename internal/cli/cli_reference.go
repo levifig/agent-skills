@@ -85,7 +85,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Description: "Create a new release with changelog, version bump, and tag",
 			Options: []cliReferenceOption{
 				{Flags: "--dry-run", Description: "Preview release without making changes"},
-				{Flags: "--bump <type>", Description: "Skip interactive bump choice (prerelease, release, major, minor, patch)"},
+				{Flags: "--bump <type>", Description: "Skip interactive bump choice (prerelease, release, major, minor, patch); only explicit prerelease advances an existing prerelease during a lineage freeze; --post-merge may finalize that prepared prerelease"},
 				{Flags: "--base <ref>", Description: "Use commits since <ref> instead of last tag (e.g. main)"},
 				{Flags: "--tag", Description: "Force git tag creation (overrides --pre-merge default)"},
 				{Flags: "--no-tag", Description: "Skip git tag creation"},

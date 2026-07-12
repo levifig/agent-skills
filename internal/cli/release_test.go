@@ -69,6 +69,95 @@ func TestReleaseLineagePreflightRunsBeforeEveryEntryModeAndIgnoresBaseForFreeze(
 	}
 }
 
+func TestRunnerReleasePrereleaseLineageBypassMatrix(t *testing.T) {
+	cases := []struct {
+		name       string
+		version    string
+		args       []string
+		wantBlock  bool
+		wantOutput string
+	}{
+		{name: "bare release", version: "1.0.0-alpha.5", args: []string{"release"}, wantBlock: true},
+		{name: "bare dry run", version: "1.0.0-alpha.5", args: []string{"release", "--dry-run"}, wantBlock: true},
+		{name: "release bump", version: "1.0.0-alpha.5", args: []string{"release", "--bump", "release"}, wantBlock: true},
+		{name: "major bump", version: "1.0.0-alpha.5", args: []string{"release", "--bump", "major"}, wantBlock: true},
+		{name: "minor bump", version: "1.0.0-alpha.5", args: []string{"release", "--bump", "minor"}, wantBlock: true},
+		{name: "patch bump", version: "1.0.0-alpha.5", args: []string{"release", "--bump", "patch"}, wantBlock: true},
+		{name: "stable prerelease request", version: "1.0.0", args: []string{"release", "--dry-run", "--bump", "prerelease"}, wantBlock: true},
+		{name: "prerelease dry run", version: "1.0.0-alpha.5", args: []string{"release", "--dry-run", "--bump", "prerelease"}, wantOutput: "No changes made."},
+		{name: "prerelease apply", version: "1.0.0-alpha.5", args: []string{"release", "--bump", "prerelease", "--yes", "--no-tag", "--no-gh"}, wantOutput: "Release v1.0.0-alpha.6 complete"},
+		{name: "prerelease pre-merge", version: "1.0.0-alpha.5", args: []string{"release", "--pre-merge", "--base", "v1.0.0", "--bump", "prerelease", "--yes", "--no-gh"}, wantOutput: "Release v1.0.0-alpha.6 complete"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := seedReleaseLineageFreezeRepo(t, tc.version)
+			var stdout bytes.Buffer
+			err := (Runner{Stdout: &stdout, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(tc.args)
+			if tc.wantBlock {
+				if err == nil || !strings.Contains(err.Error(), "release-after terminal \"terminal\" is unsatisfied") {
+					t.Fatalf("Run(%v) error = %v, want release-after freeze", tc.args, err)
+				}
+				return
+			}
+			output := stripANSI(stdout.String())
+			if err != nil || !strings.Contains(output, tc.wantOutput) {
+				t.Fatalf("Run(%v) error = %v stdout = %q, want %q", tc.args, err, output, tc.wantOutput)
+			}
+		})
+	}
+}
+
+func TestReleaseAllowsPrereleaseLineageBypassRequiresPrereleaseVersion(t *testing.T) {
+	cases := []struct {
+		name    string
+		version string
+		options releaseOptions
+		want    bool
+	}{
+		{name: "explicit prerelease", version: "1.0.0-alpha.5", options: releaseOptions{bump: "prerelease"}, want: true},
+		{name: "post merge prerelease", version: "1.0.0-alpha.5", options: releaseOptions{postMerge: true}, want: true},
+		{name: "explicit prerelease stable version", version: "1.0.0", options: releaseOptions{bump: "prerelease"}},
+		{name: "post merge stable version", version: "1.0.0", options: releaseOptions{postMerge: true}},
+		{name: "post merge with bump", version: "1.0.0-alpha.5", options: releaseOptions{postMerge: true, bump: "release"}},
+		{name: "bare prerelease version", version: "1.0.0-alpha.5", options: releaseOptions{}},
+		{name: "release bump prerelease version", version: "1.0.0-alpha.5", options: releaseOptions{bump: "release"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := seedReleaseLineageFreezeRepo(t, tc.version)
+			if got := releaseAllowsPrereleaseLineageBypass(repo, tc.options); got != tc.want {
+				t.Fatalf("releaseAllowsPrereleaseLineageBypass(%q, %#v) = %v, want %v", tc.version, tc.options, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestReleaseAllowsPrereleaseLineageBypassRequiresConsistentPrereleaseVersionFiles(t *testing.T) {
+	cases := []struct {
+		name           string
+		packageVersion string
+		backendVersion string
+		want           bool
+	}{
+		{name: "matching prereleases", packageVersion: "1.0.0-alpha.5", backendVersion: "1.0.0-alpha.5", want: true},
+		{name: "prerelease and stable", packageVersion: "1.0.0-alpha.5", backendVersion: "1.0.0", want: false},
+		{name: "mismatched prereleases", packageVersion: "1.0.0-alpha.5", backendVersion: "1.0.0-alpha.6", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := seedReleaseLineageFreezeRepo(t, tc.packageVersion)
+			mkdirAll(t, filepath.Join(repo, ".agents"))
+			mkdirAll(t, filepath.Join(repo, "backend"))
+			writeFile(t, filepath.Join(repo, ".agents", "loaf.json"), "{\n  \"release\": {\n    \"versionFiles\": [\"package.json\", \"backend/pyproject.toml\"]\n  }\n}\n")
+			writeFile(t, filepath.Join(repo, "backend", "pyproject.toml"), fmt.Sprintf("[project]\nname = \"backend\"\nversion = %q\n", tc.backendVersion))
+			options := releaseOptions{bump: "prerelease"}
+			if got := releaseAllowsPrereleaseLineageBypass(repo, options); got != tc.want {
+				t.Fatalf("releaseAllowsPrereleaseLineageBypass() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestReleaseLineagePreflightRejectsStructurallyInvalidCommittedAncestor(t *testing.T) {
 	repo := initCLIGitRepo(t)
 	invalidRoot := changeDoc(lineageFrontmatter("root", "2026-07-10", "root", "line", "", "terminal"), productSections()...)
@@ -1104,6 +1193,27 @@ func seedReleaseDryRunRepo(t *testing.T, commitSubject string) string {
 	writeFile(t, filepath.Join(repo, "feature.txt"), commitSubject+"\n")
 	gitCLI(t, repo, "add", "feature.txt")
 	gitCLI(t, repo, "commit", "-m", commitSubject)
+	return repo
+}
+
+func seedReleaseLineageFreezeRepo(t *testing.T, version string) string {
+	t.Helper()
+	repo := seedReleaseDryRunRepo(t, "feat: exercise prerelease lineage release")
+	packagePath := filepath.Join(repo, "package.json")
+	body, err := os.ReadFile(packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := []byte(strings.Replace(string(body), `"version": "1.0.0"`, fmt.Sprintf(`"version": %q`, version), 1))
+	if !bytes.Equal(body, updated) {
+		if err := os.WriteFile(packagePath, updated, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gitCLI(t, repo, "add", "package.json")
+		gitCLI(t, repo, "commit", "-m", "chore: set release version")
+	}
+	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
+	commitAllChangeTest(t, repo, "docs: add frozen release lineage")
 	return repo
 }
 
