@@ -35,7 +35,7 @@ func TestInstallFencedSectionCreatesAppendsUpdatesAndSkips(t *testing.T) {
 		t.Fatalf("create result = %#v, want created with version", result)
 	}
 	body := string(readFileBytes(t, target))
-	if !strings.Contains(body, "<!-- loaf:managed:start v1.2.3-test.1 -->") || !strings.Contains(body, "## Loaf Framework") {
+	if !strings.Contains(body, "<!-- loaf:managed:start v1.2.3-test.1 sha256=") || !strings.Contains(body, "## Loaf Framework") {
 		t.Fatalf("created fenced body = %q, want managed section", body)
 	}
 
@@ -49,7 +49,7 @@ func TestInstallFencedSectionCreatesAppendsUpdatesAndSkips(t *testing.T) {
 		t.Fatalf("append result = %#v, want appended", result)
 	}
 	body = string(readFileBytes(t, plain))
-	if !strings.HasPrefix(body, "# Project Notes\n\n<!-- loaf:managed:start v1.2.3-test.1 -->") {
+	if !strings.HasPrefix(body, "# Project Notes\n\n<!-- loaf:managed:start v1.2.3-test.1 sha256=") {
 		t.Fatalf("appended body = %q, want notes before fenced section", body)
 	}
 
@@ -61,7 +61,7 @@ func TestInstallFencedSectionCreatesAppendsUpdatesAndSkips(t *testing.T) {
 		t.Fatalf("update result = %#v, want updated", result)
 	}
 	body = string(readFileBytes(t, plain))
-	if !strings.Contains(body, "<!-- loaf:managed:start v1.2.4-test.1 -->") || strings.Contains(body, "v1.2.3-test.1") {
+	if !strings.Contains(body, "<!-- loaf:managed:start v1.2.4-test.1 sha256=") || strings.Contains(body, "v1.2.3-test.1") {
 		t.Fatalf("updated body = %q, want new version only", body)
 	}
 
@@ -71,6 +71,56 @@ func TestInstallFencedSectionCreatesAppendsUpdatesAndSkips(t *testing.T) {
 	}
 	if result.Action != "skipped" {
 		t.Fatalf("skip result = %#v, want skipped", result)
+	}
+}
+
+func TestInstallFencedSectionMigratesLegacyAndProtectsFingerprintedBody(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	target := filepath.Join(root, "AGENTS.md")
+	legacy := "# Before\n\n<!-- loaf:managed:start v1.2.3 -->\nold managed content\n<!-- loaf:managed:end -->\n\n# After\n"
+	writeInstallFile(t, target, legacy)
+	result, err := installFencedSection(target, "1.2.3", true)
+	if err != nil || result.Action != "updated" {
+		t.Fatalf("legacy migration = %#v, %v, want updated", result, err)
+	}
+	body := string(readFileBytes(t, target))
+	if !strings.HasPrefix(body, "# Before\n\n") || !strings.HasSuffix(body, "\n\n# After\n") || !strings.Contains(body, "sha256=") {
+		t.Fatalf("legacy migration did not preserve prose or add fingerprint: %q", body)
+	}
+
+	section, ok := findFencedSectionRange(body)
+	if !ok {
+		t.Fatal("missing fenced section")
+	}
+	tampered := body[:section.bodyStart] + "tampered\n" + body[section.bodyStart:]
+	writeInstallFile(t, target, tampered)
+	if _, err := installFencedSection(target, "1.2.3", true); err == nil || !strings.Contains(err.Error(), "was modified") {
+		t.Fatalf("tampered fingerprinted body error = %v, want conflict", err)
+	}
+}
+
+func TestInstallFencedSectionUpdatesSameVersionWhenOwnedBodyDiffers(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "AGENTS.md")
+	oldBody := fencedWarning + "\nold content\n" + fencedEndMarker
+	writeInstallFile(t, target, "<!-- loaf:managed:start v1.2.3 sha256="+sha256Hex(oldBody)+" -->\n"+oldBody+"\n")
+	result, err := installFencedSection(target, "1.2.3", true)
+	if err != nil || result.Action != "updated" {
+		t.Fatalf("same-version owned update = %#v, %v, want updated", result, err)
+	}
+	if strings.Contains(string(readFileBytes(t, target)), "old content") {
+		t.Fatal("same-version owned body was not replaced")
+	}
+}
+
+func TestInstallFencedSectionRejectsMalformedFingerprint(t *testing.T) {
+	for _, token := range []string{"sha256", "sha256=bad", "sha256=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "sha256=" + strings.Repeat("a", 64) + " sha256=" + strings.Repeat("a", 64), "sha256x=" + strings.Repeat("a", 64)} {
+		t.Run(token[:6], func(t *testing.T) {
+			target := filepath.Join(t.TempDir(), "AGENTS.md")
+			writeInstallFile(t, target, "<!-- loaf:managed:start v1.2.3 "+token+" -->\nbody\n<!-- loaf:managed:end -->\n")
+			if _, err := installFencedSection(target, "1.2.3", true); err == nil || !strings.Contains(err.Error(), "malformed fingerprint") {
+				t.Fatalf("malformed token %q error = %v, want conflict", token, err)
+			}
+		})
 	}
 }
 
@@ -112,6 +162,77 @@ func TestInstallFencedSectionsForTargetsDedupesSymlinkedClaudeFile(t *testing.T)
 	body := string(readFileBytes(t, canonical))
 	if count := strings.Count(body, "<!-- loaf:managed:start"); count != 1 {
 		t.Fatalf("canonical fenced count = %d, want 1\n%s", count, body)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("CLAUDE.md link = %v, %v, want preserved symlink", info, err)
+	}
+}
+
+func TestInstallFencedSectionRejectsInvalidStructure(t *testing.T) {
+	for _, content := range []string{"<!-- loaf:managed:start v1 -->\n", "<!-- loaf:managed:end -->\n", "<!-- loaf:managed:start v1 -->\n<!-- loaf:managed:end -->\n<!-- loaf:managed:start v1 -->\n<!-- loaf:managed:end -->"} {
+		target := filepath.Join(t.TempDir(), "AGENTS.md")
+		writeInstallFile(t, target, content)
+		if _, err := installFencedSection(target, "1.2.3", true); err == nil || !strings.Contains(err.Error(), "invalid fence structure") {
+			t.Fatalf("structure %q error = %v", content, err)
+		}
+	}
+}
+
+func TestInstallFencedSectionPreservesExistingPermissions(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "AGENTS.md")
+	writeInstallFile(t, target, "notes\n")
+	if err := os.Chmod(target, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installFencedSection(target, "1.2.3", true); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(target); err != nil {
+		t.Fatalf("stat direct target: %v", err)
+	} else if info.Mode().Perm() != 0o600 {
+		t.Fatalf("direct mode = %v, want 0600", info.Mode())
+	}
+	link := filepath.Join(root, "CLAUDE.md")
+	if err := os.Symlink("AGENTS.md", link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installFencedSection(link, "1.2.4", true); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(target); err != nil {
+		t.Fatalf("stat symlink target: %v", err)
+	} else if info.Mode().Perm() != 0o600 {
+		t.Fatalf("symlink target mode = %v, want 0600", info.Mode())
+	}
+}
+
+func TestInstallFencedSectionRetriesPrereleaseContainingSHA256(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "AGENTS.md")
+	version := "1.2.3-sha256.preview"
+	if result, err := installFencedSection(target, version, true); err != nil || result.Action != "created" {
+		t.Fatalf("create = %#v, %v", result, err)
+	}
+	if result, err := installFencedSection(target, version, true); err != nil || result.Action != "skipped" {
+		t.Fatalf("retry = %#v, %v, want skipped", result, err)
+	}
+}
+
+func TestInstallFencedSectionRejectsUnterminatedHeader(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "AGENTS.md")
+	writeInstallFile(t, target, "<!-- loaf:managed:start v1\nbody\n<!-- loaf:managed:end -->")
+	if _, err := installFencedSection(target, "1.2.3", true); err == nil {
+		t.Fatal("unterminated header accepted")
+	}
+}
+
+func TestInstallFencedSectionRejectsInvalidStartHeaderFields(t *testing.T) {
+	for _, header := range []string{"vsha256=bad", "v1 v2", "v1 extra", "sha256=" + strings.Repeat("a", 64), "v1\n<!-- unrelated -->"} {
+		target := filepath.Join(t.TempDir(), "AGENTS.md")
+		writeInstallFile(t, target, "<!-- loaf:managed:start "+header+" -->\nbody\n<!-- loaf:managed:end -->")
+		if _, err := installFencedSection(target, "1.2.3", true); err == nil {
+			t.Fatalf("header %q accepted", header)
+		}
 	}
 }
 

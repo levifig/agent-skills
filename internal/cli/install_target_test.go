@@ -62,6 +62,295 @@ func TestInstallTargetOpencodeSyncsBuiltOutputAndMarker(t *testing.T) {
 	assertInstallFile(t, filepath.Join(config, loafInstallMarkerFile), "9.8.7-test.1\n")
 }
 
+func TestSyncManagedSkillsMigratesV1AndRefusesV2Tampering(t *testing.T) {
+	root := t.TempDir()
+	src, dest := filepath.Join(root, "src"), filepath.Join(root, "dest")
+	writeInstallFile(t, filepath.Join(src, "foundations", "SKILL.md"), "new\n")
+	writeInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "old\n")
+	writeInstallFile(t, filepath.Join(dest, loafSkillManifestFile), `{"version":1,"skills":["foundations"]}`)
+	if err := syncManagedSkillsDirIfExists(src, dest); err != nil {
+		t.Fatalf("v1 migration error = %v", err)
+	}
+	assertInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "new\n")
+	manifest := string(readFileBytes(t, filepath.Join(dest, loafSkillManifestFile)))
+	if !strings.Contains(manifest, `"version": 2`) || !strings.Contains(manifest, `"sha256"`) {
+		t.Fatalf("manifest = %q, want v2 digest", manifest)
+	}
+	writeInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "tampered\n")
+	if err := syncManagedSkillsDirIfExists(src, dest); err == nil || !strings.Contains(err.Error(), "was modified") {
+		t.Fatalf("tampered overwrite error = %v, want conflict", err)
+	}
+	if err := os.RemoveAll(filepath.Join(src, "foundations")); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncManagedSkillsDirIfExists(src, dest); err == nil || !strings.Contains(err.Error(), "was modified") {
+		t.Fatalf("tampered removal error = %v, want conflict", err)
+	}
+}
+
+func TestSyncManagedSkillsPreservesForeignAndRejectsInvalidManifests(t *testing.T) {
+	root := t.TempDir()
+	src, dest := filepath.Join(root, "src"), filepath.Join(root, "dest")
+	writeInstallFile(t, filepath.Join(src, "foundations", "SKILL.md"), "new\n")
+	writeInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "foreign\n")
+	if err := syncManagedSkillsDirIfExists(src, dest); err == nil || !strings.Contains(err.Error(), "not managed") {
+		t.Fatalf("foreign collision error = %v, want conflict", err)
+	}
+	for _, body := range []string{
+		`{"version":2,"skills":[{"name":"../escape","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`,
+		`{"version":2,"skills":[{"name":"a","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"name":"a","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`,
+		`{"version":3,"skills":[]}`,
+	} {
+		writeInstallFile(t, filepath.Join(dest, loafSkillManifestFile), body)
+		if _, err := readManagedSkillsState(dest); err == nil {
+			t.Fatalf("manifest %s accepted, want rejection", body)
+		}
+	}
+}
+
+func TestHashInstallSkillTreeIsDeterministic(t *testing.T) {
+	root := t.TempDir()
+	writeInstallFile(t, filepath.Join(root, "b", "two.txt"), "two")
+	writeInstallFile(t, filepath.Join(root, "a", "one.txt"), "one")
+	first, err := hashInstallSkillTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := hashInstallSkillTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second || len(first) != 64 {
+		t.Fatalf("digests = %q, %q, want equal SHA-256", first, second)
+	}
+}
+
+func TestHashInstallSkillTreeFramesPathsContentAndPermissions(t *testing.T) {
+	makeTree := func(root, path, content string, mode os.FileMode) string {
+		writeInstallFile(t, filepath.Join(root, path), content)
+		if err := os.Chmod(filepath.Join(root, path), mode); err != nil {
+			t.Fatal(err)
+		}
+		digest, err := hashInstallSkillTree(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return digest
+	}
+	firstRoot := filepath.Join(t.TempDir(), "one")
+	writeInstallFile(t, filepath.Join(firstRoot, "nested", "alpha.md"), "alpha")
+	writeInstallFile(t, filepath.Join(firstRoot, "newline\nbackslash\\name.md"), "adversarial")
+	writeInstallFile(t, filepath.Join(firstRoot, "zeta.md"), "zeta")
+	first, err := hashInstallSkillTree(firstRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondRoot := filepath.Join(t.TempDir(), "two")
+	writeInstallFile(t, filepath.Join(secondRoot, "zeta.md"), "zeta")
+	writeInstallFile(t, filepath.Join(secondRoot, "newline\nbackslash\\name.md"), "adversarial")
+	writeInstallFile(t, filepath.Join(secondRoot, "nested", "alpha.md"), "alpha")
+	second, err := hashInstallSkillTree(secondRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("creation order independent digests = %q, %q", first, second)
+	}
+	baseline := makeTree(filepath.Join(t.TempDir(), "baseline"), "nested/SKILL.md", "same", 0o644)
+	if baseline == makeTree(filepath.Join(t.TempDir(), "path"), "other/SKILL.md", "same", 0o644) {
+		t.Fatal("path change did not change digest")
+	}
+	if baseline == makeTree(filepath.Join(t.TempDir(), "content"), "nested/SKILL.md", "other", 0o644) {
+		t.Fatal("content change did not change digest")
+	}
+	if baseline == makeTree(filepath.Join(t.TempDir(), "mode"), "nested/SKILL.md", "same", 0o755) {
+		t.Fatal("executable-bit change did not change digest")
+	}
+	rootMode := t.TempDir()
+	writeInstallFile(t, filepath.Join(rootMode, "nested", "SKILL.md"), "same")
+	firstRootMode, _ := hashInstallSkillTree(rootMode)
+	if err := os.Chmod(rootMode, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	secondRootMode, _ := hashInstallSkillTree(rootMode)
+	if firstRootMode == secondRootMode {
+		t.Fatal("root mode change did not change digest")
+	}
+	if err := os.Chmod(filepath.Join(rootMode, "nested"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	nestedMode, _ := hashInstallSkillTree(rootMode)
+	if secondRootMode == nestedMode {
+		t.Fatal("nested directory mode change did not change digest")
+	}
+}
+
+func TestCopyInstallSkillTreePreservesRootAndDirectoryPermissions(t *testing.T) {
+	root := t.TempDir()
+	source, destination := filepath.Join(root, "source"), filepath.Join(root, "destination")
+	writeInstallFile(t, filepath.Join(source, "nested", "SKILL.md"), "skill\n")
+	if err := os.Chmod(source, 0o711); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(source, "nested"), 0o751); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyInstallSkillTree(source, destination); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"", "nested"} {
+		sourceInfo, err := os.Stat(filepath.Join(source, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		destinationInfo, err := os.Stat(filepath.Join(destination, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sourceInfo.Mode().Perm() != destinationInfo.Mode().Perm() {
+			t.Fatalf("mode %q = %o, want %o", path, destinationInfo.Mode().Perm(), sourceInfo.Mode().Perm())
+		}
+	}
+	sourceHash, err := hashInstallSkillTree(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destinationHash, err := hashInstallSkillTree(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sourceHash != destinationHash {
+		t.Fatalf("copied tree hashes = %q, %q", sourceHash, destinationHash)
+	}
+}
+
+func TestManagedSkillsManifestRejectsUnsafeAndStrictV2Shapes(t *testing.T) {
+	dest := t.TempDir()
+	manifest := filepath.Join(dest, loafSkillManifestFile)
+	writeInstallFile(t, manifest+".target", `{"version":2,"skills":[]}`)
+	if err := os.Symlink(manifest+".target", manifest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readManagedSkillsState(dest); err == nil {
+		t.Fatal("symlink manifest accepted")
+	}
+	if err := writeManagedSkillsManifest(dest, managedSkillsManifestV2{Version: 2}); err == nil {
+		t.Fatal("symlink manifest accepted for write")
+	}
+	if err := os.Remove(manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(manifest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readManagedSkillsState(dest); err == nil {
+		t.Fatal("directory manifest accepted")
+	}
+	if err := os.Remove(manifest); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{
+		`{"version":2,"skills":null}`,
+		`{"version":2,"skills":[{"name":"a","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","extra":true}]}`,
+		`{"version":2,"skills":[{"name":"a"}]}`,
+		`{"version":2,"skills":[{"name":"a","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]} {}`,
+		`{"version":2,"version":2,"skills":[]}`,
+		`{"version":2,"skills":[],"skills":[]}`,
+		`{"version":2,"skills":[{"name":"a","name":"a","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`,
+	} {
+		writeInstallFile(t, manifest, body)
+		if _, err := readManagedSkillsState(dest); err == nil {
+			t.Fatalf("accepted invalid manifest %s", body)
+		}
+	}
+}
+
+func TestListInstallSkillDirsRejectsInvalidSourceName(t *testing.T) {
+	src := t.TempDir()
+	mkdirAll(t, filepath.Join(src, "Invalid_Name"))
+	if _, err := listInstallSkillDirs(src); err == nil {
+		t.Fatal("invalid source skill name accepted")
+	}
+}
+
+func TestSyncManagedSkillsRecoversMissingAndInterruptedPublication(t *testing.T) {
+	root := t.TempDir()
+	src, dest := filepath.Join(root, "src"), filepath.Join(root, "dest")
+	writeInstallFile(t, filepath.Join(src, "foundations", "SKILL.md"), "current\n")
+	oldRoot := filepath.Join(root, "old")
+	writeInstallFile(t, filepath.Join(oldRoot, "SKILL.md"), "old\n")
+	oldDigest, err := hashInstallSkillTree(oldRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeInstallFile(t, filepath.Join(dest, loafSkillManifestFile), `{"version":2,"skills":[{"name":"foundations","sha256":"`+oldDigest+`"},{"name":"stale","sha256":"`+oldDigest+`"}]}`)
+	// The desired tree was published before a crash, but its old manifest survived.
+	writeInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "current\n")
+	if err := syncManagedSkillsDirIfExists(src, dest); err != nil {
+		t.Fatalf("interrupted publish retry error = %v", err)
+	}
+	assertInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "current\n")
+	if _, err := os.Stat(filepath.Join(dest, "stale")); !os.IsNotExist(err) {
+		t.Fatalf("missing stale skill stat = %v, want no-op", err)
+	}
+	if err := os.RemoveAll(filepath.Join(dest, "foundations")); err != nil {
+		t.Fatal(err)
+	}
+	writeInstallFile(t, filepath.Join(dest, "foundations.loaf-backup", "user.txt"), "preserve\n")
+	if err := syncManagedSkillsDirIfExists(src, dest); err != nil {
+		t.Fatalf("missing desired skill recreate error = %v", err)
+	}
+	assertInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "current\n")
+	assertInstallFile(t, filepath.Join(dest, "foundations.loaf-backup", "user.txt"), "preserve\n")
+}
+
+func TestHashInstallSkillTreeRejectsSymlinks(t *testing.T) {
+	root := t.TempDir()
+	writeInstallFile(t, filepath.Join(root, "SKILL.md"), "skill\n")
+	if err := os.Symlink("SKILL.md", filepath.Join(root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hashInstallSkillTree(root); err == nil {
+		t.Fatal("symlink accepted")
+	}
+}
+
+func TestPublishStagedSkillRestoresExistingDestinationAfterPublishFailure(t *testing.T) {
+	root := t.TempDir()
+	dest := filepath.Join(root, "dest-skill")
+	backup := filepath.Join(root, "stage", ".backups", "dest-skill")
+	writeInstallFile(t, filepath.Join(dest, "SKILL.md"), "existing\n")
+	retain, err := publishStagedSkill(filepath.Join(root, "missing-stage"), dest, backup, "", "", true, true)
+	if err == nil || retain {
+		t.Fatalf("publish missing staged path = retain %v, error %v, want restored error without retention", retain, err)
+	}
+	assertInstallFile(t, filepath.Join(dest, "SKILL.md"), "existing\n")
+	if _, err := os.Stat(backup); !os.IsNotExist(err) {
+		t.Fatalf("backup stat = %v, want restored destination and no backup", err)
+	}
+}
+
+func TestManagedSkillPublicationAndRetirementRestorePostPreflightMismatch(t *testing.T) {
+	root := t.TempDir()
+	expected := filepath.Join(root, "expected")
+	writeInstallFile(t, filepath.Join(expected, "SKILL.md"), "old\n")
+	recorded, err := hashInstallSkillTree(expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest, staged, backup := filepath.Join(root, "dest"), filepath.Join(root, "staged"), filepath.Join(root, "backup")
+	writeInstallFile(t, filepath.Join(dest, "SKILL.md"), "changed-after-preflight\n")
+	writeInstallFile(t, filepath.Join(staged, "SKILL.md"), "desired\n")
+	if _, err := publishStagedSkill(staged, dest, backup, recorded, "desired", false, true); err == nil {
+		t.Fatal("post-preflight publish mismatch accepted")
+	}
+	assertInstallFile(t, filepath.Join(dest, "SKILL.md"), "changed-after-preflight\n")
+	if _, err := retireManagedSkill(dest, backup+"-retire", recorded, false); err == nil {
+		t.Fatal("post-preflight retirement mismatch accepted")
+	}
+	assertInstallFile(t, filepath.Join(dest, "SKILL.md"), "changed-after-preflight\n")
+}
+
 func TestInstallTargetCursorMergesHooksAndRemovesObsoleteHooksOnUpgrade(t *testing.T) {
 	root := realpath(t, t.TempDir())
 	home := filepath.Join(root, "home")
