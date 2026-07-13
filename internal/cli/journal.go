@@ -113,6 +113,9 @@ func writeJournalContextHelp(out io.Writer) {
 		"--limit           Maximum 1..100 items for the selected layer (requires --layer)",
 		"--cursor          Continue the selected layer (requires --layer)",
 		"--from-hook       Read the harness hook payload on stdin and exit silently for subagent invocations",
+		"--cursor-hook     Read Cursor sessionStart JSON and emit its additional_context envelope",
+		"--claude-code     Read Claude Code SessionStart JSON and emit its native hook envelope",
+		"--codex-hook      Read Codex SessionStart JSON and emit its native hook envelope",
 		"--json            Output contract-v2 project metadata, layers, and diagnostics as JSON",
 		"",
 		"Hook subcommands (read stdin, exit silently for subagents):",
@@ -138,6 +141,9 @@ type journalLogOptions struct {
 	fromHook            bool
 	detectLinear        bool
 	execpolicySafe      bool
+	hookWarning         *journalHookWarning
+	hookSuppressed      bool
+	origin              *state.JournalOriginInput
 }
 
 const journalExecpolicySafeCode = "journal-execpolicy-safe"
@@ -269,12 +275,35 @@ func (r Runner) runJournalLog(args []string, out io.Writer, runtime state.Runtim
 	if options.fromHook || options.detectLinear {
 		proceed, herr := r.journalLogFromHook(&options, projectRoot, worktree)
 		if herr != nil {
+			if options.execpolicySafe && options.fromHook {
+				if identityErr := r.validateSafeHookProject(projectRoot); identityErr != nil {
+					if options.jsonOutput {
+						return writeJSONCommandError(out, "journal log", identityErr)
+					}
+					return identityErr
+				}
+			}
+			if options.fromHook && !options.execpolicySafe {
+				warning := journalHookWarning{ContractVersion: state.StateJSONContractVersion, EnvelopeVersion: journalHookEnvelopeVersion, Kind: "journal-diagnostic", Severity: "warning", Code: journalHookDiagnosticInvalidEnvelope, Message: herr.Error(), NonBlocking: true}
+				return writeJournalHookWarning(out, &warning)
+			}
 			if options.jsonOutput {
 				return writeJSONCommandError(out, "journal log", herr)
 			}
 			return herr
 		}
 		if !proceed {
+			if options.execpolicySafe && options.fromHook && !options.hookSuppressed {
+				if identityErr := r.validateSafeHookProject(projectRoot); identityErr != nil {
+					if options.jsonOutput {
+						return writeJSONCommandError(out, "journal log", identityErr)
+					}
+					return identityErr
+				}
+			}
+			if options.hookWarning != nil {
+				return writeJournalHookWarning(out, options.hookWarning)
+			}
 			return nil
 		}
 	}
@@ -287,6 +316,15 @@ func (r Runner) runJournalLog(args []string, out io.Writer, runtime state.Runtim
 		mechanism = "journal.log.execpolicy-safe"
 	}
 	origin := ResolveManualJournalOrigin(worktree, mechanism)
+	if options.origin != nil {
+		origin = *options.origin
+		if origin.Branch == "" {
+			origin.Branch = branch
+		}
+		if origin.Worktree == "" {
+			origin.Worktree = worktree
+		}
+	}
 	result, err := state.LogJournal(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.JournalLogOptions{
 		Entry:            options.entry,
 		ObservedBranch:   branch,
@@ -320,6 +358,18 @@ func (r Runner) runJournalLog(args []string, out io.Writer, runtime state.Runtim
 		// The hardened execpolicy-safe mode is intentionally different: it requires
 		// the registered project identity and keeps missing-state failures visible.
 		if !options.execpolicySafe && (options.fromHook || options.detectLinear) && isStateMissingError(err) {
+			if options.fromHook {
+				warning := journalHookWarning{
+					ContractVersion: state.StateJSONContractVersion,
+					EnvelopeVersion: journalHookEnvelopeVersion,
+					Kind:            "journal-diagnostic",
+					Severity:        "warning",
+					Code:            journalHookDiagnosticMissingState,
+					Message:         "journal state is not initialized; automatic hook capture was skipped",
+					NonBlocking:     true,
+				}
+				return writeJournalHookWarning(out, &warning)
+			}
 			return nil
 		}
 		if options.jsonOutput {
@@ -344,6 +394,26 @@ func (r Runner) runJournalLog(args []string, out io.Writer, runtime state.Runtim
 		fmt.Fprintf(out, "  harness session: %s\n", result.HarnessSessionID)
 	}
 	return nil
+}
+
+func (r Runner) validateSafeHookProject(root project.Root) error {
+	databasePath, err := (state.PathResolver{StateHome: r.StateHome}).DatabasePath(root)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(databasePath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("SQLite state database is not initialized; run `loaf state init` or `loaf state migrate markdown --apply` first")
+		}
+		return fmt.Errorf("inspect state database: %w", err)
+	}
+	store, err := state.OpenStoreReadOnly(databasePath)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	_, err = store.ProjectIdentityForRoot(context.Background(), root)
+	return err
 }
 
 type journalRecentOptions struct {
@@ -781,6 +851,9 @@ type journalContextCLIOptions struct {
 	cursor     string
 	jsonOutput bool
 	fromHook   bool
+	claudeCode bool
+	cursorHook bool
+	codexHook  bool
 }
 
 type journalContextLayersJSON struct {
@@ -816,6 +889,12 @@ func parseJournalContextArgs(args []string) (journalContextCLIOptions, error) {
 			options.jsonOutput = true
 		case "--from-hook":
 			options.fromHook = true
+		case "--claude-code":
+			options.claudeCode = true
+		case "--cursor-hook":
+			options.cursorHook = true
+		case "--codex-hook":
+			options.codexHook = true
 		case "--branch", "--layer", "--limit", "--cursor":
 			flag := args[i]
 			value, err := consumeFlagValue(args, &i, flag)
@@ -852,6 +931,30 @@ func parseJournalContextArgs(args []string) (journalContextCLIOptions, error) {
 	if (options.layer == journalContextLayerProjectSynthesis || options.layer == journalContextLayerScopedCheckpoint) && options.cursor != "" {
 		return journalContextCLIOptions{}, fmt.Errorf("--cursor is not supported for intrinsic one-item layer %s", options.layer)
 	}
+	if options.claudeCode && !options.fromHook {
+		return journalContextCLIOptions{}, errors.New("--claude-code requires --from-hook")
+	}
+	if options.cursorHook && !options.fromHook {
+		return journalContextCLIOptions{}, errors.New("--cursor-hook requires --from-hook")
+	}
+	if options.codexHook && !options.fromHook {
+		return journalContextCLIOptions{}, errors.New("--codex-hook requires --from-hook")
+	}
+	if options.claudeCode {
+		if options.cursorHook || options.branchSet || options.layer != "" || options.limitSet || options.cursor != "" || options.jsonOutput {
+			return journalContextCLIOptions{}, errors.New("--claude-code cannot combine selectors or output overrides; it always emits the complete native SessionStart digest")
+		}
+	}
+	if options.cursorHook {
+		if options.claudeCode || options.codexHook || options.branchSet || options.layer != "" || options.limitSet || options.cursor != "" || options.jsonOutput {
+			return journalContextCLIOptions{}, errors.New("--cursor-hook cannot combine selectors or output overrides; it always emits the complete native sessionStart digest")
+		}
+	}
+	if options.codexHook {
+		if options.claudeCode || options.cursorHook || options.branchSet || options.layer != "" || options.limitSet || options.cursor != "" || options.jsonOutput {
+			return journalContextCLIOptions{}, errors.New("--codex-hook cannot combine selectors or output overrides; it always emits the complete native SessionStart digest")
+		}
+	}
 	return options, nil
 }
 
@@ -870,6 +973,13 @@ func journalContextContains(values []string, wanted string) bool {
 // never fail the harness, so it emits a single non-blocking diagnostic line and
 // exits 0. Non-hook (interactive) invocations keep the current error behavior.
 func (r Runner) runJournalContextDigest(args []string, out io.Writer, runtime state.Runtime, hookInvocation bool) error {
+	return r.runJournalContextDigestWithHookInput(args, out, runtime, hookInvocation, nil)
+}
+
+func (r Runner) runJournalContextDigestWithHookInput(args []string, out io.Writer, runtime state.Runtime, hookInvocation bool, hookInput *journalHookInput) error {
+	if (hasFlag(args, "--claude-code") || hasFlag(args, "--cursor-hook") || hasFlag(args, "--codex-hook")) && len(args) > 0 && strings.HasPrefix(args[0], "for-") {
+		return errors.New("target-specific hook adapters cannot combine generic journal context selectors")
+	}
 	// Hook subcommands: SessionStart/PostCompact emit the layered digest, while
 	// UserPromptSubmit and PreCompact inject guidance text. All preserve the
 	// subagent silent-exit guard.
@@ -891,21 +1001,27 @@ func (r Runner) runJournalContextDigest(args []string, out io.Writer, runtime st
 		}
 		return err
 	}
-	// SessionStart/PostCompact pass --from-hook so the digest can guard against
-	// subagent invocations: read the hook payload and exit silently (writing
-	// nothing) when an agent_id is present.
+	if options.claudeCode {
+		return r.runClaudeSessionStartContext(out, runtime, options)
+	}
+	if options.cursorHook {
+		return r.runCursorSessionStartContext(out, runtime, options)
+	}
+	if options.codexHook {
+		return r.runCodexSessionStartContext(out, runtime, options)
+	}
+	// SessionStart/PostCompact pass --from-hook. The common evaluator owns
+	// normalization and suppression after this operation reads the payload.
 	if options.fromHook {
 		hookInvocation = true
-		hookInput, err := r.readJournalHookInput()
-		if err != nil {
+		input, readErr := r.readJournalHookInput()
+		if readErr != nil {
 			if jsonRequested {
-				return writeJSONCommandError(out, "journal context", err)
+				return writeJSONCommandError(out, "journal context", readErr)
 			}
-			return err
+			return readErr
 		}
-		if hookInput.AgentID != "" {
-			return nil
-		}
+		hookInput = &input
 	}
 	projectRoot, err := project.ResolveRoot(runtime.RootPath())
 	if err != nil {
@@ -914,74 +1030,29 @@ func (r Runner) runJournalContextDigest(args []string, out io.Writer, runtime st
 		}
 		return err
 	}
-	changeSource, changeSourceErr := discoverActiveChanges(projectRoot.Path())
-	if !options.branchSet {
-		if changeSourceErr == nil {
-			options.branch = changeSource.Branch
-		} else {
-			options.branch = state.ObservedGitBranch(runtime.RootPath())
-		}
-	}
-	stateOptions := state.JournalContextOptions{Branch: options.branch}
-	if changeSourceErr == nil {
-		stateOptions.LineageKeys = changeSource.LineageKeys
-	}
-	if options.layer != "" && options.limitSet {
-		setJournalContextStateLimit(&stateOptions, options.layer, options.limit)
-	}
-	if options.cursor != "" && options.layer != journalContextLayerActiveChanges {
-		stateOptions.Cursor = options.cursor
-		stateOptions.CursorLayer = journalContextStateLayer(options.layer)
-	}
-	result, err := state.JournalContextForRoot(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.JournalContextOptions{
-		Branch: stateOptions.Branch, LineageKeys: stateOptions.LineageKeys, LineageLimit: stateOptions.LineageLimit,
-		BlockerLimit: stateOptions.BlockerLimit, DeferralLimit: stateOptions.DeferralLimit, BranchLimit: stateOptions.BranchLimit,
-		TaskLimit: stateOptions.TaskLimit, Cursor: stateOptions.Cursor, CursorLayer: stateOptions.CursorLayer,
-	})
+	hookContext, err := r.evaluateJournalHookContext(context.Background(), runtime, projectRoot, options, hookInput, hookInvocation)
 	if err != nil {
-		// On hook paths (SessionStart/PostCompact) a fresh install with no state
-		// database yet must never fail the harness: emit one non-blocking
-		// diagnostic line and exit 0. Interactive invocations keep erroring.
-		if hookInvocation && isStateMissingError(err) {
-			if !options.jsonOutput {
-				fmt.Fprintln(out, "  loaf journal context: no journal yet (run `loaf state init` to start recording)")
-			}
-			return nil
-		}
 		if options.jsonOutput {
 			return writeJSONCommandError(out, "journal context", err)
 		}
 		return r.withStateMissingContext(err, projectRoot)
 	}
-	activeLayer := unavailableActiveChanges()
-	if changeSourceErr == nil {
-		activeLimit := defaultCLIJournalContextLimit
-		if options.layer == journalContextLayerActiveChanges && options.limitSet {
-			activeLimit = options.limit
+	switch hookContext.disposition {
+	case journalHookContextSuppressed:
+		return nil
+	case journalHookContextWarning:
+		if !options.jsonOutput && hookContext.warning != nil {
+			fmt.Fprintln(out, "  loaf journal context: no journal yet (run `loaf state init` to start recording)")
 		}
-		activeLayer, err = activeChangesPage(changeSource, result.ProjectID, options.branch, activeLimit, func() string {
-			if options.layer == journalContextLayerActiveChanges {
-				return options.cursor
-			}
-			return ""
-		}())
-		if err != nil {
-			if options.jsonOutput {
-				return writeJSONCommandError(out, "journal context", err)
-			}
-			return err
+		return nil
+	case journalHookContextModelAvailable:
+		if hookContext.context == nil {
+			return fmt.Errorf("journal hook context seam returned no model context")
 		}
-	} else {
-		result.ActiveLineage.Available = false
-		result.ActiveLineage.AvailableCount = 0
-		result.ActiveLineage.ShownCount = 0
-		result.ActiveLineage.Truncated = false
-		result.ActiveLineage.Cursor = ""
-		result.ActiveLineage.Items = []state.JournalEntryRecord{}
-		result.Diagnostics = append(result.Diagnostics, state.JournalContextDiagnostic{Code: changeSourceUnavailableCode, Message: "Change source unavailable: " + changeSourceErr.Error() + "; active-changes and active-lineage could not be derived"})
+	default:
+		return fmt.Errorf("journal hook context seam returned invalid disposition %q", hookContext.disposition)
 	}
-	rewriteJournalContextExpandCommands(&result, &activeLayer, options)
-	output := composeJournalContextCLIResult(result, activeLayer, options.layer)
+	output := *hookContext.context
 	if options.jsonOutput {
 		return writeJSON(out, output)
 	}

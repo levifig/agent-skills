@@ -1,0 +1,49 @@
+{
+  "evidence_version": 2,
+  "timestamp": "2026-07-13T20:20:38.606Z",
+  "target": "opencode",
+  "surface": "cli",
+  "version": "1.17.18",
+  "platform": "darwin-arm64",
+  "installed_mode": "isolated-xdg",
+  "context_mode": "request",
+  "adapter": "opencode-plugin-v1",
+  "mode": "isolated-xdg",
+  "invocation": {
+    "command": "opencode",
+    "args": [
+      "run",
+      "--format",
+      "json",
+      "--model",
+      "opencode/deepseek-v4-flash-free",
+      "--dir",
+      "<disposable-repo>",
+      "Reply with exactly the unique marker present in Loaf continuity context, and nothing else."
+    ],
+    "cwd": "<disposable-repo>"
+  },
+  "setup": [
+    "build candidate Go binary and OpenCode target",
+    "create disposable Git repository with isolated XDG directories",
+    "initialize isolated Loaf state and write a random journal marker",
+    "load only the candidate plugin through OPENCODE_CONFIG_CONTENT",
+    "observe candidate hook stdout through a mode-0700 wrapper and mode-0600 file"
+  ],
+  "exit_code": 0,
+  "stderr_empty": true,
+  "stderr": "",
+  "model_visible_marker_observed": true,
+  "assistant_marker_match": true,
+  "plugin_loaded": true,
+  "root_session_lookup_proven": true,
+  "no_auth_supplied": true,
+  "cleanup_succeeded": true,
+  "marker": "LOAF_OPENCODE_U8_3ABB7EF6118C",
+  "candidate_artifacts": {
+    "hooks_path": "dist/opencode/plugins/hooks.ts",
+    "hooks_sha256": "7715cf7701ce54a9652c0fdaa67025493d0b3407153b89fdfb3be23f26438bef",
+    "native_binary_path": "bin/native/darwin-arm64/loaf",
+    "native_binary_sha256": "ee72c614fbf88c5423b172193265f8ca3bf406a6d656b62e32fd0106169afe75"
+  }
+}

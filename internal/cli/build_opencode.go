@@ -157,7 +157,8 @@ func renderNativeOpenCodePlugin(hooks []nativeBuildHook, version string) string 
 	return nativeOpenCodeHeader(version) + "\n\n" +
 		nativeAmpCoreFunctions() + "\n\n" +
 		nativeAmpHookData(hooks) + "\n\n" +
-		"export default async function AgentSkillsPlugin({ client, $ }: { client?: unknown; $?: unknown }) {\n  void client;\n  void $;\n  return {\n" +
+		nativeOpenCodeSessionHelpers() + "\n\n" +
+		"export default async function AgentSkillsPlugin({ client, $ }: { client: OpenCodeClient; $?: unknown }) {\n  void $;\n  return {\n" +
 		nativeOpenCodePluginBody() + "\n  };\n}"
 }
 
@@ -177,19 +178,88 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const execFileAsync = promisify(execFile);`
 }
 
+func nativeOpenCodeSessionHelpers() string {
+	return `type OpenCodeClient = {
+  session: {
+    get(input: { path: { id: string } }): Promise<{ data?: { parentID?: string } }>;
+  };
+};
+
+const openCodeSessionLookupWarning = '[loaf] OpenCode session lookup unavailable; context delivery suppressed';
+
+function normalizeOpenCodeToolName(toolName: string): string {
+  switch (toolName) {
+    case 'bash':
+      return 'Bash';
+    case 'edit':
+      return 'Edit';
+    case 'write':
+      return 'Write';
+    default:
+      return toolName;
+  }
+}
+
+async function isOpenCodeRootSession(client: OpenCodeClient, sessionID: string): Promise<boolean> {
+  if (!sessionID) return false;
+  try {
+    const response = await client.session.get({ path: { id: sessionID } });
+    if (!response || typeof response !== 'object' || !response.data || typeof response.data !== 'object' || Array.isArray(response.data)) {
+      console.warn(openCodeSessionLookupWarning);
+      return false;
+    }
+    const data = response.data as { parentID?: unknown };
+    if ('parentID' in data && data.parentID !== undefined) {
+      if (typeof data.parentID !== 'string') {
+        console.warn(openCodeSessionLookupWarning);
+        return false;
+      }
+      return false;
+    }
+    return true;
+  } catch {
+    console.warn(openCodeSessionLookupWarning);
+    return false;
+  }
+}
+
+function serializeOpenCodeLifecyclePayload(sessionID: string, lifecycleEvent: string): string {
+  return JSON.stringify({
+    target: 'opencode',
+    session_id: sessionID,
+    lifecycle_event: lifecycleEvent,
+  });
+}
+
+async function runOpenCodeSessionHooks(hooks: HookEntry[] | undefined, sessionID: string, lifecycleEvent: string, output: string[]): Promise<void> {
+  if (!hooks) return;
+  const hookPayload = serializeOpenCodeLifecyclePayload(sessionID, lifecycleEvent);
+  for (const hook of hooks) {
+    const result = await runHook('session', 'session', hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
+    if (result.exitCode === 0) {
+      const stdout = result.stdout.trim();
+      if (stdout) output.push(stdout);
+      continue;
+    }
+    console.warn('[loaf] OpenCode ' + lifecycleEvent + ' hook ' + hook.id + ' failed (exit ' + result.exitCode + '); context delivery continued');
+  }
+}`
+}
+
 func nativeOpenCodePluginBody() string {
 	body := `    // Pre-tool hook handler
-    'tool.execute.before': async (input: { tool?: { name?: string; input?: unknown } }) => {
-      const toolName = input?.tool?.name;
-      const toolInput = input?.tool?.input;
+    'tool.execute.before': async (input: { tool: string; sessionID: string; callID: string }, output: { args: unknown }) => {
+      const toolName = normalizeOpenCodeToolName(input.tool);
+      const toolInput = output.args;
       if (!toolName) return;
 
-      const hookPayload = serializeHookPayload(toolName, toolInput, input);
+      const hookPayload = serializeHookPayload(toolName, toolInput, { input, output });
 
       for (const [matcher, hookList] of Object.entries(preToolHooks)) {
         if (matchesTool(toolName, matcher)) {
           for (const hook of hookList) {
             if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
+            if (hook.id === 'detect-linear-magic' && !(await isOpenCodeRootSession(client, input.sessionID))) continue;
             const result = await runHook('pre-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
 
             // Exit code 2 = block the action
@@ -207,12 +277,12 @@ func nativeOpenCodePluginBody() string {
     },
 
     // Post-tool hook handler
-    'tool.execute.after': async (input: { tool?: { name?: string; input?: unknown } }) => {
-      const toolName = input?.tool?.name;
-      const toolInput = input?.tool?.input;
+    'tool.execute.after': async (input: { tool: string; sessionID: string; callID: string; args: unknown }, output: { title?: string; output?: string; metadata?: unknown }) => {
+      const toolName = normalizeOpenCodeToolName(input.tool);
+      const toolInput = input.args;
       if (!toolName) return;
 
-      const hookPayload = serializeHookPayload(toolName, toolInput, input);
+      const hookPayload = serializeHookPayload(toolName, toolInput, { input, output });
 
       for (const [matcher, hookList] of Object.entries(postToolHooks)) {
         if (matchesTool(toolName, matcher)) {
@@ -227,23 +297,18 @@ func nativeOpenCodePluginBody() string {
         }
       }
     },
-    // Session lifecycle event handler
-    'event': async ({ event }: { event: { type?: string } }) => {
-      if (event.type === 'session.created' && sessionHooks.sessionstart) {
-        for (const hook of sessionHooks.sessionstart) {
-          await runHook('session', 'session', hook.id, hook.command, hook.script, undefined, hook.timeout, hook.failClosed);
-        }
-      }
-      if (event.type === 'session.ended' && sessionHooks.sessionend) {
-        for (const hook of sessionHooks.sessionend) {
-          await runHook('session', 'session', hook.id, hook.command, hook.script, undefined, hook.timeout, hook.failClosed);
-        }
-      }
-      if (event.type === 'context.compacting' && sessionHooks.precompact) {
-        for (const hook of sessionHooks.precompact) {
-          await runHook('session', 'session', hook.id, hook.command, hook.script, undefined, hook.timeout, hook.failClosed);
-        }
-      }
+
+    // Request and compaction context handlers
+    'experimental.chat.system.transform': async (input: { sessionID?: string; model?: unknown }, output: { system: string[] }) => {
+      const sessionID = input?.sessionID;
+      if (!sessionID || !(await isOpenCodeRootSession(client, sessionID))) return;
+      await runOpenCodeSessionHooks(sessionHooks.sessionstart, sessionID, 'system.transform', output.system);
+    },
+
+    'experimental.session.compacting': async (input: { sessionID: string }, output: { context: string[]; prompt?: string }) => {
+      const sessionID = input?.sessionID;
+      if (!sessionID || !(await isOpenCodeRootSession(client, sessionID))) return;
+      await runOpenCodeSessionHooks(sessionHooks.postcompact, sessionID, 'session.compacting', output.context);
     }`
 	return strings.ReplaceAll(body, "%%BT%%", "`")
 }

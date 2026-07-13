@@ -107,7 +107,8 @@ func generateNativeAmpPlugin(hooksPath string, dist string, version string) erro
 func renderNativeAmpPlugin(hooks []nativeBuildHook, version string) string {
 	return nativeAmpHeader(version) + "\n\n" +
 		nativeAmpCoreFunctions() + "\n\n" +
-		nativeAmpHookData(hooks) + "\n\n" +
+		nativeAmpToolHelpers() + "\n\n" +
+		nativeAmpHookDataWithoutSession(hooks) + "\n\n" +
 		"export default function (amp: PluginAPI) {\n" + nativeAmpPluginBody() + "\n}"
 }
 
@@ -328,6 +329,53 @@ function matchesIfCondition(toolName: string, toolInput: unknown, ifCondition: s
 `
 }
 
+func nativeAmpToolHelpers() string {
+	return `interface AmpToolCallEvent {
+  toolUseID: string;
+  tool: string;
+  input: Record<string, unknown>;
+  thread: { id: string };
+}
+
+interface AmpToolResultEvent extends AmpToolCallEvent {
+  status: 'done' | 'error' | 'cancelled';
+  error?: string;
+  output?: unknown;
+}
+
+function normalizeAmpToolName(toolName: string): string {
+  switch (toolName) {
+    case 'shell_command':
+      return 'Bash';
+    case 'create_file':
+      return 'Write';
+    case 'edit_file':
+    case 'apply_patch':
+      return 'Edit';
+    default:
+      return toolName;
+  }
+}
+
+function normalizeAmpToolInput(amp: PluginAPI, event: AmpToolCallEvent): Record<string, unknown> {
+  const rawInput = event.input && typeof event.input === 'object' ? event.input : {};
+  const normalizedToolName = normalizeAmpToolName(event.tool);
+  if (normalizedToolName !== 'Bash' || (event.tool !== 'Bash' && event.tool !== 'shell_command')) {
+    return rawInput;
+  }
+
+  const shellCommand = amp.helpers.shellCommandFromToolCall(event);
+  if (!shellCommand) return rawInput;
+
+  const normalizedInput: Record<string, unknown> = {
+    command: shellCommand.command,
+  };
+  if (shellCommand.dir) normalizedInput.cwd = shellCommand.dir;
+  return { ...rawInput, ...normalizedInput };
+}
+`
+}
+
 func nativeAmpHookData(hooks []nativeBuildHook) string {
 	preTool := nativeAmpGroupHooksByMatcher(filterNativeBuildHooks(hooks, "pre-tool"))
 	postTool := nativeAmpGroupHooksByMatcher(filterNativeBuildHooks(hooks, "post-tool"))
@@ -352,65 +400,74 @@ const postToolHooks: Record<string, HookEntry[]> = ` + marshalNativeAmpHookMap(p
 const sessionHooks: Record<string, HookEntry[]> = ` + marshalNativeAmpHookMap(session) + `;`
 }
 
+func nativeAmpHookDataWithoutSession(hooks []nativeBuildHook) string {
+	var supportedPreTool []nativeBuildHook
+	for _, hook := range filterNativeBuildHooks(hooks, "pre-tool") {
+		if hook.id != "detect-linear-magic" {
+			supportedPreTool = append(supportedPreTool, hook)
+		}
+	}
+	preTool := nativeAmpGroupHooksByMatcher(supportedPreTool)
+	postTool := nativeAmpGroupHooksByMatcher(filterNativeBuildHooks(hooks, "post-tool"))
+	return `// ─────────────────────────────────────────────────────────────────────────────
+// Hook Data
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface HookEntry {
+  id: string;
+  command?: string;
+  script?: string;
+  timeout: number;
+  failClosed: boolean;
+  if?: string;
+}
+
+const preToolHooks: Record<string, HookEntry[]> = ` + marshalNativeAmpHookMap(preTool) + `;
+
+const postToolHooks: Record<string, HookEntry[]> = ` + marshalNativeAmpHookMap(postTool) + `;`
+}
+
 func nativeAmpPluginBody() string {
-	body := `  amp.on('session.start', async () => {
-    for (const hookList of Object.values(sessionHooks)) {
+	body := `  amp.on('tool.call', async (event: AmpToolCallEvent) => {
+    const toolName = normalizeAmpToolName(event.tool);
+    const toolInput = normalizeAmpToolInput(amp, event);
+    const hookPayload = serializeHookPayload(toolName, toolInput, event);
+
+    for (const [matcher, hookList] of Object.entries(preToolHooks)) {
+      if (!matchesTool(toolName, matcher)) continue;
       for (const hook of hookList) {
-        const result = await runHook('session', 'session', hook.id, hook.command, hook.script, undefined, hook.timeout, hook.failClosed);
-        if (result.exitCode !== 0) {
-          console.warn(%%BT%%[loaf] Session hook ${hook.id} error (exit ${result.exitCode}): ${result.stderr}%%BT%%);
+        if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
+        const result = await runHook('pre-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
+
+        if (result.exitCode === 2) {
+          return { action: 'reject-and-continue', message: result.stderr };
+        }
+
+        if (result.exitCode === 1) {
+          console.warn(%%BT%%[loaf] Hook ${hook.id} error: ${result.stderr}%%BT%%);
         }
       }
     }
+    return { action: 'allow' };
   });
 
-  amp.on('tool.call', async (event: { tool?: string; input?: unknown; arguments?: unknown }) => {
-      const toolName = event?.tool;
-      const toolInput = event?.input ?? event?.arguments ?? {};
-      if (!toolName) return;
+  amp.on('tool.result', async (event: AmpToolResultEvent) => {
+    const toolName = normalizeAmpToolName(event.tool);
+    const toolInput = normalizeAmpToolInput(amp, event);
+    const hookPayload = serializeHookPayload(toolName, toolInput, event);
 
-      const hookPayload = serializeHookPayload(toolName, toolInput, event);
+    for (const [matcher, hookList] of Object.entries(postToolHooks)) {
+      if (!matchesTool(toolName, matcher)) continue;
+      for (const hook of hookList) {
+        if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
+        const result = await runHook('post-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
 
-      for (const [matcher, hookList] of Object.entries(preToolHooks)) {
-        if (matchesTool(toolName, matcher)) {
-          for (const hook of hookList) {
-            if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
-            const result = await runHook('pre-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
-
-            // Exit code 2 = block the action
-            if (result.exitCode === 2) {
-              return { action: 'reject-and-continue', message: result.stderr };
-            }
-
-            // Log errors for debugging
-            if (result.exitCode === 1) {
-              console.warn(%%BT%%[loaf] Hook ${hook.id} error: ${result.stderr}%%BT%%);
-            }
-          }
+        if (result.exitCode !== 0) {
+          console.warn(%%BT%%[loaf] Post-hook ${hook.id} error (exit ${result.exitCode}): ${result.stderr}%%BT%%);
         }
       }
-    });
-
-  amp.on('tool.result', async (event: { tool?: string; input?: unknown; arguments?: unknown }) => {
-      const toolName = event?.tool;
-      const toolInput = event?.input ?? event?.arguments ?? {};
-      if (!toolName) return;
-
-      const hookPayload = serializeHookPayload(toolName, toolInput, event);
-
-      for (const [matcher, hookList] of Object.entries(postToolHooks)) {
-        if (matchesTool(toolName, matcher)) {
-          for (const hook of hookList) {
-            if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
-            const result = await runHook('post-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
-
-            if (result.exitCode !== 0) {
-              console.warn(%%BT%%[loaf] Post-hook ${hook.id} error (exit ${result.exitCode}): ${result.stderr}%%BT%%);
-            }
-          }
-        }
-      }
-    });`
+    }
+  });`
 	return strings.ReplaceAll(body, "%%BT%%", "`")
 }
 

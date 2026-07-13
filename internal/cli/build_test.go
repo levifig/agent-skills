@@ -154,18 +154,24 @@ func TestRunnerBuildTargetCodexRunsNativeTarget(t *testing.T) {
 		t.Fatalf("script mode = %v, want executable source mode preserved", info.Mode().Perm())
 	}
 	hooksJSON := readBuildFileString(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"))
-	if hooksJSON != "{\n  \"hooks\": {}\n}\n" {
-		t.Fatalf("hooks.json = %q, want current empty Codex hooks schema", hooksJSON)
+	if !strings.Contains(hooksJSON, `"SessionStart": [`) {
+		t.Fatalf("hooks.json = %q, want current Codex SessionStart hooks schema", hooksJSON)
 	}
 	var hooks nativeCodexHooksJSON
 	if err := json.Unmarshal([]byte(hooksJSON), &hooks); err != nil {
 		t.Fatalf("Unmarshal(codex hooks) error = %v\n%s", err, hooksJSON)
 	}
-	if len(hooks.Hooks.PreToolUse) != 0 || strings.Contains(hooksJSON, "version") || strings.Contains(hooksJSON, "loaf check --hook") {
-		t.Fatalf("codex hooks = %q, want no Loaf handlers or legacy version", hooksJSON)
+	if len(hooks.Hooks.SessionStart) != 1 || hooks.Hooks.SessionStart[0].Matcher != "startup|resume|clear|compact" {
+		t.Fatalf("codex hooks = %q, want one SessionStart matcher group", hooksJSON)
+	}
+	if len(hooks.Hooks.SessionStart[0].Hooks) != 1 || hooks.Hooks.SessionStart[0].Hooks[0].Command != "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook" || hooks.Hooks.SessionStart[0].Hooks[0].CommandWindows != "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook" {
+		t.Fatalf("codex hooks = %q, want unresolved path-pinned adapter command", hooksJSON)
+	}
+	if strings.Contains(hooksJSON, "version") || strings.Contains(hooksJSON, "loaf check --hook") {
+		t.Fatalf("codex hooks = %q, want no legacy version or enforcement handlers", hooksJSON)
 	}
 	if strings.Contains(hooksJSON, "workflow-pre-merge") || strings.Contains(hooksJSON, "detect-linear-magic") {
-		t.Fatalf("hooks.json = %q, want only Bash enforcement hooks", hooksJSON)
+		t.Fatalf("hooks.json = %q, want only SessionStart context hook", hooksJSON)
 	}
 }
 
@@ -202,13 +208,29 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 		"@version 9.8.7-test.1",
 		"import type { PluginAPI } from '@ampcode/plugin';",
 		"export default function (amp: PluginAPI)",
-		"amp.on('tool.call', async (event: { tool?: string; input?: unknown; arguments?: unknown }) =>",
+		"interface AmpToolCallEvent",
+		"toolUseID: string;",
+		"thread: { id: string };",
+		"status: 'done' | 'error' | 'cancelled';",
+		"function normalizeAmpToolName(toolName: string): string",
+		"case 'shell_command':",
+		"return 'Bash';",
+		"case 'create_file':",
+		"return 'Write';",
+		"case 'edit_file':",
+		"case 'apply_patch':",
+		"return 'Edit';",
+		"amp.helpers.shellCommandFromToolCall(event)",
+		"normalizedInput.cwd = shellCommand.dir",
+		"amp.on('tool.call', async (event: AmpToolCallEvent) =>",
+		"amp.on('tool.result', async (event: AmpToolResultEvent) =>",
+		"return { action: 'reject-and-continue', message: result.stderr }",
+		"return { action: 'allow' }",
+		"raw: rawInput",
 		`"command": "loaf check --hook check-secrets"`,
 		`"command": "cat \"$LOAF_PLUGIN_DIR/hooks/instructions/pre-merge.md\""`,
 		`const postToolHooks: Record<string, HookEntry[]> = {`,
 		`"script": "post-tool/kb-staleness-nudge.sh"`,
-		`const sessionHooks: Record<string, HookEntry[]> = {`,
-		`"command": "loaf journal context --from-hook"`,
 	} {
 		if !strings.Contains(plugin, want) {
 			t.Fatalf("amp plugin = %q, want %q", plugin, want)
@@ -216,6 +238,23 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 	}
 	if strings.Contains(plugin, "@i-know-the-amp-plugin-api-is-wip") || strings.Contains(plugin, "call.toolName") {
 		t.Fatalf("amp plugin = %q, want documented plugin API without WIP header or undefined call reference", plugin)
+	}
+	for _, unwanted := range []string{
+		"session.start",
+		"agent.start",
+		"arguments",
+		"$HOME/.amp/plugins",
+		"const sessionHooks",
+		"declare module '@ampcode/plugin'",
+		"detect-linear-magic",
+		"loaf journal log --detect-linear",
+	} {
+		if strings.Contains(plugin, unwanted) {
+			t.Fatalf("amp plugin = %q, must not contain obsolete projection %q", plugin, unwanted)
+		}
+	}
+	if count := strings.Count(plugin, "return { action: 'allow' }"); count != 1 {
+		t.Fatalf("amp plugin allow returns = %d, want tool.call only", count)
 	}
 	if _, err := os.Stat(filepath.Join(root, "dist", "amp", "plugins", "loaf.js")); !os.IsNotExist(err) {
 		t.Fatalf("amp loaf.js stat = %v, want TypeScript project plugin only", err)
@@ -286,7 +325,7 @@ func TestRunnerBuildTargetCursorRunsNativeTarget(t *testing.T) {
 		`"postToolUse": [`,
 		`"command": "bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh"`,
 		`"sessionStart": [`,
-		`"command": "loaf journal context --from-hook"`,
+		`"command": "loaf journal context --from-hook --cursor-hook"`,
 	} {
 		if !strings.Contains(hooksJSON, want) {
 			t.Fatalf("cursor hooks.json = %q, want %q", hooksJSON, want)
@@ -363,14 +402,49 @@ func TestRunnerBuildTargetOpenCodeRunsNativeTarget(t *testing.T) {
 	plugin := readBuildFileString(t, filepath.Join(root, "dist", "opencode", "plugins", "hooks.ts"))
 	for _, want := range []string{
 		"@version 9.8.7-test.1",
-		"'tool.execute.before': async (input: { tool?: { name?: string; input?: unknown } }) =>",
+		"type OpenCodeClient = {",
+		"get(input: { path: { id: string } }): Promise<{ data?: { parentID?: string } }>",
+		"client.session.get({ path: { id: sessionID } })",
+		"!response.data || typeof response.data !== 'object'",
+		"if ('parentID' in data && data.parentID !== undefined)",
+		"'tool.execute.before': async (input: { tool: string; sessionID: string; callID: string }, output: { args: unknown }) =>",
+		"'tool.execute.after': async (input: { tool: string; sessionID: string; callID: string; args: unknown }, output: { title?: string; output?: string; metadata?: unknown }) =>",
+		"normalizeOpenCodeToolName(input.tool)",
+		"case 'bash':",
+		"case 'edit':",
+		"case 'write':",
+		"serializeHookPayload(toolName, toolInput, { input, output })",
+		"if (hook.id === 'detect-linear-magic' && !(await isOpenCodeRootSession(client, input.sessionID))) continue;",
+		"'experimental.chat.system.transform': async (input: { sessionID?: string; model?: unknown }, output: { system: string[] }) =>",
+		"runOpenCodeSessionHooks(sessionHooks.sessionstart, sessionID, 'system.transform', output.system)",
+		"'experimental.session.compacting': async (input: { sessionID: string }, output: { context: string[]; prompt?: string }) =>",
+		"runOpenCodeSessionHooks(sessionHooks.postcompact, sessionID, 'session.compacting', output.context)",
+		"target: 'opencode'",
+		"session_id: sessionID",
+		"lifecycle_event: lifecycleEvent",
+		"const stdout = result.stdout.trim()",
+		"output.push(stdout)",
 		`"command": "loaf check --hook check-secrets"`,
 		`"command": "cat \"$LOAF_PLUGIN_DIR/hooks/instructions/pre-merge.md\""`,
 		`"script": "post-tool/kb-staleness-nudge.sh"`,
-		`event.type === 'context.compacting'`,
 	} {
 		if !strings.Contains(plugin, want) {
 			t.Fatalf("opencode plugin = %q, want %q", plugin, want)
+		}
+	}
+	for _, unwanted := range []string{
+		"input?.tool?.name",
+		"input?.tool?.input",
+		"event.type === 'session.ended'",
+		"event.type === 'context.compacting'",
+		"'event': async",
+		"sessionHooks.sessionend",
+		"sessionHooks.precompact",
+		"runtime_version",
+		"harness_version",
+	} {
+		if strings.Contains(plugin, unwanted) {
+			t.Fatalf("opencode plugin = %q, must not contain obsolete shape %q", plugin, unwanted)
 		}
 	}
 	if readBuildFileString(t, filepath.Join(root, "dist", "opencode", "plugins", "hooks", "post-tool", "kb-staleness-nudge.sh")) != "#!/bin/sh\necho opencode hook\n" {
@@ -454,7 +528,7 @@ func TestRunnerBuildTargetClaudeCodeRunsNativeTarget(t *testing.T) {
 		`"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" task refresh"`,
 		`"command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/kb-staleness-nudge.sh"`,
 		`"SessionStart": [`,
-		`"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" journal context --from-hook"`,
+		`"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" journal context --from-hook --claude-code"`,
 	} {
 		if !strings.Contains(hooksJSON, want) {
 			t.Fatalf("claude hooks.json = %q, want %q", hooksJSON, want)
@@ -714,6 +788,18 @@ func TestNativeBuildHarnessLanguageAllowsOpenCodeSubagentMode(t *testing.T) {
 	}
 }
 
+func TestNativeBuildHarnessLanguageRejectsExtraCodexExecutableToken(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "codex", ".codex", "hooks.json")
+	mkdirAll(t, filepath.Dir(path))
+	writeFile(t, path, "{\n  \"hooks\": {\n    \"SessionStart\": [{\n      \"matcher\": \"startup|resume|clear|compact\",\n      \"hooks\": [{\n        \"type\": \"command\",\n        \"command\": \"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook {{OTHER}}\"\n      }]\n    }]\n  }\n}\n")
+
+	err := validateNativeBuildHarnessLanguage(root, "codex", []string{path})
+	if err == nil || !strings.Contains(err.Error(), "unresolved harness token") {
+		t.Fatalf("validateNativeBuildHarnessLanguage error = %v, want extra unresolved token rejection", err)
+	}
+}
+
 func TestNativeBuildParityMatrixDerivesFromSource(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
 	seedNativeBuildParityFixture(t, root)
@@ -771,11 +857,11 @@ func TestNativeBuildParityMatrixDetectsSeededHookSemanticGap(t *testing.T) {
 	}
 	path := filepath.Join(root, "dist", "codex", ".codex", "hooks.json")
 	body := readBuildFileString(t, path)
-	body = strings.Replace(body, "\"hooks\": {}", "\"hooks\": {\"PreToolUse\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"loaf check --hook validate-push\"}]}]}", 1)
+	body = `{"hooks":{"SessionStart":[]}}`
 	writeFile(t, path, body)
 
 	err = assertNativeBuildParityHookSemantics(root, expectations)
-	if err == nil || !strings.Contains(err.Error(), "codex hook check-secrets unexpectedly has Loaf handlers") {
+	if err == nil || !strings.Contains(err.Error(), "codex hook check-secrets missing SessionStart context group") {
 		t.Fatalf("assertNativeBuildParityHookSemantics error = %v, want seeded hook semantic gap", err)
 	}
 }
@@ -1274,8 +1360,8 @@ func assertNativeBuildCodexHookSemantics(root string, hook nativeBuildHook) erro
 	if err := readNativeBuildJSON(filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), &payload); err != nil {
 		return err
 	}
-	if len(payload.Hooks.PreToolUse) > 0 {
-		return fmt.Errorf("codex hook %s unexpectedly has Loaf handlers", hook.id)
+	if len(payload.Hooks.SessionStart) != 1 || payload.Hooks.SessionStart[0].Matcher != "startup|resume|clear|compact" {
+		return fmt.Errorf("codex hook %s missing SessionStart context group", hook.id)
 	}
 	return nil
 }
@@ -1285,6 +1371,20 @@ func assertNativeBuildOpenCodeHookSemantics(root string, hook nativeBuildHook) e
 }
 
 func assertNativeBuildAmpHookSemantics(root string, hook nativeBuildHook) error {
+	if hook.id == "detect-linear-magic" {
+		hooks, err := readNativeBuildPluginPreToolHooks(filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"))
+		if err != nil {
+			return err
+		}
+		for _, entries := range hooks {
+			for _, entry := range entries {
+				if entry.ID == hook.id {
+					return fmt.Errorf("amp hook %s present without trustworthy root-session identity", hook.id)
+				}
+			}
+		}
+		return nil
+	}
 	return assertNativeBuildPluginHookSemantics(filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"), "amp", hook)
 }
 

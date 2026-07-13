@@ -7,9 +7,10 @@
 #   session: Conversation hooks (SessionStart, UserPromptSubmit, PreCompact, PostCompact, TaskCompleted)
 #
 # Journal-first (SPEC-056): there is no session entity. Conversation hooks emit
-# the layered continuity digest and journal-flush guidance, or auto-log events
-# to the project journal. All journal hooks read the harness payload on stdin
-# and exit silently for subagent invocations (agent_id present).
+# the layered continuity digest and journal-flush guidance, or evaluate
+# normalized event envelopes for result-aware capture. All journal hooks read
+# the harness payload on stdin and exit silently for subagent invocations
+# (normalized agent identity present).
 #
 # Enforcement hooks (9) are implemented via `loaf check --hook <id>`:
 #   - artifact-body-write, check-secrets, ephemeral-provenance, github-account, render-drift, validate-push, validate-commit, workflow-pre-pr, security-audit
@@ -158,29 +159,7 @@ hooks:
       matcher: "Bash"
       if: "Bash(gh pr merge:*)"
       timeout: 5000
-      description: Inject housekeeping checklist after successful gh pr merge
-
-    # Journal Auto-Entry — Git Events
-    # --from-hook parses stdin JSON to determine entry type (commit, PR, merge),
-    # exits silently for unrecognized commands and subagents. Split into git/gh
-    # for efficient matching.
-    - id: journal-git-events
-      skill: orchestration
-      type: command
-      command: 'loaf journal log --from-hook'
-      matcher: "Bash"
-      if: "Bash(git commit:*)"
-      timeout: 30000
-      description: Auto-log git commits to the project journal
-
-    - id: journal-gh-events
-      skill: orchestration
-      type: command
-      command: 'loaf journal log --from-hook'
-      matcher: "Bash"
-      if: "Bash(gh pr:*)"
-      timeout: 30000
-      description: Auto-log GitHub PR events (create, merge) to the project journal
+      description: Inject housekeeping checklist after a gh pr merge hook; command matching does not prove success
 
   session:
     # SessionStart — emit the layered continuity digest (latest project wrap +
@@ -193,15 +172,6 @@ hooks:
       command: 'loaf journal context --from-hook'
       event: SessionStart
       description: Emit the layered continuity digest at conversation start
-
-    # Task lifecycle — auto-log completions and cancellations to the journal
-    - id: journal-task-completed
-      skill: orchestration
-      type: command
-      command: 'loaf journal log --from-hook'
-      event: TaskCompleted
-      timeout: 30000
-      description: Auto-log task completion or cancellation to the project journal
 
     # Context injection — implementation principles on every user prompt
     # Must be type: command (exit 0 = inject stdout as context).

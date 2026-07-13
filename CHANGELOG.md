@@ -6,7 +6,13 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Changed
+
+- Deliver model-visible journal continuity through verified target-specific adapters for Claude Code, Codex, and OpenCode, while directing unproven Cursor and Amp modes to the explicit `loaf journal context` fallback.
+
+### Fixed
+
+- Prevent automatic commit, pull-request, and task-completion history from being recorded unless the target proves both a successful result and its durable identity.
 
 ## [2.0.0-alpha.6] - 2026-07-12
 

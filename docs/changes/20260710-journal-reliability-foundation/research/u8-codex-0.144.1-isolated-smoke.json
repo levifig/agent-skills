@@ -1,0 +1,55 @@
+{
+  "evidence_version": 2,
+  "timestamp": "2026-07-13T20:20:24.632Z",
+  "target": "codex",
+  "surface": "cli",
+  "version": "0.144.1",
+  "platform": "darwin-arm64",
+  "installed_mode": "isolated-codex-home",
+  "context_mode": "startup",
+  "adapter": "codex-session-start-v1",
+  "mode": "isolated-codex-home",
+  "invocation": {
+    "command": "codex",
+    "args": [
+      "exec",
+      "--ephemeral",
+      "--ignore-rules",
+      "--dangerously-bypass-hook-trust",
+      "--sandbox",
+      "read-only",
+      "--json",
+      "-C",
+      "<disposable-repo>",
+      "Return exactly the unique marker supplied by SessionStart context, and nothing else."
+    ],
+    "cwd": "<disposable-repo>"
+  },
+  "setup": [
+    "build candidate Go binary and Codex target",
+    "create disposable Git repository",
+    "create isolated CODEX_HOME with hooks enabled",
+    "copy installed auth.json into isolated CODEX_HOME with mode 0600",
+    "initialize absolute disposable LOAF_DB",
+    "write random marker to isolated journal",
+    "observe hook stdout through a mode-0700 disposable wrapper and mode-0600 file"
+  ],
+  "exit_code": 0,
+  "stderr_empty": false,
+  "stderr": "Reading additional input from stdin...",
+  "model_visible_marker_observed": true,
+  "assistant_marker_match": true,
+  "marker": "LOAF_CODEX_U8_4F8A67174699",
+  "hook_observation": {
+    "event_name": "SessionStart:startup",
+    "native_json": true,
+    "hook_event_name": "SessionStart",
+    "additional_context_marker": true
+  },
+  "candidate_artifacts": {
+    "hooks_path": "dist/codex/.codex/hooks.json",
+    "hooks_sha256": "0f9e3feb7204c3309a7db6a02224ad881f6801a8cdd126ec6222e6d9a804c33d",
+    "native_binary_path": "bin/native/darwin-arm64/loaf",
+    "native_binary_sha256": "ee72c614fbf88c5423b172193265f8ca3bf406a6d656b62e32fd0106169afe75"
+  }
+}

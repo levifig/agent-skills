@@ -7,7 +7,7 @@
 - Context Commands
 - When to Clear Context
 - Compaction Lifecycle
-- Amp check/agent mode or new thread for Context Isolation
+- Delegation for Context Isolation
 - Context Budget Guidelines
 - Warning Signs
 - Best Practices
@@ -20,7 +20,7 @@ Compaction is normal in long workflows. Design work that spans many exchanges so
 
 1. **The journal is external memory.** Record decisions, discoveries, blockers, and next actions with `loaf journal log`.
 2. **Artifacts carry detail.** Changes, transitional tasks, reports, ADRs, and commits hold rich detail; journal entries point to them.
-3. **Amp check/agent mode or new thread absorb exploration.** Use Amp check/agent mode or new thread for broad investigation and return concise findings to the main context.
+3. **Delegated work absorbs exploration.** Use delegated agents for broad investigation and return concise findings to the main context.
 4. **`wrap` captures synthesis.** When meaningful work holds intentions or abandoned paths worth saving, write an optional `wrap` journal entry.
 
 ## Continuity Digest (contract v2)
@@ -61,28 +61,28 @@ PreCompact:
 
 1. Flush unrecorded decisions, discoveries, blockers, and next actions with `loaf journal log`.
 2. Reference Changes, transitional tasks, reports, commits, and files by stable ID or path.
-3. Let the hook nudge the flush.
+3. On an exact target mode with supported PreCompact delivery, let the hook nudge the flush; otherwise flush manually before compacting.
 
 PostCompact:
 
-1. Read the continuity digest emitted by the resumption hook, or run `loaf journal context`.
+1. On an exact target mode with supported resumption delivery, read the continuity digest emitted by the hook; otherwise run `loaf journal context` explicitly.
 2. Expand the named layer that needs more detail, or use `loaf journal recent` and `loaf journal search` for a different query.
 3. Continue from the journal and linked artifacts.
 
 This makes compaction survivable without relying on hand-maintained Markdown state. State not logged or captured in a durable artifact can be lost.
 
-## Amp check/agent mode or new thread for Context Isolation
+## Delegation for Context Isolation
 
-Use Amp check/agent mode or new thread to investigate without filling the main context.
+Use delegated agents to investigate without filling the main context.
 
 | Situation | Approach |
 |-----------|----------|
 | Quick file lookup | Direct read or search tool |
-| Multi-file exploration | Explorer or research Amp check/agent mode or new thread |
+| Multi-file exploration | Explorer or research agent |
 | Implementation work | Implementer or task-focused agent |
 | Long audit | Background agent with report output |
 
-Pass stable references to Amp check/agent mode or new thread: Change IDs, task IDs, branch names, and report paths. The harness ID is attached to journal entries automatically; there is no session alias to pass.
+Pass stable references to delegated agents: Change IDs, task IDs, branch names, and report paths. The harness ID is attached to journal entries automatically; there is no session alias to pass.
 
 ## Context Budget Guidelines
 
@@ -114,7 +114,7 @@ No special management is usually needed.
 ## Best Practices
 
 1. Log durable facts early with `loaf journal log`.
-2. Use Amp check/agent mode or new thread for exploration-heavy work.
+2. Use delegated agents for exploration-heavy work.
 3. Clear between unrelated tasks.
 4. Compact mid-task when the journal and artifacts are current.
 5. Scope tool calls so context stays focused.

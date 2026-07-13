@@ -34,18 +34,18 @@ type nativeCodexHooksJSON struct {
 }
 
 type nativeCodexHookTypes struct {
-	PreToolUse []nativeCodexPreToolHookJSON `json:"PreToolUse,omitempty"`
+	SessionStart []nativeCodexMatcherGroupJSON `json:"SessionStart,omitempty"`
 }
 
-type nativeCodexPreToolHookJSON struct {
-	LoafManaged bool   `json:"loaf-managed"`
-	Matcher     string `json:"matcher"`
-	Command     string `json:"command"`
-	Timeout     int    `json:"timeout"`
-	FailClosed  bool   `json:"failClosed"`
-	Blocking    bool   `json:"blocking"`
-	If          string `json:"if,omitempty"`
-	Description string `json:"description,omitempty"`
+type nativeCodexMatcherGroupJSON struct {
+	Matcher string                       `json:"matcher"`
+	Hooks   []nativeCodexCommandHookJSON `json:"hooks"`
+}
+
+type nativeCodexCommandHookJSON struct {
+	Type           string `json:"type"`
+	Command        string `json:"command"`
+	CommandWindows string `json:"commandWindows"`
 }
 
 func runNativeBuildCodex(root string, out io.Writer) error {
@@ -653,10 +653,19 @@ func nativeBuildPackageVersion(root string) (string, error) {
 
 func generateNativeCodexHooksJSON(root string, dist string) error {
 	_ = root
-	// Codex 0.144.1 uses matcher groups with nested hook handlers. Loaf does
-	// not yet have a trustworthy translation for its existing hook semantics,
-	// so ship an explicit no-op adapter rather than an invalid legacy payload.
-	payload := nativeCodexHooksJSON{Hooks: nativeCodexHookTypes{}}
+	// Codex 0.144.1 uses matcher groups with nested command handlers. Keep the
+	// executable command placeholder; install renders it to a trusted absolute
+	// Loaf binary once the path is known and can be pinned.
+	payload := nativeCodexHooksJSON{Hooks: nativeCodexHookTypes{
+		SessionStart: []nativeCodexMatcherGroupJSON{{
+			Matcher: "startup|resume|clear|compact",
+			Hooks: []nativeCodexCommandHookJSON{{
+				Type:           "command",
+				Command:        "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook",
+				CommandWindows: "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook",
+			}},
+		}},
+	}}
 	body, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return err

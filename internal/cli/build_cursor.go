@@ -416,9 +416,15 @@ func generateNativeCursorHooksJSON(hooksPath string, dist string) error {
 		case "post-tool":
 			payload.Hooks.PostToolUse = append(payload.Hooks.PostToolUse, nativeCursorHookEntry(hook, 30000, true))
 		case "session":
+			if nativeCursorJournalContextHookOmitted(hook.id) {
+				continue
+			}
 			entry := nativeCursorHookEntry(hook, 60000, false)
 			switch nativeCursorSessionEvent(hook.event) {
 			case "sessionStart":
+				if hook.id == "session-start-loaf" {
+					entry.Command = "loaf journal context --from-hook --cursor-hook"
+				}
 				payload.Hooks.SessionStart = append(payload.Hooks.SessionStart, entry)
 			case "sessionEnd":
 				payload.Hooks.SessionEnd = append(payload.Hooks.SessionEnd, entry)
@@ -436,6 +442,19 @@ func generateNativeCursorHooksJSON(hooksPath string, dist string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dist, "hooks.json"), body, 0o644)
+}
+
+// Cursor's installed sessionStart hook is the only retained journal
+// continuity surface in this slice. UserPromptSubmit and PreCompact outputs
+// are not proven model-context channels for Cursor and must not be projected
+// into the generated native hooks artifact.
+func nativeCursorJournalContextHookOmitted(id string) bool {
+	switch id {
+	case "session-context-inject", "pre-compact", "post-compact", "session-end-loaf":
+		return true
+	default:
+		return false
+	}
 }
 
 func nativeCursorHookEntry(hook nativeBuildHook, defaultTimeout int, includeMatcher bool) nativeCursorHookJSON {

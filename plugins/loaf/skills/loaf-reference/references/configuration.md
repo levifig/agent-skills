@@ -29,7 +29,7 @@ These are decisions, not defaults. The CLI cannot guess them — ask, then recor
 - **Which harnesses to install** — the targets passed to `loaf install --to <target>`
   (or `--to all`).
 - **Codex basic command policy** — `loaf install --to codex --codex-basic-commands` explicitly installs path-pinned managed command rules and a matching `CODEX_HOME/AGENTS.md` guidance block for the centrally classified basic Loaf leaves, including hardened journal logging and approved readers, outside the workspace sandbox. This is narrower than Full access or adding the global Loaf data directory as a writable root; unclassified and operator commands remain gated. Do not enable it implicitly.
-- **Codex lifecycle hooks** — Codex `0.144.1` rejects Loaf's legacy flat hook schema. Until the target adapter proves current matcher-group semantics, Loaf installs a valid empty `{"hooks":{}}` fallback, retires only recognized legacy Loaf entries, preserves supported user groups, and does not claim automatic Codex hook enforcement.
+- **Codex lifecycle hooks** — Codex `0.144.1` rejects Loaf's legacy flat hook schema. Loaf installs a current-schema `SessionStart` matcher group with a trusted executable rendered at install; POSIX installs keep the path-pinned command and omit the Windows variant, while Windows installs render both command fields to the same `cmd.exe /C` wrapper. Startup is model-visible proven only for the isolated `darwin-arm64` smoke; other lifecycle modes and automatic completion remain gated, and managed journal guidance plus explicit CLI retrieval remain the fallback.
 
 ## Hand-edit only where no setter exists
 

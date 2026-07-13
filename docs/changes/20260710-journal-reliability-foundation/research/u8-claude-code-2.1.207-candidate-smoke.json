@@ -1,0 +1,57 @@
+{
+  "evidence_version": 2,
+  "timestamp": "2026-07-13T20:20:11.205Z",
+  "target": "claude-code",
+  "surface": "cli",
+  "version": "2.1.207",
+  "platform": "darwin-arm64",
+  "installed_mode": "plugin-dir",
+  "context_mode": "startup",
+  "adapter": "claude-session-start-v1",
+  "mode": "explicit-plugin-dir",
+  "invocation": {
+    "command": "claude",
+    "args": [
+      "--plugin-dir",
+      "<repo>/plugins/loaf",
+      "--strict-mcp-config",
+      "--mcp-config",
+      "{\"mcpServers\":{}}",
+      "--no-session-persistence",
+      "--setting-sources",
+      "",
+      "--tools",
+      "",
+      "--include-hook-events",
+      "--output-format",
+      "stream-json",
+      "-p",
+      "Reply with exactly the unique marker present in Loaf continuity context, and nothing else."
+    ],
+    "cwd": "<disposable-repo>"
+  },
+  "setup": [
+    "build candidate Go binary and Claude plugin",
+    "create disposable Git repository",
+    "initialize absolute disposable LOAF_DB",
+    "write random marker to isolated journal"
+  ],
+  "candidate_plugin_path": "plugins/loaf",
+  "exit_code": 0,
+  "stderr_empty": true,
+  "model_visible_marker_observed": true,
+  "assistant_marker_match": true,
+  "marker": "LOAF_U8_SMOKE_72CAFD4CEB4F",
+  "hook_observation": {
+    "event_name": "SessionStart:startup",
+    "native_json": true,
+    "hook_event_name": "SessionStart",
+    "additional_context_marker": true
+  },
+  "candidate_artifacts": {
+    "hooks_path": "plugins/loaf/hooks/hooks.json",
+    "hooks_sha256": "5c7343a34af37d6c6e930981f71e405b8023975de4146822058f98c15251b7c2",
+    "native_binary_path": "plugins/loaf/bin/native/darwin-arm64/loaf",
+    "native_binary_sha256": "ee72c614fbf88c5423b172193265f8ca3bf406a6d656b62e32fd0106169afe75"
+  }
+}

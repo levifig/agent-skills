@@ -74,10 +74,7 @@ See the `wrap` skill for the full checkpoint flow.
 
 ## Derived Continuity
 
-Continuity is computed at read time and never persisted. At conversation start
-the SessionStart hook emits a layered digest: the latest project-level wrap,
-recent entries scoped to the current branch/worktree, and open
-(`in_progress`/`pending`) tasks. On demand, reproduce or extend it:
+Continuity is computed at read time and never persisted. On an exact target mode whose startup delivery capability is supported, the startup adapter may emit a layered digest with the latest project-level wrap, recent entries scoped to the current branch/worktree, and open (`in_progress`/`pending`) tasks. When startup delivery is candidate or unsupported for the current mode, explicitly run `loaf journal context` at conversation start. On demand, reproduce or extend the digest:
 
 ```bash
 loaf journal context            # the layered continuity digest
@@ -92,7 +89,7 @@ id is attached automatically — there is no session alias to pass along.
 
 After compaction, a branch switch, or a long gap:
 
-1. Read `loaf journal context` (or the digest the hook already emitted).
+1. Read `loaf journal context`; on an exact target mode with supported resumption delivery, the digest emitted by the adapter is equivalent continuity context.
 2. Widen with `loaf journal recent` / `loaf journal search` when more is needed.
 3. Compare against `git status`, `git log`, and the relevant specs/tasks.
 4. If code and journal have drifted, log the reconciliation:
@@ -100,10 +97,11 @@ After compaction, a branch switch, or a long gap:
 
 ## Hook Integration
 
-- SessionStart emits the layered continuity digest; subagent invocations exit
-  silently and write nothing.
-- PreCompact nudges a journal flush of unrecorded decisions and next actions.
-- Post-compaction resumption re-emits the digest. Digests are never persisted.
+- On an exact target mode with supported startup delivery, SessionStart emits the layered continuity digest. When startup delivery is candidate or unsupported, run `loaf journal context` explicitly.
+- On an exact target mode with supported compaction delivery, PreCompact nudges a journal flush of unrecorded decisions and next actions. Otherwise flush manually before compaction.
+- On an exact target mode with supported post-compaction delivery, resumption re-emits the digest. Otherwise run `loaf journal context` explicitly after compaction. Digests are never persisted.
+- When an adapter explicitly invokes the target-neutral hook CLI, payloads are normalized before capture. Command text is not an outcome proof: failed, no-op, amended, repeated, or unknown-result events create no completion entry and emit a visible non-blocking diagnostic until a target adapter proves success and a durable SHA/PR identity.
+- Where the target exposes a trustworthy normalized agent identity, Loaf suppresses automatic delivery for non-root delegated work. Where it does not, automatic context and journal capture stay disabled. A parent agent should record the semantic conclusion when it consumes a material delegated finding; raw delegated traces do not become project journal churn.
 
 ## Anti-Patterns
 
@@ -113,4 +111,4 @@ After compaction, a branch switch, or a long gap:
 | Store decisions only in chat context | Log them and promote durable ones to ADR/spec/report/docs |
 | Write a placeholder wrap out of ceremony | Wrap only when there's synthesis worth saving |
 | Treat a missing wrap as an open loop | A conversation without a wrap is complete and valid |
-| Pass a session alias to subagents | Nothing to pass — the harness id is automatic |
+| Pass a session alias to delegated agents | Nothing to pass — the harness id is automatic |

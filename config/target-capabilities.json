@@ -1,0 +1,494 @@
+{
+  "contract_version": 3,
+  "records": [
+    {
+      "target": "claude-code",
+      "surface": "cli",
+      "version": "2.1.207",
+      "platform": "darwin-arm64",
+      "installed_mode": "plugin-dir",
+      "context": {
+        "adapter": "claude-session-start-v1",
+        "mechanism": "native SessionStart additionalContext model-context output",
+        "root_policy": "deliver the bounded digest to the root session",
+        "subagent_policy": "suppress when agent_id or agent_type identifies a child session",
+        "background_policy": "suppress background and delegated agents",
+        "modes": [
+          {
+            "name": "startup",
+            "trigger": "SessionStart:startup",
+            "status": "supported",
+            "model_visible": true,
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.207-candidate-smoke.json",
+              "level": "installed-smoke",
+              "summary": "Claude Code 2.1.207 startup smoke returned SessionStart additionalContext and the isolated marker was model-visible exactly."
+            }
+          },
+          {
+            "name": "resume",
+            "trigger": "SessionStart:resume",
+            "status": "candidate",
+            "model_visible": false,
+            "reason": "The fixture renders resume context, but an installed resume model-visible smoke is not yet proven.",
+            "evidence": {
+              "source": "internal/cli/journal_hook_claude_test.go",
+              "level": "fixture",
+              "summary": "Claude SessionStart fixtures exercise resume through the native payload adapter."
+            }
+          },
+          {
+            "name": "clear",
+            "trigger": "SessionStart:clear",
+            "status": "candidate",
+            "model_visible": false,
+            "reason": "The fixture renders clear context, but an installed clear model-visible smoke is not yet proven.",
+            "evidence": {
+              "source": "internal/cli/journal_hook_claude_test.go",
+              "level": "fixture",
+              "summary": "Claude SessionStart fixtures exercise clear through the native payload adapter."
+            }
+          },
+          {
+            "name": "compact",
+            "trigger": "SessionStart:compact",
+            "status": "candidate",
+            "model_visible": false,
+            "reason": "The fixture renders compact context, but an installed compact model-visible smoke is not yet proven.",
+            "evidence": {
+              "source": "internal/cli/journal_hook_claude_test.go",
+              "level": "fixture",
+              "summary": "Claude SessionStart fixtures exercise compact through the native payload adapter."
+            }
+          }
+        ]
+      },
+      "completion": {
+        "status": "unsupported",
+        "reason": "Automatic completion capture remains disabled until target success and durable-result signals are proven.",
+        "result_signal_fidelity": "unproven",
+        "durable_identity": "unproven",
+        "child_suppression": "unproven",
+        "evidence": {
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.207-candidate-smoke.md",
+          "level": "source",
+          "summary": "The retained Claude smoke covers startup context only and does not prove completion result fidelity or durable identity."
+        }
+      },
+      "bypass_modes": [
+        "bare or disabled hooks",
+        "missing or uninitialized Loaf state",
+        "untested harness version"
+      ],
+      "fallback": "Managed instruction to run loaf journal context; explicit CLI; no automatic completion capture."
+    },
+    {
+      "target": "cursor",
+      "surface": "ide",
+      "version": "3.11.19",
+      "platform": "darwin-arm64",
+      "installed_mode": "candidate-build",
+      "context": {
+        "adapter": "cursor-session-start-v1",
+        "mechanism": "native new-composer sessionStart model-context output",
+        "root_policy": "deliver the bounded digest to the root session",
+        "subagent_policy": "no subagentStart context wiring; subagent delivery is outside sessionStart",
+        "background_policy": "silently suppress native is_background_agent=true payloads",
+        "modes": [
+          {
+            "name": "new-composer",
+            "trigger": "sessionStart",
+            "status": "candidate",
+            "model_visible": false,
+            "reason": "Cursor IDE native sessionStart is source-supported, but an installed model-visible smoke is not yet proven for 3.11.19.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "Cursor IDE 3.11.19 bundle invokes native new-composer sessionStart delivery with additional_context output."
+            }
+          },
+          {
+            "name": "resume",
+            "status": "unsupported",
+            "model_visible": false,
+            "reason": "No native Cursor IDE resume context trigger is retained for this exact version.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "The retained Cursor source survey classifies resume as outside the native sessionStart surface."
+            }
+          },
+          {
+            "name": "compact",
+            "status": "unsupported",
+            "model_visible": false,
+            "reason": "No native Cursor IDE compact context trigger is retained for this exact version.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "The retained Cursor source survey classifies compact as outside the native sessionStart surface."
+            }
+          },
+          {
+            "name": "cloud",
+            "status": "unsupported",
+            "model_visible": false,
+            "reason": "No native Cursor IDE cloud-session context trigger is retained for this exact version.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "The retained Cursor source survey classifies cloud sessions as outside the native sessionStart surface."
+            }
+          }
+        ]
+      },
+      "completion": {
+        "status": "unsupported",
+        "reason": "Automatic completion capture remains disabled until target success and durable-result signals are proven.",
+        "result_signal_fidelity": "unproven",
+        "durable_identity": "unproven",
+        "child_suppression": "unproven",
+        "evidence": {
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+          "level": "source",
+          "summary": "Cursor source evidence does not prove completion result fidelity or durable identity."
+        }
+      },
+      "bypass_modes": [
+        "hooks disabled or ignored",
+        "missing or uninitialized Loaf state",
+        "untested harness version"
+      ],
+      "fallback": "Managed instruction to run loaf journal context; explicit CLI; no automatic completion capture."
+    },
+    {
+      "target": "cursor",
+      "surface": "cursor-agent",
+      "version": "2026.05.09-0afadcc",
+      "platform": "darwin-arm64",
+      "installed_mode": "candidate-build",
+      "context": {
+        "adapter": "cursor-session-start-v1",
+        "mechanism": "native new-composer sessionStart model-context output",
+        "root_policy": "deliver the bounded digest to the root session",
+        "subagent_policy": "no subagentStart context wiring; subagent delivery is outside sessionStart",
+        "background_policy": "silently suppress native is_background_agent=true payloads",
+        "modes": [
+          {
+            "name": "new-composer",
+            "trigger": "sessionStart",
+            "status": "candidate",
+            "model_visible": false,
+            "reason": "Cursor Agent native sessionStart is source-supported, but an installed model-visible smoke is not yet proven.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "Cursor Agent 2026.05.09-0afadcc retains the same native new-composer sessionStart surface."
+            }
+          },
+          {
+            "name": "resume",
+            "status": "unsupported",
+            "model_visible": false,
+            "reason": "No native Cursor Agent resume context trigger is retained for this exact version.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "The retained Cursor source survey classifies resume as outside the native sessionStart surface."
+            }
+          },
+          {
+            "name": "compact",
+            "status": "unsupported",
+            "model_visible": false,
+            "reason": "No native Cursor Agent compact context trigger is retained for this exact version.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "The retained Cursor source survey classifies compact as outside the native sessionStart surface."
+            }
+          },
+          {
+            "name": "cloud",
+            "status": "unsupported",
+            "model_visible": false,
+            "reason": "No native Cursor Agent cloud-session context trigger is retained for this exact version.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "The retained Cursor source survey classifies cloud sessions as outside the native sessionStart surface."
+            }
+          }
+        ]
+      },
+      "completion": {
+        "status": "unsupported",
+        "reason": "Automatic completion capture remains disabled until target success and durable-result signals are proven.",
+        "result_signal_fidelity": "unproven",
+        "durable_identity": "unproven",
+        "child_suppression": "unproven",
+        "evidence": {
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+          "level": "source",
+          "summary": "Cursor Agent source evidence does not prove completion result fidelity or durable identity."
+        }
+      },
+      "bypass_modes": [
+        "hooks disabled or ignored",
+        "missing or uninitialized Loaf state",
+        "untested harness version"
+      ],
+      "fallback": "Managed instruction to run loaf journal context; explicit CLI; no automatic completion capture."
+    },
+    {
+      "target": "codex",
+      "surface": "cli",
+      "version": "0.144.1",
+      "platform": "darwin-arm64",
+      "installed_mode": "isolated-codex-home",
+      "context": {
+        "adapter": "codex-session-start-v1",
+        "mechanism": "native SessionStart additionalContext model-context output; systemMessage is a user-visible missing-state warning",
+        "root_policy": "deliver the bounded digest to the root session only",
+        "subagent_policy": "suppress subagent context and capture",
+        "background_policy": "suppress background and delegated agents",
+        "modes": [
+          {
+            "name": "startup",
+            "trigger": "SessionStart:startup",
+            "status": "supported",
+            "model_visible": true,
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.144.1-isolated-smoke.json",
+              "level": "installed-smoke",
+              "summary": "Codex 0.144.1 isolated CODEX_HOME startup smoke observed exact native SessionStart hookSpecificOutput and the random marker was returned by the model."
+            }
+          },
+          {
+            "name": "resume",
+            "trigger": "SessionStart:resume",
+            "status": "candidate",
+            "model_visible": false,
+            "reason": "The tagged schema retains SessionStart for resume, but an installed model-visible resume smoke is not yet proven.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "Codex 0.144.1 source survey classifies resume as a SessionStart context mode."
+            }
+          },
+          {
+            "name": "clear",
+            "trigger": "SessionStart:clear",
+            "status": "candidate",
+            "model_visible": false,
+            "reason": "The tagged schema retains SessionStart for clear, but an installed model-visible clear smoke is not yet proven.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "Codex 0.144.1 source survey classifies clear as a SessionStart context mode."
+            }
+          },
+          {
+            "name": "compact",
+            "trigger": "SessionStart:compact",
+            "status": "candidate",
+            "model_visible": false,
+            "reason": "The tagged schema retains SessionStart for compact, but an installed model-visible compact smoke is not yet proven.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "Codex 0.144.1 source survey classifies compact as a SessionStart context mode; SubagentStart is not a context mode."
+            }
+          }
+        ]
+      },
+      "completion": {
+        "status": "unsupported",
+        "reason": "Codex hook payloads do not yet prove result fidelity and durable completion identity for Loaf capture.",
+        "result_signal_fidelity": "unproven",
+        "durable_identity": "unproven",
+        "child_suppression": "unproven",
+        "evidence": {
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+          "level": "source",
+          "summary": "Codex hook source evidence does not prove completion result fidelity or durable identity."
+        }
+      },
+      "bypass_modes": [
+        "hooks missing, disabled, untrusted, or conflicted",
+        "missing or uninitialized Loaf state",
+        "untested harness version"
+      ],
+      "fallback": "Managed skill/instruction to run loaf journal context plus explicit CLI; no automatic completion capture."
+    },
+    {
+      "target": "opencode",
+      "surface": "cli",
+      "version": "1.17.18",
+      "platform": "darwin-arm64",
+      "installed_mode": "isolated-xdg",
+      "context": {
+        "adapter": "opencode-plugin-v1",
+        "mechanism": "per-request experimental.chat.system.transform output.system plus experimental.session.compacting output.context",
+        "root_policy": "look up the root session without parentID and fail closed when identity is unavailable",
+        "subagent_policy": "use parentID to classify child sessions and suppress child context and capture",
+        "background_policy": "use parentID to classify background sessions and suppress background context and capture",
+        "modes": [
+          {
+            "name": "request",
+            "trigger": "experimental.chat.system.transform",
+            "status": "supported",
+            "model_visible": true,
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-opencode-1.17.18-isolated-smoke.json",
+              "level": "installed-smoke",
+              "summary": "OpenCode 1.17.18 isolated-XDG request smoke returned the exact random continuity marker through the model-visible plugin system transformation."
+            }
+          },
+          {
+            "name": "startup",
+            "status": "unsupported",
+            "model_visible": false,
+            "reason": "OpenCode has no native distinct startup signal; request transformation is the only installed model-visible context proof.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "OpenCode 1.17.18 exposes request transformation rather than a distinct startup lifecycle signal."
+            }
+          },
+          {
+            "name": "resume",
+            "trigger": "experimental.chat.system.transform",
+            "status": "candidate",
+            "model_visible": false,
+            "reason": "The request transformation can deliver context after reopening a session, but an installed model-visible resume smoke is not yet proven.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "OpenCode 1.17.18 retains the request transformation surface for context after session reopen."
+            }
+          },
+          {
+            "name": "compact",
+            "trigger": "experimental.session.compacting",
+            "status": "candidate",
+            "model_visible": false,
+            "reason": "The compaction adapter can append context, but an installed model-visible compact smoke is not yet proven.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "OpenCode 1.17.18 retains experimental.session.compacting for compaction context injection."
+            }
+          }
+        ]
+      },
+      "completion": {
+        "status": "unsupported",
+        "reason": "Automatic completion capture remains disabled because OpenCode exposes generic process completion but does not prove operation success or durable identity.",
+        "result_signal_fidelity": "bash exit status source-proven; operation success unproven",
+        "durable_identity": "unproven",
+        "child_suppression": "parentID is available for context but completion identity remains unwired",
+        "evidence": {
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+          "level": "source",
+          "summary": "OpenCode bash exit status is source-proven, but operation success and durable completion identity remain unproven."
+        }
+      },
+      "bypass_modes": [
+        "plugin missing or disabled",
+        "attached or remote server without the candidate plugin",
+        "missing or uninitialized Loaf state",
+        "untested harness version"
+      ],
+      "fallback": "Managed instruction to run loaf journal context; explicit CLI; no automatic completion capture."
+    },
+    {
+      "target": "amp",
+      "surface": "cli",
+      "version": "0.0.1783873056-g278461",
+      "platform": "darwin-arm64",
+      "installed_mode": "candidate-build",
+      "context": {
+        "adapter": "amp-plugin-v1",
+        "mechanism": "tool.call/tool.result only; no automatic context because no root identity",
+        "root_policy": "disabled: root-only identity cannot be proven",
+        "subagent_policy": "disabled: foreground child is indistinguishable",
+        "background_policy": "disabled: foreground child is indistinguishable",
+        "modes": [
+          {
+            "name": "foreground-turn",
+            "trigger": "agent.start",
+            "status": "candidate",
+            "model_visible": false,
+            "reason": "root-only identity cannot be proven",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "Amp 0.0.1783873056-g278461 exposes agent.start, but foreground child identity cannot be distinguished from the root turn."
+            }
+          },
+          {
+            "name": "startup",
+            "status": "unsupported",
+            "model_visible": false,
+            "reason": "Amp has no native distinct startup context signal.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "Amp exposes agent.start rather than a distinct startup context signal."
+            }
+          },
+          {
+            "name": "resume",
+            "status": "unsupported",
+            "model_visible": false,
+            "reason": "Amp has no native distinct resume context signal.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "Amp exposes no native resume context signal for this exact version."
+            }
+          },
+          {
+            "name": "compact",
+            "status": "unsupported",
+            "model_visible": false,
+            "reason": "Amp has no native distinct compact context signal.",
+            "evidence": {
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "level": "source",
+              "summary": "The retained Amp source survey records no native compaction surface."
+            }
+          }
+        ]
+      },
+      "completion": {
+        "status": "unsupported",
+        "reason": "Automatic completion capture remains disabled because generic done/error/cancelled signals do not prove durable operation success.",
+        "result_signal_fidelity": "generic done/error/cancelled source-proven; operation durable success unproven",
+        "durable_identity": "unproven because only thread id and active/background state are available",
+        "child_suppression": "unproven because only thread id and active/background state are available",
+        "evidence": {
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+          "level": "source",
+          "summary": "Amp tool.call/tool.result and generic done/error/cancelled signals do not prove operation success, durable identity, or child suppression."
+        }
+      },
+      "bypass_modes": [
+        "plugin missing or disabled",
+        "plugin installed only in the legacy ~/.amp path",
+        "missing or uninitialized Loaf state",
+        "untested harness version"
+      ],
+      "fallback": "Managed instruction to run loaf journal context; explicit CLI; no automatic completion capture."
+    }
+  ],
+  "deferred": [
+    {
+      "target": "pi",
+      "status": "deferred",
+      "not_a_build_target": true,
+      "reason": "Pi is not a Loaf build target; no capability claim is made."
+    }
+  ]
+}

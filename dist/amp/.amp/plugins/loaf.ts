@@ -211,6 +211,51 @@ function matchesIfCondition(toolName: string, toolInput: unknown, ifCondition: s
 }
 
 
+interface AmpToolCallEvent {
+  toolUseID: string;
+  tool: string;
+  input: Record<string, unknown>;
+  thread: { id: string };
+}
+
+interface AmpToolResultEvent extends AmpToolCallEvent {
+  status: 'done' | 'error' | 'cancelled';
+  error?: string;
+  output?: unknown;
+}
+
+function normalizeAmpToolName(toolName: string): string {
+  switch (toolName) {
+    case 'shell_command':
+      return 'Bash';
+    case 'create_file':
+      return 'Write';
+    case 'edit_file':
+    case 'apply_patch':
+      return 'Edit';
+    default:
+      return toolName;
+  }
+}
+
+function normalizeAmpToolInput(amp: PluginAPI, event: AmpToolCallEvent): Record<string, unknown> {
+  const rawInput = event.input && typeof event.input === 'object' ? event.input : {};
+  const normalizedToolName = normalizeAmpToolName(event.tool);
+  if (normalizedToolName !== 'Bash' || (event.tool !== 'Bash' && event.tool !== 'shell_command')) {
+    return rawInput;
+  }
+
+  const shellCommand = amp.helpers.shellCommandFromToolCall(event);
+  if (!shellCommand) return rawInput;
+
+  const normalizedInput: Record<string, unknown> = {
+    command: shellCommand.command,
+  };
+  if (shellCommand.dir) normalizedInput.cwd = shellCommand.dir;
+  return { ...rawInput, ...normalizedInput };
+}
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Hook Data
 // ─────────────────────────────────────────────────────────────────────────────
@@ -299,13 +344,6 @@ const preToolHooks: Record<string, HookEntry[]> = {
       "timeout": 30000,
       "failClosed": true,
       "if": "Bash(git commit:*)"
-    },
-    {
-      "id": "detect-linear-magic",
-      "command": "loaf journal log --detect-linear",
-      "timeout": 30000,
-      "failClosed": false,
-      "if": "Bash(git commit:*)"
     }
   ]
 };
@@ -332,124 +370,49 @@ const postToolHooks: Record<string, HookEntry[]> = {
       "timeout": 5000,
       "failClosed": false,
       "if": "Bash(gh pr merge:*)"
-    },
-    {
-      "id": "journal-git-events",
-      "command": "loaf journal log --from-hook",
-      "timeout": 30000,
-      "failClosed": false,
-      "if": "Bash(git commit:*)"
-    },
-    {
-      "id": "journal-gh-events",
-      "command": "loaf journal log --from-hook",
-      "timeout": 30000,
-      "failClosed": false,
-      "if": "Bash(gh pr:*)"
-    }
-  ]
-};
-
-const sessionHooks: Record<string, HookEntry[]> = {
-  "sessionstart": [
-    {
-      "id": "session-start-loaf",
-      "command": "loaf journal context --from-hook",
-      "timeout": 60000,
-      "failClosed": false
-    }
-  ],
-  "taskcompleted": [
-    {
-      "id": "journal-task-completed",
-      "command": "loaf journal log --from-hook",
-      "timeout": 30000,
-      "failClosed": false
-    }
-  ],
-  "userpromptsubmit": [
-    {
-      "id": "session-context-inject",
-      "command": "loaf journal context for-prompt",
-      "timeout": 5000,
-      "failClosed": false
-    }
-  ],
-  "precompact": [
-    {
-      "id": "pre-compact",
-      "command": "loaf journal context for-compact",
-      "timeout": 60000,
-      "failClosed": false
-    }
-  ],
-  "postcompact": [
-    {
-      "id": "post-compact",
-      "command": "loaf journal context for-resumption",
-      "timeout": 60000,
-      "failClosed": false
     }
   ]
 };
 
 export default function (amp: PluginAPI) {
-  amp.on('session.start', async () => {
-    for (const hookList of Object.values(sessionHooks)) {
+  amp.on('tool.call', async (event: AmpToolCallEvent) => {
+    const toolName = normalizeAmpToolName(event.tool);
+    const toolInput = normalizeAmpToolInput(amp, event);
+    const hookPayload = serializeHookPayload(toolName, toolInput, event);
+
+    for (const [matcher, hookList] of Object.entries(preToolHooks)) {
+      if (!matchesTool(toolName, matcher)) continue;
       for (const hook of hookList) {
-        const result = await runHook('session', 'session', hook.id, hook.command, hook.script, undefined, hook.timeout, hook.failClosed);
+        if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
+        const result = await runHook('pre-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
+
+        if (result.exitCode === 2) {
+          return { action: 'reject-and-continue', message: result.stderr };
+        }
+
+        if (result.exitCode === 1) {
+          console.warn(`[loaf] Hook ${hook.id} error: ${result.stderr}`);
+        }
+      }
+    }
+    return { action: 'allow' };
+  });
+
+  amp.on('tool.result', async (event: AmpToolResultEvent) => {
+    const toolName = normalizeAmpToolName(event.tool);
+    const toolInput = normalizeAmpToolInput(amp, event);
+    const hookPayload = serializeHookPayload(toolName, toolInput, event);
+
+    for (const [matcher, hookList] of Object.entries(postToolHooks)) {
+      if (!matchesTool(toolName, matcher)) continue;
+      for (const hook of hookList) {
+        if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
+        const result = await runHook('post-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
+
         if (result.exitCode !== 0) {
-          console.warn(`[loaf] Session hook ${hook.id} error (exit ${result.exitCode}): ${result.stderr}`);
+          console.warn(`[loaf] Post-hook ${hook.id} error (exit ${result.exitCode}): ${result.stderr}`);
         }
       }
     }
   });
-
-  amp.on('tool.call', async (event: { tool?: string; input?: unknown; arguments?: unknown }) => {
-      const toolName = event?.tool;
-      const toolInput = event?.input ?? event?.arguments ?? {};
-      if (!toolName) return;
-
-      const hookPayload = serializeHookPayload(toolName, toolInput, event);
-
-      for (const [matcher, hookList] of Object.entries(preToolHooks)) {
-        if (matchesTool(toolName, matcher)) {
-          for (const hook of hookList) {
-            if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
-            const result = await runHook('pre-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
-
-            // Exit code 2 = block the action
-            if (result.exitCode === 2) {
-              return { action: 'reject-and-continue', message: result.stderr };
-            }
-
-            // Log errors for debugging
-            if (result.exitCode === 1) {
-              console.warn(`[loaf] Hook ${hook.id} error: ${result.stderr}`);
-            }
-          }
-        }
-      }
-    });
-
-  amp.on('tool.result', async (event: { tool?: string; input?: unknown; arguments?: unknown }) => {
-      const toolName = event?.tool;
-      const toolInput = event?.input ?? event?.arguments ?? {};
-      if (!toolName) return;
-
-      const hookPayload = serializeHookPayload(toolName, toolInput, event);
-
-      for (const [matcher, hookList] of Object.entries(postToolHooks)) {
-        if (matchesTool(toolName, matcher)) {
-          for (const hook of hookList) {
-            if (!matchesIfCondition(toolName, toolInput, hook.if)) continue;
-            const result = await runHook('post-tool', toolName, hook.id, hook.command, hook.script, hookPayload, hook.timeout, hook.failClosed);
-
-            if (result.exitCode !== 0) {
-              console.warn(`[loaf] Post-hook ${hook.id} error (exit ${result.exitCode}): ${result.stderr}`);
-            }
-          }
-        }
-      }
-    });
 }

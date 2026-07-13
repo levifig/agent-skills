@@ -131,7 +131,7 @@ func TestJournalContextReferenceMetadataDescribesContractV2(t *testing.T) {
 	if strings.Contains(journal.Description, "latest wrap") {
 		t.Fatalf("journal context description = %q, must not describe the retired three-part digest", journal.Description)
 	}
-	for _, want := range []string{"--branch <branch>", "--layer <name>", "--limit <n>", "--cursor <token>", "--from-hook", "--json", "for-prompt|for-compact|for-resumption"} {
+	for _, want := range []string{"--branch <branch>", "--layer <name>", "--limit <n>", "--cursor <token>", "--from-hook", "--cursor-hook", "--claude-code", "--codex-hook", "--json", "for-prompt|for-compact|for-resumption"} {
 		found := false
 		for _, option := range journal.Options {
 			if option.Flags == want {
@@ -179,7 +179,7 @@ func TestJournalContextAgentHelpDescribesContractV2(t *testing.T) {
 	if !strings.Contains(journal.Description, "contract-v2 active-truth") {
 		t.Fatalf("journal context agent help description = %q, want contract-v2 active truth", journal.Description)
 	}
-	for _, want := range []string{"--branch <branch>", "--layer <name>", "--limit <n>", "--cursor <token>", "--from-hook", "--json", "for-prompt|for-compact|for-resumption"} {
+	for _, want := range []string{"--branch <branch>", "--layer <name>", "--limit <n>", "--cursor <token>", "--from-hook", "--cursor-hook", "--claude-code", "--codex-hook", "--json", "for-prompt|for-compact|for-resumption"} {
 		found := false
 		for _, option := range journal.Options {
 			if option.Flags == want {

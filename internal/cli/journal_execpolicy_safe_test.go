@@ -70,7 +70,7 @@ func TestJournalLogExecpolicySafeManualUsesRegisteredRuntime(t *testing.T) {
 	}
 }
 
-func TestJournalLogExecpolicySafeFromHookUsesNormalizedPayload(t *testing.T) {
+func TestJournalLogExecpolicySafeFromHookWarnsForUnprovenPayload(t *testing.T) {
 	workingDir, stateHome, databasePath := initExecpolicySafeProject(t)
 	var output bytes.Buffer
 	err := (Runner{
@@ -82,15 +82,15 @@ func TestJournalLogExecpolicySafeFromHookUsesNormalizedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("safe hook journal log error = %v\n%s", err, output.String())
 	}
-	var result state.JournalLogResult
-	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+	var warning journalHookWarning
+	if err := json.Unmarshal(output.Bytes(), &warning); err != nil {
 		t.Fatalf("decode safe hook result = %v\n%s", err, output.String())
 	}
-	if result.Message != "safe hook event" || result.HarnessSessionID != "safe-hook-session" {
-		t.Fatalf("safe hook result = %#v, want normalized entry/session", result)
+	if warning.Code != journalHookDiagnosticUnsupported || !warning.NonBlocking {
+		t.Fatalf("safe hook warning = %#v, want unsupported nonblocking diagnostic", warning)
 	}
-	if got := execpolicySafeCount(t, databasePath, `SELECT COUNT(*) FROM journal_entries`); got != 1 {
-		t.Fatalf("journal entries = %d, want 1", got)
+	if got := execpolicySafeCount(t, databasePath, `SELECT COUNT(*) FROM journal_entries`); got != 0 {
+		t.Fatalf("journal entries = %d, want zero for unproven payload", got)
 	}
 }
 
@@ -204,6 +204,55 @@ func TestJournalLogExecpolicySafeHookDoesNotDegradeOnMissingIdentity(t *testing.
 	}
 	if got := execpolicySafeCount(t, databasePath, `SELECT COUNT(*) FROM journal_entries`); got != 0 {
 		t.Fatalf("journal entries after rejected safe hook = %d, want 0", got)
+	}
+}
+
+func TestJournalLogExecpolicySafeHookValidatesRegisteredEmptyAndUnknownPayloads(t *testing.T) {
+	workingDir, stateHome, databasePath := initExecpolicySafeProject(t)
+	for _, payload := range []string{"", `{"session_id":"safe-empty"}`, `{"unknown":"field"}`} {
+		var output bytes.Buffer
+		err := (Runner{
+			Stdout:     &output,
+			WorkingDir: workingDir,
+			StateHome:  stateHome,
+			Stdin:      strings.NewReader(payload),
+		}).Run([]string{"journal", "log", "--execpolicy-safe", "--from-hook", "--json"})
+		if err != nil {
+			t.Fatalf("registered safe hook payload %q error = %v\n%s", payload, err, output.String())
+		}
+		if output.Len() != 0 {
+			t.Fatalf("registered safe hook payload %q output = %q, want silent no-op", payload, output.String())
+		}
+	}
+	unknownDir := realpath(t, t.TempDir())
+	for _, payload := range []string{"", `{"unknown":"field"}`} {
+		var output bytes.Buffer
+		err := (Runner{
+			Stdout:     &output,
+			WorkingDir: unknownDir,
+			StateHome:  stateHome,
+			Stdin:      strings.NewReader(payload),
+		}).Run([]string{"journal", "log", "--execpolicy-safe", "--from-hook", "--json"})
+		if err == nil || !strings.Contains(output.String(), state.ProjectIdentityUnregisteredCode) {
+			t.Fatalf("unknown safe hook payload %q error=%v output=%q, want registered-project failure", payload, err, output.String())
+		}
+	}
+	if got := execpolicySafeCount(t, databasePath, `SELECT COUNT(*) FROM journal_entries`); got != 0 {
+		t.Fatalf("journal entries after safe empty/unknown payloads = %d, want 0", got)
+	}
+}
+
+func TestJournalLogExecpolicySafeHookPreservesSubagentSilentSuppression(t *testing.T) {
+	unknownDir := realpath(t, t.TempDir())
+	var output bytes.Buffer
+	err := (Runner{
+		Stdout:     &output,
+		WorkingDir: unknownDir,
+		StateHome:  t.TempDir(),
+		Stdin:      strings.NewReader(`{"cursor":{"agent_id":"nested-subagent","event":"TaskCompleted"}}`),
+	}).Run([]string{"journal", "log", "--execpolicy-safe", "--from-hook", "--json"})
+	if err != nil || output.Len() != 0 {
+		t.Fatalf("safe subagent hook error=%v output=%q, want silent suppression", err, output.String())
 	}
 }
 

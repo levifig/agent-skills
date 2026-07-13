@@ -139,6 +139,32 @@ func TestRunnerInstallUpgradeOnlyInstallsDetectedLoafTargets(t *testing.T) {
 	}
 }
 
+func TestRunnerInstallUpgradeDetectsLegacyAmpWithoutMutatingLegacyPath(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	legacyAmp := filepath.Join(home, ".amp")
+	legacyPlugin := filepath.Join(legacyAmp, "plugins", "loaf.ts")
+	writeInstallFile(t, filepath.Join(legacyAmp, loafInstallMarkerFile), "legacy\n")
+	writeInstallFile(t, legacyPlugin, "legacy plugin\n")
+	writeInstallFile(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"), "current plugin\n")
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"install", "--upgrade", "--yes"}); err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Upgrading:") || !strings.Contains(stdout.String(), "amp") || !strings.Contains(stdout.String(), "Amp installed") {
+		t.Fatalf("stdout = %q, want legacy Amp upgrade selection", stdout.String())
+	}
+	currentConfig := filepath.Join(home, ".config", "amp")
+	assertInstallFile(t, filepath.Join(currentConfig, loafInstallMarkerFile), "9.8.7-test.1\n")
+	assertInstallFile(t, filepath.Join(currentConfig, "plugins", "loaf.ts"), "current plugin\n")
+	assertInstallFile(t, filepath.Join(legacyAmp, loafInstallMarkerFile), "legacy\n")
+	assertInstallFile(t, legacyPlugin, "legacy plugin\n")
+	record := readInstallCommandJSON(t, installRecordPath(home, "amp"))
+	if record["config_dir"] != currentConfig {
+		t.Fatalf("amp install record = %#v, want current config dir %q", record, currentConfig)
+	}
+}
+
 func TestRunnerInstallUpgradeRelocatesOpenCodeAndAmpSkillHomes(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -156,7 +182,7 @@ func TestRunnerInstallUpgradeRelocatesOpenCodeAndAmpSkillHomes(t *testing.T) {
 			name:        "amp",
 			target:      "amp",
 			oldSkills:   func(home string) string { return filepath.Join(home, ".config", "agents", "skills") },
-			ownerMarker: func(home string) string { return filepath.Join(home, ".amp", loafInstallMarkerFile) },
+			ownerMarker: func(home string) string { return filepath.Join(home, ".config", "amp", loafInstallMarkerFile) },
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

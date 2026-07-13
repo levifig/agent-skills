@@ -499,7 +499,8 @@ func detectInstallTools() []detectedInstallTool {
 		tools = append(tools, newDetectedInstallTool("codex", codexConfig, "config"))
 	}
 	ampConfig := defaults["amp"]
-	if installCommandExists("amp") || dirExistsForInstall(ampConfig) || installRecordExists(home, "amp") {
+	legacyAmpConfig := filepath.Join(home, ".amp")
+	if installCommandExists("amp") || dirExistsForInstall(ampConfig) || dirExistsForInstall(legacyAmpConfig) || installRecordExists(home, "amp") {
 		tools = append(tools, newDetectedInstallTool("amp", ampConfig, "config"))
 	}
 	return tools
@@ -529,7 +530,7 @@ func defaultInstallConfigDirs() map[string]string {
 		"opencode": filepath.Join(xdgConfig, "opencode"),
 		"cursor":   filepath.Join(home, ".cursor"),
 		"codex":    codexHome,
-		"amp":      filepath.Join(home, ".amp"),
+		"amp":      filepath.Join(xdgConfig, "amp"),
 	}
 }
 
@@ -546,7 +547,13 @@ func isLoafInstalledForInstall(configDir string) bool {
 }
 
 func isLoafInstalledForTargetInstall(target string, configDir string) bool {
-	return isLoafInstalledForInstall(configDir) || installRecordExists(installHome(), target)
+	if isLoafInstalledForInstall(configDir) || installRecordExists(installHome(), target) {
+		return true
+	}
+	if target == "amp" {
+		return isLoafInstalledForInstall(filepath.Join(installHome(), ".amp"))
+	}
+	return false
 }
 
 func installRecordExists(homeDir string, target string) bool {

@@ -109,41 +109,13 @@
         "matcher": "Bash",
         "command": "cat \"$HOME/.cursor/hooks/instructions/post-merge.md\"",
         "if": "Bash(gh pr merge:*)"
-      },
-      {
-        "loaf-managed": true,
-        "timeout": 30,
-        "matcher": "Bash",
-        "command": "loaf journal log --from-hook",
-        "if": "Bash(git commit:*)"
-      },
-      {
-        "loaf-managed": true,
-        "timeout": 30,
-        "matcher": "Bash",
-        "command": "loaf journal log --from-hook",
-        "if": "Bash(gh pr:*)"
       }
     ],
     "sessionStart": [
       {
         "loaf-managed": true,
         "timeout": 60,
-        "command": "loaf journal context --from-hook"
-      }
-    ],
-    "beforeSubmitPrompt": [
-      {
-        "loaf-managed": true,
-        "timeout": 5,
-        "command": "loaf journal context for-prompt"
-      }
-    ],
-    "preCompact": [
-      {
-        "loaf-managed": true,
-        "timeout": 60,
-        "command": "loaf journal context for-compact"
+        "command": "loaf journal context --from-hook --cursor-hook"
       }
     ]
   }

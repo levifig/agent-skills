@@ -68,6 +68,66 @@ WHERE id = ?
 	}
 }
 
+// TestLogJournalConcurrentDurableResultReplay proves the durable-result
+// idempotency guard without relying on a unique schema index. Independent
+// stores contend on the journal write transaction; exactly one commits and the
+// other returns that committed result after the lock is released.
+func TestLogJournalConcurrentDurableResultReplay(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	resolver := PathResolver{StateHome: t.TempDir()}
+	status, err := Initialize(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	left, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore(left) error = %v", err)
+	}
+	defer left.Close()
+	right, err := OpenStore(status.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore(right) error = %v", err)
+	}
+	defer right.Close()
+	origin := &JournalOriginInput{
+		EnvelopeVersion:   JournalOriginEnvelopeVersion,
+		CaptureMechanism:  JournalOriginMechanismHook,
+		ObservedHarness:   "synthetic",
+		SourceEvent:       "PostToolUse",
+		DurableResultKind: "git-commit",
+		DurableResultID:   "sha-concurrent",
+	}
+	options := JournalLogOptions{Entry: "commit(sha-concurrent): proven", Origin: origin}
+	results := make([]JournalLogResult, 2)
+	errs := make([]error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		results[0], errs[0] = left.LogJournal(ctx, root, options)
+	}()
+	go func() {
+		defer wg.Done()
+		results[1], errs[1] = right.LogJournal(ctx, root, options)
+	}()
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent durable replay %d error = %v", i, err)
+		}
+	}
+	if results[0].ID == "" || results[0].ID != results[1].ID {
+		t.Fatalf("concurrent durable results = %#v, want one canonical ID", results)
+	}
+	if got := rawCount(t, status.DatabasePath, `SELECT COUNT(*) FROM journal_entries`); got != 1 {
+		t.Fatalf("journal rows = %d, want one", got)
+	}
+	if got := rawCount(t, status.DatabasePath, `SELECT COUNT(*) FROM journal_origins WHERE durable_result_kind = 'git-commit' AND durable_result_id = 'sha-concurrent'`); got != 1 {
+		t.Fatalf("durable-result origin rows = %d, want one", got)
+	}
+}
+
 func TestLogJournalRejectsMalformedEntry(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()

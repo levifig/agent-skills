@@ -136,6 +136,13 @@ func (s *Store) logJournalWithHooks(ctx context.Context, root project.Root, opti
 		return JournalLogResult{}, fmt.Errorf("begin journal transaction: %w", err)
 	}
 	defer tx.Rollback()
+	if options.Origin != nil && origin.DurableResultKind != "" && origin.DurableResultID != "" {
+		if existing, found, lookupErr := findJournalResultByDurableResultTx(ctx, tx, projectID, origin.DurableResultKind, origin.DurableResultID, identity); lookupErr != nil {
+			return JournalLogResult{}, lookupErr
+		} else if found {
+			return existing, nil
+		}
+	}
 	if entryType == "unblock" {
 		if err := validateJournalUnblockTx(ctx, tx, projectID, scope); err != nil {
 			return JournalLogResult{}, err
@@ -195,6 +202,42 @@ INSERT INTO journal_entries (
 		ObservedWorktree:   options.ObservedWorktree,
 		HarnessSessionID:   options.HarnessSessionID,
 	}, nil
+}
+
+func findJournalResultByDurableResultTx(ctx context.Context, tx *sql.Tx, projectID, resultKind, resultID string, identity ProjectIdentity) (JournalLogResult, bool, error) {
+	var (
+		result    JournalLogResult
+		scope     sql.NullString
+		branch    sql.NullString
+		worktree  sql.NullString
+		sessionID sql.NullString
+	)
+	err := tx.QueryRowContext(ctx, `
+SELECT j.id, j.entry_type, j.scope, j.message, j.observed_branch,
+       j.observed_worktree, j.harness_session_id
+FROM journal_entries AS j
+JOIN journal_origins AS o ON o.project_id = j.project_id AND o.journal_entry_id = j.id
+WHERE j.project_id = ? AND o.durable_result_kind = ? AND o.durable_result_id = ?
+ORDER BY j.created_at ASC, j.rowid ASC
+LIMIT 1
+`, projectID, resultKind, resultID).Scan(&result.ID, &result.EntryType, &scope, &result.Message, &branch, &worktree, &sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return JournalLogResult{}, false, nil
+	}
+	if err != nil {
+		return JournalLogResult{}, false, fmt.Errorf("inspect durable journal result %s/%s: %w", resultKind, resultID, err)
+	}
+	result.ContractVersion = StateJSONContractVersion
+	result.DatabaseScope = identity.DatabaseScope
+	result.DatabasePath = identity.DatabasePath
+	result.ProjectID = identity.ID
+	result.ProjectName = identity.FriendlyName
+	result.ProjectCurrentPath = identity.CurrentPath
+	result.Scope = scope.String
+	result.ObservedBranch = branch.String
+	result.ObservedWorktree = worktree.String
+	result.HarnessSessionID = sessionID.String
+	return result, true, nil
 }
 
 func validateJournalUnblockTx(ctx context.Context, tx *sql.Tx, projectID, key string) error {

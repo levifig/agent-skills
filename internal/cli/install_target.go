@@ -1,12 +1,16 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -84,17 +88,18 @@ var obsoleteCursorHookFiles = []string{
 }
 
 type targetInstallOptions struct {
-	Target             string
-	DistDir            string
-	ConfigDir          string
-	Upgrade            bool
-	CodexBasicCommands bool
-	Version            string
-	HomeDir            string
-	CodexHome          string
-	ProjectRoot        string
-	AmpSkillsDir       string
-	AmpPluginsDir      string
+	Target              string
+	DistDir             string
+	ConfigDir           string
+	Upgrade             bool
+	CodexBasicCommands  bool
+	Version             string
+	HomeDir             string
+	CodexHome           string
+	CodexRuleOperations *codexRuleInstallOperations
+	ProjectRoot         string
+	AmpSkillsDir        string
+	AmpPluginsDir       string
 }
 
 type codexHooksFile struct {
@@ -208,10 +213,10 @@ func installCodexTarget(options targetInstallOptions) error {
 	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
 		return err
 	}
-	if err := mergeCodexHookFiles(filepath.Join(codexHome, "hooks.json"), filepath.Join(options.DistDir, ".codex", "hooks.json")); err != nil {
+	if err := mergeCodexHookFiles(filepath.Join(codexHome, "hooks.json"), filepath.Join(options.DistDir, ".codex", "hooks.json"), options.ProjectRoot, options.CodexRuleOperations); err != nil {
 		return err
 	}
-	if err := installCodexJournalRule(options, codexHome); err != nil {
+	if err := installCodexJournalRuleWithOperations(options, codexHome, options.CodexRuleOperations); err != nil {
 		return err
 	}
 	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {
@@ -221,7 +226,6 @@ func installCodexTarget(options targetInstallOptions) error {
 }
 
 func installAmpTarget(options targetInstallOptions) error {
-	homeDir := installHomeDir(options)
 	skillsDest := installSkillsDestination(options)
 	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
 		return err
@@ -230,7 +234,7 @@ func installAmpTarget(options targetInstallOptions) error {
 	if fileExistsForInstall(pluginSrc) {
 		pluginsDest := options.AmpPluginsDir
 		if pluginsDest == "" {
-			pluginsDest = filepath.Join(homeDir, ".amp", "plugins")
+			pluginsDest = filepath.Join(options.ConfigDir, "plugins")
 		}
 		if err := os.MkdirAll(pluginsDest, 0o755); err != nil {
 			return err
@@ -491,16 +495,47 @@ func mergeHookFiles(destPath string, loafPath string) error {
 	return os.WriteFile(destPath, body, 0o644)
 }
 
-// mergeCodexHookFiles writes the current Codex hooks schema. The distributed
-// Loaf artifact is intentionally empty until Loaf has a proven translation for
-// Codex's matcher-group handlers. Existing valid user groups survive; legacy
-// flat entries are discarded because Codex 0.144.1 cannot parse them.
-func mergeCodexHookFiles(destPath string, loafPath string) error {
+// mergeCodexHookFiles writes the current Codex hooks schema. Existing valid
+// user groups survive; recognized legacy Loaf groups are retired, while
+// malformed or unowned content is refused. The distributed adapter carries a
+// placeholder that is rendered to the trusted absolute executable at install.
+func mergeCodexHookFiles(destPath string, loafPath string, projectRoot string, operations *codexRuleInstallOperations) error {
+	return mergeCodexHookFilesForOS(destPath, loafPath, projectRoot, operations, runtime.GOOS)
+}
+
+func mergeCodexHookFilesForOS(destPath string, loafPath string, projectRoot string, operations *codexRuleInstallOperations, goos string) error {
+	return mergeCodexHookFilesForOSWithExecutable(destPath, loafPath, projectRoot, operations, goos, "")
+}
+
+func mergeCodexHookFilesForOSWithExecutable(destPath string, loafPath string, projectRoot string, operations *codexRuleInstallOperations, goos string, executableOverride string) error {
 	if !fileExistsForInstall(loafPath) {
 		return nil
 	}
-	if _, err := loadCodexHooksRawFileStrict(loafPath); err != nil {
+	loafHooks, err := loadCodexHooksRawFileStrict(loafPath)
+	if err != nil {
 		return err
+	}
+	loafExecutable := executableOverride
+	for hookType, hooks := range loafHooks.Hooks {
+		for index, rawHook := range hooks {
+			if !bytes.Contains(rawHook, []byte(codexJournalExecutablePlaceholder)) && !bytes.Contains(rawHook, []byte(codexJournalHookCommandTemplate)) {
+				continue
+			}
+			if loafExecutable == "" {
+				loafExecutable, err = trustedCodexJournalExecutable(projectRoot, operations)
+				if err != nil {
+					return err
+				}
+			}
+			rendered, renderErr := renderCodexHookExecutableForOS(rawHook, loafExecutable, goos)
+			if renderErr != nil {
+				return fmt.Errorf("render Codex Loaf hook %s[%d]: %w", hookType, index, renderErr)
+			}
+			if bytes.Contains(rendered, []byte(codexJournalExecutablePlaceholder)) || bytes.Contains(rendered, []byte(codexJournalHookCommandTemplate)) {
+				return fmt.Errorf("render Codex Loaf hook %s[%d]: executable placeholder remains", hookType, index)
+			}
+			loafHooks.Hooks[hookType][index] = rendered
+		}
 	}
 	existing, err := loadCodexHooksRawFileStrict(destPath)
 	if err != nil {
@@ -514,21 +549,37 @@ func mergeCodexHookFiles(destPath string, loafPath string) error {
 			continue
 		}
 		for _, rawHook := range hooks {
-			var hook map[string]any
-			if err := json.Unmarshal(rawHook, &hook); err != nil {
+			hook, err := decodeCodexHookObject(rawHook)
+			if err != nil {
 				return fmt.Errorf("parse Codex hooks matcher group in %s: %w", destPath, err)
 			}
+			if owned, conflict := codexHookOwnershipForOS(hook, goos); conflict {
+				return fmt.Errorf("Codex hooks file %s contains a modified Loaf SessionStart matcher group in %s; refusing to retire or duplicate it", destPath, hookType)
+			} else if owned {
+				retiredLegacy = true
+				continue
+			}
 			if !isValidCodexMatcherGroup(hook) {
-				if isLoafInstallHook(hook) {
+				if isLoafInstallHookForOS(hook, goos) {
 					retiredLegacy = true
 					continue
 				}
 				return fmt.Errorf("Codex hooks file %s contains an unsupported matcher entry in %s; preserve it manually or remove it before installing Loaf", destPath, hookType)
 			}
-			// Preserve a valid matcher group as a whole, including any user
-			// handlers adjacent to a legacy Loaf handler. Loaf's fallback
-			// adapter does not have enough schema knowledge to edit a group
-			// safely without risking user behavior.
+			// Preserve each valid user matcher group as a whole. Any modified
+			// recognizable Loaf group was rejected above rather than edited.
+			merged.Hooks[hookType] = append(merged.Hooks[hookType], rawHook)
+		}
+	}
+	for hookType, hooks := range loafHooks.Hooks {
+		for _, rawHook := range hooks {
+			hook, err := decodeCodexHookObject(rawHook)
+			if err != nil {
+				return fmt.Errorf("parse generated Codex hooks matcher group in %s: %w", loafPath, err)
+			}
+			if !isValidCodexMatcherGroup(hook) {
+				return fmt.Errorf("generated Codex hooks file %s contains an unsupported matcher entry in %s", loafPath, hookType)
+			}
 			merged.Hooks[hookType] = append(merged.Hooks[hookType], rawHook)
 		}
 	}
@@ -544,6 +595,61 @@ func mergeCodexHookFiles(destPath string, loafPath string) error {
 		return err
 	}
 	return os.WriteFile(destPath, body, 0o644)
+}
+
+func renderCodexHookExecutable(rawHook json.RawMessage, executable string) (json.RawMessage, error) {
+	return renderCodexHookExecutableForOS(rawHook, executable, runtime.GOOS)
+}
+
+func renderCodexHookExecutableForOS(rawHook json.RawMessage, executable string, goos string) (json.RawMessage, error) {
+	hook, err := decodeCodexHookObject(rawHook)
+	if err != nil {
+		return nil, err
+	}
+	handlers, ok := hook["hooks"].([]any)
+	if !ok {
+		return nil, errors.New("matcher group hooks must be an array")
+	}
+	if len(handlers) != 1 {
+		return nil, errors.New("Loaf Codex matcher group must contain exactly one command handler")
+	}
+	for _, rawHandler := range handlers {
+		handler, ok := rawHandler.(map[string]any)
+		if !ok {
+			return nil, errors.New("matcher handler must be an object")
+		}
+		command, ok := handler["command"].(string)
+		if !ok {
+			return nil, errors.New("Loaf Codex matcher group command must be a string")
+		}
+		if command != codexJournalExecutablePlaceholder+codexJournalHookCommandSuffix && command != codexJournalHookCommandTemplate {
+			return nil, errors.New("Loaf Codex matcher group contains an unexpected command")
+		}
+		rawWindowsCommand, hasWindowsCommand := handler["commandWindows"]
+		if hasWindowsCommand {
+			windowsCommand, ok := rawWindowsCommand.(string)
+			if !ok || (windowsCommand != codexJournalExecutablePlaceholder+codexJournalHookCommandSuffix && windowsCommand != codexJournalHookCommandTemplate) {
+				return nil, errors.New("Loaf Codex matcher group contains an unexpected Windows command")
+			}
+		}
+		if goos == "windows" {
+			renderedWindowsCommand, err := codexWindowsJournalContextCommand(executable)
+			if err != nil {
+				return nil, err
+			}
+			handler["command"] = renderedWindowsCommand
+			handler["commandWindows"] = renderedWindowsCommand
+		} else {
+			handler["command"] = journalContextShellQuote(executable) + codexJournalHookCommandSuffix
+		}
+		if hasWindowsCommand && goos != "windows" {
+			delete(handler, "commandWindows")
+		}
+	}
+	if matcher, _ := hook["matcher"].(string); matcher != codexJournalHookMatcher {
+		return nil, errors.New("Loaf Codex matcher group contains an unexpected matcher")
+	}
+	return json.Marshal(hook)
 }
 
 func loadCodexHooksRawFileStrict(path string) (codexHooksRawFile, error) {
@@ -606,7 +712,7 @@ func loadCodexHooksRawFileStrict(path string) (codexHooksRawFile, error) {
 		}
 	}
 	description := topLevel["description"]
-	if len(description) > 0 {
+	if len(description) > 0 && strings.TrimSpace(string(description)) != "null" {
 		var value string
 		if err := json.Unmarshal(description, &value); err != nil {
 			return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: description must be a string", path)
@@ -640,61 +746,169 @@ func isValidCodexMatcherGroup(hook map[string]any) bool {
 	for key, value := range hook {
 		switch key {
 		case "matcher":
-			if _, ok := value.(string); !ok {
-				return false
+			if value != nil {
+				if _, ok := value.(string); !ok {
+					return false
+				}
 			}
 		case "hooks":
 		default:
 			return false
 		}
 	}
-	handlers, ok := hook["hooks"].([]any)
-	if !ok || len(handlers) == 0 {
-		return false
+	handlers := []any{}
+	if rawHandlers, ok := hook["hooks"]; ok {
+		var valid bool
+		handlers, valid = rawHandlers.([]any)
+		if !valid {
+			return false
+		}
 	}
 	for _, handler := range handlers {
 		handlerMap, ok := handler.(map[string]any)
 		if !ok || len(handlerMap) == 0 {
 			return false
 		}
-		for key, value := range handlerMap {
-			switch key {
-			case "type":
-				if handlerType, ok := value.(string); !ok || handlerType != "command" {
-					return false
-				}
-			case "command":
-				if command, ok := value.(string); !ok || strings.TrimSpace(command) == "" {
-					return false
-				}
-			case "statusMessage", "commandWindows":
-				if _, ok := value.(string); !ok {
-					return false
-				}
-			case "timeout":
-				timeout, ok := value.(float64)
-				if !ok || math.IsNaN(timeout) || math.IsInf(timeout, 0) || timeout <= 0 || math.Trunc(timeout) != timeout {
-					return false
-				}
-			case "async":
-				if _, ok := value.(bool); !ok {
-					return false
-				}
-			default:
-				return false
-			}
-		}
-		if _, ok := handlerMap["type"]; !ok {
+		handlerType, ok := handlerMap["type"].(string)
+		if !ok {
 			return false
 		}
-		if _, ok := handlerMap["command"]; !ok {
+		switch handlerType {
+		case "prompt", "agent":
+			if len(handlerMap) != 1 {
+				return false
+			}
+		case "command":
+			if _, canonical := handlerMap["commandWindows"]; canonical {
+				if _, alias := handlerMap["command_windows"]; alias {
+					return false
+				}
+			}
+			for key, value := range handlerMap {
+				switch key {
+				case "type":
+				case "command":
+					if _, ok := value.(string); !ok {
+						return false
+					}
+				case "statusMessage", "commandWindows", "command_windows":
+					if value != nil {
+						if _, ok := value.(string); !ok {
+							return false
+						}
+					}
+				case "timeout":
+					if value != nil {
+						if _, ok := codexHookUint64(value); !ok {
+							return false
+						}
+					}
+				case "async":
+					if _, ok := value.(bool); !ok {
+						return false
+					}
+				default:
+					return false
+				}
+			}
+			if _, ok := handlerMap["command"]; !ok {
+				return false
+			}
+		default:
 			return false
 		}
 	}
 	return true
 }
 
+func decodeCodexHookObject(rawHook json.RawMessage) (map[string]any, error) {
+	var hook map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(rawHook))
+	decoder.UseNumber()
+	if err := decoder.Decode(&hook); err != nil {
+		return nil, err
+	}
+	if hook == nil {
+		return nil, errors.New("matcher group must be an object")
+	}
+	return hook, nil
+}
+
+func codexHookUint64(value any) (uint64, bool) {
+	switch value := value.(type) {
+	case json.Number:
+		parsed, err := strconv.ParseUint(string(value), 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	case float64:
+		// A float64 can represent every integer exactly only through 2^53.
+		// Reject larger values instead of accepting a rounded value that may
+		// differ from the JSON integer or exceed uint64's range.
+		const maxSafeInteger = float64(1 << 53)
+		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > maxSafeInteger || math.Trunc(value) != value {
+			return 0, false
+		}
+		return uint64(value), true
+	default:
+		return 0, false
+	}
+}
+
+func codexWindowsJournalContextCommand(executable string) (string, error) {
+	if !isCanonicalWindowsExecutablePath(executable) {
+		return "", errors.New("Codex Windows command requires a canonical absolute Windows executable path")
+	}
+	// The outer quote makes cmd.exe /C pass the complete command through as a
+	// single command line; the inner quotes protect spaces and cmd metacharacters
+	// in the executable path.
+	return `""` + executable + `"` + codexJournalHookCommandSuffix + `"`, nil
+}
+
+func isCanonicalWindowsExecutablePath(path string) bool {
+	if path == "" || strings.Contains(path, "/") || strings.ContainsAny(path, `%!"`) {
+		return false
+	}
+	for _, b := range []byte(path) {
+		if b < 0x20 || b == 0x7f {
+			return false
+		}
+	}
+	if strings.HasPrefix(path, `\\.\`) || strings.HasPrefix(path, `\\?\`) {
+		return false
+	}
+	if strings.HasPrefix(path, `\\`) {
+		parts := strings.Split(path[2:], `\`)
+		return len(parts) >= 3 && parts[0] != "" && parts[1] != "" && windowsPathPartsCanonical(parts[2:])
+	}
+	if len(path) < 4 || !isASCIIWindowsDriveLetter(path[0]) || path[1] != ':' || path[2] != '\\' {
+		return false
+	}
+	return windowsPathPartsCanonical(strings.Split(path[3:], `\`))
+}
+
+func windowsPathPartsCanonical(parts []string) bool {
+	if len(parts) == 0 || parts[len(parts)-1] == "" {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+func isASCIIWindowsDriveLetter(value byte) bool {
+	return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z')
+}
+
 func isLoafInstallHook(hook map[string]any) bool {
+	return isLoafInstallHookForOS(hook, runtime.GOOS)
+}
+
+func isLoafInstallHookForOS(hook map[string]any, goos string) bool {
 	if marker, ok := hook[loafHookMarker].(bool); ok && marker {
 		return true
 	}
@@ -711,7 +925,105 @@ func isLoafInstallHook(hook map[string]any) bool {
 			}
 		}
 	}
+	if isLoafCodexMatcherGroupForOS(hook, goos) {
+		return true
+	}
 	return false
+}
+
+func isLoafCodexMatcherGroup(hook map[string]any) bool {
+	return isLoafCodexMatcherGroupForOS(hook, runtime.GOOS)
+}
+
+func isLoafCodexMatcherGroupForOS(hook map[string]any, goos string) bool {
+	owned, conflict := codexHookOwnershipForOS(hook, goos)
+	return owned && !conflict
+}
+
+// codexHookOwnership recognizes only the exact Loaf one-handler shape. A
+// recognizable suffix in a modified group is an ownership conflict, not a
+// reason to delete a whole user group.
+func codexHookOwnership(hook map[string]any) (owned bool, conflict bool) {
+	return codexHookOwnershipForOS(hook, runtime.GOOS)
+}
+
+func codexHookOwnershipForOS(hook map[string]any, goos string) (owned bool, conflict bool) {
+	matcher, _ := hook["matcher"].(string)
+	handlers, ok := hook["hooks"].([]any)
+	if !ok {
+		return false, false
+	}
+	containsLoafCommand := false
+	for _, rawHandler := range handlers {
+		handler, ok := rawHandler.(map[string]any)
+		if !ok {
+			continue
+		}
+		command, ok := handler["command"].(string)
+		if ok && strings.Contains(command, codexJournalHookCommandSuffix) {
+			containsLoafCommand = true
+		}
+		windowsCommand, ok := handler["commandWindows"].(string)
+		if ok && strings.Contains(windowsCommand, codexJournalHookCommandSuffix) {
+			containsLoafCommand = true
+		}
+	}
+	if !containsLoafCommand {
+		return false, false
+	}
+	if matcher != codexJournalHookMatcher || len(hook) != 2 || len(handlers) != 1 {
+		return false, true
+	}
+	handler, ok := handlers[0].(map[string]any)
+	if !ok || handler["type"] != "command" {
+		return false, true
+	}
+	command, ok := handler["command"].(string)
+	if !ok {
+		return false, true
+	}
+	if goos == "windows" {
+		windowsCommand, windowsOK := handler["commandWindows"].(string)
+		if len(handler) != 3 || !windowsOK || command != windowsCommand || !isExactCodexJournalHookCommandWindows(command) {
+			return false, true
+		}
+	} else if len(handler) != 2 || !isExactCodexJournalHookCommand(command) {
+		return false, true
+	}
+	return true, false
+}
+
+func isExactCodexJournalHookCommand(command string) bool {
+	if command == codexJournalExecutablePlaceholder+codexJournalHookCommandSuffix || command == codexJournalHookCommandTemplate {
+		return true
+	}
+	if !strings.HasPrefix(command, "'") || !strings.HasSuffix(command, codexJournalHookCommandSuffix) {
+		return false
+	}
+	quotedEnd := len(command) - len(codexJournalHookCommandSuffix)
+	if quotedEnd < 2 || command[quotedEnd-1] != '\'' {
+		return false
+	}
+	quoted := command[:quotedEnd]
+	path := strings.TrimSuffix(strings.TrimPrefix(quoted, "'"), "'")
+	path = strings.ReplaceAll(path, "'\\''", "'")
+	return filepath.IsAbs(path) && journalContextShellQuote(path) == quoted
+}
+
+func isExactCodexJournalHookCommandWindows(command string) bool {
+	if command == codexJournalExecutablePlaceholder+codexJournalHookCommandSuffix || command == codexJournalHookCommandTemplate {
+		return true
+	}
+	if !strings.HasPrefix(command, `""`) || !strings.HasSuffix(command, `"`) {
+		return false
+	}
+	body := command[2 : len(command)-1]
+	path, ok := strings.CutSuffix(body, `"`+codexJournalHookCommandSuffix)
+	if !ok {
+		return false
+	}
+	want, err := codexWindowsJournalContextCommand(path)
+	return err == nil && want == command
 }
 
 func installHookSignature(hook map[string]any) string {

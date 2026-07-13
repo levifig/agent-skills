@@ -364,8 +364,34 @@ declare module 'url' {
 }
 
 declare module '@ampcode/plugin' {
+  export interface ToolCallEvent {
+    toolUseID: string;
+    tool: string;
+    input: Record<string, unknown>;
+    thread: { id: string };
+  }
+
+  export interface ToolResultEvent extends ToolCallEvent {
+    status: 'done' | 'error' | 'cancelled';
+    error?: string;
+    output?: unknown;
+  }
+
+  export interface ShellCommand {
+    command: string;
+    dir?: string;
+  }
+
+  export type ToolCallResult =
+    | { action: 'allow' }
+    | { action: 'reject-and-continue'; message: string };
+
   export interface PluginAPI {
-    on(event: string, handler: (...args: any[]) => unknown | Promise<unknown>): void;
+    helpers: {
+      shellCommandFromToolCall(event: ToolCallEvent): ShellCommand | null;
+    };
+    on(event: 'tool.call', handler: (event: ToolCallEvent) => ToolCallResult | Promise<ToolCallResult>): void;
+    on(event: 'tool.result', handler: (event: ToolResultEvent) => void | Promise<void>): void;
   }
 }
 `
@@ -386,7 +412,7 @@ func validateNativeBuildHarnessLanguage(root string, targetName string, paths []
 		}
 		relative := nativeBuildRelativePath(root, path)
 		for lineNumber, line := range strings.Split(string(body), "\n") {
-			if hasNativeBuildUnresolvedToken(line) {
+			if hasNativeBuildUnresolvedToken(line) && !nativeBuildAllowedCodexExecutablePlaceholder(targetName, relative, line) {
 				findings = append(findings, nativeBuildHarnessLanguageFinding{path: relative, line: lineNumber + 1, reason: "unresolved harness token"})
 			}
 			if targetName == "claude-code" {
@@ -428,6 +454,19 @@ func hasNativeBuildUnresolvedToken(line string) bool {
 		index += next + 2
 	}
 	return false
+}
+
+func nativeBuildAllowedCodexExecutablePlaceholder(targetName string, relative string, line string) bool {
+	if targetName != "codex" || filepath.ToSlash(relative) != "dist/codex/.codex/hooks.json" {
+		return false
+	}
+	switch strings.TrimSuffix(strings.TrimSpace(line), ",") {
+	case `"command": "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"`,
+		`"commandWindows": "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"`:
+		return true
+	default:
+		return false
+	}
 }
 
 func nativeBuildNonClaudeForbiddenTerms() []string {

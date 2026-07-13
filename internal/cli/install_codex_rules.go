@@ -20,6 +20,9 @@ const (
 	codexJournalGuidanceRelativePath     = "AGENTS.md"
 	codexJournalRuleManifest             = ".loaf-managed-rules.json"
 	codexJournalExecutablePlaceholder    = "{{LOAF_EXECUTABLE}}"
+	codexJournalHookMatcher              = "startup|resume|clear|compact"
+	codexJournalHookCommandSuffix        = " journal context --from-hook --codex-hook"
+	codexJournalHookCommandTemplate      = "loaf" + codexJournalHookCommandSuffix
 	codexJournalGuidanceStart            = "<!-- loaf:managed:codex-basic-commands:start -->"
 	codexJournalGuidanceEnd              = "<!-- loaf:managed:codex-basic-commands:end -->"
 	codexLegacyGuidanceStart             = "<!-- loaf:managed:codex-auto-journal:start -->"
@@ -385,8 +388,6 @@ func replaceCodexJournalGuidance(content string, r codexJournalGuidanceRange, bl
 func removeCodexJournalGuidance(content string, r codexJournalGuidanceRange) string {
 	return content[:r.start] + content[r.end:]
 }
-
-func currentSHAEquals(body []byte, want string) bool { return sha256Bytes(body) == want }
 
 func sha256Bytes(body []byte) string {
 	sum := sha256.Sum256(body)

@@ -31,7 +31,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 - Use `loaf journal log` for entries: `decision(scope)`, `discover(scope)`, `block(scope)`, `spark(scope)`, `todo(scope)`
 - **JOURNAL NUDGE**: When you see this hook trigger, log unrecorded decisions or findings before responding. Use `loaf journal log "entry(scope): description"`. Only log actions (decisions made, things discovered, conclusions reached) — not thoughts or read-only work.
 - Write an optional `wrap(scope)` entry only when the conversation holds synthesis worth saving. Nothing is ever ended or archived; a conversation without a wrap leaves a valid journal.
-- Continuity is derived and ephemeral: the SessionStart hook emits a layered digest at conversation start. Pull more on demand with `loaf journal recent`, `loaf journal search`, or `loaf journal context`.
+- Continuity is derived and ephemeral. When the exact current target mode has a supported startup adapter, it may emit a layered digest at conversation start. When the capability is candidate or unsupported, explicitly run `loaf journal context` at conversation start. Pull more on demand with `loaf journal recent`, `loaf journal search`, or `loaf journal context`.
 
 ### Councils
 - Always odd number: 5 or 7 agents
@@ -70,7 +70,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 | Feature planning | Size by complexity, shape before building |
 | Agent selection | Match domain expertise to task |
 | Stuck on task | Check priority order, consider reshaping |
-| Pre-compaction | CLI hooks nudge a journal flush + emit the digest afterward |
+| Pre-compaction | On an exact target mode with supported compaction delivery, hooks may nudge a journal flush and emit the digest afterward; otherwise flush manually and run `loaf journal context` after compaction |
 | Durable artifact handling | Delegate `.agents/`-scoped report/spec/handoff/knowledge tending to `librarian` |
 | Low-priority work | Spawn background-runner with run_in_background |
 | New feature workflow | Research -> Architecture -> Shape -> Breakdown -> Implement |

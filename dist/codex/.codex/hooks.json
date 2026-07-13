@@ -1,3 +1,16 @@
 {
-  "hooks": {}
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook",
+            "commandWindows": "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"
+          }
+        ]
+      }
+    ]
+  }
 }

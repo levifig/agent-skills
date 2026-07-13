@@ -24,14 +24,27 @@ type journalHookInput struct {
 
 type journalHookWarning struct {
 	ContractVersion  int    `json:"contract_version"`
+	EnvelopeVersion  int    `json:"envelope_version,omitempty"`
 	Kind             string `json:"kind"`
 	Severity         string `json:"severity"`
 	Code             string `json:"code"`
 	Message          string `json:"message"`
+	Target           string `json:"target,omitempty"`
+	Harness          string `json:"harness,omitempty"`
+	HarnessVersion   string `json:"harness_version,omitempty"`
+	Event            string `json:"event,omitempty"`
+	Outcome          string `json:"outcome,omitempty"`
 	Key              string `json:"key"`
 	LatestSourceID   string `json:"latest_source_id"`
 	LatestSourceType string `json:"latest_source_type"`
 	NonBlocking      bool   `json:"non_blocking"`
+}
+
+func writeJournalHookWarning(out io.Writer, warning *journalHookWarning) error {
+	if warning == nil {
+		return nil
+	}
+	return writeJSON(out, *warning)
 }
 
 func writeJournalHookUnmatchedUnblockWarning(out io.Writer, unmatched *state.JournalUnmatchedUnblockError) error {
@@ -84,51 +97,9 @@ func (r Runner) readJournalHookInput() (journalHookInput, error) {
 // string. Returns ok=false when the payload carries no recognizable event, so
 // the hook writes nothing rather than logging noise.
 func deriveJournalHookLogEntry(input journalHookInput) (string, bool) {
-	raw := input.Raw
-	if raw == nil {
-		return "", false
-	}
-	hookEventName := stringMapValue(raw, "hook_event_name")
-	toolName := firstNonEmpty(stringMapValue(raw, "tool_name"), nestedStringMapValue(raw, "tool", "name"))
-	if hookEventName == "TaskCompleted" || toolName == "TaskCompleted" {
-		description := firstNonEmpty(stringMapValue(raw, "task_description"), stringMapValue(raw, "task_subject"), "task")
-		return "task(completed): " + description, true
-	}
-	command := firstNonEmpty(
-		nestedStringMapValue(raw, "tool_input", "command"),
-		nestedStringMapValue(raw, "input", "command"),
-		nestedStringMapValue(raw, "tool", "input", "command"),
-	)
-	if command == "" {
-		if commit := stringMapValue(raw, "commit"); commit != "" {
-			return fmt.Sprintf("commit(%s): %s", commit, firstNonEmpty(stringMapValue(raw, "message"), "commit")), true
-		}
-		if pr := stringMapValue(raw, "pr"); pr != "" {
-			return fmt.Sprintf("pr(create): %s (#%s)", firstNonEmpty(stringMapValue(raw, "title"), "PR created"), pr), true
-		}
-		if merge := stringMapValue(raw, "merge"); merge != "" {
-			return fmt.Sprintf("pr(merge): #%s", merge), true
-		}
-		return "", false
-	}
-	switch {
-	case strings.Contains(command, "git commit"):
-		message := commandFlagValue(command, "-m")
-		if message == "" {
-			message = "commit"
-		}
-		return fmt.Sprintf("commit(unknown): %s", message), true
-	case strings.Contains(command, "gh pr create"):
-		title := commandFlagValue(command, "--title")
-		if title == "" {
-			title = "PR created"
-		}
-		return "pr(create): " + title, true
-	case strings.Contains(command, "gh pr merge"):
-		return "pr(merge): #unknown", true
-	default:
-		return "", false
-	}
+	envelope := normalizeJournalHookEnvelope(input, "")
+	entry, ok, _ := journalHookEntryForEnvelope(envelope, input.Raw, false)
+	return entry, ok
 }
 
 // isStateMissingError reports whether err is the canonical "state database is
@@ -148,7 +119,7 @@ func journalContextPromptInstructions() string {
 		"- When the user's message is a QUESTION, answer it and STOP. Do not implement anything.",
 		"  Wait for explicit instructions before taking action.",
 		"- Create a Task BEFORE any tool use that changes something (Edit, Write, Bash, etc.).",
-		"  No threshold - if it mutates, track it. TaskCompleted events auto-log to the journal.",
+		"  No threshold - if it mutates, track it. Automatic task completion capture is disabled until a proven adapter is installed; write completion entries explicitly.",
 		"  Create tasks before starting work, update status as you go, mark complete when done.",
 		"- Delegate code changes to agents - orchestrator coordinates, doesn't implement.",
 		"- Log decisions: loaf journal log \"decision(scope): description\".",
@@ -187,7 +158,7 @@ func (r Runner) runJournalContextForPrompt(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if hookInput.AgentID != "" {
+	if normalizeJournalHookEnvelope(hookInput, "").isSubagent() {
 		return nil
 	}
 	fmt.Fprintln(out, journalContextPromptInstructions())
@@ -202,7 +173,7 @@ func (r Runner) runJournalContextForCompact(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if hookInput.AgentID != "" {
+	if normalizeJournalHookEnvelope(hookInput, "").isSubagent() {
 		return nil
 	}
 	fmt.Fprintln(out, journalContextCompactInstructions())
@@ -230,19 +201,33 @@ func (r Runner) journalLogFromHook(options *journalLogOptions, projectRoot proje
 	if herr != nil {
 		return false, herr
 	}
-	if hookInput.AgentID != "" {
+	envelope := normalizeJournalHookEnvelope(hookInput, worktree)
+	if envelope.isSubagent() {
+		options.hookSuppressed = true
 		return false, nil
 	}
 	if options.harnessSessionID == "" {
-		options.harnessSessionID = hookInput.SessionID
+		options.harnessSessionID = envelope.SessionID
+	}
+	if options.entry != "" && envelope.Event == "" && envelope.CommandFamily == "" {
+		branch := state.ObservedGitBranch(worktree)
+		origin := envelope.origin(branch)
+		options.origin = &origin
+		return true, nil
+	}
+	entry, ok, warning := journalHookEntryForEnvelope(envelope, hookInput.Raw, false)
+	if warning != nil {
+		options.hookWarning = warning
+	}
+	if !ok {
+		return false, nil
 	}
 	if options.entry == "" {
-		entry, ok := deriveJournalHookLogEntry(hookInput)
-		if !ok {
-			return false, nil
-		}
 		options.entry = entry
 	}
+	branch := state.ObservedGitBranch(worktree)
+	origin := envelope.origin(branch)
+	options.origin = &origin
 	return true, nil
 }
 
@@ -254,11 +239,5 @@ func (r Runner) runJournalContextResumption(out io.Writer, runtime state.Runtime
 	if err != nil {
 		return err
 	}
-	if hookInput.AgentID != "" {
-		return nil
-	}
-	// PostCompact resumption is a hook path: a missing state database must not
-	// fail the harness. The subagent guard already ran above, so the inner digest
-	// call reads no further stdin.
-	return r.runJournalContextDigest(nil, out, runtime, true)
+	return r.runJournalContextDigestWithHookInput(nil, out, runtime, true, &hookInput)
 }

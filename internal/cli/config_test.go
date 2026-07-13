@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/levifig/loaf/internal/project"
 )
 
 func TestRunnerConfigCheckFixCreatesProjectConfig(t *testing.T) {
@@ -87,7 +90,7 @@ func TestRunnerConfigCheckFixAcceptsCurrentCodexHooksSchema(t *testing.T) {
 	}
 	codexBefore := findConfigTargetStatus(before.Targets, "codex")
 	if codexBefore.Status != "ok" || len(codexBefore.MissingHooks) != 0 {
-		t.Fatalf("codexBefore = %#v, want current empty Loaf hook contract", codexBefore)
+		t.Fatalf("codexBefore = %#v, want current Codex hook contract", codexBefore)
 	}
 
 	var fixOut bytes.Buffer
@@ -110,6 +113,83 @@ func TestRunnerConfigCheckFixAcceptsCurrentCodexHooksSchema(t *testing.T) {
 	if strings.Contains(string(body), "loaf check --hook") || !strings.Contains(string(body), "user codex hook") {
 		t.Fatalf("hooks.json = %s, want user hook preserved without Loaf handlers", body)
 	}
+}
+
+func TestFixConfigTargetHooksRetainsProjectRootFromNestedWorkingDirectory(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	projectRoot := filepath.Join(root, "project")
+	nestedWorkingDir := filepath.Join(projectRoot, "nested", "worktree")
+	loafRoot := filepath.Join(root, "loaf")
+	configDir := filepath.Join(root, "codex-home")
+	writeInstallFile(t, filepath.Join(loafRoot, "dist", "codex", ".codex", "hooks.json"), `{"hooks":{}}`+"\n")
+	writeInstallFile(t, filepath.Join(configDir, "hooks.json"), `{"hooks":{}}`+"\n")
+	if err := os.MkdirAll(nestedWorkingDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(nested working directory) error = %v", err)
+	}
+	if output, err := exec.Command("git", "init", "-q", projectRoot).CombinedOutput(); err != nil {
+		t.Fatalf("git init error = %v\n%s", err, output)
+	}
+	resolvedRoot, err := project.ResolveRoot(nestedWorkingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot(nested working directory) error = %v", err)
+	}
+	if resolvedRoot.Path() != projectRoot {
+		t.Fatalf("ResolveRoot(nested working directory) = %q, want %q", resolvedRoot.Path(), projectRoot)
+	}
+
+	target := detectedInstallTool{key: "codex", configDir: configDir}
+	var captured targetInstallOptions
+	status := fixConfigTargetHooksWithInstaller(resolvedRoot.Path(), loafRoot, target, configTargetStatus{Status: "stale"}, func(options targetInstallOptions) error {
+		captured = options
+		return nil
+	})
+	if status.Error != "" {
+		t.Fatalf("fixConfigTargetHooks error = %q", status.Error)
+	}
+	if captured.ProjectRoot != projectRoot {
+		t.Fatalf("captured ProjectRoot = %q, want registered project root %q from nested working directory %q", captured.ProjectRoot, projectRoot, nestedWorkingDir)
+	}
+}
+
+func TestRunnerConfigCheckFixFromNestedDirectoryRefusesProjectRootExecutable(t *testing.T) {
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("LookPath(git) error = %v", err)
+	}
+	root, home := setupInstallCommandFixture(t)
+	projectRoot := root
+	nestedWorkingDir := filepath.Join(projectRoot, "nested", "worktree")
+	if err := os.MkdirAll(nestedWorkingDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(nested working directory) error = %v", err)
+	}
+	if output, err := exec.Command(gitPath, "init", "-q", projectRoot).CombinedOutput(); err != nil {
+		t.Fatalf("git init error = %v\n%s", err, output)
+	}
+	writeInstallFile(t, filepath.Join(projectRoot, ".agents", "loaf.json"), `{"version":"1.0.0","initialized":"2026-07-13T00:00:00Z","knowledge":{"local":["docs/knowledge","docs/decisions"],"staleness_threshold_days":30,"imports":[]},"integrations":{"linear":{"enabled":false},"serena":{"enabled":false}}}`+"\n")
+	writeInstallFile(t, filepath.Join(projectRoot, "dist", "codex", ".codex", "hooks.json"), `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook","commandWindows":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"}]}]}}`+"\n")
+	writeInstallFile(t, filepath.Join(home, ".codex", loafInstallMarkerFile), "old\n")
+	writeInstallFile(t, filepath.Join(home, ".codex", "hooks.json"), `{"hooks":{}}`+"\n")
+	fakeLoaf := filepath.Join(projectRoot, "bin", "loaf")
+	writeInstallFile(t, fakeLoaf, "#!/bin/sh\nexit 0\n")
+	if err := os.Chmod(fakeLoaf, 0o755); err != nil {
+		t.Fatalf("Chmod(fake loaf) error = %v", err)
+	}
+
+	var output bytes.Buffer
+	runErr := (Runner{Stdout: &output, WorkingDir: nestedWorkingDir}).Run([]string{"config", "check", "--fix", "--json"})
+	var exitErr ExitError
+	if !errors.As(runErr, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("nested config check --fix error = %v, want trust refusal exit 2", runErr)
+	}
+	var result configCheckResult
+	if decodeErr := json.Unmarshal(output.Bytes(), &result); decodeErr != nil {
+		t.Fatalf("Unmarshal(nested config check output) error = %v\n%s", decodeErr, output.String())
+	}
+	joinedErrors := strings.Join(result.Errors, "\n")
+	if !strings.Contains(joinedErrors, "inside forbidden path") || !strings.Contains(joinedErrors, projectRoot) {
+		t.Fatalf("nested config check errors = %q, want project-root executable trust refusal", joinedErrors)
+	}
+	assertInstallFile(t, filepath.Join(home, ".codex", "hooks.json"), `{"hooks":{}}`+"\n")
 }
 
 func TestRunnerConfigHelp(t *testing.T) {

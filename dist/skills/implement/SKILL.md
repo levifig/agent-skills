@@ -81,7 +81,7 @@ Before starting, evaluate context suitability.
 | Just completed a different task/spec | Suggest clear |
 | About to start multi-file implementation | Check depth |
 
-If restart needed: log current state with `loaf journal log`, then ask the user to restart. The next conversation's start digest reconstructs continuity from the journal.
+If restart needed: log current state with `loaf journal log`, then ask the user to restart. A supported startup adapter may reconstruct continuity from the journal in the next conversation; when the exact current target mode is candidate or unsupported, explicitly run `loaf journal context` after restarting.
 
 ## Input Detection
 
@@ -254,7 +254,7 @@ There is no session to start — journaling is continuous. Your first action is 
 loaf journal log "skill(implement): <task/spec/context>"
 ```
 
-Entries are project-scoped and tagged with this conversation's harness id automatically. Continuity from prior conversations arrives via the start digest; pull more with `loaf journal recent` or `loaf journal context` when you need it.
+Entries are project-scoped and tagged with this conversation's harness id automatically. Continuity from prior conversations may arrive through a supported startup adapter; when the exact current target mode is candidate or unsupported, pull it explicitly with `loaf journal context`. Use `loaf journal recent` when you need a narrower timeline.
 
 Suggest renaming the harness conversation with a meaningful name derived from context:
 - From spec: `Suggestion: /rename SPEC-027-session-stability`

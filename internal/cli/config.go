@@ -140,7 +140,7 @@ func runConfigCheck(projectRoot string, loafRoot string, options configCheckOpti
 	for _, target := range targets {
 		status := checkConfigTargetHooks(loafRoot, target)
 		if len(status.MissingHooks) > 0 && options.fix {
-			status = fixConfigTargetHooks(loafRoot, target, status)
+			status = fixConfigTargetHooks(projectRoot, loafRoot, target, status)
 		}
 		if status.Status == "updated" {
 			result.Fixed = true
@@ -436,21 +436,26 @@ func checkConfigTargetHooks(loafRoot string, target detectedInstallTool) configT
 	return status
 }
 
-func fixConfigTargetHooks(loafRoot string, target detectedInstallTool, previous configTargetStatus) configTargetStatus {
+func fixConfigTargetHooks(projectRoot string, loafRoot string, target detectedInstallTool, previous configTargetStatus) configTargetStatus {
+	return fixConfigTargetHooksWithInstaller(projectRoot, loafRoot, target, previous, installTargetDistribution)
+}
+
+func fixConfigTargetHooksWithInstaller(projectRoot string, loafRoot string, target detectedInstallTool, previous configTargetStatus, installer func(targetInstallOptions) error) configTargetStatus {
 	distDir := filepath.Join(loafRoot, "dist", target.key)
 	if !dirExistsForInstall(distDir) {
 		previous.Status = "error"
 		previous.Error = fmt.Sprintf("no build output found for %s; run `loaf build` or reinstall Loaf", target.key)
 		return previous
 	}
-	if err := installTargetDistribution(targetInstallOptions{
-		Target:    target.key,
-		DistDir:   distDir,
-		ConfigDir: target.configDir,
-		Upgrade:   true,
-		Version:   packageVersion(loafRoot),
-		HomeDir:   installHome(),
-		CodexHome: os.Getenv("CODEX_HOME"),
+	if err := installer(targetInstallOptions{
+		Target:      target.key,
+		DistDir:     distDir,
+		ConfigDir:   target.configDir,
+		Upgrade:     true,
+		Version:     packageVersion(loafRoot),
+		HomeDir:     installHome(),
+		CodexHome:   os.Getenv("CODEX_HOME"),
+		ProjectRoot: projectRoot,
 	}); err != nil {
 		previous.Status = "error"
 		previous.Error = err.Error()
@@ -505,6 +510,9 @@ func configHookIDsFromFile(path string) ([]string, error) {
 		if len(match) == 2 {
 			seen[match[1]] = true
 		}
+	}
+	if strings.Contains(string(body), codexJournalHookCommandSuffix) {
+		seen["codex-session-start"] = true
 	}
 	var ids []string
 	for id := range seen {

@@ -70,7 +70,8 @@ type nativeClaudeMatcherHooksJSON struct {
 }
 
 type nativeClaudeSessionHooksJSON struct {
-	Hooks []any `json:"hooks"`
+	Matcher string `json:"matcher,omitempty"`
+	Hooks   []any  `json:"hooks"`
 }
 
 type nativeClaudePreCommandHookJSON struct {
@@ -287,7 +288,20 @@ func nativeClaudeHooksPayload(hooks []nativeBuildHook) nativeClaudeHooksJSON {
 	payload.Hooks.PreToolUse = nativeClaudeMatcherGroups(filterNativeBuildHooksBySection(hooks, "pre-tool"), true)
 	payload.Hooks.PostToolUse = nativeClaudeMatcherGroups(filterNativeBuildHooksBySection(hooks, "post-tool"), false)
 	for _, hook := range filterNativeBuildHooksBySection(hooks, "session") {
+		// Claude receives continuity on SessionStart for every native source,
+		// including compact. The generic PostCompact declaration remains in
+		// config/hooks.yaml for targets that support it, but Claude must not
+		// render a second continuity handler there.
+		if hook.id == "post-compact" && hook.event == "PostCompact" {
+			continue
+		}
+		if hook.id == "session-start-loaf" && hook.event == "SessionStart" {
+			hook.command = "loaf journal context --from-hook --claude-code"
+		}
 		group := nativeClaudeSessionHooksJSON{Hooks: []any{nativeClaudeSessionHookEntry(hook)}}
+		if hook.id == "session-start-loaf" && hook.event == "SessionStart" {
+			group.Matcher = "startup|resume|clear|compact"
+		}
 		switch hook.event {
 		case "SessionStart":
 			payload.Hooks.SessionStart = append(payload.Hooks.SessionStart, group)
@@ -451,6 +465,7 @@ var nativeClaudeBinaryPathHooks = map[string]bool{
 	"session-start-loaf":      true,
 	"session-end-loaf":        true,
 	"session-context-inject":  true,
+	"pre-compact":             true,
 	"post-compact":            true,
 	"journal-post-commit":     true,
 	"journal-post-pr":         true,
