@@ -27,13 +27,12 @@ var fencedTargetFiles = map[string]string{
 var fencedVersionField = regexp.MustCompile(`^v([\d.]+(?:-[-\w.]+)?)$`)
 
 type fencedSectionRange struct {
-	start                int
-	end                  int
-	version              string
-	fingerprint          string
-	malformedFingerprint bool
-	malformedHeader      bool
-	bodyStart            int
+	start           int
+	end             int
+	version         string
+	fingerprint     string
+	malformedHeader bool
+	bodyStart       int
 }
 
 type fencedInstallResult struct {
@@ -65,7 +64,7 @@ func installFencedSection(targetFile string, version string, upgrade bool) (fenc
 
 	switch {
 	case hasSection:
-		if section.malformedHeader || section.malformedFingerprint {
+		if section.malformedHeader {
 			return fencedInstallResult{}, fmt.Errorf("managed Loaf section in %s has a malformed fingerprint; refusing to overwrite", targetFile)
 		}
 		existingBody := content[section.bodyStart:section.end]
