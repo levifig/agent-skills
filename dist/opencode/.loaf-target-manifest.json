@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "target": "opencode",
+  "package_version": "2.0.0-alpha.6",
+  "capability_contract_version": 3,
+  "adapters": [
+    "opencode-plugin-v1"
+  ],
+  "artifacts": [
+    {
+      "id": "hook-file:plugins/hooks/instructions/post-merge.md",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/instructions/post-merge.md",
+      "destination": "plugins/hooks/instructions/post-merge.md",
+      "sha256": "285fef6aceefbc27ee675e1d85a705c900a0a01d68d4603ccf178e9f603ed009",
+      "mode": 420
+    },
+    {
+      "id": "hook-file:plugins/hooks/instructions/pre-merge.md",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/instructions/pre-merge.md",
+      "destination": "plugins/hooks/instructions/pre-merge.md",
+      "sha256": "28c6a7006b508e067562a41ed9c2aa9c13eccbc027328176e706dcab1a74da41",
+      "mode": 420
+    },
+    {
+      "id": "hook-file:plugins/hooks/instructions/pre-pr-checklist.md",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/instructions/pre-pr-checklist.md",
+      "destination": "plugins/hooks/instructions/pre-pr-checklist.md",
+      "sha256": "803035cb33db9f1c2c02e027e5120d5fe506abd0007fce16ca3fa0eb0f4f73cb",
+      "mode": 420
+    },
+    {
+      "id": "hook-file:plugins/hooks/instructions/pre-pr-format.md",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/instructions/pre-pr-format.md",
+      "destination": "plugins/hooks/instructions/pre-pr-format.md",
+      "sha256": "da8d29ce41a1218467f68d4186f906c47075d88b3339a9fb19a8b50f8f40de82",
+      "mode": 420
+    },
+    {
+      "id": "hook-file:plugins/hooks/instructions/pre-push.md",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/instructions/pre-push.md",
+      "destination": "plugins/hooks/instructions/pre-push.md",
+      "sha256": "cdc96e5fa9a4d9ae37a8b29af5118a0fecdb29b79cd98db61fe37692550602ce",
+      "mode": 420
+    },
+    {
+      "id": "hook-file:plugins/hooks/post-tool/kb-staleness-nudge.sh",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/post-tool/kb-staleness-nudge.sh",
+      "destination": "plugins/hooks/post-tool/kb-staleness-nudge.sh",
+      "sha256": "2eb14c3143b78d62cdcef56a12ea714472898ec49e54d4e53e217f0e5668cb5e",
+      "mode": 493
+    },
+    {
+      "id": "hook-file:plugins/hooks/pre-tool/foundations-check-secrets.sh",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/pre-tool/foundations-check-secrets.sh",
+      "destination": "plugins/hooks/pre-tool/foundations-check-secrets.sh",
+      "sha256": "d70f76833d27a30460c8de390ad7f7743fa6c0edb22444be01fbfcd091199921",
+      "mode": 493
+    },
+    {
+      "id": "hook-file:plugins/hooks/pre-tool/foundations-validate-push.sh",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/pre-tool/foundations-validate-push.sh",
+      "destination": "plugins/hooks/pre-tool/foundations-validate-push.sh",
+      "sha256": "c86c7158cd61be0be5f5052966d20e3a3df2b12d03f99902f7f396d7481838f2",
+      "mode": 493
+    },
+    {
+      "id": "hook-file:plugins/hooks/pre-tool/orchestration-detect-linear-magic.py",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/pre-tool/orchestration-detect-linear-magic.py",
+      "destination": "plugins/hooks/pre-tool/orchestration-detect-linear-magic.py",
+      "sha256": "a0e449549b07e95629485e35013ede78db82a4b7d08b683fe0e914ca8c74c19c",
+      "mode": 493
+    },
+    {
+      "id": "hook-file:plugins/hooks/pre-tool/orchestration-validate-commit.py",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/pre-tool/orchestration-validate-commit.py",
+      "destination": "plugins/hooks/pre-tool/orchestration-validate-commit.py",
+      "sha256": "ad16667fdc28ec1595aba184b21faf56d41e5c9f3086ca20fd135d8dd0b21c7d",
+      "mode": 493
+    },
+    {
+      "id": "hook-file:plugins/hooks/subagent/validate-infra-safety.sh",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/subagent/validate-infra-safety.sh",
+      "destination": "plugins/hooks/subagent/validate-infra-safety.sh",
+      "sha256": "1e1d1d25367e0ae643d3880597a1e88a1a7a1469e9b987e242d20783aaed6497",
+      "mode": 493
+    },
+    {
+      "id": "hook-file:plugins/hooks/subagent/validate-sql-safety.sh",
+      "kind": "hook-file",
+      "source_path": "plugins/hooks/subagent/validate-sql-safety.sh",
+      "destination": "plugins/hooks/subagent/validate-sql-safety.sh",
+      "sha256": "f3dc96bb160540e08bfa75e6c604087222c003a7abf8d9fd77800997375fd681",
+      "mode": 493
+    },
+    {
+      "id": "managed-instructions",
+      "kind": "instruction",
+      "destination": "project-instructions",
+      "sha256": "4e202b0bcb7ad79fd7808772d67bfae87299c05d920083c6fa220292770a007d"
+    },
+    {
+      "id": "plugin:plugins/hooks.ts",
+      "kind": "plugin",
+      "source_path": "plugins/hooks.ts",
+      "destination": "plugins/hooks.ts",
+      "sha256": "7715cf7701ce54a9652c0fdaa67025493d0b3407153b89fdfb3be23f26438bef",
+      "mode": 420
+    }
+  ]
+}

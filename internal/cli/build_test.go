@@ -51,7 +51,7 @@ func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 		WorkingDir: root,
 	}.Run([]string{"build"})
 	if err != nil {
-		t.Fatalf("build error = %v", err)
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
 	}
 	for _, want := range []string{"loaf build", "shared skills intermediate", "claude-code", "opencode", "cursor", "codex", "amp", "Build complete"} {
 		if !strings.Contains(stdout.String(), want) {
@@ -78,6 +78,41 @@ func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("Stat(%s) error = %v", path, err)
+		}
+	}
+	for target, adapter := range map[string]string{
+		"claude-code": "claude-session-start-v1",
+		"opencode":    "opencode-plugin-v1",
+		"cursor":      "cursor-session-start-v1",
+		"codex":       "codex-session-start-v1",
+		"amp":         "amp-plugin-v1",
+	} {
+		manifestPath := filepath.Join(nativeBuildTargetOutputDir(root, target), ".loaf-target-manifest.json")
+		manifest := readBuildJSON(t, manifestPath)
+		if manifest["version"] != float64(1) || manifest["target"] != target || manifest["package_version"] != "9.8.7-test.1" || manifest["capability_contract_version"] != float64(3) {
+			t.Fatalf("%s manifest = %#v, want strict target metadata", target, manifest)
+		}
+		adapters, ok := manifest["adapters"].([]any)
+		if !ok || len(adapters) != 1 || adapters[0] != adapter {
+			t.Fatalf("%s manifest adapters = %#v, want %q", target, manifest["adapters"], adapter)
+		}
+		artifacts, ok := manifest["artifacts"].([]any)
+		if !ok || len(artifacts) < 2 {
+			t.Fatalf("%s manifest artifacts = %#v, want instruction plus adapter artifacts", target, manifest["artifacts"])
+		}
+		var instruction map[string]any
+		for _, rawArtifact := range artifacts {
+			artifact := rawArtifact.(map[string]any)
+			if artifact["id"] == "managed-instructions" {
+				instruction = artifact
+				break
+			}
+		}
+		if instruction == nil {
+			t.Fatalf("%s manifest has no managed instruction artifact", target)
+		}
+		if instruction["id"] != "managed-instructions" || instruction["kind"] != "instruction" || instruction["destination"] != "project-instructions" || len(instruction["sha256"].(string)) != 64 {
+			t.Fatalf("%s managed instruction artifact = %#v", target, instruction)
 		}
 	}
 }
@@ -915,7 +950,27 @@ func setupBuildCommandLoafRoot(t *testing.T) string {
 	}, "\n")), 0o644); err != nil {
 		t.Fatalf("WriteFile(targets.yaml) error = %v", err)
 	}
+	capabilities, err := os.ReadFile(testTargetCapabilityEvidencePath(t))
+	if err != nil {
+		t.Fatalf("ReadFile(target-capabilities.json) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, TargetCapabilityEvidenceRecordPath), capabilities, 0o644); err != nil {
+		t.Fatalf("WriteFile(target-capabilities.json) error = %v", err)
+	}
 	return root
+}
+
+func readBuildJSON(t *testing.T, path string) map[string]any {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", path, err)
+	}
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Unmarshal(%s) error = %v", path, err)
+	}
+	return result
 }
 
 func seedNativeCodexBuildFixture(t *testing.T, root string) {

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "target": "amp",
+  "package_version": "2.0.0-alpha.6",
+  "capability_contract_version": 3,
+  "adapters": [
+    "amp-plugin-v1"
+  ],
+  "artifacts": [
+    {
+      "id": "managed-instructions",
+      "kind": "instruction",
+      "destination": "project-instructions",
+      "sha256": "4e202b0bcb7ad79fd7808772d67bfae87299c05d920083c6fa220292770a007d"
+    },
+    {
+      "id": "plugin:.amp/plugins/loaf.ts",
+      "kind": "plugin",
+      "source_path": ".amp/plugins/loaf.ts",
+      "destination": "plugins/loaf.ts",
+      "sha256": "7a54c1b6df172a76f735d5998775b80c4d08280be1e8d945a368c1a01d395ccd",
+      "mode": 420
+    }
+  ]
+}

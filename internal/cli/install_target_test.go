@@ -2,10 +2,12 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -60,6 +62,541 @@ func TestInstallTargetOpencodeSyncsBuiltOutputAndMarker(t *testing.T) {
 	assertInstallFile(t, filepath.Join(home, ".agents", "skills", "go-development", "SKILL.md"), "# Go\n")
 	assertInstallPathMissing(t, filepath.Join(config, "skills", "go-development"))
 	assertInstallFile(t, filepath.Join(config, loafInstallMarkerFile), "9.8.7-test.1\n")
+}
+
+func TestInstallTargetAdapterManifestPreservesForeignConvergesAndRejectsTampering(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	home := filepath.Join(root, "home")
+	dist := filepath.Join(root, "dist", "opencode")
+	config := filepath.Join(root, "config", "opencode")
+	pluginSource := filepath.Join(dist, "plugins", "hooks.ts")
+	pluginDest := filepath.Join(config, "plugins", "hooks.ts")
+	foreign := filepath.Join(config, "plugins", "company.ts")
+	writeInstallFile(t, pluginSource, "export const generation = 1;\n")
+	writeInstallFile(t, foreign, "export const company = true;\n")
+	writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{{
+		"id":          "runtime-plugin",
+		"kind":        "plugin",
+		"source_path": "plugins/hooks.ts",
+		"destination": "plugins/hooks.ts",
+		"sha256":      sha256Hex("export const generation = 1;\n"),
+	}})
+
+	options := targetInstallOptions{Target: "opencode", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home}
+	if err := installTargetDistribution(options); err != nil {
+		t.Fatalf("first OpenCode install error = %v", err)
+	}
+	assertInstallFile(t, pluginDest, "export const generation = 1;\n")
+	assertInstallFile(t, foreign, "export const company = true;\n")
+	if _, err := os.Stat(filepath.Join(config, ".loaf-managed-target.json")); err != nil {
+		t.Fatalf("managed target manifest stat error = %v", err)
+	}
+
+	writeInstallFile(t, pluginSource, "export const generation = 2;\n")
+	writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{{
+		"id":          "runtime-plugin",
+		"kind":        "plugin",
+		"source_path": "plugins/hooks.ts",
+		"destination": "plugins/hooks.ts",
+		"sha256":      sha256Hex("export const generation = 2;\n"),
+	}})
+	if err := installTargetDistribution(options); err != nil {
+		t.Fatalf("same-version OpenCode convergence error = %v", err)
+	}
+	assertInstallFile(t, pluginDest, "export const generation = 2;\n")
+
+	writeInstallFile(t, pluginDest, "// local edit\n")
+	if err := installTargetDistribution(options); err == nil || !strings.Contains(err.Error(), "modified") {
+		t.Fatalf("tampered OpenCode install error = %v, want modified-content conflict", err)
+	}
+	assertInstallFile(t, pluginDest, "// local edit\n")
+
+	writeInstallFile(t, pluginDest, "export const generation = 2;\n")
+	if err := os.Remove(pluginSource); err != nil {
+		t.Fatalf("Remove(plugin source) error = %v", err)
+	}
+	writeTestTargetAdapterManifest(t, dist, "opencode", nil)
+	if err := installTargetDistribution(options); err != nil {
+		t.Fatalf("stale OpenCode plugin removal error = %v", err)
+	}
+	assertInstallPathMissing(t, pluginDest)
+	assertInstallFile(t, foreign, "export const company = true;\n")
+}
+
+func TestInstallTargetAdapterManifestOwnsCursorProjectionAndSupportFiles(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	home := filepath.Join(root, "home")
+	dist := filepath.Join(root, "dist", "cursor")
+	config := filepath.Join(root, "cursor")
+	generatedHooks := `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf task refresh","matcher":"Edit|Write","loaf-managed":true}]}}`
+	existingHooks := `{"version":1,"hooks":{"PostToolUse":[{"command":"user hook"},{"command":"old loaf hook","matcher":"Edit|Write","loaf-managed":true}]}}`
+	writeInstallFile(t, filepath.Join(dist, "hooks.json"), generatedHooks)
+	writeInstallFile(t, filepath.Join(dist, "hooks", "post-tool", "managed.sh"), "#!/bin/sh\necho managed\n")
+	writeInstallFile(t, filepath.Join(config, "hooks.json"), existingHooks)
+	writeInstallFile(t, filepath.Join(config, "hooks", "company.sh"), "#!/bin/sh\necho company\n")
+	hookDigest, err := targetHookProjectionDigest("cursor", []byte(generatedHooks), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestTargetAdapterManifest(t, dist, "cursor", []map[string]string{
+		{"id": "hook-file:hooks/post-tool/managed.sh", "kind": "hook-file", "source_path": "hooks/post-tool/managed.sh", "destination": "hooks/post-tool/managed.sh", "sha256": sha256Hex("#!/bin/sh\necho managed\n")},
+		{"id": "hook-projection:hooks.json", "kind": "hook-projection", "source_path": "hooks.json", "destination": "hooks.json", "sha256": hookDigest},
+	})
+	options := targetInstallOptions{Target: "cursor", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home}
+	if err := installTargetDistribution(options); err != nil {
+		t.Fatalf("Cursor adapter install error = %v", err)
+	}
+	hooks := readInstallHooks(t, filepath.Join(config, "hooks.json"))
+	if len(hooks.Hooks["PostToolUse"]) != 2 || hooks.Hooks["PostToolUse"][0]["command"] != "user hook" || hooks.Hooks["PostToolUse"][1]["command"] != "loaf task refresh" {
+		t.Fatalf("Cursor hooks = %#v, want user hook plus current Loaf projection", hooks.Hooks)
+	}
+	assertInstallFile(t, filepath.Join(config, "hooks", "company.sh"), "#!/bin/sh\necho company\n")
+
+	hooks.Hooks["PostToolUse"][1]["command"] = "locally changed loaf hook"
+	body, err := json.Marshal(hooks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeInstallFile(t, filepath.Join(config, "hooks.json"), string(body))
+	if err := installTargetDistribution(options); err == nil || !strings.Contains(err.Error(), "modified") {
+		t.Fatalf("tampered Cursor projection error = %v, want conflict", err)
+	}
+}
+
+func TestInstallTargetAdapterManifestCanonicalizesCodexExecutable(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	home := filepath.Join(root, "home")
+	dist := filepath.Join(root, "dist", "codex")
+	config := filepath.Join(root, "reported-config")
+	codexHome := filepath.Join(root, "codex-home")
+	operations := codexInstallTestOperations(t, root)
+	generatedHooks := `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook","commandWindows":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"}]}]}}`
+	writeInstallFile(t, filepath.Join(dist, ".codex", "hooks.json"), generatedHooks)
+	writeInstallFile(t, filepath.Join(codexHome, "hooks.json"), `{"hooks":{"SessionStart":[{"matcher":"startup","hooks":[{"type":"command","command":"user hook"}]}]}}`)
+	digest, err := targetHookProjectionDigest("codex", []byte(generatedHooks), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestTargetAdapterManifest(t, dist, "codex", []map[string]string{{
+		"id": "hook-projection:.codex/hooks.json", "kind": "hook-projection", "source_path": ".codex/hooks.json", "destination": "hooks.json", "sha256": digest,
+	}})
+	options := targetInstallOptions{Target: "codex", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home, CodexHome: codexHome, CodexRuleOperations: operations, ProjectRoot: root}
+	if err := installTargetDistribution(options); err != nil {
+		t.Fatalf("Codex adapter install error = %v", err)
+	}
+	installed := readInstallHooks(t, filepath.Join(codexHome, "hooks.json"))
+	if len(installed.Hooks["SessionStart"]) != 2 {
+		t.Fatalf("Codex hooks = %#v, want user plus Loaf group", installed.Hooks)
+	}
+	if got, err := targetHookProjectionDigest("codex", readFileBytes(t, filepath.Join(codexHome, "hooks.json")), true); err != nil || got != digest {
+		t.Fatalf("installed Codex canonical digest = %q, %v, want %q", got, err, digest)
+	}
+	if strings.Contains(string(readFileBytes(t, filepath.Join(codexHome, "hooks.json"))), codexJournalExecutablePlaceholder) {
+		t.Fatal("installed Codex hooks retained executable placeholder")
+	}
+}
+
+func TestInstallTargetAdapterManifestMigratesAndRetiresAmpPlugin(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	home := filepath.Join(root, "home")
+	dist := filepath.Join(root, "dist", "amp")
+	config := filepath.Join(root, "amp")
+	sourcePath := filepath.Join(dist, ".amp", "plugins", "loaf.ts")
+	destination := filepath.Join(config, "plugins", "loaf.ts")
+	oldPlugin := "/**\n * Amp Plugin - Agent Skills Hooks\n * Auto-generated by loaf build system\n */\nold\n"
+	newPlugin := "/**\n * Amp Plugin - Agent Skills Hooks\n * Auto-generated by loaf build system\n */\nnew\n"
+	writeInstallFile(t, sourcePath, newPlugin)
+	writeInstallFile(t, destination, oldPlugin)
+	writeInstallFile(t, filepath.Join(config, "plugins", "company.ts"), "company\n")
+	writeTestTargetAdapterManifest(t, dist, "amp", []map[string]string{{
+		"id": "plugin:.amp/plugins/loaf.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf.ts", "destination": "plugins/loaf.ts", "sha256": sha256Hex(newPlugin),
+	}})
+	options := targetInstallOptions{Target: "amp", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home}
+	if err := installTargetDistribution(options); err != nil {
+		t.Fatalf("Amp migration error = %v", err)
+	}
+	assertInstallFile(t, destination, newPlugin)
+	assertInstallFile(t, filepath.Join(config, "plugins", "company.ts"), "company\n")
+
+	if err := os.Remove(sourcePath); err != nil {
+		t.Fatal(err)
+	}
+	writeTestTargetAdapterManifest(t, dist, "amp", nil)
+	if err := installTargetDistribution(options); err != nil {
+		t.Fatalf("Amp stale plugin retirement error = %v", err)
+	}
+	assertInstallPathMissing(t, destination)
+	assertInstallFile(t, filepath.Join(config, "plugins", "company.ts"), "company\n")
+}
+
+func TestInstallTargetAdapterManifestRejectsUnrecordedPluginCollisions(t *testing.T) {
+	for _, tc := range []struct {
+		target      string
+		sourcePath  string
+		destination string
+	}{
+		{target: "opencode", sourcePath: "plugins/hooks.ts", destination: "plugins/hooks.ts"},
+		{target: "amp", sourcePath: ".amp/plugins/loaf.ts", destination: "plugins/loaf.ts"},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			root := realpath(t, t.TempDir())
+			dist := filepath.Join(root, "dist", tc.target)
+			config := filepath.Join(root, "config", tc.target)
+			writeInstallFile(t, filepath.Join(dist, filepath.FromSlash(tc.sourcePath)), "Loaf desired\n")
+			writeInstallFile(t, filepath.Join(config, filepath.FromSlash(tc.destination)), "user plugin\n")
+			writeInstallFile(t, filepath.Join(config, loafInstallMarkerFile), "old\n")
+			writeTestTargetAdapterManifest(t, dist, tc.target, []map[string]string{{
+				"id": "plugin:" + tc.sourcePath, "kind": "plugin", "source_path": tc.sourcePath, "destination": tc.destination, "sha256": sha256Hex("Loaf desired\n"),
+			}})
+			err := installTargetDistribution(targetInstallOptions{Target: tc.target, DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home")})
+			if err == nil || !strings.Contains(err.Error(), "not managed by Loaf") {
+				t.Fatalf("%s collision error = %v", tc.target, err)
+			}
+			assertInstallFile(t, filepath.Join(config, filepath.FromSlash(tc.destination)), "user plugin\n")
+		})
+	}
+}
+
+func TestInstallTargetAdapterManifestRejectsMalformedInstalledOwnership(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	dist := filepath.Join(root, "dist", "amp")
+	config := filepath.Join(root, "config", "amp")
+	writeInstallFile(t, filepath.Join(dist, ".amp", "plugins", "loaf.ts"), "desired\n")
+	writeTestTargetAdapterManifest(t, dist, "amp", []map[string]string{{
+		"id": "plugin:.amp/plugins/loaf.ts", "kind": "plugin", "source_path": ".amp/plugins/loaf.ts", "destination": "plugins/loaf.ts", "sha256": sha256Hex("desired\n"),
+	}})
+	writeInstallFile(t, filepath.Join(config, targetInstallManifestFile), `{"version":1,"version":1}`)
+	err := installTargetDistribution(targetInstallOptions{Target: "amp", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home")})
+	if err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("malformed installed ownership error = %v", err)
+	}
+	assertInstallPathMissing(t, filepath.Join(config, "plugins", "loaf.ts"))
+}
+
+func TestInstallTargetAdapterManifestRejectsSymlinkedDestinationParents(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	dist := filepath.Join(root, "dist", "opencode")
+	config := filepath.Join(root, "config", "opencode")
+	outside := filepath.Join(root, "outside")
+	writeInstallFile(t, filepath.Join(dist, "plugins", "hooks.ts"), "desired\n")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(config, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(config, "plugins")); err != nil {
+		t.Fatal(err)
+	}
+	writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{{
+		"id": "plugin:plugins/hooks.ts", "kind": "plugin", "source_path": "plugins/hooks.ts", "destination": "plugins/hooks.ts", "sha256": sha256Hex("desired\n"),
+	}})
+	err := installTargetDistribution(targetInstallOptions{Target: "opencode", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home")})
+	if err == nil || !strings.Contains(err.Error(), "not a real directory") {
+		t.Fatalf("symlinked destination parent error = %v", err)
+	}
+	assertInstallPathMissing(t, filepath.Join(outside, "hooks.ts"))
+}
+
+func TestInstallTargetAdapterManifestBindsConcreteArtifactModes(t *testing.T) {
+	t.Run("post-build source chmod drift", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		dist := filepath.Join(root, "dist", "opencode")
+		config := filepath.Join(root, "config", "opencode")
+		source := filepath.Join(dist, "plugins", "hooks.ts")
+		writeInstallFile(t, source, "plugin\n")
+		if err := os.Chmod(source, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{{
+			"id": "plugin:hooks", "kind": "plugin", "source_path": "plugins/hooks.ts", "destination": "plugins/hooks.ts", "sha256": sha256Hex("plugin\n"),
+		}})
+		if err := os.Chmod(source, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := installTargetDistribution(targetInstallOptions{Target: "opencode", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home")})
+		if err == nil || !strings.Contains(err.Error(), "mode 0644 does not match manifest mode 0755") {
+			t.Fatalf("source chmod drift error = %v", err)
+		}
+		assertInstallPathMissing(t, filepath.Join(config, "plugins", "hooks.ts"))
+	})
+
+	t.Run("installed chmod drift", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		dist := filepath.Join(root, "dist", "opencode")
+		config := filepath.Join(root, "config", "opencode")
+		source := filepath.Join(dist, "plugins", "hooks.ts")
+		destination := filepath.Join(config, "plugins", "hooks.ts")
+		writeInstallFile(t, source, "plugin\n")
+		if err := os.Chmod(source, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{{
+			"id": "plugin:hooks", "kind": "plugin", "source_path": "plugins/hooks.ts", "destination": "plugins/hooks.ts", "sha256": sha256Hex("plugin\n"),
+		}})
+		options := targetInstallOptions{Target: "opencode", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home")}
+		if err := installTargetDistribution(options); err != nil {
+			t.Fatal(err)
+		}
+		assertInstallMode(t, destination, 0o755)
+		if err := os.Chmod(destination, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := installTargetDistribution(options); err == nil || !strings.Contains(err.Error(), "modified") {
+			t.Fatalf("installed chmod drift error = %v", err)
+		}
+		assertInstallMode(t, destination, 0o644)
+	})
+
+	t.Run("executable hook and merged projection modes", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		dist := filepath.Join(root, "dist", "cursor")
+		config := filepath.Join(root, "cursor")
+		generatedHooks := `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf task refresh","matcher":"Edit|Write","loaf-managed":true}]}}`
+		existingHooks := `{"version":1,"hooks":{"PostToolUse":[{"command":"user hook"}]}}`
+		writeInstallFile(t, filepath.Join(dist, "hooks.json"), generatedHooks)
+		writeInstallFile(t, filepath.Join(dist, "hooks", "post-tool", "managed.sh"), "#!/bin/sh\necho managed\n")
+		if err := os.Chmod(filepath.Join(dist, "hooks", "post-tool", "managed.sh"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeInstallFile(t, filepath.Join(config, "hooks.json"), existingHooks)
+		if err := os.Chmod(filepath.Join(config, "hooks.json"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		hookDigest, err := targetHookProjectionDigest("cursor", []byte(generatedHooks), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeTestTargetAdapterManifest(t, dist, "cursor", []map[string]string{
+			{"id": "hook-file:managed", "kind": "hook-file", "source_path": "hooks/post-tool/managed.sh", "destination": "hooks/post-tool/managed.sh", "sha256": sha256Hex("#!/bin/sh\necho managed\n")},
+			{"id": "hook-projection:hooks.json", "kind": "hook-projection", "source_path": "hooks.json", "destination": "hooks.json", "sha256": hookDigest},
+		})
+		options := targetInstallOptions{Target: "cursor", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home")}
+		if err := installTargetDistribution(options); err != nil {
+			t.Fatal(err)
+		}
+		assertInstallMode(t, filepath.Join(config, "hooks", "post-tool", "managed.sh"), 0o755)
+		assertInstallMode(t, filepath.Join(config, "hooks.json"), 0o600)
+		writeTestTargetAdapterManifest(t, dist, "cursor", nil)
+		if err := installTargetDistribution(options); err != nil {
+			t.Fatal(err)
+		}
+		assertInstallMode(t, filepath.Join(config, "hooks.json"), 0o600)
+	})
+}
+
+func TestInstallTargetAdapterManifestDetectsRaceAndRollsBackPublication(t *testing.T) {
+	t.Run("post-preflight race", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		dist := filepath.Join(root, "dist", "opencode")
+		config := filepath.Join(root, "config", "opencode")
+		source := filepath.Join(dist, "plugins", "hooks.ts")
+		destination := filepath.Join(config, "plugins", "hooks.ts")
+		writeInstallFile(t, source, "old\n")
+		writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{{"id": "plugin:hooks", "kind": "plugin", "source_path": "plugins/hooks.ts", "destination": "plugins/hooks.ts", "sha256": sha256Hex("old\n")}})
+		options := targetInstallOptions{Target: "opencode", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home")}
+		if err := installTargetDistribution(options); err != nil {
+			t.Fatal(err)
+		}
+		writeInstallFile(t, source, "new\n")
+		writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{{"id": "plugin:hooks", "kind": "plugin", "source_path": "plugins/hooks.ts", "destination": "plugins/hooks.ts", "sha256": sha256Hex("new\n")}})
+		options.TargetAdapterOps = &targetAdapterInstallOperations{beforePublish: func() error {
+			writeInstallFile(t, destination, "raced\n")
+			return nil
+		}}
+		err := installTargetDistribution(options)
+		if err == nil || !strings.Contains(err.Error(), "changed during install") {
+			t.Fatalf("race error = %v", err)
+		}
+		assertInstallFile(t, destination, "raced\n")
+	})
+
+	t.Run("pending existing publication changes", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		dist := filepath.Join(root, "dist", "opencode")
+		config := filepath.Join(root, "config", "opencode")
+		aSource := filepath.Join(dist, "plugins", "a.ts")
+		bSource := filepath.Join(dist, "plugins", "b.ts")
+		aDestination := filepath.Join(config, "plugins", "a.ts")
+		bDestination := filepath.Join(config, "plugins", "b.ts")
+		writeInstallFile(t, aSource, "old a\n")
+		writeInstallFile(t, bSource, "old b\n")
+		writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{
+			{"id": "plugin:a", "kind": "plugin", "source_path": "plugins/a.ts", "destination": "plugins/a.ts", "sha256": sha256Hex("old a\n")},
+			{"id": "plugin:b", "kind": "plugin", "source_path": "plugins/b.ts", "destination": "plugins/b.ts", "sha256": sha256Hex("old b\n")},
+		})
+		options := targetInstallOptions{Target: "opencode", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home")}
+		if err := installTargetDistribution(options); err != nil {
+			t.Fatal(err)
+		}
+		writeInstallFile(t, aSource, "new a\n")
+		writeInstallFile(t, bSource, "new b\n")
+		writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{
+			{"id": "plugin:a", "kind": "plugin", "source_path": "plugins/a.ts", "destination": "plugins/a.ts", "sha256": sha256Hex("new a\n")},
+			{"id": "plugin:b", "kind": "plugin", "source_path": "plugins/b.ts", "destination": "plugins/b.ts", "sha256": sha256Hex("new b\n")},
+		})
+		options.TargetAdapterOps = &targetAdapterInstallOperations{beforeArtifact: func(id string) error {
+			if id == "plugin:b" {
+				writeInstallFile(t, bDestination, "raced b\n")
+			}
+			return nil
+		}}
+		err := installTargetDistribution(options)
+		if err == nil || !strings.Contains(err.Error(), "changed during install") {
+			t.Fatalf("pending publication race error = %v", err)
+		}
+		assertInstallFile(t, aDestination, "old a\n")
+		assertInstallFile(t, bDestination, "raced b\n")
+	})
+
+	t.Run("foreign file appears at pending absent destination", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		dist := filepath.Join(root, "dist", "opencode")
+		config := filepath.Join(root, "config", "opencode")
+		writeInstallFile(t, filepath.Join(dist, "plugins", "a.ts"), "a\n")
+		writeInstallFile(t, filepath.Join(dist, "plugins", "b.ts"), "b\n")
+		writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{
+			{"id": "plugin:a", "kind": "plugin", "source_path": "plugins/a.ts", "destination": "plugins/a.ts", "sha256": sha256Hex("a\n")},
+			{"id": "plugin:b", "kind": "plugin", "source_path": "plugins/b.ts", "destination": "plugins/b.ts", "sha256": sha256Hex("b\n")},
+		})
+		options := targetInstallOptions{
+			Target: "opencode", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home"),
+			TargetAdapterOps: &targetAdapterInstallOperations{beforeArtifact: func(id string) error {
+				if id == "plugin:b" {
+					writeInstallFile(t, filepath.Join(config, "plugins", "b.ts"), "foreign b\n")
+				}
+				return nil
+			}},
+		}
+		err := installTargetDistribution(options)
+		if err == nil || !strings.Contains(err.Error(), "changed during install") {
+			t.Fatalf("appeared destination race error = %v", err)
+		}
+		assertInstallPathMissing(t, filepath.Join(config, "plugins", "a.ts"))
+		assertInstallFile(t, filepath.Join(config, "plugins", "b.ts"), "foreign b\n")
+	})
+
+	t.Run("pending removal changes", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		dist := filepath.Join(root, "dist", "opencode")
+		config := filepath.Join(root, "config", "opencode")
+		writeInstallFile(t, filepath.Join(dist, "plugins", "a.ts"), "a\n")
+		writeInstallFile(t, filepath.Join(dist, "plugins", "b.ts"), "b\n")
+		writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{
+			{"id": "plugin:a", "kind": "plugin", "source_path": "plugins/a.ts", "destination": "plugins/a.ts", "sha256": sha256Hex("a\n")},
+			{"id": "plugin:b", "kind": "plugin", "source_path": "plugins/b.ts", "destination": "plugins/b.ts", "sha256": sha256Hex("b\n")},
+		})
+		options := targetInstallOptions{Target: "opencode", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home")}
+		if err := installTargetDistribution(options); err != nil {
+			t.Fatal(err)
+		}
+		writeTestTargetAdapterManifest(t, dist, "opencode", nil)
+		options.TargetAdapterOps = &targetAdapterInstallOperations{beforeArtifact: func(id string) error {
+			if id == "plugin:b" {
+				writeInstallFile(t, filepath.Join(config, "plugins", "b.ts"), "raced b\n")
+			}
+			return nil
+		}}
+		err := installTargetDistribution(options)
+		if err == nil || !strings.Contains(err.Error(), "changed during install") {
+			t.Fatalf("pending removal race error = %v", err)
+		}
+		assertInstallFile(t, filepath.Join(config, "plugins", "a.ts"), "a\n")
+		assertInstallFile(t, filepath.Join(config, "plugins", "b.ts"), "raced b\n")
+	})
+
+	t.Run("publication rollback", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		dist := filepath.Join(root, "dist", "opencode")
+		config := filepath.Join(root, "config", "opencode")
+		writeInstallFile(t, filepath.Join(dist, "plugins", "a.ts"), "a\n")
+		writeInstallFile(t, filepath.Join(dist, "plugins", "b.ts"), "b\n")
+		writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{
+			{"id": "plugin:a", "kind": "plugin", "source_path": "plugins/a.ts", "destination": "plugins/a.ts", "sha256": sha256Hex("a\n")},
+			{"id": "plugin:b", "kind": "plugin", "source_path": "plugins/b.ts", "destination": "plugins/b.ts", "sha256": sha256Hex("b\n")},
+		})
+		options := targetInstallOptions{
+			Target: "opencode", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home"),
+			TargetAdapterOps: &targetAdapterInstallOperations{beforeArtifact: func(id string) error {
+				if id == "plugin:b" {
+					return os.ErrPermission
+				}
+				return nil
+			}},
+		}
+		if err := installTargetDistribution(options); !os.IsPermission(err) {
+			t.Fatalf("publication error = %v, want permission injection", err)
+		}
+		assertInstallPathMissing(t, filepath.Join(config, "plugins", "a.ts"))
+		assertInstallPathMissing(t, filepath.Join(config, targetInstallManifestFile))
+	})
+
+	t.Run("mutation before operation error is rolled back", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		dist := filepath.Join(root, "dist", "opencode")
+		config := filepath.Join(root, "config", "opencode")
+		destination := filepath.Join(config, "plugins", "a.ts")
+		writeInstallFile(t, filepath.Join(dist, "plugins", "a.ts"), "a\n")
+		writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{{
+			"id": "plugin:a", "kind": "plugin", "source_path": "plugins/a.ts", "destination": "plugins/a.ts", "sha256": sha256Hex("a\n"),
+		}})
+		options := targetInstallOptions{
+			Target: "opencode", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home"),
+			TargetAdapterOps: &targetAdapterInstallOperations{afterArtifact: func(id string) error {
+				if id == "plugin:a" {
+					return os.ErrPermission
+				}
+				return nil
+			}},
+		}
+		if err := installTargetDistribution(options); !errors.Is(err, os.ErrPermission) {
+			t.Fatalf("post-mutation error = %v, want permission", err)
+		}
+		assertInstallPathMissing(t, destination)
+		assertInstallPathMissing(t, filepath.Join(config, targetInstallManifestFile))
+	})
+
+	t.Run("rollback failure reports recovery state", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		dist := filepath.Join(root, "dist", "opencode")
+		config := filepath.Join(root, "config", "opencode")
+		aDestination := filepath.Join(config, "plugins", "a.ts")
+		writeInstallFile(t, filepath.Join(dist, "plugins", "a.ts"), "a\n")
+		writeInstallFile(t, filepath.Join(dist, "plugins", "b.ts"), "b\n")
+		writeTestTargetAdapterManifest(t, dist, "opencode", []map[string]string{
+			{"id": "plugin:a", "kind": "plugin", "source_path": "plugins/a.ts", "destination": "plugins/a.ts", "sha256": sha256Hex("a\n")},
+			{"id": "plugin:b", "kind": "plugin", "source_path": "plugins/b.ts", "destination": "plugins/b.ts", "sha256": sha256Hex("b\n")},
+		})
+		options := targetInstallOptions{
+			Target: "opencode", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home"),
+			TargetAdapterOps: &targetAdapterInstallOperations{
+				beforeArtifact: func(id string) error {
+					if id == "plugin:b" {
+						return os.ErrPermission
+					}
+					return nil
+				},
+				restoreSnapshot: func(snapshot targetAdapterSnapshot) error {
+					if snapshot.path == aDestination {
+						return errors.New("injected restore failure")
+					}
+					return restoreTargetAdapterSnapshot(snapshot)
+				},
+			},
+		}
+		err := installTargetDistribution(options)
+		if !errors.Is(err, os.ErrPermission) {
+			t.Fatalf("rollback primary error = %v, want permission", err)
+		}
+		for _, want := range []string{"rollback failed", aDestination, "injected restore failure", "current state: present mode=0644", "expected state: absent"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("rollback error = %v, want %q", err, want)
+			}
+		}
+		assertInstallFile(t, aDestination, "a\n")
+		assertInstallPathMissing(t, filepath.Join(config, "plugins", "b.ts"))
+		assertInstallPathMissing(t, filepath.Join(config, targetInstallManifestFile))
+	})
 }
 
 func TestSyncManagedSkillsMigratesV1AndRefusesV2Tampering(t *testing.T) {
@@ -954,6 +1491,43 @@ func writeInstallFile(t *testing.T, path string, body string) {
 	writeFile(t, path, body)
 }
 
+func writeTestTargetAdapterManifest(t *testing.T, dist string, target string, artifacts []map[string]string) {
+	t.Helper()
+	allArtifacts := []map[string]any{{
+		"id":          "managed-instructions",
+		"kind":        "instruction",
+		"destination": "project-instructions",
+		"sha256":      fencedContentFingerprint(generateFencedContent("0.0.0")),
+	}}
+	for _, artifact := range artifacts {
+		entry := make(map[string]any, len(artifact)+1)
+		for key, value := range artifact {
+			entry[key] = value
+		}
+		if artifact["kind"] == "hook-file" || artifact["kind"] == "plugin" {
+			info, err := os.Lstat(filepath.Join(dist, filepath.FromSlash(artifact["source_path"])))
+			if err != nil {
+				t.Fatalf("Lstat target adapter source error = %v", err)
+			}
+			entry["mode"] = uint32(info.Mode().Perm())
+		}
+		allArtifacts = append(allArtifacts, entry)
+	}
+	sort.Slice(allArtifacts, func(i, j int) bool { return allArtifacts[i]["id"].(string) < allArtifacts[j]["id"].(string) })
+	body, err := json.MarshalIndent(map[string]any{
+		"version":                     1,
+		"target":                      target,
+		"package_version":             "9.8.7-test.1",
+		"capability_contract_version": 3,
+		"adapters":                    []string{target + "-test-adapter-v1"},
+		"artifacts":                   allArtifacts,
+	}, "", "  ")
+	if err != nil {
+		t.Fatalf("Marshal target adapter manifest error = %v", err)
+	}
+	writeInstallFile(t, filepath.Join(dist, ".loaf-target-manifest.json"), string(body)+"\n")
+}
+
 func assertInstallFile(t *testing.T, path string, want string) {
 	t.Helper()
 	body, err := os.ReadFile(path)
@@ -962,6 +1536,17 @@ func assertInstallFile(t *testing.T, path string, want string) {
 	}
 	if string(body) != want {
 		t.Fatalf("ReadFile(%s) = %q, want %q", path, body, want)
+	}
+}
+
+func assertInstallMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat(%s) error = %v", path, err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("mode(%s) = %#o, want %#o", path, got, want)
 	}
 }
 
