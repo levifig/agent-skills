@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,6 +12,26 @@ import (
 )
 
 var regexpANSI = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func TestTargetAdapterVersionFromExecutable(t *testing.T) {
+	distributionRoot := filepath.Join(t.TempDir(), "distribution")
+	writeDoctorFile(t, filepath.Join(distributionRoot, "package.json"), `{"name":"loaf","version":"9.8.7-test.1"}`+"\n")
+	executable := filepath.Join(distributionRoot, "bin", "native", "loaf")
+	if got := targetAdapterVersionFromExecutable(executable); got != "9.8.7-test.1" {
+		t.Fatalf("targetAdapterVersionFromExecutable() = %q, want %q", got, "9.8.7-test.1")
+	}
+}
+
+func TestTargetAdapterVersionFromExecutableIgnoresWorkingAndRuntimeCheckouts(t *testing.T) {
+	workingRoot := filepath.Join(t.TempDir(), "working")
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
+	writeDoctorFile(t, filepath.Join(workingRoot, "package.json"), `{"name":"loaf","version":"1.0.0-working"}`+"\n")
+	writeDoctorFile(t, filepath.Join(runtimeRoot, "package.json"), `{"name":"loaf","version":"2.0.0-runtime"}`+"\n")
+	executable := filepath.Join(t.TempDir(), "outside-distribution", "loaf")
+	if got := targetAdapterVersionFromExecutable(executable); got != "" {
+		t.Fatalf("targetAdapterVersionFromExecutable() = %q, want empty outside a Loaf distribution", got)
+	}
+}
 
 func TestRunnerDoctorHealthyProjectRunsNatively(t *testing.T) {
 	root := writeDoctorFixture(t, "9.8.7-test.1")
@@ -51,6 +72,317 @@ func TestRunnerDoctorReturnsExitOneForFailures(t *testing.T) {
 	output := stripANSI(stdout.String())
 	if !strings.Contains(output, "stale-cursor-mdc") || !strings.Contains(output, "failed") {
 		t.Fatalf("doctor failure output = %q, want failing stale-file check", output)
+	}
+}
+
+func TestRunnerDoctorReportsDriftedTargetAdapterArtifact(t *testing.T) {
+	root := writeDoctorFixture(t, "9.8.7-test.1")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("CODEX_HOME", filepath.Join(home, "codex"))
+	t.Setenv("PATH", t.TempDir())
+	config := filepath.Join(home, "config", "opencode")
+	mode := uint32(0o644)
+	artifact := targetAdapterArtifact{ID: "plugin:plugins/hooks.ts", Kind: "plugin", SourcePath: "plugins/hooks.ts", Destination: "plugins/hooks.ts", SHA256: sha256Bytes([]byte("expected\n")), Mode: &mode}
+	writeDoctorFile(t, filepath.Join(config, "plugins", "hooks.ts"), "drifted\n")
+	if err := writeTargetAdapterManifest(filepath.Join(config, targetInstallManifestFile), targetAdapterManifest{Version: 1, Target: "opencode", PackageVersion: "9.8.7-test.1", CapabilityContractVersion: TargetCapabilityEvidenceContractVersion, Adapters: []string{"opencode-context-v1"}, Artifacts: []targetAdapterArtifact{artifact}}); err != nil {
+		t.Fatal(err)
+	}
+	writeDoctorInstallRecord(t, home, installTargetRecord{Version: "9.8.7-test.1", Target: "opencode", ConfigDir: config})
+	var stdout bytes.Buffer
+	err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"doctor"})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 1 || !strings.Contains(stripANSI(stdout.String()), "target-adapter-ownership") {
+		t.Fatalf("doctor drift = %v\n%s", err, stdout.String())
+	}
+}
+
+func TestRunnerDoctorTargetAdapterOwnershipHealthyMissingAndMalformed(t *testing.T) {
+	for _, tc := range []struct {
+		name, installed, manifest string
+		omitManifest              bool
+		wantError                 bool
+	}{
+		{name: "healthy", installed: "expected\n"},
+		{name: "missing artifact", wantError: true},
+		{name: "missing manifest", installed: "expected\n", omitManifest: true, wantError: true},
+		{name: "malformed manifest", installed: "expected\n", manifest: "{", wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := writeDoctorFixture(t, "9.8.7-test.1")
+			home := os.Getenv("HOME")
+			config := filepath.Join(home, "config", "opencode")
+			mode := uint32(0o644)
+			artifact := targetAdapterArtifact{ID: "plugin:plugins/hooks.ts", Kind: "plugin", SourcePath: "plugins/hooks.ts", Destination: "plugins/hooks.ts", SHA256: sha256Bytes([]byte("expected\n")), Mode: &mode}
+			if tc.installed != "" {
+				writeDoctorFile(t, filepath.Join(config, "plugins", "hooks.ts"), tc.installed)
+			}
+			if !tc.omitManifest {
+				if tc.manifest != "" {
+					writeDoctorFile(t, filepath.Join(config, targetInstallManifestFile), tc.manifest)
+				} else if err := writeTargetAdapterManifest(filepath.Join(config, targetInstallManifestFile), targetAdapterManifest{Version: 1, Target: "opencode", PackageVersion: "9.8.7-test.1", CapabilityContractVersion: TargetCapabilityEvidenceContractVersion, Adapters: []string{"opencode-context-v1"}, Artifacts: []targetAdapterArtifact{artifact}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			writeDoctorInstallRecord(t, home, installTargetRecord{Version: "9.8.7-test.1", Target: "opencode", ConfigDir: config})
+			before := ""
+			if tc.installed != "" {
+				before = string(readFileBytes(t, filepath.Join(config, "plugins", "hooks.ts")))
+			}
+			var stdout bytes.Buffer
+			err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"doctor", "--fix"})
+			if tc.wantError && err == nil {
+				t.Fatalf("doctor output = %s, want failure", stdout.String())
+			}
+			if !tc.wantError && err != nil {
+				t.Fatal(err)
+			}
+			if tc.installed != "" && string(readFileBytes(t, filepath.Join(config, "plugins", "hooks.ts"))) != before {
+				t.Fatal("doctor --fix mutated adapter artifact")
+			}
+		})
+	}
+}
+
+func TestTargetAdapterOwnershipRejectsWrongTargetSymlinkModeAndUsesRecordedAmpDir(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		target     string
+		manifestAs string
+		symlink    bool
+		mode       os.FileMode
+		want       doctorStatus
+	}{
+		{name: "wrong target", target: "opencode", manifestAs: "cursor", mode: 0o644, want: doctorFail},
+		{name: "symlink manifest", target: "opencode", manifestAs: "opencode", symlink: true, mode: 0o644, want: doctorFail},
+		{name: "mode drift", target: "opencode", manifestAs: "opencode", mode: 0o755, want: doctorFail},
+		{name: "recorded amp directory", target: "amp", manifestAs: "amp", mode: 0o644, want: doctorPass},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := writeDoctorFixture(t, "9.8.7-test.1")
+			home := os.Getenv("HOME")
+			config := filepath.Join(home, "custom", tc.target)
+			mode := uint32(0o644)
+			artifact := targetAdapterArtifact{ID: "plugin:plugins/hooks.ts", Kind: "plugin", SourcePath: "plugins/hooks.ts", Destination: "plugins/hooks.ts", SHA256: sha256Bytes([]byte("expected\n")), Mode: &mode}
+			path := filepath.Join(config, "plugins", "hooks.ts")
+			if tc.target == "amp" {
+				artifact = targetAdapterArtifact{ID: "plugin:.amp/plugins/loaf.ts", Kind: "plugin", SourcePath: ".amp/plugins/loaf.ts", Destination: "plugins/loaf.ts", SHA256: sha256Bytes([]byte("expected\n")), Mode: &mode}
+				path = filepath.Join(config, "plugins", "loaf.ts")
+			}
+			writeDoctorFile(t, path, "expected\n")
+			if err := os.Chmod(path, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			manifestPath := filepath.Join(config, targetInstallManifestFile)
+			if err := writeTargetAdapterManifest(manifestPath, targetAdapterManifest{Version: 1, Target: tc.manifestAs, PackageVersion: "9.8.7-test.1", CapabilityContractVersion: TargetCapabilityEvidenceContractVersion, Adapters: []string{"adapter"}, Artifacts: []targetAdapterArtifact{artifact}}); err != nil {
+				t.Fatal(err)
+			}
+			if tc.symlink {
+				if err := os.Rename(manifestPath, manifestPath+".real"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(manifestPath+".real", manifestPath); err != nil {
+					t.Fatal(err)
+				}
+			}
+			writeDoctorInstallRecord(t, home, installTargetRecord{Version: "9.8.7-test.1", Target: tc.target, ConfigDir: config})
+			result := checkTargetAdapterOwnership("9.8.7-test.1").Run(doctorContext{projectRoot: root})
+			if result.Status != tc.want {
+				t.Fatalf("status = %s, detail = %s, want %s", result.Status, result.Detail, tc.want)
+			}
+		})
+	}
+}
+
+func TestTargetAdapterOwnershipFailsClosedForDetectedAndMalformedRecords(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		record string
+	}{
+		{name: "detected without record"},
+		{name: "malformed record", record: "{"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := writeDoctorFixture(t, "9.8.7-test.1")
+			home := os.Getenv("HOME")
+			config := filepath.Join(home, "config", "opencode")
+			writeDoctorFile(t, filepath.Join(config, loafInstallMarkerFile), "9.8.7-test.1\n")
+			if tc.record != "" {
+				writeDoctorFile(t, installRecordPath(home, "opencode"), tc.record)
+			}
+			result := checkTargetAdapterOwnership("9.8.7-test.1").Run(doctorContext{projectRoot: root})
+			if result.Status != doctorFail {
+				t.Fatalf("status = %s, want fail", result.Status)
+			}
+		})
+	}
+}
+
+func TestTargetAdapterOwnershipUsesRecordedCodexAndAmpDirectories(t *testing.T) {
+	for _, target := range []string{"codex", "amp"} {
+		t.Run(target, func(t *testing.T) {
+			root := writeDoctorFixture(t, "9.8.7-test.1")
+			home := os.Getenv("HOME")
+			config := filepath.Join(root, "recorded", target)
+			var artifacts []targetAdapterArtifact
+			if target == "codex" {
+				body := `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"'/opt/loaf' journal context --from-hook --codex-hook"}]}]}}`
+				writeDoctorFile(t, filepath.Join(config, "hooks.json"), body)
+				digest, err := targetHookProjectionDigest("codex", []byte(body), true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				artifacts = []targetAdapterArtifact{{ID: "hook-projection:.codex/hooks.json", Kind: "hook-projection", SourcePath: ".codex/hooks.json", Destination: "hooks.json", SHA256: digest}}
+			} else {
+				artifacts = []targetAdapterArtifact{writeDoctorConcreteAdapterArtifact(t, config, "plugin:.amp/plugins/loaf.ts", "plugin", ".amp/plugins/loaf.ts", "plugins/loaf.ts", "amp plugin\n", 0o644)}
+			}
+			writeDoctorOwnershipManifest(t, config, target, "9.8.7-test.1", artifacts)
+			writeDoctorInstallRecord(t, home, installTargetRecord{Version: "9.8.7-test.1", Target: target, ConfigDir: config})
+			result := checkTargetAdapterOwnership("9.8.7-test.1").Run(doctorContext{projectRoot: root})
+			if result.Status != doctorPass {
+				t.Fatalf("status = %s, detail = %s", result.Status, result.Detail)
+			}
+		})
+	}
+}
+
+func TestTargetAdapterOwnershipDetailsAreDeterministicAcrossTargetsAndArtifacts(t *testing.T) {
+	root := writeDoctorFixture(t, "9.8.7-test.1")
+	home := os.Getenv("HOME")
+	opencodeConfig := filepath.Join(root, "recorded", "opencode")
+	ampConfig := filepath.Join(root, "recorded", "amp")
+	opencodeArtifacts := []targetAdapterArtifact{
+		writeDoctorConcreteAdapterArtifact(t, opencodeConfig, "plugin:z", "plugin", "plugins/z.ts", "plugins/z.ts", "z\n", 0o644),
+		writeDoctorConcreteAdapterArtifact(t, opencodeConfig, "hook-file:a", "hook-file", "hooks/a.sh", "hooks/a.sh", "#!/bin/sh\n", 0o755),
+	}
+	ampArtifacts := []targetAdapterArtifact{writeDoctorConcreteAdapterArtifact(t, ampConfig, "plugin:amp", "plugin", ".amp/plugins/loaf.ts", "plugins/loaf.ts", "amp\n", 0o644)}
+	writeDoctorOwnershipManifest(t, opencodeConfig, "opencode", "9.8.7-test.1", opencodeArtifacts)
+	writeDoctorOwnershipManifest(t, ampConfig, "amp", "9.8.7-test.1", ampArtifacts)
+	writeDoctorInstallRecord(t, home, installTargetRecord{Version: "9.8.7-test.1", Target: "opencode", ConfigDir: opencodeConfig})
+	writeDoctorInstallRecord(t, home, installTargetRecord{Version: "9.8.7-test.1", Target: "amp", ConfigDir: ampConfig})
+	writeDoctorFile(t, filepath.Join(ampConfig, "plugins", "loaf.ts"), "drifted amp\n")
+	writeDoctorFile(t, filepath.Join(opencodeConfig, "plugins", "z.ts"), "drifted z\n")
+
+	result := checkTargetAdapterOwnership("9.8.7-test.1").Run(doctorContext{projectRoot: root})
+	if result.Status != doctorFail {
+		t.Fatalf("status = %s, detail = %s", result.Status, result.Detail)
+	}
+	want := strings.Join([]string{
+		"amp plugin:amp: drifted " + filepath.Join(ampConfig, "plugins", "loaf.ts"),
+		"opencode hook-file:a: matches",
+		"opencode plugin:z: drifted " + filepath.Join(opencodeConfig, "plugins", "z.ts"),
+	}, "\n")
+	if result.Detail != want {
+		t.Fatalf("detail = %q, want %q", result.Detail, want)
+	}
+}
+
+func TestTargetAdapterOwnershipRejectsArtifactSymlink(t *testing.T) {
+	root := writeDoctorFixture(t, "9.8.7-test.1")
+	home := os.Getenv("HOME")
+	config := filepath.Join(root, "recorded", "opencode")
+	artifact := writeDoctorConcreteAdapterArtifact(t, config, "plugin:hooks", "plugin", "plugins/hooks.ts", "plugins/hooks.ts", "plugin\n", 0o644)
+	path := filepath.Join(config, "plugins", "hooks.ts")
+	if err := os.Rename(path, path+".real"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(path+".real", path); err != nil {
+		t.Fatal(err)
+	}
+	writeDoctorOwnershipManifest(t, config, "opencode", "9.8.7-test.1", []targetAdapterArtifact{artifact})
+	writeDoctorInstallRecord(t, home, installTargetRecord{Version: "9.8.7-test.1", Target: "opencode", ConfigDir: config})
+	result := checkTargetAdapterOwnership("9.8.7-test.1").Run(doctorContext{projectRoot: root})
+	if result.Status != doctorFail || !strings.Contains(result.Detail, "must be a regular file") {
+		t.Fatalf("status = %s, detail = %s", result.Status, result.Detail)
+	}
+}
+
+func TestTargetAdapterOwnershipMatchesCursorProjectionAndPreservesForeignHooks(t *testing.T) {
+	root := writeDoctorFixture(t, "9.8.7-test.1")
+	home := os.Getenv("HOME")
+	config := filepath.Join(root, "recorded", "cursor")
+	installed := `{"version":1,"hooks":{"PostToolUse":[{"command":"foreign one"},{"command":"loaf task refresh","matcher":"Edit|Write","loaf-managed":true}]}}`
+	writeDoctorFile(t, filepath.Join(config, "hooks.json"), installed)
+	digest, err := targetHookProjectionDigest("cursor", []byte(installed), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact := targetAdapterArtifact{ID: "hook-projection:hooks.json", Kind: "hook-projection", SourcePath: "hooks.json", Destination: "hooks.json", SHA256: digest}
+	writeDoctorOwnershipManifest(t, config, "cursor", "9.8.7-test.1", []targetAdapterArtifact{artifact})
+	writeDoctorInstallRecord(t, home, installTargetRecord{Version: "9.8.7-test.1", Target: "cursor", ConfigDir: config})
+	for _, body := range []string{
+		installed,
+		`{"version":1,"hooks":{"PostToolUse":[{"command":"foreign changed without touching Loaf"},{"command":"loaf task refresh","matcher":"Edit|Write","loaf-managed":true}]}}`,
+	} {
+		writeDoctorFile(t, filepath.Join(config, "hooks.json"), body)
+		result := checkTargetAdapterOwnership("9.8.7-test.1").Run(doctorContext{projectRoot: root})
+		if result.Status != doctorPass {
+			t.Fatalf("status = %s, detail = %s", result.Status, result.Detail)
+		}
+	}
+}
+
+func TestTargetAdapterOwnershipReportsVersionMismatchWithoutUntrustedCLIComparison(t *testing.T) {
+	for _, tc := range []struct {
+		name, recordVersion, manifestVersion, cliVersion string
+		want                                             doctorStatus
+	}{
+		{name: "record mismatch", recordVersion: "1.0.0", manifestVersion: "2.0.0", cliVersion: "2.0.0", want: doctorFail},
+		{name: "manifest mismatch", recordVersion: "2.0.0", manifestVersion: "1.0.0", cliVersion: "2.0.0", want: doctorFail},
+		{name: "current CLI mismatch", recordVersion: "2.0.0", manifestVersion: "2.0.0", cliVersion: "3.0.0", want: doctorFail},
+		{name: "untrusted CLI fallback omitted", recordVersion: "2.0.0", manifestVersion: "2.0.0", cliVersion: "", want: doctorPass},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := writeDoctorFixture(t, "unrelated-project-version")
+			home := os.Getenv("HOME")
+			config := filepath.Join(root, "recorded", "opencode")
+			artifact := writeDoctorConcreteAdapterArtifact(t, config, "plugin:hooks", "plugin", "plugins/hooks.ts", "plugins/hooks.ts", "plugin\n", 0o644)
+			writeDoctorOwnershipManifest(t, config, "opencode", tc.manifestVersion, []targetAdapterArtifact{artifact})
+			writeDoctorInstallRecord(t, home, installTargetRecord{Version: tc.recordVersion, Target: "opencode", ConfigDir: config})
+			result := checkTargetAdapterOwnership(tc.cliVersion).Run(doctorContext{projectRoot: root})
+			if result.Status != tc.want {
+				t.Fatalf("status = %s, detail = %s, want %s", result.Status, result.Detail, tc.want)
+			}
+			if tc.cliVersion == "" && strings.Contains(result.Detail, "doctor=") {
+				t.Fatalf("untrusted CLI version appeared in detail: %s", result.Detail)
+			}
+		})
+	}
+}
+
+func TestRunnerDoctorFixDoesNotMutateTargetAdapterBytesOrMode(t *testing.T) {
+	root := writeDoctorFixture(t, "9.8.7-test.1")
+	home := os.Getenv("HOME")
+	config := filepath.Join(root, "recorded", "opencode")
+	artifact := writeDoctorConcreteAdapterArtifact(t, config, "plugin:hooks", "plugin", "plugins/hooks.ts", "plugins/hooks.ts", "locally modified\n", 0o755)
+	artifact.SHA256 = sha256Bytes([]byte("expected\n"))
+	manifestPath := filepath.Join(config, targetInstallManifestFile)
+	writeDoctorOwnershipManifest(t, config, "opencode", "9.8.7-test.1", []targetAdapterArtifact{artifact})
+	writeDoctorInstallRecord(t, home, installTargetRecord{Version: "9.8.7-test.1", Target: "opencode", ConfigDir: config})
+	artifactPath := filepath.Join(config, "plugins", "hooks.ts")
+	beforeArtifact := append([]byte(nil), readFileBytes(t, artifactPath)...)
+	beforeManifest := append([]byte(nil), readFileBytes(t, manifestPath)...)
+	beforeInfo, err := os.Stat(artifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	err = (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"doctor", "--fix"})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 1 {
+		t.Fatalf("doctor --fix error = %v, output = %s", err, stdout.String())
+	}
+	afterInfo, err := os.Stat(artifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readFileBytes(t, artifactPath), beforeArtifact) || !bytes.Equal(readFileBytes(t, manifestPath), beforeManifest) || afterInfo.Mode().Perm() != beforeInfo.Mode().Perm() {
+		t.Fatal("doctor --fix mutated target adapter bytes or permission mode")
+	}
+	check := checkTargetAdapterOwnership("9.8.7-test.1")
+	if check.Fix != nil || check.Run(doctorContext{projectRoot: root}).Fixable {
+		t.Fatal("target adapter ownership check unexpectedly exposes a fix path")
 	}
 }
 
@@ -173,6 +505,11 @@ func TestRunnerDoctorRejectsUnknownOptionsNatively(t *testing.T) {
 func writeDoctorFixture(t *testing.T, version string) string {
 	t.Helper()
 	root := realpath(t, t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("CODEX_HOME", filepath.Join(home, "codex"))
+	t.Setenv("PATH", t.TempDir())
 	writeFile(t, filepath.Join(root, "package.json"), `{"name":"loaf","version":"`+version+`"}`+"\n")
 	return root
 }
@@ -208,6 +545,35 @@ func writeDoctorFile(t *testing.T, path string, body string) {
 	t.Helper()
 	mkdirAll(t, filepath.Dir(path))
 	writeFile(t, path, body)
+}
+
+func writeDoctorInstallRecord(t *testing.T, home string, record installTargetRecord) {
+	t.Helper()
+	body, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("Marshal install record error = %v", err)
+	}
+	writeDoctorFile(t, installRecordPath(home, record.Target), string(body)+"\n")
+}
+
+func writeDoctorConcreteAdapterArtifact(t *testing.T, config string, id string, kind string, sourcePath string, destination string, body string, mode os.FileMode) targetAdapterArtifact {
+	t.Helper()
+	path := filepath.Join(config, filepath.FromSlash(destination))
+	writeDoctorFile(t, path, body)
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatalf("Chmod(%s) error = %v", path, err)
+	}
+	manifestMode := uint32(mode.Perm())
+	return targetAdapterArtifact{ID: id, Kind: kind, SourcePath: sourcePath, Destination: destination, SHA256: sha256Bytes([]byte(body)), Mode: &manifestMode}
+}
+
+func writeDoctorOwnershipManifest(t *testing.T, config string, target string, version string, artifacts []targetAdapterArtifact) {
+	t.Helper()
+	instruction := targetAdapterArtifact{ID: "managed-instructions", Kind: "instruction", Destination: "project-instructions", SHA256: sha256Bytes([]byte("instruction"))}
+	manifest := targetAdapterManifest{Version: 1, Target: target, PackageVersion: version, CapabilityContractVersion: TargetCapabilityEvidenceContractVersion, Adapters: []string{target + "-doctor-v1"}, Artifacts: append([]targetAdapterArtifact{instruction}, artifacts...)}
+	if err := writeTargetAdapterManifest(filepath.Join(config, targetInstallManifestFile), manifest); err != nil {
+		t.Fatalf("writeTargetAdapterManifest error = %v", err)
+	}
 }
 
 func assertSymlinkTarget(t *testing.T, linkPath string, want string) {

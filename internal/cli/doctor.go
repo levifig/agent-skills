@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -65,11 +66,28 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 		writeDoctorHelp(out)
 		return nil
 	}
-	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot}, options, packageVersion(runtimeRoot))
+	loafRoot, resolveErr := resolveLoafPackageRoot(r.WorkingDir, runtimeRoot)
+	fenceVersion := packageVersion(runtimeRoot)
+	if resolveErr == nil {
+		fenceVersion = packageVersion(loafRoot)
+	}
+	targetAdapterVersion := ""
+	if executable, err := os.Executable(); err == nil {
+		targetAdapterVersion = targetAdapterVersionFromExecutable(executable)
+	}
+	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot}, options, fenceVersion, targetAdapterVersion)
 	if report.Failures > 0 {
 		return ExitError{Code: 1}
 	}
 	return nil
+}
+
+func targetAdapterVersionFromExecutable(executable string) string {
+	root, ok := findLoafPackageRoot(filepath.Dir(executable), map[string]bool{})
+	if !ok {
+		return ""
+	}
+	return packageVersion(root)
 }
 
 func parseLoafDoctorArgs(args []string) (doctorOptions, error) {
@@ -98,11 +116,11 @@ func writeDoctorHelp(out io.Writer) {
 	fmt.Fprint(out, "  -h, --help  Show help\n")
 }
 
-func runDoctorChecks(out io.Writer, ctx doctorContext, options doctorOptions, cliVersion string) doctorReport {
+func runDoctorChecks(out io.Writer, ctx doctorContext, options doctorOptions, fenceVersion string, targetAdapterVersion string) doctorReport {
 	report := doctorReport{}
 	fmt.Fprintf(out, "\n%s\n\n", ansiBold("loaf doctor"))
 
-	for _, check := range doctorChecks(cliVersion) {
+	for _, check := range doctorChecks(fenceVersion, targetAdapterVersion) {
 		result := safeRunDoctorCheck(check, ctx)
 		printDoctorCheckLine(out, check, result, options)
 
@@ -125,15 +143,120 @@ func runDoctorChecks(out io.Writer, ctx doctorContext, options doctorOptions, cl
 	return report
 }
 
-func doctorChecks(cliVersion string) []doctorCheck {
+func doctorChecks(fenceVersion string, targetAdapterVersion string) []doctorCheck {
 	return []doctorCheck{
 		checkCanonicalAgentsFile(),
 		checkAgentsSymlink(),
 		checkClaudeSymlink(),
 		checkStaleCursorMdc(),
-		checkFencedVersion(cliVersion),
+		checkFencedVersion(fenceVersion),
 		checkDuplicateFencedSections(),
+		checkTargetAdapterOwnership(targetAdapterVersion),
 	}
+}
+
+func checkTargetAdapterOwnership(cliVersion string) doctorCheck {
+	return doctorCheck{
+		Name:        "target-adapter-ownership",
+		Description: "Recorded target adapter artifacts match their managed ownership manifests",
+		Run: func(_ doctorContext) doctorResult {
+			targets := []string{"amp", "codex", "cursor", "opencode"}
+			checked := 0
+			failures := 0
+			details := []string{}
+			fail := func(detail string) {
+				failures++
+				details = append(details, detail)
+			}
+			defaults := defaultInstallConfigDirs()
+			for _, target := range targets {
+				record, state, recordErr := readDoctorInstallRecord(target)
+				if state == "absent" {
+					if isLoafInstalledForTargetInstall(target, defaults[target]) {
+						fail(fmt.Sprintf("%s: Loaf install detected without an install record", target))
+					}
+					continue
+				}
+				if recordErr != nil {
+					fail(fmt.Sprintf("%s: install record is invalid: %v", target, recordErr))
+					continue
+				}
+				checked++
+				if record.Target != target || record.ConfigDir == "" {
+					fail(fmt.Sprintf("%s: install record has an invalid target or config directory", target))
+					continue
+				}
+				manifest, err := readTargetAdapterManifest(filepath.Join(record.ConfigDir, targetInstallManifestFile))
+				if err != nil {
+					fail(fmt.Sprintf("%s: ownership manifest is unavailable: %v", target, err))
+					continue
+				}
+				if manifest.Target != target {
+					fail(fmt.Sprintf("%s: ownership manifest declares %s", target, manifest.Target))
+					continue
+				}
+				if record.Version != manifest.PackageVersion || (cliVersion != "" && record.Version != cliVersion) {
+					versions := fmt.Sprintf("record=%s manifest=%s", record.Version, manifest.PackageVersion)
+					if cliVersion != "" {
+						versions += " current=" + cliVersion
+					}
+					fail(fmt.Sprintf("%s: version mismatch %s", target, versions))
+				}
+				options := targetInstallOptions{Target: target, ConfigDir: record.ConfigDir, CodexHome: record.ConfigDir, AmpPluginsDir: filepath.Join(record.ConfigDir, "plugins")}
+				for _, artifact := range manifest.Artifacts {
+					if artifact.Kind == "instruction" {
+						continue
+					}
+					path, err := targetAdapterDestination(options, artifact)
+					if err != nil {
+						fail(fmt.Sprintf("%s %s: unsafe destination: %v", target, artifact.ID, err))
+						continue
+					}
+					snapshot, err := readTargetAdapterSnapshot(path)
+					if err != nil {
+						fail(fmt.Sprintf("%s %s: cannot inspect: %v", target, artifact.ID, err))
+						continue
+					}
+					if !snapshot.exists {
+						fail(fmt.Sprintf("%s %s: missing %s", target, artifact.ID, path))
+						continue
+					}
+					matches, err := targetAdapterSnapshotMatchesArtifact(target, artifact, snapshot)
+					if err != nil {
+						fail(fmt.Sprintf("%s %s: cannot validate: %v", target, artifact.ID, err))
+						continue
+					}
+					if !matches {
+						fail(fmt.Sprintf("%s %s: drifted %s", target, artifact.ID, path))
+						continue
+					}
+					details = append(details, fmt.Sprintf("%s %s: matches", target, artifact.ID))
+				}
+			}
+			if failures > 0 {
+				return doctorResult{Status: doctorFail, Message: "Target adapter ownership drift detected", Detail: strings.Join(details, "\n")}
+			}
+			if checked == 0 {
+				return doctorResult{Status: doctorSkip, Message: "No recorded target adapter installs"}
+			}
+			return doctorResult{Status: doctorPass, Message: fmt.Sprintf("%d recorded target adapter install(s) match ownership manifests", checked), Detail: strings.Join(details, "\n")}
+		},
+	}
+}
+
+func readDoctorInstallRecord(target string) (installTargetRecord, string, error) {
+	body, err := os.ReadFile(installRecordPath(installHome(), target))
+	if os.IsNotExist(err) {
+		return installTargetRecord{}, "absent", nil
+	}
+	if err != nil {
+		return installTargetRecord{}, "invalid", err
+	}
+	var record installTargetRecord
+	if err := json.Unmarshal(body, &record); err != nil {
+		return installTargetRecord{}, "invalid", err
+	}
+	return record, "present", nil
 }
 
 func checkAgentsSymlink() doctorCheck {
