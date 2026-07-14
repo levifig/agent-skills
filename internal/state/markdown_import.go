@@ -424,7 +424,7 @@ func (m markdownImporter) importShapingDrafts(ctx context.Context, agentsPath st
 }
 
 // importSessionJournals imports legacy .agents/sessions/*.md files as
-// project-scoped journal entries. Under the journal-first model (SPEC-056) the
+// project-scoped journal entries. Under the journal-first model the
 // session entity no longer exists: each session file's journal lines become
 // project-scoped journal_entries tagged with the file's harness session id, and
 // its spark lines become sparks. No session row, body, or alias is created.

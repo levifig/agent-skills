@@ -13,7 +13,7 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-07-03'
+last_reviewed: '2026-07-14'
 ---
 
 # Skill Architecture
@@ -66,14 +66,14 @@ Skill-specific templates live in `content/skills/{name}/templates/` and are not 
 
 ## Agent Profiles
 
-SPEC-014 replaced 8 role-based agents with 4 functional profiles and 1 system profile. Each profile is a tool-boundary contract.
+Each profile is a tool-boundary contract. Functional profiles define what an agent may touch; the background runner supplies the asynchronous system role.
 
 | Profile | Tool Access | Purpose |
 |---------|-------------|---------|
 | **implementer** | Full write | Code, tests, config, docs — specialty via skills |
 | **reviewer** | Read-only | Audits, reviews — mechanical independence |
 | **researcher** | Read + web | Research, comparison — structured reports |
-| **librarian** | Read + Edit (.agents/) | Session lifecycle, state, wrap, pre-compaction preservation |
+| **librarian** | Read + Edit (.agents/) | Journal curation, durable artifacts, wrap, pre-compaction preservation |
 | **background-runner** | Read + Edit | Async non-blocking tasks (system) |
 
 Skills load into profiles at spawn time. What an agent *can do* is fixed by profile; what it *knows* comes from skills.
@@ -84,8 +84,6 @@ Skills load into profiles at spawn time. What an agent *can do* is fixed by prof
 |----------|:-:|---------|
 | Reference/Knowledge | `false` | python-development, database-design, foundations, git-workflow, orchestration |
 | Workflow/Process | `true` (default) | implement, research, shape, breakdown, ship, release, housekeeping, wrap |
-
-35 skills total: 19 workflow/default-invocable, 16 non-invocable with `user-invocable: false` (reference/knowledge skills plus the brainstorm technique consumed by explore).
 
 ## Cross-References
 

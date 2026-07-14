@@ -195,7 +195,7 @@ never implement through open `blockedBy`.
 **Print the current date and timestamp when:**
 
 - Waiting for user input or decision
-- Completing a phase of work
+- Completing a coherent unit of work
 - Encountering a blocker
 - Wrapping up the conversation
 

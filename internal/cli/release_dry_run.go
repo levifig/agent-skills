@@ -1342,7 +1342,7 @@ func releaseBumpReason(bump string) string {
 	case "patch":
 		return "bug fixes only"
 	case "prerelease":
-		return "development milestone"
+		return "prerelease version"
 	case "release":
 		return "stable release"
 	default:

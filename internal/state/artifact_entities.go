@@ -163,9 +163,9 @@ VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
 			return ArtifactEntityCreateResult{}, fmt.Errorf("insert %s %s: %w", kind, alias, err)
 		}
 	case "handoff":
-		// The handoff correlation column is journal-first (harness_session_id)
-		// after the SPEC-056 migration but session_id on the pre-migration
-		// schema. Match the live table so the write works on both shapes.
+		// The handoff correlation column is harness_session_id on the current
+		// schema and session_id on the pre-migration schema. Match the live table
+		// so the write works on both shapes.
 		correlationColumn, err := handoffCorrelationColumn(ctx, tx)
 		if err != nil {
 			return ArtifactEntityCreateResult{}, err

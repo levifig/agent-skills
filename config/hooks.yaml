@@ -6,7 +6,7 @@
 #   post-tool: Runs AFTER tool execution (informational)
 #   session: Conversation hooks (SessionStart, UserPromptSubmit, PreCompact, PostCompact, TaskCompleted)
 #
-# Journal-first (SPEC-056): there is no session entity. Conversation hooks emit
+# Journal-first continuity has no session entity. Conversation hooks emit
 # the layered continuity digest and journal-flush guidance, or evaluate
 # normalized event envelopes for result-aware capture. All journal hooks read
 # the harness payload on stdin and exit silently for subagent invocations
@@ -64,7 +64,7 @@ hooks:
       blocking: true
       timeout: 30000
       failClosed: true
-      description: Block active specs from pointing at deleted ephemeral Markdown after cutover
+      description: Block tracked ephemeral Markdown and dangling references from retained spec records
 
     - id: github-account
       skill: git-workflow

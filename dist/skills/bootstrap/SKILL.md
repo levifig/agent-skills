@@ -217,7 +217,7 @@ A brief exists but needs validation and gap-filling. Moderate depth.
 **Interview focus (8-12 questions):**
 - Confirm extracted understanding ("Here's what I got from your brief -- is this right?")
 - Challenge assumptions ("Your brief says X, but have you considered Y?")
-- Fill gaps in whichever interview phases are weakest
+- Fill gaps in whichever interview sections are weakest
 - Don't re-ask what the brief already answers well
 
 **Opening pattern:** Quote the brief back, confirm accuracy, then pivot to gaps.
@@ -226,14 +226,14 @@ A brief exists but needs validation and gap-filling. Moderate depth.
 
 No code, no brief, just a person with an idea. Deepest interview.
 
-**Run all four phases from [references/interview-guide.md](references/interview-guide.md):**
+**Run all four sections from [references/interview-guide.md](references/interview-guide.md):**
 
 1. **Excavation (The Spark)** -- understand the problem, who has it, what they do today
 2. **Sharpening (The Shape)** -- define scope, boundaries, no-gos, complexity
 3. **Grounding (The Architecture)** -- technical direction, build vs. buy, hard problems
 4. **Synthesis (The Documents)** -- transition to drafting
 
-**Expect 15-25 questions across all phases.** Follow the phase transition signals in the interview guide. Be patient -- the builder may circle back or contradict themselves. That is normal.
+**Expect 15-25 questions across all sections.** Follow the transition signals in the interview guide. Be patient -- the builder may circle back or contradict themselves. That is normal.
 
 **Opening pattern:** "Tell me about what you're building. What problem are you solving?"
 
@@ -243,9 +243,9 @@ Avoid these across all modes:
 
 - **The Form** -- don't run through questions mechanically like a survey
 - **The 45-Minute Interrogation** -- if the builder is losing energy, cut to synthesis
-- **Premature Architecture** -- don't ask about databases in Phase 1
+- **Premature Architecture** -- don't ask about databases during Excavation
 - **The Echo Chamber** -- challenge, don't just agree
-- **Asking for Permission to Proceed** -- transition between phases naturally
+- **Asking for Permission to Proceed** -- transition between sections naturally
 - **Over-Indexing on Frameworks** -- use frameworks as lenses, not vocabulary
 
 ---

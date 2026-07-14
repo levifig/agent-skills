@@ -185,7 +185,7 @@ Internal terms that have no meaning outside the team's working context:
 - Spec IDs and task IDs (`SPEC-024`, `TASK-042`)
 - Session, sprint, or branch references
 - Internal terminology from skills/docs that isn't part of the user's mental model — e.g. `Q1`/`Q2`/`Q3` question numbers from a Triage Gate, internal gate-logic notation like `(Q1 OR Q2) AND Q3`, hook IDs that aren't user-facing
-- "How the work got done" framing — interview steps, breakdown phases, review gates
+- "How the work got done" framing — interview steps, breakdown steps, review gates
 
 ### Keep
 
@@ -252,7 +252,7 @@ MAJOR.MINOR.PATCH[-PRERELEASE]
 
 Four hooks automatically enforce the conventions documented in this file:
 
-| Hook | Phase | Behavior |
+| Hook | Timing | Behavior |
 |------|-------|----------|
 | `github-account` | Pre-tool (Bash) | Force-switch: switches the active `gh` account to the configured one before `gh` commands run (passes with a warning), exempting `gh auth` administration, and blocks only when the switch fails. It writes the shared global account pointer on every mismatched `gh` call -- read-only ones included -- so concurrent sessions on different identities collide on that pointer more often. |
 | `workflow-pre-pr` | Pre-tool (Bash) | Advisory: reminds about CHANGELOG [Unreleased] entries and PR format. Non-blocking. |
@@ -269,26 +269,14 @@ BREAKING CHANGE: Description of breaking change.
 
 ### Pre-Release Versions
 
-When developing toward a major version, use pre-release suffixes to mark development milestones:
-
-```
-2.0.0-dev.0  →  dev.1  →  dev.2  →  ...  →  2.0.0
-     ↑              ↑          ↑                 ↑
-  start dev    milestone  milestone        stable release
-```
-
 | Suffix | Meaning | When to use |
 |--------|---------|-------------|
-| `-dev.N` | Development milestone | Active development toward a target version |
 | `-alpha.N` | Alpha pre-release | Feature-complete but untested broadly |
 | `-beta.N` | Beta pre-release | Testing with wider audience |
 | `-rc.N` | Release candidate | Final validation before stable |
 
 **Convention:**
-- Set the target version with `-dev.0` when starting a major effort (e.g. `2.0.0-dev.0`)
-- Bump the dev counter (`-dev.N` → `-dev.N+1`) when a meaningful batch of landed work is ready to publish — a completed spec, a related feature group, or a release train
-- Don't bump for every commit — that's what git history is for
-- Strip the suffix (`-dev.N` → `2.0.0`) when all planned work is complete
+- Use standard SemVer pre-release identifiers (`alpha`, `beta`, or `rc`) when publishing pre-release versions.
 - `loaf release` handles all bump types: `prerelease`, `release`, `major`, `minor`, `patch`
 
-**Not required** — projects using simple `MAJOR.MINOR.PATCH` versioning can ignore pre-release suffixes entirely. This convention is for projects with multi-milestone development cycles.
+**Not required** — projects using simple `MAJOR.MINOR.PATCH` versioning can ignore pre-release suffixes entirely. This convention is for projects publishing staged pre-releases before stable releases.

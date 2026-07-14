@@ -43,7 +43,7 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook ephemeral-provenance",
             "if": "Bash(git push:*)",
             "timeout": 30,
-            "description": "Block active specs from pointing at deleted ephemeral Markdown after cutover",
+            "description": "Block tracked ephemeral Markdown and dangling references from retained spec records",
             "failClosed": true
           },
           {

@@ -4,8 +4,7 @@ Guidelines for maintaining and extending Loaf - An Opinionated Agentic Framework
 
 See [README.md](README.md) for what Loaf is and how to install it.
 
-<!-- TRANSITIONAL: remove with spec-conversion-and-guidance-sweep (grep-gated by its convergence check) -->
-> **Transition in progress — the Change model is landing.** New work is shaped as a Change: `/shape` → `docs/changes/YYYYMMDD-slug/change.md`, validated by `loaf change check` (see `loaf change --help`). The contract lives in `docs/changes/20260704-shape-first-change-workflow/change.md`. Existing `SPEC-*` work continues under `loaf spec`/`loaf task` until the conversion pass; skill guidance below that still reads "spec-first" predates the sweep and loses to this note.
+> **New work is Change-first.** `/shape` creates `docs/changes/YYYYMMDD-slug/change.md`, and `loaf change check` validates its structure and derived executability (see `loaf change --help`). Existing `SPEC-*` and task records remain supported compatibility surfaces under `loaf spec` and `loaf task` until they are deliberately converted; their continued support does not make them the default artifact for new work.
 
 ## Quick Start
 

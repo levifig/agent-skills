@@ -90,7 +90,7 @@ Decompose specifications into atomic, implementable tasks.
 
 1. Can a single implementer complete this? If no, split by concern
 2. Does it touch multiple unrelated concerns? If yes, split by concern
-3. Will the agent need too much context? If yes, split into phases
+3. Will the agent need too much context? If yes, split into smaller coherent units
 4. Am I splitting just to have more tasks? If yes, merge back
 
 ### Anti-Patterns
