@@ -966,7 +966,7 @@ func TestRunnerInitScaffoldsProjectNatively(t *testing.T) {
 		t.Fatalf("init --no-symlinks error = %v", err)
 	}
 	for _, path := range []string{
-		".agents/AGENTS.md",
+		"AGENTS.md",
 		".agents/loaf.json",
 		".agents/sessions",
 		".agents/ideas",
@@ -1004,15 +1004,14 @@ func TestRunnerInitScaffoldsProjectNatively(t *testing.T) {
 			t.Fatalf("stdout = %q, want %q", output, want)
 		}
 	}
-	if _, err := os.Lstat(filepath.Join(workingDir, "AGENTS.md")); !os.IsNotExist(err) {
-		t.Fatalf("AGENTS.md symlink stat = %v, want absent with --no-symlinks", err)
+	if info, err := os.Lstat(filepath.Join(workingDir, "AGENTS.md")); err != nil || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("AGENTS.md must be a real scaffold file: info=%v err=%v", info, err)
 	}
 }
 
 func TestRunnerInitIsIdempotentAndPreservesExistingFiles(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
-	mkdirAll(t, filepath.Join(workingDir, ".agents"))
-	writeFile(t, filepath.Join(workingDir, ".agents", "AGENTS.md"), "# Custom Instructions\n")
+	writeFile(t, filepath.Join(workingDir, "AGENTS.md"), "# Custom Instructions\n")
 	var stdout bytes.Buffer
 
 	err := Runner{
@@ -1031,7 +1030,7 @@ func TestRunnerInitIsIdempotentAndPreservesExistingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second init error = %v", err)
 	}
-	body, err := os.ReadFile(filepath.Join(workingDir, ".agents", "AGENTS.md"))
+	body, err := os.ReadFile(filepath.Join(workingDir, "AGENTS.md"))
 	if err != nil {
 		t.Fatalf("ReadFile(AGENTS.md) error = %v", err)
 	}

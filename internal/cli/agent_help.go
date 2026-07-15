@@ -235,7 +235,7 @@ func agentHelpCommands() []agentHelpCommand {
 				{Flags: "--json", Description: "Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON"},
 			},
 		},
-		{Name: "doctor", Description: "Diagnose project alignment", Options: []agentHelpOption{{Flags: "--fix", Description: "Apply safe fixes"}, {Flags: "--verbose", Description: "Show details"}}},
+		{Name: "doctor", Description: "Diagnose project alignment", Options: []agentHelpOption{{Flags: "--fix", Description: "Offer safe repairs with y/N confirmation"}, {Flags: "--force", Description: "With --fix, accept every repair without prompting"}, {Flags: "--verbose", Description: "Show details"}}},
 		{
 			Name:        "release",
 			Description: "Create a new release with changelog, version bump, and tag",

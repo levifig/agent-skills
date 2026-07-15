@@ -48,9 +48,7 @@ If the Codex Auto-journal rule was previously enabled, upgrade refreshes it only
 
 ## Confirm project alignment
 
-`loaf doctor` checks symlinks, stale files, and version drift across the checkout;
-`loaf doctor --fix` applies safe auto-fixes. This catches drift that config-level
-checks do not.
+`loaf doctor` checks symlinks, stale files, and version drift across the checkout without changing anything. `loaf doctor --fix` offers each safe repair separately and defaults each y/N prompt to no; declined repairs remain reported failures. Use `loaf doctor --fix --force` only when every offered repair should be accepted without prompting, including in non-interactive automation. This catches drift that config-level checks do not.
 
 ## Record the decisions
 

@@ -16,7 +16,7 @@ func TestSessionModelConvergenceContentGuards(t *testing.T) {
 		"content",
 		"dist",
 		filepath.ToSlash(filepath.Join("plugins", "loaf")),
-		".agents/AGENTS.md",
+		"AGENTS.md",
 		".claude/CLAUDE.md",
 	}
 	forbidden := []string{
@@ -89,7 +89,7 @@ func TestJournalFirstHookSurfacesConverged(t *testing.T) {
 		"SessionEnd",
 	}
 	required := map[string]string{
-		filepath.FromSlash("config/hooks.yaml"):            "loaf journal context --from-hook",
+		filepath.FromSlash("config/hooks.yaml"):             "loaf journal context --from-hook",
 		filepath.FromSlash("plugins/loaf/hooks/hooks.json"): "journal context --from-hook",
 	}
 

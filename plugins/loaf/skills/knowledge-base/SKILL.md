@@ -53,10 +53,10 @@ domain knowledge that lives in `docs/knowledge/` and persists across sessions.
 | **Code** (docstrings, types) | What the code does | Is it self-documenting? |
 | **Knowledge files** | Domain rules, cross-cutting context, roadmap | Requires context beyond the code? |
 | **ADRs** | Why we chose this approach | Is it an architectural decision? |
-| **.agents/AGENTS.md** | Agent instructions, conventions | Is it about how agents should behave? |
+| **AGENTS.md** | Agent instructions, conventions | Is it about how agents should behave? |
 | **MEMORY.md** | User preferences, session pointers | Is it personal or ephemeral? |
 
-.agents/AGENTS.md may reference knowledge files but should never duplicate their content.
+AGENTS.md may reference knowledge files but should never duplicate their content.
 
 ## Topics
 
@@ -85,7 +85,7 @@ Create a knowledge file when information:
 Do NOT create knowledge files for:
 - Self-documenting code (types, docstrings, comments are sufficient)
 - One-off architectural decisions (write an ADR instead)
-- Agent behavior instructions (put those in .agents/AGENTS.md)
+- Agent behavior instructions (put those in AGENTS.md)
 - User preferences or session pointers (those belong in MEMORY.md)
 
 ## The covers: Field

@@ -568,9 +568,9 @@ func substituteNativeBuildHarnessLanguage(content string, targetName string) str
 	if targetName == "claude-code" {
 		return content
 	}
-	return strings.NewReplacer(
-		".claude/CLAUDE.md -> .agents/AGENTS.md", ".agents/AGENTS.md",
-		".claude/CLAUDE.md", ".agents/AGENTS.md",
+	const claudeCompatPathToken = "{{LOAF_CLAUDE_COMPAT_PATH}}"
+	content = strings.ReplaceAll(content, ".claude/CLAUDE.md", claudeCompatPathToken)
+	content = strings.NewReplacer(
 		"Claude Code", language.harnessName,
 		"CLAUDE.md", language.agentsFile,
 		"AskUserQuestionTool", language.interviewTool,
@@ -588,6 +588,7 @@ func substituteNativeBuildHarnessLanguage(content string, targetName string) str
 		"Subagent", language.subagentMechanism,
 		"subagent", language.subagentMechanism,
 	).Replace(content)
+	return strings.ReplaceAll(content, claudeCompatPathToken, ".claude/CLAUDE.md")
 }
 
 func readNativeBuildTargetsConfig(root string) (nativeBuildTargetsConfig, error) {

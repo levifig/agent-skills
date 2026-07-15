@@ -8,6 +8,7 @@ is a Loaf workflow staging section for curated entries before release.
 
 ### Changed
 
+- Make root `AGENTS.md` the canonical real project instruction file, migrate the retired `.agents/AGENTS.md` layout during install and doctor repairs, point `.claude/CLAUDE.md` to `../AGENTS.md`, and require per-repair y/N consent for `loaf doctor --fix` unless `--force` is supplied.
 - Deliver model-visible journal continuity through verified target-specific adapters for Claude Code, Codex, and OpenCode, while directing unproven Cursor and Amp modes to the explicit `loaf journal context` fallback.
 
 ### Fixed

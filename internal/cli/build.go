@@ -419,7 +419,7 @@ func validateNativeBuildHarnessLanguage(root string, targetName string, paths []
 				continue
 			}
 			for _, forbidden := range nativeBuildNonClaudeForbiddenTerms() {
-				if strings.Contains(line, forbidden) && !nativeBuildHarnessLanguageAllowed(targetName, relative, forbidden) {
+				if strings.Contains(line, forbidden) && !nativeBuildHarnessLanguageAllowed(targetName, relative, line, forbidden) {
 					findings = append(findings, nativeBuildHarnessLanguageFinding{path: relative, line: lineNumber + 1, reason: "non-Claude output contains " + forbidden})
 				}
 			}
@@ -485,7 +485,10 @@ func nativeBuildNonClaudeForbiddenTerms() []string {
 	}
 }
 
-func nativeBuildHarnessLanguageAllowed(targetName string, relativePath string, term string) bool {
+func nativeBuildHarnessLanguageAllowed(targetName string, relativePath string, line string, term string) bool {
+	if term == "CLAUDE.md" && !strings.Contains(strings.ReplaceAll(line, ".claude/CLAUDE.md", ""), term) {
+		return true
+	}
 	if targetName == "opencode" && term == "subagent" && strings.HasPrefix(relativePath, "dist/opencode/agents/") {
 		return true
 	}

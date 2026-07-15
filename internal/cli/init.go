@@ -105,7 +105,7 @@ func (r Runner) runInit(args []string, out io.Writer, runtimeRoot string) error 
 	fmt.Fprintln(out, "  ok Project initialized")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "  Next steps:")
-	fmt.Fprintln(out, "    1. Edit .agents/AGENTS.md with your project details")
+	fmt.Fprintln(out, "    1. Edit AGENTS.md with your project details")
 	fmt.Fprintln(out, "    2. Run loaf install to set up your AI tools")
 	fmt.Fprintln(out)
 	return nil
@@ -191,7 +191,7 @@ type initScaffoldFile struct {
 
 func initScaffoldFiles() []initScaffoldFile {
 	return []initScaffoldFile{
-		{path: ".agents/AGENTS.md", body: func() string {
+		{path: "AGENTS.md", body: func() string {
 			return `# Project Instructions
 
 > Agent instructions for this project. Customize per your needs.
@@ -315,7 +315,7 @@ func detectInitProject(root string) initProjectInfo {
 		frameworks: frameworks,
 		existing: initExistingStructure{
 			hasAgentsDir: pathExistsNative(filepath.Join(root, ".agents")),
-			hasAgentsMd:  pathExistsNative(filepath.Join(root, ".agents", "AGENTS.md")),
+			hasAgentsMd:  pathExistsNative(filepath.Join(root, "AGENTS.md")),
 			hasDocsDir:   pathExistsNative(filepath.Join(root, "docs")),
 			hasChangelog: pathExistsNative(filepath.Join(root, "CHANGELOG.md")),
 			hasClaudeDir: pathExistsNative(filepath.Join(root, ".claude")),
@@ -419,7 +419,7 @@ func writeInitDetected(out io.Writer, info initProjectInfo) {
 		label  string
 	}{
 		{info.existing.hasAgentsDir, ".agents/ directory"},
-		{info.existing.hasAgentsMd, ".agents/AGENTS.md"},
+		{info.existing.hasAgentsMd, "AGENTS.md"},
 		{info.existing.hasDocsDir, "docs/ directory"},
 		{info.existing.hasChangelog, "CHANGELOG.md"},
 		{info.existing.hasClaudeDir, ".claude/ directory"},
@@ -434,7 +434,7 @@ func writeInitDetected(out io.Writer, info initProjectInfo) {
 }
 
 func (r Runner) offerInitSymlinks(root string, out io.Writer) error {
-	agentsPath := filepath.Join(root, ".agents", "AGENTS.md")
+	agentsPath := filepath.Join(root, "AGENTS.md")
 	if !pathExistsNative(agentsPath) {
 		return nil
 	}
@@ -445,7 +445,7 @@ func (r Runner) offerInitSymlinks(root string, out io.Writer) error {
 	fmt.Fprintln(out, "  Symlinks:")
 	claudePath := filepath.Join(root, ".claude", "CLAUDE.md")
 	if !pathExistsNative(claudePath) {
-		yes, err := askInitYesNo(reader, out, "    Create .claude/CLAUDE.md -> .agents/AGENTS.md? [y/N] ")
+		yes, err := askInitYesNo(reader, out, "    Create .claude/CLAUDE.md -> ../AGENTS.md? [y/N] ")
 		if err != nil {
 			return err
 		}
@@ -458,20 +458,6 @@ func (r Runner) offerInitSymlinks(root string, out io.Writer) error {
 				return err
 			}
 			fmt.Fprintln(out, "    ok Created .claude/CLAUDE.md")
-		}
-	}
-	rootPath := filepath.Join(root, "AGENTS.md")
-	if !pathExistsNative(rootPath) {
-		yes, err := askInitYesNo(reader, out, "    Create ./AGENTS.md -> .agents/AGENTS.md? [y/N] ")
-		if err != nil {
-			return err
-		}
-		if yes {
-			target, _ := filepath.Rel(root, agentsPath)
-			if err := os.Symlink(target, rootPath); err != nil {
-				return err
-			}
-			fmt.Fprintln(out, "    ok Created ./AGENTS.md")
 		}
 	}
 	fmt.Fprintln(out)
@@ -492,8 +478,7 @@ func readerIsTerminal(reader io.Reader) bool {
 	if !ok {
 		return false
 	}
-	info, err := file.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+	return fileIsTerminal(file)
 }
 
 func writeInitSkillRecommendations(out io.Writer, info initProjectInfo) {

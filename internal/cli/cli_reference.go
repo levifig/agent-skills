@@ -721,7 +721,8 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Name:        "doctor",
 			Description: "Diagnose Loaf project alignment (symlinks, stale files, version drift)",
 			Options: []cliReferenceOption{
-				{Flags: "--fix", Description: "Apply safe auto-fixes for failing checks"},
+				{Flags: "--fix", Description: "Offer each safe repair and prompt y/N before applying it"},
+				{Flags: "--force", Description: "With --fix, apply every offered repair without prompting"},
 				{Flags: "--verbose", Description: "Print each check name even when passing"},
 			},
 		},

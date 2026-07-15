@@ -41,8 +41,8 @@ func TestSkillContentHygieneStaleReferences(t *testing.T) {
 		},
 		{
 			rel:       "content/skills/knowledge-base/SKILL.md",
-			forbidden: []string{"CLAUDE.md"},
-			required:  []string{".agents/AGENTS.md"},
+			forbidden: []string{"CLAUDE.md", ".agents/AGENTS.md"},
+			required:  []string{"AGENTS.md"},
 		},
 	}
 

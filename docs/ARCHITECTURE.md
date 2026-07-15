@@ -87,30 +87,30 @@ There is no session-lifecycle dispatch. Amp's binary internally emits `emitEvent
 
 This was discovered during SPEC-033 review (PR #40). An earlier wiring attempted to map `sessionEnd` to `agent.end` (turn-end) — semantically wrong and now reverted.
 
-### Prompt Overlay Consolidation (ADR-010)
+### Prompt Overlay Consolidation (ADR-020, superseding ADR-010)
 
-The managed fenced section is written once to a canonical file (`.agents/AGENTS.md`). Per-harness paths are symlinks to it.
+The managed fenced section is written once to the standards-native root `AGENTS.md`. `.agents/` remains Loaf's project state and configuration directory; Claude Code retains its native compatibility path as a symlink to the root file.
 
 ```
-.agents/AGENTS.md                         # Canonical (source of truth, committed)
-.claude/CLAUDE.md        → symlink →      .agents/AGENTS.md
-./AGENTS.md              → symlink →      .agents/AGENTS.md  (agents.md spec)
+./AGENTS.md                              # Canonical real file (source of truth, committed)
+.claude/CLAUDE.md        → symlink →      ../AGENTS.md
+.agents/                                  # Loaf state and configuration; no AGENTS.md
 ```
 
-**Write path (`loaf install`):** the native Go installer resolves each target's destination via `realpath` and groups writes by canonical path. Five of six targets share `.agents/AGENTS.md`, so they produce a single write. Before writing, the native project-symlink installer runs the 4-state machine per link:
+**Write path (`loaf install`):** the native Go installer maps AGENTS.md-native targets directly to root `AGENTS.md`, resolves destinations via `realpath`, and groups writes by canonical path. Claude Code writes through `.claude/CLAUDE.md`, which resolves to the same root file. Before fenced-section writes, install creates or preserves the root real file, migrates the retired `.agents/AGENTS.md` layout, and enforces the Claude compatibility symlink.
 
 | State | Action |
 |-------|--------|
-| nothing at linkPath | Create symlink |
-| correct symlink | No-op (silent) |
-| wrong symlink | Prompt to relink (auto-yes under `--yes`) |
-| regular file | Prompt to merge content into canonical under `## Migrated from <path>`, back up as `.bak`, then symlink |
+| root file absent | Create it, or move legacy `.agents/AGENTS.md` into place |
+| root file is the old symlink to `.agents/AGENTS.md` | Replace it with the legacy file as a real root canonical |
+| both root and legacy real files exist | Ask before preserving root as canonical, merging legacy user content, and retiring the legacy file to a collision-safe `.bak` path; `--yes` approves and noninteractive mode skips |
+| Claude path missing/correct/wrong/real | Create/no-op/relink, or merge and back up before replacing with `../AGENTS.md` |
 
-Fresh installs pre-create an empty canonical shell so symlinks are never dangling. `--yes` flag and non-TTY auto-detection allow the flow to run under CI/skills without interactive prompts.
+Fresh installs pre-create an empty root canonical so the Claude symlink is never dangling. `--yes` and non-TTY detection retain the existing consent behavior for replacing user-defined noncanonical symlinks or real compatibility files and for reconciling conflicting real root and legacy instruction files.
 
 **Config health (`loaf config check`):** the native CLI validates `.agents/loaf.json` and installed Loaf-managed hook config separately. `--fix` creates missing safe project-config defaults and refreshes stale installed target artifacts through the same target installers as `loaf install`, so new hooks such as `github-account` can be propagated without hand-editing target config files.
 
-**Drift detection (`loaf doctor`):** Six checks — canonical presence, per-harness symlink target, stale `.cursor/rules/loaf.mdc`, fenced-section version match, duplicate-resolved writes, and target coverage. `loaf doctor --fix` applies safe repairs non-interactively.
+**Drift detection (`loaf doctor`):** Six checks cover root canonical presence and file type, retirement of legacy `.agents/AGENTS.md`, the Claude symlink target, stale `.cursor/rules/loaf.mdc`, fenced-section version match, and duplicate fenced sections. Plain diagnosis is read-only. `loaf doctor --fix` offers each logical repair once behind a default-no y/N prompt, preserves legacy content and backups for accepted repairs, and rechecks each repair before tallying the final result; checks that converge through the same filesystem action share one repair identity so a decline cannot be bypassed later in the run. Declined and non-interactively skipped repairs remain failures; only a real terminal is interactive, and `loaf doctor --fix --force` explicitly accepts every offered repair without prompting.
 
 This extends the "CLI is the correct protocol layer" principle to filesystem convention enforcement: the CLI owns the on-disk overlay state, not the skills or the user. When ADR-010 shipped, five harnesses went from "each writes its own file" to "each resolves to the same file" without any skill edits.
 
@@ -126,7 +126,7 @@ The split reflects an architectural principle from ADR-010's consolidation patte
 - **Deliberation artifacts belong with code.** Specs, ADRs, councils. Need git history, code-adjacent visibility, travel with the branch, survive the tracker being down or switched.
 - **Execution artifacts belong in the tracker.** Tasks, blockers, comments, assignees. Need real-time state, dashboards, blocking graphs, notifications.
 
-In Linear-native mode, the parent Linear issue is a **canonical-elsewhere rollup** — summary + link to the local spec file, not a re-host. Parallels the `.agents/AGENTS.md` → per-harness symlink pattern from ADR-010: the canonical artifact exists in exactly one place; the other surface is a thin pointer.
+In Linear-native mode, the parent Linear issue is a **canonical-elsewhere rollup** — summary + link to the local spec file, not a re-host. It parallels the root `AGENTS.md` → Claude compatibility-symlink pattern from ADR-020: the canonical artifact exists in exactly one place; the other surface is a thin pointer.
 
 Skills detect the mode and branch accordingly. No skill edits are required to switch modes — same skill content, different backend. This sets up SPEC-023's backend abstraction as a narrower refactor than originally scoped: the contract is already mode-aware; SPEC-023 just extracts the Linear MCP calls into a shared `tracker` CLI subcommand with pluggable implementations.
 

@@ -48,9 +48,9 @@ First-contact project setup: detect state, interview the builder, populate proje
 
 ## Verification
 
-- All expected operating documents (`docs/VISION.md`, `.agents/AGENTS.md` at minimum) exist and contain populated content
+- All expected operating documents (`docs/VISION.md`, `AGENTS.md` at minimum) exist and contain populated content
 - Useful BRIEF content has been extracted into operating documents (no future reader should need to open the BRIEF)
-- Symlinks are correct: `.agents/AGENTS.md` and `./AGENTS.md -> .agents/AGENTS.md`
+- The compatibility symlink is correct: `.claude/CLAUDE.md -> ../AGENTS.md`; root `AGENTS.md` is a real file
 - Key decisions and interview outcomes were logged with `loaf journal log` and are readable with `loaf journal recent`
 
 ---
@@ -264,7 +264,7 @@ These are the *operating documents*. The BRIEF was captured during intake and is
 | `docs/VISION.md` | Always | Brief + interview (purpose, target users, success criteria, non-goals) |
 | `docs/STRATEGY.md` | When enough info available | Interview (current focus, priorities, constraints, open questions) |
 | `docs/ARCHITECTURE.md` | When technical choices stated | Brief + detected stack (overview, components, technology choices) |
-| `.agents/AGENTS.md` | Always (incremental) | Detected stack (build/test commands, project structure, Loaf skills) |
+| `AGENTS.md` | Always (incremental) | Detected stack (build/test commands, project structure, Loaf skills) |
 
 ### Conditional Logic
 
@@ -358,12 +358,9 @@ After scaffolding, ask the builder if they have other Loaf projects they would l
 Create symlinks per Loaf convention:
 
 ```bash
-# .agents/AGENTS.md
+# .claude/CLAUDE.md -> ../AGENTS.md
 mkdir -p .claude
-ln -sf ../.agents/AGENTS.md .agents/AGENTS.md
-
-# ./AGENTS.md -> .agents/AGENTS.md (root convenience symlink)
-ln -sf .agents/AGENTS.md ./AGENTS.md
+ln -sf ../AGENTS.md .claude/CLAUDE.md
 ```
 
 If symlinks already exist and point to the right targets, skip silently. If they exist but point elsewhere, warn the user and ask before changing.
@@ -406,9 +403,9 @@ This skill is designed for Codex (uses `request_user_input`, Write/Edit tools). 
 
 1. Run `loaf setup` (or `loaf init && loaf build && loaf install --to all` manually)
 2. Create `docs/VISION.md`, `docs/STRATEGY.md`, `docs/ARCHITECTURE.md` manually -- these are the load-bearing operating documents
-3. Populate `.agents/AGENTS.md` with build commands, test commands, and project structure
+3. Populate `AGENTS.md` with build commands, test commands, and project structure
 4. Optionally snapshot intake (problem, users, constraints) to `docs/BRIEF.md` as a historical record -- not referenced again after bootstrap
-5. Create symlinks: `.agents/AGENTS.md` and `./AGENTS.md -> .agents/AGENTS.md`
+5. Create the compatibility symlink: `.claude/CLAUDE.md -> ../AGENTS.md`
 6. Run `loaf kb init` if available, or create `docs/knowledge/` with a README
 
 ---

@@ -41,7 +41,7 @@ func TestRunnerSetupRunsInitBuildAndInstallNatively(t *testing.T) {
 		t.Fatalf("setup error = %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(target, ".agents", "AGENTS.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(target, "AGENTS.md")); err != nil {
 		t.Fatalf("AGENTS.md stat error = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(target, "docs", "ARCHITECTURE.md")); err != nil {

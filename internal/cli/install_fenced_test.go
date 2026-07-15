@@ -25,7 +25,7 @@ func TestGenerateFencedContentIsJournalFirst(t *testing.T) {
 
 func TestInstallFencedSectionCreatesAppendsUpdatesAndSkips(t *testing.T) {
 	root := realpath(t, t.TempDir())
-	target := filepath.Join(root, ".agents", "AGENTS.md")
+	target := filepath.Join(root, "AGENTS.md")
 
 	result, err := installFencedSection(target, "1.2.3-test.1", false)
 	if err != nil {
@@ -86,7 +86,7 @@ func TestInstallFencedSectionsForTargetsDedupesSharedCanonicalPath(t *testing.T)
 			t.Fatalf("%s result = %#v, want skipped shared file", target, results[target])
 		}
 	}
-	body := string(readFileBytes(t, filepath.Join(root, ".agents", "AGENTS.md")))
+	body := string(readFileBytes(t, filepath.Join(root, "AGENTS.md")))
 	if count := strings.Count(body, "<!-- loaf:managed:start"); count != 1 {
 		t.Fatalf("AGENTS.md fenced count = %d, want 1\n%s", count, body)
 	}
@@ -94,11 +94,11 @@ func TestInstallFencedSectionsForTargetsDedupesSharedCanonicalPath(t *testing.T)
 
 func TestInstallFencedSectionsForTargetsDedupesSymlinkedClaudeFile(t *testing.T) {
 	root := realpath(t, t.TempDir())
-	canonical := filepath.Join(root, ".agents", "AGENTS.md")
+	canonical := filepath.Join(root, "AGENTS.md")
 	writeInstallFile(t, canonical, "# Canonical\n")
 	link := filepath.Join(root, ".claude", "CLAUDE.md")
 	mkdirAll(t, filepath.Dir(link))
-	if err := os.Symlink("../.agents/AGENTS.md", link); err != nil {
+	if err := os.Symlink("../AGENTS.md", link); err != nil {
 		t.Fatalf("Symlink(CLAUDE.md) error = %v", err)
 	}
 

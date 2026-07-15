@@ -32,8 +32,10 @@ func TestRunnerInstallExplicitCursorTargetRunsNatively(t *testing.T) {
 	}
 	assertInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "9.8.7-test.1\n")
 	assertInstallFile(t, filepath.Join(home, ".agents", "skills", "foundations", "SKILL.md"), "# Foundations\n")
-	assertInstallSymlinkTarget(t, filepath.Join(root, "AGENTS.md"), filepath.Join(root, ".agents", "AGENTS.md"))
-	canonical := string(readFileBytes(t, filepath.Join(root, ".agents", "AGENTS.md")))
+	if info, statErr := os.Lstat(filepath.Join(root, "AGENTS.md")); statErr != nil || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("root AGENTS.md must be a real file: info=%v err=%v", info, statErr)
+	}
+	canonical := string(readFileBytes(t, filepath.Join(root, "AGENTS.md")))
 	if !strings.Contains(canonical, "## Loaf Framework") || !strings.Contains(canonical, "v9.8.7-test.1") {
 		t.Fatalf("canonical AGENTS.md = %q, want native fenced section with package version", canonical)
 	}
@@ -137,6 +139,43 @@ func TestRunnerInstallUpgradeOnlyInstallsDetectedLoafTargets(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", loafInstallMarkerFile)); !os.IsNotExist(err) {
 		t.Fatalf("opencode marker stat = %v, want not installed during upgrade", err)
 	}
+}
+
+func TestRunnerInstallUpgradeMigratesLegacyProjectInstructionLayout(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
+	writeInstallFile(t, filepath.Join(root, "bin", "claude"), "#!/bin/sh\nexit 0\n")
+	if err := os.Chmod(filepath.Join(root, "bin", "claude"), 0o755); err != nil {
+		t.Fatalf("Chmod(fake claude) error = %v", err)
+	}
+	writeInstallFile(t, filepath.Join(root, ".agents", "AGENTS.md"), "# Legacy Instructions\n")
+	if err := os.Symlink(".agents/AGENTS.md", filepath.Join(root, "AGENTS.md")); err != nil {
+		t.Fatalf("Symlink legacy root AGENTS.md error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.claude) error = %v", err)
+	}
+	if err := os.Symlink("../.agents/AGENTS.md", filepath.Join(root, ".claude", "CLAUDE.md")); err != nil {
+		t.Fatalf("Symlink legacy CLAUDE.md error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"install", "--upgrade", "--yes"}); err != nil {
+		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
+	}
+	canonical := filepath.Join(root, "AGENTS.md")
+	if installIsSymlink(canonical) {
+		t.Fatal("root AGENTS.md remains a symlink after upgrade")
+	}
+	body := string(readFileBytes(t, canonical))
+	if !strings.Contains(body, "# Legacy Instructions") || !strings.Contains(body, "<!-- loaf:managed:start v9.8.7-test.1 -->") {
+		t.Fatalf("root AGENTS.md = %q, want preserved legacy content and current managed fence", body)
+	}
+	if _, err := os.Lstat(filepath.Join(root, ".agents", "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("legacy .agents/AGENTS.md stat = %v, want absent", err)
+	}
+	assertInstallSymlinkTarget(t, filepath.Join(root, ".claude", "CLAUDE.md"), canonical)
 }
 
 func TestRunnerInstallUpgradeDetectsLegacyAmpWithoutMutatingLegacyPath(t *testing.T) {
@@ -797,7 +836,7 @@ func TestRunnerInstallInteractiveNoTargetsStillUpdatesClaudeProjectFile(t *testi
 	if !strings.Contains(stdout.String(), "No targets selected") {
 		t.Fatalf("stdout = %q, want no targets selected", stdout.String())
 	}
-	canonical := filepath.Join(root, ".agents", "AGENTS.md")
+	canonical := filepath.Join(root, "AGENTS.md")
 	assertInstallSymlinkTarget(t, filepath.Join(root, ".claude", "CLAUDE.md"), canonical)
 	body := string(readFileBytes(t, canonical))
 	if !strings.Contains(body, "## Loaf Framework") {

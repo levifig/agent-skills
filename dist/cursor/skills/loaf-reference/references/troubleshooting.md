@@ -15,8 +15,7 @@ matches the symptom:
 - `loaf state doctor` — SQLite state health (missing database, schema drift).
   `--fix` initializes missing state when safe; `--dry-run` prints the repair plan.
   Pair with `loaf state status` for readiness and markdown-only compatibility mode.
-- `loaf doctor` — checkout alignment: symlinks, stale files, version drift.
-  `--fix` applies safe auto-fixes.
+- `loaf doctor` — checkout alignment: symlinks, stale files, version drift. Plain diagnosis is read-only. `--fix` offers each logical repair once behind a y/N prompt; a decline cannot be retried through another check in the same run. `--fix --force` accepts all offered repairs without prompting. Non-interactive input, including `/dev/null`, makes `--fix` skip repairs safely and point to `--force`.
 
 Rule of thumb: config → the JSON config file and hooks; `state doctor` → the
 database; `doctor` → the checkout's Loaf wiring.

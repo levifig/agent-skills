@@ -13,7 +13,7 @@ Immutable records of significant architectural decisions.
 | [ADR-007](ADR-007-project-config-location.md) | Project Config in .agents/loaf.json | Proposed | 2026-03-14 |
 | [ADR-008](ADR-008-serena-memory-deprecation.md) | Deprecate Serena Memory for Knowledge | Proposed | 2026-03-14 |
 | [ADR-009](ADR-009-sparks-convention.md) | Sparks Convention in Brainstorm Documents | Deprecated | 2026-03-14 |
-| [ADR-010](ADR-010-agents-md-consolidation.md) | Consolidate Prompt Overlay Around AGENTS.md | Accepted | 2026-04-17 |
+| [ADR-010](ADR-010-agents-md-consolidation.md) | Consolidate Prompt Overlay Around AGENTS.md | Superseded | 2026-04-17 |
 | [ADR-011](ADR-011-linear-native-mode.md) | Linear-Native Mode — Deliberation vs Execution Split | Accepted | 2026-04-22 |
 | [ADR-012](ADR-012-ci-verify-only-build-artifacts.md) | CI as Verifier, Not Fixer (Build Artifacts) | Accepted | 2026-04-30 |
 | [ADR-013](ADR-013-agentic-state-storage-model.md) | Agentic State Is Project-Scoped, Not Branch-Scoped | Accepted | 2026-05-19 |
@@ -23,5 +23,6 @@ Immutable records of significant architectural decisions.
 | [ADR-017](ADR-017-ephemeral-agent-markdown-cutover.md) | Ephemeral Agent Markdown Cutover | Accepted | 2026-06-25 |
 | [ADR-018](ADR-018-global-agents-install-convention.md) | Global Agents Install Convention | Accepted | 2026-06-25 |
 | [ADR-019](ADR-019-journal-first-session-model.md) | Journal-first: the project journal replaces the session entity | Accepted | 2026-07-04 |
+| [ADR-020](ADR-020-root-agents-md-canonical.md) | Root AGENTS.md as the Canonical Project Instruction File | Accepted | 2026-07-15 |
 
 See [../knowledge/](../knowledge/) for domain knowledge files.

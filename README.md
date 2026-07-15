@@ -268,7 +268,7 @@ npm install
 npm run build
 ```
 
-See [AGENTS.md](.agents/AGENTS.md) for development guidelines.
+See [AGENTS.md](AGENTS.md) for development guidelines.
 
 ```bash
 npm run typecheck    # Type check

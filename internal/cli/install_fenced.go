@@ -16,10 +16,10 @@ const (
 
 var fencedTargetFiles = map[string]string{
 	"claude-code": ".claude/CLAUDE.md",
-	"cursor":      ".agents/AGENTS.md",
-	"codex":       ".agents/AGENTS.md",
-	"opencode":    ".agents/AGENTS.md",
-	"amp":         ".agents/AGENTS.md",
+	"cursor":      "AGENTS.md",
+	"codex":       "AGENTS.md",
+	"opencode":    "AGENTS.md",
+	"amp":         "AGENTS.md",
 }
 
 type fencedSectionRange struct {

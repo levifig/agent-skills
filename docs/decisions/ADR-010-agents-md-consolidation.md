@@ -1,7 +1,8 @@
 ---
 id: ADR-010
 title: Consolidate Prompt Overlay Around AGENTS.md
-status: Accepted
+status: Superseded
+superseded_by: ADR-020
 date: 2026-04-17
 ---
 

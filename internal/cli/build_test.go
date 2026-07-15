@@ -777,6 +777,34 @@ func TestNativeBuildHarnessLanguageReportsFileAndLine(t *testing.T) {
 	}
 }
 
+func TestNativeBuildHarnessLanguagePreservesClaudeCompatibilityPath(t *testing.T) {
+	input := "Create `.claude/CLAUDE.md -> ../AGENTS.md` with `ln -sf ../AGENTS.md .claude/CLAUDE.md`."
+	for _, target := range []string{"cursor", "codex", "opencode", "amp"} {
+		t.Run(target, func(t *testing.T) {
+			got := substituteNativeBuildHarnessLanguage(input, target)
+			if got != input {
+				t.Fatalf("substituteNativeBuildHarnessLanguage(%s) = %q, want compatibility path preserved", target, got)
+			}
+		})
+	}
+}
+
+func TestNativeBuildHarnessLanguageAllowsOnlyQualifiedClaudeCompatibilityPath(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "codex", "skills", "bootstrap", "SKILL.md")
+	mkdirAll(t, filepath.Dir(path))
+	writeFile(t, path, "Create `.claude/CLAUDE.md -> ../AGENTS.md`.\n")
+	if err := validateNativeBuildHarnessLanguage(root, "codex", []string{path}); err != nil {
+		t.Fatalf("qualified compatibility path rejected: %v", err)
+	}
+
+	writeFile(t, path, "Edit CLAUDE.md directly.\n")
+	err := validateNativeBuildHarnessLanguage(root, "codex", []string{path})
+	if err == nil || !strings.Contains(err.Error(), "non-Claude output contains CLAUDE.md") {
+		t.Fatalf("unqualified CLAUDE.md error = %v, want lint rejection", err)
+	}
+}
+
 func TestNativeBuildHarnessLanguageAllowsOpenCodeSubagentMode(t *testing.T) {
 	root := realpath(t, t.TempDir())
 	path := filepath.Join(root, "dist", "opencode", "agents", "reviewer.md")
