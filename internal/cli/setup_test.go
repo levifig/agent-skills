@@ -36,6 +36,7 @@ func TestRunnerSetupRunsInitBuildAndInstallNatively(t *testing.T) {
 		Stdout:     &stdout,
 		WorkingDir: root,
 		StateHome:  stateHome,
+		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"setup", target})
 	if err != nil {
 		t.Fatalf("setup error = %v", err)

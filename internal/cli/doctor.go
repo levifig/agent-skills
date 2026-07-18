@@ -70,7 +70,14 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 		writeDoctorHelp(out)
 		return nil
 	}
-	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot}, options, packageVersion(runtimeRoot), r.Stdin)
+	// The version doctor diagnoses against is the installed distribution's,
+	// never the project's own package.json: outside a Loaf checkout the two
+	// are unrelated, and inside a stale checkout they must not be conflated.
+	cliVersion := ""
+	if distributionRoot, err := r.resolveInstalledDistributionRoot(); err == nil {
+		cliVersion = packageVersion(distributionRoot)
+	}
+	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot}, options, cliVersion, r.Stdin)
 	if report.Failures > 0 {
 		return ExitError{Code: 1}
 	}
@@ -422,6 +429,9 @@ func checkFencedVersion(cliVersion string) doctorCheck {
 		Name:        "fenced-version",
 		Description: "Fenced section version matches installed loaf version",
 		Run: func(ctx doctorContext) doctorResult {
+			if cliVersion == "" {
+				return doctorResult{Status: doctorSkip, Message: "No installed Loaf distribution found for this executable; cannot compare fenced versions"}
+			}
 			canonical := filepath.Join(ctx.projectRoot, "AGENTS.md")
 			if !doctorRegularFileExists(canonical) {
 				return doctorResult{Status: doctorSkip, Message: "No root AGENTS.md to inspect"}

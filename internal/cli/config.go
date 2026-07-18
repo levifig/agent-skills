@@ -75,7 +75,7 @@ func (r Runner) runConfig(args []string, out io.Writer, runtimeRoot string) erro
 		if err != nil {
 			return err
 		}
-		loafRoot, err := resolveLoafPackageRoot(r.WorkingDir, runtimeRoot)
+		loafRoot, err := r.resolveInstalledDistributionRoot()
 		if err != nil {
 			return err
 		}

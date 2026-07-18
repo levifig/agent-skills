@@ -59,7 +59,7 @@ func TestRunnerDoctorFixPromptsBeforeEachRepairAndAcceptsYes(t *testing.T) {
 	writeDoctorFile(t, filepath.Join(root, ".cursor", "rules", "loaf.mdc"), "legacy\n")
 	var stdout bytes.Buffer
 
-	err := (Runner{Stdout: &stdout, Stdin: strings.NewReader("y\ny\n"), WorkingDir: root}).Run([]string{"doctor", "--fix"})
+	err := (Runner{Stdout: &stdout, Stdin: strings.NewReader("y\ny\n"), WorkingDir: root, Executable: distributionFixtureExecutable(root)}).Run([]string{"doctor", "--fix"})
 	if err != nil {
 		t.Fatalf("doctor --fix error = %v\n%s", err, stdout.String())
 	}
@@ -232,6 +232,7 @@ func TestRunnerDoctorWarningsDoNotFail(t *testing.T) {
 	err := Runner{
 		Stdout:     &stdout,
 		WorkingDir: root,
+		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"doctor"})
 	if err != nil {
 		t.Fatalf("doctor warning-only error = %v, want nil", err)

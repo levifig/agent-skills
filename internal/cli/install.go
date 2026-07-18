@@ -50,7 +50,7 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 		return nil
 	}
 
-	loafRoot, err := resolveLoafPackageRoot(r.WorkingDir, runtimeRoot)
+	loafRoot, err := r.resolveInstalledDistributionRoot()
 	if err != nil {
 		return err
 	}

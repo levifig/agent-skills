@@ -17,7 +17,7 @@ func TestRunnerConfigCheckFixCreatesProjectConfig(t *testing.T) {
 	root, _ := setupInstallCommandFixture(t)
 
 	var checkOut bytes.Buffer
-	err := Runner{Stdout: &checkOut, WorkingDir: root}.Run([]string{"config", "check", "--json"})
+	err := Runner{Stdout: &checkOut, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"config", "check", "--json"})
 	var exitErr ExitError
 	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
 		t.Fatalf("config check error = %v, want exit code 2", err)
@@ -31,7 +31,7 @@ func TestRunnerConfigCheckFixCreatesProjectConfig(t *testing.T) {
 	}
 
 	var fixOut bytes.Buffer
-	err = Runner{Stdout: &fixOut, WorkingDir: root}.Run([]string{"config", "check", "--fix", "--json"})
+	err = Runner{Stdout: &fixOut, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"config", "check", "--fix", "--json"})
 	if err != nil {
 		t.Fatalf("config check --fix error = %v\n%s", err, fixOut.String())
 	}
@@ -80,7 +80,7 @@ func TestRunnerConfigCheckFixAcceptsCurrentCodexHooksSchema(t *testing.T) {
 	writeInstallFile(t, filepath.Join(home, ".codex", "hooks.json"), `{"hooks":{"SessionStart":[{"matcher":"startup","hooks":[{"type":"command","command":"user codex hook"}]}]}}`+"\n")
 
 	var checkOut bytes.Buffer
-	err := Runner{Stdout: &checkOut, WorkingDir: root}.Run([]string{"config", "check", "--json"})
+	err := Runner{Stdout: &checkOut, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"config", "check", "--json"})
 	if err != nil {
 		t.Fatalf("config check error = %v, want current schema to pass", err)
 	}
@@ -94,7 +94,7 @@ func TestRunnerConfigCheckFixAcceptsCurrentCodexHooksSchema(t *testing.T) {
 	}
 
 	var fixOut bytes.Buffer
-	err = Runner{Stdout: &fixOut, WorkingDir: root}.Run([]string{"config", "check", "--fix", "--json"})
+	err = Runner{Stdout: &fixOut, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"config", "check", "--fix", "--json"})
 	if err != nil {
 		t.Fatalf("config check --fix error = %v\n%s", err, fixOut.String())
 	}
@@ -176,7 +176,7 @@ func TestRunnerConfigCheckFixFromNestedDirectoryRefusesProjectRootExecutable(t *
 	}
 
 	var output bytes.Buffer
-	runErr := (Runner{Stdout: &output, WorkingDir: nestedWorkingDir}).Run([]string{"config", "check", "--fix", "--json"})
+	runErr := (Runner{Stdout: &output, WorkingDir: nestedWorkingDir, Executable: distributionFixtureExecutable(projectRoot)}).Run([]string{"config", "check", "--fix", "--json"})
 	var exitErr ExitError
 	if !errors.As(runErr, &exitErr) || exitErr.Code != 2 {
 		t.Fatalf("nested config check --fix error = %v, want trust refusal exit 2", runErr)

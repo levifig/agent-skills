@@ -30,7 +30,7 @@ func (r Runner) runBuild(args []string, out io.Writer, runtimeRoot string) error
 		writeBuildHelp(out)
 		return nil
 	}
-	loafRoot, err := resolveLoafPackageRoot(r.WorkingDir, runtimeRoot)
+	loafRoot, err := resolveSourceCheckoutRoot(r.WorkingDir, runtimeRoot)
 	if err != nil {
 		return err
 	}

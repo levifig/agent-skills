@@ -15,6 +15,7 @@ func TestRunnerVersionUsesNativePackageMetadata(t *testing.T) {
 	err := Runner{
 		Stdout:     &stdout,
 		WorkingDir: root,
+		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"version"})
 	if err != nil {
 		t.Fatalf("version error = %v", err)
@@ -48,6 +49,7 @@ func TestRunnerVersionDoesNotRequireLegacyBridge(t *testing.T) {
 	err := Runner{
 		Stdout:     &stdout,
 		WorkingDir: root,
+		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"version"})
 	if err != nil {
 		t.Fatalf("version error = %v", err)
@@ -66,6 +68,7 @@ func TestRunnerVersionFlagsDoNotRequireLegacyBridge(t *testing.T) {
 			err := Runner{
 				Stdout:     &stdout,
 				WorkingDir: root,
+				Executable: distributionFixtureExecutable(root),
 			}.Run([]string{flag})
 			if err != nil {
 				t.Fatalf("%s error = %v", flag, err)
@@ -115,6 +118,7 @@ func TestRunnerVersionIncludesBuildInfoWhenSet(t *testing.T) {
 	err := Runner{
 		Stdout:      &stdout,
 		WorkingDir:  root,
+		Executable:  distributionFixtureExecutable(root),
 		BuildCommit: "abc1234",
 		BuildDate:   "2026-06-27T12:00:00Z",
 	}.Run([]string{"version"})
@@ -137,6 +141,7 @@ func TestRunnerVersionCleanWithoutBuildInfo(t *testing.T) {
 	err := Runner{
 		Stdout:     &stdout,
 		WorkingDir: root,
+		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"version"})
 	if err != nil {
 		t.Fatalf("version error = %v", err)

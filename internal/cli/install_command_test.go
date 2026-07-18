@@ -19,6 +19,7 @@ func TestRunnerInstallExplicitCursorTargetRunsNatively(t *testing.T) {
 	err := Runner{
 		Stdout:     &stdout,
 		WorkingDir: root,
+		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"install", "--to", "cursor", "--yes"})
 	if err != nil {
 		t.Fatalf("install --to cursor error = %v\n%s", err, stdout.String())
@@ -56,7 +57,7 @@ func TestRunnerInstallUsesAgentsHomeSkillDestinations(t *testing.T) {
 			}
 
 			var stdout bytes.Buffer
-			err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", target, "--yes"})
+			err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--to", target, "--yes"})
 			if err != nil {
 				t.Fatalf("install --to %s error = %v\n%s", target, err, stdout.String())
 			}
@@ -83,7 +84,7 @@ func TestRunnerInstallSharedSkillsPreservesForeignEntries(t *testing.T) {
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", "cursor", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--to", "cursor", "--yes"})
 	if err != nil {
 		t.Fatalf("install --to cursor error = %v\n%s", err, stdout.String())
 	}
@@ -95,7 +96,7 @@ func TestRunnerInstallSharedSkillsPreservesForeignEntries(t *testing.T) {
 	}
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "go-development", "SKILL.md"), "# Go\n")
 	stdout.Reset()
-	err = Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", "cursor", "--yes"})
+	err = Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--to", "cursor", "--yes"})
 	if err != nil {
 		t.Fatalf("second install --to cursor error = %v\n%s", err, stdout.String())
 	}
@@ -109,7 +110,7 @@ func TestRunnerInstallRecordKeepsRelocatedTargetDetectable(t *testing.T) {
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", "cursor", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--to", "cursor", "--yes"})
 	if err != nil {
 		t.Fatalf("install --to cursor error = %v\n%s", err, stdout.String())
 	}
@@ -128,7 +129,7 @@ func TestRunnerInstallUpgradeOnlyInstallsDetectedLoafTargets(t *testing.T) {
 	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -161,7 +162,7 @@ func TestRunnerInstallUpgradeMigratesLegacyProjectInstructionLayout(t *testing.T
 	}
 
 	var stdout bytes.Buffer
-	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"install", "--upgrade", "--yes"}); err != nil {
+	if err := (Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}).Run([]string{"install", "--upgrade", "--yes"}); err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
 	canonical := filepath.Join(root, "AGENTS.md")
@@ -187,7 +188,7 @@ func TestRunnerInstallUpgradeDetectsLegacyAmpWithoutMutatingLegacyPath(t *testin
 	writeInstallFile(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"), "current plugin\n")
 
 	var stdout bytes.Buffer
-	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"install", "--upgrade", "--yes"}); err != nil {
+	if err := (Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}).Run([]string{"install", "--upgrade", "--yes"}); err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "Upgrading:") || !strings.Contains(stdout.String(), "amp") || !strings.Contains(stdout.String(), "Amp installed") {
@@ -250,7 +251,7 @@ func TestRunnerInstallUpgradeRelocatesOpenCodeAndAmpSkillHomes(t *testing.T) {
 }`, tc.target, oldSkills, ownerMarker, tc.target))
 
 			var stdout bytes.Buffer
-			err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+			err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 			if err != nil {
 				t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 			}
@@ -286,7 +287,7 @@ func TestRunnerInstallUpgradeCleansRetiredTargetFromManifest(t *testing.T) {
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -322,7 +323,7 @@ func TestRunnerInstallUpgradeCleansRetiredGeminiTargetWithoutReintroducingIt(t *
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -356,7 +357,7 @@ func TestRunnerInstallUpgradeCleansRetiredSkillFromManifest(t *testing.T) {
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -390,7 +391,7 @@ func TestRunnerInstallUpgradeSkipsDestructiveDeprecationWithoutExplicitYes(t *te
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -426,7 +427,7 @@ func TestRunnerInstallUpgradeCleansRetiredAgentFromManifest(t *testing.T) {
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -462,7 +463,7 @@ func TestRunnerInstallUpgradeSkipsUnmarkedRetiredAgent(t *testing.T) {
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -492,7 +493,7 @@ func TestRunnerInstallUpgradeReportsDefaultDeprecationWindow(t *testing.T) {
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -523,7 +524,7 @@ func TestRunnerInstallUpgradeReportsDeprecationSignoff(t *testing.T) {
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -554,7 +555,7 @@ func TestRunnerInstallUpgradeReportsAliasTombstoneFromManifest(t *testing.T) {
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -596,7 +597,7 @@ func TestRunnerInstallUpgradeReportsExternalizedSkillWithoutRemoving(t *testing.
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -636,7 +637,7 @@ func TestRunnerInstallUpgradeSkipsUnmarkedRetiredTarget(t *testing.T) {
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -670,7 +671,7 @@ func TestRunnerInstallUpgradeRelocatesManifestPathExactlyOnce(t *testing.T) {
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -681,7 +682,7 @@ func TestRunnerInstallUpgradeRelocatesManifestPathExactlyOnce(t *testing.T) {
 	}
 
 	stdout.Reset()
-	err = Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err = Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("second install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -714,7 +715,7 @@ func TestRunnerInstallUpgradeRemovesStaleRelocatedPathWhenDestinationExists(t *t
 }`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--upgrade", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--upgrade", "--yes"})
 	if err != nil {
 		t.Fatalf("install --upgrade error = %v\n%s", err, stdout.String())
 	}
@@ -733,7 +734,7 @@ func TestRunnerInstallCodexUsesCodeXHomeNatively(t *testing.T) {
 	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), `{"hooks":{}}`)
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", "codex", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--to", "codex", "--yes"})
 	if err != nil {
 		t.Fatalf("install --to codex error = %v\n%s", err, stdout.String())
 	}
@@ -754,7 +755,7 @@ func TestRunnerInstallCodexBasicCommandsFailsWhenCapabilityCannotBeInstalled(t *
 	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "rules", "loaf.rules.tmpl"), "# Loaf Codex policy\n{{LOAF_BASIC_RULES}}\n")
 
 	var stdout bytes.Buffer
-	err := Runner{Stdout: &stdout, WorkingDir: root}.Run([]string{"install", "--to", "codex", "--codex-basic-commands", "--yes"})
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--to", "codex", "--codex-basic-commands", "--yes"})
 	if err == nil || !strings.Contains(err.Error(), "not on PATH") {
 		t.Fatalf("Codex basic command policy install error = %v, want visible executable trust failure\n%s", err, stdout.String())
 	}
@@ -780,6 +781,7 @@ func TestRunnerInstallOffersBinarySelfInstall(t *testing.T) {
 		Stdout:     &stdout,
 		Stdin:      strings.NewReader("y\n\n\n"),
 		WorkingDir: root,
+		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"install", "--to", "cursor", "--yes"})
 	if err != nil {
 		t.Fatalf("install --to cursor with binary prompt error = %v\n%s", err, stdout.String())
@@ -802,6 +804,7 @@ func TestRunnerInstallInteractiveSelectionRunsNatively(t *testing.T) {
 		Stdout:     &stdout,
 		Stdin:      strings.NewReader("y\n"),
 		WorkingDir: root,
+		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"install"})
 	if err != nil {
 		t.Fatalf("interactive install error = %v\n%s", err, stdout.String())
@@ -829,6 +832,7 @@ func TestRunnerInstallInteractiveNoTargetsStillUpdatesClaudeProjectFile(t *testi
 		Stdout:     &stdout,
 		Stdin:      strings.NewReader("n\n"),
 		WorkingDir: root,
+		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"install"})
 	if err != nil {
 		t.Fatalf("interactive no-target install error = %v\n%s", err, stdout.String())
@@ -859,6 +863,7 @@ func TestRunnerInstallMcpRecommendationWritesCursorProjectConfig(t *testing.T) {
 		Stdout:     &stdout,
 		Stdin:      strings.NewReader("p\nn\n"),
 		WorkingDir: root,
+		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"install", "--to", "cursor", "--yes"})
 	if err != nil {
 		t.Fatalf("install --to cursor with MCP prompt error = %v\n%s", err, stdout.String())
@@ -917,6 +922,7 @@ EOS
 		Stdout:     &stdout,
 		Stdin:      strings.NewReader("n\np\ny\n"),
 		WorkingDir: root,
+		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"install", "--to", "cursor", "--yes"})
 	if err != nil {
 		t.Fatalf("install --to cursor with Serena prompt error = %v\n%s", err, stdout.String())
@@ -1000,6 +1006,7 @@ func TestRunnerInstallFromLinkedWorktreeWritesMainLoafConfig(t *testing.T) {
 	err := Runner{
 		Stdout:     &stdout,
 		WorkingDir: linked,
+		Executable: distributionFixtureExecutable(main),
 	}.Run([]string{"install", "--to", "cursor", "--yes"})
 	if err != nil {
 		t.Fatalf("install from linked worktree error = %v\n%s", err, stdout.String())
@@ -1024,7 +1031,8 @@ func TestRunnerInstallHelpAndInvalidTargetAreNative(t *testing.T) {
 		t.Fatalf("help output = %q, want native install help", helpOut.String())
 	}
 
-	err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: t.TempDir()}).Run([]string{"install", "--to", "wat"})
+	root, _ := setupInstallCommandFixture(t)
+	err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: root, Executable: distributionFixtureExecutable(root)}).Run([]string{"install", "--to", "wat"})
 	if err == nil || !strings.Contains(err.Error(), "unknown install target") {
 		t.Fatalf("invalid target error = %v, want native unknown target error", err)
 	}

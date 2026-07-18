@@ -22,15 +22,25 @@ var versionTargetOutputs = []builtTarget{
 	{name: "codex", path: "dist/codex/"},
 }
 
-func (r Runner) runVersion(out io.Writer, runtimeRoot string) error {
-	root, err := resolveLoafPackageRoot(r.WorkingDir, runtimeRoot)
-	if err != nil {
+func (r Runner) runVersion(out io.Writer) error {
+	root, rootErr := r.resolveInstalledDistributionRoot()
+	if rootErr != nil {
 		root = ""
 	}
 	version := packageVersion(root)
 
 	fmt.Fprintf(out, "\n%s %s%s\n", ansiBold("loaf"), version, buildInfoSuffix(r.BuildCommit, r.BuildDate))
 	fmt.Fprintf(out, "%s %s\n", ansiGray("go"), strings.TrimPrefix(runtimeVersion(), "go"))
+
+	// Targets and Content describe the installed distribution. Without
+	// resolvable executable provenance there is no distribution to describe —
+	// an empty root would make the lookups below relative to the working
+	// directory, counting whatever checkout the caller happens to stand in —
+	// so the degraded output ends at identity plus the resolver's guidance.
+	if rootErr != nil {
+		fmt.Fprintf(out, "\n%s\n\n", ansiGray(rootErr.Error()))
+		return nil
+	}
 
 	targets := builtTargets(root)
 	if len(targets) > 0 {
@@ -71,26 +81,6 @@ func buildInfoSuffix(commit, date string) string {
 		return ""
 	}
 	return " (" + strings.Join(parts, " · ") + ")"
-}
-
-func resolveLoafPackageRoot(paths ...string) (string, error) {
-	seen := map[string]bool{}
-	for _, path := range paths {
-		if root, ok := findLoafPackageRoot(path, seen); ok {
-			return root, nil
-		}
-	}
-	if executable, err := os.Executable(); err == nil {
-		if root, ok := findLoafPackageRoot(filepath.Dir(executable), seen); ok {
-			return root, nil
-		}
-	}
-	if cwd, err := os.Getwd(); err == nil {
-		if root, ok := findLoafPackageRoot(cwd, seen); ok {
-			return root, nil
-		}
-	}
-	return "", fmt.Errorf("could not find loaf package root")
 }
 
 func findLoafPackageRoot(path string, seen map[string]bool) (string, bool) {

@@ -72,10 +72,10 @@ func TestPublicBinaryVersionShowsInjectedBuildInfoNatively(t *testing.T) {
 
 func TestPublicBinaryDispatchesStateVersionAndReleasePreflightNatively(t *testing.T) {
 	repoRoot := repoRoot(t)
-	binary := filepath.Join(t.TempDir(), "loaf")
-	if output, err := runCommand(repoRoot, "go", "build", "-o", binary, "./cmd/loaf"); err != nil {
-		t.Fatalf("go build ./cmd/loaf error = %v\n%s", err, output)
-	}
+	// version reads Targets/Content from the binary's own installed
+	// distribution, so the compiled binary runs from a distribution-shaped
+	// fixture instead of a bare temp directory.
+	binary := filepath.Join(writeInstalledDistributionFixture(t, repoRoot, "9.9.9-native-dispatch"), "bin", "loaf")
 
 	workingDir := realpath(t, t.TempDir())
 	dataHome := t.TempDir()
@@ -124,10 +124,9 @@ func TestPublicBinaryDispatchesStateVersionAndReleasePreflightNatively(t *testin
 
 func TestPublicBinaryDispatchesVersionFlagNatively(t *testing.T) {
 	repoRoot := repoRoot(t)
-	binary := filepath.Join(t.TempDir(), "loaf")
-	if output, err := runCommand(repoRoot, "go", "build", "-o", binary, "./cmd/loaf"); err != nil {
-		t.Fatalf("go build ./cmd/loaf error = %v\n%s", err, output)
-	}
+	// Same distribution-shaped fixture as above: --version's Content sections
+	// come from the binary's own distribution, never the working directory.
+	binary := filepath.Join(writeInstalledDistributionFixture(t, repoRoot, "9.9.9-native-dispatch"), "bin", "loaf")
 
 	output, err := runBinary(binary, repoRoot, envWith(), "--version")
 	if err != nil {

@@ -32,7 +32,7 @@ func (r Runner) runSetup(args []string, out io.Writer, runtimeRoot string) error
 		}
 	}
 
-	loafRoot, err := resolveLoafPackageRoot(r.WorkingDir, runtimeRoot)
+	loafRoot, err := resolveSourceCheckoutRoot(r.WorkingDir, runtimeRoot)
 	if err != nil {
 		return err
 	}

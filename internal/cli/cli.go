@@ -38,6 +38,10 @@ type Runner struct {
 	// and `go test`, and surface in `loaf --version` / `loaf version` when set.
 	BuildCommit string
 	BuildDate   string
+	// Executable optionally overrides os.Executable as the source of
+	// installed-distribution provenance (see distribution.go). Tests inject
+	// fixture layouts through it; nil means the real executable.
+	Executable func() (string, error)
 }
 
 type housekeepingOptions struct {
@@ -258,7 +262,7 @@ func (r Runner) Run(args []string) error {
 	case "--agent-help":
 		dispatchErr = writeAgentHelpJSON(out)
 	case "--version", "-v":
-		dispatchErr = r.runVersion(out, runtime.RootPath())
+		dispatchErr = r.runVersion(out)
 	case "build":
 		dispatchErr = r.runBuild(args[1:], out, runtime.RootPath())
 	case "init":
@@ -326,7 +330,7 @@ func (r Runner) Run(args []string) error {
 	case "kb":
 		dispatchErr = r.runKb(args[1:], out, runtime.RootPath())
 	case "version":
-		dispatchErr = r.runVersion(out, runtime.RootPath())
+		dispatchErr = r.runVersion(out)
 	default:
 		fmt.Fprintf(errOut, "error: unknown command '%s'\n\n", args[0])
 		writeRootHelp(errOut)
