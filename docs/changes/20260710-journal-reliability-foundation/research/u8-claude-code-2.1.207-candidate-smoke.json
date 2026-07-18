@@ -1,6 +1,6 @@
 {
   "evidence_version": 2,
-  "timestamp": "2026-07-15T10:51:40.982Z",
+  "timestamp": "2026-07-17T22:39:12.769Z",
   "target": "claude-code",
   "surface": "cli",
   "version": "2.1.207",
@@ -41,7 +41,7 @@
   "stderr_empty": true,
   "model_visible_marker_observed": true,
   "assistant_marker_match": true,
-  "marker": "LOAF_U8_SMOKE_FE02163FEDEA",
+  "marker": "LOAF_U8_SMOKE_A8064584C128",
   "hook_observation": {
     "event_name": "SessionStart:startup",
     "native_json": true,
@@ -52,6 +52,6 @@
     "hooks_path": "plugins/loaf/hooks/hooks.json",
     "hooks_sha256": "5c7343a34af37d6c6e930981f71e405b8023975de4146822058f98c15251b7c2",
     "native_binary_path": "plugins/loaf/bin/native/darwin-arm64/loaf",
-    "native_binary_sha256": "0c7a390bbe8433c9c3346c9687f2109bd37b8dc96f486ac25f8ba9b520d8d091"
+    "native_binary_sha256": "9e557096fc38ded3a6317897cd4955710a722d941409b82a7233ab1fb2de408c"
   }
 }

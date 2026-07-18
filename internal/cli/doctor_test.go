@@ -242,6 +242,32 @@ func TestRunnerDoctorWarningsDoNotFail(t *testing.T) {
 	}
 }
 
+func TestCheckFencedVersionAcceptsFingerprintedAndLegacyHeaders(t *testing.T) {
+	const currentVersion = "9.8.7-test.1"
+	for _, tc := range []struct {
+		name        string
+		body        string
+		wantStatus  doctorStatus
+		wantMessage string
+		reject      string
+	}{
+		{name: "fingerprinted current", body: generateFencedContent(currentVersion), wantStatus: doctorPass, wantMessage: "matches installed"},
+		{name: "fingerprinted drift", body: generateFencedContent("0.0.1-test"), wantStatus: doctorWarn, wantMessage: "Fenced section version drift", reject: "No loaf:managed fenced section"},
+		{name: "legacy current", body: doctorFence(currentVersion), wantStatus: doctorPass, wantMessage: "matches installed"},
+		{name: "malformed fingerprint", body: "<!-- loaf:managed:start v9.8.7-test.1 sha256=bad -->\nbody\n<!-- loaf:managed:end -->\n", wantStatus: doctorWarn, wantMessage: "No loaf:managed fenced section"},
+		{name: "malformed header", body: "<!-- loaf:managed:start v9.8.7-test.1 extra -->\nbody\n<!-- loaf:managed:end -->\n", wantStatus: doctorWarn, wantMessage: "No loaf:managed fenced section"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := writeDoctorFixture(t, currentVersion)
+			writeDoctorAgents(t, root, tc.body)
+			result := checkFencedVersion(currentVersion).Run(doctorContext{projectRoot: root})
+			if result.Status != tc.wantStatus || !strings.Contains(result.Message, tc.wantMessage) || tc.reject != "" && strings.Contains(result.Message, tc.reject) {
+				t.Fatalf("fenced-version result = %#v, want status %q containing %q and not %q", result, tc.wantStatus, tc.wantMessage, tc.reject)
+			}
+		})
+	}
+}
+
 func TestRunnerDoctorFixMigratesLegacyLayout(t *testing.T) {
 	root := writeDoctorFixture(t, "9.8.7-test.1")
 	writeDoctorFile(t, filepath.Join(root, ".agents", "AGENTS.md"), "# Legacy Canonical\n\nlegacy context\n")

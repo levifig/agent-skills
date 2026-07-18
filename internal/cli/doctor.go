@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -766,9 +765,9 @@ func getDoctorFencedVersion(path string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	match := regexp.MustCompile(`<!-- loaf:managed:start v([^ >]+) -->`).FindStringSubmatch(string(body))
-	if len(match) != 2 {
+	section, ok := findFencedSectionRange(string(body))
+	if !ok || section.malformedHeader || section.version == "" {
 		return "", false
 	}
-	return match[1], true
+	return section.version, true
 }

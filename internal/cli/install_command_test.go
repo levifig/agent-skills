@@ -169,7 +169,7 @@ func TestRunnerInstallUpgradeMigratesLegacyProjectInstructionLayout(t *testing.T
 		t.Fatal("root AGENTS.md remains a symlink after upgrade")
 	}
 	body := string(readFileBytes(t, canonical))
-	if !strings.Contains(body, "# Legacy Instructions") || !strings.Contains(body, "<!-- loaf:managed:start v9.8.7-test.1 -->") {
+	if !strings.Contains(body, "# Legacy Instructions") || !strings.Contains(body, "<!-- loaf:managed:start v9.8.7-test.1 sha256=") {
 		t.Fatalf("root AGENTS.md = %q, want preserved legacy content and current managed fence", body)
 	}
 	if _, err := os.Lstat(filepath.Join(root, ".agents", "AGENTS.md")); !os.IsNotExist(err) {

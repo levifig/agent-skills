@@ -1,6 +1,6 @@
 {
   "evidence_version": 2,
-  "timestamp": "2026-07-15T10:52:07.524Z",
+  "timestamp": "2026-07-17T22:39:31.481Z",
   "target": "codex",
   "surface": "cli",
   "version": "0.144.1",
@@ -39,7 +39,7 @@
   "stderr": "Reading additional input from stdin...",
   "model_visible_marker_observed": true,
   "assistant_marker_match": true,
-  "marker": "LOAF_CODEX_U8_28511CFFCCCB",
+  "marker": "LOAF_CODEX_U8_E6F429E695CD",
   "hook_observation": {
     "event_name": "SessionStart:startup",
     "native_json": true,
@@ -50,6 +50,6 @@
     "hooks_path": "dist/codex/.codex/hooks.json",
     "hooks_sha256": "0f9e3feb7204c3309a7db6a02224ad881f6801a8cdd126ec6222e6d9a804c33d",
     "native_binary_path": "bin/native/darwin-arm64/loaf",
-    "native_binary_sha256": "0c7a390bbe8433c9c3346c9687f2109bd37b8dc96f486ac25f8ba9b520d8d091"
+    "native_binary_sha256": "9e557096fc38ded3a6317897cd4955710a722d941409b82a7233ab1fb2de408c"
   }
 }
