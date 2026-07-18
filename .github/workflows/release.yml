@@ -72,15 +72,15 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Verify tests
+        run: go test ./...
+
       - name: Build release targets
         shell: bash
         run: |
-          export LOAF_BUILD_COMMIT="${GITHUB_SHA::7}"
+          export LOAF_BUILD_COMMIT="$(git rev-parse --short=7 HEAD)"
           export LOAF_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           npm run build:release
-
-      - name: Verify tests
-        run: go test ./...
 
       - name: Package release archives
         run: npm run package:release

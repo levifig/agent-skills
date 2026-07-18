@@ -241,6 +241,31 @@ func TestNativeGoReleaseBuildUsesPublishTargetPolicy(t *testing.T) {
 	}
 }
 
+func TestReleaseWorkflowVerifiesEvidenceBeforeStampedBuild(t *testing.T) {
+	root := repoRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+
+	workflow := string(body)
+	verifyTests := strings.Index(workflow, "      - name: Verify tests\n")
+	testCommand := strings.Index(workflow, "        run: go test ./...\n")
+	buildRelease := strings.Index(workflow, "      - name: Build release targets\n")
+	stampCommit := strings.Index(workflow, "          export LOAF_BUILD_COMMIT=\"$(git rev-parse --short=7 HEAD)\"\n")
+	buildCommand := strings.Index(workflow, "          npm run build:release\n")
+	packageRelease := strings.Index(workflow, "      - name: Package release archives\n")
+	if verifyTests < 0 || testCommand < 0 || buildRelease < 0 || stampCommit < 0 || buildCommand < 0 || packageRelease < 0 {
+		t.Fatalf("release workflow is missing its evidence verification or checked-out-tree release build contract")
+	}
+	if !(verifyTests < testCommand && testCommand < buildRelease && buildRelease < stampCommit && stampCommit < buildCommand && buildCommand < packageRelease) {
+		t.Fatalf("release workflow must verify evidence before stamping and packaging the checked-out tree")
+	}
+	if strings.Count(workflow, "LOAF_BUILD_COMMIT") != 1 || strings.Count(workflow, "LOAF_BUILD_DATE") != 1 {
+		t.Fatalf("release workflow must confine build metadata to the release build step")
+	}
+}
+
 func TestHomebrewFormulaUpdaterGeneratesAuditSafePrereleaseURLs(t *testing.T) {
 	node := requireNode(t)
 	root := repoRoot(t)
