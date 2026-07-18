@@ -6,14 +6,19 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-alpha.7] - 2026-07-18
+
 ### Changed
 
-- Make root `AGENTS.md` the canonical real project instruction file, migrate the retired `.agents/AGENTS.md` layout during install and doctor repairs, point `.claude/CLAUDE.md` to `../AGENTS.md`, and require per-repair y/N consent for `loaf doctor --fix` unless `--force` is supplied.
-- Deliver model-visible journal continuity through verified target-specific adapters for Claude Code, Codex, and OpenCode, while directing unproven Cursor and Amp modes to the explicit `loaf journal context` fallback.
+- Add model-visible journal context at Claude Code and Codex startup and on OpenCode requests, with explicit `loaf journal context` fallbacks for unproven lifecycle modes and for Cursor and Amp (#106).
+- Fingerprint Loaf-managed instruction fences independently of package versions and track shared skills by deterministic tree digest, so same-version upgrades detect content drift, preserve surrounding user prose, target symlinks, and file modes, refuse ownership conflicts or tampering, and publish shared-skill replacements through verified staging with recovery on failure (#107).
+- Make root `AGENTS.md` the canonical project guidance file, preserve and back up legacy instruction content during migration, and keep `.claude/CLAUDE.md` linked to it; `loaf doctor --fix` now asks before each repair and skips non-interactively unless `--force` is supplied (#112).
 
 ### Fixed
 
-- Prevent automatic commit, pull-request, and task-completion history from being recorded unless the target proves both a successful result and its durable identity.
+- Prevent command text alone from creating automatic commit, pull-request, or task-completion history when the target cannot prove both success and a durable identity (#106).
 
 ## [2.0.0-alpha.6] - 2026-07-12
 

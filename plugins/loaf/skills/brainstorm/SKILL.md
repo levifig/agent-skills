@@ -7,7 +7,7 @@ description: >-
   ideas or shaping.
 user-invocable: true
 argument-hint: '[idea or problem]'
-version: 2.0.0-alpha.6
+version: 2.0.0-alpha.7
 ---
 
 # Brainstorm

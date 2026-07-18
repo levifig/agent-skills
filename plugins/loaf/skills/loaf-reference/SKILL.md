@@ -6,7 +6,7 @@ description: >-
   when unsure which loaf command to invoke or how to validate project state. Not
   for workflow ...
 user-invocable: false
-version: 2.0.0-alpha.6
+version: 2.0.0-alpha.7
 ---
 
 # Loaf Reference

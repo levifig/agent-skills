@@ -7,7 +7,7 @@ description: >-
   (use debugging) or gener...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 2.0.0-alpha.6
+version: 2.0.0-alpha.7
 ---
 
 # Security & Compliance

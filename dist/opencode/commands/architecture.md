@@ -12,7 +12,7 @@ description: >-
   append-only — when circumstances change, write a new ADR that supersedes the
   old one.
 subtask: false
-version: 2.0.0-alpha.6
+version: 2.0.0-alpha.7
 ---
 
 # Architecture
