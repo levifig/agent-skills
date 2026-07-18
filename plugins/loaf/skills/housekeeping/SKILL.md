@@ -7,7 +7,7 @@ description: >-
   completed work, and ens...
 user-invocable: true
 argument-hint: '[sessions|specs|plans|drafts|handoffs]'
-version: 2.0.0-alpha.8
+version: 2.0.0-alpha.9
 ---
 
 # Housekeeping

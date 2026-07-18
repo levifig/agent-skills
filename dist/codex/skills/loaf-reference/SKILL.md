@@ -6,7 +6,7 @@ description: >-
   when unsure which loaf command to invoke or how to validate project state. Not
   for workflow guidance (workflow skills own their CLI contracts) or build
   internals.
-version: 2.0.0-alpha.8
+version: 2.0.0-alpha.9
 ---
 
 # Loaf Reference

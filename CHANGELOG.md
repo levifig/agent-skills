@@ -8,6 +8,12 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
+## [2.0.0-alpha.9] - 2026-07-18
+
+### Fixed
+
+- Use the installed executable's packaged distribution for version reporting, upgrades, configuration maintenance, and diagnostics, preventing stale source checkouts from silently downgrading managed installations while preserving explicit source-checkout builds (#120).
+
 ## [2.0.0-alpha.8] - 2026-07-18
 
 ### Added

@@ -8,7 +8,7 @@ description: >-
   strategic reflection (use reflect) or knowledge management (use
   knowledge-base).
 subtask: false
-version: 2.0.0-alpha.8
+version: 2.0.0-alpha.9
 ---
 
 # Housekeeping
