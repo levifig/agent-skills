@@ -8,7 +8,7 @@ description: >-
 user-invocable: true
 argument-hint: '[brief or path]'
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion'
-version: 2.0.0-alpha.7
+version: 2.0.0-alpha.8
 ---
 
 # Bootstrap

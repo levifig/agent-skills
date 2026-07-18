@@ -7,7 +7,7 @@ description: >-
   experience. Not for pre-i...
 user-invocable: true
 argument-hint: '[SPEC-ID or topic]'
-version: 2.0.0-alpha.7
+version: 2.0.0-alpha.8
 ---
 
 # Reflect

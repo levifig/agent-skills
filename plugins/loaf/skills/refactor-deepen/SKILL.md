@@ -7,7 +7,7 @@ description: >-
   improvements, or when t...
 user-invocable: true
 argument-hint: '[module or area]'
-version: 2.0.0-alpha.7
+version: 2.0.0-alpha.8
 ---
 
 # Refactor-Deepen

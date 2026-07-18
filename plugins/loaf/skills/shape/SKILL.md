@@ -7,7 +7,7 @@ description: >-
   for known unknowns, reaction artifa...
 user-invocable: true
 argument-hint: '[messy input to shape into a Change]'
-version: 2.0.0-alpha.7
+version: 2.0.0-alpha.8
 ---
 
 # Shape
