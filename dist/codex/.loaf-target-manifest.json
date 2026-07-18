@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "target": "codex",
+  "package_version": "2.0.0-alpha.7",
+  "capability_contract_version": 3,
+  "adapters": [
+    "codex-session-start-v1"
+  ],
+  "artifacts": [
+    {
+      "id": "hook-projection:.codex/hooks.json",
+      "kind": "hook-projection",
+      "source_path": ".codex/hooks.json",
+      "destination": "hooks.json",
+      "sha256": "443f549b2d4ee0a7ab796f95f5a9a60c92613a63e9409d8bb2962564d066db02"
+    },
+    {
+      "id": "managed-instructions",
+      "kind": "instruction",
+      "destination": "project-instructions",
+      "sha256": "4e202b0bcb7ad79fd7808772d67bfae87299c05d920083c6fa220292770a007d"
+    }
+  ]
+}

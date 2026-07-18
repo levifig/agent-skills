@@ -171,6 +171,9 @@ func buildNativeTargetOnly(root string, targetName string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := writeNativeBuildTargetManifest(root, targetName); err != nil {
+		return nil, err
+	}
 	return validateNativeBuildArtifacts(root, targetName)
 }
 
@@ -411,6 +414,9 @@ func validateNativeBuildHarnessLanguage(root string, targetName string, paths []
 			return err
 		}
 		relative := nativeBuildRelativePath(root, path)
+		if filepath.Base(path) == targetBuildManifestFile {
+			continue
+		}
 		for lineNumber, line := range strings.Split(string(body), "\n") {
 			if hasNativeBuildUnresolvedToken(line) && !nativeBuildAllowedCodexExecutablePlaceholder(targetName, relative, line) {
 				findings = append(findings, nativeBuildHarnessLanguageFinding{path: relative, line: lineNumber + 1, reason: "unresolved harness token"})

@@ -104,6 +104,7 @@ type targetInstallOptions struct {
 	ProjectRoot         string
 	AmpSkillsDir        string
 	AmpPluginsDir       string
+	TargetAdapterOps    *targetAdapterInstallOperations
 }
 
 type codexHooksFile struct {
@@ -173,7 +174,17 @@ func installOpencodeTarget(options targetInstallOptions) error {
 	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
 		return err
 	}
-	for _, dir := range []string{"agents", "commands", "plugins", "templates"} {
+	hasAdapterManifest := fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile))
+	if hasAdapterManifest {
+		if err := syncTargetAdapterManifest(options); err != nil {
+			return err
+		}
+	}
+	dirs := []string{"agents", "commands", "templates"}
+	if !hasAdapterManifest {
+		dirs = append(dirs, "plugins")
+	}
+	for _, dir := range dirs {
 		if err := syncTargetSubdir(options.DistDir, options.ConfigDir, dir); err != nil {
 			return err
 		}
@@ -195,7 +206,12 @@ func installCursorTarget(options targetInstallOptions) error {
 	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "agents"), filepath.Join(options.ConfigDir, "agents")); err != nil {
 		return err
 	}
-	if err := mergeHookFiles(filepath.Join(options.ConfigDir, "hooks.json"), filepath.Join(options.DistDir, "hooks.json")); err != nil {
+	hasAdapterManifest := fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile))
+	if hasAdapterManifest {
+		if err := syncTargetAdapterManifest(options); err != nil {
+			return err
+		}
+	} else if err := mergeHookFiles(filepath.Join(options.ConfigDir, "hooks.json"), filepath.Join(options.DistDir, "hooks.json")); err != nil {
 		return err
 	}
 	if options.Upgrade {
@@ -205,8 +221,10 @@ func installCursorTarget(options targetInstallOptions) error {
 			}
 		}
 	}
-	if err := mergeTargetDirIfExists(filepath.Join(options.DistDir, "hooks"), filepath.Join(options.ConfigDir, "hooks")); err != nil {
-		return err
+	if !hasAdapterManifest {
+		if err := mergeTargetDirIfExists(filepath.Join(options.DistDir, "hooks"), filepath.Join(options.ConfigDir, "hooks")); err != nil {
+			return err
+		}
 	}
 	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "templates"), filepath.Join(options.ConfigDir, "templates")); err != nil {
 		return err
@@ -227,7 +245,11 @@ func installCodexTarget(options targetInstallOptions) error {
 	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
 		return err
 	}
-	if err := mergeCodexHookFiles(filepath.Join(codexHome, "hooks.json"), filepath.Join(options.DistDir, ".codex", "hooks.json"), options.ProjectRoot, options.CodexRuleOperations); err != nil {
+	if fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile)) {
+		if err := syncTargetAdapterManifest(options); err != nil {
+			return err
+		}
+	} else if err := mergeCodexHookFiles(filepath.Join(codexHome, "hooks.json"), filepath.Join(options.DistDir, ".codex", "hooks.json"), options.ProjectRoot, options.CodexRuleOperations); err != nil {
 		return err
 	}
 	if err := installCodexJournalRuleWithOperations(options, codexHome, options.CodexRuleOperations); err != nil {
@@ -244,17 +266,23 @@ func installAmpTarget(options targetInstallOptions) error {
 	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
 		return err
 	}
-	pluginSrc := filepath.Join(options.DistDir, ".amp", "plugins", "loaf.ts")
-	if fileExistsForInstall(pluginSrc) {
-		pluginsDest := options.AmpPluginsDir
-		if pluginsDest == "" {
-			pluginsDest = filepath.Join(options.ConfigDir, "plugins")
-		}
-		if err := os.MkdirAll(pluginsDest, 0o755); err != nil {
+	if fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile)) {
+		if err := syncTargetAdapterManifest(options); err != nil {
 			return err
 		}
-		if err := copyFileForInstall(pluginSrc, filepath.Join(pluginsDest, "loaf.ts")); err != nil {
-			return err
+	} else {
+		pluginSrc := filepath.Join(options.DistDir, ".amp", "plugins", "loaf.ts")
+		if fileExistsForInstall(pluginSrc) {
+			pluginsDest := options.AmpPluginsDir
+			if pluginsDest == "" {
+				pluginsDest = filepath.Join(options.ConfigDir, "plugins")
+			}
+			if err := os.MkdirAll(pluginsDest, 0o755); err != nil {
+				return err
+			}
+			if err := copyFileForInstall(pluginSrc, filepath.Join(pluginsDest, "loaf.ts")); err != nil {
+				return err
+			}
 		}
 	}
 	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {
