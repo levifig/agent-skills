@@ -136,6 +136,12 @@ func classifySchemaUpgradeTargetWithPolicy(path string, version int, allowJourna
 	if version < journalFirstMigrationVersion {
 		return classifyBehindSchemaTarget(path)
 	}
+	// Versions between the journal-first ceremony and the current baseline are
+	// ordinary behind-schema states: schema 11 databases (with or without an
+	// applied journal-first row) must classify as upgradable to 12.
+	if version < CurrentSchemaVersion() {
+		return classifyBehindSchemaTarget(path)
+	}
 	return false, nil
 }
 

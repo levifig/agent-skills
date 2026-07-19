@@ -470,3 +470,92 @@ func TestListSpecsRefusesSchema10WithoutMutation(t *testing.T) {
 		t.Fatal("schema10 database changed after list refusal")
 	}
 }
+
+// seedSchema11UpgradeTarget builds a fresh schema-11 database (versions 1..9
+// plus 11, no journal-first row) — the shape every alpha.9 initialization left
+// behind.
+func seedSchema11UpgradeTarget(t *testing.T) (project.Root, PathResolver, string) {
+	t.Helper()
+	root, resolver, databasePath := seedSchema9UpgradeTarget(t)
+	store, err := OpenStore(databasePath)
+	if err != nil {
+		t.Fatalf("OpenStore(schema11) error = %v", err)
+	}
+	if err := ApplyMigrations(context.Background(), store.db, []SchemaMigration{SchemaMigrations()[9]}); err != nil {
+		store.Close()
+		t.Fatalf("apply schema11 migration: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close(schema11) error = %v", err)
+	}
+	return root, resolver, databasePath
+}
+
+// seedSchema11JournalFirstUpgradeTarget builds a schema-11 database that ran
+// the explicit journal-first ceremony (versions 1..9, 10, 11).
+func seedSchema11JournalFirstUpgradeTarget(t *testing.T) (project.Root, PathResolver, string) {
+	t.Helper()
+	root, resolver, databasePath := seedSchema10UpgradeTarget(t)
+	store, err := OpenStore(databasePath)
+	if err != nil {
+		t.Fatalf("OpenStore(schema11-jf) error = %v", err)
+	}
+	if err := ApplyMigrations(context.Background(), store.db, []SchemaMigration{SchemaMigrations()[9]}); err != nil {
+		store.Close()
+		t.Fatalf("apply schema11 migration after journal-first: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close(schema11-jf) error = %v", err)
+	}
+	return root, resolver, databasePath
+}
+
+// TestSchema11DatabasesClassifyAndUpgradeToCurrent falsifies the alpha.10
+// regression: schema-11 databases (both shapes) were reported invalid instead
+// of behind-schema, leaving upgraders with no forward path.
+func TestSchema11DatabasesClassifyAndUpgradeToCurrent(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name string
+		seed func(*testing.T) (project.Root, PathResolver, string)
+	}{
+		{"fresh-schema-11", seedSchema11UpgradeTarget},
+		{"journal-first-schema-11", seedSchema11JournalFirstUpgradeTarget},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, resolver, databasePath := tc.seed(t)
+
+			// Ordinary writes return the typed upgrade requirement, never a
+			// bare invalid-database error.
+			_, err := LogJournal(ctx, root, resolver, JournalLogOptions{Entry: "decision(test): blocked"})
+			var required *SchemaUpgradeRequiredError
+			if !errors.As(err, &required) || len(required.PendingVersions) != 1 || required.PendingVersions[0] != 12 {
+				t.Fatalf("journal log error = %v, want schema-upgrade-required pending [12]", err)
+			}
+
+			preview, err := PreviewSchemaUpgrade(ctx, root, resolver)
+			if err != nil {
+				t.Fatalf("PreviewSchemaUpgrade() error = %v", err)
+			}
+			if preview.CurrentVersion != 11 || len(preview.PendingVersions) != 1 || preview.PendingVersions[0] != 12 {
+				t.Fatalf("preview = %#v, want schema 11 pending [12]", preview)
+			}
+
+			result, err := ApplySchemaUpgrade(ctx, root, resolver)
+			if err != nil {
+				t.Fatalf("ApplySchemaUpgrade() error = %v", err)
+			}
+			if !result.Applied || !result.Verified || !result.BackupVerified {
+				t.Fatalf("apply = %#v, want applied and verified with backup", result)
+			}
+			store, err := OpenStore(databasePath)
+			if err != nil {
+				t.Fatalf("OpenStore(after upgrade) error = %v", err)
+			}
+			defer store.Close()
+			if err := store.RequireCurrentSchema(ctx); err != nil {
+				t.Fatalf("RequireCurrentSchema(after upgrade) error = %v", err)
+			}
+		})
+	}
+}

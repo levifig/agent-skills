@@ -1398,6 +1398,10 @@ func classifyBehindSchemaTarget(databasePath string) (bool, error) {
 	for _, migration := range SchemaMigrations() {
 		known[migration.Version] = migration
 	}
+	// The explicit journal-first migration is a legitimate recorded row on any
+	// database that ran the ceremony, even though it never auto-applies.
+	journalFirst := JournalFirstMigration()
+	known[journalFirst.Version] = journalFirst
 	rows, err := store.db.QueryContext(ctx, `SELECT version, checksum FROM schema_migrations ORDER BY version`)
 	if err != nil {
 		return false, nil
@@ -1419,9 +1423,15 @@ func classifyBehindSchemaTarget(databasePath string) (bool, error) {
 	if err := rows.Err(); err != nil {
 		return false, fmt.Errorf("iterate schema migration rows: %w", err)
 	}
-	// The recorded rows must be exactly versions 1..version with no gaps, so the
-	// pending set is precisely the known migrations above the current version.
-	if recorded != version {
+	// Every auto-applied migration at or below the recorded version must be
+	// present; the optional journal-first row does not change the required set.
+	required := 0
+	for _, migration := range SchemaMigrations() {
+		if migration.Version <= version {
+			required++
+		}
+	}
+	if recorded != required && recorded != required+1 {
 		return false, nil
 	}
 

@@ -6,7 +6,9 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Fixed
+
+- Classify schema-11 databases as upgradable behind-schema state instead of invalid, restoring the backup-first `loaf state migrate schema --apply` path for every installation upgrading from v2.0.0-alpha.9 — with or without an applied journal-first ceremony (#124).
 
 ## [2.0.0-alpha.10] - 2026-07-19
 
