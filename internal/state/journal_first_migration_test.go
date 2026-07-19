@@ -537,16 +537,16 @@ func TestBackupVerifiesMigratedJournalFirstDatabase(t *testing.T) {
 }
 
 func TestJournalFirstMigrationExcludedFromAutoApply(t *testing.T) {
-	if CurrentSchemaVersion() != 11 {
-		t.Fatalf("CurrentSchemaVersion() = %d, want 11 (migration 10 must not auto-apply on store open)", CurrentSchemaVersion())
+	if CurrentSchemaVersion() != 12 {
+		t.Fatalf("CurrentSchemaVersion() = %d, want 12 (migration 10 must not auto-apply on store open)", CurrentSchemaVersion())
 	}
 	for _, m := range SchemaMigrations() {
 		if m.Version == journalFirstMigrationVersion {
 			t.Fatalf("journal-first migration %d must be excluded from SchemaMigrations()", journalFirstMigrationVersion)
 		}
 	}
-	if got := SchemaMigrations()[len(SchemaMigrations())-1].Version; got != journalOriginsMigrationVersion {
-		t.Fatalf("last auto-applied migration = %d, want %d", got, journalOriginsMigrationVersion)
+	if got := SchemaMigrations()[len(SchemaMigrations())-1].Version; got <= journalOriginsMigrationVersion {
+		t.Fatalf("last auto-applied migration = %d, want a version above %d", got, journalOriginsMigrationVersion)
 	}
 	m := JournalFirstMigration()
 	if m.Version != 10 || m.Name != "journal_first" {

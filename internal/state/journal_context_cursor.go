@@ -129,6 +129,8 @@ func journalContextLayerOption(layer string) string {
 		return "unresolved-blockers"
 	case JournalContextLayerDeferrals:
 		return "deferred-intent"
+	case JournalContextLayerCheckpoints:
+		return "exploration-checkpoints"
 	case JournalContextLayerBranch:
 		return "branch-recency"
 	case JournalContextLayerTasks:
@@ -172,6 +174,26 @@ func journalContextCheckpointPage(candidates []journalContextJournalCandidate, b
 		items = append(items, JournalContextCheckpointItem{Entry: entry, Scope: entry.Scope, ProjectSynthesis: false, Label: "latest checkpoint (not project synthesis)"})
 	}
 	return JournalContextCheckpointLayer{Available: true, AvailableCount: len(items), ShownCount: len(items), Truncated: false, ExpandCommand: journalContextExpandCommand(JournalContextLayerCheckpoint, journalContextSynthesisLimit, branch, ""), Items: items}
+}
+
+// journalContextCheckpointsPage bounds the recent portable checkpoints layer.
+// It is discoverable through a --limit expansion command rather than a cursor:
+// the layer selects the greatest-sequence checkpoint per Exploration, so there
+// is no per-item journal watermark to freeze into a continuation token.
+func journalContextCheckpointsPage(candidates []journalContextCheckpointCandidate, limit int, branch string) JournalContextCheckpointsLayer {
+	end := min(limit, len(candidates))
+	items := make([]JournalContextExplorationCheckpointItem, 0, end)
+	for _, candidate := range candidates[:end] {
+		items = append(items, candidate.Item)
+	}
+	return JournalContextCheckpointsLayer{
+		Available:      true,
+		AvailableCount: len(candidates),
+		ShownCount:     len(items),
+		Truncated:      end < len(candidates),
+		ExpandCommand:  journalContextExpandCommand(JournalContextLayerCheckpoints, limit, branch, ""),
+		Items:          items,
+	}
 }
 
 func journalContextBlockerPage(candidates []journalContextBlockerCandidate, limit int, cursor *journalContextCursor, projectID, branch string, watermark int64) (JournalContextBlockerLayer, error) {

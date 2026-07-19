@@ -480,3 +480,157 @@ erDiagram
   sources ||--o{ plans : bodies
   sources ||--o{ handoffs : bodies
   sources ||--o{ councils : bodies
+  intents {
+    text id PK
+    text project_id FK
+    text created_at
+  }
+  intent_snapshots {
+    text id PK
+    text project_id FK
+    text intent_id FK
+    integer seq
+    text title
+    text body
+    text content_digest
+    text created_at
+  }
+  intent_deferrals {
+    text id PK
+    text project_id FK
+    text intent_id FK
+    text operation_key
+    text body
+    text why
+    text boundary
+    text revisit_trigger
+    text stored_digest
+    text created_at
+  }
+  intent_dispositions {
+    text id PK
+    text project_id FK
+    text intent_id FK
+    integer seq
+    text disposition
+    text reason
+    text deferral_id FK
+    text supersedes_deferral_id FK
+    text created_at
+  }
+  intent_operations {
+    text project_id FK
+    text operation_key
+    text intent_id FK
+    text stored_digest
+    text journal_entry_id
+    text spark_id
+    integer projection_version
+    text created_at
+    text updated_at
+  }
+  explorations {
+    text id PK
+    text project_id FK
+    text title
+    text created_at
+  }
+  exploration_checkpoints {
+    text id PK
+    text project_id FK
+    text exploration_id FK
+    integer seq
+    text purpose
+    text conclusions
+    text unresolved
+    text next_action
+    text operation_key
+    text content_digest
+    text created_at
+  }
+  exploration_checkpoint_items {
+    text id PK
+    text project_id FK
+    text checkpoint_id FK
+    text item_type
+    integer position
+    text content
+    text created_at
+  }
+  logical_conversations {
+    text id PK
+    text project_id FK
+    text title
+    text operation_key
+    text created_at
+  }
+  conversation_handles {
+    text id PK
+    text project_id FK
+    text conversation_id FK
+    text harness
+    text handle
+    text locality
+    text created_at
+  }
+  conversation_log_refs {
+    text id PK
+    text project_id FK
+    text handle_id FK
+    text locator
+    text content_hash
+    text range_spec
+    text created_at
+  }
+  exploration_conversations {
+    text id PK
+    text project_id FK
+    text exploration_id FK
+    text conversation_id FK
+    text created_at
+  }
+  journal_conversation_handles {
+    text id PK
+    text project_id FK
+    text journal_entry_id
+    text handle_id FK
+    text created_at
+  }
+  source_availability_observations {
+    text id PK
+    text project_id FK
+    text subject_kind
+    text subject_id
+    text observed_at
+    text observer
+    text locality
+    integer available
+    text note
+    text created_at
+  }
+  projects ||--o{ intents : scopes
+  projects ||--o{ intent_snapshots : scopes
+  projects ||--o{ intent_deferrals : scopes
+  projects ||--o{ intent_dispositions : scopes
+  projects ||--o{ intent_operations : scopes
+  projects ||--o{ explorations : scopes
+  projects ||--o{ exploration_checkpoints : scopes
+  projects ||--o{ exploration_checkpoint_items : scopes
+  projects ||--o{ logical_conversations : scopes
+  projects ||--o{ conversation_handles : scopes
+  projects ||--o{ conversation_log_refs : scopes
+  projects ||--o{ exploration_conversations : scopes
+  projects ||--o{ journal_conversation_handles : scopes
+  projects ||--o{ source_availability_observations : scopes
+  intents ||--o{ intent_snapshots : revises
+  intents ||--o{ intent_deferrals : defers
+  intents ||--o{ intent_dispositions : disposes
+  intents ||--o{ intent_operations : maps
+  intent_deferrals ||--o{ intent_dispositions : anchors
+  explorations ||--o{ exploration_checkpoints : checkpoints
+  explorations ||--o{ exploration_conversations : spans
+  exploration_checkpoints ||--o{ exploration_checkpoint_items : contains
+  logical_conversations ||--o{ conversation_handles : carries
+  logical_conversations ||--o{ exploration_conversations : joins
+  conversation_handles ||--o{ conversation_log_refs : locates
+  conversation_handles ||--o{ journal_conversation_handles : correlates

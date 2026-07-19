@@ -215,6 +215,11 @@ func (s *Store) resolveLinkOptions(ctx context.Context, projectID string, option
 	if err != nil {
 		return TraceEntity{}, TraceEntity{}, "", "", err
 	}
+	// Relationships touching the Intent/Exploration kinds must match the
+	// closed registry matrix; legacy-to-legacy links keep their behavior.
+	if err := validateRelationshipAgainstRegistry(from.Kind, relationshipType, to.Kind); err != nil {
+		return TraceEntity{}, TraceEntity{}, "", "", err
+	}
 	reason := strings.TrimSpace(options.Reason)
 	if reason == "" {
 		reason = "recorded by link create"

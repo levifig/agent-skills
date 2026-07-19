@@ -20,7 +20,7 @@ test("rejects a stream without SessionStart hook response", () => {
 });
 
 test("requires the exact Claude Code version token", () => {
-  assert.equal(claudeVersionMatches("2.1.207 (Claude Code)\n", "2.1.207"), true);
-  assert.equal(claudeVersionMatches("2.1.2070 (Claude Code)", "2.1.207"), false);
-  assert.equal(claudeVersionMatches("Claude Code 2.1.207", "2.1.207"), false);
+  assert.equal(claudeVersionMatches("2.1.215 (Claude Code)\n", "2.1.215"), true);
+  assert.equal(claudeVersionMatches("2.1.2150 (Claude Code)", "2.1.215"), false);
+  assert.equal(claudeVersionMatches("Claude Code 2.1.215", "2.1.215"), false);
 });

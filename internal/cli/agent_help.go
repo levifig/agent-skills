@@ -62,6 +62,8 @@ func agentHelpCommands() []agentHelpCommand {
 			Options: []agentHelpOption{
 				{Flags: "--to <target>", Description: "Target to install to, or all"},
 				{Flags: "--upgrade", Description: "Upgrade already-installed targets"},
+				{Flags: "--dry-run", Description: "With --upgrade, report the deterministic non-mutating upgrade plan without writing files, manifests, config, or state"},
+				{Flags: "--json", Description: "With --dry-run, emit the plan as one JSON document with exact follow-up commands and consent_required"},
 				{Flags: "-y, --yes", Description: "Assume yes to safe project-file symlink migrations and destructive deprecation cleanup"},
 				{Flags: "--no-yes", Description: "Force prompt-style declines in non-interactive mode"},
 			},
@@ -93,6 +95,7 @@ func agentHelpCommands() []agentHelpCommand {
 				{Name: "migrate markdown", Description: "Import markdown artifacts into native SQLite state", Options: []agentHelpOption{{Flags: "--dry-run", Description: "Preview import work without creating SQLite state"}, {Flags: "--apply", Description: "Initialize SQLite and apply the import"}, {Flags: "--resume", Description: "Resume an interrupted import"}, {Flags: "--backup", Description: "Create SQLite and .agents rollback backups during apply or resume"}, {Flags: "--remove-source", Description: "Remove ephemeral Markdown sources after a rollback backup"}, {Flags: "--rollback <manifest>", Description: "Restore .agents files from a rollback manifest"}, {Flags: "--json", Description: "Output migration contract, scope, project context, counts, and rollback fields as JSON"}}},
 				{Name: "migrate storage-home", Description: "Copy legacy XDG_STATE_HOME SQLite state into the global XDG_DATA_HOME database", Options: []agentHelpOption{{Flags: "--dry-run", Description: "Preview migration work without copying"}, {Flags: "--apply", Description: "Copy or merge eligible legacy state without deleting the source"}, {Flags: "--json", Description: "Output migration contract, global database paths, action, and project identity when available"}}},
 				{Name: "migrate schema", Description: "Preview or apply pending SQLite schema upgrades with a verified backup before mutation", Options: []agentHelpOption{{Flags: "--dry-run", Description: "Preview pending schema upgrades without writing"}, {Flags: "--apply", Description: "Apply pending schema upgrades after creating and verifying a backup"}, {Flags: "--json", Description: "Output schema upgrade action, versions, pending migrations, backup, and verification as JSON"}}},
+				{Name: "migrate deferrals", Description: "Convert historical journal deferrals into canonical deferred Intents; apply is backup-first, provenance-linking, legacy-preserving, and rerunnable", Options: []agentHelpOption{{Flags: "--dry-run", Description: "Report the project-specific conversion manifest without writing"}, {Flags: "--apply", Description: "Convert after creating and verifying a whole-database backup"}, {Flags: "--json", Description: "Output the conversion manifest, counts, backup, and project identity as JSON"}}},
 				{Name: "backup", Description: "Create a SQLite database backup with local rollback or operator-selected non-temporary external destination classification", Options: []agentHelpOption{{Flags: "--to <DIRECTORY>", Description: "Operator-selected non-temporary external destination directory; not proof of off-device protection"}, {Flags: "--json", Description: "Output backup verification, classification, readiness, checksum, journal watermark, and current project identity as JSON"}}},
 				{Name: "backup verify", Description: "Verify an existing SQLite database backup and report retrieval/recovery readiness", Options: []agentHelpOption{{Flags: "--json", Description: "Output schema version, SQLite validity, journal retrieval readiness, recovery readiness, watermark, and captured project identities as JSON"}}},
 				{Name: "backup restore", Description: "Run an isolated disposable restore rehearsal without activating or replacing the live database", Options: []agentHelpOption{{Flags: "<backup>", Description: "Verified backup path"}, {Flags: "--to <absolute-empty-database-path>", Description: "Required empty disposable restore target; never the live database"}, {Flags: "--json", Description: "Output isolated disposable rehearsal, exact-copy, integrity, retrieval, watermark, and live-database safety evidence; never activates the live database"}}},
@@ -235,7 +238,7 @@ func agentHelpCommands() []agentHelpCommand {
 				{Flags: "--json", Description: "Output hook result, pass/block status, exit code, warnings, errors, and findings as JSON"},
 			},
 		},
-		{Name: "doctor", Description: "Diagnose project alignment", Options: []agentHelpOption{{Flags: "--fix", Description: "Offer safe repairs with y/N confirmation"}, {Flags: "--force", Description: "With --fix, accept every repair without prompting"}, {Flags: "--verbose", Description: "Show details"}}},
+		{Name: "doctor", Description: "Diagnose project alignment", Options: []agentHelpOption{{Flags: "--fix", Description: "Offer safe repairs with y/N confirmation"}, {Flags: "--force", Description: "With --fix, accept every repair without prompting"}, {Flags: "--verbose", Description: "Show details"}, {Flags: "--json", Description: "Output the identical check set as read-only JSON; never prompts or repairs"}}},
 		{
 			Name:        "release",
 			Description: "Create a new release with changelog, version bump, and tag",
@@ -280,13 +283,54 @@ func agentHelpCommands() []agentHelpCommand {
 			},
 		},
 		{
+			Name:        "intent",
+			Description: "Manage tracked Intent; disposition is derived from append-only facts with no mutable lifecycle status",
+			Subcommands: []agentHelpSubcommand{
+				{Name: "create", Description: "Create a tracked or deferred Intent snapshot plus its initial disposition in one transaction", Options: []agentHelpOption{{Flags: "--title <title>", Description: "Bounded single-line title"}, {Flags: "--body <body>", Description: "Self-sufficient body"}, {Flags: "--disposition <disposition>", Description: "tracked (default) or deferred"}, {Flags: "--why <why>", Description: "Why the deferred direction matters"}, {Flags: "--boundary <boundary>", Description: "What excluded it now"}, {Flags: "--trigger <trigger>", Description: "When to revisit"}, {Flags: "--operation-id <key>", Description: "Retry-safe operation key; required when deferred"}, {Flags: "--from <source>", Description: "Source spark, idea, brainstorm, or journal entry; repeatable"}, {Flags: "--reason <reason>", Description: "Optional reason recorded with the initial disposition"}, {Flags: "--json", Description: "Output the created or reused Intent, digests, and project identity as JSON"}}},
+				{Name: "defer", Description: "Append an immutable four-field deferral payload to an existing Intent through the shared operation mapping", Options: []agentHelpOption{{Flags: "--why <why>", Description: "Why the direction matters"}, {Flags: "--boundary <boundary>", Description: "What excluded it now"}, {Flags: "--trigger <trigger>", Description: "When to revisit"}, {Flags: "--operation-id <key>", Description: "Retry-safe operation key"}, {Flags: "--json", Description: "Output the deferred Intent, digests, and project identity as JSON"}}},
+				{Name: "resume", Description: "Append a tracked disposition linked to the deferral it supersedes; history is never overwritten", Options: []agentHelpOption{{Flags: "--reason <why now>", Description: "Why the Intent is tracked again"}, {Flags: "--json", Description: "Output the resumed Intent and project identity as JSON"}}},
+				{Name: "resolve", Description: "Append a reasoned terminal disposition", Options: []agentHelpOption{{Flags: "--reason <outcome>", Description: "Resolution outcome"}, {Flags: "--json", Description: "Output the resolved Intent and project identity as JSON"}}},
+				{Name: "show", Description: "Show one Intent with latest snapshot, derived disposition, deferral payload, and sources", Options: []agentHelpOption{{Flags: "--json", Description: "Output Intent detail, sources, and project identity as JSON"}}},
+				{Name: "list", Description: "List Intents with derived dispositions in deterministic order", Options: []agentHelpOption{{Flags: "--disposition <disposition>", Description: "Filter by derived disposition: tracked, deferred, or resolved"}, {Flags: "--json", Description: "Output Intents and project identity as JSON"}}},
+			},
+		},
+		{
+			Name:        "intake",
+			Description: "Read the deterministic local intake projection of unresolved capture and tracked work; the CLI never ranks, promotes, or chooses a disposition",
+			Subcommands: []agentHelpSubcommand{
+				{Name: "list", Description: "Project each unresolved spark, idea, brainstorm, intent, and unmigrated legacy deferral exactly once with provenance and exact read commands", Options: []agentHelpOption{{Flags: "--json", Description: "Output intake items and project identity as JSON"}}},
+			},
+		},
+		{
+			Name:        "exploration",
+			Description: "Manage relational Exploration continuity through immutable portable checkpoints; no lifecycle status or current pointer exists",
+			Subcommands: []agentHelpSubcommand{
+				{Name: "create", Description: "Create an Exploration identity; sources map to explores or uses-source edges by kind", Options: []agentHelpOption{{Flags: "--title <title>", Description: "Bounded exploration title"}, {Flags: "--from <source>", Description: "Intent, journal entry, handoff, report, or finding reference; repeatable"}, {Flags: "--json", Description: "Output the created Exploration and project identity as JSON"}}},
+				{Name: "checkpoint", Description: "Append one immutable checkpoint with the four required portable fields, each capped at 4096 UTF-8 bytes and never truncated", Options: []agentHelpOption{{Flags: "--purpose <text>", Description: "Current framing"}, {Flags: "--conclusions <text>", Description: "Conclusions or constraints so far"}, {Flags: "--unresolved <text>", Description: "Unresolved question or decision"}, {Flags: "--next <text>", Description: "Recommended next action"}, {Flags: "--item <type>:<content>", Description: "Ordered typed item (candidate or evidence); repeatable"}, {Flags: "--operation-id <key>", Description: "Retry-safe operation key"}, {Flags: "--json", Description: "Output the appended checkpoint and project identity as JSON"}}},
+				{Name: "list", Description: "List Explorations with checkpoint counts and portable-context presence", Options: []agentHelpOption{{Flags: "--json", Description: "Output Explorations and project identity as JSON"}}},
+				{Name: "context", Description: "Project portable context: the four-field core returns whole while every optional layer reports counts, truncation, a stable cursor, and an exact expansion command", Options: []agentHelpOption{{Flags: "--layer <name>", Description: "Select one layer: items, intents, evidence, or conversations"}, {Flags: "--cursor <cursor>", Description: "Continue the selected layer; requires --layer"}, {Flags: "--limit <n>", Description: "Maximum 1..100 items for the selected layer; requires --layer"}, {Flags: "--json", Description: "Output the portable context projection as JSON"}}},
+				{Name: "conversation", Description: "Associate a logical conversation explicitly with add; membership is never inferred from branch, worktree, or recency", Options: []agentHelpOption{{Flags: "--json", Description: "Output the membership result as JSON"}}},
+			},
+		},
+		{
+			Name:        "conversation",
+			Description: "Manage logical conversations and machine-local provenance handles; a handle is optional evidence and never implies portable context",
+			Subcommands: []agentHelpSubcommand{
+				{Name: "create", Description: "Create a logical conversation that may carry multiple harness-local handles", Options: []agentHelpOption{{Flags: "--title <label>", Description: "Conversation label"}, {Flags: "--operation-id <key>", Description: "Retry-safe operation key"}, {Flags: "--json", Description: "Output the created conversation and project identity as JSON"}}},
+				{Name: "show", Description: "Show one conversation with handles, log refs, and latest observed availability", Options: []agentHelpOption{{Flags: "--json", Description: "Output the conversation and project identity as JSON"}}},
+				{Name: "list", Description: "List logical conversations deterministically", Options: []agentHelpOption{{Flags: "--json", Description: "Output conversations and project identity as JSON"}}},
+				{Name: "handle", Description: "Attach a machine-local handle with add: harness, opaque local ID, optional locality, and an optional bounded log locator with hash and range", Options: []agentHelpOption{{Flags: "--harness <harness>", Description: "Harness name, e.g. codex or claude-code"}, {Flags: "--handle <id>", Description: "Opaque machine-local conversation identifier"}, {Flags: "--locality <scope>", Description: "Machine or namespace scope"}, {Flags: "--log-ref <locator>", Description: "Bounded log locator, never transcript content"}, {Flags: "--hash <sha256>", Description: "Optional SHA-256 of the referenced log range"}, {Flags: "--range <range>", Description: "Optional bounded range"}, {Flags: "--json", Description: "Output the handle result and project identity as JSON"}}},
+				{Name: "observe", Description: "Append an immutable timestamped availability observation for a handle or log ref; the observed row never mutates", Options: []agentHelpOption{{Flags: "--handle <handle-id>", Description: "Observed conversation handle ID"}, {Flags: "--log-ref <log-ref-id>", Description: "Observed log reference ID"}, {Flags: "--available", Description: "Source was reachable"}, {Flags: "--unavailable", Description: "Source was not reachable"}, {Flags: "--observer <name>", Description: "Observing agent or probe"}, {Flags: "--locality <scope>", Description: "Machine or namespace of the observation"}, {Flags: "--note <text>", Description: "Bounded observation note"}, {Flags: "--json", Description: "Output the observation result and project identity as JSON"}}},
+			},
+		},
+		{
 			Name:        "spark",
 			Description: "Manage sparks",
 			Subcommands: []agentHelpSubcommand{
 				{Name: "list", Description: "List sparks from SQLite state", Options: []agentHelpOption{{Flags: "--all", Description: "Include done sparks"}, {Flags: "--status <status>", Description: "Filter by status"}, {Flags: "--json", Description: "Output sparks, global database scope, and project identity as JSON"}}},
 				{Name: "show", Description: "Show one spark from SQLite state", Options: []agentHelpOption{{Flags: "--json", Description: "Output spark details, relationships, global database scope, and project identity as JSON"}}},
 				{Name: "capture", Description: "Capture a spark in SQLite state", Options: []agentHelpOption{{Flags: "--scope <scope>", Description: "Spark scope"}, {Flags: "--text <text>", Description: "Spark text"}, {Flags: "--json", Description: "Output created spark, event, global database scope, and project identity as JSON"}}},
-				{Name: "resolve", Description: "Resolve a spark", Options: []agentHelpOption{{Flags: "--reason <text>", Description: "Resolution reason"}, {Flags: "--json", Description: "Output resolution relationship, event, global database scope, and project identity as JSON"}}},
+				{Name: "resolve", Description: "Resolve a spark by linking it to the entity that resolves it", Options: []agentHelpOption{{Flags: "--by <entity>", Description: "Resolving entity reference (required)"}, {Flags: "--reason <text>", Description: "Resolution reason"}, {Flags: "--json", Description: "Output resolution relationship, event, global database scope, and project identity as JSON"}}},
 				{Name: "promote", Description: "Record spark-to-idea promotion", Options: []agentHelpOption{{Flags: "--to-idea <idea>", Description: "Target idea"}, {Flags: "--json", Description: "Output promotion relationship, global database scope, and project identity as JSON"}}},
 			},
 		},

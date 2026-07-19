@@ -158,6 +158,20 @@ var exportAllTables = []exportTable{
 	{Name: "backend_mappings", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "hook_events", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "exports", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "intents", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "intent_snapshots", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "intent_deferrals", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "intent_dispositions", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "intent_operations", OrderBy: "operation_key", FilterColumn: "project_id"},
+	{Name: "explorations", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "exploration_checkpoints", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "exploration_checkpoint_items", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "logical_conversations", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "conversation_handles", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "conversation_log_refs", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "exploration_conversations", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "journal_conversation_handles", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "source_availability_observations", OrderBy: "id", FilterColumn: "project_id"},
 }
 
 // ExportAllJSON returns a repository-non-mutating internal snapshot of SQLite state.

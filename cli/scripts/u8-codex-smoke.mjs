@@ -10,8 +10,8 @@ import { tmpdir } from "node:os";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
 const researchDir = join(repoRoot, "docs/changes/20260710-journal-reliability-foundation/research");
-const evidencePath = join(researchDir, "u8-codex-0.144.1-isolated-smoke.json");
-const expectedVersion = "0.144.1";
+const evidencePath = join(researchDir, "u8-codex-0.144.5-isolated-smoke.json");
+const expectedVersion = "0.144.5";
 const platform = `${process.platform}-${process.arch}`;
 const candidateHooksPath = "dist/codex/.codex/hooks.json";
 const candidateNativeRoot = join(repoRoot, "bin", "native");
@@ -148,7 +148,7 @@ function main() {
     if (buildCodex.status !== 0) throw new Error("candidate Codex build failed");
     if (!existsSync(candidateBinary)) throw new Error("candidate native binary is missing");
     const version = run("codex", ["--version"], repoRoot);
-    if (version.status !== 0 || !codexVersionMatches(version.stdout, expectedVersion)) throw new Error("installed Codex version is not 0.144.1");
+    if (version.status !== 0 || !codexVersionMatches(version.stdout, expectedVersion)) throw new Error("installed Codex version is not 0.144.5");
     if (run("git", ["init", "-q"], disposableRepo).status !== 0) throw new Error("disposable Git initialization failed");
     const authPath = join(process.env.CODEX_HOME ?? join(process.env.HOME ?? "", ".codex"), "auth.json");
     if (!existsSync(authPath)) throw new Error("installed Codex auth.json is unavailable");
@@ -164,7 +164,7 @@ function main() {
       hooks: group.hooks.map((hook) => ({ ...hook, command: hook.command.replace("{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook", hookCommand) })),
     }));
     writeFileSync(join(codexHome, "hooks.json"), `${JSON.stringify(sourceHooks, null, 2)}\n`, { mode: 0o600 });
-    const candidateEnv = { CODEX_HOME: codexHome, LOAF_DB: dbPath };
+    const candidateEnv = { CODEX_HOME: codexHome, LOAF_DB: dbPath, RUST_LOG: "off" };
     if (run(candidateBinary, ["state", "init", "--json"], disposableRepo, candidateEnv).status !== 0) throw new Error("isolated Loaf state initialization failed");
     if (run(candidateBinary, ["journal", "log", `discover(smoke): ${marker}`], disposableRepo, candidateEnv).status !== 0) throw new Error("isolated journal marker write failed");
     const codexArgs = ["exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "--json", "-C", "<disposable-repo>", "Return exactly the unique marker supplied by SessionStart context, and nothing else."];
@@ -186,7 +186,7 @@ function main() {
       adapter: "codex-session-start-v1",
       mode: "isolated-codex-home",
       invocation: { command: "codex", args: codexArgs, cwd: "<disposable-repo>" },
-      setup: ["build candidate Go binary and Codex target", "create disposable Git repository", "create isolated CODEX_HOME with hooks enabled", "copy installed auth.json into isolated CODEX_HOME with mode 0600", "initialize absolute disposable LOAF_DB", "write random marker to isolated journal", "observe hook stdout through a mode-0700 disposable wrapper and mode-0600 file"],
+      setup: ["build candidate Go binary and Codex target", "create disposable Git repository", "create isolated CODEX_HOME with hooks enabled", "copy installed auth.json into isolated CODEX_HOME with mode 0600", "initialize absolute disposable LOAF_DB", "write random marker to isolated journal", "observe hook stdout through a mode-0700 disposable wrapper and mode-0600 file", "disable Codex tracing logs (RUST_LOG=off) so backend transport noise cannot contaminate the stderr cleanliness gate"],
       exit_code: codex.status,
       stderr_empty: codex.stderr.length === 0,
       stderr: sanitizedStderr(codex.stderr),
@@ -219,7 +219,7 @@ function main() {
     cleanup();
   }
   writeFileSync(evidencePath, `${JSON.stringify(smoke, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ evidence_path: "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.144.1-isolated-smoke.json", exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ evidence_path: "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.144.5-isolated-smoke.json", exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match }, null, 2)}\n`);
   if (smoke.exit_code !== 0 || !smoke.assistant_marker_match) process.exitCode = 1;
 }
 

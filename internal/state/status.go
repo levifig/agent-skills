@@ -884,6 +884,32 @@ func inspectBackendMappingInvariants(ctx context.Context, store *Store) ([]Diagn
 	diagnostics := []Diagnostic{}
 	valid := true
 
+	// Migration 0012 tables may be absent on behind-schema databases that this
+	// scan classifies before an upgrade; their clauses join conditionally.
+	var intentTableCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('intents', 'explorations', 'exploration_checkpoints', 'logical_conversations')`).Scan(&intentTableCount); err != nil {
+		return nil, false, fmt.Errorf("inspect intent table presence: %w", err)
+	}
+	intentTablesPresent := intentTableCount == 4
+	intentKindList := ""
+	intentOrphanKindList := ""
+	intentEntityCTE := ""
+	if intentTablesPresent {
+		// One kind→table source builds every conditional clause so the three
+		// scan sites cannot drift apart.
+		intentKinds := [][2]string{
+			{"intent", "intents"},
+			{"exploration", "explorations"},
+			{"exploration_checkpoint", "exploration_checkpoints"},
+			{"logical_conversation", "logical_conversations"},
+		}
+		for _, kind := range intentKinds {
+			intentKindList += ",\n  '" + kind[0] + "'"
+			intentOrphanKindList += ",\n    '" + kind[0] + "'"
+			intentEntityCTE += "\n  UNION ALL SELECT '" + kind[0] + "', project_id, id FROM " + kind[1]
+		}
+	}
+
 	blankRows, err := store.db.QueryContext(ctx, `
 SELECT field, COUNT(*)
 FROM (
@@ -994,7 +1020,7 @@ WHERE entity_kind NOT IN (
   'bundle_member',
   'source',
   'hook_event',
-  'export'
+  'export'`+intentKindList+`
 )
 GROUP BY entity_kind
 ORDER BY entity_kind
@@ -1084,7 +1110,7 @@ WITH local_entities(entity_kind, project_id, entity_id) AS (
   UNION ALL SELECT 'bundle_member', project_id, id FROM bundle_members
   UNION ALL SELECT 'source', project_id, id FROM sources
   UNION ALL SELECT 'hook_event', project_id, id FROM hook_events
-  UNION ALL SELECT 'export', project_id, id FROM exports
+  UNION ALL SELECT 'export', project_id, id FROM exports`+intentEntityCTE+`
 )
 SELECT backend_mappings.id, backend_mappings.backend, backend_mappings.entity_kind, backend_mappings.entity_id, backend_mappings.external_kind, backend_mappings.external_id
 FROM backend_mappings
@@ -1116,7 +1142,7 @@ WHERE local_entities.entity_id IS NULL
     'bundle_member',
     'source',
     'hook_event',
-    'export'
+    'export'`+intentOrphanKindList+`
   )
 ORDER BY backend_mappings.id
 `)

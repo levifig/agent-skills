@@ -48,12 +48,10 @@ type TraceRelationship struct {
 }
 
 func validateResolutionTargetKind(kind string, ref string) error {
-	switch kind {
-	case "spec", "task", "idea", "brainstorm", "shaping_draft", "report", "finding", "verdict", "run", "plan", "handoff", "council":
+	if descriptor, ok := entityDescriptorForKind(kind); ok && descriptor.ResolutionTarget {
 		return nil
-	default:
-		return fmt.Errorf("%q resolves to %s, which cannot resolve another entity", ref, kind)
 	}
+	return fmt.Errorf("%q resolves to %s, which cannot resolve another entity", ref, kind)
 }
 
 // Trace resolves a human-facing alias or internal row ID from initialized SQLite state.
@@ -134,7 +132,7 @@ LIMIT 1
 }
 
 func (s *Store) resolveEntityByInternalID(ctx context.Context, projectID string, ref string) (string, string, error) {
-	for _, kind := range []string{"spec", "task", "idea", "spark", "brainstorm", "shaping_draft", "report", "finding", "verdict", "run", "plan", "handoff", "council", "journal_entry"} {
+	for _, kind := range internalIDResolvableKinds() {
 		table := traceTable(kind)
 		var id string
 		err := s.db.QueryRowContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE project_id = ? AND id = ?`, table), projectID, ref).Scan(&id)
@@ -221,6 +219,57 @@ func (s *Store) entityDetails(ctx context.Context, projectID string, kind string
 		} else {
 			entity.Title = fmt.Sprintf("%s: %s", entryType.String, message.String)
 		}
+	case "intent":
+		// Title is the latest immutable snapshot; Status is the disposition
+		// derived from the greatest committed sequence, never a stored column.
+		var exists string
+		err := s.db.QueryRowContext(ctx, `SELECT id FROM intents WHERE project_id = ? AND id = ?`, projectID, id).Scan(&exists)
+		if errors.Is(err, sql.ErrNoRows) {
+			return entityWithAliasFallback(ctx, s, projectID, entity)
+		}
+		if err != nil {
+			return TraceEntity{}, fmt.Errorf("read intent %s: %w", id, err)
+		}
+		var title sql.NullString
+		if err := s.db.QueryRowContext(ctx, `SELECT title FROM intent_snapshots WHERE project_id = ? AND intent_id = ? ORDER BY seq DESC LIMIT 1`, projectID, id).Scan(&title); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return TraceEntity{}, fmt.Errorf("read intent snapshot %s: %w", id, err)
+		}
+		var disposition sql.NullString
+		if err := s.db.QueryRowContext(ctx, `SELECT disposition FROM intent_dispositions WHERE project_id = ? AND intent_id = ? ORDER BY seq DESC LIMIT 1`, projectID, id).Scan(&disposition); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return TraceEntity{}, fmt.Errorf("read intent disposition %s: %w", id, err)
+		}
+		entity.Title = title.String
+		entity.Status = disposition.String
+	case "exploration":
+		var title sql.NullString
+		err := s.db.QueryRowContext(ctx, `SELECT title FROM explorations WHERE project_id = ? AND id = ?`, projectID, id).Scan(&title)
+		if errors.Is(err, sql.ErrNoRows) {
+			return entityWithAliasFallback(ctx, s, projectID, entity)
+		}
+		if err != nil {
+			return TraceEntity{}, fmt.Errorf("read exploration %s: %w", id, err)
+		}
+		entity.Title = title.String
+	case "exploration_checkpoint":
+		var purpose sql.NullString
+		err := s.db.QueryRowContext(ctx, `SELECT purpose FROM exploration_checkpoints WHERE project_id = ? AND id = ?`, projectID, id).Scan(&purpose)
+		if errors.Is(err, sql.ErrNoRows) {
+			return entityWithAliasFallback(ctx, s, projectID, entity)
+		}
+		if err != nil {
+			return TraceEntity{}, fmt.Errorf("read exploration checkpoint %s: %w", id, err)
+		}
+		entity.Title = purpose.String
+	case "logical_conversation":
+		var title sql.NullString
+		err := s.db.QueryRowContext(ctx, `SELECT title FROM logical_conversations WHERE project_id = ? AND id = ?`, projectID, id).Scan(&title)
+		if errors.Is(err, sql.ErrNoRows) {
+			return entityWithAliasFallback(ctx, s, projectID, entity)
+		}
+		if err != nil {
+			return TraceEntity{}, fmt.Errorf("read logical conversation %s: %w", id, err)
+		}
+		entity.Title = title.String
 	default:
 		return TraceEntity{}, fmt.Errorf("unsupported trace entity kind %q", kind)
 	}
@@ -354,36 +403,5 @@ LIMIT 1
 }
 
 func traceTable(kind string) string {
-	switch kind {
-	case "spec":
-		return "specs"
-	case "task":
-		return "tasks"
-	case "idea":
-		return "ideas"
-	case "spark":
-		return "sparks"
-	case "brainstorm":
-		return "brainstorms"
-	case "shaping_draft":
-		return "shaping_drafts"
-	case "report":
-		return "reports"
-	case "finding":
-		return "findings"
-	case "verdict":
-		return "verdicts"
-	case "run":
-		return "runs"
-	case "plan":
-		return "plans"
-	case "handoff":
-		return "handoffs"
-	case "council":
-		return "councils"
-	case "journal_entry":
-		return "journal_entries"
-	default:
-		return ""
-	}
+	return registeredEntityTable(kind)
 }

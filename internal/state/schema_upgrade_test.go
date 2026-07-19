@@ -46,8 +46,8 @@ func TestSchemaUpgradeSchema9PreviewAndApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PreviewSchemaUpgrade() error = %v", err)
 	}
-	if preview.CurrentVersion != 9 || len(preview.PendingVersions) != 1 || preview.PendingVersions[0] != 11 || preview.BackupPath != "" {
-		t.Fatalf("preview = %#v, want schema9 pending only 11 without backup", preview)
+	if preview.CurrentVersion != 9 || len(preview.PendingVersions) != 2 || preview.PendingVersions[0] != 11 || preview.PendingVersions[1] != 12 || preview.BackupPath != "" {
+		t.Fatalf("preview = %#v, want schema9 pending [11 12] without backup", preview)
 	}
 	result, err := ApplySchemaUpgrade(ctx, root, resolver)
 	if err != nil {
@@ -125,7 +125,7 @@ func TestSchemaUpgradeFailureSeamsPreserveVerifiedBackupAndRollback(t *testing.T
 				t.Fatalf("apply failure result=%#v err=%v, want error and verified backup", result, err)
 			}
 			backup, verifyErr := classifySchemaUpgradeSource(ctx, result.BackupPath, root)
-			if verifyErr != nil || backup.Fingerprint.Version != 9 || len(backup.Pending) != 1 || backup.Pending[0] != 11 {
+			if verifyErr != nil || backup.Fingerprint.Version != 9 || len(backup.Pending) != 2 || backup.Pending[0] != 11 || backup.Pending[1] != 12 {
 				t.Fatalf("backup source classification=%#v err=%v, want verified schema9 source", backup, verifyErr)
 			}
 			after := schemaVersionAndMigrationCount(t, databasePath)
@@ -178,8 +178,8 @@ func TestSchemaUpgradeSchema10BackupPreservesPreOriginShape(t *testing.T) {
 	if exists, err := sqliteTableExists(ctx, backup.db, "journal_origins"); err != nil || exists {
 		t.Fatalf("schema10 backup journal_origins exists=%t err=%v, want absent", exists, err)
 	}
-	if got := schemaVersionAndMigrationCount(t, databasePath); got != "11/11" {
-		t.Fatalf("live schema after schema10 upgrade = %s, want 11/11", got)
+	if got := schemaVersionAndMigrationCount(t, databasePath); got != "12/12" {
+		t.Fatalf("live schema after schema10 upgrade = %s, want 12/12", got)
 	}
 }
 
@@ -268,8 +268,8 @@ func TestSchema10OrdinaryWritesRequireUpgradeWithoutMutation(t *testing.T) {
 			before := schema10MutableCounts(t, databasePath)
 			err := tc.run(root, resolver)
 			var required *SchemaUpgradeRequiredError
-			if !errors.As(err, &required) || required.Code != SchemaUpgradeRequiredCode || len(required.PendingVersions) != 1 || required.PendingVersions[0] != 11 {
-				t.Fatalf("%s error=%v required=%#v, want schema-upgrade-required pending [11]", tc.name, err, required)
+			if !errors.As(err, &required) || required.Code != SchemaUpgradeRequiredCode || len(required.PendingVersions) != 2 || required.PendingVersions[0] != 11 || required.PendingVersions[1] != 12 {
+				t.Fatalf("%s error=%v required=%#v, want schema-upgrade-required pending [11 12]", tc.name, err, required)
 			}
 			after := schema10MutableCounts(t, databasePath)
 			if before != after {

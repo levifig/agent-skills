@@ -16,20 +16,22 @@ import (
 const (
 	JournalContextContractVersion = 2
 
-	JournalContextLayerSynthesis  = "project_synthesis"
-	JournalContextLayerCheckpoint = "latest_checkpoint"
-	JournalContextLayerLineage    = "active_lineage"
-	JournalContextLayerBlockers   = "unresolved_blockers"
-	JournalContextLayerDeferrals  = "deferred_intent"
-	JournalContextLayerBranch     = "branch_recency"
-	JournalContextLayerTasks      = "transitional_tasks"
+	JournalContextLayerSynthesis   = "project_synthesis"
+	JournalContextLayerCheckpoint  = "latest_checkpoint"
+	JournalContextLayerLineage     = "active_lineage"
+	JournalContextLayerBlockers    = "unresolved_blockers"
+	JournalContextLayerDeferrals   = "deferred_intent"
+	JournalContextLayerCheckpoints = "exploration_checkpoints"
+	JournalContextLayerBranch      = "branch_recency"
+	JournalContextLayerTasks       = "transitional_tasks"
 
-	defaultJournalContextLineageLimit  = 10
-	defaultJournalContextBlockerLimit  = 10
-	defaultJournalContextDeferralLimit = 10
-	defaultJournalContextBranchLimit   = 10
-	defaultJournalContextTaskLimit     = 10
-	journalContextSynthesisLimit       = 1
+	defaultJournalContextLineageLimit     = 10
+	defaultJournalContextBlockerLimit     = 10
+	defaultJournalContextDeferralLimit    = 10
+	defaultJournalContextCheckpointsLimit = 5
+	defaultJournalContextBranchLimit      = 10
+	defaultJournalContextTaskLimit        = 10
+	journalContextSynthesisLimit          = 1
 )
 
 // JournalContextOptions describes a continuity digest request. Limits are
@@ -37,15 +39,16 @@ const (
 // when supplied, prevents a cursor generated for one layer being used as
 // another layer's expansion token.
 type JournalContextOptions struct {
-	Branch        string
-	LineageKeys   []string
-	LineageLimit  int
-	BlockerLimit  int
-	DeferralLimit int
-	BranchLimit   int
-	TaskLimit     int
-	Cursor        string
-	CursorLayer   string
+	Branch           string
+	LineageKeys      []string
+	LineageLimit     int
+	BlockerLimit     int
+	DeferralLimit    int
+	CheckpointsLimit int
+	BranchLimit      int
+	TaskLimit        int
+	Cursor           string
+	CursorLayer      string
 }
 
 // JournalContext is the contract-v2 active-truth read model. Every layer is
@@ -60,14 +63,15 @@ type JournalContext struct {
 	Branch             string `json:"branch,omitempty"`
 	JournalWatermark   int64  `json:"journal_watermark"`
 
-	ProjectSynthesis   JournalContextJournalLayer    `json:"project_synthesis"`
-	LatestCheckpoint   JournalContextCheckpointLayer `json:"latest_checkpoint"`
-	ActiveLineage      JournalContextJournalLayer    `json:"active_lineage"`
-	UnresolvedBlockers JournalContextBlockerLayer    `json:"unresolved_blockers"`
-	DeferredIntent     JournalContextDeferralLayer   `json:"deferred_intent"`
-	BranchRecency      JournalContextJournalLayer    `json:"branch_recency"`
-	TransitionalTasks  JournalContextTaskLayer       `json:"transitional_tasks"`
-	Diagnostics        []JournalContextDiagnostic    `json:"diagnostics"`
+	ProjectSynthesis       JournalContextJournalLayer     `json:"project_synthesis"`
+	LatestCheckpoint       JournalContextCheckpointLayer  `json:"latest_checkpoint"`
+	ActiveLineage          JournalContextJournalLayer     `json:"active_lineage"`
+	UnresolvedBlockers     JournalContextBlockerLayer     `json:"unresolved_blockers"`
+	DeferredIntent         JournalContextDeferralLayer    `json:"deferred_intent"`
+	ExplorationCheckpoints JournalContextCheckpointsLayer `json:"exploration_checkpoints"`
+	BranchRecency          JournalContextJournalLayer     `json:"branch_recency"`
+	TransitionalTasks      JournalContextTaskLayer        `json:"transitional_tasks"`
+	Diagnostics            []JournalContextDiagnostic     `json:"diagnostics"`
 
 	// Deprecated compatibility fields. The v2 CLI should consume the named
 	// layers above; these keep existing callers source-compatible during U6.
@@ -130,10 +134,26 @@ type JournalContextDeferralLayer struct {
 }
 
 type JournalContextDeferralItem struct {
-	OperationKey string                       `json:"operation_key"`
-	Decision     JournalEntryRecord           `json:"decision"`
-	Spark        JournalContextDeferredSpark  `json:"spark"`
-	Origin       *JournalContextOriginSummary `json:"origin,omitempty"`
+	OperationKey string                        `json:"operation_key"`
+	Decision     JournalEntryRecord            `json:"decision"`
+	Spark        JournalContextDeferredSpark   `json:"spark"`
+	Origin       *JournalContextOriginSummary  `json:"origin,omitempty"`
+	Intent       *JournalContextDeferredIntent `json:"intent,omitempty"`
+}
+
+// JournalContextDeferredIntent is the canonical Intent behind a deferred item.
+// When present it is active truth: the item surfaces regardless of journal
+// recency, and the legacy Decision/Spark fields carry mapped v1 projections
+// only when those historical rows exist.
+type JournalContextDeferredIntent struct {
+	ID             string `json:"id"`
+	Alias          string `json:"alias,omitempty"`
+	Title          string `json:"title"`
+	Disposition    string `json:"disposition"`
+	Body           string `json:"body"`
+	Why            string `json:"why"`
+	Boundary       string `json:"boundary"`
+	RevisitTrigger string `json:"revisit_trigger"`
 }
 
 type JournalContextDeferredSpark struct {
@@ -155,6 +175,33 @@ type JournalContextOriginSummary struct {
 	Dirty            *bool  `json:"dirty"`
 	Reconstructable  *bool  `json:"reconstructable"`
 	Supported        bool   `json:"supported"`
+}
+
+// JournalContextCheckpointsLayer is the separately bounded, discoverable layer
+// of recent portable Exploration checkpoints. It never exposes a
+// current-Exploration pointer: every item carries its own read command, and an
+// Exploration with no checkpoint (a handle-only inquiry) is absent because a
+// handle never implies portable context.
+type JournalContextCheckpointsLayer struct {
+	Available      bool                                      `json:"source_available"`
+	AvailableCount int                                       `json:"available_count"`
+	ShownCount     int                                       `json:"shown_count"`
+	Truncated      bool                                      `json:"truncated"`
+	Cursor         string                                    `json:"cursor,omitempty"`
+	ExpandCommand  string                                    `json:"expand_command"`
+	Items          []JournalContextExplorationCheckpointItem `json:"items"`
+}
+
+// JournalContextExplorationCheckpointItem is the latest portable checkpoint of
+// one Exploration.
+type JournalContextExplorationCheckpointItem struct {
+	ExplorationID  string `json:"exploration_id"`
+	Alias          string `json:"alias,omitempty"`
+	Title          string `json:"title"`
+	Seq            int    `json:"seq"`
+	NextAction     string `json:"next_action"`
+	CreatedAt      string `json:"created_at"`
+	ContextCommand string `json:"context_command"`
 }
 
 type JournalContextTaskLayer struct {
@@ -198,6 +245,14 @@ type journalContextDeferralCandidate struct {
 	Item      JournalContextDeferralItem
 	CreatedAt string
 	RowID     int64
+	// Canonical marks a candidate derived from a canonical Intent. Canonical
+	// candidates are active truth: they precede legacy-only items and never
+	// depend on the journal watermark for inclusion.
+	Canonical bool
+}
+
+type journalContextCheckpointCandidate struct {
+	Item JournalContextExplorationCheckpointItem
 }
 
 // JournalContextForRoot computes the continuity digest from registered state.
@@ -287,7 +342,8 @@ func (s *Store) JournalContext(ctx context.Context, root project.Root, options J
 		return JournalContext{}, err
 	}
 	// Deferrals have a journal endpoint but are mutable through their spark and
-	// deferral rows. Fingerprint the complete current candidate set, including
+	// deferral rows, and canonical Intents are active truth independent of the
+	// watermark. Fingerprint the complete current candidate set, including
 	// deferrals created after a continuation cursor's journal watermark.
 	currentDeferralCandidates := deferralCandidates
 	if currentWatermark != watermark {
@@ -295,6 +351,10 @@ func (s *Store) JournalContext(ctx context.Context, root project.Root, options J
 		if err != nil {
 			return JournalContext{}, err
 		}
+	}
+	checkpointItemCandidates, err := queryExplorationCheckpointCandidates(ctx, tx, identity.ID)
+	if err != nil {
+		return JournalContext{}, err
 	}
 
 	activeIDs := make(map[string]struct{}, len(synthesisCandidates)+len(checkpointCandidates)+len(lineageCandidates)+len(blockerCandidates)+len(deferralCandidates))
@@ -307,7 +367,9 @@ func (s *Store) JournalContext(ctx context.Context, root project.Root, options J
 		activeIDs[candidate.Item.Block.ID] = struct{}{}
 	}
 	for _, candidate := range deferralCandidates {
-		activeIDs[candidate.Item.Decision.ID] = struct{}{}
+		if candidate.Item.Decision.ID != "" {
+			activeIDs[candidate.Item.Decision.ID] = struct{}{}
+		}
 	}
 
 	branchCandidates := []journalContextJournalCandidate{}
@@ -359,6 +421,7 @@ func (s *Store) JournalContext(ctx context.Context, root project.Root, options J
 	if err != nil {
 		return JournalContext{}, err
 	}
+	checkpointsLayer := journalContextCheckpointsPage(checkpointItemCandidates, contextLimit(options.CheckpointsLimit, defaultJournalContextCheckpointsLimit), branch)
 	branchLayer, err := journalContextJournalPageChecked(branchCandidates, contextLimit(options.BranchLimit, defaultJournalContextBranchLimit), cursorForLayer(cursor, JournalContextLayerBranch), JournalContextLayerBranch, identity.ID, branch, watermark, "")
 	if err != nil {
 		return JournalContext{}, err
@@ -372,24 +435,25 @@ func (s *Store) JournalContext(ctx context.Context, root project.Root, options J
 	}
 
 	result := JournalContext{
-		ContractVersion:    JournalContextContractVersion,
-		DatabaseScope:      identity.DatabaseScope,
-		DatabasePath:       identity.DatabasePath,
-		ProjectID:          identity.ID,
-		ProjectName:        identity.FriendlyName,
-		ProjectCurrentPath: identity.CurrentPath,
-		Branch:             branch,
-		JournalWatermark:   watermark,
-		ProjectSynthesis:   synthesisLayer,
-		LatestCheckpoint:   checkpointLayer,
-		ActiveLineage:      lineageLayer,
-		UnresolvedBlockers: blockerLayer,
-		DeferredIntent:     deferralLayer,
-		BranchRecency:      branchLayer,
-		TransitionalTasks:  taskLayer,
-		Diagnostics:        diagnostics,
-		BranchEntries:      append([]JournalEntryRecord(nil), branchLayer.Items...),
-		OpenTasks:          append([]JournalContextTask(nil), taskLayer.Items...),
+		ContractVersion:        JournalContextContractVersion,
+		DatabaseScope:          identity.DatabaseScope,
+		DatabasePath:           identity.DatabasePath,
+		ProjectID:              identity.ID,
+		ProjectName:            identity.FriendlyName,
+		ProjectCurrentPath:     identity.CurrentPath,
+		Branch:                 branch,
+		JournalWatermark:       watermark,
+		ProjectSynthesis:       synthesisLayer,
+		LatestCheckpoint:       checkpointLayer,
+		ActiveLineage:          lineageLayer,
+		UnresolvedBlockers:     blockerLayer,
+		DeferredIntent:         deferralLayer,
+		ExplorationCheckpoints: checkpointsLayer,
+		BranchRecency:          branchLayer,
+		TransitionalTasks:      taskLayer,
+		Diagnostics:            diagnostics,
+		BranchEntries:          append([]JournalEntryRecord(nil), branchLayer.Items...),
+		OpenTasks:              append([]JournalContextTask(nil), taskLayer.Items...),
 	}
 	if len(synthesisLayer.Items) > 0 {
 		entry := synthesisLayer.Items[0]
@@ -521,7 +585,113 @@ func queryBlockerCandidates(ctx context.Context, tx *sql.Tx, projectID string, w
 	return candidates, diagnostics, nil
 }
 
+// queryDeferralCandidates builds the deferred-intent candidate set. Canonical
+// Intents whose latest disposition is 'deferred' come first as active truth
+// (never bounded by the journal watermark), followed by pre-conversion legacy
+// journal_deferrals rows that have no intent_operations mapping. A converted
+// legacy row is represented by its canonical Intent item, not a second entry.
 func queryDeferralCandidates(ctx context.Context, tx *sql.Tx, projectID string, watermark int64) ([]journalContextDeferralCandidate, error) {
+	canonical, err := queryCanonicalDeferralCandidates(ctx, tx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	legacy, err := queryLegacyDeferralCandidates(ctx, tx, projectID, watermark)
+	if err != nil {
+		return nil, err
+	}
+	return append(canonical, legacy...), nil
+}
+
+// queryCanonicalDeferralCandidates returns every canonical Intent whose latest
+// disposition is 'deferred'. When the operation key that produced the current
+// deferral carries a version-1 projection, the mapped decision/spark/origin
+// rows enrich the item; version-0 (or unmapped) Intents leave those legacy
+// fields zero-valued and rely on the intent sub-object alone.
+func queryCanonicalDeferralCandidates(ctx context.Context, tx *sql.Tx, projectID string) ([]journalContextDeferralCandidate, error) {
+	rows, err := tx.QueryContext(ctx, `
+SELECT i.id, i.created_at, COALESCE(ia.alias, ''),
+  COALESCE(sn.title, ''), d.disposition,
+  df.operation_key, df.body, df.why, df.boundary, df.revisit_trigger,
+  COALESCE(op.journal_entry_id, ''), COALESCE(op.spark_id, ''),
+  COALESCE(j.id, ''), COALESCE(j.entry_type, ''), COALESCE(j.scope, ''), COALESCE(j.message, ''),
+  COALESCE(j.observed_branch, ''), COALESCE(j.observed_worktree, ''), COALESCE(j.harness_session_id, ''),
+  COALESCE(j.created_at, ''), COALESCE(j.rowid, 0),
+  COALESCE(s.id, ''), COALESCE(sa.alias, ''), COALESCE(s.text, ''), COALESCE(s.scope, ''),
+  COALESCE(s.status, ''), COALESCE(s.created_at, ''), COALESCE(s.updated_at, ''),
+  o.envelope_version, o.capture_mechanism, o.branch, o.worktree, o.head, o.change_path, o.dirty, o.reconstructable
+FROM intents i
+JOIN intent_dispositions d ON d.project_id = i.project_id AND d.intent_id = i.id
+  AND d.seq = (SELECT MAX(seq) FROM intent_dispositions WHERE intent_id = i.id)
+JOIN intent_deferrals df ON df.project_id = i.project_id AND df.id = d.deferral_id
+LEFT JOIN intent_snapshots sn ON sn.project_id = i.project_id AND sn.intent_id = i.id
+  AND sn.seq = (SELECT MAX(seq) FROM intent_snapshots WHERE intent_id = i.id)
+LEFT JOIN (
+  SELECT project_id, entity_id, MIN(alias) AS alias
+  FROM aliases
+  WHERE entity_kind = 'intent' AND namespace = 'intent'
+  GROUP BY project_id, entity_id
+) ia ON ia.project_id = i.project_id AND ia.entity_id = i.id
+LEFT JOIN intent_operations op ON op.project_id = i.project_id AND op.operation_key = df.operation_key
+LEFT JOIN journal_entries j ON j.project_id = i.project_id AND j.id = op.journal_entry_id
+LEFT JOIN sparks s ON s.project_id = i.project_id AND s.id = op.spark_id
+LEFT JOIN (
+  SELECT project_id, entity_id, MIN(alias) AS alias
+  FROM aliases
+  WHERE entity_kind = 'spark' AND namespace = 'spark'
+  GROUP BY project_id, entity_id
+) sa ON sa.project_id = s.project_id AND sa.entity_id = s.id
+LEFT JOIN journal_origins o ON o.project_id = i.project_id AND o.journal_entry_id = op.journal_entry_id
+WHERE i.project_id = ? AND d.disposition = 'deferred'
+ORDER BY i.created_at DESC, i.id DESC
+`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("query journal context canonical deferrals: %w", err)
+	}
+	defer rows.Close()
+	candidates := []journalContextDeferralCandidate{}
+	for rows.Next() {
+		var candidate journalContextDeferralCandidate
+		var intent JournalContextDeferredIntent
+		var journalID, sparkID string
+		var envelopeVersion sql.NullInt64
+		var mechanism, branch, worktree, head, changePath sql.NullString
+		var dirty, reconstructable sql.NullBool
+		if err := rows.Scan(
+			&intent.ID, &candidate.CreatedAt, &intent.Alias,
+			&intent.Title, &intent.Disposition,
+			&candidate.Item.OperationKey, &intent.Body, &intent.Why, &intent.Boundary, &intent.RevisitTrigger,
+			&journalID, &sparkID,
+			&candidate.Item.Decision.ID, &candidate.Item.Decision.EntryType, &candidate.Item.Decision.Scope, &candidate.Item.Decision.Message,
+			&candidate.Item.Decision.ObservedBranch, &candidate.Item.Decision.ObservedWorktree, &candidate.Item.Decision.HarnessSessionID,
+			&candidate.Item.Decision.CreatedAt, &candidate.RowID,
+			&candidate.Item.Spark.ID, &candidate.Item.Spark.Alias, &candidate.Item.Spark.Text, &candidate.Item.Spark.Scope,
+			&candidate.Item.Spark.Status, &candidate.Item.Spark.CreatedAt, &candidate.Item.Spark.UpdatedAt,
+			&envelopeVersion, &mechanism, &branch, &worktree, &head, &changePath, &dirty, &reconstructable,
+		); err != nil {
+			return nil, fmt.Errorf("scan journal context canonical deferral: %w", err)
+		}
+		candidate.Canonical = true
+		candidate.Item.Intent = &intent
+		// Without a version-1 projection there is no legacy decision/spark to
+		// surface; never fabricate one from the canonical rows.
+		if journalID == "" || sparkID == "" {
+			candidate.Item.Decision = JournalEntryRecord{}
+			candidate.Item.Spark = JournalContextDeferredSpark{}
+		} else if mechanism.Valid {
+			candidate.Item.Origin = buildJournalContextOrigin(envelopeVersion, mechanism, branch, worktree, head, changePath, dirty, reconstructable)
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate journal context canonical deferrals: %w", err)
+	}
+	return candidates, nil
+}
+
+// queryLegacyDeferralCandidates returns pre-conversion legacy journal_deferrals
+// rows (open spark) that have no intent_operations mapping. A row with a
+// mapping is deduplicated: its canonical Intent item represents it instead.
+func queryLegacyDeferralCandidates(ctx context.Context, tx *sql.Tx, projectID string, watermark int64) ([]journalContextDeferralCandidate, error) {
 	rows, err := tx.QueryContext(ctx, `
 SELECT d.operation_key,
   j.id, j.entry_type, COALESCE(j.scope, ''), j.message, COALESCE(j.observed_branch, ''),
@@ -539,10 +709,14 @@ LEFT JOIN (
 ) a ON a.project_id = s.project_id AND a.entity_id = s.id
 LEFT JOIN journal_origins o ON o.project_id = d.project_id AND o.journal_entry_id = j.id
 WHERE d.project_id = ?
+  AND NOT EXISTS (
+    SELECT 1 FROM intent_operations op
+    WHERE op.project_id = d.project_id AND op.operation_key = d.operation_key
+  )
 ORDER BY j.created_at DESC, j.rowid DESC, d.operation_key
 `, watermark, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("query journal context deferrals: %w", err)
+		return nil, fmt.Errorf("query journal context legacy deferrals: %w", err)
 	}
 	defer rows.Close()
 	candidates := []journalContextDeferralCandidate{}
@@ -560,25 +734,71 @@ ORDER BY j.created_at DESC, j.rowid DESC, d.operation_key
 			&candidate.Item.Spark.Status, &candidate.Item.Spark.CreatedAt, &candidate.Item.Spark.UpdatedAt,
 			&envelopeVersion, &mechanism, &branch, &worktree, &head, &changePath, &dirty, &reconstructable,
 		); err != nil {
-			return nil, fmt.Errorf("scan journal context deferral: %w", err)
+			return nil, fmt.Errorf("scan journal context legacy deferral: %w", err)
 		}
 		candidate.CreatedAt = candidate.Item.Decision.CreatedAt
 		if mechanism.Valid {
-			origin := &JournalContextOriginSummary{CaptureMechanism: mechanism.String, Branch: branch.String, Worktree: worktree.String, Head: head.String, ChangePath: changePath.String, Supported: envelopeVersion.Valid && envelopeVersion.Int64 <= JournalOriginEnvelopeVersion}
-			if dirty.Valid {
-				value := dirty.Bool
-				origin.Dirty = &value
-			}
-			if reconstructable.Valid {
-				value := reconstructable.Bool
-				origin.Reconstructable = &value
-			}
-			candidate.Item.Origin = origin
+			candidate.Item.Origin = buildJournalContextOrigin(envelopeVersion, mechanism, branch, worktree, head, changePath, dirty, reconstructable)
 		}
 		candidates = append(candidates, candidate)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate journal context deferrals: %w", err)
+		return nil, fmt.Errorf("iterate journal context legacy deferrals: %w", err)
+	}
+	return candidates, nil
+}
+
+func buildJournalContextOrigin(envelopeVersion sql.NullInt64, mechanism, branch, worktree, head, changePath sql.NullString, dirty, reconstructable sql.NullBool) *JournalContextOriginSummary {
+	origin := &JournalContextOriginSummary{CaptureMechanism: mechanism.String, Branch: branch.String, Worktree: worktree.String, Head: head.String, ChangePath: changePath.String, Supported: envelopeVersion.Valid && envelopeVersion.Int64 <= JournalOriginEnvelopeVersion}
+	if dirty.Valid {
+		value := dirty.Bool
+		origin.Dirty = &value
+	}
+	if reconstructable.Valid {
+		value := reconstructable.Bool
+		origin.Reconstructable = &value
+	}
+	return origin
+}
+
+// queryExplorationCheckpointCandidates returns the latest checkpoint of every
+// Exploration that has at least one, newest checkpoint first. An Exploration
+// with no checkpoint is absent: a conversation handle never implies portable
+// context, so it must not surface here.
+func queryExplorationCheckpointCandidates(ctx context.Context, tx *sql.Tx, projectID string) ([]journalContextCheckpointCandidate, error) {
+	rows, err := tx.QueryContext(ctx, `
+SELECT e.id, COALESCE(ea.alias, ''), e.title, c.seq, c.next_action, c.created_at
+FROM explorations e
+JOIN exploration_checkpoints c ON c.project_id = e.project_id AND c.exploration_id = e.id
+  AND c.seq = (SELECT MAX(seq) FROM exploration_checkpoints WHERE exploration_id = e.id)
+LEFT JOIN (
+  SELECT project_id, entity_id, MIN(alias) AS alias
+  FROM aliases
+  WHERE entity_kind = 'exploration' AND namespace = 'exploration'
+  GROUP BY project_id, entity_id
+) ea ON ea.project_id = e.project_id AND ea.entity_id = e.id
+WHERE e.project_id = ?
+ORDER BY c.created_at DESC, e.id
+`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("query journal context exploration checkpoints: %w", err)
+	}
+	defer rows.Close()
+	candidates := []journalContextCheckpointCandidate{}
+	for rows.Next() {
+		var candidate journalContextCheckpointCandidate
+		if err := rows.Scan(&candidate.Item.ExplorationID, &candidate.Item.Alias, &candidate.Item.Title, &candidate.Item.Seq, &candidate.Item.NextAction, &candidate.Item.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan journal context exploration checkpoint: %w", err)
+		}
+		reference := candidate.Item.Alias
+		if reference == "" {
+			reference = candidate.Item.ExplorationID
+		}
+		candidate.Item.ContextCommand = "loaf exploration context " + reference
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate journal context exploration checkpoints: %w", err)
 	}
 	return candidates, nil
 }
@@ -683,6 +903,7 @@ func journalContextFingerprintDeferrals(candidates []journalContextDeferralCandi
 		item := candidate.Item
 		parts = append(parts,
 			journalContextDeferralKey(candidate),
+			fmt.Sprintf("canonical:%t", candidate.Canonical),
 			item.OperationKey,
 			item.Decision.ID,
 			item.Decision.EntryType,
@@ -700,6 +921,21 @@ func journalContextFingerprintDeferrals(candidates []journalContextDeferralCandi
 			item.Spark.CreatedAt,
 			item.Spark.UpdatedAt,
 		)
+		if item.Intent == nil {
+			parts = append(parts, "intent:nil")
+		} else {
+			parts = append(parts,
+				"intent:present",
+				item.Intent.ID,
+				item.Intent.Alias,
+				item.Intent.Title,
+				item.Intent.Disposition,
+				item.Intent.Body,
+				item.Intent.Why,
+				item.Intent.Boundary,
+				item.Intent.RevisitTrigger,
+			)
+		}
 		if item.Origin == nil {
 			parts = append(parts, "origin:nil")
 			continue

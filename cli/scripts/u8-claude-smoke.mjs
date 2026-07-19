@@ -9,8 +9,8 @@ import { spawnSync } from "node:child_process";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
 const researchDir = join(repoRoot, "docs/changes/20260710-journal-reliability-foundation/research");
-const evidencePath = join(researchDir, "u8-claude-code-2.1.207-candidate-smoke.json");
-const expectedVersion = "2.1.207";
+const evidencePath = join(researchDir, "u8-claude-code-2.1.215-candidate-smoke.json");
+const expectedVersion = "2.1.215";
 const platform = `${process.platform}-${process.arch}`;
 const candidatePluginPath = "plugins/loaf";
 
@@ -92,7 +92,7 @@ function main() {
     if (buildClaude.status !== 0) throw new Error("candidate Claude build failed");
     if (!existsSync(candidateBinary)) throw new Error("candidate plugin binary is missing");
     const version = run("claude", ["--version"], repoRoot);
-    if (version.status !== 0 || !claudeVersionMatches(version.stdout, expectedVersion)) throw new Error("installed Claude version is not 2.1.207");
+    if (version.status !== 0 || !claudeVersionMatches(version.stdout, expectedVersion)) throw new Error("installed Claude version is not 2.1.215");
     if (run("git", ["init", "-q"], disposableRepo).status !== 0) throw new Error("disposable Git initialization failed");
     const candidateEnv = { LOAF_DB: dbPath };
     if (run(candidateBinary, ["state", "init", "--json"], disposableRepo, candidateEnv).status !== 0) throw new Error("isolated Loaf state initialization failed");
@@ -154,7 +154,7 @@ function main() {
     cleanup();
   }
   writeFileSync(evidencePath, `${JSON.stringify(smoke, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ evidence_path: "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.207-candidate-smoke.json", exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ evidence_path: "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.215-candidate-smoke.json", exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match }, null, 2)}\n`);
   if (smoke.exit_code !== 0 || !smoke.assistant_marker_match) process.exitCode = 1;
 }
 

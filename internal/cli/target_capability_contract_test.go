@@ -22,11 +22,11 @@ func TestTargetCapabilityEvidenceContractLoadsCurrentRecords(t *testing.T) {
 		t.Fatalf("records = %d, want six exact target surface records", len(contract.Records))
 	}
 	want := map[string]string{
-		"claude-code\x00cli":     "2.1.207\x00plugin-dir",
+		"claude-code\x00cli":     "2.1.215\x00plugin-dir",
 		"cursor\x00ide":          "3.11.19\x00candidate-build",
 		"cursor\x00cursor-agent": "2026.05.09-0afadcc\x00candidate-build",
-		"codex\x00cli":           "0.144.1\x00isolated-codex-home",
-		"opencode\x00cli":        "1.17.18\x00isolated-xdg",
+		"codex\x00cli":           "0.144.5\x00isolated-codex-home",
+		"opencode\x00cli":        "1.18.3\x00isolated-xdg",
 		"amp\x00cli":             "0.0.1783873056-g278461\x00candidate-build",
 	}
 	for _, record := range contract.Records {
@@ -421,7 +421,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 }
 
 func TestInstalledSmokeEvidenceRejectsUnknownVersionsAndHashDrift(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t))), "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.207-candidate-smoke.json"))
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t))), "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.215-candidate-smoke.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +483,7 @@ func TestOpenCodeInstalledSmokeEvidenceAcceptsFixture(t *testing.T) {
 }
 
 func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHashAndCleanup(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/u8-opencode-1.17.18-isolated-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/u8-opencode-1.18.3-isolated-smoke.json")
 	data, err := os.ReadFile(receiptPath)
 	if err != nil {
 		t.Fatal(err)
@@ -546,7 +546,7 @@ func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHas
 }
 
 func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.207-candidate-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.215-candidate-smoke.json")
 	raw := readSmokeReceiptRaw(t, receiptPath)
 	artifacts := raw["candidate_artifacts"].(map[string]any)
 	sourceNativePath := artifacts["native_binary_path"].(string)
@@ -568,7 +568,7 @@ func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *t
 }
 
 func TestCodexInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.144.1-isolated-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.144.5-isolated-smoke.json")
 	raw := readSmokeReceiptRaw(t, receiptPath)
 	artifacts := raw["candidate_artifacts"].(map[string]any)
 	sourceNativePath := artifacts["native_binary_path"].(string)
@@ -601,7 +601,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 		{
 			name:       "claude-receives-codex-path",
 			target:     "claude-code",
-			receipt:    "u8-claude-code-2.1.207-candidate-smoke.json",
+			receipt:    "u8-claude-code-2.1.215-candidate-smoke.json",
 			modeName:   "startup",
 			wrongPath:  "bin/native/darwin-arm64/loaf",
 			validateFn: validateInstalledSmokeEvidence,
@@ -609,7 +609,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 		{
 			name:       "codex-receives-claude-path",
 			target:     "codex",
-			receipt:    "u8-codex-0.144.1-isolated-smoke.json",
+			receipt:    "u8-codex-0.144.5-isolated-smoke.json",
 			modeName:   "startup",
 			wrongPath:  "plugins/loaf/bin/native/darwin-arm64/loaf",
 			validateFn: validateCodexInstalledSmokeEvidence,
@@ -641,7 +641,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 }
 
 func TestExactCapabilityVersionGrammar(t *testing.T) {
-	valid := []string{"2.1.207", "3.11.19", "2026.05.09-0afadcc", "0.144.1", "1.17.18", "0.0.1783873056-g278461", "1.2.3-alpha9"}
+	valid := []string{"2.1.215", "3.11.19", "2026.05.09-0afadcc", "0.144.5", "1.18.3", "0.0.1783873056-g278461", "1.2.3-alpha9"}
 	for _, version := range valid {
 		if !isExactCapabilityVersion(version) {
 			t.Errorf("isExactCapabilityVersion(%q) = false, want true", version)

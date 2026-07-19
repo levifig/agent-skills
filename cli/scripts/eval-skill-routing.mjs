@@ -21,7 +21,7 @@ const API_URL = "https://api.anthropic.com/v1/messages";
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 const DEFAULT_MODEL = "claude-opus-4-6";
 const MAX_DESC_CHARS = 250;
-const EXPECTED_SKILL_COUNT = 34;
+const EXPECTED_SKILL_COUNT = 35;
 
 const PRICING = {
   "claude-opus-4-6": { input: 15, output: 75 },
@@ -51,9 +51,14 @@ const TEST_CASES = {
     "Bootstrap this repo with the standard project scaffolding",
   ],
   brainstorm: [
-    "Help me think through options for notifications",
+    "Apply the brainstorm divergence stance to this exploration",
+    "What does the brainstorm technique say about capturing sparks during divergence?",
+    "Use the structured brainstorm questioning stance on this problem",
+  ],
+  explore: [
     "Explore several approaches before we choose one",
-    "What are the tradeoffs between these product ideas?",
+    "Resume the workflow exploration where we left off",
+    "Start an exploration of the caching options and checkpoint it",
   ],
   breakdown: [
     "Break this spec into implementation tasks",
@@ -64,6 +69,8 @@ const TEST_CASES = {
     "Which loaf command shows the recent project journal?",
     "Show me the Loaf CLI command for task status",
     "What flags does loaf journal recent support?",
+    "Upgrade Loaf and bring this project current",
+    "Diagnose why the installed Loaf targets are stale and repair them",
   ],
   council: [
     "Convene a council on this architecture decision",
@@ -226,16 +233,34 @@ const CONFLICT_PROBES = [
     prompt: "Go through the unresolved sparks and decide which ones become tasks",
   },
   {
-    group: "research-brainstorm",
-    choices: ["research", "brainstorm"],
-    expected: "brainstorm",
+    group: "research-explore",
+    choices: ["research", "explore"],
+    expected: "explore",
     prompt: "Let's generate a few possible directions before choosing one",
   },
   {
-    group: "research-brainstorm",
-    choices: ["research", "brainstorm"],
+    group: "research-explore",
+    choices: ["research", "explore"],
     expected: "research",
     prompt: "Survey the current project and external options, then report findings",
+  },
+  {
+    group: "explore-triage",
+    choices: ["explore", "triage"],
+    expected: "triage",
+    prompt: "Go through the deferred intents and decide which to resume",
+  },
+  {
+    group: "explore-shape",
+    choices: ["explore", "shape"],
+    expected: "shape",
+    prompt: "This direction is settled; turn it into a bounded change we can implement",
+  },
+  {
+    group: "maintenance-workflow",
+    choices: ["loaf-reference", "triage"],
+    expected: "loaf-reference",
+    prompt: "Bring this project's Loaf installation current after the upgrade",
   },
   {
     group: "strategy-reflect",

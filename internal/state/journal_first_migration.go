@@ -381,9 +381,9 @@ func runJournalFirstMigrationWithHooksAndSource(ctx context.Context, store *Stor
 		}
 	}
 	// Apply migrations 1-9 plus migration 10 in order, then prune optional
-	// provenance and apply migration 11 if absent. All destructive work,
-	// migration records, pruning, and parity verification remain uncommitted
-	// until every pre-commit check succeeds.
+	// provenance and apply every canonical migration above 10 if absent. All
+	// destructive work, migration records, pruning, and parity verification
+	// remain uncommitted until every pre-commit check succeeds.
 	preJournalMigrations := make([]SchemaMigration, 0, len(SchemaMigrations())+1)
 	for _, migration := range SchemaMigrations() {
 		if migration.Version < journalFirstMigrationVersion {
@@ -412,8 +412,13 @@ func runJournalFirstMigrationWithHooksAndSource(ctx context.Context, store *Stor
 			return fmt.Errorf("journal-first after-prune seam: %w", err)
 		}
 	}
-	if err := applyMigration(ctx, tx, journalOriginsMigration()); err != nil {
-		return fmt.Errorf("apply journal origins migration after journal-first migration: %w", err)
+	for _, migration := range SchemaMigrations() {
+		if migration.Version <= journalFirstMigrationVersion {
+			continue
+		}
+		if err := applyMigration(ctx, tx, migration); err != nil {
+			return fmt.Errorf("apply post-journal-first migration %d: %w", migration.Version, err)
+		}
 	}
 	if _, err := rebuildAndVerifyJournalSearch(ctx, tx); err != nil {
 		return fmt.Errorf("rebuild journal search after journal-first migration: %w", err)

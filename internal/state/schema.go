@@ -40,6 +40,9 @@ var journalFirstSQL string
 //go:embed migrations/0011_journal_origins_and_deferrals.sql
 var journalOriginsAndDeferralsSQL string
 
+//go:embed migrations/0012_intents_and_explorations.sql
+var intentsAndExplorationsSQL string
+
 const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -107,6 +110,11 @@ func SchemaMigrations() []SchemaMigration {
 			Version: 11,
 			Name:    "journal_origins_and_deferrals",
 			SQL:     normalizeMigrationSQL(journalOriginsAndDeferralsSQL),
+		},
+		{
+			Version: 12,
+			Name:    "intents_and_explorations",
+			SQL:     normalizeMigrationSQL(intentsAndExplorationsSQL),
 		},
 	}
 }

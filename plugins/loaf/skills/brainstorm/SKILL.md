@@ -1,18 +1,18 @@
 ---
 name: brainstorm
 description: >-
-  Conducts structured brainstorming with divergent thinking and trade-off
-  analysis. Use when the user asks "help me think through this," "what are the
-  options," or is exploring tradeoffs. Produces docs with sparks. Not for quick
-  ideas or shaping.
-user-invocable: true
+  Preserves the structured divergent-thinking stance consumed by the explore
+  workflow: option generation before judgment, trade-off analysis, and spark
+  capture. Explore owns the user-facing inquiry lifecycle; reference this
+  technique from it. Not a ...
+user-invocable: false
 argument-hint: '[idea or problem]'
 version: 2.0.0-alpha.9
 ---
 
 # Brainstorm
 
-Generative thinking — expanding possibilities before narrowing through structured exploration.
+Generative thinking — expanding possibilities before narrowing. This stance is an internal technique consumed by `/loaf:explore`, which owns inquiry continuity through Explorations and portable checkpoints; invoke the technique from there rather than as a standalone workflow.
 
 ## Critical Rules
 
@@ -27,17 +27,16 @@ Generative thinking — expanding possibilities before narrowing through structu
 
 **Never**
 - Prematurely commit to an option before full exploration
-- Delete brainstorm documents — archive them for context preservation
-- Process sparks during the main brainstorm — capture only, expand later
-- Turn brainstorm into an interview — keep it exploratory
+- Create documents, reports, or any Git artifact from this technique — the surrounding Explore workflow owns checkpoints and any durable writes
+- Process sparks during the divergent pass — capture only, expand later
+- Turn the divergence into an interview — keep it exploratory
 
 ## Verification
 
-After work completes, verify:
-- Brainstorm captured in SQLite or summarized in an explicitly durable report
-- Sparks captured with `loaf spark capture` and optionally summarized in `## Sparks`
-- Spark lifecycle documented: unprocessed → promoted/discarded
-- Brainstorm references strategic context from VISION/STRATEGY
+After a divergent pass, verify:
+- Sparks captured with `loaf spark capture` as they arose
+- The surrounding Exploration checkpointed the conclusions, discarded options, and open question (`loaf exploration checkpoint`)
+- The divergence referenced strategic context from VISION/STRATEGY
 
 ## Quick Reference
 
@@ -58,17 +57,14 @@ After work completes, verify:
 - **Title** -- one-line description
 ```
 
-Sparks are: lightweight, byproducts, worth remembering. Mark as `*(promoted)*` or `*(abandoned)*` after processing.
-
-Brainstorm documents are archived after sparks are processed — never deleted, since the exploration context has lasting value. SQLite spark state is the lifecycle source; draft markdown is a projection or narrative summary.
+Sparks are lightweight byproducts worth remembering; their dispositions belong to triage. SQLite spark state is the source; any summary inside a checkpoint item is narrative, not lifecycle.
 
 ## Suggests Next
 
-After brainstorming, suggest `/loaf:shape` if a clear idea emerged, or `/loaf:idea` to capture sparks for later. `/loaf:idea` invoked without arguments scans brainstorm docs for unprocessed sparks, bridging the brainstorm → idea pipeline.
+After a divergent pass, checkpoint the surrounding Exploration (`loaf exploration checkpoint`), then suggest `/loaf:shape` if a clear direction emerged or `/loaf:triage` to disposition captured sparks and ideas.
 
 ## Topics
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Brainstorm Template | [templates/brainstorm.md](templates/brainstorm.md) | Creating structured brainstorm documents |
 | Strategic Context | `strategy/references/` | Grounding exploration in project direction |

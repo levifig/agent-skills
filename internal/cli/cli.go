@@ -303,6 +303,14 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runArtifactEntityCommand("council", args[1:], out, runtime)
 	case "idea":
 		dispatchErr = r.runIdea(args[1:], out, runtime)
+	case "intent":
+		dispatchErr = r.runIntent(args[1:], out, runtime)
+	case "intake":
+		dispatchErr = r.runIntake(args[1:], out, runtime)
+	case "exploration":
+		dispatchErr = r.runExploration(args[1:], out, runtime)
+	case "conversation":
+		dispatchErr = r.runConversation(args[1:], out, runtime)
 	case "spark":
 		dispatchErr = r.runSpark(args[1:], out, runtime)
 	case "tag":
@@ -393,6 +401,10 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  migrate       Run migration workflows")
 	fmt.Fprintln(out, "  render        Maintain durable markdown renders")
 	fmt.Fprintln(out, "  journal       Record and read the project journal")
+	fmt.Fprintln(out, "  intent        Manage tracked Intent")
+	fmt.Fprintln(out, "  exploration   Manage Exploration continuity")
+	fmt.Fprintln(out, "  conversation  Manage conversation provenance")
+	fmt.Fprintln(out, "  intake        Read the local intake projection")
 	fmt.Fprintln(out, "  task          Manage tasks")
 	fmt.Fprintln(out, "  spec          Manage specs")
 	fmt.Fprintln(out, "  report        Manage reports")
@@ -3133,6 +3145,7 @@ func (r Runner) runStateMigrate(args []string, out io.Writer, runtime state.Runt
 		"schema":             writeStateMigrateSchemaHelp,
 		"markdown":           writeStateMigrateMarkdownHelp,
 		"storage-home":       writeStateMigrateStorageHomeHelp,
+		"deferrals":          writeStateMigrateDeferralsHelp,
 	}) {
 		return nil
 	}
@@ -3143,6 +3156,8 @@ func (r Runner) runStateMigrate(args []string, out io.Writer, runtime state.Runt
 		return r.runJournalFirstMigration(args[1:], out, runtime, "loaf state migrate journal-first")
 	case "schema":
 		return r.runSchemaUpgrade(args[1:], out, runtime, "loaf state migrate schema")
+	case "deferrals":
+		return r.runStateMigrateDeferrals(args[1:], out, runtime)
 	case "markdown":
 		return r.runStateMigrateMarkdown(args[1:], out, runtime)
 	case "storage-home":
@@ -6382,7 +6397,7 @@ func writeSparkCaptureHelp(out io.Writer) {
 }
 
 func writeSparkResolveHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf spark resolve <spark> [--reason <text>] [--json]", "Resolve a spark.", "--reason     Resolution reason", "--json       Output resolution relationship, event, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf spark resolve <spark> --by <entity> [--reason <text>] [--json]", "Resolve a spark by linking it to the entity that resolves it.", "--by         Resolving entity reference (required)", "--reason     Resolution reason", "--json       Output resolution relationship, event, global database scope, and project identity as JSON")
 }
 
 func writeSparkPromoteHelp(out io.Writer) {

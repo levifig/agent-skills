@@ -389,7 +389,7 @@ format reference; do not hand-author journal markdown as the source of truth.
 
 Suggest relevant next steps based on what was learned:
 
-- `/loaf:brainstorm` -- if the idea needs more exploration
+- `/brainstorm` -- if the idea needs more exploration
 - `/loaf:idea` -- if specific feature ideas emerged during the interview
 - `/loaf:research` -- if there are open questions that need investigation
 - `/loaf:shape` -- if a specific feature is ready to be bounded into a spec

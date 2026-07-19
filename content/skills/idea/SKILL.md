@@ -3,9 +3,10 @@ name: idea
 description: >-
   Captures ideas into structured nuggets for later evaluation. Use when the user
   says "I have an idea" or "note this down." Also activate when a specific
-  actionable concept crystallizes during conversation. For reviewing and
-  processing the intake queue (sparks + raw ideas), use triage instead.
-  Not for deep exploration (use brainstorm) or shaping (use shape).
+  actionable concept crystallizes during conversation. Ideas and sparks are
+  capture primitives routed through triage, which chooses dispositions such as
+  tracking an Intent. Not for divergent inquiry (use explore), processing the
+  intake queue (use triage), or shaping (use shape).
 ---
 
 # Idea
@@ -38,83 +39,46 @@ Capture ideas quickly with minimal friction.
 
 ## Verification
 
-- Idea appears in `loaf idea list` / `loaf idea show`
-- Status is open/raw according to the active backend
-- If promoted from a spark, `loaf spark promote` records the relationship
+- The idea appears in `loaf idea list` and `loaf idea show <ref>` with status open
+- If promoted from a spark, `loaf spark promote` recorded the relationship
+- No shaping, status transition, or promotion happened here — dispositions belong to triage
 
 ## Quick Reference
 
-| Status | Meaning |
-|--------|---------|
-| `raw` | Just captured, unprocessed |
-| `shaping` | Being developed via /shape or /brainstorm |
-| `shaped` | Converted to SPEC, idea file archived |
-| `archived` | Decided not to pursue, kept for reference |
+| Operation | Command |
+|-----------|---------|
+| Capture | `loaf idea capture --title "<title>"` |
+| Read back | `loaf idea show <ref>` |
+| List open | `loaf idea list` |
 
 ---
 
 ## Purpose
 
-Ideas are raw nuggets -- unprocessed, unshaped, but worth remembering. The goal is **speed of capture**, not thoroughness. Shape later via `/shape`.
+Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal is **speed of capture**, not thoroughness. An idea is retained material, nothing more: tracking it as an Intent, exploring it, shaping it, or archiving it are triage dispositions chosen later by the user.
 
 ---
 
 ## Process
 
-### Step 1: Parse Input
-
-If `$ARGUMENTS` contains the idea, capture directly.
-
-If `$ARGUMENTS` is empty, ask **at most 2-3 questions**: core idea, problem/opportunity, immediate constraints.
-
-### Step 2: Capture Idea
-
-Use the CLI capture path:
-
-```bash
-loaf idea capture --title "..."
-```
-
-In SQLite-backed mode, the row is stored in SQLite and no `.agents/ideas/`
-markdown file is created. The [idea template](templates/idea.md) is retained
-only for markdown-only compatibility and historical restore review.
-
-### Step 3: Create and Announce
-
-1. Generate timestamp: `date -u +"%Y-%m-%dT%H:%M:%SZ"`
-2. Run `loaf idea capture --title "..."` with the inferred title
-3. Announce the captured idea alias with next steps
-
----
-
-## Idea Lifecycle
-
-```
-raw -> shaping -> shaped (becomes SPEC) -> archived
-```
-
-| Status | Meaning |
-|--------|---------|
-| `raw` | Just captured, unprocessed |
-| `shaping` | Being developed via /shape or /brainstorm |
-| `shaped` | Converted to SPEC, idea file archived |
-| `archived` | Decided not to pursue, kept for reference |
+1. **Parse input.** If `$ARGUMENTS` contains the idea, capture directly. If empty, ask at most 2-3 questions: core idea, problem/opportunity, immediate constraints.
+2. **Capture.** Run `loaf idea capture --title "..."` with the inferred title; log notable context with `loaf journal log`.
+3. **Announce.** Report the captured alias and point at `/triage` for disposition.
 
 ---
 
 ## Guardrails
 
-1. **Speed over completeness** -- capture quickly, shape later
-2. **2-3 questions max** -- don't turn this into an interview
-3. **Infer, don't ask** -- metadata should be automatic
-4. **One idea per captured row/artifact** -- keep them atomic
-5. **No shaping here** -- that's what `/shape` is for
+1. **Speed over completeness** — capture quickly, disposition later
+2. **2-3 questions max** — don't turn this into an interview
+3. **Infer, don't ask** — metadata should be automatic
+4. **One idea per captured row** — keep them atomic
+5. **No lifecycle here** — no status transitions, promotion, or shaping; triage owns dispositions and the CLI performs them
 
 ---
 
 ## Related Skills
 
-- **triage** -- Review and process the intake queue (sparks + raw ideas)
-- **shape** -- Develop an idea into a SPEC
-- **brainstorm** -- Deep thinking on an idea or problem space
-- **research** -- Investigate before capturing
+- **triage** — process the intake queue and choose dispositions
+- **explore** — divergent inquiry when an idea needs development before commitment
+- **shape** — develop a chosen direction into a bounded Change

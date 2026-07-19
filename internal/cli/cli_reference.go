@@ -58,6 +58,8 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Options: []cliReferenceOption{
 				{Flags: "--to <target>", Description: `Target to install to (or "all")`},
 				{Flags: "--upgrade", Description: "Update installed targets and apply deprecation-manifest cleanup"},
+				{Flags: "--dry-run", Description: "With --upgrade, report the deterministic non-mutating upgrade plan: per-artifact actions, preserved conflicts, deprecations, project-file effects, and consent requirements"},
+				{Flags: "--json", Description: "With --dry-run, emit the plan as one JSON document with exact follow-up commands and consent_required"},
 				{Flags: "--codex-basic-commands", Description: "Explicitly install the least-privilege Codex basic command policy (requires --to codex or --to all)"},
 				{Flags: "-y, --yes", Description: "Assume 'yes' to safe migrations and destructive deprecation cleanup"},
 				{Flags: "--no-yes", Description: "Force interactive prompts even when stdin is not a TTY (testing)"},
@@ -198,6 +200,11 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--dry-run", Description: "Preview pending schema upgrades without writing"},
 					{Flags: "--apply", Description: "Apply pending schema upgrades after creating and verifying a backup"},
 					{Flags: "--json", Description: "Output schema upgrade action, versions, pending migrations, backup, and verification as JSON"},
+				}},
+				{Name: "migrate deferrals", Description: "Convert historical journal deferrals into canonical deferred Intents; apply is backup-first, provenance-linking, legacy-preserving, and rerunnable", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Report the project-specific conversion manifest without writing"},
+					{Flags: "--apply", Description: "Convert after creating and verifying a whole-database backup"},
+					{Flags: "--json", Description: "Output the conversion manifest, counts, backup, and project identity as JSON"},
 				}},
 				{Name: "migrate lifecycle-statuses", Description: "Normalize legacy lifecycle statuses in SQLite", Options: []cliReferenceOption{
 					{Flags: "--dry-run", Description: "Preview status normalization on a temporary database copy"},
@@ -635,6 +642,111 @@ func cliReferenceCommands() []cliReferenceCommand {
 			},
 		},
 		{
+			Name:        "intent",
+			Description: "Manage tracked Intent in native SQLite state; disposition is derived from append-only facts",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "create", Description: "Create a tracked or deferred Intent in one transaction", Options: []cliReferenceOption{
+					{Flags: "--title <title>", Description: "Bounded single-line title"},
+					{Flags: "--body <body>", Description: "Self-sufficient body"},
+					{Flags: "--disposition <disposition>", Description: "tracked (default) or deferred"},
+					{Flags: "--why <why>", Description: "Why the deferred direction matters"},
+					{Flags: "--boundary <boundary>", Description: "What excluded it now"},
+					{Flags: "--trigger <trigger>", Description: "When to revisit"},
+					{Flags: "--operation-id <key>", Description: "Retry-safe operation key; required when deferred"},
+					{Flags: "--from <source>", Description: "Source spark, idea, brainstorm, or journal entry; repeatable"},
+					{Flags: "--reason <reason>", Description: "Optional reason recorded with the initial disposition"},
+					{Flags: "--json", Description: "Output the created or reused Intent, digests, and project identity as JSON"},
+				}},
+				{Name: "defer", Description: "Append an immutable deferral to an existing Intent", Options: []cliReferenceOption{
+					{Flags: "--why <why>", Description: "Why the direction matters"},
+					{Flags: "--boundary <boundary>", Description: "What excluded it now"},
+					{Flags: "--trigger <trigger>", Description: "When to revisit"},
+					{Flags: "--operation-id <key>", Description: "Retry-safe operation key"},
+					{Flags: "--json", Description: "Output the deferred Intent, digests, and project identity as JSON"},
+				}},
+				{Name: "resume", Description: "Append a tracked disposition linked to the deferral it supersedes", Options: []cliReferenceOption{
+					{Flags: "--reason <why now>", Description: "Why the Intent is tracked again"},
+					{Flags: "--json", Description: "Output the resumed Intent and project identity as JSON"},
+				}},
+				{Name: "resolve", Description: "Append a reasoned terminal disposition without overwriting history", Options: []cliReferenceOption{
+					{Flags: "--reason <outcome>", Description: "Resolution outcome"},
+					{Flags: "--json", Description: "Output the resolved Intent and project identity as JSON"},
+				}},
+				{Name: "show", Description: "Show one Intent with latest snapshot, derived disposition, deferral payload, and sources", Options: []cliReferenceOption{{Flags: "--json", Description: "Output Intent detail, sources, and project identity as JSON"}}},
+				{Name: "list", Description: "List Intents with derived dispositions in deterministic order", Options: []cliReferenceOption{
+					{Flags: "--disposition <disposition>", Description: "Filter by derived disposition: tracked, deferred, or resolved"},
+					{Flags: "--json", Description: "Output Intents and project identity as JSON"},
+				}},
+			},
+		},
+		{
+			Name:        "intake",
+			Description: "Read the deterministic local intake projection; triage judgment stays with humans and Skills",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "list", Description: "Project each unresolved spark, idea, brainstorm, intent, and unmigrated legacy deferral exactly once with provenance and exact read commands", Options: []cliReferenceOption{{Flags: "--json", Description: "Output intake items and project identity as JSON"}}},
+			},
+		},
+		{
+			Name:        "exploration",
+			Description: "Manage relational Exploration continuity: immutable portable checkpoints, no lifecycle status, no current pointer",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "create", Description: "Create an Exploration identity; sources map to explores or uses-source edges by kind", Options: []cliReferenceOption{
+					{Flags: "--title <title>", Description: "Bounded exploration title"},
+					{Flags: "--from <source>", Description: "Intent, journal entry, handoff, report, or finding reference; repeatable"},
+					{Flags: "--json", Description: "Output the created Exploration and project identity as JSON"},
+				}},
+				{Name: "checkpoint", Description: "Append one immutable checkpoint; the four core fields are required, trimmed, and capped at 4096 UTF-8 bytes without truncation", Options: []cliReferenceOption{
+					{Flags: "--purpose <text>", Description: "Current framing"},
+					{Flags: "--conclusions <text>", Description: "Conclusions or constraints so far"},
+					{Flags: "--unresolved <text>", Description: "Unresolved question or decision"},
+					{Flags: "--next <text>", Description: "Recommended next action"},
+					{Flags: "--item <type>:<content>", Description: "Ordered typed item (candidate or evidence); repeatable"},
+					{Flags: "--operation-id <key>", Description: "Retry-safe operation key"},
+					{Flags: "--json", Description: "Output the appended checkpoint and project identity as JSON"},
+				}},
+				{Name: "list", Description: "List Explorations with checkpoint counts and portable-context presence", Options: []cliReferenceOption{{Flags: "--json", Description: "Output Explorations and project identity as JSON"}}},
+				{Name: "context", Description: "Project portable context: the four-field core returns whole; every optional layer reports counts, truncation, and an exact expansion command", Options: []cliReferenceOption{
+					{Flags: "--layer <name>", Description: "Select one layer: items, intents, evidence, or conversations"},
+					{Flags: "--cursor <cursor>", Description: "Continue the selected layer (requires --layer)"},
+					{Flags: "--limit <n>", Description: "Maximum 1..100 items for the selected layer (requires --layer)"},
+					{Flags: "--json", Description: "Output the portable context projection as JSON"},
+				}},
+				{Name: "conversation", Description: "Associate a logical conversation explicitly: loaf exploration conversation add <exploration> <conversation-id>", Options: []cliReferenceOption{{Flags: "--json", Description: "Output the membership result as JSON"}}},
+			},
+		},
+		{
+			Name:        "conversation",
+			Description: "Manage logical conversations and machine-local provenance handles; handles never imply portable context",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "create", Description: "Create a logical conversation that may carry multiple harness-local handles", Options: []cliReferenceOption{
+					{Flags: "--title <label>", Description: "Conversation label"},
+					{Flags: "--operation-id <key>", Description: "Retry-safe operation key"},
+					{Flags: "--json", Description: "Output the created conversation and project identity as JSON"},
+				}},
+				{Name: "show", Description: "Show one conversation with handles, log refs, and latest observed availability", Options: []cliReferenceOption{{Flags: "--json", Description: "Output the conversation and project identity as JSON"}}},
+				{Name: "list", Description: "List logical conversations deterministically", Options: []cliReferenceOption{{Flags: "--json", Description: "Output conversations and project identity as JSON"}}},
+				{Name: "handle", Description: "Attach a machine-local handle: loaf conversation handle add <conversation-id> --harness <h> --handle <id>", Options: []cliReferenceOption{
+					{Flags: "--harness <harness>", Description: "Harness name, e.g. codex or claude-code"},
+					{Flags: "--handle <id>", Description: "Opaque machine-local conversation identifier"},
+					{Flags: "--locality <scope>", Description: "Machine or namespace scope for the handle"},
+					{Flags: "--log-ref <locator>", Description: "Bounded log locator, never transcript content"},
+					{Flags: "--hash <sha256>", Description: "Optional SHA-256 of the referenced log range"},
+					{Flags: "--range <range>", Description: "Optional bounded range within the log"},
+					{Flags: "--json", Description: "Output the handle result and project identity as JSON"},
+				}},
+				{Name: "observe", Description: "Append an immutable timestamped availability observation; the observed row never mutates", Options: []cliReferenceOption{
+					{Flags: "--handle <handle-id>", Description: "Observed conversation handle ID"},
+					{Flags: "--log-ref <log-ref-id>", Description: "Observed log reference ID"},
+					{Flags: "--available", Description: "Record that the source was reachable"},
+					{Flags: "--unavailable", Description: "Record that the source was not reachable"},
+					{Flags: "--observer <name>", Description: "Observing agent or probe"},
+					{Flags: "--locality <scope>", Description: "Machine or namespace of the observation"},
+					{Flags: "--note <text>", Description: "Bounded observation note"},
+					{Flags: "--json", Description: "Output the observation result and project identity as JSON"},
+				}},
+			},
+		},
+		{
 			Name:        "spark",
 			Description: "Manage sparks in native SQLite state",
 			Subcommands: []cliReferenceSubcommand{
@@ -649,7 +761,8 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--text <text>", Description: "Spark text"},
 					{Flags: "--json", Description: "Output created spark, event, global database scope, and project identity as JSON"},
 				}},
-				{Name: "resolve", Description: "Resolve a spark", Options: []cliReferenceOption{
+				{Name: "resolve", Description: "Resolve a spark by linking it to the entity that resolves it", Options: []cliReferenceOption{
+					{Flags: "--by <entity>", Description: "Resolving entity reference (required)"},
 					{Flags: "--reason <text>", Description: "Resolution reason"},
 					{Flags: "--json", Description: "Output resolution relationship, event, global database scope, and project identity as JSON"},
 				}},
@@ -724,6 +837,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 				{Flags: "--fix", Description: "Offer each safe repair and prompt y/N before applying it"},
 				{Flags: "--force", Description: "With --fix, apply every offered repair without prompting"},
 				{Flags: "--verbose", Description: "Print each check name even when passing"},
+				{Flags: "--json", Description: "Output the identical check set as read-only JSON; never prompts or repairs"},
 			},
 		},
 	}
@@ -733,7 +847,7 @@ func generateCLIReferenceSkill(commands []cliReferenceCommand) string {
 	header := `---
 name: loaf-reference
 description: >-
-  Documents how agents operate the Loaf CLI: command discovery via loaf --help, JSON diagnosis surfaces, guided config maintenance, and troubleshooting. Use when unsure which loaf command to invoke or how to validate project state. Not for workflow guidance (workflow skills own their CLI contracts) or build internals.
+  Documents how agents operate the Loaf CLI: command discovery via loaf --help, JSON diagnosis surfaces, config-aware maintenance, and troubleshooting. Use when unsure which loaf command to invoke, how to validate project state, or when asked to upgrade, diagnose, repair, configure, or bring a Loaf project current. Not for workflow guidance (workflow skills own their CLI contracts) or build internals.
 ---
 
 # Loaf Reference
@@ -803,6 +917,7 @@ The Loaf operating manual for agents: how to discover commands, diagnose project
 		"| Topic | Reference | Use When |",
 		"|-------|-----------|----------|",
 		"| Configuration maintenance | [references/configuration.md](references/configuration.md) | Checking whether a project's Loaf config is current and repairing it; wiring project-owned choices |",
+		"| Config-aware maintenance protocol | [references/maintenance.md](references/maintenance.md) | Upgrading, diagnosing, repairing, or bringing a project current: diagnose, plan, ask, apply, verify |",
 		"| Command routing | [references/command-routing.md](references/command-routing.md) | Deciding which command a task needs; locating the JSON diagnosis surfaces |",
 		"| Troubleshooting | [references/troubleshooting.md](references/troubleshooting.md) | Diagnosing state, config, or alignment failures; isolating a throwaway database |",
 		"",

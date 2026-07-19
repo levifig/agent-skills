@@ -20,6 +20,8 @@ type installOptions struct {
 	codexBasicCommands bool
 	yes                *bool
 	help               bool
+	dryRun             bool
+	json               bool
 }
 
 type detectedInstallTool struct {
@@ -63,6 +65,10 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 	tools := detectInstallTools()
 	hasClaudeCode := installCommandExists("claude")
 	assumeYes := installAssumeYes(options)
+
+	if options.dryRun {
+		return r.runInstallDryRun(options, out, loafRoot, projectRoot.Path(), version, distRoot, tools, hasClaudeCode, assumeYes)
+	}
 
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, ansiBold("loaf install"))
@@ -189,6 +195,10 @@ func parseInstallArgs(args []string) (installOptions, error) {
 			options.target = args[i]
 		case "--upgrade":
 			options.upgrade = true
+		case "--dry-run":
+			options.dryRun = true
+		case "--json":
+			options.json = true
 		case "--codex-basic-commands":
 			options.codexBasicCommands = true
 		case "-y", "--yes":
@@ -206,6 +216,12 @@ func parseInstallArgs(args []string) (installOptions, error) {
 	if options.codexBasicCommands && options.target != "codex" && options.target != "all" {
 		return installOptions{}, fmt.Errorf("--codex-basic-commands requires --to codex or --to all")
 	}
+	if options.dryRun && !options.upgrade {
+		return installOptions{}, fmt.Errorf("--dry-run requires --upgrade")
+	}
+	if options.json && !options.dryRun {
+		return installOptions{}, fmt.Errorf("--json requires --dry-run")
+	}
 	return options, nil
 }
 
@@ -218,6 +234,8 @@ func writeInstallHelp(out io.Writer) {
 		"Options:",
 		"  --to <target>  Target to install to (or \"all\")",
 		"  --upgrade      Update installed targets and apply deprecation-manifest cleanup",
+		"  --dry-run      Report the upgrade plan without writing anything (requires --upgrade)",
+		"  --json         Emit the dry-run plan as a single JSON document (requires --dry-run)",
 		"  --codex-basic-commands  Explicitly install the least-privilege Codex basic command policy (requires --to codex or --to all)",
 		"  -y, --yes      Assume yes to safe project-file symlink migrations and destructive deprecation cleanup",
 		"  --no-yes       Force prompt-style declines in non-interactive mode",

@@ -1,9 +1,9 @@
 {
   "evidence_version": 2,
-  "timestamp": "2026-07-18T22:10:30.596Z",
+  "timestamp": "2026-07-19T14:30:33.466Z",
   "target": "codex",
   "surface": "cli",
-  "version": "0.144.1",
+  "version": "0.144.5",
   "platform": "darwin-arm64",
   "installed_mode": "isolated-codex-home",
   "context_mode": "startup",
@@ -32,14 +32,15 @@
     "copy installed auth.json into isolated CODEX_HOME with mode 0600",
     "initialize absolute disposable LOAF_DB",
     "write random marker to isolated journal",
-    "observe hook stdout through a mode-0700 disposable wrapper and mode-0600 file"
+    "observe hook stdout through a mode-0700 disposable wrapper and mode-0600 file",
+    "disable Codex tracing logs (RUST_LOG=off) so backend transport noise cannot contaminate the stderr cleanliness gate"
   ],
   "exit_code": 0,
   "stderr_empty": false,
   "stderr": "Reading additional input from stdin...",
   "model_visible_marker_observed": true,
   "assistant_marker_match": true,
-  "marker": "LOAF_CODEX_U8_A72DEEEB44A4",
+  "marker": "LOAF_CODEX_U8_DC6AE6B35C2F",
   "hook_observation": {
     "event_name": "SessionStart:startup",
     "native_json": true,
@@ -50,6 +51,6 @@
     "hooks_path": "dist/codex/.codex/hooks.json",
     "hooks_sha256": "0f9e3feb7204c3309a7db6a02224ad881f6801a8cdd126ec6222e6d9a804c33d",
     "native_binary_path": "bin/native/darwin-arm64/loaf",
-    "native_binary_sha256": "5b76b90e835834bea3f4208cb8fa4e344951e43ab90f986837f09ac3d6eb2519"
+    "native_binary_sha256": "85f72b257a0655ff24ac5a46e666e5a5c88094db89c7b1afe9466016fa5f9069"
   }
 }

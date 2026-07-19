@@ -10,8 +10,8 @@ import { tmpdir } from "node:os";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
 const researchDir = join(repoRoot, "docs/changes/20260710-journal-reliability-foundation/research");
-const evidencePath = join(researchDir, "u8-opencode-1.17.18-isolated-smoke.json");
-const expectedVersion = "1.17.18";
+const evidencePath = join(researchDir, "u8-opencode-1.18.3-isolated-smoke.json");
+const expectedVersion = "1.18.3";
 const platform = `${process.platform}-${process.arch}`;
 const candidateHooksPath = "dist/opencode/plugins/hooks.ts";
 const candidateNativePath = `bin/native/${platform}/loaf`;
@@ -273,7 +273,7 @@ function main() {
     const pluginURL = pathToFileURL(candidatePlugin).href;
     const env = disposableEnvironment(tempRoot, dbPath, pluginURL);
     const version = run(installedOpenCode, ["--version"], repoRoot, env);
-    if (version.status !== 0 || !opencodeVersionMatches(version.stdout)) throw new Error("installed OpenCode version is not exactly 1.17.18");
+    if (version.status !== 0 || !opencodeVersionMatches(version.stdout)) throw new Error("installed OpenCode version is not exactly 1.18.3");
     if (run("git", ["init", "-q"], disposableRepo, env).status !== 0) throw new Error("disposable Git initialization failed");
     if (run(candidateBinary, ["state", "init", "--json"], disposableRepo, env).status !== 0) throw new Error("isolated Loaf state initialization failed");
     if (run(candidateBinary, ["journal", "log", `discover(smoke): ${marker}`], disposableRepo, env).status !== 0) throw new Error("isolated journal marker write failed");
@@ -312,7 +312,7 @@ function main() {
     smoke.cleanup_succeeded = cleanupSucceeded;
   }
   writeFileSync(evidencePath, `${JSON.stringify(smoke, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ evidence_path: "docs/changes/20260710-journal-reliability-foundation/research/u8-opencode-1.17.18-isolated-smoke.json", exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match, plugin_loaded: smoke.plugin_loaded, root_session_lookup_proven: smoke.root_session_lookup_proven, cleanup_succeeded: smoke.cleanup_succeeded }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ evidence_path: "docs/changes/20260710-journal-reliability-foundation/research/u8-opencode-1.18.3-isolated-smoke.json", exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match, plugin_loaded: smoke.plugin_loaded, root_session_lookup_proven: smoke.root_session_lookup_proven, cleanup_succeeded: smoke.cleanup_succeeded }, null, 2)}\n`);
   if (smoke.exit_code !== 0 || !smoke.assistant_marker_match || !smoke.plugin_loaded || !smoke.root_session_lookup_proven || !smoke.cleanup_succeeded) process.exitCode = 1;
 }
 

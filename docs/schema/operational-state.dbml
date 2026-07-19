@@ -553,3 +553,199 @@ Table exports {
     (project_id, source_entity_kind, source_entity_id)
   }
 }
+
+// Intent and Exploration foundation (migration 0012). Every table below is an
+// append-only operational fact: stable IDs plus created_at with no updated_at
+// column (intent_operations carries updated_at only for its projection-version
+// advance). intent_operations.journal_entry_id/spark_id and
+// journal_conversation_handles.journal_entry_id intentionally have no FK
+// because migration 0010 may rebuild journal_entries after 0012 has applied.
+
+Table intents {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  created_at text [not null]
+  indexes {
+    (project_id, created_at)
+  }
+}
+
+Table intent_snapshots {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  intent_id text [not null, ref: > intents.id]
+  seq integer [not null]
+  title text [not null]
+  body text [not null]
+  content_digest text [not null]
+  created_at text [not null]
+  indexes {
+    (intent_id, seq) [unique]
+  }
+}
+
+Table intent_deferrals {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  intent_id text [not null, ref: > intents.id]
+  operation_key text [not null]
+  body text [not null]
+  why text [not null]
+  boundary text [not null]
+  revisit_trigger text [not null]
+  stored_digest text [not null]
+  created_at text [not null]
+  indexes {
+    (project_id, operation_key) [unique]
+    (intent_id, created_at)
+  }
+}
+
+Table intent_dispositions {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  intent_id text [not null, ref: > intents.id]
+  seq integer [not null]
+  disposition text [not null]
+  reason text
+  deferral_id text [ref: > intent_deferrals.id]
+  supersedes_deferral_id text [ref: > intent_deferrals.id]
+  created_at text [not null]
+  indexes {
+    (intent_id, seq) [unique]
+  }
+}
+
+Table intent_operations {
+  project_id text [not null, ref: > projects.id]
+  operation_key text [not null]
+  intent_id text [not null, ref: > intents.id]
+  stored_digest text [not null]
+  journal_entry_id text
+  spark_id text
+  projection_version integer [not null]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (project_id, operation_key) [pk]
+    (intent_id)
+  }
+}
+
+Table explorations {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  title text [not null]
+  created_at text [not null]
+  indexes {
+    (project_id, created_at)
+  }
+}
+
+Table exploration_checkpoints {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  exploration_id text [not null, ref: > explorations.id]
+  seq integer [not null]
+  purpose text [not null]
+  conclusions text [not null]
+  unresolved text [not null]
+  next_action text [not null]
+  operation_key text
+  content_digest text [not null]
+  created_at text [not null]
+  indexes {
+    (exploration_id, seq) [unique]
+    (project_id, operation_key) [unique]
+  }
+}
+
+Table exploration_checkpoint_items {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  checkpoint_id text [not null, ref: > exploration_checkpoints.id]
+  item_type text [not null]
+  position integer [not null]
+  content text [not null]
+  created_at text [not null]
+  indexes {
+    (checkpoint_id, position) [unique]
+  }
+}
+
+Table logical_conversations {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  title text [not null]
+  operation_key text
+  created_at text [not null]
+  indexes {
+    (project_id, operation_key) [unique]
+  }
+}
+
+Table conversation_handles {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  conversation_id text [not null, ref: > logical_conversations.id]
+  harness text [not null]
+  handle text [not null]
+  locality text
+  created_at text [not null]
+  indexes {
+    (conversation_id, harness, handle) [unique]
+  }
+}
+
+Table conversation_log_refs {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  handle_id text [not null, ref: > conversation_handles.id]
+  locator text [not null]
+  content_hash text
+  range_spec text
+  created_at text [not null]
+  indexes {
+    (handle_id, locator) [unique]
+  }
+}
+
+Table exploration_conversations {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  exploration_id text [not null, ref: > explorations.id]
+  conversation_id text [not null, ref: > logical_conversations.id]
+  created_at text [not null]
+  indexes {
+    (exploration_id, conversation_id) [unique]
+    (conversation_id)
+  }
+}
+
+Table journal_conversation_handles {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  journal_entry_id text [not null]
+  handle_id text [not null, ref: > conversation_handles.id]
+  created_at text [not null]
+  indexes {
+    (journal_entry_id, handle_id) [unique]
+    (handle_id)
+  }
+}
+
+Table source_availability_observations {
+  id text [pk, not null]
+  project_id text [not null, ref: > projects.id]
+  subject_kind text [not null]
+  subject_id text [not null]
+  observed_at text [not null]
+  observer text
+  locality text
+  available integer [not null]
+  note text
+  created_at text [not null]
+  indexes {
+    (subject_kind, subject_id, observed_at)
+  }
+}

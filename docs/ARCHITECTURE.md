@@ -177,6 +177,14 @@ Skills are the only knowledge mechanism that works across all targets (Claude Co
 
 Principles that shape how Loaf is designed and operated. Unlike ADRs, these are mutable and evolve via `/reflect` as the project learns. They sit above implementation choices but below VISION (which captures product intent and direction).
 
+### State Authority — Git Authors, SQLite Operates
+
+Authored durable artifacts — Changes, plans, research, specs, ADRs, knowledge, reports, code, and generated deliverables — live in Git and are edited in place. Operational, queryable state — the journal, Intent, Exploration, checkpoints, conversation provenance, relationships, deferrals, and derived indexes — lives in project-scoped SQLite. Neither store mirrors the other: SQLite never becomes a hidden Markdown repository, and Git never holds per-conversation operational facts. No tracker holds authority over either until a later coordination Change defines publication and reconciliation explicitly.
+
+The intent-exploration-foundation Change proved the operational side as append-only facts rather than mutable lifecycle state. An Intent's disposition (`tracked`, `deferred`, `resolved`) and an Exploration's latest portable checkpoint are derived from transactionally sequenced immutable records — the row with the greatest committed per-aggregate sequence wins, never a timestamp and never a status column. Compound writes are retry-safe through one canonical per-project operation-key mapping (`intent_operations`), which the transitional `journal defer` adapter and legacy conversion share with the native commands, so no entry point can mint a parallel canonical record. Machine-local conversation handles and log locators are optional provenance with observed availability; portable context is exclusively the checkpoint's four required fields, and their presence is reported honestly (`portable_context_present`) rather than inferred from handles.
+
+The judgment boundary follows from the storage boundary: humans and Skills interpret, classify, and choose operations; the CLI validates, proves, and performs them deterministically. Skills never branch on backend configuration, call providers directly, or maintain lifecycle flags; the CLI never decides whether input is a Spark, Idea, Intent, Exploration, or Change.
+
 ### Authorship Model — Agents Create, Humans Curate
 
 Agents are the primary authors of knowledge files, ADRs, tasks, and specs. Humans review, approve, and curate — they are not the writing surface. The CLI follows from this: it is for management and health checks (`check`, `validate`, `status`, `review`), not for authoring.

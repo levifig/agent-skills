@@ -45,16 +45,30 @@ var requiredInitialTables = []string{
 	"councils",
 	"journal_origins",
 	"journal_deferrals",
+	"intents",
+	"intent_snapshots",
+	"intent_deferrals",
+	"intent_dispositions",
+	"intent_operations",
+	"explorations",
+	"exploration_checkpoints",
+	"exploration_checkpoint_items",
+	"logical_conversations",
+	"conversation_handles",
+	"conversation_log_refs",
+	"exploration_conversations",
+	"journal_conversation_handles",
+	"source_availability_observations",
 	"schema_migrations",
 }
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 10 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 10", len(migrations))
+	if len(migrations) != 11 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 11", len(migrations))
 	}
 
-	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12}
 	for i, migration := range migrations {
 		if migration.Version != wantVersions[i] {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
@@ -124,19 +138,39 @@ func TestInitialSchemaContainsRequiredTableSet(t *testing.T) {
 }
 
 func TestOperationalTablesHaveStableIDsAndTimestamps(t *testing.T) {
+	// Append-only fact tables are immutable after insert: they carry stable
+	// IDs and created_at but deliberately no updated_at column.
+	appendOnly := map[string]bool{
+		"intents":                          true,
+		"intent_snapshots":                 true,
+		"intent_deferrals":                 true,
+		"intent_dispositions":              true,
+		"explorations":                     true,
+		"exploration_checkpoints":          true,
+		"exploration_checkpoint_items":     true,
+		"logical_conversations":            true,
+		"conversation_handles":             true,
+		"conversation_log_refs":            true,
+		"exploration_conversations":        true,
+		"journal_conversation_handles":     true,
+		"source_availability_observations": true,
+	}
 	sql := currentSchemaSQL()
 	for _, table := range requiredInitialTables {
-		if table == "schema_migrations" || table == "journal_origins" || table == "journal_deferrals" {
+		if table == "schema_migrations" || table == "journal_origins" || table == "journal_deferrals" || table == "intent_operations" {
 			continue
 		}
 		body := tableBody(t, sql, table)
-		for _, required := range []string{
+		required := []string{
 			"id TEXT PRIMARY KEY NOT NULL",
 			"created_at TEXT NOT NULL",
-			"updated_at TEXT NOT NULL",
-		} {
-			if !strings.Contains(body, required) {
-				t.Fatalf("%s is missing %q in:\n%s", table, required, body)
+		}
+		if !appendOnly[table] {
+			required = append(required, "updated_at TEXT NOT NULL")
+		}
+		for _, column := range required {
+			if !strings.Contains(body, column) {
+				t.Fatalf("%s is missing %q in:\n%s", table, column, body)
 			}
 		}
 	}
@@ -277,6 +311,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	if sqlDoc != SchemaMigrations()[9].SQL {
 		t.Fatal("docs/schema/0011_journal_origins_and_deferrals.sql must match embedded migration 0011 exactly")
 	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0012_intents_and_explorations.sql")
+	if sqlDoc != SchemaMigrations()[10].SQL {
+		t.Fatal("docs/schema/0012_intents_and_explorations.sql must match embedded migration 0012 exactly")
+	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
 	mermaidDoc := readRepoFile(t, "docs", "schema", "operational-state.mmd")
@@ -301,25 +339,50 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 
 	wantMermaidRelationships := []string{
 		"bundles ||--o{ bundle_members : contains",
+		"conversation_handles ||--o{ conversation_log_refs : locates",
+		"conversation_handles ||--o{ journal_conversation_handles : correlates",
+		"exploration_checkpoints ||--o{ exploration_checkpoint_items : contains",
+		"explorations ||--o{ exploration_checkpoints : checkpoints",
+		"explorations ||--o{ exploration_conversations : spans",
 		"findings ||--o{ verdicts : adjudicates",
+		"intent_deferrals ||--o{ intent_dispositions : anchors",
+		"intents ||--o{ intent_deferrals : defers",
+		"intents ||--o{ intent_dispositions : disposes",
+		"intents ||--o{ intent_operations : maps",
+		"intents ||--o{ intent_snapshots : revises",
+		"logical_conversations ||--o{ conversation_handles : carries",
+		"logical_conversations ||--o{ exploration_conversations : joins",
 		"projects ||--o{ aliases : scopes",
 		"projects ||--o{ artifact_bodies : scopes",
 		"projects ||--o{ backend_mappings : scopes",
 		"projects ||--o{ brainstorms : scopes",
 		"projects ||--o{ bundle_members : scopes",
 		"projects ||--o{ bundles : scopes",
+		"projects ||--o{ conversation_handles : scopes",
+		"projects ||--o{ conversation_log_refs : scopes",
 		"projects ||--o{ councils : scopes",
 		"projects ||--o{ docs_index : scopes",
 		"projects ||--o{ entity_tags : scopes",
 		"projects ||--o{ events : scopes",
+		"projects ||--o{ exploration_checkpoint_items : scopes",
+		"projects ||--o{ exploration_checkpoints : scopes",
+		"projects ||--o{ exploration_conversations : scopes",
+		"projects ||--o{ explorations : scopes",
 		"projects ||--o{ exports : scopes",
 		"projects ||--o{ findings : scopes",
 		"projects ||--o{ handoffs : scopes",
 		"projects ||--o{ hook_events : scopes",
 		"projects ||--o{ ideas : scopes",
+		"projects ||--o{ intent_deferrals : scopes",
+		"projects ||--o{ intent_dispositions : scopes",
+		"projects ||--o{ intent_operations : scopes",
+		"projects ||--o{ intent_snapshots : scopes",
+		"projects ||--o{ intents : scopes",
+		"projects ||--o{ journal_conversation_handles : scopes",
 		"projects ||--o{ journal_deferrals : scopes",
 		"projects ||--o{ journal_entries : scopes",
 		"projects ||--o{ journal_origins : scopes",
+		"projects ||--o{ logical_conversations : scopes",
 		"projects ||--o{ plans : scopes",
 		"projects ||--o{ project_paths : locates",
 		"projects ||--o{ relationships : scopes",
@@ -328,6 +391,7 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 		"projects ||--o{ session_state_snapshots : scopes",
 		"projects ||--o{ sessions : scopes",
 		"projects ||--o{ shaping_drafts : scopes",
+		"projects ||--o{ source_availability_observations : scopes",
 		"projects ||--o{ sources : scopes",
 		"projects ||--o{ sparks : scopes",
 		"projects ||--o{ specs : scopes",

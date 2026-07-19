@@ -2,10 +2,11 @@
 name: loaf-reference
 description: >-
   Documents how agents operate the Loaf CLI: command discovery via loaf --help,
-  JSON diagnosis surfaces, guided config maintenance, and troubleshooting. Use
-  when unsure which loaf command to invoke or how to validate project state. Not
-  for workflow guidance (workflow skills own their CLI contracts) or build
-  internals.
+  JSON diagnosis surfaces, config-aware maintenance, and troubleshooting. Use
+  when unsure which loaf command to invoke, how to validate project state, or
+  when asked to upgrade, diagnose, repair, configure, or bring a Loaf project
+  current. Not for workflow guidance (workflow skills own their CLI contracts)
+  or build internals.
 version: 2.0.0-alpha.9
 ---
 
@@ -66,7 +67,7 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf docs` | Manage docs/ indexing | index |
 | `loaf change` | Shape-first Change artifacts: git-canonical work context under docs/changes/ | init, check, list |
 | `loaf render` | Maintain committed durable Markdown renders | sweep |
-| `loaf state` | Manage native SQLite state | path, status, init, doctor, repair legacy-project-database, repair relationship-origin, repair journal-search, migrate markdown, migrate storage-home, migrate schema, migrate lifecycle-statuses, backup, backup verify, backup restore, restore-ephemerals, verify-ephemerals, export, export all, export triage, export spec, export release-readiness |
+| `loaf state` | Manage native SQLite state | path, status, init, doctor, repair legacy-project-database, repair relationship-origin, repair journal-search, migrate markdown, migrate storage-home, migrate schema, migrate deferrals, migrate lifecycle-statuses, backup, backup verify, backup restore, restore-ephemerals, verify-ephemerals, export, export all, export triage, export spec, export release-readiness |
 | `loaf journal` | Record and read the project-scoped journal (the durable record across all conversations) | log, recent, search, show, context, export, defer |
 | `loaf project` | Manage durable project identity | list, show, identity, rename, move, delete |
 | `loaf migrate` | Run native migration workflows | markdown, storage-home, schema, lifecycle-statuses, worktree-storage |
@@ -85,6 +86,10 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf trace` | Trace relationships for one state entity | — |
 | `loaf brainstorm` | Manage brainstorms in native SQLite state | capture, list, show, promote, archive |
 | `loaf idea` | Manage ideas in native SQLite state | list, show, capture, promote, resolve, archive |
+| `loaf intent` | Manage tracked Intent in native SQLite state; disposition is derived from append-only facts | create, defer, resume, resolve, show, list |
+| `loaf intake` | Read the deterministic local intake projection; triage judgment stays with humans and Skills | list |
+| `loaf exploration` | Manage relational Exploration continuity: immutable portable checkpoints, no lifecycle status, no current pointer | create, checkpoint, list, context, conversation |
+| `loaf conversation` | Manage logical conversations and machine-local provenance handles; handles never imply portable context | create, show, list, handle, observe |
 | `loaf spark` | Manage sparks in native SQLite state | list, show, capture, resolve, promote |
 | `loaf tag` | Manage tags in native SQLite state | list, show, add, remove |
 | `loaf bundle` | Manage bundles in native SQLite state | list, create, update, show, add, remove |
@@ -97,5 +102,6 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | Topic | Reference | Use When |
 |-------|-----------|----------|
 | Configuration maintenance | [references/configuration.md](references/configuration.md) | Checking whether a project's Loaf config is current and repairing it; wiring project-owned choices |
+| Config-aware maintenance protocol | [references/maintenance.md](references/maintenance.md) | Upgrading, diagnosing, repairing, or bringing a project current: diagnose, plan, ask, apply, verify |
 | Command routing | [references/command-routing.md](references/command-routing.md) | Deciding which command a task needs; locating the JSON diagnosis surfaces |
 | Troubleshooting | [references/troubleshooting.md](references/troubleshooting.md) | Diagnosing state, config, or alignment failures; isolating a throwaway database |

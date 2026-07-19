@@ -25,6 +25,20 @@ type ProjectDeleteResult struct {
 // be cleared when a project is removed. artifact_bodies and docs_index are handled
 // separately because they back FTS5 indexes.
 var projectScopedDeleteTables = []string{
+	"source_availability_observations",
+	"journal_conversation_handles",
+	"conversation_log_refs",
+	"conversation_handles",
+	"exploration_conversations",
+	"logical_conversations",
+	"exploration_checkpoint_items",
+	"exploration_checkpoints",
+	"explorations",
+	"intent_operations",
+	"intent_dispositions",
+	"intent_deferrals",
+	"intent_snapshots",
+	"intents",
 	"journal_deferrals",
 	"journal_origins",
 	"verdicts",

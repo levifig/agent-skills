@@ -357,9 +357,11 @@ func TestJournalContextV2ScopedCheckpointFallbackAndCursorErrors(t *testing.T) {
 		t.Fatal("wrong-project cursor succeeded")
 	}
 	otherStore.Close()
-	if _, err := store.db.ExecContext(ctx, `UPDATE sparks SET status = 'done' WHERE project_id = ? AND id = ?`, projectID, deferred[0].Spark.ID); err != nil {
+	// Disposition is canonical: resolving the Intent (not marking the legacy
+	// spark done) is what removes a deferred item from active truth.
+	if _, err := store.appendIntentDisposition(ctx, root, IntentDispositionOptions{IntentRef: deferred[0].IntentAlias, Reason: "resolved in test"}, "resolved"); err != nil {
 		store.Close()
-		t.Fatalf("resolve deferred spark: %v", err)
+		t.Fatalf("resolve deferred intent: %v", err)
 	}
 	if _, err := store.JournalContext(ctx, root, JournalContextOptions{Branch: "main", DeferralLimit: 1, Cursor: result.DeferredIntent.Cursor, CursorLayer: JournalContextLayerDeferrals}); err == nil {
 		store.Close()
@@ -660,6 +662,274 @@ func assertJournalContextSourceAvailabilityJSON(t *testing.T, layer any, want bo
 	}
 	if strings.Contains(string(data), `"available":`) {
 		t.Fatalf("layer JSON = %s, legacy available field present", data)
+	}
+}
+
+// seedRawLegacyDeferral inserts a pre-conversion journal_deferrals row (a
+// decision, an open spark, and the deferral pair) with no intent_operations
+// mapping and caller-controlled branch/text/timestamp, mirroring state written
+// before the canonical Intent model existed.
+func seedRawLegacyDeferral(t *testing.T, store *Store, projectID, operationKey, intentText, sparkText, branch, createdAt string) (string, string) {
+	t.Helper()
+	decisionID := stableMigrationID("test-legacy-decision", projectID, operationKey)
+	sparkID := stableMigrationID("test-legacy-spark", projectID, operationKey)
+	scope := "defer/" + operationKey
+	ctx := context.Background()
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO journal_entries (
+  id, project_id, entry_type, scope, message,
+  observed_branch, observed_worktree, harness_session_id,
+  session_id, spec_id, task_id, created_at, updated_at
+) VALUES (?, ?, 'decision', ?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?)
+`, decisionID, projectID, scope, "Intent: "+intentText, emptyToNil(branch), createdAt, createdAt); err != nil {
+		t.Fatalf("seed legacy decision: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO sparks (id, project_id, scope, status, text, source_id, created_at, updated_at)
+VALUES (?, ?, ?, 'open', ?, NULL, ?, ?)
+`, sparkID, projectID, scope, sparkText, createdAt, createdAt); err != nil {
+		t.Fatalf("seed legacy spark: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO journal_deferrals (project_id, operation_key, journal_entry_id, spark_id, stored_digest, created_at)
+VALUES (?, ?, ?, ?, ?, ?)
+`, projectID, operationKey, decisionID, sparkID, strings.Repeat("b", 64), createdAt); err != nil {
+		t.Fatalf("seed legacy deferral: %v", err)
+	}
+	return decisionID, sparkID
+}
+
+// seedExplorationCheckpoint inserts one immutable checkpoint with a controlled
+// sequence and timestamp so tests can assert greatest-sequence latest selection
+// and deterministic recency ordering independently of wall-clock append time.
+func seedExplorationCheckpoint(t *testing.T, store *Store, projectID, explorationID string, seq int, nextAction, createdAt string) {
+	t.Helper()
+	id := stableMigrationID("test-checkpoint", projectID, explorationID, fmt.Sprintf("%d", seq))
+	if _, err := store.db.ExecContext(context.Background(), `
+INSERT INTO exploration_checkpoints (id, project_id, exploration_id, seq, purpose, conclusions, unresolved, next_action, content_digest, created_at)
+VALUES (?, ?, ?, ?, 'purpose', 'conclusions', 'unresolved', ?, ?, ?)
+`, id, projectID, explorationID, seq, nextAction, strings.Repeat("a", 64), createdAt); err != nil {
+		t.Fatalf("seed exploration checkpoint: %v", err)
+	}
+}
+
+func TestJournalContextCanonicalDeferredIntentIsActiveTruthAheadOfLegacy(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	if _, err := Initialize(ctx, root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+
+	canonical, err := store.CreateIntent(ctx, root, IntentCreateOptions{
+		Title: "Rework retry budget", Body: "revisit the retry budget model",
+		Disposition: "deferred", Why: "needs data first", Boundary: "do not touch prod", Trigger: "when metrics land",
+		OperationID: "canonical-active-truth",
+	})
+	if err != nil {
+		t.Fatalf("CreateIntent(deferred) error = %v", err)
+	}
+
+	projectID := projectIDForTest(t, store, root)
+	// A pre-conversion legacy deferral whose decision is much newer than the
+	// canonical Intent, plus a flood of newer journal noise.
+	legacyDecision, legacySpark := seedRawLegacyDeferral(t, store, projectID, "legacy-active-truth", "legacy direction", "legacy spark text", "", "2026-07-09T12:00:00Z")
+	for i := 0; i < 40; i++ {
+		seedJournalEntry(t, store, projectID, "discover", "noise", fmt.Sprintf("noise-%02d", i), "main", fmt.Sprintf("2026-07-10T%02d:00:00Z", i%24))
+	}
+
+	result, err := store.JournalContext(ctx, root, JournalContextOptions{Branch: "main"})
+	if err != nil {
+		t.Fatalf("JournalContext() error = %v", err)
+	}
+	if result.DeferredIntent.AvailableCount != 2 || len(result.DeferredIntent.Items) != 2 {
+		t.Fatalf("deferred intent count = %d, want 2 (canonical + legacy)", result.DeferredIntent.AvailableCount)
+	}
+	first := result.DeferredIntent.Items[0]
+	if first.Intent == nil || first.Intent.Alias != canonical.Intent.Alias {
+		t.Fatalf("first deferred item = %#v, want canonical intent %s ahead of newer legacy", first, canonical.Intent.Alias)
+	}
+	if first.Intent.Body != "revisit the retry budget model" || first.Intent.Why != "needs data first" || first.Intent.Boundary != "do not touch prod" || first.Intent.RevisitTrigger != "when metrics land" {
+		t.Fatalf("canonical intent packet = %#v, want the self-sufficient deferral fields", first.Intent)
+	}
+	if first.Intent.Disposition != "deferred" {
+		t.Fatalf("canonical disposition = %q, want deferred", first.Intent.Disposition)
+	}
+	// A version-0 canonical Intent has no legacy projection: never fabricate one.
+	if first.Decision.ID != "" || first.Spark.ID != "" {
+		t.Fatalf("canonical item fabricated a legacy projection: decision=%q spark=%q", first.Decision.ID, first.Spark.ID)
+	}
+	second := result.DeferredIntent.Items[1]
+	if second.Intent != nil || second.OperationKey != "legacy-active-truth" {
+		t.Fatalf("second deferred item = %#v, want the legacy-only deferral", second)
+	}
+	if second.Decision.ID != legacyDecision || second.Spark.ID != legacySpark {
+		t.Fatalf("legacy item projection = decision %q spark %q, want %q/%q", second.Decision.ID, second.Spark.ID, legacyDecision, legacySpark)
+	}
+}
+
+func TestJournalContextDeferJournalAdapterAppearsOnceWithEnrichment(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	if _, err := Initialize(ctx, root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	deferred, err := store.DeferJournal(ctx, root, JournalDeferOptions{
+		Intent: "adapter deferral", Why: "later", Boundary: "not now", Trigger: "on resume", OperationID: "adapter-once",
+		Origin: &JournalOriginInput{EnvelopeVersion: 1, CaptureMechanism: JournalOriginMechanismSkill, Branch: "feat/x"},
+	})
+	if err != nil {
+		t.Fatalf("DeferJournal() error = %v", err)
+	}
+	result, err := store.JournalContext(ctx, root, JournalContextOptions{Branch: "feat/x"})
+	if err != nil {
+		t.Fatalf("JournalContext() error = %v", err)
+	}
+	if result.DeferredIntent.AvailableCount != 1 || len(result.DeferredIntent.Items) != 1 {
+		t.Fatalf("adapter deferral surfaced %d items, want exactly one canonical item", result.DeferredIntent.AvailableCount)
+	}
+	item := result.DeferredIntent.Items[0]
+	if item.Intent == nil || item.Intent.Alias != deferred.IntentAlias {
+		t.Fatalf("deduplicated item = %#v, want canonical intent %s", item, deferred.IntentAlias)
+	}
+	if item.Decision.ID != deferred.Decision.ID || item.Spark.ID != deferred.Spark.ID {
+		t.Fatalf("version-1 enrichment = decision %q spark %q, want %q/%q", item.Decision.ID, item.Spark.ID, deferred.Decision.ID, deferred.Spark.ID)
+	}
+	if item.Origin == nil || item.Origin.Branch != "feat/x" {
+		t.Fatalf("origin enrichment = %#v, want the mapped decision origin", item.Origin)
+	}
+}
+
+func TestJournalContextPreConversionLegacyDeferralAppears(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	if _, err := Initialize(ctx, root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	projectID := projectIDForTest(t, store, root)
+	decisionID, sparkID := seedRawLegacyDeferral(t, store, projectID, "pre-conversion", "unmigrated direction", "unmigrated spark", "", "2026-07-01T09:00:00Z")
+	result, err := store.JournalContext(ctx, root, JournalContextOptions{Branch: "main"})
+	if err != nil {
+		t.Fatalf("JournalContext() error = %v", err)
+	}
+	if result.DeferredIntent.AvailableCount != 1 || len(result.DeferredIntent.Items) != 1 {
+		t.Fatalf("legacy deferral count = %d, want 1", result.DeferredIntent.AvailableCount)
+	}
+	item := result.DeferredIntent.Items[0]
+	if item.Intent != nil {
+		t.Fatalf("legacy item carried an intent sub-object: %#v", item.Intent)
+	}
+	if item.OperationKey != "pre-conversion" || item.Decision.ID != decisionID || item.Spark.ID != sparkID {
+		t.Fatalf("legacy item = %#v, want operation pre-conversion with mapped decision/spark", item)
+	}
+}
+
+func TestJournalContextResolvedAndResumedIntentsDisappear(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	if _, err := Initialize(ctx, root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	deferrals := []struct{ op, title string }{{"defer-resolve", "resolve me"}, {"defer-resume", "resume me"}, {"defer-keep", "keep me"}}
+	created := map[string]IntentMutationResult{}
+	for _, spec := range deferrals {
+		res, err := store.CreateIntent(ctx, root, IntentCreateOptions{Title: spec.title, Body: spec.title + " body", Disposition: "deferred", Why: "w", Boundary: "b", Trigger: "t", OperationID: spec.op})
+		if err != nil {
+			t.Fatalf("CreateIntent(%s) error = %v", spec.op, err)
+		}
+		created[spec.op] = res
+	}
+	if _, err := store.appendIntentDisposition(ctx, root, IntentDispositionOptions{IntentRef: created["defer-resolve"].Intent.Alias, Reason: "done exploring"}, "resolved"); err != nil {
+		t.Fatalf("resolve error = %v", err)
+	}
+	if _, err := store.appendIntentDisposition(ctx, root, IntentDispositionOptions{IntentRef: created["defer-resume"].Intent.Alias, Reason: "back on it"}, "tracked"); err != nil {
+		t.Fatalf("resume error = %v", err)
+	}
+	result, err := store.JournalContext(ctx, root, JournalContextOptions{Branch: "main"})
+	if err != nil {
+		t.Fatalf("JournalContext() error = %v", err)
+	}
+	if result.DeferredIntent.AvailableCount != 1 || len(result.DeferredIntent.Items) != 1 {
+		t.Fatalf("deferred count = %d, want only the still-deferred intent", result.DeferredIntent.AvailableCount)
+	}
+	if got := result.DeferredIntent.Items[0].Intent; got == nil || got.Alias != created["defer-keep"].Intent.Alias {
+		t.Fatalf("surviving deferred item = %#v, want %s", got, created["defer-keep"].Intent.Alias)
+	}
+}
+
+func TestJournalContextExplorationCheckpointsLayerBoundsLatestPerExploration(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	if _, err := Initialize(ctx, root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	projectID := projectIDForTest(t, store, root)
+
+	older, err := store.CreateExploration(ctx, root, ExplorationCreateOptions{Title: "Older inquiry"})
+	if err != nil {
+		t.Fatalf("CreateExploration(older) error = %v", err)
+	}
+	newer, err := store.CreateExploration(ctx, root, ExplorationCreateOptions{Title: "Newer inquiry"})
+	if err != nil {
+		t.Fatalf("CreateExploration(newer) error = %v", err)
+	}
+	// A handle-only Exploration with no checkpoint must never surface: a handle
+	// is never proof of portable context.
+	if _, err := store.CreateExploration(ctx, root, ExplorationCreateOptions{Title: "Handle only"}); err != nil {
+		t.Fatalf("CreateExploration(handle only) error = %v", err)
+	}
+
+	// The greater sequence is the latest even when its timestamp is older.
+	seedExplorationCheckpoint(t, store, projectID, older.Exploration.ID, 1, "older superseded action", "2026-07-01T08:00:00Z")
+	seedExplorationCheckpoint(t, store, projectID, older.Exploration.ID, 2, "older latest action", "2026-07-01T07:00:00Z")
+	seedExplorationCheckpoint(t, store, projectID, newer.Exploration.ID, 1, "newer latest action", "2026-07-02T09:00:00Z")
+
+	result, err := store.JournalContext(ctx, root, JournalContextOptions{Branch: "main"})
+	if err != nil {
+		t.Fatalf("JournalContext() error = %v", err)
+	}
+	layer := result.ExplorationCheckpoints
+	if !layer.Available || layer.AvailableCount != 2 || layer.ShownCount != 2 || layer.Truncated {
+		t.Fatalf("checkpoints layer = %#v, want two checkpointed explorations, none truncated", layer)
+	}
+	if layer.Items[0].ExplorationID != newer.Exploration.ID || layer.Items[1].ExplorationID != older.Exploration.ID {
+		t.Fatalf("checkpoint order = %#v, want newest checkpoint first", layer.Items)
+	}
+	if layer.Items[1].Seq != 2 || layer.Items[1].NextAction != "older latest action" {
+		t.Fatalf("older latest checkpoint = %#v, want the greatest-sequence row", layer.Items[1])
+	}
+	if want := "loaf exploration context " + newer.Exploration.Alias; layer.Items[0].ContextCommand != want {
+		t.Fatalf("context command = %q, want %q", layer.Items[0].ContextCommand, want)
+	}
+	assertJournalContextSourceAvailabilityJSON(t, layer, true)
+
+	bounded, err := store.JournalContext(ctx, root, JournalContextOptions{Branch: "main", CheckpointsLimit: 1})
+	if err != nil {
+		t.Fatalf("JournalContext(bounded) error = %v", err)
+	}
+	checkpoints := bounded.ExplorationCheckpoints
+	if checkpoints.AvailableCount != 2 || checkpoints.ShownCount != 1 || !checkpoints.Truncated {
+		t.Fatalf("bounded checkpoints = %#v, want 1 of 2 truncated", checkpoints)
+	}
+	if want := "loaf journal context --layer exploration-checkpoints --limit 1 --branch 'main'"; checkpoints.ExpandCommand != want {
+		t.Fatalf("expand command = %q, want %q", checkpoints.ExpandCommand, want)
+	}
+	if checkpoints.Cursor != "" {
+		t.Fatalf("checkpoints layer must not expose a cursor, got %q", checkpoints.Cursor)
 	}
 }
 

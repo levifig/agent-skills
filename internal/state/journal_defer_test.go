@@ -396,9 +396,26 @@ func assertNoDeferredRows(t *testing.T, databasePath string) {
 
 func assertDeferredCounts(t *testing.T, databasePath string, journal, search, sparks, aliases, events, deferrals int) {
 	t.Helper()
-	for table, want := range map[string]int{"journal_entries": journal, "journal_search": search, "sparks": sparks, "aliases": aliases, "events": events, "journal_deferrals": deferrals} {
+	for table, want := range map[string]int{"journal_entries": journal, "journal_search": search, "sparks": sparks, "events": events, "journal_deferrals": deferrals} {
 		if got := rawCount(t, databasePath, `SELECT COUNT(*) FROM `+table); got != want {
 			t.Fatalf("%s rows = %d, want %d", table, got, want)
+		}
+	}
+	if got := rawCount(t, databasePath, `SELECT COUNT(*) FROM aliases WHERE namespace = 'spark'`); got != aliases {
+		t.Fatalf("spark alias rows = %d, want %d", got, aliases)
+	}
+	// The adapter can no longer create a legacy-only deferral: every legacy
+	// pair must be backed by one canonical Intent, one immutable deferral
+	// payload, and one version-1 operation mapping carrying the pair IDs.
+	for query, want := range map[string]int{
+		`SELECT COUNT(*) FROM intents`:                                          deferrals,
+		`SELECT COUNT(*) FROM intent_deferrals`:                                 deferrals,
+		`SELECT COUNT(*) FROM intent_operations WHERE projection_version = 1`:   deferrals,
+		`SELECT COUNT(*) FROM intent_operations WHERE journal_entry_id IS NULL`: 0,
+		`SELECT COUNT(*) FROM aliases WHERE namespace = 'intent'`:               deferrals,
+	} {
+		if got := rawCount(t, databasePath, query); got != want {
+			t.Fatalf("%s = %d, want %d", query, got, want)
 		}
 	}
 }

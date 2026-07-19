@@ -83,11 +83,17 @@ func TestJournalOriginsMigrationAppliesAfterExplicitSchema10(t *testing.T) {
 	if got, _ := store.SchemaVersion(ctx); got != journalFirstMigrationVersion {
 		t.Fatalf("schema version after explicit 10 = %d, want %d", got, journalFirstMigrationVersion)
 	}
-	if err := ApplyMigrations(ctx, store.db, []SchemaMigration{journalOriginsMigration()}); err != nil {
-		t.Fatalf("ApplyMigrations(10->11) error = %v", err)
+	postJournalFirst := []SchemaMigration{}
+	for _, migration := range SchemaMigrations() {
+		if migration.Version > journalFirstMigrationVersion {
+			postJournalFirst = append(postJournalFirst, migration)
+		}
+	}
+	if err := ApplyMigrations(ctx, store.db, postJournalFirst); err != nil {
+		t.Fatalf("ApplyMigrations(10->current) error = %v", err)
 	}
 	if got, _ := store.SchemaVersion(ctx); got != CurrentSchemaVersion() {
-		t.Fatalf("schema version after 10->11 = %d, want %d", got, CurrentSchemaVersion())
+		t.Fatalf("schema version after 10->current = %d, want %d", got, CurrentSchemaVersion())
 	}
 	var mechanism, branch, worktree, harness string
 	if err := store.db.QueryRowContext(ctx, `SELECT capture_mechanism, branch, worktree, harness_session_id FROM journal_origins WHERE journal_entry_id = 'journal-ten'`).Scan(&mechanism, &branch, &worktree, &harness); err != nil {

@@ -23,8 +23,8 @@ func TestRoutingEvalDryRunValidatesCurrentSkillSuite(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"Loaded 34 skills",
-		"Selected cases: 119",
+		"Loaded 35 skills",
+		"Selected cases: 127",
 		"Suite validation passed.",
 	} {
 		if !strings.Contains(output, want) {
@@ -52,10 +52,10 @@ func TestRoutingEvalContentHasNoPhantomSkillCases(t *testing.T) {
 func TestSkillArchitectureCountMatchesCurrentTaxonomy(t *testing.T) {
 	root := repoRoot(t)
 	body := readTextFile(t, filepath.Join(root, "docs", "knowledge", "skill-architecture.md"))
-	if !strings.Contains(body, "34 skills total: 19 workflow/default-invocable, 15 reference/knowledge") {
+	if !strings.Contains(body, "35 skills total: 19 workflow/default-invocable, 16 non-invocable") {
 		t.Fatalf("skill architecture doc missing current 34-skill taxonomy")
 	}
-	if strings.Contains(body, "33 skills") || strings.Contains(body, "35 skills") {
+	if strings.Contains(body, "33 skills") || strings.Contains(body, "34 skills") {
 		t.Fatalf("skill architecture doc still contains stale skill count")
 	}
 }

@@ -402,7 +402,7 @@ Each document gets section-by-section review. Don't dump 3 documents at once.
 ### When the Builder Wants to Keep Talking
 
 If the builder is energized and wants to explore further after the core documents are drafted, suggest:
-- `/loaf:brainstorm` for divergent exploration
+- `/brainstorm` for divergent exploration
 - `/loaf:research` for topic investigation
 - `/loaf:strategy` for deep persona/market work
 - `/loaf:shape` for bounding a specific feature

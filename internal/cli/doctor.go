@@ -44,10 +44,38 @@ type doctorCheck struct {
 }
 
 type doctorOptions struct {
-	fix     bool
-	force   bool
-	verbose bool
-	help    bool
+	fix        bool
+	force      bool
+	verbose    bool
+	help       bool
+	jsonOutput bool
+}
+
+// doctorJSONCheck mirrors one human check line: identical identity, status,
+// and messaging, with repair identity exposed for maintenance planning.
+type doctorJSONCheck struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+	Message     string `json:"message,omitempty"`
+	Detail      string `json:"detail,omitempty"`
+	Fixable     bool   `json:"fixable"`
+	RepairID    string `json:"repair_id,omitempty"`
+	Repair      string `json:"repair,omitempty"`
+}
+
+// doctorJSONOutput is the read-only machine diagnosis: it never prompts and
+// never repairs; any mutation still requires the explicit --fix contract.
+type doctorJSONOutput struct {
+	ContractVersion int               `json:"contract_version"`
+	Command         string            `json:"command"`
+	CLIVersion      string            `json:"cli_version,omitempty"`
+	Checks          []doctorJSONCheck `json:"checks"`
+	Passes          int               `json:"passes"`
+	Warnings        int               `json:"warnings"`
+	Failures        int               `json:"failures"`
+	Skips           int               `json:"skips"`
+	Passed          bool              `json:"passed"`
 }
 
 type doctorReport struct {
@@ -77,11 +105,57 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 	if distributionRoot, err := r.resolveInstalledDistributionRoot(); err == nil {
 		cliVersion = packageVersion(distributionRoot)
 	}
+	if options.jsonOutput {
+		result := runDoctorChecksJSON(doctorContext{projectRoot: runtimeRoot}, cliVersion)
+		if err := writeJSON(out, result); err != nil {
+			return err
+		}
+		if result.Failures > 0 {
+			return ExitError{Code: 1}
+		}
+		return nil
+	}
 	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot}, options, cliVersion, r.Stdin)
 	if report.Failures > 0 {
 		return ExitError{Code: 1}
 	}
 	return nil
+}
+
+// runDoctorChecksJSON runs the identical check set with no prompt or repair
+// path reachable: it reads project state and reports facts.
+func runDoctorChecksJSON(ctx doctorContext, cliVersion string) doctorJSONOutput {
+	output := doctorJSONOutput{
+		ContractVersion: 1,
+		Command:         "doctor",
+		CLIVersion:      cliVersion,
+		Checks:          []doctorJSONCheck{},
+	}
+	for _, check := range doctorChecks(cliVersion) {
+		result := safeRunDoctorCheck(check, ctx)
+		output.Checks = append(output.Checks, doctorJSONCheck{
+			Name:        check.Name,
+			Description: check.Description,
+			Status:      string(result.Status),
+			Message:     result.Message,
+			Detail:      result.Detail,
+			Fixable:     result.Fixable,
+			RepairID:    check.RepairID,
+			Repair:      check.Repair,
+		})
+		switch result.Status {
+		case doctorPass:
+			output.Passes++
+		case doctorWarn:
+			output.Warnings++
+		case doctorFail:
+			output.Failures++
+		case doctorSkip:
+			output.Skips++
+		}
+	}
+	output.Passed = output.Failures == 0
+	return output
 }
 
 func parseLoafDoctorArgs(args []string) (doctorOptions, error) {
@@ -94,6 +168,8 @@ func parseLoafDoctorArgs(args []string) (doctorOptions, error) {
 			options.force = true
 		case "--verbose":
 			options.verbose = true
+		case "--json":
+			options.jsonOutput = true
 		case "--help", "-h":
 			options.help = true
 		default:
@@ -103,16 +179,20 @@ func parseLoafDoctorArgs(args []string) (doctorOptions, error) {
 	if options.force && !options.fix {
 		return options, fmt.Errorf("--force requires --fix (usage: loaf doctor --fix --force)")
 	}
+	if options.jsonOutput && options.fix {
+		return options, fmt.Errorf("--json is read-only diagnosis and cannot be combined with --fix; apply repairs through the explicit `loaf doctor --fix` contract")
+	}
 	return options, nil
 }
 
 func writeDoctorHelp(out io.Writer) {
-	fmt.Fprint(out, "Usage: loaf doctor [--fix [--force]] [--verbose]\n\n")
+	fmt.Fprint(out, "Usage: loaf doctor [--fix [--force]] [--verbose] [--json]\n\n")
 	fmt.Fprint(out, "Diagnose Loaf project alignment (symlinks, stale files, version drift)\n\n")
 	fmt.Fprint(out, "Options:\n")
 	fmt.Fprint(out, "  --fix       Offer each safe repair and prompt y/N before applying it\n")
 	fmt.Fprint(out, "  --force     With --fix, apply every offered repair without prompting\n")
 	fmt.Fprint(out, "  --verbose   Print each check name even when passing\n")
+	fmt.Fprint(out, "  --json      Output the identical check set as read-only JSON; never prompts or repairs\n")
 	fmt.Fprint(out, "  -h, --help  Show help\n")
 }
 

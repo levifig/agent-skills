@@ -33,7 +33,7 @@ Project TDD conventions and workflow.
 
 | Symptom | Likely Cause | Solution |
 |---------|--------------|----------|
-| Can't write test first | Don't understand requirements | Clarify with `/loaf:brainstorm` or `/loaf:shape` |
+| Can't write test first | Don't understand requirements | Clarify with `/brainstorm` or `/loaf:shape` |
 | Test is too complex | Testing too much at once | Break into smaller behaviors |
 | Implementation explodes | Test scope too large | Smaller test, smaller implementation |
 | Refactor breaks tests | Tests coupled to implementation | Test behavior, not structure |

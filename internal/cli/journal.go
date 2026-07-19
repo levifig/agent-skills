@@ -109,7 +109,7 @@ func writeJournalDeferHelp(out io.Writer) {
 func writeJournalContextHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf journal context [options]", "Emit the contract-v2 active-truth continuity digest.",
 		"--branch          Branch scope (defaults to the current git branch)",
-		"--layer           Select one layer: project-synthesis, scoped-checkpoint, active-lineage, unresolved-blockers, deferred-intent, active-changes, branch-recency, transitional-tasks",
+		"--layer           Select one layer: project-synthesis, scoped-checkpoint, active-lineage, unresolved-blockers, deferred-intent, exploration-checkpoints, active-changes, branch-recency, transitional-tasks",
 		"--limit           Maximum 1..100 items for the selected layer (requires --layer)",
 		"--cursor          Continue the selected layer (requires --layer)",
 		"--from-hook       Read the harness hook payload on stdin and exit silently for subagent invocations",
@@ -821,14 +821,15 @@ func (r Runner) runJournalContext(args []string, out io.Writer, runtime state.Ru
 }
 
 const (
-	journalContextLayerProjectSynthesis = "project-synthesis"
-	journalContextLayerScopedCheckpoint = "scoped-checkpoint"
-	journalContextLayerActiveLineage    = "active-lineage"
-	journalContextLayerBlockers         = "unresolved-blockers"
-	journalContextLayerDeferredIntent   = "deferred-intent"
-	journalContextLayerBranchRecency    = "branch-recency"
-	journalContextLayerTasks            = "transitional-tasks"
-	defaultCLIJournalContextLimit       = 10
+	journalContextLayerProjectSynthesis       = "project-synthesis"
+	journalContextLayerScopedCheckpoint       = "scoped-checkpoint"
+	journalContextLayerActiveLineage          = "active-lineage"
+	journalContextLayerBlockers               = "unresolved-blockers"
+	journalContextLayerDeferredIntent         = "deferred-intent"
+	journalContextLayerExplorationCheckpoints = "exploration-checkpoints"
+	journalContextLayerBranchRecency          = "branch-recency"
+	journalContextLayerTasks                  = "transitional-tasks"
+	defaultCLIJournalContextLimit             = 10
 )
 
 var canonicalJournalContextLayers = []string{
@@ -837,6 +838,7 @@ var canonicalJournalContextLayers = []string{
 	journalContextLayerActiveLineage,
 	journalContextLayerBlockers,
 	journalContextLayerDeferredIntent,
+	journalContextLayerExplorationCheckpoints,
 	journalContextLayerActiveChanges,
 	journalContextLayerBranchRecency,
 	journalContextLayerTasks,
@@ -857,14 +859,15 @@ type journalContextCLIOptions struct {
 }
 
 type journalContextLayersJSON struct {
-	ProjectSynthesis   *state.JournalContextJournalLayer    `json:"project_synthesis,omitempty"`
-	ScopedCheckpoint   *state.JournalContextCheckpointLayer `json:"scoped_checkpoint,omitempty"`
-	ActiveLineage      *state.JournalContextJournalLayer    `json:"active_lineage,omitempty"`
-	UnresolvedBlockers *state.JournalContextBlockerLayer    `json:"unresolved_blockers,omitempty"`
-	DeferredIntent     *state.JournalContextDeferralLayer   `json:"deferred_intent,omitempty"`
-	ActiveChanges      *activeChangeLayer                   `json:"active_changes,omitempty"`
-	BranchRecency      *state.JournalContextJournalLayer    `json:"branch_recency,omitempty"`
-	TransitionalTasks  *state.JournalContextTaskLayer       `json:"transitional_tasks,omitempty"`
+	ProjectSynthesis       *state.JournalContextJournalLayer     `json:"project_synthesis,omitempty"`
+	ScopedCheckpoint       *state.JournalContextCheckpointLayer  `json:"scoped_checkpoint,omitempty"`
+	ActiveLineage          *state.JournalContextJournalLayer     `json:"active_lineage,omitempty"`
+	UnresolvedBlockers     *state.JournalContextBlockerLayer     `json:"unresolved_blockers,omitempty"`
+	DeferredIntent         *state.JournalContextDeferralLayer    `json:"deferred_intent,omitempty"`
+	ExplorationCheckpoints *state.JournalContextCheckpointsLayer `json:"exploration_checkpoints,omitempty"`
+	ActiveChanges          *activeChangeLayer                    `json:"active_changes,omitempty"`
+	BranchRecency          *state.JournalContextJournalLayer     `json:"branch_recency,omitempty"`
+	TransitionalTasks      *state.JournalContextTaskLayer        `json:"transitional_tasks,omitempty"`
 }
 
 type journalContextCLIResult struct {
@@ -930,6 +933,9 @@ func parseJournalContextArgs(args []string) (journalContextCLIOptions, error) {
 	}
 	if (options.layer == journalContextLayerProjectSynthesis || options.layer == journalContextLayerScopedCheckpoint) && options.cursor != "" {
 		return journalContextCLIOptions{}, fmt.Errorf("--cursor is not supported for intrinsic one-item layer %s", options.layer)
+	}
+	if options.layer == journalContextLayerExplorationCheckpoints && options.cursor != "" {
+		return journalContextCLIOptions{}, fmt.Errorf("--cursor is not supported for layer %s; widen the bound with --limit", options.layer)
 	}
 	if options.claudeCode && !options.fromHook {
 		return journalContextCLIOptions{}, errors.New("--claude-code requires --from-hook")
@@ -1072,6 +1078,8 @@ func journalContextStateLayer(layer string) string {
 		return state.JournalContextLayerBlockers
 	case journalContextLayerDeferredIntent:
 		return state.JournalContextLayerDeferrals
+	case journalContextLayerExplorationCheckpoints:
+		return state.JournalContextLayerCheckpoints
 	case journalContextLayerBranchRecency:
 		return state.JournalContextLayerBranch
 	case journalContextLayerTasks:
@@ -1089,6 +1097,8 @@ func setJournalContextStateLimit(options *state.JournalContextOptions, layer str
 		options.BlockerLimit = limit
 	case journalContextLayerDeferredIntent:
 		options.DeferralLimit = limit
+	case journalContextLayerExplorationCheckpoints:
+		options.CheckpointsLimit = limit
 	case journalContextLayerBranchRecency:
 		options.BranchLimit = limit
 	case journalContextLayerTasks:
@@ -1124,6 +1134,7 @@ func rewriteJournalContextExpandCommands(result *state.JournalContext, active *a
 	result.ActiveLineage.ExpandCommand = journalContextExpandCommand(journalContextLayerActiveLineage, result.ActiveLineage.Cursor, options.branch, limit)
 	result.UnresolvedBlockers.ExpandCommand = journalContextExpandCommand(journalContextLayerBlockers, result.UnresolvedBlockers.Cursor, options.branch, limit)
 	result.DeferredIntent.ExpandCommand = journalContextExpandCommand(journalContextLayerDeferredIntent, result.DeferredIntent.Cursor, options.branch, limit)
+	result.ExplorationCheckpoints.ExpandCommand = journalContextExpandCommand(journalContextLayerExplorationCheckpoints, "", options.branch, limit)
 	active.ExpandCommand = journalContextExpandCommand(journalContextLayerActiveChanges, active.Cursor, options.branch, limit)
 	result.BranchRecency.ExpandCommand = journalContextExpandCommand(journalContextLayerBranchRecency, result.BranchRecency.Cursor, options.branch, limit)
 	result.TransitionalTasks.ExpandCommand = journalContextExpandCommand(journalContextLayerTasks, result.TransitionalTasks.Cursor, options.branch, limit)
@@ -1160,6 +1171,9 @@ func composeJournalContextCLIResult(result state.JournalContext, active activeCh
 	}
 	if include(journalContextLayerDeferredIntent) {
 		output.Layers.DeferredIntent = &result.DeferredIntent
+	}
+	if include(journalContextLayerExplorationCheckpoints) {
+		output.Layers.ExplorationCheckpoints = &result.ExplorationCheckpoints
 	}
 	if include(journalContextLayerActiveChanges) {
 		output.Layers.ActiveChanges = &active
@@ -1208,7 +1222,18 @@ func writeJournalContextHuman(out io.Writer, result journalContextCLIResult) {
 	if layer := result.Layers.DeferredIntent; layer != nil {
 		writeJournalLayerHuman(out, journalContextLayerDeferredIntent, layer.Available, layer.AvailableCount, layer.ShownCount, layer.ExpandCommand)
 		for _, item := range layer.Items {
-			fmt.Fprintf(out, "    %s: %s\n", item.OperationKey, item.Spark.Text)
+			writeDeferredIntentItemHuman(out, item)
+		}
+	}
+	if layer := result.Layers.ExplorationCheckpoints; layer != nil {
+		writeJournalLayerHuman(out, journalContextLayerExplorationCheckpoints, layer.Available, layer.AvailableCount, layer.ShownCount, layer.ExpandCommand)
+		for _, item := range layer.Items {
+			reference := item.Alias
+			if reference == "" {
+				reference = item.ExplorationID
+			}
+			fmt.Fprintf(out, "    %s: %s / Next: %s\n", reference, item.Title, item.NextAction)
+			fmt.Fprintf(out, "      resume: %s\n", item.ContextCommand)
 		}
 	}
 	if layer := result.Layers.ActiveChanges; layer != nil {
@@ -1232,6 +1257,23 @@ func writeJournalContextHuman(out io.Writer, result journalContextCLIResult) {
 	for _, diagnostic := range result.Diagnostics {
 		fmt.Fprintf(out, "  diagnostic %s: %s\n", diagnostic.Code, diagnostic.Message)
 	}
+}
+
+// writeDeferredIntentItemHuman renders one deferred-intent line. A canonical
+// Intent leads with its alias-or-id, disposition, and the self-sufficient
+// packet fields, then an exact read command. A pre-conversion legacy row keeps
+// the operation-key packet line so unmigrated deferrals stay legible.
+func writeDeferredIntentItemHuman(out io.Writer, item state.JournalContextDeferralItem) {
+	if item.Intent == nil {
+		fmt.Fprintf(out, "    %s: %s\n", item.OperationKey, item.Spark.Text)
+		return
+	}
+	reference := item.Intent.Alias
+	if reference == "" {
+		reference = item.Intent.ID
+	}
+	fmt.Fprintf(out, "    %s (%s): Intent: %s / Why: %s / Boundary: %s / Trigger: %s\n", reference, item.Intent.Disposition, item.Intent.Body, item.Intent.Why, item.Intent.Boundary, item.Intent.RevisitTrigger)
+	fmt.Fprintf(out, "      read: loaf intent show %s\n", reference)
 }
 
 func writeJournalLayerHuman(out io.Writer, name string, available bool, availableCount, shownCount int, expandCommand string) {
