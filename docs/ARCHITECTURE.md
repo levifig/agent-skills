@@ -204,7 +204,7 @@ Substantive changes to skills, guidance docs, or operating principles warrant re
 
 Codex is plugin-dependent — it may not be available in all environments. `loaf:reviewer` is the floor; the adversarial pass is recommended when the change is substantive enough that a design defect would compound across many future invocations (skill rewrites, lifecycle codifications, hook-policy changes).
 
-This principle shapes how Loaf evolves substantive guidance. Evidence: the architecture-skill tightening + ADR deprecations (PR #46) shipped through three review-driven refinement rounds, with each reviewer catching defect classes the other missed.
+This principle shapes how Loaf evolves substantive guidance. Evidence: the architecture-skill tightening + ADR deprecations (PR #46) shipped through three review-driven refinement rounds, with each reviewer catching defect classes the other missed. PR #122 extended the evidence beyond guidance: after two independent Claude reviews of the intent-exploration foundation, a Codex adversarial pass over the same diff found a state-integrity defect (legacy operation-key capture), a schema constraint gap (cross-intent deferral references), and eleven further findings. Treat the adversarial pass as recommended for foundational state-model and persistence changes as well, not only guidance.
 
 ### Recategorization as a General Lifecycle Pattern
 
@@ -385,6 +385,8 @@ CWD-relative fixtures are forbidden for subprocess tests. The old Vitest suite e
 `realpath` is required on macOS because the system tmpdir (`/var/folders/...`) is reached through a `/private/var/folders/...` symlink; without realpath, subprocess cwd comparisons can fail.
 
 The active test harness is now Go. `npm test` delegates to `go test ./...`, and `npm run typecheck` compiles all Go packages with `go test ./... -run=^$`.
+
+Migration and state-classification code gets one explicit fixture per supported starting state — every schema version a classifier branches on — never transitive coverage through neighboring versions. The v2.0.0-alpha.10 regression shipped exactly through an accepted "covered transitively" gap: schema-11 databases were unclassifiable and unupgradeable until the same-day alpha.11 hotfix (#124). A review note of "unproven but transitively covered" on classification code is blocking, not advisory.
 
 ## Cross-Cutting Patterns
 
