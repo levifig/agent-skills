@@ -7,7 +7,7 @@ description: >-
   being parked for later. Not for routine journal continuity (use orchestration)
   or an end-of-conversation checkpoint (use wrap). Produces a disposable handoff
   artifact that housekeeping deletes after confirmed deprecation.
-version: 2.0.0-alpha.10
+version: 2.0.0-alpha.11
 ---
 
 # Handoff

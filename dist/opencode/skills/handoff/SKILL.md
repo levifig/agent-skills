@@ -8,7 +8,7 @@ description: >-
   or an end-of-conversation checkpoint (use wrap). Produces a disposable handoff
   artifact that housekeeping deletes after confirmed deprecation.
 subtask: false
-version: 2.0.0-alpha.10
+version: 2.0.0-alpha.11
 ---
 
 # Handoff

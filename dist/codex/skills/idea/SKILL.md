@@ -7,7 +7,7 @@ description: >-
   capture primitives routed through triage, which chooses dispositions such as
   tracking an Intent. Not for divergent inquiry (use explore), processing the
   intake queue (use triage), or shaping (use shape).
-version: 2.0.0-alpha.10
+version: 2.0.0-alpha.11
 ---
 
 # Idea

@@ -7,7 +7,7 @@ description: >-
   database schema (use ...
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 2.0.0-alpha.10
+version: 2.0.0-alpha.11
 ---
 
 # TypeScript Development

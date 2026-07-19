@@ -7,7 +7,7 @@ description: >-
   change proposa...
 user-invocable: true
 argument-hint: '[topic]'
-version: 2.0.0-alpha.10
+version: 2.0.0-alpha.11
 ---
 
 # Research

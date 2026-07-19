@@ -6,7 +6,7 @@ description: >-
   final merge gate. Produces a reviewed, squash-merged PR and post-merge
   cleanup. Not for version bumps, tags, GitHub Releases, or install verification
   (use release).
-version: 2.0.0-alpha.10
+version: 2.0.0-alpha.11
 ---
 
 # Ship

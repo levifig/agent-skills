@@ -7,7 +7,7 @@ description: >-
   capture primitives ro...
 user-invocable: true
 argument-hint: '[idea description]'
-version: 2.0.0-alpha.10
+version: 2.0.0-alpha.11
 ---
 
 # Idea

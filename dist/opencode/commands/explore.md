@@ -9,7 +9,7 @@ description: >-
   research), continuing implementation or delivery work (use implement),
   processing the intake queue (use triage), shaping a bounded Change (use
   shape), or quick capture (use idea).
-version: 2.0.0-alpha.10
+version: 2.0.0-alpha.11
 ---
 
 # Explore
