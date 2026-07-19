@@ -7,7 +7,7 @@ description: >-
   progress tracking. No...
 user-invocable: true
 argument-hint: '[TASK-XXX | SPEC-XXX | TASK-XXX..YYY | TASK-XXX,YYY | description]'
-version: 2.0.0-alpha.9
+version: 2.0.0-alpha.10
 ---
 
 # Implement

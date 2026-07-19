@@ -1,6 +1,6 @@
 {
   "evidence_version": 2,
-  "timestamp": "2026-07-19T14:24:39.196Z",
+  "timestamp": "2026-07-19T14:46:46.425Z",
   "target": "claude-code",
   "surface": "cli",
   "version": "2.1.215",
@@ -41,7 +41,7 @@
   "stderr_empty": true,
   "model_visible_marker_observed": true,
   "assistant_marker_match": true,
-  "marker": "LOAF_U8_SMOKE_A274C3210AAF",
+  "marker": "LOAF_U8_SMOKE_FD986900D706",
   "hook_observation": {
     "event_name": "SessionStart:startup",
     "native_json": true,

@@ -8,7 +8,7 @@ description: >-
   tracking an Intent. Not for divergent inquiry (use explore), processing the
   intake queue (use triage), or shaping (use shape).
 subtask: false
-version: 2.0.0-alpha.9
+version: 2.0.0-alpha.10
 ---
 
 # Idea

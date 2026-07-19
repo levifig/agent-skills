@@ -6,7 +6,7 @@ description: >-
   when unsure which loaf command to invoke, how to validate project state, or
   when asked to upg...
 user-invocable: false
-version: 2.0.0-alpha.9
+version: 2.0.0-alpha.10
 ---
 
 # Loaf Reference

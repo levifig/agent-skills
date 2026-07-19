@@ -8,6 +8,23 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
+## [2.0.0-alpha.10] - 2026-07-19
+
+### Added
+
+- Track directions as first-class Intents with append-only dispositions: `loaf intent create/defer/resume/resolve/show/list`, retry-safe compound deferral through one canonical per-project operation mapping, and immutable self-sufficient deferral payloads (#122).
+- Develop inquiries as durable Explorations that survive compaction and harness changes: `loaf exploration create/checkpoint/list/context` with four required portable checkpoint fields capped at 4096 bytes each, plus explicit conversation provenance through `loaf conversation create/show/list/handle add/observe` (#122).
+- Read the local intake queue with `loaf intake list`: unresolved sparks, ideas, brainstorms, Intents, and pre-conversion legacy deferrals, each projected exactly once with exact follow-up commands (#122).
+- Convert historical `journal defer` records into canonical deferred Intents with `loaf state migrate deferrals`: a non-mutating dry-run manifest and a backup-first, rerunnable apply that preserves every legacy row and links historical provenance (#122).
+- Diagnose and plan maintenance without mutation: `loaf doctor --json` mirrors the human checks read-only, and `loaf install --upgrade --dry-run --json` reports the complete upgrade plan with consent requirements (#122).
+- New `/explore` workflow skill: divergent inquiry with checkpoint discipline, portable resumption, and Intent capture (#122).
+
+### Changed
+
+- `journal defer` is now a compatibility adapter over the canonical Intent model: every new write records the Intent behind the legacy decision/spark pair, retries converge across entry points with digest telemetry, and keys owned by pre-conversion deferrals cannot be captured by unrelated writes (#122).
+- `loaf journal context` treats unresolved deferred Intents as active truth regardless of journal recency and adds a bounded exploration-checkpoints layer with exact resume commands (#122).
+- `/triage` processes the full intake queue with explicit dispositions (discard, retain, track, defer, resume, resolve, explore, shape); `/idea` narrows to pure capture; brainstorm's divergent stance now lives inside `/explore` (#122).
+
 ## [2.0.0-alpha.9] - 2026-07-18
 
 ### Fixed
