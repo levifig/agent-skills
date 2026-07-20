@@ -9,7 +9,7 @@ description: >-
   shape. Not for reading a single known item (use loaf intent show or journal
   directly), capturing new ideas (use idea), divergent inquiry (use explore), or
   bounding one chosen direction (use shape).
-version: 2.0.0-alpha.11
+version: 2.0.0-alpha.12
 ---
 
 # Triage

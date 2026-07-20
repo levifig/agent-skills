@@ -13,7 +13,7 @@ description: >-
   numbered spec or task file. Not for quick capture (use idea) or open-ended
   divergent thinking before scope exists (use brainstorm).
 subtask: false
-version: 2.0.0-alpha.11
+version: 2.0.0-alpha.12
 ---
 
 # Shape

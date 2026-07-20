@@ -7,7 +7,7 @@ description: >-
   technique from it. Not a primary entry point — route "explore this" or "help
   me think through options" to explore.
 subtask: false
-version: 2.0.0-alpha.11
+version: 2.0.0-alpha.12
 ---
 
 # Brainstorm

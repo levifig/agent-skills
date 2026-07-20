@@ -1,6 +1,6 @@
 {
   "evidence_version": 2,
-  "timestamp": "2026-07-19T20:41:39.037Z",
+  "timestamp": "2026-07-20T12:14:46.271Z",
   "target": "opencode",
   "surface": "cli",
   "version": "1.18.3",
@@ -39,10 +39,10 @@
   "root_session_lookup_proven": true,
   "no_auth_supplied": true,
   "cleanup_succeeded": true,
-  "marker": "LOAF_OPENCODE_U8_870D0055A736",
+  "marker": "LOAF_OPENCODE_U8_A303AB34B844",
   "candidate_artifacts": {
     "hooks_path": "dist/opencode/plugins/hooks.ts",
-    "hooks_sha256": "7b4e2b359bd1c9904fabe6e6778082084bae794e757e7a383fabddbcddf857e0",
+    "hooks_sha256": "936aa1c7b106156596f99461454abf77740b4fe5171a071a44ffcef4f1d418b1",
     "native_binary_path": "bin/native/darwin-arm64/loaf",
     "native_binary_sha256": "0aa8f3f4babf64a9eb34dbcba9fb90b0f09b7978e6e2d6eadb395d7636908bd9"
   }

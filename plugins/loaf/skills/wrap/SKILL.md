@@ -6,7 +6,7 @@ description: >-
   entry to the project journal when there is synthesis worth saving. Use at the
   end of a work s...
 user-invocable: true
-version: 2.0.0-alpha.11
+version: 2.0.0-alpha.12
 ---
 
 # Wrap

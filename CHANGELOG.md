@@ -8,6 +8,18 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
+## [2.0.0-alpha.12] - 2026-07-20
+
+### Changed
+
+- Codex-managed guidance, hooks, and execpolicy rules now render the stable PATH entrypoint (for example `/opt/homebrew/bin/loaf`) instead of the versioned Homebrew Cellar target, so package upgrades no longer invalidate installed policy or strand running Codex tasks; symlink-target validation against forbidden roots is unchanged and now covers both symlink directions (#127).
+
+### Fixed
+
+- Recognize the relationship provenance written by Intent creation, Exploration creation, and legacy-deferral conversion: every writer now shares one closed origin vocabulary, so `loaf doctor` no longer reports permanent unknown-origin warnings on healthy databases (#127).
+- `loaf state repair relationship-origin` reclassifies the retired legacy origins (`intent-create`, `legacy-conversion`, `exploration-create`, `system`) to `command`, backup-first and idempotent; bare invocation is reclassify-only, `--origin imported|manual` still enables the missing-origin backfill, and unrecognized foreign origins are reported but never rewritten (#127).
+- Live help agrees with dispatchable commands: `loaf state migrate --help` lists all six sources from the same registry that dispatches them, and bare or leaf `--help` invocations (`migrate`, `conversation handle add`, `exploration conversation add`) print usage and exit 0 (#127).
+
 ## [2.0.0-alpha.11] - 2026-07-19
 
 ### Fixed
