@@ -1001,8 +1001,8 @@ func writeIntentSourceRelationshipsTx(ctx context.Context, tx *sql.Tx, projectID
 		relationshipID := stableMigrationID("relationship", projectID, entity.Kind, entity.ID, "source-of", "intent", intentID)
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
-VALUES (?, ?, ?, ?, 'intent', ?, 'source-of', 'recorded by intent create', 'intent-create', ?, ?)
-`, relationshipID, projectID, entity.Kind, entity.ID, intentID, now, now); err != nil {
+VALUES (?, ?, ?, ?, 'intent', ?, 'source-of', 'recorded by intent create', ?, ?, ?)
+`, relationshipID, projectID, entity.Kind, entity.ID, intentID, relationshipOriginCommand, now, now); err != nil {
 			return nil, &IntentTransactionError{Stage: "relationship", Err: err}
 		}
 		sources = append(sources, TraceRelationship{Direction: "inbound", Type: "source-of", Entity: entity, Reason: "recorded by intent create"})

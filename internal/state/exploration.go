@@ -602,8 +602,8 @@ func writeExplorationSourceRelationshipsTx(ctx context.Context, tx *sql.Tx, proj
 		relationshipID := stableMigrationID("relationship", projectID, "exploration", explorationID, relationshipType, entity.Kind, entity.ID)
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
-VALUES (?, ?, 'exploration', ?, ?, ?, ?, 'recorded by exploration create', 'exploration-create', ?, ?)
-`, relationshipID, projectID, explorationID, entity.Kind, entity.ID, relationshipType, now, now); err != nil {
+VALUES (?, ?, 'exploration', ?, ?, ?, ?, 'recorded by exploration create', ?, ?, ?)
+`, relationshipID, projectID, explorationID, entity.Kind, entity.ID, relationshipType, relationshipOriginCommand, now, now); err != nil {
 			return &ExplorationTransactionError{Stage: "relationship", Err: err}
 		}
 	}

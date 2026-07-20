@@ -2788,7 +2788,7 @@ func TestRunnerStateHelpIsNative(t *testing.T) {
 		{name: "state doctor", args: []string{"state", "doctor", "--help"}, want: "Usage: loaf state doctor [--fix] [--dry-run] [--json]"},
 		{name: "state repair", args: []string{"state", "repair", "--help"}, want: "Usage: loaf state repair <target> [options]"},
 		{name: "state repair legacy-project-database", args: []string{"state", "repair", "legacy-project-database", "--help"}, want: "Usage: loaf state repair legacy-project-database [--dry-run|--apply] [--json]"},
-		{name: "state repair relationship-origin", args: []string{"state", "repair", "relationship-origin", "--help"}, want: "Usage: loaf state repair relationship-origin --origin <imported|manual> [--dry-run|--apply] [--json]"},
+		{name: "state repair relationship-origin", args: []string{"state", "repair", "relationship-origin", "--help"}, want: "Usage: loaf state repair relationship-origin [--origin <imported|manual>] [--dry-run|--apply] [--json]"},
 		{name: "state repair journal-search", args: []string{"state", "repair", "journal-search", "--help"}, want: "Usage: loaf state repair journal-search [--dry-run|--apply] [--json]"},
 		{name: "state migrate", args: []string{"state", "migrate", "--help"}, want: "Usage: loaf state migrate <source> [options]"},
 		{name: "project list", args: []string{"project", "list", "--help"}, want: "Usage: loaf project list [--json]"},
@@ -2837,7 +2837,7 @@ func TestRunnerStateAndProjectJSONHelpNamesContracts(t *testing.T) {
 		{name: "project rename", args: []string{"project", "rename", "--help"}, wants: []string{"--json", "friendly name", "database path", "applied status"}},
 		{name: "project move", args: []string{"project", "move", "--help"}, wants: []string{"--json", "current path", "database path", "applied status"}},
 		{name: "state repair legacy", args: []string{"state", "repair", "legacy-project-database", "--help"}, wants: []string{"--json", "archive plan/result", "global database scope", "project identity"}},
-		{name: "state repair relationship", args: []string{"state", "repair", "relationship-origin", "--help"}, wants: []string{"--json", "repair plan/result", "global database scope", "project identity"}},
+		{name: "state repair relationship", args: []string{"state", "repair", "relationship-origin", "--help"}, wants: []string{"--json", "repair mode, plan/result", "global database scope", "project identity", "omit for reclassify-only"}},
 		{name: "state repair journal-search", args: []string{"state", "repair", "journal-search", "--help"}, wants: []string{"--json", "parity counts", "backup verification", "exact parity"}},
 		{name: "state migrate markdown", args: []string{"state", "migrate", "markdown", "--help"}, wants: []string{"--json", "migration contract", "project context", "counts"}},
 		{name: "state migrate storage-home", args: []string{"state", "migrate", "storage-home", "--help"}, wants: []string{"--json", "migration contract", "global database paths", "project identity"}},
@@ -3782,6 +3782,202 @@ VALUES ('relationship-without-origin', ?, 'task', 'task-one', 'spec', 'spec-one'
 	}
 	if strings.Contains(noopHumanOut.String(), "next: rerun with --apply") {
 		t.Fatalf("no-op human output = %q, want no apply guidance when no rows match", noopHumanOut.String())
+	}
+}
+
+// The Change's Observable Workflow invokes the repair without --origin. This
+// pins that exact contract end-to-end: bare dry-run reports the reclassifiable
+// rows, bare apply reclassifies backup-first, and a rerun is a no-op — all
+// without ever backfilling the row that carries no origin.
+func TestRunnerStateRepairRelationshipOriginBareInvocationReclassifiesOnly(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	var initOut bytes.Buffer
+	if err := (Runner{Stdout: &initOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	initialized := decodeStateStatus(t, initOut.Bytes())
+	db, err := sql.Open("sqlite3", initialized.DatabasePath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	for id, origin := range map[string]string{
+		"relationship-intent-create":     "intent-create",
+		"relationship-legacy-conversion": "legacy-conversion",
+	} {
+		if _, err := db.Exec(`
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+VALUES (?, ?, 'task', 'task-one', 'spec', 'spec-one', 'implements', 'seeded row', ?, '2026-07-19T10:00:00Z', '2026-07-19T10:00:00Z')
+`, id, initialized.ProjectID, origin); err != nil {
+			t.Fatalf("insert %s error = %v", id, err)
+		}
+	}
+	if _, err := db.Exec(`
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
+VALUES ('relationship-without-origin', ?, 'task', 'task-two', 'spec', 'spec-two', 'implements', 'legacy row', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+		t.Fatalf("insert relationship without origin error = %v", err)
+	}
+
+	var dryRunOut bytes.Buffer
+	if err := (Runner{Stdout: &dryRunOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "repair", "relationship-origin", "--dry-run"}); err != nil {
+		t.Fatalf("bare state repair relationship-origin --dry-run error = %v", err)
+	}
+	for _, want := range []string{
+		"mode: reclassify-only",
+		"reclassify intent-create -> command: matched 1, updated 0",
+		"reclassify legacy-conversion -> command: matched 1, updated 0",
+		"missing origin: 1 row(s) left untouched; pass --origin imported|manual to backfill them",
+		"2 relationship row(s) with unknown origin would be reclassified to 'command'",
+		"next: rerun with --apply after reviewing the reclassification plan",
+	} {
+		if !strings.Contains(dryRunOut.String(), want) {
+			t.Fatalf("bare dry-run output = %q, want %q", dryRunOut.String(), want)
+		}
+	}
+	// No backfill ran, so no line may report one — 'matched'/'updated' are the
+	// backfill's own counters and would read as a backfill that did nothing.
+	for _, unwanted := range []string{"matched: ", "updated: ", "origin: imported"} {
+		if strings.Contains(dryRunOut.String(), unwanted) {
+			t.Fatalf("bare dry-run output = %q, must not contain backfill line %q", dryRunOut.String(), unwanted)
+		}
+	}
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM relationships WHERE origin = 'command'`); got != 0 {
+		t.Fatalf("reclassified rows after dry-run = %d, want 0", got)
+	}
+
+	var applyOut bytes.Buffer
+	if err := (Runner{Stdout: &applyOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "repair", "relationship-origin", "--apply", "--json"}); err != nil {
+		t.Fatalf("bare state repair relationship-origin --apply error = %v", err)
+	}
+	applied := decodeRelationshipOriginRepairResult(t, applyOut.Bytes())
+	if applied.Mode != state.RelationshipOriginRepairModeReclassifyOnly {
+		t.Fatalf("apply Mode = %q, want %q", applied.Mode, state.RelationshipOriginRepairModeReclassifyOnly)
+	}
+	if applied.Origin != "" {
+		t.Fatalf("apply Origin = %q, want empty without --origin", applied.Origin)
+	}
+	if !applied.Applied {
+		t.Fatal("apply Applied = false, want true")
+	}
+	if applied.Updated != 0 {
+		t.Fatalf("apply Updated = %d, want 0 — bare invocation must not backfill", applied.Updated)
+	}
+	if applied.BackupPath == "" {
+		t.Fatal("apply BackupPath is empty, want a backup-first reclassification")
+	}
+	if _, err := os.Stat(applied.BackupPath); err != nil {
+		t.Fatalf("apply backup does not exist: %v", err)
+	}
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM relationships WHERE origin = 'command'`); got != 2 {
+		t.Fatalf("reclassified rows after apply = %d, want 2", got)
+	}
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM relationships WHERE origin IS NULL OR TRIM(origin) = ''`); got != 1 {
+		t.Fatalf("missing-origin rows after apply = %d, want the row left untouched", got)
+	}
+
+	var rerunOut bytes.Buffer
+	if err := (Runner{Stdout: &rerunOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "repair", "relationship-origin", "--apply", "--json"}); err != nil {
+		t.Fatalf("bare state repair relationship-origin rerun error = %v", err)
+	}
+	rerun := decodeRelationshipOriginRepairResult(t, rerunOut.Bytes())
+	if rerun.BackupPath != "" {
+		t.Fatalf("rerun BackupPath = %q, want no backup for a no-op", rerun.BackupPath)
+	}
+	for _, reclassification := range rerun.Reclassified {
+		if reclassification.Matched != 0 || reclassification.Updated != 0 {
+			t.Fatalf("rerun reclassification = %#v, want zero matched and updated", reclassification)
+		}
+	}
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM relationships WHERE origin = 'command'`); got != 2 {
+		t.Fatalf("reclassified rows after rerun = %d, want 2", got)
+	}
+}
+
+func TestRunnerStateRepairRelationshipOriginTextReportsReclassifyAndForeign(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+
+	var initOut bytes.Buffer
+	if err := (Runner{Stdout: &initOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init", "--json"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	initialized := decodeStateStatus(t, initOut.Bytes())
+	db, err := sql.Open("sqlite3", initialized.DatabasePath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	for id, origin := range map[string]string{
+		"relationship-intent-create":      "intent-create",
+		"relationship-exploration-create": "exploration-create",
+		"relationship-mystery-import":     "mystery-import",
+	} {
+		if _, err := db.Exec(`
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
+VALUES (?, ?, 'task', 'task-one', 'spec', 'spec-one', 'implements', 'seeded row', ?, '2026-07-19T10:00:00Z', '2026-07-19T10:00:00Z')
+`, id, initialized.ProjectID, origin); err != nil {
+			t.Fatalf("insert %s error = %v", id, err)
+		}
+	}
+
+	// Text-mode dry-run must disclose the reclassification plan and the
+	// preserved foreign origins, not just the missing-origin backfill.
+	var dryRunOut bytes.Buffer
+	err = Runner{
+		Stdout:     &dryRunOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "repair", "relationship-origin", "--origin", "imported", "--dry-run"})
+	if err != nil {
+		t.Fatalf("state repair relationship-origin text dry-run error = %v", err)
+	}
+	for _, want := range []string{
+		"matched: 0",
+		"reclassify exploration-create -> command: matched 1, updated 0",
+		"reclassify intent-create -> command: matched 1, updated 0",
+		"reclassify legacy-conversion -> command: matched 0, updated 0",
+		`warn: foreign origin "mystery-import" on 1 relationship row(s); left for doctor, never rewritten`,
+		"2 relationship row(s) with unknown origin would be reclassified to 'command'",
+		"next: rerun with --apply",
+	} {
+		if !strings.Contains(dryRunOut.String(), want) {
+			t.Fatalf("text dry-run output = %q, want %q", dryRunOut.String(), want)
+		}
+	}
+
+	// Text-mode apply must disclose the backup and the reclassified counts
+	// even when the missing-origin backfill matches nothing.
+	var applyOut bytes.Buffer
+	err = Runner{
+		Stdout:     &applyOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "repair", "relationship-origin", "--origin", "imported", "--apply"})
+	if err != nil {
+		t.Fatalf("state repair relationship-origin text apply error = %v", err)
+	}
+	for _, want := range []string{
+		"backup: ",
+		"reclassify exploration-create -> command: matched 1, updated 1",
+		"reclassify intent-create -> command: matched 1, updated 1",
+		`warn: foreign origin "mystery-import" on 1 relationship row(s); left for doctor, never rewritten`,
+		"applied: true",
+	} {
+		if !strings.Contains(applyOut.String(), want) {
+			t.Fatalf("text apply output = %q, want %q", applyOut.String(), want)
+		}
+	}
+	if strings.Contains(applyOut.String(), "would be reclassified") {
+		t.Fatalf("text apply output = %q, want no dry-run reclassify summary", applyOut.String())
+	}
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM relationships WHERE origin = 'command'`); got != 2 {
+		t.Fatalf("command-origin relationships after apply = %d, want 2", got)
+	}
+	if got := sqliteCount(t, db, `SELECT COUNT(*) FROM relationships WHERE origin = 'mystery-import'`); got != 1 {
+		t.Fatalf("foreign-origin relationships after apply = %d, want 1", got)
 	}
 }
 
@@ -6952,16 +7148,24 @@ func TestRunnerStateJSONValidationErrorsAreMachineReadable(t *testing.T) {
 			want:    "cannot combine --apply and --dry-run",
 		},
 		{
-			name:    "relationship repair missing origin",
-			args:    []string{"state", "repair", "relationship-origin", "--dry-run", "--json"},
-			command: "state repair relationship-origin",
-			want:    "requires --origin",
-		},
-		{
 			name:    "relationship repair invalid origin",
 			args:    []string{"state", "repair", "relationship-origin", "--origin", "external", "--json"},
 			command: "state repair relationship-origin",
 			want:    "must be imported or manual",
+		},
+		{
+			// Omitting --origin selects reclassify-only, but supplying it empty
+			// is an operator mistake and must not fall through to that mode.
+			name:    "relationship repair empty origin",
+			args:    []string{"state", "repair", "relationship-origin", "--origin", "", "--json"},
+			command: "state repair relationship-origin",
+			want:    "must be imported or manual",
+		},
+		{
+			name:    "relationship repair conflicting flags",
+			args:    []string{"state", "repair", "relationship-origin", "--apply", "--dry-run", "--json"},
+			command: "state repair relationship-origin",
+			want:    "cannot combine --apply and --dry-run",
 		},
 	}
 
@@ -14463,14 +14667,14 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 	if got := commands["state"].optionDescriptions["state repair legacy-project-database --json"]; !strings.Contains(got, "archive plan/result") || !strings.Contains(got, "project identity") {
 		t.Fatalf("legacy repair json description = %q, want archive/project identity guidance", got)
 	}
-	if got := commands["state"].optionDescriptions["state repair relationship-origin --origin <imported|manual>"]; !strings.Contains(got, "Provenance value") {
-		t.Fatalf("relationship repair origin description = %q, want provenance guidance", got)
+	if got := commands["state"].optionDescriptions["state repair relationship-origin --origin <imported|manual>"]; !strings.Contains(got, "provenance value") || !strings.Contains(got, "omit for reclassify-only") {
+		t.Fatalf("relationship repair origin description = %q, want provenance guidance naming the reclassify-only default", got)
 	}
 	if got := commands["state"].optionDescriptions["state repair relationship-origin --dry-run"]; !strings.Contains(got, "without writing") {
 		t.Fatalf("relationship repair dry-run description = %q, want non-mutating preview", got)
 	}
-	if got := commands["state"].optionDescriptions["state repair relationship-origin --json"]; !strings.Contains(got, "repair plan/result") || !strings.Contains(got, "global database scope") {
-		t.Fatalf("relationship repair json description = %q, want repair/scope guidance", got)
+	if got := commands["state"].optionDescriptions["state repair relationship-origin --json"]; !strings.Contains(got, "repair mode, plan/result") || !strings.Contains(got, "global database scope") {
+		t.Fatalf("relationship repair json description = %q, want mode/repair/scope guidance", got)
 	}
 	if got := commands["state"].optionDescriptions["state repair journal-search --dry-run"]; !strings.Contains(got, "without writing") {
 		t.Fatalf("journal-search repair dry-run description = %q, want non-mutating preview", got)

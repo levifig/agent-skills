@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -92,6 +93,185 @@ func TestValidateCodexJournalExecutableRejectsMissingAndDisposablePaths(t *testi
 			t.Fatalf("trust validation error = %v, want disposable-path refusal", err)
 		}
 	})
+}
+
+func TestTrustedCodexJournalExecutableRendersEntrypointNotCanonicalTarget(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	target := filepath.Join(root, "cellar-1.0", "loaf")
+	writeCodexExecutableFixture(t, target)
+	entrypoint := filepath.Join(root, "bin", "loaf")
+	symlinkCodexEntrypoint(t, target, entrypoint)
+	got, err := trustedCodexJournalExecutable(filepath.Join(root, "project"), codexEntrypointOperations(root, entrypoint))
+	if err != nil {
+		t.Fatalf("trusted executable error = %v", err)
+	}
+	if got != entrypoint || !filepath.IsAbs(got) {
+		t.Fatalf("trusted executable = %q, want absolute stable entrypoint %q", got, entrypoint)
+	}
+	if strings.Contains(got, "cellar-1.0") {
+		t.Fatalf("trusted executable = %q, want no canonicalized segment", got)
+	}
+}
+
+func TestTrustedCodexJournalExecutablePlainFileRenderEqualsCanonical(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "trusted-bin", "loaf")
+	writeCodexExecutableFixture(t, path)
+	got, err := trustedCodexJournalExecutable(filepath.Join(root, "project"), codexEntrypointOperations(root, path))
+	if err != nil {
+		t.Fatalf("trusted executable error = %v", err)
+	}
+	if got != path {
+		t.Fatalf("trusted executable = %q, want plain-file path %q where render equals canonical", got, path)
+	}
+}
+
+func TestTrustedCodexJournalExecutableRejectsForbiddenTargetBehindSymlink(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	project := filepath.Join(root, "project")
+	target := filepath.Join(project, "bin", "loaf")
+	writeCodexExecutableFixture(t, target)
+	entrypoint := filepath.Join(root, "bin", "loaf")
+	symlinkCodexEntrypoint(t, target, entrypoint)
+	if _, err := trustedCodexJournalExecutable(project, codexEntrypointOperations(root, entrypoint)); err == nil || !strings.Contains(err.Error(), "forbidden path") {
+		t.Fatalf("trust validation error = %v, want forbidden-target refusal", err)
+	}
+}
+
+func TestTrustedCodexJournalExecutableRejectsForbiddenEntrypointWithLegitimateTarget(t *testing.T) {
+	// The mirror of the forbidden-target case: the PATH entrypoint itself sits
+	// inside a forbidden root while its canonical target is outside. Only the
+	// render path is disposable here, and the render path is what rendered
+	// policy ultimately trusts, so canonical-only validation would pass it.
+	root := realpath(t, t.TempDir())
+	project := filepath.Join(root, "project")
+	target := filepath.Join(root, "cellar-1.0", "loaf")
+	writeCodexExecutableFixture(t, target)
+	entrypoint := filepath.Join(project, "bin", "loaf")
+	symlinkCodexEntrypoint(t, target, entrypoint)
+	_, err := trustedCodexJournalExecutable(project, codexEntrypointOperations(root, entrypoint))
+	if err == nil || !strings.Contains(err.Error(), "forbidden path") {
+		t.Fatalf("trust validation error = %v, want forbidden-entrypoint refusal", err)
+	}
+	if !strings.Contains(err.Error(), entrypoint) {
+		t.Fatalf("trust validation error = %v, want the rejected entrypoint %q named", err, entrypoint)
+	}
+	if strings.Contains(err.Error(), "cellar-1.0") {
+		t.Fatalf("trust validation error = %v, want no legitimate canonical target blamed", err)
+	}
+}
+
+func TestTrustedCodexJournalExecutableRejectsGuidanceCharactersInEitherPath(t *testing.T) {
+	t.Run("entrypoint", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		target := filepath.Join(root, "cellar-1.0", "loaf")
+		writeCodexExecutableFixture(t, target)
+		entrypoint := filepath.Join(root, "bin`tick", "loaf")
+		symlinkCodexEntrypoint(t, target, entrypoint)
+		if _, err := trustedCodexJournalExecutable(filepath.Join(root, "project"), codexEntrypointOperations(root, entrypoint)); err == nil || !strings.Contains(err.Error(), "unsupported guidance characters") {
+			t.Fatalf("trust validation error = %v, want guidance-character refusal for entrypoint", err)
+		}
+	})
+	t.Run("canonical target", func(t *testing.T) {
+		root := realpath(t, t.TempDir())
+		target := filepath.Join(root, "cellar`1.0", "loaf")
+		writeCodexExecutableFixture(t, target)
+		entrypoint := filepath.Join(root, "bin", "loaf")
+		symlinkCodexEntrypoint(t, target, entrypoint)
+		if _, err := trustedCodexJournalExecutable(filepath.Join(root, "project"), codexEntrypointOperations(root, entrypoint)); err == nil || !strings.Contains(err.Error(), "unsupported guidance characters") {
+			t.Fatalf("trust validation error = %v, want guidance-character refusal for canonical target", err)
+		}
+	})
+}
+
+func TestInstallCodexJournalRuleRendersSymlinkedEntrypointAcrossSurfaces(t *testing.T) {
+	fixture := newCodexRuleInstallFixture(t)
+	target := filepath.Join(fixture.root, "cellar-1.0", "loaf")
+	writeCodexExecutableFixture(t, target)
+	entrypoint := filepath.Join(fixture.root, "bin", "loaf")
+	symlinkCodexEntrypoint(t, target, entrypoint)
+	operations := codexEntrypointOperations(fixture.root, entrypoint)
+	if err := installCodexJournalRuleWithOperations(fixture.options(true, false), fixture.codexHome, operations); err != nil {
+		t.Fatalf("install with symlinked entrypoint: %v", err)
+	}
+	rule, err := os.ReadFile(fixture.dest())
+	if err != nil {
+		t.Fatalf("read rendered rule: %v", err)
+	}
+	if !strings.Contains(string(rule), strconv.Quote(entrypoint)) || strings.Contains(string(rule), "cellar-1.0") {
+		t.Fatalf("rendered rule = %q, want entrypoint prefixes without canonicalized segment", rule)
+	}
+	guidance, err := os.ReadFile(filepath.Join(fixture.codexHome, codexJournalGuidanceRelativePath))
+	if err != nil {
+		t.Fatalf("read rendered guidance: %v", err)
+	}
+	if !strings.Contains(string(guidance), journalContextShellQuote(entrypoint)+" journal log --execpolicy-safe") || strings.Contains(string(guidance), "cellar-1.0") {
+		t.Fatalf("rendered guidance = %q, want entrypoint command without canonicalized segment", guidance)
+	}
+	hooksDest := filepath.Join(fixture.codexHome, "hooks.json")
+	loafHooks := filepath.Join(fixture.dist, ".codex", "hooks.json")
+	writeInstallFile(t, loafHooks, `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"}]}]}}`)
+	writeInstallFile(t, hooksDest, `{"hooks":{}}`)
+	if err := mergeCodexHookFilesForOS(hooksDest, loafHooks, filepath.Join(fixture.root, "project"), operations, "darwin"); err != nil {
+		t.Fatalf("merge hooks with symlinked entrypoint: %v", err)
+	}
+	hooks, err := os.ReadFile(hooksDest)
+	if err != nil {
+		t.Fatalf("read rendered hooks: %v", err)
+	}
+	if !strings.Contains(string(hooks), journalContextShellQuote(entrypoint)+codexJournalHookCommandSuffix) || strings.Contains(string(hooks), "cellar-1.0") {
+		t.Fatalf("rendered hooks = %q, want entrypoint command without canonicalized segment", hooks)
+	}
+}
+
+func TestTrustedCodexJournalExecutableSurvivesEntrypointRetarget(t *testing.T) {
+	fixture := newCodexRuleInstallFixture(t)
+	oldTarget := filepath.Join(fixture.root, "cellar-1.0", "loaf")
+	writeCodexExecutableFixture(t, oldTarget)
+	entrypoint := filepath.Join(fixture.root, "bin", "loaf")
+	symlinkCodexEntrypoint(t, oldTarget, entrypoint)
+	operations := codexEntrypointOperations(fixture.root, entrypoint)
+	rendered, err := trustedCodexJournalExecutable(filepath.Join(fixture.root, "project"), operations)
+	if err != nil {
+		t.Fatalf("trusted executable error = %v", err)
+	}
+	if err := installCodexJournalRuleWithOperations(fixture.options(true, false), fixture.codexHome, operations); err != nil {
+		t.Fatalf("install with symlinked entrypoint: %v", err)
+	}
+	installedRule, err := os.ReadFile(fixture.dest())
+	if err != nil {
+		t.Fatalf("read installed rule: %v", err)
+	}
+
+	// Simulate the Homebrew upgrade: the versioned target moves, the stable
+	// entrypoint is repointed, and the old Cellar directory disappears.
+	newTarget := filepath.Join(fixture.root, "cellar-2.0", "loaf")
+	writeCodexExecutableFixture(t, newTarget)
+	if err := os.Remove(entrypoint); err != nil {
+		t.Fatalf("remove entrypoint symlink: %v", err)
+	}
+	symlinkCodexEntrypoint(t, newTarget, entrypoint)
+	if err := os.RemoveAll(filepath.Join(fixture.root, "cellar-1.0")); err != nil {
+		t.Fatalf("remove stale versioned target: %v", err)
+	}
+
+	if _, err := os.Stat(rendered); err != nil {
+		t.Fatalf("previously rendered executable path stat = %v, want upgrade survival", err)
+	}
+	if _, err := os.Stat(oldTarget); !os.IsNotExist(err) {
+		t.Fatalf("stale canonical target stat = %v, want removal proving a canonical pin would strand", err)
+	}
+	// The owned upgrade converges to byte-identical content: nothing to rewrite.
+	if err := installCodexJournalRuleWithOperations(fixture.options(false, true), fixture.codexHome, operations); err != nil {
+		t.Fatalf("upgrade after retarget: %v", err)
+	}
+	upgradedRule, err := os.ReadFile(fixture.dest())
+	if err != nil {
+		t.Fatalf("read upgraded rule: %v", err)
+	}
+	if string(upgradedRule) != string(installedRule) {
+		t.Fatalf("upgraded rule = %q, want previously rendered content untouched %q", upgradedRule, installedRule)
+	}
 }
 
 func TestCodexJournalRuleExecpolicyClassification(t *testing.T) {
@@ -644,6 +824,36 @@ func (f codexRuleInstallFixture) installWithExecutable(t *testing.T, path string
 		forbiddenRoots: []string{filepath.Join(f.root, "project")},
 	}
 	return installCodexJournalRuleWithOperations(f.options(autoJournal, upgrade), f.codexHome, operations)
+}
+
+func writeCodexExecutableFixture(t *testing.T, path string) {
+	t.Helper()
+	writeInstallFile(t, path, "#!/bin/sh\nexit 0\n")
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatalf("chmod executable fixture: %v", err)
+	}
+}
+
+func symlinkCodexEntrypoint(t *testing.T, target string, entrypoint string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(entrypoint), 0o755); err != nil {
+		t.Fatalf("create entrypoint directory: %v", err)
+	}
+	if err := os.Symlink(target, entrypoint); err != nil {
+		t.Fatalf("symlink entrypoint: %v", err)
+	}
+}
+
+func codexEntrypointOperations(root string, entrypoint string) *codexRuleInstallOperations {
+	return &codexRuleInstallOperations{
+		lookPath: func(name string) (string, error) {
+			if name != "loaf" {
+				return "", fmt.Errorf("unexpected executable %q", name)
+			}
+			return entrypoint, nil
+		},
+		forbiddenRoots: []string{filepath.Join(root, "project")},
+	}
 }
 
 func readCodexRuleManifestTest(t *testing.T, path string) codexManagedRuleManifest {

@@ -187,7 +187,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
 	if report != nil {
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
-VALUES (?, ?, 'run', ?, 'report', ?, 'produces', 'recorded by run create', 'system', ?, ?)
+VALUES (?, ?, 'run', ?, 'report', ?, 'produces', 'recorded by run create', 'command', ?, ?)
 ON CONFLICT(id) DO NOTHING
 `, stableMigrationID("relationship", projectID, "run", runID, "produces", "report", report.ID), projectID, runID, report.ID, timestamp, timestamp); err != nil {
 			return RunCreateResult{}, fmt.Errorf("record run report relationship: %w", err)

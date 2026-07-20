@@ -299,6 +299,10 @@ func (r Runner) runExplorationConversation(args []string, out io.Writer, runtime
 		return fmt.Errorf("usage: loaf exploration conversation add <exploration> <conversation-id> [--json]")
 	}
 	args = args[1:]
+	if isHelpArg(args) {
+		writeExplorationConversationHelp(out)
+		return nil
+	}
 	jsonOutput := false
 	positional := []string{}
 	for _, arg := range args {
@@ -587,6 +591,10 @@ func (r Runner) runConversationHandle(args []string, out io.Writer, runtime stat
 		return fmt.Errorf("usage: loaf conversation handle add <conversation-id> --harness <harness> --handle <id> [options]")
 	}
 	args = args[1:]
+	if isHelpArg(args) {
+		writeConversationHandleHelp(out)
+		return nil
+	}
 	options := state.ConversationHandleAddOptions{}
 	jsonOutput := false
 	for i := 0; i < len(args); i++ {

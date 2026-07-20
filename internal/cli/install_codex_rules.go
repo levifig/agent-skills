@@ -504,6 +504,14 @@ func validateCodexJournalExecutable(projectRoot string) error {
 	return err
 }
 
+// trustedCodexJournalExecutable resolves the loaf PATH entry into the path
+// rendered across Codex-managed surfaces (AGENTS.md guidance, the hooks.json
+// command, and loaf.rules execpolicy prefixes). The returned render path is
+// the absolute PATH entrypoint without symlink resolution, so upgrades that
+// retarget the entrypoint (a Homebrew Cellar repoint) never invalidate
+// rendered policy. Validation strictness is unchanged: the canonical
+// EvalSymlinks target must exist and stay outside forbidden roots, and both
+// the render and canonical paths must be guidance-safe.
 func trustedCodexJournalExecutable(projectRoot string, operations *codexRuleInstallOperations) (string, error) {
 	if projectRoot == "" {
 		projectRoot, _ = os.Getwd()
@@ -522,6 +530,10 @@ func trustedCodexJournalExecutable(projectRoot string, operations *codexRuleInst
 	if err != nil {
 		return "", fmt.Errorf("cannot trust Codex basic command policy: loaf executable is not on PATH: %w", err)
 	}
+	render, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot trust Codex basic command policy: absolutize loaf executable %s: %w", path, err)
+	}
 	canonical, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return "", fmt.Errorf("cannot trust Codex basic command policy: resolve loaf executable %s: %w", path, err)
@@ -530,7 +542,7 @@ func trustedCodexJournalExecutable(projectRoot string, operations *codexRuleInst
 	if err != nil {
 		return "", fmt.Errorf("cannot trust Codex basic command policy: canonicalize loaf executable: %w", err)
 	}
-	if strings.ContainsAny(canonical, "`\r\n") {
+	if strings.ContainsAny(render, "`\r\n") || strings.ContainsAny(canonical, "`\r\n") {
 		return "", fmt.Errorf("cannot trust Codex basic command policy: executable path contains unsupported guidance characters")
 	}
 	for _, forbidden := range forbiddenRoots {
@@ -548,8 +560,17 @@ func trustedCodexJournalExecutable(projectRoot string, operations *codexRuleInst
 		if pathWithinInstall(forbiddenPath, canonical) {
 			return "", fmt.Errorf("cannot trust Codex basic command policy: loaf executable %s is inside forbidden path %s", canonical, forbiddenPath)
 		}
+		// The render path is what rendered policy ultimately trusts; an
+		// entrypoint inside a forbidden root is rejected even when its
+		// canonical target is not.
+		if absForbidden, absErr := filepath.Abs(forbidden); absErr == nil && pathWithinInstall(absForbidden, render) {
+			return "", fmt.Errorf("cannot trust Codex basic command policy: loaf executable %s is inside forbidden path %s", render, absForbidden)
+		}
+		if pathWithinInstall(forbiddenPath, render) {
+			return "", fmt.Errorf("cannot trust Codex basic command policy: loaf executable %s is inside forbidden path %s", render, forbiddenPath)
+		}
 	}
-	return canonical, nil
+	return render, nil
 }
 
 func codexJournalForbiddenExecutableRoots(projectRoot string) []string {

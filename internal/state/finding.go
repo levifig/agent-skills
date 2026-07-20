@@ -236,7 +236,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
-VALUES (?, ?, 'report', ?, 'finding', ?, 'contains', 'recorded by finding create', 'system', ?, ?)
+VALUES (?, ?, 'report', ?, 'finding', ?, 'contains', 'recorded by finding create', 'command', ?, ?)
 ON CONFLICT(id) DO NOTHING
 `, stableMigrationID("relationship", projectID, "report", report.ID, "contains", "finding", findingID), projectID, report.ID, findingID, timestamp, timestamp); err != nil {
 		return FindingCreateResult{}, fmt.Errorf("record report finding relationship: %w", err)
@@ -244,7 +244,7 @@ ON CONFLICT(id) DO NOTHING
 	if run != nil {
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
-VALUES (?, ?, 'run', ?, 'finding', ?, 'produces', 'recorded by finding create', 'system', ?, ?)
+VALUES (?, ?, 'run', ?, 'finding', ?, 'produces', 'recorded by finding create', 'command', ?, ?)
 ON CONFLICT(id) DO NOTHING
 `, stableMigrationID("relationship", projectID, "run", run.ID, "produces", "finding", findingID), projectID, run.ID, findingID, timestamp, timestamp); err != nil {
 			return FindingCreateResult{}, fmt.Errorf("record run finding relationship: %w", err)
@@ -447,7 +447,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
-VALUES (?, ?, 'finding', ?, 'verdict', ?, 'adjudicated_by', 'recorded by finding verdict', 'system', ?, ?)
+VALUES (?, ?, 'finding', ?, 'verdict', ?, 'adjudicated_by', 'recorded by finding verdict', 'command', ?, ?)
 ON CONFLICT(id) DO NOTHING
 `, stableMigrationID("relationship", projectID, "finding", finding.ID, "adjudicated_by", "verdict", verdictID), projectID, finding.ID, verdictID, now, now); err != nil {
 		return FindingVerdictResult{}, fmt.Errorf("record finding verdict relationship: %w", err)
@@ -455,7 +455,7 @@ ON CONFLICT(id) DO NOTHING
 	if run != nil {
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
-VALUES (?, ?, 'run', ?, 'verdict', ?, 'records', 'recorded by finding verdict', 'system', ?, ?)
+VALUES (?, ?, 'run', ?, 'verdict', ?, 'records', 'recorded by finding verdict', 'command', ?, ?)
 ON CONFLICT(id) DO NOTHING
 `, stableMigrationID("relationship", projectID, "run", run.ID, "records", "verdict", verdictID), projectID, run.ID, verdictID, now, now); err != nil {
 			return FindingVerdictResult{}, fmt.Errorf("record run verdict relationship: %w", err)

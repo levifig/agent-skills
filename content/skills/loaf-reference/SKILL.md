@@ -61,10 +61,10 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf docs` | Manage docs/ indexing | index |
 | `loaf change` | Shape-first Change artifacts: git-canonical work context under docs/changes/ | init, check, list |
 | `loaf render` | Maintain committed durable Markdown renders | sweep |
-| `loaf state` | Manage native SQLite state | path, status, init, doctor, repair legacy-project-database, repair relationship-origin, repair journal-search, migrate markdown, migrate storage-home, migrate schema, migrate deferrals, migrate lifecycle-statuses, backup, backup verify, backup restore, restore-ephemerals, verify-ephemerals, export, export all, export triage, export spec, export release-readiness |
+| `loaf state` | Manage native SQLite state | path, status, init, doctor, repair legacy-project-database, repair relationship-origin, repair journal-search, migrate markdown, migrate storage-home, migrate schema, migrate deferrals, migrate lifecycle-statuses, migrate journal-first, backup, backup verify, backup restore, restore-ephemerals, verify-ephemerals, export, export all, export triage, export spec, export release-readiness |
 | `loaf journal` | Record and read the project-scoped journal (the durable record across all conversations) | log, recent, search, show, context, export, defer |
 | `loaf project` | Manage durable project identity | list, show, identity, rename, move, delete |
-| `loaf migrate` | Run native migration workflows | markdown, storage-home, schema, lifecycle-statuses, worktree-storage |
+| `loaf migrate` | Run native migration workflows | markdown, storage-home, schema, lifecycle-statuses, journal-first, worktree-storage |
 | `loaf task` | Manage project tasks | list, show, status, create, update, archive, refresh, sync |
 | `loaf spec` | Manage project specs | new, list, show, status, render, finalize, archive, delete |
 | `loaf report` | Manage durable reports (research, audits, investigations) | list, show, render, generate, create, finalize, archive |

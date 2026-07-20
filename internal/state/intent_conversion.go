@@ -270,9 +270,9 @@ VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
 				relationshipID := stableMigrationID("relationship", projectID, sourceEdge.kind, sourceEdge.id, "source-of", "intent", intentID)
 				if _, err := tx.ExecContext(ctx, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, created_at, updated_at)
-VALUES (?, ?, ?, ?, 'intent', ?, 'source-of', 'legacy deferral conversion', 'legacy-conversion', ?, ?)
+VALUES (?, ?, ?, ?, 'intent', ?, 'source-of', 'legacy deferral conversion', ?, ?, ?)
 ON CONFLICT(id) DO NOTHING
-`, relationshipID, projectID, sourceEdge.kind, sourceEdge.id, intentID, timestamp, timestamp); err != nil {
+`, relationshipID, projectID, sourceEdge.kind, sourceEdge.id, intentID, relationshipOriginCommand, timestamp, timestamp); err != nil {
 					return result, fmt.Errorf("insert converted relationship %s: %w", row.OperationKey, err)
 				}
 			}

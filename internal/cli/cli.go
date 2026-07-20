@@ -1667,7 +1667,7 @@ func writeStateRepairHelp(out io.Writer) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Targets:")
 	fmt.Fprintln(out, "  legacy-project-database  Archive migrated per-project SQLite leftovers")
-	fmt.Fprintln(out, "  relationship-origin  Backfill missing relationship provenance")
+	fmt.Fprintln(out, "  relationship-origin  Backfill missing relationship provenance and reclassify retired legacy origins")
 	fmt.Fprintln(out, "  journal-search  Rebuild derived journal search from canonical entries")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
@@ -1680,9 +1680,12 @@ func writeStateMigrateHelp(out io.Writer) {
 	fmt.Fprintln(out, "Run state migrations.")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Sources:")
-	fmt.Fprintln(out, "  markdown      Import .agents Markdown artifacts into SQLite")
-	fmt.Fprintln(out, "  storage-home  Copy legacy XDG_STATE_HOME state into XDG_DATA_HOME")
-	fmt.Fprintln(out, "  schema        Preview or apply pending SQLite schema upgrades")
+	fmt.Fprintln(out, "  markdown            Import .agents Markdown artifacts into SQLite")
+	fmt.Fprintln(out, "  storage-home        Copy legacy per-project state into the global XDG data-home database")
+	fmt.Fprintln(out, "  schema              Preview or apply pending SQLite schema upgrades")
+	fmt.Fprintln(out, "  lifecycle-statuses  Normalize legacy lifecycle statuses in SQLite")
+	fmt.Fprintln(out, "  journal-first       Transform the global database to the journal-first model")
+	fmt.Fprintln(out, "  deferrals           Convert historical journal deferrals into canonical deferred Intents")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
 	fmt.Fprintln(out, "  -h, --help    Show help")
@@ -2540,7 +2543,7 @@ func writeStateRepairLegacyProjectDatabaseHelp(out io.Writer) {
 }
 
 func writeStateRepairRelationshipOriginHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf state repair relationship-origin --origin <imported|manual> [--dry-run|--apply] [--json]", "Backfill missing relationship provenance for the current project.", "--origin     Provenance value to set: imported or manual", "--dry-run    Preview affected rows without writing", "--apply      Apply the backfill", "--json       Output repair plan/result, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf state repair relationship-origin [--origin <imported|manual>] [--dry-run|--apply] [--json]", "Reclassify the retired legacy origins (intent-create, legacy-conversion, exploration-create, system) to 'command' for the current project; foreign origins are reported, never rewritten. Without --origin this reclassification is all that runs and rows with no origin are left untouched; --origin additionally backfills them.", "--origin     Enable the missing-origin backfill with this provenance value: imported or manual (omit for reclassify-only)", "--dry-run    Preview affected rows without writing", "--apply      Apply the reclassification, and the backfill when --origin is given, after a backup", "--json       Output repair mode, plan/result, global database scope, and project identity as JSON")
 }
 
 func writeStateRepairJournalSearchHelp(out io.Writer) {
@@ -2617,7 +2620,7 @@ func (r Runner) runStateRepairRelationshipOrigin(args []string, out io.Writer, r
 		}
 		return err
 	}
-	result, err := state.RepairMissingRelationshipOrigins(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.RelationshipOriginRepairOptions{
+	result, err := state.RepairRelationshipOrigins(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.RelationshipOriginRepairOptions{
 		Origin: options.origin,
 		Apply:  options.apply,
 	})
@@ -2644,12 +2647,43 @@ func (r Runner) runStateRepairRelationshipOrigin(args []string, out io.Writer, r
 	if result.ProjectCurrentPath != "" {
 		fmt.Fprintf(out, "project path: %s\n", result.ProjectCurrentPath)
 	}
-	fmt.Fprintf(out, "origin: %s\n", result.Origin)
-	fmt.Fprintf(out, "matched: %d\n", result.Matched)
-	fmt.Fprintf(out, "updated: %d\n", result.Updated)
+	fmt.Fprintf(out, "mode: %s\n", result.Mode)
+	backfilling := result.Mode == state.RelationshipOriginRepairModeBackfillAndReclassify
+	if backfilling {
+		fmt.Fprintf(out, "origin: %s\n", result.Origin)
+		fmt.Fprintf(out, "matched: %d\n", result.Matched)
+		fmt.Fprintf(out, "updated: %d\n", result.Updated)
+	} else if result.Matched > 0 {
+		// Reclassify-only never writes these rows, so they are reported as
+		// untouched state rather than as a backfill that matched nothing.
+		fmt.Fprintf(out, "missing origin: %d row(s) left untouched; pass --origin imported|manual to backfill them\n", result.Matched)
+	}
+	reclassifiable := 0
+	reclassifyTarget := ""
+	for _, reclassification := range result.Reclassified {
+		reclassifiable += reclassification.Matched
+		// Every legacy origin reclassifies to the same registry target, so any
+		// group's target names the dry-run summary value.
+		reclassifyTarget = reclassification.Target
+		fmt.Fprintf(out, "reclassify %s -> %s: matched %d, updated %d\n", reclassification.Origin, reclassification.Target, reclassification.Matched, reclassification.Updated)
+	}
+	for _, foreign := range result.ForeignOrigins {
+		fmt.Fprintf(out, "warn: foreign origin %q on %d relationship row(s); left for doctor, never rewritten\n", foreign.Origin, foreign.Count)
+	}
 	fmt.Fprintf(out, "applied: %t\n", result.Applied)
-	if !result.Applied && result.Matched > 0 {
-		fmt.Fprintln(out, "next: rerun with --apply after reviewing the selected origin")
+	if !result.Applied && reclassifiable > 0 {
+		fmt.Fprintf(out, "%d relationship row(s) with unknown origin would be reclassified to '%s'\n", reclassifiable, reclassifyTarget)
+	}
+	pendingBackfill := 0
+	if backfilling {
+		pendingBackfill = result.Matched
+	}
+	if !result.Applied && (pendingBackfill > 0 || reclassifiable > 0) {
+		if backfilling {
+			fmt.Fprintln(out, "next: rerun with --apply after reviewing the selected origin")
+		} else {
+			fmt.Fprintln(out, "next: rerun with --apply after reviewing the reclassification plan")
+		}
 	}
 	return nil
 }
@@ -3135,36 +3169,59 @@ func (r Runner) runStateExport(args []string, out io.Writer, runtime state.Runti
 	}
 }
 
+// stateMigrateSource binds one dispatchable `loaf state migrate` source to its
+// runner and its --help writer, so a source cannot gain dispatch without help
+// routing or vice versa.
+type stateMigrateSource struct {
+	run  func(Runner, []string, io.Writer, state.Runtime) error
+	help func(io.Writer)
+}
+
+// stateMigrateSources is the single registry runStateMigrate dispatches
+// through; nested `<source> --help` routing is derived from it. The source
+// list in writeStateMigrateHelp must name every key;
+// TestStateMigrateHelpListsEveryDispatchableSource enforces that parity.
+var stateMigrateSources = map[string]stateMigrateSource{
+	"lifecycle-statuses": {run: Runner.runStateMigrateLifecycleStatuses, help: writeStateMigrateLifecycleStatusesHelp},
+	"journal-first": {
+		run: func(r Runner, args []string, out io.Writer, runtime state.Runtime) error {
+			return r.runJournalFirstMigration(args, out, runtime, "loaf state migrate journal-first")
+		},
+		help: writeStateMigrateJournalFirstHelp,
+	},
+	"schema": {
+		run: func(r Runner, args []string, out io.Writer, runtime state.Runtime) error {
+			return r.runSchemaUpgrade(args, out, runtime, "loaf state migrate schema")
+		},
+		help: writeStateMigrateSchemaHelp,
+	},
+	"markdown":     {run: Runner.runStateMigrateMarkdown, help: writeStateMigrateMarkdownHelp},
+	"storage-home": {run: Runner.runStateMigrateStorageHome, help: writeStateMigrateStorageHomeHelp},
+	"deferrals":    {run: Runner.runStateMigrateDeferrals, help: writeStateMigrateDeferralsHelp},
+}
+
+// stateMigrateSourceHelp derives the `loaf state migrate <source> --help`
+// routing map from the dispatch registry.
+func stateMigrateSourceHelp() map[string]func(io.Writer) {
+	writers := make(map[string]func(io.Writer), len(stateMigrateSources))
+	for name, source := range stateMigrateSources {
+		writers[name] = source.help
+	}
+	return writers
+}
+
 func (r Runner) runStateMigrate(args []string, out io.Writer, runtime state.Runtime) error {
 	if len(args) == 0 {
 		return fmt.Errorf("state migrate requires a source")
 	}
-	if writeNestedHelp(out, args, map[string]func(io.Writer){
-		"lifecycle-statuses": writeStateMigrateLifecycleStatusesHelp,
-		"journal-first":      writeStateMigrateJournalFirstHelp,
-		"schema":             writeStateMigrateSchemaHelp,
-		"markdown":           writeStateMigrateMarkdownHelp,
-		"storage-home":       writeStateMigrateStorageHomeHelp,
-		"deferrals":          writeStateMigrateDeferralsHelp,
-	}) {
+	if writeNestedHelp(out, args, stateMigrateSourceHelp()) {
 		return nil
 	}
-	switch args[0] {
-	case "lifecycle-statuses":
-		return r.runStateMigrateLifecycleStatuses(args[1:], out, runtime)
-	case "journal-first":
-		return r.runJournalFirstMigration(args[1:], out, runtime, "loaf state migrate journal-first")
-	case "schema":
-		return r.runSchemaUpgrade(args[1:], out, runtime, "loaf state migrate schema")
-	case "deferrals":
-		return r.runStateMigrateDeferrals(args[1:], out, runtime)
-	case "markdown":
-		return r.runStateMigrateMarkdown(args[1:], out, runtime)
-	case "storage-home":
-		return r.runStateMigrateStorageHome(args[1:], out, runtime)
-	default:
+	source, ok := stateMigrateSources[args[0]]
+	if !ok {
 		return fmt.Errorf("state migrate source %q is not implemented yet", args[0])
 	}
+	return source.run(r, args[1:], out, runtime)
 }
 
 func writeStateMigrateMarkdownHelp(out io.Writer) {
@@ -3274,9 +3331,37 @@ func (r Runner) runSchemaUpgrade(args []string, out io.Writer, runtime state.Run
 	return nil
 }
 
+// writeMigrateHelp lists the sources the runMigrate switch dispatches. It is
+// the top-level sibling of writeStateMigrateHelp and covers a different source
+// set: worktree-storage is top-level only, and deferrals is state-level only.
+// TestRunnerMigrateHelpListsEveryDispatchableSource enforces that parity.
+func writeMigrateHelp(out io.Writer) {
+	fmt.Fprintln(out, "Usage: loaf migrate <source> [options]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Run native migration workflows.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Sources:")
+	fmt.Fprintln(out, "  markdown            Import .agents Markdown artifacts into SQLite")
+	fmt.Fprintln(out, "  storage-home        Copy legacy per-project state into the global XDG data-home database")
+	fmt.Fprintln(out, "  schema              Preview or apply pending SQLite schema upgrades")
+	fmt.Fprintln(out, "  lifecycle-statuses  Normalize legacy lifecycle statuses in SQLite")
+	fmt.Fprintln(out, "  journal-first       Transform the global database to the journal-first model")
+	fmt.Fprintln(out, "  worktree-storage    Move linked-worktree .agents content to the main checkout")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Options:")
+	fmt.Fprintln(out, "  -h, --help    Show help")
+}
+
 func (r Runner) runMigrate(args []string, out io.Writer, runtime state.Runtime) error {
 	if len(args) == 0 {
+		// Bare invocation stays an error, but the source list goes to stderr
+		// so the failure is self-correcting instead of a dead end.
+		writeMigrateHelp(firstWriter(r.Stderr, os.Stderr))
 		return fmt.Errorf("migrate requires a source")
+	}
+	if isHelpArg(args) {
+		writeMigrateHelp(out)
+		return nil
 	}
 	if writeNestedHelp(out, args, map[string]func(io.Writer){
 		"lifecycle-statuses": writeMigrateLifecycleStatusesHelp,
@@ -3284,6 +3369,7 @@ func (r Runner) runMigrate(args []string, out io.Writer, runtime state.Runtime) 
 		"schema":             writeMigrateSchemaHelp,
 		"markdown":           writeMigrateMarkdownHelp,
 		"storage-home":       writeMigrateStorageHomeHelp,
+		"worktree-storage":   writeWorktreeMigrationHelp,
 	}) {
 		return nil
 	}
@@ -13264,6 +13350,7 @@ func parseJournalSearchRepairArgs(args []string) (journalSearchRepairOptions, er
 
 func parseRelationshipOriginRepairArgs(args []string) (relationshipOriginRepairOptions, error) {
 	var options relationshipOriginRepairOptions
+	originSet := false
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
@@ -13279,6 +13366,7 @@ func parseRelationshipOriginRepairArgs(args []string) (relationshipOriginRepairO
 				return relationshipOriginRepairOptions{}, err
 			}
 			options.origin = value
+			originSet = true
 		default:
 			return relationshipOriginRepairOptions{}, fmt.Errorf("unknown option %q", arg)
 		}
@@ -13286,10 +13374,11 @@ func parseRelationshipOriginRepairArgs(args []string) (relationshipOriginRepairO
 	if options.apply && options.dryRun {
 		return relationshipOriginRepairOptions{}, fmt.Errorf("state repair relationship-origin cannot combine --apply and --dry-run")
 	}
-	if options.origin == "" {
-		return relationshipOriginRepairOptions{}, fmt.Errorf("state repair relationship-origin requires --origin imported|manual")
-	}
-	if options.origin != "imported" && options.origin != "manual" {
+	// Omitting --origin is valid: it selects reclassify-only, the mechanical
+	// registry-derived repair. Supplying it opts into the missing-origin
+	// backfill, which needs a real mechanism value — an explicitly empty one is
+	// an operator mistake, not a mode selection.
+	if originSet && options.origin != "imported" && options.origin != "manual" {
 		return relationshipOriginRepairOptions{}, fmt.Errorf("relationship origin must be imported or manual")
 	}
 	return options, nil

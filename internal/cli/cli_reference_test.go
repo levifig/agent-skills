@@ -63,7 +63,7 @@ func TestRunnerGenerateCLIReferenceWritesSkillNatively(t *testing.T) {
 		"| `loaf state` | Manage native SQLite state | path, status, init, doctor, repair legacy-project-database,",
 		"repair journal-search",
 		"migrate schema",
-		"| `loaf migrate` | Run native migration workflows | markdown, storage-home, schema, lifecycle-statuses, worktree-storage |",
+		"| `loaf migrate` | Run native migration workflows | markdown, storage-home, schema, lifecycle-statuses, journal-first, worktree-storage |",
 		"| `loaf doctor` | Diagnose Loaf project alignment (symlinks, stale files, version drift) | — |",
 		"## Topics",
 		"[references/configuration.md](references/configuration.md)",

@@ -171,11 +171,11 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--apply", Description: "Move legacy SQLite files into the archive directory"},
 					{Flags: "--json", Description: "Output archive plan/result, global database scope, and project identity as JSON"},
 				}},
-				{Name: "repair relationship-origin", Description: "Preview or apply guarded relationship provenance backfills", Options: []cliReferenceOption{
-					{Flags: "--origin <imported|manual>", Description: "Provenance value to backfill"},
+				{Name: "repair relationship-origin", Description: "Reclassify retired legacy origins to 'command'; foreign origins are reported, never rewritten. Bare invocation is reclassify-only and leaves missing origins untouched; --origin adds the backfill", Options: []cliReferenceOption{
+					{Flags: "--origin <imported|manual>", Description: "Enable the missing-origin backfill with this provenance value; omit for reclassify-only"},
 					{Flags: "--dry-run", Description: "Preview affected rows without writing"},
-					{Flags: "--apply", Description: "Backfill missing origins after creating a SQLite backup"},
-					{Flags: "--json", Description: "Output repair plan/result, global database scope, and project identity as JSON"},
+					{Flags: "--apply", Description: "Reclassify retired legacy origins, and backfill missing origins when --origin is given, after creating a SQLite backup"},
+					{Flags: "--json", Description: "Output repair mode, plan/result, global database scope, and project identity as JSON"},
 				}},
 				{Name: "repair journal-search", Description: "Preview or apply a backup-first rebuild of the derived journal search index", Options: []cliReferenceOption{
 					{Flags: "--dry-run", Description: "Preview canonical/index parity counts without writing"},
@@ -211,6 +211,11 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--apply", Description: "Normalize live SQLite statuses after creating a backup"},
 					{Flags: "--rollback <manifest>", Description: "Restore statuses from a lifecycle-statuses rollback manifest"},
 					{Flags: "--json", Description: "Output migration contract, project context, counts, backup, and rollback fields as JSON"},
+				}},
+				{Name: "migrate journal-first", Description: "Transform the global database to the journal-first model: purge lifecycle noise, drop the session entity, rekey journal search; destructive by consent", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Preview counts against a temporary database copy without mutation or backup"},
+					{Flags: "--apply", Description: "Take a mandatory backup, then apply the migration to the live database"},
+					{Flags: "--json", Description: "Output migration contract, counts, backup path, and schema version as JSON"},
 				}},
 				{Name: "backup", Description: "Create a SQLite database backup with local rollback or operator-selected non-temporary external destination classification", Options: []cliReferenceOption{{Flags: "--to <DIRECTORY>", Description: "Operator-selected non-temporary external destination directory; not proof of off-device protection"}, {Flags: "--json", Description: "Output backup verification, classification, readiness, checksum, journal watermark, and current project identity as JSON"}}},
 				{Name: "backup verify", Description: "Verify an existing SQLite database backup and report retrieval/recovery readiness", Options: []cliReferenceOption{{Flags: "--json", Description: "Output schema version, SQLite validity, journal retrieval readiness, recovery readiness, watermark, and captured project identities as JSON"}}},
@@ -341,6 +346,11 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--apply", Description: "Normalize live SQLite statuses after creating a backup"},
 					{Flags: "--rollback <manifest>", Description: "Restore statuses from a lifecycle-statuses rollback manifest"},
 					{Flags: "--json", Description: "Output migration contract, project context, counts, backup, and rollback fields as JSON"},
+				}},
+				{Name: "journal-first", Description: "Transform the global database to the journal-first model: purge lifecycle noise, drop the session entity, rekey journal search; destructive by consent", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Preview counts against a temporary database copy without mutation or backup"},
+					{Flags: "--apply", Description: "Take a mandatory backup, then apply the migration to the live database"},
+					{Flags: "--json", Description: "Output migration contract, counts, backup path, and schema version as JSON"},
 				}},
 				{Name: "worktree-storage", Description: "Move linked-worktree .agents state to the main worktree", Options: []cliReferenceOption{
 					{Flags: "--apply", Description: "Perform the migration; dry-run is the default"},

@@ -851,13 +851,16 @@ WHERE origin IS NULL OR TRIM(origin) = ''
 		})
 	}
 
-	unknownRows, err := store.db.QueryContext(ctx, `
+	// The allowed set comes from the relationship-origin registry so the
+	// invariant cannot drift from what the writers and repair actually use.
+	notAllowed, notAllowedArgs := relationshipOriginNotAllowedFragment("origin")
+	unknownRows, err := store.db.QueryContext(ctx, fmt.Sprintf(`
 SELECT origin, COUNT(*)
 FROM relationships
-WHERE origin IS NOT NULL AND TRIM(origin) != '' AND origin NOT IN ('imported', 'manual', 'command')
+WHERE origin IS NOT NULL AND TRIM(origin) != '' AND %s
 GROUP BY origin
 ORDER BY origin
-`)
+`, notAllowed), notAllowedArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("inspect unknown relationship origins: %w", err)
 	}
