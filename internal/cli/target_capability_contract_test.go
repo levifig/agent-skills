@@ -641,7 +641,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 }
 
 func TestExactCapabilityVersionGrammar(t *testing.T) {
-	valid := []string{"2.1.215", "3.11.19", "2026.05.09-0afadcc", "0.144.5", "1.18.3", "0.0.1783873056-g278461", "1.2.3-alpha9"}
+	valid := []string{"2.1.218", "3.11.19", "2026.05.09-0afadcc", "0.145.0", "1.18.4", "0.0.1783873056-g278461", "1.2.3-alpha9"}
 	for _, version := range valid {
 		if !isExactCapabilityVersion(version) {
 			t.Errorf("isExactCapabilityVersion(%q) = false, want true", version)

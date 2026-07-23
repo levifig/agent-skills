@@ -46,7 +46,7 @@ test("rejects malformed JSONL", () => {
 });
 
 test("requires the exact Codex CLI version token", () => {
-  assert.equal(codexVersionMatches("codex-cli 0.144.5\n", "0.144.5"), true);
-  assert.equal(codexVersionMatches("codex-cli 0.144.50\n", "0.144.5"), false);
-  assert.equal(codexVersionMatches("other-cli 0.144.5\n", "0.144.5"), false);
+  assert.equal(codexVersionMatches("codex-cli 0.145.0\n", "0.145.0"), true);
+  assert.equal(codexVersionMatches("codex-cli 0.145.00\n", "0.145.0"), false);
+  assert.equal(codexVersionMatches("other-cli 0.145.0\n", "0.145.0"), false);
 });

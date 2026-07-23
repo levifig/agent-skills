@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,11 +35,11 @@ type SpecCreateOptions struct {
 
 // SpecCreateResult describes a created SQLite-backed spec.
 type SpecCreateResult struct {
-	ContractVersion    int         `json:"contract_version,omitempty"`
-	DatabaseScope      string      `json:"database_scope,omitempty"`
-	DatabasePath       string      `json:"database_path,omitempty"`
-	ProjectID          string      `json:"project_id,omitempty"`
-	ProjectName        string      `json:"project_name,omitempty"`
+	ContractVersion    int           `json:"contract_version,omitempty"`
+	DatabaseScope      string        `json:"database_scope,omitempty"`
+	DatabasePath       string        `json:"database_path,omitempty"`
+	ProjectID          string        `json:"project_id,omitempty"`
+	ProjectName        string        `json:"project_name,omitempty"`
 	ProjectCurrentPath string        `json:"project_current_path,omitempty"`
 	Spec               TraceEntity   `json:"spec"`
 	Source             string        `json:"source"`
@@ -184,6 +185,97 @@ VALUES (?, ?, 'spec', ?, 'status_changed', NULL, ?, ?, ?, ?)
 		Branch:             branch,
 		Related:            related,
 		EventID:            eventID,
+	}, nil
+}
+
+// SpecEditOptions describes a SQLite-backed spec body edit request.
+type SpecEditOptions struct {
+	Ref   string
+	Body  string
+	Force bool // proceed when the legacy source .md diverges from the stored body
+}
+
+// SpecEditResult describes an applied SQLite-backed spec body edit.
+type SpecEditResult struct {
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Spec               TraceEntity `json:"spec"`
+	Imported           bool        `json:"imported"`
+	ContentHash        string      `json:"content_hash"`
+	EventID            string      `json:"event_id"`
+}
+
+// EditSpecBody replaces a spec's SQLite body in initialized SQLite state.
+func EditSpecBody(ctx context.Context, root project.Root, resolver PathResolver, options SpecEditOptions) (SpecEditResult, error) {
+	store, err := openInitializedStore(root, resolver)
+	if err != nil {
+		return SpecEditResult{}, err
+	}
+	defer store.Close()
+	return store.EditSpecBody(ctx, root, options)
+}
+
+// EditSpecBody replaces a spec's SQLite body in an open store.
+func (s *Store) EditSpecBody(ctx context.Context, root project.Root, options SpecEditOptions) (SpecEditResult, error) {
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return SpecEditResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return SpecEditResult{}, err
+	}
+	entity, err := s.resolveTraceEntity(ctx, projectID, options.Ref)
+	if err != nil {
+		return SpecEditResult{}, err
+	}
+	if entity.Kind != "spec" {
+		return SpecEditResult{}, fmt.Errorf("spec edit target %q resolved to %s, not spec", options.Ref, entity.Kind)
+	}
+
+	var bodySourceID, sourcePath sql.NullString
+	err = s.db.QueryRowContext(ctx, `
+SELECT specs.body_source_id, sources.path
+FROM specs
+LEFT JOIN sources ON sources.id = specs.body_source_id
+WHERE specs.project_id = ? AND specs.id = ?
+`, projectID, entity.ID).Scan(&bodySourceID, &sourcePath)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SpecEditResult{}, fmt.Errorf("spec %q not found in SQLite state", firstNonEmpty(entity.Alias, options.Ref))
+	}
+	if err != nil {
+		return SpecEditResult{}, fmt.Errorf("read spec body source: %w", err)
+	}
+
+	display := firstNonEmpty(entity.Alias, options.Ref)
+	renderPath := ""
+	if !sourcePath.Valid || strings.TrimSpace(sourcePath.String) == "" {
+		_, rel, err := durableRenderGitFile(root, "spec", display, nil)
+		if err != nil {
+			return SpecEditResult{}, err
+		}
+		renderPath = rel
+	}
+	outcome, err := s.editArtifactBody(ctx, root.Path(), projectID, "spec", "specs", entity.ID, display, bodySourceID, sourcePath, renderPath, options.Body, options.Force)
+	if err != nil {
+		return SpecEditResult{}, err
+	}
+
+	return SpecEditResult{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Spec:               entity,
+		Imported:           outcome.Imported,
+		ContentHash:        outcome.ContentHash,
+		EventID:            outcome.EventID,
 	}, nil
 }
 

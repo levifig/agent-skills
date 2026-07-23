@@ -3,7 +3,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { delimiter, dirname, join, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, join, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 
@@ -100,13 +100,17 @@ function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-function resolveExecutable(command) {
+export function resolveExecutable(command) {
   for (const directory of (process.env.PATH ?? "").split(delimiter)) {
     if (!directory) continue;
     const candidate = resolve(directory, command);
     try {
       const info = statSync(candidate);
-      if (info.isFile() && (info.mode & 0o111) !== 0) return realpathSync(candidate);
+      if (info.isFile() && (info.mode & 0o111) !== 0) {
+        // Multiplexer shims (mise et al.) realpath to a differently named dispatcher binary that keys off argv[0], which realpath destroys; skip them so the smoke runs the real standalone binary under the isolated env.
+        const resolved = realpathSync(candidate);
+        if (basename(resolved) === command) return resolved;
+      }
     } catch {
       // Continue through the explicit PATH allowlist.
     }
@@ -114,9 +118,13 @@ function resolveExecutable(command) {
   throw new Error(`installed ${command} executable is unavailable`);
 }
 
-function buildEnvironment() {
+export function buildEnvironment() {
   const env = {};
   for (const key of safeEnvironmentKeys) if (process.env[key] !== undefined) env[key] = process.env[key];
+  // mise-shimmed toolchains resolve user env templates that may reference XDG dirs, so builds need them passed through; the disposable harness env stays fully isolated.
+  for (const key of ["XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"]) {
+    if (process.env[key] !== undefined) env[key] = process.env[key];
+  }
   if (process.env.HOME !== undefined) env.HOME = process.env.HOME;
   if (process.env.USERPROFILE !== undefined) env.USERPROFILE = process.env.USERPROFILE;
   return env;

@@ -12944,6 +12944,224 @@ func TestRunnerSpecNewStoresBranchSourceAndRelated(t *testing.T) {
 	}
 }
 
+func TestRunnerSpecEditUpdatesBodyAndFinalizeRoundTrips(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "new", "auth-rotation", "--title", "Auth Rotation", "--message", "# Auth Rotation\n\nInitial body.", "--json"}); err != nil {
+		t.Fatalf("spec new error = %v", err)
+	}
+	beforeFiles := repoFileList(t, workingDir)
+
+	var messageOut bytes.Buffer
+	if err := (Runner{Stdout: &messageOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "edit", "SPEC-001", "--message", "# Auth Rotation\n\nMessage body."}); err != nil {
+		t.Fatalf("spec edit --message error = %v", err)
+	}
+	for _, want := range []string{"edited spec SPEC-001", "scope: global database", "next: loaf spec finalize SPEC-001"} {
+		if !strings.Contains(messageOut.String(), want) {
+			t.Fatalf("spec edit output = %q, want %q", messageOut.String(), want)
+		}
+	}
+
+	finalBody := "# Auth Rotation\n\nFile body wins."
+	bodyFile := filepath.Join(t.TempDir(), "body.md")
+	if err := os.WriteFile(bodyFile, []byte(finalBody), 0o600); err != nil {
+		t.Fatalf("WriteFile(body file) error = %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "edit", "SPEC-001", "--body-file", bodyFile}); err != nil {
+		t.Fatalf("spec edit --body-file error = %v", err)
+	}
+
+	var showOut bytes.Buffer
+	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "show", "SPEC-001", "--json"}); err != nil {
+		t.Fatalf("spec show --json error = %v", err)
+	}
+	show := decodeSpecShow(t, showOut.Bytes())
+	if show.Spec.Body != finalBody {
+		t.Fatalf("show.Spec.Body = %q, want %q", show.Spec.Body, finalBody)
+	}
+	if !show.Spec.HasBody {
+		t.Fatal("show.Spec.HasBody = false, want true")
+	}
+
+	// `edit` mutates SQLite only; no repository file may appear before finalize.
+	afterEditFiles := repoFileList(t, workingDir)
+	if strings.Join(afterEditFiles, "\n") != strings.Join(beforeFiles, "\n") {
+		t.Fatalf("spec edit repository files:\nbefore=%v\nafter=%v", beforeFiles, afterEditFiles)
+	}
+	renderPath := filepath.Join(workingDir, ".agents", "specs", "SPEC-001-auth-rotation.md")
+	if _, err := os.Stat(renderPath); !os.IsNotExist(err) {
+		t.Fatalf("spec render file exists before finalize or stat failed: %v", err)
+	}
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "finalize", "SPEC-001"}); err != nil {
+		t.Fatalf("spec finalize error = %v", err)
+	}
+	render, err := os.ReadFile(renderPath)
+	if err != nil {
+		t.Fatalf("ReadFile(finalized render) error = %v", err)
+	}
+	if !strings.Contains(string(render), "File body wins.") {
+		t.Fatalf("finalized render = %q, want edited body", string(render))
+	}
+
+	var driftOut bytes.Buffer
+	if err := (Runner{Stdout: &driftOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"check", "--hook", "render-drift", "--json"}); err != nil {
+		t.Fatalf("check render-drift error = %v", err)
+	}
+	if !strings.Contains(driftOut.String(), "\"passed\":true") && !strings.Contains(driftOut.String(), "\"passed\": true") {
+		t.Fatalf("render-drift output = %s, want passed", driftOut.String())
+	}
+}
+
+func TestRunnerSpecEditRequiresBodyFlag(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "new", "auth-rotation", "--message", "body"}); err != nil {
+		t.Fatalf("spec new error = %v", err)
+	}
+
+	t.Setenv("EDITOR", "false")
+	err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"spec", "edit", "SPEC-001"})
+	want := "spec edit requires body content via --body-file, --body -, or --message"
+	if err == nil || err.Error() != want {
+		t.Fatalf("spec edit without body error = %v, want %q", err, want)
+	}
+}
+
+func TestRunnerSpecEditRequiresSQLiteState(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-legacy.md", "---\nid: SPEC-001\nstatus: draft\ntitle: Legacy\n---\n# Legacy\n")
+
+	err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"spec", "edit", "SPEC-001", "--message", "body"})
+	want := "loaf spec edit requires initialized SQLite state; run `loaf state init` or `loaf state migrate markdown --apply` first"
+	if err == nil || err.Error() != want {
+		t.Fatalf("spec edit markdown-only error = %v, want %q", err, want)
+	}
+}
+
+func TestRunnerSpecEditJSONOutput(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "new", "auth-rotation", "--title", "Auth Rotation", "--message", "# Auth Rotation\n\nInitial body."}); err != nil {
+		t.Fatalf("spec new error = %v", err)
+	}
+
+	var editOut bytes.Buffer
+	if err := (Runner{Stdout: &editOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "edit", "SPEC-001", "--message", "# Auth Rotation\n\nEdited body.", "--json"}); err != nil {
+		t.Fatalf("spec edit --json error = %v", err)
+	}
+	result := decodeSpecEditResult(t, editOut.Bytes())
+	assertCLIReportContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
+	if result.Spec.Kind != "spec" || result.Spec.Alias != "SPEC-001" {
+		t.Fatalf("result.Spec = %#v, want spec SPEC-001", result.Spec)
+	}
+	if result.Imported {
+		t.Fatalf("result.Imported = true, want false for SQLite-native spec")
+	}
+	if result.ContentHash == "" {
+		t.Fatal("result.ContentHash is empty")
+	}
+	if result.EventID == "" {
+		t.Fatal("result.EventID is empty")
+	}
+}
+
+func TestRunnerReportEditThenFinalizeRefreshesTrackedRender(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "create", "render-refresh", "--message", "# Render Refresh\n\nOriginal body."}); err != nil {
+		t.Fatalf("report create error = %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "finalize", "report-render-refresh"}); err != nil {
+		t.Fatalf("report finalize error = %v", err)
+	}
+	renderPath := filepath.Join(workingDir, ".agents", "reports", "report-render-refresh.md")
+	render, err := os.ReadFile(renderPath)
+	if err != nil {
+		t.Fatalf("ReadFile(finalized report render) error = %v", err)
+	}
+	if !strings.Contains(string(render), "Original body.") {
+		t.Fatalf("finalized render = %q, want original body", string(render))
+	}
+
+	var editOut bytes.Buffer
+	if err := (Runner{Stdout: &editOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "edit", "report-render-refresh", "--message", "# Render Refresh\n\nRefreshed body."}); err != nil {
+		t.Fatalf("report edit --message error = %v", err)
+	}
+	for _, want := range []string{"edited report report-render-refresh", "scope: global database", "next: loaf report finalize report-render-refresh"} {
+		if !strings.Contains(editOut.String(), want) {
+			t.Fatalf("report edit output = %q, want %q", editOut.String(), want)
+		}
+	}
+	render, err = os.ReadFile(renderPath)
+	if err != nil {
+		t.Fatalf("ReadFile(render after edit) error = %v", err)
+	}
+	if !strings.Contains(string(render), "Original body.") {
+		t.Fatalf("render after edit = %q, want untouched tracked render", string(render))
+	}
+
+	var refinalizeOut bytes.Buffer
+	if err := (Runner{Stdout: &refinalizeOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"report", "finalize", "report-render-refresh", "--json"}); err != nil {
+		t.Fatalf("report finalize of done report error = %v, want idempotent success", err)
+	}
+	refinalized := decodeReportStatusResult(t, refinalizeOut.Bytes())
+	if refinalized.Previous != "done" || refinalized.Status != "done" {
+		t.Fatalf("refinalized = %#v, want done stay-done idempotent success", refinalized)
+	}
+	if refinalized.Render == nil || refinalized.Render.RelativePath != ".agents/reports/report-render-refresh.md" {
+		t.Fatalf("refinalized render = %#v, want tracked report render", refinalized.Render)
+	}
+	render, err = os.ReadFile(renderPath)
+	if err != nil {
+		t.Fatalf("ReadFile(refreshed render) error = %v", err)
+	}
+	if !strings.Contains(string(render), "Refreshed body.") {
+		t.Fatalf("refreshed render = %q, want edited body", string(render))
+	}
+
+	var driftOut bytes.Buffer
+	if err := (Runner{Stdout: &driftOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"check", "--hook", "render-drift", "--json"}); err != nil {
+		t.Fatalf("check render-drift error = %v", err)
+	}
+	if !strings.Contains(driftOut.String(), "\"passed\":true") && !strings.Contains(driftOut.String(), "\"passed\": true") {
+		t.Fatalf("render-drift output = %s, want passed", driftOut.String())
+	}
+}
+
+func TestRunnerGenerateCLIReferenceIndexesEditSubcommands(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir}).Run([]string{"__generate-cli-ref"}); err != nil {
+		t.Fatalf("__generate-cli-ref error = %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(workingDir, "content", "skills", "loaf-reference", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(generated loaf-reference skill) error = %v", err)
+	}
+	content := string(data)
+	for _, want := range []string{
+		"| `loaf spec` | Manage project specs | new, edit, list, show, status, render, finalize, archive, delete |",
+		"| `loaf report` | Manage durable reports (research, audits, investigations) | list, show, render, generate, create, edit, finalize, archive |",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("generated reference missing %q:\n%s", want, content)
+		}
+	}
+}
+
 func TestRunnerReportCreateAndShowSQLiteBody(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -13304,6 +13522,9 @@ Markdown report body.
 	show := decodeReportShow(t, stdout.Bytes())
 	if show.Report.Title != "Fallback Report" || show.Report.Kind != "audit" || !strings.Contains(show.Report.Body, "Markdown report body.") {
 		t.Fatalf("show.Report = %#v, want markdown fallback report", show.Report)
+	}
+	if !show.Report.HasBody {
+		t.Fatalf("show.Report = %#v, want HasBody true for non-empty markdown body", show.Report)
 	}
 	if show.ContractVersion != 0 || show.DatabaseScope != "" {
 		t.Fatalf("show context = %#v, want markdown fallback without SQLite context", show)
@@ -13959,6 +14180,15 @@ func decodeSpecCreateResult(t *testing.T, data []byte) state.SpecCreateResult {
 func decodeSpecShow(t *testing.T, data []byte) state.SpecShow {
 	t.Helper()
 	var result state.SpecShow
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
+	}
+	return result
+}
+
+func decodeSpecEditResult(t *testing.T, data []byte) state.SpecEditResult {
+	t.Helper()
+	var result state.SpecEditResult
 	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
 	}
@@ -14978,6 +15208,24 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 	}
 	if got := commands["report"].optionDescriptions["report finalize --json"]; !strings.Contains(got, "status transition") || !strings.Contains(got, "project identity") {
 		t.Fatalf("report finalize json description = %q, want status transition/project identity guidance", got)
+	}
+	if !stringSliceContains(commands["spec"].subcommands, "edit") {
+		t.Fatalf("spec subcommands = %#v, want edit", commands["spec"].subcommands)
+	}
+	if !stringSliceContains(commands["report"].subcommands, "edit") {
+		t.Fatalf("report subcommands = %#v, want edit", commands["report"].subcommands)
+	}
+	if got := commands["spec"].optionDescriptions["spec edit --json"]; !strings.Contains(got, "edited spec") || !strings.Contains(got, "content hash") || !strings.Contains(got, "project identity") {
+		t.Fatalf("spec edit json description = %q, want edited spec/content hash/project identity guidance", got)
+	}
+	if got := commands["spec"].optionDescriptions["spec edit --force"]; !strings.Contains(got, "diverges") {
+		t.Fatalf("spec edit force description = %q, want divergence guidance", got)
+	}
+	if got := commands["report"].optionDescriptions["report edit --json"]; !strings.Contains(got, "edited report") || !strings.Contains(got, "content hash") || !strings.Contains(got, "project identity") {
+		t.Fatalf("report edit json description = %q, want edited report/content hash/project identity guidance", got)
+	}
+	if got := commands["report"].optionDescriptions["report edit --force"]; !strings.Contains(got, "diverges") {
+		t.Fatalf("report edit force description = %q, want divergence guidance", got)
 	}
 	for _, want := range []string{"list", "show", "identity", "rename", "move"} {
 		if !stringSliceContains(commands["project"].subcommands, want) {

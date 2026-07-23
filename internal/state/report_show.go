@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/levifig/loaf/internal/project"
 )
@@ -31,6 +32,7 @@ type ReportDetail struct {
 	Status        string              `json:"status"`
 	Sources       []TraceSource       `json:"sources"`
 	Body          string              `json:"body,omitempty"`
+	HasBody       bool                `json:"has_body"`
 	Findings      []FindingItem       `json:"findings,omitempty"`
 	Relationships []TraceRelationship `json:"relationships"`
 	CreatedAt     string              `json:"created_at"`
@@ -142,6 +144,7 @@ WHERE reports.project_id = ? AND reports.id = ?
 		Status:        status,
 		Sources:       sources,
 		Body:          body,
+		HasBody:       strings.TrimSpace(body) != "",
 		Findings:      findings,
 		Relationships: relationships,
 		CreatedAt:     createdAt,

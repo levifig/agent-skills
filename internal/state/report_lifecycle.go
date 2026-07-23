@@ -52,6 +52,27 @@ type ReportStatusResult struct {
 	Render             *DurableFinalizeResult `json:"render,omitempty"`
 }
 
+// ReportEditOptions describes a SQLite-backed report body edit request.
+type ReportEditOptions struct {
+	Ref   string
+	Body  string
+	Force bool // proceed when the legacy source .md diverges from the stored body
+}
+
+// ReportEditResult describes an applied SQLite-backed report body edit.
+type ReportEditResult struct {
+	ContractVersion    int         `json:"contract_version,omitempty"`
+	DatabaseScope      string      `json:"database_scope,omitempty"`
+	DatabasePath       string      `json:"database_path,omitempty"`
+	ProjectID          string      `json:"project_id,omitempty"`
+	ProjectName        string      `json:"project_name,omitempty"`
+	ProjectCurrentPath string      `json:"project_current_path,omitempty"`
+	Report             TraceEntity `json:"report"`
+	Imported           bool        `json:"imported"`
+	ContentHash        string      `json:"content_hash"`
+	EventID            string      `json:"event_id"`
+}
+
 // CreateReport creates a draft report in initialized SQLite state.
 func CreateReport(ctx context.Context, root project.Root, resolver PathResolver, options ReportCreateOptions) (ReportCreateResult, error) {
 	store, err := openInitializedStore(root, resolver)
@@ -60,6 +81,84 @@ func CreateReport(ctx context.Context, root project.Root, resolver PathResolver,
 	}
 	defer store.Close()
 	return store.CreateReport(ctx, root, options)
+}
+
+// EditReportBody replaces a report's SQLite body in initialized SQLite state.
+func EditReportBody(ctx context.Context, root project.Root, resolver PathResolver, options ReportEditOptions) (ReportEditResult, error) {
+	store, err := openInitializedStore(root, resolver)
+	if err != nil {
+		return ReportEditResult{}, err
+	}
+	defer store.Close()
+	return store.EditReportBody(ctx, root, options)
+}
+
+// EditReportBody replaces a report's SQLite body in an open store.
+func (s *Store) EditReportBody(ctx context.Context, root project.Root, options ReportEditOptions) (ReportEditResult, error) {
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return ReportEditResult{}, err
+	}
+	identity, err := s.projectIdentity(ctx, projectID)
+	if err != nil {
+		return ReportEditResult{}, err
+	}
+	entity, err := s.resolveTraceEntity(ctx, projectID, options.Ref)
+	if err != nil {
+		return ReportEditResult{}, err
+	}
+	if entity.Kind != "report" {
+		return ReportEditResult{}, fmt.Errorf("report edit target %q resolved to %s, not report", options.Ref, entity.Kind)
+	}
+
+	var status string
+	var bodySourceID, sourcePath sql.NullString
+	err = s.db.QueryRowContext(ctx, `
+SELECT reports.status, reports.body_source_id, sources.path
+FROM reports
+LEFT JOIN sources ON sources.id = reports.body_source_id
+WHERE reports.project_id = ? AND reports.id = ?
+`, projectID, entity.ID).Scan(&status, &bodySourceID, &sourcePath)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ReportEditResult{}, fmt.Errorf("report %q not found in SQLite state", firstNonEmpty(entity.Alias, options.Ref))
+	}
+	if err != nil {
+		return ReportEditResult{}, fmt.Errorf("read report body source: %w", err)
+	}
+
+	display := firstNonEmpty(entity.Alias, options.Ref)
+	// Rejecting before any mutation keeps archived reports whole: `loaf report
+	// finalize` refuses archived reports, so an accepted edit could never reach
+	// the durable render and would strand in SQLite.
+	if LifecycleStatusMatches(LifecycleEntityReport, status, LifecycleStatusArchived) {
+		return ReportEditResult{}, fmt.Errorf("report %q is archived and cannot be edited: `loaf report finalize` does not refresh archived renders, so the edit would never reach the durable render; leave the archived render as the historical record, or create a follow-up report with `loaf report create`", display)
+	}
+
+	renderPath := ""
+	if !sourcePath.Valid || strings.TrimSpace(sourcePath.String) == "" {
+		_, rel, err := durableRenderGitFile(root, "report", display, nil)
+		if err != nil {
+			return ReportEditResult{}, err
+		}
+		renderPath = rel
+	}
+	outcome, err := s.editArtifactBody(ctx, root.Path(), projectID, "report", "reports", entity.ID, display, bodySourceID, sourcePath, renderPath, options.Body, options.Force)
+	if err != nil {
+		return ReportEditResult{}, err
+	}
+
+	return ReportEditResult{
+		ContractVersion:    StateJSONContractVersion,
+		DatabaseScope:      identity.DatabaseScope,
+		DatabasePath:       identity.DatabasePath,
+		ProjectID:          identity.ID,
+		ProjectName:        identity.FriendlyName,
+		ProjectCurrentPath: identity.CurrentPath,
+		Report:             entity,
+		Imported:           outcome.Imported,
+		ContentHash:        outcome.ContentHash,
+		EventID:            outcome.EventID,
+	}, nil
 }
 
 // FinalizeReport transitions a draft report to done in initialized SQLite state.
@@ -201,6 +300,24 @@ func (s *Store) updateReportStatus(ctx context.Context, root project.Root, ref s
 	}
 	if err != nil {
 		return ReportStatusResult{}, fmt.Errorf("read report metadata: %w", err)
+	}
+	if command == "finalize" && LifecycleStatusMatches(LifecycleEntityReport, previousStatus, nextStatus) {
+		// Finalize is idempotent: re-finalizing a done report succeeds without a
+		// transition or a new event so the render can always be refreshed.
+		status := LifecycleStatusForDisplay(LifecycleEntityReport, previousStatus)
+		report.Title = title
+		report.Status = status
+		return ReportStatusResult{
+			ContractVersion:    StateJSONContractVersion,
+			DatabaseScope:      identity.DatabaseScope,
+			DatabasePath:       identity.DatabasePath,
+			ProjectID:          identity.ID,
+			ProjectName:        identity.FriendlyName,
+			ProjectCurrentPath: identity.CurrentPath,
+			Report:             report,
+			Previous:           status,
+			Status:             status,
+		}, nil
 	}
 	if !LifecycleStatusMatches(LifecycleEntityReport, previousStatus, requiredStatus) {
 		return ReportStatusResult{}, fmt.Errorf("report %q is not %s (status: %s)", firstNonEmpty(report.Alias, ref), requiredStatus, previousStatus)

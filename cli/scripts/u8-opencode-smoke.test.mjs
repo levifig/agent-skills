@@ -1,6 +1,51 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectTextValues, modelVisibleProof, opencodeVersionMatches, parseOpenCodeJSONL, sanitizeError, sanitizedStderr } from "./u8-opencode-smoke.mjs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { delimiter, join } from "node:path";
+import { tmpdir } from "node:os";
+import { buildEnvironment, collectTextValues, modelVisibleProof, opencodeVersionMatches, parseOpenCodeJSONL, resolveExecutable, sanitizeError, sanitizedStderr } from "./u8-opencode-smoke.mjs";
+
+test("build environment passes XDG dirs through only when set", () => {
+  const xdgKeys = ["XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"];
+  const saved = Object.fromEntries(xdgKeys.map((key) => [key, process.env[key]]));
+  try {
+    for (const key of xdgKeys) delete process.env[key];
+    let env = buildEnvironment();
+    for (const key of xdgKeys) assert.equal(key in env, false);
+    process.env.XDG_CACHE_HOME = "/tmp/u8-test-cache";
+    env = buildEnvironment();
+    assert.equal(env.XDG_CACHE_HOME, "/tmp/u8-test-cache");
+    assert.equal("XDG_CONFIG_HOME" in env, false);
+  } finally {
+    for (const key of xdgKeys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  }
+});
+
+test("skips multiplexer shims whose realpath basename differs from the command", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "u8-resolve-test-"));
+  const savedPath = process.env.PATH;
+  try {
+    const shimDir = join(tempRoot, "shims");
+    const realDir = join(tempRoot, "installs");
+    mkdirSync(shimDir, { recursive: true });
+    mkdirSync(realDir, { recursive: true });
+    const mux = join(tempRoot, "mise");
+    writeFileSync(mux, "#!/bin/sh\n", { mode: 0o755 });
+    symlinkSync(mux, join(shimDir, "opencode"));
+    const genuine = join(realDir, "opencode");
+    writeFileSync(genuine, "#!/bin/sh\n", { mode: 0o755 });
+    process.env.PATH = [shimDir, realDir].join(delimiter);
+    assert.equal(resolveExecutable("opencode"), realpathSync(genuine));
+    process.env.PATH = shimDir;
+    assert.throws(() => resolveExecutable("opencode"), /unavailable/);
+  } finally {
+    process.env.PATH = savedPath;
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
 
 test("requires the exact OpenCode version token", () => {
   assert.equal(opencodeVersionMatches("1.18.4\n"), true);

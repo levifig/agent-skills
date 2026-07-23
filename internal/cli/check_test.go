@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -604,6 +605,67 @@ func TestRunnerCheckEphemeralProvenanceBlocksAfterCutover(t *testing.T) {
 	}
 }
 
+func TestRunnerCheckEphemeralProvenanceEmitsUntrackRemediation(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeCheckFile(t, repo, ".agents/tasks/TASK-001-example.md", "# Task\n")
+	gitCLI(t, repo, "add", ".agents/tasks/TASK-001-example.md")
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+	}.Run([]string{"check", "--hook", "ephemeral-provenance", "--json"})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("ephemeral-provenance error = %v, want exit code 2", err)
+	}
+	var output checkJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	joined := strings.Join(output.Errors, "\n")
+	for _, want := range []string{
+		"git rm --cached .agents/tasks/TASK-001-example.md",
+		"commit the removal",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("output = %#v, want errors containing %q", output, want)
+		}
+	}
+}
+
+func TestRunnerCheckEphemeralProvenanceEmitsSpecEditRemediation(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeCheckFile(t, repo, ".agents/specs/SPEC-001-example.md", "source: .agents/tasks/TASK-001-example.md\n")
+	gitCLI(t, repo, "add", ".agents/specs/SPEC-001-example.md")
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+	}.Run([]string{"check", "--hook", "ephemeral-provenance", "--json"})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("ephemeral-provenance error = %v, want exit code 2", err)
+	}
+	var output checkJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	joined := strings.Join(output.Errors, "\n")
+	for _, want := range []string{
+		"loaf spec edit SPEC-001 --body-file <path>",
+		"loaf spec finalize SPEC-001",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("output = %#v, want errors containing %q", output, want)
+		}
+	}
+	if strings.Contains(joined, "loaf spec archive") {
+		t.Fatalf("output = %#v, want no archive suggestion (archive cannot clear the gate)", output)
+	}
+}
+
 func TestRunnerCheckEphemeralProvenanceSkipsNonPushHookContext(t *testing.T) {
 	repo := initCLIGitRepo(t)
 	writeCheckFile(t, repo, ".agents/tasks/TASK-001-example.md", "# Task\n")
@@ -707,8 +769,76 @@ func TestRunnerCheckRenderDriftBlocksHandEditedRender(t *testing.T) {
 	for _, want := range []string{
 		".agents/specs/SPEC-001-render.md",
 		"not byte-identical",
-		"loaf <entity> edit",
-		"loaf <entity> finalize",
+		"loaf spec edit SPEC-001 --body-file <path>",
+		"loaf spec finalize SPEC-001",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("render-drift output = %#v, want %q", output, want)
+		}
+	}
+	if strings.Contains(joined, "Committed render is invalid") {
+		t.Fatalf("render-drift output = %#v, want drifted-render remediation, not the invalid-render one", output)
+	}
+}
+
+func TestRunnerCheckRenderDriftInvalidRenderPrescribesFinalize(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeCheckFile(t, repo, ".agents/specs/SPEC-001-render.md", "---\ntitle: Render Drift\nid: SPEC-001\n---\n\n# Render Drift\n\n<!-- loaf:render kind=spec contract=bogus-v9 -->\n")
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+	}.Run([]string{"check", "--hook", "render-drift", "--json"})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("render-drift error = %v, want exit code 2", err)
+	}
+	var output checkJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	joined := strings.Join(append(output.Errors, output.Findings...), "\n")
+	for _, want := range []string{
+		".agents/specs/SPEC-001-render.md",
+		"Committed render is invalid",
+		"loaf spec finalize SPEC-001",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("render-drift output = %#v, want %q", output, want)
+		}
+	}
+	// Editing a malformed render round-trips it into the body as prose, so the
+	// remediation must never route through spec edit --body-file.
+	for _, reject := range []string{"loaf spec edit", "--body-file"} {
+		if strings.Contains(joined, reject) {
+			t.Fatalf("render-drift output = %#v, want no %q for invalid renders", output, reject)
+		}
+	}
+}
+
+func TestRunnerCheckRenderDriftNamesReportEditForReports(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeCheckFile(t, repo, ".agents/reports/report-audit.md", "---\ntitle: Audit\nid: report-audit\n---\n\n# Audit\n\n<!-- loaf:render kind=report contract=durable-doc-v1 -->\n")
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: repo,
+	}.Run([]string{"check", "--hook", "render-drift", "--json"})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("render-drift error = %v, want exit code 2", err)
+	}
+	var output checkJSONOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+	}
+	joined := strings.Join(append(output.Errors, output.Findings...), "\n")
+	for _, want := range []string{
+		".agents/reports/report-audit.md",
+		"loaf report edit report-audit",
+		"loaf report finalize report-audit",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("render-drift output = %#v, want %q", output, want)
@@ -868,6 +998,211 @@ func TestRunnerCheckArtifactBodyWriteAllowsExplicitExceptions(t *testing.T) {
 				t.Fatalf("stdout = %q, want passed", stdout.String())
 			}
 		})
+	}
+}
+
+func TestArtifactBodyWriteCommandEmitsConcreteVerbs(t *testing.T) {
+	root := t.TempDir()
+	existingReport := ".agents/reports/20260512-122202-research-spec-track-convention-surface.md"
+	writeCheckFile(t, root, existingReport, "# Report\n")
+	cases := []struct {
+		kind string
+		path string
+		want string
+	}{
+		{kind: "brainstorm", path: ".agents/brainstorms/20260701-topic.md", want: "loaf brainstorm capture --title <title> --body-file <path>"},
+		{kind: "council", path: ".agents/councils/20260701-review.md", want: "loaf council new --title <title> --body-file <path>"},
+		{kind: "draft", path: ".agents/drafts/idea-notes.md", want: "loaf brainstorm capture --title <title> --body-file <path>"},
+		{kind: "handoff", path: ".agents/handoffs/20260701-handoff.md", want: "loaf handoff new --title <title> --body-file <path>"},
+		{kind: "idea", path: ".agents/ideas/IDEA-001-example.md", want: "loaf idea capture --title <title> --body-file <path>"},
+		{kind: "plan", path: ".agents/plans/PLAN-001-cutover.md", want: "loaf plan new --title <title> --body-file <path>"},
+		{kind: "report", path: ".agents/reports/report-audit.md", want: "loaf report edit report-audit --body-file <path>"},
+		{kind: "report", path: existingReport, want: "loaf report edit 20260512-122202-research-spec-track-convention-surface --body-file <path>"},
+		{kind: "report", path: ".agents/reports/2026-07-01-audit.md", want: "loaf report create <slug> --body-file <path>"},
+		{kind: "spec", path: ".agents/specs/SPEC-055-x.md", want: "loaf spec edit SPEC-055 --body-file <path>"},
+		{kind: "spec", path: ".agents/specs/new-idea.md", want: "loaf spec new <slug> --title <title> --body-file <path>"},
+		{kind: "task", path: ".agents/tasks/TASK-042-example.md", want: "loaf task update TASK-042 --status <status>"},
+	}
+	covered := map[string]bool{}
+	for _, tc := range cases {
+		covered[tc.kind] = true
+		got := artifactBodyWriteCommand(tc.kind, tc.path, root)
+		if got != tc.want {
+			t.Fatalf("artifactBodyWriteCommand(%q, %q) = %q, want %q", tc.kind, tc.path, got, tc.want)
+		}
+		if strings.Contains(got, "<entity>") || strings.Contains(got, "<verb>") {
+			t.Fatalf("artifactBodyWriteCommand(%q, %q) = %q, want concrete verbs without <entity>/<verb> placeholders", tc.kind, tc.path, got)
+		}
+	}
+	for dir, kind := range artifactBodyPathDirs {
+		if !covered[kind] {
+			t.Fatalf("artifactBodyPathDirs[%q] kind %q has no artifactBodyWriteCommand coverage", dir, kind)
+		}
+	}
+}
+
+func TestArtifactBodyWriteCommandRoutesExistingReportRenderToEdit(t *testing.T) {
+	root := t.TempDir()
+	path := ".agents/reports/20260512-122202-research-spec-track-convention-surface.md"
+
+	if got, want := artifactBodyWriteCommand("report", path, root), "loaf report create <slug> --body-file <path>"; got != want {
+		t.Fatalf("artifactBodyWriteCommand(report, absent %q) = %q, want %q", path, got, want)
+	}
+
+	writeCheckFile(t, root, path, "# Report\n")
+	want := "loaf report edit 20260512-122202-research-spec-track-convention-surface --body-file <path>"
+	if got := artifactBodyWriteCommand("report", path, root); got != want {
+		t.Fatalf("artifactBodyWriteCommand(report, existing %q) = %q, want %q", path, got, want)
+	}
+}
+
+func TestArtifactBodyWriteCommandPrefersReportFrontmatterID(t *testing.T) {
+	root := t.TempDir()
+	path := ".agents/reports/20260512-122202-research-audit.md"
+	writeCheckFile(t, root, path, "---\nid: report-audit-007\ntitle: Audit\nstatus: draft\n---\n\n# Audit\n")
+
+	want := "loaf report edit report-audit-007 --body-file <path>"
+	if got := artifactBodyWriteCommand("report", path, root); got != want {
+		t.Fatalf("artifactBodyWriteCommand(report, existing %q) = %q, want frontmatter id ref %q", path, got, want)
+	}
+}
+
+func TestArtifactBodyWriteCommandFallsBackToStemWithoutFrontmatterID(t *testing.T) {
+	root := t.TempDir()
+	path := ".agents/reports/20260512-122202-research-audit.md"
+	writeCheckFile(t, root, path, "---\ntitle: Audit\nstatus: draft\n---\n\n# Audit\n")
+
+	want := "loaf report edit 20260512-122202-research-audit --body-file <path>"
+	if got := artifactBodyWriteCommand("report", path, root); got != want {
+		t.Fatalf("artifactBodyWriteCommand(report, existing %q) = %q, want filename-stem ref %q", path, got, want)
+	}
+}
+
+func TestNativeCheckRemediationsPassOtherBlockingChecks(t *testing.T) {
+	replayHooks := []string{"artifact-body-write", "ephemeral-provenance", "render-drift", "check-secrets", "validate-commit"}
+	for _, hook := range replayHooks {
+		if !validCheckHooks[hook] {
+			t.Fatalf("replay hook %q is not registered in validCheckHooks", hook)
+		}
+	}
+
+	trackedEphemeralRepo := initCLIGitRepo(t)
+	writeCheckFile(t, trackedEphemeralRepo, ".agents/tasks/TASK-001-example.md", "# Task\n")
+	gitCLI(t, trackedEphemeralRepo, "add", ".agents/tasks/TASK-001-example.md")
+
+	danglingSpecRepo := initCLIGitRepo(t)
+	writeCheckFile(t, danglingSpecRepo, ".agents/specs/SPEC-001-example.md", "source: .agents/drafts/idea-notes.md\n")
+	writeCheckFile(t, danglingSpecRepo, ".agents/specs/SPEC-002-render.md", "---\ntitle: Render Drift\nid: SPEC-002\n---\n\n# Render Drift\n\n<!-- loaf:render kind=spec contract=durable-doc-v1 -->\n")
+	gitCLI(t, danglingSpecRepo, "add", ".agents/specs/SPEC-001-example.md", ".agents/specs/SPEC-002-render.md")
+
+	writeContext := func(path string) string {
+		body, err := json.Marshal(checkHookContext{
+			ToolName: "Write",
+			ToolInput: checkHookInput{
+				FilePath: path,
+				Content:  "# Doc\n\nDirect markdown body.",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Marshal write context error = %v", err)
+		}
+		return string(body)
+	}
+	blockingRuns := []struct {
+		hook    string
+		context string
+	}{
+		{hook: "artifact-body-write", context: writeContext(".agents/specs/SPEC-001-example.md")},
+		{hook: "artifact-body-write", context: writeContext(".agents/reports/report-audit.md")},
+		{hook: "ephemeral-provenance", context: checkBashContext("git push origin main")},
+		{hook: "render-drift", context: checkBashContext("git push origin main")},
+	}
+	commandRE := regexp.MustCompile("`([^`]+)`")
+	placeholders := strings.NewReplacer(
+		"<ref>", "SPEC-001",
+		"<path>", ".agents/specs/SPEC-001-example.md",
+		"<slug>", "demo",
+		"<title>", "Demo",
+		"<status>", "done",
+	)
+
+	for _, repo := range []string{trackedEphemeralRepo, danglingSpecRepo} {
+		var commands []string
+		seen := map[string]bool{}
+		for _, run := range blockingRuns {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: repo,
+				Stdin:      bytes.NewBufferString(run.context),
+			}.Run([]string{"check", "--hook", run.hook, "--json"})
+			var exitErr ExitError
+			if err != nil && (!errors.As(err, &exitErr) || exitErr.Code != 2) {
+				t.Fatalf("check --hook %s error = %v, want nil or exit code 2", run.hook, err)
+			}
+			var output checkJSONOutput
+			if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+				t.Fatalf("Unmarshal(%q) error = %v", stdout.String(), err)
+			}
+			for _, message := range append(output.Errors, output.Findings...) {
+				for _, match := range commandRE.FindAllStringSubmatch(message, -1) {
+					command := placeholders.Replace(match[1])
+					if seen[command] {
+						continue
+					}
+					seen[command] = true
+					commands = append(commands, command)
+				}
+			}
+		}
+		if len(commands) == 0 {
+			t.Fatalf("no remediation commands extracted from blocking checks in %s", repo)
+		}
+		for _, command := range commands {
+			if !strings.HasPrefix(command, "loaf ") && !strings.HasPrefix(command, "git ") {
+				t.Fatalf("remediation command %q, want prefix \"loaf \" or \"git \"", command)
+			}
+			for _, hook := range replayHooks {
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				err := Runner{
+					Stdout:     &stdout,
+					Stderr:     &stderr,
+					WorkingDir: repo,
+					Stdin:      bytes.NewBufferString(checkBashContext(command)),
+				}.Run([]string{"check", "--hook", hook})
+				if err != nil {
+					t.Fatalf("remediation %q blocked by hook %s: %v\nstdout: %s\nstderr: %s", command, hook, err, stdout.String(), stderr.String())
+				}
+			}
+		}
+	}
+}
+
+func TestEphemeralProvenanceSkipsLoafCommandsInWedgedRepo(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeCheckFile(t, repo, ".agents/tasks/TASK-001-example.md", "# Task\n")
+	writeCheckFile(t, repo, ".agents/specs/SPEC-001-example.md", "source: .agents/drafts/idea-notes.md\n")
+	gitCLI(t, repo, "add", ".agents/tasks/TASK-001-example.md", ".agents/specs/SPEC-001-example.md")
+
+	for _, command := range []string{
+		"loaf spec edit SPEC-001 --body-file .agents/specs/SPEC-001-example.md",
+		"loaf spec finalize SPEC-001",
+	} {
+		for _, hook := range []string{"ephemeral-provenance", "artifact-body-write"} {
+			var stdout bytes.Buffer
+			err := Runner{
+				Stdout:     &stdout,
+				WorkingDir: repo,
+				Stdin:      bytes.NewBufferString(checkBashContext(command)),
+			}.Run([]string{"check", "--hook", hook})
+			if err != nil {
+				t.Fatalf("%s blocked %q in wedged repo: %v", hook, command, err)
+			}
+			if !strings.Contains(stdout.String(), "passed") {
+				t.Fatalf("stdout = %q, want %s to pass %q", stdout.String(), hook, command)
+			}
+		}
 	}
 }
 

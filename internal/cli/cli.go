@@ -7487,6 +7487,7 @@ func (r Runner) runSpec(args []string, out io.Writer, runtime state.Runtime) err
 	}
 	if writeNestedHelp(out, args, map[string]func(io.Writer){
 		"new":      writeSpecNewHelp,
+		"edit":     writeSpecEditHelp,
 		"list":     writeSpecListHelp,
 		"show":     writeSpecShowHelp,
 		"status":   writeSpecStatusHelp,
@@ -7500,6 +7501,8 @@ func (r Runner) runSpec(args []string, out io.Writer, runtime state.Runtime) err
 	switch args[0] {
 	case "new":
 		return r.runSpecNew(args[1:], out, runtime)
+	case "edit":
+		return r.runSpecEdit(args[1:], out, runtime)
 	case "list":
 		return r.runSpecList(args[1:], out, runtime)
 	case "show":
@@ -7526,6 +7529,7 @@ func writeSpecHelp(out io.Writer) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Subcommands:")
 	fmt.Fprintln(out, "  new      Create a spec in SQLite state")
+	fmt.Fprintln(out, "  edit     Replace a spec's SQLite body")
 	fmt.Fprintln(out, "  list     List specs")
 	fmt.Fprintln(out, "  show     Show one spec")
 	fmt.Fprintln(out, "  status   Set a spec's lifecycle status")
@@ -7549,6 +7553,15 @@ func writeSpecNewHelp(out io.Writer) {
 		"--body -     Read the spec body from stdin",
 		"--message    Use the given text as the spec body",
 		"--json       Output the created spec, global database scope, and project identity as JSON")
+}
+
+func writeSpecEditHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf spec edit <spec> [options]", "Replace a spec's SQLite body; run loaf spec finalize to update the tracked render.",
+		"--body-file  Read the spec body from a file",
+		"--body -     Read the spec body from stdin",
+		"--message    Use the given text as the spec body",
+		"--force      Proceed when the legacy source file diverges from the SQLite body",
+		"--json       Output the edited spec, imported flag, content hash, event, global database scope, and project identity as JSON")
 }
 
 func writeSpecListHelp(out io.Writer) {
@@ -7659,6 +7672,44 @@ func (r Runner) runSpecNew(args []string, out io.Writer, runtime state.Runtime) 
 		return writeJSON(out, result)
 	}
 	writeSpecCreate(out, result)
+	return nil
+}
+
+func (r Runner) runSpecEdit(args []string, out io.Writer, runtime state.Runtime) error {
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		return err
+	}
+	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
+	if err != nil {
+		return err
+	}
+	switch status.Mode {
+	case state.ModeMarkdownOnly:
+		return sqliteStateRequiredError("spec edit")
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+
+	options, err := parseSpecEditArgs(args)
+	if err != nil {
+		return err
+	}
+	body, ok, err := r.resolveBodyInput("spec edit", options.body, false)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("spec edit requires body content via --body-file, --body -, or --message")
+	}
+	result, err := state.EditSpecBody(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.SpecEditOptions{Ref: options.ref, Body: body, Force: options.force})
+	if err != nil {
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeSpecEdit(out, result)
 	return nil
 }
 
@@ -8990,6 +9041,7 @@ func (r Runner) runReport(args []string, out io.Writer, runtime state.Runtime) e
 		"render":   writeReportRenderHelp,
 		"generate": writeReportGenerateHelp,
 		"create":   writeReportCreateHelp,
+		"edit":     writeReportEditHelp,
 		"finalize": writeReportFinalizeHelp,
 		"archive":  writeReportArchiveHelp,
 	}) {
@@ -9006,6 +9058,8 @@ func (r Runner) runReport(args []string, out io.Writer, runtime state.Runtime) e
 		return r.runReportGenerate(args[1:], out, runtime)
 	case "create":
 		return r.runReportCreate(args[1:], out, runtime)
+	case "edit":
+		return r.runReportEdit(args[1:], out, runtime)
 	case "finalize":
 		return r.runReportFinalize(args[1:], out, runtime)
 	case "archive":
@@ -9423,6 +9477,7 @@ func writeReportHelp(out io.Writer) {
 	fmt.Fprintln(out, "  render    Render a report to the XDG cache")
 	fmt.Fprintln(out, "  generate  Generate read-only markdown exports")
 	fmt.Fprintln(out, "  create    Create a report")
+	fmt.Fprintln(out, "  edit      Replace a report's SQLite body")
 	fmt.Fprintln(out, "  finalize  Finalize a report")
 	fmt.Fprintln(out, "  archive   Archive a report")
 	fmt.Fprintln(out)
@@ -9448,6 +9503,15 @@ func writeReportGenerateHelp(out io.Writer) {
 
 func writeReportCreateHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf report create <slug> [--type <type>] [--source <source>] [--body-file <path>|--body -|--message <text>] [--json]", "Create a report.", "--type       Report type", "--source     Report source", "--body-file  Read Markdown body from a UTF-8 file", "--body       Use '-' to read Markdown body from stdin", "--message    Inline Markdown body; lower precedence than --body-file and --body -", "--json       Output created report, event, global database scope, and project identity as JSON")
+}
+
+func writeReportEditHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf report edit <report> [options]", "Replace a report's SQLite body; run loaf report finalize to update the tracked render.",
+		"--body-file  Read the report body from a file",
+		"--body -     Read the report body from stdin",
+		"--message    Use the given text as the report body",
+		"--force      Proceed when the legacy source file diverges from the SQLite body",
+		"--json       Output the edited report, imported flag, content hash, event, global database scope, and project identity as JSON")
 }
 
 func writeReportFinalizeHelp(out io.Writer) {
@@ -9644,6 +9708,40 @@ func (r Runner) runReportCreate(args []string, out io.Writer, runtime state.Runt
 	return nil
 }
 
+func (r Runner) runReportEdit(args []string, out io.Writer, runtime state.Runtime) error {
+	projectRoot, mode, err := r.reportStateMode(runtime)
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case state.ModeMarkdownOnly:
+		return sqliteStateRequiredError("report edit")
+	case state.ModeInvalid:
+		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
+	}
+
+	options, err := parseReportEditArgs(args)
+	if err != nil {
+		return err
+	}
+	body, ok, err := r.resolveBodyInput("report edit", options.body, false)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("report edit requires body content via --body-file, --body -, or --message")
+	}
+	result, err := state.EditReportBody(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.ReportEditOptions{Ref: options.ref, Body: body, Force: options.force})
+	if err != nil {
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeReportEdit(out, result)
+	return nil
+}
+
 func (r Runner) runReportFinalize(args []string, out io.Writer, runtime state.Runtime) error {
 	ref, jsonOutput, err := parseSingleRefArgs("report finalize", args)
 	if err != nil {
@@ -9754,6 +9852,20 @@ func writeSpecCreate(out io.Writer, result state.SpecCreateResult) {
 	}
 }
 
+func writeSpecEdit(out io.Writer, result state.SpecEditResult) {
+	ref := firstNonEmpty(result.Spec.Alias, result.Spec.ID)
+	fmt.Fprintf(out, "edited spec %s\n", ref)
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	if result.Imported {
+		fmt.Fprintln(out, "imported legacy source body")
+	}
+	fmt.Fprintf(out, "sha256: %s\n", result.ContentHash)
+	if result.EventID != "" {
+		fmt.Fprintf(out, "event: %s\n", result.EventID)
+	}
+	fmt.Fprintf(out, "next: loaf spec finalize %s\n", ref)
+}
+
 func writeReportCreate(out io.Writer, result state.ReportCreateResult) {
 	fmt.Fprintf(out, "created report %s: %s\n", firstNonEmpty(result.Report.Alias, result.Report.ID), result.Report.Title)
 	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
@@ -9763,6 +9875,20 @@ func writeReportCreate(out io.Writer, result state.ReportCreateResult) {
 	if result.EventID != "" {
 		fmt.Fprintf(out, "event: %s\n", result.EventID)
 	}
+}
+
+func writeReportEdit(out io.Writer, result state.ReportEditResult) {
+	ref := firstNonEmpty(result.Report.Alias, result.Report.ID)
+	fmt.Fprintf(out, "edited report %s\n", ref)
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	if result.Imported {
+		fmt.Fprintln(out, "imported legacy source body")
+	}
+	fmt.Fprintf(out, "sha256: %s\n", result.ContentHash)
+	if result.EventID != "" {
+		fmt.Fprintf(out, "event: %s\n", result.EventID)
+	}
+	fmt.Fprintf(out, "next: loaf report finalize %s\n", ref)
 }
 
 func writeReportShow(out io.Writer, result state.ReportShow) {
@@ -10415,6 +10541,7 @@ func markdownReportShow(rootPath string, ref string) (state.ReportShow, error) {
 			Status:    item.Status,
 			Sources:   []state.TraceSource{{Path: item.SourcePath}},
 			Body:      body,
+			HasBody:   strings.TrimSpace(body) != "",
 			CreatedAt: updatedAt,
 			UpdatedAt: updatedAt,
 		},
@@ -11376,6 +11503,20 @@ type reportCreateOptions struct {
 type specNewOptions struct {
 	jsonOutput bool
 	create     state.SpecCreateOptions
+	body       bodyInputOptions
+}
+
+type specEditOptions struct {
+	jsonOutput bool
+	ref        string
+	force      bool
+	body       bodyInputOptions
+}
+
+type reportEditOptions struct {
+	jsonOutput bool
+	ref        string
+	force      bool
 	body       bodyInputOptions
 }
 
@@ -12571,6 +12712,35 @@ func parseSpecNewArgs(args []string) (specNewOptions, error) {
 	return options, nil
 }
 
+func parseSpecEditArgs(args []string) (specEditOptions, error) {
+	var options specEditOptions
+	var positional []string
+	for i := 0; i < len(args); i++ {
+		if ok, err := parseBodyInputFlag(args, &i, &options.body); ok || err != nil {
+			if err != nil {
+				return specEditOptions{}, err
+			}
+			continue
+		}
+		switch args[i] {
+		case "--json":
+			options.jsonOutput = true
+		case "--force":
+			options.force = true
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				return specEditOptions{}, fmt.Errorf("unknown option %q", args[i])
+			}
+			positional = append(positional, args[i])
+		}
+	}
+	if len(positional) != 1 {
+		return specEditOptions{}, fmt.Errorf("spec edit requires exactly one spec ref")
+	}
+	options.ref = positional[0]
+	return options, nil
+}
+
 func parseReportCreateArgs(args []string) (reportCreateOptions, error) {
 	options := reportCreateOptions{create: state.ReportCreateOptions{Kind: "research", Source: "ad-hoc"}}
 	var positional []string
@@ -12607,6 +12777,35 @@ func parseReportCreateArgs(args []string) (reportCreateOptions, error) {
 		return reportCreateOptions{}, fmt.Errorf("report create requires exactly one slug")
 	}
 	options.create.Slug = positional[0]
+	return options, nil
+}
+
+func parseReportEditArgs(args []string) (reportEditOptions, error) {
+	var options reportEditOptions
+	var positional []string
+	for i := 0; i < len(args); i++ {
+		if ok, err := parseBodyInputFlag(args, &i, &options.body); ok || err != nil {
+			if err != nil {
+				return reportEditOptions{}, err
+			}
+			continue
+		}
+		switch args[i] {
+		case "--json":
+			options.jsonOutput = true
+		case "--force":
+			options.force = true
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				return reportEditOptions{}, fmt.Errorf("unknown option %q", args[i])
+			}
+			positional = append(positional, args[i])
+		}
+	}
+	if len(positional) != 1 {
+		return reportEditOptions{}, fmt.Errorf("report edit requires exactly one report ref")
+	}
+	options.ref = positional[0]
 	return options, nil
 }
 
