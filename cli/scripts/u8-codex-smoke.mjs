@@ -10,8 +10,8 @@ import { tmpdir } from "node:os";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
 const researchDir = join(repoRoot, "docs/changes/20260710-journal-reliability-foundation/research");
-const evidencePath = join(researchDir, "u8-codex-0.144.5-isolated-smoke.json");
-const expectedVersion = "0.144.5";
+const evidencePath = join(researchDir, "u8-codex-0.145.0-isolated-smoke.json");
+const expectedVersion = "0.145.0";
 const platform = `${process.platform}-${process.arch}`;
 const candidateHooksPath = "dist/codex/.codex/hooks.json";
 const candidateNativeRoot = join(repoRoot, "bin", "native");
@@ -148,7 +148,7 @@ function main() {
     if (buildCodex.status !== 0) throw new Error("candidate Codex build failed");
     if (!existsSync(candidateBinary)) throw new Error("candidate native binary is missing");
     const version = run("codex", ["--version"], repoRoot);
-    if (version.status !== 0 || !codexVersionMatches(version.stdout, expectedVersion)) throw new Error("installed Codex version is not 0.144.5");
+    if (version.status !== 0 || !codexVersionMatches(version.stdout, expectedVersion)) throw new Error("installed Codex version is not 0.145.0");
     if (run("git", ["init", "-q"], disposableRepo).status !== 0) throw new Error("disposable Git initialization failed");
     const authPath = join(process.env.CODEX_HOME ?? join(process.env.HOME ?? "", ".codex"), "auth.json");
     if (!existsSync(authPath)) throw new Error("installed Codex auth.json is unavailable");
@@ -219,7 +219,7 @@ function main() {
     cleanup();
   }
   writeFileSync(evidencePath, `${JSON.stringify(smoke, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ evidence_path: "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.144.5-isolated-smoke.json", exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ evidence_path: "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.145.0-isolated-smoke.json", exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match }, null, 2)}\n`);
   if (smoke.exit_code !== 0 || !smoke.assistant_marker_match) process.exitCode = 1;
 }
 

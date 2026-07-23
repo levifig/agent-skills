@@ -130,7 +130,7 @@ status: complete
 	}
 	summary := decodeHousekeepingSummary(t, jsonOut.Bytes())
 	assertCLIProjectContext(t, workingDir, summary.ContractVersion, summary.DatabaseScope, summary.DatabasePath, summary.ProjectID, summary.ProjectName, summary.ProjectCurrentPath)
-	if summary.Sections["specs"].ByStatus["complete"] != 1 || summary.Sections["tasks"].ByStatus["done"] != 1 {
+	if summary.Sections["specs"].ByStatus["done"] != 1 || summary.Sections["tasks"].ByStatus["done"] != 1 {
 		t.Fatalf("summary = %#v, want SQLite spec/task lifecycle counts", summary)
 	}
 
@@ -286,6 +286,11 @@ status: complete
 ---
 # Done Spec
 `)
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-002-done.md", `---
+status: done
+---
+# Canonical Done Spec
+`)
 	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-done.md", `---
 status: done
 ---
@@ -313,13 +318,13 @@ status: absorbed
 	if summary.ContractVersion != 0 || summary.DatabaseScope != "" || summary.ProjectID != "" || summary.ProjectName != "" || summary.ProjectCurrentPath != "" {
 		t.Fatalf("markdown housekeeping context = %#v, want empty", summary)
 	}
-	if summary.Sections["specs"].ByStatus["complete"] != 1 || summary.Sections["tasks"].ByStatus["done"] != 1 || summary.Sections["shaping_drafts"].ByStatus["absorbed"] != 1 {
+	if summary.Sections["specs"].ByStatus["complete"] != 1 || summary.Sections["specs"].ByStatus["done"] != 1 || summary.Sections["tasks"].ByStatus["done"] != 1 || summary.Sections["shaping_drafts"].ByStatus["absorbed"] != 1 {
 		t.Fatalf("summary = %#v, want markdown artifact lifecycle counts", summary)
 	}
 	if _, ok := summary.Sections["sessions"]; ok {
 		t.Fatalf("summary = %#v, want no sessions housekeeping section", summary)
 	}
-	if summary.Sections["specs"].CleanupCandidate != 1 || summary.Sections["tasks"].CleanupCandidate != 1 || summary.Sections["shaping_drafts"].CleanupCandidate != 1 {
+	if summary.Sections["specs"].CleanupCandidate != 2 || summary.Sections["tasks"].CleanupCandidate != 1 || summary.Sections["shaping_drafts"].CleanupCandidate != 1 {
 		t.Fatalf("summary = %#v, want markdown cleanup candidates", summary)
 	}
 
@@ -12296,10 +12301,10 @@ status: drafting
 		t.Fatalf("spec archive markdown --json error = %v", err)
 	}
 	archive := decodeSpecArchiveResult(t, jsonOut.Bytes())
-	if len(archive.Archived) != 1 || archive.Archived[0].Spec == nil || archive.Archived[0].Spec.Alias != "SPEC-001" || archive.Archived[0].Previous != "complete" || archive.Archived[0].Status != "archived" {
+	if len(archive.Archived) != 1 || archive.Archived[0].Spec == nil || archive.Archived[0].Spec.Alias != "SPEC-001" || archive.Archived[0].Previous != "done" || archive.Archived[0].Status != "archived" {
 		t.Fatalf("Archived = %#v, want SPEC-001 archived", archive.Archived)
 	}
-	if len(archive.Skipped) != 2 || archive.Skipped[0].Ref != "SPEC-002" || !strings.Contains(archive.Skipped[0].Reason, "status is drafting") || archive.Skipped[1].Ref != "SPEC-999" || archive.Skipped[1].Reason != "not found in index" {
+	if len(archive.Skipped) != 2 || archive.Skipped[0].Ref != "SPEC-002" || archive.Skipped[0].Reason != "status is draft, must be done" || archive.Skipped[1].Ref != "SPEC-999" || archive.Skipped[1].Reason != "not found in index" {
 		t.Fatalf("Skipped = %#v, want draft and missing skips", archive.Skipped)
 	}
 	if archive.ContractVersion != state.StateJSONContractVersion {
@@ -12351,6 +12356,132 @@ status: drafting
 	output := humanOut.String()
 	if !strings.Contains(output, "loaf spec archive") || !strings.Contains(output, "skipped SPEC-001: already archived") || !strings.Contains(output, "Skipped 1 spec(s)") {
 		t.Fatalf("output = %q, want already-archived human summary", output)
+	}
+	assertNoStateDatabase(t, workingDir, stateHome)
+}
+
+func TestRunnerSpecArchiveAcceptsCanonicalDoneWhenMarkdownOnly(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-done.md", `---
+id: SPEC-001
+title: Done Spec
+status: done
+---
+# Done Spec
+`)
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-002-active.md", `---
+id: SPEC-002
+title: Active Spec
+status: in_progress
+---
+# Active Spec
+`)
+	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{
+  "version": 1,
+  "tasks": {},
+  "specs": {
+    "SPEC-001": {
+      "title": "Done Spec",
+      "status": "done",
+      "file": "SPEC-001-done.md"
+    },
+    "SPEC-002": {
+      "title": "Active Spec",
+      "status": "in_progress",
+      "file": "SPEC-002-active.md"
+    }
+  }
+}`)
+
+	var jsonOut bytes.Buffer
+	err := Runner{
+		Stdout:     &jsonOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"spec", "archive", "SPEC-001", "SPEC-002", "--json"})
+	if err != nil {
+		t.Fatalf("spec archive markdown --json error = %v", err)
+	}
+	archive := decodeSpecArchiveResult(t, jsonOut.Bytes())
+	if len(archive.Archived) != 1 || archive.Archived[0].Spec == nil || archive.Archived[0].Spec.Alias != "SPEC-001" || archive.Archived[0].Previous != "done" || archive.Archived[0].Status != "archived" {
+		t.Fatalf("Archived = %#v, want SPEC-001 archived from canonical done", archive.Archived)
+	}
+	if len(archive.Skipped) != 1 || archive.Skipped[0].Ref != "SPEC-002" || archive.Skipped[0].Reason != "status is in_progress, must be done" || archive.Skipped[0].Previous != "in_progress" {
+		t.Fatalf("Skipped = %#v, want in_progress skip with must-be-done reason", archive.Skipped)
+	}
+	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "specs", "archive", "SPEC-001-done.md")); err != nil {
+		t.Fatalf("archived spec missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "specs", "SPEC-002-active.md")); err != nil {
+		t.Fatalf("active spec missing: %v", err)
+	}
+	assertNoStateDatabase(t, workingDir, stateHome)
+}
+
+func TestRunnerSpecArchiveCanonicalizesNestedSpecStatusWhenMarkdownOnly(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "specs/archive/SPEC-001-complete.md", `---
+id: SPEC-001
+title: Complete Spec
+status: complete
+---
+# Complete Spec
+`)
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-002-draft.md", `---
+id: SPEC-002
+title: Draft Spec
+status: drafting
+---
+# Draft Spec
+`)
+	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{
+  "version": 1,
+  "tasks": {},
+  "specs": {
+    "SPEC-001": {
+      "title": "Complete Spec",
+      "status": "complete",
+      "file": "archive/SPEC-001-complete.md"
+    },
+    "SPEC-002": {
+      "title": "Draft Spec",
+      "status": "drafting",
+      "file": "SPEC-002-draft.md"
+    }
+  }
+}`)
+
+	var jsonOut bytes.Buffer
+	err := Runner{
+		Stdout:     &jsonOut,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"spec", "archive", "SPEC-001", "SPEC-002", "--json"})
+	if err != nil {
+		t.Fatalf("spec archive markdown --json error = %v", err)
+	}
+	archive := decodeSpecArchiveResult(t, jsonOut.Bytes())
+	if len(archive.Archived) != 0 {
+		t.Fatalf("Archived = %#v, want none", archive.Archived)
+	}
+	if len(archive.Skipped) != 2 || archive.Skipped[0].Ref != "SPEC-001" || archive.Skipped[1].Ref != "SPEC-002" {
+		t.Fatalf("Skipped = %#v, want SPEC-001 and SPEC-002 skips", archive.Skipped)
+	}
+	archived := archive.Skipped[0]
+	if archived.Reason != "already archived" || archived.Previous != "done" || archived.Status != "done" {
+		t.Fatalf("Skipped[0] = %#v, want already-archived skip with canonical done statuses", archived)
+	}
+	if archived.Spec == nil || archived.Spec.Status != "done" {
+		t.Fatalf("Skipped[0].Spec = %#v, want nested spec status canonicalized to done", archived.Spec)
+	}
+	draft := archive.Skipped[1]
+	if draft.Reason != "status is draft, must be done" || draft.Previous != "draft" || draft.Status != "draft" {
+		t.Fatalf("Skipped[1] = %#v, want draft skip with canonical draft statuses", draft)
+	}
+	if draft.Spec == nil || draft.Spec.Status != "draft" {
+		t.Fatalf("Skipped[1].Spec = %#v, want nested spec status canonicalized to draft", draft.Spec)
 	}
 	assertNoStateDatabase(t, workingDir, stateHome)
 }

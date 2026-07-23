@@ -25,7 +25,7 @@ status: complete
 	if err != nil {
 		t.Fatalf("ArchiveSpecs() error = %v", err)
 	}
-	if len(result.Archived) != 1 || result.Archived[0].Spec == nil || result.Archived[0].Spec.Alias != "SPEC-001" || result.Archived[0].Previous != "complete" || result.Archived[0].Status != "archived" || result.Archived[0].EventID == "" {
+	if len(result.Archived) != 1 || result.Archived[0].Spec == nil || result.Archived[0].Spec.Alias != "SPEC-001" || result.Archived[0].Previous != "done" || result.Archived[0].Status != "archived" || result.Archived[0].EventID == "" {
 		t.Fatalf("Archived = %#v, want SPEC-001 archived with event", result.Archived)
 	}
 	if result.ContractVersion != StateJSONContractVersion {
@@ -74,6 +74,84 @@ status: complete
 	}
 }
 
+func TestArchiveSpecsArchivesSpecSetDoneViaSetSpecStatus(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	writeAgentsFile(t, root.Path(), "specs/SPEC-001-draft.md", `---
+id: SPEC-001
+title: Draft Spec
+status: draft
+---
+# Draft Spec
+`)
+	writeAgentsFile(t, root.Path(), "TASKS.json", `{"tasks":{}}`)
+	if _, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	if _, err := SetSpecStatus(context.Background(), root, PathResolver{StateHome: stateHome}, "SPEC-001", "complete"); err != nil {
+		t.Fatalf("SetSpecStatus(complete) error = %v", err)
+	}
+
+	result, err := ArchiveSpecs(context.Background(), root, PathResolver{StateHome: stateHome}, []string{"SPEC-001"})
+	if err != nil {
+		t.Fatalf("ArchiveSpecs() error = %v", err)
+	}
+	if len(result.Archived) != 1 || result.Archived[0].Spec == nil || result.Archived[0].Spec.Alias != "SPEC-001" || result.Archived[0].Previous != "done" || result.Archived[0].Status != "archived" || result.Archived[0].EventID == "" {
+		t.Fatalf("Archived = %#v, want SPEC-001 archived from done with event", result.Archived)
+	}
+	if got := rawLifecycleEventFromStatus(t, result.DatabasePath, result.Archived[0].EventID); got != "done" {
+		t.Fatalf("event from_status = %q, want done", got)
+	}
+	if got := rawLifecycleEventToStatus(t, result.DatabasePath, result.Archived[0].EventID); got != "archived" {
+		t.Fatalf("event to_status = %q, want archived", got)
+	}
+
+	again, err := ArchiveSpecs(context.Background(), root, PathResolver{StateHome: stateHome}, []string{"SPEC-001"})
+	if err != nil {
+		t.Fatalf("idempotent ArchiveSpecs() error = %v", err)
+	}
+	if len(again.Archived) != 0 || len(again.Skipped) != 1 || again.Skipped[0].Reason != "already archived" {
+		t.Fatalf("second ArchiveSpecs() = %#v, want already archived skip", again)
+	}
+}
+
+func TestArchiveSpecsAcceptsRawLegacyCompleteStatus(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	writeAgentsFile(t, root.Path(), "specs/SPEC-001-draft.md", `---
+id: SPEC-001
+title: Draft Spec
+status: draft
+---
+# Draft Spec
+`)
+	writeAgentsFile(t, root.Path(), "TASKS.json", `{"tasks":{}}`)
+	migration, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	store, err := OpenStore(migration.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	if _, err := store.db.ExecContext(context.Background(), `UPDATE specs SET status = 'complete' WHERE project_id = ?`, migration.ProjectID); err != nil {
+		store.Close()
+		t.Fatalf("seed raw legacy status error = %v", err)
+	}
+	store.Close()
+
+	result, err := ArchiveSpecs(context.Background(), root, PathResolver{StateHome: stateHome}, []string{"SPEC-001"})
+	if err != nil {
+		t.Fatalf("ArchiveSpecs() error = %v", err)
+	}
+	if len(result.Archived) != 1 || result.Archived[0].Spec == nil || result.Archived[0].Spec.Alias != "SPEC-001" || result.Archived[0].Previous != "done" || result.Archived[0].Status != "archived" || result.Archived[0].EventID == "" {
+		t.Fatalf("Archived = %#v, want SPEC-001 archived from raw legacy complete", result.Archived)
+	}
+	if got := rawLifecycleEventFromStatus(t, result.DatabasePath, result.Archived[0].EventID); got != "done" {
+		t.Fatalf("event from_status = %q, want done", got)
+	}
+}
+
 func TestArchiveSpecsSkipsUnarchiveableRefs(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()
@@ -111,7 +189,7 @@ status: complete
 	for _, skipped := range result.Skipped {
 		reasons[skipped.Ref] = skipped.Reason
 	}
-	if reasons["SPEC-001"] != "status is drafting, must be complete" {
+	if reasons["SPEC-001"] != "status is draft, must be done" {
 		t.Fatalf("SPEC-001 reason = %q, want status skip", reasons["SPEC-001"])
 	}
 	if reasons["TASK-001"] != `"TASK-001" resolves to task, not spec` {

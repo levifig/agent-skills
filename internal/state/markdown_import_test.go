@@ -229,6 +229,99 @@ depends_on: []
 	assertTableCount(t, store, "relationships", 0)
 }
 
+func TestApplyMarkdownMigrationSpecStatusPrefersIndexOverFrontmatter(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	writeMarkdownImportSpecStatusFixture(t, root.Path())
+
+	result, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	store, err := OpenStore(result.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+
+	for alias, want := range map[string]string{
+		"SPEC-001": "done",
+		"SPEC-002": "in_progress",
+		"SPEC-003": "unknown",
+	} {
+		if got := rawSpecStatusByAlias(t, store, result.ProjectID, alias); got != want {
+			t.Fatalf("%s status = %q, want %q", alias, got, want)
+		}
+	}
+}
+
+func TestApplyMarkdownMigrationRerunRepairsSpecStatus(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	writeMarkdownImportSpecStatusFixture(t, root.Path())
+
+	result, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	store, err := OpenStore(result.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+
+	specID := stableMigrationID("spec", result.ProjectID, "SPEC-001")
+	if _, err := store.db.ExecContext(context.Background(), `UPDATE specs SET status = 'in_progress' WHERE project_id = ? AND id = ?`, result.ProjectID, specID); err != nil {
+		t.Fatalf("seed mis-migrated status error = %v", err)
+	}
+
+	if _, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("second ApplyMarkdownMigration() error = %v", err)
+	}
+	if got := rawSpecStatusByAlias(t, store, result.ProjectID, "SPEC-001"); got != "done" {
+		t.Fatalf("SPEC-001 status after rerun = %q, want done", got)
+	}
+}
+
+func writeMarkdownImportSpecStatusFixture(t *testing.T, root string) {
+	t.Helper()
+	writeAgentsFile(t, root, "specs/SPEC-001-indexed.md", `---
+id: SPEC-001
+title: Indexed Spec
+status: implementing
+---
+# Indexed Spec
+`)
+	writeAgentsFile(t, root, "specs/SPEC-002-frontmatter.md", `---
+id: SPEC-002
+title: Frontmatter Spec
+status: implementing
+---
+# Frontmatter Spec
+`)
+	writeAgentsFile(t, root, "specs/SPEC-003-bare.md", "# Bare Spec\n")
+	writeAgentsFile(t, root, "TASKS.json", `{
+  "specs": {
+    "SPEC-001": {
+      "title": "Indexed Spec",
+      "status": "complete",
+      "file": "SPEC-001-indexed.md"
+    }
+  },
+  "tasks": {}
+}
+`)
+}
+
+func rawSpecStatusByAlias(t *testing.T, store *Store, projectID string, alias string) string {
+	t.Helper()
+	var status string
+	if err := store.db.QueryRowContext(context.Background(), `SELECT status FROM specs WHERE project_id = ? AND id = ?`, projectID, stableMigrationID("spec", projectID, alias)).Scan(&status); err != nil {
+		t.Fatalf("read spec %s status: %v", alias, err)
+	}
+	return status
+}
+
 func TestImportMarkdownRebuildsChangedJournalContentWithoutStaleRows(t *testing.T) {
 	ctx := context.Background()
 	root := projectRoot(t)

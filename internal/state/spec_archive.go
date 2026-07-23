@@ -103,11 +103,13 @@ func (s *Store) archiveSpec(ctx context.Context, projectID string, ref string) (
 		return SpecArchiveItem{}, false, fmt.Errorf("read spec status: %w", err)
 	}
 
-	if previousStatus == "archived" {
-		return SpecArchiveItem{Spec: &spec, Ref: ref, Previous: previousStatus, Status: previousStatus, Reason: "already archived"}, false, nil
+	previousCanonical := LifecycleStatusForDisplay(LifecycleEntitySpec, previousStatus)
+
+	if LifecycleStatusMatches(LifecycleEntitySpec, previousStatus, LifecycleStatusArchived) {
+		return SpecArchiveItem{Spec: &spec, Ref: ref, Previous: previousCanonical, Status: previousCanonical, Reason: "already archived"}, false, nil
 	}
-	if previousStatus != "complete" {
-		return SpecArchiveItem{Spec: &spec, Ref: ref, Previous: previousStatus, Status: previousStatus, Reason: fmt.Sprintf("status is %s, must be complete", previousStatus)}, false, nil
+	if !LifecycleStatusMatches(LifecycleEntitySpec, previousStatus, LifecycleStatusDone) {
+		return SpecArchiveItem{Spec: &spec, Ref: ref, Previous: previousCanonical, Status: previousCanonical, Reason: fmt.Sprintf("status is %s, must be done", previousCanonical)}, false, nil
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -115,12 +117,12 @@ func (s *Store) archiveSpec(ctx context.Context, projectID string, ref string) (
 		return SpecArchiveItem{}, false, fmt.Errorf("update spec status: %w", err)
 	}
 
-	eventID := stableMigrationID("event", projectID, "spec", spec.ID, "status", previousStatus, "archived")
+	eventID := stableMigrationID("event", projectID, "spec", spec.ID, "status", previousCanonical, "archived")
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO NOTHING
-`, eventID, projectID, "spec", spec.ID, "status_changed", previousStatus, "archived", "recorded by spec archive", now, now)
+`, eventID, projectID, "spec", spec.ID, "status_changed", previousCanonical, "archived", "recorded by spec archive", now, now)
 	if err != nil {
 		return SpecArchiveItem{}, false, fmt.Errorf("record spec archive event: %w", err)
 	}
@@ -130,5 +132,5 @@ ON CONFLICT(id) DO NOTHING
 	}
 
 	spec.Status = "archived"
-	return SpecArchiveItem{Spec: &spec, Ref: ref, Previous: previousStatus, Status: "archived", EventID: eventID}, true, nil
+	return SpecArchiveItem{Spec: &spec, Ref: ref, Previous: previousCanonical, Status: "archived", EventID: eventID}, true, nil
 }

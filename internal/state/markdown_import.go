@@ -48,6 +48,11 @@ type taskIndexEntry struct {
 	File      string   `json:"file"`
 }
 
+type specIndexEntry struct {
+	Title  string `json:"title"`
+	Status string `json:"status"`
+}
+
 const frontmatterListSeparator = "\x1f"
 
 type markdownImporter struct {
@@ -56,6 +61,7 @@ type markdownImporter struct {
 	projectID    string
 	now          string
 	taskIndex    map[string]taskIndexEntry
+	specIndex    map[string]specIndexEntry
 	sparkAliases map[string]string
 }
 
@@ -111,6 +117,7 @@ func (s *Store) ImportMarkdown(ctx context.Context, root project.Root) error {
 		projectID:    projectID,
 		now:          time.Now().UTC().Format(time.RFC3339),
 		taskIndex:    loadTaskIndex(root.Path()),
+		specIndex:    loadSpecIndex(root.Path()),
 		sparkAliases: map[string]string{},
 	}
 	if err := importer.importAll(ctx); err != nil {
@@ -174,12 +181,16 @@ func (m markdownImporter) importSpecs(ctx context.Context, agentsPath string) er
 		}
 		alias := firstNonEmpty(artifact.Frontmatter["id"], specAliasFromPath(path), artifact.Stem)
 		id := stableMigrationID("spec", m.projectID, alias)
+		meta := m.specIndex[alias]
 		sourceID, err := m.upsertSource(ctx, artifact, "markdown")
 		if err != nil {
 			return err
 		}
-		title := firstNonEmpty(artifact.Frontmatter["title"], artifact.Heading, alias)
-		status := firstNonEmpty(artifact.Frontmatter["status"], "unknown")
+		title := firstNonEmpty(meta.Title, artifact.Frontmatter["title"], artifact.Heading, alias)
+		status := firstNonEmpty(meta.Status, artifact.Frontmatter["status"], "unknown")
+		if canonical, ok := CanonicalLifecycleStatus(LifecycleEntitySpec, status); ok {
+			status = canonical
+		}
 		if err := m.upsertSpec(ctx, id, title, status, sourceID); err != nil {
 			return err
 		}
@@ -923,6 +934,21 @@ func loadTaskIndex(rootPath string) map[string]taskIndexEntry {
 		return index
 	}
 	return parsed.Tasks
+}
+
+func loadSpecIndex(rootPath string) map[string]specIndexEntry {
+	index := map[string]specIndexEntry{}
+	content, err := os.ReadFile(filepath.Join(rootPath, ".agents", "TASKS.json"))
+	if err != nil {
+		return index
+	}
+	var parsed struct {
+		Specs map[string]specIndexEntry `json:"specs"`
+	}
+	if err := json.Unmarshal(content, &parsed); err != nil {
+		return index
+	}
+	return parsed.Specs
 }
 
 func taskDependencies(meta taskIndexEntry, frontmatterDependsOn string) []string {

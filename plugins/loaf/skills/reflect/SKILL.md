@@ -87,7 +87,7 @@ After completing work, `/loaf:reflect` extracts learnings and proposes updates t
 ### Step 2: Gather Evidence
 
 Sources:
-1. **Completed specs** (`.agents/specs/SPEC-*.md` with status `complete`) -- look for "Lessons Learned"
+1. **Completed specs** (`.agents/specs/SPEC-*.md` with status `done`; legacy files may still read `complete`) -- look for "Lessons Learned"
 2. **Project journal** (`loaf journal recent --json`, `loaf journal search <topic>`) -- insights, surprises, pivots
 3. **Recent commits** (`git log --oneline -30`)
 4. **Implementation reality** -- what was harder/easier than expected? What assumptions were wrong?

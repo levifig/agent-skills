@@ -728,12 +728,12 @@ type markdownHousekeepingSectionSpec struct {
 }
 
 var markdownHousekeepingSectionSpecs = []markdownHousekeepingSectionSpec{
-	{name: "brainstorms", relativeDir: filepath.Join("drafts", "brainstorms"), cleanupStatuses: cleanupStatusSet("resolved", "archived")},
-	{name: "ideas", relativeDir: "ideas", cleanupStatuses: cleanupStatusSet("resolved", "archived")},
-	{name: "reports", relativeDir: "reports", cleanupStatuses: cleanupStatusSet("final", "archived")},
+	{name: "brainstorms", relativeDir: filepath.Join("drafts", "brainstorms"), cleanupStatuses: cleanupStatusSet("done", "resolved", "archived")},
+	{name: "ideas", relativeDir: "ideas", cleanupStatuses: cleanupStatusSet("done", "resolved", "archived")},
+	{name: "reports", relativeDir: "reports", cleanupStatuses: cleanupStatusSet("done", "final", "archived")},
 	{name: "shaping_drafts", relativeDir: "drafts", cleanupStatuses: cleanupStatusSet("absorbed", "archived")},
-	{name: "sparks", relativeDir: "sparks", cleanupStatuses: cleanupStatusSet("resolved", "archived")},
-	{name: "specs", relativeDir: "specs", cleanupStatuses: cleanupStatusSet("complete", "archived")},
+	{name: "sparks", relativeDir: "sparks", cleanupStatuses: cleanupStatusSet("done", "resolved", "archived")},
+	{name: "specs", relativeDir: "specs", cleanupStatuses: cleanupStatusSet("done", "complete", "archived")},
 	{name: "tasks", relativeDir: "tasks", cleanupStatuses: cleanupStatusSet("done", "archived")},
 }
 
@@ -8193,26 +8193,27 @@ func markdownSpecArchive(rootPath string, refs []string) (state.SpecArchiveResul
 		}
 		title := jsonObjectString(entry, "title")
 		status := jsonObjectString(entry, "status")
-		spec := state.TraceEntity{Kind: "spec", ID: ref, Alias: ref, Title: title, Status: status}
-		if status != "complete" {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: status, Status: status, Reason: fmt.Sprintf("status is %s, must be complete", status)})
+		canonical := state.LifecycleStatusForDisplay(state.LifecycleEntitySpec, status)
+		spec := state.TraceEntity{Kind: "spec", ID: ref, Alias: ref, Title: title, Status: canonical}
+		if !state.LifecycleStatusMatches(state.LifecycleEntitySpec, status, state.LifecycleStatusDone) {
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: canonical, Reason: fmt.Sprintf("status is %s, must be done", canonical)})
 			continue
 		}
 		file := jsonObjectString(entry, "file")
 		if strings.HasPrefix(file, "archive/") {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: status, Status: status, Reason: "already archived"})
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: canonical, Reason: "already archived"})
 			continue
 		}
 		if file == "" {
 			file = markdownSpecFileForAlias(rootPath, ref)
 		}
 		if file == "" {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: status, Status: status, Reason: "file not found in index"})
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: canonical, Reason: "file not found in index"})
 			continue
 		}
 		srcPath := filepath.Join(rootPath, ".agents", "specs", filepath.FromSlash(file))
 		if _, err := os.Stat(srcPath); os.IsNotExist(err) {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: status, Status: status, Reason: fmt.Sprintf("file not found at %s", file)})
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: canonical, Reason: fmt.Sprintf("file not found at %s", file)})
 			continue
 		} else if err != nil {
 			return state.SpecArchiveResult{}, fmt.Errorf("inspect markdown spec %s: %w", file, err)
@@ -8220,7 +8221,7 @@ func markdownSpecArchive(rootPath string, refs []string) (state.SpecArchiveResul
 		archivedFile := filepath.ToSlash(filepath.Join("archive", filepath.FromSlash(file)))
 		destPath := filepath.Join(rootPath, ".agents", "specs", filepath.FromSlash(archivedFile))
 		if _, err := os.Stat(destPath); err == nil {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: status, Status: status, Reason: fmt.Sprintf("%s already exists", archivedFile)})
+			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: canonical, Reason: fmt.Sprintf("%s already exists", archivedFile)})
 			continue
 		} else if err != nil && !os.IsNotExist(err) {
 			return state.SpecArchiveResult{}, fmt.Errorf("inspect archived markdown spec %s: %w", archivedFile, err)
@@ -8234,7 +8235,7 @@ func markdownSpecArchive(rootPath string, refs []string) (state.SpecArchiveResul
 		entry["file"] = archivedFile
 		changed = true
 		spec.Status = "archived"
-		result.Archived = append(result.Archived, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: "complete", Status: "archived"})
+		result.Archived = append(result.Archived, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: "archived"})
 	}
 	if changed {
 		updated, err := json.MarshalIndent(index, "", "  ")

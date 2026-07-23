@@ -52,7 +52,7 @@ func (s *Store) Housekeeping(ctx context.Context, root project.Root, databasePat
 		return HousekeepingSummary{}, err
 	}
 	sections := map[string]HousekeepingSection{}
-	specs, err := s.housekeepingStatusSection(ctx, "specs", projectID, "complete", "archived")
+	specs, err := s.housekeepingStatusSection(ctx, "specs", projectID, "done", "complete", "archived")
 	if err != nil {
 		return HousekeepingSummary{}, err
 	}
@@ -62,22 +62,22 @@ func (s *Store) Housekeeping(ctx context.Context, root project.Root, databasePat
 		return HousekeepingSummary{}, err
 	}
 	sections["tasks"] = tasks
-	ideas, err := s.housekeepingStatusSection(ctx, "ideas", projectID, "resolved", "archived")
+	ideas, err := s.housekeepingStatusSection(ctx, "ideas", projectID, "done", "resolved", "archived")
 	if err != nil {
 		return HousekeepingSummary{}, err
 	}
 	sections["ideas"] = ideas
-	sparks, err := s.housekeepingStatusSection(ctx, "sparks", projectID, "resolved", "archived")
+	sparks, err := s.housekeepingStatusSection(ctx, "sparks", projectID, "done", "resolved", "archived")
 	if err != nil {
 		return HousekeepingSummary{}, err
 	}
 	sections["sparks"] = sparks
-	brainstorms, err := s.housekeepingStatusSection(ctx, "brainstorms", projectID, "resolved", "archived")
+	brainstorms, err := s.housekeepingStatusSection(ctx, "brainstorms", projectID, "done", "resolved", "archived")
 	if err != nil {
 		return HousekeepingSummary{}, err
 	}
 	sections["brainstorms"] = brainstorms
-	reports, err := s.housekeepingStatusSection(ctx, "reports", projectID, "final", "archived")
+	reports, err := s.housekeepingStatusSection(ctx, "reports", projectID, "done", "final", "archived")
 	if err != nil {
 		return HousekeepingSummary{}, err
 	}

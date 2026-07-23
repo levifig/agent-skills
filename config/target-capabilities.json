@@ -4,7 +4,7 @@
     {
       "target": "claude-code",
       "surface": "cli",
-      "version": "2.1.215",
+      "version": "2.1.218",
       "platform": "darwin-arm64",
       "installed_mode": "plugin-dir",
       "context": {
@@ -20,9 +20,9 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.215-candidate-smoke.json",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.218-candidate-smoke.json",
               "level": "installed-smoke",
-              "summary": "Claude Code 2.1.215 startup smoke returned SessionStart additionalContext and the isolated marker was model-visible exactly."
+              "summary": "Claude Code 2.1.218 startup smoke returned SessionStart additionalContext and the isolated marker was model-visible exactly."
             }
           },
           {
@@ -243,7 +243,7 @@
     {
       "target": "codex",
       "surface": "cli",
-      "version": "0.144.5",
+      "version": "0.145.0",
       "platform": "darwin-arm64",
       "installed_mode": "isolated-codex-home",
       "context": {
@@ -259,9 +259,9 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.144.5-isolated-smoke.json",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.145.0-isolated-smoke.json",
               "level": "installed-smoke",
-              "summary": "Codex 0.144.5 isolated CODEX_HOME startup smoke observed exact native SessionStart hookSpecificOutput and the random marker was returned by the model."
+              "summary": "Codex 0.145.0 isolated CODEX_HOME startup smoke observed exact native SessionStart hookSpecificOutput and the random marker was returned by the model."
             }
           },
           {
@@ -324,7 +324,7 @@
     {
       "target": "opencode",
       "surface": "cli",
-      "version": "1.18.3",
+      "version": "1.18.4",
       "platform": "darwin-arm64",
       "installed_mode": "isolated-xdg",
       "context": {
@@ -340,9 +340,9 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-opencode-1.18.3-isolated-smoke.json",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-opencode-1.18.4-isolated-smoke.json",
               "level": "installed-smoke",
-              "summary": "OpenCode 1.18.3 isolated-XDG request smoke returned the exact random continuity marker through the model-visible plugin system transformation."
+              "summary": "OpenCode 1.18.4 isolated-XDG request smoke returned the exact random continuity marker through the model-visible plugin system transformation."
             }
           },
           {

@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { collectTextValues, modelVisibleProof, opencodeVersionMatches, parseOpenCodeJSONL, sanitizeError, sanitizedStderr } from "./u8-opencode-smoke.mjs";
 
 test("requires the exact OpenCode version token", () => {
-  assert.equal(opencodeVersionMatches("1.18.3\n"), true);
-  assert.equal(opencodeVersionMatches("1.18.30"), false);
-  assert.equal(opencodeVersionMatches("v1.18.3"), false);
-  assert.equal(opencodeVersionMatches("1.18.3-dev"), false);
+  assert.equal(opencodeVersionMatches("1.18.4\n"), true);
+  assert.equal(opencodeVersionMatches("1.18.40"), false);
+  assert.equal(opencodeVersionMatches("v1.18.4"), false);
+  assert.equal(opencodeVersionMatches("1.18.4-dev"), false);
 });
 
 test("recursively extracts only string values at text keys", () => {

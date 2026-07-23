@@ -55,6 +55,44 @@ func TestHousekeepingSummarizesSQLiteLifecycleState(t *testing.T) {
 	}
 }
 
+func TestHousekeepingCountsCanonicalDoneAsCleanupCandidate(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	result, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store, err := OpenStore(result.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+
+	projectID := projectIDForTest(t, store, root)
+	now := "2026-07-23T00:00:00Z"
+	insertHousekeepingEntity(t, store, "specs", projectID, "spec-complete", "Complete Spec", "complete", now)
+	insertHousekeepingEntity(t, store, "specs", projectID, "spec-done", "Done Spec", "done", now)
+	insertHousekeepingEntity(t, store, "ideas", projectID, "idea-resolved", "Resolved Idea", "resolved", now)
+	insertHousekeepingEntity(t, store, "ideas", projectID, "idea-done", "Done Idea", "done", now)
+	insertHousekeepingSpark(t, store, projectID, "spark-resolved", "resolved spark", "resolved", now)
+	insertHousekeepingSpark(t, store, projectID, "spark-done", "done spark", "done", now)
+	insertHousekeepingEntity(t, store, "brainstorms", projectID, "brainstorm-resolved", "Resolved Brainstorm", "resolved", now)
+	insertHousekeepingEntity(t, store, "brainstorms", projectID, "brainstorm-done", "Done Brainstorm", "done", now)
+	insertHousekeepingReport(t, store, projectID, "report-final", "Final Report", "final", now)
+	insertHousekeepingReport(t, store, projectID, "report-done", "Done Report", "done", now)
+
+	summary, err := Housekeeping(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Housekeeping() error = %v", err)
+	}
+	for _, name := range []string{"specs", "ideas", "sparks", "brainstorms", "reports"} {
+		section := summary.Sections[name]
+		if section.Total != 2 || section.ByStatus["done"] != 1 || section.CleanupCandidate != 2 {
+			t.Fatalf("section %s = %#v, want legacy and canonical done cleanup candidates", name, section)
+		}
+	}
+}
+
 func insertHousekeepingEntity(t *testing.T, store *Store, table string, projectID string, id string, title string, status string, now string) {
 	t.Helper()
 	if _, err := store.db.ExecContext(context.Background(), `INSERT INTO `+table+` (id, project_id, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, id, projectID, title, status, now, now); err != nil {
