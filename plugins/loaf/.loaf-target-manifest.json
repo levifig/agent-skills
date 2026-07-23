@@ -82,7 +82,7 @@
       "id": "managed-instructions",
       "kind": "instruction",
       "destination": "project-instructions",
-      "sha256": "4e202b0bcb7ad79fd7808772d67bfae87299c05d920083c6fa220292770a007d"
+      "sha256": "ac6debb93fcd1b2d7806681c446f3b7d9691a43a872831a969c82a7470b0b30d"
     }
   ]
 }

@@ -6,7 +6,9 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Fixed
+
+- The managed instructions block installed into project `AGENTS.md`/`.claude/CLAUDE.md` now names the Loaf `orchestration` skill instead of linking `skills/orchestration/SKILL.md`, a path that does not exist in project checkouts; existing installs pick up the corrected block on the next `loaf install --upgrade` (#129).
 
 ## [2.0.0-alpha.12] - 2026-07-20
 

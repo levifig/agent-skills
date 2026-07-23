@@ -531,7 +531,7 @@ Configure target-specific behavior and sidecars.
 - [Claude Code Skills Best Practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
 - [Claude Code Skills Documentation](https://code.claude.com/docs/en/skills)
 
-<!-- loaf:managed:start v2.0.0-alpha.11 sha256=4e202b0bcb7ad79fd7808772d67bfae87299c05d920083c6fa220292770a007d -->
+<!-- loaf:managed:start v2.0.0-alpha.11 sha256=ac6debb93fcd1b2d7806681c446f3b7d9691a43a872831a969c82a7470b0b30d -->
 <!-- Maintained by loaf install/upgrade - do not edit manually -->
 ## Loaf Framework
 
@@ -551,5 +551,5 @@ Configure target-specific behavior and sidecars.
 Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf journal log "type(scope): description"`. Entry types: `decision`, `discover`, `wrap`. Do not defer journaling - log before responding.
 In Codex Auto mode, when the user explicitly installed the managed basic-command policy, use the exact path-pinned Loaf executable in the managed `CODEX_HOME/AGENTS.md` block; do not substitute a bare `loaf`. The policy authorizes only explicitly classified basic Loaf command leaves and does not grant unclassified/operator commands, a bare Loaf namespace, or general filesystem access. Other harness adapters are not implied.
 
-See [orchestration skill](skills/orchestration/SKILL.md) for full details.
+See the Loaf `orchestration` skill for full details.
 <!-- loaf:managed:end -->
