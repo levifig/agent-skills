@@ -14,6 +14,7 @@ Which command a task needs. For exact flags, run `loaf <command> --help`.
 | Archive completed work | `loaf task archive` |
 | Check knowledge freshness | `loaf kb check` |
 | Validate a Change is structurally executable, not implementation-complete | `loaf change check --require-executable` |
+| Import legacy `.agents` Markdown into SQLite | `loaf migrate markdown --dry-run` then `--apply` (see markdown-migration reference) |
 
 ## JSON diagnosis surfaces
 
@@ -26,6 +27,9 @@ scraping human-readable text:
 - `loaf check --hook <id> --json` — one enforcement hook's result
 - `loaf kb check --json` — knowledge staleness against git history
 - `loaf task list --json` / `loaf journal recent --json` — current work and timeline
+- `loaf migrate markdown --dry-run --json` — `mode` (`simulation`/`inventory`) plus `import_report` when simulated
 
 Choosing between the `doctor` commands and `LOAF_DB` isolation are covered in
-the troubleshooting reference, linked from SKILL.md.
+the troubleshooting reference, linked from SKILL.md. Markdown import authority
+(`mode`, `import_report`, origin reclaim, insert-only status) lives in the
+markdown-migration reference.

@@ -25,10 +25,20 @@ type PathResolver struct {
 	DataHome  string
 	StateHome string
 	CacheHome string
+	// DatabaseFile, when non-empty, is returned by DatabasePath verbatim and
+	// takes precedence over LOAF_DB and XDG resolution. Used by markdown
+	// simulation to point ApplyMarkdownMigration at a disposable snapshot.
+	DatabaseFile string
 }
 
 // DatabasePath returns the intended global SQLite database path.
 func (r PathResolver) DatabasePath(root project.Root) (string, error) {
+	if r.DatabaseFile != "" {
+		if !filepath.IsAbs(r.DatabaseFile) {
+			return "", fmt.Errorf("database file override must be an absolute path")
+		}
+		return filepath.Clean(r.DatabaseFile), nil
+	}
 	if value := os.Getenv(databaseOverrideEnv); value != "" {
 		if filepath.IsAbs(value) {
 			return filepath.Clean(value), nil

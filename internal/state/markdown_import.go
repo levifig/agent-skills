@@ -17,26 +17,33 @@ import (
 	"github.com/levifig/loaf/internal/project"
 )
 
-// MarkdownMigrationResult is the structured result for a markdown migration apply.
+// MarkdownMigrationResult is the structured result for a markdown migration
+// apply or dry-run (simulate / inventory).
 type MarkdownMigrationResult struct {
 	MarkdownMigrationPlan
-	DatabaseScope        string   `json:"database_scope"`
-	ImportScope          string   `json:"import_scope"`
-	DatabasePath         string   `json:"database_path"`
-	ProjectID            string   `json:"project_id"`
-	ProjectName          string   `json:"project_name"`
-	ProjectCurrentPath   string   `json:"project_current_path"`
-	Action               string   `json:"action"`
-	Applied              bool     `json:"applied"`
-	BackupPath           string   `json:"backup_path,omitempty"`
-	RollbackManifestPath string   `json:"rollback_manifest_path,omitempty"`
-	AgentsBackupPath     string   `json:"agents_backup_path,omitempty"`
-	RemovedSourceFiles   []string `json:"removed_source_files,omitempty"`
+	ImportReport         *ImportReport `json:"import_report,omitempty"`
+	DatabaseScope        string        `json:"database_scope"`
+	ImportScope          string        `json:"import_scope"`
+	DatabasePath         string        `json:"database_path"`
+	ProjectID            string        `json:"project_id"`
+	ProjectName          string        `json:"project_name"`
+	ProjectCurrentPath   string        `json:"project_current_path"`
+	Action               string        `json:"action"`
+	Mode                 string        `json:"mode,omitempty"`
+	Applied              bool          `json:"applied"`
+	BackupPath           string        `json:"backup_path,omitempty"`
+	RollbackManifestPath string        `json:"rollback_manifest_path,omitempty"`
+	AgentsBackupPath     string        `json:"agents_backup_path,omitempty"`
+	RemovedSourceFiles   []string      `json:"removed_source_files,omitempty"`
 }
 
 const (
-	MarkdownMigrationActionApply  = "apply"
-	MarkdownMigrationActionResume = "resume"
+	MarkdownMigrationActionApply    = "apply"
+	MarkdownMigrationActionResume   = "resume"
+	MarkdownMigrationActionSimulate = "simulate"
+
+	MarkdownMigrationModeSimulation = "simulation"
+	MarkdownMigrationModeInventory  = "inventory"
 )
 
 type taskIndexEntry struct {
@@ -63,16 +70,38 @@ type markdownImporter struct {
 	taskIndex    map[string]taskIndexEntry
 	specIndex    map[string]specIndexEntry
 	sparkAliases map[string]string
+	// report accumulates in-transaction provenance/status outcomes.
+	// Shared pointer so value-receiver methods can mutate the same report.
+	report *ImportReport
+}
+
+// markdownApplyOperations contains per-invocation seams used by deterministic
+// tests. Public callers pass nil; no mutable process-global hooks are involved.
+type markdownApplyOperations struct {
+	// afterImportCommitted runs after ImportMarkdown commits successfully.
+	// Errors degrade to plan.Warnings so Applied stays true.
+	afterImportCommitted func(root project.Root) error
 }
 
 // ApplyMarkdownMigration initializes SQLite state and imports structurally
 // knowable .agents artifacts without mutating source Markdown files.
+// Inventory is computed before the import transaction opens; import_report
+// comes from the committed import. Apply does not call PreviewMarkdownMigration.
+// Post-commit file-access failures never fail an already-committed import —
+// they degrade to plan warnings.
 func ApplyMarkdownMigration(ctx context.Context, root project.Root, resolver PathResolver) (MarkdownMigrationResult, error) {
-	plan, err := PreviewMarkdownMigration(root)
+	return applyMarkdownMigration(ctx, root, resolver, nil)
+}
+
+func applyMarkdownMigration(ctx context.Context, root project.Root, resolver PathResolver, ops *markdownApplyOperations) (MarkdownMigrationResult, error) {
+	status, err := Initialize(ctx, root, resolver)
 	if err != nil {
 		return MarkdownMigrationResult{}, err
 	}
-	status, err := Initialize(ctx, root, resolver)
+
+	// Inventory before opening the import transaction so a successful commit
+	// cannot be reported as failure by a later .agents walk error.
+	plan, err := inventoryMarkdownMigration(root)
 	if err != nil {
 		return MarkdownMigrationResult{}, err
 	}
@@ -83,11 +112,20 @@ func ApplyMarkdownMigration(ctx context.Context, root project.Root, resolver Pat
 	}
 	defer store.Close()
 
-	if err := store.ImportMarkdown(ctx, root); err != nil {
+	report, err := store.ImportMarkdown(ctx, root)
+	if err != nil {
 		return MarkdownMigrationResult{}, err
 	}
+
+	if ops != nil && ops.afterImportCommitted != nil {
+		if afterErr := ops.afterImportCommitted(root); afterErr != nil {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("post-import inventory access failed: %v", afterErr))
+		}
+	}
+
 	return MarkdownMigrationResult{
 		MarkdownMigrationPlan: plan,
+		ImportReport:          &report,
 		DatabaseScope:         "global",
 		ImportScope:           "project",
 		DatabasePath:          status.DatabasePath,
@@ -99,15 +137,22 @@ func ApplyMarkdownMigration(ctx context.Context, root project.Root, resolver Pat
 	}, nil
 }
 
-// ImportMarkdown imports .agents artifacts into an initialized state database.
-func (s *Store) ImportMarkdown(ctx context.Context, root project.Root) error {
+// ImportMarkdown imports .agents artifacts into an initialized state database
+// and returns the in-transaction import report.
+func (s *Store) ImportMarkdown(ctx context.Context, root project.Root) (ImportReport, error) {
+	return s.importMarkdown(ctx, root)
+}
+
+// importMarkdown runs the markdown import transaction and returns ImportReport.
+func (s *Store) importMarkdown(ctx context.Context, root project.Root) (ImportReport, error) {
+	report := emptyImportReport()
 	projectID, err := s.projectID(ctx, root)
 	if err != nil {
-		return err
+		return report, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin markdown import transaction: %w", err)
+		return report, fmt.Errorf("begin markdown import transaction: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -119,17 +164,18 @@ func (s *Store) ImportMarkdown(ctx context.Context, root project.Root) error {
 		taskIndex:    loadTaskIndex(root.Path()),
 		specIndex:    loadSpecIndex(root.Path()),
 		sparkAliases: map[string]string{},
+		report:       &report,
 	}
 	if err := importer.importAll(ctx); err != nil {
-		return err
+		return emptyImportReport(), err
 	}
 	if _, err := rebuildAndVerifyJournalSearch(ctx, tx); err != nil {
-		return fmt.Errorf("rebuild journal search after markdown import: %w", err)
+		return emptyImportReport(), fmt.Errorf("rebuild journal search after markdown import: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit markdown import: %w", err)
+		return emptyImportReport(), fmt.Errorf("commit markdown import: %w", err)
 	}
-	return nil
+	return report, nil
 }
 
 func (m markdownImporter) importAll(ctx context.Context) error {
@@ -187,11 +233,15 @@ func (m markdownImporter) importSpecs(ctx context.Context, agentsPath string) er
 			return err
 		}
 		title := firstNonEmpty(meta.Title, artifact.Frontmatter["title"], artifact.Heading, alias)
-		status := firstNonEmpty(meta.Status, artifact.Frontmatter["status"], "unknown")
-		if canonical, ok := CanonicalLifecycleStatus(LifecycleEntitySpec, status); ok {
-			status = canonical
+		status, writeStatus, err := m.resolveImportStatus(
+			ctx, "specs", LifecycleEntitySpec, id,
+			firstNonEmpty(meta.Status, artifact.Frontmatter["status"]),
+			"unknown", true,
+		)
+		if err != nil {
+			return err
 		}
-		if err := m.upsertSpec(ctx, id, title, status, sourceID); err != nil {
+		if err := m.upsertSpec(ctx, id, title, status, writeStatus, sourceID); err != nil {
 			return err
 		}
 		if err := m.upsertArtifactBody(ctx, "spec", id, sourceID, artifact); err != nil {
@@ -239,9 +289,16 @@ func (m markdownImporter) importTasks(ctx context.Context, agentsPath string) er
 
 		id := stableMigrationID("task", m.projectID, alias)
 		title := firstNonEmpty(meta.Title, artifact.Frontmatter["title"], artifact.Heading, alias)
-		status := firstNonEmpty(meta.Status, artifact.Frontmatter["status"], "unknown")
+		status, writeStatus, err := m.resolveImportStatus(
+			ctx, "tasks", LifecycleEntityTask, id,
+			firstNonEmpty(meta.Status, artifact.Frontmatter["status"]),
+			"unknown", true,
+		)
+		if err != nil {
+			return err
+		}
 		priority := firstNonEmpty(meta.Priority, artifact.Frontmatter["priority"])
-		if err := m.upsertTask(ctx, id, specID, title, status, priority, sourceID); err != nil {
+		if err := m.upsertTask(ctx, id, specID, title, status, writeStatus, priority, sourceID); err != nil {
 			return err
 		}
 		if err := m.upsertArtifactBody(ctx, "task", id, sourceID, artifact); err != nil {
@@ -296,8 +353,13 @@ func (m markdownImporter) importSimpleMarkdown(ctx context.Context, agentsPath s
 			return err
 		}
 		title := firstNonEmpty(artifact.Frontmatter["title"], artifact.Heading, alias)
-		status := firstNonEmpty(artifact.Frontmatter["status"], "open")
-		if err := m.upsertSimpleEntity(ctx, table, id, title, status, sourceID); err != nil {
+		status, writeStatus, err := m.resolveImportStatus(
+			ctx, table, kind, id, artifact.Frontmatter["status"], LifecycleStatusOpen, true,
+		)
+		if err != nil {
+			return err
+		}
+		if err := m.upsertSimpleEntity(ctx, table, id, title, status, writeStatus, sourceID); err != nil {
 			return err
 		}
 		if err := m.upsertArtifactBody(ctx, kind, id, sourceID, artifact); err != nil {
@@ -336,8 +398,13 @@ func (m markdownImporter) importShapingDrafts(ctx context.Context, agentsPath st
 			return err
 		}
 		title := firstNonEmpty(artifact.Frontmatter["title"], artifact.Heading, alias)
-		status := firstNonEmpty(artifact.Frontmatter["status"], "draft")
-		if err := m.upsertSimpleEntity(ctx, "shaping_drafts", id, title, status, sourceID); err != nil {
+		status, writeStatus, err := m.resolveImportStatus(
+			ctx, "shaping_drafts", "shaping_draft", id, artifact.Frontmatter["status"], "draft", false,
+		)
+		if err != nil {
+			return err
+		}
+		if err := m.upsertSimpleEntity(ctx, "shaping_drafts", id, title, status, writeStatus, sourceID); err != nil {
 			return err
 		}
 		if err := m.upsertArtifactBody(ctx, "shaping_draft", id, sourceID, artifact); err != nil {
@@ -412,9 +479,14 @@ func (m markdownImporter) importReports(ctx context.Context, agentsPath string) 
 			return err
 		}
 		title := firstNonEmpty(artifact.Frontmatter["title"], artifact.Heading, alias)
-		status := reportStatus(artifact)
+		status, writeStatus, err := m.resolveImportStatus(
+			ctx, "reports", LifecycleEntityReport, id, reportSourceStatus(artifact), "unknown", true,
+		)
+		if err != nil {
+			return err
+		}
 		reportKind := firstNonEmpty(artifact.Frontmatter["type"], artifact.Frontmatter["report_kind"], artifact.Frontmatter["kind"], "markdown")
-		if err := m.upsertReport(ctx, id, reportKind, title, status, sourceID); err != nil {
+		if err := m.upsertReport(ctx, id, reportKind, title, status, writeStatus, sourceID); err != nil {
 			return err
 		}
 		if err := m.upsertArtifactBody(ctx, "report", id, sourceID, artifact); err != nil {
@@ -461,8 +533,12 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 			continue
 		}
 		entryID := stableMigrationID("journal", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
-		if err := m.upsertJournalEntry(ctx, entryID, entryType, scope, message, observedBranch, observedWorktree, harnessSessionID); err != nil {
+		imported, err := m.upsertJournalEntry(ctx, entryID, entryType, scope, message, observedBranch, observedWorktree, harnessSessionID)
+		if err != nil {
 			return err
+		}
+		if !imported {
+			continue
 		}
 		if entryType == "spark" {
 			sparkID := stableMigrationID("spark", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
@@ -476,6 +552,9 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 					return err
 				}
 				m.sparkAliases[slug] = sparkID
+			}
+			if err := m.deleteImportedRelationships(ctx, "spark", sparkID); err != nil {
+				return err
 			}
 			if target, ok := m.capturedIdeaTarget(message); ok {
 				if err := m.upsertAlias(ctx, target.kind, target.id, target.kind, target.alias); err != nil {
@@ -625,67 +704,67 @@ func (m markdownImporter) upsertArtifactBody(ctx context.Context, entityKind str
 	return nil
 }
 
-func (m markdownImporter) upsertSpec(ctx context.Context, id string, title string, status string, sourceID any) error {
+func (m markdownImporter) upsertSpec(ctx context.Context, id string, title string, status string, writeStatus bool, sourceID any) error {
 	_, err := m.tx.ExecContext(ctx, `
 INSERT INTO specs (id, project_id, title, status, body_source_id, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   title = excluded.title,
-  status = excluded.status,
+  status = CASE WHEN ? THEN excluded.status ELSE specs.status END,
   body_source_id = COALESCE(excluded.body_source_id, specs.body_source_id),
   updated_at = excluded.updated_at
-`, id, m.projectID, title, status, sourceID, m.now, m.now)
+`, id, m.projectID, title, status, sourceID, m.now, m.now, writeStatus)
 	if err != nil {
 		return fmt.Errorf("upsert spec %s: %w", id, err)
 	}
 	return nil
 }
 
-func (m markdownImporter) upsertTask(ctx context.Context, id string, specID any, title string, status string, priority string, sourceID string) error {
+func (m markdownImporter) upsertTask(ctx context.Context, id string, specID any, title string, status string, writeStatus bool, priority string, sourceID string) error {
 	_, err := m.tx.ExecContext(ctx, `
 INSERT INTO tasks (id, project_id, spec_id, title, status, priority, body_source_id, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   spec_id = excluded.spec_id,
   title = excluded.title,
-  status = excluded.status,
+  status = CASE WHEN ? THEN excluded.status ELSE tasks.status END,
   priority = excluded.priority,
   body_source_id = excluded.body_source_id,
   updated_at = excluded.updated_at
-`, id, m.projectID, specID, title, status, emptyToNil(priority), sourceID, m.now, m.now)
+`, id, m.projectID, specID, title, status, emptyToNil(priority), sourceID, m.now, m.now, writeStatus)
 	if err != nil {
 		return fmt.Errorf("upsert task %s: %w", id, err)
 	}
 	return nil
 }
 
-func (m markdownImporter) upsertSimpleEntity(ctx context.Context, table string, id string, title string, status string, sourceID string) error {
+func (m markdownImporter) upsertSimpleEntity(ctx context.Context, table string, id string, title string, status string, writeStatus bool, sourceID string) error {
 	_, err := m.tx.ExecContext(ctx, fmt.Sprintf(`
 INSERT INTO %s (id, project_id, title, status, body_source_id, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   title = excluded.title,
-  status = excluded.status,
+  status = CASE WHEN ? THEN excluded.status ELSE %s.status END,
   body_source_id = excluded.body_source_id,
   updated_at = excluded.updated_at
-`, table), id, m.projectID, title, status, sourceID, m.now, m.now)
+`, table, table), id, m.projectID, title, status, sourceID, m.now, m.now, writeStatus)
 	if err != nil {
 		return fmt.Errorf("upsert %s %s: %w", table, id, err)
 	}
 	return nil
 }
 
-func (m markdownImporter) upsertReport(ctx context.Context, id string, reportKind string, title string, status string, sourceID string) error {
+func (m markdownImporter) upsertReport(ctx context.Context, id string, reportKind string, title string, status string, writeStatus bool, sourceID string) error {
 	_, err := m.tx.ExecContext(ctx, `
 INSERT INTO reports (id, project_id, report_kind, title, status, body_source_id, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   report_kind = excluded.report_kind,
   title = excluded.title,
-  status = excluded.status,
+  status = CASE WHEN ? THEN excluded.status ELSE reports.status END,
   body_source_id = excluded.body_source_id,
   updated_at = excluded.updated_at
-`, id, m.projectID, reportKind, title, status, sourceID, m.now, m.now)
+`, id, m.projectID, reportKind, title, status, sourceID, m.now, m.now, writeStatus)
 	if err != nil {
 		return fmt.Errorf("upsert report %s: %w", id, err)
 	}
@@ -708,8 +787,30 @@ ON CONFLICT(id) DO UPDATE SET
 	return nil
 }
 
-func (m markdownImporter) upsertJournalEntry(ctx context.Context, id string, entryType string, scope string, message string, observedBranch string, observedWorktree string, harnessSessionID string) error {
-	_, err := m.tx.ExecContext(ctx, `
+// upsertJournalEntry writes a journal line and its migration origin unless the
+// existing origin fails the reclaim fingerprint, in which case the whole entry
+// is skipped untouched. Returns false when skipped.
+func (m markdownImporter) upsertJournalEntry(ctx context.Context, id string, entryType string, scope string, message string, observedBranch string, observedWorktree string, harnessSessionID string) (bool, error) {
+	origin, journal, err := m.loadOriginJournalPair(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	action := decideOriginImportDisposition(origin, journal)
+	if action == originImportSkip {
+		mechanism := JournalOriginMechanismUnknown
+		if origin != nil {
+			mechanism = origin.CaptureMechanism
+		}
+		if m.report != nil {
+			m.report.SkippedEntries = append(m.report.SkippedEntries, ImportSkippedEntry{
+				JournalEntryID:   id,
+				CaptureMechanism: mechanism,
+			})
+		}
+		return false, nil
+	}
+
+	_, err = m.tx.ExecContext(ctx, `
 INSERT INTO journal_entries (id, project_id, entry_type, scope, message, observed_branch, observed_worktree, harness_session_id, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
@@ -722,23 +823,67 @@ ON CONFLICT(id) DO UPDATE SET
   updated_at = excluded.updated_at
 `, id, m.projectID, entryType, emptyToNil(scope), message, emptyToNil(observedBranch), emptyToNil(observedWorktree), emptyToNil(harnessSessionID), m.now, m.now)
 	if err != nil {
-		return fmt.Errorf("upsert journal entry %s: %w", id, err)
+		return false, fmt.Errorf("upsert journal entry %s: %w", id, err)
 	}
-	return m.upsertJournalOrigin(ctx, id, observedBranch, observedWorktree, harnessSessionID)
+	if err := m.writeMigrationJournalOrigin(ctx, id, observedBranch, observedWorktree, harnessSessionID, origin != nil); err != nil {
+		return false, err
+	}
+	if action == originImportReclaim && m.report != nil {
+		m.report.ReclaimedOrigins++
+	}
+	return true, nil
 }
 
-func (m markdownImporter) upsertJournalOrigin(ctx context.Context, journalEntryID string, branch string, worktree string, harnessSessionID string) error {
+func (m markdownImporter) loadOriginJournalPair(ctx context.Context, journalEntryID string) (*journalOriginScanRow, *journalEntryScanRow, error) {
+	var journal journalEntryScanRow
+	err := m.tx.QueryRowContext(ctx, `
+SELECT harness_session_id, observed_branch, observed_worktree, created_at
+FROM journal_entries
+WHERE project_id = ? AND id = ?
+`, m.projectID, journalEntryID).Scan(
+		&journal.HarnessSessionID, &journal.ObservedBranch, &journal.ObservedWorktree, &journal.CreatedAt,
+	)
+	var journalPtr *journalEntryScanRow
+	switch {
+	case err == nil:
+		journalPtr = &journal
+	case errors.Is(err, sql.ErrNoRows):
+		journalPtr = nil
+	default:
+		return nil, nil, fmt.Errorf("read journal entry %s for origin decision: %w", journalEntryID, err)
+	}
+
+	var origin journalOriginScanRow
+	err = m.tx.QueryRowContext(ctx, `
+SELECT
+  capture_mechanism, envelope_version,
+  observed_harness, observed_harness_version, harness_session_id, agent_id,
+  source_event, branch, worktree, head, change_path, change_sha256,
+  dirty, reconstructable, durable_result_kind, durable_result_id, created_at
+FROM journal_origins
+WHERE project_id = ? AND journal_entry_id = ?
+`, m.projectID, journalEntryID).Scan(
+		&origin.CaptureMechanism, &origin.EnvelopeVersion,
+		&origin.ObservedHarness, &origin.ObservedHarnessVersion, &origin.HarnessSessionID, &origin.AgentID,
+		&origin.SourceEvent, &origin.Branch, &origin.Worktree, &origin.Head, &origin.ChangePath, &origin.ChangeSHA256,
+		&origin.Dirty, &origin.Reconstructable, &origin.DurableResultKind, &origin.DurableResultID, &origin.CreatedAt,
+	)
+	switch {
+	case err == nil:
+		return &origin, journalPtr, nil
+	case errors.Is(err, sql.ErrNoRows):
+		return nil, journalPtr, nil
+	default:
+		return nil, nil, fmt.Errorf("read journal origin %s for decision: %w", journalEntryID, err)
+	}
+}
+
+func (m markdownImporter) writeMigrationJournalOrigin(ctx context.Context, journalEntryID string, branch string, worktree string, harnessSessionID string, exists bool) error {
 	var createdAt string
 	if err := m.tx.QueryRowContext(ctx, `SELECT created_at FROM journal_entries WHERE project_id = ? AND id = ?`, m.projectID, journalEntryID).Scan(&createdAt); err != nil {
 		return fmt.Errorf("read imported journal entry %s for origin: %w", journalEntryID, err)
 	}
-	var mechanism string
-	err := m.tx.QueryRowContext(ctx, `SELECT capture_mechanism FROM journal_origins WHERE project_id = ? AND journal_entry_id = ?`, m.projectID, journalEntryID).Scan(&mechanism)
-	switch {
-	case err == nil:
-		if mechanism != JournalOriginMechanismMigration {
-			return fmt.Errorf("refusing to overwrite non-migration journal origin %s (%s)", journalEntryID, mechanism)
-		}
+	if exists {
 		if _, err := m.tx.ExecContext(ctx, `
 UPDATE journal_origins
 SET envelope_version = 1,
@@ -763,8 +908,6 @@ WHERE project_id = ? AND journal_entry_id = ?
 			return fmt.Errorf("update imported journal origin %s: %w", journalEntryID, err)
 		}
 		return nil
-	case !errors.Is(err, sql.ErrNoRows):
-		return fmt.Errorf("read imported journal origin %s: %w", journalEntryID, err)
 	}
 	if _, err := m.tx.ExecContext(ctx, `
 INSERT INTO journal_origins (
@@ -780,6 +923,9 @@ INSERT INTO journal_origins (
 }
 
 func (m markdownImporter) upsertRelationship(ctx context.Context, fromKind string, fromID string, toKind string, toID string, relationshipType string, reason string) error {
+	// loaf link derives the same deterministic id for a given tuple (link.go),
+	// so a manual edge collides here; the conflict WHERE keeps the importer
+	// from claiming rows it did not create (Decision 7 ownership).
 	id := stableMigrationID("relationship", m.projectID, fromKind, fromID, relationshipType, toKind, toID)
 	_, err := m.tx.ExecContext(ctx, `
 INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, origin, source_id, source_field, created_at, updated_at)
@@ -790,6 +936,7 @@ ON CONFLICT(id) DO UPDATE SET
   source_id = excluded.source_id,
   source_field = excluded.source_field,
   updated_at = excluded.updated_at
+WHERE relationships.origin = 'imported'
 `, id, m.projectID, fromKind, fromID, toKind, toID, relationshipType, reason, "imported", nil, relationshipType, m.now, m.now)
 	if err != nil {
 		return fmt.Errorf("upsert relationship %s: %w", id, err)
@@ -797,13 +944,17 @@ ON CONFLICT(id) DO UPDATE SET
 	return nil
 }
 
+// deleteImportedRelationships removes only origin='imported' edges for the
+// from-entity. Manual relationships whose reason happens to start with
+// "imported from" are owned by the user and must survive refresh (Decision 7).
+// Artifacts and per-spark refresh share this helper — do not fork the predicate.
 func (m markdownImporter) deleteImportedRelationships(ctx context.Context, fromKind string, fromID string) error {
 	_, err := m.tx.ExecContext(ctx, `
 DELETE FROM relationships
 WHERE project_id = ?
   AND from_entity_kind = ?
   AND from_entity_id = ?
-  AND (origin = 'imported' OR reason LIKE 'imported from %')
+  AND origin = 'imported'
 `, m.projectID, fromKind, fromID)
 	if err != nil {
 		return fmt.Errorf("delete imported relationships for %s %s: %w", fromKind, fromID, err)
@@ -914,11 +1065,19 @@ func firstHeading(content []byte) string {
 	return ""
 }
 
-func reportStatus(artifact sourceArtifact) string {
+// reportSourceStatus returns the raw incoming report status before classification.
+// Archive-directory placement is a real directory-derived source status, not no-opinion.
+func reportSourceStatus(artifact sourceArtifact) string {
 	if strings.HasPrefix(artifact.RelPath, ".agents/reports/archive/") {
-		return "archived"
+		return LifecycleStatusArchived
 	}
-	return firstNonEmpty(artifact.Frontmatter["status"], "unknown")
+	return artifact.Frontmatter["status"]
+}
+
+// reportStatus is retained for callers that want the post-default insert value
+// without going through the importer (tests / inventory helpers).
+func reportStatus(artifact sourceArtifact) string {
+	return classifyImportLifecycleStatus(LifecycleEntityReport, "", reportSourceStatus(artifact), "unknown").Status
 }
 
 func loadTaskIndex(rootPath string) map[string]taskIndexEntry {

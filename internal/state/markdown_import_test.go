@@ -172,7 +172,7 @@ harness_session_id: hsid-origin
 	if _, err := store.db.ExecContext(ctx, `DELETE FROM journal_origins WHERE project_id = ? AND journal_entry_id = ?`, result.ProjectID, journalID); err != nil {
 		t.Fatalf("delete origin fixture: %v", err)
 	}
-	if err := store.ImportMarkdown(ctx, root); err != nil {
+	if _, err := store.ImportMarkdown(ctx, root); err != nil {
 		t.Fatalf("ImportMarkdown(backfill) error = %v", err)
 	}
 	if got := countIdentityRows(t, store, `SELECT COUNT(*) FROM journal_origins WHERE project_id = ? AND journal_entry_id = ?`, result.ProjectID, journalID); got != 1 {
@@ -181,15 +181,25 @@ harness_session_id: hsid-origin
 	if _, err := store.db.ExecContext(ctx, `UPDATE journal_origins SET capture_mechanism = 'manual', source_event = 'manual' WHERE project_id = ? AND journal_entry_id = ?`, result.ProjectID, journalID); err != nil {
 		t.Fatalf("mark non-migration origin: %v", err)
 	}
-	if err := store.ImportMarkdown(ctx, root); err == nil || !strings.Contains(err.Error(), "refusing to overwrite non-migration journal origin") {
-		t.Fatalf("ImportMarkdown(non-migration origin) error = %v, want deterministic refusal", err)
+	report, err := store.ImportMarkdown(ctx, root)
+	if err != nil {
+		t.Fatalf("ImportMarkdown(non-migration origin) error = %v, want skip not abort", err)
 	}
-	var mechanism string
+	if len(report.SkippedEntries) != 1 || report.SkippedEntries[0].CaptureMechanism != "manual" {
+		t.Fatalf("skipped = %#v, want one manual skip", report.SkippedEntries)
+	}
+	var mechanism, message string
 	if err := store.db.QueryRowContext(ctx, `SELECT capture_mechanism FROM journal_origins WHERE project_id = ? AND journal_entry_id = ?`, result.ProjectID, journalID).Scan(&mechanism); err != nil {
 		t.Fatalf("read protected origin: %v", err)
 	}
 	if mechanism != "manual" {
 		t.Fatalf("protected origin mechanism = %q, want manual", mechanism)
+	}
+	if err := store.db.QueryRowContext(ctx, `SELECT message FROM journal_entries WHERE id = ?`, journalID).Scan(&message); err != nil {
+		t.Fatalf("read protected journal: %v", err)
+	}
+	if message != "preserve origin" {
+		t.Fatalf("skipped journal message = %q, want untouched", message)
 	}
 }
 
@@ -255,7 +265,7 @@ func TestApplyMarkdownMigrationSpecStatusPrefersIndexOverFrontmatter(t *testing.
 	}
 }
 
-func TestApplyMarkdownMigrationRerunRepairsSpecStatus(t *testing.T) {
+func TestApplyMarkdownMigrationRerunKeepsRealStatusAndRecordsDivergence(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()
 	writeMarkdownImportSpecStatusFixture(t, root.Path())
@@ -272,14 +282,28 @@ func TestApplyMarkdownMigrationRerunRepairsSpecStatus(t *testing.T) {
 
 	specID := stableMigrationID("spec", result.ProjectID, "SPEC-001")
 	if _, err := store.db.ExecContext(context.Background(), `UPDATE specs SET status = 'in_progress' WHERE project_id = ? AND id = ?`, result.ProjectID, specID); err != nil {
-		t.Fatalf("seed mis-migrated status error = %v", err)
+		t.Fatalf("seed real status error = %v", err)
 	}
 
-	if _, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+	second, err := ApplyMarkdownMigration(context.Background(), root, PathResolver{StateHome: stateHome})
+	if err != nil {
 		t.Fatalf("second ApplyMarkdownMigration() error = %v", err)
 	}
-	if got := rawSpecStatusByAlias(t, store, result.ProjectID, "SPEC-001"); got != "done" {
-		t.Fatalf("SPEC-001 status after rerun = %q, want done", got)
+	if got := rawSpecStatusByAlias(t, store, result.ProjectID, "SPEC-001"); got != "in_progress" {
+		t.Fatalf("SPEC-001 status after rerun = %q, want kept in_progress", got)
+	}
+	if second.ImportReport == nil || len(second.ImportReport.StatusDivergences) == 0 {
+		t.Fatalf("ImportReport = %#v, want status divergence", second.ImportReport)
+	}
+	found := false
+	for _, d := range second.ImportReport.StatusDivergences {
+		if d.EntityID == specID && d.StoredStatus == "in_progress" && d.IncomingStatus == "done" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("divergences = %#v, want SPEC-001 in_progress vs done", second.ImportReport.StatusDivergences)
 	}
 }
 
@@ -346,7 +370,7 @@ harness_session_id: hsid-markdown
 ---
 [2026-07-10 10:00] decision(import): updated content
 `)
-	if err := store.ImportMarkdown(ctx, root); err != nil {
+	if _, err := store.ImportMarkdown(ctx, root); err != nil {
 		t.Fatalf("ImportMarkdown(updated) error = %v", err)
 	}
 
@@ -432,7 +456,7 @@ harness_session_id: hsid-markdown
 ---
 [2026-07-10 10:00] decision(import): changed and should fail
 `)
-	if err := store.ImportMarkdown(ctx, root); err == nil {
+	if _, err := store.ImportMarkdown(ctx, root); err == nil {
 		t.Fatal("ImportMarkdown() error = nil, want parity/rebuild failure")
 	}
 	var gotMessage string

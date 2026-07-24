@@ -33,6 +33,7 @@ This protocol serves natural-language requests to upgrade, diagnose, repair, con
 - `loaf doctor --json` never prompts and never repairs; it carries the identical check identities and outcomes as the human output plus repair IDs for planning.
 - `loaf install --upgrade --dry-run --json` is deterministic and byte-for-byte non-mutating; applying the reported plan through the existing commands must produce the predicted effects, after which diagnosis reports convergence.
 - `loaf state migrate deferrals --dry-run --json` previews the legacy-deferral conversion manifest; apply is backup-first, preserves every legacy row, and is rerunnable.
+- `loaf migrate markdown --dry-run --json` reports `mode: simulation` (full apply against a disposable snapshot, with `import_report`) when the project is registered, or `mode: inventory` (file counts only, no `import_report`) otherwise. See the markdown-migration reference for origin/status authority and the dry-run/apply parity precondition.
 
 ## Consent Boundaries
 

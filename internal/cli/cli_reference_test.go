@@ -68,6 +68,7 @@ func TestRunnerGenerateCLIReferenceWritesSkillNatively(t *testing.T) {
 		"## Topics",
 		"[references/configuration.md](references/configuration.md)",
 		"[references/command-routing.md](references/command-routing.md)",
+		"[references/markdown-migration.md](references/markdown-migration.md)",
 		"[references/troubleshooting.md](references/troubleshooting.md)",
 	} {
 		if !strings.Contains(content, want) {

@@ -200,18 +200,12 @@ func backupWithDestination(ctx context.Context, root project.Root, resolver Path
 			return partial, err
 		}
 	}
-	store, err := openStoreReadOnlyForBackup(status.DatabasePath)
-	if err != nil {
-		return partial, fmt.Errorf("open state database for backup: %w", err)
-	}
-	defer store.Close()
-
 	if ops.beforeVacuum != nil {
 		if err := ops.beforeVacuum(backupPath); err != nil {
 			return partial, err
 		}
 	}
-	if _, err := store.db.ExecContext(ctx, `VACUUM INTO ?`, backupPath); err != nil {
+	if err := vacuumSQLiteInto(ctx, status.DatabasePath, backupPath); err != nil {
 		return partial, fmt.Errorf("backup state database: %w", err)
 	}
 	reservationCompleted = true
@@ -219,9 +213,6 @@ func backupWithDestination(ctx context.Context, root project.Root, resolver Path
 		if err := ops.afterVacuum(backupPath); err != nil {
 			return partial, err
 		}
-	}
-	if err := os.Chmod(backupPath, 0o600); err != nil {
-		return partial, fmt.Errorf("set state backup permissions: %w", err)
 	}
 	info, err := os.Stat(backupPath)
 	if err != nil {

@@ -183,13 +183,13 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--json", Description: "Output parity counts, backup verification, and repair result as JSON"},
 				}},
 				{Name: "migrate markdown", Description: "Import existing .agents Markdown artifacts into SQLite", Options: []cliReferenceOption{
-					{Flags: "--dry-run", Description: "Preview import counts without creating a database"},
+					{Flags: "--dry-run", Description: "Simulate import on a disposable DB snapshot when registered; otherwise inventory-only"},
 					{Flags: "--apply", Description: "Initialize SQLite and import Markdown artifacts"},
 					{Flags: "--resume", Description: "Resume the Markdown import after an interrupted attempt"},
 					{Flags: "--backup", Description: "Create SQLite and .agents rollback backups during apply or resume"},
 					{Flags: "--remove-source", Description: "Remove ephemeral Markdown sources after a rollback backup"},
 					{Flags: "--rollback <manifest>", Description: "Restore .agents files from a rollback manifest"},
-					{Flags: "--json", Description: "Output migration contract, scope, project context, counts, and rollback fields as JSON"},
+					{Flags: "--json", Description: "Output migration contract, scope, project context, counts, mode, import_report when simulated, and rollback fields as JSON"},
 				}},
 				{Name: "migrate storage-home", Description: "Copy legacy XDG_STATE_HOME SQLite state into XDG_DATA_HOME", Options: []cliReferenceOption{
 					{Flags: "--dry-run", Description: "Preview the storage-home migration"},
@@ -323,13 +323,13 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Description: "Run native migration workflows",
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "markdown", Description: "Import existing .agents Markdown artifacts into SQLite", Options: []cliReferenceOption{
-					{Flags: "--dry-run", Description: "Preview import counts without creating a database"},
+					{Flags: "--dry-run", Description: "Simulate import on a disposable DB snapshot when registered; otherwise inventory-only"},
 					{Flags: "--apply", Description: "Initialize SQLite and import Markdown artifacts"},
 					{Flags: "--resume", Description: "Resume the Markdown import after an interrupted attempt"},
 					{Flags: "--backup", Description: "Create SQLite and .agents rollback backups during apply or resume"},
 					{Flags: "--remove-source", Description: "Remove ephemeral Markdown sources after a rollback backup"},
 					{Flags: "--rollback <manifest>", Description: "Restore .agents files from a rollback manifest"},
-					{Flags: "--json", Description: "Output migration contract, scope, project context, counts, and rollback fields as JSON"},
+					{Flags: "--json", Description: "Output migration contract, scope, project context, counts, mode, import_report when simulated, and rollback fields as JSON"},
 				}},
 				{Name: "storage-home", Description: "Copy legacy XDG_STATE_HOME SQLite state into XDG_DATA_HOME", Options: []cliReferenceOption{
 					{Flags: "--dry-run", Description: "Preview the storage-home migration"},
@@ -943,6 +943,7 @@ The Loaf operating manual for agents: how to discover commands, diagnose project
 		"| Configuration maintenance | [references/configuration.md](references/configuration.md) | Checking whether a project's Loaf config is current and repairing it; wiring project-owned choices |",
 		"| Config-aware maintenance protocol | [references/maintenance.md](references/maintenance.md) | Upgrading, diagnosing, repairing, or bringing a project current: diagnose, plan, ask, apply, verify |",
 		"| Command routing | [references/command-routing.md](references/command-routing.md) | Deciding which command a task needs; locating the JSON diagnosis surfaces |",
+		"| Markdown migration | [references/markdown-migration.md](references/markdown-migration.md) | Running `loaf migrate markdown`: simulation vs inventory mode, import_report, origin/status authority |",
 		"| Troubleshooting | [references/troubleshooting.md](references/troubleshooting.md) | Diagnosing state, config, or alignment failures; isolating a throwaway database |",
 		"",
 	)

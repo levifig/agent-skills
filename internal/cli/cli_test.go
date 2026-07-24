@@ -539,13 +539,19 @@ func TestRunnerMigrateMarkdownUsesNativeAlias(t *testing.T) {
 		"project: (not initialized)",
 		"project name:",
 		"project path:",
+		"action: simulate",
+		"mode: inventory",
 		"applied: false",
 		"tasks: 1",
-		"next: rerun with --apply to import Markdown into the global database",
+		"inventory-only: conflict detection requires an initialized SQLite project; no import_report",
+		"next: initialize the project, then rerun with --apply to import Markdown into the global database",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 		}
+	}
+	if strings.Contains(stdout.String(), "reclaimed origins:") {
+		t.Fatalf("stdout = %q, did not want import_report lines for inventory dry-run", stdout.String())
 	}
 	root, err := project.ResolveRoot(repo)
 	if err != nil {
@@ -2844,9 +2850,9 @@ func TestRunnerStateAndProjectJSONHelpNamesContracts(t *testing.T) {
 		{name: "state repair legacy", args: []string{"state", "repair", "legacy-project-database", "--help"}, wants: []string{"--json", "archive plan/result", "global database scope", "project identity"}},
 		{name: "state repair relationship", args: []string{"state", "repair", "relationship-origin", "--help"}, wants: []string{"--json", "repair mode, plan/result", "global database scope", "project identity", "omit for reclassify-only"}},
 		{name: "state repair journal-search", args: []string{"state", "repair", "journal-search", "--help"}, wants: []string{"--json", "parity counts", "backup verification", "exact parity"}},
-		{name: "state migrate markdown", args: []string{"state", "migrate", "markdown", "--help"}, wants: []string{"--json", "migration contract", "project context", "counts"}},
+		{name: "state migrate markdown", args: []string{"state", "migrate", "markdown", "--help"}, wants: []string{"--json", "migration contract", "project context", "counts", "disposable DB snapshot", "inventory-only", "import_report"}},
 		{name: "state migrate storage-home", args: []string{"state", "migrate", "storage-home", "--help"}, wants: []string{"--json", "migration contract", "global database paths", "project identity"}},
-		{name: "migrate markdown", args: []string{"migrate", "markdown", "--help"}, wants: []string{"--json", "migration contract", "project context", "counts"}},
+		{name: "migrate markdown", args: []string{"migrate", "markdown", "--help"}, wants: []string{"--json", "migration contract", "project context", "counts", "disposable DB snapshot", "inventory-only", "import_report"}},
 		{name: "migrate storage-home", args: []string{"migrate", "storage-home", "--help"}, wants: []string{"--json", "migration contract", "global database paths", "project identity"}},
 	}
 
@@ -6292,7 +6298,7 @@ func TestRunnerStateMigrateMarkdownJSONDryRunDoesNotCreateDatabase(t *testing.T)
 		t.Fatalf("state migrate markdown --dry-run --json error = %v", err)
 	}
 
-	preview := decodeMarkdownMigrationPreviewResult(t, stdout.Bytes())
+	preview := decodeMarkdownMigrationResult(t, stdout.Bytes())
 	plan := preview.MarkdownMigrationPlan
 	if plan.ContractVersion != state.StateJSONContractVersion {
 		t.Fatalf("ContractVersion = %d, want %d", plan.ContractVersion, state.StateJSONContractVersion)
@@ -6308,6 +6314,15 @@ func TestRunnerStateMigrateMarkdownJSONDryRunDoesNotCreateDatabase(t *testing.T)
 	}
 	if preview.Applied {
 		t.Fatal("Applied = true, want false for dry-run")
+	}
+	if preview.Mode != state.MarkdownMigrationModeInventory {
+		t.Fatalf("Mode = %q, want %q", preview.Mode, state.MarkdownMigrationModeInventory)
+	}
+	if preview.ImportReport != nil {
+		t.Fatalf("ImportReport = %#v, want nil for inventory dry-run", preview.ImportReport)
+	}
+	if preview.Action != state.MarkdownMigrationActionSimulate {
+		t.Fatalf("Action = %q, want %q", preview.Action, state.MarkdownMigrationActionSimulate)
 	}
 	if plan.Specs != 1 ||
 		plan.Tasks != 1 ||
@@ -6361,17 +6376,172 @@ func TestRunnerStateMigrateMarkdownHumanDryRun(t *testing.T) {
 		"project: (not initialized)",
 		"project name:",
 		"project path:",
+		"action: simulate",
+		"mode: inventory",
 		"applied: false",
 		"ideas: 1",
 		"unimported files: 1",
 		".agents/councils/20260615-mqtt-identity-model.md (unsupported artifact kind: council)",
 		"ignored files: 1",
 		".agents/tmp/enrichment.txt (temporary enrichment artifact)",
+		"inventory-only: conflict detection requires an initialized SQLite project; no import_report",
+		"next: initialize the project, then rerun with --apply to import Markdown into the global database",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output = %q, want %q", output, want)
+		}
+	}
+	if strings.Contains(output, "reclaimed origins:") {
+		t.Fatalf("output = %q, did not want import_report lines for inventory dry-run", output)
+	}
+}
+
+func TestRunnerStateMigrateMarkdownHumanDryRunSimulation(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	writeCLIAgentsFile(t, workingDir, "ideas/20260724-sim-idea.md", "# Sim Idea\n")
+	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-sim.md", `---
+id: SPEC-001
+title: Sim Spec
+status: done
+---
+# Sim Spec
+`)
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "migrate", "markdown", "--dry-run"})
+	if err != nil {
+		t.Fatalf("state migrate markdown --dry-run error = %v", err)
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"loaf state migrate markdown --dry-run",
+		"action: simulate",
+		"mode: simulation",
+		"applied: false",
+		"ideas: 1",
+		"specs: 1",
+		"reclaimed origins: 0",
+		"skipped (foreign provenance): 0",
+		"status divergences: 0",
 		"next: rerun with --apply to import Markdown into the global database",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
+	}
+	if strings.Contains(output, "project: (not initialized)") {
+		t.Fatalf("output = %q, want registered project identity on simulation", output)
+	}
+	if strings.Contains(output, "inventory-only:") {
+		t.Fatalf("output = %q, did not want inventory-only warning on simulation", output)
+	}
+	if !strings.Contains(output, "project: proj_") {
+		t.Fatalf("output = %q, want project id", output)
+	}
+}
+
+func TestRunnerStateMigrateMarkdownJSONDryRunSimulation(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	writeCLIAgentsFile(t, workingDir, "ideas/20260724-json-sim.md", "# JSON Sim\n")
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "migrate", "markdown", "--dry-run", "--json"})
+	if err != nil {
+		t.Fatalf("state migrate markdown --dry-run --json error = %v", err)
+	}
+
+	result := decodeMarkdownMigrationResult(t, stdout.Bytes())
+	if result.Mode != state.MarkdownMigrationModeSimulation {
+		t.Fatalf("Mode = %q, want %q", result.Mode, state.MarkdownMigrationModeSimulation)
+	}
+	if result.Applied || result.Action != state.MarkdownMigrationActionSimulate {
+		t.Fatalf("Applied/Action = %t/%q", result.Applied, result.Action)
+	}
+	if result.ProjectID == "" {
+		t.Fatal("ProjectID is empty for simulation")
+	}
+	if result.ImportReport == nil {
+		t.Fatal("ImportReport is nil for simulation")
+	}
+	if result.ImportReport.SkippedEntries == nil || result.ImportReport.StatusDivergences == nil || result.ImportReport.Warnings == nil {
+		t.Fatalf("ImportReport slices must be non-nil: %#v", result.ImportReport)
+	}
+	if result.Ideas != 1 {
+		t.Fatalf("Ideas = %d, want 1", result.Ideas)
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &raw); err != nil {
+		t.Fatalf("json.Unmarshal raw error = %v", err)
+	}
+	if raw["mode"] != state.MarkdownMigrationModeSimulation {
+		t.Fatalf("raw mode = %#v, want %q", raw["mode"], state.MarkdownMigrationModeSimulation)
+	}
+	report, ok := raw["import_report"].(map[string]any)
+	if !ok {
+		t.Fatalf("raw import_report = %#v, want object", raw["import_report"])
+	}
+	for _, key := range []string{"reclaimed_origins", "skipped_entries", "status_divergences", "warnings"} {
+		if _, present := report[key]; !present {
+			t.Fatalf("import_report missing %s: %#v", key, report)
+		}
+	}
+	for _, key := range []string{"contract_version", "agents_path", "specs", "tasks", "ideas", "database_scope", "import_scope", "database_path", "project_name", "project_current_path", "applied"} {
+		if _, present := raw[key]; !present {
+			t.Fatalf("raw JSON missing pre-existing field %s", key)
+		}
+	}
+}
+
+func TestRunnerStateMigrateMarkdownApplyJSONIncludesImportReport(t *testing.T) {
+	workingDir := realpath(t, t.TempDir())
+	stateHome := t.TempDir()
+	writeCLIAgentsFile(t, workingDir, "ideas/20260724-apply-report.md", "# Apply Report\n")
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+	}.Run([]string{"state", "migrate", "markdown", "--apply", "--json"})
+	if err != nil {
+		t.Fatalf("state migrate markdown --apply --json error = %v", err)
+	}
+
+	result := decodeMarkdownMigrationResult(t, stdout.Bytes())
+	if result.Mode != "" {
+		t.Fatalf("Mode = %q, want empty on apply", result.Mode)
+	}
+	if result.ImportReport == nil {
+		t.Fatal("ImportReport is nil on apply")
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &raw); err != nil {
+		t.Fatalf("json.Unmarshal raw error = %v", err)
+	}
+	if _, ok := raw["mode"]; ok {
+		t.Fatalf("raw JSON includes mode = %#v, want absent on apply", raw["mode"])
+	}
+	if _, ok := raw["import_report"]; !ok {
+		t.Fatal("raw JSON missing import_report on apply")
 	}
 }
 
@@ -6600,10 +6770,16 @@ func TestRunnerStateMigrateMarkdownApplyHuman(t *testing.T) {
 		"action: apply",
 		"applied: true",
 		"ideas: 1",
+		"reclaimed origins: 0",
+		"skipped (foreign provenance): 0",
+		"status divergences: 0",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
+	}
+	if strings.Contains(output, "mode:") {
+		t.Fatalf("output = %q, did not want mode on apply", output)
 	}
 	if strings.Contains(output, "next:") {
 		t.Fatalf("output = %q, did not want dry-run next action after apply", output)
@@ -7044,13 +7220,16 @@ func TestRunnerStateMigrateMarkdownResumeHuman(t *testing.T) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
 	}
-	for _, want := range []string{"applied: true", "ideas: 1"} {
+	for _, want := range []string{"applied: true", "ideas: 1", "reclaimed origins: 0", "skipped (foreign provenance): 0", "status divergences: 0"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output = %q, want %q", output, want)
 		}
 	}
 	if !strings.Contains(output, "action: resume") {
 		t.Fatalf("output = %q, want resume action", output)
+	}
+	if strings.Contains(output, "mode:") {
+		t.Fatalf("output = %q, did not want mode on resume", output)
 	}
 	if strings.Contains(output, "next:") {
 		t.Fatalf("output = %q, did not want dry-run next action after resume", output)
@@ -7469,13 +7648,26 @@ func TestRunnerStateControlPlaneJSONSuccessMatrix(t *testing.T) {
 		if err := (Runner{Stdout: &stdout, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--dry-run", "--json"}); err != nil {
 			t.Fatalf("state migrate markdown --dry-run --json error = %v", err)
 		}
-		preview := decodeMarkdownMigrationPreviewResult(t, stdout.Bytes())
+		preview := decodeMarkdownMigrationResult(t, stdout.Bytes())
 		plan := preview.MarkdownMigrationPlan
 		if plan.ContractVersion != state.StateJSONContractVersion || plan.AgentsPath != filepath.Join(workingDir, ".agents") {
 			t.Fatalf("markdown migration plan = %#v, want contract version and agents path for dry-run", plan)
 		}
 		if preview.DatabaseScope != "global" || preview.ImportScope != "project" || preview.DatabasePath == "" || preview.Applied {
 			t.Fatalf("markdown migration preview = %#v, want non-mutating global project preview", preview)
+		}
+		if preview.Mode != state.MarkdownMigrationModeInventory {
+			t.Fatalf("Mode = %q, want %q", preview.Mode, state.MarkdownMigrationModeInventory)
+		}
+		if preview.ImportReport != nil {
+			t.Fatalf("ImportReport = %#v, want nil for inventory dry-run", preview.ImportReport)
+		}
+		var raw map[string]any
+		if err := json.Unmarshal(stdout.Bytes(), &raw); err != nil {
+			t.Fatalf("json.Unmarshal raw error = %v", err)
+		}
+		if _, ok := raw["import_report"]; ok {
+			t.Fatalf("raw JSON includes import_report = %#v, want absent for inventory", raw["import_report"])
 		}
 		if plan.Specs != 1 || plan.Tasks != 1 {
 			t.Fatalf("markdown migration plan = %#v, want one spec and one task", plan)
@@ -13826,15 +14018,6 @@ func decodeMarkdownMigrationPlan(t *testing.T, data []byte) state.MarkdownMigrat
 		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
 	}
 	return plan
-}
-
-func decodeMarkdownMigrationPreviewResult(t *testing.T, data []byte) state.MarkdownMigrationPreviewResult {
-	t.Helper()
-	var result state.MarkdownMigrationPreviewResult
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("json.Unmarshal(%q) error = %v", string(data), err)
-	}
-	return result
 }
 
 func decodeMarkdownMigrationResult(t *testing.T, data []byte) state.MarkdownMigrationResult {

@@ -3225,7 +3225,7 @@ func (r Runner) runStateMigrate(args []string, out io.Writer, runtime state.Runt
 }
 
 func writeStateMigrateMarkdownHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf state migrate markdown [--dry-run|--apply|--resume] [--backup] [--remove-source] [--rollback <manifest>] [--json]", "Import .agents Markdown artifacts into SQLite without mutating Markdown by default.", "--dry-run       Preview import work", "--apply         Apply the import", "--resume        Resume an interrupted import", "--backup        Create SQLite and .agents rollback backups during apply/resume", "--remove-source Remove ephemeral Markdown sources; requires --backup", "--rollback      Restore .agents files from a rollback manifest", "--json          Output migration contract, scope, project context, counts, and rollback fields as JSON")
+	writeUsageHelp(out, "loaf state migrate markdown [--dry-run|--apply|--resume] [--backup] [--remove-source] [--rollback <manifest>] [--json]", "Import .agents Markdown artifacts into SQLite without mutating Markdown by default.", "--dry-run       Simulate import on a disposable DB snapshot when the project is registered; otherwise inventory-only file counts", "--apply         Apply the import", "--resume        Resume an interrupted import", "--backup        Create SQLite and .agents rollback backups during apply/resume", "--remove-source Remove ephemeral Markdown sources; requires --backup", "--rollback      Restore .agents files from a rollback manifest", "--json          Output migration contract, scope, project context, counts, mode, import_report when simulated, and rollback fields as JSON")
 }
 
 func writeStateMigrateStorageHomeHelp(out io.Writer) {
@@ -3245,7 +3245,7 @@ func writeMigrateSchemaHelp(out io.Writer) {
 }
 
 func writeMigrateMarkdownHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf migrate markdown [--dry-run|--apply|--resume] [--backup] [--remove-source] [--rollback <manifest>] [--json]", "Import .agents Markdown artifacts into SQLite without mutating Markdown by default.", "--dry-run       Preview import work", "--apply         Apply the import", "--resume        Resume an interrupted import", "--backup        Create SQLite and .agents rollback backups during apply/resume", "--remove-source Remove ephemeral Markdown sources; requires --backup", "--rollback      Restore .agents files from a rollback manifest", "--json          Output migration contract, scope, project context, counts, and rollback fields as JSON")
+	writeUsageHelp(out, "loaf migrate markdown [--dry-run|--apply|--resume] [--backup] [--remove-source] [--rollback <manifest>] [--json]", "Import .agents Markdown artifacts into SQLite without mutating Markdown by default.", "--dry-run       Simulate import on a disposable DB snapshot when the project is registered; otherwise inventory-only file counts", "--apply         Apply the import", "--resume        Resume an interrupted import", "--backup        Create SQLite and .agents rollback backups during apply/resume", "--remove-source Remove ephemeral Markdown sources; requires --backup", "--rollback      Restore .agents files from a rollback manifest", "--json          Output migration contract, scope, project context, counts, mode, import_report when simulated, and rollback fields as JSON")
 }
 
 func writeMigrateStorageHomeHelp(out io.Writer) {
@@ -3562,7 +3562,7 @@ func (r Runner) runMarkdownMigration(args []string, out io.Writer, runtime state
 		return nil
 	}
 
-	plan, err := state.PreviewMarkdownMigration(projectRoot)
+	result, err := state.SimulateMarkdownMigration(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome})
 	if err != nil {
 		if options.jsonOutput {
 			return writeJSONCommandError(out, command, err)
@@ -3570,41 +3570,27 @@ func (r Runner) runMarkdownMigration(args []string, out io.Writer, runtime state
 		return err
 	}
 	if options.jsonOutput {
-		databasePath, err := (state.PathResolver{StateHome: r.StateHome}).DatabasePath(projectRoot)
-		if err != nil {
-			return writeJSONCommandError(out, command, err)
-		}
-		return writeJSON(out, state.NewMarkdownMigrationPreviewResult(plan, projectRoot, databasePath))
+		return writeJSON(out, result)
 	}
-
-	databasePath, err := (state.PathResolver{StateHome: r.StateHome}).DatabasePath(projectRoot)
-	if err != nil {
-		return err
-	}
-	writeMarkdownMigrationPreviewHuman(out, displayCommand+" --dry-run", projectRoot, databasePath, plan)
+	writeMarkdownMigrationResultHuman(out, displayCommand+" --dry-run", result)
 	return nil
-}
-
-func writeMarkdownMigrationPreviewHuman(out io.Writer, command string, root project.Root, databasePath string, plan state.MarkdownMigrationPlan) {
-	fmt.Fprintln(out, command)
-	fmt.Fprintln(out, "scope: global database, project import")
-	fmt.Fprintf(out, "database: %s\n", databasePath)
-	fmt.Fprintln(out, "project: (not initialized)")
-	fmt.Fprintf(out, "project name: %s\n", filepath.Base(root.Path()))
-	fmt.Fprintf(out, "project path: %s\n", root.Path())
-	fmt.Fprintln(out, "applied: false")
-	writeMarkdownMigrationPlan(out, plan)
-	fmt.Fprintln(out, "next: rerun with --apply to import Markdown into the global database")
 }
 
 func writeMarkdownMigrationResultHuman(out io.Writer, command string, result state.MarkdownMigrationResult) {
 	fmt.Fprintln(out, command)
 	fmt.Fprintf(out, "scope: %s database, %s import\n", result.DatabaseScope, result.ImportScope)
 	fmt.Fprintf(out, "database: %s\n", result.DatabasePath)
-	fmt.Fprintf(out, "project: %s\n", result.ProjectID)
+	if result.ProjectID != "" {
+		fmt.Fprintf(out, "project: %s\n", result.ProjectID)
+	} else {
+		fmt.Fprintln(out, "project: (not initialized)")
+	}
 	fmt.Fprintf(out, "project name: %s\n", result.ProjectName)
 	fmt.Fprintf(out, "project path: %s\n", result.ProjectCurrentPath)
 	fmt.Fprintf(out, "action: %s\n", result.Action)
+	if result.Mode != "" {
+		fmt.Fprintf(out, "mode: %s\n", result.Mode)
+	}
 	fmt.Fprintf(out, "applied: %t\n", result.Applied)
 	if result.BackupPath != "" {
 		fmt.Fprintf(out, "backup: %s\n", result.BackupPath)
@@ -3622,6 +3608,32 @@ func writeMarkdownMigrationResultHuman(out io.Writer, command string, result sta
 		}
 	}
 	writeMarkdownMigrationPlan(out, result.MarkdownMigrationPlan)
+	writeMarkdownImportReportHuman(out, result.ImportReport)
+	if !result.Applied && result.Action == state.MarkdownMigrationActionSimulate {
+		if result.Mode == state.MarkdownMigrationModeInventory {
+			fmt.Fprintln(out, "next: initialize the project, then rerun with --apply to import Markdown into the global database")
+		} else {
+			fmt.Fprintln(out, "next: rerun with --apply to import Markdown into the global database")
+		}
+	}
+}
+
+func writeMarkdownImportReportHuman(out io.Writer, report *state.ImportReport) {
+	if report == nil {
+		return
+	}
+	fmt.Fprintf(out, "reclaimed origins: %d\n", report.ReclaimedOrigins)
+	fmt.Fprintf(out, "skipped (foreign provenance): %d\n", len(report.SkippedEntries))
+	for _, skipped := range report.SkippedEntries {
+		fmt.Fprintf(out, "  - %s (%s)\n", skipped.JournalEntryID, skipped.CaptureMechanism)
+	}
+	fmt.Fprintf(out, "status divergences: %d\n", len(report.StatusDivergences))
+	for _, divergence := range report.StatusDivergences {
+		fmt.Fprintf(out, "  - %s %s: kept %s, incoming %s\n", divergence.EntityKind, divergence.EntityID, divergence.StoredStatus, divergence.IncomingStatus)
+	}
+	for _, warning := range report.Warnings {
+		fmt.Fprintf(out, "warning: %s\n", warning)
+	}
 }
 
 func writeMarkdownRollbackResultHuman(out io.Writer, command string, result state.MarkdownRollbackResult) {
