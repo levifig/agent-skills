@@ -6,7 +6,7 @@ description: >-
   capture. Explore owns the user-facing inquiry lifecycle; reference this
   technique from it. Not a primary entry point — route "explore this" or "help
   me think through options" to explore.
-version: 2.0.0-alpha.12
+version: 2.0.0-alpha.13
 ---
 
 # Brainstorm

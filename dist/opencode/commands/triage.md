@@ -9,7 +9,7 @@ description: >-
   directly), capturing new ideas (use idea), divergent inquiry (use explore), or
   bounding one chosen direction (use shape).
 user-invocable: true
-version: 2.0.0-alpha.12
+version: 2.0.0-alpha.13
 ---
 
 # Triage

@@ -6,9 +6,22 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-alpha.13] - 2026-07-24
+
+### Changed
+
+- Markdown re-import treats SQLite as the status authority: statuses are insert-only (a real normalized status fills only a stored `unknown`), archived entities stay archived through any number of re-imports, and kept-vs-incoming divergences are reported in the result instead of silently applied (#132).
+- `loaf migrate markdown --dry-run` simulates the full apply pipeline against a disposable database snapshot and reports exactly what apply would do (`mode: simulation` with an `import_report` of reclaimed origins, skipped entries, and status divergences); without a database or registered project it returns an honestly labeled `mode: inventory` file count (#132).
+
 ### Fixed
 
 - The managed instructions block installed into project `AGENTS.md`/`.claude/CLAUDE.md` now names the Loaf `orchestration` skill instead of linking `skills/orchestration/SKILL.md`, a path that does not exist in project checkouts; existing installs pick up the corrected block on the next `loaf install --upgrade` (#129).
+- `loaf spec archive` accepts the canonical terminal status `done` everywhere the legacy `complete` spelling worked, in both SQLite and markdown-only projects, and markdown import normalizes spec status with `TASKS.json` precedence — completed specs archive without hand-editing statuses (#130).
+- Blocking-hook remediations are followable end-to-end: `loaf check` remediation commands resolve legacy report references, malformed stamped renders route to finalize instead of storing markdown as prose, archived reports refuse body edits before mutation, and hand-edited durable renders are detected as divergent (#131).
+- `loaf migrate markdown` re-import no longer aborts wholesale on journal-origin collisions: origins matching the schema-0011 backfill fingerprint are reclaimed as migration provenance, every other foreign-provenance entry is skipped untouched and listed, and a project blocked since the 0011 upgrade imports cleanly (#132).
+- Manual relationships created with `loaf link` are never claimed or deleted by markdown re-import, even when they share the importer's deterministic relationship id (#132).
 
 ## [2.0.0-alpha.12] - 2026-07-20
 

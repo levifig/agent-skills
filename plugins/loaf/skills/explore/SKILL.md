@@ -7,7 +7,7 @@ description: >-
   this", "we don't know which...
 user-invocable: true
 argument-hint: '[topic or exploration ref]'
-version: 2.0.0-alpha.12
+version: 2.0.0-alpha.13
 ---
 
 # Explore
