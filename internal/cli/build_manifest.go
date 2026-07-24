@@ -75,7 +75,7 @@ func writeNativeBuildTargetManifest(root string, target string) error {
 		ID:          "managed-instructions",
 		Kind:        "instruction",
 		Destination: "project-instructions",
-		SHA256:      fencedContentFingerprint(generateFencedContent("0.0.0")),
+		SHA256:      fencedContentFingerprint(generateFencedContent()),
 	}}, artifacts...)
 	manifest := targetAdapterManifest{
 		Version:                   1,

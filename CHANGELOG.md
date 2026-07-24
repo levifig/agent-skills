@@ -6,7 +6,9 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Changed
+
+- Managed `AGENTS.md` fence markers are fingerprint-only (`sha256=` of the body, no installer version stamp), so `loaf install --upgrade` no longer rewrites the marker on every release when the body is unchanged. The first upgrade after this change strips the legacy `v…` stamp once; a pre-change binary that encounters the new header refuses with a malformed-fingerprint error until you upgrade the binary.
 
 ## [2.0.0-alpha.13] - 2026-07-24
 

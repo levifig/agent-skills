@@ -531,7 +531,7 @@ Configure target-specific behavior and sidecars.
 - [Claude Code Skills Best Practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
 - [Claude Code Skills Documentation](https://code.claude.com/docs/en/skills)
 
-<!-- loaf:managed:start v2.0.0-alpha.11 sha256=ac6debb93fcd1b2d7806681c446f3b7d9691a43a872831a969c82a7470b0b30d -->
+<!-- loaf:managed:start sha256=ac6debb93fcd1b2d7806681c446f3b7d9691a43a872831a969c82a7470b0b30d -->
 <!-- Maintained by loaf install/upgrade - do not edit manually -->
 ## Loaf Framework
 

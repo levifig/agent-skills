@@ -303,3 +303,42 @@ func sha256Sum(body []byte) []byte {
 	sum := sha256.Sum256(body)
 	return sum[:]
 }
+
+func TestPlanFencedSectionMatrixActions(t *testing.T) {
+	generated := generateFencedContent()
+	generatedFP := fencedContentFingerprint(generated)
+	section, ok := findFencedSectionRange(generated)
+	if !ok {
+		t.Fatal("generated content missing section")
+	}
+	generatedBody := generated[section.bodyStart:section.end]
+	oldBody := fencedWarning + "\nold content\n" + fencedEndMarker
+	oldFP := sha256Hex(oldBody)
+
+	cases := []struct {
+		name       string
+		seed       string
+		wantAction string
+	}{
+		{"new_match_skipped", generated + "\n", "skipped"},
+		{"new_differ_updated", "<!-- loaf:managed:start sha256=" + oldFP + " -->\n" + oldBody + "\n", "updated"},
+		{"new_tamper_error", "<!-- loaf:managed:start sha256=" + generatedFP + " -->\ntampered\n" + fencedEndMarker + "\n", "error"},
+		{"legacy_sha_transition", "<!-- loaf:managed:start v1.2.3 sha256=" + generatedFP + " -->\n" + generatedBody + "\n", "updated"},
+		{"legacy_v_only", "<!-- loaf:managed:start v1.2.3 -->\nold\n" + fencedEndMarker + "\n", "updated"},
+		{"absent_created", "", "created"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			target := filepath.Join(t.TempDir(), "AGENTS.md")
+			if tc.seed != "" || tc.name != "absent_created" {
+				if tc.name != "absent_created" {
+					writeInstallFile(t, target, tc.seed)
+				}
+			}
+			action, detail := planFencedSection(target, "9.9.9")
+			if action != tc.wantAction {
+				t.Fatalf("action = %q detail = %q, want %q", action, detail, tc.wantAction)
+			}
+		})
+	}
+}

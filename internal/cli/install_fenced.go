@@ -29,7 +29,7 @@ var fencedVersionField = regexp.MustCompile(`^v([\d.]+(?:-[-\w.]+)?)$`)
 type fencedSectionRange struct {
 	start           int
 	end             int
-	version         string
+	version         string // non-empty only for legacy headers; retained to detect legacy forms
 	fingerprint     string
 	malformedHeader bool
 	bodyStart       int
@@ -39,6 +39,32 @@ type fencedInstallResult struct {
 	Action  string
 	Version string
 	Error   string
+}
+
+// fencedSectionDisposition is the shared plan/apply decision for an existing
+// managed section whose header already parsed successfully (not malformed).
+type fencedSectionDisposition int
+
+const (
+	fencedDispositionSkip fencedSectionDisposition = iota
+	fencedDispositionUpdate
+	fencedDispositionTampered
+)
+
+// disposeFencedSection implements the normative header decision matrix from the
+// version-agnostic-managed-block Change. Both installFencedSection (apply) and
+// planFencedSection (dry-run) must consume this helper — Decision 8.
+func disposeFencedSection(section fencedSectionRange, existingBody string, generatedFingerprint string) fencedSectionDisposition {
+	actualSHA := sha256Hex(existingBody)
+	if section.fingerprint != "" && section.fingerprint != actualSHA {
+		return fencedDispositionTampered
+	}
+	// Skip requires new-form header (sha256= only, no version stamp) and a
+	// fingerprint that matches both the actual body and the generated constant.
+	if section.version == "" && section.fingerprint != "" && section.fingerprint == generatedFingerprint {
+		return fencedDispositionSkip
+	}
+	return fencedDispositionUpdate
 }
 
 func installFencedSection(targetFile string, version string, upgrade bool) (fencedInstallResult, error) {
@@ -60,7 +86,7 @@ func installFencedSection(targetFile string, version string, upgrade bool) (fenc
 		return fencedInstallResult{}, err
 	}
 	section, hasSection := findFencedSectionRange(content)
-	newContent := generateFencedContent(version)
+	newContent := generateFencedContent()
 
 	switch {
 	case hasSection:
@@ -68,10 +94,10 @@ func installFencedSection(targetFile string, version string, upgrade bool) (fenc
 			return fencedInstallResult{}, fmt.Errorf("managed Loaf section in %s has a malformed fingerprint; refusing to overwrite", targetFile)
 		}
 		existingBody := content[section.bodyStart:section.end]
-		if section.fingerprint != "" && section.fingerprint != sha256Hex(existingBody) {
+		switch disposeFencedSection(section, existingBody, fencedContentFingerprint(newContent)) {
+		case fencedDispositionTampered:
 			return fencedInstallResult{}, fmt.Errorf("managed Loaf section in %s was modified; refusing to overwrite", targetFile)
-		}
-		if section.fingerprint != "" && section.version == version && section.fingerprint == fencedContentFingerprint(newContent) {
+		case fencedDispositionSkip:
 			return fencedInstallResult{Action: "skipped", Version: version}, nil
 		}
 		before := strings.TrimRight(content[:section.start], " \t\r\n")
@@ -210,18 +236,37 @@ func parseFencedStartHeader(line string) (string, string, bool) {
 	if len(fields) < 1 || len(fields) > 2 {
 		return "", "", false
 	}
+	const shaPrefix = "sha256="
+	parseSHA := func(field string) (string, bool) {
+		if !strings.HasPrefix(field, shaPrefix) || len(field) != len(shaPrefix)+64 || !isCanonicalFenceSHA256(field[len(shaPrefix):]) {
+			return "", false
+		}
+		return field[len(shaPrefix):], true
+	}
+
+	if len(fields) == 1 {
+		// New form: sha256=<hex> alone.
+		if sha, ok := parseSHA(fields[0]); ok {
+			return "", sha, true
+		}
+		// Legacy: v<version> alone.
+		match := fencedVersionField.FindStringSubmatch(fields[0])
+		if len(match) != 2 {
+			return "", "", false
+		}
+		return match[1], "", true
+	}
+
+	// Legacy: v<version> sha256=<hex>.
 	match := fencedVersionField.FindStringSubmatch(fields[0])
 	if len(match) != 2 {
 		return "", "", false
 	}
-	if len(fields) == 1 {
-		return match[1], "", true
-	}
-	const prefix = "sha256="
-	if !strings.HasPrefix(fields[1], prefix) || len(fields[1]) != len(prefix)+64 || !isCanonicalFenceSHA256(fields[1][len(prefix):]) {
+	sha, ok := parseSHA(fields[1])
+	if !ok {
 		return "", "", false
 	}
-	return match[1], fields[1][len(prefix):], true
+	return match[1], sha, true
 }
 
 func isCanonicalFenceSHA256(value string) bool {
@@ -236,7 +281,7 @@ func isCanonicalFenceSHA256(value string) bool {
 	return true
 }
 
-func generateFencedContent(version string) string {
+func generateFencedContent() string {
 	body := strings.Join([]string{
 		fencedWarning,
 		"## Loaf Framework",
@@ -260,7 +305,7 @@ func generateFencedContent(version string) string {
 		"See the Loaf `orchestration` skill for full details.",
 		fencedEndMarker,
 	}, "\n")
-	return "<!-- loaf:managed:start v" + version + " sha256=" + sha256Hex(body) + " -->\n" + body
+	return "<!-- loaf:managed:start sha256=" + sha256Hex(body) + " -->\n" + body
 }
 
 func fencedContentFingerprint(content string) string {

@@ -225,7 +225,8 @@ func TestRunnerDoctorRejectsForceWithoutFix(t *testing.T) {
 
 func TestRunnerDoctorWarningsDoNotFail(t *testing.T) {
 	root := writeDoctorFixture(t, "9.8.7-test.1")
-	writeDoctorAgents(t, root, doctorFence("0.0.1-test"))
+	oldBody := fencedWarning + "\nold drifted content\n" + fencedEndMarker
+	writeDoctorAgents(t, root, "<!-- loaf:managed:start sha256="+sha256Hex(oldBody)+" -->\n"+oldBody+"\n")
 	symlinkFile(t, "../AGENTS.md", filepath.Join(root, ".claude", "CLAUDE.md"))
 	var stdout bytes.Buffer
 
@@ -238,32 +239,52 @@ func TestRunnerDoctorWarningsDoNotFail(t *testing.T) {
 		t.Fatalf("doctor warning-only error = %v, want nil", err)
 	}
 	output := stripANSI(stdout.String())
-	if !strings.Contains(output, "Fenced section version drift") || strings.Contains(output, "failed") {
+	if !strings.Contains(output, "Fenced section content differs from installed loaf") || strings.Contains(output, "failed") {
 		t.Fatalf("doctor warning output = %q, want warning-only success", output)
 	}
 }
 
-func TestCheckFencedVersionAcceptsFingerprintedAndLegacyHeaders(t *testing.T) {
-	const currentVersion = "9.8.7-test.1"
+func TestCheckFencedContentPassDriftTamperAndPrecedence(t *testing.T) {
+	generated := generateFencedContent()
+	generatedFP := fencedContentFingerprint(generated)
+	section, ok := findFencedSectionRange(generated)
+	if !ok {
+		t.Fatal("generated content missing section")
+	}
+	generatedBody := generated[section.bodyStart:section.end]
+	oldBody := fencedWarning + "\nold content\n" + fencedEndMarker
+	oldFP := sha256Hex(oldBody)
+
 	for _, tc := range []struct {
 		name        string
 		body        string
 		wantStatus  doctorStatus
 		wantMessage string
+		wantDetail  string
 		reject      string
 	}{
-		{name: "fingerprinted current", body: generateFencedContent(currentVersion), wantStatus: doctorPass, wantMessage: "matches installed"},
-		{name: "fingerprinted drift", body: generateFencedContent("0.0.1-test"), wantStatus: doctorWarn, wantMessage: "Fenced section version drift", reject: "No loaf:managed fenced section"},
-		{name: "legacy current", body: doctorFence(currentVersion), wantStatus: doctorPass, wantMessage: "matches installed"},
-		{name: "malformed fingerprint", body: "<!-- loaf:managed:start v9.8.7-test.1 sha256=bad -->\nbody\n<!-- loaf:managed:end -->\n", wantStatus: doctorWarn, wantMessage: "No loaf:managed fenced section"},
-		{name: "malformed header", body: "<!-- loaf:managed:start v9.8.7-test.1 extra -->\nbody\n<!-- loaf:managed:end -->\n", wantStatus: doctorWarn, wantMessage: "No loaf:managed fenced section"},
+		{name: "new_form_pass", body: generated + "\n", wantStatus: doctorPass, wantMessage: "Fenced section content matches installed loaf"},
+		{name: "legacy_stamp_pending_pass", body: legacyStampedFencedContent("0.0.1-test") + "\n", wantStatus: doctorPass, wantMessage: "Fenced section content matches installed loaf"},
+		{name: "legacy_v_only_matching_pass", body: "<!-- loaf:managed:start v9.8.7-test.1 -->\n" + generatedBody + "\n", wantStatus: doctorPass, wantMessage: "Fenced section content matches installed loaf"},
+		{name: "drift_intact_sha", body: "<!-- loaf:managed:start sha256=" + oldFP + " -->\n" + oldBody + "\n", wantStatus: doctorWarn, wantMessage: "Fenced section content differs from installed loaf", wantDetail: "loaf install --upgrade", reject: "was modified"},
+		{name: "drift_legacy_v_only", body: "<!-- loaf:managed:start v9.8.7-test.1 -->\n" + fencedWarning + "\nSample fenced content.\n" + fencedEndMarker + "\n", wantStatus: doctorWarn, wantMessage: "Fenced section content differs from installed loaf", wantDetail: "loaf install --upgrade"},
+		{name: "tamper_new_form", body: "<!-- loaf:managed:start sha256=" + generatedFP + " -->\ntampered\n" + fencedEndMarker + "\n", wantStatus: doctorWarn, wantMessage: "Fenced section was modified", wantDetail: "will refuse", reject: "loaf install --upgrade` to refresh"},
+		{name: "tamper_over_drift_joint", body: "<!-- loaf:managed:start sha256=" + oldFP + " -->\ntampered and drifted\n" + fencedEndMarker + "\n", wantStatus: doctorWarn, wantMessage: "Fenced section was modified", reject: "content differs from installed loaf"},
+		{name: "malformed_fingerprint", body: "<!-- loaf:managed:start v9.8.7-test.1 sha256=bad -->\nbody\n<!-- loaf:managed:end -->\n", wantStatus: doctorWarn, wantMessage: "No loaf:managed fenced section"},
+		{name: "malformed_header", body: "<!-- loaf:managed:start v9.8.7-test.1 extra -->\nbody\n<!-- loaf:managed:end -->\n", wantStatus: doctorWarn, wantMessage: "No loaf:managed fenced section"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			root := writeDoctorFixture(t, currentVersion)
+			root := writeDoctorFixture(t, "9.8.7-test.1")
 			writeDoctorAgents(t, root, tc.body)
-			result := checkFencedVersion(currentVersion).Run(doctorContext{projectRoot: root})
-			if result.Status != tc.wantStatus || !strings.Contains(result.Message, tc.wantMessage) || tc.reject != "" && strings.Contains(result.Message, tc.reject) {
-				t.Fatalf("fenced-version result = %#v, want status %q containing %q and not %q", result, tc.wantStatus, tc.wantMessage, tc.reject)
+			result := checkFencedContent().Run(doctorContext{projectRoot: root})
+			if result.Status != tc.wantStatus || !strings.Contains(result.Message, tc.wantMessage) {
+				t.Fatalf("fenced-content result = %#v, want status %q containing %q", result, tc.wantStatus, tc.wantMessage)
+			}
+			if tc.wantDetail != "" && !strings.Contains(result.Detail, tc.wantDetail) {
+				t.Fatalf("fenced-content detail = %q, want containing %q", result.Detail, tc.wantDetail)
+			}
+			if tc.reject != "" && (strings.Contains(result.Message, tc.reject) || strings.Contains(result.Detail, tc.reject)) {
+				t.Fatalf("fenced-content result = %#v, must not contain %q", result, tc.reject)
 			}
 		})
 	}
@@ -436,15 +457,8 @@ func writeDoctorAgents(t *testing.T, root string, body string) {
 }
 
 func doctorFence(version string) string {
-	return strings.Join([]string{
-		"<!-- loaf:managed:start v" + version + " -->",
-		"<!-- Maintained by loaf install/upgrade - do not edit manually -->",
-		"## Loaf Framework",
-		"",
-		"Sample fenced content.",
-		"<!-- loaf:managed:end -->",
-		"",
-	}, "\n")
+	// Content-aligned fixture so fenced-content passes; pending stamp-strip is not a warning.
+	return legacyStampedFencedContent(version) + "\n"
 }
 
 func symlinkFile(t *testing.T, target string, linkPath string) {

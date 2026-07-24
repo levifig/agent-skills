@@ -126,12 +126,12 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 // path reachable: it reads project state and reports facts.
 func runDoctorChecksJSON(ctx doctorContext, cliVersion string) doctorJSONOutput {
 	output := doctorJSONOutput{
-		ContractVersion: 1,
+		ContractVersion: 2,
 		Command:         "doctor",
 		CLIVersion:      cliVersion,
 		Checks:          []doctorJSONCheck{},
 	}
-	for _, check := range doctorChecks(cliVersion) {
+	for _, check := range doctorChecks() {
 		result := safeRunDoctorCheck(check, ctx)
 		output.Checks = append(output.Checks, doctorJSONCheck{
 			Name:        check.Name,
@@ -187,7 +187,7 @@ func parseLoafDoctorArgs(args []string) (doctorOptions, error) {
 
 func writeDoctorHelp(out io.Writer) {
 	fmt.Fprint(out, "Usage: loaf doctor [--fix [--force]] [--verbose] [--json]\n\n")
-	fmt.Fprint(out, "Diagnose Loaf project alignment (symlinks, stale files, version drift)\n\n")
+	fmt.Fprint(out, "Diagnose Loaf project alignment (symlinks, stale files, fenced content)\n\n")
 	fmt.Fprint(out, "Options:\n")
 	fmt.Fprint(out, "  --fix       Offer each safe repair and prompt y/N before applying it\n")
 	fmt.Fprint(out, "  --force     With --fix, apply every offered repair without prompting\n")
@@ -203,7 +203,7 @@ func runDoctorChecks(out io.Writer, ctx doctorContext, options doctorOptions, cl
 	handledRepairs := map[string]string{}
 	fmt.Fprintf(out, "\n%s\n\n", ansiBold("loaf doctor"))
 
-	for _, check := range doctorChecks(cliVersion) {
+	for _, check := range doctorChecks() {
 		result := safeRunDoctorCheck(check, ctx)
 		printDoctorCheckLine(out, check, result, options)
 
@@ -289,13 +289,13 @@ func printDoctorRepairSkipped(out io.Writer, check doctorCheck, reason string) {
 	fmt.Fprintf(out, "    %s Repair for %s skipped (%s): %s\n", ansiYellow("→"), check.Name, repair, reason)
 }
 
-func doctorChecks(cliVersion string) []doctorCheck {
+func doctorChecks() []doctorCheck {
 	return []doctorCheck{
 		checkCanonicalAgentsFile(),
 		checkLegacyAgentsFile(),
 		checkClaudeSymlink(),
 		checkStaleCursorMdc(),
-		checkFencedVersion(cliVersion),
+		checkFencedContent(),
 		checkDuplicateFencedSections(),
 	}
 }
@@ -504,34 +504,53 @@ func checkStaleCursorMdc() doctorCheck {
 	}
 }
 
-func checkFencedVersion(cliVersion string) doctorCheck {
+func checkFencedContent() doctorCheck {
 	return doctorCheck{
-		Name:        "fenced-version",
-		Description: "Fenced section version matches installed loaf version",
+		Name:        "fenced-content",
+		Description: "Fenced section content matches the installed loaf constant",
 		Run: func(ctx doctorContext) doctorResult {
-			if cliVersion == "" {
-				return doctorResult{Status: doctorSkip, Message: "No installed Loaf distribution found for this executable; cannot compare fenced versions"}
-			}
 			canonical := filepath.Join(ctx.projectRoot, "AGENTS.md")
 			if !doctorRegularFileExists(canonical) {
 				return doctorResult{Status: doctorSkip, Message: "No root AGENTS.md to inspect"}
 			}
-			fencedVersion, ok := getDoctorFencedVersion(canonical)
-			if !ok {
+			body, err := os.ReadFile(canonical)
+			if err != nil {
 				return doctorResult{
 					Status:  doctorWarn,
 					Message: "No loaf:managed fenced section found in AGENTS.md",
 					Detail:  "Run `loaf install` to add the framework section.",
 				}
 			}
-			if fencedVersion != cliVersion {
+			content := string(body)
+			section, ok := findFencedSectionRange(content)
+			if !ok || section.malformedHeader {
 				return doctorResult{
 					Status:  doctorWarn,
-					Message: fmt.Sprintf("Fenced section version drift: %s (installed: %s)", fencedVersion, cliVersion),
+					Message: "No loaf:managed fenced section found in AGENTS.md",
+					Detail:  "Run `loaf install` to add the framework section.",
+				}
+			}
+			existingBody := content[section.bodyStart:section.end]
+			actualSHA := sha256Hex(existingBody)
+			generatedFingerprint := fencedContentFingerprint(generateFencedContent())
+
+			// Tamper first (Decision 6): stored sha present and disagrees with actual body.
+			if section.fingerprint != "" && section.fingerprint != actualSHA {
+				return doctorResult{
+					Status:  doctorWarn,
+					Message: "Fenced section was modified (stored fingerprint does not match body)",
+					Detail:  "Reconcile hand edits with the managed section before upgrading; `loaf install --upgrade` will refuse to overwrite this state.",
+				}
+			}
+			// Drift second: intact or sha-less section whose body differs from generated.
+			if actualSHA != generatedFingerprint {
+				return doctorResult{
+					Status:  doctorWarn,
+					Message: "Fenced section content differs from installed loaf",
 					Detail:  "Run `loaf install --upgrade` to refresh the fenced section.",
 				}
 			}
-			return doctorResult{Status: doctorPass, Message: fmt.Sprintf("Fenced section is v%s (matches installed loaf)", fencedVersion)}
+			return doctorResult{Status: doctorPass, Message: "Fenced section content matches installed loaf"}
 		},
 	}
 }
@@ -850,14 +869,3 @@ func hasDoctorFencedSection(path string) bool {
 	return strings.Contains(text, "<!-- loaf:managed:start") && strings.Contains(text, "<!-- loaf:managed:end -->")
 }
 
-func getDoctorFencedVersion(path string) (string, bool) {
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return "", false
-	}
-	section, ok := findFencedSectionRange(string(body))
-	if !ok || section.malformedHeader || section.version == "" {
-		return "", false
-	}
-	return section.version, true
-}

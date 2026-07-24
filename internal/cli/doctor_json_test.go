@@ -68,7 +68,7 @@ func TestDoctorJSONMatchesHumanChecksAndNeverMutates(t *testing.T) {
 		t.Fatal("JSON doctor mutated the project tree")
 	}
 
-	checks := doctorChecks(cliVersion)
+	checks := doctorChecks()
 	if len(jsonResult.Checks) != len(checks) {
 		t.Fatalf("JSON checks = %d, want %d", len(jsonResult.Checks), len(checks))
 	}
@@ -87,8 +87,21 @@ func TestDoctorJSONMatchesHumanChecksAndNeverMutates(t *testing.T) {
 	if jsonResult.Passed != (jsonResult.Failures == 0) {
 		t.Fatalf("Passed = %t with %d failures", jsonResult.Passed, jsonResult.Failures)
 	}
-	if jsonResult.ContractVersion != 1 || jsonResult.Command != "doctor" {
-		t.Fatalf("JSON envelope = %#v, want contract_version 1 command doctor", jsonResult)
+	if jsonResult.ContractVersion != 2 || jsonResult.Command != "doctor" {
+		t.Fatalf("JSON envelope = %#v, want contract_version 2 command doctor", jsonResult)
+	}
+	names := map[string]bool{}
+	for _, check := range jsonResult.Checks {
+		names[check.Name] = true
+		if strings.Contains(strings.ToLower(check.Message), "version drift") || strings.Contains(strings.ToLower(check.Detail), "version drift") {
+			t.Fatalf("doctor JSON still mentions version drift: %#v", check)
+		}
+	}
+	if !names["fenced-content"] {
+		t.Fatal("doctor JSON missing fenced-content check")
+	}
+	if names["fenced-version"] {
+		t.Fatal("doctor JSON still publishes retired fenced-version check")
 	}
 
 	// The human path over the same fixture reports the same outcome counts.

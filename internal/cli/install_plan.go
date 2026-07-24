@@ -830,17 +830,17 @@ func planFencedSection(targetFile string, version string) (string, string) {
 		return "error", err.Error()
 	}
 	section, hasSection := findFencedSectionRange(content)
-	newContent := generateFencedContent(version)
+	newContent := generateFencedContent()
 	switch {
 	case hasSection:
 		if section.malformedHeader {
 			return "error", "managed Loaf section has a malformed fingerprint; refusing to overwrite"
 		}
 		existingBody := content[section.bodyStart:section.end]
-		if section.fingerprint != "" && section.fingerprint != sha256Hex(existingBody) {
+		switch disposeFencedSection(section, existingBody, fencedContentFingerprint(newContent)) {
+		case fencedDispositionTampered:
 			return "error", "managed Loaf section was modified; refusing to overwrite"
-		}
-		if section.fingerprint != "" && section.version == version && section.fingerprint == fencedContentFingerprint(newContent) {
+		case fencedDispositionSkip:
 			return "skipped", "Loaf framework section already current (v" + version + ")"
 		}
 		return "updated", "Update Loaf framework section (v" + version + ")"

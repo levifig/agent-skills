@@ -1497,7 +1497,7 @@ func writeTestTargetAdapterManifest(t *testing.T, dist string, target string, ar
 		"id":          "managed-instructions",
 		"kind":        "instruction",
 		"destination": "project-instructions",
-		"sha256":      fencedContentFingerprint(generateFencedContent("0.0.0")),
+		"sha256":      fencedContentFingerprint(generateFencedContent()),
 	}}
 	for _, artifact := range artifacts {
 		entry := make(map[string]any, len(artifact)+1)
