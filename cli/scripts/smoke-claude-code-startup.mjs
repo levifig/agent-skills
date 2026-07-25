@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { parseRunnerArgs, publishReceiptIfSuccessful } from "./capability-runner-utils.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
-const researchDir = join(repoRoot, "docs/changes/20260710-journal-reliability-foundation/research");
-const evidencePath = join(researchDir, "u8-claude-code-2.1.218-candidate-smoke.json");
-const expectedVersion = "2.1.218";
 const platform = `${process.platform}-${process.arch}`;
 const candidatePluginPath = "plugins/loaf";
+const markerPattern = /^LOAF_CLAUDE_STARTUP_SMOKE_[A-F0-9]{12}$/;
 
 export function parseClaudeStreamOutput(raw, marker) {
   const events = raw.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
@@ -65,12 +65,21 @@ function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-function main() {
-  mkdirSync(researchDir, { recursive: true });
-  const marker = `LOAF_U8_SMOKE_${randomBytes(6).toString("hex").toUpperCase()}`;
+function main(argv = process.argv.slice(2)) {
+  const { client, expectedVersion, receiptPath } = parseRunnerArgs(argv);
+  const marker = `LOAF_CLAUDE_STARTUP_SMOKE_${randomBytes(6).toString("hex").toUpperCase()}`;
+  if (!markerPattern.test(marker)) throw new Error("generated marker does not match the required format");
   const timestamp = new Date().toISOString();
-  const tempRoot = mkdtempSync(join(repoRoot, ".u8-claude-smoke-"));
-  const cleanup = () => rmSync(tempRoot, { recursive: true, force: true });
+  const tempRoot = mkdtempSync(join(tmpdir(), "loaf-claude-code-startup-smoke-"));
+  if (resolve(tempRoot).startsWith(`${repoRoot}${sep}`)) throw new Error("disposable Claude Code smoke root must be outside the repository");
+  const cleanup = () => {
+    try {
+      rmSync(tempRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    } catch {
+      return false;
+    }
+    return !existsSync(tempRoot);
+  };
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.once(signal, () => {
       cleanup();
@@ -85,14 +94,16 @@ function main() {
   const candidatePlugin = join(repoRoot, candidatePluginPath);
   const candidateBinary = join(candidatePlugin, "bin", "loaf");
   let smoke;
+  let failure;
+  let cleanupSucceeded = false;
   try {
     const buildGo = run("npm", ["run", "build:go"], repoRoot);
     if (buildGo.status !== 0) throw new Error("candidate Go build failed");
     const buildClaude = run("bin/loaf", ["build", "--target", "claude-code"], repoRoot);
     if (buildClaude.status !== 0) throw new Error("candidate Claude build failed");
     if (!existsSync(candidateBinary)) throw new Error("candidate plugin binary is missing");
-    const version = run("claude", ["--version"], repoRoot);
-    if (version.status !== 0 || !claudeVersionMatches(version.stdout, expectedVersion)) throw new Error("installed Claude version is not 2.1.218");
+    const version = run(client, ["--version"], repoRoot);
+    if (version.status !== 0 || !claudeVersionMatches(version.stdout, expectedVersion)) throw new Error(`installed Claude Code version does not match ${expectedVersion}`);
     if (run("git", ["init", "-q"], disposableRepo).status !== 0) throw new Error("disposable Git initialization failed");
     const candidateEnv = { LOAF_DB: dbPath };
     if (run(candidateBinary, ["state", "init", "--json"], disposableRepo, candidateEnv).status !== 0) throw new Error("isolated Loaf state initialization failed");
@@ -104,7 +115,7 @@ function main() {
       "--include-hook-events", "--output-format", "stream-json", "-p",
       "Reply with exactly the unique marker present in Loaf continuity context, and nothing else.",
     ];
-    const claude = run("claude", [
+    const claude = run(client, [
       "--plugin-dir", candidatePlugin, "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
       "--no-session-persistence", "--setting-sources", "", "--tools", "", "--include-hook-events",
       "--output-format", "stream-json", "-p", "Reply with exactly the unique marker present in Loaf continuity context, and nothing else.",
@@ -139,23 +150,21 @@ function main() {
     };
     if (claude.status !== 0 || claude.stderr.length !== 0 || !parsed.hookObservation.additional_context_marker || !parsed.assistantMarkerMatch) throw new Error("model-visible marker smoke did not pass");
   } catch (error) {
-    smoke ??= {
-      evidence_version: 2, timestamp, target: "claude-code", surface: "cli", version: expectedVersion, platform,
-      installed_mode: "plugin-dir", context_mode: "startup", adapter: "claude-session-start-v1", mode: "explicit-plugin-dir",
-      invocation: { command: "claude", args: [], cwd: "<disposable-repo>" }, setup: [], candidate_plugin_path: candidatePluginPath,
-      exit_code: 1, stderr_empty: false, model_visible_marker_observed: false, assistant_marker_match: false, marker,
-      hook_observation: { event_name: "", native_json: false, hook_event_name: "", additional_context_marker: false },
-      candidate_artifacts: { hooks_path: "plugins/loaf/hooks/hooks.json", hooks_sha256: "", native_binary_path: "", native_binary_sha256: "" },
-      failure_reason: error instanceof Error ? error.message : "smoke failed",
-    };
-    smoke.failure_reason = error instanceof Error ? error.message : "smoke failed";
-    smoke.exit_code = smoke.exit_code ?? 1;
+    failure = error;
   } finally {
-    cleanup();
+    cleanupSucceeded = cleanup();
   }
-  writeFileSync(evidencePath, `${JSON.stringify(smoke, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ evidence_path: "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.218-candidate-smoke.json", exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match }, null, 2)}\n`);
-  if (smoke.exit_code !== 0 || !smoke.assistant_marker_match) process.exitCode = 1;
+  if (failure) throw failure;
+  if (!cleanupSucceeded) throw new Error("disposable Claude Code smoke cleanup failed");
+  publishReceiptIfSuccessful(receiptPath, smoke, true);
+  process.stdout.write(`${JSON.stringify({ receipt: receiptPath, exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match, cleanup_succeeded: true }, null, 2)}\n`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : "Claude Code startup smoke failed"}\n`);
+    process.exitCode = 1;
+  }
+}

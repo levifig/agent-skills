@@ -674,7 +674,7 @@ func validateInstalledSmokeEvidence(root string, record TargetCapabilityRecord, 
 	if smoke.HookObservation.EventName != "SessionStart:startup" || !smoke.HookObservation.NativeJSON || smoke.HookObservation.HookEventName != "SessionStart" || !smoke.HookObservation.AdditionalContextMarker {
 		return errors.New("installed-smoke evidence lacks the expected native SessionStart marker observation")
 	}
-	if smoke.ExitCode != 0 || !smoke.StderrEmpty || !smoke.ModelVisibleMarkerObserved || !smoke.AssistantMarkerMatch || !regexp.MustCompile(`^LOAF_U8_SMOKE_[A-F0-9]{12}$`).MatchString(smoke.Marker) {
+	if smoke.ExitCode != 0 || !smoke.StderrEmpty || !smoke.ModelVisibleMarkerObserved || !smoke.AssistantMarkerMatch || !regexp.MustCompile(`^LOAF_CLAUDE_STARTUP_SMOKE_[A-F0-9]{12}$`).MatchString(smoke.Marker) {
 		return errors.New("installed-smoke evidence does not prove a successful model-visible marker result")
 	}
 	artifacts := smoke.CandidateArtifacts
@@ -792,8 +792,8 @@ func validateOpenCodeInstalledSmokeEvidence(root string, record TargetCapability
 	if !smoke.ModelVisibleMarkerObserved || !smoke.AssistantMarkerMatch || !smoke.PluginLoaded || !smoke.RootSessionLookupProven || !smoke.NoAuthSupplied || !smoke.CleanupSucceeded {
 		return errors.New("OpenCode installed-smoke evidence does not prove the required model-visible plugin observations")
 	}
-	if !regexp.MustCompile(`^LOAF_OPENCODE_U8_[A-F0-9]{12}$`).MatchString(smoke.Marker) {
-		return errors.New("OpenCode installed-smoke evidence marker is not a valid U8 marker")
+	if !regexp.MustCompile(`^LOAF_OPENCODE_REQUEST_SMOKE_[A-F0-9]{12}$`).MatchString(smoke.Marker) {
+		return errors.New("OpenCode installed-smoke evidence marker is not a valid request-smoke marker")
 	}
 	artifacts := smoke.CandidateArtifacts
 	if artifacts.HooksPath != "dist/opencode/plugins/hooks.ts" {
@@ -894,7 +894,7 @@ func validateCodexInstalledSmokeEvidence(root string, record TargetCapabilityRec
 	if len(smoke.Setup) == 0 || smoke.HookObservation.EventName != "SessionStart:startup" || !smoke.HookObservation.NativeJSON || smoke.HookObservation.HookEventName != "SessionStart" || !smoke.HookObservation.AdditionalContextMarker {
 		return errors.New("Codex installed-smoke evidence lacks the expected native SessionStart marker observation")
 	}
-	if smoke.ExitCode != 0 || !smoke.ModelVisibleMarkerObserved || !smoke.AssistantMarkerMatch || !regexp.MustCompile(`^LOAF_CODEX_U8_[A-F0-9]{12}$`).MatchString(smoke.Marker) {
+	if smoke.ExitCode != 0 || !smoke.ModelVisibleMarkerObserved || !smoke.AssistantMarkerMatch || !regexp.MustCompile(`^LOAF_CODEX_STARTUP_SMOKE_[A-F0-9]{12}$`).MatchString(smoke.Marker) {
 		return errors.New("Codex installed-smoke evidence does not prove a successful model-visible marker result")
 	}
 	if smoke.Stderr != "" && smoke.Stderr != "Reading additional input from stdin..." {

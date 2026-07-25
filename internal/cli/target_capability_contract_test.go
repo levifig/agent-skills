@@ -329,7 +329,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 		"traversal": "../outside.md",
 		"missing":   "docs/changes/20260710-journal-reliability-foundation/research/missing.md",
 		"directory": "internal/cli",
-		"anchor":    "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md#survey",
+		"anchor":    "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md#survey",
 	} {
 		t.Run(name, func(t *testing.T) {
 			var contract TargetCapabilityEvidenceContract
@@ -337,7 +337,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 				t.Fatal(err)
 			}
 			contract.Records[1].Completion.Evidence.Source = source
-			path := filepath.Join(filepath.Dir(configPath), ".u8-source-test-"+strings.ReplaceAll(name, " ", "-")+".json")
+			path := filepath.Join(filepath.Dir(configPath), ".capability-source-test-"+strings.ReplaceAll(name, " ", "-")+".json")
 			encoded, err := json.Marshal(contract)
 			if err != nil {
 				t.Fatal(err)
@@ -361,7 +361,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 		if err := os.WriteFile(outside, []byte("outside"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		relativeLink := filepath.Join("internal", "cli", ".u8-source-symlink")
+		relativeLink := filepath.Join("internal", "cli", ".capability-source-symlink")
 		link := filepath.Join(filepath.Dir(filepath.Dir(configPath)), relativeLink)
 		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 			t.Fatal(err)
@@ -375,7 +375,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 			t.Fatal(err)
 		}
 		contract.Records[1].Completion.Evidence.Source = filepath.ToSlash(relativeLink)
-		path := filepath.Join(filepath.Dir(configPath), ".u8-source-test-symlink.json")
+		path := filepath.Join(filepath.Dir(configPath), ".capability-source-test-symlink.json")
 		encoded, err := json.Marshal(contract)
 		if err != nil {
 			t.Fatal(err)
@@ -394,7 +394,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 		if err := os.WriteFile(outside, []byte("outside"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		relativeLink := "internal/.u8-source-linkdir"
+		relativeLink := "internal/.capability-source-linkdir"
 		link := filepath.Join(filepath.Dir(filepath.Dir(configPath)), filepath.FromSlash(relativeLink))
 		if err := os.Symlink(outsideDir, link); err != nil {
 			t.Fatal(err)
@@ -405,7 +405,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 			t.Fatal(err)
 		}
 		contract.Records[1].Completion.Evidence.Source = filepath.ToSlash(filepath.Join(relativeLink, "evidence.md"))
-		path := filepath.Join(filepath.Dir(configPath), ".u8-source-test-intermediate-symlink.json")
+		path := filepath.Join(filepath.Dir(configPath), ".capability-source-test-intermediate-symlink.json")
 		encoded, err := json.Marshal(contract)
 		if err != nil {
 			t.Fatal(err)
@@ -421,7 +421,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 }
 
 func TestInstalledSmokeEvidenceRejectsUnknownVersionsAndHashDrift(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t))), "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.218-candidate-smoke.json"))
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t))), "docs/changes/20260710-journal-reliability-foundation/research/claude-code-2.1.218-plugin-startup-smoke.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +483,7 @@ func TestOpenCodeInstalledSmokeEvidenceAcceptsFixture(t *testing.T) {
 }
 
 func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHashAndCleanup(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/u8-opencode-1.18.4-isolated-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.4-isolated-request-smoke.json")
 	data, err := os.ReadFile(receiptPath)
 	if err != nil {
 		t.Fatal(err)
@@ -546,7 +546,7 @@ func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHas
 }
 
 func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.218-candidate-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/claude-code-2.1.218-plugin-startup-smoke.json")
 	raw := readSmokeReceiptRaw(t, receiptPath)
 	artifacts := raw["candidate_artifacts"].(map[string]any)
 	sourceNativePath := artifacts["native_binary_path"].(string)
@@ -568,7 +568,7 @@ func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *t
 }
 
 func TestCodexInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.145.0-isolated-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/codex-0.145.0-isolated-startup-smoke.json")
 	raw := readSmokeReceiptRaw(t, receiptPath)
 	artifacts := raw["candidate_artifacts"].(map[string]any)
 	sourceNativePath := artifacts["native_binary_path"].(string)
@@ -601,7 +601,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 		{
 			name:       "claude-receives-codex-path",
 			target:     "claude-code",
-			receipt:    "u8-claude-code-2.1.218-candidate-smoke.json",
+			receipt:    "claude-code-2.1.218-plugin-startup-smoke.json",
 			modeName:   "startup",
 			wrongPath:  "bin/native/darwin-arm64/loaf",
 			validateFn: validateInstalledSmokeEvidence,
@@ -609,7 +609,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 		{
 			name:       "codex-receives-claude-path",
 			target:     "codex",
-			receipt:    "u8-codex-0.145.0-isolated-smoke.json",
+			receipt:    "codex-0.145.0-isolated-startup-smoke.json",
 			modeName:   "startup",
 			wrongPath:  "plugins/loaf/bin/native/darwin-arm64/loaf",
 			validateFn: validateCodexInstalledSmokeEvidence,

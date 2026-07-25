@@ -1,21 +1,19 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { parseRunnerArgs, publishReceiptIfSuccessful } from "./capability-runner-utils.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
-const researchDir = join(repoRoot, "docs/changes/20260710-journal-reliability-foundation/research");
-const evidencePath = join(researchDir, "u8-cursor-agent-candidate-preflight.json");
-const expectedVersion = "2026.05.09-0afadcc";
 const platform = `${process.platform}-${process.arch}`;
 const candidateHooksPath = "dist/cursor/hooks.json";
 const candidateBinaryPath = `bin/native/${platform}/loaf`;
 
-export function classifyCursorPreflight(versionOutput, helpOutput) {
+export function classifyCursorPreflight(versionOutput, helpOutput, expectedVersion) {
   const observedVersion = versionOutput.trim();
   const exactVersion = observedVersion === expectedVersion;
   const noSessionPersistence = helpOutput.includes("--no-session-persistence");
@@ -66,18 +64,20 @@ function candidateArtifacts() {
   };
 }
 
-function main() {
-  mkdirSync(researchDir, { recursive: true });
+function main(argv = process.argv.slice(2)) {
+  const { client, expectedVersion, receiptPath } = parseRunnerArgs(argv);
   const timestamp = new Date().toISOString();
   const buildGo = run("npm", ["run", "build:go"], repoRoot);
   if (buildGo.status !== 0) throw new Error("candidate Go build failed");
   const buildCursor = run("bin/loaf", ["build", "--target", "cursor"], repoRoot);
   if (buildCursor.status !== 0) throw new Error("candidate Cursor target build failed");
   const artifacts = candidateArtifacts();
-  const version = run("cursor-agent", ["--version"], repoRoot);
-  const help = run("cursor-agent", ["--help"], repoRoot);
+  const version = run(client, ["--version"], repoRoot);
+  const help = run(client, ["--help"], repoRoot);
   if (version.status !== 0 || help.status !== 0) throw new Error("installed cursor-agent version/help preflight failed");
-  const preflight = classifyCursorPreflight(version.stdout, help.stdout);
+  const preflight = classifyCursorPreflight(version.stdout, help.stdout, expectedVersion);
+  if (!preflight.exactVersion) throw new Error(preflight.blocker);
+  if (preflight.noSessionPersistence) throw new Error("installed cursor-agent exposes --no-session-persistence, but a model-visible isolated smoke is not implemented");
   const smoke = {
     evidence_version: 2,
     timestamp,
@@ -102,8 +102,15 @@ function main() {
     blocker: preflight.blocker,
     retry_condition: "Rerun after the installed CLI exposes a documented no-session-persistence mode or after an explicitly approved isolated session-store boundary is available.",
   };
-  writeFileSync(evidencePath, `${JSON.stringify(smoke, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ evidence_path: "docs/changes/20260710-journal-reliability-foundation/research/u8-cursor-agent-candidate-preflight.json", status: "unavailable", reason: smoke.blocker }, null, 2)}\n`);
+  publishReceiptIfSuccessful(receiptPath, smoke, true);
+  process.stdout.write(`${JSON.stringify({ receipt: receiptPath, status: "safely-refused", reason: smoke.blocker }, null, 2)}\n`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : "Cursor agent context preflight failed"}\n`);
+    process.exitCode = 1;
+  }
+}

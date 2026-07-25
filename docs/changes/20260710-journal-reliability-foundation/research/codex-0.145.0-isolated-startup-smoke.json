@@ -1,6 +1,6 @@
 {
   "evidence_version": 2,
-  "timestamp": "2026-07-24T18:30:42.555Z",
+  "timestamp": "2026-07-24T22:32:03.850Z",
   "target": "codex",
   "surface": "cli",
   "version": "0.145.0",
@@ -32,15 +32,14 @@
     "copy installed auth.json into isolated CODEX_HOME with mode 0600",
     "initialize absolute disposable LOAF_DB",
     "write random marker to isolated journal",
-    "observe hook stdout through a mode-0700 disposable wrapper and mode-0600 file",
-    "disable Codex tracing logs (RUST_LOG=off) so backend transport noise cannot contaminate the stderr cleanliness gate"
+    "observe hook stdout through a mode-0700 disposable wrapper and mode-0600 file"
   ],
   "exit_code": 0,
   "stderr_empty": false,
   "stderr": "Reading additional input from stdin...",
   "model_visible_marker_observed": true,
   "assistant_marker_match": true,
-  "marker": "LOAF_CODEX_U8_8DEF409DF6C0",
+  "marker": "LOAF_CODEX_STARTUP_SMOKE_A5533AEA314C",
   "hook_observation": {
     "event_name": "SessionStart:startup",
     "native_json": true,

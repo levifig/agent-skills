@@ -1,6 +1,6 @@
 {
   "evidence_version": 2,
-  "timestamp": "2026-07-13T19:08:37.525Z",
+  "timestamp": "2026-07-14T16:12:24.351Z",
   "target": "cursor",
   "surface": "cursor-agent",
   "version": "2026.05.09-0afadcc",
@@ -22,7 +22,7 @@
     "hooks_path": "dist/cursor/hooks.json",
     "hooks_sha256": "7cba16593baab2f9e98c46efaa4b6ab023de08e04ff78c10cb3f48e8ec73fbc0",
     "native_binary_path": "bin/native/darwin-arm64/loaf",
-    "native_binary_sha256": "59694569d043f4ef0dfdd8442ad96664dca029cdc31ad3400266f1e266600e72"
+    "native_binary_sha256": "902e41eea856eacaf172fc9708aa873bb2bc67c360ab00c7ac36070b106855f4"
   },
   "blocker": "installed cursor-agent does not expose --no-session-persistence; refusing a model-visible smoke that could persist session state globally",
   "retry_condition": "Rerun after the installed CLI exposes a documented no-session-persistence mode or after an explicitly approved isolated session-store boundary is available."
