@@ -21,6 +21,7 @@ Review, verify, and land one PR. Shipping is the PR gate; releasing is the versi
 - Topics
 - Context Detection
 - Step 1: PR Readiness
+- Step 1b: Stacked PR Detection
 - Step 2: Evidence Review
 - Step 3: Local Verification
 - Step 4: Squash Merge
@@ -40,6 +41,7 @@ Review, verify, and land one PR. Shipping is the PR gate; releasing is the versi
 - **Detect-first** -- auto-detect the PR from the current branch before asking for a PR number.
 - **Review before merge** -- inspect code, docs, tests, changelog, PR body, and CI state before approval.
 - **Never merge without explicit confirmation** -- present the PR, checks, findings, and squash body first.
+- **Detect the stack before merging** -- another open PR may use this PR's head branch as its base. Find out before merge, never after, and never delete a head branch while a child PR still points at it.
 - **Clean squash body** -- write an intentional squash commit body; never accept the automatic commit dump.
 - **Keep landed and released distinct** -- after merge, describe the PR as landed or shipped, not necessarily released.
 - **Log shipping** -- after merge, run `loaf journal log "decision(ship): PR #N landed via squash merge"`.
@@ -51,6 +53,7 @@ Review, verify, and land one PR. Shipping is the PR gate; releasing is the versi
 - Relevant local checks pass or failures are fixed before merge
 - PR body and durable docs do not overclaim relative to the diff
 - Squash commit title/body are clean, conventional, and user-facing
+- Child PRs stacked on this PR's head branch are enumerated before merge, and each is retargeted, rebased, and re-verified after it
 - Base branch is updated after merge and the feature branch cleanup state is known
 
 ## Quick Reference
@@ -58,10 +61,11 @@ Review, verify, and land one PR. Shipping is the PR gate; releasing is the versi
 | Step | Gate | Blocking? |
 |------|------|-----------|
 | PR Readiness | PR exists, target base known, CI state reviewed | Yes |
+| Stacked PR Detection | child PRs on this head branch are enumerated | Yes |
 | Evidence Review | findings resolved or explicitly accepted | Yes |
 | Local Verification | relevant checks pass | Yes |
 | Squash Merge | user approves body text | Yes |
-| Cleanup | base pulled, branch deletion handled | No |
+| Cleanup | base pulled, children retargeted and rebased, branch deletion handled | Yes when a child exists |
 | Release Suggestion | enough landed work may justify `/loaf:release` | No |
 
 ## Topics
@@ -110,6 +114,25 @@ Block or pause when:
 - branch is out of date and the project requires update before merge
 
 If checks are unavailable, say so explicitly and compensate with local verification.
+
+---
+
+## Step 1b: Stacked PR Detection
+
+Before merging anything, find out whether another open PR uses this PR's head branch as its base:
+
+```bash
+gh pr list --state open --base <headRefName> --json number,title,headRefName
+```
+
+Any result is a **child PR**, and this PR is the base of a stack. Record the list now, because after the merge the relationship is harder to see and easier to break.
+
+When a child exists:
+
+- **Do not pass `--delete-branch` to the merge.** Removing the head branch while a child still points at it can close the child outright. Delete it only after every child has been retargeted, in Step 5.
+- Tell the user the stack exists and name the children before asking for merge confirmation. A stack changes what "merge this" means.
+
+When no child exists, say so, and `--delete-branch` is safe.
 
 ---
 
@@ -200,6 +223,34 @@ After a successful merge:
    ```
 
 If cleanup fails, report the exact residual state. Do not force-delete without user confirmation.
+
+### Stacked child PRs
+
+Every child recorded in Step 1b needs three repairs before it can ship, and none of them happen on their own.
+
+**Retarget the base.** GitHub does not reliably move a child's base when its base branch merges. Check, and move it explicitly:
+
+```bash
+gh pr view <child> --json baseRefName -q .baseRefName    # still the merged head branch?
+gh pr edit <child> --base <baseRefName>                  # the parent's base, normally main
+```
+
+**Rebase the child onto the new base.** A squash merge replaces the parent's commits with one new commit, so the child still carries the originals and its diff will re-apply everything the parent already landed. Rebasing drops them:
+
+```bash
+git rebase <baseRefName>   # skips the already-applied commits, reports which
+```
+
+**Assert the diff collapsed.** This is the deterministic signal that the rebase actually took. Compare the child's file count before and after; it must fall to the child's own scope. A count that does not shrink means the rebase did not drop the parent's content, and merging would re-land it.
+
+```bash
+git diff --stat <baseRefName>...HEAD | tail -1
+gh pr view <child> --json changedFiles -q .changedFiles
+```
+
+Then force-push with a lease, wait for CI to finish on the **rebased head** rather than trusting the previous run, and only then ship the child. Delete the parent's head branch once no child points at it.
+
+Report the numbers rather than asserting success: the before and after file counts, the commits the rebase skipped, and the CI conclusion on the new head.
 
 ---
 
