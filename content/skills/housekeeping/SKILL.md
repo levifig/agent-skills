@@ -136,3 +136,7 @@ After housekeeping, suggest `/reflect` if the session produced key decisions or 
 | Report Template | [templates/report.md](templates/report.md) | Creating cleanup reports |
 | Linear Integration | `orchestration/references/linear.md` | Checking external issue status |
 | Journal Continuity | `orchestration/references/journal.md` | Understanding the project journal model |
+
+## Artifact Naming
+
+Name every artifact you create for what it is, never for the work unit that produced it: the containing directory or Change already records that provenance. Put the source in a front-matter field, not the filename. Versions and timestamps are identity and stay. See the `foundations` skill for the full rule; `loaf check --hook artifact-names` enforces it at commit.

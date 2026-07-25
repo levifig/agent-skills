@@ -259,6 +259,13 @@ const preToolHooks: Record<string, HookEntry[]> = {
       "if": "Bash(git push:*)"
     },
     {
+      "id": "artifact-names",
+      "command": "loaf check --hook artifact-names",
+      "timeout": 30000,
+      "failClosed": true,
+      "if": "Bash(git commit:*)"
+    },
+    {
       "id": "github-account",
       "command": "loaf check --hook github-account",
       "timeout": 10000,

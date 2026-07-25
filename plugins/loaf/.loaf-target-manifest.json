@@ -76,7 +76,7 @@
       "kind": "hook-projection",
       "source_path": "hooks/hooks.json",
       "destination": "hooks/hooks.json",
-      "sha256": "dcaecc06f72e1a05cd6e89d648aa5eb4a59a25e91d952dcdb3bc2bb3190422fb"
+      "sha256": "564917493bfa795fee8a067e235e13eec5f992e098cb94540d2202cc6fe3cad4"
     },
     {
       "id": "managed-instructions",

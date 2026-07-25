@@ -120,3 +120,7 @@ Set `deprecated_at` and `deprecated_by` only when moving to `deprecated`.
 - **orchestration** — Maintains journal continuity and cross-agent coordination
 - **wrap** — Writes an optional end-of-conversation checkpoint to the journal
 - **housekeeping** — Deletes deprecated handoffs after confirmation
+
+## Artifact Naming
+
+Name every artifact you create for what it is, never for the work unit that produced it: the containing directory or Change already records that provenance. Put the source in a front-matter field, not the filename. Versions and timestamps are identity and stay. See the `foundations` skill for the full rule; `loaf check --hook artifact-names` enforces it at commit.

@@ -112,6 +112,22 @@ Engineering foundations for consistent, high-quality code.
 | Constants | `UPPER_SNAKE` | `UPPER_SNAKE` |
 | Tests | `test_<unit>_<scenario>_<result>` | `describe/it` blocks |
 
+### Artifact Names Never Cite Their Work Unit
+
+Name an artifact for what it is, never for the work unit that produced it. The directory or Change that contains it already records that provenance, so repeating it in the filename inverts the reference and rots the moment the work closes: a work unit points at its artifacts, artifacts never point back.
+
+| Instead of | Write |
+|------------|-------|
+| `u8-claude-smoke.mjs` | `smoke-claude-code-startup.mjs` |
+| `report-spec-053-taxonomy-signoff.md` | `taxonomy-signoff.md` |
+| `TASK-074-sidecar-audit-report.md` | `sidecar-audit.md` |
+
+Provenance belongs in a front-matter field such as `source:`, where it can be read and updated, not in a name that has to be renamed to stay true.
+
+Two look-alikes are correct and stay. A **version** is identity, not reference: `claude-code-2.1.218-plugin-startup-smoke.json`. A **timestamp** records when, not which work unit: `20260620-214448-skills-audit.md`. And a numbered record living in the directory that owns it *is* that entity, so `.agents/specs/SPEC-042-slug.md` and `docs/decisions/ADR-007-slug.md` are its own name rather than a citation.
+
+`loaf check --hook artifact-names` enforces this at commit time over tracked artifacts, grandfathering anything already `final` or `archived`.
+
 ## Test Patterns
 
 Scenario-based fixture naming:

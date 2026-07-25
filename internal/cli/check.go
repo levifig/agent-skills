@@ -82,6 +82,7 @@ var nativeCheckSecretPatterns = []secretPattern{
 
 var validCheckHooks = map[string]bool{
 	"artifact-body-write":  true,
+	"artifact-names":       true,
 	"check-secrets":        true,
 	"ephemeral-provenance": true,
 	"github-account":       true,
@@ -112,6 +113,8 @@ func (r Runner) runCheck(args []string, out io.Writer, runtimeRoot string) error
 	switch options.hook {
 	case "artifact-body-write":
 		result = runNativeArtifactBodyWriteGuard(context, runtimeRoot)
+	case "artifact-names":
+		result = runNativeArtifactNames(context, runtimeRoot)
 	case "check-secrets":
 		result = runNativeCheckSecrets(context)
 	case "ephemeral-provenance":

@@ -60,7 +60,7 @@
       "kind": "hook-projection",
       "source_path": "hooks.json",
       "destination": "hooks.json",
-      "sha256": "286b1fa0549b3e32ba642ab9e69fdd6df1bdc310dc0ee7a2ec5948872670fafb"
+      "sha256": "ee62210b456405c5760a2de17676a42c09e130a27c576a1967180053b9c1047b"
     },
     {
       "id": "managed-instructions",

@@ -66,6 +66,15 @@ hooks:
       failClosed: true
       description: Block tracked ephemeral Markdown and dangling references from retained spec records
 
+    - id: artifact-names
+      skill: foundations
+      matcher: "Bash"
+      if: "Bash(git commit:*)"
+      blocking: true
+      timeout: 30000
+      failClosed: true
+      description: Block artifact filenames that name the work unit that produced them
+
     - id: github-account
       skill: git-workflow
       matcher: "Bash"
