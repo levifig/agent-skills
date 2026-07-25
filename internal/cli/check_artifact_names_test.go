@@ -28,9 +28,13 @@ func TestWorkIdentityInArtifactNameClassifiesReferenceVersusIdentity(t *testing.
 		{"spec in specs dir", ".agents/specs/SPEC-016-council-advisory-redesign.md", false, ""},
 		{"archived spec in specs dir", ".agents/specs/archive/SPEC-001-loaf-self-sufficiency.md", false, ""},
 		{"adr in decisions dir", "docs/decisions/ADR-007-project-config-location.md", false, ""},
+		{"task in tasks dir", ".agents/tasks/TASK-001-configure-build-phases.md", false, ""},
+		{"task in a relocated tasks dir", "docs/tasks/TASK-042-slug.md", false, ""},
 
 		// A spec identity outside the directory that owns specs is a reference again.
 		{"spec outside specs dir", ".agents/reports/SPEC-016-review.md", true, "spec record"},
+		{"task outside tasks dir", ".agents/reports/TASK-074-audit.md", true, "task record"},
+		{"task file naming a spec is still a reference", ".agents/tasks/spec-053-followup.md", true, "spec record"},
 
 		// Versions are identity and timestamps record when, not which work unit.
 		{"harness version", "docs/changes/x/research/claude-code-2.1.218-plugin-startup-smoke.json", false, ""},
@@ -186,6 +190,11 @@ func TestFindWorkIdentifierArtifactNamesGrandfathersClosedArtifacts(t *testing.T
 	write(".agents/reports/u8-final.md", "---\nstatus: final\n---\n\nbody\n")
 	write(".agents/reports/u8-archived.md", "---\nstatus: archived\n---\n\nbody\n")
 	write(".agents/reports/u8-quoted-final.md", "---\nstatus: \"final\"\n---\n\nbody\n")
+	// A terminal state may be nested: a council records it under `council:`.
+	write(".agents/reports/u8-nested-final.md", "---\ncouncil:\n  status: done\n---\n\nbody\n")
+	write(".agents/reports/u8-nested-completed.md", "---\nmeta:\n  status: completed\n---\n\nbody\n")
+	// A non-terminal status must not grandfather, nested or not.
+	write(".agents/reports/u8-nested-draft.md", "---\ncouncil:\n  status: decided\n---\n\nbody\n")
 	// A status word in the body must not silence the guard.
 	write(".agents/reports/u8-body-claims-final.md", "# Notes\n\nstatus: final\n")
 	// Nor may a file with no front matter at all.
@@ -203,6 +212,7 @@ func TestFindWorkIdentifierArtifactNamesGrandfathersClosedArtifacts(t *testing.T
 		".agents/reports/u8-bare.md",
 		".agents/reports/u8-body-claims-final.md",
 		".agents/reports/u8-draft.md",
+		".agents/reports/u8-nested-draft.md",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("violations = %v, want %v", got, want)
