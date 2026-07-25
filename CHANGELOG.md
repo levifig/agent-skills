@@ -6,9 +6,16 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+### Added
+
+- `loaf check --hook artifact-names` rejects artifact filenames that name the work unit which produced them. A Change, spec, task, or issue points at its artifacts; an artifact never points back, because the directory containing it already records that provenance, and a name carrying a work identity has to be renamed to stay true. The check runs fail-closed at commit time, judges tracked files only, matches Loaf's artifact directories by basename so relocating them needs no configuration, and grandfathers anything whose front matter records a terminal state (`final`, `archived`, `done`, or `completed`) at any nesting depth. Versions and timestamps remain legal because they identify rather than refer, as does a numbered record living in the directory that owns it, such as `SPEC-042` in `specs/` or `ADR-007` in `docs/decisions/`. **After upgrading, a commit that touches an artifact whose name carries a work identity fails until the file is renamed.** Run `loaf check --hook artifact-names --advisory` to list findings without blocking; record the provenance in a front matter field instead, where it stays readable and updatable.
+
 ### Changed
 
 - Managed `AGENTS.md` fence markers are fingerprint-only (`sha256=` of the body, no installer version stamp), so `loaf install --upgrade` no longer rewrites the marker on every release when the body is unchanged. The first upgrade after this change strips the legacy `v…` stamp once; a pre-change binary that encounters the new header refuses with a malformed-fingerprint error until you upgrade the binary.
+- Capability smoke runners require an explicit client executable, expected version, and receipt path, and publish a receipt only after both the proof and its cleanup succeed. Each runner is named for the target and context mode it verifies rather than for the workstream that commissioned it, its retained evidence follows the same rule, and marker prefixes are target-scoped so one target's proof cannot be presented as another's. Scripted callers must pass `--client`, `--expected-version`, and `--receipt`.
+- Living project documentation and distributed skill guidance describe Change-first work in permanent language, without implementation-unit names, numbered development stages, or volatile inventory counts that go stale the moment anything is added. Historical Change, SPEC, and ADR citations remain where they serve as decision provenance.
+- The `ship` skill handles pull requests stacked on the one being landed. It detects child pull requests before the merge, refuses to delete a head branch while a child still points at it, and afterwards retargets, rebases, and re-verifies each child. Neither repair is optional: GitHub does not reliably retarget a child when its base merges, and a squash merge leaves the child carrying commits that would re-apply its parent's entire diff.
 
 ## [2.0.0-alpha.13] - 2026-07-24
 
