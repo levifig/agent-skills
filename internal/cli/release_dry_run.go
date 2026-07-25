@@ -542,7 +542,11 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 		if err := verifyConfiguredGitHubAccount(root, out); err != nil {
 			return fmt.Errorf("Refusing to create GitHub release with the wrong account: %w", err)
 		}
-		if err := releaseCommandRun(root, "gh", "release", "create", tagName, "--draft", "--title", "v"+newVersion, "--notes", changelog); err != nil {
+		ghArgs := []string{"release", "create", tagName, "--draft", "--title", "v" + newVersion, "--notes", changelog}
+		if releaseVersionIsPrerelease(newVersion) {
+			ghArgs = append(ghArgs, "--prerelease")
+		}
+		if err := releaseCommandRun(root, "gh", ghArgs...); err != nil {
 			return fmt.Errorf("Failed to create GitHub release: %w", err)
 		}
 		fmt.Fprintf(out, "    %s Created GitHub release draft\n", ansiGreen("✓"))
@@ -883,6 +887,15 @@ type releaseSemver struct {
 	minor      int
 	patch      int
 	prerelease string
+}
+
+// releaseVersionIsPrerelease reports whether a version carries a semver
+// prerelease identifier. GitHub keeps a prerelease out of "Latest release" and
+// labels it as such, which is what an alpha, beta, or release candidate should
+// get; without the flag every alpha publishes as the project's latest stable.
+func releaseVersionIsPrerelease(version string) bool {
+	parsed, ok := parseReleaseSemver(strings.TrimPrefix(strings.TrimSpace(version), "v"))
+	return ok && parsed.prerelease != ""
 }
 
 func parseReleaseSemver(value string) (releaseSemver, bool) {
