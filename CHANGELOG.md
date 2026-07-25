@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-alpha.14] - 2026-07-25
+
 ### Added
 
 - `loaf check --hook artifact-names` rejects artifact filenames that name the work unit which produced them. A Change, spec, task, or issue points at its artifacts; an artifact never points back, because the directory containing it already records that provenance, and a name carrying a work identity has to be renamed to stay true. The check runs fail-closed at commit time, judges tracked files only, matches Loaf's artifact directories by basename so relocating them needs no configuration, and grandfathers anything whose front matter records a terminal state (`final`, `archived`, `done`, or `completed`) at any nesting depth. Versions and timestamps remain legal because they identify rather than refer, as does a numbered record living in the directory that owns it, such as `SPEC-042` in `specs/` or `ADR-007` in `docs/decisions/`. **After upgrading, a commit that touches an artifact whose name carries a work identity fails until the file is renamed.** Run `loaf check --hook artifact-names --advisory` to list findings without blocking; record the provenance in a front matter field instead, where it stays readable and updatable.
