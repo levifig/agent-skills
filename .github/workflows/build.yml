@@ -47,6 +47,9 @@ jobs:
       - name: Verify Go tests
         run: go test ./...
 
+      - name: Verify capability runner tests
+        run: npm run test:capability-runners
+
       - name: Verify CGO-free build
         run: CGO_ENABLED=0 go build ./...
 

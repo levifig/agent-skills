@@ -20,7 +20,7 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.218-candidate-smoke.json",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/claude-code-2.1.218-plugin-startup-smoke.json",
               "level": "installed-smoke",
               "summary": "Claude Code 2.1.218 startup smoke returned SessionStart additionalContext and the isolated marker was model-visible exactly."
             }
@@ -70,7 +70,7 @@
         "durable_identity": "unproven",
         "child_suppression": "unproven",
         "evidence": {
-          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-claude-code-2.1.207-candidate-smoke.md",
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/claude-code-2.1.207-plugin-startup-smoke.md",
           "level": "source",
           "summary": "The retained Claude smoke covers startup context only and does not prove completion result fidelity or durable identity."
         }
@@ -102,7 +102,7 @@
             "model_visible": false,
             "reason": "Cursor IDE native sessionStart is source-supported, but an installed model-visible smoke is not yet proven for 3.11.19.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "Cursor IDE 3.11.19 bundle invokes native new-composer sessionStart delivery with additional_context output."
             }
@@ -113,7 +113,7 @@
             "model_visible": false,
             "reason": "No native Cursor IDE resume context trigger is retained for this exact version.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "The retained Cursor source survey classifies resume as outside the native sessionStart surface."
             }
@@ -124,7 +124,7 @@
             "model_visible": false,
             "reason": "No native Cursor IDE compact context trigger is retained for this exact version.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "The retained Cursor source survey classifies compact as outside the native sessionStart surface."
             }
@@ -135,7 +135,7 @@
             "model_visible": false,
             "reason": "No native Cursor IDE cloud-session context trigger is retained for this exact version.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "The retained Cursor source survey classifies cloud sessions as outside the native sessionStart surface."
             }
@@ -149,7 +149,7 @@
         "durable_identity": "unproven",
         "child_suppression": "unproven",
         "evidence": {
-          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
           "level": "source",
           "summary": "Cursor source evidence does not prove completion result fidelity or durable identity."
         }
@@ -181,7 +181,7 @@
             "model_visible": false,
             "reason": "Cursor Agent native sessionStart is source-supported, but an installed model-visible smoke is not yet proven.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "Cursor Agent 2026.05.09-0afadcc retains the same native new-composer sessionStart surface."
             }
@@ -192,7 +192,7 @@
             "model_visible": false,
             "reason": "No native Cursor Agent resume context trigger is retained for this exact version.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "The retained Cursor source survey classifies resume as outside the native sessionStart surface."
             }
@@ -203,7 +203,7 @@
             "model_visible": false,
             "reason": "No native Cursor Agent compact context trigger is retained for this exact version.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "The retained Cursor source survey classifies compact as outside the native sessionStart surface."
             }
@@ -214,7 +214,7 @@
             "model_visible": false,
             "reason": "No native Cursor Agent cloud-session context trigger is retained for this exact version.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "The retained Cursor source survey classifies cloud sessions as outside the native sessionStart surface."
             }
@@ -228,7 +228,7 @@
         "durable_identity": "unproven",
         "child_suppression": "unproven",
         "evidence": {
-          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
           "level": "source",
           "summary": "Cursor Agent source evidence does not prove completion result fidelity or durable identity."
         }
@@ -259,7 +259,7 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.145.0-isolated-smoke.json",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/codex-0.145.0-isolated-startup-smoke.json",
               "level": "installed-smoke",
               "summary": "Codex 0.145.0 isolated CODEX_HOME startup smoke observed exact native SessionStart hookSpecificOutput and the random marker was returned by the model."
             }
@@ -271,7 +271,7 @@
             "model_visible": false,
             "reason": "The tagged schema retains SessionStart for resume, but an installed model-visible resume smoke is not yet proven.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "Codex 0.144.1 source survey classifies resume as a SessionStart context mode."
             }
@@ -283,7 +283,7 @@
             "model_visible": false,
             "reason": "The tagged schema retains SessionStart for clear, but an installed model-visible clear smoke is not yet proven.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "Codex 0.144.1 source survey classifies clear as a SessionStart context mode."
             }
@@ -295,7 +295,7 @@
             "model_visible": false,
             "reason": "The tagged schema retains SessionStart for compact, but an installed model-visible compact smoke is not yet proven.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "Codex 0.144.1 source survey classifies compact as a SessionStart context mode; SubagentStart is not a context mode."
             }
@@ -309,7 +309,7 @@
         "durable_identity": "unproven",
         "child_suppression": "unproven",
         "evidence": {
-          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
           "level": "source",
           "summary": "Codex hook source evidence does not prove completion result fidelity or durable identity."
         }
@@ -340,7 +340,7 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-opencode-1.18.4-isolated-smoke.json",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.4-isolated-request-smoke.json",
               "level": "installed-smoke",
               "summary": "OpenCode 1.18.4 isolated-XDG request smoke returned the exact random continuity marker through the model-visible plugin system transformation."
             }
@@ -351,7 +351,7 @@
             "model_visible": false,
             "reason": "OpenCode has no native distinct startup signal; request transformation is the only installed model-visible context proof.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "OpenCode 1.17.18 exposes request transformation rather than a distinct startup lifecycle signal."
             }
@@ -363,7 +363,7 @@
             "model_visible": false,
             "reason": "The request transformation can deliver context after reopening a session, but an installed model-visible resume smoke is not yet proven.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "OpenCode 1.17.18 retains the request transformation surface for context after session reopen."
             }
@@ -375,7 +375,7 @@
             "model_visible": false,
             "reason": "The compaction adapter can append context, but an installed model-visible compact smoke is not yet proven.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "OpenCode 1.17.18 retains experimental.session.compacting for compaction context injection."
             }
@@ -389,7 +389,7 @@
         "durable_identity": "unproven",
         "child_suppression": "parentID is available for context but completion identity remains unwired",
         "evidence": {
-          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
           "level": "source",
           "summary": "OpenCode bash exit status is source-proven, but operation success and durable completion identity remain unproven."
         }
@@ -422,7 +422,7 @@
             "model_visible": false,
             "reason": "root-only identity cannot be proven",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "Amp 0.0.1783873056-g278461 exposes agent.start, but foreground child identity cannot be distinguished from the root turn."
             }
@@ -433,7 +433,7 @@
             "model_visible": false,
             "reason": "Amp has no native distinct startup context signal.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "Amp exposes agent.start rather than a distinct startup context signal."
             }
@@ -444,7 +444,7 @@
             "model_visible": false,
             "reason": "Amp has no native distinct resume context signal.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "Amp exposes no native resume context signal for this exact version."
             }
@@ -455,7 +455,7 @@
             "model_visible": false,
             "reason": "Amp has no native distinct compact context signal.",
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
               "level": "source",
               "summary": "The retained Amp source survey records no native compaction surface."
             }
@@ -469,7 +469,7 @@
         "durable_identity": "unproven because only thread id and active/background state are available",
         "child_suppression": "unproven because only thread id and active/background state are available",
         "evidence": {
-          "source": "docs/changes/20260710-journal-reliability-foundation/research/u8-target-capability-survey.md",
+          "source": "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md",
           "level": "source",
           "summary": "Amp tool.call/tool.result and generic done/error/cancelled signals do not prove operation success, durable identity, or child suppression."
         }

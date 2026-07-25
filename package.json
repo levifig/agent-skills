@@ -22,6 +22,7 @@
     "typecheck": "go test ./... -run=^$",
     "test": "go test ./...",
     "test:smoke": "node cli/scripts/smoke-test.js",
+    "test:capability-runners": "node --test cli/scripts/smoke-claude-code-startup.test.mjs cli/scripts/smoke-codex-startup.test.mjs cli/scripts/smoke-opencode-request-context.test.mjs cli/scripts/preflight-cursor-agent-context.test.mjs",
     "eval:routing": "node cli/scripts/eval-skill-routing.mjs",
     "prepare": "npm run build:go",
     "prepublishOnly": "npm run build:release"

@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyCursorPreflight } from "./u8-cursor-smoke.mjs";
+import { classifyCursorPreflight } from "./preflight-cursor-agent-context.mjs";
 
 test("classifies an unsafe Cursor preflight without claiming execution", () => {
-  const preflight = classifyCursorPreflight("2026.05.09-0afadcc\n", "Usage: agent\n");
+  const preflight = classifyCursorPreflight("candidate-42\n", "Usage: agent\n", "candidate-42");
   assert.equal(preflight.exactVersion, true);
   assert.equal(preflight.noSessionPersistence, false);
   assert.equal(preflight.smokeExecuted, false);
@@ -11,7 +11,7 @@ test("classifies an unsafe Cursor preflight without claiming execution", () => {
 });
 
 test("rejects an unexpected installed version before any smoke", () => {
-  const preflight = classifyCursorPreflight("3.11.19\n", "--no-session-persistence\n");
+  const preflight = classifyCursorPreflight("unexpected\n", "--no-session-persistence\n", "candidate-42");
   assert.equal(preflight.exactVersion, false);
   assert.equal(preflight.noSessionPersistence, true);
   assert.equal(preflight.smokeExecuted, false);

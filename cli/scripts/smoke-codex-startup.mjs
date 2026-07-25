@@ -6,15 +6,14 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
+import { parseRunnerArgs, publishReceiptIfSuccessful } from "./capability-runner-utils.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
-const researchDir = join(repoRoot, "docs/changes/20260710-journal-reliability-foundation/research");
-const evidencePath = join(researchDir, "u8-codex-0.145.0-isolated-smoke.json");
-const expectedVersion = "0.145.0";
 const platform = `${process.platform}-${process.arch}`;
 const candidateHooksPath = "dist/codex/.codex/hooks.json";
 const candidateNativeRoot = join(repoRoot, "bin", "native");
+const markerPattern = /^LOAF_CODEX_STARTUP_SMOKE_[A-F0-9]{12}$/;
 
 export function codexVersionMatches(output, expectedVersion) {
   const match = output.match(/(?:^|\s)codex-cli\s+([0-9]+\.[0-9]+\.[0-9]+)(?:\s|$)/);
@@ -82,11 +81,6 @@ function nativeBinaryPath() {
   return path;
 }
 
-function sanitizeError(error, tempRoot) {
-  const text = error instanceof Error ? error.message : String(error);
-  return text.replaceAll(repoRoot, "<repo>").replaceAll(tempRoot, "<disposable>").replaceAll(process.env.HOME ?? "", "<home>").replaceAll(/\s+/g, " ").trim().slice(0, 400);
-}
-
 function sanitizedStderr(stderr) {
   const trimmed = stderr.trim();
   if (trimmed === "") return "";
@@ -117,12 +111,20 @@ process.exitCode = result.status ?? 1;
   chmodSync(wrapperPath, 0o700);
 }
 
-function main() {
-  mkdirSync(researchDir, { recursive: true });
-  const marker = `LOAF_CODEX_U8_${randomBytes(6).toString("hex").toUpperCase()}`;
+function main(argv = process.argv.slice(2)) {
+  const { client, expectedVersion, receiptPath } = parseRunnerArgs(argv);
+  const marker = `LOAF_CODEX_STARTUP_SMOKE_${randomBytes(6).toString("hex").toUpperCase()}`;
+  if (!markerPattern.test(marker)) throw new Error("generated marker does not match the required format");
   const timestamp = new Date().toISOString();
-  const tempRoot = mkdtempSync(join(tmpdir(), "loaf-u8-codex-smoke-"));
-  const cleanup = () => rmSync(tempRoot, { recursive: true, force: true });
+  const tempRoot = mkdtempSync(join(tmpdir(), "loaf-codex-startup-smoke-"));
+  const cleanup = () => {
+    try {
+      rmSync(tempRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    } catch {
+      return false;
+    }
+    return !existsSync(tempRoot);
+  };
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.once(signal, () => {
       cleanup();
@@ -134,8 +136,10 @@ function main() {
   const codexHome = join(tempRoot, "codex-home");
   const stateDir = join(tempRoot, "state");
   const dbPath = join(stateDir, "loaf.sqlite");
-  const candidateBinary = nativeBinaryPath();
+  let candidateBinary;
   let smoke;
+  let failure;
+  let cleanupSucceeded = false;
   try {
     mkdirSync(disposableRepo, { recursive: true, mode: 0o700 });
     mkdirSync(codexHome, { recursive: true, mode: 0o700 });
@@ -146,9 +150,9 @@ function main() {
     if (buildGo.status !== 0) throw new Error("candidate Go build failed");
     const buildCodex = run("bin/loaf", ["build", "--target", "codex"], repoRoot);
     if (buildCodex.status !== 0) throw new Error("candidate Codex build failed");
-    if (!existsSync(candidateBinary)) throw new Error("candidate native binary is missing");
-    const version = run("codex", ["--version"], repoRoot);
-    if (version.status !== 0 || !codexVersionMatches(version.stdout, expectedVersion)) throw new Error("installed Codex version is not 0.145.0");
+    candidateBinary = nativeBinaryPath();
+    const version = run(client, ["--version"], repoRoot);
+    if (version.status !== 0 || !codexVersionMatches(version.stdout, expectedVersion)) throw new Error(`installed Codex version does not match ${expectedVersion}`);
     if (run("git", ["init", "-q"], disposableRepo).status !== 0) throw new Error("disposable Git initialization failed");
     const authPath = join(process.env.CODEX_HOME ?? join(process.env.HOME ?? "", ".codex"), "auth.json");
     if (!existsSync(authPath)) throw new Error("installed Codex auth.json is unavailable");
@@ -164,11 +168,11 @@ function main() {
       hooks: group.hooks.map((hook) => ({ ...hook, command: hook.command.replace("{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook", hookCommand) })),
     }));
     writeFileSync(join(codexHome, "hooks.json"), `${JSON.stringify(sourceHooks, null, 2)}\n`, { mode: 0o600 });
-    const candidateEnv = { CODEX_HOME: codexHome, LOAF_DB: dbPath, RUST_LOG: "off" };
+    const candidateEnv = { CODEX_HOME: codexHome, LOAF_DB: dbPath };
     if (run(candidateBinary, ["state", "init", "--json"], disposableRepo, candidateEnv).status !== 0) throw new Error("isolated Loaf state initialization failed");
     if (run(candidateBinary, ["journal", "log", `discover(smoke): ${marker}`], disposableRepo, candidateEnv).status !== 0) throw new Error("isolated journal marker write failed");
     const codexArgs = ["exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "--json", "-C", "<disposable-repo>", "Return exactly the unique marker supplied by SessionStart context, and nothing else."];
-    const codex = run("codex", [...codexArgs.slice(0, -2), disposableRepo, codexArgs.at(-1)], disposableRepo, candidateEnv);
+    const codex = run(client, [...codexArgs.slice(0, -2), disposableRepo, codexArgs.at(-1)], disposableRepo, candidateEnv);
     const parsed = parseCodexJSONL(codex.stdout, marker);
     if (!existsSync(observationPath)) throw new Error("Codex hook observation file was not written");
     if ((statSync(wrapperPath).mode & 0o777) !== 0o700) throw new Error("Codex hook observation wrapper is not mode 0700");
@@ -186,7 +190,7 @@ function main() {
       adapter: "codex-session-start-v1",
       mode: "isolated-codex-home",
       invocation: { command: "codex", args: codexArgs, cwd: "<disposable-repo>" },
-      setup: ["build candidate Go binary and Codex target", "create disposable Git repository", "create isolated CODEX_HOME with hooks enabled", "copy installed auth.json into isolated CODEX_HOME with mode 0600", "initialize absolute disposable LOAF_DB", "write random marker to isolated journal", "observe hook stdout through a mode-0700 disposable wrapper and mode-0600 file", "disable Codex tracing logs (RUST_LOG=off) so backend transport noise cannot contaminate the stderr cleanliness gate"],
+      setup: ["build candidate Go binary and Codex target", "create disposable Git repository", "create isolated CODEX_HOME with hooks enabled", "copy installed auth.json into isolated CODEX_HOME with mode 0600", "initialize absolute disposable LOAF_DB", "write random marker to isolated journal", "observe hook stdout through a mode-0700 disposable wrapper and mode-0600 file"],
       exit_code: codex.status,
       stderr_empty: codex.stderr.length === 0,
       stderr: sanitizedStderr(codex.stderr),
@@ -208,19 +212,21 @@ function main() {
     };
     if (codex.status !== 0 || !observedHook.additionalContextMarker || !parsed.assistantMarkerMatch || smoke.stderr === "unexpected stderr") throw new Error("model-visible Codex marker smoke did not pass");
   } catch (error) {
-    smoke ??= {
-      evidence_version: 2, timestamp, target: "codex", surface: "cli", version: expectedVersion, platform, installed_mode: "isolated-codex-home", context_mode: "startup", adapter: "codex-session-start-v1", mode: "isolated-codex-home",
-      invocation: { command: "codex", args: [], cwd: "<disposable-repo>" }, setup: [], exit_code: 1, stderr_empty: false, stderr: "", model_visible_marker_observed: false, assistant_marker_match: false, marker,
-      hook_observation: { event_name: "", native_json: false, hook_event_name: "", additional_context_marker: false }, candidate_artifacts: { hooks_path: candidateHooksPath, hooks_sha256: "", native_binary_path: "", native_binary_sha256: "" },
-    };
-    smoke.failure_reason = sanitizeError(error, tempRoot);
-    smoke.exit_code = smoke.exit_code ?? 1;
+    failure = error;
   } finally {
-    cleanup();
+    cleanupSucceeded = cleanup();
   }
-  writeFileSync(evidencePath, `${JSON.stringify(smoke, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ evidence_path: "docs/changes/20260710-journal-reliability-foundation/research/u8-codex-0.145.0-isolated-smoke.json", exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match }, null, 2)}\n`);
-  if (smoke.exit_code !== 0 || !smoke.assistant_marker_match) process.exitCode = 1;
+  if (failure) throw failure;
+  if (!cleanupSucceeded) throw new Error("disposable Codex smoke cleanup failed");
+  publishReceiptIfSuccessful(receiptPath, smoke, true);
+  process.stdout.write(`${JSON.stringify({ receipt: receiptPath, exit_code: smoke.exit_code, assistant_marker_match: smoke.assistant_marker_match, cleanup_succeeded: true }, null, 2)}\n`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : "Codex startup smoke failed"}\n`);
+    process.exitCode = 1;
+  }
+}
