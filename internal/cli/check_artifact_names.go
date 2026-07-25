@@ -54,6 +54,7 @@ var artifactNameIdentityOwners = []struct {
 	prefix  string
 }{
 	{dirBase: "specs", prefix: "spec-"},
+	{dirBase: "tasks", prefix: "task-"},
 	{dirBase: "decisions", prefix: "adr-"},
 }
 
@@ -197,7 +198,11 @@ func walkedRepositoryPaths(root string) ([]string, error) {
 	return paths, nil
 }
 
-var artifactNameFinalizedStatusRE = regexp.MustCompile(`(?mi)^status:\s*["']?(final|archived)["']?\s*$`)
+// A closed artifact may record its terminal state at any depth in front matter —
+// a council nests it under `council:`, a report keeps it top level — so the
+// status key is matched with optional leading indentation rather than anchored
+// to column zero. The accepted values are Loaf's canonical terminal vocabulary.
+var artifactNameFinalizedStatusRE = regexp.MustCompile(`(?mi)^\s*status:\s*["']?(final|archived|done|completed)["']?\s*$`)
 
 // isFinalizedArtifact reports whether rel's front matter closes it. Only the
 // leading front-matter block is consulted, so a status word in the body cannot
