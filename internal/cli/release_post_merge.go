@@ -370,7 +370,11 @@ func executeReleasePostMergeActions(root string, ready releasePostMergeResult, r
 	result.pushed = true
 	fmt.Fprintf(out, "    %s Pushed tag %s\n", ansiGreen("✓"), tag)
 
-	releaseResult := runner(root, "gh", "release", "create", tag, "--title", tag, "--notes", ready.changelogBody)
+	ghArgs := []string{"release", "create", tag, "--title", tag, "--notes", ready.changelogBody}
+	if releaseVersionIsPrerelease(ready.version) {
+		ghArgs = append(ghArgs, "--prerelease")
+	}
+	releaseResult := runner(root, "gh", ghArgs...)
 	if releaseResult.notFound {
 		return result, fmt.Errorf("gh CLI is not installed; cannot create GH release")
 	}
