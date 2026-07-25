@@ -309,9 +309,9 @@ WHERE project_id = ? AND id = ?
 `, projectID, journalEntryID).Scan(&rowID); err != nil {
 		return fmt.Errorf("read journal entry rowid %s: %w", journalEntryID, err)
 	}
-	// The FTS correlation column is journal-first (harness_session_id) after the
-	// SPEC-056 migration but session_id on the pre-migration schema. Match the
-	// live table so the write works on both shapes.
+	// The FTS correlation column is harness_session_id on the current schema and
+	// session_id on the pre-migration schema. Match the live table so the write
+	// works on both shapes.
 	correlationColumn, err := journalSearchCorrelationColumn(ctx, tx)
 	if err != nil {
 		return err

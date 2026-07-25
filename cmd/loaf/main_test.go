@@ -183,7 +183,7 @@ func TestPublicBinaryPreA3WorktreeRefusalNudgeNatively(t *testing.T) {
 	if exitCode(err) == 2 {
 		t.Fatalf("loaf doctor in identical worktree hit pre-A3 refusal\n%s", output)
 	}
-	if strings.Contains(output, "SPEC-036 centralizes") {
+	if strings.Contains(output, "Linked worktrees keep .agents/") {
 		t.Fatalf("identical worktree output = %q, want no pre-A3 refusal", output)
 	}
 	raw, err := os.ReadFile(filepath.Join(linked, ".agents", ".moved-to"))
@@ -204,7 +204,7 @@ func TestPublicBinaryPreA3WorktreeRefusalNudgeNatively(t *testing.T) {
 	if exitCode(err) != 2 {
 		t.Fatalf("loaf journal recent divergent exit = %d, want 2\n%s", exitCode(err), output)
 	}
-	for _, want := range []string{"SPEC-036", "loaf migrate worktree-storage"} {
+	for _, want := range []string{"Linked worktrees keep .agents/", "loaf migrate worktree-storage"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("divergent refusal output = %q, want %q", output, want)
 		}
@@ -217,7 +217,7 @@ func TestPublicBinaryPreA3WorktreeRefusalNudgeNatively(t *testing.T) {
 	if exitCode(err) != 2 {
 		t.Fatalf("loaf journal recent exit = %d, want 2\n%s", exitCode(err), output)
 	}
-	for _, want := range []string{"SPEC-036", "loaf migrate worktree-storage", "LOAF_DEBUG_RESOLVE"} {
+	for _, want := range []string{"Linked worktrees keep .agents/", "loaf migrate worktree-storage", "LOAF_DEBUG_RESOLVE"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("refusal output = %q, want %q", output, want)
 		}
@@ -230,7 +230,7 @@ func TestPublicBinaryPreA3WorktreeRefusalNudgeNatively(t *testing.T) {
 	if exitCode(err) != 2 {
 		t.Fatalf("loaf not-a-command exit = %d, want 2\n%s", exitCode(err), output)
 	}
-	for _, want := range []string{"unknown command 'not-a-command'", "SPEC-036", "loaf migrate worktree-storage"} {
+	for _, want := range []string{"unknown command 'not-a-command'", "Linked worktrees keep .agents/", "loaf migrate worktree-storage"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("unknown-command refusal output = %q, want %q", output, want)
 		}
@@ -243,7 +243,7 @@ func TestPublicBinaryPreA3WorktreeRefusalNudgeNatively(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loaf migrate worktree-storage error = %v\n%s", err, output)
 	}
-	if !strings.Contains(output, "Dry run") || strings.Contains(output, "SPEC-036 centralizes") {
+	if !strings.Contains(output, "Dry run") || strings.Contains(output, "Linked worktrees keep .agents/") {
 		t.Fatalf("migrate allowlist output = %q, want dry-run without refusal", output)
 	}
 
@@ -255,14 +255,14 @@ func TestPublicBinaryPreA3WorktreeRefusalNudgeNatively(t *testing.T) {
 		if err != nil {
 			t.Fatalf("loaf %v error = %v\n%s", allowed, err, output)
 		}
-		if strings.Contains(output, "SPEC-036 centralizes") {
+		if strings.Contains(output, "Linked worktrees keep .agents/") {
 			t.Fatalf("allowlisted %v output = %q, want no refusal", allowed, output)
 		}
 	}
 
 	main = createMainRepo(t, "nudge-main")
 	output, err = runBinary(binary, main, envWith(), "version")
-	if exitCode(err) == 2 || strings.Contains(output, "SPEC-036 centralizes") {
+	if exitCode(err) == 2 || strings.Contains(output, "Linked worktrees keep .agents/") {
 		t.Fatalf("main checkout output = %q, error = %v, want no pre-A3 refusal", output, err)
 	}
 
@@ -275,7 +275,7 @@ func TestPublicBinaryPreA3WorktreeRefusalNudgeNatively(t *testing.T) {
 		t.Fatalf("WriteFile(.moved-to) error = %v", err)
 	}
 	output, err = runBinary(binary, linked, envWith(), "version")
-	if exitCode(err) == 2 || strings.Contains(output, "SPEC-036 centralizes") {
+	if exitCode(err) == 2 || strings.Contains(output, "Linked worktrees keep .agents/") {
 		t.Fatalf("migrated linked worktree output = %q, error = %v, want no pre-A3 refusal", output, err)
 	}
 
@@ -286,7 +286,7 @@ func TestPublicBinaryPreA3WorktreeRefusalNudgeNatively(t *testing.T) {
 		t.Fatalf("WriteFile(stale .moved-to) error = %v", err)
 	}
 	output, err = runBinary(binary, linked, envWith(), "journal", "recent")
-	if exitCode(err) != 2 || !strings.Contains(output, "SPEC-036") {
+	if exitCode(err) != 2 || !strings.Contains(output, "Linked worktrees keep .agents/") {
 		t.Fatalf("stale pointer output = %q, error = %v, want pre-A3 refusal", output, err)
 	}
 }

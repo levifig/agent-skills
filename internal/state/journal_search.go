@@ -9,7 +9,7 @@ import (
 // SearchJournal runs a journal-only full-text search against initialized SQLite
 // state. Unlike the global Search, it queries only the journal_search FTS table
 // joined to journal_entries: it never touches the docs index, so a journal read
-// cannot refresh docs state or fail on unrelated docs scanning (SPEC-056 M1).
+// cannot refresh docs state or fail on unrelated docs scanning.
 func SearchJournal(ctx context.Context, root project.Root, resolver PathResolver, options SearchOptions) (SearchResult, error) {
 	store, err := openProjectStoreReadExistingForJournalSearch(ctx, root, resolver)
 	if err != nil {

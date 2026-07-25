@@ -18,7 +18,7 @@ const worktreePartialSuffix = ".partial.loaf-migrate"
 const debugResolveEnv = "LOAF_DEBUG_RESOLVE"
 
 const preA3RefusalMessageNative = `This worktree has unmigrated agentic state under .agents/.
-SPEC-036 centralizes .agents/ to the main worktree, so this command is refused
+Linked worktrees keep .agents/ in the main worktree, so this command is refused
 until you run:
 
     loaf migrate worktree-storage         # dry-run preview
@@ -120,7 +120,7 @@ func writeWorktreeMigrationHelp(out io.Writer) {
 	fmt.Fprintln(out, strings.Join([]string{
 		"Usage: loaf migrate worktree-storage [options]",
 		"",
-		"Move a linked worktree's local .agents/ into the main worktree (SPEC-036).",
+		"Move a linked worktree's local .agents/ into the main worktree.",
 		"dry-run by default; pass --apply to mutate.",
 		"",
 		"Options:",

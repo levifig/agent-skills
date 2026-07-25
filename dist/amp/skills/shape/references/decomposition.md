@@ -4,7 +4,7 @@ Shaping step absorbed from the retired breakdown skill: dependency awareness, gr
 
 ## What Survives
 
-- **The Right Size Test** — before finalizing a unit boundary, check: Can a single implementer complete this? If no, split by concern. Does it touch multiple unrelated concerns? If yes, split by concern. Will the agent need too much context? If yes, split into phases. Are you splitting just to have more units? If yes, merge back.
+- **The Right Size Test** — before finalizing a unit boundary, check: Can a single implementer complete this? If no, split by concern. Does it touch multiple unrelated concerns? If yes, split by concern. Will the agent need too much context? If yes, split into smaller coherent units. Are you splitting just to have more units? If yes, merge back.
 - **Right-sizing rules** — one agent type per unit (completable by a single implementer), one concern per unit (one layer, service, or component), context-appropriate (fits in model context with room for exploration), not over-fragmented (don't split what naturally belongs together).
 - **Per-unit verification discipline** — every unit includes its own observable done condition. Never a separate "verify" unit; keep tests with the code they test.
 - **Own the decisions** — decide granularity and unit boundaries autonomously. Ask the user only when two orderings are genuinely equally valid with different trade-offs; otherwise decide and move on.

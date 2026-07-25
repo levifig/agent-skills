@@ -3,7 +3,7 @@ package state
 import "github.com/levifig/loaf/internal/project"
 
 // Runtime is the minimal state-runtime boundary. SQLite storage, migrations,
-// and state commands build on this package in later SPEC-040 tasks.
+// and state commands build on this package.
 type Runtime struct {
 	root project.WorkingDirectory
 }

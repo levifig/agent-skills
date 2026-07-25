@@ -120,14 +120,14 @@ func SchemaMigrations() []SchemaMigration {
 }
 
 // journalFirstMigrationVersion is the schema version introduced by the
-// journal-first (SPEC-056) transformation. It is intentionally excluded from
+// journal-first transformation. It is intentionally excluded from
 // SchemaMigrations() so that opening a store does not auto-apply this
 // destructive migration; it runs only through the explicit journal-first
 // migrate command, which takes a mandatory pre-migration backup first.
 const journalFirstMigrationVersion = 10
 
-// JournalFirstMigration returns the destructive SPEC-056 journal-first
-// migration. It is applied explicitly (not on store open) and is recorded in
+// JournalFirstMigration returns the destructive journal-first migration. It is
+// applied explicitly (not on store open) and is recorded in
 // schema_migrations like any other migration.
 func JournalFirstMigration() SchemaMigration {
 	return SchemaMigration{
@@ -138,7 +138,7 @@ func JournalFirstMigration() SchemaMigration {
 }
 
 // CurrentSchemaVersion returns the highest auto-applied Go-owned migration
-// version. The journal-first migration (SPEC-056) remains intentionally
+// version. The journal-first migration remains intentionally
 // excluded from SchemaMigrations() so it never auto-applies on store open.
 func CurrentSchemaVersion() int {
 	migrations := SchemaMigrations()

@@ -20,7 +20,7 @@ const (
 	JournalFirstMigrationActionApply = "apply"
 )
 
-// JournalFirstMigrationResult reports the outcome of a journal-first (SPEC-056)
+// JournalFirstMigrationResult reports the outcome of a journal-first
 // migration run. Counts are measured across the whole global database because
 // the migration is schema-wide and touches every project's rows.
 type JournalFirstMigrationResult struct {

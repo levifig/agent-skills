@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -195,10 +196,239 @@ func TestCliReferenceCatalogsJournalFamily(t *testing.T) {
 	if !strings.Contains(body, "log, recent, search, show, context, export") {
 		t.Fatalf("%s missing the journal subcommand family in the command index", filepath.ToSlash(rel))
 	}
-	// Journal-first (SPEC-056): the session entity is gone; no session command
-	// should survive in the generated CLI reference.
+	// The journal is the supported conversation-continuity namespace; no retired
+	// lifecycle command should survive in the generated CLI reference.
 	if strings.Contains(body, "loaf session") {
 		t.Fatalf("%s still references the deleted `loaf session` namespace", filepath.ToSlash(rel))
+	}
+}
+
+func TestPlanningVocabularyConverged(t *testing.T) {
+	root := repoRoot(t)
+	cases := []struct {
+		rel       string
+		forbidden []string
+		required  []string
+	}{
+		{
+			rel: "AGENTS.md",
+			forbidden: []string{
+				"TRANSITIONAL:",
+				"Transition in progress — the Change model is landing.",
+				"until the conversion pass",
+				"spec-conversion-and-guidance-sweep",
+			},
+			required: []string{
+				"**New work is Change-first.**",
+				"Existing `SPEC-*` and task records remain supported compatibility surfaces",
+				"their continued support does not make them the default artifact for new work",
+			},
+		},
+		{
+			rel: "README.md",
+			forbidden: []string{
+				"**Spec-first pipeline**",
+				"## The Pipeline",
+				"PHASE 1:",
+				"PHASE 2:",
+				"PHASE 3:",
+				"### Phase 1:",
+				"### Phase 2:",
+				"### Phase 3:",
+			},
+			required: []string{
+				"**Change-first workflow**",
+				"## Workflow",
+				"### Explore and Shape",
+				"### Implement and Ship",
+				"### Preserve Learning",
+			},
+		},
+		{
+			rel: "docs/VISION.md",
+			forbidden: []string{
+				"Every change flows through a deliberate pipeline",
+				"Idea, Spec, Tasks, Code, Learnings",
+				"pipeline's three-artifact model",
+				"A pipeline that prevents scope creep",
+			},
+			required: []string{
+				"Ideas may be explored before `/shape` turns the chosen direction into a bounded Change.",
+				"Change artifacts and compatible task records keep intent and execution inspectable",
+				"Changes define the intended outcome, boundaries, and proof before implementation",
+			},
+		},
+		{
+			rel: "docs/STRATEGY.md",
+			forbidden: []string{
+				"## What Has Been Proven",
+				"24 specs shipped, 6 in progress.",
+				"1. **Journal continuity** (proven: SPEC-056",
+				"4. **Agent routing enforcement** (next: SPEC-022)",
+				"## What We Do Not Know Yet",
+			},
+			required: []string{
+				"## Proven Principles",
+				"**Continuity belongs to the project journal, not a session lifecycle.**",
+				"**Change-first workflow consistency.**",
+				"Existing spec and task records remain supported compatibility surfaces",
+				"## Open Questions",
+			},
+		},
+		{
+			rel: "docs/knowledge/task-system.md",
+			forbidden: []string{
+				"# Task System",
+				"Loaf implements a Shape Up-inspired task management system",
+				"## Pipeline",
+				"/shape → SPEC file",
+				"## Journal Model (SPEC-056)",
+				"One concern per task.",
+			},
+			required: []string{
+				"# Work Records",
+				"Loaf uses Change artifacts for new bounded work.",
+				"## Current Workflow",
+				"Primary bounded-work contract for new work",
+				"These identifiers document provenance, not current workflow instructions.",
+			},
+		},
+		{
+			rel: "docs/ARCHITECTURE.md",
+			forbidden: []string{
+				"### Stateful Runtime Migration (ADR-014)",
+				"The transition shape is a Go front controller",
+				"### Mode-Aware Skills (Linear-Native Mode, ADR-011)",
+				"The project journal is the **only** session-related structure (SPEC-056).",
+			},
+			required: []string{
+				"### Native Stateful Runtime (ADR-014)",
+				"ADR and SPEC identifiers cited in this document serve only as decision and work provenance.",
+				"### Work Records and Optional Linear Tasks (ADR-011)",
+				"## Change-First Execution Model",
+				"New bounded work uses a Change as its primary contract.",
+			},
+		},
+		{
+			rel:       ".github/workflows/release.yml",
+			forbidden: []string{"v2.0.0-dev.49"},
+			required:  []string{"Release tag to publish, for example v2.0.0"},
+		},
+		{
+			rel:       "content/skills/loaf-reference/SKILL.md",
+			forbidden: []string{"Markdown-to-native transition"},
+			required:  []string{"`transitional-tasks`", "Open task-board records retained for compatibility."},
+		},
+		{
+			rel: "content/skills/loaf-reference/references/command-routing.md",
+			forbidden: []string{
+				"TRANSITIONAL",
+				"conversion pass",
+				"spec-conversion-and-guidance-sweep",
+				"CLAUDE.md",
+			},
+			required: []string{
+				"Shape new bounded work",
+				"Start implementing new bounded work",
+				"Continue an existing task or spec record",
+				"`loaf task` and `loaf spec` remain supported for existing records",
+			},
+		},
+		{
+			rel:       "content/skills/orchestration/references/context-management.md",
+			forbidden: []string{"transitional tasks", "Markdown-to-native transition"},
+			required:  []string{"`transitional-tasks`", "Open task-board records retained for compatibility.", "Changes, task-board records, reports, ADRs, and commits"},
+		},
+		{
+			rel:       "content/skills/orchestration/references/parallel-agents.md",
+			forbidden: []string{"dependency-wave orchestration"},
+			required:  []string{"dependency-aware orchestration"},
+		},
+		{
+			rel:       "config/hooks.yaml",
+			forbidden: []string{"Journal-first (SPEC-056)", "active specs"},
+			required:  []string{"Journal-first continuity has no session entity", "Block tracked ephemeral Markdown and dangling references from retained spec records"},
+		},
+		{
+			rel:       "internal/state/journal_context.go",
+			forbidden: []string{"during U6", "open transitional task"},
+			// Split around the alignment padding: gofmt re-pads this block whenever a
+			// longer constant name joins it, and the padding is not the contract.
+			required: []string{"JournalContextLayerTasks", `= "transitional_tasks"`, `json:"transitional_tasks"`, "these keep existing callers source-compatible.", "open task-board record retained for compatibility"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.rel, func(t *testing.T) {
+			body := readTextFile(t, filepath.Join(root, filepath.FromSlash(tc.rel)))
+			for _, forbidden := range tc.forbidden {
+				if strings.Contains(body, forbidden) {
+					t.Fatalf("%s still contains leaked planning vocabulary %q", tc.rel, forbidden)
+				}
+			}
+			for _, required := range tc.required {
+				if !strings.Contains(body, required) {
+					t.Fatalf("%s missing semantic replacement %q", tc.rel, required)
+				}
+			}
+		})
+	}
+}
+
+func TestOperationalArtifactsUseSemanticFilenames(t *testing.T) {
+	root := repoRoot(t)
+	implementationUnitPrefix := regexp.MustCompile(`(?i)^u[0-9]+[-_]`)
+	developmentUnitFixtureLabel := regexp.MustCompile(`(?i)loaf-u[0-9]+`)
+	var filenameFailures []string
+	var fixtureFailures []string
+
+	for _, relRoot := range []string{"cli/scripts", "docs/changes", "internal"} {
+		walkRoot := filepath.Join(root, filepath.FromSlash(relRoot))
+		err := filepath.WalkDir(walkRoot, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			rel := relToRoot(t, root, path)
+			isResearchEvidence := relRoot == "docs/changes" && strings.Contains(filepath.ToSlash(rel), "/research/")
+			checkFilename := relRoot == "cli/scripts" || isResearchEvidence
+			checkFixtureContent := relRoot == "cli/scripts" || relRoot == "internal"
+			if !checkFilename && !checkFixtureContent {
+				return nil
+			}
+			if checkFilename && implementationUnitPrefix.MatchString(entry.Name()) {
+				filenameFailures = append(filenameFailures, rel)
+			}
+			if checkFixtureContent {
+				content, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				if developmentUnitFixtureLabel.Match(content) {
+					fixtureFailures = append(fixtureFailures, rel)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("WalkDir(%s) error = %v", walkRoot, err)
+		}
+	}
+
+	// Change contracts and historical SPEC/ADR provenance remain valid; only operational runners and retained research evidence must use semantic filenames.
+	sort.Strings(filenameFailures)
+	sort.Strings(fixtureFailures)
+	if len(filenameFailures) > 0 || len(fixtureFailures) > 0 {
+		var failures []string
+		if len(filenameFailures) > 0 {
+			failures = append(failures, "implementation-unit filename prefixes:\n"+strings.Join(filenameFailures, "\n"))
+		}
+		if len(fixtureFailures) > 0 {
+			failures = append(failures, "development-unit fixture labels:\n"+strings.Join(fixtureFailures, "\n"))
+		}
+		t.Fatalf("operational artifacts still expose planning vocabulary:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

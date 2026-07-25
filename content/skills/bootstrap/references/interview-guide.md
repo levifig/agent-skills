@@ -5,10 +5,10 @@ A structured interview framework for helping builders go from a vague idea to a 
 ## Contents
 - How This Guide Works
 - Framework Foundations
-- Phase 1: Excavation (The Spark)
-- Phase 2: Sharpening (The Shape)
-- Phase 3: Grounding (The Architecture)
-- Phase 4: Synthesis (The Documents)
+- Excavation (The Spark)
+- Sharpening (The Shape)
+- Grounding (The Architecture)
+- Synthesis (The Documents)
 - Adapting Interview Depth
 - Anti-Patterns
 - Transitioning to Document Drafting
@@ -17,16 +17,16 @@ A structured interview framework for helping builders go from a vague idea to a 
 
 This is a **builder interview**, not a user research interview. The interviewer (the agent) is helping the builder crystallize their own thinking -- not extracting requirements from a stakeholder. The builder has context, intuition, and taste that need to be surfaced, challenged, and structured.
 
-The interview flows through four phases, each producing progressively sharper artifacts:
+The interview flows through four sections, each producing progressively sharper artifacts:
 
-| Phase | Focus | Primary Output | Frameworks |
+| Section | Focus | Primary Output | Frameworks |
 |-------|-------|----------------|------------|
-| 1. Excavation | What exists, why it matters | Raw problem + context | Mom Test, JTBD, First Principles |
-| 2. Sharpening | Who, what, boundaries | Bounded scope + complexity | Shape Up, Lean Canvas, Design Sprint |
-| 3. Grounding | How, where, what evolves | Technical direction + landscape | Wardley Mapping, First Principles |
-| 4. Synthesis | Drafting documents | BRIEF, VISION, STRATEGY, ARCHITECTURE | All, integrated |
+| Excavation | What exists, why it matters | Raw problem + context | Mom Test, JTBD, First Principles |
+| Sharpening | Who, what, boundaries | Bounded scope + complexity | Shape Up, Lean Canvas, Design Sprint |
+| Grounding | How, where, what evolves | Technical direction + landscape | Wardley Mapping, First Principles |
+| Synthesis | Drafting documents | BRIEF, VISION, STRATEGY, ARCHITECTURE | All, integrated |
 
-Phases are not rigid walls. A strong answer in Phase 1 might skip half of Phase 2. A weak answer in Phase 2 might loop back to Phase 1. Follow the energy.
+Sections are not rigid walls. A strong answer in Excavation might skip half of Sharpening. A weak answer in Sharpening might loop back to Excavation. Follow the energy.
 
 ---
 
@@ -80,7 +80,7 @@ What each framework contributes and what to skip.
 
 **What to skip:** Customer interview logistics, meeting scheduling advice. The Mom Test is about question quality, not interview operations.
 
-**Connection to documents:** Informs the quality of every answer in every phase. The Mom Test isn't a phase -- it's a lens applied to ALL questioning. It keeps the interview honest.
+**Connection to documents:** Informs the quality of every answer in every section. The Mom Test isn't a section -- it's a lens applied to ALL questioning. It keeps the interview honest.
 
 ### Design Sprint - Understand Phase (Google Ventures)
 
@@ -120,7 +120,7 @@ What each framework contributes and what to skip.
 
 ---
 
-## Phase 1: Excavation (The Spark)
+## Excavation (The Spark)
 
 **Goal:** Understand what exists, why it matters, and whether the problem is real.
 
@@ -157,9 +157,9 @@ The builder's own experience with the problem is the richest source of insight. 
 - "Have you seen anyone spend money or significant time on this problem?" *(Mom Test: evidence of pain)*
 - "Is this problem getting worse or better over time? Why?" *(Wardley: movement awareness)*
 
-### Phase 1 Signals
+### Excavation Signals
 
-**Strong signal (move to Phase 2):** Builder can describe a specific person with a specific problem and knows what they do about it today.
+**Strong signal (move to Sharpening):** Builder can describe a specific person with a specific problem and knows what they do about it today.
 
 **Weak signal (dig deeper):** Builder describes a category ("developers need better tools") without specifics. Ask for a story: "Tell me about a specific moment when this problem was most painful."
 
@@ -167,13 +167,13 @@ The builder's own experience with the problem is the richest source of insight. 
 
 ---
 
-## Phase 2: Sharpening (The Shape)
+## Sharpening (The Shape)
 
 **Goal:** Define who this is for, what it does, and -- critically -- what it does NOT do. Set complexity and boundaries.
 
-**Mood:** Constructive pressure. Phase 1 was expansive; Phase 2 is reductive. The builder will want to include everything. Your job is to help them cut.
+**Mood:** Constructive pressure. Excavation was expansive; Sharpening is reductive. The builder will want to include everything. Your job is to help them cut.
 
-**Duration:** This is typically the longest phase. 8-12 questions for a fresh idea, 4-6 for an idea with an existing brief.
+**Duration:** This is typically the longest section. 8-12 questions for a fresh idea, 4-6 for an idea with an existing brief.
 
 ### Must-Ask Questions
 
@@ -210,17 +210,17 @@ Surface the riskiest assumptions. "Will users actually switch from their current
 - "How might we make [the hardest part] effortless?" *(Design Sprint: HMW)*
 - "What would definitely make this fail?" *(First Principles: inversion)*
 
-### Phase 2 Signals
+### Sharpening Signals
 
-**Strong signal (move to Phase 3):** Builder can state the job, the differentiator, and at least 3 no-gos. Complexity is sized.
+**Strong signal (move to Grounding):** Builder can state the job, the differentiator, and at least 3 no-gos. Complexity is sized.
 
 **Weak signal (iterate):** Builder keeps expanding scope. "It should also..." is a signal to tighten. Ask: "If you could only do ONE thing, what would it be?"
 
-**Red flag (loop back to Phase 1):** The "who" keeps shifting. If the user persona changes every other answer, the problem isn't defined yet. Go back to "Who has this problem?"
+**Red flag (loop back to Excavation):** The "who" keeps shifting. If the user persona changes every other answer, the problem isn't defined yet. Go back to "Who has this problem?"
 
 ---
 
-## Phase 3: Grounding (The Architecture)
+## Grounding (The Architecture)
 
 **Goal:** Establish technical direction, identify what to build vs. buy, and surface hidden complexity.
 
@@ -257,19 +257,19 @@ These become the rabbit holes in the spec. The builder often knows where the dra
 - "If you had to ship something in one week, what would you cut?" *(Shape Up: scope pressure test)*
 - "Are there regulatory, legal, or compliance considerations?" *(Often forgotten at 0-to-1)*
 
-### Phase 3 Signals
+### Grounding Signals
 
-**Strong signal (move to Phase 4):** Builder can trace a rough value chain, knows what's novel vs. commodity, and has identified the hard problems.
+**Strong signal (move to Synthesis):** Builder can trace a rough value chain, knows what's novel vs. commodity, and has identified the hard problems.
 
 **Weak signal (iterate):** Builder wants to build everything from scratch. Challenge: "What's the thing ONLY YOU can build? Build that. Use existing solutions for the rest."
 
-**Not applicable:** If the project is purely conceptual or non-technical at this stage, skip Phase 3 and note that ARCHITECTURE.md will be populated later when technical decisions are made.
+**Not applicable:** If the project is purely conceptual or non-technical at this stage, skip Grounding and note that ARCHITECTURE.md will be populated later when technical decisions are made.
 
 ---
 
-## Phase 4: Synthesis (The Documents)
+## Synthesis (The Documents)
 
-**Goal:** Transform interview insights into draft documents. This is NOT a phase of the interview -- it's the transition from interviewing to drafting.
+**Goal:** Transform interview insights into draft documents. This is NOT an interview section -- it's the transition from interviewing to drafting.
 
 **Mood:** Collaborative, iterative. The agent drafts, the builder reacts and refines.
 
@@ -319,11 +319,11 @@ Allow the builder to approve all remaining sections at once if they're satisfied
 
 ## Adapting Interview Depth
 
-The interview adapts to three contexts, per SPEC-013's mode detection:
+The interview adapts to three contexts based on the detected project mode:
 
 ### Greenfield + Empty (Full Interview)
 
-Run all four phases in full. The builder has minimal clarity and needs the most support. Expect 15-25 questions total across all phases. This is where the interview guide earns its keep.
+Run all four sections in full. The builder has minimal clarity and needs the most support. Expect 15-25 questions total across all sections. This is where the interview guide earns its keep.
 
 **Key adaptation:** Be patient. The builder may circle back, contradict themselves, or get stuck. That's normal. Let them think out loud. Silence after a question is productive, not awkward.
 
@@ -332,9 +332,9 @@ Run all four phases in full. The builder has minimal clarity and needs the most 
 Read and analyze the brief first. Then run a compressed interview that:
 - Confirms understanding ("Here's what I extracted -- is this right?")
 - Challenges assumptions ("Your brief says X, but have you considered Y?")
-- Fills gaps (which phases have missing information?)
+- Fills gaps (which sections have missing information?)
 
-Expect 8-12 questions total, concentrated in whichever phases the brief is weakest.
+Expect 8-12 questions total, concentrated in whichever sections the brief is weakest.
 
 **Key adaptation:** Don't re-ask what the brief already answers well. Quote the brief back and ask "Is this still accurate?" to confirm, then move to gaps.
 
@@ -345,7 +345,7 @@ The project exists. Code exists. Docs may exist. The interview focuses on:
 - What the builder wants to CHANGE (current pain, technical debt, strategic shifts)
 - What conventions and preferences exist but aren't documented
 
-Expect 6-10 questions total, mostly in Phases 1-2. Phase 3 is largely answered by the existing codebase.
+Expect 6-10 questions total, mostly in Excavation and Sharpening. Grounding is largely answered by the existing codebase.
 
 **Key adaptation:** Show the builder what you learned from their code. "I see a Python/FastAPI project with PostgreSQL and Docker. The test suite uses pytest. Is that the intended stack going forward?" Let the codebase speak first, then fill gaps.
 
@@ -361,13 +361,13 @@ Expect 6-10 questions total, mostly in Phases 1-2. Phase 3 is largely answered b
 
 **The Therapist.** "And how does that make you feel about your product?" No. This is a builder interview, not a feelings exploration. Emotions matter (JTBD switching forces), but ask about user emotions, not builder emotions.
 
-**Premature Architecture.** Jumping to "What database should we use?" in Phase 1. Technical decisions come after the problem and scope are clear. Architecture without clarity is random technology selection.
+**Premature Architecture.** Jumping to "What database should we use?" during Excavation. Technical decisions come after the problem and scope are clear. Architecture without clarity is random technology selection.
 
 **The Echo Chamber.** Reflecting back everything the builder says without challenging anything. The Mom Test exists because people are too polite. Be constructive, not agreeable. "That's a big scope. Are you sure you need ALL of that for v1?"
 
 **Solution-First Questioning.** "What features should it have?" is the wrong question. "What job does it do for the user?" is the right one. Features are an output of the interview, not an input.
 
-**Asking for Permission to Proceed.** Don't ask "Should we move to the next phase?" Just move when the signals are strong. If the builder has more to say, they'll say it.
+**Asking for Permission to Proceed.** Don't ask "Should we move to the next section?" Just move when the signals are strong. If the builder has more to say, they'll say it.
 
 **Over-Indexing on Frameworks.** Don't say "Let's do a JTBD analysis" or "Let me apply Wardley Mapping here." The frameworks are lenses for the interviewer, not vocabulary for the builder. Just ask good questions.
 
@@ -413,12 +413,12 @@ The bootstrap interview creates the foundation. Other skills deepen specific are
 
 ## Framework Attribution
 
-| Framework | Primary Contribution | Phase(s) |
+| Framework | Primary Contribution | Section(s) |
 |-----------|---------------------|----------|
-| Shape Up | Complexity sizing, no-gos, rabbit holes, pitch format | 2, 3 |
-| Jobs to Be Done | Job statements, switching forces, competing with non-consumption | 1, 2 |
-| Lean Canvas | Problem/UVP/unfair advantage triangle, existing alternatives | 1, 2 |
-| The Mom Test | Question quality lens, evidence of pain, past behavior over future prediction | All phases |
-| Design Sprint | Long-term goal, sprint questions, HMW reframing, journey mapping | 2, 3 |
-| Wardley Mapping | Value chain, evolution axis, build vs. buy, movement awareness | 3 |
-| First Principles | Assumption excavation, root cause questioning, inversion, real vs. perceived constraints | 1, 3 |
+| Shape Up | Complexity sizing, no-gos, rabbit holes, pitch format | Sharpening, Grounding |
+| Jobs to Be Done | Job statements, switching forces, competing with non-consumption | Excavation, Sharpening |
+| Lean Canvas | Problem/UVP/unfair advantage triangle, existing alternatives | Excavation, Sharpening |
+| The Mom Test | Question quality lens, evidence of pain, past behavior over future prediction | All sections |
+| Design Sprint | Long-term goal, sprint questions, HMW reframing, journey mapping | Sharpening, Grounding |
+| Wardley Mapping | Value chain, evolution axis, build vs. buy, movement awareness | Grounding |
+| First Principles | Assumption excavation, root cause questioning, inversion, real vs. perceived constraints | Excavation, Grounding |

@@ -454,6 +454,7 @@ func nativeCheckAdvisorySuffix(hook nativeBuildHook) string {
 
 var nativeClaudeBinaryPathHooks = map[string]bool{
 	"artifact-body-write":     true,
+	"artifact-names":          true,
 	"check-" + "sec" + "rets": true,
 	"ephemeral-provenance":    true,
 	"github-account":          true,

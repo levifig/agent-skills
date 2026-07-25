@@ -8,7 +8,7 @@ topics:
 covers:
   - internal/cli/kb.go
   - docs/knowledge/*.md
-last_reviewed: '2026-07-03'
+last_reviewed: '2026-07-14'
 ---
 
 # Knowledge Management Design
@@ -48,34 +48,35 @@ No AI coding tool does this today. The `covers:` field links knowledge to code p
 
 ## Growth Loops
 
-**Loop 1: Staleness → Review → Update.** Code edited → `covers:` match → agent nudged → reviews/updates → resets `last_reviewed`.
+**Staleness → Review → Update.** Code edited → `covers:` match → agent nudged → reviews or updates → resets `last_reviewed`.
 
-**Loop 2: Session → Consolidation → Knowledge.** Session ends → hook asks "learned anything?" → agent creates knowledge file → human reviews.
+**Conversation → Consolidation → Knowledge.** Before compaction or at an optional wrap → agent identifies durable learning → agent creates or updates a knowledge file → human reviews.
 
 ### Hook Scope (Extended Beyond Knowledge)
 
 **SessionStart hook** surfaces both knowledge health AND spark status:
-- "3 knowledge files relevant. 1 stale."
-- "5 unprocessed sparks across 2 brainstorm documents."
+- Relevant knowledge files and any stale coverage
+- Unprocessed sparks from exploration artifacts
 
 This reminds the agent that exploration artifacts exist and may need processing.
 
 **PreCompact hook and `/wrap`** prompt for both knowledge consolidation AND spark capture:
-- "You modified 3 paths covered by knowledge files. Any updates needed?"
+- "You modified paths covered by knowledge files. Any updates needed?"
 - "This conversation involved exploration. Any sparks worth noting?"
 
-Journal-first (SPEC-056) removed the SessionEnd hook, so this nudge lives at the PreCompact journal-flush point and in the voluntary `/wrap` checkpoint rather than a session-close event. If the conversation produced a brainstorm document, it reminds about the `## Sparks` section.
+There is no SessionEnd journal hook, so this nudge lives at the PreCompact journal-flush point and in the voluntary `/wrap` checkpoint rather than a conversation-close event. If the conversation produced a brainstorm document, it reminds about the `## Sparks` section.
 
-## The Original Problem (5 Overlapping Surfaces)
+## Memory Surface Boundary
 
-Knowledge accumulates across 5+ surfaces that don't coordinate:
-1. `docs/knowledge/` — structured domain knowledge
-2. `docs/decisions/` — immutable ADRs
-3. Claude Code `MEMORY.md` — cross-session AI context (drifts)
-4. Serena `.serena/memories/` — separate AI memory (goes stale)
-5. SQLite sessions + temporary draft context — temporary but may become permanent
+Knowledge can accumulate across surfaces that serve different owners:
 
-Same facts recorded in 2-3 places. Nothing triggers updates when code changes. Memory layers drift silently. The knowledge management system consolidates these into clear ownership (see Memory Surface Policy below).
+- `docs/knowledge/` holds structured project knowledge.
+- `docs/decisions/` holds immutable architectural decisions.
+- Personal agent memory holds user-level preferences and cross-project context.
+- The project journal holds durable events and optional synthesis.
+- Conversation context holds temporary working hypotheses.
+
+Do not duplicate the same fact across these surfaces. The knowledge management system assigns clear ownership and uses coverage metadata to surface potential drift.
 
 ## GridSight as Reference Implementation
 
@@ -103,21 +104,21 @@ QMD handles retrieval (collections, search, MCP). Loaf wraps QMD for setup + add
 canonical terms, aliases, candidate terms, and stabilization without moving
 glossary prose into the operational task/session index.
 
-## Three Knowledge Lifetimes
+## Knowledge Lifetimes
 
 ```
 PERSISTENT (this person)     — crosses all projects, grows over career
   └→ DURABLE (this project)  — lives in git, shared with team
-      └→ EPHEMERAL (this session) — lives in context window, dies at session end
+      └→ EPHEMERAL (this conversation) — lives in the context window
 ```
 
 | Lifetime | What | Where |
 |----------|------|-------|
 | **Persistent** | User preferences, expertise, patterns | `~/.config/claude/` (CLAUDE.md, PROFILE.md, memory/) |
 | **Durable** | Domain knowledge, conventions, decisions | `docs/knowledge/` + `docs/decisions/` + CLAUDE.md |
-| **Ephemeral** | Active task context, working hypotheses | SQLite sessions + conversation |
+| **Ephemeral** | Active work context, working hypotheses | Conversation context |
 
-Flow: persistent informs durable, durable informs ephemeral. Upward: session insights consolidate into durable knowledge, durable patterns graduate to persistent memory.
+Flow: persistent informs durable, durable informs ephemeral. Upward: conversation insights consolidate into durable knowledge, and durable patterns may graduate to persistent memory.
 
 ## Knowledge as Extended Agent Memory
 
@@ -130,12 +131,13 @@ The knowledge base is primarily for agents — it's their extended memory. This 
 | `docs/knowledge/` | Domain rules, contracts, architectural patterns, roadmap context |
 | `docs/decisions/` | Immutable ADRs |
 | `MEMORY.md` | User preferences, session pointers |
-| SQLite sessions | Ephemeral work context |
+| Project journal | Durable project events and optional synthesis |
+| Conversation context | Ephemeral work context |
 | Serena memories | **Deprecated for knowledge** — code analysis state only |
 
 **Serena:** Keep code intelligence tools (find_symbol, get_symbols_overview). Deprecate memory system for knowledge persistence — with knowledge files + MEMORY.md, Serena memories become a redundant third layer.
 
-## Growth Loop 3: Personal Knowledge Graduation
+## Personal Knowledge Graduation
 
 Personal knowledge grows through correction, not capture. When you say "don't use bare except clauses," that's a personal preference that applies everywhere — not just this project.
 
@@ -145,7 +147,7 @@ Per-project correction → repeated across N projects → pattern recognized →
 suggested promotion to global CLAUDE.md → user approves → permanent
 ```
 
-v1: convention + documentation only (no automation for cross-project pattern detection). The skill documents what belongs in global CLAUDE.md vs per-project memory. Future: cross-project pattern detection (Mem0 territory), personal knowledge Zettelkasten, expertise graph.
+This is a convention and documentation boundary, not an automated cross-project pattern detector. The skill documents what belongs in personal agent instructions versus project knowledge; promotion still requires user approval.
 
 ## The Boundary Test: What Goes Where
 

@@ -19,7 +19,7 @@ Patterns for keeping long work resumable while using the project journal as exte
 Compaction is normal in long workflows. Design work that spans many exchanges so important state is already outside chat context.
 
 1. **The journal is external memory.** Record decisions, discoveries, blockers, and next actions with `loaf journal log`.
-2. **Artifacts carry detail.** Changes, transitional tasks, reports, ADRs, and commits hold rich detail; journal entries point to them.
+2. **Artifacts carry detail.** Changes, task-board records, reports, ADRs, and commits hold rich detail; journal entries point to them.
 3. **Delegated work absorbs exploration.** Use delegated agents for broad investigation and return concise findings to the main context.
 4. **`wrap` captures synthesis.** When meaningful work holds intentions or abandoned paths worth saving, write an optional `wrap` journal entry.
 
@@ -36,7 +36,7 @@ Compaction is normal in long workflows. Design work that spans many exchanges so
 | `deferred-intent` | Open deferred-intent decision and spark pairs. |
 | `active-changes` | Git-derived active Change evidence and worktree state. |
 | `branch-recency` | Recent branch entries after entries already surfaced as active truth are removed. |
-| `transitional-tasks` | Open task-board records retained during the Markdown-to-native transition. |
+| `transitional-tasks` | Open task-board records retained for compatibility. |
 
 Each returned layer includes `source_available`, `available_count`, `shown_count`, `truncated`, and `expand_command`; paginated layers also include a cursor. Treat `source_available: false` as an explicit unavailable source, never as “nothing is active.” If Change discovery is unavailable, `active-changes` and `active-lineage` are unavailable and the digest carries a diagnostic.
 
@@ -60,7 +60,7 @@ Use `/clear` when starting a completely new task, after the previous task is com
 PreCompact:
 
 1. Flush unrecorded decisions, discoveries, blockers, and next actions with `loaf journal log`.
-2. Reference Changes, transitional tasks, reports, commits, and files by stable ID or path.
+2. Reference Changes, task-board records, reports, commits, and files by stable ID or path.
 3. On an exact target mode with supported PreCompact delivery, let the hook nudge the flush; otherwise flush manually before compacting.
 
 PostCompact:

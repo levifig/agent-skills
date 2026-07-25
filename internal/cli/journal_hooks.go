@@ -13,7 +13,7 @@ import (
 
 // journalHookInput is the harness hook payload read from stdin for journal
 // hooks (SessionStart, PreCompact, PostCompact, UserPromptSubmit, TaskCompleted,
-// and git/gh PostToolUse). Under the journal-first model (SPEC-056) there is no
+// and git/gh PostToolUse). Under the journal-first model there is no
 // session entity: the only lifecycle-relevant field is agent_id, which flags a
 // subagent invocation the hooks must silently ignore.
 type journalHookInput struct {

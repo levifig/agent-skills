@@ -39,7 +39,7 @@ func TestSessionModelConvergenceContentGuards(t *testing.T) {
 	}
 }
 
-// TestJournalFirstContentNamespaceConverged is the SPEC-056 Track 4 grep gate:
+// TestJournalFirstContentNamespaceConverged is the content namespace grep gate:
 // zero `loaf session` references across skills, agents, hooks, templates, and
 // docs source. The `loaf session` namespace was deleted with no alias, so any
 // surviving reference resolves to "unknown command." loaf-reference/SKILL.md is
@@ -63,7 +63,7 @@ func TestJournalFirstContentNamespaceConverged(t *testing.T) {
 }
 
 // TestJournalFirstHookSurfacesConverged asserts the hook definition and
-// generated hook artifacts carry no session-entity commands (SPEC-056 Track 3).
+// generated hook artifacts carry no session-entity commands.
 // Scope is deliberately limited to hook config surfaces; skill/template bodies
 // are covered by TestJournalFirstContentNamespaceConverged (Track 4).
 func TestJournalFirstHookSurfacesConverged(t *testing.T) {

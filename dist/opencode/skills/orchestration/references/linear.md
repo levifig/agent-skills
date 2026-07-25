@@ -103,7 +103,7 @@ In Linear-native mode (`integrations.linear.enabled: true`), each spec
 produces one parent **rollup issue** and N sub-issues under it.
 
 ```
-[SPEC-024] Agent framework alignment      ← parent, label: `spec`
+Agent framework alignment                ← parent, label: `change`
 ├── Split reviewer profile into reviewer/auditor  ← sub-issue, label: type/refactor
 ├── Harden MCP fallback path               ← sub-issue, label: type/feature
 └── Migrate legacy task references         ← sub-issue, label: type/refactor
@@ -127,8 +127,8 @@ researcher). Consolidate historical profile variants and add tool-boundary
 tests so profiles can't drift without a test failing.
 
 ## Context
-See `.agents/specs/SPEC-024-agent-framework-alignment.md` for full text,
-council references, rabbit holes, and strategic tensions.
+See the canonical change file in the repository for full text, council
+references, rabbit holes, and strategic tensions.
 
 ## Progress
 Sub-issues track execution.
@@ -213,7 +213,7 @@ None currently.
 |-------|---------|
 | `Working on API` | `- [ ] API implementation` |
 | `Done with schema` | `- [x] Schema updated` |
-| `Phase 1: Discovery` | `Discovery - COMPLETE` |
+| `Discovery: IN PROGRESS` | `Discovery: COMPLETE` |
 | `Journal entry: ...` | *(omit entirely)* |
 | `Council decision: ...` | *(omit entirely)* |
 | `Week 1 deliverables` | `Initial deliverables` |
@@ -373,6 +373,6 @@ Use `scripts/suggest-team.py "task desc"` to get suggestions.
 ### DON'T
 - Use emoji in progress lists
 - Reference local files (sessions, councils, plans)
-- Use phase/stage/week terminology
+- Use numbered development-stage terminology
 - Include absolute file paths
 - Duplicate issue titles after IDs

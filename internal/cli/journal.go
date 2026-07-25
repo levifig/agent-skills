@@ -14,7 +14,7 @@ import (
 	"github.com/levifig/loaf/internal/state"
 )
 
-// runJournal dispatches the project-scoped journal command namespace (SPEC-056).
+// runJournal dispatches the project-scoped journal command namespace.
 // The journal is the only session-related structure: entries are project events
 // tagged with an opaque harness_session_id correlation column.
 func (r Runner) runJournal(args []string, out io.Writer, runtime state.Runtime) error {
@@ -521,7 +521,7 @@ func (r Runner) runJournalSearch(args []string, out io.Writer, runtime state.Run
 	// Journal search queries only the journal_search FTS table joined to
 	// journal_entries. It never refreshes or scans the docs index, so a
 	// journal-only read cannot mutate docs state or fail on unrelated docs
-	// scanning (SPEC-056 M1).
+	// scanning.
 	result, err := state.SearchJournal(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.SearchOptions{
 		Query:       options.query,
 		AllProjects: options.allProjects,

@@ -2,72 +2,72 @@
 
 > "Why have just a slice when you can get the whole loaf?"
 
-Loaf is an opinionated agentic framework that gives AI coding assistants structured knowledge, enforced tool boundaries, and a complete pipeline from idea to implementation to learning. Write your skills once, deploy to Claude Code, OpenCode, Cursor, Codex, and Amp.
+Loaf is an opinionated agentic framework that gives AI coding assistants structured knowledge, enforced tool boundaries, and a coherent workflow from idea to implementation to learning. Write your skills once, deploy to Claude Code, OpenCode, Cursor, Codex, and Amp.
 
 ## Why Loaf?
 
-**Portable knowledge** — 33 skills (31 active, 2 deprecated) covering workflows, engineering standards, and language expertise. Build once, deploy to five AI coding tools without rewriting anything.
+**Portable knowledge** — Skills cover workflows, engineering standards, and language expertise. Build once, deploy to supported AI coding tools without rewriting anything.
 
 **Project journal model** — A single SQLite-backed journal captures decisions and progress across every conversation, project-scoped and correlated by an opaque harness id. There is no session entity to open or close, so concurrent conversations across branches and worktrees stay conflict-free. Handoff artifacts live separately in `.agents/handoffs/`. Work survives context loss, compaction, and `/clear`.
 
-**Spec-first pipeline** — Ideas are shaped into bounded specs before any code is written. Every change flows: Idea → Spec → Tasks → Code → Learnings. Nothing gets lost.
+**Change-first workflow** — Ideas may be explored before `/shape` creates a bounded Change in `docs/changes/YYYYMMDD-slug/change.md`. `loaf change check` validates the contract before implementation, review, and shipping.
 
-**Profile-based agents** — Three functional profiles defined by tool access, not job titles. A Smith with `python-development` skills becomes a backend engineer; the same Smith with `infrastructure-management` becomes a DevOps engineer. Skills determine what an agent knows; the profile determines what it can touch.
+**Profile-based agents** — Functional profiles are defined by tool access, not job titles. A Smith with `python-development` skills becomes a backend engineer; the same Smith with `infrastructure-management` becomes a DevOps engineer. Skills determine what an agent knows; the profile determines what it can touch.
 
-**Session continuity** — Pick up exactly where you left off with full traceability. The project journal captures decisions and progress in SQLite; a derived, ephemeral digest (latest wrap + recent branch entries + open tasks) is emitted at conversation start. Explicit transfer packets live in `.agents/handoffs/` until housekeeping deletes them after deprecation.
+**Conversation continuity** — Pick up exactly where you left off with full traceability. The project journal captures decisions and progress in SQLite; a derived, ephemeral digest (latest wrap + recent branch entries + open tasks) is emitted at conversation start. Explicit transfer packets live in `.agents/handoffs/` until housekeeping deletes them after deprecation.
 
 **Hooks as quality gates** — Two hook types: enforcement hooks (pre-commit secrets scanning, pre-push linting) block bad commits automatically; skill instruction hooks inject context at tool invocation time. Language-aware and automatic.
 
-## The Pipeline
+## Workflow
 
-Loaf's commands form a three-phase workflow that mirrors how good software gets built:
+Loaf keeps intent, implementation, and learning connected:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       PHASE 1: SHAPE                        │
+│                     EXPLORE AND SHAPE                       │
 │                                                             │
-│         /idea  →  /brainstorm  →  /shape  →  SPEC          │
+│           /idea or /brainstorm → /shape → Change            │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                       PHASE 2: BUILD                        │
+│                     IMPLEMENT AND SHIP                      │
 │                                                             │
-│       /breakdown  →  /implement  →  /ship  →  /release      │
+│                 /implement → review → /ship                 │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                       PHASE 3: LEARN                        │
+│                      PRESERVE LEARNING                      │
 │                                                             │
-│           /housekeeping  →  /reflect  →  /wrap              │
+│             journal · /reflect · optional /wrap             │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 1: Shape
+### Explore and Shape
 
-Transform raw ideas into implementable specs with clear boundaries.
+Explore uncertainty when useful, then create an implementable Change with explicit boundaries and verification.
 
 | Command | What It Does |
 |---------|--------------|
-| `/idea` | Quick capture of rough ideas into `.agents/ideas/` |
+| `/idea` | Quick capture of rough ideas for later evaluation |
 | `/brainstorm` | Deep exploration of a problem space |
-| `/shape` | Rigorous shaping into bounded spec (what's IN and OUT) |
+| `/shape` | Create `docs/changes/YYYYMMDD-slug/change.md` with a bounded product and implementation contract |
 | `/strategy` | Discover and document strategic direction |
 
-### Phase 2: Build
+### Implement and Ship
 
-Decompose specs into atomic tasks and execute with specialized agents.
+Implement a coherent Change through contained branches and pull requests, review the result, and land it deliberately.
 
 | Command | What It Does |
 |---------|--------------|
-| `/breakdown` | Split spec into agent-sized atomic tasks |
-| `/implement` | Execute tasks with orchestrated agent delegation |
+| `/breakdown` | Decompose existing spec or task records when that compatibility workflow is in use |
+| `/implement` | Execute a Change or compatible task/spec record with orchestrated agent delegation |
 | `/ship` | Review, verify, and land one PR |
 | `/release` | Publish a version from already-landed work |
 
-### Phase 3: Learn
+### Preserve Learning
 
 Integrate outcomes into strategic knowledge.
 
@@ -75,12 +75,12 @@ Integrate outcomes into strategic knowledge.
 |---------|--------------|
 | `/housekeeping` | Review and archive or delete lifecycle-complete artifacts |
 | `/reflect` | Integrate learnings into strategic documents |
-| `/handoff` | Package context for another agent, branch, task, or future session |
-| `/wrap` | Session summary: what shipped, what's pending, what's next |
+| `/handoff` | Package context for another agent, branch, task, or future conversation |
+| `/wrap` | Optional checkpoint for synthesis that is not otherwise derivable from the journal |
 
-### Pipeline Commands
+### Supporting Commands
 
-CLI commands that support the workflow pipeline:
+CLI commands that support the workflow:
 
 | Command | What It Does |
 |---------|--------------|
@@ -89,8 +89,9 @@ CLI commands that support the workflow pipeline:
 | `loaf config check` | Validate project config and installed Loaf-managed hooks |
 | `loaf check` | Run enforcement hooks manually |
 | `loaf project` | Manage durable project identity (show, rename, move) |
+| `loaf change` | Scaffold, validate, and inspect Change artifacts |
 | `loaf task` | Manage project tasks (list, show, update, archive) |
-| `loaf spec` | Manage spec lifecycle |
+| `loaf spec` | Manage existing spec records retained for compatibility |
 | `loaf kb` | Knowledge base management |
 | `loaf journal` | Project journal: log, recent, search, show, context, export |
 | `loaf housekeeping` | Review and archive agent artifacts |
@@ -98,7 +99,7 @@ CLI commands that support the workflow pipeline:
 
 ## Profiles
 
-Loaf uses four functional profiles defined by mechanically enforced tool boundaries — not role titles, not domain labels. What an agent *can do* is fixed by its profile. What it *knows* comes from skills loaded at spawn time.
+Loaf uses functional profiles defined by mechanically enforced tool boundaries — not role titles, not domain labels. What an agent *can do* is fixed by its profile. What it *knows* comes from skills loaded at spawn time.
 
 | Profile | Role | Tool Access | What It Does |
 |---------|------|-------------|--------------|
@@ -107,7 +108,7 @@ Loaf uses four functional profiles defined by mechanically enforced tool boundar
 | **Ranger** | Researcher | Read + web | Scouts far, gathers intelligence, reports structured findings. |
 | **Librarian** | Librarian | Read + Edit (.agents/) | Tends the project journal and durable `.agents/` artifacts, including wrap checkpoints. Does not forge code or scout. |
 
-The main session is the **Warden** — it coordinates and delegates but never implements directly. See [SOUL.md](.agents/SOUL.md) for the full fellowship identity.
+The main conversation is the **Warden** — it coordinates and delegates but never implements directly. See [SOUL.md](.agents/SOUL.md) for the full fellowship identity.
 
 ## Skills
 
@@ -117,9 +118,9 @@ Skills you invoke directly to drive work forward.
 
 | Skill | Activates When |
 |-------|----------------|
-| `shape` | Shaping ideas into bounded specs |
-| `breakdown` | Decomposing specs into atomic tasks |
-| `implement` | Starting task or spec implementation |
+| `shape` | Shaping ideas into bounded Changes |
+| `breakdown` | Decomposing existing compatible spec/task records |
+| `implement` | Implementing a Change or compatible task/spec record |
 | `ship` | Reviewing, verifying, and landing one PR |
 | `release` | Publishing a version from already-landed work |
 | `brainstorm` | Deep exploration of a problem space |
@@ -183,8 +184,6 @@ Build once, deploy everywhere. Skills are the universal layer; profiles and hook
 | Cursor | ✓ | ✓ | ✓ | Full support |
 | Codex | — | ✓ | Fallback | Skills + opt-in basic command policy |
 | Amp | — | ✓ | — | Skills + runtime plugin |
-
-*Note: `council-session` skill renamed to `council` for consistency. Removed skills: `resume-session`, `reference-session`.*
 
 ## Getting Started
 

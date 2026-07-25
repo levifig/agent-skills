@@ -74,7 +74,7 @@ type JournalContext struct {
 	Diagnostics            []JournalContextDiagnostic     `json:"diagnostics"`
 
 	// Deprecated compatibility fields. The v2 CLI should consume the named
-	// layers above; these keep existing callers source-compatible during U6.
+	// layers above; these keep existing callers source-compatible.
 	LatestWrap    *JournalEntryRecord  `json:"-"`
 	BranchEntries []JournalEntryRecord `json:"-"`
 	OpenTasks     []JournalContextTask `json:"-"`
@@ -214,7 +214,7 @@ type JournalContextTaskLayer struct {
 	Items          []JournalContextTask `json:"items"`
 }
 
-// JournalContextTask is an open transitional task surfaced in continuity.
+// JournalContextTask is an open task-board record retained for compatibility.
 type JournalContextTask struct {
 	Ref      string `json:"ref"`
 	Title    string `json:"title"`

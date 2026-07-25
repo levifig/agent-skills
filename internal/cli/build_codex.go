@@ -15,6 +15,7 @@ import (
 
 var codexEnforcementHooks = map[string]bool{
 	"artifact-body-write":     true,
+	"artifact-names":          true,
 	"check-" + "sec" + "rets": true,
 	"github-account":          true,
 	"render-drift":            true,

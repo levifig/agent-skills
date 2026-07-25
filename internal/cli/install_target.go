@@ -32,7 +32,7 @@ var legacyLoafHookSignatures = map[string]bool{
 	"command:loaf check --hook validate-commit|matcher:Bash|if:":                              true,
 	"command:loaf task refresh|matcher:Edit|Write|if:":                                        true,
 	"command:bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh|matcher:Edit|Write|if:": true,
-	// Journal-first hook signatures (SPEC-056).
+	// Journal-first hook signatures.
 	"command:loaf journal log --detect-linear|matcher:Bash|if:":                 true,
 	"command:loaf journal log --from-hook|matcher:Bash|if:Bash(git commit:*)":   true,
 	"command:loaf journal log --from-hook|matcher:Bash|if:Bash(gh pr create:*)": true,

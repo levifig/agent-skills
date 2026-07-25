@@ -40,7 +40,7 @@ The Loaf operating manual for agents: how to discover commands, diagnose project
 | `deferred-intent` | Open deferred-intent decision and spark pairs. |
 | `active-changes` | Git-derived active Change evidence and worktree state. |
 | `branch-recency` | Recent entries on the selected branch after entries already surfaced as active truth are removed. |
-| `transitional-tasks` | Open task-board records during the Markdown-to-native transition. |
+| `transitional-tasks` | Open task-board records retained for compatibility. |
 
 Each layer reports `source_available`, `available_count`, `shown_count`, `truncated`, and an exact `expand_command`; paginated layers also return a cursor. `source_available: false` means the source could not be derived and is not an empty result. In particular, an unavailable Change source marks both `active-changes` and `active-lineage` unavailable and emits a diagnostic.
 
