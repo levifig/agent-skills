@@ -27,7 +27,7 @@ write a new file rather than updating an existing one.
 |-------|----------|-------|
 | `title` | Yes | One-line description of the deepening, not the candidate name |
 | `created` | Yes | ISO 8601 UTC, e.g. `2026-05-02T01:30:00Z` (must match the filename timestamp) |
-| `status` | Yes | `drafting` on first write — lifecycle states are deferred to a follow-up spec |
+| `status` | Yes | `drafting` on first write; this template does not define additional lifecycle states |
 | `spec` | Yes | `SPEC-NNN` if the plan is scoped under a spec; `null` otherwise (do not omit the key) |
 | `related` | No | List of related artifact IDs (`ADR-*`, `SPEC-*`, idea filenames, other plan filenames) |
 
@@ -36,8 +36,7 @@ identity, mirroring councils and ideas.
 
 ## Required Sections
 
-The five sections below are the *minimal shape* defined in SPEC-034. Order is
-load-bearing: each section assumes the previous one is settled. Do not reorder.
+The five sections below are the *minimal shape* for a PLAN. Order is load-bearing: each section assumes the previous one is settled. Do not reorder.
 
 1. **Candidate** — what's being considered for deepening. Name the **module**
    verbatim (use the canonical glossary term — run `loaf kb glossary check`
@@ -111,14 +110,12 @@ proportional to actual usage, matching how `.agents/specs/` behaves.
 
 ## Linear-Native Mode: Fail Fast
 
-PLAN files are **local-only storage**. Per SPEC-034 line 81, write commands
-must fail fast in Linear-native mode rather than silently degrade. The
-consuming skill (`/loaf:refactor-deepen`) is responsible for:
+PLAN files are **local-only storage**. Write commands must fail fast in Linear-native mode rather than silently degrade. The consuming skill (`/loaf:refactor-deepen`) is responsible for:
 
 1. Reading `.agents/loaf.json` and checking `integrations.linear.enabled`.
 2. If true: aborting before `mkdir -p .agents/plans` and before any write,
    with the verbatim error
-   `"Linear-native plan storage pending artifact-taxonomy spec — local mode only for now."`
+   `"Linear-native plan storage unavailable — continuing with a read-only report."`
 3. If false: proceeding with the write as documented above.
 
 This template intentionally does **not** wrap the write in a

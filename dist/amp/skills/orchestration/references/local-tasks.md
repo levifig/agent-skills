@@ -167,7 +167,7 @@ project journal (`loaf journal recent`, `loaf journal search`).
 
 1. Can a single specialized agent complete this? → If no, split by agent type
 2. Does it touch multiple unrelated concerns? → If yes, split by concern
-3. Will the agent need too much context? → If yes, split into phases
+3. Will the agent need too much context? → If yes, split into smaller coherent units
 4. Am I splitting just to have more tasks? → If yes, merge back
 
 ### Agent Scope

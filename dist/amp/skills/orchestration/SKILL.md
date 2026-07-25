@@ -18,7 +18,7 @@ version: 2.0.0-alpha.13
 - Philosophy
 - Configuration
 - Artifact Locations
-- Three-Phase Workflow
+- Workflow by Lifecycle
 
 Comprehensive patterns for orchestration: coordinating multi-agent work, keeping the project journal current, running councils, delegating to specialized agents, and integrating with Linear.
 
@@ -130,7 +130,7 @@ This skill uses paths from `.agents/loaf.json`:
 
 **Rule:** Agents write artifacts to disk, orchestrator reasons over artifacts, users retrieve from disk.
 
-## Three-Phase Workflow
+## Workflow by Lifecycle
 
 ### BEFORE (Planning)
 - Create/check external issue (Linear, GitHub)

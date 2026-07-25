@@ -114,7 +114,7 @@
       "kind": "plugin",
       "source_path": "plugins/hooks.ts",
       "destination": "plugins/hooks.ts",
-      "sha256": "b345ff7ec631d30f009c96d1d3161ba731fa57352a153e71bdf95583640c25e6",
+      "sha256": "3aaf803762a52b541ef7ddac008ff87bba20ac5a7ed3940d8018abe610f84873",
       "mode": 420
     }
   ]

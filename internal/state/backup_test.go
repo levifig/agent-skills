@@ -199,7 +199,7 @@ func TestBackupWithDestinationValidatesExplicitDirectory(t *testing.T) {
 		})
 	}
 	volatileRoot := t.TempDir()
-	volatilePath := filepath.Join(volatileRoot, "loaf-u4-volatile")
+	volatilePath := filepath.Join(volatileRoot, "backup-test-volatile")
 	_, err := backupWithDestination(ctx, root, resolver, volatilePath, &backupOperations{volatileRoots: []string{volatileRoot}})
 	var volatileErr *BackupDestinationError
 	if !errors.As(err, &volatileErr) || volatileErr.Code != BackupDestinationVolatileCode {
@@ -217,26 +217,26 @@ func TestBackupWithDestinationValidatesExplicitDirectory(t *testing.T) {
 }
 
 func TestVolatileRootInventoryUsesCurrentPlatformAndDurableControl(t *testing.T) {
-	probe := filepath.Join(os.TempDir(), "loaf-u4-classification-probe")
+	probe := filepath.Join(os.TempDir(), "backup-test-classification-probe")
 	if !pathWithinVolatileRoot(probe) {
 		t.Fatalf("default volatile roots do not classify %q", probe)
 	}
 	switch runtime.GOOS {
 	case "linux":
 		for _, root := range []string{"/dev/shm", "/run/user", "/run/lock", "/run/shm"} {
-			if !pathWithinVolatileRoots(filepath.Join(root, "loaf-u4-probe"), []string{root}) {
+			if !pathWithinVolatileRoots(filepath.Join(root, "backup-test-probe"), []string{root}) {
 				t.Fatalf("Linux volatile root %q was not classified", root)
 			}
 		}
-		if !pathWithinVolatileRoots("/var/run/loaf-u4-probe", nil) {
+		if !pathWithinVolatileRoots("/var/run/backup-test-probe", nil) {
 			t.Fatal("Linux legacy /var/run runtime namespace was not classified")
 		}
-		if pathWithinVolatileRoots("/run/media/loaf-u4-probe", []string{"/run/user", "/run/lock", "/run/shm"}) {
+		if pathWithinVolatileRoots("/run/media/backup-test-probe", []string{"/run/user", "/run/lock", "/run/shm"}) {
 			t.Fatal("Linux durable /run/media control was over-classified as volatile")
 		}
 	case "darwin":
 		for _, root := range []string{"/var/folders", "/private/var/folders"} {
-			if _, err := os.Stat(root); err == nil && !pathWithinVolatileRoot(filepath.Join(root, "loaf-u4-probe")) {
+			if _, err := os.Stat(root); err == nil && !pathWithinVolatileRoot(filepath.Join(root, "backup-test-probe")) {
 				t.Fatalf("Darwin volatile root %q was not classified", root)
 			}
 		}
@@ -297,13 +297,13 @@ func TestBackupWithDestinationRejectsVolatileSymlinkBeforeCreatingTail(t *testin
 	if err := os.Symlink(volatileTarget, link); err != nil {
 		t.Fatalf("Symlink() error = %v", err)
 	}
-	tail := filepath.Join(link, "loaf-u4-must-not-create")
+	tail := filepath.Join(link, "backup-test-must-not-create")
 	_, err := backupWithDestination(ctx, root, resolver, tail, &backupOperations{volatileRoots: []string{volatileTarget}})
 	var destinationErr *BackupDestinationError
 	if !errors.As(err, &destinationErr) || destinationErr.Code != BackupDestinationVolatileCode {
 		t.Fatalf("volatile symlink error = %v, want code %q", err, BackupDestinationVolatileCode)
 	}
-	if _, err := os.Stat(filepath.Join(volatileTarget, "loaf-u4-must-not-create")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(volatileTarget, "backup-test-must-not-create")); !os.IsNotExist(err) {
 		t.Fatalf("volatile tail stat error = %v, want no directory created", err)
 	}
 }

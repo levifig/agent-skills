@@ -868,4 +868,3 @@ func hasDoctorFencedSection(path string) bool {
 	text := string(body)
 	return strings.Contains(text, "<!-- loaf:managed:start") && strings.Contains(text, "<!-- loaf:managed:end -->")
 }
-

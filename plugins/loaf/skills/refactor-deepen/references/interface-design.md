@@ -1,6 +1,6 @@
 # Interface Design — Parallel Sub-Agent Pattern
 
-The INTERFACE-DESIGN phase of `/loaf:refactor-deepen` proposes the public surface
+The Interface Design activity of `/loaf:refactor-deepen` proposes the public surface
 of a deepened module by sampling three independent design attempts and
 presenting all three to the user. Variety must come from sampling, not from
 manufactured opposition.
@@ -31,10 +31,8 @@ optimizes for minimalism, Agent 2 for flexibility, Agent 3 for the
 common-caller path. That choice is reasonable when the agents are
 domain-agnostic and the orchestrator wants guaranteed surface variety.
 
-Loaf rejects that choice. The decision is captured in
-[SPEC-034](../../../../.agents/specs/SPEC-034-refactor-deepen-grilling-glossary.md),
-specifically in the Rabbit Holes and No-Gos sections (lines 96 and 107). The
-short version: priming manufactures diversity rather than letting it emerge,
+Loaf rejects that choice. The active rule is to use identical briefs: priming
+manufactures diversity rather than letting it emerge,
 and manufactured diversity is dishonest signal. If the three designs do
 converge, the response is more agents or rerun — not priming. See
 [Convergence Fallback](#convergence-fallback) below.
@@ -71,7 +69,7 @@ Three reasons, in order of importance:
 
 2. **No dominant lens upfront.** Picking which constraint each agent
    optimizes for is itself a design decision. Doing it pre-grilling biases
-   the entire phase toward whatever lens the orchestrator happened to
+   the entire activity toward whatever lens the orchestrator happened to
    pick. Loaf's grilling protocol is supposed to surface tradeoffs from
    the codebase and the user, not from the orchestrator's pre-commitments.
 
@@ -91,7 +89,7 @@ Justification:
   researcher contract: "Return findings as structured reports: summary,
   options (ranked with trade-offs), evidence sources, and a
   recommendation." See [content/agents/researcher.md](../../../agents/researcher.md).
-- Read-only access matches the phase's purpose. The INTERFACE-DESIGN phase
+- Read-only access matches the activity's purpose. Interface Design
   proposes designs; it does not implement them. Granting write access
   invites scope creep into "let me just sketch the implementation" and
   pollutes the parallel sampling.
@@ -102,14 +100,14 @@ Justification:
 
 ### When `implementer` Could Be an Alternative
 
-If the design phase needs to write probe code — a quick spike to verify
+If the design activity needs to write probe code — a quick spike to verify
 that a proposed interface compiles against the existing call sites, for
 example — the `implementer` profile becomes viable. See
 [content/agents/implementer.md](../../../agents/implementer.md).
 
 The default remains `researcher` because:
 
-- Probe code at this phase is rarely necessary; the deepening review
+- Probe code during this activity is rarely necessary; the deepening review
   catches most fatal interface mistakes before code is written.
 - Three implementers writing probe code in parallel risks three divergent
   partial implementations of the same module — a merge problem the user
@@ -162,7 +160,7 @@ Inside the grilling loop, after dependency classification, only when:
 
 If the interface is obvious from the dependency category and the call
 sites — for example, a thin adapter over a true-external dependency —
-skip the parallel phase. A single proposed interface is enough.
+skip parallel exploration. A single proposed interface is enough.
 
 ## Convergence Fallback
 
@@ -172,7 +170,7 @@ implementation strategy, same tradeoffs. Two cases:
 1. **Convergence is real.** The problem has a single best answer. Accept
    the convergence as a genuine finding and proceed to the PLAN with that
    single design. Note in the PLAN's "rejected alternatives" section that
-   the parallel phase produced no meaningful variation.
+   parallel exploration produced no meaningful variation.
 
 2. **Convergence feels accidental.** The designs are suspiciously
    similar, the user senses a missed branch, or the briefing was so
@@ -226,7 +224,7 @@ escalates on its own.
 
 ## Cost Note
 
-A single invocation of the parallel phase is approximately **3 ×
+A single invocation of parallel exploration is approximately **3 ×
 deep-exploration cost** in tokens — three sub-agents each running a full
 design pass against the same context. With more-agents escalation, the
 cost scales linearly (4 agents = ~4 ×, 5 agents = ~5 ×).
@@ -235,10 +233,10 @@ This pattern is **opt-in inside the grilling loop**. It is not
 auto-triggered on every `/loaf:refactor-deepen` invocation. The 3-agent default
 is the cost ceiling for the default settings — the skill does not scale
 agent count silently. If a candidate's interface is obvious, skip the
-phase entirely and propose a single design.
+activity entirely and propose a single design.
 
 The cost is an explicit tradeoff the user accepts when they enter the
-INTERFACE-DESIGN phase for a non-obvious interface. The skill should
+Interface Design activity for a non-obvious interface. The skill should
 surface the cost briefly before spawning:
 
 > Spawning 3 design agents in parallel (~3 × token cost). Proceed?
@@ -265,7 +263,7 @@ After the three sub-agents return:
 | Don't | Do Instead |
 |-------|------------|
 | Prime agents with opposing constraints by default | Use identical briefs; let sampling produce variety |
-| Auto-trigger the parallel phase on every invocation | Invoke only when interface is non-obvious |
+| Auto-trigger parallel exploration on every invocation | Invoke only when interface is non-obvious |
 | Use `implementer` profile for design sub-agents | Use `researcher`; switch to `implementer` only on explicit user request |
 | Add a "lens" to the brief silently | Surface the tradeoff to the user before priming |
 | Pre-rank the three designs in the output | Present in arbitrary order, let the user pick |
@@ -283,6 +281,3 @@ After the three sub-agents return:
   agent profile for design sub-agents
 - [content/agents/implementer.md](../../../agents/implementer.md) —
   Alternative profile when probe code is needed
-- [SPEC-034](../../../../.agents/specs/SPEC-034-refactor-deepen-grilling-glossary.md)
-  — The shape decision (lines 64, 96, 107, 117) that established the
-  identical-brief default

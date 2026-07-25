@@ -4,8 +4,7 @@ Guidelines for maintaining and extending Loaf - An Opinionated Agentic Framework
 
 See [README.md](README.md) for what Loaf is and how to install it.
 
-<!-- TRANSITIONAL: remove with spec-conversion-and-guidance-sweep (grep-gated by its convergence check) -->
-> **Transition in progress — the Change model is landing.** New work is shaped as a Change: `/shape` → `docs/changes/YYYYMMDD-slug/change.md`, validated by `loaf change check` (see `loaf change --help`). The contract lives in `docs/changes/20260704-shape-first-change-workflow/change.md`. Existing `SPEC-*` work continues under `loaf spec`/`loaf task` until the conversion pass; skill guidance below that still reads "spec-first" predates the sweep and loses to this note.
+> **New work is Change-first.** `/shape` creates `docs/changes/YYYYMMDD-slug/change.md`, and `loaf change check` validates its structure and derived executability (see `loaf change --help`). Existing `SPEC-*` and task records remain supported compatibility surfaces under `loaf spec` and `loaf task` until they are deliberately converted; their continued support does not make them the default artifact for new work.
 
 ## Quick Start
 
@@ -119,6 +118,22 @@ Use domain-focused names in gerund or noun-phrase form:
 - Max 64 characters
 - No reserved words: `anthropic`, `claude`
 - Directory name must match `name` field
+
+### Artifact Names Never Cite Their Work Unit
+
+Artifacts are named for what they are, never for the work unit that produced them. Reference runs one way: a Change, spec, task, or issue points at its artifacts; an artifact never points back. The containing directory already supplies the provenance, so a work identity in the filename is both redundant and doomed — it has to be renamed to stay true, and the number outlives everyone's memory of what it meant.
+
+| Instead of | Write |
+|------------|-------|
+| `research/u8-target-capability-survey.md` | `research/target-capability-survey.md` |
+| `cli/scripts/u8-codex-smoke.mjs` | `cli/scripts/smoke-codex-startup.mjs` |
+| `reports/report-spec-053-signoff.md` | `reports/taxonomy-signoff.md` |
+
+Record provenance in a front-matter field such as `source:` instead, where it is readable and updatable.
+
+These are identity rather than citation and stay as they are: a **version** (`claude-code-2.1.218-plugin-startup-smoke.json`), a **timestamp** (`20260620-214448-skills-audit.md`), and a numbered record inside the directory that owns it (`.agents/specs/SPEC-042-slug.md`, `docs/decisions/ADR-007-slug.md`).
+
+`loaf check --hook artifact-names` enforces this at commit. It judges tracked paths only, matches artifact directories by basename so relocating them needs no change, and grandfathers artifacts already marked `final` or `archived`.
 
 ### SKILL.md Structure
 

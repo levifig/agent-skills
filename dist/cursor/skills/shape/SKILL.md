@@ -164,3 +164,7 @@ Offer to push the branch and open a draft PR, using [the PR template](templates/
 | Decomposition | [references/decomposition.md](references/decomposition.md) | Sizing and ordering Implementation Units |
 | CLI boundary | [references/cli-boundary.md](references/cli-boundary.md) | Reading `loaf change init`/`check` output, or explaining `--require-executable` |
 | Critique Gate | [references/critique-gate.md](references/critique-gate.md) | Self-challenging scope and boundaries before finalizing |
+
+## Artifact Naming
+
+Name every artifact you create for what it is, never for the work unit that produced it: the containing directory or Change already records that provenance. Put the source in a front-matter field, not the filename. Versions and timestamps are identity and stay. See the `foundations` skill for the full rule; `loaf check --hook artifact-names` enforces it at commit.

@@ -32,7 +32,7 @@ type DurableRenderDocument struct {
 // environments, so emitting it would make the same logical spec render to
 // different bytes depending on where the state database lives. Committed durable
 // renders must contain only reproducible content so CI can re-render against a
-// fresh database in any location (SPEC-044).
+// fresh database in any location.
 func DurableSpecRenderDocument(spec SpecDetail) DurableRenderDocument {
 	fields := []DurableRenderField{
 		{Key: "id", Value: firstNonEmpty(spec.Alias, spec.ID)},

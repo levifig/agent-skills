@@ -6,8 +6,9 @@ Which command a task needs. For exact flags, run `loaf <command> --help`.
 
 | Intent | Route |
 |--------|-------|
-| Shape new work | `loaf change init <slug>`, then `loaf change check` |
-| Start working on a task | the implement workflow (/implement); `loaf task`/`loaf spec` stay transitional until the conversion pass — see the TRANSITIONAL note in AGENTS.md |
+| Shape new bounded work | `loaf change init <slug>`, then `loaf change check` |
+| Start implementing new bounded work | the implement workflow (/implement) after shaping and validating its Change |
+| Continue an existing task or spec record | `loaf task` and `loaf spec` remain supported for existing records |
 | Continue after a restart | `loaf journal context` |
 | Skills or content changed | `loaf build && loaf install --to <target>` |
 | See what is in progress | `loaf task list --active` |

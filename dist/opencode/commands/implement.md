@@ -91,9 +91,9 @@ Parse `$ARGUMENTS` to determine the work type:
 | Input Pattern | Type | Action |
 |---------------|------|--------|
 | `TASK-XXX` | Local task | Load via `loaf task show`, log the task coupling |
-| `SPEC-XXX` | Spec orchestration | If spec frontmatter has `linear_parent`, resolve to that Linear parent and follow Linear-Native Routing. Otherwise resolve local tasks and build dependency waves |
-| `TASK-XXX..YYY` | Task range | Expand range, build dependency waves |
-| `TASK-XXX,YYY,ZZZ` | Task list | Parse list, build dependency waves |
+| `SPEC-XXX` | Spec orchestration | If spec frontmatter has `linear_parent`, resolve to that Linear parent and follow Linear-Native Routing. Otherwise resolve local tasks and build dependency-ready rounds |
+| `TASK-XXX..YYY` | Task range | Expand range, build dependency-ready rounds |
+| `TASK-XXX,YYY,ZZZ` | Task list | Parse list, build dependency-ready rounds |
 | `PLT-123`, `ENG-198`, `PROJ-123` | Linear issue | **If `integrations.linear.enabled` is `true`:** fetch via `get_issue`, then branch on parent vs sub-issue — see [Linear-Native Routing](#linear-native-routing). **Otherwise:** treat as label text or create local task |
 | Description text | Ad-hoc | Auto-create local task from description, then fall through to task-coupled flow |
 
@@ -345,7 +345,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Batch Orchestration | [batch-orchestration.md](../skills/implement/references/batch-orchestration.md) | Running specs, task ranges, or task lists with dependency waves |
+| Batch Orchestration | [batch-orchestration.md](../skills/implement/references/batch-orchestration.md) | Running specs, task ranges, or task lists with dependency-ready rounds |
 | Branch and Completion | [branch-and-completion.md](../skills/implement/references/branch-and-completion.md) | Branch management, team routing, diagrams, Linear sync, journaling, task completion |
 
 ---

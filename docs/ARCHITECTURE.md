@@ -37,20 +37,20 @@ Each target transformer reads content (skills/agents/hooks) and config, then pro
 
 The public runtime and CLI reference generation are native Go. Remaining non-Go files under `cli/` are JavaScript launcher/build/smoke/evaluation scripts, not TypeScript command implementations or tests.
 
-### Stateful Runtime Migration (ADR-014)
+### Native Stateful Runtime (ADR-014)
 
-ADR-014 accepts Go as the runtime direction for Loaf's stateful core. Native Go is now the shipped public runtime; TypeScript command registrations, the shipped fallback bundle, and the local TypeScript test harness have been removed from the active CLI surface.
+ADR-014 records the decision to use Go for Loaf's stateful core. Native Go is the shipped public runtime; TypeScript command registrations, the fallback bundle, and the TypeScript test harness are no longer part of the active CLI surface.
 
-The transition shape is a Go front controller for the public `loaf` command:
+The public command has one native runtime:
 
 ```
-loaf                     # Go front controller
-└── native Go commands    # stateful/runtime-heavy behavior and migrated public commands
+loaf                     # Native Go command surface
+└── command families       # Stateful operations, build/install, checks, and project workflows
 ```
 
-The former TypeScript bridge prevented a big-bang rewrite. Public commands have moved to Go for the stateful runtime, storage layer, and lower-dependency distribution shape. Historical ADRs still describe the transition, but the active `cli/` tree no longer contains TypeScript source or test files.
+Historical decision records describe how the runtime moved, but the active `cli/` tree contains only JavaScript launcher, build, verification, smoke, and evaluation scripts. It does not contain TypeScript command source or tests.
 
-This changes the construction technique, not the product contract: skills still call `loaf`, hooks still enforce through `loaf`, and users still see one command surface. The implementation boundary behind that command is allowed to migrate command-by-command.
+Skills call `loaf`, hooks enforce through `loaf`, and users see one command surface. ADR and SPEC identifiers cited in this document serve only as decision and work provenance.
 
 ### Operational State Identity
 
@@ -85,7 +85,7 @@ Amp's plugin API is intentionally minimal. Plugin handlers are dispatched via `h
 
 There is no session-lifecycle dispatch. Amp's binary internally emits `emitEvent("session.start", ...)` for telemetry purposes, but this is not exposed to plugins. Features that require a SessionStart hook (the journal continuity digest, SOUL.md self-healing) or PreCompact flushes are not viable on Amp without upstream support. Loaf's Amp target is scoped to tool events only; the SessionStart digest that other targets ship is intentionally absent here.
 
-This was discovered during SPEC-033 review (PR #40). An earlier wiring attempted to map `sessionEnd` to `agent.end` (turn-end) — semantically wrong and now reverted.
+`agent.end` is turn-end, not session-end, so Loaf does not map session lifecycle behavior onto it.
 
 ### Prompt Overlay Consolidation (ADR-020, superseding ADR-010)
 
@@ -110,25 +110,25 @@ Fresh installs pre-create an empty root canonical so the Claude symlink is never
 
 **Config health (`loaf config check`):** the native CLI validates `.agents/loaf.json` and installed Loaf-managed hook config separately. `--fix` creates missing safe project-config defaults and refreshes stale installed target artifacts through the same target installers as `loaf install`, so new hooks such as `github-account` can be propagated without hand-editing target config files.
 
-**Drift detection (`loaf doctor`):** Six checks cover root canonical presence and file type, retirement of legacy `.agents/AGENTS.md`, the Claude symlink target, stale `.cursor/rules/loaf.mdc`, fenced-section version match, and duplicate fenced sections. Plain diagnosis is read-only. `loaf doctor --fix` offers each logical repair once behind a default-no y/N prompt, preserves legacy content and backups for accepted repairs, and rechecks each repair before tallying the final result; checks that converge through the same filesystem action share one repair identity so a decline cannot be bypassed later in the run. Declined and non-interactively skipped repairs remain failures; only a real terminal is interactive, and `loaf doctor --fix --force` explicitly accepts every offered repair without prompting.
+**Drift detection (`loaf doctor`):** Checks cover root canonical presence and file type, retirement of legacy `.agents/AGENTS.md`, the Claude symlink target, stale `.cursor/rules/loaf.mdc`, fenced-section version match, and duplicate fenced sections. Plain diagnosis is read-only. `loaf doctor --fix` offers each logical repair once behind a default-no y/N prompt, preserves legacy content and backups for accepted repairs, and rechecks each repair before tallying the final result; checks that converge through the same filesystem action share one repair identity so a decline cannot be bypassed later in the run. Declined and non-interactively skipped repairs remain failures; only a real terminal is interactive, and `loaf doctor --fix --force` explicitly accepts every offered repair without prompting.
 
-This extends the "CLI is the correct protocol layer" principle to filesystem convention enforcement: the CLI owns the on-disk overlay state, not the skills or the user. When ADR-010 shipped, five harnesses went from "each writes its own file" to "each resolves to the same file" without any skill edits.
+This extends the "CLI is the correct protocol layer" principle to filesystem convention enforcement: the CLI owns the on-disk overlay state, not the skills or the user. ADR-010 records the consolidation from per-harness writes to one canonical file.
 
-### Mode-Aware Skills (Linear-Native Mode, ADR-011)
+### Work Records and Optional Linear Tasks (ADR-011)
 
-Skills that orchestrate specs and tasks (`/breakdown`, `/implement`, `/housekeeping`, `/shape`, `/council`) branch on `integrations.linear.enabled` in `.agents/loaf.json`:
+New bounded work is git-canonical under `docs/changes/YYYYMMDD-slug/change.md`. Existing specs in `.agents/specs/` and task records remain supported compatibility surfaces. For compatible task workflows, `integrations.linear.enabled` in `.agents/loaf.json` selects the execution backend:
 
-- **Local-tasks mode** (default): specs stay in `.agents/specs/`; task, journal, idea, spark, brainstorm, and draft records live in the global SQLite database.
-- **Linear-native mode**: specs stay in `.agents/specs/` (canonical, deliberation layer); tasks move to Linear as sub-issues under a `spec`-labeled parent rollup issue (execution layer).
+- **Local-tasks mode** (default): tasks, journal entries, ideas, sparks, brainstorms, and drafts live in the global SQLite database.
+- **Linear-native mode**: existing compatible specs remain git-canonical while tasks use Linear sub-issues under a parent rollup issue.
 
 The split reflects an architectural principle from ADR-010's consolidation pattern extended to the spec/task artifact model:
 
-- **Deliberation artifacts belong with code.** Specs, ADRs, councils. Need git history, code-adjacent visibility, travel with the branch, survive the tracker being down or switched.
+- **Deliberation artifacts belong with code.** Changes, existing specs, ADRs, and councils need git history, code-adjacent visibility, and independence from tracker availability.
 - **Execution artifacts belong in the tracker.** Tasks, blockers, comments, assignees. Need real-time state, dashboards, blocking graphs, notifications.
 
-In Linear-native mode, the parent Linear issue is a **canonical-elsewhere rollup** — summary + link to the local spec file, not a re-host. It parallels the root `AGENTS.md` → Claude compatibility-symlink pattern from ADR-020: the canonical artifact exists in exactly one place; the other surface is a thin pointer.
+In Linear-native mode, the parent Linear issue is a **canonical-elsewhere rollup**: a summary and link to the git-canonical artifact, not a re-host. The artifact exists in one place; the tracker is a thin execution surface.
 
-Skills detect the mode and branch accordingly. No skill edits are required to switch modes — same skill content, different backend. This sets up SPEC-023's backend abstraction as a narrower refactor than originally scoped: the contract is already mode-aware; SPEC-023 just extracts the Linear MCP calls into a shared `tracker` CLI subcommand with pluggable implementations.
+Skills detect the mode and branch accordingly; the same skill content selects a different task backend without changing the git-canonical artifact.
 
 ### Pre-Flight Dependency Gate
 
@@ -136,9 +136,9 @@ Skills detect the mode and branch accordingly. No skill edits are required to sw
 
 This is different from advisory dependency ordering: the dependency graph becomes a runtime invariant, not a suggestion. The orchestrator cannot implement through open blockers even by accident.
 
-The local-tasks equivalent (dependencies in `TASKS.json`) is still advisory. Pre-flight gating requires a system of record that can be queried reliably for all blockers' current state; Linear provides that, local files do not without a separate polling layer. This asymmetry is intentional: teams that care about strict dependency enforcement get Linear's gate for free; solo developers on local tasks trade enforcement for simplicity.
+Local task dependencies are stored in SQLite and remain advisory. Pre-flight gating requires a backend that can reliably query every blocker's current state; Linear provides that guarantee for its task workflow, while local tasks trade strict enforcement for simplicity.
 
-Parent-issue completion follows from the same contract: when the last sub-issue flips to `completed`, `/implement` auto-closes the parent. A parent with any open sub-issue (including `blocked`) stays open — the spec is not done until its execution tree is.
+Parent-issue completion follows from the same contract: when the last sub-issue flips to `completed`, `/implement` auto-closes the parent. A parent with any open sub-issue, including `blocked`, stays open.
 
 ### Agent Model: Functional Profiles
 
@@ -148,7 +148,7 @@ Loaf uses **functional profiles** defined by tool access boundaries, not role-ba
 
 The main conversation is the **orchestrator** — the coordinator that plans and delegates but does not directly implement, review, research, or curate durable artifacts.
 
-**4 Functional Profiles:**
+**Functional Profiles:**
 
 | Profile | Tool Access | Purpose |
 |---------|-------------|---------|
@@ -159,7 +159,7 @@ The main conversation is the **orchestrator** — the coordinator that plans and
 
 Each profile is defined in `content/agents/{implementer,reviewer,researcher,librarian}.md` — a minimal behavioral contract and tool boundary, not domain knowledge. A spawned implementer becomes a backend engineer, DBA, or devops engineer depending entirely on the skills loaded at spawn time.
 
-**1 System Agent:**
+**System Agent:**
 
 | Agent | Purpose |
 |-------|---------|
@@ -187,11 +187,11 @@ The judgment boundary follows from the storage boundary: humans and Skills inter
 
 ### Authorship Model — Agents Create, Humans Curate
 
-Agents are the primary authors of knowledge files, ADRs, tasks, and specs. Humans review, approve, and curate — they are not the writing surface. The CLI follows from this: it is for management and health checks (`check`, `validate`, `status`, `review`), not for authoring.
+Agents are the primary authors of Changes, knowledge files, ADRs, and compatible task records. Humans review, approve, and curate — they are not the writing surface. The CLI follows from this: it is for deterministic operations and health checks, while skills guide authorship and judgment.
 
 The principle inverts the traditional "humans write docs, agents consume them" model. Agents are already doing the work and are closest to what's being learned; pulling knowledge creation into the work itself ("maintenance as side effect of work") is cheaper than treating documentation as a separate sprint. Humans are better at judgment — *is this worth recording?* — than at the writing.
 
-The growth loop is concrete: agent discovers an insight during brainstorming, development, or debugging → proposes a knowledge file, ADR, task, or spec → human reviews and accepts, edits, or rejects → committed. Quality control depends on human review; agents may write redundant or low-quality material that the curator catches. Hooks (PostToolUse, PreCompact) prompt agents at the moments where insights are freshest, so the proposal isn't deferred until the context is gone.
+The growth loop is concrete: an agent discovers an insight during exploration, implementation, or debugging, proposes the appropriate durable record, and a human accepts, edits, or rejects it. Hooks prompt agents when insights are fresh so useful learning is not deferred until context is gone.
 
 This principle shapes skill design and CLI surface; it is mutable and evolves via `/reflect`.
 
@@ -217,41 +217,38 @@ Recategorization emerged from PR #46: three ADRs whose conventions/principles st
 
 This pattern generalizes beyond ADRs. When any Loaf artifact is later judged to have been classified wrong but its content is still valid, recategorize: deprecate the original, point to the new canonical home, leave the body intact for archeology.
 
-## Execution Model
+## Change-First Execution Model
 
-The execution model is a three-artifact pipeline. No separate "plan" artifact — the journal serves as both execution trace and resumption protocol.
-
-```
-/shape → SPEC file → /breakdown → SQLite tasks → /implement → project journal → Done
-```
-
-### Task System
+New bounded work uses a Change as its primary contract. The project journal remains the execution trace and resumption protocol; tasks are optional durable records rather than mandatory decomposition.
 
 ```
-.agents/specs/SPEC-XXX.md       # Bounded work definitions (scope, test conditions, priority order)
-SQLite tasks                     # Individual work items (criteria, file hints, verification)
-SQLite journal_entries           # Project-scoped event record across every conversation
+/idea or /brainstorm → /shape → Change → /implement → review → /ship
+                                      ↓
+                               project journal
 ```
 
-**Specs** define *what* to build — problem, solution direction, boundaries, test conditions. Multi-part specs use priority ordering with go/no-go gates between tracks (ship in order, drop from end). Sized by complexity (small/medium/large), not time.
+### Work Records
 
-**Tasks** define *what to do* — one concern per task, file hints, verification command, observable done condition. Created by `/breakdown`, worked by `/implement`.
+```
+docs/changes/YYYYMMDD-slug/change.md  # Primary bounded-work contract
+SQLite tasks                          # Existing or optional compatible work items
+.agents/specs/SPEC-XXX.md              # Existing compatible bounded-work records
+SQLite journal_entries                # Project-scoped event record across conversations
+```
+
+**Changes** define the problem, hypothesis, scope, implementation units, verification contract, and definition of done. `loaf change check` validates their structure and derives executability.
+
+**Tasks and specs** remain supported compatibility records. They may describe individual concerns, dependencies, and existing bounded work, but new shaping does not require a spec or a task decomposition layer.
 
 **The journal** captures *what happened* — `journal_entries` rows are project-scoped events (`project_id NOT NULL`), each tagged with an opaque `harness_session_id` that correlates one conversation's entries. Decisions, discoveries, commits, and progress land as structured entries; `loaf journal recent`/`show`/`search` and the `loaf journal context` digest provide handoff-ready context for compaction recovery and cross-conversation resumption. There is no session entity — see [Session Model: Journal-First](#session-model-journal-first).
 
-`.agents/tasks/`, `.agents/ideas/`, `.agents/sparks/`,
-`.agents/brainstorms/`, `.agents/drafts/`, and `.agents/TASKS.json` are
-rollback material after SPEC-045, not compatibility mirrors. A stale branch that
-reintroduces them should keep the deletion side and rerun
-`loaf check --hook ephemeral-provenance`. Legacy `.agents/sessions/` markdown is
-also gone: the journal is SQLite-native and never rendered to a hand-authored
-source file.
+`.agents/tasks/`, `.agents/ideas/`, `.agents/sparks/`, `.agents/brainstorms/`, `.agents/drafts/`, and `.agents/TASKS.json` are rollback material after the SQLite cutover recorded by `SPEC-045`, not compatibility mirrors. A stale branch that reintroduces them should keep the deletion side and rerun `loaf check --hook ephemeral-provenance`. Legacy `.agents/sessions/` Markdown is also gone: the journal is SQLite-native and never rendered to a hand-authored source file.
 
 ### Session Model: Journal-First
 
-The project journal is the **only** session-related structure (SPEC-056). There is no session entity — no `sessions` table, no statuses, no lifecycle, no rotation. `journal_entries` are project-scoped events (`project_id NOT NULL`) in the global SQLite database, each carrying an opaque `harness_session_id` column that correlates the entries written by one conversation. Nobody opens, closes, or transitions a session; nothing is ever "unwrapped."
+The project journal is the **only** session-related structure. There is no session entity — no `sessions` table, no statuses, no lifecycle, no rotation. `journal_entries` are project-scoped events (`project_id NOT NULL`) in the global SQLite database, each carrying an opaque `harness_session_id` column that correlates the entries written by one conversation. Nobody opens, closes, or transitions a session; nothing is ever "unwrapped."
 
-This supersedes the SPEC-048 `start → log → end --wrap` session lifecycle and its six-state entity: production data showed the lifecycle never maintained itself (stuck `active`/`paused` records, empty snapshots, ~24% lifecycle-noise entries), and its rotation semantics actively fought concurrency. **Concurrent conversations on the same project — across branches, worktrees, even harnesses — are safe by construction:** two conversations logging at once simply interleave rows with different `harness_session_id` tags, which is correct rather than corrupt.
+The journal model supersedes the former mutable session lifecycle. **Concurrent conversations on the same project — across branches, worktrees, even harnesses — are safe by construction:** simultaneous writers interleave rows with different `harness_session_id` tags instead of rotating or reconciling shared session state.
 
 **Logging:** `loaf journal log "type(scope): description"` appends a durable entry; the current branch and harness id are attached automatically. Skills self-log their invocation as their first action; the `session` entry type is gone.
 
@@ -291,15 +288,7 @@ A new conversation is never a new "session" — it is just a new `harness_sessio
 
 ### Forward-Only In-Flight Pivots
 
-When a PR is reviewed, approved-with-findings, and the findings reveal that a feature shouldn't ship as designed, the project favors **forward removal commits over history rewriting**.
-
-Three reasons:
-
-1. The squash merge nets the diff regardless — main only sees the final change.
-2. Force-push invalidates review thread context (Codex citations, reviewer line refs) and is generally blocked on shared branches.
-3. The PR's commit history becomes honest archeology — "we shipped, then reviewed, then pivoted" is more useful than a tidy linear story that hides the deliberation.
-
-SPEC-033 (PR #40, v2.0.0-dev.32) is the canonical example: 13 feature commits + 2 forward-removal commits + 1 cleanup. The squash on main is clean; the PR thread shows the pivot. Future PRs that need to pivot mid-flight should follow the same pattern.
+When review reveals that code on an open branch should not ship as designed, the project favors **forward removal commits over history rewriting**. The final squash preserves a clean mainline diff, while the pull request retains review context and an honest record of the pivot. Avoid force-pushing away citations or shared review history.
 
 ## Hook Architecture
 
@@ -315,7 +304,7 @@ Hooks are defined in `config/hooks.yaml` and distributed to target-specific form
 
 ### Hook Type Behavioral Constraints
 
-Hard-won constraints validated during SPEC-030 implementation:
+The target hook APIs impose these behavioral constraints:
 
 - **`type: prompt`** — Binary gate. Any non-empty LLM response is treated as rejection (`ok: false`). Cannot express "this looks fine, proceed" — the response itself blocks. Unusable for advisory hooks or hooks requiring LLM judgment. Use only for validation that returns empty on success.
 - **`type: agent`** — Read-only tool access (Read, Grep, Glob, WebFetch, WebSearch). No Edit, Write, or Bash. Max 50 turns. Useful for observation, not mutation.
@@ -380,7 +369,7 @@ Any test that spawns a CLI subprocess must use OS-tmp isolation for its fixtures
 workingDir := realpath(t, t.TempDir())
 ```
 
-CWD-relative fixtures are forbidden for subprocess tests. The old Vitest suite exposed why: workers shared filesystem state and cwd, so `join(process.cwd(), ".test-...")` fixtures could race against other subprocess tests. One such leak in `cli/commands/check.test.ts` silently failed `cli/commands/report.test.ts` for 17+ commits before v2.0.0-dev.28 bisected it.
+CWD-relative fixtures are forbidden for subprocess tests because workers may share filesystem state and cwd. A fixture such as `join(process.cwd(), ".test-...")` can race with another subprocess test even when each file passes independently.
 
 `realpath` is required on macOS because the system tmpdir (`/var/folders/...`) is reached through a `/private/var/folders/...` symlink; without realpath, subprocess cwd comparisons can fail.
 
@@ -396,18 +385,14 @@ Patterns that apply across multiple subsystems and emerged from specific post-re
 
 The native CLI version must report the package version consistently through the launcher, native runtime, generated targets, and install markers. Go runtime paths read package metadata directly; the obsolete TypeScript version helper was removed after the install and version surfaces moved to native Go.
 
-Before PR #35 (v2.0.0-dev.30), three separate runtime `package.json` walkers in those same files diverged and all fell back to `"0.0.0"` from the bundled binary — a false-positive factory for every version-comparison check in the CLI. The lesson generalizes: any value that must be identical across runtime modes should be injected at build time, not resolved at runtime.
+Any value that must be identical across runtime modes should be injected at build time, not independently resolved by multiple runtime paths. Divergent version discovery creates false positives in every downstream comparison.
 
 ### Generated Runtime Plugin Artifacts Parsed From Emitted Output
 
 Files the build emits for downstream runtimes to execute — OpenCode `hooks.ts`, Amp `loaf.js`, and any future per-target runtime plugin — must have tests against the **actual emitted file**, not just the generator's input string.
 
-Template-literal escape bugs are invisible at the source-string level: the former TypeScript build helper emitted invalid regex (`/*/g`) into `dist/opencode/plugins/hooks.ts` for multiple versions because the broken code path was unreachable at runtime. The syntactic breakage was dormant until OpenCode's plugin loader tightened its validation and rejected the file on load. Native build tests in `internal/cli/build_test.go` now read the emitted OpenCode and Amp plugin files and assert the runtime hook bodies and command payloads that downstream runtimes load.
+Source-template assertions cannot prove that escaping remains valid after generation. Native build tests in `internal/cli/build_test.go` therefore read the emitted OpenCode and Amp plugin files and assert the runtime hook bodies and command payloads that downstream runtimes load.
 
 ### Visible-Degraded Fallback with Stderr WARN
 
-When strict invariant enforcement would break existing callers but silent fallback corrupts data, emit a stderr WARN naming the missing signal and the silencing flag. The action proceeds (preserving compatibility) but the WARN makes the misroute visible in real time and provides a regression-testable surface for the eventual cutover.
-
-SPEC-032 used this pattern for the branch-fallback session router that resolved a target session for `loaf session log`, `archive`, and `end --wrap`. **SPEC-056 superseded that mechanism:** journal-first removed the session entity the router resolved against, so there is nothing to misroute — `loaf journal log` attaches the current branch and `harness_session_id` automatically, and concurrent conversations interleave rows by construction. The WARN it emitted was the regression gate for exactly this cutover; the cutover has now landed. The pattern is retained here as a general design tool, not as a description of live session routing.
-
-The pattern generalizes: any compatibility carve-out that violates a stated invariant should be observable in real time, not invisible. The cost (one extra stderr line for legacy callers) is paid once per invocation; the benefit (every misroute surfaces immediately) is paid forward to whoever next opens an issue saying "my entry didn't land where I expected."
+When strict invariant enforcement would break existing callers but silent fallback risks incorrect behavior, emit a stderr warning that names the missing signal and any silencing flag. The action may proceed for compatibility, but the degraded path must remain visible and regression-testable. The journal no longer uses a branch-fallback session router; entries attach project, branch, and harness context without resolving a mutable session entity.

@@ -11,7 +11,7 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-07-03'
+last_reviewed: '2026-07-14'
 ---
 
 # Hook System
@@ -41,7 +41,7 @@ Enforcement hooks without explicit `type:` auto-dispatch as `loaf check --hook <
 | UserPromptSubmit | Every user message | No | Context injection, orchestration conventions |
 | TaskCompleted | Task marked complete | No | Journal auto-entry for task events |
 
-There is no SessionEnd or Stop journal obligation under journal-first (SPEC-056): the SessionEnd hook was removed, and no hook writes back to a session record (the general Stop-circularity caution still governs any future stateful hook — see [ARCHITECTURE.md](../ARCHITECTURE.md#hook-type-behavioral-constraints)).
+There is no SessionEnd or Stop journal obligation: the SessionEnd hook is absent, and no hook writes back to a session record. The general Stop-circularity caution still governs any future stateful hook; see [ARCHITECTURE.md](../ARCHITECTURE.md#hook-type-behavioral-constraints).
 
 ### Hook JSON Context
 
@@ -127,7 +127,7 @@ The `detect-linear-magic` hook runs as a pre-tool command (`loaf journal log --d
 
 ## Conversation Hooks
 
-Registered under `session:` in hooks.yaml with an `event:` field. Journal-first (SPEC-056) removed the session entity, so these hooks emit the derived continuity digest or auto-log events — none of them open, close, or mutate a session record:
+Registered under `session:` in hooks.yaml with an `event:` field. These hooks emit the derived continuity digest or auto-log events; none opens, closes, or mutates a session record:
 
 | Hook | Event | Dispatch | Purpose |
 |------|-------|----------|---------|
@@ -150,19 +150,19 @@ Post-tool hooks that perform background maintenance:
 | `generate-task-board` | Edit\|Write | Regenerates TASKS.md when task files change (`loaf task refresh`) |
 | `kb-staleness-nudge` | Edit\|Write | Tracks covered edits and nudges when covered knowledge is stale |
 
-## Migration History
+## Current Hook Boundary
 
-As of SPEC-020, ~30 shell hooks were migrated to skill instructions (Verification sections in SKILL.md) or replaced by `loaf check` enforcement hooks. Eliminated categories:
+Language, infrastructure, design, and advisory quality guidance belongs in skill instructions. Deterministic enforcement belongs in `loaf check` hooks. Retired shell-hook categories include:
 - Language hooks (python-\*, typescript-\*, rails-\*)
 - Infrastructure hooks (k8s, dockerfile, terraform)
 - Design hooks (a11y, tokens)
 - Quality hooks (format-check, tdd-advisory, validate-changelog)
 
-The 4 shared bash libraries (`json-parser.sh`, `config-reader.sh`, `agent-detector.sh`, `timeout-manager.sh`) were also removed.
+The former shared Bash helpers (`json-parser.sh`, `config-reader.sh`, `agent-detector.sh`, `timeout-manager.sh`) are no longer part of the active hook runtime.
 
 ## Hook Type Behavioral Constraints
 
-Hook types have hard behavioral limits discovered through SPEC-026 and SPEC-030. See [ARCHITECTURE.md](../ARCHITECTURE.md#hook-type-behavioral-constraints) for the full list. Key constraints:
+Hook types have hard behavioral limits. See [ARCHITECTURE.md](../ARCHITECTURE.md#hook-type-behavioral-constraints) for the full list. Key constraints:
 
 - **Prompt hooks** are binary gates — any non-empty LLM response blocks. Never use for advisory guidance.
 - **Agent hooks** are read-only (no Edit/Write/Bash). Max 50 turns.

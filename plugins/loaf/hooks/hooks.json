@@ -43,7 +43,15 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook ephemeral-provenance",
             "if": "Bash(git push:*)",
             "timeout": 30,
-            "description": "Block active specs from pointing at deleted ephemeral Markdown after cutover",
+            "description": "Block tracked ephemeral Markdown and dangling references from retained spec records",
+            "failClosed": true
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/loaf\" check --hook artifact-names",
+            "if": "Bash(git commit:*)",
+            "timeout": 30,
+            "description": "Block artifact filenames that name the work unit that produced them",
             "failClosed": true
           },
           {

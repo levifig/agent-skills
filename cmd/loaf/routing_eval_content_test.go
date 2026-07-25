@@ -3,6 +3,7 @@ package main
 import (
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -22,14 +23,22 @@ func TestRoutingEvalDryRunValidatesCurrentSkillSuite(t *testing.T) {
 		t.Fatalf("dry-run routing eval failed: %v\n%s", err, output)
 	}
 
-	for _, want := range []string{
-		"Loaded 35 skills",
-		"Selected cases: 127",
-		"Suite validation passed.",
-	} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("dry-run output missing %q:\n%s", want, output)
-		}
+	// Assert the invariant, never a snapshot: a pinned skill or case count turns
+	// every skill addition into a test edit, and the number proves nothing that
+	// the loaded/expected agreement does not already prove.
+	loaded := regexp.MustCompile(`Loaded (\d+) skills`).FindStringSubmatch(output)
+	expected := regexp.MustCompile(`Expected skill count: (\d+)`).FindStringSubmatch(output)
+	if loaded == nil || expected == nil {
+		t.Fatalf("dry-run output does not report both loaded and expected skill counts:\n%s", output)
+	}
+	if loaded[1] != expected[1] {
+		t.Fatalf("dry-run loaded %s skills but the suite expects %s:\n%s", loaded[1], expected[1], output)
+	}
+	if !regexp.MustCompile(`Selected cases: [1-9]\d*`).MatchString(output) {
+		t.Fatalf("dry-run selected no routing cases:\n%s", output)
+	}
+	if !strings.Contains(output, "Suite validation passed.") {
+		t.Fatalf("dry-run output missing suite validation:\n%s", output)
 	}
 }
 
@@ -49,13 +58,20 @@ func TestRoutingEvalContentHasNoPhantomSkillCases(t *testing.T) {
 	}
 }
 
-func TestSkillArchitectureCountMatchesCurrentTaxonomy(t *testing.T) {
+func TestSkillArchitectureDescribesSemanticTaxonomy(t *testing.T) {
 	root := repoRoot(t)
 	body := readTextFile(t, filepath.Join(root, "docs", "knowledge", "skill-architecture.md"))
-	if !strings.Contains(body, "35 skills total: 19 workflow/default-invocable, 16 non-invocable") {
-		t.Fatalf("skill architecture doc missing current 34-skill taxonomy")
+	for _, want := range []string{
+		"## Categories",
+		"| Category | `user-invocable` | Examples |",
+		"| Reference/Knowledge | `false` |",
+		"| Workflow/Process | `true` (default) |",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("skill architecture doc missing semantic taxonomy %q", want)
+		}
 	}
-	if strings.Contains(body, "33 skills") || strings.Contains(body, "34 skills") {
-		t.Fatalf("skill architecture doc still contains stale skill count")
+	if regexp.MustCompile(`(?i)\b[0-9]+\s+skills\s+total\b`).MatchString(body) {
+		t.Fatal("skill architecture doc publishes a volatile exact skill-count snapshot")
 	}
 }

@@ -48,7 +48,7 @@ type Root struct {
 
 // ResolveRoot returns the project root for state identity. Linked Git
 // worktrees resolve to the main worktree root by comparing git-dir with
-// git-common-dir, matching the existing TypeScript resolver's SPEC-036 model.
+// git-common-dir, matching the existing TypeScript resolver's worktree model.
 func ResolveRoot(start string) (Root, error) {
 	workingDir, err := ResolveWorkingDirectory(start)
 	if err != nil {

@@ -41,6 +41,14 @@
       },
       {
         "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook artifact-names",
+        "if": "Bash(git commit:*)"
+      },
+      {
+        "loaf-managed": true,
         "timeout": 10,
         "matcher": "Bash",
         "failClosed": true,

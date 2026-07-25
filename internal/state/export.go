@@ -621,7 +621,8 @@ func normalizeExportValue(value any) any {
 	}
 }
 
-// ValidateExternalMarkdownExport checks generated external Markdown against the SPEC-038 boundary.
+// ValidateExternalMarkdownExport checks generated external Markdown for private
+// Loaf references that must not appear in external exports.
 func ValidateExternalMarkdownExport(content string) error {
 	for _, pattern := range externalLeakPatterns {
 		if match := pattern.FindString(content); match != "" {

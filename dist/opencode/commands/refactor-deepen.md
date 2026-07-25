@@ -82,12 +82,12 @@ adds new ones when a deepening clearly names a structural module.
 
 ### Grilling Protocol
 
-The interview phase imports the shared
+The interview imports the shared
 [templates/grilling.md](../skills/refactor-deepen/templates/grilling.md) template — relentless
 interview, walk the decision tree, recommend per question, prefer exploration
 when the codebase can answer. Do not re-derive the protocol; follow it.
 
-### INTERFACE-DESIGN Phase: 3 Unprimed Sub-Agents
+### Interface Design: 3 Unprimed Sub-Agents
 
 When the grilling loop reaches interface design for a candidate, spawn
 **exactly 3 sub-agents with identical briefs**. Do not prime them with
@@ -148,11 +148,12 @@ node -e 'const c=JSON.parse(require("fs").readFileSync(".agents/loaf.json","utf-
 If exit code is `1` (Linear-native enabled), continue in report-only mode and
 surface the exact storage constraint once:
 
-> Linear-native plan storage pending artifact-taxonomy spec — continuing with a read-only report.
+> Linear-native plan storage unavailable — continuing with a read-only report.
 
 Do **not** write the PLAN file, do **not** invoke `loaf kb glossary upsert`,
 and do **not** call Codex review. Partial state across local PLAN + remote
-glossary is the explicit failure mode SPEC-034 forbids (see line 81 No-Gos).
+glossary is an explicit failure mode: do not leave partial local PLAN state
+when the remote glossary write is unavailable.
 The report is allowed because it is read-only and can feed a later brief.
 
 ### Termination
@@ -209,7 +210,7 @@ surface adds plugin-level detection, this rule can switch to it.
   being proposed
 - Output uses the eight source terms verbatim — zero occurrences of
   "boundary," "service," "component," or "layer" in their place
-- INTERFACE-DESIGN phase spawned exactly 3 sub-agents with identical briefs
+- Interface Design spawned exactly 3 sub-agents with identical briefs
 - Whole-repo scans excluded generated/vendor/cache/build trees unless the user
   explicitly asked to inspect them
 - Report-only mode produced a complete read-only report and wrote nothing to
@@ -309,7 +310,7 @@ speed but are unlikely at human pace.
 |-------|-----------|----------|
 | Vocabulary | [references/language.md](../skills/refactor-deepen/references/language.md) | Naming any module, interface, or seam — read first, every invocation |
 | Deepening Patterns | [references/deepening.md](../skills/refactor-deepen/references/deepening.md) | Classifying dependencies and applying seam discipline |
-| Interface Design | [references/interface-design.md](../skills/refactor-deepen/references/interface-design.md) | Running the parallel 3-agent INTERFACE-DESIGN phase |
+| Interface Design | [references/interface-design.md](../skills/refactor-deepen/references/interface-design.md) | Running the parallel 3-agent Interface Design |
 | Grilling Protocol | [templates/grilling.md](../skills/refactor-deepen/templates/grilling.md) | Interview discipline during the candidate-selection loop |
 | PLAN Template | [templates/plan.md](../skills/refactor-deepen/templates/plan.md) | Writing the terminating PLAN artifact |
 
