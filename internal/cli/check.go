@@ -674,6 +674,11 @@ func artifactBodyRefFromPath(path string) string {
 var conventionalCommitRE = regexp.MustCompile(`^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)!?: .+`)
 var commitMessageFlagRE = regexp.MustCompile(`(?s)-m(?:\s+|=)(?:"([^"]+)"|'([^']+)'|([^\s"']+))`)
 var commitMessageHeredocStartRE = regexp.MustCompile(`<<'?([A-Za-z0-9_]+)'?\s*\n`)
+
+// commitCommandSeparatorRE marks where one shell command ends and the next
+// begins, so a heredoc opened after a separator can be attributed to whatever
+// command follows rather than to the commit.
+var commitCommandSeparatorRE = regexp.MustCompile("[\n;]|&&|\\|\\|")
 var releaseCommitSubjectRE = regexp.MustCompile(`^chore: release v\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?(?:\+[a-zA-Z0-9.-]+)?(?:\s+\(#\d+\))?$`)
 
 var aiAttributionPatterns = []*regexp.Regexp{
@@ -1548,16 +1553,30 @@ func stringSliceContains(values []string, target string) bool {
 	return false
 }
 
+// extractCommitMessage returns the message the given command would commit.
+//
+// A heredoc counts as the message only when it opens before any command
+// separator that follows `git commit`, which is what distinguishes
+// `git commit -m "$(cat <<'EOF' … EOF)"` from a heredoc belonging to some later
+// command in the same invocation. Without that restriction a
+// `gh pr create --body "$(cat <<'EOF' … EOF)"` sitting after the commit gets
+// validated as the commit message, and the commit is rejected for the contents
+// of an unrelated pull request body.
 func extractCommitMessage(command string) string {
-	if matches := commitMessageHeredocStartRE.FindStringSubmatchIndex(command); len(matches) == 4 {
-		marker := command[matches[2]:matches[3]]
-		bodyStart := matches[1]
-		body := command[bodyStart:]
-		if end := strings.Index(body, "\n"+marker); end >= 0 {
-			return strings.TrimSpace(body[:end])
+	segment := command
+	if index := strings.Index(command, "git commit"); index >= 0 {
+		segment = command[index:]
+	}
+	if matches := commitMessageHeredocStartRE.FindStringSubmatchIndex(segment); len(matches) == 4 {
+		if !commitCommandSeparatorRE.MatchString(segment[:matches[0]]) {
+			marker := segment[matches[2]:matches[3]]
+			body := segment[matches[1]:]
+			if end := strings.Index(body, "\n"+marker); end >= 0 {
+				return strings.TrimSpace(body[:end])
+			}
 		}
 	}
-	matches := commitMessageFlagRE.FindStringSubmatch(command)
+	matches := commitMessageFlagRE.FindStringSubmatch(segment)
 	if len(matches) != 4 {
 		return ""
 	}
