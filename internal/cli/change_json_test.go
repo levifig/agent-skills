@@ -220,3 +220,118 @@ func TestResolveChangeFolderFindsJSONLayout(t *testing.T) {
 		t.Fatalf("folder=%q file=%q", gotFolder, gotFile)
 	}
 }
+
+func taskPacketBody(change, id, title string, checked bool) string {
+	mark := " "
+	if checked {
+		mark = "x"
+	}
+	return "---\nchange: " + change + "\nid: " + id + "\ntitle: " + title + "\n---\n\n# " + id + " — " + title + "\n\n## Steps\n\n- [" + mark + "] Do the work\n"
+}
+
+func atomicConvertFolder(t *testing.T, repo, folder, slug string, checked bool) {
+	t.Helper()
+	dir := filepath.Join(repo, "docs", "changes", folder)
+	if err := os.MkdirAll(filepath.Join(dir, "tasks"), 0o755); err != nil {
+		t.Fatalf("MkdirAll tasks: %v", err)
+	}
+	meta := "{\n  \"change\": \"" + slug + "\",\n  \"created\": \"2026-07-27\",\n  \"branch\": \"" + slug + "\",\n  \"target_release\": \"2.0.0\"\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "change.json"), []byte(meta), 0o644); err != nil {
+		t.Fatalf("WriteFile change.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "shape.md"), []byte(authoredShapeBody()), 0o644); err != nil {
+		t.Fatalf("WriteFile shape.md: %v", err)
+	}
+	taskName := "TASK-001-do-work.md"
+	if err := os.WriteFile(filepath.Join(dir, "tasks", taskName), []byte(taskPacketBody(slug, "TASK-001", "Do work", checked)), 0o644); err != nil {
+		t.Fatalf("WriteFile task: %v", err)
+	}
+	if err := os.Remove(filepath.Join(dir, "change.md")); err != nil {
+		t.Fatalf("Remove change.md: %v", err)
+	}
+}
+
+func TestConversionPreCheckedBoxesAreCheckViolation(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	folder := writeChangeFolder(t, repo, "20260727-prechecked", changeDoc(
+		"---\nchange: prechecked\ncreated: 2026-07-27\nbranch: prechecked\ntarget_release: 2.0.0\n---\n",
+		append(productSections(), executableSections()...)...,
+	))
+	commitAllChangeTest(t, repo, "docs: add legacy targeted change")
+	atomicConvertFolder(t, repo, "20260727-prechecked", "prechecked", true)
+	commitAllChangeTest(t, repo, "docs: convert with pre-checked box")
+
+	out, err := runChangeCheckJSON(t, repo, folder)
+	if err == nil || !findingsContain(out.Findings, "TASK-001-do-work.md") || !findingsContain(out.Findings, "checked task checkbox") {
+		t.Fatalf("err=%v findings=%v, want conversion violation naming TASK-001-do-work.md", err, out.Findings)
+	}
+}
+
+func TestConversionAllUncheckedPassesAndRealDogfoodIsCovered(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	folder := writeChangeFolder(t, repo, "20260727-clean-convert", changeDoc(
+		"---\nchange: clean-convert\ncreated: 2026-07-27\nbranch: clean-convert\ntarget_release: 2.0.0\n---\n",
+		append(productSections(), executableSections()...)...,
+	))
+	commitAllChangeTest(t, repo, "docs: add legacy targeted change")
+	atomicConvertFolder(t, repo, "20260727-clean-convert", "clean-convert", false)
+	commitAllChangeTest(t, repo, "docs: atomic convert all unchecked")
+
+	out, err := runChangeCheckJSON(t, repo, folder)
+	if err != nil {
+		t.Fatalf("clean conversion check err=%v findings=%v", err, out.Findings)
+	}
+	if findingsContain(out.Findings, "checked task checkbox") {
+		t.Fatalf("findings=%v, want no conversion checkbox violation", out.Findings)
+	}
+
+	// This change's real dogfood conversion (acbea950) is the positive coverage
+	// target: grandfathered while INTENT-20260727-dogfood-conversion-manufactured-task-003-execution
+	// tracks remediation, check stays green and retention still treats it as replace.
+	repoRoot := filepath.Join("..", "..")
+	pilot := "docs/changes/20260726-change-work-model"
+	if _, err := os.Stat(filepath.Join(repoRoot, pilot, "change.json")); err != nil {
+		t.Skipf("change-work-model folder not present: %v", err)
+	}
+	findings, err := conversionPreCheckedFindings(repoRoot, pilot, commandOutput)
+	if err != nil {
+		t.Fatalf("real conversion findings err=%v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("real dogfood conversion findings=%v, want none (grandfathered acbea950)", findings)
+	}
+	offending, err := conversionCommitCheckedTaskFiles(repoRoot, "acbea95001f9187b154d095f4579225b7744fe1d", pilot, commandOutput)
+	if err != nil {
+		t.Fatalf("inspect acbea950 tasks: %v", err)
+	}
+	if !findingsContain(offending, "TASK-003-check-and-projections.md") {
+		t.Fatalf("acbea950 offending=%v, want TASK-003 detected by the scanner (grandfather only suppresses the finding)", offending)
+	}
+}
+
+func TestTwoCommitConversionStillBlocksWithRetentionFinding(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	folder := writeChangeFolder(t, repo, "20260727-two-step", changeDoc(
+		"---\nchange: two-step\ncreated: 2026-07-27\nbranch: two-step\ntarget_release: 2.0.0\n---\n",
+		append(productSections(), executableSections()...)...,
+	))
+	commitAllChangeTest(t, repo, "docs: add targeted legacy change")
+
+	if err := os.WriteFile(filepath.Join(folder, "change.json"), []byte(`{"change":"two-step","created":"2026-07-27","branch":"two-step","target_release":"2.0.0"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: add change.json keep-both")
+
+	if err := os.Remove(filepath.Join(folder, "change.md")); err != nil {
+		t.Fatal(err)
+	}
+	commitAllChangeTest(t, repo, "docs: retire change.md later")
+
+	deleted, err := deletedLineageChangesWithOutput(repo, commandOutput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !findingsContain(deleted, "docs/changes/20260727-two-step/change.md") {
+		t.Fatalf("deleted=%v, want two-commit conversion retention finding for change.md", deleted)
+	}
+}

@@ -350,9 +350,15 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 		_, taskFindings, taskWarnings := loadChangeTasks(rootPath, folder, node)
 		report.Violations = append(report.Violations, taskFindings...)
 		report.Warnings = append(report.Warnings, taskWarnings...)
+		folderRel := relFromRoot(rootPath, folder)
+		conversionFindings, convErr := conversionPreCheckedFindings(rootPath, folderRel, commandOutput)
+		if convErr != nil {
+			return convErr
+		}
+		report.Violations = append(report.Violations, conversionFindings...)
 		report.Violations = sortedUnique(report.Violations)
 		report.Warnings = sortedUnique(report.Warnings)
-		if len(taskFindings) > 0 {
+		if len(taskFindings) > 0 || len(conversionFindings) > 0 {
 			report.Executable = false
 		}
 	}
