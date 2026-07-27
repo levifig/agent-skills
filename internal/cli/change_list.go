@@ -72,27 +72,14 @@ func (r Runner) runChangeListUnits(args []string, out io.Writer, rootPath string
 		if options.target != "" && node.TargetRelease != options.target {
 			continue
 		}
-		state := "shaped"
-		if node.CapturedOnly {
-			state = "captured"
-		}
-		report := evaluateChangeNode(node, "")
-		if report.Executable {
-			state = "executable"
-		}
 		status, _ := changeFolderExecuted(rootPath, node.Folder, node.Layout, commandOutput)
-		if status.FlipExecuted {
-			state = "executed"
-		} else if status.PathExecuted {
-			state = "executing"
-		}
 		units = append(units, changeListUnit{
 			Slug:          node.Slug,
 			Folder:        node.Folder,
 			Layout:        node.Layout,
 			Branch:        node.Branch,
 			TargetRelease: node.TargetRelease,
-			State:         state,
+			State:         deriveChangeState(rootPath, node, commandOutput),
 			PathExecuted:  status.PathExecuted,
 			FlipExecuted:  status.FlipExecuted,
 		})

@@ -84,6 +84,7 @@ type changeShowJSON struct {
 	Layout        string   `json:"layout"`
 	Branch        string   `json:"branch,omitempty"`
 	TargetRelease string   `json:"targetRelease,omitempty"`
+	State         string   `json:"state"`
 	CapturedOnly  bool     `json:"capturedOnly"`
 	Executable    bool     `json:"executable"`
 	PRs           []int    `json:"prs"`
@@ -184,6 +185,7 @@ func (r Runner) runChangeShow(args []string, out io.Writer, rootPath string) err
 		Layout:        node.Layout,
 		Branch:        node.Branch,
 		TargetRelease: node.TargetRelease,
+		State:         deriveChangeState(rootPath, node, commandOutput),
 		CapturedOnly:  node.CapturedOnly,
 		Executable:    report.Executable,
 		PRs:           prs,
@@ -207,13 +209,7 @@ func (r Runner) runChangeShow(args []string, out io.Writer, rootPath string) err
 	if result.TargetRelease != "" {
 		fmt.Fprintf(out, "  target:   %s\n", result.TargetRelease)
 	}
-	state := "shaped"
-	if result.CapturedOnly {
-		state = "captured"
-	} else if result.Executable {
-		state = "executable"
-	}
-	fmt.Fprintf(out, "  state:    %s\n", state)
+	fmt.Fprintf(out, "  state:    %s\n", result.State)
 	if len(result.PRs) == 0 {
 		fmt.Fprintf(out, "  prs:      (none derived from squash subjects)\n")
 	} else {
@@ -237,7 +233,7 @@ func (r Runner) runChangeShow(args []string, out io.Writer, rootPath string) err
 
 func writeChangeShowHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf change show [folder] [--json]",
-		"Show a Change's derived view: layout, target, captured/executable state, and PR set from squash subjects (#N).",
+		"Show a Change's derived view: layout, target, derived state ladder, and PR set from squash subjects (#N).",
 		"[folder]  Change folder path; resolves from the current branch when omitted",
 		"--json    Output as JSON")
 }

@@ -113,6 +113,7 @@ type changeCheckJSON struct {
 	Folder     string   `json:"folder"`
 	Layout     string   `json:"layout,omitempty"`
 	Passed     bool     `json:"passed"`
+	State      string   `json:"state"`
 	Executable bool     `json:"executable"`
 	Captured   bool     `json:"captured,omitempty"`
 	ExitCode   int      `json:"exitCode"`
@@ -257,7 +258,7 @@ func writeChangeCheckHelp(out io.Writer) {
 			"matched against declared branch identity across docs/changes/*/ (change.json or change.md).",
 		"[folder]              Change folder (or change.json/change.md) path; resolves from the current branch when omitted",
 		"--require-executable  Exit non-zero unless the Change is structurally executable (CI gate for non-draft PRs)",
-		"--json                Output folder, passed, executable, findings, warnings, and gaps as JSON")
+		"--json                Output folder, passed, state, executable, findings, warnings, and gaps as JSON")
 }
 
 func (r Runner) runChangeInit(args []string, out io.Writer, rootPath string) error {
@@ -382,6 +383,7 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 		Folder:     relFromRoot(rootPath, folder),
 		Layout:     node.Layout,
 		Passed:     passed,
+		State:      deriveChangeState(rootPath, node, commandOutput),
 		Executable: report.Executable,
 		Captured:   node.CapturedOnly,
 		ExitCode:   exitCode,
@@ -984,8 +986,12 @@ func writeChangeCheckText(out io.Writer, result changeCheckJSON) {
 	for _, notice := range result.Notices {
 		fmt.Fprintf(out, "%s %s\n", ansiYellow("notice:"), notice)
 	}
-	if result.Captured {
-		fmt.Fprintf(out, "state: %s\n", ansiYellow("captured, not shaped"))
+	if result.State != "" {
+		state := result.State
+		if result.State == "captured" {
+			state = ansiYellow("captured")
+		}
+		fmt.Fprintf(out, "state: %s\n", state)
 	}
 	if len(result.Findings) > 0 {
 		fmt.Fprintf(out, "\n%s %d violation(s)\n", ansiRed("x"), len(result.Findings))
