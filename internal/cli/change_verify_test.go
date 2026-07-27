@@ -172,3 +172,64 @@ func TestChangeVerifyParsesFreshScaffoldCriterion(t *testing.T) {
 		t.Fatalf("stdout = %q, want V1 criterion run", stdout.String())
 	}
 }
+
+func TestChangeVerifyV5ReceiptDigestExpiryViaChangeReceiptStatus(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+	body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
+	dir := writeNewLayoutChange(t, repo, "20260727-v5-digest", "v5-digest", "1.0.0", body)
+	flipExecuteChange(t, repo, dir, "v5-digest")
+	folderRel := filepath.Join("docs", "changes", "20260727-v5-digest")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+
+	node, err := assembleChangeNodeFromFolder(repo, filepath.Join(repo, folderRel))
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	ok, reason, statusErr := changeReceiptStatus(repo, folderRel, node, nil)
+	if statusErr != nil || !ok {
+		t.Fatalf("fresh receipt: ok=%v reason=%q err=%v", ok, reason, statusErr)
+	}
+
+	expired := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0 changed")
+	if err := os.WriteFile(filepath.Join(dir, "shape.md"), []byte(expired), 0o644); err != nil {
+		t.Fatalf("WriteFile shape: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: edit criteria")
+
+	node, err = assembleChangeNodeFromFolder(repo, filepath.Join(repo, folderRel))
+	if err != nil {
+		t.Fatalf("assemble after edit: %v", err)
+	}
+	ok, reason, statusErr = changeReceiptStatus(repo, folderRel, node, nil)
+	if statusErr != nil {
+		t.Fatalf("status err: %v", statusErr)
+	}
+	if ok || reason != "criteria digest mismatch (receipt expired)" {
+		t.Fatalf("ok=%v reason=%q, want expired digest", ok, reason)
+	}
+}
+
+func TestChangeVerifyV5ReceiptOwnCommitExemption(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-v5-own-commit", "v5-own-commit", "1.0.0", "")
+	flipExecuteChange(t, repo, dir, "v5-own-commit")
+	folderRel := filepath.Join("docs", "changes", "20260727-v5-own-commit")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+
+	node, err := assembleChangeNodeFromFolder(repo, filepath.Join(repo, folderRel))
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	ok, reason, statusErr := changeReceiptStatus(repo, folderRel, node, nil)
+	if statusErr != nil || !ok {
+		t.Fatalf("receipt-only commit must not stale: ok=%v reason=%q err=%v", ok, reason, statusErr)
+	}
+}

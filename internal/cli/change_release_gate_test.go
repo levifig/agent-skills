@@ -288,3 +288,240 @@ func TestChangeVerifyWritesReceiptOnFailure(t *testing.T) {
 		t.Fatalf("receipt = %s", data)
 	}
 }
+
+// --- TASK-014: V1 / V2 / V5 residual Verification Contract fixtures ---
+
+func TestReleaseCohortGateV1PathGradeIsNotFlipGrade(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-v1-path-grade", "v1-path-grade", "2.0.0", "")
+	task := filepath.Join(dir, "tasks", "TASK-001-work.md")
+	if err := os.WriteFile(task, []byte("---\nchange: v1-path-grade\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [ ] Do it\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile task: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: shape v1-path-grade")
+
+	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile main.go: %v", err)
+	}
+	if err := os.WriteFile(task, []byte("---\nchange: v1-path-grade\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [ ] Do it\n\nnote\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile task touch: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: path grade only")
+
+	err := releaseCohortPreflight(repo, "2.0.0", nil)
+	if err == nil || !strings.Contains(err.Error(), "not executed") {
+		t.Fatalf("path grade without flip should block: %v", err)
+	}
+}
+
+func TestReleaseCohortGateV1SecondShapedMemberBlocks(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
+	dirA := writeNewLayoutChange(t, repo, "20260727-v1-member-a", "v1-member-a", "2.0.0", "")
+	flipExecuteChange(t, repo, dirA, "v1-member-a")
+	folderA := filepath.Join("docs", "changes", "20260727-v1-member-a")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderA}); err != nil {
+		t.Fatalf("verify member-a: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: verify member-a")
+
+	writeNewLayoutChange(t, repo, "20260727-v1-member-b", "v1-member-b", "2.0.0", "")
+	commitAllChangeTest(t, repo, "docs: shape member-b only")
+
+	err := releaseCohortPreflight(repo, "2.0.0", nil)
+	if err == nil || !strings.Contains(err.Error(), `change "v1-member-b" targets 2.0.0 but is not executed`) {
+		t.Fatalf("second shaped-only member should block identically: %v", err)
+	}
+}
+
+func TestReleaseCohortGateV1NoTargetNeverGates(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
+	writeNewLayoutChange(t, repo, "20260727-v1-no-target", "v1-no-target", "", "")
+	commitAllChangeTest(t, repo, "docs: shape untargeted change")
+
+	if err := releaseCohortPreflight(repo, "2.0.0", nil); err != nil {
+		t.Fatalf("change with no target_release must never gate: %v", err)
+	}
+}
+
+func TestReleaseCohortGateV1LowerCohortWarnsWithoutBlocking(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
+	writeNewLayoutChange(t, repo, "20260727-v1-lower", "v1-lower", "2.0.0", "")
+	commitAllChangeTest(t, repo, "docs: shape lower cohort member")
+
+	var warnings []string
+	if err := releaseCohortPreflight(repo, "2.1.0", &warnings); err != nil {
+		t.Fatalf("higher candidate must not block on lower cohort: %v", err)
+	}
+	if !findingsContain(warnings, "incomplete lower cohort") {
+		t.Fatalf("warnings = %v, want lower-cohort warn without block", warnings)
+	}
+}
+
+func assertPrereleaseBypassesPostMergeBlocks(t *testing.T, repo, wantBlockSubstr string) {
+	t.Helper()
+	pre, err := computeReleaseCandidateVersion(repo, releaseOptions{bump: "prerelease"})
+	if err != nil {
+		t.Fatalf("compute prerelease candidate: %v", err)
+	}
+	if !releaseVersionIsPrerelease(pre) {
+		t.Fatalf("prerelease candidate = %q, want prerelease", pre)
+	}
+	if err := releaseCohortPreflight(repo, pre, nil); err != nil {
+		t.Fatalf("--bump prerelease should succeed: %v", err)
+	}
+
+	post, err := computeReleaseCandidateVersion(repo, releaseOptions{postMerge: true})
+	if err != nil {
+		t.Fatalf("compute post-merge candidate: %v", err)
+	}
+	gateErr := releaseCohortPreflight(repo, post, nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), wantBlockSubstr) {
+		t.Fatalf("--post-merge err = %v, want substring %q", gateErr, wantBlockSubstr)
+	}
+}
+
+func TestReleaseCohortGateV2PrereleaseBypassEveryGateState(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+	body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
+	dir := writeNewLayoutChange(t, repo, "20260727-v2-member", "v2-member", "1.0.0", body)
+	commitAllChangeTest(t, repo, "docs: shape v2-member")
+	folderRel := filepath.Join("docs", "changes", "20260727-v2-member")
+
+	// Missing execution.
+	assertPrereleaseBypassesPostMergeBlocks(t, repo, "not executed")
+
+	// Missing receipt (flip-executed, no verify).
+	flipExecuteChange(t, repo, dir, "v2-member")
+	assertPrereleaseBypassesPostMergeBlocks(t, repo, "missing receipt")
+
+	// Failing receipt.
+	failBody := shapeWithVerification("- **V1.** Fail. Command: `false`. Expect: exit 0")
+	if err := os.WriteFile(filepath.Join(dir, "shape.md"), []byte(failBody), 0o644); err != nil {
+		t.Fatalf("WriteFile failing shape: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: failing criteria")
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err == nil {
+		t.Fatalf("verify should fail\n%s", stdout.String())
+	}
+	commitAllChangeTest(t, repo, "chore: commit failing receipt")
+	assertPrereleaseBypassesPostMergeBlocks(t, repo, "failing criteria")
+
+	// Expired receipt (digest mismatch after criteria edit).
+	okBody := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
+	if err := os.WriteFile(filepath.Join(dir, "shape.md"), []byte(okBody), 0o644); err != nil {
+		t.Fatalf("WriteFile ok shape: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: restore passing criteria")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify pass: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit passing receipt")
+
+	expiredBody := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0 and marker")
+	if err := os.WriteFile(filepath.Join(dir, "shape.md"), []byte(expiredBody), 0o644); err != nil {
+		t.Fatalf("WriteFile expired shape: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: edit criteria expect")
+	assertPrereleaseBypassesPostMergeBlocks(t, repo, "criteria digest mismatch")
+
+	// Cohort completes: re-verify clears the post-merge block.
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("re-verify after expiry: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: re-verify after expiry")
+	post, err := computeReleaseCandidateVersion(repo, releaseOptions{postMerge: true})
+	if err != nil {
+		t.Fatalf("post-merge candidate: %v", err)
+	}
+	if err := releaseCohortPreflight(repo, post, nil); err != nil {
+		t.Fatalf("completed cohort should allow post-merge: %v", err)
+	}
+	pre, err := computeReleaseCandidateVersion(repo, releaseOptions{bump: "prerelease"})
+	if err != nil {
+		t.Fatalf("prerelease candidate: %v", err)
+	}
+	if err := releaseCohortPreflight(repo, pre, nil); err != nil {
+		t.Fatalf("prerelease should still succeed after completion: %v", err)
+	}
+}
+
+func TestReleaseCohortGateV5CriteriaEditExpiresReceipt(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+	body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
+	dir := writeNewLayoutChange(t, repo, "20260727-v5-expire", "v5-expire", "1.0.0", body)
+	flipExecuteChange(t, repo, dir, "v5-expire")
+	folderRel := filepath.Join("docs", "changes", "20260727-v5-expire")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+
+	expired := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0 changed")
+	if err := os.WriteFile(filepath.Join(dir, "shape.md"), []byte(expired), 0o644); err != nil {
+		t.Fatalf("WriteFile shape: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: edit shape criteria")
+
+	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "criteria digest mismatch (receipt expired)") {
+		t.Fatalf("criteria edit should expire receipt: %v", gateErr)
+	}
+}
+
+func TestReleaseCohortGateV5FreshnessRerunAndReceiptOwnCommit(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-v5-fresh", "v5-fresh", "1.0.0", "")
+	flipExecuteChange(t, repo, dir, "v5-fresh")
+	folderRel := filepath.Join("docs", "changes", "20260727-v5-fresh")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+
+	if err := releaseCohortPreflight(repo, "1.0.0", nil); err != nil {
+		t.Fatalf("receipt's own commit alone must not stale: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repo, "later.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile later: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: later non-receipt path")
+	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "later non-receipt path requires criteria re-run") {
+		t.Fatalf("non-receipt path should force re-run: %v", gateErr)
+	}
+}
+
+func TestReleaseCohortGateV5RetargetAfterVerifyRequiresRerun(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
+	body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
+	dir := writeNewLayoutChange(t, repo, "20260727-v5-retarget", "v5-retarget", "2.0.0", body)
+	flipExecuteChange(t, repo, dir, "v5-retarget")
+	folderRel := filepath.Join("docs", "changes", "20260727-v5-retarget")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify at 2.0.0: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+
+	meta := "{\n  \"change\": \"v5-retarget\",\n  \"created\": \"2026-07-27\",\n  \"branch\": \"v5-retarget\",\n  \"target_release\": \"2.1.0\"\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "change.json"), []byte(meta), 0o644); err != nil {
+		t.Fatalf("WriteFile change.json: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: retarget 2.0.0 to 2.1.0")
+
+	// Blind trust would accept the pre-retarget receipt; freshness must force re-run.
+	gateErr := releaseCohortPreflight(repo, "2.1.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "later non-receipt path requires criteria re-run") {
+		t.Fatalf("retarget should trigger re-run path: %v", gateErr)
+	}
+
+	// Not permanent invalidation: re-verify opens the new cohort.
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("re-verify after retarget: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: re-verify after retarget")
+	if err := releaseCohortPreflight(repo, "2.1.0", nil); err != nil {
+		t.Fatalf("re-verify after retarget should open gate: %v", err)
+	}
+}
