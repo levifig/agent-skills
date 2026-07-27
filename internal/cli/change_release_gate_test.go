@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,7 +47,12 @@ func writeNewLayoutChange(t *testing.T, repo, folder, slug, target string, shape
 }
 
 func authoredShapeBody() string {
-	sections := append(productSections(), executableSections()...)
+	sections := append(productSections(),
+		"## Planning Contract\n\n### Approach\n\nHow.",
+		"## Implementation Units\n\n- U1 — do the thing.",
+		"## Verification Contract\n\n- **V1.** Smoke.\n  - Command: `true`\n  - Expect: exit 0",
+		"## Definition of Done\n\n- Gates pass.",
+	)
 	var b strings.Builder
 	b.WriteString("# Demo\n\n")
 	for _, s := range sections {
@@ -103,7 +109,6 @@ func TestReleaseCohortGateAcceptsFlipExecutedMember(t *testing.T) {
 	}
 	commitAllChangeTest(t, repo, "docs: shape executed member")
 
-	// Path-only touch (task + outside) without flip is not enough.
 	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile main.go: %v", err)
 	}
@@ -116,7 +121,6 @@ func TestReleaseCohortGateAcceptsFlipExecutedMember(t *testing.T) {
 		t.Fatalf("path grade should not open gate: %v", err)
 	}
 
-	// Flip + outside path.
 	if err := os.WriteFile(task, []byte("---\nchange: executed\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [x] Do it\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile flip: %v", err)
 	}
@@ -125,8 +129,14 @@ func TestReleaseCohortGateAcceptsFlipExecutedMember(t *testing.T) {
 	}
 	commitAllChangeTest(t, repo, "feat: execute task")
 
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", filepath.Join("docs", "changes", "20260727-executed")}); err != nil {
+		t.Fatalf("verify: %v\n%s", err, stdout.String())
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+
 	if err := releaseCohortPreflight(repo, "2.0.0", nil); err != nil {
-		t.Fatalf("flip-executed cohort should pass: %v", err)
+		t.Fatalf("flip-executed cohort with receipt should pass: %v", err)
 	}
 }
 

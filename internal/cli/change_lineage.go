@@ -30,10 +30,14 @@ func loadChangeNodesAtHEADWithOutput(rootPath string, outputCommand changeGitOut
 		return nil, fmt.Errorf("inspect committed Change paths at HEAD: %w", err)
 	}
 	type folderFiles struct {
-		jsonPresent bool
-		jsonContent string
-		mdPresent   bool
-		mdContent   string
+		jsonPresent  bool
+		jsonContent  string
+		mdPresent    bool
+		mdContent    string
+		shapePresent bool
+		shapeContent string
+		briefPresent bool
+		briefContent string
 	}
 	byFolder := map[string]*folderFiles{}
 	for _, path := range strings.Split(strings.TrimSpace(output), "\n") {
@@ -42,7 +46,9 @@ func loadChangeNodesAtHEADWithOutput(rootPath string, outputCommand changeGitOut
 			continue
 		}
 		base := filepath.Base(path)
-		if base != changeMachineFileJSON && base != changeMachineFileLegacy {
+		switch base {
+		case changeMachineFileJSON, changeMachineFileLegacy, changeContractFileShape, changeBriefFile:
+		default:
 			continue
 		}
 		folder := filepath.ToSlash(filepath.Dir(path))
@@ -55,12 +61,19 @@ func loadChangeNodesAtHEADWithOutput(rootPath string, outputCommand changeGitOut
 		if err != nil {
 			return nil, fmt.Errorf("read committed %s: %w", path, err)
 		}
-		if base == changeMachineFileJSON {
+		switch base {
+		case changeMachineFileJSON:
 			entry.jsonPresent = true
 			entry.jsonContent = content
-		} else {
+		case changeMachineFileLegacy:
 			entry.mdPresent = true
 			entry.mdContent = content
+		case changeContractFileShape:
+			entry.shapePresent = true
+			entry.shapeContent = content
+		case changeBriefFile:
+			entry.briefPresent = true
+			entry.briefContent = content
 		}
 	}
 	folders := make([]string, 0, len(byFolder))
@@ -75,9 +88,24 @@ func loadChangeNodesAtHEADWithOutput(rootPath string, outputCommand changeGitOut
 		if !ok {
 			continue
 		}
-		if node.Layout == changeLayoutNew && node.Content == "" && entry.mdPresent {
-			node.Content = entry.mdContent
-			node.ContractFile = filepath.ToSlash(filepath.Join(folder, changeMachineFileLegacy))
+		if node.Layout == changeLayoutNew {
+			switch {
+			case entry.shapePresent:
+				node.Content = entry.shapeContent
+				node.ContractFile = filepath.ToSlash(filepath.Join(folder, changeContractFileShape))
+				node.CapturedOnly = false
+			case entry.briefPresent:
+				node.Content = entry.briefContent
+				node.ContractFile = filepath.ToSlash(filepath.Join(folder, changeBriefFile))
+				node.CapturedOnly = true
+			case entry.mdPresent && node.Content == "":
+				node.Content = entry.mdContent
+				node.ContractFile = filepath.ToSlash(filepath.Join(folder, changeMachineFileLegacy))
+			default:
+				if !entry.shapePresent && !entry.briefPresent {
+					node.CapturedOnly = true
+				}
+			}
 		}
 		nodes = append(nodes, node)
 	}

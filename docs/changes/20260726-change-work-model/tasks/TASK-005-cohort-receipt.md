@@ -32,11 +32,11 @@ loaf journal log "skill(implement): TASK-005 — cohort receipt"
 
 ## Steps
 
-- [ ] Parse executable criteria command form from `shape.md`; run exactly those commands.
-- [ ] Write receipt with criteria digest, verified commit, per-criterion evidence.
-- [ ] Gate requires current receipt for cohort members; receipt's own commit never stales; other later paths force re-run.
-- [ ] Criteria edit expires; `plan.md` edit does not; retarget after verify triggers re-run path.
-- [ ] Legacy members directed to convert first.
+- [x] Parse executable criteria command form from `shape.md`; run exactly those commands.
+- [x] Write receipt with criteria digest, verified commit, per-criterion evidence.
+- [x] Gate requires current receipt for cohort members; receipt's own commit never stales; other later paths force re-run.
+- [x] Criteria edit expires; `plan.md` edit does not; retarget after verify triggers re-run path.
+- [x] Legacy members directed to convert first.
 
 ## Verification
 
