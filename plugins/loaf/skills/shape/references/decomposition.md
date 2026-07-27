@@ -23,7 +23,30 @@ Sequencing constraints that genuinely exist — this unit must land before that 
 
 Split criteria into two groups, mirroring the Change template:
 
-- **Executable** — bound to a command and an expected result; machine-checkable.
-- **Human review** — what a reviewer confirms that no command can.
+- **Executable (V-tier)** — bound to a command and an expected result; machine-checkable by `loaf change verify`. Two equivalent forms:
+
+  Inline (what the scaffold writes):
+
+  ```markdown
+  - **V1.** What must be true. Command: `go test ./...`. Expect: exit 0.
+  ```
+
+  Or with an authoring checkbox still open:
+
+  ```markdown
+  - [**V1.** What must be true. Command: `go test ./...`. Expect: exit 0.]
+  ```
+
+  Sub-bullet:
+
+  ```markdown
+  - **V1.** What must be true.
+    - Command: `go test ./...`
+    - Expect: exit 0
+  ```
+
+  `Expect` is optional. Commands run from the **repository root** (never the change folder). Only V-entries that declare a fenced `Command:` value are gate input.
+
+- **Human review (H-tier)** — what a reviewer confirms that no command can. H-entries are review material and are **never** gate input; `loaf change verify` ignores them.
 
 A criterion whose check only restates the implementation (recomputing the expected value the way the code does) is vacuous — it can never disagree with the code under test. Prefer criteria with an independent source of truth.

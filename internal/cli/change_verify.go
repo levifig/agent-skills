@@ -17,9 +17,11 @@ import (
 const changeVerifyReceiptFile = "receipts/verify.json"
 
 var (
-	changeCriterionHeaderRE  = regexp.MustCompile(`(?m)^-\s+\*\*(V\d+)\.\*\*\s+(.*)$`)
-	changeCriterionCommandRE = regexp.MustCompile(`(?mi)^\s*-\s*Command:\s*` + "`" + `([^` + "`" + `]+)` + "`")
-	changeCriterionExpectRE  = regexp.MustCompile(`(?mi)^\s*-\s*Expect:\s*(.+)$`)
+	// Header accepts both `- **V1.** …` and the scaffold's checkbox form `- [**V1.** …]`.
+	changeCriterionHeaderRE = regexp.MustCompile(`(?m)^-\s+(\[)?\*\*(V\d+)\.\*\*\s+(.*)$`)
+	// Command/Expect match inline on the V-entry line or as a sub-bullet (`- Command: \`…\``).
+	changeCriterionCommandRE = regexp.MustCompile(`(?i)Command:\s*` + "`" + `([^` + "`" + `]+)` + "`")
+	changeCriterionExpectRE  = regexp.MustCompile(`(?i)Expect:\s*(.+)$`)
 )
 
 type changeCriterion struct {
@@ -35,6 +37,7 @@ type changeVerifyReceipt struct {
 	VerifiedCommit string                        `json:"verified_commit"`
 	VerifiedAt     string                        `json:"verified_at"`
 	CriteriaDigest string                        `json:"criteria_digest"`
+	Cwd            string                        `json:"cwd"`
 	TargetRelease  string                        `json:"target_release,omitempty"`
 	Results        []changeVerifyCriterionResult `json:"results"`
 }
@@ -88,7 +91,7 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 	results := make([]changeVerifyCriterionResult, 0, len(criteria))
 	failed := false
 	for _, criterion := range criteria {
-		exitCode, output, runErr := runChangeCriterionCommand(folder, criterion.Command)
+		exitCode, output, runErr := runChangeCriterionCommand(rootPath, criterion.Command)
 		digest := sha256HexBytes([]byte(output))
 		ok := runErr == nil && exitCode == 0
 		if !ok {
@@ -113,6 +116,7 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 		VerifiedCommit: head,
 		VerifiedAt:     time.Now().UTC().Format(time.RFC3339),
 		CriteriaDigest: changeCriteriaDigest(criteria),
+		Cwd:            rootPath,
 		TargetRelease:  node.TargetRelease,
 		Results:        results,
 	}
@@ -164,10 +168,24 @@ func parseChangeExecutableCriteria(shape string) []changeCriterion {
 	for _, line := range lines {
 		if match := changeCriterionHeaderRE.FindStringSubmatch(line); match != nil {
 			flush()
-			current = &changeCriterion{ID: match[1], Text: strings.TrimSpace(match[2])}
-			// Inline Command: `...` on the same header line
+			boxed := match[1] == "["
+			text := strings.TrimSpace(match[3])
+			if boxed {
+				text = strings.TrimSuffix(text, "]")
+				text = strings.TrimSpace(text)
+			}
+			current = &changeCriterion{ID: match[2], Text: text}
+			// Inline Command:/Expect: on the same header line (scaffold form).
 			if cmd := changeCriterionCommandRE.FindStringSubmatch(line); cmd != nil {
 				current.Command = cmd[1]
+			}
+			if exp := changeCriterionExpectRE.FindStringSubmatch(line); exp != nil {
+				expect := strings.TrimSpace(exp[1])
+				if boxed {
+					expect = strings.TrimSuffix(expect, "]")
+					expect = strings.TrimSpace(expect)
+				}
+				current.Expect = expect
 			}
 			continue
 		}

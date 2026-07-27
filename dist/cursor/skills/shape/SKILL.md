@@ -120,7 +120,7 @@ Offer the blindspot pass when the territory is unfamiliar (a new domain, an unfa
 
 ### Step 5: Decompose into Implementation Units
 
-Absorbed from the retired breakdown step — see [references/decomposition.md](references/decomposition.md) for the Right Size Test and per-unit verification discipline. Order units by likelihood-of-change; state real sequencing constraints in prose, never by list order alone.
+Absorbed from the retired breakdown step — see [references/decomposition.md](references/decomposition.md) for the Right Size Test and per-unit verification discipline, including the V-tier `Command:` / `Expect:` forms `loaf change verify` parses (commands run from the repository root; H-tier is never gate input). Order units by likelihood-of-change; state real sequencing constraints in prose, never by list order alone.
 
 ### Step 6: Fill the Planning Contract
 
@@ -163,7 +163,7 @@ Offer to push the branch and open a draft PR, using [the PR template](templates/
 | Grilling | [references/grilling.md](references/grilling.md) | Running the one-question-at-a-time interview for `[KU]` entries |
 | Reaction artifacts | [references/reaction-artifact.md](references/reaction-artifact.md) | Resolving `[UK]` entries with a variant, mock, or prototype |
 | Decomposition | [references/decomposition.md](references/decomposition.md) | Sizing and ordering Implementation Units |
-| CLI boundary | [references/cli-boundary.md](references/cli-boundary.md) | Reading `loaf change init`/`check` output, or explaining `--require-executable` |
+| CLI boundary | [references/cli-boundary.md](references/cli-boundary.md) | Reading `loaf change init`/`check`/`verify` output, or explaining `--require-executable` |
 | Critique Gate | [references/critique-gate.md](references/critique-gate.md) | Self-challenging scope and boundaries before finalizing |
 
 ## Artifact Naming

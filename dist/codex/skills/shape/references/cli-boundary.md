@@ -26,6 +26,21 @@ A branch/Change mismatch (current branch doesn't match the Change's `branch:` fi
 
 Stamps `reports/YYYYMMDD-HHMMSS-<kind>-<slug>.html` with charset, provenance, and token skeleton; prints design-language guidance. Closed kinds: approval, review, visual, audit, note.
 
-## `loaf change tasks` / `show` / `verify`
+## `loaf change verify [folder]`
 
-On-demand projections and cohort verify receipts. See `loaf change --help`.
+Runs executable V-tier criteria declared in `shape.md` and writes `receipts/verify.json` (criteria digest, verified commit, cwd, per-criterion evidence). New-layout-only.
+
+Criteria forms (both parse):
+
+```markdown
+- **V1.** Prose. Command: `exact command`. Expect: exit 0.
+- **V1.** Prose.
+  - Command: `exact command`
+  - Expect: exit 0
+```
+
+Commands run from the repository root; the receipt records that cwd. H-tier entries (`**H1.** …`) are never gate input. See [decomposition.md](decomposition.md) for authoring guidance.
+
+## `loaf change tasks` / `show`
+
+On-demand projections. See `loaf change --help`.
