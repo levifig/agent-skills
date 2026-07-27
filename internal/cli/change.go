@@ -139,15 +139,23 @@ type changeCheckReport struct {
 
 // changeNode is the git-canonical portion of a materialized Change. It is
 // deliberately derived from retained files; no lineage state is persisted.
+// Layout is "new" when change.json is present, else "legacy" (change.md).
 type changeNode struct {
-	Slug         string `json:"slug"`
-	Branch       string `json:"branch,omitempty"`
-	Lineage      string `json:"lineage"`
-	Predecessor  string `json:"predecessor,omitempty"`
-	ReleaseAfter string `json:"releaseAfter,omitempty"`
-	Folder       string `json:"folder"`
-	ChangeFile   string `json:"-"`
-	Content      string `json:"-"`
+	Slug          string   `json:"slug"`
+	Branch        string   `json:"branch,omitempty"`
+	Created       string   `json:"created,omitempty"`
+	Lineage       string   `json:"lineage,omitempty"`
+	Predecessor   string   `json:"predecessor,omitempty"`
+	ReleaseAfter  string   `json:"releaseAfter,omitempty"`
+	TargetRelease string   `json:"targetRelease,omitempty"`
+	Layout        string   `json:"layout"`
+	Folder        string   `json:"folder"`
+	ChangeFile    string   `json:"-"`
+	ContractFile  string   `json:"-"`
+	Content       string   `json:"-"`
+	MetaContent   string   `json:"-"`
+	ParseFindings []string `json:"-"`
+	CapturedOnly  bool     `json:"-"`
 }
 
 type changeListOptions struct {
@@ -222,8 +230,8 @@ func writeChangeCheckHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf change check [folder] [--require-executable] [--json]",
 		"Validate a Change and report derived structural executability, not implementation completion. Folder resolution: an "+
 			"explicit [folder] path always wins; otherwise the current git branch is "+
-			"matched against the branch: frontmatter across docs/changes/*/change.md.",
-		"[folder]              Change folder (or change.md) path; resolves from the current branch when omitted",
+			"matched against declared branch identity across docs/changes/*/ (change.json or change.md).",
+		"[folder]              Change folder (or change.json/change.md) path; resolves from the current branch when omitted",
 		"--require-executable  Exit non-zero unless the Change is structurally executable (CI gate for non-draft PRs)",
 		"--json                Output folder, passed, executable, findings, warnings, and gaps as JSON")
 }
@@ -305,13 +313,14 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 	if err != nil {
 		return err
 	}
-	content, err := os.ReadFile(changeFile)
+	node, err := assembleChangeNodeFromFolder(rootPath, folder)
 	if err != nil {
-		return fmt.Errorf("read %s: %w", relFromRoot(rootPath, changeFile), err)
+		return err
 	}
+	_ = changeFile
 
-	changePath := filepath.ToSlash(relFromRoot(rootPath, changeFile))
-	report := evaluateChangeDocAtPath(string(content), filepath.Base(folder), currentChangeBranch(rootPath), changePath)
+	changePath := node.ChangeFile
+	report := evaluateChangeNode(node, currentChangeBranch(rootPath))
 	nodes, indexErr := loadChangeNodes(rootPath)
 	if indexErr != nil {
 		return indexErr
@@ -485,41 +494,46 @@ func parseChangeCheckArgs(args []string) (changeCheckOptions, error) {
 }
 
 func findChangeSlug(rootPath, slug string) (string, error) {
-	matches, err := filepath.Glob(filepath.Join(rootPath, "docs", "changes", "*", "change.md"))
+	folders, err := listChangeFolderNames(rootPath)
 	if err != nil {
 		return "", err
 	}
-	for _, changeFile := range matches {
-		match := changeFolderRE.FindStringSubmatch(filepath.Base(filepath.Dir(changeFile)))
+	for _, name := range folders {
+		match := changeFolderRE.FindStringSubmatch(name)
 		if match != nil && match[2] == slug {
-			return relFromRoot(rootPath, filepath.Dir(changeFile)), nil
+			return filepath.ToSlash(filepath.Join("docs", "changes", name)), nil
 		}
 	}
 	return "", nil
 }
 
 func loadChangeNodes(rootPath string) ([]changeNode, error) {
-	matches, err := filepath.Glob(filepath.Join(rootPath, "docs", "changes", "*", "change.md"))
+	folders, err := listChangeFolderNames(rootPath)
 	if err != nil {
 		return nil, err
 	}
-	nodes := make([]changeNode, 0, len(matches))
-	for _, changeFile := range matches {
-		content, err := os.ReadFile(changeFile)
+	nodes := make([]changeNode, 0, len(folders))
+	for _, name := range folders {
+		folderAbs := filepath.Join(rootPath, "docs", "changes", name)
+		node, err := assembleChangeNodeFromFolder(rootPath, folderAbs)
 		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", relFromRoot(rootPath, changeFile), err)
+			return nil, err
 		}
-		fields, _ := changeFrontmatterFields(string(content))
-		folder := filepath.Dir(changeFile)
-		nodes = append(nodes, changeNode{Slug: changeFieldValue(fields, "change"), Branch: changeFieldValue(fields, "branch"), Lineage: changeFieldValue(fields, "lineage"), Predecessor: changeFieldValue(fields, "predecessor"), ReleaseAfter: changeFieldValue(fields, "release-after"), Folder: relFromRoot(rootPath, folder), ChangeFile: relFromRoot(rootPath, changeFile), Content: string(content)})
+		nodes = append(nodes, node)
 	}
-	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ChangeFile < nodes[j].ChangeFile })
+	sort.Slice(nodes, func(i, j int) bool {
+		if nodes[i].Folder == nodes[j].Folder {
+			return nodes[i].ChangeFile < nodes[j].ChangeFile
+		}
+		return nodes[i].Folder < nodes[j].Folder
+	})
 	return nodes, nil
 }
 
-// resolveChangeFolder returns the Change folder and its change.md path. An
-// explicit path wins; otherwise the folder is resolved by matching the current
-// git branch against branch: frontmatter across docs/changes/*/change.md.
+// resolveChangeFolder returns the Change folder and its primary machine file
+// (change.json when present, otherwise change.md). An explicit path wins;
+// otherwise the folder is resolved by matching the current git branch against
+// declared branch identity across both layouts.
 func resolveChangeFolder(rootPath string, path string) (string, string, error) {
 	if path != "" {
 		abs := path
@@ -531,15 +545,19 @@ func resolveChangeFolder(rootPath string, path string) (string, string, error) {
 			return "", "", fmt.Errorf("change path not found: %s", path)
 		}
 		folder := abs
-		changeFile := filepath.Join(abs, "change.md")
 		if !info.IsDir() {
-			changeFile = abs
-			folder = filepath.Dir(abs)
+			base := filepath.Base(abs)
+			if base == changeMachineFileJSON || base == changeMachineFileLegacy || base == changeContractFileShape || base == changeBriefFile {
+				folder = filepath.Dir(abs)
+			} else {
+				return "", "", fmt.Errorf("change path not found: %s", path)
+			}
 		}
-		if _, err := os.Stat(changeFile); err != nil {
-			return "", "", fmt.Errorf("no change.md in %s", relFromRoot(rootPath, folder))
+		node, err := assembleChangeNodeFromFolder(rootPath, folder)
+		if err != nil {
+			return "", "", err
 		}
-		return folder, changeFile, nil
+		return folder, filepath.Join(rootPath, filepath.FromSlash(node.ChangeFile)), nil
 	}
 	return resolveChangeFolderByBranch(rootPath)
 }
@@ -549,33 +567,28 @@ func resolveChangeFolderByBranch(rootPath string) (string, string, error) {
 	if branch == "" {
 		return "", "", fmt.Errorf("could not determine the current git branch; pass a change folder path")
 	}
-	matches, err := filepath.Glob(filepath.Join(rootPath, "docs", "changes", "*", "change.md"))
+	nodes, err := loadChangeNodes(rootPath)
 	if err != nil {
 		return "", "", err
 	}
 	var folders []string
 	var available []changeBranchEntry
-	for _, changeFile := range matches {
-		content, err := os.ReadFile(changeFile)
-		if err != nil {
-			continue
-		}
-		fields, atByteOne := changeFrontmatterFields(string(content))
-		if !atByteOne {
-			continue
-		}
-		fmBranch := changeFieldValue(fields, "branch")
+	for _, node := range nodes {
 		available = append(available, changeBranchEntry{
-			folder: relFromRoot(rootPath, filepath.Dir(changeFile)),
-			branch: fmBranch,
+			folder: node.Folder,
+			branch: node.Branch,
 		})
-		if fmBranch == branch {
-			folders = append(folders, filepath.Dir(changeFile))
+		if node.Branch == branch {
+			folders = append(folders, filepath.Join(rootPath, filepath.FromSlash(node.Folder)))
 		}
 	}
 	switch len(folders) {
 	case 1:
-		return folders[0], filepath.Join(folders[0], "change.md"), nil
+		node, err := assembleChangeNodeFromFolder(rootPath, folders[0])
+		if err != nil {
+			return "", "", err
+		}
+		return folders[0], filepath.Join(rootPath, filepath.FromSlash(node.ChangeFile)), nil
 	case 0:
 		return "", "", fmt.Errorf("no change folder matches branch %q; pass a change folder path.%s", branch, formatAvailableChanges(available))
 	default:
@@ -609,6 +622,77 @@ func formatAvailableChanges(entries []changeBranchEntry) string {
 	return b.String()
 }
 
+// evaluateChangeNode runs the Verification Contract against a layout-agnostic
+// Change node: machine-surface findings first, then per-layout contract body.
+func evaluateChangeNode(node changeNode, currentBranch string) changeCheckReport {
+	report := changeCheckReport{Violations: []string{}, Warnings: []string{}, Gaps: []string{}}
+	for _, finding := range node.ParseFindings {
+		report.Violations = append(report.Violations, prefixChangeFinding(node.ChangeFile, finding))
+	}
+
+	folderBase := filepath.Base(node.Folder)
+	folderMatch := changeFolderRE.FindStringSubmatch(folderBase)
+	if folderMatch == nil {
+		report.Violations = append(report.Violations,
+			fmt.Sprintf("malformed change folder name %q (want YYYYMMDD-slug)", folderBase))
+	} else {
+		folderDate, folderSlug := folderMatch[1], folderMatch[2]
+		if node.Slug != "" && node.Slug != folderSlug {
+			report.Violations = append(report.Violations,
+				fmt.Sprintf("identity mismatch: change: %q does not match folder slug %q", node.Slug, folderSlug))
+		}
+		if node.Created != "" && strings.ReplaceAll(node.Created, "-", "") != folderDate {
+			report.Violations = append(report.Violations,
+				fmt.Sprintf("identity mismatch: created: %q does not match folder date %q", node.Created, folderDate))
+		}
+	}
+
+	if node.Layout == changeLayoutNew {
+		if node.CapturedOnly || node.ContractFile == "" || strings.HasSuffix(node.ContractFile, "/"+changeBriefFile) {
+			report.Gaps = append(report.Gaps, "shape.md (missing)")
+		} else {
+			report = applyChangeContractSections(report, node.Content)
+		}
+		if currentBranch != "" && node.Branch != "" && node.Branch != currentBranch {
+			report.Warnings = append(report.Warnings,
+				fmt.Sprintf("current branch %q does not match change branch %q", currentBranch, node.Branch))
+		}
+		report.Executable = len(report.Gaps) == 0 && len(report.Violations) == 0
+		report.Violations = sortedUnique(report.Violations)
+		report.Warnings = sortedUnique(report.Warnings)
+		report.Gaps = sortedUnique(report.Gaps)
+		return report
+	}
+
+	legacy := evaluateChangeDocAtPath(node.Content, folderBase, currentBranch, node.ChangeFile)
+	legacy.Violations = append(append([]string{}, report.Violations...), legacy.Violations...)
+	legacy.Violations = sortedUnique(legacy.Violations)
+	return legacy
+}
+
+// applyChangeContractSections checks Product + executable section presence/authorship
+// on a narrative contract body (shape.md or legacy change.md body).
+func applyChangeContractSections(report changeCheckReport, content string) changeCheckReport {
+	sections := changeSections(content)
+	for _, name := range changeProductSections {
+		if _, ok := sections[name]; !ok {
+			report.Violations = append(report.Violations,
+				fmt.Sprintf("missing Product Contract section: %s", name))
+		}
+	}
+	for _, name := range changeExecutableSections {
+		body, ok := sections[name]
+		if !ok {
+			report.Gaps = append(report.Gaps, fmt.Sprintf("%s (missing)", name))
+			continue
+		}
+		if !changeSectionAuthored(body) {
+			report.Gaps = append(report.Gaps, fmt.Sprintf("%s (empty)", name))
+		}
+	}
+	return report
+}
+
 // evaluateChangeDoc runs the Verification Contract against one change.md.
 func evaluateChangeDoc(content string, folderBase string, currentBranch string) changeCheckReport {
 	return evaluateChangeDocAtPath(content, folderBase, currentBranch, "")
@@ -629,10 +713,14 @@ func evaluateChangeDocAtPath(content string, folderBase string, currentBranch st
 	for _, finding := range parsed.Findings {
 		report.Violations = append(report.Violations, prefixChangeFinding(changePath, finding))
 	}
-	for _, key := range []string{"change", "created", "lineage", "predecessor", "release-after"} {
+	for _, key := range []string{"change", "created", "lineage", "predecessor", "release-after", "target_release"} {
 		if countChangeFields(fields, key) > 1 {
 			report.Violations = append(report.Violations, prefixChangeFinding(changePath, fmt.Sprintf("duplicate frontmatter field %q", key)))
 		}
+	}
+	if target := changeFieldValue(fields, "target_release"); target != "" && !isCanonicalChangeTargetRelease(target) {
+		report.Violations = append(report.Violations, prefixChangeFinding(changePath,
+			fmt.Sprintf("target_release %q must be canonical MAJOR.MINOR.PATCH (no v, leading zeros, prerelease, or build)", target)))
 	}
 
 	// V1a: status-like keys and the canonical change-state vocabulary as values.
