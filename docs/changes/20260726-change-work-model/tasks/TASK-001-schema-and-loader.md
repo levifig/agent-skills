@@ -35,12 +35,12 @@ rg -n "loadChangeNodes|resolveChangeFolder|deletedLineage|dependencyMetadata" in
 
 ## Steps
 
-- [ ] Define closed `change.json` schema: required identity `change` / `created` / `branch`; optional `target_release` as canonical `MAJOR.MINOR.PATCH` (no `v`, leading zeros, prerelease, or build); reject unknown keys and status/lifecycle aliases (`readiness`/`status`/`state`/`completion`/`done` and kin).
-- [ ] Detect layout by `change.json` presence; legacy fallback only when absent; malformed `change.json` fails closed (violation / load finding), never silent fallback to `change.md`.
-- [ ] Replace single-content `changeNode` assembly with parsed metadata + per-layout contract evaluation surface (`shape.md` new, `change.md` legacy); keep legacy lineage fields readable for today's gate.
-- [ ] Migrate consumers: working-tree and HEAD loaders, `findChangeSlug`, folder and branch resolution, init duplicate detection, list/check indexing.
-- [ ] History replay unions `change.json` and `change.md` surfaces to derive retarget events (`target_release` mutations including removal-to-none); retention guards target-declaring units (and legacy lineage/`release-after` history) unit-keyed, including `change.json`; atomic same-commit convert is replacement not deletion.
-- [ ] Tests cover schema grammar, closed keys, layout detection, fail-closed malformed JSON, dual-surface load, retarget derivation, retention+conversion fixtures; `go test` for touched packages passes.
+- [x] Define closed `change.json` schema: required identity `change` / `created` / `branch`; optional `target_release` as canonical `MAJOR.MINOR.PATCH` (no `v`, leading zeros, prerelease, or build); reject unknown keys and status/lifecycle aliases (`readiness`/`status`/`state`/`completion`/`done` and kin).
+- [x] Detect layout by `change.json` presence; legacy fallback only when absent; malformed `change.json` fails closed (violation / load finding), never silent fallback to `change.md`.
+- [x] Replace single-content `changeNode` assembly with parsed metadata + per-layout contract evaluation surface (`shape.md` new, `change.md` legacy); keep legacy lineage fields readable for today's gate.
+- [x] Migrate consumers: working-tree and HEAD loaders, `findChangeSlug`, folder and branch resolution, init duplicate detection, list/check indexing.
+- [x] History replay unions `change.json` and `change.md` surfaces to derive retarget events (`target_release` mutations including removal-to-none); retention guards target-declaring units (and legacy lineage/`release-after` history) unit-keyed, including `change.json`; atomic same-commit convert is replacement not deletion.
+- [x] Tests cover schema grammar, closed keys, layout detection, fail-closed malformed JSON, dual-surface load, retarget derivation, retention+conversion fixtures; `go test` for touched packages passes.
 
 ## Verification
 

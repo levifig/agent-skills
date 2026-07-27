@@ -34,10 +34,10 @@ rg -n "runChangeInit|changeTemplate|stampChange" internal/cli/change.go
 
 ## Steps
 
-- [ ] `loaf change init` emits `change.json` + `shape.md` + seeded `tasks/`; `--brief` emits only `change.json` + `brief.md`.
-- [ ] Templates cover shape contract (executable-criteria command form), brief/plan/design roles, and task-file delegation packet (`parent`/`blocks`/`blocked-by`/`relates-to`; slug never cites other work units).
-- [ ] `loaf change report new` stamps `reports/YYYYMMDD-HHMMSS-<kind>-<slug>.html`, refuses collisions, prints guidance; `--kind` from closed registry (`approval`/`review`/`visual`/`audit`/`note`); unknown kinds refused with registry printed.
-- [ ] Tests for scaffold, brief mode, report invariants, unknown kind; V3/V9 fixtures green.
+- [x] `loaf change init` emits `change.json` + `shape.md` + seeded `tasks/`; `--brief` emits only `change.json` + `brief.md`.
+- [x] Templates cover shape contract (executable-criteria command form), brief/plan/design roles, and task-file delegation packet (`parent`/`blocks`/`blocked-by`/`relates-to`; slug never cites other work units).
+- [x] `loaf change report new` stamps `reports/YYYYMMDD-HHMMSS-<kind>-<slug>.html`, refuses collisions, prints guidance; `--kind` from closed registry (`approval`/`review`/`visual`/`audit`/`note`); unknown kinds refused with registry printed.
+- [x] Tests for scaffold, brief mode, report invariants, unknown kind; V3/V9 fixtures green.
 
 ## Verification
 

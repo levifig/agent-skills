@@ -32,12 +32,12 @@ loaf journal log "skill(implement): TASK-004 — provenance and gate rewrite"
 
 ## Steps
 
-- [ ] Candidate version computed before gating; stable candidates gate cohort; prerelease candidates bypass; finalization gates stable target.
-- [ ] Path-grade executed display; flip-grade gate for `target_release` members; negative fixtures for non-flips.
-- [ ] Block messages distinguish not-materialized / not-executed / legacy-convert-first.
-- [ ] Materialize carrier with `target_release: 2.0.0` atomically with freeze-replay retirement.
-- [ ] `loaf change list` becomes units/cohort projection (`--target` filters).
-- [ ] Consider splitting if scope exceeds one coherent commit/slice.
+- [x] Candidate version computed before gating; stable candidates gate cohort; prerelease candidates bypass; finalization gates stable target.
+- [x] Path-grade executed display; flip-grade gate for `target_release` members; negative fixtures for non-flips.
+- [x] Block messages distinguish not-materialized / not-executed / legacy-convert-first.
+- [x] Materialize carrier with `target_release: 2.0.0` atomically with freeze-replay retirement.
+- [x] `loaf change list` becomes units/cohort projection (`--target` filters).
+- [x] Consider splitting if scope exceeds one coherent commit/slice.
 
 ## Verification
 

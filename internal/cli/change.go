@@ -208,7 +208,7 @@ func (r Runner) runChange(args []string, out io.Writer, runtime state.Runtime) e
 	case "check":
 		return r.runChangeCheck(args[1:], out, runtime.RootPath())
 	case "list":
-		return r.runChangeList(args[1:], out, runtime)
+		return r.runChangeListUnits(args[1:], out, runtime.RootPath())
 	case "report":
 		return r.runChangeReport(args[1:], out, runtime.RootPath())
 	case "tasks":
@@ -226,7 +226,7 @@ func writeChangeHelp(out io.Writer) {
 		[]subcommandHelpItem{
 			{Name: "init", Summary: "Scaffold a new Change folder (change.json + shape.md + tasks/)"},
 			{Name: "check", Summary: "Validate a Change and report derived executability"},
-			{Name: "list", Summary: "List a retained Change lineage without relying on branches"},
+			{Name: "list", Summary: "List Changes as units/cohort projection"},
 			{Name: "tasks", Summary: "Project the stable-ID task index as JSON"},
 			{Name: "show", Summary: "Show layout, target, state, and derived PR set"},
 			{Name: "report", Summary: "Stamp authored HTML reports under reports/"},
@@ -234,9 +234,10 @@ func writeChangeHelp(out io.Writer) {
 }
 
 func writeChangeListHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf change list --lineage <key> [--json]",
-		"List retained Change files for one lineage. Branch names are provenance only, so this remains usable after merge or branch deletion.",
-		"--lineage  Required lineage key", "--json     Output the derived graph, gaps, and optional journal enrichment")
+	writeUsageHelp(out, "loaf change list [--target <version>] [--json]",
+		"List Changes as a units/cohort projection: layout, target_release, and derived state. --target filters one release cohort.",
+		"--target   Filter to changes with this target_release (MAJOR.MINOR.PATCH)",
+		"--json     Output units as JSON")
 }
 
 func writeChangeInitHelp(out io.Writer) {

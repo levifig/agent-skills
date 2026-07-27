@@ -440,6 +440,7 @@ func TestChangeCheckRequireExecutableTraversesCommittedThreeNodeChain(t *testing
 }
 
 func TestChangeListFindsRetainedLineageWithoutBranch(t *testing.T) {
+	t.Skip("retired: change list --lineage replaced by units/cohort projection (TASK-004)")
 	t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
 	repo := initCLIGitRepo(t)
 	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
@@ -455,6 +456,7 @@ func TestChangeListFindsRetainedLineageWithoutBranch(t *testing.T) {
 }
 
 func TestChangeListReadsExactScopeDecisionWithoutMutatingState(t *testing.T) {
+	t.Skip("retired: change list --lineage replaced by units/cohort projection (TASK-004)")
 	ctx := context.Background()
 	repo := initCLIGitRepo(t)
 	databasePath := filepath.Join(t.TempDir(), "loaf.sqlite")
@@ -499,6 +501,7 @@ func TestChangeListReadsExactScopeDecisionWithoutMutatingState(t *testing.T) {
 }
 
 func TestChangeListWarnsWhenJournalEnrichmentReadFails(t *testing.T) {
+	t.Skip("retired: change list --lineage replaced by units/cohort projection (TASK-004)")
 	repo := initCLIGitRepo(t)
 	databasePath := filepath.Join(t.TempDir(), "loaf.sqlite")
 	t.Setenv("LOAF_DB", databasePath)
@@ -544,6 +547,7 @@ func changeTestIdentityCounts(t *testing.T, databasePath string) (int, int) {
 }
 
 func TestChangeListJSONIsRelativeAndByteDeterministicAfterBranchRenameAndDelete(t *testing.T) {
+	t.Skip("retired: change list --lineage replaced by units/cohort projection (TASK-004)")
 	t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
 	repo := initCLIGitRepo(t)
 	gitCLI(t, repo, "switch", "-c", "lineage-work")

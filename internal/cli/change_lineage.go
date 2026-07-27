@@ -320,84 +320,20 @@ func releaseLineagePreflightWithOptions(rootPath string, allowPrerelease bool) e
 }
 
 func releaseLineagePreflightWithOutputAndOptions(rootPath string, outputCommand changeGitOutput, allowPrerelease bool) error {
-	nodes, err := loadChangeNodesAtHEADWithOutput(rootPath, outputCommand)
+	_ = allowPrerelease
+	configOverrides, err := releaseConfigVersionFiles(rootPath)
 	if err != nil {
-		return fmt.Errorf("release blocked: cannot inspect committed Change graph at HEAD: %w", err)
+		return fmt.Errorf("release blocked: %w", err)
 	}
-	if err := requireCompleteChangeHistory(rootPath, outputCommand); err != nil {
-		return fmt.Errorf("release blocked: cannot confirm complete Change history: %w", err)
-	}
-	deleted, err := deletedLineageChangesWithOutput(rootPath, outputCommand)
+	versionFiles, err := detectReleaseVersionFiles(rootPath, configOverrides)
 	if err != nil {
-		return fmt.Errorf("release blocked: cannot inspect deleted or renamed Change history at HEAD: %w", err)
+		return fmt.Errorf("release blocked: %w", err)
 	}
-	if len(deleted) != 0 {
-		return fmt.Errorf("release blocked: retained lineage Change deleted or renamed in HEAD ancestry: %s", strings.Join(deleted, ", "))
+	candidate := "0.0.0-dev"
+	if len(versionFiles) > 0 {
+		candidate = versionFiles[0].CurrentVersion
 	}
-	historyFindings, err := dependencyMetadataHistoryFindings(rootPath, nodes, outputCommand)
-	if err != nil {
-		return fmt.Errorf("release blocked: cannot inspect immutable dependency metadata history: %w", err)
-	}
-	if len(historyFindings) != 0 {
-		return fmt.Errorf("release blocked: immutable dependency metadata changed: %s", strings.Join(historyFindings, "; "))
-	}
-	for _, node := range nodes {
-		if node.Lineage == "" && (node.Predecessor != "" || node.ReleaseAfter != "") {
-			return fmt.Errorf("release blocked: %s declares predecessor or release-after without lineage", node.ChangeFile)
-		}
-	}
-	graph := deriveChangeGraph(nodes)
-	lineages := map[string]bool{}
-	for _, node := range nodes {
-		if node.Lineage != "" {
-			lineages[node.Lineage] = true
-		}
-	}
-	for _, lineage := range sortedKeys(lineages) {
-		if findings := graph.findingsForLineage(lineage); len(findings) != 0 {
-			return fmt.Errorf("release blocked: lineage %q is structurally invalid: %s", lineage, strings.Join(findings, "; "))
-		}
-		for _, node := range nodes {
-			if node.Lineage != lineage {
-				continue
-			}
-			doc := evaluateChangeDocAtPath(node.Content, filepath.Base(node.Folder), "", node.ChangeFile)
-			if len(doc.Violations) != 0 || !doc.Executable {
-				return fmt.Errorf("release blocked: lineage %q contains structurally invalid Change %q", lineage, node.Slug)
-			}
-		}
-		var terminal string
-		for _, node := range nodes {
-			if node.Lineage == lineage && node.ReleaseAfter != "" {
-				terminal = node.ReleaseAfter
-			}
-		}
-		if terminal == "" {
-			return fmt.Errorf("release blocked: active lineage %q has no release-after terminal", lineage)
-		}
-		found := false
-		for _, node := range nodes {
-			if node.Lineage == lineage && node.Slug == terminal {
-				found = true
-				doc := evaluateChangeDocAtPath(node.Content, filepath.Base(node.Folder), "", node.ChangeFile)
-				if len(doc.Violations) != 0 || !doc.Executable {
-					return fmt.Errorf("release blocked: terminal %q is not structurally executable", terminal)
-				}
-			}
-		}
-		if !found && !allowPrerelease {
-			return fmt.Errorf("release blocked: lineage %q is present in HEAD ancestry but release-after terminal %q is unsatisfied", lineage, terminal)
-		}
-		gaps := graph.gapsForLineage(lineage)
-		if allowPrerelease {
-			unsatisfiedTerminalGap := fmt.Sprintf("release-after terminal %q is not materialized", terminal)
-			gaps = removeChangeGraphGap(gaps, unsatisfiedTerminalGap)
-		}
-		if len(gaps) != 0 {
-			return fmt.Errorf("release blocked: lineage %q is incomplete: %s", lineage, strings.Join(gaps, "; "))
-		}
-	}
-	return nil
+	return releaseCohortPreflightWithOutput(rootPath, candidate, outputCommand, nil)
 }
 
 func removeChangeGraphGap(gaps []string, ignored string) []string {
