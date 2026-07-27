@@ -111,12 +111,15 @@ type changeCheckOptions struct {
 type changeCheckJSON struct {
 	Command    string   `json:"command"`
 	Folder     string   `json:"folder"`
+	Layout     string   `json:"layout,omitempty"`
 	Passed     bool     `json:"passed"`
 	Executable bool     `json:"executable"`
+	Captured   bool     `json:"captured,omitempty"`
 	ExitCode   int      `json:"exitCode"`
 	Findings   []string `json:"findings"`
 	Warnings   []string `json:"warnings"`
 	Gaps       []string `json:"gaps"`
+	Notices    []string `json:"notices,omitempty"`
 }
 
 type changeFrontmatterField struct {
@@ -179,6 +182,9 @@ type changeListJSON struct {
 const (
 	changeListProjectResolutionWarning = "journal-enrichment-project-resolution-failed: run change list from a resolvable project root"
 	changeListJournalReadWarning       = "journal-enrichment-read-failed: inspect native state with `loaf state status`"
+	// Removal boundary for the legacy single-file layout (H2 / TASK-003): the first
+	// stable release after the new layout has shipped one minor.
+	changeLegacyDeprecationNotice = "legacy layout (change.md): prefer change.json + shape.md + tasks/. Removal boundary: the first stable release after the new layout has shipped one minor."
 )
 
 func (r Runner) runChange(args []string, out io.Writer, runtime state.Runtime) error {
@@ -191,6 +197,8 @@ func (r Runner) runChange(args []string, out io.Writer, runtime state.Runtime) e
 		"check":  writeChangeCheckHelp,
 		"list":   writeChangeListHelp,
 		"report": writeChangeReportHelp,
+		"tasks":  writeChangeTasksHelp,
+		"show":   writeChangeShowHelp,
 	}) {
 		return nil
 	}
@@ -203,6 +211,10 @@ func (r Runner) runChange(args []string, out io.Writer, runtime state.Runtime) e
 		return r.runChangeList(args[1:], out, runtime)
 	case "report":
 		return r.runChangeReport(args[1:], out, runtime.RootPath())
+	case "tasks":
+		return r.runChangeTasks(args[1:], out, runtime.RootPath())
+	case "show":
+		return r.runChangeShow(args[1:], out, runtime.RootPath())
 	default:
 		return unknownSubcommandError("change", args[0])
 	}
@@ -215,6 +227,8 @@ func writeChangeHelp(out io.Writer) {
 			{Name: "init", Summary: "Scaffold a new Change folder (change.json + shape.md + tasks/)"},
 			{Name: "check", Summary: "Validate a Change and report derived executability"},
 			{Name: "list", Summary: "List a retained Change lineage without relying on branches"},
+			{Name: "tasks", Summary: "Project the stable-ID task index as JSON"},
+			{Name: "show", Summary: "Show layout, target, state, and derived PR set"},
 			{Name: "report", Summary: "Stamp authored HTML reports under reports/"},
 		})
 }
@@ -320,6 +334,24 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 	}
 	report = applyLineageValidation(report, nodes, changePath, rootPath, options.requireExecutable)
 
+	var notices []string
+	if node.Layout == changeLayoutLegacy {
+		notices = append(notices, changeLegacyDeprecationNotice)
+	}
+	if node.CapturedOnly {
+		report.Warnings = append(report.Warnings, "captured, not shaped (brief-only folder)")
+	}
+	if node.Layout == changeLayoutNew {
+		_, taskFindings, taskWarnings := loadChangeTasks(rootPath, folder, node)
+		report.Violations = append(report.Violations, taskFindings...)
+		report.Warnings = append(report.Warnings, taskWarnings...)
+		report.Violations = sortedUnique(report.Violations)
+		report.Warnings = sortedUnique(report.Warnings)
+		if len(taskFindings) > 0 {
+			report.Executable = false
+		}
+	}
+
 	requireFail := options.requireExecutable && !report.Executable
 	findings := append([]string{}, report.Violations...)
 	if requireFail {
@@ -337,12 +369,15 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 	result := changeCheckJSON{
 		Command:    "change check",
 		Folder:     relFromRoot(rootPath, folder),
+		Layout:     node.Layout,
 		Passed:     passed,
 		Executable: report.Executable,
+		Captured:   node.CapturedOnly,
 		ExitCode:   exitCode,
 		Findings:   findings,
 		Warnings:   report.Warnings,
 		Gaps:       report.Gaps,
+		Notices:    notices,
 	}
 
 	if options.jsonOutput {
@@ -932,6 +967,15 @@ func relFromRoot(root string, path string) string {
 
 func writeChangeCheckText(out io.Writer, result changeCheckJSON) {
 	fmt.Fprintf(out, "\n%s %s\n", ansiBold("change check"), result.Folder)
+	if result.Layout != "" {
+		fmt.Fprintf(out, "layout: %s\n", result.Layout)
+	}
+	for _, notice := range result.Notices {
+		fmt.Fprintf(out, "%s %s\n", ansiYellow("notice:"), notice)
+	}
+	if result.Captured {
+		fmt.Fprintf(out, "state: %s\n", ansiYellow("captured, not shaped"))
+	}
 	if len(result.Findings) > 0 {
 		fmt.Fprintf(out, "\n%s %d violation(s)\n", ansiRed("x"), len(result.Findings))
 		for _, finding := range result.Findings {

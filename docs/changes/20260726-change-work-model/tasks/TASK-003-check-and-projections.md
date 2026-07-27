@@ -35,13 +35,13 @@ loaf journal log "skill(implement): TASK-003 — check and projections"
 
 ## Steps
 
-- [ ] `loaf change check` validates both layouts; legacy emits deprecation notice with named removal boundary.
-- [ ] Malformed `change.json` beside valid `change.md` reports a violation (no fallback).
-- [ ] `loaf change tasks --json` stable parent/children index; `loaf change show` derives PR set from squash subjects.
-- [ ] Brief-only folders legal, non-executable, reported as captured.
-- [ ] Task hygiene: duplicate numbers, dangling/self/cross-change/unknown-key relations, cycles → violations; zero-checkbox → warning.
-- [ ] Artifact-names strips `TASK-NNN-` and scans slug remainder.
-- [ ] Convert this unit via sanctioned atomic replace (values verbatim, all checkboxes unchecked).
+- [x] `loaf change check` validates both layouts; legacy emits deprecation notice with named removal boundary.
+- [x] Malformed `change.json` beside valid `change.md` reports a violation (no fallback).
+- [x] `loaf change tasks --json` stable parent/children index; `loaf change show` derives PR set from squash subjects.
+- [x] Brief-only folders legal, non-executable, reported as captured.
+- [x] Task hygiene: duplicate numbers, dangling/self/cross-change/unknown-key relations, cycles → violations; zero-checkbox → warning.
+- [x] Artifact-names strips `TASK-NNN-` and scans slug remainder.
+- [x] Convert this unit via sanctioned atomic replace (values verbatim, all checkboxes unchecked).
 
 ## Verification
 

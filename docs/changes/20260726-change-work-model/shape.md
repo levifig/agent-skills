@@ -1,8 +1,4 @@
----
-change: change-work-model
-created: 2026-07-26
-branch: change-work-model
----
+<!-- shape.md is the change contract. Identity lives in change.json. Converted from change.md via sanctioned atomic replace; task checkboxes reset unchecked at conversion. -->
 
 <!-- Frontmatter must open the file at byte one — parsers depend on it. No status-like frontmatter (readiness/status/state): readiness is derived — a draft PR is shaping; `loaf change check` derives structural executability from the sections below. This unit itself ships in the old single-file layout: the tooling that validates the new one does not exist until TASK-003, making this the last major unit shaped old-style. -->
 
