@@ -64,6 +64,27 @@ func stampChangeScaffoldPlaceholders(template string, slug string) string {
 	).Replace(template)
 }
 
+// changeSeedTaskFile is the first packet written by `loaf change init`. The
+// author is expected to rename the slug; `first-slice` cites no other work unit.
+const changeSeedTaskFile = "TASK-001-first-slice.md"
+
+// stampChangeTaskSeed stamps the embedded task template into a ready-to-edit
+// first packet: owning change slug, TASK-001 identity, unchecked boxes and
+// bracket placeholders preserved, plus an explicit rename note.
+func stampChangeTaskSeed(template string, slug string) string {
+	body := strings.NewReplacer(
+		"change: [slug]", "change: "+slug,
+		"TASK-NNN", "TASK-001",
+	).Replace(template)
+	const renameNote = "\n\nRename this file before authoring real work — `first-slice` is a seed slug (not a work-unit citation); the author is expected to rename it.\n"
+	const h1 = "# TASK-001 — [Title]"
+	if idx := strings.Index(body, h1); idx >= 0 {
+		insertAt := idx + len(h1)
+		body = body[:insertAt] + renameNote + body[insertAt:]
+	}
+	return body
+}
+
 func writeChangeJSON(path string, slug string, now time.Time) error {
 	payload := map[string]string{
 		"change":  slug,
@@ -104,11 +125,12 @@ func scaffoldChangeFolder(folder string, slug string, brief bool, now time.Time)
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		return fmt.Errorf("create tasks/: %w", err)
 	}
-	// Seed an empty tasks directory with a gitkeep so the scaffold is visible
-	// in the first commit before shape fills TASK-NNN files.
-	gitkeep := filepath.Join(tasksDir, ".gitkeep")
-	if err := os.WriteFile(gitkeep, []byte{}, 0o644); err != nil {
-		return fmt.Errorf("seed tasks/: %w", err)
+	// Seed a real first task packet so shapers see the delegation format at
+	// scaffold time. Unchecked boxes cannot manufacture provenance; rename
+	// the seed slug when authoring the first real slice.
+	seedPath := filepath.Join(tasksDir, changeSeedTaskFile)
+	if err := os.WriteFile(seedPath, []byte(stampChangeTaskSeed(changeTaskTemplate, slug)), 0o644); err != nil {
+		return fmt.Errorf("seed %s: %w", changeSeedTaskFile, err)
 	}
 	return nil
 }

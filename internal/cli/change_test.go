@@ -1250,6 +1250,29 @@ func TestChangeInitHappyPath(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(folder, "tasks")); err != nil {
 		t.Fatalf("tasks/ missing after init: %v", err)
 	}
+	seedPath := filepath.Join(folder, "tasks", changeSeedTaskFile)
+	seed, err := os.ReadFile(seedPath)
+	if err != nil {
+		t.Fatalf("seeded task packet missing: %v", err)
+	}
+	seedBody := string(seed)
+	for _, want := range []string{
+		"change: auth-token-rotation",
+		"id: TASK-001",
+		"- [ ]",
+		"[short title]",
+		"expected to rename",
+	} {
+		if !strings.Contains(seedBody, want) {
+			t.Fatalf("seeded packet missing %q:\n%s", want, seedBody)
+		}
+	}
+	if strings.Contains(seedBody, "- [x]") || strings.Contains(seedBody, "- [X]") {
+		t.Fatalf("seeded packet must keep boxes unchecked:\n%s", seedBody)
+	}
+	if _, err := os.Stat(filepath.Join(folder, "tasks", ".gitkeep")); !os.IsNotExist(err) {
+		t.Fatalf(".gitkeep must not be written; err=%v", err)
+	}
 	if _, err := os.Stat(filepath.Join(folder, "brief.md")); !os.IsNotExist(err) {
 		t.Fatalf("brief.md should not exist on full scaffold; err=%v", err)
 	}
@@ -1265,6 +1288,27 @@ func TestChangeInitHappyPath(t *testing.T) {
 	}
 	if out.Executable {
 		t.Fatalf("fresh scaffold must stay non-executable until authored; gaps=%v", out.Gaps)
+	}
+	if len(out.Notices) != 0 {
+		t.Fatalf("fresh scaffold must carry no deprecation notice; notices=%v", out.Notices)
+	}
+
+	var tasksOut bytes.Buffer
+	if err := (Runner{Stdout: &tasksOut, WorkingDir: repo}).Run([]string{"change", "tasks", folder, "--json"}); err != nil {
+		t.Fatalf("change tasks error = %v", err)
+	}
+	var tasksResult changeTasksJSON
+	if err := json.Unmarshal(tasksOut.Bytes(), &tasksResult); err != nil {
+		t.Fatalf("Unmarshal tasks: %v\n%s", err, tasksOut.String())
+	}
+	if len(tasksResult.Tasks) != 1 || tasksResult.Tasks[0].ID != "TASK-001" {
+		t.Fatalf("tasks = %+v, want single TASK-001", tasksResult.Tasks)
+	}
+	if tasksResult.Tasks[0].Complete {
+		t.Fatalf("seeded TASK-001 must have derived completion false")
+	}
+	if tasksResult.Tasks[0].CheckboxTotal < 1 || tasksResult.Tasks[0].CheckboxDone != 0 {
+		t.Fatalf("seeded checkboxes = done %d / total %d, want unchecked", tasksResult.Tasks[0].CheckboxDone, tasksResult.Tasks[0].CheckboxTotal)
 	}
 }
 

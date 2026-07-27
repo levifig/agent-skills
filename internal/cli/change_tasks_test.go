@@ -55,6 +55,9 @@ func TestChangeTasksJSONStableIndex(t *testing.T) {
 	today := time.Now().Format("20060102")
 	folder := filepath.Join(repo, "docs", "changes", today+"-task-index")
 	tasksDir := filepath.Join(folder, "tasks")
+	if err := os.Remove(filepath.Join(tasksDir, changeSeedTaskFile)); err != nil {
+		t.Fatalf("remove seed packet: %v", err)
+	}
 	writeTask := func(name, body string) {
 		t.Helper()
 		if err := os.WriteFile(filepath.Join(tasksDir, name), []byte(body), 0o644); err != nil {
@@ -137,6 +140,9 @@ func TestChangeTaskHygieneViolations(t *testing.T) {
 	today := time.Now().Format("20060102")
 	folder := filepath.Join(repo, "docs", "changes", today+"-hygiene")
 	tasksDir := filepath.Join(folder, "tasks")
+	if err := os.Remove(filepath.Join(tasksDir, changeSeedTaskFile)); err != nil {
+		t.Fatalf("remove seed packet: %v", err)
+	}
 	body := `---
 change: hygiene
 id: TASK-001
