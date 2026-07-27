@@ -14,10 +14,8 @@ import (
 // what gates cohort members.
 
 var (
-	changeFlipAddedRE      = regexp.MustCompile(`(?m)^\+\s*- \[x\]`)
-	changeFlipRemovedRE    = regexp.MustCompile(`(?m)^-\s*- \[ \]`)
-	changeFlipAddedLoose   = regexp.MustCompile(`(?mi)^\+\s*- \[x\]`)
-	changeFlipRemovedLoose = regexp.MustCompile(`(?mi)^-\s*- \[ \]`)
+	changeFlipUncheckedRE = regexp.MustCompile(`(?i)^\s*- \[ \]\s*(.*)$`)
+	changeFlipCheckedRE   = regexp.MustCompile(`(?i)^\s*- \[x\]\s*(.*)$`)
 )
 
 type changeExecutionStatus struct {
@@ -94,7 +92,8 @@ func changeFolderExecuted(rootPath, folderRel string, layout string, outputComma
 
 func commitFlipsTaskCheckboxes(rootPath, commit string, taskPaths []string, outputCommand changeGitOutput) (bool, error) {
 	for _, path := range taskPaths {
-		diff, err := outputCommand(rootPath, "git", "show", "--format=", "--unified=0", commit, "--", path)
+		// unified=3 keeps nearby fence markers as context so fence state is trackable.
+		diff, err := outputCommand(rootPath, "git", "show", "--format=", "--unified=3", commit, "--", path)
 		if err != nil {
 			return false, err
 		}
@@ -105,31 +104,86 @@ func commitFlipsTaskCheckboxes(rootPath, commit string, taskPaths []string, outp
 	return false, nil
 }
 
+func normalizeCheckboxLabel(label string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(label)), " ")
+}
+
+func isMarkdownFenceMarker(body string) bool {
+	return strings.HasPrefix(strings.TrimSpace(body), "```")
+}
+
 func diffContainsCheckboxFlip(diff string) bool {
-	// Strip diff headers and fenced regions inside added/removed content is hard;
-	// operate line-wise on the patch and ignore lines that look like fence markers.
-	hasAdd := false
-	hasRemove := false
+	// Require a same-hunk `- [ ]`→`- [x]` pair with the same normalized label,
+	// ignoring checkboxes inside fenced regions on either side of the patch.
+	inFenceOld := false
+	inFenceNew := false
+	var removed map[string]struct{}
+	var added map[string]struct{}
+
+	hunkHasFlip := func() bool {
+		for label := range removed {
+			if _, ok := added[label]; ok {
+				return true
+			}
+		}
+		return false
+	}
+
+	startHunk := func() {
+		removed = make(map[string]struct{})
+		added = make(map[string]struct{})
+	}
+
 	for _, line := range strings.Split(diff, "\n") {
-		if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") || strings.HasPrefix(line, "@@") {
+		if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") {
 			continue
 		}
-		body := line
-		if strings.HasPrefix(line, "+") || strings.HasPrefix(line, "-") {
-			body = line[1:]
-		}
-		trim := strings.TrimSpace(body)
-		if strings.HasPrefix(trim, "```") {
+		if strings.HasPrefix(line, "@@") {
+			if removed != nil && hunkHasFlip() {
+				return true
+			}
+			startHunk()
 			continue
 		}
-		if changeFlipAddedLoose.MatchString(line) {
-			hasAdd = true
+		if removed == nil || line == "" {
+			continue
 		}
-		if changeFlipRemovedLoose.MatchString(line) {
-			hasRemove = true
+		prefix := line[0]
+		if prefix != '+' && prefix != '-' && prefix != ' ' {
+			continue
+		}
+		body := line[1:]
+		switch prefix {
+		case ' ':
+			if isMarkdownFenceMarker(body) {
+				inFenceOld = !inFenceOld
+				inFenceNew = !inFenceNew
+			}
+		case '-':
+			if isMarkdownFenceMarker(body) {
+				inFenceOld = !inFenceOld
+				continue
+			}
+			if inFenceOld {
+				continue
+			}
+			if m := changeFlipUncheckedRE.FindStringSubmatch(body); m != nil {
+				removed[normalizeCheckboxLabel(m[1])] = struct{}{}
+			}
+		case '+':
+			if isMarkdownFenceMarker(body) {
+				inFenceNew = !inFenceNew
+				continue
+			}
+			if inFenceNew {
+				continue
+			}
+			if m := changeFlipCheckedRE.FindStringSubmatch(body); m != nil {
+				added[normalizeCheckboxLabel(m[1])] = struct{}{}
+			}
 		}
 	}
-	return hasAdd && hasRemove
+	return removed != nil && hunkHasFlip()
 }
 
 func formatChangeExecutionBlock(slug, target string, layout string, status changeExecutionStatus, materialized bool) string {
