@@ -37,7 +37,7 @@ go test ./internal/cli/ -run TargetCapability  # confirm the failure before and 
 
 - [x] Re-run each installed-smoke capability runner against the rebuilt binary so the receipts record the current SHA-256 rather than being edited by hand.
 - [x] `bin/native/` and `plugins/loaf/bin/native/` carry the same binary as the receipts attest.
-- [ ] `go test ./...` passes with zero failures.
+- [x] `go test ./...` passes with zero failures.
 - [x] If any smoke cannot be re-run on this machine (a harness not installed locally), say so explicitly in the commit body and name what CI must confirm — a skipped smoke recorded as passing is the failure this pattern exists to prevent.
 
 ## Verification
