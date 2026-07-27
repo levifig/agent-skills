@@ -34,10 +34,10 @@ loaf journal log "skill(implement): TASK-006 — skills and guidance sweep"
 
 ## Steps
 
-- [ ] `shape` produces role-named documents; teaches boundary and vertical-slice tests.
-- [ ] `implement` routes via task files and checkbox-in-commit discipline.
-- [ ] `triage` promotes intake by seeding `brief.md`.
-- [ ] Guidance follows shipped behavior only; rebuild targets show zero drift if content is distributed.
+- [x] `shape` produces role-named documents; teaches boundary and vertical-slice tests.
+- [x] `implement` routes via task files and checkbox-in-commit discipline.
+- [x] `triage` promotes intake by seeding `brief.md`.
+- [x] Guidance follows shipped behavior only; rebuild targets show zero drift if content is distributed.
 
 ## Verification
 

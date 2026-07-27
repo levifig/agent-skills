@@ -3,8 +3,8 @@ name: implement
 description: >-
   Orchestrates implementation work through agent delegation and batch execution.
   Use for all implementation work — features, bug fixes, refactors, and code
-  changes. Logs to the project journal and produces agent spawn plans and
-  progress tracking. No...
+  changes. Picks Change task files when present and flips checkboxes in
+  delivering commits. Log...
 user-invocable: true
 argument-hint: '[TASK-XXX | SPEC-XXX | TASK-XXX..YYY | TASK-XXX,YYY | description]'
 version: 2.0.0-alpha.14
@@ -39,6 +39,8 @@ You are the coordinator. Start by understanding the task:
 **You are the ORCHESTRATOR, not the implementer.**
 
 - Log `loaf journal log "skill(implement): <task/spec/context>"` as the first action.
+- **Change-first task packets:** prefer `docs/changes/<folder>/tasks/TASK-NNN-*.md` as the delegation brief. Flip checkboxes `- [ ]`→`- [x]` in the same commit that delivers the work (outside `docs/changes/` paths must land with the flip for provenance). Use `loaf change tasks --json` for the index.
+- Compatibility: existing `TASK-XXX` / `SPEC-XXX` SQLite records remain supported until converted; they are not the default for new work.
 
 ### Orchestrator Can Do Directly
 - Log journal entries, read journal context, create council files

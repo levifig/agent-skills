@@ -1,16 +1,15 @@
 ---
 name: shape
 description: >-
-  Shapes messy input into a bounded, reviewable Change under docs/changes/YYYYMMDD-slug/,
-  validated by loaf change check. Runs a fog-routed narrowing protocol — gather context,
-  an optional blindspot pass, grilling for known unknowns, reaction artifacts for
-  unknown-knowns — decomposes Implementation Units ordered by likelihood-of-change, runs
-  a critique gate, and offers an opt-in draft PR. Use when the user asks "shape this,"
-  "turn this into a Change," or an idea has accumulated enough constraints to bound.
-  Recognizes journal entries, sparks, ideas, brainstorms, Linear issues, PR conversations,
-  and plain conversation as input. Produces a Change, never a numbered spec or task file.
-  Not for quick capture (use idea) or open-ended divergent thinking before scope exists
-  (use brainstorm).
+  Shapes messy input into a bounded, reviewable Change under docs/changes/YYYYMMDD-slug/
+  (change.json + shape.md + tasks/), validated by loaf change check. Runs a fog-routed
+  narrowing protocol — gather context, optional blindspot pass, grilling, reaction artifacts —
+  seeds task-file vertical slices, runs a critique gate, and offers an opt-in draft PR.
+  Use when the user asks "shape this," "turn this into a Change," or an idea has enough
+  constraints to bound. Produces role-named narrative (shape.md required; brief/plan/design
+  optional) plus task packets — never a numbered spec. Teaches the problem-boundary test
+  (same problem → another task; different problem → Intent) and vertical-slice discipline.
+  Not for quick capture (use idea) or open-ended divergent thinking (use brainstorm).
 ---
 
 # Shape
@@ -32,7 +31,7 @@ Turn messy input into a bounded, reviewable Change.
 ## Critical Rules
 
 1. **Log invocation first** — `loaf journal log "skill(shape): <input being shaped>"` before doing anything else.
-2. **Produces a Change, never a spec** — the artifact is `docs/changes/YYYYMMDD-slug/change.md`. No sequentially-numbered spec file, no task entity, no status-like frontmatter.
+2. **Produces a Change, never a spec** — `change.json` + `shape.md` (+ optional `brief.md`/`plan.md`/`design.md`) and `tasks/TASK-NNN-slug.md`. No sequentially-numbered spec file, no status-like fields anywhere.
 3. **The fog register routes, you don't guess** — every named unknown carries a quadrant tag that dispatches it to exactly one technique (see Quick Reference). Technique-by-vibes is the failure mode this replaces.
 4. **Blindspot pass precedes grilling, offered not imposed** — run it when the territory is unfamiliar; skip it when the shaper is the domain expert. Never impose it as a mandatory step.
 5. **Grill one question at a time, with a recommendation** — via `AskUserQuestion` (or one inline question per message on harnesses without it — same semantics). Never a form to fill in one pass. Order by architectural impact: questions whose answer would change the architecture go first, cosmetic questions last.
@@ -48,11 +47,12 @@ Turn messy input into a bounded, reviewable Change.
 
 ## Verification
 
-- `docs/changes/YYYYMMDD-slug/change.md` exists with Problem, Hypothesis, Scope, Observable Workflow, and Rabbit Holes and No-Gos all non-empty (the Product Contract set `loaf change check` requires)
+- `docs/changes/YYYYMMDD-slug/` has `change.json` + `shape.md` with Product Contract sections non-empty; task packets seeded under `tasks/` when decomposition is known
 - Every Open Questions entry carries a quadrant tag (`[KU]`, `[UK]`, or `[UU]`) and a route
-- `loaf change check` reports zero violations; its executability report was read, not ignored
-- The Critique Gate ran, and its answers changed the document where they applied — not just spoken aloud
-- No sequentially-numbered spec or task file, and no status-like frontmatter (`readiness`, `status`, `state`), exists anywhere in the Change
+- `loaf change check` reports zero violations (no legacy deprecation on new layout); executability gaps were read, not ignored
+- Problem-boundary test applied: discovered different problems become Intents, not TASK-007
+- The Critique Gate ran, and its answers changed the documents where they applied
+- No status-like fields in `change.json` or task frontmatter
 
 ---
 
@@ -109,7 +109,7 @@ Once the shape of the work is nameable, confirm scope with the user, then:
 loaf change init <slug>
 ```
 
-This scaffolds `docs/changes/YYYYMMDD-slug/change.md` from [the Change template](templates/change.md) and prints the branch to use — **it does not switch branches**. Create or switch to it yourself (`git switch -c <slug>`) before committing anything: branch-at-shaping, not deferred to implementation. A Change grows toward executability from here: the flat Product Contract sections (Problem, Hypothesis, Scope, Observable Workflow, Rabbit Holes and No-Gos) fill in as understanding solidifies through the steps below, not all at once. See [references/cli-boundary.md](references/cli-boundary.md) for what `init` writes and how `check` reads it.
+This scaffolds `change.json` + `shape.md` + seeded `tasks/` from the embedded templates (see `templates/shape.md`, `templates/task.md`). Use `loaf change init <slug> --brief` only for capture-before-shape (emits `change.json` + `brief.md`). It does not switch branches — `git switch -c <slug>` yourself. Fill `shape.md` Product Contract sections as understanding solidifies; seed `tasks/TASK-NNN-slug.md` as vertical slices (a task is a commit, not a PR). Optional `plan.md`/`design.md` accrete when the how needs prose. See [references/cli-boundary.md](references/cli-boundary.md).
 
 ### Step 4: Narrow the Unknowns
 

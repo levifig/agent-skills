@@ -2,13 +2,13 @@
 
 Reading `loaf change init` and `loaf change check` — the skill teaches reading the CLI, not wrapping it. For the rest of the Loaf CLI surface, see the `loaf-reference` skill.
 
-## `loaf change init <slug>`
+## `loaf change init <slug> [--brief]`
 
-Scaffolds `docs/changes/<YYYYMMDD>-<slug>/change.md` from the Change template, where `<YYYYMMDD>` is the creation day (not a target date) and the branch is named by the bare slug — no date prefix on the branch. Fails if the folder already exists. The slug uses lowercase letters, digits, and single hyphens.
+Scaffolds `docs/changes/<YYYYMMDD>-<slug>/change.json + shape.md` from the Change template, where `<YYYYMMDD>` is the creation day (not a target date) and the branch is named by the bare slug — no date prefix on the branch. Fails if the folder already exists. The slug uses lowercase letters, digits, and single hyphens.
 
 ## `loaf change check [folder] [--require-executable] [--json]`
 
-Folder resolution: an explicit `[folder]` argument always wins; otherwise the current git branch is matched against the `branch:` frontmatter across every `docs/changes/*/change.md`. Zero or multiple matches is an error naming the candidates found.
+Folder resolution: an explicit `[folder]` argument always wins; otherwise the current git branch is matched against the `branch:` frontmatter across every `docs/changes/*/change.json + shape.md`. Zero or multiple matches is an error naming the candidates found.
 
 Output splits into two tiers:
 
@@ -20,3 +20,12 @@ Output splits into two tiers:
 A branch/Change mismatch (current branch doesn't match the Change's `branch:` field) is a warning, never a violation.
 
 `--json` emits `{command, folder, passed, executable, exitCode, findings, warnings, gaps}` for scripted reads; prefer it when diagnosing rather than scraping the human-readable text.
+
+
+## `loaf change report new <slug> --kind <kind>`
+
+Stamps `reports/YYYYMMDD-HHMMSS-<kind>-<slug>.html` with charset, provenance, and token skeleton; prints design-language guidance. Closed kinds: approval, review, visual, audit, note.
+
+## `loaf change tasks` / `show` / `verify`
+
+On-demand projections and cohort verify receipts. See `loaf change --help`.

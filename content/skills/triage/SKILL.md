@@ -30,6 +30,7 @@ Process the intake queue. Triage is the public funnel where captured material me
 - The CLI never classifies: you and the user interpret each item; commands perform the chosen operation deterministically.
 - Capture, Intent, and Exploration are different claims: a spark or idea is retained material, a tracked Intent is deliberately tracked work, a deferral is an Intent disposition with an immutable payload, an Exploration is an inquiry. Do not conflate them to save a step.
 - One pass through the queue — don't loop or re-present items.
+- **Promote to Change via capture:** when the disposition is "hand to shape" but capture should precede shaping, run `loaf change init <slug> --brief` and seed `brief.md` with the original ask; otherwise hand the item to `/shape` for a full scaffold.
 
 ## Verification
 
