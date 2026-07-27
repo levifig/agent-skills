@@ -120,6 +120,8 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 		TargetRelease:  node.TargetRelease,
 		Results:        results,
 	}
+	// Write-on-failure: persist evidence even when criteria fail; the cohort
+	// gate rejects receipts with any results[].ok == false (TASK-007).
 	receiptPath := filepath.Join(folder, filepath.FromSlash(changeVerifyReceiptFile))
 	if err := os.MkdirAll(filepath.Dir(receiptPath), 0o755); err != nil {
 		return fmt.Errorf("create receipts/: %w", err)
@@ -242,10 +244,11 @@ func loadChangeVerifyReceipt(folderAbs string) (changeVerifyReceipt, error) {
 	return receipt, nil
 }
 
-// changeReceiptFreshness reports whether a receipt still covers HEAD for gate
-// purposes. The receipt's own commit never stales it; any later commit that
-// touches a non-receipt path forces a criteria re-run (caller decides).
-func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputCommand changeGitOutput) (fresh bool, reason string, err error) {
+// changeReceiptStatus reports whether a receipt attests successful verification
+// that still covers HEAD. Failing criteria block even when the receipt is
+// fresh; the receipt's own commit never stales it; any later commit that
+// touches a non-receipt path forces a criteria re-run (Decision 13).
+func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputCommand changeGitOutput) (ok bool, reason string, err error) {
 	if outputCommand == nil {
 		outputCommand = commandOutput
 	}
@@ -262,6 +265,9 @@ func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputComm
 	if digest != receipt.CriteriaDigest {
 		return false, "criteria digest mismatch (receipt expired)", nil
 	}
+	if failed := receiptFailingCriterionIDs(receipt); len(failed) > 0 {
+		return false, fmt.Sprintf("receipt records failing criteria (%s)", strings.Join(failed, ", ")), nil
+	}
 	head, err := outputCommand(rootPath, "git", "rev-parse", "HEAD")
 	if err != nil {
 		return false, "", err
@@ -270,8 +276,9 @@ func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputComm
 	if head == receipt.VerifiedCommit {
 		return true, "", nil
 	}
-	// Commits after verified commit:
-	logOut, err := outputCommand(rootPath, "git", "log", "--format=%H", receipt.VerifiedCommit+"..HEAD", "--", folderRel)
+	// Commit-by-commit: a touch-then-revert pair still forces a re-run, unlike
+	// a verified..HEAD tree diff that would cancel out.
+	logOut, err := outputCommand(rootPath, "git", "log", "--format=%H", receipt.VerifiedCommit+"..HEAD")
 	if err != nil {
 		return false, "", err
 	}
@@ -293,24 +300,15 @@ func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputComm
 			return false, "later non-receipt path requires criteria re-run", nil
 		}
 	}
-	// Also check repo-wide commits after verified that touch anything outside
-	// the receipt — Decision 13: any later non-receipt path.
-	logAll, err := outputCommand(rootPath, "git", "log", "--format=%H", receipt.VerifiedCommit+"..HEAD", "--name-only", "--pretty=format:%H")
-	if err != nil {
-		return false, "", err
-	}
-	// Simpler approach: list all changed paths since verified commit.
-	diffOut, err := outputCommand(rootPath, "git", "diff", "--name-only", receipt.VerifiedCommit, "HEAD")
-	if err != nil {
-		return false, "", err
-	}
-	for _, p := range strings.Split(diffOut, "\n") {
-		p = filepath.ToSlash(strings.TrimSpace(p))
-		if p == "" || p == receiptRel {
-			continue
-		}
-		return false, "later non-receipt path requires criteria re-run", nil
-	}
-	_ = logAll
 	return true, "", nil
+}
+
+func receiptFailingCriterionIDs(receipt changeVerifyReceipt) []string {
+	var failed []string
+	for _, result := range receipt.Results {
+		if !result.OK {
+			failed = append(failed, result.ID)
+		}
+	}
+	return failed
 }

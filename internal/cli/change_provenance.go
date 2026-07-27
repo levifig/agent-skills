@@ -198,3 +198,12 @@ func formatChangeExecutionBlock(slug, target string, layout string, status chang
 	}
 	return ""
 }
+
+// formatChangeReceiptBlock renders a cohort receipt failure. Failing criteria
+// are stated plainly; freshness failures keep the "not current" framing.
+func formatChangeReceiptBlock(slug, target, reason string) string {
+	if strings.HasPrefix(reason, "receipt records failing criteria") {
+		return fmt.Sprintf("change %q targets %s but %s", slug, target, reason)
+	}
+	return fmt.Sprintf("change %q targets %s but receipt is not current (%s)", slug, target, reason)
+}

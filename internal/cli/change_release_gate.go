@@ -69,12 +69,12 @@ func releaseCohortPreflightWithOutput(rootPath, candidate string, outputCommand 
 			blocked = append(blocked, msg)
 			continue
 		}
-		fresh, reason, receiptErr := changeReceiptStatus(rootPath, node.Folder, node, outputCommand)
+		ok, reason, receiptErr := changeReceiptStatus(rootPath, node.Folder, node, outputCommand)
 		if receiptErr != nil {
 			return fmt.Errorf("release blocked: cannot inspect receipt for %q: %w", node.Slug, receiptErr)
 		}
-		if !fresh {
-			blocked = append(blocked, fmt.Sprintf("change %q targets %s but receipt is not current (%s)", node.Slug, candidate, reason))
+		if !ok {
+			blocked = append(blocked, formatChangeReceiptBlock(node.Slug, candidate, reason))
 		}
 	}
 
