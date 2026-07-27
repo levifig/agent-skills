@@ -187,9 +187,10 @@ func (r Runner) runChange(args []string, out io.Writer, runtime state.Runtime) e
 		return nil
 	}
 	if writeNestedHelp(out, args, map[string]func(io.Writer){
-		"init":  writeChangeInitHelp,
-		"check": writeChangeCheckHelp,
-		"list":  writeChangeListHelp,
+		"init":   writeChangeInitHelp,
+		"check":  writeChangeCheckHelp,
+		"list":   writeChangeListHelp,
+		"report": writeChangeReportHelp,
 	}) {
 		return nil
 	}
@@ -200,6 +201,8 @@ func (r Runner) runChange(args []string, out io.Writer, runtime state.Runtime) e
 		return r.runChangeCheck(args[1:], out, runtime.RootPath())
 	case "list":
 		return r.runChangeList(args[1:], out, runtime)
+	case "report":
+		return r.runChangeReport(args[1:], out, runtime.RootPath())
 	default:
 		return unknownSubcommandError("change", args[0])
 	}
@@ -209,9 +212,10 @@ func writeChangeHelp(out io.Writer) {
 	writeCommandGroupHelp(out, "loaf change <subcommand> [options]",
 		"Shape-first Change artifacts: git-canonical work context under docs/changes/.",
 		[]subcommandHelpItem{
-			{Name: "init", Summary: "Scaffold a new Change folder from the template"},
+			{Name: "init", Summary: "Scaffold a new Change folder (change.json + shape.md + tasks/)"},
 			{Name: "check", Summary: "Validate a Change and report derived executability"},
 			{Name: "list", Summary: "List a retained Change lineage without relying on branches"},
+			{Name: "report", Summary: "Stamp authored HTML reports under reports/"},
 		})
 }
 
@@ -222,8 +226,9 @@ func writeChangeListHelp(out io.Writer) {
 }
 
 func writeChangeInitHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf change init <slug>",
-		"Create docs/changes/<YYYYMMDD>-<slug>/change.md from the Change template. The slug uses lowercase letters, digits, and single hyphens.")
+	writeUsageHelp(out, "loaf change init <slug> [--brief]",
+		"Create docs/changes/<YYYYMMDD>-<slug>/ with change.json + shape.md + seeded tasks/. --brief is capture mode (change.json + brief.md only). The slug uses lowercase letters, digits, and single hyphens.",
+		"--brief  Capture mode: emit change.json + brief.md only (non-executable until shaped)")
 }
 
 func writeChangeCheckHelp(out io.Writer) {
@@ -241,22 +246,11 @@ func (r Runner) runChangeInit(args []string, out io.Writer, rootPath string) err
 		writeChangeInitHelp(out)
 		return nil
 	}
-	slug := ""
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			return fmt.Errorf("unknown change init option %q", arg)
-		}
-		if slug != "" {
-			return fmt.Errorf("change init accepts a single <slug> argument")
-		}
-		slug = arg
+	options, err := parseChangeInitArgs(args)
+	if err != nil {
+		return err
 	}
-	if slug == "" {
-		return fmt.Errorf("change init requires a <slug> argument")
-	}
-	if !changeSlugRE.MatchString(slug) {
-		return fmt.Errorf("invalid slug %q: use lowercase letters, digits, and single hyphens (e.g. auth-token-rotation)", slug)
-	}
+	slug := options.slug
 	if existing, err := findChangeSlug(rootPath, slug); err != nil {
 		return err
 	} else if existing != "" {
@@ -273,15 +267,20 @@ func (r Runner) runChangeInit(args []string, out io.Writer, rootPath string) err
 		return fmt.Errorf("stat change folder: %w", err)
 	}
 
-	if err := os.MkdirAll(folder, 0o755); err != nil {
-		return fmt.Errorf("create change folder: %w", err)
-	}
-	target := filepath.Join(folder, "change.md")
-	if err := os.WriteFile(target, []byte(stampChangeTemplate(changeTemplate, slug, now)), 0o644); err != nil {
-		return fmt.Errorf("write change.md: %w", err)
+	if err := scaffoldChangeFolder(folder, slug, options.brief, now); err != nil {
+		return err
 	}
 	folderRel := relFromRoot(rootPath, folder)
-	fmt.Fprintf(out, "Created change: %s\n", relFromRoot(rootPath, target))
+	primary := changeContractFileShape
+	if options.brief {
+		primary = changeBriefFile
+	}
+	fmt.Fprintf(out, "Created change: %s\n", filepath.ToSlash(filepath.Join(folderRel, primary)))
+	if options.brief {
+		fmt.Fprintf(out, "  Capture mode: change.json + brief.md (shape later to make executable)\n")
+	} else {
+		fmt.Fprintf(out, "  Layout: change.json + shape.md + tasks/\n")
+	}
 	fmt.Fprintf(out, "\nNext: work on this change happens on branch %q.\n", slug)
 	fmt.Fprintf(out, "  Create or switch to it:   git switch -c %s\n", slug)
 	fmt.Fprintf(out, "  Then validate the change:  loaf change check\n")
@@ -289,15 +288,9 @@ func (r Runner) runChangeInit(args []string, out io.Writer, rootPath string) err
 	return nil
 }
 
-// stampChangeTemplate fills the frontmatter bracket placeholders only; body
-// placeholders stay for the human or shape skill to complete.
-func stampChangeTemplate(template string, slug string, now time.Time) string {
-	return strings.NewReplacer(
-		"change: [slug]", "change: "+slug,
-		"created: [YYYY-MM-DD]", "created: "+now.Format("2006-01-02"),
-		"branch: [slug]", "branch: "+slug,
-	).Replace(template)
-}
+// Legacy change.md template remains embedded for coexistence and the
+// TestChangeTemplateMatchesCanonicalContent drift gate. New scaffolds use
+// change_scaffold.go embeds (shape/brief/plan/design/task).
 
 func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) error {
 	if isHelpArg(args) {

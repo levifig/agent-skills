@@ -1222,28 +1222,76 @@ func TestChangeInitHappyPath(t *testing.T) {
 
 	today := time.Now().Format("20060102")
 	folder := filepath.Join(repo, "docs", "changes", today+"-auth-token-rotation")
-	data, err := os.ReadFile(filepath.Join(folder, "change.md"))
+	jsonData, err := os.ReadFile(filepath.Join(folder, "change.json"))
 	if err != nil {
-		t.Fatalf("ReadFile(change.md) error = %v", err)
+		t.Fatalf("ReadFile(change.json) error = %v", err)
 	}
-	content := string(data)
+	jsonContent := string(jsonData)
 	for _, want := range []string{
-		"change: auth-token-rotation",
-		"created: " + time.Now().Format("2006-01-02"),
-		"branch: auth-token-rotation",
+		`"change": "auth-token-rotation"`,
+		`"created": "` + time.Now().Format("2006-01-02") + `"`,
+		`"branch": "auth-token-rotation"`,
 	} {
-		if !strings.Contains(content, want) {
-			t.Fatalf("change.md = %q, want stamped %q", content, want)
+		if !strings.Contains(jsonContent, want) {
+			t.Fatalf("change.json = %q, want stamped %q", jsonContent, want)
 		}
 	}
-	// Body placeholders remain for the human/skill to fill.
-	if !strings.Contains(content, "[Change Title]") {
-		t.Fatalf("change.md dropped body placeholders:\n%s", content)
+	shape, err := os.ReadFile(filepath.Join(folder, "shape.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(shape.md) error = %v", err)
 	}
-	// The freshly-stamped document passes the structural check (all sections
-	// present in the template).
-	if _, err := runChangeCheckJSON(t, repo, folder); err != nil {
-		t.Fatalf("check on freshly-init'd change err = %v, want nil", err)
+	if !strings.Contains(string(shape), "[Change Title]") {
+		t.Fatalf("shape.md dropped body placeholders:\n%s", shape)
+	}
+	if _, err := os.Stat(filepath.Join(folder, "tasks")); err != nil {
+		t.Fatalf("tasks/ missing after init: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(folder, "brief.md")); !os.IsNotExist(err) {
+		t.Fatalf("brief.md should not exist on full scaffold; err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(folder, "change.md")); !os.IsNotExist(err) {
+		t.Fatalf("legacy change.md should not exist on new scaffold; err=%v", err)
+	}
+	out, err := runChangeCheckJSON(t, repo, folder)
+	if err != nil {
+		t.Fatalf("check on freshly-init'd change err = %v out=%+v, want nil", err, out)
+	}
+	if !out.Passed {
+		t.Fatalf("fresh scaffold should pass check, findings=%v", out.Findings)
+	}
+	if out.Executable {
+		t.Fatalf("fresh scaffold must stay non-executable until authored; gaps=%v", out.Gaps)
+	}
+}
+
+func TestChangeInitBriefMode(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "init", "captured-ask", "--brief"}); err != nil {
+		t.Fatalf("change init --brief error = %v", err)
+	}
+	today := time.Now().Format("20060102")
+	folder := filepath.Join(repo, "docs", "changes", today+"-captured-ask")
+	if _, err := os.Stat(filepath.Join(folder, "change.json")); err != nil {
+		t.Fatalf("change.json missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(folder, "brief.md")); err != nil {
+		t.Fatalf("brief.md missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(folder, "shape.md")); !os.IsNotExist(err) {
+		t.Fatalf("shape.md must be absent in brief mode; err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(folder, "tasks")); !os.IsNotExist(err) {
+		t.Fatalf("tasks/ must be absent in brief mode; err=%v", err)
+	}
+	out, err := runChangeCheckJSON(t, repo, folder)
+	if err != nil {
+		t.Fatalf("brief-only check should not violate: err=%v out=%+v", err, out)
+	}
+	if out.Executable {
+		t.Fatalf("brief-only folder must be non-executable")
+	}
+	if !findingsContain(out.Gaps, "shape.md") {
+		t.Fatalf("brief-only should report shape.md gap, gaps=%v", out.Gaps)
 	}
 }
 
@@ -1311,6 +1359,116 @@ func TestChangeTemplateMatchesCanonicalContent(t *testing.T) {
 	}
 	if changeTemplate != string(canonical) {
 		t.Fatalf("embedded change_template.md drifted from content/skills/shape/templates/change.md; re-copy the canonical file")
+	}
+}
+
+func TestChangeScaffoldTemplatesMatchCanonical(t *testing.T) {
+	cases := []struct {
+		name     string
+		embedded string
+		rel      string
+	}{
+		{"shape", changeShapeTemplate, "shape.md"},
+		{"brief", changeBriefTemplate, "brief.md"},
+		{"plan", changePlanTemplate, "plan.md"},
+		{"design", changeDesignTemplate, "design.md"},
+		{"task", changeTaskTemplate, "task.md"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			canonical, err := os.ReadFile(filepath.Join("..", "..", "content", "skills", "shape", "templates", tc.rel))
+			if err != nil {
+				t.Fatalf("ReadFile(%s) error = %v", tc.rel, err)
+			}
+			if tc.embedded != string(canonical) {
+				t.Fatalf("embedded change_%s_template.md drifted from content/skills/shape/templates/%s", tc.name, tc.rel)
+			}
+		})
+	}
+}
+
+func TestChangeReportNewHappyPath(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "init", "report-demo"}); err != nil {
+		t.Fatalf("init error = %v", err)
+	}
+	today := time.Now().Format("20060102")
+	folder := filepath.Join("docs", "changes", today+"-report-demo")
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "report", "new", "shaping", "--kind", "approval", folder}); err != nil {
+		t.Fatalf("report new error = %v", err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "Created report:") {
+		t.Fatalf("output = %q, want Created report", output)
+	}
+	if !strings.Contains(output, "Design language") {
+		t.Fatalf("output = %q, want design-language guidance", output)
+	}
+	matches, err := filepath.Glob(filepath.Join(repo, folder, "reports", "*-approval-shaping.html"))
+	if err != nil {
+		t.Fatalf("Glob error = %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("want 1 approval report, got %v", matches)
+	}
+	body, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("ReadFile error = %v", err)
+	}
+	content := string(body)
+	for _, want := range []string{
+		`<!-- source:`,
+		`<meta charset="utf-8">`,
+		`--accent:`,
+		`--machine:`,
+		`kind <b>approval</b>`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("report missing invariant %q:\n%s", want, content)
+		}
+	}
+}
+
+func TestChangeReportNewRefusesUnknownKind(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "init", "report-demo"}); err != nil {
+		t.Fatalf("init error = %v", err)
+	}
+	today := time.Now().Format("20060102")
+	folder := filepath.Join("docs", "changes", today+"-report-demo")
+	err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}.Run([]string{"change", "report", "new", "x", "--kind", "memo", folder})
+	if err == nil || !strings.Contains(err.Error(), "unknown report kind") {
+		t.Fatalf("err = %v, want unknown report kind", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "approval") {
+		t.Fatalf("err = %v, want registry printed", err)
+	}
+}
+
+func TestChangeReportNewRefusesCollision(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "init", "report-demo"}); err != nil {
+		t.Fatalf("init error = %v", err)
+	}
+	today := time.Now().Format("20060102")
+	folderRel := filepath.Join("docs", "changes", today+"-report-demo")
+	frozen := time.Date(2026, 7, 27, 15, 4, 5, 0, time.Local)
+	prev := changeReportClock
+	changeReportClock = func() time.Time { return frozen }
+	t.Cleanup(func() { changeReportClock = prev })
+
+	reports := filepath.Join(repo, folderRel, "reports")
+	if err := os.MkdirAll(reports, 0o755); err != nil {
+		t.Fatalf("MkdirAll error = %v", err)
+	}
+	existing := filepath.Join(reports, "20260727-150405-note-dup.html")
+	if err := os.WriteFile(existing, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile error = %v", err)
+	}
+	err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}.Run([]string{"change", "report", "new", "dup", "--kind", "note", folderRel})
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("err = %v, want already exists", err)
 	}
 }
 
