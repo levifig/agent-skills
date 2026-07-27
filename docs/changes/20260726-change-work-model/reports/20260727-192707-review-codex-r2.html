@@ -1,0 +1,121 @@
+<!-- source: codex rescue task-ms3jky3j-5hpsd9 · codex session 019fa4c5-112d-7eb3-ab16-2135d287b7f0 · round-2 fresh-thread review; dispositions folded at commit 5f6337ff · board reconstructed after the pre-inversion approval report (its original carrier) was withdrawn -->
+<meta charset="utf-8">
+<title>change-work-model · Codex Round 2 Disposition</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.5; margin: 0; }
+  main { max-width: 1020px; margin: 0 auto; padding: 44px 22px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.8rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.2rem; margin: 38px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .meta { color: var(--muted); font-size: .84rem; font-family: var(--mono); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .finding { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 13px 16px; margin-bottom: 10px; }
+  .fhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .fid { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .ftitle { font-weight: 650; font-size: .93rem; flex: 1; min-width: 240px; }
+  .chip { font-size: .66rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .sev-blocker { background: var(--bad); color: #fff; }
+  .sev-major { background: var(--bad-soft); color: var(--bad); }
+  .sev-minor { background: var(--machine-soft); color: var(--machine); }
+  .v-accept { background: var(--ok-soft); color: var(--ok); }
+  .v-mod { background: var(--accent-soft); color: var(--accent); }
+  .v-collapsed { background: var(--machine-soft); color: var(--machine); }
+  .fbody { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 9px; }
+  .fbody h4 { margin: 0 0 3px; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .fbody p { margin: 0; font-size: .84rem; }
+  .fbody .plan p { border-left: 3px solid var(--accent-fill); padding-left: 10px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; font-size: .86rem; }
+  @media (max-width: 700px) { .fbody { grid-template-columns: 1fr; } }
+  footer { margin-top: 48px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+
+<main>
+  <div class="eyebrow">change-work-model · reviews · round 2</div>
+  <h1>Codex Round 2 — Disposition Board</h1>
+  <p class="meta">reviewed 2026-07-27 · fresh thread · verdict: "needs another shaping pass" · 2 blockers + 8 major + 4 minor · all folded at commit 5f6337ff · this board reconstructs the record after its original carrier (the pre-inversion approval report) was withdrawn</p>
+
+  <h2>Blockers</h2>
+  <div class="finding"><div class="fhead"><span class="fid">B1</span><span class="chip sev-blocker">blocker</span><span class="ftitle">Legacy terminals cannot satisfy the provenance-and-receipt path</span><span class="chip v-mod">accept · modified</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>The parked legacy terminal has no checkboxes and prose criteria (some destructive); digesting prose does not make it executable — round 1's legacy digest was a fake lock.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Conversion ramp replaces the legacy digest entirely: the strong gate requires the new layout; a legacy gate-relevant unit converts first (blocked with a convert-first message until then). D13, Compatibility, TASK-004/005. Later generalized by the cohort inversion.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">B2</span><span class="chip sev-blocker">blocker</span><span class="ftitle">A committed receipt is stale immediately upon arrival</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Committing the receipt advances HEAD, so verified_commit ≠ HEAD before any work — the cache re-runs on every release.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Freshness tolerates the receipt's own commit: re-run only when a later commit touches a non-receipt path. D13, V5 bootstrap fixture.</p></div></div></div>
+
+  <h2>Major</h2>
+  <div class="finding"><div class="fhead"><span class="fid">M1</span><span class="chip sev-major">major</span><span class="ftitle">Human criteria have no satisfaction evidence in the gate</span><span class="chip v-mod">accept · declared</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>A terminal with essential human criteria can release with zero human evidence recorded.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>H-tier declared non-gating review material (ship review + approval report enforce it); attestation records rejected as lifecycle-state creep. D14.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">M2</span><span class="chip sev-major">major</span><span class="ftitle">"Tasks are commits" does not survive squash-merge; commit-less coordination contradictory</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>After squash, HEAD has one PR commit, not task commits; a coordination task "with no commit" still needs a commit to check its closing box.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Gate is merge-mode-agnostic (the squash diff still carries the flips); per-task history survives on main only under merge/rebase — why in-branch cleanup matters. Coordination = no <em>production</em> commit; closing box rides a batch commit. D8, Executing.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">M3</span><span class="chip sev-major">major</span><span class="ftitle">The checkbox rule is underspecified and V1 tested the weaker rule</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>"Flip" lacked direction, fence exclusion, and outside-path scope; V1 accepted a mere task-file touch.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Flip grammar: checked-direction only, outside code fences, companion path outside docs/changes/ entirely; V1 rewritten; negative fixtures named. Provenance precision.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">M4</span><span class="chip sev-major">major</span><span class="ftitle">Per-node vs terminal-only gating ambiguous</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>A shaped-only predecessor could coexist with a verified terminal and release.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Every materialized arc node gated (path grade), terminal at flip grade. Later superseded cleanly by the cohort inversion: every cohort member gates equally at flip grade.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">M5</span><span class="chip sev-major">major</span><span class="ftitle">The relation graph lacks an implementable schema</span><span class="chip v-mod">accept · trimmed</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Target syntax, cross-change legality, cardinality, unknown keys, duplicate declarations undefined; V6 tests none.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Change-local targets, closed keys, idempotent normalization, cross-change forbidden; grammar detail stays TASK-002/003 latitude. Task bullet, TASK-003, V6.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">M6</span><span class="chip sev-major">major</span><span class="ftitle">Conversion/retention absent from the verification contract</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Atomic conversion, keep-both, deletion, and mismatch cases untested.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>V4 extended: positive atomic conversion, keep-both, two-commit / deletion / delete-re-add negatives.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">M7</span><span class="chip sev-major">major</span><span class="ftitle">report-new scoped without a testable contract</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Kinds, naming, collision behavior, and required sections undefined; V1–V8 never exercise the command.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>V9 added: shell invariants, stdout guidance, collision refusal, kind vocabulary. Later hardened by the closed registry.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">M8</span><span class="chip sev-major">major</span><span class="ftitle">V8 narrower than the existing no-status ban</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>The current validator bans readiness/status/state; V8 tested only `status` plus a short task list.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Closed schemas on both surfaces; readiness/status/state/completion/done + lifecycle aliases, negative fixtures each. V8.</p></div></div></div>
+
+  <h2>Minor</h2>
+  <div class="finding"><div class="fhead"><span class="fid">m1</span><span class="chip sev-minor">minor</span><span class="ftitle">Delegation packet omits scope boundaries and task-level verification</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>H1 merely asks whether the packet "feels right".</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Packet gains scope boundaries + verification instructions; H1 requires a real delegated dogfood using only the task file.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">m2</span><span class="chip sev-minor">minor</span><span class="ftitle">Guard exemption hides forbidden identities inside TASK slugs</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>`TASK-001-spec-053-followup.md` bypasses the slug rule via the early-return exemption.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>TASK-003 extends the guard: strip the owner prefix, scan the slug remainder. (Reverses round 1's no-extension disposition — round 3 concurred.)</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">m3</span><span class="chip sev-minor">minor</span><span class="ftitle">Two incompatible removal-boundary candidates</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Compatibility said "first stable 2.x" while Open Questions said first-stable-after-one-minor.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>One formulation everywhere: first stable after the new layout ships one minor.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">m4</span><span class="chip sev-minor">minor</span><span class="ftitle">TASK-004 consumed the receipt before TASK-005 defined it</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Sequencing said "gate without receipt" while TASK-004 already parsed receipts.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>TASK-004 ships provenance-only; receipt enforcement and stale-receipt re-run activate with TASK-005. Sequencing.</p></div></div></div>
+
+  <h2>Round-1 disposition disagreements</h2>
+  <div class="panel">1.1/3.4 (legacy digest incomplete) → resolved by B1's conversion ramp · 2.1 (bootstrap unacknowledged) → resolved by B2 · 1.5/3.1/3.2 (over-trimmed) → resolved by M3/M5 · 2.4/4.1/4.3 (not propagated to V4/prose) → resolved by M6/m3 · 5.1/5.2 (partial) → resolved by M8/m2.</div>
+
+  <footer><p>Verdict "needs another shaping pass" answered by the 5f6337ff fold · codex session <span style="font-family: var(--mono)">019fa4c5-112d-7eb3-ab16-2135d287b7f0</span>, job <span style="font-family: var(--mono)">task-ms3jky3j-5hpsd9</span> · companions: <span style="font-family: var(--mono)">20260727-160756-review-codex-r1.html</span> · <span style="font-family: var(--mono)">20260727-201619-review-codex-r3.html</span></p></footer>
+</main>

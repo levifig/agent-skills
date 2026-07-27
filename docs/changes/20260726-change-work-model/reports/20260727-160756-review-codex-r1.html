@@ -1,0 +1,326 @@
+<!-- source: codex rescue task-ms3bqso9-y6w7u6 · codex session 019fa3fc-3485-7e02-a474-797eab2847a5 · dispositions proposed 2026-07-27, applied to change.md by the follow-up amend -->
+<meta charset="utf-8">
+<title>change-work-model · Codex Review Disposition</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.5; margin: 0; }
+  main { max-width: 1020px; margin: 0 auto; padding: 44px 22px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.9rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.25rem; margin: 40px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .meta { color: var(--muted); font-size: .84rem; font-family: var(--mono); }
+  .lede { color: var(--muted); max-width: 76ch; }
+  code { font-family: var(--mono); font-size: .84em; }
+  /* summary strip */
+  .strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 22px 0 6px; }
+  .cell { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 10px 12px; }
+  .cell .n { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cell .l { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; }
+  .cell.vd .n, .cell.vd .l { color: var(--accent); }
+  .cell.vc .n, .cell.vc .l { color: var(--ok); }
+  .cell.vx .n, .cell.vx .l { color: var(--machine); }
+  .cell.vr .n, .cell.vr .l { color: var(--bad); }
+  .cell.vo .n, .cell.vo .l { color: var(--state); }
+  .cell.vt .n, .cell.vt .l { color: var(--muted); }
+  /* banners */
+  .banner { border-radius: 10px; padding: 14px 18px; margin: 18px 0; border: 1px solid transparent; }
+  .banner.threat { background: var(--state-soft); }
+  .banner.core { background: var(--accent-soft); }
+  .banner h3 { margin: 0 0 4px; font-size: .95rem; }
+  .banner.threat h3 { color: var(--state); } .banner.core h3 { color: var(--accent); }
+  .banner p { margin: 4px 0; font-size: .88rem; max-width: none; }
+  /* filters */
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 14px; position: sticky; top: 0; background: var(--bg); padding: 10px 0; z-index: 5; }
+  .filters button { font: inherit; font-size: .78rem; font-weight: 600; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
+  .filters button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .filters button.on { color: var(--ink); border-color: var(--accent-fill); background: var(--accent-soft); }
+  /* finding cards */
+  .finding { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+  .finding.hidden { display: none; }
+  .fhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .fid { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .ftitle { font-weight: 650; font-size: .95rem; flex: 1; min-width: 240px; }
+  .chip { font-size: .66rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .sev-critical { background: var(--bad); color: #fff; }
+  .sev-high { background: var(--bad-soft); color: var(--bad); }
+  .sev-medium { background: var(--accent-soft); color: var(--accent); }
+  .sev-low { background: var(--machine-soft); color: var(--machine); }
+  .v-design { background: var(--accent-soft); color: var(--accent); }
+  .v-cheap { background: var(--ok-soft); color: var(--ok); }
+  .v-collapsed { background: var(--machine-soft); color: var(--machine); }
+  .v-reject { background: var(--bad-soft); color: var(--bad); }
+  .v-open { background: var(--state-soft); color: var(--state); }
+  .v-trim { background: var(--line); color: var(--muted); }
+  .fbody { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+  .fbody h4 { margin: 0 0 3px; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .fbody p { margin: 0; font-size: .85rem; }
+  .fbody .plan p { border-left: 3px solid var(--accent-fill); padding-left: 10px; }
+  @media (max-width: 700px) { .fbody { grid-template-columns: 1fr; } .strip { grid-template-columns: repeat(3, 1fr); } }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">change-work-model · reviews</div>
+  <h1>Codex Design Review — Disposition Board</h1>
+  <p class="meta">reviewed 2026-07-27 · codex session 019fa3fc… · verdict: REQUEST-CHANGES · 21 findings · response: amend PR #141</p>
+  <p class="lede">Every finding, what Codex claimed, and what we do about it. Accepted items become one amend to <code>change.md</code>; rejected items get their reasoning recorded here so the next review doesn't re-litigate them.</p>
+
+  <div class="strip">
+    <div class="cell vd"><div class="n">6</div><div class="l">accept · design</div></div>
+    <div class="cell vc"><div class="n">8</div><div class="l">accept · cheap</div></div>
+    <div class="cell vx"><div class="n">3</div><div class="l">collapsed</div></div>
+    <div class="cell vr"><div class="n">2</div><div class="l">rejected</div></div>
+    <div class="cell vo"><div class="n">1</div><div class="l">kept open</div></div>
+    <div class="cell vt"><div class="n">1</div><div class="l">trimmed</div></div>
+  </div>
+
+  <div class="banner threat">
+    <h3>The calibration Codex lacked: this gate is accident-proofing, not tamper-proofing</h3>
+    <p>A repo owner who wants to cheat can edit the gate's own source — no receipt format survives that. Findings are scored by one question: <b>can this happen innocently in the normal workflow?</b> The shaping-only merge could (that's the defect). Hand-forged receipts cannot. This reframe becomes a Rabbit Hole line in the doc.</p>
+  </div>
+
+  <div class="banner core">
+    <h3>The one real design change: the receipt becomes a cache of verify, not a credential</h3>
+    <p>Codex's critical (2.1) is right — a criteria-only digest stays valid after a regression or revert. Its fix ("expire on any change") is a re-verification treadmill. Ours: the receipt records the criteria digest <b>and the commit it verified</b>; at release preflight, receipt-commit ≠ HEAD re-runs the executable criteria instead of trusting stale evidence. Cost lands only on arc terminals at stable cuts — the rarest ceremony. Once the receipt is the real lock, provenance demotes to a coarse filter and three adversarial findings collapse.</p>
+  </div>
+
+  <div class="filters" role="toolbar" aria-label="Filter findings by disposition">
+    <button class="on" data-f="all">All 21</button>
+    <button data-f="v-design">Accept · design 6</button>
+    <button data-f="v-cheap">Accept · cheap 8</button>
+    <button data-f="v-collapsed">Collapsed 3</button>
+    <button data-f="v-reject">Rejected 2</button>
+    <button data-f="v-open">Kept open 1</button>
+    <button data-f="v-trim">Trimmed 1</button>
+  </div>
+
+  <h2>1 · Internal consistency</h2>
+
+  <div class="finding" data-v="v-design">
+    <div class="fhead"><span class="fid">1.1</span><span class="chip sev-high">high</span><span class="ftitle">Old-layout terminals have no receipt digest surface</span><span class="chip v-design">accept · design</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>Receipts bind exclusively to <code>shape.md</code>, but the only live arc terminal is old-layout and has none — its receipt can't be validated as specified.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Define the legacy digest over <code>change.md</code>'s Verification Contract section. Folds into T5 + Compatibility. Without this, the one terminal the gate exists for could never open it.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-design">
+    <div class="fhead"><span class="fid">1.2</span><span class="chip sev-high">high</span><span class="ftitle">"Executable criteria" have no executable representation</span><span class="chip v-design">accept · design</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p><code>shape.md</code> holds prose criteria — no command schema, exit-code contract, or evidence format. <code>verify</code> can't deterministically execute them.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Decide the contract shape in the doc: executable V-entries declare their command and expected result; prose stays H-series (human review). Exact syntax lands at T5 against the capability-receipt precedent — rule of latitude, not a schema spec in shaping.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-reject">
+    <div class="fhead"><span class="fid">1.3</span><span class="chip sev-medium">medium</span><span class="ftitle">Terminal "done" doesn't require task completion</span><span class="chip v-reject">reject · philosophy</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>An arc can release while the task projection still reports unchecked tasks; decide whether all tasks gate completion.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Deliberately no: <b>criteria are the contract, tasks are the route</b>. An unchecked task on a verified terminal is descoped work — scope hammering, cut cleanly. Requiring all boxes resurrects status-pressure. Textual fix only: say this out loud, and resolve the <code>--require-executable</code> open question as provenance-only.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-cheap">
+    <div class="fhead"><span class="fid">1.4</span><span class="chip sev-medium">medium</span><span class="ftitle">Brief-only workflow contradicts the scaffold contract</span><span class="chip v-cheap">accept · cheap</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>T2's <code>init</code> always emits shape + tasks, so the advertised "captured, not shaped" state is unreachable by any command.</p></div>
+      <div class="plan"><h4>Plan</h4><p><code>loaf change init --brief</code> becomes capture mode: emits <code>change.json</code> + <code>brief.md</code> only; the full scaffold arrives at shaping. T2 + V3 wording updated.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-trim">
+    <div class="fhead"><span class="fid">1.5</span><span class="chip sev-medium">medium</span><span class="ftitle">Task projection lacks identity and relation validation rules</span><span class="chip v-trim">trim to minimum</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>Duplicate numbers, dependency syntax, missing/self/cyclic relations, zero-checkbox completion, rename identity — all undefined; V6 can't establish stability.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Minimum rules only: duplicate NNN / dangling / self / cyclic <code>depends-on</code> = check violations; zero-checkbox task = warning. Everything richer stays the already-routed [KU] at T2 — the relation vocabulary is deliberately matrix-minimal.</p></div>
+    </div>
+  </div>
+
+  <h2>2 · Gate soundness vs the current implementation</h2>
+
+  <div class="finding" data-v="v-design">
+    <div class="fhead"><span class="fid">2.1</span><span class="chip sev-critical">critical</span><span class="ftitle">A criteria-only receipt survives regression and revert</span><span class="chip v-design">accept · modified mechanics</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>After a legitimate receipt commits, a later revert outside the change folder leaves digest and provenance valid — stable opens on code that no longer passes verification.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Receipt = <b>cache of verify</b>: records criteria digest + verified commit. Preflight with receipt-commit ≠ HEAD re-runs the executable criteria — fresh evidence at the rare moment it matters. Codex's expire-on-any-change rejected as a treadmill. Decision 13 rewritten; weaker than our own capability-receipt precedent was the tell.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-cheap">
+    <div class="fhead"><span class="fid">2.2</span><span class="chip sev-high">high</span><span class="ftitle">Single-content changeNode can't feed both consumers</span><span class="chip v-cheap">accept · cheap</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>New-layout metadata lives in <code>change.json</code>, structural validity in <code>shape.md</code>; the one-file node feeding <code>deriveChangeGraph</code> and <code>evaluateChangeDocAtPath</code> serves neither.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Correct implementation guidance, not a design change: T1 gains a sentence — replace the single-content node with parsed metadata plus per-layout contract evaluation, migrating both graph and preflight consumers.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-design">
+    <div class="fhead"><span class="fid">2.3</span><span class="chip sev-high">high</span><span class="ftitle">The predecessor-immutability premise is factually false</span><span class="chip v-design">accept · factual correction</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>The replay freezes only <code>lineage</code> and <code>release-after</code>; <code>predecessor</code> mutation is deliberately legal (<code>TestReleaseLineagePreflightAllowsCommittedPredecessorEvolution</code>) to allow node insertion.</p></div>
+      <div class="plan"><h4>Plan</h4><p>The doc claimed otherwise — our error, caught against code. Corrected: only <code>arc</code> and <code>terminal</code> freeze; <code>previous</code> stays evolvable, preserving insertion between committed nodes. Decision 3 + Immutability section rewritten.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-design">
+    <div class="fhead"><span class="fid">2.4</span><span class="chip sev-high">high</span><span class="ftitle">Deletion history: too narrow for new layout, too strict for conversion</span><span class="chip v-design">accept · design</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>The retention guard only recognizes deleted <code>/change.md</code> paths — deleting <code>change.json</code> is invisible, while converting an old lineage-bearing unit is permanently blocked.</p></div>
+      <div class="plan"><h4>Plan</h4><p>One decision covers 2.4 + 4.1: the retention guard extends to <code>change.json</code>, and <b>sanctioned conversion</b> is defined — an atomic same-commit replace where frozen values carry over verbatim (the replay already validates continuity). Folds into T1 + Immutability.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-cheap">
+    <div class="fhead"><span class="fid">2.5</span><span class="chip sev-medium">medium</span><span class="ftitle">V2 overstates the prerelease bypass</span><span class="chip v-cheap">accept · cheap</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>The real bypass requires version files already carrying a consistent prerelease; V2's "succeeds in every gate state" would fail from a stable-version fixture.</p></div>
+      <div class="plan"><h4>Plan</h4><p>V2 fixture pins consistent prerelease version files and enumerates the gate states it must pass through. Wording only.</p></div>
+    </div>
+  </div>
+
+  <h2>3 · Adversarial</h2>
+
+  <div class="finding" data-v="v-collapsed">
+    <div class="fhead"><span class="fid">3.1</span><span class="chip sev-high">high</span><span class="ftitle">Mixed-commit execution laundering</span><span class="chip v-collapsed">collapses with 2.1</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>A shaping commit touching a task file plus any unrelated outside path satisfies execution.</p></div>
+      <div class="plan"><h4>Plan</h4><p>With the verify-cache receipt, provenance alone can't open the gate. Remaining half addressed cheaply: the <b>terminal-satisfaction path uses checkbox-flip detection</b> (diff parse at preflight, one folder, rare); non-terminals stay path-level. No general commit-purpose analysis.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-collapsed">
+    <div class="fhead"><span class="fid">3.2</span><span class="chip sev-high">high</span><span class="ftitle">Non-semantic task-file touches count as execution</span><span class="chip v-collapsed">collapses with 3.1</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>Whitespace, title edits, or adding an unchecked box all satisfy the path-level rule.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Same resolution: checkbox-flip detection at the terminal gate; receipt is the lock everywhere else. Accepted residual for non-terminal display states, where nothing releases on it.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-reject">
+    <div class="fhead"><span class="fid">3.3</span><span class="chip sev-high">high</span><span class="ftitle">Receipt gaming — weakened criteria, hand-authored receipts</span><span class="chip v-reject">reject · threat model</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>Criteria can be weakened to a trivially passing command and re-verified; without tool-provenance format the receipt can be hand-authored.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Deliberate evasion is out of scope: the owner also owns the gate's source and any signer. Weakened criteria are a <code>shape.md</code> diff — exactly what human review of an arc terminal exists to catch. Recorded as the accident-not-tamper Rabbit Hole so this isn't re-litigated.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-collapsed">
+    <div class="fhead"><span class="fid">3.4</span><span class="chip sev-high">high</span><span class="ftitle">Old-layout fallback preserves the shaping/execution ambiguity</span><span class="chip v-collapsed">subsumed by 1.1 + 2.1</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>A legacy shaping edit plus an unrelated outside path is indistinguishable from delivery; the receipt can't mitigate without a legacy digest.</p></div>
+      <div class="plan"><h4>Plan</h4><p>The legacy digest (1.1) plus verify-cache receipts (2.1) give the old-layout terminal the same real lock. One clarifying sentence in Compatibility; no separate mechanism.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-cheap">
+    <div class="fhead"><span class="fid">3.5</span><span class="chip sev-medium">medium</span><span class="ftitle">Cross-layout metadata laundering under a naive loader</span><span class="chip v-cheap">accept · cheap</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>Adding <code>change.json</code> while keeping <code>change.md</code> lets a loader that inspects only the selected file miss frozen legacy values.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Immutability section strengthened: the replay <b>unions both surfaces' histories</b> per unit — a value first set in either freezes across both.</p></div>
+    </div>
+  </div>
+
+  <h2>4 · Compatibility posture</h2>
+
+  <div class="finding" data-v="v-design">
+    <div class="fhead"><span class="fid">4.1</span><span class="chip sev-high">high</span><span class="ftitle">No specified legal transition from legacy to new layout</span><span class="chip v-design">accept · with 2.4</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>Keep-both, delete, or atomic replace each break different guards; the Change never chooses.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Chosen: atomic same-commit replace with frozen values carried verbatim (see 2.4). Keep-both is transitional-legal (union replay covers it); silent deletion stays blocked.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-cheap">
+    <div class="fhead"><span class="fid">4.2</span><span class="chip sev-medium">medium</span><span class="ftitle">"Every reader" is broader than the tasks acknowledge</span><span class="chip v-cheap">accept · cheap</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p><code>findChangeSlug</code>, folder/branch resolution, list/check, and the committed-HEAD loader each resolve <code>change.md</code> independently.</p></div>
+      <div class="plan"><h4>Plan</h4><p>T1 gains the consumer enumeration so coexistence can't ship partially. The full matrix belongs in T1's task file at decomposition.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-open">
+    <div class="fhead"><span class="fid">4.3</span><span class="chip sev-medium">medium</span><span class="ftitle">The removal boundary can collapse the compatibility window</span><span class="chip v-open">kept open · candidate adjusted</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>"First stable 2.x" at version 2.0.0-alpha.14 means the window could die at the next stable — the very release the old-layout terminal enables.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Sharpest observation in the review. Stays an open question decided at T3, but the candidate becomes <b>first stable after the new layout has shipped one minor</b> — the window can't collapse into its own opening.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-cheap">
+    <div class="fhead"><span class="fid">4.4</span><span class="chip sev-low">low</span><span class="ftitle">Malformed change.json needs an explicit selector rule</span><span class="chip v-cheap">accept · cheap</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>A truncated <code>change.json</code> shadows a valid legacy <code>change.md</code>; silent fallback would reinterpret metadata.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Fails closed: malformed <code>change.json</code> is a violation, never a fallback. One line in T1, one negative fixture.</p></div>
+    </div>
+  </div>
+
+  <h2>5 · Repository invariants</h2>
+
+  <div class="finding" data-v="v-cheap">
+    <div class="fhead"><span class="fid">5.1</span><span class="chip sev-medium">medium</span><span class="ftitle">No-status enforcement not extended to the new machine surfaces</span><span class="chip v-cheap">accept · cheap</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>The JSON and task parsers could accept exactly the mutable lifecycle fields the Change rejects; V1–V7 have no negative fixtures.</p></div>
+      <div class="plan"><h4>Plan</h4><p>New verification entry: <code>status</code> in <code>change.json</code> or lifecycle/assignee/estimate fields in task frontmatter → check violation. Mechanically encodes the existing no-go.</p></div>
+    </div>
+  </div>
+
+  <div class="finding" data-v="v-cheap">
+    <div class="fhead"><span class="fid">5.2</span><span class="chip sev-low">low</span><span class="ftitle">tasks/NNN-slug.md passes artifact-names for the wrong reason</span><span class="chip v-cheap">accept · correction</span></div>
+    <div class="fbody">
+      <div><h4>Codex</h4><p>The guard detects <code>task-N</code> style identifiers; bare numeric prefixes are simply undetected — not covered by the identity exemption the doc cites.</p></div>
+      <div class="plan"><h4>Plan</h4><p>Our rationale was wrong; the naming is legal anyway. Doc states the real reason; no guard extension (scope creep for a working guard). Template warns slugs must never be <code>task-N</code> style.</p></div>
+    </div>
+  </div>
+
+  <footer>
+    <p>Codex cleared: append-only dispositions, journal doctrine, served projections. Verdict REQUEST-CHANGES → response: one amend to <code>change.md</code> carrying the 14 accepted + 3 collapsed resolutions; 2 rejections and their reasoning live here. Source: codex session <span style="font-family: var(--mono)">019fa3fc-3485-7e02-a474-797eab2847a5</span>, job <span style="font-family: var(--mono)">task-ms3bqso9-y6w7u6</span>.</p>
+  </footer>
+</main>
+
+<script>
+  (function () {
+    var buttons = document.querySelectorAll('.filters button');
+    var findings = document.querySelectorAll('.finding');
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        buttons.forEach(function (b) { b.classList.remove('on'); });
+        btn.classList.add('on');
+        var f = btn.getAttribute('data-f');
+        findings.forEach(function (card) {
+          card.classList.toggle('hidden', f !== 'all' && card.getAttribute('data-v') !== f);
+        });
+      });
+    });
+  })();
+</script>
