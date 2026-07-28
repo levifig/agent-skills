@@ -28,10 +28,10 @@ loaf journal log "skill(implement): TASK-025 — HEAD content source for evidenc
 
 ## Steps
 
-- [ ] The verified rung's structural guard loads nodes at HEAD (`loadChangeNodesAtHEADWithOutput`) and evaluates the member's committed content — a dirty working tree cannot change the guard's verdict in either direction.
-- [ ] The composite's task-file input takes a content source: working tree for `check`, committed HEAD for gate and state — one composite, two explicit sources, no silent filesystem fallback on the evidence path.
-- [ ] Fixtures: an uncommitted rename of one duplicate-slug folder changes neither gate nor state verdicts (both still see the committed duplication) while `check` sees the working tree; an uncommitted banned-frontmatter edit does not demote a committed-clean member's state; a task folder deleted only in the working tree still yields its committed findings on the evidence path.
-- [ ] After landing, resolve the Intent: `loaf intent resolve` pointing at this task and commit range — the orchestrator will run it if loaf commands are unavailable to you; note it in your final output either way.
+- [x] The verified rung's structural guard loads nodes at HEAD (`loadChangeNodesAtHEADWithOutput`) and evaluates the member's committed content — a dirty working tree cannot change the guard's verdict in either direction.
+- [x] The composite's task-file input takes a content source: working tree for `check`, committed HEAD for gate and state — one composite, two explicit sources, no silent filesystem fallback on the evidence path.
+- [x] Fixtures: an uncommitted rename of one duplicate-slug folder changes neither gate nor state verdicts (both still see the committed duplication) while `check` sees the working tree; an uncommitted banned-frontmatter edit does not demote a committed-clean member's state; a task folder deleted only in the working tree still yields its committed findings on the evidence path.
+- [x] After landing, resolve the Intent: `loaf intent resolve` pointing at this task and commit range — the orchestrator will run it if loaf commands are unavailable to you; note it in your final output either way.
 
 ## Verification
 

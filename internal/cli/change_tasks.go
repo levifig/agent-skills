@@ -123,7 +123,7 @@ func (r Runner) runChangeTasks(args []string, out io.Writer, rootPath string) er
 	if err != nil {
 		return err
 	}
-	tasks, findings, warnings := loadChangeTasks(rootPath, folder, node)
+	tasks, findings, warnings := loadChangeTasks(rootPath, folder, node, changeTaskContentWorkingTree, commandOutput)
 	result := changeTasksJSON{
 		Command:  "change tasks",
 		Change:   node.Slug,
@@ -176,7 +176,7 @@ func (r Runner) runChangeShow(args []string, out io.Writer, rootPath string) err
 		return err
 	}
 	report := evaluateChangeNode(node, currentChangeBranch(rootPath))
-	_, findings, warnings := loadChangeTasks(rootPath, folder, node)
+	_, findings, warnings := loadChangeTasks(rootPath, folder, node, changeTaskContentWorkingTree, commandOutput)
 	prs := deriveChangePRSet(rootPath, folder)
 	result := changeShowJSON{
 		Command:       "change show",
@@ -238,54 +238,51 @@ func writeChangeShowHelp(out io.Writer) {
 		"--json    Output as JSON")
 }
 
-func loadChangeTasks(rootPath, folderAbs string, node changeNode) ([]changeTask, []string, []string) {
+// changeTaskContentSource selects where structural task-file reads come from.
+// check uses the working tree (author feedback); gate and verified-state use
+// committed HEAD (evidence) — never a silent filesystem fallback on the evidence path.
+type changeTaskContentSource int
+
+const (
+	changeTaskContentWorkingTree changeTaskContentSource = iota
+	changeTaskContentHEAD
+)
+
+func loadChangeTasks(rootPath, folderAbs string, node changeNode, source changeTaskContentSource, outputCommand changeGitOutput) ([]changeTask, []string, []string) {
 	if node.Layout != changeLayoutNew {
 		return nil, nil, nil
 	}
-	tasksDir := filepath.Join(folderAbs, "tasks")
-	entries, err := os.ReadDir(tasksDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil, nil
-		}
-		return nil, []string{fmt.Sprintf("read tasks/: %v", err)}, nil
+	folderRel := relFromRoot(rootPath, folderAbs)
+	names, bodies, listFindings := listChangeTaskFileContents(rootPath, folderAbs, folderRel, source, outputCommand)
+	if listFindings != nil && len(names) == 0 {
+		return nil, listFindings, nil
 	}
 	byID := map[string]*changeTask{}
 	var findings []string
 	var warnings []string
+	findings = append(findings, listFindings...)
 	seenNumbers := map[int]string{}
-	for _, entry := range entries {
-		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-		match := changeTaskFileRE.FindStringSubmatch(entry.Name())
+	for _, name := range names {
+		match := changeTaskFileRE.FindStringSubmatch(name)
 		if match == nil {
-			findings = append(findings, fmt.Sprintf("tasks/%s: filename must be TASK-NNN-slug.md", entry.Name()))
+			findings = append(findings, fmt.Sprintf("tasks/%s: filename must be TASK-NNN-slug.md", name))
 			continue
 		}
 		num := 0
 		fmt.Sscanf(match[1], "%d", &num)
 		id := fmt.Sprintf("TASK-%03d", num)
-		if match[1] != fmt.Sprintf("%03d", num) && match[1] != fmt.Sprintf("%d", num) {
-			// Accept TASK-1- or TASK-001-
-			id = fmt.Sprintf("TASK-%s", match[1])
-			if len(match[1]) <= 3 {
-				id = fmt.Sprintf("TASK-%03d", num)
-			}
-		}
-		id = fmt.Sprintf("TASK-%03d", num)
-		rel := filepath.ToSlash(filepath.Join(relFromRoot(rootPath, folderAbs), "tasks", entry.Name()))
+		rel := filepath.ToSlash(filepath.Join(folderRel, "tasks", name))
 		if prev, ok := seenNumbers[num]; ok {
-			findings = append(findings, fmt.Sprintf("duplicate task number %d: %s and %s", num, prev, entry.Name()))
+			findings = append(findings, fmt.Sprintf("duplicate task number %d: %s and %s", num, prev, name))
 		}
-		seenNumbers[num] = entry.Name()
+		seenNumbers[num] = name
 
-		body, readErr := os.ReadFile(filepath.Join(tasksDir, entry.Name()))
-		if readErr != nil {
-			findings = append(findings, fmt.Sprintf("%s: %v", rel, readErr))
+		body, ok := bodies[name]
+		if !ok {
+			findings = append(findings, fmt.Sprintf("%s: missing content", rel))
 			continue
 		}
-		task := parseChangeTaskFile(string(body), id, num, rel, node.Slug)
+		task := parseChangeTaskFile(body, id, num, rel, node.Slug)
 		if task.CheckboxTotal == 0 {
 			task.Warnings = append(task.Warnings, fmt.Sprintf("%s: zero checkboxes (coordination parents still want one closing box)", rel))
 		}
@@ -360,6 +357,66 @@ func loadChangeTasks(rootPath, folderAbs string, node changeNode) ([]changeTask,
 	}
 	sort.Slice(tasks, func(i, j int) bool { return tasks[i].Number < tasks[j].Number })
 	return tasks, sortedUnique(findings), sortedUnique(warnings)
+}
+
+func listChangeTaskFileContents(rootPath, folderAbs, folderRel string, source changeTaskContentSource, outputCommand changeGitOutput) (names []string, bodies map[string]string, findings []string) {
+	bodies = map[string]string{}
+	if source == changeTaskContentHEAD {
+		if outputCommand == nil {
+			outputCommand = commandOutput
+		}
+		tasksDir := filepath.ToSlash(filepath.Join(folderRel, "tasks"))
+		listOutput, err := outputCommand(rootPath, "git", "ls-tree", "-r", "--name-only", "HEAD", "--", tasksDir)
+		if err != nil {
+			return nil, nil, []string{fmt.Sprintf("read tasks/ at HEAD: %v", err)}
+		}
+		prefix := tasksDir + "/"
+		for _, path := range strings.Split(listOutput, "\n") {
+			path = filepath.ToSlash(strings.TrimSpace(path))
+			if path == "" || !strings.HasPrefix(path, prefix) {
+				continue
+			}
+			relRest := strings.TrimPrefix(path, prefix)
+			if relRest == "" || strings.Contains(relRest, "/") || strings.HasPrefix(relRest, ".") {
+				continue
+			}
+			content, found, readErr := readCommittedOptional(rootPath, "HEAD", path, outputCommand)
+			if readErr != nil {
+				findings = append(findings, fmt.Sprintf("%s: %v", path, readErr))
+				continue
+			}
+			if !found {
+				continue
+			}
+			names = append(names, relRest)
+			bodies[relRest] = content
+		}
+		sort.Strings(names)
+		return names, bodies, findings
+	}
+
+	tasksDir := filepath.Join(folderAbs, "tasks")
+	entries, err := os.ReadDir(tasksDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, bodies, nil
+		}
+		return nil, nil, []string{fmt.Sprintf("read tasks/: %v", err)}
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		body, readErr := os.ReadFile(filepath.Join(tasksDir, entry.Name()))
+		if readErr != nil {
+			findings = append(findings, fmt.Sprintf("%s: %v", filepath.ToSlash(filepath.Join(folderRel, "tasks", entry.Name())), readErr))
+			continue
+		}
+		names = append(names, entry.Name())
+		bodies[entry.Name()] = string(body)
+	}
+	sort.Strings(names)
+	return names, bodies, findings
 }
 
 // parseChangeTaskFrontmatter accepts scalar key: value pairs and YAML sequence

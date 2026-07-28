@@ -278,3 +278,92 @@ func changeCheckState(t *testing.T, repo, folderRel string) string {
 	}
 	return result.State
 }
+
+// --- TASK-025: verified/state evidence reads committed HEAD, not the working tree ---
+
+func TestChangeStateIgnoresUncommittedBannedFrontmatter(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-clean-verified", "clean-verified", "1.0.0", "")
+	flipExecuteChange(t, repo, dir, "clean-verified")
+	folderRel := relFromRoot(repo, dir)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v\n%s", err, stdout.String())
+	}
+	commitAllChangeTest(t, repo, "chore: commit clean-verified receipt")
+
+	if got := changeShowState(t, repo, folderRel); got != "verified" {
+		t.Fatalf("committed-clean state = %q, want verified", got)
+	}
+
+	// Dirty working-tree banned frontmatter must not demote the committed-clean member.
+	task := filepath.Join(dir, "tasks", "TASK-001-work.md")
+	if err := os.WriteFile(task, []byte("---\nchange: clean-verified\nid: TASK-001\ntitle: Work\nstatus: in-progress\n---\n\n# Work\n\n## Steps\n\n- [x] Do it\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile dirty banned: %v", err)
+	}
+	if got := changeShowState(t, repo, folderRel); got != "verified" {
+		t.Fatalf("dirty banned frontmatter demoted state to %q, want verified", got)
+	}
+	checkOut := changeCheckFindings(t, repo, folderRel)
+	if !strings.Contains(checkOut, "banned") && !strings.Contains(checkOut, "status") {
+		t.Fatalf("check must still see the working-tree ban; got %q", checkOut)
+	}
+}
+
+func TestChangeStateEvidenceSeesCommittedTasksWhenWorkingTreeDeletesTasks(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-head-tasks", "head-tasks", "1.0.0", "")
+	flipExecuteChange(t, repo, dir, "head-tasks")
+	banned := filepath.Join(dir, "tasks", "TASK-002-later.md")
+	if err := os.WriteFile(banned, []byte("---\nchange: head-tasks\nid: TASK-002\ntitle: Later\nstatus: in-progress\n---\n\n# Later\n\n## Steps\n\n- [ ] Descoped\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile banned: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: commit banned task at HEAD")
+	folderRel := relFromRoot(repo, dir)
+
+	// Evidence path must still see the committed banned task after a WT deletion.
+	if err := os.RemoveAll(filepath.Join(dir, "tasks")); err != nil {
+		t.Fatalf("RemoveAll tasks: %v", err)
+	}
+	if changeStructurallyCleanForState(repo, mustAssembleNode(t, repo, folderRel), commandOutput) {
+		t.Fatal("evidence path must still see committed banned frontmatter after WT task delete")
+	}
+	report, err := changeCohortStructuralReport(repo, mustAssembleHEADNode(t, repo, folderRel), mustLoadHEADNodes(t, repo), commandOutput)
+	if err != nil {
+		t.Fatalf("cohort structural: %v", err)
+	}
+	joined := strings.Join(report.Violations, "\n")
+	if !strings.Contains(joined, "banned") && !strings.Contains(joined, "status") {
+		t.Fatalf("gate composite must keep committed task findings; got %q", joined)
+	}
+}
+
+func mustAssembleNode(t *testing.T, repo, folderRel string) changeNode {
+	t.Helper()
+	node, err := assembleChangeNodeFromFolder(repo, filepath.Join(repo, filepath.FromSlash(folderRel)))
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	return node
+}
+
+func mustLoadHEADNodes(t *testing.T, repo string) []changeNode {
+	t.Helper()
+	nodes, err := loadChangeNodesAtHEAD(repo)
+	if err != nil {
+		t.Fatalf("loadChangeNodesAtHEAD: %v", err)
+	}
+	return nodes
+}
+
+func mustAssembleHEADNode(t *testing.T, repo, folderRel string) changeNode {
+	t.Helper()
+	nodes := mustLoadHEADNodes(t, repo)
+	node, ok := changeNodeForFolder(nodes, folderRel)
+	if !ok {
+		t.Fatalf("HEAD node for %s missing", folderRel)
+	}
+	return node
+}

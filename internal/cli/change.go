@@ -337,7 +337,7 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 	if indexErr != nil {
 		return indexErr
 	}
-	report, composeErr := composeChangeCheckReport(report, rootPath, folder, node, nodes, commandOutput, options.requireExecutable)
+	report, composeErr := composeChangeCheckReport(report, rootPath, folder, node, nodes, commandOutput, options.requireExecutable, changeTaskContentWorkingTree)
 	if composeErr != nil {
 		return composeErr
 	}
@@ -698,11 +698,13 @@ func evaluateChangeNode(node changeNode, currentBranch string) changeCheckReport
 }
 
 // composeChangeCheckReport is the structural composite shared by `loaf change
-// check` and the release cohort gate: lineage validation over the loaded node
-// set, then task-hygiene and conversion findings. One helper, two consumers.
-func composeChangeCheckReport(report changeCheckReport, rootPath, folderAbs string, node changeNode, nodes []changeNode, outputCommand changeGitOutput, requireExecutable bool) (changeCheckReport, error) {
+// check`, the release cohort gate, and the verified-state guard: lineage
+// validation over the loaded node set, then task-hygiene and conversion
+// findings. One helper; the task-content source distinguishes author feedback
+// (working tree for check) from evidence (committed HEAD for gate/state).
+func composeChangeCheckReport(report changeCheckReport, rootPath, folderAbs string, node changeNode, nodes []changeNode, outputCommand changeGitOutput, requireExecutable bool, taskSource changeTaskContentSource) (changeCheckReport, error) {
 	report = applyLineageValidation(report, nodes, node.ChangeFile, rootPath, requireExecutable)
-	return applyChangeStructuralFindings(report, rootPath, folderAbs, node, outputCommand)
+	return applyChangeStructuralFindings(report, rootPath, folderAbs, node, outputCommand, taskSource)
 }
 
 // applyChangeStructuralFindings folds the structural surface that lives outside
@@ -712,11 +714,11 @@ func composeChangeCheckReport(report changeCheckReport, rootPath, folderAbs stri
 // `loaf change check` and the release cohort gate share this composite so
 // "structurally valid" means the same thing at both surfaces — a gate that
 // judged violations alone let contract gaps and banned task frontmatter release.
-func applyChangeStructuralFindings(report changeCheckReport, rootPath, folderAbs string, node changeNode, outputCommand changeGitOutput) (changeCheckReport, error) {
+func applyChangeStructuralFindings(report changeCheckReport, rootPath, folderAbs string, node changeNode, outputCommand changeGitOutput, taskSource changeTaskContentSource) (changeCheckReport, error) {
 	if node.Layout != changeLayoutNew {
 		return report, nil
 	}
-	_, taskFindings, taskWarnings := loadChangeTasks(rootPath, folderAbs, node)
+	_, taskFindings, taskWarnings := loadChangeTasks(rootPath, folderAbs, node, taskSource, outputCommand)
 	report.Violations = append(report.Violations, taskFindings...)
 	report.Warnings = append(report.Warnings, taskWarnings...)
 	conversionFindings, err := conversionPreCheckedFindings(rootPath, relFromRoot(rootPath, folderAbs), outputCommand)

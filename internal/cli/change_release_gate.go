@@ -115,7 +115,7 @@ func releaseCohortPreflightWithOutput(rootPath, candidate string, outputCommand 
 func changeCohortStructuralReport(rootPath string, node changeNode, nodes []changeNode, outputCommand changeGitOutput) (changeCheckReport, error) {
 	folderAbs := filepath.Join(rootPath, filepath.FromSlash(node.Folder))
 	report := evaluateChangeNode(node, "")
-	return composeChangeCheckReport(report, rootPath, folderAbs, node, nodes, outputCommand, false)
+	return composeChangeCheckReport(report, rootPath, folderAbs, node, nodes, outputCommand, false, changeTaskContentHEAD)
 }
 
 func emptyAsNone(value string) string {

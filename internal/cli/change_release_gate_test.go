@@ -1028,3 +1028,52 @@ func TestReleaseCohortGateLineageHappyPathUnaffectedByForeignLineageFindings(t *
 		t.Fatalf("single-member happy path must stay green: %v", err)
 	}
 }
+
+func TestReleaseAndStateIgnoreUncommittedDuplicateSlugRename(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+	dirA := writeNewLayoutChange(t, repo, "20260727-dup-slug", "dup-slug", "1.0.0", "")
+	flipExecuteChange(t, repo, dirA, "dup-slug")
+	folderA := filepath.Join("docs", "changes", "20260727-dup-slug")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderA}); err != nil {
+		t.Fatalf("verify A: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit A receipt")
+
+	dirB := writeNewLayoutChange(t, repo, "20260728-dup-slug", "dup-slug", "1.0.0", "")
+	flipExecuteChange(t, repo, dirB, "dup-slug")
+	folderB := filepath.Join("docs", "changes", "20260728-dup-slug")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderB}); err != nil {
+		t.Fatalf("verify B: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit B receipt")
+
+	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "duplicate Change slug") {
+		t.Fatalf("committed gate err = %v, want duplicate slug block", gateErr)
+	}
+	stateA := deriveChangeState(repo, mustAssembleNode(t, repo, folderA), commandOutput)
+	if stateA == "verified" {
+		t.Fatalf("committed duplicate must keep state off verified; got %q", stateA)
+	}
+
+	// Uncommitted move of one duplicate folder out of docs/changes: check's working-tree load loses the duplicate; gate/state still see HEAD.
+	parked := filepath.Join(repo, "parked-dup-slug")
+	if err := os.Rename(dirB, parked); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+
+	gateErr = releaseCohortPreflight(repo, "1.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "duplicate Change slug") {
+		t.Fatalf("after WT rename gate err = %v, want committed duplicate still blocking", gateErr)
+	}
+	stateA = deriveChangeState(repo, mustAssembleNode(t, repo, folderA), commandOutput)
+	if stateA == "verified" {
+		t.Fatalf("after WT rename state must stay off verified; got %q", stateA)
+	}
+
+	var stdout bytes.Buffer
+	checkErr := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "check", folderA, "--json"})
+	if strings.Contains(stdout.String(), "duplicate Change slug") {
+		t.Fatalf("check should see the working tree (duplicate parked away); got err=%v out=%s", checkErr, stdout.String())
+	}
+}

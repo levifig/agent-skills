@@ -42,17 +42,45 @@ func deriveChangeState(rootPath string, node changeNode, outputCommand changeGit
 
 // changeStructurallyCleanForState reports whether the gate's structural
 // composite is clean for this node — the verified rung must agree with the gate.
+// Evidence is committed HEAD only: nodes and task files are never read from the
+// working tree here, so a dirty checkout cannot flip the verdict either way.
 func changeStructurallyCleanForState(rootPath string, node changeNode, outputCommand changeGitOutput) bool {
-	nodes, err := loadChangeNodes(rootPath)
+	nodes, err := loadChangeNodesAtHEADWithOutput(rootPath, outputCommand)
 	if err != nil {
 		return false
 	}
-	folderAbs := filepath.Join(rootPath, filepath.FromSlash(node.Folder))
-	report, reportErr := composeChangeCheckReport(evaluateChangeNode(node, ""), rootPath, folderAbs, node, nodes, outputCommand, false)
+	headNode, ok := changeNodeForFolder(nodes, node.Folder)
+	if !ok {
+		headNode, ok = changeNodeForSlug(nodes, node.Slug)
+	}
+	if !ok {
+		return false
+	}
+	folderAbs := filepath.Join(rootPath, filepath.FromSlash(headNode.Folder))
+	report, reportErr := composeChangeCheckReport(evaluateChangeNode(headNode, ""), rootPath, folderAbs, headNode, nodes, outputCommand, false, changeTaskContentHEAD)
 	if reportErr != nil {
 		return false
 	}
 	return len(report.Violations) == 0 && report.Executable
+}
+
+func changeNodeForFolder(nodes []changeNode, folder string) (changeNode, bool) {
+	folder = filepath.ToSlash(folder)
+	for _, n := range nodes {
+		if filepath.ToSlash(n.Folder) == folder {
+			return n, true
+		}
+	}
+	return changeNode{}, false
+}
+
+func changeNodeForSlug(nodes []changeNode, slug string) (changeNode, bool) {
+	for _, n := range nodes {
+		if n.Slug == slug {
+			return n, true
+		}
+	}
+	return changeNode{}, false
 }
 
 // changeAllTaskCheckboxesChecked reports whether the change has at least one
@@ -62,7 +90,7 @@ func changeAllTaskCheckboxesChecked(rootPath string, node changeNode) bool {
 		return false
 	}
 	folderAbs := filepath.Join(rootPath, filepath.FromSlash(node.Folder))
-	tasks, _, _ := loadChangeTasks(rootPath, folderAbs, node)
+	tasks, _, _ := loadChangeTasks(rootPath, folderAbs, node, changeTaskContentWorkingTree, commandOutput)
 	total := 0
 	done := 0
 	for _, task := range tasks {
