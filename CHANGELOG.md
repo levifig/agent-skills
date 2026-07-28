@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-alpha.15] - 2026-07-28
+
 ### Added
 
 - Change anatomy: `loaf change init` scaffolds `change.json` + `shape.md` + a seeded `tasks/` (with `--brief` capture mode); task packets in `tasks/TASK-NNN-slug.md` are delegation briefs whose checkbox flips in delivering commits are the execution evidence.
