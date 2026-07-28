@@ -219,7 +219,7 @@ This pattern generalizes beyond ADRs. When any Loaf artifact is later judged to 
 
 ## Change-First Execution Model
 
-New bounded work uses a Change as its primary contract: a folder splitting role-named narrative (settles at shaping) from task-file state (mutates during execution), so execution evidence is machine-derivable from git history alone (ADR-022, ADR-023; operating view in [knowledge/work-model.md](knowledge/work-model.md)). The project journal remains the execution trace and resumption protocol.
+New bounded work uses a Change as its primary contract. The Change folder splits role-named narrative (settles at shaping) from task-file state (mutates during execution), so execution evidence is machine-derivable from git history alone (ADR-022, ADR-023; operating view in [knowledge/work-model.md](knowledge/work-model.md)). The project journal remains the execution trace and resumption protocol.
 
 ```
 capture → /shape → Change → /implement (task commits) → review → /reflect → /ship
