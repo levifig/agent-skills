@@ -191,16 +191,27 @@ func releaseSemverLess(a, b releaseSemver) bool {
 // computeReleaseCandidateVersion derives the version the release would cut for
 // the given options (candidate-first ordering).
 func computeReleaseCandidateVersion(root string, options releaseOptions) (string, error) {
-	candidate, _, err := resolveReleaseCandidate(root, options)
-	return candidate, err
+	snap, err := resolveReleaseSnapshot(root, options)
+	return snap.Candidate, err
 }
 
-// resolveReleaseCandidate is the single derivation shared by the cohort gate and
-// the version executor: one candidate value and the bump that produced it.
+// resolveReleaseCandidate is a thin view over resolveReleaseSnapshot for call
+// sites that only need the candidate and bump.
 func resolveReleaseCandidate(root string, options releaseOptions) (candidate string, bump string, err error) {
-	configOverrides, err := releaseConfigVersionFiles(root)
+	snap, err := resolveReleaseSnapshot(root, options)
 	if err != nil {
 		return "", "", err
+	}
+	return snap.Candidate, snap.Bump, nil
+}
+
+// resolveReleaseSnapshot is the single derivation shared by the cohort gate and
+// every release consumer: one immutable snapshot of version-file state, bump,
+// and candidate resolved at invocation start.
+func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapshot, error) {
+	configOverrides, err := releaseConfigVersionFiles(root)
+	if err != nil {
+		return releaseSnapshot{}, err
 	}
 	versionOverrides := options.versionFile
 	if len(versionOverrides) == 0 {
@@ -208,39 +219,66 @@ func resolveReleaseCandidate(root string, options releaseOptions) (candidate str
 	}
 	versionFiles, err := detectReleaseVersionFiles(root, versionOverrides)
 	if err != nil {
-		return "", "", err
+		return releaseSnapshot{}, err
 	}
 	if len(versionFiles) == 0 {
-		return "", "", fmt.Errorf("no version files detected")
+		return releaseSnapshot{}, fmt.Errorf("no version files detected")
 	}
 	current := versionFiles[0].CurrentVersion
 	for _, file := range versionFiles {
 		if file.CurrentVersion != current {
-			return "", "", fmt.Errorf("inconsistent version files: %s vs %s", current, file.CurrentVersion)
+			return releaseSnapshot{}, fmt.Errorf("inconsistent version files: %s vs %s", current, file.CurrentVersion)
 		}
+	}
+	snap := releaseSnapshot{
+		VersionFiles:   versionFiles,
+		CurrentVersion: current,
 	}
 	if options.postMerge {
 		// Finalization targets the stable form of the current prepared version.
 		parsed, ok := parseReleaseSemver(current)
 		if !ok {
-			return "", "", fmt.Errorf("cannot parse current version %q", current)
+			return releaseSnapshot{}, fmt.Errorf("cannot parse current version %q", current)
 		}
-		return fmt.Sprintf("%d.%d.%d", parsed.major, parsed.minor, parsed.patch), "release", nil
+		snap.Candidate = fmt.Sprintf("%d.%d.%d", parsed.major, parsed.minor, parsed.patch)
+		snap.Bump = "release"
+		return snap, nil
 	}
-	bump, err = effectiveReleaseBump(root, options)
+	bump, err := effectiveReleaseBump(root, options)
 	if err != nil {
-		return "", "", err
+		return releaseSnapshot{}, err
 	}
 	if bump == "" {
 		// Nothing unreleased: the executor stops before cutting anything, so the
 		// candidate is the version the repository already carries.
-		return current, "", nil
+		snap.Candidate = current
+		return snap, nil
 	}
 	next := bumpReleaseVersion(current, bump)
 	if next == "" {
-		return "", "", fmt.Errorf("cannot bump %q with %q", current, bump)
+		return releaseSnapshot{}, fmt.Errorf("cannot bump %q with %q", current, bump)
 	}
-	return next, bump, nil
+	snap.Bump = bump
+	snap.Candidate = next
+	return snap, nil
+}
+
+// assertReleaseSnapshotStillCurrent re-reads the snapshot's version files and
+// blocks when any has drifted from the version the candidate was resolved from.
+func assertReleaseSnapshotStillCurrent(root string, snapshot releaseSnapshot) error {
+	if snapshot.CurrentVersion == "" {
+		return fmt.Errorf("release blocked: release snapshot was not resolved before apply")
+	}
+	for _, file := range snapshot.VersionFiles {
+		fresh, err := loadReleaseVersionFile(root, file.RelativePath, true)
+		if err != nil {
+			return fmt.Errorf("release blocked: cannot re-read version file %s: %w", file.RelativePath, err)
+		}
+		if fresh.CurrentVersion != snapshot.CurrentVersion {
+			return fmt.Errorf("release blocked: version drifted from %s to %s since preflight; re-run release", snapshot.CurrentVersion, fresh.CurrentVersion)
+		}
+	}
+	return nil
 }
 
 // effectiveReleaseBump resolves the bump the release will actually apply: the

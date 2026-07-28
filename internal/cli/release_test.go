@@ -518,8 +518,9 @@ func TestRunnerReleasePostMergeFailsClosedOutsideGit(t *testing.T) {
 func TestReleasePostMergeGuardrailsHappyPath(t *testing.T) {
 	repo := seedReleasePostMergeFiles(t, "1.2.3")
 	runner, calls := scriptedReleasePostMergeRunner(releasePostMergeHappyResponses("1.2.3"))
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
 
-	result := checkReleasePostMergeGuardrails(repo, runner)
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
 	if !result.ok {
 		t.Fatalf("guardrail %d failed: %s", result.guardrail, result.message)
 	}
@@ -541,8 +542,9 @@ func TestReleasePostMergeGuardrailsAbortOnLocalTagCollision(t *testing.T) {
 	responses := releasePostMergeHappyResponses("1.2.3")
 	responses["git tag --list v1.2.3"] = releasePostMergeOK("v1.2.3")
 	runner, _ := scriptedReleasePostMergeRunner(responses)
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
 
-	result := checkReleasePostMergeGuardrails(repo, runner)
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
 	if result.ok {
 		t.Fatalf("result ok = true, want local tag collision failure")
 	}
@@ -558,8 +560,9 @@ func TestReleasePostMergeGuardrailsAbortOnGitHubAccountMismatch(t *testing.T) {
 	responses := releasePostMergeHappyResponses("1.2.3")
 	responses["gh auth status --active --hostname github.com --json hosts"] = releasePostMergeOK(githubAuthStatusJSON("work-account"))
 	runner, calls := scriptedReleasePostMergeRunner(responses)
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
 
-	result := checkReleasePostMergeGuardrails(repo, runner)
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
 	if result.ok {
 		t.Fatalf("result ok = true, want GitHub account guardrail failure")
 	}
@@ -641,7 +644,8 @@ func TestRunReleasePostMergeFinalizesNatively(t *testing.T) {
 	runner, _ := scriptedReleasePostMergeRunner(responses)
 	var stdout, stderr bytes.Buffer
 
-	if err := runReleasePostMergeWithRunner(repo, &stdout, &stderr, runner); err != nil {
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
+	if err := runReleasePostMergeWithRunner(repo, snap, &stdout, &stderr, runner); err != nil {
 		t.Fatalf("runReleasePostMergeWithRunner error = %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	for _, want := range []string{"Verifying post-merge state", "All 8 guardrails passed", "Executing:", "Created tag v1.2.3", "Release v1.2.3 finalized"} {
@@ -1340,6 +1344,15 @@ func gitOutputReleaseTest(t *testing.T, dir string, args ...string) string {
 type releasePostMergeCall struct {
 	name string
 	args []string
+}
+
+func mustResolveReleaseSnapshot(t *testing.T, repo string, options releaseOptions) releaseSnapshot {
+	t.Helper()
+	snap, err := resolveReleaseSnapshot(repo, options)
+	if err != nil {
+		t.Fatalf("resolveReleaseSnapshot: %v", err)
+	}
+	return snap
 }
 
 func seedReleasePostMergeFiles(t *testing.T, version string) string {

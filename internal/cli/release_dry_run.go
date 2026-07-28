@@ -29,10 +29,19 @@ type releaseOptions struct {
 	preMerge    bool
 	postMerge   bool
 	versionFile []string
-	// candidateVersion and resolvedBump are set once by runRelease after the
-	// shared derivation; dry-run and apply consume them instead of re-deriving.
-	candidateVersion string
-	resolvedBump     string
+	// snapshot is set once by runRelease after the shared derivation; dry-run,
+	// apply, and post-merge consume it instead of re-deriving any field.
+	snapshot releaseSnapshot
+}
+
+// releaseSnapshot is the immutable release plan resolved once per invocation:
+// version-file paths and current version at resolve time, the effective bump,
+// and the candidate every consumer must honor.
+type releaseSnapshot struct {
+	VersionFiles   []releaseVersionFile
+	CurrentVersion string
+	Bump           string
+	Candidate      string
 }
 
 type releaseVersionFile struct {
@@ -264,27 +273,16 @@ func runReleaseDryRun(root string, options releaseOptions, out io.Writer, errOut
 		fmt.Fprintln(out)
 	}
 
-	configOverrides, err := releaseConfigVersionFiles(root)
-	if err != nil {
-		return err
-	}
-	versionOverrides := options.versionFile
-	if len(versionOverrides) == 0 && len(configOverrides) > 0 {
-		versionOverrides = configOverrides
-	}
-	versionFiles, err := detectReleaseVersionFiles(root, versionOverrides)
-	if err != nil {
-		return err
-	}
+	versionFiles := options.snapshot.VersionFiles
 	if len(versionFiles) == 0 {
 		return fmt.Errorf("No version files found")
 	}
 
-	currentVersion := versionFiles[0].CurrentVersion
+	currentVersion := options.snapshot.CurrentVersion
 	// Threaded from runRelease: the preview names the gated candidate, never a
 	// freshly re-derived one that could diverge after a commit lands mid-run.
-	newVersion := options.candidateVersion
-	bump := options.resolvedBump
+	newVersion := options.snapshot.Candidate
+	bump := options.snapshot.Bump
 	if newVersion == "" {
 		return fmt.Errorf("Could not compute new version from %q: candidate was not resolved before dry-run", currentVersion)
 	}
@@ -426,27 +424,16 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	}
 	fmt.Fprintln(out)
 
-	configOverrides, err := releaseConfigVersionFiles(root)
-	if err != nil {
-		return err
-	}
-	versionOverrides := options.versionFile
-	if len(versionOverrides) == 0 && len(configOverrides) > 0 {
-		versionOverrides = configOverrides
-	}
-	versionFiles, err := detectReleaseVersionFiles(root, versionOverrides)
-	if err != nil {
-		return err
-	}
+	versionFiles := options.snapshot.VersionFiles
 	if len(versionFiles) == 0 {
 		return fmt.Errorf("No version files found")
 	}
 
-	currentVersion := versionFiles[0].CurrentVersion
+	currentVersion := options.snapshot.CurrentVersion
 	// Threaded from runRelease: the executor cuts the gated candidate, never a
 	// freshly re-derived one that could diverge after a commit lands mid-run.
-	newVersion := options.candidateVersion
-	bump := options.resolvedBump
+	newVersion := options.snapshot.Candidate
+	bump := options.snapshot.Bump
 	if newVersion == "" {
 		return fmt.Errorf("Could not compute new version from %q: candidate was not resolved before apply", currentVersion)
 	}
@@ -487,6 +474,10 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 		return err
 	}
 	fmt.Fprintf(out, "  %s\n", ansiBold("Executing:"))
+
+	if err := assertReleaseSnapshotStillCurrent(root, options.snapshot); err != nil {
+		return err
+	}
 
 	updates, err := prepareReleaseVersionUpdates(versionFiles, newVersion)
 	if err != nil {

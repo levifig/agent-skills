@@ -297,7 +297,7 @@ func flipExecuteChange(t *testing.T, repo, dir, slug string) {
 	commitAllChangeTest(t, repo, "feat: execute "+slug)
 }
 
-// --- TASK-020: thread the candidate value; no re-derivation between gate and executor ---
+// --- TASK-020/024: thread the snapshot; no re-derivation between gate and executor ---
 
 func TestReleaseCandidateThreadedThroughExecutorDespiteDivergence(t *testing.T) {
 	repo := seedCohortGateRepo(t, "1.0.0")
@@ -309,14 +309,14 @@ func TestReleaseCandidateThreadedThroughExecutorDespiteDivergence(t *testing.T) 
 	}
 	commitAllChangeTest(t, repo, "fix: seed patch bump")
 
-	preflight, bump, err := resolveReleaseCandidate(repo, releaseOptions{})
+	snap, err := resolveReleaseSnapshot(repo, releaseOptions{})
 	if err != nil {
 		t.Fatalf("preflight resolve: %v", err)
 	}
-	if preflight != "1.0.1" || bump != "patch" {
-		t.Fatalf("preflight = %q/%q, want 1.0.1/patch", preflight, bump)
+	if snap.Candidate != "1.0.1" || snap.Bump != "patch" || snap.CurrentVersion != "1.0.0" {
+		t.Fatalf("preflight = %#v, want 1.0.1/patch from 1.0.0", snap)
 	}
-	if err := releaseCohortPreflight(repo, preflight, nil); err != nil {
+	if err := releaseCohortPreflight(repo, snap.Candidate, nil); err != nil {
 		t.Fatalf("preflight gate: %v", err)
 	}
 
@@ -327,19 +327,18 @@ func TestReleaseCandidateThreadedThroughExecutorDespiteDivergence(t *testing.T) 
 	}
 	commitAllChangeTest(t, repo, "feat: land after preflight")
 
-	fresh, freshBump, err := resolveReleaseCandidate(repo, releaseOptions{})
+	fresh, err := resolveReleaseSnapshot(repo, releaseOptions{})
 	if err != nil {
 		t.Fatalf("fresh resolve: %v", err)
 	}
-	if fresh != "1.1.0" || freshBump != "minor" {
-		t.Fatalf("fresh after feat = %q/%q, want 1.1.0/minor (proves the seam moves the derivation)", fresh, freshBump)
+	if fresh.Candidate != "1.1.0" || fresh.Bump != "minor" {
+		t.Fatalf("fresh after feat = %#v, want 1.1.0/minor (proves the seam moves the derivation)", fresh)
 	}
 
 	var stdout bytes.Buffer
 	opts := releaseOptions{
-		dryRun:           true,
-		candidateVersion: preflight,
-		resolvedBump:     bump,
+		dryRun:   true,
+		snapshot: snap,
 	}
 	if err := runReleaseDryRun(repo, opts, &stdout, &bytes.Buffer{}); err != nil {
 		t.Fatalf("dry-run with threaded candidate: %v\n%s", err, stdout.String())
@@ -353,6 +352,69 @@ func TestReleaseCandidateThreadedThroughExecutorDespiteDivergence(t *testing.T) 
 	}
 	if !strings.Contains(output, "Suggested bump: patch") {
 		t.Fatalf("bump label must derive from the same resolution; got:\n%s", output)
+	}
+}
+
+func TestReleaseApplyBlocksWhenVersionFileDriftsAfterPreflight(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0")
+	gitCLI(t, repo, "-c", "tag.gpgsign=false", "-c", "tag.forceSignAnnotated=false", "tag", "v1.0.0")
+	if err := os.WriteFile(filepath.Join(repo, "fix.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile fix.go: %v", err)
+	}
+	commitAllChangeTest(t, repo, "fix: seed patch bump")
+
+	snap, err := resolveReleaseSnapshot(repo, releaseOptions{})
+	if err != nil {
+		t.Fatalf("resolve snapshot: %v", err)
+	}
+	if snap.Candidate != "1.0.1" || snap.CurrentVersion != "1.0.0" {
+		t.Fatalf("snapshot = %#v, want candidate 1.0.1 from 1.0.0", snap)
+	}
+	if err := releaseCohortPreflight(repo, snap.Candidate, nil); err != nil {
+		t.Fatalf("preflight: %v", err)
+	}
+
+	// Version-file commit lands between preflight and apply.
+	writeReleaseVersionFiles(t, repo, "1.0.1")
+	commitAllChangeTest(t, repo, "chore: bump version underneath release")
+
+	err = runReleaseApply(repo, releaseOptions{yes: true, tagSet: true, tag: false, ghSet: true, gh: false, snapshot: snap}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("apply error = nil, want version drift block")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "1.0.0") || !strings.Contains(msg, "1.0.1") || !strings.Contains(msg, "re-run release") {
+		t.Fatalf("apply error = %v, want drift message naming both versions and re-run remedy", err)
+	}
+}
+
+func TestReleasePostMergeBlocksWhenVersionFileDriftsAfterPreflight(t *testing.T) {
+	repo := seedReleasePostMergeFiles(t, "1.2.3")
+	snap, err := resolveReleaseSnapshot(repo, releaseOptions{postMerge: true})
+	if err != nil {
+		t.Fatalf("resolve snapshot: %v", err)
+	}
+	if snap.Candidate != "1.2.3" || snap.CurrentVersion != "1.2.3" {
+		t.Fatalf("snapshot = %#v, want 1.2.3", snap)
+	}
+
+	// seedReleasePostMergeFiles is a file fixture (no git); drift is a filesystem rewrite the snapshot assert sees.
+	writeReleaseVersionFiles(t, repo, "1.2.4")
+
+	responses := releasePostMergeHappyResponses("1.2.3")
+	runner, calls := scriptedReleasePostMergeRunner(responses)
+	var stdout, stderr bytes.Buffer
+	err = runReleasePostMergeWithRunner(repo, snap, &stdout, &stderr, runner)
+	if err == nil {
+		t.Fatal("post-merge error = nil, want version drift abort")
+	}
+	if !strings.Contains(err.Error(), "1.2.3") || !strings.Contains(err.Error(), "1.2.4") || !strings.Contains(err.Error(), "re-run release") {
+		t.Fatalf("post-merge error = %v, want drift message", err)
+	}
+	for _, call := range releasePostMergeCallKeys(calls()) {
+		if strings.HasPrefix(call, "git tag") {
+			t.Fatalf("tagged despite drift: calls=%#v", releasePostMergeCallKeys(calls()))
+		}
 	}
 }
 

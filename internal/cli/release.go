@@ -16,14 +16,13 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 		writeReleaseHelp(out)
 		return nil
 	}
-	candidate, bump, err := resolveReleaseCandidate(runtimeRoot, options)
+	snapshot, err := resolveReleaseSnapshot(runtimeRoot, options)
 	if err != nil {
 		return fmt.Errorf("release blocked: cannot compute candidate version: %w", err)
 	}
-	options.candidateVersion = candidate
-	options.resolvedBump = bump
+	options.snapshot = snapshot
 	var gateWarnings []string
-	if err := releaseCohortPreflight(runtimeRoot, candidate, &gateWarnings); err != nil {
+	if err := releaseCohortPreflight(runtimeRoot, snapshot.Candidate, &gateWarnings); err != nil {
 		return err
 	}
 	warnOut := r.Stderr
@@ -51,7 +50,7 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 	if errOut == nil {
 		errOut = os.Stderr
 	}
-	return runReleasePostMerge(runtimeRoot, out, errOut)
+	return runReleasePostMerge(runtimeRoot, options.snapshot, out, errOut)
 }
 
 func releaseAllowsPrereleaseLineageBypass(root string, options releaseOptions) bool {

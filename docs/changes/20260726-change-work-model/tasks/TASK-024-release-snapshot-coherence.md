@@ -28,10 +28,10 @@ loaf journal log "skill(implement): TASK-024 — release snapshot coherence"
 
 ## Steps
 
-- [ ] A snapshot struct (version-file paths + current version, effective bump, candidate) is resolved exactly once per invocation and threaded to preflight, preview, apply, and the post-merge path — no consumer re-derives any snapshot field.
-- [ ] Apply asserts the version files still carry the snapshot's current version immediately before writing; drift blocks with a plain message naming both versions and the remedy (re-run release).
-- [ ] `--post-merge` receives the resolved snapshot from `runRelease` and its guardrails assert against it — the tagged version is the preflighted candidate or the run aborts; the post-merge-specific consistency checks keep their own abort codes.
-- [ ] Fixtures: a version-file commit landed between preflight and apply blocks with the drift message; the same drift on the post-merge path aborts before tagging; happy paths byte-stable.
+- [x] A snapshot struct (version-file paths + current version, effective bump, candidate) is resolved exactly once per invocation and threaded to preflight, preview, apply, and the post-merge path — no consumer re-derives any snapshot field.
+- [x] Apply asserts the version files still carry the snapshot's current version immediately before writing; drift blocks with a plain message naming both versions and the remedy (re-run release).
+- [x] `--post-merge` receives the resolved snapshot from `runRelease` and its guardrails assert against it — the tagged version is the preflighted candidate or the run aborts; the post-merge-specific consistency checks keep their own abort codes.
+- [x] Fixtures: a version-file commit landed between preflight and apply blocks with the drift message; the same drift on the post-merge path aborts before tagging; happy paths byte-stable.
 
 ## Verification
 
