@@ -6,7 +6,24 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Added
+
+- Change anatomy: `loaf change init` scaffolds `change.json` + `shape.md` + a seeded `tasks/` (with `--brief` capture mode); task packets in `tasks/TASK-NNN-slug.md` are delegation briefs whose checkbox flips in delivering commits are the execution evidence.
+- Release cohorts: a change may declare `target_release`, and cutting that version stable requires every cohort member executed and receipt-verified, with block messages that name their remedy; prereleases always flow, and retargets are reviewable diffs that surface at check and preflight.
+- `loaf change verify` runs the executable criteria declared in `shape.md` (`Command:` plus an enforced `Expect` grammar — `exit N`, `` contains `text` ``) from the repository root and writes a committed `receipts/verify.json` the gate reads from HEAD.
+- Projections: `loaf change tasks --json` (stable-ID task index with relations and derived completion), `loaf change show` (derived state and the PR set from squash subjects), and `loaf change list` (units and cohorts, `--target X.Y.Z` filtering) share one derived-state ladder.
+- `loaf change report new` stamps authored HTML reports under `reports/` from a closed kind registry (`approval`, `review`, `visual`, `audit`, `note`) and prints the design language.
+
+### Changed
+
+- The release pipeline resolves one immutable snapshot (version files, bump, candidate, commit range) per invocation and asserts it before acting; `--post-merge` keys on the prepared version — a prepared prerelease publishes through the valve, a prepared stable gates its cohort, and the tag always equals the version files.
+- Legacy single-file `change.md` remains first-class until a named removal boundary; conversion to the new anatomy is a sanctioned atomic replace with all task checkboxes unchecked.
+- `loaf change list` retires `--lineage` in favor of the units/cohort projection.
+
+### Fixed
+
+- State surfaces (`show`, `list`, `check --json`) warn instead of silently demoting when structural evaluation or committed-receipt reads fail.
+- `validate-commit` attributes heredoc bodies to their own command, and release tooling labels prereleases correctly (#138).
 
 ## [2.0.0-alpha.14] - 2026-07-25
 
