@@ -140,21 +140,25 @@ func TestReleaseCohortGateAcceptsFlipExecutedMember(t *testing.T) {
 	}
 }
 
-func TestComputeReleaseCandidateVersionFinalization(t *testing.T) {
+func TestResolveReleaseSnapshotFinalization(t *testing.T) {
 	repo := seedCohortGateRepo(t, "2.0.0-alpha.14")
-	v, err := computeReleaseCandidateVersion(repo, releaseOptions{bump: "release"})
+	snap, err := resolveReleaseSnapshot(repo, releaseOptions{bump: "release"})
+	v := snap.Candidate
 	if err != nil || v != "2.0.0" {
 		t.Fatalf("release bump candidate = %q err=%v, want 2.0.0", v, err)
 	}
-	v, err = computeReleaseCandidateVersion(repo, releaseOptions{postMerge: true})
+	snap, err = resolveReleaseSnapshot(repo, releaseOptions{postMerge: true})
+	v = snap.Candidate
 	if err != nil || v != "2.0.0" {
 		t.Fatalf("post-merge candidate = %q err=%v, want 2.0.0", v, err)
 	}
-	v, err = computeReleaseCandidateVersion(repo, releaseOptions{bump: "minor"})
+	snap, err = resolveReleaseSnapshot(repo, releaseOptions{bump: "minor"})
+	v = snap.Candidate
 	if err != nil || v != "2.1.0" {
 		t.Fatalf("minor bump candidate = %q err=%v, want 2.1.0", v, err)
 	}
-	v, err = computeReleaseCandidateVersion(repo, releaseOptions{bump: "prerelease"})
+	snap, err = resolveReleaseSnapshot(repo, releaseOptions{bump: "prerelease"})
+	v = snap.Candidate
 	if err != nil || v != "2.0.0-alpha.15" {
 		t.Fatalf("prerelease bump candidate = %q err=%v, want 2.0.0-alpha.15", v, err)
 	}
@@ -179,7 +183,8 @@ func TestReleaseCohortGateNoBumpGatesSuggestedCandidate(t *testing.T) {
 	}
 	commitAllChangeTest(t, repo, "feat: unrelated feature")
 
-	candidate, err := computeReleaseCandidateVersion(repo, releaseOptions{})
+	snap, err := resolveReleaseSnapshot(repo, releaseOptions{})
+	candidate := snap.Candidate
 	if err != nil {
 		t.Fatalf("no-flag candidate: %v", err)
 	}
@@ -211,7 +216,8 @@ func TestReleaseCohortGateNoBumpGatesSuggestedCandidate(t *testing.T) {
 	}
 	commitAllChangeTest(t, repo, "chore: commit verify receipt")
 
-	candidate, err = computeReleaseCandidateVersion(repo, releaseOptions{})
+	snap, err = resolveReleaseSnapshot(repo, releaseOptions{})
+	candidate = snap.Candidate
 	if err != nil || candidate != "1.1.0" {
 		t.Fatalf("candidate after completion = %q err=%v, want 1.1.0", candidate, err)
 	}
@@ -235,7 +241,8 @@ func TestReleaseCohortGateNoBumpPrereleaseCandidateBypasses(t *testing.T) {
 
 	// Nothing unreleased: the flagless candidate stays on the prerelease the repo
 	// carries, and a prerelease candidate never gates its cohort.
-	candidate, err := computeReleaseCandidateVersion(repo, releaseOptions{})
+	snap, err := resolveReleaseSnapshot(repo, releaseOptions{})
+	candidate := snap.Candidate
 	if err != nil {
 		t.Fatalf("no-flag candidate: %v", err)
 	}
@@ -251,7 +258,8 @@ func TestReleaseCohortGateNoBumpPrereleaseCandidateBypasses(t *testing.T) {
 	}
 
 	// The same fixture's finalization candidate is stable and still blocks.
-	post, err := computeReleaseCandidateVersion(repo, releaseOptions{postMerge: true})
+	snap, err = resolveReleaseSnapshot(repo, releaseOptions{postMerge: true})
+	post := snap.Candidate
 	if err != nil || post != "1.0.0" {
 		t.Fatalf("post-merge candidate = %q err=%v, want 1.0.0", post, err)
 	}
@@ -266,7 +274,8 @@ func TestReleaseCohortGateNoBumpPrereleaseCandidateBypasses(t *testing.T) {
 		t.Fatalf("WriteFile feature.go: %v", err)
 	}
 	commitAllChangeTest(t, repo, "feat: unrelated feature")
-	candidate, err = computeReleaseCandidateVersion(repo, releaseOptions{})
+	snap, err = resolveReleaseSnapshot(repo, releaseOptions{})
+	candidate = snap.Candidate
 	if err != nil {
 		t.Fatalf("candidate with commits: %v", err)
 	}
@@ -595,7 +604,8 @@ func TestReleaseCohortGateV1LowerCohortWarnsWithoutBlocking(t *testing.T) {
 
 func assertPrereleaseBypassesPostMergeBlocks(t *testing.T, repo, wantBlockSubstr string) {
 	t.Helper()
-	pre, err := computeReleaseCandidateVersion(repo, releaseOptions{bump: "prerelease"})
+	snap, err := resolveReleaseSnapshot(repo, releaseOptions{bump: "prerelease"})
+	pre := snap.Candidate
 	if err != nil {
 		t.Fatalf("compute prerelease candidate: %v", err)
 	}
@@ -606,7 +616,8 @@ func assertPrereleaseBypassesPostMergeBlocks(t *testing.T, repo, wantBlockSubstr
 		t.Fatalf("--bump prerelease should succeed: %v", err)
 	}
 
-	post, err := computeReleaseCandidateVersion(repo, releaseOptions{postMerge: true})
+	snap, err = resolveReleaseSnapshot(repo, releaseOptions{postMerge: true})
+	post := snap.Candidate
 	if err != nil {
 		t.Fatalf("compute post-merge candidate: %v", err)
 	}
@@ -666,14 +677,16 @@ func TestReleaseCohortGateV2PrereleaseBypassEveryGateState(t *testing.T) {
 		t.Fatalf("re-verify after expiry: %v", err)
 	}
 	commitAllChangeTest(t, repo, "chore: re-verify after expiry")
-	post, err := computeReleaseCandidateVersion(repo, releaseOptions{postMerge: true})
+	snap, err := resolveReleaseSnapshot(repo, releaseOptions{postMerge: true})
+	post := snap.Candidate
 	if err != nil {
 		t.Fatalf("post-merge candidate: %v", err)
 	}
 	if err := releaseCohortPreflight(repo, post, nil); err != nil {
 		t.Fatalf("completed cohort should allow post-merge: %v", err)
 	}
-	pre, err := computeReleaseCandidateVersion(repo, releaseOptions{bump: "prerelease"})
+	snap, err = resolveReleaseSnapshot(repo, releaseOptions{bump: "prerelease"})
+	pre := snap.Candidate
 	if err != nil {
 		t.Fatalf("prerelease candidate: %v", err)
 	}
@@ -1075,5 +1088,53 @@ func TestReleaseAndStateIgnoreUncommittedDuplicateSlugRename(t *testing.T) {
 	checkErr := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "check", folderA, "--json"})
 	if strings.Contains(stdout.String(), "duplicate Change slug") {
 		t.Fatalf("check should see the working tree (duplicate parked away); got err=%v out=%s", checkErr, stdout.String())
+	}
+}
+
+// TASK-030: a commit landing after snapshot resolution appears in neither the
+// changelog nor the bump — both describe the snapshot's frozen history.
+func TestReleaseSnapshotChangelogIgnoresPostResolveCommits(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+	if err := os.WriteFile(filepath.Join(repo, "feature.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile feature.go: %v", err)
+	}
+	commitAllChangeTest(t, repo, "feat: pre-resolve work")
+
+	snap, err := resolveReleaseSnapshot(repo, releaseOptions{bump: "prerelease"})
+	if err != nil {
+		t.Fatalf("resolve snapshot: %v", err)
+	}
+	if snap.Candidate != "1.0.0-alpha.2" {
+		t.Fatalf("candidate = %q, want 1.0.0-alpha.2", snap.Candidate)
+	}
+	preHashes := map[string]bool{}
+	for _, c := range snap.Commits {
+		preHashes[c.Hash] = true
+	}
+
+	if err := os.WriteFile(filepath.Join(repo, "after.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile after.go: %v", err)
+	}
+	commitAllChangeTest(t, repo, "feat: post-resolve must not enter changelog")
+
+	var stdout bytes.Buffer
+	opts := releaseOptions{bump: "prerelease", dryRun: true, tagSet: true, tag: false, ghSet: true, gh: false, snapshot: snap}
+	if err := runReleaseDryRun(repo, opts, &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatalf("dry-run with frozen snapshot: %v\n%s", err, stdout.String())
+	}
+	out := stripANSI(stdout.String())
+	if !strings.Contains(out, "New version: 1.0.0-alpha.2") {
+		t.Fatalf("dry-run must keep snapshot candidate; got:\n%s", out)
+	}
+	if strings.Contains(out, "post-resolve must not enter changelog") {
+		t.Fatalf("changelog must not include post-resolve commit; got:\n%s", out)
+	}
+	for _, c := range snap.Commits {
+		if !preHashes[c.Hash] {
+			t.Fatalf("snapshot commits mutated after resolve")
+		}
+	}
+	if len(releaseCommitsSince(repo, snap.BaseRef)) <= len(snap.Commits) {
+		t.Fatalf("expected HEAD to have grown past the snapshot commit list")
 	}
 }

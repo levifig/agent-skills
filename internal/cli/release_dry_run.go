@@ -36,12 +36,14 @@ type releaseOptions struct {
 
 // releaseSnapshot is the immutable release plan resolved once per invocation:
 // version-file paths and current version at resolve time, the effective bump,
-// and the candidate every consumer must honor.
+// the candidate every consumer must honor, and the commit range that produced them.
 type releaseSnapshot struct {
 	VersionFiles   []releaseVersionFile
 	CurrentVersion string
 	Bump           string
 	Candidate      string
+	BaseRef        string
+	Commits        []releaseCommit
 }
 
 type releaseVersionFile struct {
@@ -233,15 +235,8 @@ func runReleaseDryRun(root string, options releaseOptions, out io.Writer, errOut
 	}
 
 	fmt.Fprintf(out, "  %s...\n\n", ansiCyan("Analyzing"))
-	baseRef := releaseLastTag(root)
-	if options.base != "" {
-		resolved, err := validateReleaseBaseRef(root, options.base)
-		if err != nil {
-			return err
-		}
-		baseRef = resolved
-	}
-	commits := releaseCommitsSince(root, baseRef)
+	baseRef := options.snapshot.BaseRef
+	commits := options.snapshot.Commits
 	if options.base != "" {
 		if baseRef == options.base {
 			fmt.Fprintf(out, "  Base ref: %s (via --base flag)\n", ansiBold(options.base))
@@ -386,15 +381,8 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	}
 
 	fmt.Fprintf(out, "  %s...\n\n", ansiCyan("Analyzing"))
-	baseRef := releaseLastTag(root)
-	if options.base != "" {
-		resolved, err := validateReleaseBaseRef(root, options.base)
-		if err != nil {
-			return err
-		}
-		baseRef = resolved
-	}
-	commits := releaseCommitsSince(root, baseRef)
+	baseRef := options.snapshot.BaseRef
+	commits := options.snapshot.Commits
 	if options.base != "" {
 		if baseRef == options.base {
 			fmt.Fprintf(out, "  Base ref: %s (via --base flag)\n", ansiBold(options.base))

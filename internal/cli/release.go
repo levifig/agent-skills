@@ -55,7 +55,7 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 
 func releaseAllowsPrereleaseLineageBypass(root string, options releaseOptions) bool {
 	// Retained for tests that assert the old predicate; the live gate uses
-	// computeReleaseCandidateVersion + releaseCohortPreflight instead.
+	// resolveReleaseSnapshot + releaseCohortPreflight instead.
 	if options.postMerge {
 		if options.bump != "" {
 			return false

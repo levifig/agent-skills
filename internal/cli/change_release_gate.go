@@ -193,26 +193,9 @@ func releaseSemverLess(a, b releaseSemver) bool {
 	return a.patch < b.patch
 }
 
-// computeReleaseCandidateVersion derives the version the release would cut for
-// the given options (candidate-first ordering).
-func computeReleaseCandidateVersion(root string, options releaseOptions) (string, error) {
-	snap, err := resolveReleaseSnapshot(root, options)
-	return snap.Candidate, err
-}
-
-// resolveReleaseCandidate is a thin view over resolveReleaseSnapshot for call
-// sites that only need the candidate and bump.
-func resolveReleaseCandidate(root string, options releaseOptions) (candidate string, bump string, err error) {
-	snap, err := resolveReleaseSnapshot(root, options)
-	if err != nil {
-		return "", "", err
-	}
-	return snap.Candidate, snap.Bump, nil
-}
-
 // resolveReleaseSnapshot is the single derivation shared by the cohort gate and
 // every release consumer: one immutable snapshot of version-file state, bump,
-// and candidate resolved at invocation start.
+// candidate, and the commit range those fields were resolved from.
 func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapshot, error) {
 	configOverrides, err := releaseConfigVersionFiles(root)
 	if err != nil {
@@ -235,9 +218,16 @@ func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapsho
 			return releaseSnapshot{}, fmt.Errorf("inconsistent version files: %s vs %s", current, file.CurrentVersion)
 		}
 	}
+	baseRef, err := releaseCandidateBaseRef(root, options)
+	if err != nil {
+		return releaseSnapshot{}, err
+	}
+	commits := releaseCommitsSince(root, baseRef)
 	snap := releaseSnapshot{
 		VersionFiles:   versionFiles,
 		CurrentVersion: current,
+		BaseRef:        baseRef,
+		Commits:        commits,
 	}
 	if options.postMerge {
 		// Finalization targets the stable form of the current prepared version.
@@ -249,10 +239,7 @@ func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapsho
 		snap.Bump = "release"
 		return snap, nil
 	}
-	bump, err := effectiveReleaseBump(root, options)
-	if err != nil {
-		return releaseSnapshot{}, err
-	}
+	bump := effectiveReleaseBumpFrom(options, commits)
 	if bump == "" {
 		// Nothing unreleased: the executor stops before cutting anything, so the
 		// candidate is the version the repository already carries.

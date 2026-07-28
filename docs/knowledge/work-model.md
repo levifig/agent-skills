@@ -75,6 +75,8 @@ captured → shaped → executable → executing → complete
 
 `captured` = brief-only. `shaped` = contract present, gaps remain. `executable` = `loaf change check` derives a complete implementation contract. `executing` = a commit touches `tasks/` plus a path outside `docs/changes/`. `complete` = every checkbox checked. `verified` = fresh receipt with all criteria passing — the only state the release gate reads, and it does not require `complete`. All surfaces (`list`, `show`, `check`, JSON) share one derivation.
 
+`complete` and `executing` derive from the working tree while `verified` derives from committed HEAD — Decision 15 keeps checkboxes non-gating, so the split is deliberate.
+
 ## Releases: Cohorts and the Gate
 
 Declaring `target_release: X.Y.Z` in `change.json` (canonical form — no `v`, no leading zeros, no prerelease) opts the change into the strong gate. The cohort — every change sharing that target — is the arc, derived rather than declared. Cutting stable `X.Y.Z` requires the whole cohort executed at flip grade and receipt-verified; one shaped-only member blocks the version. Prerelease candidates always flow; finalization (`--bump release`, `--post-merge`) gates.

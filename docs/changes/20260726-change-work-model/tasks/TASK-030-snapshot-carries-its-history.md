@@ -28,10 +28,10 @@ loaf journal log "skill(implement): TASK-030 — snapshot carries its history"
 
 ## Steps
 
-- [ ] The snapshot carries the commits it was resolved from; preview and apply consume that list — `releaseCommitsSince` runs exactly once per invocation.
-- [ ] Fixture: a commit landing after resolution appears in neither the changelog nor the bump — both describe the snapshot's history.
-- [ ] Dead wrappers removed; their tests assert through the snapshot API.
-- [ ] The work-model.md sentence lands; no other doc changes.
+- [x] The snapshot carries the commits it was resolved from; preview and apply consume that list — `releaseCommitsSince` runs exactly once per invocation.
+- [x] Fixture: a commit landing after resolution appears in neither the changelog nor the bump — both describe the snapshot's history.
+- [x] Dead wrappers removed; their tests assert through the snapshot API.
+- [x] The work-model.md sentence lands; no other doc changes.
 
 ## Verification
 
