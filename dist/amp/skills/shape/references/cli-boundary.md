@@ -39,6 +39,14 @@ Criteria forms (both parse):
   - Expect: exit 0
 ```
 
+`Expect` is enforced, with a deliberately minimal grammar: atoms join with ` and ` — `exit <N>` is the required exit code (omit the atom, or `Expect` entirely, and `exit 0` is enforced) and `` contains `text` `` requires the command's combined stdout+stderr to contain that backtick-delimited text (repeatable). A criterion passes when the command ran, the exit code matched, and every `contains` matched; the receipt records each atom and its outcome.
+
+```markdown
+- **V1.** Prose. Command: `go test ./...`. Expect: exit 0 and contains `ok  github.com/acme/pkg`.
+```
+
+Any other clause is unenforceable: verify prints a warning naming the criterion and the clause, records it on the criterion as advisory, and never lets it affect the result — an expectation is either checked or loudly not.
+
 Commands run from the repository root; the receipt records that cwd. H-tier entries (`**H1.** …`) are never gate input. See [decomposition.md](decomposition.md) for authoring guidance.
 
 ## `loaf change tasks` / `show`
