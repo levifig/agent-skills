@@ -1,0 +1,109 @@
+<!-- source: release-promotion-model · kind review · slug shaping-round-4-sol · stamped 2026-07-29 01:36 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — shaping round 4 (gpt-5.6-sol)</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h4 { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--ok); }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .fid { font-family: var(--mono); font-size: .82rem; color: var(--muted); min-width: 3em; }
+  .ftitle { font-weight: 600; flex: 1 1 340px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-minor { background: var(--machine-soft); color: var(--machine); }
+  .v-conf { background: var(--ok-soft); color: var(--ok); }
+  .d-fixed { background: var(--ok-soft); color: var(--ok); }
+  .fbody { margin-top: 10px; display: grid; gap: 10px; }
+  .fbody > div { border-top: 1px solid var(--line); padding-top: 8px; }
+  .fbody p:last-child { margin-bottom: 0; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+  th { background: var(--machine-soft); font-weight: 700; font-size: .8rem; }
+  td.ok { color: var(--ok); font-weight: 600; }
+  td.drift { color: var(--accent); font-weight: 600; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">release-promotion-model · reviews · shaping round 4 · gpt-5.6-sol</div>
+  <h1>Shaping Review — Round 4 (gpt-5.6-sol, xhigh — attestation pass)</h1>
+  <p class="stamp">reviewed <b>2026-07-29</b> · gpt-5.6-sol at xhigh effort, fresh thread · <b>the sequence's first registry-verified Codex run</b> — job <code>task-ms5cd6jw-hloj79</code>, Codex session <code>019fab41-6bd6-7690-bc54-e6642b932754</code>, 6-minute pass · attesting the R3 disposition delta <b>93ca01cb → f33db023</b> · verdict <b>REQUEST-CHANGES</b> · 0 blockers + 0 major + <b>1 minor</b> · fixed same round, amended in place</p>
+
+  <div class="panel verdict">
+    <p><b>Convergence.</b> Nine of ten R3 dispositions attested LANDED-EXACT with byte-accurate citations (the all-eight task graph checked reciprocal and acyclic; the collapse-set, token, buffer-removal, and CI-green fixes verified in all their stated locations; every code citation from the R3 remediation re-verified against source, including the silent bottom-append at <code>release_dry_run.go:1136</code> and the init scaffold at <code>init.go:274</code>). The fresh-eyes sweep found <b>zero</b> new findings, the tree-binding cross-links remain semantically aligned (<code>X = {receipts, reports} ∪ releaseMetadataAllowlist</code>), and the reviewer's own <code>loaf change check</code> run exited 0, executable. The single surviving item was naming precision, fixed below.</p>
+  </div>
+
+  <h2>The one finding</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R4-1</span><span class="chip sev-minor">minor</span><span class="ftitle">R3's allowlist-naming disposition DRIFTED: TASK-004 got the literal symbol, three shape.md spots did not</span><span class="chip v-conf">confirmed</span><span class="chip d-fixed">fixed</span></div>
+    <div class="fbody"><div><h4>Evidence</h4><p>TASK-004 landed "importing receipt-tree-binding's <code>releaseMetadataAllowlist</code> specifically (the allowlist alone, never the full digest-exclusion set…)", but shape.md's Gate placement still said only "the release-metadata allowlist … imported from the receipt-tree-binding predecessor", and ambiguous "boundary constant" phrasing survived in the Out bullet and Promotion mechanics — contradicting the R3 board's "named specifically at both import sites" claim.</p></div><div><h4>Disposition</h4><p>All three shape.md sites now name <code>releaseMetadataAllowlist</code> literally and state the allowlist-vs-full-exclusion-set distinction; no ambiguous "boundary constant" phrasing survives in the promotion contract.</p></div></div>
+  </div>
+
+  <h2>Attestation table</h2>
+  <div class="panel">
+    <table>
+      <tr><th>R3 disposition</th><th>Attestation</th></tr>
+      <tr><td>R3-1 task DAG completion + reciprocity</td><td class="ok">LANDED-EXACT (reciprocity ok, acyclic, congruent with Sequencing)</td></tr>
+      <tr><td>R3-2 collapse-set definition</td><td class="ok">LANDED-EXACT (three phrasings congruent)</td></tr>
+      <tr><td>R3-3 buffer removal + anchor semantics + scaffolds</td><td class="ok">LANDED-EXACT (all citations byte-accurate)</td></tr>
+      <tr><td>R3-4 CI-green fixture + rc-cut warning coverage</td><td class="ok">LANDED-EXACT</td></tr>
+      <tr><td>R3-5 no-impact token</td><td class="ok">LANDED-EXACT (token byte-identical in all three documents)</td></tr>
+      <tr><td>minor: reciprocal blocks</td><td class="ok">LANDED-EXACT</td></tr>
+      <tr><td>minor: vacuous cross-check replaced</td><td class="ok">LANDED-EXACT (suite confirmed absent at f33db023)</td></tr>
+      <tr><td>minor: formula-script claim</td><td class="ok">LANDED-EXACT (verified against the script source)</td></tr>
+      <tr><td>minor: resolveReleaseSnapshot wayfinding</td><td class="ok">LANDED-EXACT (declaration confirmed at change_release_gate.go:199)</td></tr>
+      <tr><td>minor: releaseMetadataAllowlist naming</td><td class="drift">DRIFTED → fixed this round (R4-1)</td></tr>
+    </table>
+  </div>
+
+  <h2>Sequence state</h2>
+  <div class="panel">
+    <p>Four rounds: R1 (2B+5M+1m) → R2 (2B+2M+1m) → R3 (2B+3M+5m) → <b>R4 (0B+0M+1m, fixed in-round)</b>. Every finding across all rounds confirmed, dispositioned, and attested by a later round; the R4 fresh sweep found nothing new. Rounds 1–2 carry provenance corrections (Claude-native wrapper executions, discovered and corrected 2026-07-29); rounds 3–4 are correctly attributed from birth, and R4 is the first round verified against the Codex runtime's own job registry at boarding time.</p>
+  </div>
+
+  <footer>Authored snapshot — gpt-5.6-sol xhigh attestation pass; the single finding fixed and amended into the local shaping commit same round. Finding IDs: <code>release-promotion-model/20260729-013606/R4-n</code>.</footer>
+</main>

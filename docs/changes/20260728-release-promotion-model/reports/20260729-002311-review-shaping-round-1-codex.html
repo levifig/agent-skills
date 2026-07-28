@@ -1,0 +1,136 @@
+<!-- source: release-promotion-model · kind review · slug shaping-round-1-codex · stamped 2026-07-29 00:23 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — shaping round 1 (Codex)</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h4 { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--bad); }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .fid { font-family: var(--mono); font-size: .82rem; color: var(--muted); min-width: 3em; }
+  .ftitle { font-weight: 600; flex: 1 1 340px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-blocker { background: var(--bad-soft); color: var(--bad); }
+  .sev-major { background: var(--accent-soft); color: var(--accent); }
+  .sev-minor { background: var(--machine-soft); color: var(--machine); }
+  .v-conf { background: var(--ok-soft); color: var(--ok); }
+  .d-fixed { background: var(--ok-soft); color: var(--ok); }
+  .d-accepted { background: var(--state-soft); color: var(--state); }
+  .fbody { margin-top: 10px; display: grid; gap: 10px; }
+  .fbody > div { border-top: 1px solid var(--line); padding-top: 8px; }
+  .fbody p:last-child { margin-bottom: 0; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">release-promotion-model + receipt-tree-binding · reviews · shaping round 1 · Codex</div>
+  <h1>Shaping Review — Round 1 (Codex)</h1>
+  <p class="stamp">reviewed <b>2026-07-28/29</b> · over shape commits <b>513be735</b> (release-promotion-model, working tree) and <b>349bbd3d</b> (receipt-tree-binding, via <code>git show</code>) · verdict <b>REQUEST-CHANGES</b> · 2 blockers + 5 major + 1 minor · all eight confirmed · dispositions applied same round, amended in place (shaping commits stay local)</p>
+
+  <div class="panel" style="border-left: 4px solid var(--accent); margin-top: 14px;">
+    <h4>Provenance correction — 2026-07-29</h4>
+    <p>This round was originally attributed to Codex GPT-5.4. The Codex runtime's job registry later proved the dispatch never executed there: the original forward died to machine sleep two minutes in with no output, and the retry's report was produced by the rescue wrapper agent itself — <b>a Claude-native review, not a Codex one</b> — in silent violation of its thin-forwarder contract. The findings stand: every one was independently verified against source before boarding, and round 3 attested the fixes. Attribution corrected; the filename keeps its stamped identity. Discovery record: journal <code>discover(review)</code> 2026-07-29.</p>
+  </div>
+
+  <div class="panel verdict">
+    <p><b>Eight findings, eight confirmed, zero refuted — and the two blockers are the same wound.</b> A design decision made in conversation <i>after</i> the shape was committed (changeset-pattern release notes, buffer retirement) never re-entered the document, and the write path it governs (<code>writeReleaseChangelog</code>) belonged to no task. The round's fix gives both a single owner: Decision 3 rewritten around <code>release-notes.md</code>, and a new TASK-008 owning note collection, the rung-aware write path, buffer retirement, and the <code>workflow-pre-pr</code> re-point. Codex also independently cleared the risks flagged in the brief: no package cycles (single <code>package cli</code>), no test-name collisions, the rc-cohort core-literal mapping is sound, ~15 spot-checked line citations accurate, and <code>validate-push</code>'s regex is already channel-agnostic.</p>
+  </div>
+
+  <h2>Findings</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R1-1</span><span class="chip sev-blocker">blocker</span><span class="ftitle">"rc cuts touch no changelog" had no implementing task — the write path was never made channel-aware</span><span class="chip v-conf">confirmed</span><span class="chip d-fixed">fixed → TASK-008</span></div>
+    <div class="fbody"><div><h4>Evidence</h4><p><code>runReleaseApply</code> calls <code>writeReleaseChangelog</code> unconditionally (<code>release_dry_run.go:481</code>), preview at <code>:288-294</code>; TASK-002 owned flags only, TASK-004 the stable path only, TASK-005 post-merge verification only — no task owned the writer, so an rc cut would still splice a section, contradicting the shape's own Problem #3.</p></div><div><h4>Disposition</h4><p>TASK-008 created owning the rung-aware write path (rc writes nothing, alpha/beta aggregate notes); Per-channel guardrails subsection now states the writer is TASK-008's and the guardrails verify what it produces.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R1-2</span><span class="chip sev-blocker">blocker</span><span class="ftitle">The logged release-notes/buffer-retirement decision was silently dropped from the shape</span><span class="chip v-conf">confirmed</span><span class="chip d-fixed">fixed → Decision 3 + TASK-008</span></div>
+    <div class="fbody"><div><h4>Evidence</h4><p>Journal <code>decision(shape)</code> 2026-07-28 19:21 settled per-change <code>release-notes.md</code>, buffer retirement, and the pre-PR hook re-point; the coherence amendment (a8dd5ad9→513be735) carried only the council edits; grep for <code>release-notes.md</code> across the tree returned zero; <code>runNativeWorkflowPrePR</code> (<code>check.go:834</code>) still blocks on an empty <code>[Unreleased]</code> untouched by either shape.</p></div><div><h4>Disposition</h4><p>Folded in wholesale: Decision 3 rewritten around the changeset pattern, Scope gains the release-notes bullet, Observable Workflow shows the fragment, Rabbit Holes and TASK-004's seed material re-seed from notes (shape-lines demoted to warned fallback), TASK-007 teaches the authoring discipline, TASK-008 owns mechanics + hook re-point, V6 added (<code>TestReleaseNotesProjection</code>).</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R1-3</span><span class="chip sev-major">major</span><span class="ftitle">TASK-004 violated its own scope boundary on CI-green-at-HEAD</span><span class="chip v-conf">confirmed</span><span class="chip d-fixed">fixed → shared-helper ownership</span></div>
+    <div class="fbody"><div><h4>Evidence</h4><p>TASK-004's Out assigned non-promotion guardrails to TASK-005 while its own Steps implement the Decision 11 check for "rc cut and promotion"; TASK-005 never mentioned it — implementer-in-isolation risk in both directions.</p></div><div><h4>Disposition</h4><p>TASK-004's Out now names the helper explicitly: one shared check owned here covering both rc cut and promotion; TASK-005's Context pointers state it consumes and never reimplements.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R1-4</span><span class="chip sev-major">major</span><span class="ftitle">"--post-merge exclusivity unchanged" would silently accept --promote/--channel</span><span class="chip v-conf">confirmed</span><span class="chip d-fixed">fixed → explicit list addition</span></div>
+    <div class="fbody"><div><h4>Evidence</h4><p>The incompatibility list (<code>release_dry_run.go:163-200</code>) checks fields that exist today; taken literally, "unchanged" leaves <code>--post-merge --promote release</code> accepted while the same sentence says post-merge takes no version input.</p></div><div><h4>Disposition</h4><p>Shape and TASK-002 now require adding both flags to the list, with a rejection test.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R1-5</span><span class="chip sev-major">major</span><span class="ftitle">TASK-002 backtick-quoted a nonexistent flag value: `--bump core`</span><span class="chip v-conf">confirmed</span><span class="chip d-fixed">fixed → literal vocabulary</span></div>
+    <div class="fbody"><div><h4>Evidence</h4><p>No <code>core</code> in <code>releaseValidBumps</code> (<code>release_dry_run.go:87-93</code>); TASK-001 used "core bump" as category language, TASK-002 promoted it to CLI syntax.</p></div><div><h4>Disposition</h4><p>Now reads <code>--bump major|minor|patch --channel alpha</code>, matching the Observable Workflow.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R1-6</span><span class="chip sev-major">major</span><span class="ftitle">Gate-at-rc pulls the sweep carrier's whole lift before rc.1 — undocumented</span><span class="chip v-conf">confirmed</span><span class="chip d-fixed">fixed → documented in Sequencing</span></div>
+    <div class="fbody"><div><h4>Evidence</h4><p><code>loaf change list --target 2.0.0</code> shows <code>spec-conversion-and-guidance-sweep</code> captured-only (brief + change.json); under the new trigger set its convert-first block fires at 2.0.0-rc.1 instead of stable, and neither shape said so.</p></div><div><h4>Disposition</h4><p>Sequencing now names the consequence and frames it as the discipline working as designed: an rc claims stable intent, alphas/betas flow regardless, the rc block is never a regression.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R1-7</span><span class="chip sev-major">major</span><span class="ftitle">The cross-change dependency (boundary constant) has no structural encoding</span><span class="chip v-conf">confirmed</span><span class="chip d-accepted">accepted — by design</span></div>
+    <div class="fbody"><div><h4>Evidence</h4><p>Task relations are change-local by the work model's own rule; promotion's TASK-004 cannot declare blocked-by on receipt-tree-binding/TASK-001, so derived executability cannot see the gap.</p></div><div><h4>Disposition</h4><p>Accepted: cross-change relations are deliberately forbidden — cohort membership and git order carry sequencing. The prose carrier is now explicit: promotion's Sequencing states TASK-004 does not start until receipt-tree-binding lands on main.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R1-8</span><span class="chip sev-minor">minor</span><span class="ftitle">Council board filename uses kind `council`, outside the closed report registry</span><span class="chip v-conf">confirmed</span><span class="chip d-accepted">accepted — routed to Intent</span></div>
+    <div class="fbody"><div><h4>Evidence</h4><p>The registry (<code>change_report.go:15-21</code>) is approval/review/visual/audit/note; <code>loaf change report new</code> would refuse <code>council</code>; the board was hand-authored under the owner's new convention and no hook re-validates existing filenames.</p></div><div><h4>Disposition</h4><p>Accepted for now: the convention is owner-directed and newer than the registry. Adding <code>council</code> to the closed registry (and letting CLI stamping own the shell) is already scoped in <code>INTENT-20260728-council-reports-become-visual-html-boards-in-the-change-folder-s-reports-directory</code>.</p></div></div>
+  </div>
+
+  <h2>Cleared by the round (checked, not defects)</h2>
+  <div class="panel">
+    <ul>
+      <li>No package cycles for the exported boundary constant — every file involved is <code>package cli</code>; the "import" is an intra-package reference.</li>
+      <li>No test-name collisions: none of the declared V-entry prefixes exist in <code>internal/cli</code> today.</li>
+      <li>The rc-cohort mapping (strip prerelease, then existing byte-equality) composes with <code>change_release_gate.go:50-57</code>, not against it.</li>
+      <li>~15 spot-checked file:line citations across both shapes accurate, including the three-way help drift (<code>cli_reference.go:90</code> still says "during a lineage freeze").</li>
+      <li><code>validate-push</code>'s release-commit regex already matches prerelease and rc subjects — no hook change needed there.</li>
+    </ul>
+  </div>
+
+  <footer>Authored snapshot — shaping round over both change contracts pre-implementation (Claude-native per the provenance correction above); every finding independently re-verified before boarding; fixes amended into the local shaping commits per convention. Finding IDs: <code>release-promotion-model/20260729-002311/R1-n</code>.</footer>
+</main>

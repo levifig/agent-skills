@@ -1,0 +1,137 @@
+<!-- source: release-promotion-model · kind review · slug shaping-round-3-reviewer · stamped 2026-07-29 01:01 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — shaping round 3 (loaf:reviewer)</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h4 { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--bad); }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .fid { font-family: var(--mono); font-size: .82rem; color: var(--muted); min-width: 3em; }
+  .ftitle { font-weight: 600; flex: 1 1 340px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-blocker { background: var(--bad-soft); color: var(--bad); }
+  .sev-major { background: var(--accent-soft); color: var(--accent); }
+  .sev-minor { background: var(--machine-soft); color: var(--machine); }
+  .v-conf { background: var(--ok-soft); color: var(--ok); }
+  .d-fixed { background: var(--ok-soft); color: var(--ok); }
+  .d-decided { background: var(--accent-soft); color: var(--accent); }
+  .fbody { margin-top: 10px; display: grid; gap: 10px; }
+  .fbody > div { border-top: 1px solid var(--line); padding-top: 8px; }
+  .fbody p:last-child { margin-bottom: 0; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+  th { background: var(--machine-soft); font-weight: 700; font-size: .8rem; }
+  td.ok { color: var(--ok); font-weight: 600; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">release-promotion-model · reviews · shaping round 3 · loaf:reviewer</div>
+  <!-- Provenance note 2026-07-29: rounds 1 and 2, referenced below by their original attributions, were later corrected to Claude-native wrapper-executed reviews (see the correction panels on their boards). This round's own attribution (loaf:reviewer) was always accurate. -->
+
+  <h1>Shaping Review — Round 3 (loaf:reviewer, approval-gate re-read)</h1>
+  <p class="stamp">reviewed <b>2026-07-29</b> · loaf:reviewer profile, read-only, session model · targeted re-read of the R2 delta <b>09d36213 → 93ca01cb</b> + fresh-eyes structural sweep + tree-binding cross-links · verdict <b>REQUEST-CHANGES</b> · 2 blockers + 3 major + 5 minor · all confirmed · all four R2 dispositions attested <b>LANDED-EXACT</b> · dispositions applied same round, amended in place</p>
+
+  <div class="panel verdict">
+    <p><b>The R2 fixes held; the round's finds were elsewhere.</b> B1 is the R2-1 defect class recurring in a file R2 never re-walked — TASK-005 consuming two helpers whose tasks it didn't declare — and B2 is a three-round survivor visible only by counting: "the cycle's prerelease sections" was undefined against a CHANGELOG holding <b>64</b> <code>2.0.0-*</code> sections across three label families (<code>dev.*</code>, <code>pre.*</code>, <code>alpha.*</code>), with no prior stable to anchor "the cycle." Both closed with frontmatter and one defining sentence; the majors were ownership lines, not redesign. The reviewer also ran <code>loaf change check</code> itself (isolated DB): executable, zero findings.</p>
+  </div>
+
+  <h2>Findings</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R3-1</span><span class="chip sev-blocker">blocker</span><span class="ftitle">TASK-005 consumes TASK-004's and TASK-008's helpers with no declared dependency (R2-1 class, one file over)</span><span class="chip v-conf">confirmed</span><span class="chip d-fixed">fixed</span></div>
+    <div class="fbody"><div><h4>Disposition</h4><p>TASK-005 now <code>blocked-by: [TASK-002, TASK-004, TASK-008]</code>; TASK-007 gains TASK-008 (it teaches a TASK-008 mechanic). Derived executability now matches the Sequencing prose everywhere.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R3-2</span><span class="chip sev-blocker">blocker</span><span class="ftitle">"The cycle's prerelease sections" undefined — 64 live 2.0.0-* sections in three label families, two contradictory readings in one document</span><span class="chip v-conf">confirmed</span><span class="chip d-decided">decided → collapse set defined</span></div>
+    <div class="fbody"><div><h4>Disposition</h4><p>Contract sentence added: the collapse set is sections whose label is a recognized rung (alpha/beta/rc) AND whose core equals the candidate — 2.0.0's promotion collapses <code>2.0.0-alpha.*</code> (+ future beta/rc) and leaves the legacy <code>dev.*</code>/<code>pre.*</code> history untouched, matching the Observable Workflow's narrower phrasing. TASK-004's tests now name the defined set; V4 references it.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R3-3</span><span class="chip sev-major">major</span><span class="ftitle">The buffer's physical removal was unowned; insertReleaseChangelog silently bottom-appends without its anchor; two scaffolds still emit the buffer</span><span class="chip v-conf">confirmed</span><span class="chip d-fixed">fixed → TASK-008 owns all of it</span></div>
+    <div class="fbody"><div><h4>Disposition</h4><p>TASK-008's delivering commit now owns: live CHANGELOG removal (heading, stub, preamble), rewritten anchor semantics (sections land above the previous top release; missing anchor is the new normal, the silent bottom-append at <code>release_dry_run.go:1136-1138</code> dies), and both scaffolds (<code>createReleaseChangelog</code>, the <code>loaf init</code> template at <code>init.go:274-283</code> — no new project born with a retired concept). V6 gains placement assertions.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R3-4</span><span class="chip sev-major">major</span><span class="ftitle">Decision 11's CI-green block had no declared test; the rc-cut warning was verified by a post-merge-named suite</span><span class="chip v-conf">confirmed</span><span class="chip d-fixed">fixed</span></div>
+    <div class="fbody"><div><h4>Disposition</h4><p>V4 and TASK-004's test list gain the CI-green-at-HEAD refusal fixture; V5's description broadened to cover the rc-cut feat warning explicitly (suite name unchanged — it is TASK-005's prefix, not a scope claim).</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R3-5</span><span class="chip sev-major">major</span><span class="ftitle">The no-impact declaration's machine-readable token was undefined — and assigned to the last-sequenced task</span><span class="chip v-conf">confirmed</span><span class="chip d-decided">decided → exact token</span></div>
+    <div class="fbody"><div><h4>Disposition</h4><p>Defined in TASK-008 (the parser's owner), taught by TASK-007: a note whose entire content is the single line <code>No user-facing impact.</code> Decision 3 carries the form; the skill teaches, never redefines.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R3-6</span><span class="chip sev-minor">minor</span><span class="ftitle">Five minors: blocks-reciprocity ×3, vacuous cross-task check, formula-script overclaim, resolveReleaseSnapshot wayfinding, exclusion-set/allowlist conflation</span><span class="chip v-conf">confirmed</span><span class="chip d-fixed">all fixed</span></div>
+    <div class="fbody"><div><h4>Disposition</h4><p>Reciprocal <code>blocks:</code> added (TASK-002→008, TASK-004→005/007, TASK-008→004/005/007); TASK-008's vacuous "still green" check replaced with an honest after-both-land statement plus placement assertions; the CI-and-tap contract corrected (<code>--formula</code> already exists and is required — the class name at <code>:27</code> is the only real work); TASK-002 now names <code>change_release_gate.go:199</code> and declares the symbol-level share with TASK-003; the gate-placement sentence and TASK-004's import step now name <code>releaseMetadataAllowlist</code> specifically, never the full digest-exclusion set.</p></div></div>
+  </div>
+
+  <h2>R2 disposition attestation (by this round)</h2>
+  <div class="panel">
+    <table>
+      <tr><th>R2 finding</th><th>Attestation</th></tr>
+      <tr><td>R2-1 TASK-004→TASK-008 dependency + Sequencing order</td><td class="ok">LANDED-EXACT (edge derived, DAG acyclic)</td></tr>
+      <tr><td>R2-2 three buffer-reset strikes</td><td class="ok">LANDED-EXACT (all 14 remaining buffer mentions intentional-descriptive)</td></tr>
+      <tr><td>R2-3 escape carrier</td><td class="ok">LANDED-EXACT on the carrier; token gap carried as R3-5, now closed</td></tr>
+      <tr><td>R2-5 H4 fallback acknowledgment</td><td class="ok">LANDED-EXACT</td></tr>
+    </table>
+  </div>
+
+  <h2>Cleared by the round</h2>
+  <div class="panel">
+    <ul>
+      <li><code>loaf change check</code> run by the reviewer against an isolated DB: exit 0, layout new, state executable, findings/warnings/gaps all empty.</li>
+      <li>Tree-binding cross-links verbatim-consistent (Decision 2 boundary language, the strictly-smaller divergence rule, RTB's Out ceding CI-green/rc-gate/designation to this change).</li>
+      <li>Every load-bearing citation spot-checked byte-accurate, including <code>isReleaseOnlyPR</code> at <code>check.go:1236</code> with the diff at <code>:1249</code>, the prerelease bypass, the post-merge keying, both guardrails, the create-fallback's missing <code>--prerelease</code>, and the release skill's zero mentions of <code>--post-merge</code>/<code>target_release</code>/receipts.</li>
+      <li>The 2.0.0 cohort confirmed at three members with the sweep carrier the only captured-only one.</li>
+    </ul>
+  </div>
+
+  <footer>Authored snapshot — loaf:reviewer (read-only, session model) approval-gate re-read per the round-7 precedent; all ten findings dispositioned and amended into the local shaping commit same round. Finding IDs: <code>release-promotion-model/20260729-010126/R3-n</code>.</footer>
+</main>
