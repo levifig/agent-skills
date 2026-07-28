@@ -28,8 +28,8 @@ loaf journal log "skill(implement): TASK-026 — receipts record every atom"
 
 ## Steps
 
-- [ ] On conflict: the `exit-conflict` check (ok false) is recorded together with every `contains` atom's actual result; the criterion's `ok` stays false regardless of the other atoms.
-- [ ] Fixture: `Expect: exit 1 and contains \`sentinel\` and exit 0` against output containing the sentinel records the conflict false, the contains true, criterion false; the sentinel-absent variant records contains false.
+- [x] On conflict: the `exit-conflict` check (ok false) is recorded together with every `contains` atom's actual result; the criterion's `ok` stays false regardless of the other atoms.
+- [x] Fixture: `Expect: exit 1 and contains \`sentinel\` and exit 0` against output containing the sentinel records the conflict false, the contains true, criterion false; the sentinel-absent variant records contains false.
 
 ## Verification
 

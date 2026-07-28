@@ -348,6 +348,26 @@ func TestChangeExpectGrammarEnforcement(t *testing.T) {
 			},
 		},
 		{
+			name:   "conflict records contains true alongside",
+			expect: "exit 1 and contains `sentinel` and exit 0",
+			output: "has sentinel here\n",
+			wantOK: false,
+			wantChecks: []changeVerifyExpectCheck{
+				{Kind: "exit-conflict", Value: "1 and 0", OK: false},
+				{Kind: "contains", Value: "sentinel", OK: true},
+			},
+		},
+		{
+			name:   "conflict records contains false alongside",
+			expect: "exit 1 and contains `sentinel` and exit 0",
+			output: "no match\n",
+			wantOK: false,
+			wantChecks: []changeVerifyExpectCheck{
+				{Kind: "exit-conflict", Value: "1 and 0", OK: false},
+				{Kind: "contains", Value: "sentinel", OK: false},
+			},
+		},
+		{
 			name:   "single exit with contains unchanged",
 			expect: "exit 0 and contains `ok`",
 			output: "ok\n",

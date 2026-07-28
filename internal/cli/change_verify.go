@@ -329,20 +329,24 @@ func parseChangeExpectClause(clause string) (kind string, value string, enforcea
 
 // evaluateChangeExpectation records the enforced atoms and their outcomes. The
 // exit atom is always recorded, so the receipt states what was enforced even when
-// the criterion declared no Expect at all.
+// the criterion declared no Expect at all. An exit conflict is recorded alongside
+// every declared contains atom — never instead of them — and keeps the criterion
+// false regardless of the other atoms' outcomes.
 func evaluateChangeExpectation(expectation changeExpectation, exitCode int, output string) []changeVerifyExpectCheck {
+	var checks []changeVerifyExpectCheck
 	if expectation.ExitConflict != "" {
-		return []changeVerifyExpectCheck{{
+		checks = append(checks, changeVerifyExpectCheck{
 			Kind:  "exit-conflict",
 			Value: expectation.ExitConflict,
 			OK:    false,
-		}}
+		})
+	} else {
+		checks = append(checks, changeVerifyExpectCheck{
+			Kind:  "exit",
+			Value: fmt.Sprintf("%d", expectation.ExitCode),
+			OK:    exitCode == expectation.ExitCode,
+		})
 	}
-	checks := []changeVerifyExpectCheck{{
-		Kind:  "exit",
-		Value: fmt.Sprintf("%d", expectation.ExitCode),
-		OK:    exitCode == expectation.ExitCode,
-	}}
 	for _, text := range expectation.Contains {
 		checks = append(checks, changeVerifyExpectCheck{
 			Kind:  "contains",
