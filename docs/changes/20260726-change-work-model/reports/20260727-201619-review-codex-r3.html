@@ -1,0 +1,146 @@
+<!-- source: codex rescue task-ms3lcslh-fu3gxo · codex session 019fa4f2-8477-79e0-bcee-ec88c72dc794 · round-3 fresh-thread review of the cohort-inverted doc; dispositions folded at commit 863b4ab2 -->
+<meta charset="utf-8">
+<title>change-work-model · Codex Round 3 Disposition</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.5; margin: 0; }
+  main { max-width: 1020px; margin: 0 auto; padding: 44px 22px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.8rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.2rem; margin: 38px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .meta { color: var(--muted); font-size: .84rem; font-family: var(--mono); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .finding { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 13px 16px; margin-bottom: 10px; }
+  .fhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .fid { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .ftitle { font-weight: 650; font-size: .93rem; flex: 1; min-width: 240px; }
+  .chip { font-size: .66rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .sev-blocker { background: var(--bad); color: #fff; }
+  .sev-major { background: var(--bad-soft); color: var(--bad); }
+  .sev-minor { background: var(--machine-soft); color: var(--machine); }
+  .v-accept { background: var(--ok-soft); color: var(--ok); }
+  .v-mod { background: var(--accent-soft); color: var(--accent); }
+  .fbody { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 9px; }
+  .fbody h4 { margin: 0 0 3px; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .fbody p { margin: 0; font-size: .84rem; }
+  .fbody .plan p { border-left: 3px solid var(--accent-fill); padding-left: 10px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; font-size: .86rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .scroll { overflow-x: auto; }
+  @media (max-width: 700px) { .fbody { grid-template-columns: 1fr; } }
+  footer { margin-top: 48px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+
+<main>
+  <div class="eyebrow">change-work-model · reviews · round 3</div>
+  <h1>Codex Round 3 — Disposition Board</h1>
+  <p class="meta">reviewed 2026-07-27 · fresh thread against the cohort-inverted doc · verdict: REQUEST-CHANGES · 3 blockers + 9 major + 4 minor + 9 round-1 re-judgments · all folded at commit 863b4ab2</p>
+
+  <h2>Blockers</h2>
+  <div class="finding"><div class="fhead"><span class="fid">2.1</span><span class="chip sev-blocker">blocker</span><span class="ftitle">Preflight runs before the candidate version exists; the doc's own 2.0.0 example used the wrong bump</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>runRelease gates before dry-run/apply compute the candidate; cohort matching needs the candidate. From an alpha, --bump minor candidates 2.1.0, not 2.0.0.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Candidate-first preflight restructure with byte-equal target matching; Releasing example corrected to the finalization path (--bump release); V1 fixture exercises finalization and asserts --bump minor doesn't gate on 2.0.0 targets but warns. Gate bullet, TASK-004, V1.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">2.2</span><span class="chip sev-blocker">blocker</span><span class="ftitle">The post-merge prerelease bypass can finalize stable without the cohort gate</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>releaseAllowsPrereleaseLineageBypass returns true for --post-merge whenever version files carry a prerelease — and post-merge finalizes that prerelease into stable.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Prerelease *candidates* bypass; finalization paths (--bump release, --post-merge) gate the stable target's cohort. Gate bullet, TASK-004, V2's post-merge assertion.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">3.1</span><span class="chip sev-blocker">blocker</span><span class="ftitle">Target grammar and equality still open while defining cohort membership</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Scope spoke as settled while Open Questions said "leaning"; the current parser accepts leading zeros and arbitrary prerelease text.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Canonical literal MAJOR.MINOR.PATCH — no v, whitespace, leading zeros, prerelease, or build — byte-equal against the computed stable candidate. Settled in Scope + TASK-001; open question removed.</p></div></div></div>
+
+  <h2>Major</h2>
+  <div class="finding"><div class="fhead"><span class="fid">1.1</span><span class="chip sev-major">major</span><span class="ftitle">`loaf change list --lineage` left undispositioned</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>"Migrate list" is meaningless after lineage disappears — its whole public contract is lineage-specific.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>`list` redefined as the units/cohort projection (layout, target, derived state; --target filters); the lineage contract retires with the graph at TASK-004.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">1.2</span><span class="chip sev-major">major</span><span class="ftitle">Lower-cohort behavior simultaneously settled and open</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>TASK-004 said warn; Open Questions still offered warn-vs-block.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Warn, settled everywhere; the open question removed. A skipped lower version stays visible without holding later releases hostage.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">1.3</span><span class="chip sev-major">major</span><span class="ftitle">Untargeted changes have no coherent derived done state</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Done was defined as criteria + receipt, but receipts are cohort-only.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Ladder split: untargeted changes end at <b>complete</b> (boxes done or descoped); <b>verified</b> (criteria + fresh receipt) is cohort-only and the only state the gate reads. Observable Workflow.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">2.3</span><span class="chip sev-major">major</span><span class="ftitle">The live migration is not a field translation — the promised carrier is unmaterialized</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>No spec-conversion-and-guidance-sweep unit exists at HEAD; release-after points at nothing materialized, so "the sweep declares target_release" has no carrier.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>TASK-004 materializes the carrier (the sweep or its re-shaped successor, target_release: 2.0.0) in the same change that retires the freeze replay — the promise is never unheld. Metadata history, TASK-004.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">2.4</span><span class="chip sev-major">major</span><span class="ftitle">Retention is a replacement, not an extension, of the deletion/freeze machinery</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Path-keyed deletion detection and immutable-field replay cannot host mutable events and unit-level retention; atomic conversion currently reads as deletion.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Declared a replacement: unit-keyed (slug + folder) retention and mutable-event replay across both surfaces; conversion recognized as replacement. Metadata history, TASK-001.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">2.5</span><span class="chip sev-major">major</span><span class="ftitle">Atomic conversion could manufacture flip-grade execution</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>A conversion adding pre-checked boxes creates additions, not transitions — or fakes done-ness with no delivery.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Conversion requires all checkboxes unchecked (pre-checked = violation); flip-grade execution comes only from later delivering commits. Metadata history, V4.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">3.2</span><span class="chip sev-major">major</span><span class="ftitle">"Surface, don't block" unverified at the release decision point</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Only check/show surfaced retargets; the preflight — where the decision happens — had no requirement or fixture.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Preflight prints retarget and removal events relevant to the candidate; V4 asserts the surfacing.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">4.1</span><span class="chip sev-major">major</span><span class="ftitle">Removing target_release neither defined nor protected</span><span class="chip v-mod">accept · legal + surfaced</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Field removal is the most direct obligation-erasure and the retention guard says nothing about it.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Removal-to-none is a legal retarget event — roadmaps drop scope — surfaced at check/show and release preflight, never blocked. change.json bullet, Metadata history, V4.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">5.1</span><span class="chip sev-major">major</span><span class="ftitle">Informational kinds both free-form and closed</span><span class="chip v-mod">accept · closed registry</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Scope said free, Decision 16 said enumerated, V9 rejected unknowns — pick one.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Closed registry shipping in the binary (approval/review reserved + schema-bound; visual/audit/note informational) with <code>note</code> as the escape hatch; unknown kinds refused with the registry printed. Codex's free-form alternative declined — recurring notes are the signal a kind earned registration.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">5.2</span><span class="chip sev-major">major</span><span class="ftitle">A reserved filename does not define the claimed publish gate</span><span class="chip v-mod">accept · descoped</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>D16 said publish reads the approval report, but no schema, verdict field, binding, or selection rule exists in this change.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>The load-bearing claim removed: kinds are reserved <em>so that</em> the publish ceremony (its own Intent) can wire them in later; nothing in this change depends on reading one. D16.</p></div></div></div>
+
+  <h2>Minor</h2>
+  <div class="finding"><div class="fhead"><span class="fid">1.4</span><span class="chip sev-minor">minor</span><span class="ftitle">Arc-era terminology in normative text</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>"Belongs to the arc" and "mirroring the arc's previous rule" survived the inversion.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Rewritten cohort-native: cohort membership and git order carry cross-change sequencing; parent is "backward pointers only".</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">1.5</span><span class="chip sev-minor">minor</span><span class="ftitle">slug/NNN is a reference, not "simultaneously its file path"</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>The file is tasks/TASK-NNN-slug.md.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>"The stable external reference, resolving to tasks/TASK-NNN-*.md". Observable Workflow.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">3.3</span><span class="chip sev-minor">minor</span><span class="ftitle">Receipt-across-retarget lacks its fixture</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>Sound behavior (retarget touches change.json → re-run), but untested.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>V5: verify at 2.0.0 → retarget to 2.1.0 → re-run path, not blind trust or permanent invalidation.</p></div></div></div>
+  <div class="finding"><div class="fhead"><span class="fid">5.3</span><span class="chip sev-minor">minor</span><span class="ftitle">Source Inputs named a withdrawn artifact</span><span class="chip v-accept">accept</span></div>
+    <div class="fbody"><div><h4>Codex</h4><p>The round-2 dispositions pointed at a shaping-approval report that no longer existed.</p></div>
+    <div class="plan"><h4>Landed as</h4><p>Provenance corrected; this board and its round-2 sibling are now the canonical records.</p></div></div></div>
+
+  <h2>Round-1 re-judgments — all consistent with the evolution</h2>
+  <div class="panel scroll">
+    <table>
+      <thead><tr><th>R1 finding</th><th>Round-3 counter-judgment</th><th>Where it already landed</th></tr></thead>
+      <tbody>
+        <tr><td>1.1 / 3.4 legacy digest</td><td>Wrong after inversion — conversion-first is coherent</td><td>Round-2 B1; cohort model</td></tr>
+        <tr><td>1.5 relation trim</td><td>Insufficient — broader validation justified</td><td>Task-relation schema folds</td></tr>
+        <tr><td>2.1 re-run-on-HEAD-diff</td><td>Incomplete — bootstrap case needed</td><td>Round-2 B2 freshness rule</td></tr>
+        <tr><td>2.4 / 3.5 / 4.1 freeze extension</td><td>Wrong model — unit-keyed events replace freezes</td><td>Cohort inversion + round-3 2.4</td></tr>
+        <tr><td>4.2 reader enumeration</td><td>Insufficient — `list` is a contract, not a resolver</td><td>Round-3 1.1</td></tr>
+        <tr><td>5.2 no guard extension</td><td>Wrong under TASK-NNN naming — slug-remainder scan needed</td><td>Round-2 m2 (adopted)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size: .82rem; color: var(--muted);">Upheld: r1 1.2, 1.3, 1.4, 2.2, 2.3, 2.5, 3.1, 3.2, 3.3, 4.3, 4.4, 5.1. Checked non-issues: warn-on-lower-cohorts coherent; receipt forgery and criteria weakening correctly out of threat model.</p>
+
+  <footer><p>Verdict REQUEST-CHANGES answered by the 863b4ab2 fold · codex session <span style="font-family: var(--mono)">019fa4f2-8477-79e0-bcee-ec88c72dc794</span>, job <span style="font-family: var(--mono)">task-ms3lcslh-fu3gxo</span> · companions: <span style="font-family: var(--mono)">20260727-160756-review-codex-r1.html</span> · <span style="font-family: var(--mono)">20260727-192707-review-codex-r2.html</span> · gate summary in <span style="font-family: var(--mono)">20260727-201632-approval-shaping.html</span></p></footer>
+</main>

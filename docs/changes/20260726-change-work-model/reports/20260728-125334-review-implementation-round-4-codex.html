@@ -1,0 +1,120 @@
+<!-- source: change-work-model · kind review · slug implementation-round-4-codex · stamped 2026-07-28 12:53 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — implementation round 4 (Codex)</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h4 { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--bad); }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .fid { font-family: var(--mono); font-size: .82rem; color: var(--muted); min-width: 3em; }
+  .ftitle { font-weight: 600; flex: 1 1 340px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-blocker { background: var(--bad-soft); color: var(--bad); }
+  .sev-major { background: var(--accent-soft); color: var(--accent); }
+  .v-conf { background: var(--ok-soft); color: var(--ok); }
+  .d-fix { background: var(--bad-soft); color: var(--bad); }
+  .fbody { margin-top: 10px; display: grid; gap: 10px; }
+  .fbody > div { border-top: 1px solid var(--line); padding-top: 8px; }
+  .fbody p:last-child { margin-bottom: 0; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">change-work-model · reviews · implementation round 4 · Codex</div>
+  <h1>Implementation Review — Round 4 (Codex)</h1>
+  <p class="stamp">reviewed <b>2026-07-28</b> · Codex fresh thread over <b>fb618931..65da9282</b> (the round-3 remediation + integration) at <b>65da9282</b> · verdict <b>REQUEST-CHANGES</b> · 2 blockers + 2 major · all four independently verified against source before boarding</p>
+
+  <div class="panel verdict">
+    <p><b>Four findings, four confirmed, zero refuted.</b> The induction case fired — and the classes narrowed again: value-threading instead of wrong-cohort, a parity tier instead of a missing tier, display consistency instead of display absence, a parser edge instead of an unenforced grammar. Every finding is a residue of the round-3 fixes themselves; nothing new against the older code. Un-draft stands (PR is ready), merge holds until these are dispositioned.</p>
+  </div>
+
+  <h2>Findings</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C4-1</span><span class="chip sev-blocker">blocker</span><span class="ftitle">Candidate is recomputed at each site, not threaded — a TOCTOU residue of C3-1</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Codex claim</h4><p><code>release.go:19</code> / <code>release_dry_run.go:283, 445</code> — dry-run and apply re-derive the candidate instead of receiving preflight's value; a clean <code>feat:</code> commit landing between derivations moves the no-flag candidate so the executor cuts a cohort the gate never judged.</p></div>
+      <div><h4>Warden verification</h4><p>Confirmed: all three sites call <code>computeReleaseCandidateVersion(root, options)</code> — the same <i>function</i>, freshly re-run (each invocation re-reads <code>git log</code> via <code>effectiveReleaseBump</code>), not the same <i>value</i>. TASK-015's step promised "hand the same value to both" and its box is checked; the implementation satisfied the letter of one-computation-shared-logic, not one-computation-shared-result. The race window is seconds inside one process — a rare accident — but the contract wording is unambiguous and the fix is trivial: compute once in <code>runRelease</code>, pass the value through.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C4-2</span><span class="chip sev-blocker">blocker</span><span class="ftitle">The gate's composite omits lineage validation — duplicate slugs pass the gate while failing check</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Codex claim</h4><p><code>change_release_gate.go:117</code> / <code>change.go:341</code> — <code>changeCohortStructuralReport</code> lacks <code>applyLineageValidation</code>, so global structural findings (duplicate Change slugs across folders) never gate.</p></div>
+      <div><h4>Warden verification</h4><p>Confirmed by direct read: <code>runChangeCheck</code> applies <code>applyLineageValidation</code> at change.go:341 <i>then</i> <code>applyChangeStructuralFindings</code> at :350; the gate's composite applies only <code>evaluateChangeNode</code> + <code>applyChangeStructuralFindings</code>. Two date-distinct folders declaring the same slug — both flip-executed, both receipt-verified — pass preflight while <code>check</code> rejects both. TASK-016's own thesis (check-gate parity) with one layer left out.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C4-3</span><span class="chip sev-major">major</span><span class="ftitle"><code>deriveChangeState</code> promotes <code>verified</code> without the composite tier — display disagrees with the gate again</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Codex claim</h4><p><code>change_state.go:23, 32</code> — the ladder consults only the contract-local report before promoting a fresh receipt to <code>verified</code>; task-hygiene and conversion findings are invisible, so <code>list</code>/<code>show</code>/<code>check</code> JSON can say <code>verified</code> while check and preflight reject the member as structurally invalid.</p></div>
+      <div><h4>Warden verification</h4><p>Confirmed: <code>deriveChangeState</code> calls <code>evaluateChangeNode(node, "")</code> only — the round-3 lanes' file-ownership boundaries meant TASK-016's composite landed in the gate but nobody owned <code>change_state.go</code>. This is the M1/M2 class recurring one tier up: the state the gate reads must not be displayable when the gate would refuse it. Fix: the ladder consumes the same composite report (and C4-2's lineage layer once added).</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C4-4</span><span class="chip sev-major">major</span><span class="ftitle">Duplicate <code>exit</code> atoms silently overwrite — "nothing silent" broken at the parser</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Codex claim</h4><p><code>change_verify.go:255, 321</code> — <code>Expect: exit 1 and exit 0</code> on <code>true</code> passes, recording only <code>exit 0</code>; the unmet <code>exit 1</code> atom is discarded without a trace.</p></div>
+      <div><h4>Warden verification</h4><p>Confirmed: <code>parsed.ExitCode, _ = strconv.Atoi(value)</code> — last atom wins, one check recorded. TASK-019's grammar note says "nothing silent in either direction"; a contradictory declaration deserves a loud outcome, not quiet last-wins. Fix direction: a second <code>exit</code> atom is a contradiction — fail the criterion at parse (recorded as a failed check naming both values), or at minimum demote both to advisory with a warning; failing is the honest direction, matching the grammar's own doctrine.</p></div>
+    </div>
+  </div>
+
+  <h2>Proposed dispositions</h2>
+
+  <div class="panel">
+    <ul>
+      <li><b>All four: accept, fix before merge.</b> Same reasoning as round 3 — gate integrity is the change's thesis — and all four are small: thread a value, add one validation layer to the composite, point the ladder at the composite, reject duplicate exit atoms. Disjoint files again (release plumbing, gate/change.go, change_state.go, change_verify.go).</li>
+      <li><b>Four packets, TASK-020..TASK-023</b>, committed unchecked before execution; a single implementer lane suffices — the fixes are an afternoon, not a fleet.</li>
+      <li><b>Round-5 policy question for the owner:</b> the induction curve is real but narrowing (5 fundamental → 5 edge → 4 residue). One more focused round over the fix commits, or accept the curve and ship after these land — the owner's risk call, not the reviewer's.</li>
+    </ul>
+  </div>
+
+  <footer>Authored snapshot — Codex fresh-thread round over the remediation range, retrieved from the session rollout (the relay poll missed the completion flip, same as round 3); every finding re-verified against source before boarding. Finding IDs: <code>change-work-model/20260728-125334/C4-n</code>.</footer>
+</main>

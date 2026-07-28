@@ -16,32 +16,32 @@ covers:
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-07-14'
+last_reviewed: '2026-07-28'
 ---
 
 # Work Records
 
-Loaf uses Change artifacts for new bounded work. Existing specs and tasks remain durable compatibility records with supported CLI surfaces, while the project journal records what happened across conversations.
+Loaf uses Change artifacts for new bounded work. Existing specs and tasks remain durable compatibility records with supported CLI surfaces, while the project journal records what happened across conversations. The Change anatomy, task-packet discipline, derived states, and release cohorts are documented in [work-model.md](work-model.md) (rationale: ADR-022, ADR-023); this document covers the compatibility records around it.
 
 ## Current Workflow
 
 ```
-/idea or /brainstorm → /shape → docs/changes/YYYYMMDD-slug/change.md
+/idea or /brainstorm → /shape → docs/changes/YYYYMMDD-slug/  (change.json + shape.md + tasks/)
                                       ↓
                               loaf change check
                                       ↓
-                         /implement → review → /ship
+                         /implement → review → /reflect → /ship
                                       ↓
-                           project journal and /reflect
+                               project journal
 ```
 
-`/release` publishes already-landed work separately. A Change may land through more than one coherent pull request; implementation order belongs in the Change contract and PR boundaries, not in generic permanent labels.
+`/release` publishes already-landed work separately; changes declaring a `target_release` gate their version's stable cut (see work-model.md). The change PR is the change's whole life — one change, one PR, merged when everything is done; per-task PRs remain the exception for genuinely multi-integration changes.
 
 ## Record Types
 
 | Record | Location | Purpose |
 |--------|----------|---------|
-| Change | `docs/changes/YYYYMMDD-slug/change.md` | Primary bounded-work contract for new work: problem, scope, implementation units, verification, and done conditions |
+| Change | `docs/changes/YYYYMMDD-slug/` | Primary bounded-work contract for new work: `change.json` identity, `shape.md` contract, `tasks/` packets (legacy single-file `change.md` supported until the removal boundary) |
 | Task | SQLite (`loaf task show/list`) | Existing durable work items with criteria, relationships, and status |
 | Spec | `.agents/specs/SPEC-XXX-slug.md` | Existing bounded-work records retained for compatibility and deliberate conversion |
 | Journal | SQLite (`loaf journal recent/show`) | Project-scoped decisions, discoveries, commits, and execution context |
@@ -62,10 +62,14 @@ Loaf uses Change artifacts for new bounded work. Existing specs and tasks remain
 
 | Subcommand | Purpose |
 |------------|---------|
-| `init <slug>` | Scaffold `docs/changes/<YYYYMMDD>-<slug>/change.md` |
-| `check [path]` | Validate a Change and report derived executability |
+| `init <slug>` | Scaffold `docs/changes/<YYYYMMDD>-<slug>/` (`change.json` + `shape.md` + seeded `tasks/`; `--brief` for capture-only) |
+| `check [path]` | Validate a Change (both layouts) and report derived executability |
 | `check [path] --require-executable` | Fail unless the implementation contract is structurally executable |
-| `list --lineage <key>` | List retained Changes in one lineage |
+| `list [--target <X.Y.Z>]` | Units/cohort projection: layout, target, derived state |
+| `tasks --json [path]` | Stable-ID task index with relations and derived completion |
+| `show [path]` | Layout, target, derived state, and PR set from squash subjects |
+| `verify [path]` | Run declared criteria; write `receipts/verify.json` (cohort members) |
+| `report new <slug> --kind <kind>` | Stamp an authored report shell under `reports/` (closed registry) |
 
 ### `loaf task`
 
@@ -124,6 +128,7 @@ Linear is an optional task backend. When `integrations.linear.enabled` is true i
 
 ## Cross-References
 
+- [work-model.md](work-model.md) — the Change anatomy, task packets, derived states, and release cohorts
 - [cli-design.md](cli-design.md) — CLI design philosophy and command patterns
 - [knowledge-management-design.md](knowledge-management-design.md) — knowledge system conventions
-- [../changes/](../changes/) — retained Change contracts and implementation lineage
+- [../changes/](../changes/) — retained Change contracts

@@ -29,6 +29,9 @@ func TestWorkIdentityInArtifactNameClassifiesReferenceVersusIdentity(t *testing.
 		{"archived spec in specs dir", ".agents/specs/archive/SPEC-001-loaf-self-sufficiency.md", false, ""},
 		{"adr in decisions dir", "docs/decisions/ADR-007-project-config-location.md", false, ""},
 		{"task in tasks dir", ".agents/tasks/TASK-001-configure-build-phases.md", false, ""},
+		{"task slug cites spec", ".agents/tasks/TASK-001-spec-053-followup.md", true, "spec record"},
+		{"task slug cites unit", "docs/changes/x/tasks/TASK-002-u8-cleanup.md", true, "implementation unit"},
+		{"change tasks clean slug", "docs/changes/x/tasks/TASK-003-check-and-projections.md", false, ""},
 		{"task in a relocated tasks dir", "docs/tasks/TASK-042-slug.md", false, ""},
 
 		// A spec identity outside the directory that owns specs is a reference again.

@@ -29,6 +29,7 @@ func TestRunnerReleaseHelpIsNative(t *testing.T) {
 }
 
 func TestReleaseLineagePreflightScopesFreezeToHEADAncestry(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	repo := initCLIGitRepo(t)
 	if err := releaseLineagePreflight(repo); err != nil {
 		t.Fatalf("ancestry before first lineage node should pass: %v", err)
@@ -46,6 +47,7 @@ func TestReleaseLineagePreflightScopesFreezeToHEADAncestry(t *testing.T) {
 }
 
 func TestReleaseLineagePreflightRunsBeforeEveryEntryModeAndIgnoresBaseForFreeze(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	repo := initCLIGitRepo(t)
 	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
 	commitAllChangeTest(t, repo, "docs: add frozen lineage")
@@ -70,6 +72,7 @@ func TestReleaseLineagePreflightRunsBeforeEveryEntryModeAndIgnoresBaseForFreeze(
 }
 
 func TestRunnerReleasePrereleaseLineageBypassMatrix(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	cases := []struct {
 		name       string
 		version    string
@@ -159,6 +162,7 @@ func TestReleaseAllowsPrereleaseLineageBypassRequiresConsistentPrereleaseVersion
 }
 
 func TestReleaseLineagePreflightRejectsStructurallyInvalidCommittedAncestor(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	repo := initCLIGitRepo(t)
 	invalidRoot := changeDoc(lineageFrontmatter("root", "2026-07-10", "root", "line", "", "terminal"), productSections()...)
 	writeChangeFolder(t, repo, "20260710-root", invalidRoot)
@@ -223,6 +227,7 @@ func TestReleaseLineagePreflightRejectsMergeResolutionOnlyDeletion(t *testing.T)
 }
 
 func TestReleaseLineagePreflightRejectsLineageWithoutReleaseAfter(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	repo := initCLIGitRepo(t)
 	writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", ""))
 	commitAllChangeTest(t, repo, "docs: add ungated lineage")
@@ -232,6 +237,7 @@ func TestReleaseLineagePreflightRejectsLineageWithoutReleaseAfter(t *testing.T) 
 }
 
 func TestReleaseLineagePreflightIgnoresDirtyTerminalAndReleaseAfterRewrite(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	repo := initCLIGitRepo(t)
 	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
 	commitAllChangeTest(t, repo, "docs: add frozen lineage")
@@ -248,6 +254,7 @@ func TestReleaseLineagePreflightIgnoresDirtyTerminalAndReleaseAfterRewrite(t *te
 }
 
 func TestReleaseLineagePreflightRejectsCommittedReleaseAfterRewrite(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	repo := initCLIGitRepo(t)
 	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
 	commitAllChangeTest(t, repo, "docs: add immutable release terminal")
@@ -262,6 +269,7 @@ func TestReleaseLineagePreflightRejectsCommittedReleaseAfterRewrite(t *testing.T
 }
 
 func TestReleaseLineagePreflightAllowsFirstCommittedReleaseAfterValue(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	repo := initCLIGitRepo(t)
 	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", ""))
 	commitAllChangeTest(t, repo, "docs: add lineage before release policy")
@@ -275,6 +283,7 @@ func TestReleaseLineagePreflightAllowsFirstCommittedReleaseAfterValue(t *testing
 }
 
 func TestReleaseLineagePreflightRejectsRemovingLineageWithReleaseAfter(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	repo := initCLIGitRepo(t)
 	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
 	commitAllChangeTest(t, repo, "docs: add immutable release terminal")
@@ -290,6 +299,7 @@ func TestReleaseLineagePreflightRejectsRemovingLineageWithReleaseAfter(t *testin
 }
 
 func TestReleaseLineagePreflightRejectsCommittedLineageRewrite(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	repo := initCLIGitRepo(t)
 	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "root"))
 	commitAllChangeTest(t, repo, "docs: add immutable lineage")
@@ -305,6 +315,7 @@ func TestReleaseLineagePreflightRejectsCommittedLineageRewrite(t *testing.T) {
 }
 
 func TestReleaseLineagePreflightAllowsFirstCommittedLineageValue(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	repo := initCLIGitRepo(t)
 	sections := append(productSections(), executableSections()...)
 	root := writeChangeFolder(t, repo, "20260710-root", changeDoc(changeFrontmatter("root", "2026-07-10", "root"), sections...))
@@ -319,6 +330,7 @@ func TestReleaseLineagePreflightAllowsFirstCommittedLineageValue(t *testing.T) {
 }
 
 func TestReleaseLineagePreflightRejectsDependencyMetadataWithoutLineage(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	repo := initCLIGitRepo(t)
 	malformed := strings.Replace(executableLineageDoc("root", "line", "", "root"), "lineage: line\n", "", 1)
 	writeChangeFolder(t, repo, "20260710-root", malformed)
@@ -436,6 +448,7 @@ func TestReleaseLineagePreflightDetectsFolderRenameWithGitRenameDetectionEnabled
 }
 
 func TestReleaseLineagePreflightFailsClosedOnGitInspectionErrors(t *testing.T) {
+	t.Skip("retired: lineage freeze replaced by target_release cohort gate (TASK-004)")
 	cases := []struct {
 		name         string
 		failFragment string
@@ -490,8 +503,12 @@ func TestRunnerReleasePostMergeFailsClosedOutsideGit(t *testing.T) {
 		Stdout:     &stdout,
 		WorkingDir: workingDir,
 	}.Run([]string{"release", "--post-merge"})
-	if err == nil || !strings.Contains(err.Error(), "cannot inspect committed Change graph at HEAD") {
-		t.Fatalf("release --post-merge error = %v, want fail-closed ancestry inspection", err)
+	if err == nil {
+		t.Fatalf("release --post-merge error = nil, want fail-closed outside git")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "cannot compute candidate version") && !strings.Contains(msg, "release blocked") {
+		t.Fatalf("release --post-merge error = %v, want fail-closed release blocked", err)
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want no release actions before ancestry inspection", stdout.String())
@@ -501,8 +518,9 @@ func TestRunnerReleasePostMergeFailsClosedOutsideGit(t *testing.T) {
 func TestReleasePostMergeGuardrailsHappyPath(t *testing.T) {
 	repo := seedReleasePostMergeFiles(t, "1.2.3")
 	runner, calls := scriptedReleasePostMergeRunner(releasePostMergeHappyResponses("1.2.3"))
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
 
-	result := checkReleasePostMergeGuardrails(repo, runner)
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
 	if !result.ok {
 		t.Fatalf("guardrail %d failed: %s", result.guardrail, result.message)
 	}
@@ -524,8 +542,9 @@ func TestReleasePostMergeGuardrailsAbortOnLocalTagCollision(t *testing.T) {
 	responses := releasePostMergeHappyResponses("1.2.3")
 	responses["git tag --list v1.2.3"] = releasePostMergeOK("v1.2.3")
 	runner, _ := scriptedReleasePostMergeRunner(responses)
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
 
-	result := checkReleasePostMergeGuardrails(repo, runner)
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
 	if result.ok {
 		t.Fatalf("result ok = true, want local tag collision failure")
 	}
@@ -541,8 +560,9 @@ func TestReleasePostMergeGuardrailsAbortOnGitHubAccountMismatch(t *testing.T) {
 	responses := releasePostMergeHappyResponses("1.2.3")
 	responses["gh auth status --active --hostname github.com --json hosts"] = releasePostMergeOK(githubAuthStatusJSON("work-account"))
 	runner, calls := scriptedReleasePostMergeRunner(responses)
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
 
-	result := checkReleasePostMergeGuardrails(repo, runner)
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
 	if result.ok {
 		t.Fatalf("result ok = true, want GitHub account guardrail failure")
 	}
@@ -624,7 +644,8 @@ func TestRunReleasePostMergeFinalizesNatively(t *testing.T) {
 	runner, _ := scriptedReleasePostMergeRunner(responses)
 	var stdout, stderr bytes.Buffer
 
-	if err := runReleasePostMergeWithRunner(repo, &stdout, &stderr, runner); err != nil {
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
+	if err := runReleasePostMergeWithRunner(repo, snap, &stdout, &stderr, runner); err != nil {
 		t.Fatalf("runReleasePostMergeWithRunner error = %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	for _, want := range []string{"Verifying post-merge state", "All 8 guardrails passed", "Executing:", "Created tag v1.2.3", "Release v1.2.3 finalized"} {
@@ -1323,6 +1344,15 @@ func gitOutputReleaseTest(t *testing.T, dir string, args ...string) string {
 type releasePostMergeCall struct {
 	name string
 	args []string
+}
+
+func mustResolveReleaseSnapshot(t *testing.T, repo string, options releaseOptions) releaseSnapshot {
+	t.Helper()
+	snap, err := resolveReleaseSnapshot(repo, options)
+	if err != nil {
+		t.Fatalf("resolveReleaseSnapshot: %v", err)
+	}
+	return snap
 }
 
 func seedReleasePostMergeFiles(t *testing.T, version string) string {

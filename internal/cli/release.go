@@ -16,8 +16,21 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 		writeReleaseHelp(out)
 		return nil
 	}
-	if err := releaseLineagePreflightWithOptions(runtimeRoot, releaseAllowsPrereleaseLineageBypass(runtimeRoot, options)); err != nil {
+	snapshot, err := resolveReleaseSnapshot(runtimeRoot, options)
+	if err != nil {
+		return fmt.Errorf("release blocked: cannot compute candidate version: %w", err)
+	}
+	options.snapshot = snapshot
+	var gateWarnings []string
+	if err := releaseCohortPreflight(runtimeRoot, snapshot.Candidate, &gateWarnings); err != nil {
 		return err
+	}
+	warnOut := r.Stderr
+	if warnOut == nil {
+		warnOut = out
+	}
+	for _, warning := range gateWarnings {
+		fmt.Fprintf(warnOut, "warning: %s\n", warning)
 	}
 	if options.dryRun {
 		errOut := r.Stderr
@@ -37,10 +50,12 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 	if errOut == nil {
 		errOut = os.Stderr
 	}
-	return runReleasePostMerge(runtimeRoot, out, errOut)
+	return runReleasePostMerge(runtimeRoot, options.snapshot, out, errOut)
 }
 
 func releaseAllowsPrereleaseLineageBypass(root string, options releaseOptions) bool {
+	// Retained for tests that assert the old predicate; the live gate uses
+	// resolveReleaseSnapshot + releaseCohortPreflight instead.
 	if options.postMerge {
 		if options.bump != "" {
 			return false
@@ -81,7 +96,7 @@ func writeReleaseHelp(out io.Writer) {
 		"",
 		"Options:",
 		"  --dry-run              Preview release without making changes",
-		"  --bump <type>          Skip interactive bump choice; only explicit prerelease advances an existing prerelease during a lineage freeze; --post-merge may finalize that prepared prerelease",
+		"  --bump <type>          Skip interactive bump choice; stable candidates gate their target_release cohort; prerelease candidates bypass; --bump release finalizes the stable target, --post-merge publishes the prepared version and gates only when it is stable",
 		"  --base <ref>           Use commits since <ref> instead of last tag",
 		"  --no-tag               Skip git tag creation",
 		"  --tag                  Force git tag creation",

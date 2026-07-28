@@ -2,13 +2,13 @@
 
 Reading `loaf change init` and `loaf change check` — the skill teaches reading the CLI, not wrapping it. For the rest of the Loaf CLI surface, see the `loaf-reference` skill.
 
-## `loaf change init <slug>`
+## `loaf change init <slug> [--brief]`
 
-Scaffolds `docs/changes/<YYYYMMDD>-<slug>/change.md` from the Change template, where `<YYYYMMDD>` is the creation day (not a target date) and the branch is named by the bare slug — no date prefix on the branch. Fails if the folder already exists. The slug uses lowercase letters, digits, and single hyphens.
+Scaffolds `docs/changes/<YYYYMMDD>-<slug>/change.json + shape.md` from the Change template, where `<YYYYMMDD>` is the creation day (not a target date) and the branch is named by the bare slug — no date prefix on the branch. Fails if the folder already exists. The slug uses lowercase letters, digits, and single hyphens.
 
 ## `loaf change check [folder] [--require-executable] [--json]`
 
-Folder resolution: an explicit `[folder]` argument always wins; otherwise the current git branch is matched against the `branch:` frontmatter across every `docs/changes/*/change.md`. Zero or multiple matches is an error naming the candidates found.
+Folder resolution: an explicit `[folder]` argument always wins; otherwise the current git branch is matched against the `branch:` frontmatter across every `docs/changes/*/change.json + shape.md`. Zero or multiple matches is an error naming the candidates found.
 
 Output splits into two tiers:
 
@@ -20,3 +20,35 @@ Output splits into two tiers:
 A branch/Change mismatch (current branch doesn't match the Change's `branch:` field) is a warning, never a violation.
 
 `--json` emits `{command, folder, passed, executable, exitCode, findings, warnings, gaps}` for scripted reads; prefer it when diagnosing rather than scraping the human-readable text.
+
+
+## `loaf change report new <slug> --kind <kind>`
+
+Stamps `reports/YYYYMMDD-HHMMSS-<kind>-<slug>.html` with charset, provenance, and token skeleton; prints design-language guidance. Closed kinds: approval, review, visual, audit, note.
+
+## `loaf change verify [folder]`
+
+Runs executable V-tier criteria declared in `shape.md` and writes `receipts/verify.json` (criteria digest, verified commit, cwd, per-criterion evidence). New-layout-only.
+
+Criteria forms (both parse):
+
+```markdown
+- **V1.** Prose. Command: `exact command`. Expect: exit 0.
+- **V1.** Prose.
+  - Command: `exact command`
+  - Expect: exit 0
+```
+
+`Expect` is enforced, with a deliberately minimal grammar: atoms join with ` and ` — `exit <N>` is the required exit code (omit the atom, or `Expect` entirely, and `exit 0` is enforced) and `` contains `text` `` requires the command's combined stdout+stderr to contain that backtick-delimited text (repeatable). A criterion passes when the command ran, the exit code matched, and every `contains` matched; the receipt records each atom and its outcome.
+
+```markdown
+- **V1.** Prose. Command: `go test ./...`. Expect: exit 0 and contains `ok  github.com/acme/pkg`.
+```
+
+Any other clause is unenforceable: verify prints a warning naming the criterion and the clause, records it on the criterion as advisory, and never lets it affect the result — an expectation is either checked or loudly not.
+
+Commands run from the repository root; the receipt records that cwd. H-tier entries (`**H1.** …`) are never gate input. See [decomposition.md](decomposition.md) for authoring guidance.
+
+## `loaf change tasks` / `show`
+
+On-demand projections. See `loaf change --help`.

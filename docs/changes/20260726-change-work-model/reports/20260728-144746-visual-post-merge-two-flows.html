@@ -1,0 +1,154 @@
+<!-- source: change-work-model · kind visual · slug post-merge-two-flows · stamped 2026-07-28 14:47 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>O6-2 — Post-merge serves two flows</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.5; margin: 0; }
+  main { max-width: 1060px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.9rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.25rem; margin: 40px 0 12px; }
+  p { margin: 0 0 10px; max-width: 72ch; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+
+  .flow { display: grid; gap: 0; margin: 14px 0 4px; }
+  .step { display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; }
+  .dot { width: 14px; height: 14px; border-radius: 999px; margin: 5px 0 0 7px; background: var(--machine); position: relative; }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--accent-fill); }
+  .step:not(:last-child) .dot::after { content: ""; position: absolute; left: 6px; top: 15px; width: 2px; height: 34px; background: var(--line); }
+  .step .body { padding-bottom: 22px; }
+  .step .t { font-weight: 600; }
+  .step .d { color: var(--muted); font-size: .9rem; }
+  .step .d code { font-size: .82em; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 780px) { .cols { grid-template-columns: 1fr; } }
+  .col-h { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; margin-bottom: 8px; }
+  .was .col-h { color: var(--bad); } .now .col-h { color: var(--bad); } .fix .col-h { color: var(--ok); }
+  .badge { display: inline-block; font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+  .b-ok { background: var(--ok-soft); color: var(--ok); } .b-bad { background: var(--bad-soft); color: var(--bad); } .b-warn { background: var(--accent-soft); color: var(--accent); } .b-state { background: var(--state-soft); color: var(--state); }
+
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .scroll { overflow-x: auto; }
+
+  .chain { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: .86rem; margin: 10px 0; }
+  .chain .n { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  .chain .a { color: var(--muted); }
+  footer { margin-top: 52px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+
+<main>
+  <div class="eyebrow">change-work-model · visual · round-6 finding O6-2</div>
+  <h1>Post-merge serves two flows — the code now knows only one</h1>
+  <p class="stamp">authored 2026-07-28 · explains finding <b>O6-2</b> on board 20260728-143458 · code state at <b>64810d87</b></p>
+
+  <h2>The two flows</h2>
+  <div class="cols">
+    <div class="panel">
+      <div class="col-h" style="color: var(--machine)">Flow A — publish a prepared prerelease <span class="badge b-ok">the routine one</span></div>
+      <div class="flow">
+        <div class="step"><div class="dot"></div><div class="body"><div class="t">Release commit prepares an alpha</div><div class="d"><code>package.json → 2.0.0-alpha.15</code>, <code>CHANGELOG → ## [2.0.0-alpha.15]</code></div></div></div>
+        <div class="step"><div class="dot"></div><div class="body"><div class="t">PR squash-merges to main</div></div></div>
+        <div class="step"><div class="dot ok"></div><div class="body"><div class="t"><code>loaf release --post-merge</code></div><div class="d">tags <code>v2.0.0-alpha.15</code>, publishes the GitHub prerelease</div></div></div>
+      </div>
+      <p class="d" style="color: var(--muted); font-size: .88rem">This is how alpha.12, alpha.13, and alpha.14 shipped. The prerelease valve exists for exactly this flow — prereleases never gate.</p>
+    </div>
+    <div class="panel">
+      <div class="col-h" style="color: var(--state)">Flow B — finalize stable <span class="badge b-state">the rare, gated one</span></div>
+      <div class="flow">
+        <div class="step"><div class="dot"></div><div class="body"><div class="t">Release commit prepares stable</div><div class="d"><code>package.json → 2.0.0</code>, <code>CHANGELOG → ## [2.0.0]</code></div></div></div>
+        <div class="step"><div class="dot"></div><div class="body"><div class="t">PR squash-merges to main</div></div></div>
+        <div class="step"><div class="dot warn"></div><div class="body"><div class="t"><code>loaf release --post-merge</code> must gate</div><div class="d">the 2.0.0 <b>cohort</b> (every change with <code>target_release: 2.0.0</code>) must be executed + receipt-verified</div></div></div>
+        <div class="step"><div class="dot ok"></div><div class="body"><div class="t">Then tag <code>v2.0.0</code></div></div></div>
+      </div>
+      <p class="d" style="color: var(--muted); font-size: .88rem">Round 3 correctly closed the bypass where Flow B could tag stable without the gate. The mistake was writing the fix as if <i>every</i> post-merge were Flow B.</p>
+    </div>
+  </div>
+
+  <h2>What the code does today — Flow A, broken at three points</h2>
+  <div class="panel">
+    <div class="flow">
+      <div class="step"><div class="dot"></div><div class="body"><div class="t">Version files at HEAD say <code>2.0.0-alpha.15</code></div><div class="d">the version the release commit actually prepared</div></div></div>
+      <div class="step"><div class="dot bad"></div><div class="body"><div class="t">① <code>resolveReleaseSnapshot</code> strips the prerelease</div><div class="d"><code>change_release_gate.go:237-245</code> — "Finalization targets the stable form" → <code>Candidate = 2.0.0</code>. The prepared version is discarded here and never used again.</div></div></div>
+      <div class="step"><div class="dot bad"></div><div class="body"><div class="t">② The 2.0.0 cohort gate fires on an alpha publish</div><div class="d">the sweep carrier is open by design → <b>the alpha train halts</b> until the whole 2.0.0 cohort is verified — the valve closed on the flow it exists for</div></div></div>
+      <div class="step"><div class="dot bad"></div><div class="body"><div class="t">③ Even past the gate, the guardrails check the wrong version</div><div class="d">changelog guardrail demands <code>## [2.0.0]</code> (files carry <code>## [2.0.0-alpha.15]</code>) → abort blaming the changelog; tag collision and the tag itself use <code>2.0.0</code></div></div></div>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top: 14px">
+    <div class="panel">
+      <div class="col-h" style="color: var(--bad)">The converse hazard</div>
+      <p style="font-size: .9rem">If a stray <code>## [2.0.0]</code> section <i>did</i> exist, post-merge would tag and publish <code>v2.0.0</code> while every version file still says <code>2.0.0-alpha.15</code> — and the old guardrail 4, which used to assert <b>tag = version files</b>, was reduced to a cross-file consistency probe that discards the version (<code>release_post_merge.go:112</code>). Nothing relates the tag to the files any more.</p>
+    </div>
+    <div class="panel">
+      <div class="col-h" style="color: var(--accent)">How it got in — a three-link chain</div>
+      <div class="chain">
+        <span class="n">shape.md V2: "post-merge finalization is blocked until the cohort completes" <span class="badge b-warn">conflates A and B</span></span>
+        <span class="a">→</span>
+        <span class="n">TASK-024 packet: "the tagged version is the preflighted candidate" <span class="badge b-bad">the Warden's sentence</span></span>
+        <span class="a">→</span>
+        <span class="n">lane implements the sentence faithfully <span class="badge b-ok">not the lane's error</span></span>
+      </div>
+      <p style="font-size: .9rem">The contract encoded Flow B as the only flow; the packet repeated it; the implementation obeyed. Tests pass because the fixtures were written from the same sentence.</p>
+    </div>
+  </div>
+
+  <h2>The proposed fix — key on the prepared version</h2>
+  <div class="panel scroll">
+    <table>
+      <thead><tr><th>Version files at HEAD say</th><th>Meaning</th><th>Gate</th><th>Tag</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>2.0.0-alpha.15</code> (prerelease)</td>
+          <td>Flow A — publishing a prepared prerelease</td>
+          <td><span class="badge b-ok">valve open</span> — no stable gate, exactly as <code>--bump prerelease</code></td>
+          <td><code>v2.0.0-alpha.15</code> — the prepared version</td>
+        </tr>
+        <tr>
+          <td><code>2.0.0</code> (stable)</td>
+          <td>Flow B — finalizing stable</td>
+          <td><span class="badge b-state">cohort gated</span> — every <code>target_release: 2.0.0</code> member executed + verified</td>
+          <td><code>v2.0.0</code> — the prepared version</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin-top: 10px; font-size: .9rem">Guardrail 4 restored: <b>the tag always equals the consistent version-file version</b> — the one invariant that holds in both rows. Round 3's bypass stays closed: preparing stable files can never tag without the cohort, because stable-prepared <i>is</i> the gated row. One clause of V2 amends from "post-merge finalization is blocked until the cohort completes" to "post-merge gates the cohort when the prepared version is stable; a prepared prerelease publishes through the valve."</p>
+  </div>
+
+  <footer>Authored snapshot — visual companion to finding O6-2 (board <code>change-work-model/20260728-143458</code>). The fix and the V2 amendment await owner approval.</footer>
+</main>

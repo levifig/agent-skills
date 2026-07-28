@@ -4,7 +4,7 @@
     {
       "target": "claude-code",
       "surface": "cli",
-      "version": "2.1.218",
+      "version": "2.1.220",
       "platform": "darwin-arm64",
       "installed_mode": "plugin-dir",
       "context": {
@@ -20,9 +20,9 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/claude-code-2.1.218-plugin-startup-smoke.json",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/claude-code-2.1.220-plugin-startup-smoke.json",
               "level": "installed-smoke",
-              "summary": "Claude Code 2.1.218 startup smoke returned SessionStart additionalContext and the isolated marker was model-visible exactly."
+              "summary": "Claude Code 2.1.220 startup smoke returned SessionStart additionalContext and the isolated marker was model-visible exactly."
             }
           },
           {
@@ -324,7 +324,7 @@
     {
       "target": "opencode",
       "surface": "cli",
-      "version": "1.18.4",
+      "version": "1.18.7",
       "platform": "darwin-arm64",
       "installed_mode": "isolated-xdg",
       "context": {
@@ -340,9 +340,9 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.4-isolated-request-smoke.json",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.7-isolated-request-smoke.json",
               "level": "installed-smoke",
-              "summary": "OpenCode 1.18.4 isolated-XDG request smoke returned the exact random continuity marker through the model-visible plugin system transformation."
+              "summary": "OpenCode 1.18.7 isolated-XDG request smoke returned the exact random continuity marker through the model-visible plugin system transformation."
             }
           },
           {

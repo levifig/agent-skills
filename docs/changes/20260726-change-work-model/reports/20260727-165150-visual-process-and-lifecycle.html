@@ -1,0 +1,246 @@
+<!-- source: change-work-model shaping conversation 2026-07-27 · authored report (snapshot semantics) · companion to 20260727-160756-review-codex-r1.html · updated same day for the target-release cohort model -->
+<meta charset="utf-8">
+<title>Loaf · Process &amp; Change Lifecycle</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1080px; margin: 0 auto; padding: 46px 24px 96px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 2rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.4rem; margin: 0 0 6px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .lede { color: var(--muted); max-width: 76ch; }
+  section { margin-top: 60px; }
+  code { font-family: var(--mono); font-size: .84em; }
+  .scroll { overflow-x: auto; padding-bottom: 6px; }
+  .note { font-family: var(--mono); font-size: .78rem; color: var(--muted); margin-top: 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; font-size: .78rem; color: var(--muted); }
+  .key { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  /* ============ process diagram ============ */
+  .process { min-width: 900px; margin-top: 20px; }
+  .phases { display: flex; gap: 26px; }
+  .phase { flex: 1; position: relative; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 14px 16px 14px; }
+  .phase + .phase::before { content: "→"; position: absolute; left: -21px; top: 46px; color: var(--muted); font-size: 1.15rem; }
+  .phase .pname { font-family: var(--serif); font-weight: 600; font-size: 1.05rem; }
+  .phase .store { font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; margin-bottom: 2px; }
+  .phase.sql { border-top: 3px solid var(--state); } .phase.sql .store { color: var(--state); }
+  .phase.git { border-top: 3px solid var(--accent-fill); } .phase.git .store { color: var(--accent); }
+  .phase.doc { border-top: 3px solid var(--ok); } .phase.doc .store { color: var(--ok); }
+  .items { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .item { font-family: var(--mono); font-size: .78rem; padding: 5px 10px; border-radius: 7px; background: var(--bg); border: 1px solid var(--line); }
+  .item b { font-family: var(--sans); font-weight: 650; }
+  .skills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .skill { font-family: var(--mono); font-size: .72rem; padding: 2px 9px; border-radius: 999px; background: var(--machine-soft); color: var(--machine); font-weight: 600; }
+  .substrate { margin-top: 14px; border: 1px dashed var(--line); border-radius: 10px; padding: 8px 14px; font-size: .8rem; color: var(--muted); display: flex; gap: 18px; flex-wrap: wrap; }
+  .substrate b { color: var(--ink); font-weight: 650; }
+  /* ============ lifecycle ============ */
+  .life { min-width: 940px; margin-top: 18px; }
+  .track { display: flex; align-items: stretch; gap: 0; }
+  .lstage { flex: 1; position: relative; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 11px 13px 10px; }
+  .lstage + .lstage { margin-left: 30px; }
+  .lstage::before { content: "→"; position: absolute; left: -23px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+  .lstage:first-child::before { content: none; }
+  .lstage .sname { font-weight: 700; font-size: .9rem; }
+  .lstage .ev { font-family: var(--mono); font-size: .7rem; color: var(--muted); margin-top: 5px; line-height: 1.5; }
+  .lstage.opt { border-style: dashed; }
+  .lstage.opt .sname::after { content: " (optional)"; font-weight: 400; font-size: .72rem; color: var(--muted); }
+  .s-cap .sname { color: var(--state); } .s-shape .sname { color: var(--accent); }
+  .s-pub .sname { color: var(--machine); } .s-exec .sname { color: var(--machine); }
+  .s-done .sname { color: var(--ok); }
+  .loop { font-family: var(--mono); font-size: .72rem; color: var(--muted); text-align: center; margin-top: 8px; }
+  .free { margin-top: 14px; border-radius: 10px; background: var(--ok-soft); color: var(--ok); padding: 10px 16px; font-size: .85rem; }
+  /* arc extras */
+  .arcbox { border: 1.5px solid var(--accent-fill); border-radius: 14px; padding: 16px 18px 14px; margin-top: 18px; position: relative; min-width: 940px; }
+  .arcbox .arclabel { position: absolute; top: -11px; left: 16px; background: var(--bg); padding: 0 8px; font-family: var(--mono); font-size: .74rem; color: var(--accent); font-weight: 700; }
+  .chain { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: .78rem; flex-wrap: nowrap; }
+  .cnode { padding: 7px 13px; border-radius: 8px; border: 1.5px solid var(--accent-fill); background: var(--panel); white-space: nowrap; }
+  .cnode small { display: block; font-size: .64rem; color: var(--muted); }
+  .cnode.terminal { border-color: var(--bad); border-style: dashed; }
+  .cnode.terminal.satisfied { border-color: var(--ok); border-style: solid; }
+  .clink { color: var(--muted); white-space: nowrap; }
+  .gates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .gdoor { border-radius: 10px; padding: 12px 15px; font-size: .84rem; }
+  .gdoor h4 { margin: 0 0 4px; font-size: .82rem; }
+  .gdoor.pre { background: var(--machine-soft); } .gdoor.pre h4 { color: var(--machine); }
+  .gdoor.stable-locked { background: var(--bad-soft); } .gdoor.stable-locked h4 { color: var(--bad); }
+  .gdoor.stable-open { background: var(--ok-soft); } .gdoor.stable-open h4 { color: var(--ok); }
+  .gdoor code { font-size: .74rem; }
+  .then { text-align: center; font-family: var(--mono); font-size: .78rem; color: var(--muted); margin: 16px 0 10px; }
+  @media (max-width: 700px) { .gates { grid-template-columns: 1fr; } }
+  footer { margin-top: 64px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">Loaf · Work Model Reference</div>
+  <h1>The Process, and a Change's Two Lives</h1>
+  <p class="lede">Top: the whole Loaf process, from a stray thought to distilled knowledge. Below: the lifecycle of one Change — first standalone, then inside an Arc, where the release gate earns its keep. Every state is derived from artifacts and git; nothing is stored as status.</p>
+
+  <section>
+    <div class="eyebrow">Diagram 1</div>
+    <h2>The Loaf Process</h2>
+    <div class="scroll">
+      <div class="process">
+        <div class="phases">
+          <div class="phase sql">
+            <div class="store">SQLite · branch-agnostic</div>
+            <div class="pname">Capture</div>
+            <div class="items">
+              <div class="item"><b>spark</b> — a passing thought</div>
+              <div class="item"><b>idea</b> — a formed concept</div>
+              <div class="item"><b>Intent</b> — a tracked direction</div>
+            </div>
+            <div class="skills"><span class="skill">/idea</span><span class="skill">/triage</span><span class="skill">/explore</span></div>
+          </div>
+          <div class="phase git">
+            <div class="store">git · docs/changes/ · on a branch</div>
+            <div class="pname">Change</div>
+            <div class="items">
+              <div class="item"><b>brief?</b> — the promoted ask</div>
+              <div class="item"><b>shape</b> — contract + criteria</div>
+              <div class="item"><b>plan? · design?</b> — the route</div>
+              <div class="item"><b>tasks/</b> — vertical slices</div>
+            </div>
+            <div class="skills"><span class="skill">/shape</span><span class="skill">publish → draft PR</span></div>
+          </div>
+          <div class="phase git">
+            <div class="store">git + forge · during</div>
+            <div class="pname">Deliver</div>
+            <div class="items">
+              <div class="item"><b>task</b> → atomic commit, into the change PR</div>
+              <div class="item"><b>checkbox flips</b> ride delivering commits</div>
+              <div class="item"><b>version</b> cut from landed work</div>
+            </div>
+            <div class="skills"><span class="skill">/implement</span><span class="skill">/ship</span><span class="skill">/release</span></div>
+          </div>
+          <div class="phase doc">
+            <div class="store">docs · post-implementation · rides the change PR</div>
+            <div class="pname">Distill</div>
+            <div class="items">
+              <div class="item"><b>docs/specs/</b> — current truth</div>
+              <div class="item"><b>ADRs</b> — decisions that held</div>
+              <div class="item"><b>knowledge base</b> — what's now known</div>
+            </div>
+            <div class="skills"><span class="skill">/reflect</span><span class="skill">/wrap</span></div>
+          </div>
+        </div>
+        <div class="substrate"><b>Journal (SQLite, always on):</b> every skill logs itself · decisions · discoveries · findings · wrap checkpoints — the substrate every phase writes into and continuity reads from</div>
+      </div>
+    </div>
+    <p class="note">boundary rule: a new problem discovered anywhere right of Capture goes <em>back</em> to Capture as an Intent — never absorbed as another task</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Diagram 2a</div>
+    <h2>Change lifecycle — standalone</h2>
+    <div class="scroll">
+      <div class="life">
+        <div class="track">
+          <div class="lstage s-cap opt">
+            <div class="sname">captured</div>
+            <div class="ev">brief.md + change.json only<br>legal, non-executable</div>
+          </div>
+          <div class="lstage s-shape">
+            <div class="sname">shaped</div>
+            <div class="ev">shape.md present<br>check: 0 violations · executable</div>
+          </div>
+          <div class="lstage s-pub opt">
+            <div class="sname">published</div>
+            <div class="ev">draft PR open<br>the shaping surface</div>
+          </div>
+          <div class="lstage s-exec">
+            <div class="sname">executing</div>
+            <div class="ev">commits flip tasks/ checkboxes<br>+ touch paths outside the folder</div>
+          </div>
+          <div class="lstage s-done">
+            <div class="sname">complete</div>
+            <div class="ev">criteria pass · tasks checked or descoped<br>verify optional here</div>
+          </div>
+        </div>
+        <div class="loop">⟳ executing repeats per task: pick tasks/TASK-NNN → atomic commit (boxes flip with the work) → PRs batch tasks → merge</div>
+        <div class="free">✓ <b>No gate involvement.</b> A standalone Change never blocks a release — the next <code>loaf release</code> of any kind simply includes whatever landed. Half-done is safe by construction: unstarted tasks are absent features, never broken ones.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Diagram 2b</div>
+    <h2>Change lifecycle — bound to a target release</h2>
+    <p class="lede">Same lifecycle per change — declaring <code>target_release</code> opts it into the strong gate, and the cohort (everything sharing the target) must finish before that version cuts stable.</p>
+    <div class="scroll">
+      <div class="arcbox">
+        <div class="arclabel">release cohort · target_release: 2.0.0</div>
+        <div class="chain">
+          <div class="cnode">member A<small>executed ✓ · receipt fresh ✓</small></div>
+          <div class="cnode">member B<small>executed ✓ · receipt fresh ✓</small></div>
+          <div class="cnode terminal">member C<small>shaped only — blocks 2.0.0</small></div>
+        </div>
+        <div class="gates">
+          <div class="gdoor pre">
+            <h4>◌ prerelease door — always open</h4>
+            <code>loaf release --bump prerelease</code> flows in every arc state — alphas keep shipping mid-arc.
+          </div>
+          <div class="gdoor stable-locked">
+            <h4>⛔ stable door — locked mid-arc</h4>
+            <code>release blocked: change "…" targets 2.0.0 but is not executed</code><br>
+            shaping-only merges can no longer open it (the proven 2026-07-25 attack).
+          </div>
+        </div>
+        <div class="then">… member C's tasks land (checkbox flips + paths outside docs/changes/) → <code>loaf change verify</code> runs the declared criteria → receipt commits (criteria digest + verified commit) …</div>
+        <div class="gates">
+          <div class="gdoor pre">
+            <h4>◌ prerelease door — still open</h4>
+            Nothing changes for alphas; they never depended on the arc.
+          </div>
+          <div class="gdoor stable-open">
+            <h4>✓ stable door — opens on evidence</h4>
+            materialized ∧ valid ∧ executed ∧ receipt current at HEAD.<br>
+            Receipt stale (a later commit beyond the receipt's own)? Preflight <b>re-runs verify</b> — fresh evidence, not stale trust. The cohort is complete — derived, nothing written.
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">a cohort exists the moment any change declares target_release: X — cutting X stable is blocked until the cohort finishes; every other release is unaffected · target_release is mutable: retargeting to a later version is the visible, reviewable exit; retargets are surfaced from history, never blocked · nothing freezes, nothing is written at completion</p>
+    <div class="legend">
+      <span class="key"><span class="swatch" style="background: var(--state)"></span> SQLite</span>
+      <span class="key"><span class="swatch" style="background: var(--accent-fill)"></span> git</span>
+      <span class="key"><span class="swatch" style="background: var(--machine)"></span> forge / ceremony</span>
+      <span class="key"><span class="swatch" style="background: var(--ok)"></span> evidence / done</span>
+      <span class="key"><span class="swatch" style="background: var(--bad)"></span> gate</span>
+    </div>
+  </section>
+
+  <footer>
+    <p>Authored report (snapshot, 2026-07-27) for the change-work-model shaping — companion to <span style="font-family: var(--mono)">20260727-codex-design-review.html</span> in this directory. Receipt semantics shown are the post-review verify-cache design (Codex 2.1 accepted). Derived states throughout; no status fields exist anywhere in this picture.</p>
+  </footer>
+</main>
