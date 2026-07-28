@@ -1,0 +1,133 @@
+<!-- source: change-work-model · kind review · slug implementation-round-3-codex · stamped 2026-07-28 03:56 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — implementation round 3 (Codex)</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h4 { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--bad); }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .fid { font-family: var(--mono); font-size: .82rem; color: var(--muted); min-width: 3em; }
+  .ftitle { font-weight: 600; flex: 1 1 340px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-blocker { background: var(--bad-soft); color: var(--bad); }
+  .sev-major { background: var(--accent-soft); color: var(--accent); }
+  .v-conf { background: var(--ok-soft); color: var(--ok); }
+  .d-fix { background: var(--bad-soft); color: var(--bad); }
+  .fbody { margin-top: 10px; display: grid; gap: 10px; }
+  .fbody > div { border-top: 1px solid var(--line); padding-top: 8px; }
+  .fbody p:last-child { margin-bottom: 0; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">change-work-model · reviews · implementation round 3 · Codex</div>
+  <h1>Implementation Review — Round 3 (Codex)</h1>
+  <p class="stamp">reviewed <b>2026-07-28</b> · Codex fresh thread over <b>git diff main...HEAD</b> at <b>dd2feaeb</b> · first Codex pass on implementation + reflect docs · verdict <b>REQUEST-CHANGES</b> · 2 blockers + 3 major · every finding independently verified against source before boarding</p>
+
+  <div class="panel verdict">
+    <p><b>Five findings, five confirmed, zero refuted.</b> Each lives in a surface the two prior rounds under-probed: the no-<code>--bump</code> default path (every fixture passed an explicit bump), the violations-vs-executability tier split, working-tree receipt reads, patch-context fence blindness, and the unenforced <code>Expect</code>. None re-litigates a settled decision; none duplicates the 13 folded findings. The un-draft of PR #141 stays held until these are dispositioned.</p>
+  </div>
+
+  <h2>Findings</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C3-1</span><span class="chip sev-blocker">blocker</span><span class="ftitle">Omitted <code>--bump</code> gates one version while the executor cuts another</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Codex claim</h4><p><code>change_release_gate.go:201</code> / <code>release_dry_run.go:443</code> — preflight's candidate defaults to the <i>current</i> version when <code>--bump</code> is omitted, but the executor then derives the real bump from <code>suggestReleaseBump(commits)</code>, so the gate checks the wrong cohort.</p></div>
+      <div><h4>Warden verification</h4><p>Confirmed by code read: <code>computeReleaseCandidateVersion</code> returns <code>current</code> on empty bump (both branches of its conditional — the prerelease guard is dead code), while <code>runReleaseDryRun</code> computes <code>bump := suggestReleaseBump(commits)</code> independently. Current <code>1.0.0</code>, incomplete <code>target_release: 1.1.0</code> cohort, one <code>feat</code> commit: preflight gates 1.0.0's cohort, release cuts 1.1.0 ungated. The default invocation is the bypass.</p></div>
+      <div><h4>Fix shape</h4><p>One candidate computation, shared: derive the effective bump (flag or suggestion) first, hand the same resolved candidate to both the gate and the executor. Fixture: no-flag invocation blocks on the suggested version's incomplete cohort.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C3-2</span><span class="chip sev-blocker">blocker</span><span class="ftitle">"Structurally valid" is enforced as "no violations" — executability and task findings never gate</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Codex claim</h4><p><code>change_release_gate.go:59</code> — the cohort loop checks only <code>report.Violations</code>; structural gaps, task-hygiene findings, and conversion findings are invisible to the gate.</p></div>
+      <div><h4>Warden verification</h4><p>Confirmed: the loop reads <code>len(report.Violations)</code> alone. <code>report.Executable</code> is never consulted, and task findings are produced by <code>loadChangeTasks</code> outside <code>evaluateChangeNode</code> entirely. A member with an empty Planning Contract, or banned task frontmatter, that still carries flips and a passing receipt releases — while <code>loaf change check</code> on the same folder fails. The contract term "structurally valid" (Scope) is broken.</p></div>
+      <div><h4>Fix shape</h4><p>The gate's structural test becomes the same composite check drives: violations + task findings + conversion findings block; executability gaps block cohort members (a contract with empty sections is not a contract the receipt can attest). Fixtures for each tier.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C3-3</span><span class="chip sev-major">major</span><span class="ftitle">Receipt is read from the working tree, not committed HEAD</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Codex claim</h4><p><code>change_verify.go:256</code> — preflight loads <code>receipts/verify.json</code> via the filesystem, so an uncommitted receipt with <code>verified_commit == HEAD</code> reads as fresh, contradicting ADR-023's committed-evidence guarantee.</p></div>
+      <div><h4>Warden verification</h4><p>Confirmed: <code>loadChangeVerifyReceipt(folderAbs)</code> is an <code>os.ReadFile</code>. Run verify at HEAD, don't commit, run <code>release --dry-run</code>: the cohort reports verified on evidence that exists on one machine only. ADR-023 states "evidence is always committed before it is read" — the code contradicts its own ADR the day it shipped.</p></div>
+      <div><h4>Fix shape</h4><p>Read the receipt from HEAD (<code>git show HEAD:&lt;path&gt;</code>) in gate context; keep filesystem reads for <code>verify</code>'s own output. Fixture: uncommitted receipt blocks with a commit-the-receipt remedy.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C3-4</span><span class="chip sev-major">major</span><span class="ftitle">Fence tracking sees only the ±3-line patch, so distant fences are invisible</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Codex claim</h4><p><code>change_provenance.go:95</code> — fence state is inferred from a <code>--unified=3</code> patch; a checkbox inside a fenced block whose opening fence sits more than three unchanged lines above still scores as execution.</p></div>
+      <div><h4>Warden verification</h4><p>Confirmed — the code's own comment states the broken assumption: "unified=3 keeps nearby fence markers as context so fence state is trackable." Nearby is not guaranteed. The round-2 fixture kept its fence within context, which is why it passed.</p></div>
+      <div><h4>Fix shape</h4><p>Fence state must come from the full post-image file (<code>git show commit:path</code>), mapping flip lines to file positions — or a large <code>--unified</code> window with a full-file fallback. Fixture: fence opened ten lines above the flip.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C3-5</span><span class="chip sev-major">major</span><span class="ftitle"><code>Expect:</code> is parsed, documented, digested — and never enforced</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Codex claim</h4><p><code>change_verify.go:94</code> + the shape template — success is exclusively exit-code zero, so "Expect: specific output" is decorative; a command exiting 0 with wrong output gets <code>ok: true</code> and its receipt opens the gate.</p></div>
+      <div><h4>Warden verification</h4><p>Confirmed: <code>ok := runErr == nil &amp;&amp; exitCode == 0</code>; <code>Expect</code> feeds only the criteria digest. The template's own example teaches "Expect: exit 0 and/or specific output" — an author who writes an output expectation believes it is being checked. It is not.</p></div>
+      <div><h4>Fix shape</h4><p>Either enforce a defined <code>Expect</code> grammar (exit code + optional output-contains), or narrow the template and docs to what is enforced. Enforcing is the honest direction — the receipt already records the output digest. Grammar decision is the owner's; fixtures both directions.</p></div>
+    </div>
+  </div>
+
+  <h2>Proposed dispositions</h2>
+
+  <div class="panel">
+    <ul>
+      <li><b>All five: accept, fix before merge.</b> Every finding is a gate-integrity hole, and this change's thesis is gate integrity — shipping with known bypasses would recreate the defect class it exists to close.</li>
+      <li><b>Five task packets in this change</b> (same problem boundary, Decision 9): candidate unification (C3-1), structural-tier gate (C3-2), receipt-from-HEAD (C3-3), full-file fence state (C3-4), Expect enforcement (C3-5). Packets committed unchecked before execution, per the discipline this branch taught.</li>
+      <li><b>One decision for the owner inside C3-5:</b> enforce <code>Expect</code> (recommended) or narrow the documentation. Everything else is mechanical.</li>
+    </ul>
+  </div>
+
+  <footer>Authored snapshot — Codex fresh-thread round, retrieved from the session rollout after the relay poll missed the completion flip; every finding re-verified against source before boarding. Finding IDs: <code>change-work-model/20260728-035602/C3-n</code>.</footer>
+</main>
