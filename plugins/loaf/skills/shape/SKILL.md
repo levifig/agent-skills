@@ -7,7 +7,7 @@ description: >-
   optional blindspot pass, grilling, rea...
 user-invocable: true
 argument-hint: '[messy input to shape into a Change]'
-version: 2.0.0-alpha.14
+version: 2.0.0-alpha.15
 ---
 
 # Shape

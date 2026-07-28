@@ -12,7 +12,7 @@ description: >-
   Teaches the problem-boundary test (same problem → another task; different
   problem → Intent) and vertical-slice discipline. Not for quick capture (use
   idea) or open-ended divergent thinking (use brainstorm).
-version: 2.0.0-alpha.14
+version: 2.0.0-alpha.15
 ---
 
 # Shape
