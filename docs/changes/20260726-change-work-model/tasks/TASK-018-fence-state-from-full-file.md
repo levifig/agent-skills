@@ -29,9 +29,9 @@ loaf journal log "skill(implement): TASK-018 — fence state from full file"
 
 ## Steps
 
-- [ ] Compute fenced line ranges from the complete pre-image and post-image files (`git show <commit>^:<path>` / `git show <commit>:<path>` via the existing `outputCommand` seam), tracking hunk line numbers so each removed/added checkbox line maps to its file position; a transition counts only when the removed line is unfenced in the pre-image and the added line is unfenced in the post-image.
-- [ ] File-creation and file-deletion edges (no pre-image / no post-image) handled without error; added-checked in a new file stays a non-event as today.
-- [ ] Fixture: fence opened ten unchanged lines above the flipped checkbox — non-event; the round-2 near-fence fixture stays green; a genuine flip with a fenced example elsewhere in the file still counts.
+- [x] Compute fenced line ranges from the complete pre-image and post-image files (`git show <commit>^:<path>` / `git show <commit>:<path>` via the existing `outputCommand` seam), tracking hunk line numbers so each removed/added checkbox line maps to its file position; a transition counts only when the removed line is unfenced in the pre-image and the added line is unfenced in the post-image.
+- [x] File-creation and file-deletion edges (no pre-image / no post-image) handled without error; added-checked in a new file stays a non-event as today.
+- [x] Fixture: fence opened ten unchanged lines above the flipped checkbox — non-event; the round-2 near-fence fixture stays green; a genuine flip with a fenced example elsewhere in the file still counts.
 
 ## Verification
 
