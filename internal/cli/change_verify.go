@@ -232,6 +232,10 @@ func sha256HexBytes(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// loadChangeVerifyReceipt reads the receipt from the working tree. This is
+// verify's own surface — it writes that file — and never the gate's: gate-context
+// reads go through changeReceiptAtHEAD so evidence is always committed before it
+// is read (ADR-023).
 func loadChangeVerifyReceipt(folderAbs string) (changeVerifyReceipt, error) {
 	data, err := os.ReadFile(filepath.Join(folderAbs, filepath.FromSlash(changeVerifyReceiptFile)))
 	if err != nil {
@@ -244,22 +248,58 @@ func loadChangeVerifyReceipt(folderAbs string) (changeVerifyReceipt, error) {
 	return receipt, nil
 }
 
+func changeReceiptRelPath(folderRel string) string {
+	return filepath.ToSlash(filepath.Join(folderRel, changeVerifyReceiptFile))
+}
+
+// changeReceiptAtHEAD loads the receipt as committed at HEAD. found=false means
+// the HEAD tree carries no receipt; the working tree is never consulted for
+// content, so a receipt that exists on one machine only cannot satisfy the gate.
+func changeReceiptAtHEAD(rootPath, folderRel string, outputCommand changeGitOutput) (changeVerifyReceipt, bool, error) {
+	if outputCommand == nil {
+		outputCommand = commandOutput
+	}
+	receiptRel := changeReceiptRelPath(folderRel)
+	content, found, err := readCommittedOptional(rootPath, "HEAD", receiptRel, outputCommand)
+	if err != nil {
+		return changeVerifyReceipt{}, false, err
+	}
+	if !found {
+		return changeVerifyReceipt{}, false, nil
+	}
+	var receipt changeVerifyReceipt
+	if err := json.Unmarshal([]byte(content), &receipt); err != nil {
+		return changeVerifyReceipt{}, false, fmt.Errorf("parse committed receipt %s: %w", receiptRel, err)
+	}
+	return receipt, true, nil
+}
+
+func changeReceiptExistsInWorkingTree(rootPath, folderRel string) bool {
+	folderAbs := filepath.Join(rootPath, filepath.FromSlash(folderRel))
+	_, err := os.Stat(filepath.Join(folderAbs, filepath.FromSlash(changeVerifyReceiptFile)))
+	return err == nil
+}
+
 // changeReceiptStatus reports whether a receipt attests successful verification
-// that still covers HEAD. Failing criteria block even when the receipt is
-// fresh; the receipt's own commit never stales it; any later commit that
-// touches a non-receipt path stales the receipt with a re-verify demand
-// (Decision 13). Preflight never executes criteria — only loaf change verify does.
+// that still covers HEAD. The receipt is read from committed HEAD, never from the
+// working tree: an uncommitted receipt is evidence on one machine only and blocks
+// with its own reason. Failing criteria block even when the receipt is fresh; the
+// receipt's own commit never stales it; any later commit that touches a
+// non-receipt path stales the receipt with a re-verify demand (Decision 13).
+// Preflight never executes criteria — only loaf change verify does.
 func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputCommand changeGitOutput) (ok bool, reason string, err error) {
 	if outputCommand == nil {
 		outputCommand = commandOutput
 	}
-	folderAbs := filepath.Join(rootPath, filepath.FromSlash(folderRel))
-	receipt, err := loadChangeVerifyReceipt(folderAbs)
+	receipt, found, err := changeReceiptAtHEAD(rootPath, folderRel, outputCommand)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return false, "missing receipt", nil
-		}
 		return false, "", err
+	}
+	if !found {
+		if changeReceiptExistsInWorkingTree(rootPath, folderRel) {
+			return false, "receipt not committed at HEAD", nil
+		}
+		return false, "missing receipt", nil
 	}
 	criteria := parseChangeExecutableCriteria(node.Content)
 	digest := changeCriteriaDigest(criteria)
@@ -283,7 +323,7 @@ func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputComm
 	if err != nil {
 		return false, "", err
 	}
-	receiptRel := filepath.ToSlash(filepath.Join(folderRel, changeVerifyReceiptFile))
+	receiptRel := changeReceiptRelPath(folderRel)
 	for _, commit := range strings.Split(strings.TrimSpace(logOut), "\n") {
 		commit = strings.TrimSpace(commit)
 		if commit == "" {

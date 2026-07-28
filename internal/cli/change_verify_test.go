@@ -213,6 +213,83 @@ func TestChangeVerifyV5ReceiptDigestExpiryViaChangeReceiptStatus(t *testing.T) {
 	}
 }
 
+// TASK-017 / C3-3: the gate reads the receipt from committed HEAD, so an
+// uncommitted receipt is evidence on one machine only and never opens the gate,
+// while a dirty working tree cannot close it either.
+func TestChangeReceiptStatusReadsCommittedHEADNotWorkingTree(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+	body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
+	dir := writeNewLayoutChange(t, repo, "20260728-head-receipt", "head-receipt", "1.0.0", body)
+	flipExecuteChange(t, repo, dir, "head-receipt")
+	folderRel := filepath.Join("docs", "changes", "20260728-head-receipt")
+	receiptPath := filepath.Join(dir, "receipts", "verify.json")
+
+	node, err := assembleChangeNodeFromFolder(repo, filepath.Join(repo, folderRel))
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+
+	// Never verified: no receipt anywhere.
+	ok, reason, statusErr := changeReceiptStatus(repo, folderRel, node, nil)
+	if statusErr != nil || ok || reason != "missing receipt" {
+		t.Fatalf("never verified: ok=%v reason=%q err=%v, want missing receipt", ok, reason, statusErr)
+	}
+
+	// Verified at HEAD but nobody committed the receipt: blocks distinctly.
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v\n%s", err, stdout.String())
+	}
+	passing, err := os.ReadFile(receiptPath)
+	if err != nil {
+		t.Fatalf("ReadFile receipt: %v", err)
+	}
+	ok, reason, statusErr = changeReceiptStatus(repo, folderRel, node, nil)
+	if statusErr != nil || ok || reason != "receipt not committed at HEAD" {
+		t.Fatalf("uncommitted receipt: ok=%v reason=%q err=%v, want not-committed block", ok, reason, statusErr)
+	}
+	if msg := formatChangeReceiptBlock("head-receipt", "1.0.0", reason, filepath.ToSlash(folderRel)); !strings.Contains(msg, "commit the receipt") {
+		t.Fatalf("block message = %q, want commit-the-receipt remedy", msg)
+	}
+
+	// The same receipt, committed, proceeds.
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+	ok, reason, statusErr = changeReceiptStatus(repo, folderRel, node, nil)
+	if statusErr != nil || !ok {
+		t.Fatalf("committed receipt: ok=%v reason=%q err=%v, want pass", ok, reason, statusErr)
+	}
+
+	// Dirty working tree is irrelevant: a locally failing receipt cannot close the gate.
+	var mangled changeVerifyReceipt
+	if err := json.Unmarshal(passing, &mangled); err != nil {
+		t.Fatalf("unmarshal receipt: %v", err)
+	}
+	for i := range mangled.Results {
+		mangled.Results[i].OK = false
+	}
+	mangledData, err := json.MarshalIndent(mangled, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal mangled receipt: %v", err)
+	}
+	if err := os.WriteFile(receiptPath, append(mangledData, '\n'), 0o644); err != nil {
+		t.Fatalf("WriteFile mangled receipt: %v", err)
+	}
+	ok, reason, statusErr = changeReceiptStatus(repo, folderRel, node, nil)
+	if statusErr != nil || !ok {
+		t.Fatalf("working-tree edit must not affect the gate: ok=%v reason=%q err=%v", ok, reason, statusErr)
+	}
+
+	// Nor can deleting it locally.
+	if err := os.Remove(receiptPath); err != nil {
+		t.Fatalf("Remove receipt: %v", err)
+	}
+	ok, reason, statusErr = changeReceiptStatus(repo, folderRel, node, nil)
+	if statusErr != nil || !ok {
+		t.Fatalf("working-tree delete must not affect the gate: ok=%v reason=%q err=%v", ok, reason, statusErr)
+	}
+}
+
 func TestChangeVerifyV5ReceiptOwnCommitExemption(t *testing.T) {
 	repo := initCLIGitRepo(t)
 	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")

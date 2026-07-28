@@ -31,9 +31,9 @@ loaf journal log "skill(implement): TASK-017 — receipt reads from HEAD"
 
 ## Steps
 
-- [ ] Gate-context receipt load reads `HEAD:<folder>/receipts/verify.json` via `outputCommand`; missing-at-HEAD distinguishes "missing receipt" (never verified) from "receipt not committed" (working-tree-only) with the remedy named.
-- [ ] Freshness (`verified_commit` vs HEAD, later non-receipt paths) and digest expiry operate on the committed receipt; the receipt's-own-commit exemption stays green.
-- [ ] Fixtures: uncommitted passing receipt blocks with the not-committed reason; the same receipt committed proceeds; a committed receipt with a dirty working tree still proceeds (working tree is irrelevant to the gate).
+- [x] Gate-context receipt load reads `HEAD:<folder>/receipts/verify.json` via `outputCommand`; missing-at-HEAD distinguishes "missing receipt" (never verified) from "receipt not committed" (working-tree-only) with the remedy named.
+- [x] Freshness (`verified_commit` vs HEAD, later non-receipt paths) and digest expiry operate on the committed receipt; the receipt's-own-commit exemption stays green.
+- [x] Fixtures: uncommitted passing receipt blocks with the not-committed reason; the same receipt committed proceeds; a committed receipt with a dirty working tree still proceeds (working tree is irrelevant to the gate).
 
 ## Verification
 
