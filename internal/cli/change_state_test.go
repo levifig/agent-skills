@@ -422,7 +422,8 @@ func TestChangeShowListSurfaceStructuralLoadError(t *testing.T) {
 		t.Fatalf("show victim: %v\n%s", err, stdout.String())
 	}
 	showOut := stripANSI(stdout.String())
-	if !strings.Contains(showOut, "state:") || !strings.Contains(showOut, "verified") {
+	if !strings.Contains(showOut, "state:") {
+		t.Fatalf("show missing readable state line; got:\n%s", showOut)
 	}
 	if strings.Contains(showOut, "state:    verified") || strings.Contains(showOut, "state: verified") {
 		t.Fatalf("victim must demote under structural load error; got:\n%s", showOut)
@@ -617,5 +618,81 @@ func TestReleaseCohortGatePinsHEADOnce(t *testing.T) {
 	}
 	if revParseHEAD != 1 {
 		t.Fatalf("gate rev-parse HEAD count = %d, want exactly 1 pin", revParseHEAD)
+	}
+}
+
+// TASK-029: a truncated committed receipt demotes conservatively and surfaces
+// the load error on show, list, and check --json (same warning plumbing).
+func TestChangeStateTruncatedReceiptSurfacesWarning(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-trunc-receipt", "trunc-receipt", "1.0.0", "")
+	flipExecuteChange(t, repo, dir, "trunc-receipt")
+	folderRel := relFromRoot(repo, dir)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v\n%s", err, stdout.String())
+	}
+	commitAllChangeTest(t, repo, "chore: commit valid receipt")
+	if got := changeShowState(t, repo, folderRel); got != "verified" {
+		t.Fatalf("baseline = %q, want verified", got)
+	}
+
+	receiptPath := filepath.Join(dir, "receipts", "verify.json")
+	if err := os.WriteFile(receiptPath, []byte(`{"schema_version":1,"cri`), 0o644); err != nil {
+		t.Fatalf("WriteFile truncated receipt: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit truncated receipt")
+
+	stdout.Reset()
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "show", folderRel}); err != nil {
+		t.Fatalf("show: %v\n%s", err, stdout.String())
+	}
+	showOut := stripANSI(stdout.String())
+	if strings.Contains(showOut, "state:    verified") || strings.Contains(showOut, "state: verified") {
+		t.Fatalf("truncated receipt must demote; got:\n%s", showOut)
+	}
+	if !strings.Contains(showOut, "warn:") || !strings.Contains(showOut, "receipt evaluation failed:") {
+		t.Fatalf("show must surface receipt warning; got:\n%s", showOut)
+	}
+
+	stdout.Reset()
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "list", "--json"}); err != nil {
+		t.Fatalf("list: %v\n%s", err, stdout.String())
+	}
+	var list changeListUnitJSON
+	if err := json.Unmarshal(stdout.Bytes(), &list); err != nil {
+		t.Fatalf("Unmarshal list: %v", err)
+	}
+	var unit *changeListUnit
+	for i := range list.Units {
+		if list.Units[i].Slug == "trunc-receipt" {
+			unit = &list.Units[i]
+			break
+		}
+	}
+	if unit == nil {
+		t.Fatalf("list missing trunc-receipt: %#v", list.Units)
+	}
+	if unit.State == "verified" {
+		t.Fatalf("list state = verified, want demoted")
+	}
+	if !findingsContain(unit.Warnings, "receipt evaluation failed:") {
+		t.Fatalf("list unit warnings = %#v", unit.Warnings)
+	}
+
+	stdout.Reset()
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "check", folderRel, "--json"}); err != nil {
+		t.Fatalf("check: %v\n%s", err, stdout.String())
+	}
+	var check changeCheckJSON
+	if err := json.Unmarshal(stdout.Bytes(), &check); err != nil {
+		t.Fatalf("Unmarshal check: %v", err)
+	}
+	if check.State == "verified" {
+		t.Fatalf("check JSON state = verified, want demoted")
+	}
+	if !findingsContain(check.Warnings, "receipt evaluation failed:") {
+		t.Fatalf("check JSON warnings = %#v, want receipt evaluation failed", check.Warnings)
 	}
 }

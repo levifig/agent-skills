@@ -364,17 +364,18 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 	}
 	passed := exitCode == 0
 
+	state, stateWarnings := deriveChangeStateDetailed(rootPath, node, changeEvidenceGitOutput)
 	result := changeCheckJSON{
 		Command:    "change check",
 		Folder:     relFromRoot(rootPath, folder),
 		Layout:     node.Layout,
 		Passed:     passed,
-		State:      deriveChangeState(rootPath, node, changeEvidenceGitOutput),
+		State:      state,
 		Executable: report.Executable,
 		Captured:   node.CapturedOnly,
 		ExitCode:   exitCode,
 		Findings:   findings,
-		Warnings:   report.Warnings,
+		Warnings:   sortedUnique(append(append([]string{}, report.Warnings...), stateWarnings...)),
 		Gaps:       report.Gaps,
 		Notices:    notices,
 	}

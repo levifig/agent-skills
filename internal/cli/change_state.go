@@ -40,7 +40,11 @@ func deriveChangeStateDetailed(rootPath string, node changeNode, outputCommand c
 		return "shaped", warnings
 	}
 	status, err := changeFolderExecuted(rootPath, node.Folder, node.Layout, outputCommand)
-	if err != nil || !status.PathExecuted {
+	if err != nil {
+		warnings = append(warnings, "execution provenance failed: "+err.Error())
+		return "executable", warnings
+	}
+	if !status.PathExecuted {
 		return "executable", warnings
 	}
 	if node.TargetRelease != "" {
@@ -51,6 +55,9 @@ func deriveChangeStateDetailed(rootPath string, node changeNode, outputCommand c
 			ok, receiptErr, clean, evalErr := evaluateVerifiedRungAtCommit(rootPath, node, evidenceGit)
 			if evalErr != "" {
 				warnings = append(warnings, "structural evaluation failed: "+evalErr)
+			}
+			if receiptErr != nil {
+				warnings = append(warnings, "receipt evaluation failed: "+receiptErr.Error())
 			}
 			if receiptErr == nil && ok && clean {
 				return "verified", warnings

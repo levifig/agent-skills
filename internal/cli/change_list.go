@@ -75,8 +75,11 @@ func (r Runner) runChangeListUnits(args []string, out io.Writer, rootPath string
 		if options.target != "" && node.TargetRelease != options.target {
 			continue
 		}
-		status, _ := changeFolderExecuted(rootPath, node.Folder, node.Layout, commandOutput)
+		status, statusErr := changeFolderExecuted(rootPath, node.Folder, node.Layout, commandOutput)
 		state, stateWarnings := deriveChangeStateDetailed(rootPath, node, changeEvidenceGitOutput)
+		if statusErr != nil {
+			stateWarnings = append(stateWarnings, "execution provenance failed: "+statusErr.Error())
+		}
 		units = append(units, changeListUnit{
 			Slug:          node.Slug,
 			Folder:        node.Folder,

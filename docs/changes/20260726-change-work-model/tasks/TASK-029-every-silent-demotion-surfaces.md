@@ -28,9 +28,9 @@ loaf journal log "skill(implement): TASK-029 — every silent demotion surfaces"
 
 ## Steps
 
-- [ ] Provenance and receipt errors on the state path surface through the same warning plumbing TASK-027 built, on `show`, `list`, and `check --json`; displayed states stay conservative.
-- [ ] Fixture: a truncated committed receipt yields the conservative state plus a visible warning on all three surfaces.
-- [ ] The empty conditional becomes a real assertion (state line present and readable), and the surrounding fixture's claims match what it checks.
+- [x] Provenance and receipt errors on the state path surface through the same warning plumbing TASK-027 built, on `show`, `list`, and `check --json`; displayed states stay conservative.
+- [x] Fixture: a truncated committed receipt yields the conservative state plus a visible warning on all three surfaces.
+- [x] The empty conditional becomes a real assertion (state line present and readable), and the surrounding fixture's claims match what it checks.
 
 ## Verification
 
