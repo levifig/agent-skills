@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -56,9 +57,19 @@ func releaseCohortPreflightWithOutput(rootPath, candidate string, outputCommand 
 			blocked = append(blocked, formatChangeExecutionBlock(node.Slug, candidate, node.Layout, changeExecutionStatus{}, true))
 			continue
 		}
-		report := evaluateChangeNode(node, "")
+		report, reportErr := changeCohortStructuralReport(rootPath, node, outputCommand)
+		if reportErr != nil {
+			return fmt.Errorf("release blocked: cannot judge structural validity for %q: %w", node.Slug, reportErr)
+		}
+		folderRel := filepath.ToSlash(node.Folder)
 		if len(report.Violations) != 0 {
-			blocked = append(blocked, fmt.Sprintf("change %q targets %s but is structurally invalid", node.Slug, candidate))
+			blocked = append(blocked, fmt.Sprintf("change %q targets %s but is structurally invalid (%s); run: loaf change check %s",
+				node.Slug, candidate, strings.Join(report.Violations, ", "), folderRel))
+			continue
+		}
+		if !report.Executable {
+			blocked = append(blocked, fmt.Sprintf("change %q targets %s but is not executable (contract gaps: %s); run: loaf change check %s",
+				node.Slug, candidate, strings.Join(report.Gaps, ", "), folderRel))
 			continue
 		}
 		status, err := changeFolderExecuted(rootPath, node.Folder, node.Layout, outputCommand)
@@ -94,6 +105,16 @@ func releaseCohortPreflightWithOutput(rootPath, candidate string, outputCommand 
 		return fmt.Errorf("%s", strings.Join(blocked, "; "))
 	}
 	return nil
+}
+
+// changeCohortStructuralReport is the gate's structural tier: the same composite
+// `loaf change check` reports — contract evaluation (violations plus
+// contract-section gaps) folded together with task-hygiene and conversion
+// findings. Executability here is contract-section completeness, never checkbox
+// completion: an unchecked task on a verified member stays legal descoped work.
+func changeCohortStructuralReport(rootPath string, node changeNode, outputCommand changeGitOutput) (changeCheckReport, error) {
+	folderAbs := filepath.Join(rootPath, filepath.FromSlash(node.Folder))
+	return applyChangeStructuralFindings(evaluateChangeNode(node, ""), rootPath, folderAbs, node, outputCommand)
 }
 
 func emptyAsNone(value string) string {

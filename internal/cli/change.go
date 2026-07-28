@@ -347,21 +347,9 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 	if node.CapturedOnly {
 		report.Warnings = append(report.Warnings, "captured, not shaped (brief-only folder)")
 	}
-	if node.Layout == changeLayoutNew {
-		_, taskFindings, taskWarnings := loadChangeTasks(rootPath, folder, node)
-		report.Violations = append(report.Violations, taskFindings...)
-		report.Warnings = append(report.Warnings, taskWarnings...)
-		folderRel := relFromRoot(rootPath, folder)
-		conversionFindings, convErr := conversionPreCheckedFindings(rootPath, folderRel, commandOutput)
-		if convErr != nil {
-			return convErr
-		}
-		report.Violations = append(report.Violations, conversionFindings...)
-		report.Violations = sortedUnique(report.Violations)
-		report.Warnings = sortedUnique(report.Warnings)
-		if len(taskFindings) > 0 || len(conversionFindings) > 0 {
-			report.Executable = false
-		}
+	report, composeErr := applyChangeStructuralFindings(report, rootPath, folder, node, commandOutput)
+	if composeErr != nil {
+		return composeErr
 	}
 
 	requireFail := options.requireExecutable && !report.Executable
@@ -709,6 +697,33 @@ func evaluateChangeNode(node changeNode, currentBranch string) changeCheckReport
 	legacy.Violations = append(append([]string{}, report.Violations...), legacy.Violations...)
 	legacy.Violations = sortedUnique(legacy.Violations)
 	return legacy
+}
+
+// applyChangeStructuralFindings folds the structural surface that lives outside
+// evaluateChangeNode into a report: task-hygiene findings from tasks/ and
+// pre-checked conversion findings from history, both blocking, plus task
+// warnings, which never block. Executability is downgraded when either fires.
+// `loaf change check` and the release cohort gate share this composite so
+// "structurally valid" means the same thing at both surfaces — a gate that
+// judged violations alone let contract gaps and banned task frontmatter release.
+func applyChangeStructuralFindings(report changeCheckReport, rootPath, folderAbs string, node changeNode, outputCommand changeGitOutput) (changeCheckReport, error) {
+	if node.Layout != changeLayoutNew {
+		return report, nil
+	}
+	_, taskFindings, taskWarnings := loadChangeTasks(rootPath, folderAbs, node)
+	report.Violations = append(report.Violations, taskFindings...)
+	report.Warnings = append(report.Warnings, taskWarnings...)
+	conversionFindings, err := conversionPreCheckedFindings(rootPath, relFromRoot(rootPath, folderAbs), outputCommand)
+	if err != nil {
+		return report, err
+	}
+	report.Violations = append(report.Violations, conversionFindings...)
+	report.Violations = sortedUnique(report.Violations)
+	report.Warnings = sortedUnique(report.Warnings)
+	if len(taskFindings) > 0 || len(conversionFindings) > 0 {
+		report.Executable = false
+	}
+	return report, nil
 }
 
 // applyChangeContractSections checks Product + executable section presence/authorship

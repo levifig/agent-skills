@@ -32,9 +32,9 @@ loaf journal log "skill(implement): TASK-016 — gate structural tier"
 
 ## Steps
 
-- [ ] Cohort members block when the composite structural surface fails: violations, task-hygiene findings, conversion findings, or executability gaps — with block messages distinguishing "structurally invalid" from "not executable (contract gaps: …)".
-- [ ] The composite is shared with `check`, not re-implemented — one helper, two consumers.
-- [ ] Fixtures: a member with an empty Planning Contract (gap, zero violations) blocks; a member with banned task frontmatter blocks; warnings alone never block; a fully valid member with flips and receipt still proceeds.
+- [x] Cohort members block when the composite structural surface fails: violations, task-hygiene findings, conversion findings, or executability gaps — with block messages distinguishing "structurally invalid" from "not executable (contract gaps: …)".
+- [x] The composite is shared with `check`, not re-implemented — one helper, two consumers.
+- [x] Fixtures: a member with an empty Planning Contract (gap, zero violations) blocks; a member with banned task frontmatter blocks; warnings alone never block; a fully valid member with flips and receipt still proceeds.
 
 ## Verification
 

@@ -608,7 +608,6 @@ func TestReleaseCohortGateV5FreshnessRerunAndReceiptOwnCommit(t *testing.T) {
 	}
 }
 
-
 func TestReleaseCohortGateV5PlanMdEditStalesNotExpires(t *testing.T) {
 	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
 	body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
@@ -694,5 +693,156 @@ func TestReleaseCohortGateV5RetargetAfterVerifyRequiresRerun(t *testing.T) {
 	commitAllChangeTest(t, repo, "chore: re-verify after retarget")
 	if err := releaseCohortPreflight(repo, "2.1.0", nil); err != nil {
 		t.Fatalf("re-verify after retarget should open gate: %v", err)
+	}
+}
+
+// --- TASK-016: the gate's structural tier is the composite check reports ---
+
+func cohortStructuralReportForSlug(t *testing.T, repo, slug string) changeCheckReport {
+	t.Helper()
+	nodes, err := loadChangeNodesAtHEAD(repo)
+	if err != nil {
+		t.Fatalf("loadChangeNodesAtHEAD: %v", err)
+	}
+	for _, node := range nodes {
+		if node.Slug != slug {
+			continue
+		}
+		report, reportErr := changeCohortStructuralReport(repo, node, commandOutput)
+		if reportErr != nil {
+			t.Fatalf("changeCohortStructuralReport: %v", reportErr)
+		}
+		return report
+	}
+	t.Fatalf("no committed change %q at HEAD", slug)
+	return changeCheckReport{}
+}
+
+func TestReleaseCohortGateBlocksExecutabilityGap(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+	gapBody := strings.Replace(authoredShapeBody(),
+		"## Planning Contract\n\n### Approach\n\nHow.",
+		"## Planning Contract\n\n<!-- not shaped yet -->", 1)
+	dir := writeNewLayoutChange(t, repo, "20260727-gap-member", "gap-member", "1.0.0", gapBody)
+	flipExecuteChange(t, repo, dir, "gap-member")
+	folderRel := filepath.Join("docs", "changes", "20260727-gap-member")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+
+	// Zero violations, one contract gap: the tier the old gate could not see.
+	report := cohortStructuralReportForSlug(t, repo, "gap-member")
+	if len(report.Violations) != 0 || report.Executable {
+		t.Fatalf("report = %+v, want zero violations and a gap", report)
+	}
+
+	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), `change "gap-member" targets 1.0.0 but is not executable (contract gaps: Planning Contract (empty))`) {
+		t.Fatalf("gate err = %v, want the executability-gap block", gateErr)
+	}
+	if strings.Contains(gateErr.Error(), "structurally invalid") {
+		t.Fatalf("a gap is not a violation; got: %v", gateErr)
+	}
+	if !strings.Contains(gateErr.Error(), "run: loaf change check "+filepath.ToSlash(folderRel)) {
+		t.Fatalf("want mechanical remedy naming check; got: %v", gateErr)
+	}
+
+	// check agrees on the same folder — one composite, two consumers.
+	var checkOut bytes.Buffer
+	checkErr := (Runner{Stdout: &checkOut, WorkingDir: repo}).Run([]string{"change", "check", folderRel, "--require-executable", "--json"})
+	if checkErr == nil {
+		t.Fatalf("change check --require-executable should fail on the same folder\n%s", checkOut.String())
+	}
+	for _, want := range []string{`"executable": false`, "Planning Contract (empty)"} {
+		if !strings.Contains(checkOut.String(), want) {
+			t.Fatalf("check output = %s, want %q", checkOut.String(), want)
+		}
+	}
+
+	// Shaping the contract closes the gap; re-verify and the gate opens.
+	if err := os.WriteFile(filepath.Join(dir, "shape.md"), []byte(authoredShapeBody()), 0o644); err != nil {
+		t.Fatalf("WriteFile shape: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: author the Planning Contract")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("re-verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: re-verify after shaping")
+	if err := releaseCohortPreflight(repo, "1.0.0", nil); err != nil {
+		t.Fatalf("shaped, executed, verified member should proceed: %v", err)
+	}
+}
+
+func TestReleaseCohortGateBlocksTaskHygieneAndNeverBlocksOnWarnings(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-hygiene-member", "hygiene-member", "1.0.0", "")
+	flipExecuteChange(t, repo, dir, "hygiene-member")
+	folderRel := filepath.Join("docs", "changes", "20260727-hygiene-member")
+	later := filepath.Join(dir, "tasks", "TASK-002-later.md")
+	if err := os.WriteFile(later, []byte("---\nchange: hygiene-member\nid: TASK-002\ntitle: Later\nstatus: in-progress\n---\n\n# Later\n\n## Steps\n\n- [ ] Descoped\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile TASK-002: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: add a later task")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+
+	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), `change "hygiene-member" targets 1.0.0 but is structurally invalid`) {
+		t.Fatalf("gate err = %v, want the task-hygiene block", gateErr)
+	}
+	for _, want := range []string{"TASK-002-later.md", `task frontmatter key "status" is banned`} {
+		if !strings.Contains(gateErr.Error(), want) {
+			t.Fatalf("gate err = %v, want %q named", gateErr, want)
+		}
+	}
+
+	// Drop the banned key, keep TASK-002 unchecked (legal descoped work) and add a
+	// zero-checkbox coordination task (warning only).
+	if err := os.WriteFile(later, []byte("---\nchange: hygiene-member\nid: TASK-002\ntitle: Later\n---\n\n# Later\n\n## Steps\n\n- [ ] Descoped\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile TASK-002 repair: %v", err)
+	}
+	parent := filepath.Join(dir, "tasks", "TASK-003-coordination.md")
+	if err := os.WriteFile(parent, []byte("---\nchange: hygiene-member\nid: TASK-003\ntitle: Coordination\n---\n\n# Coordination\n\nNo boxes here.\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile TASK-003: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: drop the banned key")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("re-verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: re-verify after repair")
+
+	report := cohortStructuralReportForSlug(t, repo, "hygiene-member")
+	if len(report.Violations) != 0 || !report.Executable {
+		t.Fatalf("report = %+v, want a clean composite", report)
+	}
+	if len(report.Warnings) == 0 {
+		t.Fatal("fixture must carry at least one warning for the never-block claim to bite")
+	}
+	if err := releaseCohortPreflight(repo, "1.0.0", nil); err != nil {
+		t.Fatalf("warnings and unchecked descoped work must never block: %v", err)
+	}
+}
+
+func TestReleaseCohortGateBlocksConversionFinding(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
+	writeChangeFolder(t, repo, "20260727-prechecked-convert", changeDoc(
+		"---\nchange: prechecked-convert\ncreated: 2026-07-27\nbranch: prechecked-convert\ntarget_release: 2.0.0\n---\n",
+		append(productSections(), executableSections()...)...,
+	))
+	commitAllChangeTest(t, repo, "docs: add legacy targeted member")
+	atomicConvertFolder(t, repo, "20260727-prechecked-convert", "prechecked-convert", true)
+	commitAllChangeTest(t, repo, "docs: convert with a pre-checked box")
+
+	// Manufactured execution: a conversion finding is a violation at check, so it
+	// is a violation at the gate too.
+	gateErr := releaseCohortPreflight(repo, "2.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "is structurally invalid") {
+		t.Fatalf("gate err = %v, want the conversion block", gateErr)
+	}
+	if !strings.Contains(gateErr.Error(), "checked task checkbox") {
+		t.Fatalf("gate err = %v, want the conversion finding named", gateErr)
 	}
 }
