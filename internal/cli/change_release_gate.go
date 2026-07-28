@@ -19,6 +19,11 @@ func releaseCohortPreflightWithOutput(rootPath, candidate string, outputCommand 
 	if outputCommand == nil {
 		outputCommand = commandOutput
 	}
+	_, pinned, pinErr := pinEvidenceAtHEAD(rootPath, outputCommand)
+	if pinErr != nil {
+		return fmt.Errorf("release blocked: cannot pin HEAD for evidence: %w", pinErr)
+	}
+	outputCommand = pinned
 	if err := requireCompleteChangeHistory(rootPath, outputCommand); err != nil {
 		return fmt.Errorf("release blocked: cannot confirm complete Change history: %w", err)
 	}

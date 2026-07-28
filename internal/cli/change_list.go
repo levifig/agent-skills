@@ -76,7 +76,7 @@ func (r Runner) runChangeListUnits(args []string, out io.Writer, rootPath string
 			continue
 		}
 		status, _ := changeFolderExecuted(rootPath, node.Folder, node.Layout, commandOutput)
-		state, stateWarnings := deriveChangeStateDetailed(rootPath, node, commandOutput)
+		state, stateWarnings := deriveChangeStateDetailed(rootPath, node, changeEvidenceGitOutput)
 		units = append(units, changeListUnit{
 			Slug:          node.Slug,
 			Folder:        node.Folder,

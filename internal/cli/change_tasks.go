@@ -178,7 +178,7 @@ func (r Runner) runChangeShow(args []string, out io.Writer, rootPath string) err
 	report := evaluateChangeNode(node, currentChangeBranch(rootPath))
 	_, findings, warnings := loadChangeTasks(rootPath, folder, node, changeTaskContentWorkingTree, commandOutput)
 	prs := deriveChangePRSet(rootPath, folder)
-	state, stateWarnings := deriveChangeStateDetailed(rootPath, node, commandOutput)
+	state, stateWarnings := deriveChangeStateDetailed(rootPath, node, changeEvidenceGitOutput)
 	result := changeShowJSON{
 		Command:       "change show",
 		Change:        node.Slug,

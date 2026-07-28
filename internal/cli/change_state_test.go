@@ -397,8 +397,21 @@ func TestChangeShowListSurfaceStructuralLoadError(t *testing.T) {
 
 	old := changeEvidenceGitOutput
 	changeEvidenceGitOutput = func(cwd, name string, args ...string) (string, error) {
+		// Fault only the recursive docs/changes listing used to load HEAD nodes —
+		// not per-path ls-tree reads provenance uses for task pre-images.
 		if name == "git" && len(args) > 0 && args[0] == "ls-tree" {
-			return "", fmt.Errorf("read change.json: permission denied")
+			recursive, docsChanges := false, false
+			for _, a := range args {
+				if a == "-r" {
+					recursive = true
+				}
+				if a == "docs/changes" {
+					docsChanges = true
+				}
+			}
+			if recursive && docsChanges {
+				return "", fmt.Errorf("read change.json: permission denied")
+			}
 		}
 		return commandOutput(cwd, name, args...)
 	}
@@ -476,5 +489,133 @@ func TestChangeShowListSurfaceStructuralLoadError(t *testing.T) {
 	plain := stripANSI(stdout.String())
 	if !strings.Contains(plain, "warn:") || !strings.Contains(plain, "structural evaluation failed:") {
 		t.Fatalf("list plain must surface warn; got:\n%s", plain)
+	}
+}
+
+// TASK-028: receipt check receives the HEAD node (content + folder). An
+// uncommitted criteria edit or folder rename must not move the verified rung.
+func TestChangeStateVerifiedRungIgnoresDirtyCriteriaAndRename(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-head-receipt-node", "head-receipt-node", "1.0.0", "")
+	flipExecuteChange(t, repo, dir, "head-receipt-node")
+	folderRel := relFromRoot(repo, dir)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v\n%s", err, stdout.String())
+	}
+	commitAllChangeTest(t, repo, "chore: commit verified receipt")
+	if got := changeShowState(t, repo, folderRel); got != "verified" {
+		t.Fatalf("baseline state = %q, want verified", got)
+	}
+
+	// Dirty criteria on disk: working-tree shape would mismatch the receipt digest.
+	shapePath := filepath.Join(dir, "shape.md")
+	shape, err := os.ReadFile(shapePath)
+	if err != nil {
+		t.Fatalf("ReadFile shape: %v", err)
+	}
+	dirty := strings.Replace(string(shape), "Command: `true`", "Command: `false`", 1)
+	if dirty == string(shape) {
+		t.Fatal("fixture shape missing expected V1 command to dirty")
+	}
+	if err := os.WriteFile(shapePath, []byte(dirty), 0o644); err != nil {
+		t.Fatalf("WriteFile dirty shape: %v", err)
+	}
+	if got := changeShowState(t, repo, folderRel); got != "verified" {
+		t.Fatalf("dirty criteria demoted state to %q, want verified", got)
+	}
+
+	// Restore shape; a working-tree folder that does not match HEAD must still
+	// resolve the receipt via the HEAD node's folder (slug fallback).
+	if err := os.WriteFile(shapePath, shape, 0o644); err != nil {
+		t.Fatalf("restore shape: %v", err)
+	}
+	wtNode := mustAssembleNode(t, repo, folderRel)
+	wtNode.Folder = "docs/changes/20260727-head-receipt-renamed"
+	wtNode.Content = strings.Replace(wtNode.Content, "Command: `true`", "Command: `false`", 1)
+	_, evidenceGit, pinErr := pinEvidenceAtHEAD(repo, commandOutput)
+	if pinErr != nil {
+		t.Fatalf("pin: %v", pinErr)
+	}
+	ok, receiptErr, clean, evalErr := evaluateVerifiedRungAtCommit(repo, wtNode, evidenceGit)
+	if evalErr != "" || receiptErr != nil || !ok || !clean {
+		t.Fatalf("renamed+dirty WT node: ok=%v clean=%v receiptErr=%v evalErr=%q, want verified rung", ok, clean, receiptErr, evalErr)
+	}
+}
+
+// TASK-028: evidence derivation resolves HEAD once; subsequent evidence git args
+// carry the pinned SHA, so a mid-derivation commit cannot split the inputs.
+func TestChangeStateEvidencePinsHEADOnce(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-pin-head", "pin-head", "1.0.0", "")
+	flipExecuteChange(t, repo, dir, "pin-head")
+	folderRel := relFromRoot(repo, dir)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v\n%s", err, stdout.String())
+	}
+	commitAllChangeTest(t, repo, "chore: commit pin-head receipt")
+
+	node := mustAssembleNode(t, repo, folderRel)
+	var revParseHEAD int
+	var pinnedSHA string
+	var postPinSymbolic int
+	seam := func(cwd, name string, args ...string) (string, error) {
+		if name == "git" && len(args) >= 2 && args[0] == "rev-parse" && args[1] == "HEAD" {
+			revParseHEAD++
+			out, err := commandOutput(cwd, name, args...)
+			pinnedSHA = strings.TrimSpace(out)
+			return out, err
+		}
+		if pinnedSHA != "" {
+			for _, a := range args {
+				if a == "HEAD" || strings.HasPrefix(a, "HEAD:") || strings.HasSuffix(a, "..HEAD") || strings.HasPrefix(a, "HEAD..") {
+					postPinSymbolic++
+				}
+			}
+		}
+		return commandOutput(cwd, name, args...)
+	}
+	state, warnings := deriveChangeStateDetailed(repo, node, seam)
+	if state != "verified" {
+		t.Fatalf("state = %q warnings=%v, want verified", state, warnings)
+	}
+	if revParseHEAD != 1 {
+		t.Fatalf("rev-parse HEAD count = %d, want exactly 1 pin", revParseHEAD)
+	}
+	if pinnedSHA == "" {
+		t.Fatal("pin did not capture a SHA")
+	}
+	if postPinSymbolic != 0 {
+		t.Fatalf("post-pin symbolic HEAD tokens = %d, want 0", postPinSymbolic)
+	}
+}
+
+// TASK-028: gate preflight also pins HEAD once for the whole evidence derivation.
+func TestReleaseCohortGatePinsHEADOnce(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-gate-pin", "gate-pin", "1.0.0", "")
+	flipExecuteChange(t, repo, dir, "gate-pin")
+	folderRel := relFromRoot(repo, dir)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit gate-pin receipt")
+
+	var revParseHEAD int
+	seam := func(cwd, name string, args ...string) (string, error) {
+		if name == "git" && len(args) >= 2 && args[0] == "rev-parse" && args[1] == "HEAD" {
+			revParseHEAD++
+		}
+		return commandOutput(cwd, name, args...)
+	}
+	if err := releaseCohortPreflightWithOutput(repo, "1.0.0", seam, nil); err != nil {
+		t.Fatalf("gate: %v", err)
+	}
+	if revParseHEAD != 1 {
+		t.Fatalf("gate rev-parse HEAD count = %d, want exactly 1 pin", revParseHEAD)
 	}
 }

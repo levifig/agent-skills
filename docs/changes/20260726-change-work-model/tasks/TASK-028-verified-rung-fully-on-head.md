@@ -28,9 +28,9 @@ loaf journal log "skill(implement): TASK-028 — verified rung fully on HEAD"
 
 ## Steps
 
-- [ ] The rung's receipt check receives the HEAD node (content and folder) — an uncommitted criteria edit or folder rename changes nothing on the rung; fixture proves both directions.
-- [ ] Each evidence derivation (gate preflight; state rung) resolves `HEAD` to a SHA once and reads every input — nodes, task files, receipt — at that SHA; a commit landing mid-derivation cannot split the inputs.
-- [ ] The structural guard uses the threaded `outputCommand`; the package-level default remains only as the fallback when nil.
+- [x] The rung's receipt check receives the HEAD node (content and folder) — an uncommitted criteria edit or folder rename changes nothing on the rung; fixture proves both directions.
+- [x] Each evidence derivation (gate preflight; state rung) resolves `HEAD` to a SHA once and reads every input — nodes, task files, receipt — at that SHA; a commit landing mid-derivation cannot split the inputs.
+- [x] The structural guard uses the threaded `outputCommand`; the package-level default remains only as the fallback when nil.
 
 ## Verification
 

@@ -369,7 +369,7 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 		Folder:     relFromRoot(rootPath, folder),
 		Layout:     node.Layout,
 		Passed:     passed,
-		State:      deriveChangeState(rootPath, node, commandOutput),
+		State:      deriveChangeState(rootPath, node, changeEvidenceGitOutput),
 		Executable: report.Executable,
 		Captured:   node.CapturedOnly,
 		ExitCode:   exitCode,
