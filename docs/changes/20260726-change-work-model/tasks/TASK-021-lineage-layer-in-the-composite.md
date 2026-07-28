@@ -30,9 +30,9 @@ loaf journal log "skill(implement): TASK-021 — lineage layer in the composite"
 
 ## Steps
 
-- [ ] The gate's structural report includes lineage validation over the full loaded node set, through the same helper `check` uses — one composite, two consumers, no drift surface left between them.
-- [ ] Fixture: two folders with distinct dates and the same slug, both flip-executed with passing committed receipts, block at preflight with a structural finding naming the duplication; `check` on either folder reports the same finding.
-- [ ] Fixture: the existing single-member happy path stays green (no over-blocking from lineage findings that belong to other changes — findings scope to the member being judged, matching check's scoping rules).
+- [x] The gate's structural report includes lineage validation over the full loaded node set, through the same helper `check` uses — one composite, two consumers, no drift surface left between them.
+- [x] Fixture: two folders with distinct dates and the same slug, both flip-executed with passing committed receipts, block at preflight with a structural finding naming the duplication; `check` on either folder reports the same finding.
+- [x] Fixture: the existing single-member happy path stays green (no over-blocking from lineage findings that belong to other changes — findings scope to the member being judged, matching check's scoping rules).
 
 ## Verification
 

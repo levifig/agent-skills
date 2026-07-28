@@ -57,7 +57,7 @@ func releaseCohortPreflightWithOutput(rootPath, candidate string, outputCommand 
 			blocked = append(blocked, formatChangeExecutionBlock(node.Slug, candidate, node.Layout, changeExecutionStatus{}, true))
 			continue
 		}
-		report, reportErr := changeCohortStructuralReport(rootPath, node, outputCommand)
+		report, reportErr := changeCohortStructuralReport(rootPath, node, nodes, outputCommand)
 		if reportErr != nil {
 			return fmt.Errorf("release blocked: cannot judge structural validity for %q: %w", node.Slug, reportErr)
 		}
@@ -108,13 +108,14 @@ func releaseCohortPreflightWithOutput(rootPath, candidate string, outputCommand 
 }
 
 // changeCohortStructuralReport is the gate's structural tier: the same composite
-// `loaf change check` reports — contract evaluation (violations plus
-// contract-section gaps) folded together with task-hygiene and conversion
-// findings. Executability here is contract-section completeness, never checkbox
-// completion: an unchecked task on a verified member stays legal descoped work.
-func changeCohortStructuralReport(rootPath string, node changeNode, outputCommand changeGitOutput) (changeCheckReport, error) {
+// `loaf change check` reports — contract evaluation, lineage validation over the
+// full loaded node set, and task-hygiene/conversion findings. Executability here
+// is contract-section completeness, never checkbox completion: an unchecked task
+// on a verified member stays legal descoped work.
+func changeCohortStructuralReport(rootPath string, node changeNode, nodes []changeNode, outputCommand changeGitOutput) (changeCheckReport, error) {
 	folderAbs := filepath.Join(rootPath, filepath.FromSlash(node.Folder))
-	return applyChangeStructuralFindings(evaluateChangeNode(node, ""), rootPath, folderAbs, node, outputCommand)
+	report := evaluateChangeNode(node, "")
+	return composeChangeCheckReport(report, rootPath, folderAbs, node, nodes, outputCommand, false)
 }
 
 func emptyAsNone(value string) string {

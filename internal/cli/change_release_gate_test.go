@@ -767,7 +767,7 @@ func cohortStructuralReportForSlug(t *testing.T, repo, slug string) changeCheckR
 		if node.Slug != slug {
 			continue
 		}
-		report, reportErr := changeCohortStructuralReport(repo, node, commandOutput)
+		report, reportErr := changeCohortStructuralReport(repo, node, nodes, commandOutput)
 		if reportErr != nil {
 			t.Fatalf("changeCohortStructuralReport: %v", reportErr)
 		}
@@ -903,5 +903,66 @@ func TestReleaseCohortGateBlocksConversionFinding(t *testing.T) {
 	}
 	if !strings.Contains(gateErr.Error(), "checked task checkbox") {
 		t.Fatalf("gate err = %v, want the conversion finding named", gateErr)
+	}
+}
+
+// --- TASK-021: lineage validation joins the gate composite ---
+
+func TestReleaseCohortGateBlocksDuplicateSlugLineageFinding(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+	dirA := writeNewLayoutChange(t, repo, "20260727-dup-slug", "dup-slug", "1.0.0", "")
+	flipExecuteChange(t, repo, dirA, "dup-slug")
+	folderA := filepath.Join("docs", "changes", "20260727-dup-slug")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderA}); err != nil {
+		t.Fatalf("verify A: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit A receipt")
+
+	dirB := writeNewLayoutChange(t, repo, "20260728-dup-slug", "dup-slug", "1.0.0", "")
+	flipExecuteChange(t, repo, dirB, "dup-slug")
+	folderB := filepath.Join("docs", "changes", "20260728-dup-slug")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderB}); err != nil {
+		t.Fatalf("verify B: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit B receipt")
+
+	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "structurally invalid") {
+		t.Fatalf("gate err = %v, want structural block for duplicate slug", gateErr)
+	}
+	if !strings.Contains(gateErr.Error(), "duplicate Change slug") {
+		t.Fatalf("gate err = %v, want the duplication named", gateErr)
+	}
+
+	for _, folder := range []string{folderA, folderB} {
+		var stdout bytes.Buffer
+		checkErr := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "check", folder, "--json"})
+		if checkErr == nil {
+			t.Fatalf("check %s should fail for duplicate slug\n%s", folder, stdout.String())
+		}
+		if !strings.Contains(stdout.String(), "duplicate Change slug") {
+			t.Fatalf("check %s output = %q, want duplicate Change slug", folder, stdout.String())
+		}
+	}
+}
+
+func TestReleaseCohortGateLineageHappyPathUnaffectedByForeignLineageFindings(t *testing.T) {
+	// Single-member cohort in a clean repo stays green: lineage findings that
+	// belong to other changes must not over-block (matching check's scoping).
+	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-lineage-happy", "lineage-happy", "1.0.0", "")
+	flipExecuteChange(t, repo, dir, "lineage-happy")
+	folderRel := filepath.Join("docs", "changes", "20260727-lineage-happy")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit lineage-happy receipt")
+
+	report := cohortStructuralReportForSlug(t, repo, "lineage-happy")
+	if len(report.Violations) != 0 || !report.Executable {
+		t.Fatalf("report = %+v, want a clean composite", report)
+	}
+	if err := releaseCohortPreflight(repo, "1.0.0", nil); err != nil {
+		t.Fatalf("single-member happy path must stay green: %v", err)
 	}
 }

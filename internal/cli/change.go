@@ -332,13 +332,15 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 	}
 	_ = changeFile
 
-	changePath := node.ChangeFile
 	report := evaluateChangeNode(node, currentChangeBranch(rootPath))
 	nodes, indexErr := loadChangeNodes(rootPath)
 	if indexErr != nil {
 		return indexErr
 	}
-	report = applyLineageValidation(report, nodes, changePath, rootPath, options.requireExecutable)
+	report, composeErr := composeChangeCheckReport(report, rootPath, folder, node, nodes, commandOutput, options.requireExecutable)
+	if composeErr != nil {
+		return composeErr
+	}
 
 	var notices []string
 	if node.Layout == changeLayoutLegacy {
@@ -346,10 +348,6 @@ func (r Runner) runChangeCheck(args []string, out io.Writer, rootPath string) er
 	}
 	if node.CapturedOnly {
 		report.Warnings = append(report.Warnings, "captured, not shaped (brief-only folder)")
-	}
-	report, composeErr := applyChangeStructuralFindings(report, rootPath, folder, node, commandOutput)
-	if composeErr != nil {
-		return composeErr
 	}
 
 	requireFail := options.requireExecutable && !report.Executable
@@ -697,6 +695,14 @@ func evaluateChangeNode(node changeNode, currentBranch string) changeCheckReport
 	legacy.Violations = append(append([]string{}, report.Violations...), legacy.Violations...)
 	legacy.Violations = sortedUnique(legacy.Violations)
 	return legacy
+}
+
+// composeChangeCheckReport is the structural composite shared by `loaf change
+// check` and the release cohort gate: lineage validation over the loaded node
+// set, then task-hygiene and conversion findings. One helper, two consumers.
+func composeChangeCheckReport(report changeCheckReport, rootPath, folderAbs string, node changeNode, nodes []changeNode, outputCommand changeGitOutput, requireExecutable bool) (changeCheckReport, error) {
+	report = applyLineageValidation(report, nodes, node.ChangeFile, rootPath, requireExecutable)
+	return applyChangeStructuralFindings(report, rootPath, folderAbs, node, outputCommand)
 }
 
 // applyChangeStructuralFindings folds the structural surface that lives outside
