@@ -238,9 +238,11 @@ func parseChangeExecutableCriteria(shape string) []changeCriterion {
 // exactly what verify enforced before the grammar existed. Every other clause is
 // unenforceable: it lands in Advisory, is warned about, and never affects ok.
 type changeExpectation struct {
-	ExitCode int
-	Contains []string
-	Advisory []string
+	ExitCode     int
+	exitSeen     bool
+	ExitConflict string // non-empty when a second exit atom contradicts the first
+	Contains     []string
+	Advisory     []string
 }
 
 func parseChangeExpectation(expect string) changeExpectation {
@@ -253,7 +255,17 @@ func parseChangeExpectation(expect string) changeExpectation {
 		case !enforceable:
 			parsed.Advisory = append(parsed.Advisory, value)
 		case kind == "exit":
-			parsed.ExitCode, _ = strconv.Atoi(value)
+			code, _ := strconv.Atoi(value)
+			if parsed.exitSeen {
+				if parsed.ExitConflict == "" {
+					parsed.ExitConflict = fmt.Sprintf("%d and %d", parsed.ExitCode, code)
+				} else {
+					parsed.ExitConflict += fmt.Sprintf(" and %d", code)
+				}
+			} else {
+				parsed.ExitCode = code
+				parsed.exitSeen = true
+			}
 		case kind == "contains":
 			parsed.Contains = append(parsed.Contains, value)
 		}
@@ -319,6 +331,13 @@ func parseChangeExpectClause(clause string) (kind string, value string, enforcea
 // exit atom is always recorded, so the receipt states what was enforced even when
 // the criterion declared no Expect at all.
 func evaluateChangeExpectation(expectation changeExpectation, exitCode int, output string) []changeVerifyExpectCheck {
+	if expectation.ExitConflict != "" {
+		return []changeVerifyExpectCheck{{
+			Kind:  "exit-conflict",
+			Value: expectation.ExitConflict,
+			OK:    false,
+		}}
+	}
 	checks := []changeVerifyExpectCheck{{
 		Kind:  "exit",
 		Value: fmt.Sprintf("%d", expectation.ExitCode),
@@ -352,6 +371,9 @@ func changeExpectFailureNote(runErr error, exitCode int, checks []changeVerifyEx
 	for _, check := range checks {
 		if check.OK {
 			continue
+		}
+		if check.Kind == "exit-conflict" {
+			return fmt.Sprintf("  (contradictory exit atoms: %s)", check.Value)
 		}
 		if check.Kind == "contains" {
 			return fmt.Sprintf("  (output missing: contains `%s`)", check.Value)

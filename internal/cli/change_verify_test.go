@@ -338,6 +338,25 @@ func TestChangeExpectGrammarEnforcement(t *testing.T) {
 			wantChecks:   []changeVerifyExpectCheck{{Kind: "exit", Value: "0", OK: true}},
 			wantAdvisory: []string{"contains ok"},
 		},
+		{
+			name:     "duplicate exit atoms fail loudly",
+			expect:   "exit 1 and exit 0",
+			exitCode: 0,
+			wantOK:   false,
+			wantChecks: []changeVerifyExpectCheck{
+				{Kind: "exit-conflict", Value: "1 and 0", OK: false},
+			},
+		},
+		{
+			name:   "single exit with contains unchanged",
+			expect: "exit 0 and contains `ok`",
+			output: "ok\n",
+			wantOK: true,
+			wantChecks: []changeVerifyExpectCheck{
+				{Kind: "exit", Value: "0", OK: true},
+				{Kind: "contains", Value: "ok", OK: true},
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -363,6 +382,48 @@ func TestChangeExpectGrammarEnforcement(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestChangeVerifyDuplicateExitAtomsFailLoudly(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	body := shapeWithVerification("- **V1.** Contradictory. Command: `true`. Expect: exit 1 and exit 0.\n- **V2.** Still fine. Command: `echo ok`. Expect: exit 0 and contains `ok`.")
+	dir := writeNewLayoutChange(t, repo, "20260728-exit-conflict", "exit-conflict", "", body)
+	commitAllChangeTest(t, repo, "docs: shape exit-conflict")
+	folderRel := filepath.Join("docs", "changes", "20260728-exit-conflict")
+
+	criteria := parseChangeExecutableCriteria(string(mustRead(t, filepath.Join(dir, "shape.md"))))
+	digestBefore := changeCriteriaDigest(criteria)
+
+	var stdout bytes.Buffer
+	err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel})
+	if err == nil {
+		t.Fatalf("verify should fail on exit conflict\n%s", stdout.String())
+	}
+	printed := stripANSI(stdout.String())
+	if !strings.Contains(printed, "contradictory exit atoms: 1 and 0") {
+		t.Fatalf("stdout = %q, want plain failure naming both values", printed)
+	}
+
+	receipt := mustReadVerifyReceipt(t, dir)
+	if len(receipt.Results) < 1 {
+		t.Fatalf("results = %#v, want V1 recorded", receipt.Results)
+	}
+	v1 := receipt.Results[0]
+	if v1.OK {
+		t.Fatalf("V1 = %#v, want ok:false", v1)
+	}
+	if len(v1.ExpectChecks) != 1 || v1.ExpectChecks[0].Kind != "exit-conflict" || v1.ExpectChecks[0].Value != "1 and 0" || v1.ExpectChecks[0].OK {
+		t.Fatalf("V1 checks = %#v, want exit-conflict naming 1 and 0", v1.ExpectChecks)
+	}
+	v2 := receipt.Results[1]
+	if !v2.OK {
+		t.Fatalf("V2 = %#v, want unchanged pass for exit 0 and contains", v2)
+	}
+
+	digestAfter := changeCriteriaDigest(parseChangeExecutableCriteria(string(mustRead(t, filepath.Join(dir, "shape.md")))))
+	if digestBefore != digestAfter || digestBefore != receipt.CriteriaDigest {
+		t.Fatalf("criteria digest must be unaffected by parse results: before=%s after=%s receipt=%s", digestBefore, digestAfter, receipt.CriteriaDigest)
 	}
 }
 

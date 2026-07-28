@@ -28,10 +28,10 @@ loaf journal log "skill(implement): TASK-023 — duplicate exit atoms fail loudl
 
 ## Steps
 
-- [ ] A second `exit` atom in one Expect fails the criterion at evaluation: the receipt records a failed check naming both declared values (suggested kind `exit-conflict`), `ok: false`, and verify prints a plain failure line naming the contradiction.
-- [ ] Repeatable `contains` atoms stay unaffected; a single `exit` atom behaves exactly as today.
-- [ ] The grammar docs (work-model.md + both template comments) gain the one-clause rule; byte-identical template copies.
-- [ ] Fixtures: `exit 1 and exit 0` fails with both values recorded; `exit 0 and contains \`ok\`` unchanged; the criteria digest is unaffected by any of this (digest covers Expect text, not parse results).
+- [x] A second `exit` atom in one Expect fails the criterion at evaluation: the receipt records a failed check naming both declared values (suggested kind `exit-conflict`), `ok: false`, and verify prints a plain failure line naming the contradiction.
+- [x] Repeatable `contains` atoms stay unaffected; a single `exit` atom behaves exactly as today.
+- [x] The grammar docs (work-model.md + both template comments) gain the one-clause rule; byte-identical template copies.
+- [x] Fixtures: `exit 1 and exit 0` fails with both values recorded; `exit 0 and contains \`ok\`` unchanged; the criteria digest is unaffected by any of this (digest covers Expect text, not parse results).
 
 ## Verification
 

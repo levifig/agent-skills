@@ -54,7 +54,7 @@ Provenance: [how each decision was accepted — interview, review, dogfooding.]
 
 ## Verification Contract
 
-<!-- Executable (machine-checkable): each V-entry declares Command and Expect for loaf change verify. Expect is a grammar, not prose: atoms join with " and " — `exit <N>` is the required exit code (omit the atom, or Expect entirely, for exit 0) and contains `text` requires the combined stdout+stderr to contain that backtick-delimited text (repeatable). Example: Expect: exit 0 and contains `all green`. Any other clause is unenforceable: verify warns naming the criterion and clause, records it as advisory, and never checks it. -->
+<!-- Executable (machine-checkable): each V-entry declares Command and Expect for loaf change verify. Expect is a grammar, not prose: atoms join with " and " — `exit <N>` is the required exit code (omit the atom, or Expect entirely, for exit 0; a second exit atom is a contradiction and fails the criterion) and contains `text` requires the combined stdout+stderr to contain that backtick-delimited text (repeatable). Example: Expect: exit 0 and contains `all green`. Any other clause is unenforceable: verify warns naming the criterion and clause, records it as advisory, and never checks it. -->
 
 - [**V1.** What must be true. Command: `exact command`. Expect: exit 0.]
 
