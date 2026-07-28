@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -327,7 +328,7 @@ func TestChangeStateEvidenceSeesCommittedTasksWhenWorkingTreeDeletesTasks(t *tes
 	if err := os.RemoveAll(filepath.Join(dir, "tasks")); err != nil {
 		t.Fatalf("RemoveAll tasks: %v", err)
 	}
-	if changeStructurallyCleanForState(repo, mustAssembleNode(t, repo, folderRel), commandOutput) {
+	if clean, _ := changeStructurallyCleanForState(repo, mustAssembleNode(t, repo, folderRel), commandOutput); clean {
 		t.Fatal("evidence path must still see committed banned frontmatter after WT task delete")
 	}
 	report, err := changeCohortStructuralReport(repo, mustAssembleHEADNode(t, repo, folderRel), mustLoadHEADNodes(t, repo), commandOutput)
@@ -366,4 +367,114 @@ func mustAssembleHEADNode(t *testing.T, repo, folderRel string) changeNode {
 		t.Fatalf("HEAD node for %s missing", folderRel)
 	}
 	return node
+}
+
+func TestChangeShowListSurfaceStructuralLoadError(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+
+	victim := writeNewLayoutChange(t, repo, "20260727-load-victim", "load-victim", "1.0.0", "")
+	flipExecuteChange(t, repo, victim, "load-victim")
+	victimRel := relFromRoot(repo, victim)
+
+	other := writeNewLayoutChange(t, repo, "20260727-load-other", "load-other", "", "")
+	flipExecuteChange(t, repo, other, "load-other")
+	otherRel := relFromRoot(repo, other)
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", victimRel}); err != nil {
+		t.Fatalf("verify victim: %v\n%s", err, stdout.String())
+	}
+	commitAllChangeTest(t, repo, "chore: commit victim receipt")
+
+	if got := changeShowState(t, repo, victimRel); got != "verified" {
+		t.Fatalf("victim state before fault = %q, want verified", got)
+	}
+	otherBefore := changeShowState(t, repo, otherRel)
+	if otherBefore == "verified" {
+		t.Fatalf("untargeted other must not be verified; got %q", otherBefore)
+	}
+
+	old := changeEvidenceGitOutput
+	changeEvidenceGitOutput = func(cwd, name string, args ...string) (string, error) {
+		if name == "git" && len(args) > 0 && args[0] == "ls-tree" {
+			return "", fmt.Errorf("read change.json: permission denied")
+		}
+		return commandOutput(cwd, name, args...)
+	}
+	defer func() { changeEvidenceGitOutput = old }()
+
+	stdout.Reset()
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "show", victimRel}); err != nil {
+		t.Fatalf("show victim: %v\n%s", err, stdout.String())
+	}
+	showOut := stripANSI(stdout.String())
+	if !strings.Contains(showOut, "state:") || !strings.Contains(showOut, "verified") {
+	}
+	if strings.Contains(showOut, "state:    verified") || strings.Contains(showOut, "state: verified") {
+		t.Fatalf("victim must demote under structural load error; got:\n%s", showOut)
+	}
+	if !strings.Contains(showOut, "warn:") || !strings.Contains(showOut, "structural evaluation failed:") || !strings.Contains(showOut, "permission denied") {
+		t.Fatalf("show must surface structural load warning; got:\n%s", showOut)
+	}
+
+	stdout.Reset()
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "show", victimRel, "--json"}); err != nil {
+		t.Fatalf("show json: %v\n%s", err, stdout.String())
+	}
+	var show changeShowJSON
+	if err := json.Unmarshal(stdout.Bytes(), &show); err != nil {
+		t.Fatalf("Unmarshal show: %v", err)
+	}
+	if show.State == "verified" {
+		t.Fatalf("show JSON state = verified, want demoted")
+	}
+	if !findingsContain(show.Warnings, "structural evaluation failed:") {
+		t.Fatalf("show JSON warnings = %#v, want structural evaluation failed", show.Warnings)
+	}
+
+	stdout.Reset()
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "list", "--json"}); err != nil {
+		t.Fatalf("list: %v\n%s", err, stdout.String())
+	}
+	var list changeListUnitJSON
+	if err := json.Unmarshal(stdout.Bytes(), &list); err != nil {
+		t.Fatalf("Unmarshal list: %v", err)
+	}
+	var victimUnit, otherUnit *changeListUnit
+	for i := range list.Units {
+		switch list.Units[i].Slug {
+		case "load-victim":
+			victimUnit = &list.Units[i]
+		case "load-other":
+			otherUnit = &list.Units[i]
+		}
+	}
+	if victimUnit == nil || otherUnit == nil {
+		t.Fatalf("list units missing members: %#v", list.Units)
+	}
+	if victimUnit.State == "verified" {
+		t.Fatalf("list victim state = verified, want demoted")
+	}
+	if !findingsContain(victimUnit.Warnings, "structural evaluation failed:") {
+		t.Fatalf("list victim warnings = %#v", victimUnit.Warnings)
+	}
+	if !findingsContain(list.Warnings, "structural evaluation failed:") {
+		t.Fatalf("list top-level warnings = %#v", list.Warnings)
+	}
+	if otherUnit.State != otherBefore {
+		t.Fatalf("other member affected: state=%q, want %q", otherUnit.State, otherBefore)
+	}
+	if len(otherUnit.Warnings) != 0 {
+		t.Fatalf("other member warnings = %#v, want none", otherUnit.Warnings)
+	}
+
+	stdout.Reset()
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "list"}); err != nil {
+		t.Fatalf("list plain: %v\n%s", err, stdout.String())
+	}
+	plain := stripANSI(stdout.String())
+	if !strings.Contains(plain, "warn:") || !strings.Contains(plain, "structural evaluation failed:") {
+		t.Fatalf("list plain must surface warn; got:\n%s", plain)
+	}
 }

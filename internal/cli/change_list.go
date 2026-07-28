@@ -8,20 +8,22 @@ import (
 )
 
 type changeListUnitJSON struct {
-	Command string           `json:"command"`
-	Target  string           `json:"target,omitempty"`
-	Units   []changeListUnit `json:"units"`
+	Command  string           `json:"command"`
+	Target   string           `json:"target,omitempty"`
+	Units    []changeListUnit `json:"units"`
+	Warnings []string         `json:"warnings,omitempty"`
 }
 
 type changeListUnit struct {
-	Slug          string `json:"slug"`
-	Folder        string `json:"folder"`
-	Layout        string `json:"layout"`
-	Branch        string `json:"branch,omitempty"`
-	TargetRelease string `json:"targetRelease,omitempty"`
-	State         string `json:"state"`
-	PathExecuted  bool   `json:"pathExecuted,omitempty"`
-	FlipExecuted  bool   `json:"flipExecuted,omitempty"`
+	Slug          string   `json:"slug"`
+	Folder        string   `json:"folder"`
+	Layout        string   `json:"layout"`
+	Branch        string   `json:"branch,omitempty"`
+	TargetRelease string   `json:"targetRelease,omitempty"`
+	State         string   `json:"state"`
+	PathExecuted  bool     `json:"pathExecuted,omitempty"`
+	FlipExecuted  bool     `json:"flipExecuted,omitempty"`
+	Warnings      []string `json:"warnings,omitempty"`
 }
 
 type changeListOptionsV2 struct {
@@ -68,24 +70,30 @@ func (r Runner) runChangeListUnits(args []string, out io.Writer, rootPath string
 		return err
 	}
 	units := []changeListUnit{}
+	var listWarnings []string
 	for _, node := range nodes {
 		if options.target != "" && node.TargetRelease != options.target {
 			continue
 		}
 		status, _ := changeFolderExecuted(rootPath, node.Folder, node.Layout, commandOutput)
+		state, stateWarnings := deriveChangeStateDetailed(rootPath, node, commandOutput)
 		units = append(units, changeListUnit{
 			Slug:          node.Slug,
 			Folder:        node.Folder,
 			Layout:        node.Layout,
 			Branch:        node.Branch,
 			TargetRelease: node.TargetRelease,
-			State:         deriveChangeState(rootPath, node, commandOutput),
+			State:         state,
 			PathExecuted:  status.PathExecuted,
 			FlipExecuted:  status.FlipExecuted,
+			Warnings:      append([]string{}, stateWarnings...),
 		})
+		for _, w := range stateWarnings {
+			listWarnings = append(listWarnings, fmt.Sprintf("%s: %s", node.Slug, w))
+		}
 	}
 	sort.Slice(units, func(i, j int) bool { return units[i].Folder < units[j].Folder })
-	result := changeListUnitJSON{Command: "change list", Target: options.target, Units: units}
+	result := changeListUnitJSON{Command: "change list", Target: options.target, Units: units, Warnings: sortedUnique(listWarnings)}
 	if options.jsonOutput {
 		return writeJSON(out, result)
 	}
@@ -100,6 +108,9 @@ func (r Runner) runChangeListUnits(args []string, out io.Writer, rootPath string
 		}
 		fmt.Fprintf(out, "  %s  %s  layout=%s  target=%s  state=%s\n",
 			unit.Slug, unit.Folder, unit.Layout, target, unit.State)
+		for _, w := range unit.Warnings {
+			fmt.Fprintf(out, "  %s %s\n", ansiYellow("warn:"), w)
+		}
 	}
 	if len(units) == 0 {
 		fmt.Fprintf(out, "  (no changes)\n")

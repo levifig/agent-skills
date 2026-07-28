@@ -28,8 +28,8 @@ loaf journal log "skill(implement): TASK-027 — structural load errors surface"
 
 ## Steps
 
-- [ ] The state guard returns its failure reason; `show` and `list` print `warn: structural evaluation failed: <reason>` for the affected member and include it in JSON warnings, while the displayed state stays conservative.
-- [ ] Fixture: an unreadable/corrupt machine file on one member demotes its state and surfaces the warning on both `show` and `list`; other members unaffected.
+- [x] The state guard returns its failure reason; `show` and `list` print `warn: structural evaluation failed: <reason>` for the affected member and include it in JSON warnings, while the displayed state stays conservative.
+- [x] Fixture: an unreadable/corrupt machine file on one member demotes its state and surfaces the warning on both `show` and `list`; other members unaffected.
 
 ## Verification
 

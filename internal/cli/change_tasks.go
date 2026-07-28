@@ -178,6 +178,7 @@ func (r Runner) runChangeShow(args []string, out io.Writer, rootPath string) err
 	report := evaluateChangeNode(node, currentChangeBranch(rootPath))
 	_, findings, warnings := loadChangeTasks(rootPath, folder, node, changeTaskContentWorkingTree, commandOutput)
 	prs := deriveChangePRSet(rootPath, folder)
+	state, stateWarnings := deriveChangeStateDetailed(rootPath, node, commandOutput)
 	result := changeShowJSON{
 		Command:       "change show",
 		Change:        node.Slug,
@@ -185,12 +186,12 @@ func (r Runner) runChangeShow(args []string, out io.Writer, rootPath string) err
 		Layout:        node.Layout,
 		Branch:        node.Branch,
 		TargetRelease: node.TargetRelease,
-		State:         deriveChangeState(rootPath, node, commandOutput),
+		State:         state,
 		CapturedOnly:  node.CapturedOnly,
 		Executable:    report.Executable,
 		PRs:           prs,
 		Findings:      append(append([]string{}, report.Violations...), findings...),
-		Warnings:      append(append([]string{}, report.Warnings...), warnings...),
+		Warnings:      append(append(append([]string{}, report.Warnings...), warnings...), stateWarnings...),
 	}
 	if node.CapturedOnly {
 		result.Warnings = append(result.Warnings, "captured, not shaped (brief-only)")
@@ -223,7 +224,7 @@ func (r Runner) runChangeShow(args []string, out io.Writer, rootPath string) err
 		fmt.Fprintln(out)
 	}
 	for _, w := range result.Warnings {
-		fmt.Fprintf(out, "  %s %s\n", ansiYellow("warn"), w)
+		fmt.Fprintf(out, "  %s %s\n", ansiYellow("warn:"), w)
 	}
 	for _, f := range result.Findings {
 		fmt.Fprintf(out, "  %s %s\n", ansiRed("x"), f)
