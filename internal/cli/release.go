@@ -16,10 +16,12 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 		writeReleaseHelp(out)
 		return nil
 	}
-	candidate, err := computeReleaseCandidateVersion(runtimeRoot, options)
+	candidate, bump, err := resolveReleaseCandidate(runtimeRoot, options)
 	if err != nil {
 		return fmt.Errorf("release blocked: cannot compute candidate version: %w", err)
 	}
+	options.candidateVersion = candidate
+	options.resolvedBump = bump
 	var gateWarnings []string
 	if err := releaseCohortPreflight(runtimeRoot, candidate, &gateWarnings); err != nil {
 		return err

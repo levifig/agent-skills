@@ -190,9 +190,16 @@ func releaseSemverLess(a, b releaseSemver) bool {
 // computeReleaseCandidateVersion derives the version the release would cut for
 // the given options (candidate-first ordering).
 func computeReleaseCandidateVersion(root string, options releaseOptions) (string, error) {
+	candidate, _, err := resolveReleaseCandidate(root, options)
+	return candidate, err
+}
+
+// resolveReleaseCandidate is the single derivation shared by the cohort gate and
+// the version executor: one candidate value and the bump that produced it.
+func resolveReleaseCandidate(root string, options releaseOptions) (candidate string, bump string, err error) {
 	configOverrides, err := releaseConfigVersionFiles(root)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	versionOverrides := options.versionFile
 	if len(versionOverrides) == 0 {
@@ -200,39 +207,39 @@ func computeReleaseCandidateVersion(root string, options releaseOptions) (string
 	}
 	versionFiles, err := detectReleaseVersionFiles(root, versionOverrides)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if len(versionFiles) == 0 {
-		return "", fmt.Errorf("no version files detected")
+		return "", "", fmt.Errorf("no version files detected")
 	}
 	current := versionFiles[0].CurrentVersion
 	for _, file := range versionFiles {
 		if file.CurrentVersion != current {
-			return "", fmt.Errorf("inconsistent version files: %s vs %s", current, file.CurrentVersion)
+			return "", "", fmt.Errorf("inconsistent version files: %s vs %s", current, file.CurrentVersion)
 		}
 	}
 	if options.postMerge {
 		// Finalization targets the stable form of the current prepared version.
 		parsed, ok := parseReleaseSemver(current)
 		if !ok {
-			return "", fmt.Errorf("cannot parse current version %q", current)
+			return "", "", fmt.Errorf("cannot parse current version %q", current)
 		}
-		return fmt.Sprintf("%d.%d.%d", parsed.major, parsed.minor, parsed.patch), nil
+		return fmt.Sprintf("%d.%d.%d", parsed.major, parsed.minor, parsed.patch), "release", nil
 	}
-	bump, err := effectiveReleaseBump(root, options)
+	bump, err = effectiveReleaseBump(root, options)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if bump == "" {
 		// Nothing unreleased: the executor stops before cutting anything, so the
 		// candidate is the version the repository already carries.
-		return current, nil
+		return current, "", nil
 	}
 	next := bumpReleaseVersion(current, bump)
 	if next == "" {
-		return "", fmt.Errorf("cannot bump %q with %q", current, bump)
+		return "", "", fmt.Errorf("cannot bump %q with %q", current, bump)
 	}
-	return next, nil
+	return next, bump, nil
 }
 
 // effectiveReleaseBump resolves the bump the release will actually apply: the

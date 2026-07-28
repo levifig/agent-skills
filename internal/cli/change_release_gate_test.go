@@ -297,6 +297,65 @@ func flipExecuteChange(t *testing.T, repo, dir, slug string) {
 	commitAllChangeTest(t, repo, "feat: execute "+slug)
 }
 
+// --- TASK-020: thread the candidate value; no re-derivation between gate and executor ---
+
+func TestReleaseCandidateThreadedThroughExecutorDespiteDivergence(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0")
+	gitCLI(t, repo, "-c", "tag.gpgsign=false", "-c", "tag.forceSignAnnotated=false", "tag", "v1.0.0")
+
+	// A fix commit makes the suggested bump patch → candidate 1.0.1.
+	if err := os.WriteFile(filepath.Join(repo, "fix.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile fix.go: %v", err)
+	}
+	commitAllChangeTest(t, repo, "fix: seed patch bump")
+
+	preflight, bump, err := resolveReleaseCandidate(repo, releaseOptions{})
+	if err != nil {
+		t.Fatalf("preflight resolve: %v", err)
+	}
+	if preflight != "1.0.1" || bump != "patch" {
+		t.Fatalf("preflight = %q/%q, want 1.0.1/patch", preflight, bump)
+	}
+	if err := releaseCohortPreflight(repo, preflight, nil); err != nil {
+		t.Fatalf("preflight gate: %v", err)
+	}
+
+	// Seam: a feat lands after the gate judged 1.0.1. A fresh derivation would
+	// suggest minor → 1.1.0; the threaded executor must still cut 1.0.1.
+	if err := os.WriteFile(filepath.Join(repo, "feature.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile feature.go: %v", err)
+	}
+	commitAllChangeTest(t, repo, "feat: land after preflight")
+
+	fresh, freshBump, err := resolveReleaseCandidate(repo, releaseOptions{})
+	if err != nil {
+		t.Fatalf("fresh resolve: %v", err)
+	}
+	if fresh != "1.1.0" || freshBump != "minor" {
+		t.Fatalf("fresh after feat = %q/%q, want 1.1.0/minor (proves the seam moves the derivation)", fresh, freshBump)
+	}
+
+	var stdout bytes.Buffer
+	opts := releaseOptions{
+		dryRun:           true,
+		candidateVersion: preflight,
+		resolvedBump:     bump,
+	}
+	if err := runReleaseDryRun(repo, opts, &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatalf("dry-run with threaded candidate: %v\n%s", err, stdout.String())
+	}
+	output := stripANSI(stdout.String())
+	if !strings.Contains(output, "New version: 1.0.1") {
+		t.Fatalf("executor must cut preflight candidate 1.0.1; got:\n%s", output)
+	}
+	if strings.Contains(output, "New version: 1.1.0") {
+		t.Fatalf("executor must not cut the post-seam re-derivation; got:\n%s", output)
+	}
+	if !strings.Contains(output, "Suggested bump: patch") {
+		t.Fatalf("bump label must derive from the same resolution; got:\n%s", output)
+	}
+}
+
 func TestReleaseCohortGateRejectsFailingReceipt(t *testing.T) {
 	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
 	body := shapeWithVerification("- **V1.** Always fails. Command: `false`. Expect: exit 0\n- **V3.** Also fails. Command: `exit 1`. Expect: exit 0")

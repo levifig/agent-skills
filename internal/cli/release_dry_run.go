@@ -29,6 +29,10 @@ type releaseOptions struct {
 	preMerge    bool
 	postMerge   bool
 	versionFile []string
+	// candidateVersion and resolvedBump are set once by runRelease after the
+	// shared derivation; dry-run and apply consume them instead of re-deriving.
+	candidateVersion string
+	resolvedBump     string
 }
 
 type releaseVersionFile struct {
@@ -277,12 +281,12 @@ func runReleaseDryRun(root string, options releaseOptions, out io.Writer, errOut
 	}
 
 	currentVersion := versionFiles[0].CurrentVersion
-	// One candidate computation, shared with the cohort gate: the preview never
-	// names a version the gate did not judge.
-	bump := effectiveReleaseBumpFrom(options, commits)
-	newVersion, err := computeReleaseCandidateVersion(root, options)
-	if err != nil {
-		return fmt.Errorf("Could not compute new version from %q: %w", currentVersion, err)
+	// Threaded from runRelease: the preview names the gated candidate, never a
+	// freshly re-derived one that could diverge after a commit lands mid-run.
+	newVersion := options.candidateVersion
+	bump := options.resolvedBump
+	if newVersion == "" {
+		return fmt.Errorf("Could not compute new version from %q: candidate was not resolved before dry-run", currentVersion)
 	}
 	if options.bump != "" {
 		fmt.Fprintf(out, "  Bump type: %s (via --bump flag)\n\n", ansiBold(bump))
@@ -439,12 +443,12 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	}
 
 	currentVersion := versionFiles[0].CurrentVersion
-	// Same shared candidate the cohort gate judged in runRelease: the executor
-	// cuts the gated version, never one of its own derivation.
-	bump := effectiveReleaseBumpFrom(options, commits)
-	newVersion, err := computeReleaseCandidateVersion(root, options)
-	if err != nil {
-		return fmt.Errorf("Could not compute new version from %q: %w", currentVersion, err)
+	// Threaded from runRelease: the executor cuts the gated candidate, never a
+	// freshly re-derived one that could diverge after a commit lands mid-run.
+	newVersion := options.candidateVersion
+	bump := options.resolvedBump
+	if newVersion == "" {
+		return fmt.Errorf("Could not compute new version from %q: candidate was not resolved before apply", currentVersion)
 	}
 	if options.bump != "" {
 		fmt.Fprintf(out, "  Bump type: %s (via --bump flag)\n\n", ansiBold(bump))

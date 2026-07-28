@@ -29,9 +29,9 @@ loaf journal log "skill(implement): TASK-020 — thread the candidate value"
 
 ## Steps
 
-- [ ] Derive the candidate once in `runRelease` (and once in the `--post-merge` entry if it flows through the same path) and pass the value into the dry-run and apply paths — a parameter or a resolved field on the options struct, not a re-derivation.
-- [ ] The displayed bump label derives from the same single resolution, so preview text and gated candidate can never disagree.
-- [ ] Fixture proving the thread: preflight derives the candidate, the test lands a new `feat:` commit via the seam before the executor path runs, and the executor still cuts preflight's candidate — asserted against the value, not the call count.
+- [x] Derive the candidate once in `runRelease` (and once in the `--post-merge` entry if it flows through the same path) and pass the value into the dry-run and apply paths — a parameter or a resolved field on the options struct, not a re-derivation.
+- [x] The displayed bump label derives from the same single resolution, so preview text and gated candidate can never disagree.
+- [x] Fixture proving the thread: preflight derives the candidate, the test lands a new `feat:` commit via the seam before the executor path runs, and the executor still cuts preflight's candidate — asserted against the value, not the call count.
 
 ## Verification
 
