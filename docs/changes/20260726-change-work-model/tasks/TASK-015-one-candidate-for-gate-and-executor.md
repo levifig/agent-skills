@@ -31,10 +31,10 @@ loaf journal log "skill(implement): TASK-015 — one candidate for gate and exec
 
 ## Steps
 
-- [ ] Derive the effective bump before preflight: `--bump` when given, else `suggestReleaseBump(commits)`; compute the candidate from it once and hand the same value to the cohort gate and the version executor.
-- [ ] Remove the dead conditional in `computeReleaseCandidateVersion`; prerelease *candidates* keep bypassing the cohort gate exactly as today.
-- [ ] Fixture: current `1.0.0`, incomplete `target_release: 1.1.0` cohort, one `feat` commit, **no** `--bump` flag — preflight blocks naming 1.1.0; with the cohort complete, the same invocation proceeds to 1.1.0.
-- [ ] Fixture: no-flag invocation whose suggested bump lands on a prerelease candidate still bypasses.
+- [x] Derive the effective bump before preflight: `--bump` when given, else `suggestReleaseBump(commits)`; compute the candidate from it once and hand the same value to the cohort gate and the version executor.
+- [x] Remove the dead conditional in `computeReleaseCandidateVersion`; prerelease *candidates* keep bypassing the cohort gate exactly as today.
+- [x] Fixture: current `1.0.0`, incomplete `target_release: 1.1.0` cohort, one `feat` commit, **no** `--bump` flag — preflight blocks naming 1.1.0; with the cohort complete, the same invocation proceeds to 1.1.0.
+- [x] Fixture: no-flag invocation whose suggested bump lands on a prerelease candidate still bypasses.
 
 ## Verification
 

@@ -198,13 +198,13 @@ func computeReleaseCandidateVersion(root string, options releaseOptions) (string
 		}
 		return fmt.Sprintf("%d.%d.%d", parsed.major, parsed.minor, parsed.patch), nil
 	}
-	bump := options.bump
+	bump, err := effectiveReleaseBump(root, options)
+	if err != nil {
+		return "", err
+	}
 	if bump == "" {
-		// Interactive / unspecified: treat as stable-intent only when current is
-		// already stable; otherwise require an explicit bump for gating.
-		if releaseVersionIsPrerelease(current) {
-			return current, nil // stay on prerelease candidate until bump chosen
-		}
+		// Nothing unreleased: the executor stops before cutting anything, so the
+		// candidate is the version the repository already carries.
 		return current, nil
 	}
 	next := bumpReleaseVersion(current, bump)
@@ -212,4 +212,50 @@ func computeReleaseCandidateVersion(root string, options releaseOptions) (string
 		return "", fmt.Errorf("cannot bump %q with %q", current, bump)
 	}
 	return next, nil
+}
+
+// effectiveReleaseBump resolves the bump the release will actually apply: the
+// explicit --bump flag when given, otherwise the bump the unreleased commits
+// suggest. It returns "" when there is nothing to release. The gate and the
+// executor share this derivation so preflight gates the version that gets cut
+// instead of the one the repository happens to sit on.
+func effectiveReleaseBump(root string, options releaseOptions) (string, error) {
+	if options.bump != "" {
+		return options.bump, nil
+	}
+	baseRef, err := releaseCandidateBaseRef(root, options)
+	if err != nil {
+		return "", err
+	}
+	return effectiveReleaseBumpFrom(options, releaseCommitsSince(root, baseRef)), nil
+}
+
+// effectiveReleaseBumpFrom resolves the same bump from an already-loaded commit
+// range, so the executor never re-derives it from different inputs.
+func effectiveReleaseBumpFrom(options releaseOptions, commits []releaseCommit) string {
+	if options.bump != "" {
+		return options.bump
+	}
+	if len(commits) == 0 {
+		return ""
+	}
+	return suggestReleaseBump(commits)
+}
+
+// releaseCandidateBaseRef resolves the commit range the suggested bump reads,
+// mirroring the executor: an explicit --base wins, --pre-merge auto-detects its
+// base, and everything else measures from the last tag.
+func releaseCandidateBaseRef(root string, options releaseOptions) (string, error) {
+	base := options.base
+	if base == "" && options.preMerge {
+		detected, _, err := detectReleaseBase(root)
+		if err != nil {
+			return "", err
+		}
+		base = detected
+	}
+	if base == "" {
+		return releaseLastTag(root), nil
+	}
+	return validateReleaseBaseRef(root, base)
 }

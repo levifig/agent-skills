@@ -160,6 +160,121 @@ func TestComputeReleaseCandidateVersionFinalization(t *testing.T) {
 	}
 }
 
+// --- TASK-015: one candidate for the gate and the executor ---
+
+func TestReleaseCohortGateNoBumpGatesSuggestedCandidate(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0")
+	dir := writeNewLayoutChange(t, repo, "20260727-suggested", "suggested", "1.1.0", "")
+	task := filepath.Join(dir, "tasks", "TASK-001-work.md")
+	unchecked := "---\nchange: suggested\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [ ] Do it\n"
+	if err := os.WriteFile(task, []byte(unchecked), 0o644); err != nil {
+		t.Fatalf("WriteFile task: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: shape suggested member")
+
+	// A feat commit makes the suggested bump minor, so the no-flag invocation
+	// would cut 1.1.0 — the version the incomplete cohort owns.
+	if err := os.WriteFile(filepath.Join(repo, "feature.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile feature.go: %v", err)
+	}
+	commitAllChangeTest(t, repo, "feat: unrelated feature")
+
+	candidate, err := computeReleaseCandidateVersion(repo, releaseOptions{})
+	if err != nil {
+		t.Fatalf("no-flag candidate: %v", err)
+	}
+	if candidate != "1.1.0" {
+		t.Fatalf("no-flag candidate = %q, want 1.1.0 (suggested minor bump)", candidate)
+	}
+	gateErr := releaseCohortPreflight(repo, candidate, nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), `change "suggested" targets 1.1.0 but is not executed`) {
+		t.Fatalf("gate err = %v, want 1.1.0 cohort block", gateErr)
+	}
+
+	var stdout bytes.Buffer
+	runErr := (Runner{Stdout: &stdout, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"release", "--dry-run"})
+	if runErr == nil || !strings.Contains(runErr.Error(), "targets 1.1.0 but is not executed") {
+		t.Fatalf("release --dry-run without --bump = %v, want cohort block\n%s", runErr, stdout.String())
+	}
+
+	// Cohort completes: the same flagless invocation proceeds to 1.1.0.
+	checked := "---\nchange: suggested\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [x] Do it\n"
+	if err := os.WriteFile(task, []byte(checked), 0o644); err != nil {
+		t.Fatalf("WriteFile flip: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "feature.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile feature.go flip: %v", err)
+	}
+	commitAllChangeTest(t, repo, "feat: execute suggested")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", filepath.Join("docs", "changes", "20260727-suggested")}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+
+	candidate, err = computeReleaseCandidateVersion(repo, releaseOptions{})
+	if err != nil || candidate != "1.1.0" {
+		t.Fatalf("candidate after completion = %q err=%v, want 1.1.0", candidate, err)
+	}
+	if err := releaseCohortPreflight(repo, candidate, nil); err != nil {
+		t.Fatalf("completed cohort should open the gate: %v", err)
+	}
+	stdout.Reset()
+	if err := (Runner{Stdout: &stdout, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"release", "--dry-run"}); err != nil {
+		t.Fatalf("release --dry-run after completion = %v\n%s", err, stdout.String())
+	}
+	if output := stripANSI(stdout.String()); !strings.Contains(output, "New version: 1.1.0") {
+		t.Fatalf("dry-run output must cut the gated candidate; got:\n%s", output)
+	}
+}
+
+func TestReleaseCohortGateNoBumpPrereleaseCandidateBypasses(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0-alpha.3")
+	writeNewLayoutChange(t, repo, "20260727-prerelease-bypass", "prerelease-bypass", "1.0.0", "")
+	commitAllChangeTest(t, repo, "docs: shape incomplete cohort member")
+	gitCLI(t, repo, "-c", "tag.gpgsign=false", "-c", "tag.forceSignAnnotated=false", "tag", "v1.0.0-alpha.3")
+
+	// Nothing unreleased: the flagless candidate stays on the prerelease the repo
+	// carries, and a prerelease candidate never gates its cohort.
+	candidate, err := computeReleaseCandidateVersion(repo, releaseOptions{})
+	if err != nil {
+		t.Fatalf("no-flag candidate: %v", err)
+	}
+	if candidate != "1.0.0-alpha.3" || !releaseVersionIsPrerelease(candidate) {
+		t.Fatalf("no-flag candidate = %q, want the current prerelease", candidate)
+	}
+	if err := releaseCohortPreflight(repo, candidate, nil); err != nil {
+		t.Fatalf("prerelease candidate must bypass the incomplete cohort: %v", err)
+	}
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"release", "--dry-run"}); err != nil {
+		t.Fatalf("flagless dry run on a prerelease candidate = %v\n%s", err, stdout.String())
+	}
+
+	// The same fixture's finalization candidate is stable and still blocks.
+	post, err := computeReleaseCandidateVersion(repo, releaseOptions{postMerge: true})
+	if err != nil || post != "1.0.0" {
+		t.Fatalf("post-merge candidate = %q err=%v, want 1.0.0", post, err)
+	}
+	gateErr := releaseCohortPreflight(repo, post, nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "not executed") {
+		t.Fatalf("finalization err = %v, want cohort block", gateErr)
+	}
+
+	// Once commits exist, a suggested bump can only land on a stable candidate —
+	// the flagless path cannot drift back into the bypass by accident.
+	if err := os.WriteFile(filepath.Join(repo, "feature.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile feature.go: %v", err)
+	}
+	commitAllChangeTest(t, repo, "feat: unrelated feature")
+	candidate, err = computeReleaseCandidateVersion(repo, releaseOptions{})
+	if err != nil {
+		t.Fatalf("candidate with commits: %v", err)
+	}
+	if candidate != "1.1.0" || releaseVersionIsPrerelease(candidate) {
+		t.Fatalf("candidate with commits = %q, want stable 1.1.0", candidate)
+	}
+}
+
 func flipExecuteChange(t *testing.T, repo, dir, slug string) {
 	t.Helper()
 	task := filepath.Join(dir, "tasks", "TASK-001-work.md")

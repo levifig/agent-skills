@@ -277,14 +277,12 @@ func runReleaseDryRun(root string, options releaseOptions, out io.Writer, errOut
 	}
 
 	currentVersion := versionFiles[0].CurrentVersion
-	commitBump := suggestReleaseBump(commits)
-	bump := commitBump
-	if options.bump != "" {
-		bump = options.bump
-	}
-	newVersion := bumpReleaseVersion(currentVersion, bump)
-	if newVersion == "" {
-		return fmt.Errorf("Could not compute new version from %q", currentVersion)
+	// One candidate computation, shared with the cohort gate: the preview never
+	// names a version the gate did not judge.
+	bump := effectiveReleaseBumpFrom(options, commits)
+	newVersion, err := computeReleaseCandidateVersion(root, options)
+	if err != nil {
+		return fmt.Errorf("Could not compute new version from %q: %w", currentVersion, err)
 	}
 	if options.bump != "" {
 		fmt.Fprintf(out, "  Bump type: %s (via --bump flag)\n\n", ansiBold(bump))
@@ -441,13 +439,12 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	}
 
 	currentVersion := versionFiles[0].CurrentVersion
-	bump := suggestReleaseBump(commits)
-	if options.bump != "" {
-		bump = options.bump
-	}
-	newVersion := bumpReleaseVersion(currentVersion, bump)
-	if newVersion == "" {
-		return fmt.Errorf("Could not compute new version from %q", currentVersion)
+	// Same shared candidate the cohort gate judged in runRelease: the executor
+	// cuts the gated version, never one of its own derivation.
+	bump := effectiveReleaseBumpFrom(options, commits)
+	newVersion, err := computeReleaseCandidateVersion(root, options)
+	if err != nil {
+		return fmt.Errorf("Could not compute new version from %q: %w", currentVersion, err)
 	}
 	if options.bump != "" {
 		fmt.Fprintf(out, "  Bump type: %s (via --bump flag)\n\n", ansiBold(bump))
