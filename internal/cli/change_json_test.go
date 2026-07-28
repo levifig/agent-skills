@@ -300,7 +300,17 @@ func TestConversionAllUncheckedPassesAndRealDogfoodIsCovered(t *testing.T) {
 	if len(findings) != 0 {
 		t.Fatalf("real dogfood conversion findings=%v, want none (grandfathered acbea950)", findings)
 	}
-	offending, err := conversionCommitCheckedTaskFiles(repoRoot, "acbea95001f9187b154d095f4579225b7744fe1d", pilot, commandOutput)
+	// The dogfood commit lived on the change-work-model branch; the squash
+	// merge of PR #141 replaced it and branch deletion made it unreachable, so
+	// clones and CI checkouts legitimately do not have the object. The scanner
+	// leg below is history-dependent extra coverage, not the load-bearing
+	// assertion (the synthetic fixtures above are); skip it when the commit is
+	// absent rather than failing on a correct checkout.
+	const dogfoodConversion = "acbea95001f9187b154d095f4579225b7744fe1d"
+	if _, err := commandOutput(repoRoot, "git", "cat-file", "-e", dogfoodConversion+"^{commit}"); err != nil {
+		t.Skipf("dogfood conversion commit %s unreachable after squash merge: %v", dogfoodConversion[:8], err)
+	}
+	offending, err := conversionCommitCheckedTaskFiles(repoRoot, dogfoodConversion, pilot, commandOutput)
 	if err != nil {
 		t.Fatalf("inspect acbea950 tasks: %v", err)
 	}
