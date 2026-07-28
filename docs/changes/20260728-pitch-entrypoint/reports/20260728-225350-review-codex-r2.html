@@ -1,0 +1,129 @@
+<!-- source: pitch-entrypoint · kind review · slug codex-r2 · stamped 2026-07-28 22:53 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — codex r2</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.machine { background: var(--machine-soft); color: var(--machine); }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">pitch-entrypoint · review</div>
+  <h1>Review — codex r2</h1>
+  <p class="stamp">kind <b>review</b> · slug <b>codex-r2</b> · 2026-07-28 22:53</p>
+
+  <h2>Round</h2>
+  <div class="panel">
+    <p><b>Reviewer:</b> Codex (design review, fresh thread — round 2) · <b>Baseline:</b> amended shaping anchor <code>71672398</code> (round-1 dispositions applied) at Loaf <code>2.0.0-alpha.15</code> · <b>Verdict:</b> <span class="badge bad">needs another shaping pass</span> — 2 blocking, 4 should-fix, 1 nice-to-have; mechanically valid (<code>--require-executable</code> and task projections green at review time).</p>
+    <p><b>Round outcome:</b> all seven findings accepted and applied in this round; the shaping anchor was amended in place again (local, unpushed). Codex also rechecked round 1: B2, B3, SF1, SF3, and N1 confirmed resolved; B1 and SF2 residuals are this round's B1 and SF1.</p>
+  </div>
+
+  <h2>Findings</h2>
+  <div class="panel" style="padding:0; overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:.9rem;">
+      <thead>
+        <tr style="text-align:left; border-bottom:1px solid var(--line);">
+          <th style="padding:10px 14px;">ID</th>
+          <th style="padding:10px 14px;">Severity</th>
+          <th style="padding:10px 14px;">Finding</th>
+          <th style="padding:10px 14px;">Disposition</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B1</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">Round-1 B1 survived in the authoritative contract: the Implementation Units summary for TASK-002 still said "hooks registration," contradicting the revised Scope, Decision 10, and the corrected task packet — ambiguity that could send an implementer back into the impossible <code>config/hooks.yaml</code> edit.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> The Implementation Units line now names the human-entry guard and "No hooks (Decision 10)"; a whole-folder grep for "hooks registration" comes up empty.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B2</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">H1 was unsatisfiable at its declared boundary: it required a fresh <code>/shape</code> session to consume the brief, but shape only becomes brief-aware in TASK-004 — which is blocked by TASK-002, the task that owns H1. Sequencing constraint violated the shipped model's satisfiability requirement.</td>
+          <td style="padding:10px 14px;"><b>Accepted, split as suggested.</b> H1 is now the interview dogfood (TASK-002: human-invoked pitch producing a brief that passes H2's cold-read); new H4 is the end-to-end pitch→shape consumption proof, owned by TASK-005 after TASK-004 lands, with its step and evidence-append in the packet.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF1</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">The dogfood packet contradicted the human-entry invariant: the implementer's checkbox said to "run the drafted interview" — an agent-initiated pitch, exactly what the contract forbids.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> Both dogfood steps (H1 in TASK-002, H4 in TASK-005) are now explicit user-invoked checkpoints: the implementer prepares the scratch environment and shortlists candidates, pauses, and asks the human to invoke the ceremony; the Definition of Done records the human invoking each.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF2</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">Template authority was reversed relative to shipped source: the contract called the Go embed the "mechanical source," but <code>change_scaffold.go</code> declares <code>content/skills/shape/templates/</code> canonical with the embed byte-identical, gated by <code>TestChangeScaffoldTemplatesMatchCanonical</code>.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> Verified against the scaffold comment, then corrected everywhere: shape's <code>templates/brief.md</code> is the authoring authority, <code>internal/cli/change_brief_template.md</code> its byte-identical projection; TASK-001's steps now author the content template first and mirror into the embed.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF3</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">Cross-target delivery had no cross-target assertion: human-only behavior and built-target presence were declared for five targets, but V4 checked only the Claude Code plugin.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> V4 now asserts <code>skills/pitch/SKILL.md</code> in all five projections: <code>plugins/loaf</code> plus <code>dist/{opencode,cursor,codex,amp}</code> (paths verified against the built tree).</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF4</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">"Park" had no durable landing ceremony — it could mean merely leaving an uncommitted local folder, while the shipped model's parked exception is a promise carrier landed on main.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> New Decision 11: park is a committed capture — pitch ends the parked ceremony with a docs-only commit of the brief-only folder on the branch the user chooses (default branch for the promise-carrier pattern), push and PR left to the human. Observable Workflow updated to match.</td>
+        </tr>
+        <tr style="vertical-align:top;">
+          <td style="padding:10px 14px;"><code>NTH</code></td>
+          <td style="padding:10px 14px;"><span class="badge machine">nice-to-have</span></td>
+          <td style="padding:10px 14px;">Dogfood evidence could copy private intake content into Git: the dogfooded brief is committed under <code>research/</code>, and intake items may hold sensitive material (unconfirmed — Codex's sandbox could not read the queue).</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> TASK-002's dogfood step now requires shortlisting repo-safe items and redacting sensitive or private content before anything enters Git.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Round-1 recheck (by Codex)</h2>
+  <div class="panel">
+    <p><span class="badge ok">resolved</span> B2 canonical AGENTS path · B3 Durable Outputs ownership · SF1 dogfood lifecycle/evidence · N1 executable check — each confirmed at the reviewed HEAD. <span class="badge ok">applied</span> SF3 Intent identifiability (references and read command present; runtime existence unverifiable from Codex's sandbox, which cannot open the global SQLite database — the three Intents were created in-session with confirmed CLI output). <span class="badge bad">residual</span> B1 (stale contract line) and SF2 (dogfood instruction vs. invariant) — carried into this round as B1 and SF1 and closed above.</p>
+  </div>
+
+  <footer>Authored snapshot — findings from the Codex round-2 design review (fresh thread) of the revised contract; dispositions applied in the amended shaping anchor. Layout is yours; keep charset, provenance comment, and design tokens intact.</footer>
+</main>
