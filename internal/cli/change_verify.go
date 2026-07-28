@@ -247,7 +247,8 @@ func loadChangeVerifyReceipt(folderAbs string) (changeVerifyReceipt, error) {
 // changeReceiptStatus reports whether a receipt attests successful verification
 // that still covers HEAD. Failing criteria block even when the receipt is
 // fresh; the receipt's own commit never stales it; any later commit that
-// touches a non-receipt path forces a criteria re-run (Decision 13).
+// touches a non-receipt path stales the receipt with a re-verify demand
+// (Decision 13). Preflight never executes criteria — only loaf change verify does.
 func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputCommand changeGitOutput) (ok bool, reason string, err error) {
 	if outputCommand == nil {
 		outputCommand = commandOutput
@@ -276,8 +277,8 @@ func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputComm
 	if head == receipt.VerifiedCommit {
 		return true, "", nil
 	}
-	// Commit-by-commit: a touch-then-revert pair still forces a re-run, unlike
-	// a verified..HEAD tree diff that would cancel out.
+	// Commit-by-commit: a touch-then-revert pair still stales, unlike a
+	// verified..HEAD tree diff that would cancel out.
 	logOut, err := outputCommand(rootPath, "git", "log", "--format=%H", receipt.VerifiedCommit+"..HEAD")
 	if err != nil {
 		return false, "", err

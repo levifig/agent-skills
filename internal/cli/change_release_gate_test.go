@@ -493,6 +493,62 @@ func TestReleaseCohortGateV5FreshnessRerunAndReceiptOwnCommit(t *testing.T) {
 	}
 }
 
+
+func TestReleaseCohortGateV5PlanMdEditStalesNotExpires(t *testing.T) {
+	repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+	body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
+	dir := writeNewLayoutChange(t, repo, "20260727-v5-plan-stale", "v5-plan-stale", "1.0.0", body)
+	flipExecuteChange(t, repo, dir, "v5-plan-stale")
+	folderRel := filepath.Join("docs", "changes", "20260727-v5-plan-stale")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+
+	receipt, err := loadChangeVerifyReceipt(dir)
+	if err != nil {
+		t.Fatalf("load receipt: %v", err)
+	}
+	digestBefore := receipt.CriteriaDigest
+
+	if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte("# Approach\n\nChurn.\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile plan.md: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: edit plan.md only")
+
+	shapeData, err := os.ReadFile(filepath.Join(dir, "shape.md"))
+	if err != nil {
+		t.Fatalf("ReadFile shape: %v", err)
+	}
+	digestNow := changeCriteriaDigest(parseChangeExecutableCriteria(string(shapeData)))
+	if digestNow != digestBefore {
+		t.Fatalf("plan.md edit must not change criteria digest: before=%s after=%s", digestBefore, digestNow)
+	}
+	receiptAfter, err := loadChangeVerifyReceipt(dir)
+	if err != nil {
+		t.Fatalf("load receipt after: %v", err)
+	}
+	if receiptAfter.CriteriaDigest != digestNow {
+		t.Fatalf("receipt digest drifted: receipt=%s shape=%s", receiptAfter.CriteriaDigest, digestNow)
+	}
+
+	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
+	if gateErr == nil {
+		t.Fatal("plan.md-only commit should stale the receipt")
+	}
+	msg := gateErr.Error()
+	if !strings.Contains(msg, "later non-receipt path requires criteria re-run") {
+		t.Fatalf("want re-verify demand, got: %v", gateErr)
+	}
+	if strings.Contains(msg, "receipt expired") {
+		t.Fatalf("must not report expiry for plan.md edit: %v", gateErr)
+	}
+	remedy := "run: loaf change verify " + filepath.ToSlash(folderRel) + ", then commit the receipt"
+	if !strings.Contains(msg, remedy) {
+		t.Fatalf("want mechanical remedy %q, got: %v", remedy, gateErr)
+	}
+}
+
 func TestReleaseCohortGateV5RetargetAfterVerifyRequiresRerun(t *testing.T) {
 	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
 	body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")

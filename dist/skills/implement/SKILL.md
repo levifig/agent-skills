@@ -39,6 +39,7 @@ You are the coordinator. Start by understanding the task:
 
 - Log `loaf journal log "skill(implement): <task/spec/context>"` as the first action.
 - **Change-first task packets:** prefer `docs/changes/<folder>/tasks/TASK-NNN-*.md` as the delegation brief. Flip checkboxes `- [ ]`→`- [x]` in the same commit that delivers the work (outside `docs/changes/` paths must land with the flip for provenance). Use `loaf change tasks --json` for the index.
+- Commit task packets unchecked before executing them — a packet that first lands already-checked induces no flip transition, and the evidence trail never exists.
 - Compatibility: existing `TASK-XXX` / `SPEC-XXX` SQLite records remain supported until converted; they are not the default for new work.
 
 ### Orchestrator Can Do Directly
