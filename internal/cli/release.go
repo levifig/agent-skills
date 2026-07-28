@@ -96,7 +96,7 @@ func writeReleaseHelp(out io.Writer) {
 		"",
 		"Options:",
 		"  --dry-run              Preview release without making changes",
-		"  --bump <type>          Skip interactive bump choice; stable candidates gate their target_release cohort; prerelease candidates bypass; --bump release and --post-merge finalize the stable target",
+		"  --bump <type>          Skip interactive bump choice; stable candidates gate their target_release cohort; prerelease candidates bypass; --bump release finalizes the stable target, --post-merge publishes the prepared version and gates only when it is stable",
 		"  --base <ref>           Use commits since <ref> instead of last tag",
 		"  --no-tag               Skip git tag creation",
 		"  --tag                  Force git tag creation",

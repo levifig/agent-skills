@@ -231,9 +231,13 @@ func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapsho
 	}
 	if options.postMerge {
 		// Post-merge keys on the prepared version at HEAD: a prepared prerelease
-		// publishes through the valve; a prepared stable gates that cohort, then tags.
+		// publishes through the valve; a prepared stable gates that cohort, then
+		// tags. Bump says "release" only when this run finalizes stable — a
+		// prerelease publish performs no bump, and the field must not claim one.
 		snap.Candidate = current
-		snap.Bump = "release"
+		if !releaseVersionIsPrerelease(current) {
+			snap.Bump = "release"
+		}
 		return snap, nil
 	}
 	bump := effectiveReleaseBumpFrom(options, commits)
