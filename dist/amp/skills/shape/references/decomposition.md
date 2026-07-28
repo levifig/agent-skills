@@ -23,7 +23,31 @@ Sequencing constraints that genuinely exist — this unit must land before that 
 
 Split criteria into two groups, mirroring the Change template:
 
-- **Executable** — bound to a command and an expected result; machine-checkable.
-- **Human review** — what a reviewer confirms that no command can.
+- **Executable (V-tier)** — bound to a command and an expected result; machine-checkable by `loaf change verify`. Two equivalent forms:
+
+  Inline (what the scaffold writes):
+
+  ```markdown
+  - **V1.** What must be true. Command: `go test ./...`. Expect: exit 0.
+  - **V2.** Output-bound. Command: `loaf change check`. Expect: exit 0 and contains `executable`.
+  ```
+
+  Or with an authoring checkbox still open:
+
+  ```markdown
+  - [**V1.** What must be true. Command: `go test ./...`. Expect: exit 0.]
+  ```
+
+  Sub-bullet:
+
+  ```markdown
+  - **V1.** What must be true.
+    - Command: `go test ./...`
+    - Expect: exit 0
+  ```
+
+  `Expect` is optional and enforced when present, with a deliberately minimal grammar: atoms join with ` and ` — `exit <N>` is the required exit code (an absent `Expect`, or an `Expect` with no exit atom, means `exit 0`) and `` contains `text` `` requires the combined stdout+stderr to contain that backtick-delimited text (repeatable). Any other clause is unenforceable: `loaf change verify` warns naming the criterion and the clause and records it as advisory, so an expectation is either checked or loudly not — never quietly decorative. Commands run from the **repository root** (never the change folder). Only V-entries that declare a fenced `Command:` value are gate input.
+
+- **Human review (H-tier)** — what a reviewer confirms that no command can. H-entries are review material and are **never** gate input; `loaf change verify` ignores them.
 
 A criterion whose check only restates the implementation (recomputing the expected value the way the code does) is vacuous — it can never disagree with the code under test. Prefer criteria with an independent source of truth.

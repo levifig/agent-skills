@@ -1,0 +1,196 @@
+<!-- source: change-work-model · kind review · slug implementation-round-2 · stamped 2026-07-28 02:19 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — implementation round 2</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h4 { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--accent-fill); }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .fid { font-family: var(--mono); font-size: .82rem; color: var(--muted); min-width: 3em; }
+  .ftitle { font-weight: 600; flex: 1 1 340px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-blocker { background: var(--bad-soft); color: var(--bad); }
+  .sev-major { background: var(--accent-soft); color: var(--accent); }
+  .sev-minor { background: var(--machine-soft); color: var(--machine); }
+  .d-fix { background: var(--bad-soft); color: var(--bad); }
+  .d-decide { background: var(--state-soft); color: var(--state); }
+  .d-note { background: var(--machine-soft); color: var(--machine); }
+  .fbody { margin-top: 10px; display: grid; gap: 10px; }
+  .fbody > div { border-top: 1px solid var(--line); padding-top: 8px; }
+  .fbody p:last-child { margin-bottom: 0; }
+  pre { font-family: var(--mono); font-size: .78rem; background: var(--machine-soft); color: var(--ink); padding: 10px 12px; border-radius: 6px; overflow-x: auto; margin: 0 0 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .t-ok { color: var(--ok); font-weight: 600; }
+  .t-bad { color: var(--bad); font-weight: 600; }
+  .t-part { color: var(--accent); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">change-work-model · reviews · implementation round 2</div>
+  <h1>Implementation Review — Round 2</h1>
+  <p class="stamp">reviewed <b>2026-07-28</b> · nine commits <b>f1bc7d4e…04ee542f</b> against the round-1 board and <b>shape.md</b> · verdict <b>REQUEST-CHANGES</b> (narrow) · 13/13 round-1 findings resolved in source · 1 new blocker + 1 decision + 3 notes</p>
+
+  <div class="panel verdict">
+    <p><b>The remediation is real.</b> Every round-1 finding is fixed in source and backed by named fixtures — 30+ new tests, all of which I ran independently (<code>go test ./...</code> exit 0, all four packages). B1 was re-proven end-to-end in a fresh fixture against a HEAD-built binary: a committed failing receipt now blocks with <code>receipt records failing criteria (V1)</code>, and the passing-receipt path opens. The four round-1 decisions (ladder, flip tightening, repo-root cwd, seeded packet) all landed as decided.</p>
+    <p><b>But the shipped artifact is three commits behind the source.</b> <code>bin/native</code> was last rebuilt at <code>cc825e53</code> — the gate fix, the ladder, and the V-residual fixtures exist only in code the committed binary never compiled. The tree's own <code>bin/loaf</code> still cuts stable on a failing receipt. One mechanical commit closes it (R2-1).</p>
+  </div>
+
+  <h2>Round-1 outcomes</h2>
+
+  <div class="panel scroll">
+    <table>
+      <thead><tr><th>Finding</th><th>Outcome</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td><b>B1</b> failing receipt opened the gate</td><td class="t-ok">fixed · verified</td><td>Fixture replay: failing receipt → <code>release blocked … receipt records failing criteria (V1)</code>, exit 1; fix + re-verify + receipt-only commit → <code>New version: 1.0.0</code>. Write-on-failure kept deliberately, gate is the arbiter (799019f4 states the policy). Tests: <code>RejectsFailingReceipt</code>, <code>WritesReceiptOnFailure</code>, <code>ReceiptFreshnessBootstrap</code>.</td></tr>
+        <tr><td><b>B2</b> criteria never parsed</td><td class="t-ok">fixed · verified</td><td>Fresh scaffold's template V1 parses and executes (<code>fail V1  exact command</code> — parse proven, refusal gone). Both forms tested; taught in shape skill, <code>cli-boundary.md</code>, <code>decomposition.md</code>.</td></tr>
+        <tr><td><b>B3</b> red suite</td><td class="t-ok">fixed · verified</td><td><code>go test ./...</code> exit 0 independently. Correction to my round 1: the 57 hash-drift subtests were not the whole story — two <code>cmd/loaf</code> failures (vocabulary hygiene, post-merge preflight expectation) existed on the branch and I missed them; the implementer found and fixed both (5cadf9cc, honest expectation updates to behavior this change intentionally rewrote).</td></tr>
+        <tr><td><b>M1</b> list/show disagree</td><td class="t-ok">fixed in source</td><td>One <code>deriveChangeState</code>; agreement test across the ladder; HEAD-built binary: list and show both report <code>executing</code>. <i>Committed binary still disagrees — see R2-1.</i></td></tr>
+        <tr><td><b>M2</b> ladder unbuilt</td><td class="t-ok">fixed in source</td><td><code>captured → shaped → executable → executing → complete</code> + <code>verified</code>; <code>show --json</code> carries <code>state</code>; shape.md Observable Workflow amended (04ee542f). Decision 15 nuance honored: verified does not require complete.</td></tr>
+        <tr><td><b>M3</b> fence exclusion missing</td><td class="t-ok">fixed</td><td>Fence state tracked across the patch; fenced-flip negative fixture in <code>ProvenanceFlipGrammar</code>.</td></tr>
+        <tr><td><b>M4</b> loose flip pairing</td><td class="t-ok">fixed as decided</td><td>Same-hunk, same-normalized-label transitions; V1's negative set shipped. My own round-2 fixture tripped the added-checked non-event before I corrected it — the grammar works.</td></tr>
+        <tr><td><b>M5</b> conversion rule unbuilt</td><td class="t-ok">fixed</td><td>Check-time violation naming the file (release-only "arrives too late" — reasoning in 12901090). Two-commit conversion regression kept. Grandfather: see R2-3; round-1 m4 correction below.</td></tr>
+        <tr><td><b>M6</b> thin coverage</td><td class="t-ok">fixed except one clause</td><td>All named V1/V2/V5 residual fixtures exist and pass. V5's plan.md clause descoped to an Intent — adjudicated in R2-2.</td></tr>
+        <tr><td><b>m1</b> criteria cwd</td><td class="t-ok">fixed as decided</td><td>Repo root, recorded in receipt (<code>"cwd"</code> field observed in fixture); proven by a root-path criterion passing.</td></tr>
+        <tr><td><b>m2</b> dead freshness code</td><td class="t-ok">fixed</td><td><code>logAll</code> gone; commit-by-commit inspection per Decision 13.</td></tr>
+        <tr><td><b>m3</b> .gitkeep scaffold</td><td class="t-ok">fixed as decided</td><td><code>TASK-001-first-slice.md</code> seeded, no <code>.gitkeep</code>, check zero violations, projected by <code>tasks --json</code>.</td></tr>
+        <tr><td><b>m4</b> dogfood wrinkle</td><td class="t-part">corrected</td><td>Round 1 understated it: the conversion did <i>not</i> reset every box — TASK-003 was 7/7 checked at <code>acbea950</code> (it was the conversion's own delivering commit). Implementer caught what I missed, grandfathered the commit, filed <code>INTENT-20260727-dogfood-conversion-manufactured-task-003-execution</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>New findings</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R2-1</span><span class="chip sev-blocker">blocker</span><span class="ftitle">Committed binary is three code commits stale — the fixes are unshipped</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p><code>git log main..HEAD -- bin/native/darwin-arm64/loaf</code> ends at <code>cc825e53</code>; <code>799019f4</code> (gate on receipt success), <code>c2c87487</code> (fixtures), and <code>04ee542f</code> (ladder) changed <code>internal/cli</code> afterwards with no rebuild. Live probes against the tree's <code>bin/loaf</code>: <code>list</code> says <code>executed</code>, <code>show</code> says <code>executable</code>, <code>show --json</code> has no state — while a HEAD-built binary agrees with itself (<code>executing</code>) and blocks failing receipts.</p></div>
+      <div><h4>Why the suite could not see it</h4>
+        <p>Tests compile source directly, and the capability receipts pin the <i>committed</i> binary's hash — so a stale artifact keeps both green. This is the third receipt re-record on one branch; the standing fix is already in intake: <code>INTENT-20260719-decouple-installed-smoke-evidence-from-binary-rebuilds</code>.</p></div>
+      <div><h4>Remedy</h4>
+        <p>Rebuild, re-run the three installed-smoke runners so receipts pin the final hash, commit binary + receipts together — the Before-Committing checklist's artifact rule, applied last-commit-wins. Then TASK-012's "carry the same binary as the receipts attest" box is true again at HEAD.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R2-2</span><span class="chip sev-major">major</span><span class="ftitle">Freshness "re-run" ships as block-with-reason — contract and code disagree, and the V5 descope rides on it</span><span class="chip d-decide">user decides</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p>shape.md (Observable Workflow): "a receipt verified at an older commit <b>triggers a criteria re-run at preflight rather than a block</b>"; V5: "makes preflight re-run the declared criteria." Shipped and deliberately tested behavior: preflight <b>blocks</b> with <code>receipt is not current (later non-receipt path requires criteria re-run)</code> — fixture-confirmed after a <code>plan.md</code>-only commit; the V5 freshness tests assert the block string.</p></div>
+      <div><h4>Adjudication of the TASK-014 descope</h4>
+        <p>The implementer's untestable-as-written call is right under the broad reading of "editing plan.md does not [expire]" and honestly argued. But the narrow reading is testable against shipping code today: after a plan.md-only commit the reason is <i>re-run</i>, never <i>digest mismatch (receipt expired)</i> — the two strings are distinct surfaces. What is genuinely unsatisfiable is the auto-re-run sentence, and that is a contract question, not a fixture question.</p></div>
+      <div><h4>Recommendation</h4>
+        <p>Amend the contract to match the shipped behavior: release preflight executing arbitrary declared commands as a side effect — under <code>--dry-run</code> especially — is a footgun; block-with-mechanical-remedy is the safer design and one sentence of shape.md. Reword Decision 13/V5 to "a stale receipt blocks with a re-run demand; the receipt's own commit never stales," add the reason-string fixture, close TASK-014's box. Keep <code>INTENT-20260727-exempt-plan-md-from-receipt-freshness-re-run</code> alive as the UX refinement it is. Alternative: implement auto re-run as written. Shaping-tier either way — owner's call.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R2-3</span><span class="chip sev-minor">minor</span><span class="ftitle">Repo-specific commit hash baked into product code</span><span class="chip d-decide">decide</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p><code>conversionPreCheckedGrandfathers</code> in <code>change_conversion.go</code> hardcodes <code>acbea950…</code> — Loaf's own dogfood commit — in the binary every consumer runs. Harmless (full-SHA collision is not a thing) and documented, but it is repo data in product code, and the next grandfathered repo means a code change.</p></div>
+      <div><h4>Options</h4>
+        <p>Accept as a documented wart (fine at n=1), or move to a repo-side surface when a second case appears. Not blocking.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R2-4</span><span class="chip sev-minor">minor</span><span class="ftitle">Conduct: packets landed added-checked, so the batch produced almost no flip provenance</span><span class="chip d-note">discipline note</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p>Across the nine commits: one true <code>- [ ]</code>→<code>- [x]</code> transition (5cadf9cc, TASK-012's last box); every other packet was committed <i>already checked</i> inside its delivering commit — which the tightened grammar correctly scores as a non-event.</p></div>
+      <div><h4>Root cause and teaching</h4>
+        <p>Upstream of the implementer: the packets were authored during review and left uncommitted, so flipping a committed box was impossible. The discipline needs one sentence, probably in the implement skill: <b>commit task packets unchecked before executing them</b> — otherwise task-add and delivery collapse into one diff and the evidence trail never exists. Non-gating here (no <code>target_release</code>), and the change's flip provenance survives from <code>28b5ab84</code>.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">R2-5</span><span class="chip sev-minor">minor</span><span class="ftitle">"Intent resolutions" label on 5cadf9cc names Intents that were never filed</span><span class="chip d-note">note only</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p>f1bc7d4e calls the two <code>cmd/loaf</code> failures "Intent candidates"; 5cadf9cc resolves them as "Intent resolutions, not TASK-015." No such Intents exist in intake. The substance was right — both are in-scope expectation updates to behavior this change deliberately rewrote (TASK-004's preflight, TASK-006's vocabulary), so they belong to this change and needed no Intent at all. The label just overstates the ceremony.</p></div>
+    </div>
+  </div>
+
+  <h2>Criteria ledger — regraded</h2>
+
+  <div class="panel scroll">
+    <table>
+      <thead><tr><th>Criterion</th><th>Round 1</th><th>Now</th><th>Basis</th></tr></thead>
+      <tbody>
+        <tr><td><b>V1</b> gate regression</td><td class="t-part">partial</td><td class="t-ok">green</td><td>Path≠flip, second shaped member, no-target, lower-cohort warn, flip negatives — all named tests, all pass.</td></tr>
+        <tr><td><b>V2</b> prerelease flows</td><td class="t-part">partial</td><td class="t-ok">green</td><td><code>PrereleaseBypassEveryGateState</code> incl. post-merge still blocked.</td></tr>
+        <tr><td><b>V3</b> scaffold</td><td class="t-ok">green</td><td class="t-ok">green</td><td>Re-confirmed with the seeded first-slice packet.</td></tr>
+        <tr><td><b>V4</b> legacy/retarget/conversion</td><td class="t-part">partial</td><td class="t-ok">green</td><td>Pre-checked-conversion violation + all-unchecked positive + two-commit retention.</td></tr>
+        <tr><td><b>V5</b> receipt semantics</td><td class="t-bad">not met</td><td class="t-part">green but one clause</td><td>Expiry, own-commit exemption, freshness, retarget — tested. The plan.md clause awaits the R2-2 contract decision.</td></tr>
+        <tr><td><b>V6</b> tasks projection</td><td class="t-ok">green</td><td class="t-ok">green</td><td>—</td></tr>
+        <tr><td><b>V7</b> tests/build/check</td><td class="t-bad">not met</td><td class="t-part">source green, artifact stale</td><td><code>go test ./...</code> exit 0; R2-1 blocks "rebuilt targets show zero drift" until the binary commit lands.</td></tr>
+        <tr><td><b>V8</b> closed schemas</td><td class="t-ok">green</td><td class="t-ok">green</td><td>—</td></tr>
+        <tr><td><b>V9</b> report registry</td><td class="t-ok">green</td><td class="t-ok">green</td><td>This board and round 1's were both stamped with it.</td></tr>
+        <tr><td><b>H1</b> delegation packet</td><td class="t-part">unconfirmed</td><td class="t-ok">green</td><td>This remediation round <i>was</i> the test: eight tasks executed from packets alone, including a correct descope-with-rationale on TASK-014. That is the evidence H1 asked for.</td></tr>
+        <tr><td><b>H2</b> deprecation notice</td><td class="t-ok">green</td><td class="t-ok">green</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>What remains before merge</h2>
+
+  <div class="panel">
+    <ul>
+      <li><b>R2-1</b> — rebuild + re-record receipts + commit binary with source (implementer, mechanical).</li>
+      <li><b>R2-2</b> — owner decides: amend shape.md to block-with-reason (recommended) or implement auto re-run; then close TASK-014's last box either way.</li>
+      <li>Commit the two review boards (round 1 is still untracked).</li>
+      <li>Then the change's own DoD tail: reflect-distilled Durable Outputs on the branch, and the ship gate.</li>
+    </ul>
+  </div>
+
+  <footer>Authored snapshot — Warden verification of the remediation batch, run against a HEAD-built binary and the committed one, which is how R2-1 surfaced. Finding IDs are stable within this board: <code>change-work-model/20260728-021901/R2-n</code>.</footer>
+</main>

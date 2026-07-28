@@ -41,15 +41,15 @@ type releasePostMergeActionResult struct {
 
 var releasePRSuffixRE = regexp.MustCompile(`\(#(\d+)\)\s*$`)
 
-func runReleasePostMerge(root string, out io.Writer, errOut io.Writer) error {
-	return runReleasePostMergeWithRunner(root, out, errOut, defaultReleasePostMergeCommandRunner)
+func runReleasePostMerge(root string, snapshot releaseSnapshot, out io.Writer, errOut io.Writer) error {
+	return runReleasePostMergeWithRunner(root, snapshot, out, errOut, defaultReleasePostMergeCommandRunner)
 }
 
-func runReleasePostMergeWithRunner(root string, out io.Writer, errOut io.Writer, runner releasePostMergeCommandRunner) error {
+func runReleasePostMergeWithRunner(root string, snapshot releaseSnapshot, out io.Writer, errOut io.Writer, runner releasePostMergeCommandRunner) error {
 	fmt.Fprintf(out, "\n%s\n\n", ansiBold("loaf release"))
 	fmt.Fprintf(out, "  %s...\n\n", ansiCyan("Verifying post-merge state"))
 
-	result := checkReleasePostMergeGuardrails(root, runner)
+	result := checkReleasePostMergeGuardrails(root, snapshot, runner)
 	if !result.ok {
 		return fmt.Errorf("guardrail %d failed: %s", result.guardrail, result.message)
 	}
@@ -70,7 +70,7 @@ func runReleasePostMergeWithRunner(root string, out io.Writer, errOut io.Writer,
 	return nil
 }
 
-func checkReleasePostMergeGuardrails(root string, runner releasePostMergeCommandRunner) releasePostMergeResult {
+func checkReleasePostMergeGuardrails(root string, snapshot releaseSnapshot, runner releasePostMergeCommandRunner) releasePostMergeResult {
 	if dirty := checkReleasePostMergeCleanWorktree(root, runner); dirty != "" {
 		return releasePostMergeAbort(1, dirty)
 	}
@@ -102,29 +102,31 @@ func checkReleasePostMergeGuardrails(root string, runner releasePostMergeCommand
 		prNumber = match[1]
 	}
 
-	configOverrides, err := releaseConfigVersionFiles(root)
-	if err != nil {
+	if snapshot.Candidate == "" {
+		return releasePostMergeAbort(4, "release snapshot was not resolved before post-merge")
+	}
+	if err := assertReleaseSnapshotStillCurrent(root, snapshot); err != nil {
 		return releasePostMergeAbort(4, err.Error())
 	}
-	versionFiles, err := detectReleaseVersionFiles(root, configOverrides)
-	if err != nil {
-		return releasePostMergeAbort(4, err.Error())
-	}
-	version, versionAbort := detectReleasePostMergeConsistentVersion(versionFiles)
+	versionFiles := snapshot.VersionFiles
+	prepared, versionAbort := detectReleasePostMergeConsistentVersion(versionFiles)
 	if versionAbort != "" {
 		return releasePostMergeAbort(4, versionAbort)
+	}
+	if snapshot.Candidate != prepared {
+		return releasePostMergeAbort(4, fmt.Sprintf("tag version %s does not match version-file version %s", snapshot.Candidate, prepared))
 	}
 
 	if diffAbort := checkReleasePostMergeDiffFiles(root, runner, versionFiles); diffAbort != "" {
 		return releasePostMergeAbort(5, diffAbort)
 	}
 
-	changelogBody, changelogAbort := checkReleasePostMergeChangelogSection(root, version)
+	changelogBody, changelogAbort := checkReleasePostMergeChangelogSection(root, snapshot.Candidate)
 	if changelogAbort != "" {
 		return releasePostMergeAbort(6, changelogAbort)
 	}
 
-	if collisionAbort := checkReleasePostMergeNoExistingTagOrRelease(root, runner, version); collisionAbort != "" {
+	if collisionAbort := checkReleasePostMergeNoExistingTagOrRelease(root, runner, snapshot.Candidate); collisionAbort != "" {
 		return releasePostMergeAbort(7, collisionAbort)
 	}
 
@@ -139,7 +141,7 @@ func checkReleasePostMergeGuardrails(root string, runner releasePostMergeCommand
 
 	return releasePostMergeResult{
 		ok:            true,
-		version:       version,
+		version:       snapshot.Candidate,
 		base:          base,
 		featureBranch: featureBranch,
 		changelogBody: strings.Join(changelogBody, "\n"),

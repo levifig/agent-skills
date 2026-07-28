@@ -4,7 +4,7 @@ Guidelines for maintaining and extending Loaf - An Opinionated Agentic Framework
 
 See [README.md](README.md) for what Loaf is and how to install it.
 
-> **New work is Change-first.** `/shape` creates `docs/changes/YYYYMMDD-slug/change.md`, and `loaf change check` validates its structure and derived executability (see `loaf change --help`). Existing `SPEC-*` and task records remain supported compatibility surfaces under `loaf spec` and `loaf task` until they are deliberately converted; their continued support does not make them the default artifact for new work.
+> **New work is Change-first.** `/shape` creates `docs/changes/YYYYMMDD-slug/` with `change.json` + `shape.md` + `tasks/` (use `loaf change init --brief` for capture-only), and `loaf change check` validates structure and derived executability (see `loaf change --help`). Existing `SPEC-*` and task records remain supported compatibility surfaces under `loaf spec` and `loaf task` until deliberately converted — not the default for new work.
 
 ## Quick Start
 

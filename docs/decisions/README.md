@@ -25,5 +25,7 @@ Immutable records of significant architectural decisions.
 | [ADR-019](ADR-019-journal-first-session-model.md) | Journal-first: the project journal replaces the session entity | Accepted | 2026-07-04 |
 | [ADR-020](ADR-020-root-agents-md-canonical.md) | Root AGENTS.md as the Canonical Project Instruction File | Accepted | 2026-07-15 |
 | [ADR-021](ADR-021-markdown-reimport-authority.md) | Markdown re-import authority — fingerprint reclaim, insert-only status, snapshot simulation | Accepted | 2026-07-24 |
+| [ADR-022](ADR-022-change-anatomy-and-release-cohorts.md) | Change anatomy — role-named narrative, task-file state, and release cohorts via target_release | Accepted | 2026-07-28 |
+| [ADR-023](ADR-023-execution-provenance-and-cohort-receipts.md) | Execution provenance and cohort receipts — git as the witness, verify as the only runner | Accepted | 2026-07-28 |
 
 See [../knowledge/](../knowledge/) for domain knowledge files.

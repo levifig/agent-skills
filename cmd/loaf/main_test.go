@@ -107,15 +107,15 @@ func TestPublicBinaryDispatchesStateVersionAndReleasePreflightNatively(t *testin
 
 	output, err = runBinary(binary, workingDir, envWith(), "release", "--post-merge")
 	if err == nil {
-		t.Fatalf("loaf release --post-merge error = nil, want native lineage-preflight failure\n%s", output)
+		t.Fatalf("loaf release --post-merge error = nil, want native candidate-first fail-closed failure\n%s", output)
 	}
-	for _, want := range []string{"release blocked: cannot inspect committed Change graph at HEAD", "inspect committed Change paths at HEAD"} {
+	for _, want := range []string{"release blocked: cannot compute candidate version", "no version files detected"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("release output = %q, want %q", output, want)
 		}
 	}
 	if strings.Contains(output, "Verifying post-merge state") {
-		t.Fatalf("release output = %q, want lineage preflight before post-merge actions", output)
+		t.Fatalf("release output = %q, want candidate-version preflight before post-merge actions", output)
 	}
 	if strings.Contains(output, "TypeScript fallback") {
 		t.Fatalf("release output = %q, want native post-merge path without fallback lookup", output)

@@ -221,7 +221,7 @@ func TestPlanningVocabularyConverged(t *testing.T) {
 			required: []string{
 				"**New work is Change-first.**",
 				"Existing `SPEC-*` and task records remain supported compatibility surfaces",
-				"their continued support does not make them the default artifact for new work",
+				"until deliberately converted — not the default for new work",
 			},
 		},
 		{

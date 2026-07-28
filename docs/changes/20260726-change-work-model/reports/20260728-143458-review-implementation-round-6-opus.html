@@ -1,0 +1,132 @@
+<!-- source: change-work-model · kind review · slug implementation-round-6-opus · stamped 2026-07-28 14:34 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — implementation round 6 (Opus)</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h4 { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--accent-fill); }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .fid { font-family: var(--mono); font-size: .82rem; color: var(--muted); min-width: 3em; }
+  .ftitle { font-weight: 600; flex: 1 1 340px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-major { background: var(--accent-soft); color: var(--accent); }
+  .sev-minor { background: var(--machine-soft); color: var(--machine); }
+  .v-conf { background: var(--ok-soft); color: var(--ok); }
+  .d-fix { background: var(--bad-soft); color: var(--bad); }
+  .d-decide { background: var(--state-soft); color: var(--state); }
+  .fbody { margin-top: 10px; display: grid; gap: 10px; }
+  .fbody > div { border-top: 1px solid var(--line); padding-top: 8px; }
+  .fbody p:last-child { margin-bottom: 0; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">change-work-model · reviews · implementation round 6 · Opus max</div>
+  <h1>Implementation Review — Round 6 (Opus, max effort)</h1>
+  <p class="stamp">reviewed <b>2026-07-28</b> · loaf:reviewer (read-only, static) at max effort over <b>16f1702f..64810d87</b> at <b>64810d87</b> · verdict <b>REQUEST-CHANGES</b> · 0 blockers + 2 major + 3 minor · all five independently verified against source · CI green on the range</p>
+
+  <div class="panel verdict">
+    <p><b>Zero blockers for the first time, and the round also attested what is clean:</b> TASK-026 fully correct with honest fixtures; TASK-027's warning plumbing complete on both surfaces; the state guard and the gate now share loader, layers, order, and task content source; conversion and receipt reads git-sourced; the apply drift fixture lands a real commit. The two majors are the last splinters of the two classes — one input of one rung left on the working tree, and a post-merge semantics collapse that traces to the TASK-024 packet's own wording (and behind it, a conflation inside the shaped contract's V2). The reviewer flagged its limit honestly: static analysis only, no test execution.</p>
+  </div>
+
+  <h2>Findings</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">O6-1</span><span class="chip sev-major">major</span><span class="ftitle">The verified rung's receipt check still reads the working tree</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody"><div><h4>Verification</h4><p><code>change_state.go:45</code>: <code>changeReceiptStatus(rootPath, node.Folder, node, …)</code> receives the <i>working-tree</i> node — its <code>.Content</code> digests on-disk <code>shape.md</code>, its <code>.Folder</code> drives the HEAD receipt lookup — while the structural guard on the next line reads HEAD. An uncommitted criteria edit demotes display while preflight still says verified; an uncommitted folder rename reads as "missing receipt". The C5-3 class, surviving in one input. Fix: the rung passes the HEAD node (already loaded by the guard) into the receipt check.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">O6-2</span><span class="chip sev-major">major</span><span class="ftitle">Post-merge now tags the stable candidate instead of the prepared version — breaking prerelease publishing</span><span class="chip v-conf">confirmed</span><span class="chip d-decide">fix + shape amendment — owner decides</span></div>
+    <div class="fbody">
+      <div><h4>Verification</h4><p><code>resolveReleaseSnapshot</code> (<code>change_release_gate.go:237-245</code>) sets the post-merge candidate to stable-of-current; <code>release_post_merge.go</code> uses <code>snapshot.Candidate</code> for the changelog guardrail (:120), tag collision (:125), and the tagged version (:140), and guardrail 4 was reduced to a cross-file consistency probe that discards the version. The alpha train — this repo's own alpha.12→14 flow — would abort on a missing <code>## [2.0.0]</code> changelog section; the converse case would tag a version no file carries.</p></div>
+      <div><h4>Provenance of the defect — two layers</h4><p>The TASK-024 packet wrote "the tagged version is the preflighted candidate or the run aborts"; the lane implemented that sentence faithfully. Behind it, shape.md's V2 clause ("the same fixture's <code>--post-merge</code> finalization is blocked until the cohort completes") conflates two flows post-merge actually serves: <b>publishing a prepared prerelease</b> (must tag the prepared version and flow through the prerelease valve) and <b>finalizing stable</b> (must gate the stable cohort). Under the current code the next alpha release blocks on the 2.0.0 cohort — the valve closed on the flow it exists for.</p></div>
+      <div><h4>Proposed resolution</h4><p>Post-merge keys on the <b>prepared version</b> (the consistent version-file version at HEAD): prerelease prepared → prerelease publish — tag it, no stable gate; stable prepared → stable finalization — gate that version's cohort, then tag it. Guardrail 4 restored to relate the tag to the version files. One clause of V2 amended to say exactly that; round 3's bypass stays closed (preparing stable files can never tag without the cohort). Shape amendment = owner approval.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">O6-3</span><span class="chip sev-minor">minor</span><span class="ftitle">Two load-error paths beside the fixed one still demote silently</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody"><div><h4>Verification</h4><p><code>change_state.go:40-45</code>: <code>changeFolderExecuted</code>'s error folds into the executable rung with no warning, and <code>receiptErr</code> is checked but never surfaced (<code>change_list.go:78</code> likewise). A truncated committed receipt shows <code>executing</code> silently while the gate errors loudly on the same file — C5-5's behavior, one path over.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">O6-4</span><span class="chip sev-minor">minor</span><span class="ftitle">The snapshot omits the commit range — changelog and gate can describe different histories</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody"><div><h4>Verification</h4><p><code>release_dry_run.go:244/:397</code> re-run <code>releaseCommitsSince</code> after snapshot resolution; the drift assert covers version files only. A commit landing during the multi-second preflight yields a changelog describing work the gated bump never judged. Fix: the snapshot carries the commits it was resolved from.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">O6-5</span><span class="chip sev-minor">minor</span><span class="ftitle">A TASK-027 fixture contains an empty conditional that reads as an assertion</span><span class="chip v-conf">confirmed</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody"><div><h4>Verification</h4><p><code>change_state_test.go:412-413</code>: <code>if !strings.Contains(…) || !strings.Contains(…) { }</code> — empty body, can never fail, reads as coverage that does not exist.</p></div></div>
+  </div>
+
+  <h2>Notes-tier (sub-finding, dispositioned)</h2>
+
+  <div class="panel">
+    <ul>
+      <li><b>Dead wrappers:</b> <code>resolveReleaseCandidate</code> has zero callers, <code>computeReleaseCandidateVersion</code> only tests — removed in the fix batch.</li>
+      <li><b>HEAD is a symbolic ref, not a pinned SHA:</b> each evidence read resolves HEAD at its own git invocation; pinning one resolved SHA per derivation closes the coherence class completely — folded into the fix batch alongside O6-1.</li>
+      <li><b>Evidence-path cost on <code>list</code>:</b> ~80–100 git subprocesses per verified-rung member on this repo — correct but heavy for an interactive surface → Intent.</li>
+      <li><b>The <code>complete</code>/<code>executing</code> rungs read the working tree while <code>verified</code> reads HEAD</b> — defensible under Decision 15 (checkboxes never gate) but undocumented → one sentence in work-model.md, fix batch.</li>
+      <li><b>Seam inconsistency:</b> the structural guard uses package-level <code>changeEvidenceGitOutput</code> while its caller threads <code>outputCommand</code> — production-identical, test-seam surprise → fix batch (thread the parameter).</li>
+      <li><code>check --json</code>'s state field demotes without warning under load errors (explicitly out of TASK-027 scope) → rides O6-3's fix.</li>
+      <li>Committed cross-platform binaries unverifiable by static review — noted; CI's rebuild covers the platform it runs.</li>
+    </ul>
+  </div>
+
+  <h2>Dispositions</h2>
+
+  <div class="panel">
+    <ul>
+      <li><b>O6-1, O6-3, O6-4, O6-5 + notes-tier fixes: accept, one lane, mechanical.</b> Proposed packets: TASK-028 (verified rung's receipt input reads HEAD + pinned-SHA derivation + seam threading), TASK-029 (remaining silent paths surface + the empty conditional made real), TASK-030 (snapshot carries its commit range; dead wrappers removed).</li>
+      <li><b>O6-2: fix + one-clause V2 amendment — awaiting owner approval</b, as every shape amendment has. Packet TASK-031 on approval.</li>
+      <li><b>Round-7 policy:</b> zero blockers, both majors are splinters of already-dying classes, and the round attested the rest clean. After this batch: recommend ship without a further full round — a targeted re-read of just the O6-2 fix by the same reviewer is the proportionate final check.</li>
+    </ul>
+  </div>
+
+  <footer>Authored snapshot — first non-Codex round: loaf:reviewer on Opus 5 at max effort, static analysis, structured verdict (no relay). Every finding re-verified against source before boarding. Finding IDs: <code>change-work-model/20260728-143458/O6-n</code>.</footer>
+</main>

@@ -1,0 +1,116 @@
+<!-- source: change-work-model · kind review · slug implementation-round-5-codex · stamped 2026-07-28 13:50 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — implementation round 5 (Codex)</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h4 { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--bad); }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .fid { font-family: var(--mono); font-size: .82rem; color: var(--muted); min-width: 3em; }
+  .ftitle { font-weight: 600; flex: 1 1 340px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-blocker { background: var(--bad-soft); color: var(--bad); }
+  .sev-major { background: var(--accent-soft); color: var(--accent); }
+  .sev-minor { background: var(--machine-soft); color: var(--machine); }
+  .v-conf { background: var(--ok-soft); color: var(--ok); }
+  .d-class { background: var(--state-soft); color: var(--state); }
+  .fbody { margin-top: 10px; display: grid; gap: 10px; }
+  .fbody > div { border-top: 1px solid var(--line); padding-top: 8px; }
+  .fbody p:last-child { margin-bottom: 0; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">change-work-model · reviews · implementation round 5 · Codex</div>
+  <h1>Implementation Review — Round 5 (Codex)</h1>
+  <p class="stamp">reviewed <b>2026-07-28</b> · Codex fresh thread over <b>b8867a16..ed72b04b</b> (the round-4 remediation) at <b>ed72b04b</b> · verdict <b>REQUEST-CHANGES</b> · 2 blockers + 2 major + 1 minor · all five independently verified against source · dispositions folded at class level per owner decision</p>
+
+  <div class="panel verdict">
+    <p><b>Five findings, five confirmed, zero refuted — and the owner called the pattern.</b> Rounds 3–5 kept finding real residue because two <i>classes</i> recur: <b>snapshot coherence</b> (bump → candidate → now the version underneath: something is always re-derived instead of threaded) and <b>working-tree-vs-HEAD</b> (receipts, then task files, now the state guard's node load — the class of a parked Intent, reintroduced by a fix). Per-finding remediation treats symptoms; this round's dispositions fix the classes: one immutable release snapshot per invocation, and one committed-HEAD content source for every evidence surface, with the parked working-tree Intent pulled into scope.</p>
+  </div>
+
+  <h2>Findings</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C5-1</span><span class="chip sev-blocker">blocker</span><span class="ftitle">Apply never asserts the version the candidate was resolved from</span><span class="chip v-conf">confirmed</span><span class="chip d-class">→ TASK-024</span></div>
+    <div class="fbody"><div><h4>Verification</h4><p><code>release_dry_run.go:445-452</code>: <code>currentVersion</code> is freshly read, <code>newVersion := options.candidateVersion</code> is threaded, and no guard relates them — a version-changing commit mid-invocation lets apply overwrite the newer version with the stale gated candidate. TASK-020 threaded the candidate but not the snapshot it was resolved against.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C5-2</span><span class="chip sev-blocker">blocker</span><span class="ftitle"><code>--post-merge</code> discards the resolved candidate and re-reads independently</span><span class="chip v-conf">confirmed</span><span class="chip d-class">→ TASK-024</span></div>
+    <div class="fbody"><div><h4>Verification</h4><p><code>release.go:54</code> calls <code>runReleasePostMerge(runtimeRoot, out, errOut)</code> with no candidate; <code>release_post_merge.go:105-118</code> re-reads version files and derives the tagged version itself. Preflight gates the resolved candidate; post-merge tags whatever the files say now.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C5-3</span><span class="chip sev-major">major</span><span class="ftitle">The verified-state guard reads working-tree nodes while the gate reads HEAD</span><span class="chip v-conf">confirmed</span><span class="chip d-class">→ TASK-025</span></div>
+    <div class="fbody"><div><h4>Verification</h4><p><code>change_state.go:46</code> <code>loadChangeNodes</code> (working tree) vs <code>change_release_gate.go:33</code> <code>loadChangeNodesAtHEADWithOutput</code>. A dirty edit renaming one duplicate slug makes display say <code>verified</code> while preflight blocks on the committed duplication. TASK-022's fix introduced the exact class its neighboring Intent had parked — and the structural tier's task-file reads share the hole (that Intent now enters scope).</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C5-4</span><span class="chip sev-major">major</span><span class="ftitle">An exit conflict suppresses every other atom from the receipt</span><span class="chip v-conf">confirmed</span><span class="chip d-class">→ TASK-026</span></div>
+    <div class="fbody"><div><h4>Verification</h4><p><code>change_verify.go:334</code>: the <code>ExitConflict</code> branch returns only the conflict check; declared <code>contains</code> atoms are never evaluated or recorded, against the receipt contract that records each atom with its outcome.</p></div></div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">C5-5</span><span class="chip sev-minor">minor</span><span class="ftitle">Structural-load errors silently demote the displayed state</span><span class="chip v-conf">confirmed</span><span class="chip d-class">→ TASK-027</span></div>
+    <div class="fbody"><div><h4>Verification</h4><p><code>change_state.go:47</code> <code>return false</code> on load error — fail-closed display (right direction) but silent: an unreadable machine file shows a verified change as <code>executing</code> with no warning on any surface.</p></div></div>
+  </div>
+
+  <h2>Dispositions — class fixes, owner-decided</h2>
+
+  <div class="panel">
+    <ul>
+      <li><b>TASK-024 — release snapshot coherence</b> (closes C5-1 + C5-2 and the class): one immutable snapshot (version-file state, effective bump, candidate) resolved at invocation start and threaded to preview, apply, and post-merge; apply and post-merge assert the version files still match the snapshot before acting, blocking with a plain re-run message on drift.</li>
+      <li><b>TASK-025 — committed-HEAD content source for evidence surfaces</b> (closes C5-3 and resolves <code>INTENT-20260728-gate-structural-tier-reads-task-files-from-the-working-tree…</code>): the split becomes explicit — <code>check</code> reads the working tree (author feedback); the gate and the <code>verified</code> rung read HEAD (evidence) through one shared content source, task files included.</li>
+      <li><b>TASK-026 — receipts record every atom</b> (closes C5-4): conflict recorded alongside, never instead of, the other checks.</li>
+      <li><b>TASK-027 — load errors surface</b> (closes C5-5): conservative state stands, plus a visible warning on <code>show</code>/<code>list</code> and in JSON.</li>
+      <li>Lane: single sequential Cursor Grok 4.5 high implementer in a worktree, packets committed unchecked first, order 024 → 025 → 026 → 027.</li>
+    </ul>
+  </div>
+
+  <footer>Authored snapshot — Codex fresh-thread round over the round-4 remediation, verdict extracted from the session rollout; every finding re-verified against source before boarding. Finding IDs: <code>change-work-model/20260728-135031/C5-n</code>.</footer>
+</main>

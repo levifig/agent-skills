@@ -1,0 +1,154 @@
+<!-- source: change-work-model shaping 2026-07-25→27 · approval snapshot of change.md sha256:7d96435a1b1c6ead… at commit c680824f · supersedes the withdrawn pre-inversion approval request · approval evidence, never updated -->
+<meta charset="utf-8">
+<title>change-work-model · Shaping Approval</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .84rem; }
+  th, td { text-align: left; padding: 8px 11px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .chip { font-size: .66rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .c-blocker { background: var(--bad); color: #fff; }
+  .c-major { background: var(--bad-soft); color: var(--bad); }
+  .c-minor { background: var(--machine-soft); color: var(--machine); }
+  .c-accept { background: var(--ok-soft); color: var(--ok); }
+  .c-mod { background: var(--accent-soft); color: var(--accent); }
+  .gatebar { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .gcell { border-radius: 10px; padding: 13px 16px; font-size: .86rem; }
+  .gcell h4 { margin: 0 0 5px; font-size: .82rem; }
+  .before { background: var(--bad-soft); } .before h4 { color: var(--bad); }
+  .after { background: var(--ok-soft); } .after h4 { color: var(--ok); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  ul.tight { margin: 8px 0 0; padding-left: 20px; font-size: .87rem; }
+  ul.tight li { margin-bottom: 6px; }
+  .approve { border: 1.5px solid var(--accent-fill); border-radius: 12px; padding: 18px 22px; margin-top: 48px; background: var(--accent-soft); }
+  .approve h2 { margin-top: 0; color: var(--accent); }
+  .approve ol { font-size: .9rem; margin: 8px 0 0; padding-left: 22px; }
+  .approve li { margin-bottom: 5px; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+  @media (max-width: 720px) { .cols, .gatebar { grid-template-columns: 1fr; } }
+</style>
+
+<main>
+  <div class="eyebrow">change-work-model · pre-implementation gate</div>
+  <h1>Shaping Approval Report</h1>
+  <p class="stamp">approves <b>change.md</b> · sha256 <b>7d96435a1b1c6ead…</b> · commit <b>c680824f</b> · 2026-07-27 20:16 · any later shape edit visibly postdates this approval · supersedes the withdrawn pre-inversion request</p>
+
+  <h2>What this change does</h2>
+  <div class="panel">
+    <p style="margin: 0 0 10px; font-size: .92rem;">Redefines Loaf's work unit — <b>role-named narrative</b> (<code>brief.md?</code> · <code>shape.md</code> · <code>plan.md?</code>/<code>design.md?</code>) settles at shaping; <b>state</b> (<code>tasks/TASK-NNN-slug.md</code>: commit-grained delegation packets, checkbox flips ride delivering commits) mutates during execution; <b>machine metadata</b> (<code>change.json</code>) carries identity plus an optional mutable <code>target_release</code> — and inverts the release gate onto <b>release cohorts</b>: the set of changes targeting a version must be executed and verified before that version cuts stable. Same root, both layouts coexist, progressive deprecation, repo mode complete (trackers own planning later; the gate reads git in every mode). And the change PR is the change's whole life: draft anchors shaping, implementation and reflect ride the same branch, main receives only completed changes — a shaped-but-unimplemented change is a shaped intent (D17).</p>
+    <div class="gatebar">
+      <div class="gcell before"><h4>⛔ Before — the proven defect</h4>Merging a 411-line shaping document plus one frontmatter line opened a full stable release with zero lines implemented (worktree proof, 2026-07-25). And today's post-merge path can finalize a prerelease into stable with no gate at all.</div>
+      <div class="gcell after"><h4>✓ After — evidence or nothing</h4>Preflight computes the candidate version first; a stable candidate gates its cohort: every member executed at flip grade (<code>- [ ]</code>→<code>- [x]</code>, companion path outside <code>docs/changes/</code>) + fresh receipt, re-verified when stale. Finalization paths gate; prerelease candidates flow; retargets surface.</div>
+    </div>
+  </div>
+
+  <h2>Shape summary</h2>
+  <div class="cols">
+    <div class="panel">
+      <b style="font-size: .9rem;">17 Decisions — the spine</b>
+      <ul class="tight">
+        <li>Change stays the bucket; slug identity; no minted counters</li>
+        <li>Narrative/state split; brief archeological; H-tier = review material, never gate input</li>
+        <li>Tasks = commits, delegation-packet bodies; relations parent/blocks/blocked-by/relates-to (Linear's set, change-local, closed)</li>
+        <li><b>target_release defines the cohort; no arc graph</b> — mutable, retarget-as-exit, canonical MAJOR.MINOR.PATCH</li>
+        <li>Receipt = cache of verify (criteria digest + verified commit; own commit never stales it); cohort-only; legacy converts first</li>
+        <li>Derived views served; authored reports committed under the closed kind registry (timestamped names; every review round gets its own board)</li>
+        <li>One change = one PR, merged only when everything is done — implementation, verification, reflect-distilled outputs; the captured promise carrier is the sole sanctioned early merge</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <b style="font-size: .9rem;">6 Tasks · V1–V9 · H1–H2</b>
+      <ul class="tight">
+        <li><code>TASK-001</code> change.json schema (canonical target grammar) + layout-agnostic loader, unit-keyed retention, retarget replay</li>
+        <li><code>TASK-002</code> scaffold + templates + kind registry + report machinery</li>
+        <li><code>TASK-003</code> check over both layouts, projections, task hygiene, guard slug-scan</li>
+        <li><code>TASK-004</code> candidate-first gate: stable candidates gate cohorts, finalization paths gate, carrier materialized, <code>list</code> redefined</li>
+        <li><code>TASK-005</code> cohort receipt: verify, freshness, re-run</li>
+        <li><code>TASK-006</code> skills/guidance sweep · then this unit self-converts (DoD)</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Review history — three rounds, all folded</h2>
+  <p style="font-size: .88rem;">Round 1 (21 findings → <a href="20260727-160756-review-codex-r1.html">disposition board</a>). Round 2 (2 blockers · 8 major · 4 minor — verify-cache bootstrap, legacy conversion ramp, flip grammar, H-tier declaration; all folded at <code>5f6337ff</code>). Round 3 below, against the cohort-inverted doc, all folded at <code>863b4ab2</code>. Round 3 also re-judged nine round-1 dispositions — every counter-judgment matched evolution already made.</p>
+  <div class="panel scroll">
+    <table>
+      <thead><tr><th>#</th><th>Sev</th><th>Round-3 finding</th><th>Disposition</th><th>Landed as</th></tr></thead>
+      <tbody>
+        <tr><td>2.1</td><td><span class="chip c-blocker">blocker</span></td><td>Preflight runs before the candidate version exists; the doc's own 2.0.0 example used the wrong bump</td><td><span class="chip c-accept">accept</span></td><td>Candidate-first preflight restructure; byte-equal target matching; Releasing example corrected to <code>--bump release</code>; V1 fixture uses finalization paths</td></tr>
+        <tr><td>2.2</td><td><span class="chip c-blocker">blocker</span></td><td>Post-merge prerelease bypass can finalize stable ungated</td><td><span class="chip c-accept">accept</span></td><td>Prerelease *candidates* bypass; finalization (<code>--bump release</code>, <code>--post-merge</code>) gates the stable cohort. Gate bullet, TASK-004, V2</td></tr>
+        <tr><td>3.1</td><td><span class="chip c-blocker">blocker</span></td><td>Target grammar/equality still "leaning" while defining cohort membership</td><td><span class="chip c-accept">accept</span></td><td>Canonical literal MAJOR.MINOR.PATCH (no v/zeros/prerelease/build), settled in Scope + TASK-001; open question removed</td></tr>
+        <tr><td>1.1</td><td><span class="chip c-major">major</span></td><td><code>loaf change list --lineage</code> undispositioned</td><td><span class="chip c-accept">accept</span></td><td><code>list</code> redefined as units/cohort projection (<code>--target</code> filter); lineage contract retires with the graph</td></tr>
+        <tr><td>1.2</td><td><span class="chip c-major">major</span></td><td>Lower-cohort behavior both settled and open</td><td><span class="chip c-accept">accept</span></td><td>Warn, settled; open question removed</td></tr>
+        <tr><td>1.3</td><td><span class="chip c-major">major</span></td><td>Untargeted changes have no coherent done state</td><td><span class="chip c-accept">accept</span></td><td>Ladder split: untargeted end at <b>complete</b>; <b>verified</b> is cohort-only and the only state the gate reads</td></tr>
+        <tr><td>2.3</td><td><span class="chip c-major">major</span></td><td>The promised carrier isn't materialized in main — translation alone loses the promise</td><td><span class="chip c-accept">accept</span></td><td>TASK-004 materializes the carrier (sweep or successor, <code>target_release: 2.0.0</code>) atomically with freeze-replay retirement — the promise is never unheld</td></tr>
+        <tr><td>2.4</td><td><span class="chip c-major">major</span></td><td>Retention/replay is a replacement, not an extension</td><td><span class="chip c-accept">accept</span></td><td>Stated as replacement: unit-keyed retention + mutable-event replay; conversion recognized as replacement, not deletion</td></tr>
+        <tr><td>2.5</td><td><span class="chip c-major">major</span></td><td>Atomic conversion could manufacture flip-grade execution</td><td><span class="chip c-accept">accept</span></td><td>Conversion requires all boxes unchecked (pre-checked = violation); execution flips them in later delivering commits. V4</td></tr>
+        <tr><td>3.2</td><td><span class="chip c-major">major</span></td><td>"Surface, don't block" unverified at the release decision point</td><td><span class="chip c-accept">accept</span></td><td>Preflight prints retarget/removal events relevant to the candidate; V4 asserts it</td></tr>
+        <tr><td>4.1</td><td><span class="chip c-major">major</span></td><td>Removing target_release neither defined nor protected</td><td><span class="chip c-mod">accept · legal</span></td><td>Removal-to-none is a legal retarget event — surfaced at check/show and preflight, never blocked (roadmaps drop scope; visible in diff)</td></tr>
+        <tr><td>5.1</td><td><span class="chip c-major">major</span></td><td>Informational kinds both free-form and closed</td><td><span class="chip c-mod">accept · closed</span></td><td>Closed registry with <code>note</code> as the escape hatch (recurring notes signal a new kind); unknown kinds refused, registry printed</td></tr>
+        <tr><td>5.2</td><td><span class="chip c-major">major</span></td><td>Reserved filename doesn't define the claimed publish gate</td><td><span class="chip c-mod">accept · descoped</span></td><td>The load-bearing publish claim removed from this change — kinds are reserved *so that* the publish ceremony (its own Intent) can wire them later</td></tr>
+        <tr><td>1.4</td><td><span class="chip c-minor">minor</span></td><td>Arc-era terminology residue</td><td><span class="chip c-accept">accept</span></td><td>"Belongs to the arc" and "mirroring the arc's previous rule" rewritten cohort-native</td></tr>
+        <tr><td>1.5</td><td><span class="chip c-minor">minor</span></td><td>slug/NNN is a reference, not a file path</td><td><span class="chip c-accept">accept</span></td><td>"Stable external reference resolving to <code>tasks/TASK-NNN-*.md</code>"</td></tr>
+        <tr><td>3.3</td><td><span class="chip c-minor">minor</span></td><td>Receipt-across-retarget lacks its fixture</td><td><span class="chip c-accept">accept</span></td><td>V5: verify at 2.0.0 → retarget 2.1.0 → re-run, not blind trust or invalidation</td></tr>
+        <tr><td>5.3</td><td><span class="chip c-minor">minor</span></td><td>Source Inputs referenced a withdrawn report</td><td><span class="chip c-accept">accept</span></td><td>Provenance corrected; this regenerated report carries the dispositions</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size: .82rem; color: var(--muted);">Still open, deliberately: receipt serialization (TASK-005) · removal boundary named at TASK-003 ship · template feel (reaction artifact against this unit's own tasks). User-driven refinements after round 3, absorbed without mechanism changes: one-change-one-PR as the default lifecycle, D17 merge-when-everything-done (reflect moves pre-merge, stays post-implementation), per-round review boards, the repo-mode boundary (trackers plan; git proves). The gate mechanics have not changed since the round-3 fold — a convergence signal.</p>
+
+  <div class="approve">
+    <h2>What approval triggers</h2>
+    <ol>
+      <li><b>Squash</b> the shaping commits (20 at last count) in-branch into one <code>docs: shape the change work model</code></li>
+      <li><b>Push</b> the milestone (force-with-lease) and refresh PR #141's body from the folded doc</li>
+      <li><b>Implementation begins</b> at TASK-001 — atomic task commits, batched PRs, boxes flip with the work</li>
+    </ol>
+    <p style="font-size: .82rem; margin: 10px 0 0;">Approval binds to the stamp above. Any shape edit after <code>c680824f</code> postdates it visibly — the same canary logic the receipts use.</p>
+  </div>
+
+  <footer>
+    <p>Authored approval snapshot (never updated) · companions: <span style="font-family: var(--mono)">20260727-160756-review-codex-r1.html</span> · <span style="font-family: var(--mono)">20260727-165150-visual-process-and-lifecycle.html</span> · Codex sessions 019fa3fc… (r1) · 019fa4c5… (r2) · 019fa4f2… (r3)</p>
+  </footer>
+</main>

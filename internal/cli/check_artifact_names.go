@@ -244,24 +244,48 @@ func isLoafAuthoredArtifact(rel string) bool {
 	return false
 }
 
+// taskOwnerPrefixRE matches the TASK-NNN- owner prefix on a numbered task
+// record so the slug remainder can be scanned for foreign work identities.
+var taskOwnerPrefixRE = regexp.MustCompile(`(?i)^task-[0-9]+-`)
+
 // workIdentityInArtifactName reports the kind of work identity embedded in
 // rel's basename, unless the artifact is the entity that identity names.
+//
+// Task records in a tasks/ directory are identity owners for their own
+// TASK-NNN prefix, but the slug remainder after TASK-NNN- is still scanned —
+// so TASK-001-spec-053-followup.md is caught while TASK-001-configure-build.md
+// is not.
 func workIdentityInArtifactName(rel string) (string, bool) {
 	segments := strings.Split(rel, "/")
 	name := strings.TrimSuffix(segments[len(segments)-1], filepath.Ext(segments[len(segments)-1]))
 	lowerName := strings.ToLower(name)
+	scanName := name
 	for _, owner := range artifactNameIdentityOwners {
 		if !strings.HasPrefix(lowerName, owner.prefix) {
 			continue
 		}
+		inOwnerDir := false
 		for _, dir := range segments[:len(segments)-1] {
 			if dir == owner.dirBase {
-				return "", false
+				inOwnerDir = true
+				break
 			}
 		}
+		if !inOwnerDir {
+			continue
+		}
+		if owner.dirBase == "tasks" && owner.prefix == "task-" {
+			remainder := taskOwnerPrefixRE.ReplaceAllString(lowerName, "")
+			if remainder == "" || remainder == lowerName {
+				return "", false
+			}
+			scanName = remainder
+			break
+		}
+		return "", false
 	}
 	for _, pattern := range workIdentifierPatterns {
-		if pattern.re.MatchString(name) {
+		if pattern.re.MatchString(scanName) {
 			return pattern.label, true
 		}
 	}
