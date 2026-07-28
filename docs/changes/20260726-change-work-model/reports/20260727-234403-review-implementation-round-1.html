@@ -1,0 +1,298 @@
+<!-- source: change-work-model · kind review · slug implementation-round-1 · stamped 2026-07-27 23:44 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — implementation round 1</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h4 { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp, .meta { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b, .meta b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--bad); }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .fid { font-family: var(--mono); font-size: .82rem; color: var(--muted); min-width: 2.4em; }
+  .ftitle { font-weight: 600; flex: 1 1 340px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-blocker { background: var(--bad-soft); color: var(--bad); }
+  .sev-major { background: var(--accent-soft); color: var(--accent); }
+  .sev-minor { background: var(--machine-soft); color: var(--machine); }
+  .d-fix { background: var(--bad-soft); color: var(--bad); }
+  .d-decide { background: var(--state-soft); color: var(--state); }
+  .d-tidy { background: var(--machine-soft); color: var(--machine); }
+  .fbody { margin-top: 10px; display: grid; gap: 10px; }
+  .fbody > div { border-top: 1px solid var(--line); padding-top: 8px; }
+  .fbody p:last-child { margin-bottom: 0; }
+  pre { font-family: var(--mono); font-size: .78rem; background: var(--machine-soft); color: var(--ink); padding: 10px 12px; border-radius: 6px; overflow-x: auto; margin: 0 0 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .t-ok { color: var(--ok); font-weight: 600; }
+  .t-bad { color: var(--bad); font-weight: 600; }
+  .t-part { color: var(--accent); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">change-work-model · reviews · implementation round 1</div>
+  <h1>Implementation Review — Round 1</h1>
+  <p class="stamp">reviewed <b>2026-07-27</b> · six commits <b>3f381d01…125ef6ea</b> read against <b>shape.md</b> · verdict <b>REQUEST-CHANGES</b> · 3 blockers + 6 major + 4 minor · dispositions decided <b>2026-07-28</b>, handed off as <b>TASK-007…TASK-014</b></p>
+
+  <div class="panel verdict">
+    <p><b>The headline defect is closed.</b> <code>--bump release</code> and <code>--post-merge</code> both exit 1 on the unexecuted 2.0.0 carrier; <code>--bump prerelease</code> flows; <code>--bump minor</code> proceeds with the lower-cohort warning. The candidate-first restructure, the dual-layout loader, the closed schemas, the projections, and the report registry all behave as shaped.</p>
+    <p><b>But the lock does not lock.</b> A receipt written by a <i>failing</i> <code>loaf change verify</code> satisfies the gate — proven end-to-end in a fixture that cut a stable 1.0.0 with a receipt recording <code>exit_code: 1, ok: false</code>. Combined with a criteria syntax that the shipped template gets wrong, the verification tier is currently decorative: no change shaped from the scaffold can produce parseable criteria, and any change that manages to can pass the gate on failed ones.</p>
+  </div>
+
+  <h2>Decisions taken on this round</h2>
+
+  <div class="panel">
+    <p>Four findings were design calls rather than defects. All four are now decided, and the task packets are written against these answers.</p>
+    <ul>
+      <li><b>M2 — build the ladder, do not retreat the doc.</b> <code>verified</code> is the predicate the gate reads, and a model whose gate has no name in any projection is unfinished; round 3's finding 1.3 already accepted the ladder as the fix for untargeted changes lacking a done state. Both missing states are nearly free once B1 lands. Keep <code>executable</code> and amend shape.md to name it. → <b>TASK-011</b></li>
+      <li><b>M4 — tighten the detector, do not restate the grammar.</b> The looseness is reachable by ordinary editing: rewording a step reads as execution today. Require same-hunk, same-label pairing. A commit that flips and rewords at once stops counting, which is a false negative — the direction shape.md's Risks section already declares safe. → <b>TASK-009</b></li>
+      <li><b>m1 — criteria run from the repository root.</b> Every realistic criterion is repo-scoped, and the current default produces silent false passes (<code>go test ./...</code> in a docs subdirectory matches no packages and exits 0). A criterion that proves nothing while reporting green is the one failure direction a gate cannot tolerate. Record the cwd in the receipt. → <b>TASK-008</b></li>
+      <li><b>m3 — seed a real task packet.</b> The design leans entirely on the delegation-packet format and nothing puts it in front of a shaper. Seed <code>TASK-001-first-slice.md</code> with unchecked boxes; it cannot manufacture provenance, and V3 must stay green. → <b>TASK-013</b></li>
+    </ul>
+    <p>m4 is recorded as a note with no task: the dogfood wrinkle self-healed and needs no code.</p>
+  </div>
+
+  <h2>Handoff</h2>
+
+  <div class="panel scroll">
+    <p>Eight packets under <code>docs/changes/20260726-change-work-model/tasks/</code>. Same change, same problem — Decision 9 makes these tasks, not Intents. Each is a self-sufficient brief; none needs this board to be actionable, though every one cites it.</p>
+    <table>
+      <thead><tr><th>Task</th><th>Closes</th><th>Depends on</th></tr></thead>
+      <tbody>
+        <tr><td><b>TASK-012</b> Green the suite against the rebuilt binary</td><td>B3</td><td>— <i>do this first; until it lands the suite is not a signal</i></td></tr>
+        <tr><td><b>TASK-008</b> Declared criteria parse and run as documented</td><td>B2, m1</td><td>—</td></tr>
+        <tr><td><b>TASK-007</b> Receipt attests success, not merely execution</td><td>B1, m2</td><td>TASK-008</td></tr>
+        <tr><td><b>TASK-009</b> Flip grammar matches the documented transition</td><td>M3, M4</td><td>—</td></tr>
+        <tr><td><b>TASK-010</b> Conversion cannot manufacture execution</td><td>M5</td><td>—</td></tr>
+        <tr><td><b>TASK-011</b> One derived-state ladder across every surface</td><td>M1, M2</td><td>TASK-007</td></tr>
+        <tr><td><b>TASK-013</b> Scaffold seeds a real task packet</td><td>m3</td><td>—</td></tr>
+        <tr><td><b>TASK-014</b> Back the Verification Contract with fixtures</td><td>M6</td><td>TASK-007, TASK-008, TASK-009</td></tr>
+      </tbody>
+    </table>
+    <p>Conduct for this batch: one task, one atomic commit that flips that task's boxes alongside the work — the gate reads those flips. Do not check a box whose fixture is absent; TASK-005's expiry box was flipped without one, which is how M6 stayed invisible. A discovered <i>different</i> problem is an Intent, never TASK-015.</p>
+  </div>
+
+  <h2>Blockers</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">B1</span><span class="chip sev-blocker">blocker</span><span class="ftitle">A receipt from a failed verification opens the stable gate</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p><code>changeReceiptStatus</code> (<code>internal/cli/change_verify.go:230</code>) validates three things — receipt exists, criteria digest matches, receipt is fresh — and never reads <code>receipt.Results[].OK</code>. <code>runChangeVerify</code> writes the receipt at line 128 <i>before</i> returning <code>ExitError{Code: 1}</code> at line 135, so a failing run still leaves a committed artifact.</p>
+        <pre>fixture at 1.0.0-alpha.1, member declares target_release: 1.0.0
+$ loaf change verify …          fail V1  test -f README.md
+                                Wrote receipt: …/receipts/verify.json
+$ git commit -m "chore: record failing receipt"
+$ loaf release --dry-run --bump release
+                                New version: 1.0.0        ← gate opened
+$ grep ok …/receipts/verify.json
+                                "exit_code": 1,  "ok": false</pre></div>
+      <div><h4>Why it matters</h4>
+        <p>This is the accident path, not the tamper path the threat model excludes: run verify, see it fail, commit the branch, open the PR. Scope says a cohort member must be "executed at the flip grade, <b>and receipt-verified</b>" — the receipt currently attests that verification <i>ran</i>, not that it <i>passed</i>.</p></div>
+      <div><h4>Suggested shape of the fix</h4>
+        <p>Gate on every <code>Results[].OK</code> being true (reason: "receipt records failing criteria"), and consider refusing to write a receipt at all on failure — or writing it with an explicit failure marker the gate keys on. Add the negative fixture; its absence is why this slipped.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">B2</span><span class="chip sev-blocker">blocker</span><span class="ftitle">The shipped criteria syntax never parses</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p>The scaffold's shape template writes the command inline on the V-entry line — <code>- [**V1.** What must be true. Command: `exact command`. Expect: …]</code> — but <code>changeCriterionCommandRE</code> (<code>change_verify.go:21</code>) is anchored <code>^\s*-\s*Command:</code>, so it cannot match a line beginning <code>- **V1.**</code>. The parser's own comment at line 168 says "Inline Command: `…` on the same header line", so the intent was inline support; the regex forbids it. Only a sub-bullet form works, and that form appears nowhere except one test fixture.</p></div>
+      <div><h4>Why it matters</h4>
+        <p>Every change shaped from the shipped scaffold has zero executable criteria, so <code>loaf change verify</code> refuses with "no executable criteria found", so a cohort member can never satisfy the gate. This change's own <b>V1–V9</b> are among the casualties — <code>loaf change verify docs/changes/20260726-change-work-model</code> refuses today, which is legal (no <code>target_release</code>) but means the verify path has only ever run against fixtures.</p></div>
+      <div><h4>Suggested shape of the fix</h4>
+        <p>Make the regex unanchored for the header-line case (or accept both forms explicitly), then assert both forms in tests, and teach the working form somewhere a shaper will find it — the shape skill or <code>cli-boundary.md</code>, neither of which mentions <code>Command:</code> at all.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">B3</span><span class="chip sev-blocker">blocker</span><span class="ftitle">V7 is red: <code>go test ./...</code> fails on the stale installed-smoke receipt</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p>57 subtests across 10 parent tests fail, all one root cause: the three capability receipts under <code>docs/changes/20260710-journal-reliability-foundation/research/</code> pin native binary SHA-256 <code>40afe75f…</code> (main's binary) while this branch's rebuilt binary is <code>8f4f98a8…</code>. Every failure message is the same hash mismatch.</p></div>
+      <div><h4>Why it matters</h4>
+        <p>The Definition of Done requires V1–V9 green in CI. This is the known canary shape.md's own Risks section names ("fired four times during capability work"), and the remedy is mechanical — re-record the receipts against the rebuilt binary, as the version-agnostic-managed-block change did. It is bookkeeping, not architecture, but it is currently a red suite.</p></div>
+    </div>
+  </div>
+
+  <h2>Major</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">M1</span><span class="chip sev-major">major</span><span class="ftitle">Two surfaces disagree about the same change's derived state</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p><code>loaf change list</code> reports <code>state=executed</code> for change-work-model; <code>loaf change show</code> reports <code>state: executable</code> for the same folder. <code>runChangeShow</code> (<code>change_tasks.go:210</code>) derives state from <code>captured</code> / <code>shaped</code> / <code>executable</code> only and never calls <code>changeFolderExecuted</code>. Worse, <code>show --json</code> carries no <code>state</code> field at all — the string is computed inside the print path, so a JSON consumer cannot see it.</p></div>
+      <div><h4>Why it matters</h4>
+        <p>Derived state is the whole premise ("completion and readiness are always derived"). Two derivations that disagree make the projection untrustworthy exactly where an agent or adapter would read it.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">M2</span><span class="chip sev-major">major</span><span class="ftitle">The state ladder accepted at round 3 was not implemented — <code>complete</code> and <code>verified</code> do not exist</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p>Observable Workflow declares <code>captured → shaped → executing → complete</code>, plus <code>verified</code> for cohort members (the ladder split accepted as r3 finding 1.3). The code emits <code>captured</code>, <code>shaped</code>, <code>executable</code>, <code>executing</code>, <code>executed</code> — <code>grep '"verified"\|"complete"'</code> across <code>internal/cli/change*.go</code> returns nothing.</p></div>
+      <div><h4>Why it matters</h4>
+        <p>A verified cohort member is indistinguishable from an unverified one in every projection, so the state the gate actually reads is the one state no surface can display. Either the code adopts the shaped vocabulary or shape.md is corrected to the shipped one — but they cannot both stand, and the doc is the contract.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">M3</span><span class="chip sev-major">major</span><span class="ftitle">The code-fence exclusion in flip detection is not implemented</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p><code>diffContainsCheckboxFlip</code> (<code>change_provenance.go:108</code>) skips lines that <i>are</i> fence markers but never tracks fence state — its own comment concedes "stripping fenced regions is hard". A checkbox flipped inside a fenced block therefore counts as execution provenance.</p></div>
+      <div><h4>Why it matters</h4>
+        <p>Provenance precision requires "only <code>- [ ]</code>→<code>- [x]</code> transitions <b>outside code fences</b>", and V1 claims a negative fixture for each non-event. There is no fenced-checkbox fixture in the suite. A task file documenting checkbox syntax in a fenced example would open the gate.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">M4</span><span class="chip sev-major">major</span><span class="ftitle">Flip detection pairs any removed unchecked box with any added checked box</span><span class="chip d-decide">decide</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p>The function accumulates <code>hasAdd</code> and <code>hasRemove</code> independently over a file's whole patch and returns their conjunction. The two need not be the same checkbox or the same hunk: deleting an unchecked step (descoping) while adding a pre-checked step elsewhere in the file registers as a flip with no transition anywhere.</p></div>
+      <div><h4>Why it matters</h4>
+        <p>Acceptable as the coarse filter <i>if</i> the receipt is the lock — which B1 shows it currently is not. Worth deciding explicitly: tighten to hunk-local pairing, or restate the grammar as "removed unchecked + added checked in the same file" and fixture it honestly.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">M5</span><span class="chip sev-major">major</span><span class="ftitle">The pre-checked-conversion violation (r3 finding 2.5) was never built</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p>The Planning Contract requires "<b>all task checkboxes unchecked at conversion</b> (pre-checked boxes are a violation)" and V4 asserts it. No code references the rule and no test covers it — <code>grep -i 'pre-checked\|unchecked at conversion'</code> over <code>internal/cli</code> returns nothing but the retention test's atomic-conversion case, which says nothing about boxes.</p></div>
+      <div><h4>Why it matters</h4>
+        <p>This is precisely the manufactured-execution hole Codex found at round 3 and the shape accepted closing. A conversion carrying checked boxes plus one outside path currently reads as flip-executed.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">M6</span><span class="chip sev-major">major</span><span class="ftitle">Coverage is thinnest exactly where the gate is load-bearing</span><span class="chip d-fix">fix before merge</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p><code>change_verify_test.go</code> is 39 lines and two tests: writes-a-receipt, legacy-refused. Absent: digest-expiry after a criteria edit, <code>plan.md</code> immunity, freshness re-run past the verified commit, receipt's-own-commit exemption, retarget-after-verify — all five named in V5. The gate suite has four tests; absent: prerelease bypass in every gate state (V2), <code>--post-merge</code> finalization, path-grade-is-not-flip-grade, a second shaped-only member, no-target-never-gates, and the reverse-flip / added-unchecked / whitespace negatives (V1).</p></div>
+      <div><h4>Why it matters</h4>
+        <p>V1, V2 and V5 read as verified but are partially covered, and B1 lives squarely in the untested region. The regression the whole change exists to prevent needs its fixtures before merge, not after.</p></div>
+    </div>
+  </div>
+
+  <h2>Minor</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">m1</span><span class="chip sev-minor">minor</span><span class="ftitle">Criteria commands run from the change folder, not the repo root</span><span class="chip d-decide">decide</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p><code>runChangeCriterionCommand</code> sets <code>cmd.Dir = folder</code> (<code>change_verify.go:199</code>), so a declared command executes inside <code>docs/changes/YYYYMMDD-slug/</code>. <code>go test ./...</code> there matches no packages and exits 0 — a criterion that passes while proving nothing. shape.md never specifies cwd, so nothing was violated; the default landed on the surprising side.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">m2</span><span class="chip sev-minor">minor</span><span class="ftitle">Dead and triplicated freshness logic in <code>changeReceiptStatus</code></span><span class="chip d-tidy">tidy</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p><code>logAll</code> is computed with a malformed double-format <code>git log</code> and discarded via <code>_ = logAll</code>, under a "Simpler approach" comment. The per-commit loop over the change folder is then subsumed by a repo-wide <code>git diff --name-only</code>. Three overlapping checks, one provably dead.</p>
+        <p>Note also that the surviving check is a <i>tree</i> diff from verified commit to HEAD: a later commit that touches a non-receipt path and a subsequent commit that reverts it leaves no diff, so the receipt reads fresh though Decision 13 says any later commit touching a non-receipt path forces a re-run.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">m3</span><span class="chip sev-minor">minor</span><span class="ftitle"><code>init</code> seeds <code>tasks/.gitkeep</code>, not a task packet</span><span class="chip d-decide">decide</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p>TASK-002 promises "<code>change.json</code> + <code>shape.md</code> + a seeded <code>tasks/</code>". The scaffold emits an empty directory with a <code>.gitkeep</code>. Defensible reading, but a shaper meeting the anatomy for the first time gets no example of the delegation-packet format the whole design leans on — the task template exists but nothing puts it in front of them.</p></div>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fid">m4</span><span class="chip sev-minor">minor</span><span class="ftitle">Dogfood wrinkle: TASK-001's boxes were born checked, then re-checked inside the TASK-004 commit</span><span class="chip d-tidy">note only</span></div>
+    <div class="fbody">
+      <div><h4>Evidence</h4>
+        <p>At <code>3f381d01</code>, TASK-001 was created with all six boxes already checked (TASK-002–006 were correctly born unchecked). An added-checked box is not a transition, so that commit carried no flip. The dogfood conversion at <code>acbea950</code> reset them to unchecked per the rule, and <code>28b5ab84</code> — the TASK-004 commit — re-checked TASK-001's and TASK-002's boxes.</p>
+        <p>Self-healed: the change reads as flip-executed at HEAD. But per-task flip provenance for TASK-001 through TASK-003 does not live in their own delivering commits, which is the discipline Decision 8 asks for and the implement skill now teaches.</p></div>
+    </div>
+  </div>
+
+  <h2>What holds</h2>
+
+  <div class="panel">
+    <ul>
+      <li><b>The proven attack stays blocked.</b> <code>--bump release</code> → <code>release blocked: change "spec-conversion-and-guidance-sweep" targets 2.0.0 but is not executed</code>, exit 1. <code>--post-merge</code> → exit 1, closing the finalization bypass. <code>--bump prerelease</code> → exit 0. <code>--bump minor</code> → candidate 2.1.0 with <code>warning: incomplete lower cohort target_release 2.0.0 (warn only; blocks its own cut)</code>.</li>
+      <li><b>The promise carrier is materialized correctly</b> — <code>20260727-spec-conversion-and-guidance-sweep</code> with <code>target_release: 2.0.0</code>, a brief that says "captured, not shaped", and no pseudo-shape.</li>
+      <li><b>V3 green.</b> Fresh scaffold passes <code>loaf change check</code> with zero violations; brief-only folder is legal, non-executable, reported "captured, not shaped".</li>
+      <li><b>V8 green.</b> Task frontmatter closure rejects <code>status</code>, <code>assignee</code>, <code>estimate</code>, <code>priority</code> as banned and <code>depends-on</code> as unknown; cross-change and self relations are refused; template keys match the allowed set exactly.</li>
+      <li><b>V9 green.</b> <code>report new</code> stamps <code>YYYYMMDD-HHMMSS-&lt;kind&gt;-&lt;slug&gt;.html</code> with charset and provenance header, prints the design language, and refuses unknown kinds while printing the registry. This board was stamped with it.</li>
+      <li><b>V6 green.</b> <code>change tasks --json</code> emits stable IDs, derived inverses, and derived completion.</li>
+      <li><b>Build and hooks clean.</b> <code>npm run build</code> → zero drift across all six targets; <code>render-drift</code>, <code>artifact-body-write</code>, <code>ephemeral-provenance</code>, <code>check-secrets</code>, <code>github-account</code>, <code>artifact-names</code> all pass.</li>
+      <li><b>Dual-layout coexistence works.</b> Twelve legacy units and two new-layout units load side by side; malformed <code>change.json</code> fails closed rather than falling back.</li>
+    </ul>
+  </div>
+
+  <h2>Criteria ledger</h2>
+
+  <div class="panel scroll">
+    <table>
+      <thead><tr><th>Criterion</th><th>Status</th><th>Basis</th></tr></thead>
+      <tbody>
+        <tr><td><b>V1</b> gate regression</td><td class="t-part">partial</td><td>Blocking, warning and prerelease paths confirmed by hand. Missing fixtures: path-grade-≠-flip-grade, second shaped member, no-target, reverse-flip / added-unchecked / whitespace negatives, fenced checkbox (M3).</td></tr>
+        <tr><td><b>V2</b> prerelease flows in every state</td><td class="t-part">partial</td><td>Confirmed on the live repo; no fixture asserts it across missing-execution, missing-receipt and expired-receipt states.</td></tr>
+        <tr><td><b>V3</b> scaffold and brief-only</td><td class="t-ok">green</td><td>Exercised in a fresh fixture repo.</td></tr>
+        <tr><td><b>V4</b> legacy, retarget, conversion</td><td class="t-part">partial</td><td>Deprecation notice, malformed-JSON fail-closed and retention covered. Pre-checked-conversion violation not implemented (M5).</td></tr>
+        <tr><td><b>V5</b> receipt semantics</td><td class="t-bad">not met</td><td>Failing receipt satisfies the gate (B1); digest-expiry, plan.md immunity, freshness re-run and retarget cases untested (M6).</td></tr>
+        <tr><td><b>V6</b> tasks projection</td><td class="t-ok">green</td><td>Verified against the live change and in tests.</td></tr>
+        <tr><td><b>V7</b> tests, build, check</td><td class="t-bad">not met</td><td><code>npm run build</code> zero drift and hooks pass; <code>go test ./...</code> red on 57 subtests (B3).</td></tr>
+        <tr><td><b>V8</b> closed schemas</td><td class="t-ok">green</td><td>Both surfaces, negative cases confirmed by hand and in tests.</td></tr>
+        <tr><td><b>V9</b> report registry</td><td class="t-ok">green</td><td>Stamped, refused unknown kind, registry printed.</td></tr>
+        <tr><td><b>H1</b> delegation packet</td><td class="t-part">unconfirmed</td><td>Requires the stated evidence — delegating one of this unit's tasks to a subagent from the task file alone. Not visible in the branch.</td></tr>
+        <tr><td><b>H2</b> deprecation notice reads as announcement</td><td class="t-ok">green</td><td>Notice names the layout and the removal boundary; reads as an announcement.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>Authored snapshot — Warden review of commits 3f381d01…125ef6ea against docs/changes/20260726-change-work-model/shape.md. Dispositions are proposals; the round is not folded until they are decided.</footer>
+</main>
