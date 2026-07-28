@@ -91,12 +91,33 @@ func TestChangeListShowStateAgreementAcrossLadder(t *testing.T) {
 				return folderRel, "ladder-verified"
 			},
 		},
+		{
+			name:      "structurally-rejected-receipt",
+			wantState: "executing",
+			setup: func(t *testing.T, repo string) (string, string) {
+				t.Helper()
+				dir := writeNewLayoutChange(t, repo, "20260727-ladder-rejected", "ladder-rejected", "1.0.0", "")
+				flipExecuteChange(t, repo, dir, "ladder-rejected")
+				later := filepath.Join(dir, "tasks", "TASK-002-later.md")
+				if err := os.WriteFile(later, []byte("---\nchange: ladder-rejected\nid: TASK-002\ntitle: Later\nstatus: in-progress\n---\n\n# Later\n\n## Steps\n\n- [ ] Descoped\n"), 0o644); err != nil {
+					t.Fatalf("WriteFile TASK-002: %v", err)
+				}
+				commitAllChangeTest(t, repo, "docs: add banned task frontmatter")
+				folderRel := relFromRoot(repo, dir)
+				var stdout bytes.Buffer
+				if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+					t.Fatalf("verify: %v\n%s", err, stdout.String())
+				}
+				commitAllChangeTest(t, repo, "chore: commit ladder-rejected receipt")
+				return folderRel, "ladder-rejected"
+			},
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := initCLIGitRepo(t)
-			if tc.wantState == "verified" {
+			if tc.wantState == "verified" || tc.name == "structurally-rejected-receipt" {
 				writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
 			}
 			folderRel, slug := tc.setup(t, repo)
@@ -116,6 +137,86 @@ func TestChangeListShowStateAgreementAcrossLadder(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestChangeStateStructurallyRejectedReceiptNeverDisplaysVerified(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-banned-verified", "banned-verified", "1.0.0", "")
+	flipExecuteChange(t, repo, dir, "banned-verified")
+	later := filepath.Join(dir, "tasks", "TASK-002-later.md")
+	if err := os.WriteFile(later, []byte("---\nchange: banned-verified\nid: TASK-002\ntitle: Later\nstatus: in-progress\n---\n\n# Later\n\n## Steps\n\n- [ ] Descoped\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile TASK-002: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: add banned task frontmatter")
+	folderRel := relFromRoot(repo, dir)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v\n%s", err, stdout.String())
+	}
+	commitAllChangeTest(t, repo, "chore: commit receipt under banned frontmatter")
+
+	listState := changeListStateForSlug(t, repo, "banned-verified")
+	showState := changeShowState(t, repo, folderRel)
+	showPlain := changeShowPlainState(t, repo, folderRel)
+	checkState := changeCheckState(t, repo, folderRel)
+	for _, got := range []string{listState, showState, showPlain, checkState} {
+		if got == "verified" {
+			t.Fatalf("surfaces report verified despite structural rejection: list=%q show=%q plain=%q check=%q", listState, showState, showPlain, checkState)
+		}
+	}
+	if listState != showState || listState != showPlain || listState != checkState {
+		t.Fatalf("surfaces disagree: list=%q show=%q plain=%q check=%q", listState, showState, showPlain, checkState)
+	}
+	checkOut := changeCheckFindings(t, repo, folderRel)
+	if !strings.Contains(checkOut, "status") || !strings.Contains(checkOut, "banned") {
+		t.Fatalf("check must show the violation; got %q", checkOut)
+	}
+
+	if err := os.WriteFile(later, []byte("---\nchange: banned-verified\nid: TASK-002\ntitle: Later\n---\n\n# Later\n\n## Steps\n\n- [ ] Descoped\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile repair: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: drop banned key")
+	// Receipt may stale from the non-receipt path edit; re-verify and commit.
+	stdout.Reset()
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("re-verify: %v\n%s", err, stdout.String())
+	}
+	commitAllChangeTest(t, repo, "chore: re-verify after repair")
+
+	listState = changeListStateForSlug(t, repo, "banned-verified")
+	showState = changeShowState(t, repo, folderRel)
+	showPlain = changeShowPlainState(t, repo, folderRel)
+	checkState = changeCheckState(t, repo, folderRel)
+	if listState != "verified" || showState != "verified" || showPlain != "verified" || checkState != "verified" {
+		t.Fatalf("after repair want verified everywhere; list=%q show=%q plain=%q check=%q", listState, showState, showPlain, checkState)
+	}
+}
+
+func changeShowPlainState(t *testing.T, repo, folderRel string) string {
+	t.Helper()
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "show", folderRel}); err != nil {
+		t.Fatalf("show: %v\n%s", err, stdout.String())
+	}
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		line = strings.TrimSpace(stripANSI(line))
+		if strings.HasPrefix(line, "State:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "State:"))
+		}
+		if strings.HasPrefix(line, "state:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "state:"))
+		}
+	}
+	t.Fatalf("show output missing state line:\n%s", stdout.String())
+	return ""
+}
+
+func changeCheckFindings(t *testing.T, repo, folderRel string) string {
+	t.Helper()
+	var stdout bytes.Buffer
+	_ = (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "check", folderRel, "--json"})
+	return stdout.String()
 }
 
 func mustFindChangeFolder(t *testing.T, repo, slug string) string {

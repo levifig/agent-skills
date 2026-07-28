@@ -30,9 +30,9 @@ loaf journal log "skill(implement): TASK-022 — ladder consumes the composite"
 
 ## Steps
 
-- [ ] `verified` requires the same structural composite the gate applies (TASK-021's lineage-inclusive report) to be clean, in addition to the fresh all-passing HEAD receipt; a structurally rejected member derives its state as if unverified.
-- [ ] Fixture: a targeted change with banned task frontmatter, flips, and a fresh committed passing receipt — `list`, `show`, and `show --json` all report a non-`verified` state while `check` shows the violation; removing the violation flips all surfaces to `verified` together.
-- [ ] The ladder-agreement fixture (`TestChangeListShowStateAgreementAcrossLadder`) extends to cover the structurally-rejected-receipt rung.
+- [x] `verified` requires the same structural composite the gate applies (TASK-021's lineage-inclusive report) to be clean, in addition to the fresh all-passing HEAD receipt; a structurally rejected member derives its state as if unverified.
+- [x] Fixture: a targeted change with banned task frontmatter, flips, and a fresh committed passing receipt — `list`, `show`, and `show --json` all report a non-`verified` state while `check` shows the violation; removing the violation flips all surfaces to `verified` together.
+- [x] The ladder-agreement fixture (`TestChangeListShowStateAgreementAcrossLadder`) extends to cover the structurally-rejected-receipt rung.
 
 ## Verification
 

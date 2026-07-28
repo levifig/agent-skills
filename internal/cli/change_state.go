@@ -8,11 +8,11 @@ import (
 // show, and check: captured → shaped → executable → executing → complete,
 // plus verified for changes that declare a target_release.
 //
-// complete means every task checkbox is checked. verified reuses
-// changeReceiptStatus (fresh receipt whose criteria all passed) and does not
-// require complete — unchecked boxes on a verified cohort member are descoped
-// work (Decision 15). The gate keeps computing its own predicates; this is
-// display agreement only.
+// complete means every task checkbox is checked. verified requires a fresh
+// receipt whose criteria all passed AND the same structural composite the
+// cohort gate applies (lineage-inclusive) — a structurally rejected member
+// never displays verified where the gate would refuse. Unchecked boxes on a
+// verified cohort member remain legal descoped work (Decision 15).
 func deriveChangeState(rootPath string, node changeNode, outputCommand changeGitOutput) string {
 	if outputCommand == nil {
 		outputCommand = commandOutput
@@ -30,7 +30,7 @@ func deriveChangeState(rootPath string, node changeNode, outputCommand changeGit
 	}
 	if node.TargetRelease != "" {
 		ok, _, receiptErr := changeReceiptStatus(rootPath, node.Folder, node, outputCommand)
-		if receiptErr == nil && ok {
+		if receiptErr == nil && ok && changeStructurallyCleanForState(rootPath, node, outputCommand) {
 			return "verified"
 		}
 	}
@@ -38,6 +38,21 @@ func deriveChangeState(rootPath string, node changeNode, outputCommand changeGit
 		return "complete"
 	}
 	return "executing"
+}
+
+// changeStructurallyCleanForState reports whether the gate's structural
+// composite is clean for this node — the verified rung must agree with the gate.
+func changeStructurallyCleanForState(rootPath string, node changeNode, outputCommand changeGitOutput) bool {
+	nodes, err := loadChangeNodes(rootPath)
+	if err != nil {
+		return false
+	}
+	folderAbs := filepath.Join(rootPath, filepath.FromSlash(node.Folder))
+	report, reportErr := composeChangeCheckReport(evaluateChangeNode(node, ""), rootPath, folderAbs, node, nodes, outputCommand, false)
+	if reportErr != nil {
+		return false
+	}
+	return len(report.Violations) == 0 && report.Executable
 }
 
 // changeAllTaskCheckboxesChecked reports whether the change has at least one
