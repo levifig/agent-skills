@@ -26,7 +26,7 @@ func TestTargetCapabilityEvidenceContractLoadsCurrentRecords(t *testing.T) {
 		"cursor\x00ide":          "3.11.19\x00candidate-build",
 		"cursor\x00cursor-agent": "2026.05.09-0afadcc\x00candidate-build",
 		"codex\x00cli":           "0.145.0\x00isolated-codex-home",
-		"opencode\x00cli":        "1.18.4\x00isolated-xdg",
+		"opencode\x00cli":        "1.18.7\x00isolated-xdg",
 		"amp\x00cli":             "0.0.1783873056-g278461\x00candidate-build",
 	}
 	for _, record := range contract.Records {
@@ -483,7 +483,7 @@ func TestOpenCodeInstalledSmokeEvidenceAcceptsFixture(t *testing.T) {
 }
 
 func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHashAndCleanup(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.4-isolated-request-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.7-isolated-request-smoke.json")
 	data, err := os.ReadFile(receiptPath)
 	if err != nil {
 		t.Fatal(err)
@@ -641,7 +641,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 }
 
 func TestExactCapabilityVersionGrammar(t *testing.T) {
-	valid := []string{"2.1.220", "3.11.19", "2026.05.09-0afadcc", "0.145.0", "1.18.4", "0.0.1783873056-g278461", "1.2.3-alpha9"}
+	valid := []string{"2.1.220", "3.11.19", "2026.05.09-0afadcc", "0.145.0", "1.18.7", "0.0.1783873056-g278461", "1.2.3-alpha9"}
 	for _, version := range valid {
 		if !isExactCapabilityVersion(version) {
 			t.Errorf("isExactCapabilityVersion(%q) = false, want true", version)

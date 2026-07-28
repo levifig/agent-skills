@@ -324,7 +324,7 @@
     {
       "target": "opencode",
       "surface": "cli",
-      "version": "1.18.4",
+      "version": "1.18.7",
       "platform": "darwin-arm64",
       "installed_mode": "isolated-xdg",
       "context": {
@@ -340,9 +340,9 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.4-isolated-request-smoke.json",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.7-isolated-request-smoke.json",
               "level": "installed-smoke",
-              "summary": "OpenCode 1.18.4 isolated-XDG request smoke returned the exact random continuity marker through the model-visible plugin system transformation."
+              "summary": "OpenCode 1.18.7 isolated-XDG request smoke returned the exact random continuity marker through the model-visible plugin system transformation."
             }
           },
           {
