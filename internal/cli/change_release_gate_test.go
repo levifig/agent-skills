@@ -149,8 +149,8 @@ func TestResolveReleaseSnapshotFinalization(t *testing.T) {
 	}
 	snap, err = resolveReleaseSnapshot(repo, releaseOptions{postMerge: true})
 	v = snap.Candidate
-	if err != nil || v != "2.0.0" {
-		t.Fatalf("post-merge candidate = %q err=%v, want 2.0.0", v, err)
+	if err != nil || v != "2.0.0-alpha.14" {
+		t.Fatalf("post-merge candidate = %q err=%v, want prepared 2.0.0-alpha.14", v, err)
 	}
 	snap, err = resolveReleaseSnapshot(repo, releaseOptions{bump: "minor"})
 	v = snap.Candidate
@@ -257,15 +257,14 @@ func TestReleaseCohortGateNoBumpPrereleaseCandidateBypasses(t *testing.T) {
 		t.Fatalf("flagless dry run on a prerelease candidate = %v\n%s", err, stdout.String())
 	}
 
-	// The same fixture's finalization candidate is stable and still blocks.
+	// The same fixture's --post-merge publishes the prepared prerelease through the valve.
 	snap, err = resolveReleaseSnapshot(repo, releaseOptions{postMerge: true})
 	post := snap.Candidate
-	if err != nil || post != "1.0.0" {
-		t.Fatalf("post-merge candidate = %q err=%v, want 1.0.0", post, err)
+	if err != nil || post != "1.0.0-alpha.3" {
+		t.Fatalf("post-merge candidate = %q err=%v, want prepared 1.0.0-alpha.3", post, err)
 	}
-	gateErr := releaseCohortPreflight(repo, post, nil)
-	if gateErr == nil || !strings.Contains(gateErr.Error(), "not executed") {
-		t.Fatalf("finalization err = %v, want cohort block", gateErr)
+	if err := releaseCohortPreflight(repo, post, nil); err != nil {
+		t.Fatalf("prepared prerelease post-merge must bypass the incomplete cohort: %v", err)
 	}
 
 	// Once commits exist, a suggested bump can only land on a stable candidate —
@@ -602,7 +601,7 @@ func TestReleaseCohortGateV1LowerCohortWarnsWithoutBlocking(t *testing.T) {
 	}
 }
 
-func assertPrereleaseBypassesPostMergeBlocks(t *testing.T, repo, wantBlockSubstr string) {
+func assertPrereleaseBumpAndPostMergeBypass(t *testing.T, repo string) {
 	t.Helper()
 	snap, err := resolveReleaseSnapshot(repo, releaseOptions{bump: "prerelease"})
 	pre := snap.Candidate
@@ -621,9 +620,11 @@ func assertPrereleaseBypassesPostMergeBlocks(t *testing.T, repo, wantBlockSubstr
 	if err != nil {
 		t.Fatalf("compute post-merge candidate: %v", err)
 	}
-	gateErr := releaseCohortPreflight(repo, post, nil)
-	if gateErr == nil || !strings.Contains(gateErr.Error(), wantBlockSubstr) {
-		t.Fatalf("--post-merge err = %v, want substring %q", gateErr, wantBlockSubstr)
+	if !releaseVersionIsPrerelease(post) || post != snap.CurrentVersion {
+		t.Fatalf("post-merge candidate = %q (current %q), want prepared prerelease", post, snap.CurrentVersion)
+	}
+	if err := releaseCohortPreflight(repo, post, nil); err != nil {
+		t.Fatalf("--post-merge with prepared prerelease must bypass: %v", err)
 	}
 }
 
@@ -635,11 +636,11 @@ func TestReleaseCohortGateV2PrereleaseBypassEveryGateState(t *testing.T) {
 	folderRel := filepath.Join("docs", "changes", "20260727-v2-member")
 
 	// Missing execution.
-	assertPrereleaseBypassesPostMergeBlocks(t, repo, "not executed")
+	assertPrereleaseBumpAndPostMergeBypass(t, repo)
 
 	// Missing receipt (flip-executed, no verify).
 	flipExecuteChange(t, repo, dir, "v2-member")
-	assertPrereleaseBypassesPostMergeBlocks(t, repo, "missing receipt")
+	assertPrereleaseBumpAndPostMergeBypass(t, repo)
 
 	// Failing receipt.
 	failBody := shapeWithVerification("- **V1.** Fail. Command: `false`. Expect: exit 0")
@@ -652,7 +653,7 @@ func TestReleaseCohortGateV2PrereleaseBypassEveryGateState(t *testing.T) {
 		t.Fatalf("verify should fail\n%s", stdout.String())
 	}
 	commitAllChangeTest(t, repo, "chore: commit failing receipt")
-	assertPrereleaseBypassesPostMergeBlocks(t, repo, "failing criteria")
+	assertPrereleaseBumpAndPostMergeBypass(t, repo)
 
 	// Expired receipt (digest mismatch after criteria edit).
 	okBody := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
@@ -670,9 +671,9 @@ func TestReleaseCohortGateV2PrereleaseBypassEveryGateState(t *testing.T) {
 		t.Fatalf("WriteFile expired shape: %v", err)
 	}
 	commitAllChangeTest(t, repo, "docs: edit criteria expect")
-	assertPrereleaseBypassesPostMergeBlocks(t, repo, "criteria digest mismatch")
+	assertPrereleaseBumpAndPostMergeBypass(t, repo)
 
-	// Cohort completes: re-verify clears the post-merge block.
+	// Cohort completes: prepared prerelease post-merge still publishes; --bump prerelease still bypasses.
 	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
 		t.Fatalf("re-verify after expiry: %v", err)
 	}
@@ -1136,5 +1137,144 @@ func TestReleaseSnapshotChangelogIgnoresPostResolveCommits(t *testing.T) {
 	}
 	if len(releaseCommitsSince(repo, snap.BaseRef)) <= len(snap.Commits) {
 		t.Fatalf("expected HEAD to have grown past the snapshot commit list")
+	}
+}
+
+// TASK-031: prepared prerelease post-merge publishes and would tag the prepared version (alpha-train).
+func TestReleasePostMergePreparedPrereleasePublishesAlphaTrain(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.15")
+	writeNewLayoutChange(t, repo, "20260727-alpha-train", "alpha-train", "2.0.0", "")
+	commitAllChangeTest(t, repo, "docs: open 2.0.0 cohort")
+
+	snap, err := resolveReleaseSnapshot(repo, releaseOptions{postMerge: true})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if snap.Candidate != "2.0.0-alpha.15" {
+		t.Fatalf("candidate = %q, want prepared 2.0.0-alpha.15", snap.Candidate)
+	}
+	if err := releaseCohortPreflight(repo, snap.Candidate, nil); err != nil {
+		t.Fatalf("prepared prerelease must bypass open 2.0.0 cohort: %v", err)
+	}
+
+	files := seedReleasePostMergeFiles(t, "2.0.0-alpha.15")
+	fileSnap := mustResolveReleaseSnapshot(t, files, releaseOptions{postMerge: true})
+	responses := releasePostMergeHappyResponses("2.0.0-alpha.15")
+	responses["gh release create v2.0.0-alpha.15 --title v2.0.0-alpha.15 --notes ### Added\n- New feature (abc1234) --prerelease"] = releasePostMergeOK("")
+	runner, calls := scriptedReleasePostMergeRunner(responses)
+	var stdout, stderr bytes.Buffer
+	if err := runReleasePostMergeWithRunner(files, fileSnap, &stdout, &stderr, runner); err != nil {
+		t.Fatalf("post-merge: %v\n%s\n%s", err, stdout.String(), stderr.String())
+	}
+	out := stripANSI(stdout.String())
+	if !strings.Contains(out, "Created tag v2.0.0-alpha.15") {
+		t.Fatalf("must tag prepared prerelease; got:\n%s", out)
+	}
+	keys := releasePostMergeCallKeys(calls())
+	if !containsReleasePostMergeCall(keys, "git tag -s v2.0.0-alpha.15 -m Release 2.0.0-alpha.15") {
+		t.Fatalf("missing prepared tag call; got %#v", keys)
+	}
+	for _, call := range keys {
+		if call == "git tag -s v2.0.0 -m Release 2.0.0" {
+			t.Fatalf("must not tag stable; calls=%#v", keys)
+		}
+	}
+}
+
+// TASK-031: prepared stable post-merge gates the cohort; verified cohort tags the prepared stable.
+func TestReleasePostMergePreparedStableGatesThenTags(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0")
+	dir := writeNewLayoutChange(t, repo, "20260727-stable-prep", "stable-prep", "2.0.0", "")
+	commitAllChangeTest(t, repo, "docs: shape stable-prep")
+
+	snap, err := resolveReleaseSnapshot(repo, releaseOptions{postMerge: true})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if snap.Candidate != "2.0.0" {
+		t.Fatalf("candidate = %q, want prepared 2.0.0", snap.Candidate)
+	}
+	gateErr := releaseCohortPreflight(repo, snap.Candidate, nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "not executed") {
+		t.Fatalf("open cohort must block prepared-stable post-merge: %v", gateErr)
+	}
+
+	flipExecuteChange(t, repo, dir, "stable-prep")
+	folderRel := relFromRoot(repo, dir)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit stable-prep receipt")
+	if err := releaseCohortPreflight(repo, snap.Candidate, nil); err != nil {
+		t.Fatalf("verified cohort must open: %v", err)
+	}
+
+	files := seedReleasePostMergeFiles(t, "2.0.0")
+	fileSnap := mustResolveReleaseSnapshot(t, files, releaseOptions{postMerge: true})
+	runner, _ := scriptedReleasePostMergeRunner(releasePostMergeHappyResponses("2.0.0"))
+	var stdout, stderr bytes.Buffer
+	if err := runReleasePostMergeWithRunner(files, fileSnap, &stdout, &stderr, runner); err != nil {
+		t.Fatalf("post-merge stable: %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stripANSI(stdout.String()), "Created tag v2.0.0") {
+		t.Fatalf("must tag prepared stable; got:\n%s", stdout.String())
+	}
+}
+
+// TASK-031 converse hazard: stray ## [2.0.0] with prerelease files cannot cause a stable tag.
+func TestReleasePostMergeConverseHazardStrayStableChangelog(t *testing.T) {
+	repo := seedReleasePostMergeFiles(t, "2.0.0-alpha.15")
+	// Replace changelog so only the stable section exists — prepared lookup must fail closed.
+	writeFile(t, filepath.Join(repo, "CHANGELOG.md"), strings.Join([]string{
+		"# Changelog",
+		"",
+		"## [Unreleased]",
+		"",
+		"- _No unreleased changes yet._",
+		"",
+		"## [2.0.0] - 2026-04-29",
+		"",
+		"### Added",
+		"- Stray stable section (abc1234)",
+		"",
+	}, "\n"))
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
+	if snap.Candidate != "2.0.0-alpha.15" {
+		t.Fatalf("candidate = %q, want prepared prerelease", snap.Candidate)
+	}
+	responses := releasePostMergeHappyResponses("2.0.0-alpha.15")
+	runner, calls := scriptedReleasePostMergeRunner(responses)
+	var stdout, stderr bytes.Buffer
+	err := runReleasePostMergeWithRunner(repo, snap, &stdout, &stderr, runner)
+	if err == nil {
+		t.Fatal("post-merge error = nil, want missing prepared changelog section")
+	}
+	if !strings.Contains(err.Error(), "2.0.0-alpha.15") {
+		t.Fatalf("error = %v, want prepared-version changelog demand", err)
+	}
+	for _, call := range releasePostMergeCallKeys(calls()) {
+		if strings.Contains(call, "tag -s") {
+			t.Fatalf("must not tag; calls=%#v", releasePostMergeCallKeys(calls()))
+		}
+	}
+}
+
+// TASK-031: guardrail 4 refuses when the snapshot candidate diverges from version files.
+func TestReleasePostMergeGuardrail4TagEqualsVersionFiles(t *testing.T) {
+	repo := seedReleasePostMergeFiles(t, "2.0.0-alpha.15")
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
+	snap.Candidate = "2.0.0" // simulate the old strip-to-stable bug
+	runner, calls := scriptedReleasePostMergeRunner(releasePostMergeHappyResponses("2.0.0"))
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
+	if result.ok || result.guardrail != 4 {
+		t.Fatalf("result = %#v, want guardrail 4 abort", result)
+	}
+	if !strings.Contains(result.message, "does not match version-file version") {
+		t.Fatalf("message = %q, want tag-equals-files", result.message)
+	}
+	for _, call := range releasePostMergeCallKeys(calls()) {
+		if strings.Contains(call, "tag -s") {
+			t.Fatalf("must not tag; calls=%#v", releasePostMergeCallKeys(calls()))
+		}
 	}
 }

@@ -230,12 +230,9 @@ func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapsho
 		Commits:        commits,
 	}
 	if options.postMerge {
-		// Finalization targets the stable form of the current prepared version.
-		parsed, ok := parseReleaseSemver(current)
-		if !ok {
-			return releaseSnapshot{}, fmt.Errorf("cannot parse current version %q", current)
-		}
-		snap.Candidate = fmt.Sprintf("%d.%d.%d", parsed.major, parsed.minor, parsed.patch)
+		// Post-merge keys on the prepared version at HEAD: a prepared prerelease
+		// publishes through the valve; a prepared stable gates that cohort, then tags.
+		snap.Candidate = current
 		snap.Bump = "release"
 		return snap, nil
 	}

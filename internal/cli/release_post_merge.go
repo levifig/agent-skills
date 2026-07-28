@@ -109,8 +109,12 @@ func checkReleasePostMergeGuardrails(root string, snapshot releaseSnapshot, runn
 		return releasePostMergeAbort(4, err.Error())
 	}
 	versionFiles := snapshot.VersionFiles
-	if _, versionAbort := detectReleasePostMergeConsistentVersion(versionFiles); versionAbort != "" {
+	prepared, versionAbort := detectReleasePostMergeConsistentVersion(versionFiles)
+	if versionAbort != "" {
 		return releasePostMergeAbort(4, versionAbort)
+	}
+	if snapshot.Candidate != prepared {
+		return releasePostMergeAbort(4, fmt.Sprintf("tag version %s does not match version-file version %s", snapshot.Candidate, prepared))
 	}
 
 	if diffAbort := checkReleasePostMergeDiffFiles(root, runner, versionFiles); diffAbort != "" {

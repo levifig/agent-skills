@@ -39,10 +39,10 @@ loaf journal log "skill(implement): TASK-031 — post-merge keys on the prepared
 
 ## Steps
 
-- [ ] Post-merge resolves the prepared version from the consistent version files at HEAD; prerelease prepared bypasses the cohort gate, stable prepared gates that version's cohort — both tag exactly the prepared version.
-- [ ] Guardrail 4 restored: the tag must equal the consistent version-file version; the changelog guardrail and tag-collision check key on the prepared version.
-- [ ] Shape.md amended exactly as above; no other contract text changes beyond aligned `--post-merge` sentences found by grep.
-- [ ] Fixtures: prepared `2.0.0-alpha.15` with an open 2.0.0 cohort publishes and tags `v2.0.0-alpha.15` (the alpha-train regression); prepared `2.0.0` with the cohort open blocks, and with the cohort verified tags `v2.0.0`; a stray stable changelog section with prerelease files cannot cause a stable tag (converse hazard); the round-5 fixtures that encoded the single-flow semantics are corrected, not deleted.
+- [x] Post-merge resolves the prepared version from the consistent version files at HEAD; prerelease prepared bypasses the cohort gate, stable prepared gates that version's cohort — both tag exactly the prepared version.
+- [x] Guardrail 4 restored: the tag must equal the consistent version-file version; the changelog guardrail and tag-collision check key on the prepared version.
+- [x] Shape.md amended exactly as above; no other contract text changes beyond aligned `--post-merge` sentences found by grep.
+- [x] Fixtures: prepared `2.0.0-alpha.15` with an open 2.0.0 cohort publishes and tags `v2.0.0-alpha.15` (the alpha-train regression); prepared `2.0.0` with the cohort open blocks, and with the cohort verified tags `v2.0.0`; a stray stable changelog section with prerelease files cannot cause a stable tag (converse hazard); the round-5 fixtures that encoded the single-flow semantics are corrected, not deleted.
 
 ## Verification
 
