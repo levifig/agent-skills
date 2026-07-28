@@ -23,6 +23,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history: the change gate and its tests read committed history
+          # (provenance, retention replay, the grandfathered dogfood conversion).
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
