@@ -52,6 +52,8 @@ A Change is a folder — `docs/changes/YYYYMMDD-slug/` — holding everything on
 
 Executable verification criteria in `shape.md` declare their command: `- **V1.** What must be true. Command: ` `` `exact command` `` `. Expect: exit 0.` (inline or as sub-bullets). Commands run from the repository root. H-tier entries stay prose and are review material, never gate input.
 
+`Expect` is enforced with a deliberately minimal grammar: atoms join with ` and ` — `exit <N>` is the required exit code (an absent `Expect`, or one with no exit atom, means `exit 0`) and `` contains `text` `` requires the combined stdout+stderr to contain that backtick-delimited text (repeatable), as in ``Expect: exit 0 and contains `all green`.`` A criterion passes when its command ran, the exit code matched, and every `contains` matched, and the receipt records each atom with its outcome. Any other clause is unenforceable: `loaf change verify` warns naming the criterion and the clause and records it as advisory, never letting it affect the result — a declared expectation is either checked or loudly not.
+
 ## Tasks: Vertical Slices, Committed as Evidence
 
 A task file is a self-sufficient delegation packet — objective, scope boundaries, context pointers, acquisition, checkbox steps, verification — complete enough to hand to a subagent as its entire brief. Relations use the closed set `parent`, `blocks`/`blocked-by`, `relates-to`, targeting `TASK-NNN` within the owning change only.

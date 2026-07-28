@@ -28,10 +28,10 @@ Atoms joined by ` and `: `exit <N>` (required exit code; absent Expect or absent
 
 ## Steps
 
-- [ ] Parse Expect into atoms; `ok` = command ran ∧ exit matches ∧ every `contains` matches; per-criterion receipt record gains the enforced expectation and per-atom results (additive fields).
-- [ ] Unenforceable clauses warn at `verify` with criterion ID and clause text, and are recorded as advisory — never contributing to `ok`, never silently dropped.
-- [ ] Templates and the four doc surfaces teach the grammar with one example per atom and the advisory rule; the "and/or specific output" promise is replaced by the real contract.
-- [ ] Fixtures: exit-atom mismatch fails; `contains` match passes and mismatch fails; multi-atom `and`; absent Expect keeps exit-0; unenforceable clause warns and stays advisory; receipt records the atoms.
+- [x] Parse Expect into atoms; `ok` = command ran ∧ exit matches ∧ every `contains` matches; per-criterion receipt record gains the enforced expectation and per-atom results (additive fields).
+- [x] Unenforceable clauses warn at `verify` with criterion ID and clause text, and are recorded as advisory — never contributing to `ok`, never silently dropped.
+- [x] Templates and the four doc surfaces teach the grammar with one example per atom and the advisory rule; the "and/or specific output" promise is replaced by the real contract.
+- [x] Fixtures: exit-atom mismatch fails; `contains` match passes and mismatch fails; multi-atom `and`; absent Expect keeps exit-0; unenforceable clause warns and stays advisory; receipt records the atoms.
 
 ## Verification
 

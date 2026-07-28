@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -42,12 +43,25 @@ type changeVerifyReceipt struct {
 	Results        []changeVerifyCriterionResult `json:"results"`
 }
 
+// changeVerifyCriterionResult records one criterion's evidence. Expect fields are
+// additive on schema_version 1: older readers ignore them, and no receipt exists
+// outside fixtures.
 type changeVerifyCriterionResult struct {
-	ID           string `json:"id"`
-	Command      string `json:"command"`
-	ExitCode     int    `json:"exit_code"`
-	OutputDigest string `json:"output_digest"`
-	OK           bool   `json:"ok"`
+	ID           string                    `json:"id"`
+	Command      string                    `json:"command"`
+	ExitCode     int                       `json:"exit_code"`
+	OutputDigest string                    `json:"output_digest"`
+	OK           bool                      `json:"ok"`
+	Expect       string                    `json:"expect,omitempty"`
+	ExpectChecks []changeVerifyExpectCheck `json:"expect_checks,omitempty"`
+	Advisory     []string                  `json:"advisory_clauses,omitempty"`
+}
+
+// changeVerifyExpectCheck is one enforced Expect atom and its outcome.
+type changeVerifyExpectCheck struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+	OK    bool   `json:"ok"`
 }
 
 func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) error {
@@ -93,7 +107,9 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 	for _, criterion := range criteria {
 		exitCode, output, runErr := runChangeCriterionCommand(rootPath, criterion.Command)
 		digest := sha256HexBytes([]byte(output))
-		ok := runErr == nil && exitCode == 0
+		expectation := parseChangeExpectation(criterion.Expect)
+		checks := evaluateChangeExpectation(expectation, exitCode, output)
+		ok := runErr == nil && changeExpectChecksPass(checks)
 		if !ok {
 			failed = true
 		}
@@ -103,12 +119,21 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 			ExitCode:     exitCode,
 			OutputDigest: digest,
 			OK:           ok,
+			Expect:       criterion.Expect,
+			ExpectChecks: checks,
+			Advisory:     expectation.Advisory,
 		})
 		status := ansiGreen("ok")
 		if !ok {
 			status = ansiRed("fail")
 		}
-		fmt.Fprintf(out, "%s %s  %s\n", status, criterion.ID, criterion.Command)
+		fmt.Fprintf(out, "%s %s  %s%s\n", status, criterion.ID, criterion.Command, changeExpectFailureNote(runErr, exitCode, checks))
+		// Nothing silent in either direction: a clause the grammar cannot enforce
+		// is named here and recorded as advisory, and never touches ok.
+		for _, clause := range expectation.Advisory {
+			fmt.Fprintf(out, "%s %s  unenforceable Expect clause %q — recorded as advisory, never checked\n",
+				ansiYellow("warn"), criterion.ID, clause)
+		}
 	}
 	receipt := changeVerifyReceipt{
 		SchemaVersion:  1,
@@ -204,6 +229,136 @@ func parseChangeExecutableCriteria(shape string) []changeCriterion {
 	}
 	flush()
 	return criteria
+}
+
+// changeExpectation is a parsed Expect declaration. The grammar is deliberately
+// minimal: atoms joined by " and ", either `exit <N>` (required exit code) or
+// “ contains `text` “ (combined stdout+stderr contains the text, repeatable).
+// An absent Expect — or an Expect with no exit atom — means exit 0, which is
+// exactly what verify enforced before the grammar existed. Every other clause is
+// unenforceable: it lands in Advisory, is warned about, and never affects ok.
+type changeExpectation struct {
+	ExitCode int
+	Contains []string
+	Advisory []string
+}
+
+func parseChangeExpectation(expect string) changeExpectation {
+	parsed := changeExpectation{}
+	for _, clause := range splitChangeExpectClauses(expect) {
+		kind, value, enforceable := parseChangeExpectClause(clause)
+		switch {
+		case kind == "":
+			continue // empty clause
+		case !enforceable:
+			parsed.Advisory = append(parsed.Advisory, value)
+		case kind == "exit":
+			parsed.ExitCode, _ = strconv.Atoi(value)
+		case kind == "contains":
+			parsed.Contains = append(parsed.Contains, value)
+		}
+	}
+	return parsed
+}
+
+// splitChangeExpectClauses splits on " and " outside backticks, so a
+// “ contains `a and b` “ literal survives intact.
+func splitChangeExpectClauses(expect string) []string {
+	lower := strings.ToLower(expect)
+	inTick := false
+	start := 0
+	var clauses []string
+	for i := 0; i < len(expect); i++ {
+		if expect[i] == '`' {
+			inTick = !inTick
+			continue
+		}
+		if inTick {
+			continue
+		}
+		if strings.HasPrefix(lower[i:], " and ") {
+			clauses = append(clauses, expect[start:i])
+			i += len(" and ") - 1
+			start = i + 1
+		}
+	}
+	return append(clauses, expect[start:])
+}
+
+// parseChangeExpectClause classifies one clause. kind is "" for an empty clause;
+// enforceable is false for anything outside the grammar, and value then carries
+// the clause verbatim for the warning and the advisory record.
+func parseChangeExpectClause(clause string) (kind string, value string, enforceable bool) {
+	trimmed := strings.TrimSpace(clause)
+	// Authors end sentences; punctuation outside backticks is not part of an atom.
+	trimmed = strings.TrimSpace(strings.TrimRight(trimmed, ".,;"))
+	if trimmed == "" {
+		return "", "", false
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "exit ") {
+		code := strings.TrimSpace(trimmed[len("exit "):])
+		if n, err := strconv.Atoi(code); err == nil && n >= 0 {
+			return "exit", code, true
+		}
+		return "exit", trimmed, false
+	}
+	if strings.HasPrefix(lower, "contains ") {
+		rest := strings.TrimSpace(trimmed[len("contains "):])
+		if len(rest) >= 3 && rest[0] == '`' && rest[len(rest)-1] == '`' {
+			if text := rest[1 : len(rest)-1]; !strings.Contains(text, "`") {
+				return "contains", text, true
+			}
+		}
+		return "contains", trimmed, false
+	}
+	return "clause", trimmed, false
+}
+
+// evaluateChangeExpectation records the enforced atoms and their outcomes. The
+// exit atom is always recorded, so the receipt states what was enforced even when
+// the criterion declared no Expect at all.
+func evaluateChangeExpectation(expectation changeExpectation, exitCode int, output string) []changeVerifyExpectCheck {
+	checks := []changeVerifyExpectCheck{{
+		Kind:  "exit",
+		Value: fmt.Sprintf("%d", expectation.ExitCode),
+		OK:    exitCode == expectation.ExitCode,
+	}}
+	for _, text := range expectation.Contains {
+		checks = append(checks, changeVerifyExpectCheck{
+			Kind:  "contains",
+			Value: text,
+			OK:    strings.Contains(output, text),
+		})
+	}
+	return checks
+}
+
+func changeExpectChecksPass(checks []changeVerifyExpectCheck) bool {
+	for _, check := range checks {
+		if !check.OK {
+			return false
+		}
+	}
+	return true
+}
+
+// changeExpectFailureNote names the first unmet atom so a failure reads without
+// opening the receipt.
+func changeExpectFailureNote(runErr error, exitCode int, checks []changeVerifyExpectCheck) string {
+	if runErr != nil {
+		return fmt.Sprintf("  (command did not run: %v)", runErr)
+	}
+	for _, check := range checks {
+		if check.OK {
+			continue
+		}
+		if check.Kind == "contains" {
+			return fmt.Sprintf("  (output missing: contains `%s`)", check.Value)
+		}
+		return fmt.Sprintf("  (want exit %s, got %d)", check.Value, exitCode)
+	}
+	return ""
 }
 
 func changeCriteriaDigest(criteria []changeCriterion) string {
