@@ -116,7 +116,7 @@ This extends the "CLI is the correct protocol layer" principle to filesystem con
 
 ### Work Records and Optional Linear Tasks (ADR-011)
 
-New bounded work is git-canonical under `docs/changes/YYYYMMDD-slug/change.md`. Existing specs in `.agents/specs/` and task records remain supported compatibility surfaces. For compatible task workflows, `integrations.linear.enabled` in `.agents/loaf.json` selects the execution backend:
+New bounded work is git-canonical under `docs/changes/YYYYMMDD-slug/` — `change.json` + `shape.md` + `tasks/`, with legacy single-file `change.md` supported until the named removal boundary (ADR-022). Existing specs in `.agents/specs/` and task records remain supported compatibility surfaces. For compatible task workflows, `integrations.linear.enabled` in `.agents/loaf.json` selects the execution backend:
 
 - **Local-tasks mode** (default): tasks, journal entries, ideas, sparks, brainstorms, and drafts live in the global SQLite database.
 - **Linear-native mode**: existing compatible specs remain git-canonical while tasks use Linear sub-issues under a parent rollup issue.
@@ -219,26 +219,33 @@ This pattern generalizes beyond ADRs. When any Loaf artifact is later judged to 
 
 ## Change-First Execution Model
 
-New bounded work uses a Change as its primary contract. The project journal remains the execution trace and resumption protocol; tasks are optional durable records rather than mandatory decomposition.
+New bounded work uses a Change as its primary contract: a folder splitting role-named narrative (settles at shaping) from task-file state (mutates during execution), so execution evidence is machine-derivable from git history alone (ADR-022, ADR-023; operating view in [knowledge/work-model.md](knowledge/work-model.md)). The project journal remains the execution trace and resumption protocol.
 
 ```
-/idea or /brainstorm → /shape → Change → /implement → review → /ship
-                                      ↓
-                               project journal
+capture → /shape → Change → /implement (task commits) → review → /reflect → /ship
+                        ↓
+                 project journal
 ```
 
 ### Work Records
 
 ```
-docs/changes/YYYYMMDD-slug/change.md  # Primary bounded-work contract
-SQLite tasks                          # Existing or optional compatible work items
-.agents/specs/SPEC-XXX.md              # Existing compatible bounded-work records
+docs/changes/YYYYMMDD-slug/           # Change: the bounded-work unit (ADR-022)
+├── change.json                       #   identity + optional target_release
+├── shape.md                          #   the contract; executable criteria declare Command/Expect
+├── brief.md, plan.md, design.md      #   optional roles: pre-shaping ask, technical route
+├── tasks/TASK-NNN-slug.md            #   delegation packets; checkboxes flip in delivering commits
+├── research/ and reports/            #   shaping inputs; authored snapshot outputs (closed kind registry)
+└── receipts/verify.json              #   cohort members: committed cache of loaf change verify
+.agents/specs/SPEC-XXX.md             # Existing compatible bounded-work records
 SQLite journal_entries                # Project-scoped event record across conversations
 ```
 
-**Changes** define the problem, hypothesis, scope, implementation units, verification contract, and definition of done. `loaf change check` validates their structure and derives executability.
+**Changes** define the problem, scope, decisions, verification contract, and definition of done. `loaf change check` validates both layouts and derives the display ladder (captured → shaped → executable → executing → complete, plus verified for cohort members) — no status fields exist anywhere; every state is computed.
 
-**Tasks and specs** remain supported compatibility records. They may describe individual concerns, dependencies, and existing bounded work, but new shaping does not require a spec or a task decomposition layer.
+**Releases read cohorts.** A change declaring `target_release` opts into the strong gate: cutting that version stable requires the whole cohort executed at flip grade (true `- [ ]`→`- [x]` transitions outside fences, same hunk and label) and receipt-verified, with all criteria passing. The gate is a pure reader of committed evidence — `loaf change verify` is the only surface that runs criteria; stale or failing receipts block with the mechanical remedy named. Prereleases always flow; retargets are reviewable diffs, surfaced and never blocked (ADR-023).
+
+**Tasks and specs** remain supported compatibility records. New-work decomposition lives in the change's own `tasks/` packets; SQLite tasks and `.agents/specs/` describe existing work until deliberately converted.
 
 **The journal** captures *what happened* — `journal_entries` rows are project-scoped events (`project_id NOT NULL`), each tagged with an opaque `harness_session_id` that correlates one conversation's entries. Decisions, discoveries, commits, and progress land as structured entries; `loaf journal recent`/`show`/`search` and the `loaf journal context` digest provide handoff-ready context for compaction recovery and cross-conversation resumption. There is no session entity — see [Session Model: Journal-First](#session-model-journal-first).
 
