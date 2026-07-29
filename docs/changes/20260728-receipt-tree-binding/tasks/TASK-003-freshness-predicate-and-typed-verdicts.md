@@ -36,10 +36,10 @@ loaf journal log "skill(implement): TASK-003 — freshness predicate and typed v
 
 ## Steps
 
-- [ ] Replace `changeReceiptStatus` internals with the pure predicate; delete the `git log`/`diff-tree` walk and the reachability error branch.
-- [ ] Introduce the typed reason enum; derive all rendering from it; `changeReceiptExistsInWorkingTree` demoted to a prose hint that can never change a verdict.
-- [ ] Refuse v1/unknown-schema receipts with the named remedy; enforce `schema_version` reading explicitly.
-- [ ] Fixtures: post-squash protocol-clone (verify on branch, squash-merge, delete branch, clone via `file://` transport, gate verifies green); N≥2 cohort receipts committed in one sweep commit both stay fresh; touch-then-revert inverse (byte-identical restore is fresh, with a comment recording Decision 4); every enum state produces its block and never an error.
+- [x] Replace `changeReceiptStatus` internals with the pure predicate; delete the `git log`/`diff-tree` walk and the reachability error branch.
+- [x] Introduce the typed reason enum; derive all rendering from it; `changeReceiptExistsInWorkingTree` demoted to a prose hint that can never change a verdict.
+- [x] Refuse v1/unknown-schema receipts with the named remedy; enforce `schema_version` reading explicitly.
+- [x] Fixtures: post-squash protocol-clone (verify on branch, squash-merge, delete branch, clone via `file://` transport, gate verifies green); N≥2 cohort receipts committed in one sweep commit both stay fresh; touch-then-revert inverse (byte-identical restore is fresh, with a comment recording Decision 4); every enum state produces its block and never an error.
 
 ## Verification
 

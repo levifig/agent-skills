@@ -138,7 +138,8 @@ func evaluateVerifiedRungAtCommit(rootPath string, node changeNode, outputComman
 		return false, nil, false, reportErr.Error()
 	}
 	clean = len(report.Violations) == 0 && report.Executable
-	ok, _, receiptErr = changeReceiptStatus(rootPath, headNode.Folder, headNode, outputCommand)
+	verdict, receiptErr := changeReceiptStatus(rootPath, headNode.Folder, headNode, outputCommand)
+	ok = verdict.OK
 	return ok, receiptErr, clean, ""
 }
 

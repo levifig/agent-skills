@@ -266,13 +266,15 @@ func formatChangeExecutionBlock(slug, target string, layout string, status chang
 	return ""
 }
 
-// formatChangeReceiptBlock renders a cohort receipt failure. Failing criteria
-// are stated plainly; freshness failures keep the "not current" framing and
-// name the mechanical remedy — preflight never runs criteria.
-func formatChangeReceiptBlock(slug, target, reason, folder string) string {
-	if strings.HasPrefix(reason, "receipt records failing criteria") {
-		return fmt.Sprintf("change %q targets %s but %s", slug, target, reason)
+// formatChangeReceiptBlock renders a cohort receipt failure from a typed
+// verdict. Every block names the folder, the cause, and a copy-pasteable remedy
+// — preflight never runs criteria.
+func formatChangeReceiptBlock(slug, target string, verdict changeReceiptVerdict, folder string) string {
+	folder = filepath.ToSlash(folder)
+	remedy := fmt.Sprintf("Run: loaf change verify %s, then commit the receipt", folder)
+	cause := verdict.Cause()
+	if verdict.Reason == changeReceiptFailingResults {
+		return fmt.Sprintf("change %q targets %s but %s", slug, target, cause)
 	}
-	return fmt.Sprintf("change %q targets %s but receipt is not current (%s); run: loaf change verify %s, then commit the receipt",
-		slug, target, reason, folder)
+	return fmt.Sprintf("change %q targets %s but %s. %s", slug, target, cause, remedy)
 }

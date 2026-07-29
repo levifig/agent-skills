@@ -85,12 +85,14 @@ func releaseCohortPreflightWithOutput(rootPath, candidate string, outputCommand 
 			blocked = append(blocked, msg)
 			continue
 		}
-		ok, reason, receiptErr := changeReceiptStatus(rootPath, node.Folder, node, outputCommand)
+		verdict, receiptErr := changeReceiptStatus(rootPath, node.Folder, node, outputCommand)
 		if receiptErr != nil {
+			// Freshness maps receipt states to reasoned blocks; a non-nil error here
+			// is reserved for unexpected seam failures and should stay unreachable.
 			return fmt.Errorf("release blocked: cannot inspect receipt for %q: %w", node.Slug, receiptErr)
 		}
-		if !ok {
-			blocked = append(blocked, formatChangeReceiptBlock(node.Slug, candidate, reason, node.Folder))
+		if !verdict.OK {
+			blocked = append(blocked, formatChangeReceiptBlock(node.Slug, candidate, verdict, node.Folder))
 		}
 	}
 
