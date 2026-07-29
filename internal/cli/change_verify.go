@@ -188,7 +188,7 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 		Results:       results,
 	}
 	// Write-on-failure: persist evidence even when criteria fail; the cohort
-	// gate rejects receipts with any results[].ok == false (TASK-007).
+	// gate rejects receipts with any results[].ok == false.
 	receiptPath := filepath.Join(folder, filepath.FromSlash(changeVerifyReceiptFile))
 	if err := os.MkdirAll(filepath.Dir(receiptPath), 0o755); err != nil {
 		return fmt.Errorf("create receipts/: %w", err)
@@ -438,9 +438,9 @@ func changeCriteriaDigest(criteria []changeCriterion) string {
 	return sha256HexBytes([]byte(b.String()))
 }
 
-func runChangeCriterionCommand(folder, command string) (int, string, error) {
+func runChangeCriterionCommand(rootPath, command string) (int, string, error) {
 	cmd := exec.Command("bash", "-c", command)
-	cmd.Dir = folder
+	cmd.Dir = rootPath
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		return 0, string(output), nil
@@ -469,8 +469,8 @@ func sha256HexBytes(data []byte) string {
 
 // loadChangeVerifyReceipt reads the receipt from the working tree. This is
 // verify's own surface — it writes that file — and never the gate's: gate-context
-// reads go through changeReceiptAtHEAD so evidence is always committed before it
-// is read (ADR-023).
+// reads go through changeReceiptStatus, which reads the committed receipt at HEAD
+// via readCommittedOptional (ADR-023 / ADR-024).
 func loadChangeVerifyReceipt(folderAbs string) (changeVerifyReceipt, error) {
 	data, err := os.ReadFile(filepath.Join(folderAbs, filepath.FromSlash(changeVerifyReceiptFile)))
 	if err != nil {

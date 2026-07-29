@@ -192,9 +192,9 @@ func TestChangeVerifyV5ReceiptDigestExpiryViaChangeReceiptStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
-	verdict, statusErr := changeReceiptStatus(repo, folderRel, node, nil)
-	if statusErr != nil || !verdict.OK {
-		t.Fatalf("fresh receipt: ok=%v reason=%q err=%v", verdict.OK, verdict.Cause(), statusErr)
+	verdict := changeReceiptStatus(repo, folderRel, node, nil)
+	if !verdict.OK {
+		t.Fatalf("fresh receipt: ok=%v reason=%q", verdict.OK, verdict.Cause())
 	}
 
 	expired := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0 changed")
@@ -207,10 +207,7 @@ func TestChangeVerifyV5ReceiptDigestExpiryViaChangeReceiptStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assemble after edit: %v", err)
 	}
-	verdict, statusErr = changeReceiptStatus(repo, folderRel, node, nil)
-	if statusErr != nil {
-		t.Fatalf("status err: %v", statusErr)
-	}
+	verdict = changeReceiptStatus(repo, folderRel, node, nil)
 	if verdict.OK || verdict.Cause() != "criteria changed (receipt expired)" {
 		t.Fatalf("ok=%v reason=%q, want expired criteria", verdict.OK, verdict.Cause())
 	}
@@ -586,9 +583,9 @@ func TestChangeReceiptStatusReadsCommittedHEADNotWorkingTree(t *testing.T) {
 	}
 
 	// Never verified: no receipt anywhere.
-	verdict, statusErr := changeReceiptStatus(repo, folderRel, node, nil)
-	if statusErr != nil || verdict.OK || verdict.Cause() != "missing receipt" {
-		t.Fatalf("never verified: ok=%v reason=%q err=%v, want missing receipt", verdict.OK, verdict.Cause(), statusErr)
+	verdict := changeReceiptStatus(repo, folderRel, node, nil)
+	if verdict.OK || verdict.Cause() != "missing receipt" {
+		t.Fatalf("never verified: ok=%v reason=%q, want missing receipt", verdict.OK, verdict.Cause())
 	}
 
 	// Verified at HEAD but nobody committed the receipt: blocks distinctly.
@@ -600,9 +597,9 @@ func TestChangeReceiptStatusReadsCommittedHEADNotWorkingTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile receipt: %v", err)
 	}
-	verdict, statusErr = changeReceiptStatus(repo, folderRel, node, nil)
-	if statusErr != nil || verdict.OK || verdict.Cause() != "receipt not committed at HEAD" {
-		t.Fatalf("uncommitted receipt: ok=%v reason=%q err=%v, want not-committed block", verdict.OK, verdict.Cause(), statusErr)
+	verdict = changeReceiptStatus(repo, folderRel, node, nil)
+	if verdict.OK || verdict.Cause() != "receipt not committed at HEAD" {
+		t.Fatalf("uncommitted receipt: ok=%v reason=%q, want not-committed block", verdict.OK, verdict.Cause())
 	}
 	if msg := formatChangeReceiptBlock("head-receipt", "1.0.0", verdict, filepath.ToSlash(folderRel)); !strings.Contains(msg, "commit the receipt") {
 		t.Fatalf("block message = %q, want commit-the-receipt remedy", msg)
@@ -610,9 +607,9 @@ func TestChangeReceiptStatusReadsCommittedHEADNotWorkingTree(t *testing.T) {
 
 	// The same receipt, committed, proceeds.
 	commitAllChangeTest(t, repo, "chore: commit verify receipt")
-	verdict, statusErr = changeReceiptStatus(repo, folderRel, node, nil)
-	if statusErr != nil || !verdict.OK {
-		t.Fatalf("committed receipt: ok=%v reason=%q err=%v, want pass", verdict.OK, verdict.Cause(), statusErr)
+	verdict = changeReceiptStatus(repo, folderRel, node, nil)
+	if !verdict.OK {
+		t.Fatalf("committed receipt: ok=%v reason=%q, want pass", verdict.OK, verdict.Cause())
 	}
 
 	// Dirty working tree is irrelevant: a locally failing receipt cannot close the gate.
@@ -630,18 +627,18 @@ func TestChangeReceiptStatusReadsCommittedHEADNotWorkingTree(t *testing.T) {
 	if err := os.WriteFile(receiptPath, append(mangledData, '\n'), 0o644); err != nil {
 		t.Fatalf("WriteFile mangled receipt: %v", err)
 	}
-	verdict, statusErr = changeReceiptStatus(repo, folderRel, node, nil)
-	if statusErr != nil || !verdict.OK {
-		t.Fatalf("working-tree edit must not affect the gate: ok=%v reason=%q err=%v", verdict.OK, verdict.Cause(), statusErr)
+	verdict = changeReceiptStatus(repo, folderRel, node, nil)
+	if !verdict.OK {
+		t.Fatalf("working-tree edit must not affect the gate: ok=%v reason=%q", verdict.OK, verdict.Cause())
 	}
 
 	// Nor can deleting it locally.
 	if err := os.Remove(receiptPath); err != nil {
 		t.Fatalf("Remove receipt: %v", err)
 	}
-	verdict, statusErr = changeReceiptStatus(repo, folderRel, node, nil)
-	if statusErr != nil || !verdict.OK {
-		t.Fatalf("working-tree delete must not affect the gate: ok=%v reason=%q err=%v", verdict.OK, verdict.Cause(), statusErr)
+	verdict = changeReceiptStatus(repo, folderRel, node, nil)
+	if !verdict.OK {
+		t.Fatalf("working-tree delete must not affect the gate: ok=%v reason=%q", verdict.OK, verdict.Cause())
 	}
 }
 
@@ -660,9 +657,9 @@ func TestChangeVerifyV5ReceiptOwnCommitExemption(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
-	verdict, statusErr := changeReceiptStatus(repo, folderRel, node, nil)
-	if statusErr != nil || !verdict.OK {
-		t.Fatalf("receipt-only commit must not stale: ok=%v reason=%q err=%v", verdict.OK, verdict.Cause(), statusErr)
+	verdict := changeReceiptStatus(repo, folderRel, node, nil)
+	if !verdict.OK {
+		t.Fatalf("receipt-only commit must not stale: ok=%v reason=%q", verdict.OK, verdict.Cause())
 	}
 }
 

@@ -57,7 +57,19 @@ func TestChangeReceiptBlockMessagesNameFolderCauseRemedy(t *testing.T) {
 		{
 			name:    "failing",
 			verdict: changeReceiptVerdict{Reason: changeReceiptFailingResults, FailedIDs: []string{"V1", "V3"}},
-			want:    []string{"receipt records failing criteria (V1, V3)"},
+			want:    []string{"receipt records failing criteria (V1, V3)", "Fix the failing criteria, then run: loaf change verify", folder, "and commit the receipt"},
+			forbid:  []string{"exit status", "cannot inspect", "invalid", "corrupt"},
+		},
+		{
+			name:    "boundary",
+			verdict: changeReceiptVerdict{Reason: changeReceiptBoundaryChanged},
+			want:    []string{"evidence boundary changed since verification (receipt expired)", "Run: loaf change verify", folder},
+			forbid:  []string{"exit status", "invalid", "corrupt", "cannot inspect"},
+		},
+		{
+			name:    "evidence-unavailable",
+			verdict: changeReceiptVerdict{Reason: changeReceiptEvidenceUnavailable},
+			want:    []string{"could not read evidence at HEAD (git error)", "Run: loaf change verify", folder},
 			forbid:  []string{"exit status", "cannot inspect"},
 		},
 	}

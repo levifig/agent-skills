@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -138,52 +139,41 @@ func TestChangeReceiptFreshness(t *testing.T) {
 			if !strings.Contains(msg, substr) {
 				t.Fatalf("msg=%q, want substr %q", msg, substr)
 			}
-			if want != changeReceiptFailingResults && !strings.Contains(msg, "loaf change verify") {
+			if !strings.Contains(msg, "loaf change verify") {
 				t.Fatalf("msg=%q, want remedy", msg)
+			}
+			lower := strings.ToLower(msg)
+			if strings.Contains(lower, "invalid") || strings.Contains(lower, "corrupt") {
+				t.Fatalf("DX wording must not say invalid/corrupt: %s", msg)
 			}
 		}
 
-		verdict, err := changeReceiptStatus(repo, folderRel, node, nil)
-		if err != nil {
-			t.Fatalf("missing: %v", err)
-		}
+		verdict := changeReceiptStatus(repo, folderRel, node, nil)
 		assertBlock(t, verdict, changeReceiptMissing, "missing receipt")
 
 		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
 			t.Fatalf("verify: %v", err)
 		}
-		verdict, err = changeReceiptStatus(repo, folderRel, node, nil)
-		if err != nil {
-			t.Fatalf("uncommitted: %v", err)
-		}
+		verdict = changeReceiptStatus(repo, folderRel, node, nil)
 		assertBlock(t, verdict, changeReceiptUncommitted, "not committed")
 
 		commitAllChangeTest(t, repo, "chore: commit receipt")
 		node, _ = assembleChangeNodeFromFolder(repo, filepath.Join(repo, folderRel))
-		verdict, err = changeReceiptStatus(repo, folderRel, node, nil)
-		if err != nil || !verdict.OK {
-			t.Fatalf("fresh: %#v err=%v", verdict, err)
+		verdict = changeReceiptStatus(repo, folderRel, node, nil)
+		if !verdict.OK {
+			t.Fatalf("fresh: %#v", verdict)
 		}
 
 		v1 := changeVerifyReceipt{SchemaVersion: 1, Change: "reasons", CriteriaDigest: "x", Results: []changeVerifyCriterionResult{{ID: "V1", OK: true}, {ID: "V2", OK: true}}}
 		writeCommittedReceipt(t, repo, dir, v1)
-		verdict, err = changeReceiptStatus(repo, folderRel, node, nil)
-		if err != nil {
-			t.Fatalf("schema: %v", err)
-		}
+		verdict = changeReceiptStatus(repo, folderRel, node, nil)
 		assertBlock(t, verdict, changeReceiptUnsupportedSchema, "unsupported receipt schema_version 1")
-		if strings.Contains(strings.ToLower(verdict.Cause()), "invalid") || strings.Contains(strings.ToLower(verdict.Cause()), "corrupt") {
-			t.Fatalf("DX wording must not say invalid/corrupt: %s", verdict.Cause())
-		}
 
 		if err := os.WriteFile(filepath.Join(dir, "receipts", "verify.json"), []byte("{not-json"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
-		commitAllChangeTest(t, repo, "chore: corrupt receipt")
-		verdict, err = changeReceiptStatus(repo, folderRel, node, nil)
-		if err != nil {
-			t.Fatalf("unreadable: %v", err)
-		}
+		commitAllChangeTest(t, repo, "chore: unreadable receipt")
+		verdict = changeReceiptStatus(repo, folderRel, node, nil)
 		assertBlock(t, verdict, changeReceiptUnreadable, "unreadable")
 
 		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
@@ -196,10 +186,7 @@ func TestChangeReceiptFreshness(t *testing.T) {
 		}
 		commitAllChangeTest(t, repo, "docs: change criteria text")
 		node, _ = assembleChangeNodeFromFolder(repo, filepath.Join(repo, folderRel))
-		verdict, err = changeReceiptStatus(repo, folderRel, node, nil)
-		if err != nil {
-			t.Fatalf("criteria: %v", err)
-		}
+		verdict = changeReceiptStatus(repo, folderRel, node, nil)
 		assertBlock(t, verdict, changeReceiptCriteriaMismatch, "criteria changed")
 
 		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
@@ -215,10 +202,7 @@ func TestChangeReceiptFreshness(t *testing.T) {
 		}
 		commitAllChangeTest(t, repo, "feat: drift content")
 		node, _ = assembleChangeNodeFromFolder(repo, filepath.Join(repo, folderRel))
-		verdict, err = changeReceiptStatus(repo, folderRel, node, nil)
-		if err != nil {
-			t.Fatalf("drift: %v", err)
-		}
+		verdict = changeReceiptStatus(repo, folderRel, node, nil)
 		assertBlock(t, verdict, changeReceiptContentDrift, "content changed under")
 		if !strings.Contains(verdict.Cause(), "`internal`") {
 			t.Fatalf("cause should name internal section: %s", verdict.Cause())
@@ -228,14 +212,31 @@ func TestChangeReceiptFreshness(t *testing.T) {
 			t.Fatalf("verify clean: %v", err)
 		}
 		commitAllChangeTest(t, repo, "chore: fresh again")
+		boundary := mustReadVerifyReceipt(t, dir)
+		if len(boundary.Exclusions) == 0 {
+			t.Fatal("expected exclusions on fresh receipt")
+		}
+		boundary.Exclusions = append(append([]string{}, boundary.Exclusions...), "docs/changes/*/extra/**")
+		writeCommittedReceipt(t, repo, dir, boundary)
+		node, _ = assembleChangeNodeFromFolder(repo, filepath.Join(repo, folderRel))
+		verdict = changeReceiptStatus(repo, folderRel, node, nil)
+		assertBlock(t, verdict, changeReceiptBoundaryChanged, "evidence boundary changed since verification (receipt expired)")
+
+		brokenGit := func(cwd, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("exit status 128: fatal: simulated git seam failure")
+		}
+		verdict = changeReceiptStatus(repo, folderRel, node, brokenGit)
+		assertBlock(t, verdict, changeReceiptEvidenceUnavailable, "could not read evidence at HEAD (git error)")
+
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+			t.Fatalf("verify after boundary: %v", err)
+		}
+		commitAllChangeTest(t, repo, "chore: restore after boundary")
 		good := mustReadVerifyReceipt(t, dir)
 		good.Results = good.Results[:1]
 		writeCommittedReceipt(t, repo, dir, good)
 		node, _ = assembleChangeNodeFromFolder(repo, filepath.Join(repo, folderRel))
-		verdict, err = changeReceiptStatus(repo, folderRel, node, nil)
-		if err != nil {
-			t.Fatalf("gap: %v", err)
-		}
+		verdict = changeReceiptStatus(repo, folderRel, node, nil)
 		assertBlock(t, verdict, changeReceiptResultsGap, "missing criteria (V2)")
 
 		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
@@ -245,11 +246,12 @@ func TestChangeReceiptFreshness(t *testing.T) {
 		failing := mustReadVerifyReceipt(t, dir)
 		failing.Results[0].OK = false
 		writeCommittedReceipt(t, repo, dir, failing)
-		verdict, err = changeReceiptStatus(repo, folderRel, node, nil)
-		if err != nil {
-			t.Fatalf("failing: %v", err)
-		}
+		verdict = changeReceiptStatus(repo, folderRel, node, nil)
 		assertBlock(t, verdict, changeReceiptFailingResults, "failing criteria (V1)")
+		msg := formatChangeReceiptBlock("reasons", "1.0.0", verdict, folderRel)
+		if !strings.Contains(msg, "Fix the failing criteria, then run: loaf change verify") {
+			t.Fatalf("failing block missing named remedy: %s", msg)
+		}
 	})
 }
 

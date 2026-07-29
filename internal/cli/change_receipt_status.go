@@ -21,8 +21,10 @@ const (
 	changeReceiptUnsupportedSchema
 	changeReceiptCriteriaMismatch
 	changeReceiptContentDrift
+	changeReceiptBoundaryChanged
 	changeReceiptResultsGap
 	changeReceiptFailingResults
+	changeReceiptEvidenceUnavailable
 )
 
 // changeReceiptVerdict is the pure freshness outcome for one change folder.
@@ -59,10 +61,14 @@ func (v changeReceiptVerdict) Cause() string {
 			quoted[i] = "`" + s + "`"
 		}
 		return fmt.Sprintf("content changed since verification (content changed under %s)", strings.Join(quoted, ", "))
+	case changeReceiptBoundaryChanged:
+		return "evidence boundary changed since verification (receipt expired)"
 	case changeReceiptResultsGap:
 		return fmt.Sprintf("receipt results missing criteria (%s)", strings.Join(v.MissingIDs, ", "))
 	case changeReceiptFailingResults:
 		return fmt.Sprintf("receipt records failing criteria (%s)", strings.Join(v.FailedIDs, ", "))
+	case changeReceiptEvidenceUnavailable:
+		return "could not read evidence at HEAD (git error)"
 	default:
 		return "receipt not current"
 	}
@@ -72,61 +78,60 @@ func (v changeReceiptVerdict) Cause() string {
 // verification of the pinned HEAD tree. The verdict is a pure function of
 // receipt fields and HEAD content — no refs, no reachability, no worktree for
 // the verdict itself. changeReceiptExistsInWorkingTree only refines the missing
-// vs uncommitted cause when HEAD has no receipt.
-func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputCommand changeGitOutput) (changeReceiptVerdict, error) {
+// vs uncommitted cause when HEAD has no receipt. Git-seam failures are typed
+// blocking verdicts, never errors.
+func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputCommand changeGitOutput) changeReceiptVerdict {
 	if outputCommand == nil {
 		outputCommand = commandOutput
 	}
 	receiptRel := changeReceiptRelPath(folderRel)
 	content, found, err := readCommittedOptional(rootPath, "HEAD", receiptRel, outputCommand)
 	if err != nil {
-		// A broken git seam is still a reasoned block, never "cannot inspect".
-		return changeReceiptVerdict{Reason: changeReceiptUnreadable}, nil
+		return changeReceiptVerdict{Reason: changeReceiptEvidenceUnavailable}
 	}
 	if !found {
 		if changeReceiptExistsInWorkingTree(rootPath, folderRel) {
-			return changeReceiptVerdict{Reason: changeReceiptUncommitted}, nil
+			return changeReceiptVerdict{Reason: changeReceiptUncommitted}
 		}
-		return changeReceiptVerdict{Reason: changeReceiptMissing}, nil
+		return changeReceiptVerdict{Reason: changeReceiptMissing}
 	}
 	var receipt changeVerifyReceipt
 	if err := json.Unmarshal([]byte(content), &receipt); err != nil {
-		return changeReceiptVerdict{Reason: changeReceiptUnreadable}, nil
+		return changeReceiptVerdict{Reason: changeReceiptUnreadable}
 	}
 	if receipt.SchemaVersion != 2 {
-		return changeReceiptVerdict{Reason: changeReceiptUnsupportedSchema, SchemaVersion: receipt.SchemaVersion}, nil
+		return changeReceiptVerdict{Reason: changeReceiptUnsupportedSchema, SchemaVersion: receipt.SchemaVersion}
 	}
 	currentExclusions := ChangeEvidenceExclusions()
 	if !slices.Equal(receipt.Exclusions, currentExclusions) || receipt.DigestSpec != ChangeEvidenceDigestSpec {
-		// Spec or exclusion-boundary edit changes the claim domain — treat as drift.
-		return changeReceiptVerdict{Reason: changeReceiptContentDrift, DriftedSections: []string{"digest_spec"}}, nil
+		return changeReceiptVerdict{Reason: changeReceiptBoundaryChanged}
 	}
 	criteria := parseChangeExecutableCriteria(node.Content)
 	if changeCriteriaDigest(criteria) != receipt.CriteriaDigest {
-		return changeReceiptVerdict{Reason: changeReceiptCriteriaMismatch}, nil
+		return changeReceiptVerdict{Reason: changeReceiptCriteriaMismatch}
 	}
 	if failed := receiptFailingCriterionIDs(receipt); len(failed) > 0 {
-		return changeReceiptVerdict{Reason: changeReceiptFailingResults, FailedIDs: failed}, nil
+		return changeReceiptVerdict{Reason: changeReceiptFailingResults, FailedIDs: failed}
 	}
 	if missing := receiptMissingCriterionIDs(receipt, criteria); len(missing) > 0 {
-		return changeReceiptVerdict{Reason: changeReceiptResultsGap, MissingIDs: missing}, nil
+		return changeReceiptVerdict{Reason: changeReceiptResultsGap, MissingIDs: missing}
 	}
 	head, err := outputCommand(rootPath, "git", "rev-parse", "HEAD")
 	if err != nil {
-		return changeReceiptVerdict{Reason: changeReceiptUnreadable}, nil
+		return changeReceiptVerdict{Reason: changeReceiptEvidenceUnavailable}
 	}
 	head = strings.TrimSpace(head)
 	scope, err := scopeDigest(rootPath, head, currentExclusions, outputCommand)
 	if err != nil {
-		return changeReceiptVerdict{Reason: changeReceiptUnreadable}, nil
+		return changeReceiptVerdict{Reason: changeReceiptEvidenceUnavailable}
 	}
 	if scope.Digest != receipt.ScopeDigest {
 		return changeReceiptVerdict{
 			Reason:          changeReceiptContentDrift,
 			DriftedSections: driftedScopeSections(receipt.ScopeSections, scope.Sections),
-		}, nil
+		}
 	}
-	return changeReceiptVerdict{OK: true, Reason: changeReceiptOK}, nil
+	return changeReceiptVerdict{OK: true, Reason: changeReceiptOK}
 }
 
 func receiptMissingCriterionIDs(receipt changeVerifyReceipt, criteria []changeCriterion) []string {
@@ -159,29 +164,6 @@ func driftedScopeSections(recorded, current map[string]string) []string {
 	}
 	slices.Sort(drifted)
 	return drifted
-}
-
-// changeReceiptAtHEAD loads the receipt as committed at HEAD. Parse failures
-// return found=true with a zero receipt and a non-nil error so callers that need
-// the raw bytes can distinguish; the freshness predicate maps parse failures to
-// changeReceiptUnreadable without surfacing an inspection error.
-func changeReceiptAtHEAD(rootPath, folderRel string, outputCommand changeGitOutput) (changeVerifyReceipt, bool, error) {
-	if outputCommand == nil {
-		outputCommand = commandOutput
-	}
-	receiptRel := changeReceiptRelPath(folderRel)
-	content, found, err := readCommittedOptional(rootPath, "HEAD", receiptRel, outputCommand)
-	if err != nil {
-		return changeVerifyReceipt{}, false, err
-	}
-	if !found {
-		return changeVerifyReceipt{}, false, nil
-	}
-	var receipt changeVerifyReceipt
-	if err := json.Unmarshal([]byte(content), &receipt); err != nil {
-		return changeVerifyReceipt{}, false, fmt.Errorf("parse committed receipt %s: %w", receiptRel, err)
-	}
-	return receipt, true, nil
 }
 
 func changeReceiptExistsInWorkingTree(rootPath, folderRel string) bool {

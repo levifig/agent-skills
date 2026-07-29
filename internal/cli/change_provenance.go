@@ -271,10 +271,10 @@ func formatChangeExecutionBlock(slug, target string, layout string, status chang
 // — preflight never runs criteria.
 func formatChangeReceiptBlock(slug, target string, verdict changeReceiptVerdict, folder string) string {
 	folder = filepath.ToSlash(folder)
-	remedy := fmt.Sprintf("Run: loaf change verify %s, then commit the receipt", folder)
 	cause := verdict.Cause()
 	if verdict.Reason == changeReceiptFailingResults {
-		return fmt.Sprintf("change %q targets %s but %s", slug, target, cause)
+		return fmt.Sprintf("change %q targets %s but %s. Fix the failing criteria, then run: loaf change verify %s and commit the receipt", slug, target, cause, folder)
 	}
+	remedy := fmt.Sprintf("Run: loaf change verify %s, then commit the receipt", folder)
 	return fmt.Sprintf("change %q targets %s but %s. %s", slug, target, cause, remedy)
 }
