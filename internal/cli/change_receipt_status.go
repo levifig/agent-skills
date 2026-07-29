@@ -47,7 +47,7 @@ func (v changeReceiptVerdict) Cause() string {
 	case changeReceiptUnreadable:
 		return "receipt unreadable — re-verify"
 	case changeReceiptUnsupportedSchema:
-		return fmt.Sprintf("unsupported receipt schema_version %d — re-verify with loaf change verify", v.SchemaVersion)
+		return fmt.Sprintf("unsupported receipt schema_version %d", v.SchemaVersion)
 	case changeReceiptCriteriaMismatch:
 		return "criteria changed (receipt expired)"
 	case changeReceiptContentDrift:
@@ -99,7 +99,7 @@ func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputComm
 	currentExclusions := ChangeEvidenceExclusions()
 	if !slices.Equal(receipt.Exclusions, currentExclusions) || receipt.DigestSpec != ChangeEvidenceDigestSpec {
 		// Spec or exclusion-boundary edit changes the claim domain — treat as drift.
-		return changeReceiptVerdict{Reason: changeReceiptContentDrift, DriftedSections: []string{"(digest spec or exclusions)"}}, nil
+		return changeReceiptVerdict{Reason: changeReceiptContentDrift, DriftedSections: []string{"digest_spec"}}, nil
 	}
 	criteria := parseChangeExecutableCriteria(node.Content)
 	if changeCriteriaDigest(criteria) != receipt.CriteriaDigest {

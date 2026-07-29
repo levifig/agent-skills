@@ -539,7 +539,7 @@ func TestChangeStateVerifiedRungIgnoresDirtyCriteriaAndRename(t *testing.T) {
 	if pinErr != nil {
 		t.Fatalf("pin: %v", pinErr)
 	}
-	ok, receiptErr, clean, evalErr := evaluateVerifiedRungAtCommit(repo, wtNode, evidenceGit)
+	ok, receiptErr, clean, evalErr, _ := evaluateVerifiedRungAtCommit(repo, wtNode, evidenceGit)
 	if evalErr != "" || receiptErr != nil || !ok || !clean {
 		t.Fatalf("renamed+dirty WT node: ok=%v clean=%v receiptErr=%v evalErr=%q, want verified rung", ok, clean, receiptErr, evalErr)
 	}

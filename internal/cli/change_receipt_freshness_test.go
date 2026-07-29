@@ -172,6 +172,9 @@ func TestChangeReceiptFreshness(t *testing.T) {
 			t.Fatalf("schema: %v", err)
 		}
 		assertBlock(t, verdict, changeReceiptUnsupportedSchema, "unsupported receipt schema_version 1")
+		if strings.Contains(strings.ToLower(verdict.Cause()), "invalid") || strings.Contains(strings.ToLower(verdict.Cause()), "corrupt") {
+			t.Fatalf("DX wording must not say invalid/corrupt: %s", verdict.Cause())
+		}
 
 		if err := os.WriteFile(filepath.Join(dir, "receipts", "verify.json"), []byte("{not-json"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)

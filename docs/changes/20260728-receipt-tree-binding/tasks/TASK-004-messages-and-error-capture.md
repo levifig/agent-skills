@@ -33,10 +33,10 @@ loaf journal log "skill(implement): TASK-004 — messages and error capture"
 
 ## Steps
 
-- [ ] `commandOutput` includes captured stderr in returned errors; audit its call sites for double-printing.
-- [ ] Render the DX wordings from the reason enum; every block names folder, cause, and the `loaf change verify <folder>` + commit remedy.
-- [ ] Drift blocks name the drifted top-level sections from `scope_sections`.
-- [ ] Message tests: no raw `exit status` string reaches gate output in any fixture state; wordings match the contract.
+- [x] `commandOutput` includes captured stderr in returned errors; audit its call sites for double-printing.
+- [x] Render the DX wordings from the reason enum; every block names folder, cause, and the `loaf change verify <folder>` + commit remedy.
+- [x] Drift blocks name the drifted top-level sections from `scope_sections`.
+- [x] Message tests: no raw `exit status` string reaches gate output in any fixture state; wordings match the contract.
 
 ## Verification
 
