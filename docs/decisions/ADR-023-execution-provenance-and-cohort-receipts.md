@@ -4,7 +4,7 @@ title: "Execution provenance and cohort receipts — git as the witness, verify 
 status: Accepted
 date: 2026-07-28
 supersedes: null
-superseded_by: null
+superseded_by: ADR-024  # freshness section only; see ADR-024
 ---
 
 # ADR-023: Execution provenance and cohort receipts
@@ -21,7 +21,7 @@ ADR-022's release cohorts need an evidence model: what proves a change was execu
 
 **Success is required, not just execution.** A receipt recording any `ok: false` criterion blocks with `receipt records failing criteria (<IDs>)`. Verify still writes the receipt on failure — the evidence stays on disk — and exits non-zero; the gate is the arbiter.
 
-**Freshness.** Any later commit touching a path other than the receipt file itself stales the receipt; the receipt's own commit never does (the bootstrap case). Criteria edits expire the digest regardless of freshness; `plan.md` edits leave the digest intact and surface as the re-verify demand, never as expiry. Staleness is inspected commit-by-commit, so a touch-then-revert pair still forces re-verification.
+**Freshness (superseded by ADR-024).** The commit-walk freshness rule below is historical. Receipt validity now binds to a masked root-tree content digest — see ADR-024. Retained for provenance of the original design: any later commit touching a path other than the receipt file itself staled the receipt; the receipt's own commit never did; touch-then-revert still forced re-verification.
 
 **The gate is a pure reader; verify is the only runner.** A stale or failing receipt blocks with a plain reason naming the mechanical remedy (`run: loaf change verify <folder>, then commit the receipt`) rather than re-running criteria at preflight: running declared commands from preflight would make `--dry-run` a lie and would leave its freshest result uncommitted. Evidence is always committed before it is read.
 
