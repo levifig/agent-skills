@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -33,19 +34,32 @@ type changeCriterion struct {
 }
 
 type changeVerifyReceipt struct {
-	SchemaVersion  int                           `json:"schema_version"`
-	Change         string                        `json:"change"`
-	VerifiedCommit string                        `json:"verified_commit"`
-	VerifiedAt     string                        `json:"verified_at"`
-	CriteriaDigest string                        `json:"criteria_digest"`
-	Cwd            string                        `json:"cwd"`
-	TargetRelease  string                        `json:"target_release,omitempty"`
-	Results        []changeVerifyCriterionResult `json:"results"`
+	SchemaVersion int    `json:"schema_version"`
+	Change        string `json:"change"`
+	// VerifiedCommit is provenance only — never consulted for the freshness verdict (ADR-024).
+	VerifiedCommit   string                        `json:"verified_commit"`
+	VerifiedRootTree string                        `json:"verified_root_tree"`
+	VerifiedAt       string                        `json:"verified_at"`
+	CriteriaDigest   string                        `json:"criteria_digest"`
+	ScopeDigest      string                        `json:"scope_digest"`
+	ScopeSections    map[string]string             `json:"scope_sections"`
+	Exclusions       []string                      `json:"exclusions"`
+	DigestSpec       string                        `json:"digest_spec"`
+	ToolVersion      string                        `json:"tool_version"`
+	Toolchain        changeVerifyToolchain         `json:"toolchain"`
+	WorktreeClean    bool                          `json:"worktree_clean"`
+	TargetRelease    string                        `json:"target_release,omitempty"`
+	Results          []changeVerifyCriterionResult `json:"results"`
 }
 
-// changeVerifyCriterionResult records one criterion's evidence. Expect fields are
-// additive on schema_version 1: older readers ignore them, and no receipt exists
-// outside fixtures.
+// changeVerifyToolchain records the verify host environment for audit, never gating.
+type changeVerifyToolchain struct {
+	Go   string `json:"go"`
+	OS   string `json:"os"`
+	Arch string `json:"arch"`
+}
+
+// changeVerifyCriterionResult records one criterion's evidence.
 type changeVerifyCriterionResult struct {
 	ID           string                    `json:"id"`
 	Command      string                    `json:"command"`
@@ -97,11 +111,28 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 	if len(criteria) == 0 {
 		return fmt.Errorf("no executable criteria found in shape.md (need V-entries with Command: `...`)")
 	}
+	dirty, err := changeTrackedWorktreeDirty(rootPath)
+	if err != nil {
+		return fmt.Errorf("inspect worktree: %w", err)
+	}
+	if dirty {
+		return fmt.Errorf("working tree differs from HEAD; commit before verifying")
+	}
 	head, err := commandOutput(rootPath, "git", "rev-parse", "HEAD")
 	if err != nil {
 		return fmt.Errorf("resolve HEAD: %w", err)
 	}
 	head = strings.TrimSpace(head)
+	rootTree, err := commandOutput(rootPath, "git", "rev-parse", "HEAD^{tree}")
+	if err != nil {
+		return fmt.Errorf("resolve HEAD tree: %w", err)
+	}
+	rootTree = strings.TrimSpace(rootTree)
+	exclusions := ChangeEvidenceExclusions()
+	scope, err := scopeDigest(rootPath, head, exclusions, nil)
+	if err != nil {
+		return fmt.Errorf("compute scope digest: %w", err)
+	}
 	results := make([]changeVerifyCriterionResult, 0, len(criteria))
 	failed := false
 	for _, criterion := range criteria {
@@ -136,14 +167,25 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 		}
 	}
 	receipt := changeVerifyReceipt{
-		SchemaVersion:  1,
-		Change:         node.Slug,
-		VerifiedCommit: head,
-		VerifiedAt:     time.Now().UTC().Format(time.RFC3339),
-		CriteriaDigest: changeCriteriaDigest(criteria),
-		Cwd:            rootPath,
-		TargetRelease:  node.TargetRelease,
-		Results:        results,
+		SchemaVersion:    2,
+		Change:           node.Slug,
+		VerifiedCommit:   head,
+		VerifiedRootTree: rootTree,
+		VerifiedAt:       time.Now().UTC().Format(time.RFC3339),
+		CriteriaDigest:   changeCriteriaDigest(criteria),
+		ScopeDigest:      scope.Digest,
+		ScopeSections:    scope.Sections,
+		Exclusions:       exclusions,
+		DigestSpec:       ChangeEvidenceDigestSpec,
+		ToolVersion:      packageVersion(rootPath),
+		Toolchain: changeVerifyToolchain{
+			Go:   strings.TrimPrefix(runtime.Version(), "go"),
+			OS:   runtime.GOOS,
+			Arch: runtime.GOARCH,
+		},
+		WorktreeClean: true,
+		TargetRelease: node.TargetRelease,
+		Results:       results,
 	}
 	// Write-on-failure: persist evidence even when criteria fail; the cohort
 	// gate rejects receipts with any results[].ok == false (TASK-007).
@@ -161,7 +203,8 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 	}
 	fmt.Fprintf(out, "\nWrote receipt: %s\n", relFromRoot(rootPath, receiptPath))
 	fmt.Fprintf(out, "criteria_digest: %s\n", receipt.CriteriaDigest)
-	fmt.Fprintf(out, "verified_commit: %s\n", shortSHA(receipt.VerifiedCommit))
+	fmt.Fprintf(out, "scope_digest: %s\n", receipt.ScopeDigest)
+	fmt.Fprintf(out, "verified_commit: %s (provenance)\n", shortSHA(receipt.VerifiedCommit))
 	if failed {
 		return ExitError{Code: 1}
 	}
@@ -170,7 +213,7 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 
 func writeChangeVerifyHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf change verify [folder]",
-		"Run executable criteria declared in shape.md and write receipts/verify.json (criteria digest, verified commit, per-criterion evidence). New-layout-only.",
+		"Run executable criteria declared in shape.md and write receipts/verify.json (schema v2 content digest, criteria digest, per-criterion evidence). New-layout-only. Refuses a dirty tracked worktree.",
 		"[folder]  Change folder path; resolves from the current branch when omitted")
 }
 
@@ -390,13 +433,13 @@ func changeExpectFailureNote(runErr error, exitCode int, checks []changeVerifyEx
 func changeCriteriaDigest(criteria []changeCriterion) string {
 	var b strings.Builder
 	for _, c := range criteria {
-		fmt.Fprintf(&b, "%s\n%s\n%s\n", c.ID, c.Command, c.Expect)
+		fmt.Fprintf(&b, "%s\n%s\n%s\n%s\n", c.ID, c.Text, c.Command, c.Expect)
 	}
 	return sha256HexBytes([]byte(b.String()))
 }
 
 func runChangeCriterionCommand(folder, command string) (int, string, error) {
-	cmd := exec.Command("bash", "-lc", command)
+	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = folder
 	output, err := cmd.CombinedOutput()
 	if err == nil {
@@ -406,6 +449,17 @@ func runChangeCriterionCommand(folder, command string) (int, string, error) {
 		return exitErr.ExitCode(), string(output), nil
 	}
 	return 1, string(output), err
+}
+
+// changeTrackedWorktreeDirty reports whether tracked or staged files differ from
+// HEAD. Untracked files do not count — verify may write the receipt into an
+// untracked receipts/ path.
+func changeTrackedWorktreeDirty(rootPath string) (bool, error) {
+	out, err := commandOutput(rootPath, "git", "status", "--porcelain=v1", "-uno")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
 }
 
 func sha256HexBytes(data []byte) string {

@@ -26,8 +26,11 @@ func TestChangeVerifyWritesReceipt(t *testing.T) {
 	if !strings.Contains(string(data), `"criteria_digest"`) || !strings.Contains(string(data), `"verified_commit"`) {
 		t.Fatalf("receipt = %s", data)
 	}
-	if !strings.Contains(string(data), `"cwd": "`+filepath.ToSlash(repo)) && !strings.Contains(string(data), `"cwd": "`+repo) {
-		t.Fatalf("receipt missing repo-root cwd: %s", data)
+	if !strings.Contains(string(data), `"schema_version": 2`) {
+		t.Fatalf("receipt missing schema_version 2: %s", data)
+	}
+	if strings.Contains(string(data), `"cwd"`) {
+		t.Fatalf("receipt must not record cwd: %s", data)
 	}
 	if !strings.Contains(stdout.String(), "Wrote receipt:") {
 		t.Fatalf("stdout = %q", stdout.String())
@@ -115,7 +118,7 @@ func TestChangeVerifyIgnoresHTier(t *testing.T) {
 	}
 }
 
-func TestChangeVerifyRunsFromRepoRootAndRecordsCwd(t *testing.T) {
+func TestChangeVerifyRunsFromRepoRoot(t *testing.T) {
 	repo := initCLIGitRepo(t)
 	marker := filepath.Join(repo, "root-marker.txt")
 	if err := os.WriteFile(marker, []byte("ok\n"), 0o644); err != nil {
@@ -136,11 +139,11 @@ func TestChangeVerifyRunsFromRepoRootAndRecordsCwd(t *testing.T) {
 	if err := json.Unmarshal(data, &receipt); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if receipt.Cwd != repo {
-		t.Fatalf("cwd = %q, want repo root %q", receipt.Cwd, repo)
-	}
 	if len(receipt.Results) != 1 || !receipt.Results[0].OK {
 		t.Fatalf("results = %#v, want V1 ok at repo root", receipt.Results)
+	}
+	if receipt.SchemaVersion != 2 || receipt.ScopeDigest == "" || receipt.WorktreeClean != true {
+		t.Fatalf("receipt = %#v, want schema v2 with scope digest and clean worktree", receipt)
 	}
 }
 
@@ -504,6 +507,7 @@ func TestChangeVerifyEnforcesExpectAndRecordsAtoms(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "shape.md"), []byte(missBody), 0o644); err != nil {
 		t.Fatalf("WriteFile shape: %v", err)
 	}
+	commitAllChangeTest(t, repo, "docs: tighten contains expectation")
 	stdout.Reset()
 	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err == nil {
 		t.Fatalf("exit-zero command with unmet contains must fail\n%s", stdout.String())
@@ -660,4 +664,112 @@ func TestChangeVerifyV5ReceiptOwnCommitExemption(t *testing.T) {
 	if statusErr != nil || !ok {
 		t.Fatalf("receipt-only commit must not stale: ok=%v reason=%q err=%v", ok, reason, statusErr)
 	}
+}
+
+func TestChangeVerifySchemaV2(t *testing.T) {
+	t.Run("writes-v2-fields-without-absolute-paths", func(t *testing.T) {
+		repo := initCLIGitRepo(t)
+		body := shapeWithVerification("- **V1.** Smoke prose. Command: `true`. Expect: exit 0")
+		dir := writeNewLayoutChange(t, repo, "20260728-schema-v2", "schema-v2", "2.0.0", body)
+		commitAllChangeTest(t, repo, "docs: shape schema-v2")
+		folderRel := filepath.Join("docs", "changes", "20260728-schema-v2")
+		var stdout bytes.Buffer
+		if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+			t.Fatalf("verify: %v\n%s", err, stdout.String())
+		}
+		receipt := mustReadVerifyReceipt(t, dir)
+		if receipt.SchemaVersion != 2 {
+			t.Fatalf("schema = %d, want 2", receipt.SchemaVersion)
+		}
+		if receipt.ScopeDigest == "" || receipt.DigestSpec != ChangeEvidenceDigestSpec || len(receipt.Exclusions) == 0 {
+			t.Fatalf("digest fields incomplete: %#v", receipt)
+		}
+		if receipt.VerifiedRootTree == "" || receipt.VerifiedCommit == "" {
+			t.Fatalf("provenance missing: %#v", receipt)
+		}
+		if !receipt.WorktreeClean {
+			t.Fatal("worktree_clean must be true after clean verify")
+		}
+		if receipt.Toolchain.Go == "" || receipt.Toolchain.OS == "" || receipt.Toolchain.Arch == "" {
+			t.Fatalf("toolchain incomplete: %#v", receipt.Toolchain)
+		}
+		if len(receipt.ScopeSections) == 0 {
+			t.Fatal("scope_sections required")
+		}
+		raw := mustRead(t, filepath.Join(dir, "receipts", "verify.json"))
+		if bytes.Contains(raw, []byte(repo)) || bytes.Contains(raw, []byte(filepath.ToSlash(repo))) {
+			t.Fatalf("receipt must not embed absolute paths: %s", raw)
+		}
+		if bytes.Contains(raw, []byte(`"cwd"`)) {
+			t.Fatalf("cwd must be dropped: %s", raw)
+		}
+		wantExclusions := ChangeEvidenceExclusions()
+		if len(receipt.Exclusions) != len(wantExclusions) {
+			t.Fatalf("exclusions = %#v, want %#v", receipt.Exclusions, wantExclusions)
+		}
+		for i := range wantExclusions {
+			if receipt.Exclusions[i] != wantExclusions[i] {
+				t.Fatalf("exclusions[%d] = %q, want %q", i, receipt.Exclusions[i], wantExclusions[i])
+			}
+		}
+	})
+
+	t.Run("refuses-dirty-tracked-and-staged-but-not-untracked", func(t *testing.T) {
+		repo := initCLIGitRepo(t)
+		body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
+		dir := writeNewLayoutChange(t, repo, "20260728-dirty", "dirty", "", body)
+		commitAllChangeTest(t, repo, "docs: shape dirty")
+		folderRel := filepath.Join("docs", "changes", "20260728-dirty")
+		shapePath := filepath.Join(dir, "shape.md")
+		original := mustRead(t, shapePath)
+
+		// Tracked unstaged edit.
+		if err := os.WriteFile(shapePath, append(original, '\n'), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel})
+		if err == nil || !strings.Contains(err.Error(), "working tree differs from HEAD; commit before verifying") {
+			t.Fatalf("tracked dirty err = %v, want dirty refusal", err)
+		}
+
+		// Restore working tree, then stage an edit.
+		if err := os.WriteFile(shapePath, original, 0o644); err != nil {
+			t.Fatalf("restore: %v", err)
+		}
+		if err := os.WriteFile(shapePath, append(original, []byte("\n")...), 0o644); err != nil {
+			t.Fatalf("WriteFile staged: %v", err)
+		}
+		gitCLI(t, repo, "add", filepath.ToSlash(filepath.Join("docs", "changes", "20260728-dirty", "shape.md")))
+		err = (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel})
+		if err == nil || !strings.Contains(err.Error(), "working tree differs from HEAD; commit before verifying") {
+			t.Fatalf("staged dirty err = %v, want dirty refusal", err)
+		}
+
+		// Clean tracked/staged state; untracked files must not refuse.
+		gitCLI(t, repo, "reset", "--hard", "HEAD")
+		if err := os.WriteFile(filepath.Join(repo, "untracked-only.txt"), []byte("x\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile untracked: %v", err)
+		}
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+			t.Fatalf("untracked must not refuse verify: %v", err)
+		}
+	})
+
+	t.Run("criteria-text-edit-changes-digest", func(t *testing.T) {
+		before := changeCriteriaDigest([]changeCriterion{{
+			ID: "V1", Text: "Smoke prose.", Command: "true", Expect: "exit 0",
+		}})
+		after := changeCriteriaDigest([]changeCriterion{{
+			ID: "V1", Text: "Smoke prose changed.", Command: "true", Expect: "exit 0",
+		}})
+		if before == after {
+			t.Fatal("criterion text must participate in criteria_digest")
+		}
+		sameCommand := changeCriteriaDigest([]changeCriterion{{
+			ID: "V1", Text: "Smoke prose.", Command: "true", Expect: "exit 0",
+		}})
+		if before != sameCommand {
+			t.Fatal("identical criteria must digest identically")
+		}
+	})
 }

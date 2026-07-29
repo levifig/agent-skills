@@ -35,11 +35,11 @@ loaf journal log "skill(implement): TASK-002 — receipt schema v2 and verify wr
 
 ## Steps
 
-- [ ] Extend the receipt struct and writer with the v2 fields; drop `cwd`; comment `verified_commit` as provenance-only.
-- [ ] Extend `changeCriteriaDigest` to include criterion text; bump nothing else about its discipline.
-- [ ] Refuse a dirty tracked worktree before running any criterion, with the exact message `working tree differs from HEAD; commit before verifying`.
-- [ ] Change `bash -lc` to `bash -c` in `runChangeCriterionCommand`.
-- [ ] Tests under `TestChangeVerifySchemaV2`: all v2 fields present and correct; no absolute path anywhere in the artifact; dirty tree refused (tracked edits, staged edits; untracked files do not refuse); criteria-text edit changes the digest.
+- [x] Extend the receipt struct and writer with the v2 fields; drop `cwd`; comment `verified_commit` as provenance-only.
+- [x] Extend `changeCriteriaDigest` to include criterion text; bump nothing else about its discipline.
+- [x] Refuse a dirty tracked worktree before running any criterion, with the exact message `working tree differs from HEAD; commit before verifying`.
+- [x] Change `bash -lc` to `bash -c` in `runChangeCriterionCommand`.
+- [x] Tests under `TestChangeVerifySchemaV2`: all v2 fields present and correct; no absolute path anywhere in the artifact; dirty tree refused (tracked edits, staged edits; untracked files do not refuse); criteria-text edit changes the digest.
 
 ## Verification
 
