@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -111,11 +112,11 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 	if len(criteria) == 0 {
 		return fmt.Errorf("no executable criteria found in shape.md (need V-entries with Command: `...`)")
 	}
-	dirty, err := changeTrackedWorktreeDirty(rootPath)
+	dirtyPaths, err := changeTrackedWorktreeDivergedPaths(rootPath)
 	if err != nil {
 		return fmt.Errorf("inspect worktree: %w", err)
 	}
-	if dirty {
+	if len(dirtyPaths) > 0 {
 		return fmt.Errorf("working tree differs from HEAD; commit before verifying")
 	}
 	head, err := commandOutput(rootPath, "git", "rev-parse", "HEAD")
@@ -166,6 +167,13 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 				ansiYellow("warn"), criterion.ID, clause)
 		}
 	}
+	// Post-run dirty check: criteria may mutate tracked files. Receipt/report
+	// masks are exempt (same as pre-run); allowlist paths are not.
+	postDirty, err := changeTrackedWorktreeDivergedPaths(rootPath)
+	if err != nil {
+		return fmt.Errorf("inspect worktree after criteria: %w", err)
+	}
+	worktreeClean := len(postDirty) == 0
 	receipt := changeVerifyReceipt{
 		SchemaVersion:    2,
 		Change:           node.Slug,
@@ -183,12 +191,12 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 			OS:   runtime.GOOS,
 			Arch: runtime.GOARCH,
 		},
-		WorktreeClean: true,
+		WorktreeClean: worktreeClean,
 		TargetRelease: node.TargetRelease,
 		Results:       results,
 	}
-	// Write-on-failure: persist evidence even when criteria fail; the cohort
-	// gate rejects receipts with any results[].ok == false.
+	// Write-on-failure: persist evidence even when criteria fail or the
+	// worktree diverged mid-run; the cohort gate rejects both.
 	receiptPath := filepath.Join(folder, filepath.FromSlash(changeVerifyReceiptFile))
 	if err := os.MkdirAll(filepath.Dir(receiptPath), 0o755); err != nil {
 		return fmt.Errorf("create receipts/: %w", err)
@@ -205,6 +213,9 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 	fmt.Fprintf(out, "criteria_digest: %s\n", receipt.CriteriaDigest)
 	fmt.Fprintf(out, "scope_digest: %s\n", receipt.ScopeDigest)
 	fmt.Fprintf(out, "verified_commit: %s (provenance)\n", shortSHA(receipt.VerifiedCommit))
+	if !worktreeClean {
+		return fmt.Errorf("criteria mutated the tracked worktree (%s); receipt is void — restore or commit, then re-verify", strings.Join(postDirty, ", "))
+	}
 	if failed {
 		return ExitError{Code: 1}
 	}
@@ -452,14 +463,81 @@ func runChangeCriterionCommand(rootPath, command string) (int, string, error) {
 }
 
 // changeTrackedWorktreeDirty reports whether tracked or staged files differ from
-// HEAD. Untracked files do not count — verify may write the receipt into an
-// untracked receipts/ path.
+// HEAD after exempting receipt and report masks. Untracked files do not count —
+// verify may write the receipt into an untracked receipts/ path. The
+// release-metadata allowlist is NOT exempt: digest-excluded paths like dist/**
+// stay dirty-checked because criteria may mutate them.
 func changeTrackedWorktreeDirty(rootPath string) (bool, error) {
-	out, err := commandOutput(rootPath, "git", "status", "--porcelain=v1", "-uno")
+	paths, err := changeTrackedWorktreeDivergedPaths(rootPath)
 	if err != nil {
 		return false, err
 	}
-	return strings.TrimSpace(out) != "", nil
+	return len(paths) > 0, nil
+}
+
+// changeTrackedWorktreeDivergedPaths lists tracked/staged paths that differ from
+// HEAD and are not receipt/report-mask exempt. Paths are slash-normalized and sorted.
+func changeTrackedWorktreeDivergedPaths(rootPath string) ([]string, error) {
+	out, err := commandOutput(rootPath, "git", "status", "--porcelain=v1", "-uno")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var paths []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+		for _, path := range porcelainTrackedPaths(line) {
+			if path == "" || changeDirtyCheckExempt(path) || seen[path] {
+				continue
+			}
+			seen[path] = true
+			paths = append(paths, path)
+		}
+	}
+	slices.Sort(paths)
+	return paths, nil
+}
+
+// changeDirtyCheckExempt is true only for receipt and report mask paths — never
+// the release-metadata allowlist.
+func changeDirtyCheckExempt(path string) bool {
+	for _, pattern := range ChangeEvidenceReceiptMasks {
+		if matchEvidenceGlob(path, pattern) {
+			return true
+		}
+	}
+	for _, pattern := range ChangeEvidenceReportMasks {
+		if matchEvidenceGlob(path, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// porcelainTrackedPaths extracts path(s) from one git status --porcelain=v1 line.
+// Rename/copy records are `XY old -> new`; both sides are returned.
+func porcelainTrackedPaths(line string) []string {
+	if len(line) < 4 || line[2] != ' ' {
+		return nil
+	}
+	rest := line[3:]
+	if idx := strings.Index(rest, " -> "); idx >= 0 {
+		return []string{unquotePorcelainPath(rest[:idx]), unquotePorcelainPath(rest[idx+4:])}
+	}
+	return []string{unquotePorcelainPath(rest)}
+}
+
+func unquotePorcelainPath(path string) string {
+	path = strings.TrimSpace(path)
+	if len(path) >= 2 && path[0] == '"' {
+		if unquoted, err := strconv.Unquote(path); err == nil {
+			return filepath.ToSlash(unquoted)
+		}
+	}
+	return filepath.ToSlash(path)
 }
 
 func sha256HexBytes(data []byte) string {

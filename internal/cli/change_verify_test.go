@@ -770,3 +770,99 @@ func TestChangeVerifySchemaV2(t *testing.T) {
 		}
 	})
 }
+
+func TestChangeVerifyCriteriaMutationVoidsReceipt(t *testing.T) {
+	t.Run("tracked-dist-mutation-voids-and-blocks-gate", func(t *testing.T) {
+		repo := initCLIGitRepo(t)
+		writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+		distPath := filepath.Join(repo, "dist", "artifact.js")
+		if err := os.MkdirAll(filepath.Dir(distPath), 0o755); err != nil {
+			t.Fatalf("mkdir dist: %v", err)
+		}
+		if err := os.WriteFile(distPath, []byte("original\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile dist: %v", err)
+		}
+		commitAllChangeTest(t, repo, "chore: track dist artifact")
+
+		body := shapeWithVerification("- **V1.** Mutate digest-excluded tracked path. Command: `printf mutated > dist/artifact.js`. Expect: exit 0")
+		dir := writeNewLayoutChange(t, repo, "20260727-mutate-dist", "mutate-dist", "1.0.0", body)
+		flipExecuteChange(t, repo, dir, "mutate-dist")
+		folderRel := filepath.Join("docs", "changes", "20260727-mutate-dist")
+
+		var stdout bytes.Buffer
+		err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel})
+		if err == nil || !strings.Contains(err.Error(), "criteria mutated the tracked worktree") {
+			t.Fatalf("err = %v, want mid-verify mutation void\n%s", err, stdout.String())
+		}
+		if !strings.Contains(err.Error(), "dist/artifact.js") {
+			t.Fatalf("err = %v, want diverged path named", err)
+		}
+		receipt := mustReadVerifyReceipt(t, dir)
+		if receipt.WorktreeClean {
+			t.Fatal("receipt must record worktree_clean false")
+		}
+
+		// Restore dist so only the void receipt is committed; the gate reads receipt fields.
+		if err := os.WriteFile(distPath, []byte("original\n"), 0o644); err != nil {
+			t.Fatalf("restore dist: %v", err)
+		}
+		commitAllChangeTest(t, repo, "chore: commit void receipt")
+
+		node, err := assembleChangeNodeFromFolder(repo, filepath.Join(repo, folderRel))
+		if err != nil {
+			t.Fatalf("assemble: %v", err)
+		}
+		verdict := changeReceiptStatus(repo, folderRel, node, nil)
+		if verdict.OK || verdict.Reason != changeReceiptDirtyExecution {
+			t.Fatalf("verdict=%#v, want dirty-execution block", verdict)
+		}
+		if verdict.Cause() != "verify ran against a worktree that diverged from HEAD (receipt void)" {
+			t.Fatalf("cause = %q", verdict.Cause())
+		}
+		msg := formatChangeReceiptBlock("mutate-dist", "1.0.0", verdict, folderRel)
+		if !strings.Contains(msg, "loaf change verify") || strings.Contains(strings.ToLower(msg), "invalid") || strings.Contains(strings.ToLower(msg), "corrupt") {
+			t.Fatalf("block = %q", msg)
+		}
+		gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
+		if gateErr == nil || !strings.Contains(gateErr.Error(), "diverged from HEAD (receipt void)") {
+			t.Fatalf("gate err = %v, want dirty-execution block", gateErr)
+		}
+	})
+
+	t.Run("untracked-scratch-does-not-void", func(t *testing.T) {
+		repo := initCLIGitRepo(t)
+		body := shapeWithVerification("- **V1.** Write untracked scratch. Command: `printf scratch > untracked-scratch.txt`. Expect: exit 0")
+		dir := writeNewLayoutChange(t, repo, "20260727-scratch", "scratch", "", body)
+		commitAllChangeTest(t, repo, "docs: shape scratch")
+		folderRel := filepath.Join("docs", "changes", "20260727-scratch")
+		var stdout bytes.Buffer
+		if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+			t.Fatalf("untracked scratch must not void verify: %v\n%s", err, stdout.String())
+		}
+		receipt := mustReadVerifyReceipt(t, dir)
+		if !receipt.WorktreeClean {
+			t.Fatal("untracked scratch must leave worktree_clean true")
+		}
+	})
+
+	t.Run("committed-receipt-edit-does-not-refuse-pre-run", func(t *testing.T) {
+		repo := initCLIGitRepo(t)
+		body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
+		dir := writeNewLayoutChange(t, repo, "20260727-receipt-exempt", "receipt-exempt", "", body)
+		commitAllChangeTest(t, repo, "docs: shape receipt-exempt")
+		folderRel := filepath.Join("docs", "changes", "20260727-receipt-exempt")
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+			t.Fatalf("verify: %v", err)
+		}
+		commitAllChangeTest(t, repo, "chore: commit receipt")
+		// Dirty only the receipt (mask-exempt) — pre-run must allow verify.
+		receiptPath := filepath.Join(dir, "receipts", "verify.json")
+		raw := mustRead(t, receiptPath)
+		if err := os.WriteFile(receiptPath, append(raw, []byte("\n")...), 0o644); err != nil {
+			t.Fatalf("dirty receipt: %v", err)
+		}
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+			t.Fatalf("mask-exempt receipt dirt must not refuse: %v", err)
+		}
+	})
+}

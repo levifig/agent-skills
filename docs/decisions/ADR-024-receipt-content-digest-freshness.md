@@ -31,7 +31,7 @@ Council 2026-07-28 (`docs/changes/20260728-receipt-tree-binding/reports/20260728
 
 **Touch-then-revert detection dropped.** Endpoint digests cannot see it; squash already erases it; the claim is about content, not history. A byte-identical restore un-stales deliberately.
 
-**Verify refuses a dirty tracked worktree.** A receipt must not attest execution against bytes no commit holds.
+**Verify refuses a dirty tracked worktree.** A receipt must not attest execution against bytes no commit holds. Dirty checks (pre- and post-criteria) exempt exactly the receipt and report masks — never the release-metadata allowlist — so a criterion that mutates tracked `dist/`/`bin/`/version files fails closed. Post-run divergence still writes the receipt (write-on-failure) with `worktree_clean: false`; the freshness predicate rejects that field as a typed void-execution verdict.
 
 ## Consequences
 

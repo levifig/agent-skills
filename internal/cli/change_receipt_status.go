@@ -24,6 +24,7 @@ const (
 	changeReceiptBoundaryChanged
 	changeReceiptResultsGap
 	changeReceiptFailingResults
+	changeReceiptDirtyExecution
 	changeReceiptEvidenceUnavailable
 )
 
@@ -67,6 +68,8 @@ func (v changeReceiptVerdict) Cause() string {
 		return fmt.Sprintf("receipt results missing criteria (%s)", strings.Join(v.MissingIDs, ", "))
 	case changeReceiptFailingResults:
 		return fmt.Sprintf("receipt records failing criteria (%s)", strings.Join(v.FailedIDs, ", "))
+	case changeReceiptDirtyExecution:
+		return "verify ran against a worktree that diverged from HEAD (receipt void)"
 	case changeReceiptEvidenceUnavailable:
 		return "could not read evidence at HEAD (git error)"
 	default:
@@ -101,6 +104,9 @@ func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputComm
 	}
 	if receipt.SchemaVersion != 2 {
 		return changeReceiptVerdict{Reason: changeReceiptUnsupportedSchema, SchemaVersion: receipt.SchemaVersion}
+	}
+	if !receipt.WorktreeClean {
+		return changeReceiptVerdict{Reason: changeReceiptDirtyExecution}
 	}
 	currentExclusions := ChangeEvidenceExclusions()
 	if !slices.Equal(receipt.Exclusions, currentExclusions) || receipt.DigestSpec != ChangeEvidenceDigestSpec {

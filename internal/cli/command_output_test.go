@@ -69,8 +69,8 @@ func TestChangeReceiptBlockMessagesNameFolderCauseRemedy(t *testing.T) {
 		{
 			name:    "evidence-unavailable",
 			verdict: changeReceiptVerdict{Reason: changeReceiptEvidenceUnavailable},
-			want:    []string{"could not read evidence at HEAD (git error)", "Run: loaf change verify", folder},
-			forbid:  []string{"exit status", "cannot inspect"},
+			want:    []string{"could not read evidence at HEAD (git error)", "Verification cannot proceed until git reads succeed", "git fsck", "re-clone"},
+			forbid:  []string{"exit status", "cannot inspect", "Run: loaf change verify"},
 		},
 	}
 	for _, tc := range cases {

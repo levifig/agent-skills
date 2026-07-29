@@ -139,7 +139,14 @@ func TestChangeReceiptFreshness(t *testing.T) {
 			if !strings.Contains(msg, substr) {
 				t.Fatalf("msg=%q, want substr %q", msg, substr)
 			}
-			if !strings.Contains(msg, "loaf change verify") {
+			if want == changeReceiptEvidenceUnavailable {
+				if !strings.Contains(msg, "git fsck") || !strings.Contains(msg, "re-clone") {
+					t.Fatalf("msg=%q, want seam-recovery remedy", msg)
+				}
+				if strings.Contains(msg, "loaf change verify") {
+					t.Fatalf("msg=%q must not prescribe re-verify through the same broken seam", msg)
+				}
+			} else if !strings.Contains(msg, "loaf change verify") {
 				t.Fatalf("msg=%q, want remedy", msg)
 			}
 			lower := strings.ToLower(msg)
@@ -251,6 +258,86 @@ func TestChangeReceiptFreshness(t *testing.T) {
 		msg := formatChangeReceiptBlock("reasons", "1.0.0", verdict, folderRel)
 		if !strings.Contains(msg, "Fix the failing criteria, then run: loaf change verify") {
 			t.Fatalf("failing block missing named remedy: %s", msg)
+		}
+	})
+
+	t.Run("re-verify-succeeds-with-committed-receipt-after-drift", func(t *testing.T) {
+		repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+		dir := writeNewLayoutChange(t, repo, "20260727-reverify", "reverify", "1.0.0", "")
+		flipExecuteChange(t, repo, dir, "reverify")
+		folderRel := filepath.Join("docs", "changes", "20260727-reverify")
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+			t.Fatalf("initial verify: %v", err)
+		}
+		commitAllChangeTest(t, repo, "chore: commit receipt")
+
+		if err := os.WriteFile(filepath.Join(repo, "drift.go"), []byte("package main\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile drift: %v", err)
+		}
+		commitAllChangeTest(t, repo, "feat: content drift")
+
+		// Re-verify must succeed without an intermediate commit of the receipt —
+		// the dirty check exempts the receipt mask so a tracked receipts/verify.json
+		// rewrite does not self-block.
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+			t.Fatalf("re-verify with committed receipt after drift: %v", err)
+		}
+		receipt := mustReadVerifyReceipt(t, dir)
+		if !receipt.WorktreeClean {
+			t.Fatal("re-verify receipt must record worktree_clean true")
+		}
+	})
+
+	t.Run("cohort-reverify-sweep-with-committed-receipts", func(t *testing.T) {
+		repo := seedCohortGateRepo(t, "1.0.0-alpha.1")
+		dirA := writeNewLayoutChange(t, repo, "20260727-sweep-a", "sweep-a", "1.0.0", "")
+		dirB := writeNewLayoutChange(t, repo, "20260727-sweep-b", "sweep-b", "1.0.0", "")
+		flipExecuteChange(t, repo, dirA, "sweep-a")
+
+		taskB := filepath.Join(dirB, "tasks", "TASK-001-work.md")
+		if err := os.MkdirAll(filepath.Dir(taskB), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(taskB, []byte("---\nchange: sweep-b\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [ ] Do it\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile unchecked: %v", err)
+		}
+		commitAllChangeTest(t, repo, "docs: shape sweep-b")
+		if err := os.WriteFile(filepath.Join(repo, "main_sweep.go"), []byte("package main\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile main_sweep.go: %v", err)
+		}
+		if err := os.WriteFile(taskB, []byte("---\nchange: sweep-b\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [x] Do it\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile flip: %v", err)
+		}
+		commitAllChangeTest(t, repo, "feat: execute sweep-b")
+
+		folderA := filepath.Join("docs", "changes", "20260727-sweep-a")
+		folderB := filepath.Join("docs", "changes", "20260727-sweep-b")
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderA}); err != nil {
+			t.Fatalf("verify A: %v", err)
+		}
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderB}); err != nil {
+			t.Fatalf("verify B: %v", err)
+		}
+		commitAllChangeTest(t, repo, "chore: commit both cohort receipts")
+		if err := releaseCohortPreflight(repo, "1.0.0", nil); err != nil {
+			t.Fatalf("initial cohort green: %v", err)
+		}
+
+		if err := os.WriteFile(filepath.Join(repo, "sweep_drift.go"), []byte("package main\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile drift: %v", err)
+		}
+		commitAllChangeTest(t, repo, "feat: drift expires receipts")
+
+		// True sweep: re-verify A then B back-to-back with no commits between.
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderA}); err != nil {
+			t.Fatalf("re-verify A: %v", err)
+		}
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderB}); err != nil {
+			t.Fatalf("re-verify B with A's uncommitted receipt dirty: %v", err)
+		}
+		commitAllChangeTest(t, repo, "chore: sweep-commit both receipts")
+		if err := releaseCohortPreflight(repo, "1.0.0", nil); err != nil {
+			t.Fatalf("sweep cohort must be green: %v", err)
 		}
 	})
 }

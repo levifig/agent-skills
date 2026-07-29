@@ -275,6 +275,9 @@ func formatChangeReceiptBlock(slug, target string, verdict changeReceiptVerdict,
 	if verdict.Reason == changeReceiptFailingResults {
 		return fmt.Sprintf("change %q targets %s but %s. Fix the failing criteria, then run: loaf change verify %s and commit the receipt", slug, target, cause, folder)
 	}
+	if verdict.Reason == changeReceiptEvidenceUnavailable {
+		return fmt.Sprintf("change %q targets %s but %s. Verification cannot proceed until git reads succeed — inspect the repository (git fsck) or re-clone", slug, target, cause)
+	}
 	remedy := fmt.Sprintf("Run: loaf change verify %s, then commit the receipt", folder)
 	return fmt.Sprintf("change %q targets %s but %s. %s", slug, target, cause, remedy)
 }
