@@ -349,6 +349,9 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	if !releaseIsGitRepo(root) {
 		return fmt.Errorf("Not a git repository")
 	}
+	if releaseInvocationWantsFlowAdvisory(root, options) {
+		printReleaseFlowAdvisory(out)
+	}
 	if err := requireReleaseCleanWorktree(root); err != nil {
 		return err
 	}
@@ -579,7 +582,7 @@ func requireReleaseCleanWorktree(root string) error {
 		return fmt.Errorf("Refusing to prepare release: cannot inspect worktree cleanliness: %w", err)
 	}
 	if len(dirtyPaths) != 0 {
-		return fmt.Errorf("Refusing to prepare release: mutating release modes require a clean unignored worktree; commit, stash, or remove: %s", strings.Join(dirtyPaths, ", "))
+		return fmt.Errorf("Refusing to prepare release: mutating release modes require a clean unignored worktree; changelog curation belongs on a release branch in the --pre-merge flow — commit, stash, or remove: %s", strings.Join(dirtyPaths, ", "))
 	}
 	return nil
 }

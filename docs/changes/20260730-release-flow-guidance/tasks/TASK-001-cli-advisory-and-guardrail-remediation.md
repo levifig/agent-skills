@@ -27,11 +27,11 @@ Mutating `loaf release` invocations (interactive or `--bump`) on the repository 
 
 ## Steps
 
-- [ ] Add the default-branch resolution helper (local refs only) and the invocation-context predicate (mutating mode ∧ default branch ∧ not pre/post-merge).
-- [ ] Emit the advisory block before analysis in matching invocations; keep it one short paragraph.
-- [ ] Reword the clean-worktree refusal to name the pre-merge flow.
-- [ ] Make the post-merge tag-exists guardrail state-aware (pushed vs unpushed) with the pinned wordings.
-- [ ] Tests: `TestReleaseFlowAdvisory` (prints on default-branch mutating runs; absent in --pre-merge/--post-merge/--dry-run) and `TestReleaseGuardrailRemediation` (both wordings; pushed tag never gets deletion advice).
+- [x] Add the default-branch resolution helper (local refs only) and the invocation-context predicate (mutating mode ∧ default branch ∧ not pre/post-merge).
+- [x] Emit the advisory block before analysis in matching invocations; keep it one short paragraph.
+- [x] Reword the clean-worktree refusal to name the pre-merge flow.
+- [x] Make the post-merge tag-exists guardrail state-aware (pushed vs unpushed) with the pinned wordings.
+- [x] Tests: `TestReleaseFlowAdvisory` (prints on default-branch mutating runs; absent in --pre-merge/--post-merge/--dry-run) and `TestReleaseGuardrailRemediation` (both wordings; pushed tag never gets deletion advice).
 
 ## Verification
 
