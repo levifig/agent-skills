@@ -132,8 +132,8 @@ func agentHelpCommands() []agentHelpCommand {
 			Name:        "change",
 			Description: "Manage shape-first Change artifacts under docs/changes/",
 			Subcommands: []agentHelpSubcommand{
-				{Name: "init", Description: "Scaffold a new Change folder from the template", Options: []agentHelpOption{{Flags: "<slug>", Description: "Change slug: lowercase letters, digits, and single hyphens"}}},
-				{Name: "check", Description: "Validate a Change and report derived executability", Options: []agentHelpOption{{Flags: "[folder]", Description: "Change folder path; an explicit path wins, otherwise resolves from the current branch"}, {Flags: "--require-executable", Description: "Exit non-zero unless the Change is structurally executable; this does not prove implementation completion"}, {Flags: "--json", Description: "Output folder, passed, executable, findings, warnings, and gaps as JSON"}}},
+				{Name: "init", Description: "Scaffold a new Change folder, or promote a capture-only folder in place; fully-materialized folders still reject as duplicates", Options: []agentHelpOption{{Flags: "<slug>", Description: "Change slug: lowercase letters, digits, and single hyphens"}, {Flags: "--brief", Description: "Capture mode: change.json + brief.md only; refuses when the slug already exists"}}},
+				{Name: "check", Description: "Validate a Change and report derived executability", Options: []agentHelpOption{{Flags: "[folder]", Description: "Change folder path; an explicit path wins, otherwise resolves from the current branch"}, {Flags: "--require-executable", Description: "Exit non-zero unless the Change is structurally executable; this does not prove implementation completion"}, {Flags: "--json", Description: "Output folder, passed, state, executable, findings, warnings, and gaps as JSON"}}},
 				{Name: "list", Description: "List a retained lineage after merge or branch deletion", Options: []agentHelpOption{{Flags: "--lineage <key>", Description: "Required lineage key"}, {Flags: "--json", Description: "Output derived nodes, gaps, and optional journal enrichment"}}},
 			},
 		},

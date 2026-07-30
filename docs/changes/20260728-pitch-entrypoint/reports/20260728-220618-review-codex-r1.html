@@ -1,0 +1,123 @@
+<!-- source: pitch-entrypoint · kind review · slug codex-r1 · stamped 2026-07-28 22:06 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — codex r1</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.machine { background: var(--machine-soft); color: var(--machine); }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">pitch-entrypoint · review</div>
+  <h1>Review — codex r1</h1>
+  <p class="stamp">kind <b>review</b> · slug <b>codex-r1</b> · 2026-07-28 22:06</p>
+
+  <h2>Round</h2>
+  <div class="panel">
+    <p><b>Reviewer:</b> Codex (design review, fresh thread) · <b>Baseline:</b> shaping anchor commit <code>26401266</code> at Loaf <code>2.0.0-alpha.15</code> · <b>Verdict:</b> <span class="badge bad">needs revision</span> — 3 blocking, 3 should-fix, 1 nit; machine structure clean (<code>change.json</code> valid, sections complete, task identities and relations consistent, <code>loaf change check --require-executable</code> green at review time).</p>
+    <p><b>Round outcome:</b> all seven findings accepted and applied to the contract in this round; the shaping anchor commit was amended in place (local, unpushed). Codex's two open questions are answered by the dispositions of SF1 and SF2.</p>
+  </div>
+
+  <h2>Findings</h2>
+  <div class="panel" style="padding:0; overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:.9rem;">
+      <thead>
+        <tr style="text-align:left; border-bottom:1px solid var(--line);">
+          <th style="padding:10px 14px;">ID</th>
+          <th style="padding:10px 14px;">Severity</th>
+          <th style="padding:10px 14px;">Finding</th>
+          <th style="padding:10px 14px;">Disposition</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B1</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;"><code>config/hooks.yaml</code> treated as a skill registry, but no such registration surface exists — builds auto-discover every directory under <code>content/skills/</code>; hooks.yaml holds hook instances with an owning skill. The contract demanded registration while expecting no hook: an impossible step.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> Registration removed from Scope, Placement, and TASK-002; recorded as Decision 10 (pitch ships no hooks; auto-discovery), resolving the shaping-time fog entry it replaced.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B2</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">Canonical guidance target named the retired <code>.agents/AGENTS.md</code> path; ADR-020 makes root <code>AGENTS.md</code> canonical with <code>.claude/CLAUDE.md</code> as the compatibility symlink. Following the packet literally would recreate drift <code>loaf doctor</code> rejects.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> Scope, Placement, and TASK-005 (In/Out, acquisition grep, sweep step) now target root <code>AGENTS.md</code>; the retired path is an explicit TASK-005 no-go. Stale convention note in orchestrator memory corrected the same day.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B3</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">Definition of Done required reflect-distilled Durable Outputs before merge, but no task packet owned that work — a fresh implementer could not satisfy or verify the condition from the packets.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> TASK-005 now owns distillation: a dedicated step naming the output paths (<code>docs/knowledge/</code>, <code>docs/decisions/</code>), mirrored in its Objective and Scope and in the Definition of Done.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF1</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">H1 dogfood had no lifecycle-safe location — running <code>loaf change init --brief</code> during TASK-002 would mint a second change on this branch — and its evidence instruction (slug in commit/journal) contradicted the Definition of Done ("referenced from this folder").</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> Dogfood now runs in an isolated scratch project (<code>LOAF_DB</code> on a throwaway database, never this branch or repo); the dogfood change is not retained; evidence is committed as <code>research/pitch-interview-dogfood.md</code>, named in TASK-002, its Verification, and the Definition of Done. Answers Codex open question 2.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF2</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">"Human entry only" stated as absolute, but the only enforcement named was Claude Code's <code>disable-model-invocation</code>; Loaf builds five targets by default and the others got no mechanism.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> Qualified as a cross-target invariant with two enforcement tiers: mechanical on Claude Code (sidecar), behavioral everywhere (Critical Rule binding all targets), per-target mechanical exclusion only when a target proves an equivalent surface — matching the evidence-driven target-support strategy. Answers Codex open question 1.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF3</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">The three Definition-of-Done Intents were asserted to exist but not durably identifiable from the Change — a fresh implementer could not verify the completion condition.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> All three Intent identifiers now cited verbatim in the Definition of Done with their read command (<code>loaf intent show &lt;ref&gt;</code>).</td>
+        </tr>
+        <tr style="vertical-align:top;">
+          <td style="padding:10px 14px;"><code>N1</code></td>
+          <td style="padding:10px 14px;"><span class="badge machine">nit</span></td>
+          <td style="padding:10px 14px;">V6 used default <code>loaf change check</code>, which validates violations only — it exits zero even with executable-section gaps.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> V6 and TASK-005's verification sweep now run <code>loaf change check … --require-executable</code>, the correct end-of-implementation gate.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>Authored snapshot — findings from the Codex round-1 design review of the shaped contract; dispositions applied in the amended shaping anchor. Layout is yours; keep charset, provenance comment, and design tokens intact.</footer>
+</main>

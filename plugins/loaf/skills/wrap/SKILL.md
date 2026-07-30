@@ -23,6 +23,8 @@ An optional checkpoint before the conversation ends — the conscious review of 
 - Quick Reference
 - Interactive Steps
 - Wrap Entry
+- Suggests Next
+- Related Skills
 - Report Format
 
 ## Critical Rules
@@ -123,7 +125,13 @@ When called near `/loaf:ship` or `/loaf:release`, wrap runs the same steps but k
 
 ## Suggests Next
 
-After the wrap-up report, suggest `/loaf:housekeeping` if it wasn't run this session and artifacts need attention.
+After the wrap-up report, suggest `/loaf:housekeeping` if it wasn't run this session and artifacts need attention. When sparks or open ideas need problem discovery before shaping, point at `/loaf:triage` (disposition hand to `/loaf:pitch`) rather than treating explore or brainstorm as the next slash step.
+
+## Related Skills
+
+- **triage** — process sparks and ideas captured this session
+- **pitch** — problem-discovery when a session crystallized a concept that still needs a brief
+- **housekeeping** — archive lifecycle-complete artifacts after the wrap
 
 ## Report Format
 
@@ -151,6 +159,6 @@ Use backtick formatting for code identifiers, file paths, spec/task IDs, version
 - Stale KB files
 
 **What's Next**
-- Run `/loaf:triage` to process ideas
+- Run `/loaf:triage` to process ideas (hand problem-discovery items to `/loaf:pitch`)
 - Follow-ups from this session's work
 ```

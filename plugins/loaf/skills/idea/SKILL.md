@@ -34,7 +34,7 @@ Capture ideas quickly with minimal friction.
 - 2-3 questions maximum -- don't turn capture into an interview
 - Infer metadata automatically -- don't ask for tags, title, or links
 - One idea per captured row/artifact -- keep them atomic
-- No shaping here -- that's what `/loaf:shape` is for
+- No shaping or pitching here -- problem discovery is `/loaf:pitch`; bounding is `/loaf:shape`
 - Capture through `loaf idea capture --title ...` when SQLite state is
   initialized; log notable context with `loaf journal log`
 
@@ -56,7 +56,7 @@ Capture ideas quickly with minimal friction.
 
 ## Purpose
 
-Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal is **speed of capture**, not thoroughness. An idea is retained material, nothing more: tracking it as an Intent, exploring it, shaping it, or archiving it are triage dispositions chosen later by the user.
+Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal is **speed of capture**, not thoroughness. An idea is retained material, nothing more: tracking it as an Intent, handing it to `/loaf:pitch` for problem discovery, handing it to `/loaf:shape` when already well-understood, or archiving it are triage dispositions chosen later by the user.
 
 ---
 
@@ -80,6 +80,7 @@ Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal
 
 ## Related Skills
 
-- **triage** — process the intake queue and choose dispositions
-- **explore** — divergent inquiry when an idea needs development before commitment
-- **shape** — develop a chosen direction into a bounded Change
+- **triage** — process the intake queue and choose dispositions (including hand to `/loaf:pitch` or `/loaf:shape`)
+- **pitch** — problem-discovery ceremony when a captured idea needs a brief before shaping
+- **shape** — develop a well-understood direction into a bounded Change
+- **explore** — agent technique when direction is genuinely undecided (not a user front door)

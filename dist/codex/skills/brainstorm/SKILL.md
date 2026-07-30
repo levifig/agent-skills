@@ -3,9 +3,11 @@ name: brainstorm
 description: >-
   Preserves the structured divergent-thinking stance consumed by the explore
   workflow: option generation before judgment, trade-off analysis, and spark
-  capture. Explore owns the user-facing inquiry lifecycle; reference this
-  technique from it. Not a primary entry point — route "explore this" or "help
-  me think through options" to explore.
+  capture. Not a primary entry point — route "explore this", "help me think
+  through options", or similar user entry intent to /pitch; explore owns the
+  agent-facing inquiry lifecycle that consumes this technique. Not for problem
+  discovery as a ceremony (use pitch) or bounding a chosen direction (use
+  shape).
 version: 2.0.0-alpha.16
 ---
 

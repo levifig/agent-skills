@@ -4,7 +4,7 @@ Guidelines for maintaining and extending Loaf - An Opinionated Agentic Framework
 
 See [README.md](README.md) for what Loaf is and how to install it.
 
-> **New work is Change-first.** `/shape` creates `docs/changes/YYYYMMDD-slug/` with `change.json` + `shape.md` + `tasks/` (use `loaf change init --brief` for capture-only), and `loaf change check` validates structure and derived executability (see `loaf change --help`). Existing `SPEC-*` and task records remain supported compatibility surfaces under `loaf spec` and `loaf task` until deliberately converted — not the default for new work.
+> **New work is Change-first.** The Loaf Flow is **pitch → shape → implement → ship → release** (at change scale and project scale). `/pitch` is the human front door: it grills the problem space and authors a brief (`brief.md` via `loaf change init <slug> --brief`, or project `docs/BRIEF.md`). `/shape` consumes that brief (or runs full narrowing when none exists), materializes `shape.md` + `tasks/` (promoting a capture-only folder in place via ordinary `loaf change init <slug>`), and owns solution-space. `loaf change check` validates structure and derived executability (see `loaf change --help`). Existing `SPEC-*` and task records remain supported compatibility surfaces under `loaf spec` and `loaf task` until deliberately converted — not the default for new work.
 
 ## Quick Start
 
@@ -72,9 +72,9 @@ See [SOUL.md](../SOUL.md) for the Warden identity and fellowship conventions.
 
 ## Common Tasks
 
-**Add skill:** Create `content/skills/{name}/SKILL.md`, register hooks in `hooks.yaml`
+**Add skill:** Create `content/skills/{name}/SKILL.md` (and optional `SKILL.claude-code.yaml` sidecar). Skills are auto-discovered from `content/skills/` at build time — do not register the skill itself in `hooks.yaml`.
 
-**Add hook:** Create script in `content/hooks/{pre,post}-tool/`, register in `hooks.yaml`
+**Add hook:** Create script in `content/hooks/{pre,post}-tool/`, register the hook instance in `hooks.yaml` with `skill:` pointing at the owning skill. Skills that ship no hooks need no `hooks.yaml` entry.
 
 **Add template:** Create in `content/skills/{name}/templates/` (skill-specific) or `content/templates/` + register in `shared-templates` in `targets.yaml`
 
@@ -441,7 +441,7 @@ touched during `go test`.
 - [ ] `npm run test` passes
 - [ ] If tracked build artifacts in `dist/` or `plugins/` changed, commit them with the source changes that produced them
 - [ ] Frontmatter has required fields
-- [ ] New skills registered in `hooks.yaml`
+- [ ] New skills live under `content/skills/` (auto-discovered at build); only hook instances are registered in `hooks.yaml`
 - [ ] Sidecar file for Claude-specific fields
 - [ ] Reference files >100 lines have TOC
 - [ ] Template links resolve (no broken `templates/` paths)

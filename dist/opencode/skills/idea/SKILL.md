@@ -5,8 +5,10 @@ description: >-
   says "I have an idea" or "note this down." Also activate when a specific
   actionable concept crystallizes during conversation. Ideas and sparks are
   capture primitives routed through triage, which chooses dispositions such as
-  tracking an Intent. Not for divergent inquiry (use explore), processing the
-  intake queue (use triage), or shaping (use shape).
+  tracking an Intent or handing to /pitch. Not for problem discovery (use
+  pitch), processing the intake queue (use triage), shaping (use shape), or
+  agent-side divergent inquiry when direction is undecided (use explore as a
+  technique).
 subtask: false
 version: 2.0.0-alpha.16
 ---
@@ -35,7 +37,7 @@ Capture ideas quickly with minimal friction.
 - 2-3 questions maximum -- don't turn capture into an interview
 - Infer metadata automatically -- don't ask for tags, title, or links
 - One idea per captured row/artifact -- keep them atomic
-- No shaping here -- that's what `/shape` is for
+- No shaping or pitching here -- problem discovery is `/pitch`; bounding is `/shape`
 - Capture through `loaf idea capture --title ...` when SQLite state is
   initialized; log notable context with `loaf journal log`
 
@@ -57,7 +59,7 @@ Capture ideas quickly with minimal friction.
 
 ## Purpose
 
-Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal is **speed of capture**, not thoroughness. An idea is retained material, nothing more: tracking it as an Intent, exploring it, shaping it, or archiving it are triage dispositions chosen later by the user.
+Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal is **speed of capture**, not thoroughness. An idea is retained material, nothing more: tracking it as an Intent, handing it to `/pitch` for problem discovery, handing it to `/shape` when already well-understood, or archiving it are triage dispositions chosen later by the user.
 
 ---
 
@@ -81,6 +83,7 @@ Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal
 
 ## Related Skills
 
-- **triage** — process the intake queue and choose dispositions
-- **explore** — divergent inquiry when an idea needs development before commitment
-- **shape** — develop a chosen direction into a bounded Change
+- **triage** — process the intake queue and choose dispositions (including hand to `/pitch` or `/shape`)
+- **pitch** — problem-discovery ceremony when a captured idea needs a brief before shaping
+- **shape** — develop a well-understood direction into a bounded Change
+- **explore** — agent technique when direction is genuinely undecided (not a user front door)
