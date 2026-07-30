@@ -26,10 +26,10 @@ The release skill states the release-PR flow as the default for every release: p
 
 ## Steps
 
-- [ ] Rewrite Step 5 as the default release-PR flow (rename away from "Protected-Branch Handoff"); fold branch protection in as one sentence of rationale, not a condition.
-- [ ] Reframe Step 4 to route through the PR flow; document the direct mode as the explicit exception.
-- [ ] Update the Quick Reference table and Critical Rules to match.
-- [ ] `loaf build`; commit rebuilt `dist/` and `plugins/` with the source change.
+- [x] Rewrite Step 5 as the default release-PR flow (rename away from "Protected-Branch Handoff"); fold branch protection in as one sentence of rationale, not a condition.
+- [x] Reframe Step 4 to route through the PR flow; document the direct mode as the explicit exception.
+- [x] Update the Quick Reference table and Critical Rules to match.
+- [x] `loaf build`; commit rebuilt `dist/` and `plugins/` with the source change.
 
 ## Verification
 
