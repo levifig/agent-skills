@@ -247,8 +247,8 @@ func writeChangeListHelp(out io.Writer) {
 
 func writeChangeInitHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf change init <slug> [--brief]",
-		"Create docs/changes/<YYYYMMDD>-<slug>/ with change.json + shape.md + seeded tasks/. --brief is capture mode (change.json + brief.md only). The slug uses lowercase letters, digits, and single hyphens.",
-		"--brief  Capture mode: emit change.json + brief.md only (non-executable until shaped)")
+		"Create docs/changes/<YYYYMMDD>-<slug>/ with change.json + shape.md + seeded tasks/. --brief is capture mode (change.json + brief.md only). Re-running ordinary init on a structurally valid capture-only folder promotes it in place (preserves brief.md and change.json, instantiates shape.md + tasks/); fully-materialized folders still reject as duplicates. The slug uses lowercase letters, digits, and single hyphens.",
+		"--brief  Capture mode: emit change.json + brief.md only (non-executable until shaped); refuses when the slug already exists")
 }
 
 func writeChangeCheckHelp(out io.Writer) {
@@ -274,7 +274,16 @@ func (r Runner) runChangeInit(args []string, out io.Writer, rootPath string) err
 	if existing, err := findChangeSlug(rootPath, slug); err != nil {
 		return err
 	} else if existing != "" {
-		return fmt.Errorf("change slug %q already exists in %s", slug, existing)
+		folderAbs := filepath.Join(rootPath, filepath.FromSlash(existing))
+		decision := classifyChangePromotion(folderAbs, existing, slug, options.brief)
+		if decision.outcome == changePromotionReject {
+			return fmt.Errorf("%s", decision.reason)
+		}
+		if err := completeCapturedChangeFolder(folderAbs, slug, decision); err != nil {
+			return err
+		}
+		writeChangePromotionSuccess(out, rootPath, folderAbs, slug, decision)
+		return nil
 	}
 
 	now := time.Now()
