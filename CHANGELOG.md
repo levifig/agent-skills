@@ -6,7 +6,19 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Added
+
+- `/pitch` — the human-invoked entry stage of the Loaf Flow at both scales: a problem-discovery interview (destination pinning, scenario stress-testing, challenge stance) that authors a change-scale `brief.md` via `loaf change init <slug> --brief`, or a project-scale `docs/BRIEF.md` that bootstrap consumes, both on one shared problem-space skeleton ([#145](https://github.com/levifig/loaf/pull/145))
+- `loaf change init` promotes capture-only change folders to the full anatomy in place — state-matrixed with atomic, overwrite-free, resumable publication; duplicate rejection for materialized folders is unchanged ([#145](https://github.com/levifig/loaf/pull/145))
+- Bootstrap recognizes pitched BRIEFs (`source: pitch`) with a gap-only interview and closes with series-prep: the project's initial arc minted as captured promise carriers, one docs-only commit each, validated before landing ([#145](https://github.com/levifig/loaf/pull/145))
+- The CLI and release skill advise the sanctioned PR-based release flow with state-aware guardrails ([#146](https://github.com/levifig/loaf/pull/146))
+- Operating docs for the flow: `docs/knowledge/loaf-flow.md` and ADR-025 (entry-stage model, amending ADR-022's brief semantics) ([#145](https://github.com/levifig/loaf/pull/145))
+
+### Changed
+
+- `/shape` consumes pitched briefs — restates the problem and grills solution-space only — and `/triage` gains the "pitch" disposition for items needing problem discovery ([#145](https://github.com/levifig/loaf/pull/145))
+- `/explore` and `/brainstorm` leave the user-facing slash surface: they remain agent-side techniques, and user entry routes to `/pitch` ([#145](https://github.com/levifig/loaf/pull/145))
+- Brief templates at both scales carry the shared problem-space skeleton, and the release-cohort vocabulary reads as the "target version" bucket in the operating docs ([#145](https://github.com/levifig/loaf/pull/145))
 
 ## [2.0.0-alpha.16] - 2026-07-30
 
