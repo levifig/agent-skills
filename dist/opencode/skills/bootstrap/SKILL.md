@@ -225,10 +225,17 @@ A brief exists but needs validation and gap-filling. Moderate depth. Depth shrin
 
 **When `source: pitch` (discovery already done):**
 
-Pitch owned the problem-space grill. Bootstrap does not re-excavate.
+Pitch owned the problem-space grill. Bootstrap does not re-excavate. The pitch→bootstrap handoff must read as one continuous flow — gap mode opens by acknowledging the pitched BRIEF, not by starting a fresh discovery ceremony.
 
-- Quote the BRIEF back section by section (problem, who has it, alternatives, value, constraints, sequencing)
-- Confirm accuracy ("Is this still right?") and note corrections only
+**Session-start opening (required before any gap question):**
+
+1. **Acknowledge the pitch** — name that `docs/BRIEF.md` carries `source: pitch` and that problem discovery is already done.
+2. **Summarize what pitch captured** — short section-by-section gist (problem, who, alternatives, value, constraints, sequencing, open questions). The builder should hear continuity with the pitch closing ceremony, not a cold restart.
+3. **State what bootstrap will do now** — interview only on gaps for operating-document population (VISION, STRATEGY, ARCHITECTURE, AGENTS), then series-prep the initial arc of captured changes. Do not re-grill the problem space.
+
+Then continue:
+
+- Quote the BRIEF back section by section only where confirmation is needed; note corrections only
 - Interview **gaps only** — signals the pitch skeleton does not cover for operating docs: stack preferences, conventions, deployment constraints, success metrics phrasing, non-goals for VISION, anything left blank or marked open
 - Skip full Excavation and full Sharpening re-runs; do not re-ask "who has this problem?" when Who Has It is already specific
 - Expect 4–8 questions total, concentrated on gaps; zero questions is allowed if the BRIEF and builder confirmation fully feed VISION/STRATEGY/ARCHITECTURE
@@ -416,7 +423,7 @@ After operating documents are populated (and Knowledge Base Scaffolding above ha
 **Procedure**
 
 1. **Enumerate concepts** with the builder from the BRIEF's scoped problem space (Sequencing and Relationships, Open Questions, and distinct problem threads in Problem Statement). List candidates as recommendation-first options via `prompt the user in chat`.
-2. **Apply granularity** per [references/interview-guide.md](references/interview-guide.md) (Series-Prep Granularity): a concept earns its own captured change when it is independently shippable and its problem can be stated without the others; otherwise it stays a BRIEF line, becomes a spark, or an Intent — never a half-minted folder.
+2. **Apply granularity** per [references/interview-guide.md](references/interview-guide.md) (Series-Prep Granularity): a concept earns its own captured change when it is independently shippable **and** its problem can be **stated precisely now** (the mint-time specifiability test — not answered now, stated now) without the others; otherwise it stays a BRIEF line, becomes a spark, or an Intent — never a half-minted folder.
 3. **Per confirmed concept (one at a time — never batch):**
    1. Confirm mint with the builder (slug, coarse `target_release`, one-line problem restatement). If the builder will not bind even a coarse target, do not mint — park as spark/Intent/BRIEF line.
    2. Propose a **local slug** that names the concept, never another work unit (`spec-042`, task ids, change folder names). Confirm the slug.

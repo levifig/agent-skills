@@ -4,9 +4,11 @@ Problem-discovery interview for `/pitch`. Borrows shape's grilling mechanics (on
 
 ## Contents
 - How This Guide Works
+- Destination Pinning
 - Problem-Discovery Dimensions
 - Applicability Judgment
 - Interview Mechanics
+- Open Questions: Specifiability and HITL/AFK
 - Exit Criteria
 - Anti-Patterns
 - Brief Cold-Read
@@ -16,6 +18,21 @@ Problem-discovery interview for `/pitch`. Borrows shape's grilling mechanics (on
 This is a **builder interview** pointed at the problem register. The agent helps the human crystallize what hurts, who feels it, what they do today, why solving it is worth it, and what bounds the answer — not how to build it.
 
 The interview is adaptive, not a form. Strong answers skip dimensions; weak answers dig deeper. Follow the energy. Every question carries a recommended answer with rationale so the human can accept, override, or refine rather than invent from a blank page.
+
+---
+
+## Destination Pinning
+
+Before dimension grilling, converge on a **destination**: one or two lines naming the end state this pitch is aiming at — what becomes true in the world if the work succeeds. Pin it early; it fixes the brief's scope for the rest of the interview.
+
+| Scale | Destination feeds |
+|-------|-------------------|
+| **Project** | VISION success criteria (bootstrap extracts it; pitch keeps it as the project's north star in the BRIEF) |
+| **Change** | The eventual Hypothesis when `/shape` promotes the capture — a sharper "what good looks like" than a feature list |
+
+**How to pin:** offer a recommendation-first draft from the human's opening words ("Destination: operators can ship a release without a manual config audit"). Confirm, tighten, or rewrite until both parties can restate it. Do not start deep dimension probes until the destination is on the table.
+
+If the destination keeps shifting mid-interview, pause and re-pin — a moving destination means the brief's scope is still open.
 
 ---
 
@@ -56,7 +73,7 @@ Non-negotiable bounds: technical, legal, organizational, philosophical, sequenci
 ### Secondary (only when signal demands)
 
 - **Sequencing and relationships** — how this hangs with other work, release cohort as prose, series order. No machine relation fields.
-- **Open questions** — unresolved problem-space items, marked blocking vs deferrable.
+- **Open questions** — unresolved problem-space items that pass the [specifiability test](#open-questions-specifiability-and-hitlafk); each tagged HITL or AFK.
 - **Evidence of pain** — money, time, workarounds (Mom Test lens). When absent and the claim is large, challenge gently.
 
 ---
@@ -92,7 +109,7 @@ Example shape:
 
 ### Ordering
 
-Prioritize answers that would rewrite the brief. Typical order: problem → who → alternatives → value → constraints → sequencing/open questions. Reorder when the human's first utterance already settles an early dimension.
+Prioritize answers that would rewrite the brief. Typical order: **destination pin** → problem → who → alternatives → value → constraints → sequencing/open questions. Reorder when the human's first utterance already settles an early dimension.
 
 Before asking, check whether reading resolves it — journal, prior Change, intake item body, BRIEF. Only ask what reading could not answer.
 
@@ -106,9 +123,48 @@ Before asking, check whether reading resolves it — journal, prior Change, inta
 | Energy dropping | Cut to synthesis; a brief with named gaps beats an exhausted interrogation |
 | Direction genuinely undecided | Offer the explore technique from inside pitch; do not force a false brief |
 
+### Scenario stress-testing
+
+Probe the problem with **concrete lived scenarios**, not abstract categories. Prefer "walk me through the last time this bit you" over "how often does this happen?" Invent edge cases deliberately to force boundary precision: "What if the operator is on-call at 2am with half the logs missing — is that still this problem, or a different one?" Scenarios that collapse the framing expose missing constraints or a second concept that should stay out of this brief.
+
+### Challenge stance
+
+Demand specificity over generalization. Probe the rationale behind claims ("why weekly, not monthly?"). Push back on vague answers until the gap closes or is named as an open question — do not paper over mush with polite summary.
+
+Also enforce **canonical language** during the interview:
+
+- Flag terms that conflict with `docs/knowledge/glossary.md` usage (e.g. calling a Change a "spec," a release cohort a "milestone," a skill a "module"). Offer the glossary term and get the human to accept the swap before it lands in the brief.
+- Sharpen fuzzy project-local terms to a single canonical choice mid-interview ("you said both 'capture' and 'ticket' — pick one and stick to it"). Ambiguous vocabulary becomes solution fog later.
+
 ### Mid-interview evidence
 
 When competitive landscape or external facts would change the brief and the human lacks them, pause the grill, delegate a researcher subagent, land evidence (change-scale: `research/` in the change folder; project-scale: links in Sources), then resume with a recommendation informed by the scan. Evidence supports framing; it does not become solution design.
+
+---
+
+## Open Questions: Specifiability and HITL/AFK
+
+### Specifiability test
+
+An open question earns a **precise entry** in the brief only if it can be **stated precisely now** — not answered now. The bar is: a later reader (human or agent) could work the question without inventing what was meant.
+
+| Passes (precise entry) | Fails (coarse note only) |
+|------------------------|--------------------------|
+| "Does the operator need multi-region failover in v1, or is single-region acceptable for the first cohort?" | "Figure out reliability stuff" |
+| "Which existing CLI command is the migration source of truth for config paths?" | "TBD on integration" |
+
+Everything vaguer stays a **coarse note** in Open Questions or Sequencing prose — never pre-sliced into fake precision. Do not invent enumerated options the human did not surface.
+
+### HITL / AFK tags
+
+Mark each precise open question with one of:
+
+| Tag | Meaning | Example |
+|-----|---------|---------|
+| **HITL** | Needs the human live — judgment, taste, organizational call, or access only they hold | "Will legal accept the data-retention tradeoff?" |
+| **AFK** | Runnable by an agent without the human in the loop — research, codebase scan, competitive lookup | "What do the top three substitutes charge for the free tier?" |
+
+Briefs carry the tag inline in the Open Questions section, e.g. `- [HITL, blocking] …` or `- [AFK, deferrable] …`. Blocking vs deferrable remains orthogonal: a HITL question can be deferrable; an AFK question can still block shaping if the answer rewrites scope.
 
 ---
 
@@ -116,19 +172,21 @@ When competitive landscape or external facts would change the brief and the huma
 
 Stop interviewing when all of the following hold (or the human explicitly wants to land with named open questions):
 
-1. **Problem** is restatable in one sentence.
-2. **Who** is concrete enough for the pitch kind (see Applicability).
-3. **Current alternative** is named (tool, workaround, or nothing) — even if competitive scan was skipped.
-4. **Value** is nameable without listing features.
-5. **Constraints** are listed or explicitly empty.
-6. Answers have stopped changing the framing — the last questions confirmed rather than rewrote.
-7. A cold reader could pass the brief cold-read test below.
+1. **Destination** is pinned in one or two lines.
+2. **Problem** is restatable in one sentence.
+3. **Who** is concrete enough for the pitch kind (see Applicability).
+4. **Current alternative** is named (tool, workaround, or nothing) — even if competitive scan was skipped.
+5. **Value** is nameable without listing features.
+6. **Constraints** are listed or explicitly empty.
+7. Answers have stopped changing the framing — the last questions confirmed rather than rewrote.
+8. Open questions that remain pass the specifiability test (or are coarse notes) and carry HITL/AFK tags when precise.
+9. A cold reader could pass the brief cold-read test below.
 
-Open questions may remain; mark each blocking or deferrable. Blocking problem-space unknowns belong in the brief's Open Questions, not as invented answers.
+Open questions may remain; mark each blocking or deferrable, and HITL or AFK when precise. Blocking problem-space unknowns belong in the brief's Open Questions, not as invented answers.
 
 ### The pivot
 
-Do not announce "the interview is over." Shift: "I think I have enough to draft the brief — tell me what I got wrong." Author the brief against the shared skeleton, then section-review with the human before any init or landing step.
+Do not announce "the interview is over." Shift: "I think I have enough to draft the brief — tell me what I got wrong." Author the brief against the shared skeleton, then section-review with the human before any init or landing step. The **closing ceremony** (recap, path, next step) is owned by SKILL.md after landing — this guide owns interview depth only.
 
 ---
 
@@ -152,9 +210,13 @@ Adopted from bootstrap's interview guide; binding on pitch.
 
 **Over-Indexing on Frameworks.** JTBD, Mom Test, Lean Canvas are interviewer lenses — never vocabulary dumped on the builder ("Let's do a JTBD analysis").
 
-**Third Interview Idiom.** Do not invent pitch-specific interview machinery. Grilling mechanics + these anti-patterns + problem-space register is the whole design.
+**Third Interview Idiom.** Do not invent pitch-specific interview machinery. Destination pinning, scenario stress-testing, and challenge stance deepen the same grilling mechanics — they are not a parallel framework.
 
 **Pseudo-Shape in the Brief.** Approach, architecture, task breakdown, or verification design must not enter `brief.md` / `docs/BRIEF.md`. If it appears while drafting, move it out and note it for `/shape`.
+
+**Fake Precision.** Pre-slicing vague unknowns into numbered open questions that cannot yet be stated precisely. Coarse notes beat counterfeit clarity.
+
+**Trailing Off.** Ending the session without the SKILL.md closing ceremony. The interview pivot is not the ceremony close.
 
 ---
 
@@ -162,9 +224,10 @@ Adopted from bootstrap's interview guide; binding on pitch.
 
 Before offering shape-now or park, cold-read the authored brief. A stranger should name, in one pass:
 
-1. The **problem**
-2. The **affected user** (or operator)
-3. The **current alternative**
-4. The **value** of solving it
+1. The **destination** (or success end-state)
+2. The **problem**
+3. The **affected user** (or operator)
+4. The **current alternative**
+5. The **value** of solving it
 
-…and find **zero solution-space content** (no approach, stack, API shape, or task list). If any of the four is missing or solution prose creeps in, revise before landing.
+…and find **zero solution-space content** (no approach, stack, API shape, or task list). Precise open questions should carry HITL/AFK tags. If any of the five is missing or solution prose creeps in, revise before landing.

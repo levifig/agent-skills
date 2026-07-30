@@ -108,7 +108,9 @@ Apply the Quick Reference table. Confirm: "I'll treat this as a **change-scale**
 
 Run the interview per [references/interview-guide.md](references/interview-guide.md):
 
+- Pin a one-or-two-line **destination** before dimension grilling (fixes brief scope; project scale feeds VISION success criteria, change scale sharpens the eventual Hypothesis)
 - Dimensions: problem, who has it, current alternatives / competitive landscape, value proposition, constraints (plus sequencing and open questions when needed)
+- Depth: scenario stress-testing, challenge stance, glossary-term hygiene; open questions must pass the specifiability test and carry HITL/AFK tags when precise
 - Applicability judgment: skip formal competitive analysis and deep personas when the pitch kind does not warrant them (bug fixes, internal chores)
 - One question at a time, recommendation-first, ordered by brief impact
 - Stop on exit criteria or when answers stop changing the framing
@@ -158,6 +160,15 @@ Never fabricate competitive claims. If a scan is skipped, say so in Sources ("no
 
 9. **Commit message** (when parking): conventional, e.g. `docs(change): capture <slug> brief` — one commit per capture.
 
+10. **Closing ceremony (required — never trail off).** After the landing is executed (or intake retained), announce completion with a full closing block:
+
+    - **Recap the brief** — section-by-section gist (Problem, Who, Alternatives, Value, Constraints, Sequencing, Open Questions). Name the change folder path (`docs/changes/YYYYMMDD-<slug>/`) and what it holds (`change.json` + `brief.md`, plus any `research/`).
+    - **Restate the landing actually taken** and what it means next:
+      - **Shape now** — you are on the slug branch; run `/shape` next to promote the capture in place and bound implementation. No park-commit was made.
+      - **Park targeted** — the capture is a docs-only commit on the default branch with `target_release` stamped; it sits as a promise carrier for that cohort until `/shape` is invoked later.
+      - **Park untargeted** — the capture lives on the slug branch (or remains intake) without `target_release`; it is off-main until retargeted or shaped. If intake-only, name the Intent/spark and that no change folder was left half-written.
+    - **Announce completion** in plain language: "Pitch is complete." Do not end on a dangling offer or an unfinished sentence.
+
 ### Step 5b: Project-scale ceremony
 
 1. **Author `docs/BRIEF.md`** using bootstrap's brief skeleton with frontmatter:
@@ -172,8 +183,13 @@ Never fabricate competitive claims. If a scan is skipped, say so in Sources ("no
 
    Same problem-space sections as change scale, at project altitude (Sequencing describes the initial arc as prose).
 2. **Cold-read** and revise with the human.
-3. **Hand to `/bootstrap`** — recommend it explicitly; do not auto-run. Bootstrap recognizes `source: pitch` as discovery-already-done and interviews for gaps only (series-prep is bootstrap's closing phase, not pitch's).
-4. Optionally commit `docs/BRIEF.md` if the human wants it durable before bootstrap; still no push unless they ask outside this skill's duties — pitch itself never pushes.
+3. Optionally commit `docs/BRIEF.md` if the human wants it durable before bootstrap; still no push unless they ask outside this skill's duties — pitch itself never pushes.
+4. **Closing ceremony (required — never trail off).** Announce completion with a full closing block — do not hand off in a half-sentence:
+
+    - **Recap what was authored** — section-by-section gist of the BRIEF (Problem Statement, Who Has It, Current Alternatives, Value Proposition, Constraints, Sequencing and Relationships, Sources and Research Links, Open Questions). One or two sentences per section is enough; the human should hear what landed without reopening the file.
+    - **Artifact path** — name `docs/BRIEF.md` explicitly, including that frontmatter carries `source: pitch`.
+    - **Explicit handoff** — state, verbatim in spirit: next, run `/bootstrap`: it reads this BRIEF as discovery-done (`source: pitch`), interviews only on gaps, populates the operating documents (VISION, STRATEGY, ARCHITECTURE, AGENTS), and closes by proposing your initial arc of captured changes. Do not auto-run `/bootstrap`.
+    - **Announce completion** in plain language: "Pitch is complete." The ceremony ends with a period, never a trail-off.
 
 ### Step 6: Log the outcome
 
@@ -181,7 +197,7 @@ Never fabricate competitive claims. If a scan is skipped, say so in Sources ("no
 loaf journal log "decision(pitch): <slug or project> — <shape-now|park-targeted|park-untargeted|handed-to-bootstrap>"
 ```
 
-Report the folder or BRIEF path, landing choice, and next step (`/shape` or `/bootstrap`) in plain language.
+The journal line is mechanical; the human-facing close is the closing ceremony in Step 5a/5b. Never log-and-stop without that recap and next-step restatement.
 
 ---
 
