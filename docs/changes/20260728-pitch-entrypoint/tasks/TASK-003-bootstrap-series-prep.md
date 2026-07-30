@@ -37,12 +37,12 @@ Markdown paragraphs are single lines — never hard-wrap. Preserve bootstrap's e
 
 ## Steps
 
-- [ ] Teach greenfield+brief mode to read `source: pitch`: discovery is done, quote-back and gap-fill only, no re-excavation.
-- [ ] Add the series-prep phase: enumerate the BRIEF's scoped concepts with the builder, apply the granularity guidance (when a concept earns its own captured change versus staying a BRIEF line), and for each confirmed concept run `loaf change init <slug> --brief`, seed the brief from the BRIEF's problem-space content, stamp the coarse `target_release` the builder binds, state sequencing as prose in the brief, and land it as its own docs-only commit per Decision 11's matrix — one commit per capture, never a batch, each preceded by explicit-path `loaf change check <folder> --json` reporting zero violations and captured state plus a direct read-back of the folder's `change.json` confirming the stamped target; a concept the builder won't bind to even a coarse target stays a BRIEF line, spark, or Intent instead of minting a folder.
-- [ ] Write the granularity guidance into bootstrap's interview guide, resolving the fog entry: a concept earns a folder when it is independently shippable and its problem can be stated without the others; otherwise it stays in the BRIEF (or becomes a spark).
-- [ ] Guard the phase: every mint user-confirmed, no auto-shaping, no branch creation, no priority/date/dependency fields.
-- [ ] H3 dogfood: run series-prep against a sample pitched BRIEF (scratch project or fixture) and confirm the minted briefs stand alone; capture the durable evidence — the minted briefs and a commit-log summary showing one docs-only commit per capture — as `research/series-prep-dogfood.md` in this change folder before the scratch project is discarded, and adjust guidance from the experience.
-- [ ] Rebuild and commit artifacts with the source.
+- [x] Teach greenfield+brief mode to read `source: pitch`: discovery is done, quote-back and gap-fill only, no re-excavation.
+- [x] Add the series-prep phase: enumerate the BRIEF's scoped concepts with the builder, apply the granularity guidance (when a concept earns its own captured change versus staying a BRIEF line), and for each confirmed concept run `loaf change init <slug> --brief`, seed the brief from the BRIEF's problem-space content, stamp the coarse `target_release` the builder binds, state sequencing as prose in the brief, and land it as its own docs-only commit per Decision 11's matrix — one commit per capture, never a batch, each preceded by explicit-path `loaf change check <folder> --json` reporting zero violations and captured state plus a direct read-back of the folder's `change.json` confirming the stamped target; a concept the builder won't bind to even a coarse target stays a BRIEF line, spark, or Intent instead of minting a folder.
+- [x] Write the granularity guidance into bootstrap's interview guide, resolving the fog entry: a concept earns a folder when it is independently shippable and its problem can be stated without the others; otherwise it stays in the BRIEF (or becomes a spark).
+- [x] Guard the phase: every mint user-confirmed, no auto-shaping, no branch creation, no priority/date/dependency fields.
+- [x] H3 dogfood: run series-prep against a sample pitched BRIEF (scratch project or fixture) and confirm the minted briefs stand alone; capture the durable evidence — the minted briefs and a commit-log summary showing one docs-only commit per capture — as `research/series-prep-dogfood.md` in this change folder before the scratch project is discarded, and adjust guidance from the experience.
+- [x] Rebuild and commit artifacts with the source.
 
 ## Verification
 
