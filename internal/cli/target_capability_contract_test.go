@@ -25,7 +25,7 @@ func TestTargetCapabilityEvidenceContractLoadsCurrentRecords(t *testing.T) {
 		"claude-code\x00cli":     "2.1.220\x00plugin-dir",
 		"cursor\x00ide":          "3.11.19\x00candidate-build",
 		"cursor\x00cursor-agent": "2026.05.09-0afadcc\x00candidate-build",
-		"codex\x00cli":           "0.145.0\x00isolated-codex-home",
+		"codex\x00cli":           "0.146.0\x00isolated-codex-home",
 		"opencode\x00cli":        "1.18.7\x00isolated-xdg",
 		"amp\x00cli":             "0.0.1783873056-g278461\x00candidate-build",
 	}
@@ -568,7 +568,7 @@ func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *t
 }
 
 func TestCodexInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/codex-0.145.0-isolated-startup-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/codex-0.146.0-isolated-startup-smoke.json")
 	raw := readSmokeReceiptRaw(t, receiptPath)
 	artifacts := raw["candidate_artifacts"].(map[string]any)
 	sourceNativePath := artifacts["native_binary_path"].(string)
@@ -609,7 +609,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 		{
 			name:       "codex-receives-claude-path",
 			target:     "codex",
-			receipt:    "codex-0.145.0-isolated-startup-smoke.json",
+			receipt:    "codex-0.146.0-isolated-startup-smoke.json",
 			modeName:   "startup",
 			wrongPath:  "plugins/loaf/bin/native/darwin-arm64/loaf",
 			validateFn: validateCodexInstalledSmokeEvidence,

@@ -8,6 +8,18 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
+## [2.0.0-alpha.16] - 2026-07-30
+
+### Changed
+- Receipt freshness is now judged from repository content, not commit history: `loaf change verify` writes schema v2 receipts bound to a masked root-tree digest, so the release gate returns the same verdict on every clone under squash, rebase, or merge-commit merge strategies ([#144](https://github.com/levifig/loaf/pull/144), ADR-024).
+- `loaf change verify` refuses to run on a dirty tracked worktree and voids a receipt whose run mutated tracked files or moved HEAD; re-verifying a cohort composes cleanly because receipts and report boards are exempt from the dirty check ([#144](https://github.com/levifig/loaf/pull/144)).
+- Schema v1 receipts are no longer read: the gate blocks them with a re-verify remedy. No receipts exist in the wild, so there is nothing to migrate ([#144](https://github.com/levifig/loaf/pull/144)).
+
+### Fixed
+- Release-gate receipt checks no longer crash with a bare `exit status 128` on clones where the verified commit is unreachable; every receipt state yields a reasoned block naming the change folder, the cause, and a copy-pasteable remedy ([#144](https://github.com/levifig/loaf/pull/144)).
+- Cohorts of two or more changes can all hold fresh receipts simultaneously; previously each member's receipt commit staled the others ([#144](https://github.com/levifig/loaf/pull/144)).
+- CLI git failures surface stderr in returned errors instead of a bare `exit status N` ([#144](https://github.com/levifig/loaf/pull/144)).
+
 ## [2.0.0-alpha.15] - 2026-07-28
 
 ### Added
