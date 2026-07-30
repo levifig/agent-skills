@@ -1,0 +1,113 @@
+<!-- source: release-flow-guidance · kind review · slug codex · stamped 2026-07-30 · authored report (snapshot semantics) · never auto-updated · dispositions recorded -->
+<meta charset="utf-8">
+<title>Review — Release Flow Guidance</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1080px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h3 { font-family: var(--serif); font-weight: 600; font-size: 1.05rem; margin: 0 0 6px; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--ok); margin-bottom: 28px; }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .fname { font-weight: 700; font-size: 1.02rem; flex: 1 1 320px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-high { background: var(--bad); color: #fff; }
+  .sev-medium { background: var(--bad-soft); color: var(--bad); }
+  .disp-accepted { background: var(--ok-soft); color: var(--ok); }
+  .disp-rejected { background: var(--state-soft); color: var(--state); }
+  .frow { display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px; font-size: .93rem; }
+  .frow dt { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; padding-top: 2px; }
+  .frow dd { margin: 0 0 6px; }
+  @media (max-width: 640px) { .frow { grid-template-columns: 1fr; } .frow dt { padding-top: 8px; } }
+</style>
+<main>
+  <div class="eyebrow">Review · Codex ×2 · Grok fixes</div>
+  <h1>Release Flow Guidance — Review Loop</h1>
+  <p class="stamp">change <b>docs/changes/20260730-release-flow-guidance</b> · reviewer <b>Codex (gpt-5.6-sol, xhigh)</b> · fixer <b>Grok CLI</b> · reviewed <b>2026-07-30</b> · dispositions folded in <b>711d20dd</b> · receipt redone in <b>c5337255</b></p>
+
+  <div class="panel verdict">
+    <h3>Verdict: pass 1 four findings → pass 2 approved, no remaining findings</h3>
+    <p>Pre-push loop per owner direction: Codex reviews, orchestrator dispositions, Grok applies accepted fixes. Pass 1 returned four findings (three accepted, one rejected on precedent); Grok folded the two code fixes in <code>711d20dd</code>, the orchestrator re-recorded the receipt with the branch source in <code>c5337255</code>, and pass 2 approved with the fixes' tests verified and the receipt's digests independently recomputed.</p>
+  </div>
+
+  <h2>Findings</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">P1 — Shipped native binaries do not contain this branch's CLI changes</span><span class="chip sev-high">high</span><span class="chip disp-rejected">rejected</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The tracked platform binaries are unchanged from main, so <code>bin/loaf release</code> keeps the old wordings until a rebuild ships.</dd>
+      <dt>Disposition</dt><dd>Rejected — deliberate repo precedent: Go changes land without the bundled binary (#144 identically), because the installed-smoke capability evidence pins the committed binary's SHA-256; the release ceremony rebuilds and commits it together with the evidence re-record. True of every Go change between releases, not a branch defect.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">P2 — Committed verification receipt was legacy schema v1</span><span class="chip sev-high">high</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The receipt declared <code>schema_version: 1</code> with the removed <code>cwd</code> field, which the current gate refuses before reading results.</dd>
+      <dt>Disposition</dt><dd>Accepted — orchestration error, not implementation: the verify ceremony ran under the Homebrew-installed alpha.15 binary on PATH instead of the branch source. The v2 gate refusing the v1 receipt is the schema clean-break working exactly as shipped.</dd>
+      <dt>Fix</dt><dd><code>c5337255</code>: receipt re-recorded via <code>go run ./cmd/loaf change verify</code>; pass 2 independently recomputed tree, criteria, scope, and section digests — all match, V1–V4 green, change derives <code>complete</code>.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">P3 — A local tag masked an existing GitHub release into deletion advice</span><span class="chip sev-high">high</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd><code>checkReleasePostMergeNoExistingTagOrRelease</code> returned the <code>git tag -d</code> remedy for a local tag before the GitHub release lookup ran, so local tag + failed <code>ls-remote</code> + published release yielded destructive advice — against Decision 3.</dd>
+      <dt>Disposition</dt><dd>Accepted.</dd>
+      <dt>Fix</dt><dd><code>711d20dd</code>: all three states gathered before remedy choice; remote or GH-release presence always outranks local deletion advice; a failed lookup can no longer unlock it. Masking combination pinned in <code>TestReleaseGuardrailRemediation</code>.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">P4 — Advisory emitted after snapshot resolution and cohort preflight</span><span class="chip sev-medium">medium</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>A preflight-blocked mutating invocation on the default branch exited without the advisory, deviating from the shape's before-analysis placement.</dd>
+      <dt>Disposition</dt><dd>Accepted.</dd>
+      <dt>Fix</dt><dd><code>711d20dd</code>: emission hoisted to <code>runRelease</code> before snapshot and preflight, duplicate removed, exactly-once asserted including the preflight-block path in <code>TestReleaseFlowAdvisory</code>.</dd>
+    </dl>
+  </div>
+
+  <h2>Provenance</h2>
+  <div class="panel">
+    <p>Pass 1 fresh thread and pass 2 resumed thread, Codex gpt-5.6-sol xhigh via the companion runtime, session <code>019fb32e-9f7a-7d42-8275-2365dfb273df</code>; fixes authored headless by Grok CLI under orchestrator brief; dispositions and the loop decision recorded as journal <code>decision(release-flow-guidance)</code> / <code>finding(release-flow-guidance)</code> entries 2026-07-30. Related: shape.md Decisions 1–3; the alpha.16 incident journal entries that motivated the change.</p>
+  </div>
+</main>
