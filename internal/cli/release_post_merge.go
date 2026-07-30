@@ -302,23 +302,28 @@ func extractReleasePostMergeChangelogSection(content string, version string) []s
 func checkReleasePostMergeNoExistingTagOrRelease(root string, runner releasePostMergeCommandRunner, version string) string {
 	tag := "v" + version
 	pushedRemedy := "do not delete a published tag; if the GitHub release is missing assets, re-run the Release workflow or recreate the release from the existing tag instead"
+	// Gather all three states before choosing a remedy. Deletion advice is only
+	// safe for a purely local tag; a failed remote lookup leaves remoteExists
+	// false (degrade, never error) but must not unlock git tag -d when a GitHub
+	// release is present.
 	local := runner(root, "git", "tag", "--list", tag)
 	localExists := local.exitCode == 0 && strings.TrimSpace(local.stdout) == tag
-	// The remote lookup distinguishes a pushed tag from an unpushed one; on any lookup failure remoteExists stays false and the guardrail degrades to the local-only wording instead of erroring.
 	remote := runner(root, "git", "ls-remote", "--tags", "origin", "refs/tags/"+tag)
 	remoteExists := remote.exitCode == 0 && strings.TrimSpace(remote.stdout) != ""
-	if localExists {
-		if remoteExists {
+	gh := runner(root, "gh", "release", "view", tag)
+	ghReleaseExists := !gh.notFound && gh.exitCode == 0
+
+	if remoteExists {
+		if localExists {
 			return fmt.Sprintf("tag %s already exists and is pushed — %s", tag, pushedRemedy)
 		}
-		return fmt.Sprintf("tag %s already exists locally — run `git tag -d %s` and rerun", tag, tag)
-	}
-	if remoteExists {
 		return fmt.Sprintf("tag %s already exists on remote — %s", tag, pushedRemedy)
 	}
-	gh := runner(root, "gh", "release", "view", tag)
-	if !gh.notFound && gh.exitCode == 0 {
+	if ghReleaseExists {
 		return fmt.Sprintf("GH release %s already exists — do not delete a published release; re-run the Release workflow or update it from the existing tag instead; delete it and rerun only if it is an unpublished draft", tag)
+	}
+	if localExists {
+		return fmt.Sprintf("tag %s already exists locally — run `git tag -d %s` and rerun", tag, tag)
 	}
 	return ""
 }

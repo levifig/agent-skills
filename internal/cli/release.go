@@ -16,6 +16,11 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 		writeReleaseHelp(out)
 		return nil
 	}
+	// Print the flow advisory before candidate analysis and cohort preflight so
+	// a preflight-blocked mutating invocation still names the sanctioned door.
+	if releaseInvocationWantsFlowAdvisory(runtimeRoot, options) {
+		printReleaseFlowAdvisory(out)
+	}
 	snapshot, err := resolveReleaseSnapshot(runtimeRoot, options)
 	if err != nil {
 		return fmt.Errorf("release blocked: cannot compute candidate version: %w", err)

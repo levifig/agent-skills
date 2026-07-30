@@ -145,6 +145,41 @@ func TestReleaseFlowAdvisory(t *testing.T) {
 			t.Fatalf("predicate = true without a resolvable default branch, want false")
 		}
 	})
+
+	t.Run("prints once when preflight blocks on the default branch", func(t *testing.T) {
+		// Incomplete stable cohort blocks before apply analysis; the advisory
+		// must still print exactly once from the runRelease entry path.
+		repo := seedReleaseApplyRepo(t, "feat: preflight still names the door")
+		dir := writeNewLayoutChange(t, repo, "20260727-preflight-advisory", "preflight-advisory", "1.1.0", "")
+		task := filepath.Join(dir, "tasks", "TASK-001-work.md")
+		unchecked := "---\nchange: preflight-advisory\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [ ] Do it\n"
+		writeFile(t, task, unchecked)
+		gitCLI(t, repo, "add", ".")
+		gitCLI(t, repo, "commit", "-m", "docs: shape incomplete stable cohort")
+
+		var stdout bytes.Buffer
+		err := Runner{
+			Stdout:     &stdout,
+			Stderr:     &bytes.Buffer{},
+			WorkingDir: repo,
+		}.Run([]string{"release", "--bump", "minor", "--yes", "--no-tag", "--no-gh"})
+		if err == nil {
+			t.Fatalf("release error = nil, want cohort preflight block")
+		}
+		if !strings.Contains(err.Error(), "targets 1.1.0 but is not executed") {
+			t.Fatalf("error = %v, want incomplete cohort preflight block", err)
+		}
+		output := stdout.String()
+		if !strings.Contains(output, releaseFlowAdvisoryProbe) {
+			t.Fatalf("stdout = %q, want flow advisory before preflight failure", output)
+		}
+		if count := strings.Count(output, releaseFlowAdvisoryProbe); count != 1 {
+			t.Fatalf("stdout advisory count = %d, want exactly once\n%s", count, output)
+		}
+		if strings.Contains(output, "Analyzing") {
+			t.Fatalf("stdout = %q, preflight block must not reach apply analysis", output)
+		}
+	})
 }
 
 func TestReleaseGuardrailRemediation(t *testing.T) {
@@ -220,6 +255,29 @@ func TestReleaseGuardrailRemediation(t *testing.T) {
 		}
 		if result.message != "tag v1.2.3 already exists locally — run `git tag -d v1.2.3` and rerun" {
 			t.Fatalf("message = %q, want degraded local wording when the remote lookup fails", result.message)
+		}
+	})
+
+	t.Run("local tag with failed remote lookup still defers to an existing GH release", func(t *testing.T) {
+		// Masking combination: local tag exists, ls-remote fails (remote unknown),
+		// but gh release view succeeds — must never advise git tag -d.
+		repo := seedReleasePostMergeFiles(t, "1.2.3")
+		responses := releasePostMergeHappyResponses("1.2.3")
+		responses["git tag --list v1.2.3"] = releasePostMergeOK("v1.2.3")
+		responses["git ls-remote --tags origin refs/tags/v1.2.3"] = releasePostMergeExit(128)
+		responses["gh release view v1.2.3"] = releasePostMergeOK("v1.2.3")
+		runner, _ := scriptedReleasePostMergeRunner(responses)
+		snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
+
+		result := checkReleasePostMergeGuardrails(repo, snap, runner)
+		if result.ok || result.guardrail != 7 {
+			t.Fatalf("result = %#v, want guardrail 7 failure", result)
+		}
+		if !strings.Contains(result.message, "GH release v1.2.3 already exists") || !strings.Contains(result.message, "do not delete a published release") {
+			t.Fatalf("message = %q, want non-destructive GH release remediation", result.message)
+		}
+		if strings.Contains(result.message, "git tag -d") {
+			t.Fatalf("message = %q, must not advise deletion when a GH release exists", result.message)
 		}
 	})
 

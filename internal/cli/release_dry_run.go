@@ -349,9 +349,7 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	if !releaseIsGitRepo(root) {
 		return fmt.Errorf("Not a git repository")
 	}
-	if releaseInvocationWantsFlowAdvisory(root, options) {
-		printReleaseFlowAdvisory(out)
-	}
+	// Flow advisory is emitted once from runRelease, before snapshot/preflight.
 	if err := requireReleaseCleanWorktree(root); err != nil {
 		return err
 	}
