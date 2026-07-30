@@ -33,9 +33,9 @@ loaf journal log "skill(implement): TASK-002 — release skill evidence-ordering
 
 ## Steps
 
-- [ ] Add the ordering rule to the preparation step: re-record after the rebuild (every bump stales the OpenCode receipt; Go changes stale all binary-pinned receipts), verify with the evidence contract tests, commit receipts with any artifact drift on the release branch
-- [ ] Extend the incident narrative: alpha.17 re-recorded before the bump and shipped zero assets; the release command now gates on evidence freshness after the rebuild
-- [ ] `loaf build` and commit rebuilt `dist/`/`plugins/` release-skill copies with the source change
+- [x] Add the ordering rule to the preparation step: re-record after the rebuild (every bump stales the OpenCode receipt; Go changes stale all binary-pinned receipts), verify with the evidence contract tests, commit receipts with any artifact drift on the release branch
+- [x] Extend the incident narrative: alpha.17 re-recorded before the bump and shipped zero assets; the release command now gates on evidence freshness after the rebuild
+- [x] `loaf build` and commit rebuilt `dist/`/`plugins/` release-skill copies with the source change
 
 ## Verification
 
