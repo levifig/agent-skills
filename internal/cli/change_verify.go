@@ -38,19 +38,23 @@ type changeVerifyReceipt struct {
 	SchemaVersion int    `json:"schema_version"`
 	Change        string `json:"change"`
 	// VerifiedCommit is provenance only — never consulted for the freshness verdict (ADR-024).
-	VerifiedCommit   string                        `json:"verified_commit"`
-	VerifiedRootTree string                        `json:"verified_root_tree"`
-	VerifiedAt       string                        `json:"verified_at"`
-	CriteriaDigest   string                        `json:"criteria_digest"`
-	ScopeDigest      string                        `json:"scope_digest"`
-	ScopeSections    map[string]string             `json:"scope_sections"`
-	Exclusions       []string                      `json:"exclusions"`
-	DigestSpec       string                        `json:"digest_spec"`
-	ToolVersion      string                        `json:"tool_version"`
-	Toolchain        changeVerifyToolchain         `json:"toolchain"`
-	WorktreeClean    bool                          `json:"worktree_clean"`
-	TargetRelease    string                        `json:"target_release,omitempty"`
-	Results          []changeVerifyCriterionResult `json:"results"`
+	VerifiedCommit   string                `json:"verified_commit"`
+	VerifiedRootTree string                `json:"verified_root_tree"`
+	VerifiedAt       string                `json:"verified_at"`
+	CriteriaDigest   string                `json:"criteria_digest"`
+	ScopeDigest      string                `json:"scope_digest"`
+	ScopeSections    map[string]string     `json:"scope_sections"`
+	Exclusions       []string              `json:"exclusions"`
+	DigestSpec       string                `json:"digest_spec"`
+	ToolVersion      string                `json:"tool_version"`
+	Toolchain        changeVerifyToolchain `json:"toolchain"`
+	// WorktreeClean records execution integrity: the tracked tree was unchanged
+	// and HEAD was unmoved for the whole verify run. False voids the receipt
+	// (ADR-024 dirty-execution rejection); there is no separate schema field
+	// for HEAD movement.
+	WorktreeClean bool                          `json:"worktree_clean"`
+	TargetRelease string                        `json:"target_release,omitempty"`
+	Results       []changeVerifyCriterionResult `json:"results"`
 }
 
 // changeVerifyToolchain records the verify host environment for audit, never gating.
@@ -173,7 +177,13 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 	if err != nil {
 		return fmt.Errorf("inspect worktree after criteria: %w", err)
 	}
-	worktreeClean := len(postDirty) == 0
+	postHead, err := commandOutput(rootPath, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return fmt.Errorf("resolve HEAD after criteria: %w", err)
+	}
+	postHead = strings.TrimSpace(postHead)
+	headMoved := postHead != head
+	worktreeClean := len(postDirty) == 0 && !headMoved
 	receipt := changeVerifyReceipt{
 		SchemaVersion:    2,
 		Change:           node.Slug,
@@ -214,6 +224,9 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 	fmt.Fprintf(out, "scope_digest: %s\n", receipt.ScopeDigest)
 	fmt.Fprintf(out, "verified_commit: %s (provenance)\n", shortSHA(receipt.VerifiedCommit))
 	if !worktreeClean {
+		if headMoved {
+			return fmt.Errorf("HEAD moved during verification (%s → %s); receipt is void — re-verify", shortSHA(head), shortSHA(postHead))
+		}
 		return fmt.Errorf("criteria mutated the tracked worktree (%s); receipt is void — restore or commit, then re-verify", strings.Join(postDirty, ", "))
 	}
 	if failed {
@@ -462,40 +475,28 @@ func runChangeCriterionCommand(rootPath, command string) (int, string, error) {
 	return 1, string(output), err
 }
 
-// changeTrackedWorktreeDirty reports whether tracked or staged files differ from
-// HEAD after exempting receipt and report masks. Untracked files do not count —
-// verify may write the receipt into an untracked receipts/ path. The
-// release-metadata allowlist is NOT exempt: digest-excluded paths like dist/**
-// stay dirty-checked because criteria may mutate them.
-func changeTrackedWorktreeDirty(rootPath string) (bool, error) {
-	paths, err := changeTrackedWorktreeDivergedPaths(rootPath)
-	if err != nil {
-		return false, err
-	}
-	return len(paths) > 0, nil
-}
-
 // changeTrackedWorktreeDivergedPaths lists tracked/staged paths that differ from
 // HEAD and are not receipt/report-mask exempt. Paths are slash-normalized and sorted.
+// Untracked files do not count — verify may write the receipt into an untracked
+// receipts/ path. The release-metadata allowlist is NOT exempt: digest-excluded
+// paths like dist/** stay dirty-checked because criteria may mutate them.
+//
+// Status uses --ignore-submodules=untracked so a consumer's submodule.<name>.ignore
+// config cannot hide a dirty or HEAD-moved submodule; untracked-only content inside
+// a submodule still does not refuse (mirrors -uno for the superproject).
 func changeTrackedWorktreeDivergedPaths(rootPath string) ([]string, error) {
-	out, err := commandOutput(rootPath, "git", "status", "--porcelain=v1", "-uno")
+	out, err := commandOutput(rootPath, "git", "status", "--porcelain=v1", "-z", "-uno", "--ignore-submodules=untracked")
 	if err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}
 	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if line == "" {
+	for _, path := range porcelainTrackedPathsZ(out) {
+		if path == "" || changeDirtyCheckExempt(path) || seen[path] {
 			continue
 		}
-		for _, path := range porcelainTrackedPaths(line) {
-			if path == "" || changeDirtyCheckExempt(path) || seen[path] {
-				continue
-			}
-			seen[path] = true
-			paths = append(paths, path)
-		}
+		seen[path] = true
+		paths = append(paths, path)
 	}
 	slices.Sort(paths)
 	return paths, nil
@@ -517,27 +518,47 @@ func changeDirtyCheckExempt(path string) bool {
 	return false
 }
 
-// porcelainTrackedPaths extracts path(s) from one git status --porcelain=v1 line.
-// Rename/copy records are `XY old -> new`; both sides are returned.
-func porcelainTrackedPaths(line string) []string {
-	if len(line) < 4 || line[2] != ' ' {
+// porcelainTrackedPathsZ extracts path(s) from git status --porcelain=v1 -z output.
+// Records are NUL-terminated; paths are never quoted. Rename/copy records (X status
+// R or C) carry a second NUL-terminated original-path field after the primary path.
+func porcelainTrackedPathsZ(raw string) []string {
+	if raw == "" {
 		return nil
 	}
-	rest := line[3:]
-	if idx := strings.Index(rest, " -> "); idx >= 0 {
-		return []string{unquotePorcelainPath(rest[:idx]), unquotePorcelainPath(rest[idx+4:])}
-	}
-	return []string{unquotePorcelainPath(rest)}
-}
-
-func unquotePorcelainPath(path string) string {
-	path = strings.TrimSpace(path)
-	if len(path) >= 2 && path[0] == '"' {
-		if unquoted, err := strconv.Unquote(path); err == nil {
-			return filepath.ToSlash(unquoted)
+	var paths []string
+	data := raw
+	for len(data) > 0 {
+		nul := strings.IndexByte(data, 0)
+		if nul < 0 {
+			break
+		}
+		record := data[:nul]
+		data = data[nul+1:]
+		if len(record) < 3 || record[2] != ' ' {
+			continue
+		}
+		xy := record[:2]
+		path := filepath.ToSlash(record[3:])
+		if path != "" {
+			paths = append(paths, path)
+		}
+		if xy[0] != 'R' && xy[0] != 'C' {
+			continue
+		}
+		if len(data) == 0 {
+			break
+		}
+		nul2 := strings.IndexByte(data, 0)
+		if nul2 < 0 {
+			break
+		}
+		orig := filepath.ToSlash(data[:nul2])
+		data = data[nul2+1:]
+		if orig != "" {
+			paths = append(paths, orig)
 		}
 	}
-	return filepath.ToSlash(path)
+	return paths
 }
 
 func sha256HexBytes(data []byte) string {

@@ -866,3 +866,104 @@ func TestChangeVerifyCriteriaMutationVoidsReceipt(t *testing.T) {
 		}
 	})
 }
+
+func TestChangeVerifySubmoduleIgnoreConfigCannotHideDirt(t *testing.T) {
+	sub := t.TempDir()
+	gitCLI(t, sub, "init", "-b", "main")
+	if err := os.WriteFile(filepath.Join(sub, "tracked.txt"), []byte("clean\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile submodule tracked: %v", err)
+	}
+	gitCLI(t, sub, "add", "tracked.txt")
+	gitCLI(t, sub, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "sub initial")
+
+	repo := initCLIGitRepo(t)
+	gitCLI(t, repo, "-c", "protocol.file.allow=always", "submodule", "add", sub, "vendor/mod")
+	commitAllChangeTest(t, repo, "chore: add submodule")
+	gitCLI(t, repo, "config", "submodule.vendor/mod.ignore", "all")
+
+	body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
+	writeNewLayoutChange(t, repo, "20260730-submodule-ignore", "submodule-ignore", "", body)
+	commitAllChangeTest(t, repo, "docs: shape submodule-ignore")
+	folderRel := filepath.Join("docs", "changes", "20260730-submodule-ignore")
+
+	if err := os.WriteFile(filepath.Join(repo, "vendor", "mod", "tracked.txt"), []byte("dirty\n"), 0o644); err != nil {
+		t.Fatalf("dirty submodule: %v", err)
+	}
+	err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel})
+	if err == nil || !strings.Contains(err.Error(), "working tree differs from HEAD; commit before verifying") {
+		t.Fatalf("dirty submodule under ignore=all err = %v, want pre-run refusal", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repo, "vendor", "mod", "tracked.txt"), []byte("clean\n"), 0o644); err != nil {
+		t.Fatalf("restore submodule: %v", err)
+	}
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("clean submodule must allow verify: %v", err)
+	}
+}
+
+func TestChangeVerifyHEADMoveDuringCriteriaVoidsReceipt(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, "1.0.0-alpha.1")
+	cmd := `printf 'changed\n' > README.md && git add README.md && git -c user.name='Loaf Test' -c user.email=loaf@example.test -c commit.gpgsign=false commit -m mid-verify`
+	body := shapeWithVerification("- **V1.** Commit mid-verify. Command: `" + cmd + "`. Expect: exit 0")
+	dir := writeNewLayoutChange(t, repo, "20260727-head-move", "head-move", "1.0.0", body)
+	flipExecuteChange(t, repo, dir, "head-move")
+	folderRel := filepath.Join("docs", "changes", "20260727-head-move")
+
+	var stdout bytes.Buffer
+	err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel})
+	if err == nil || !strings.Contains(err.Error(), "HEAD moved during verification") {
+		t.Fatalf("err = %v, want HEAD-moved void\n%s", err, stdout.String())
+	}
+	if !strings.Contains(err.Error(), "receipt is void — re-verify") {
+		t.Fatalf("err = %v, want re-verify remedy", err)
+	}
+	receipt := mustReadVerifyReceipt(t, dir)
+	if receipt.WorktreeClean {
+		t.Fatal("receipt must record worktree_clean false after HEAD move")
+	}
+
+	commitAllChangeTest(t, repo, "chore: commit void receipt")
+	node, err := assembleChangeNodeFromFolder(repo, filepath.Join(repo, folderRel))
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	verdict := changeReceiptStatus(repo, folderRel, node, nil)
+	if verdict.OK || verdict.Reason != changeReceiptDirtyExecution {
+		t.Fatalf("verdict=%#v, want dirty-execution block", verdict)
+	}
+	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "diverged from HEAD (receipt void)") {
+		t.Fatalf("gate err = %v, want dirty-execution block", gateErr)
+	}
+}
+
+func TestChangeVerifyPathologicalArrowReportFilenameStaysMaskExempt(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	body := shapeWithVerification("- **V1.** Smoke. Command: `true`. Expect: exit 0")
+	dir := writeNewLayoutChange(t, repo, "20260730-arrow-report", "arrow-report", "", body)
+	reportDir := filepath.Join(dir, "reports")
+	if err := os.MkdirAll(reportDir, 0o755); err != nil {
+		t.Fatalf("mkdir reports: %v", err)
+	}
+	reportName := "board -> review.md"
+	reportPath := filepath.Join(reportDir, reportName)
+	if err := os.WriteFile(reportPath, []byte("board v1\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile report: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: shape arrow-report with pathological report name")
+	folderRel := filepath.Join("docs", "changes", "20260730-arrow-report")
+
+	if err := os.WriteFile(reportPath, []byte("board v2 dirty\n"), 0o644); err != nil {
+		t.Fatalf("dirty report: %v", err)
+	}
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("mask-exempt report with ' -> ' in name must not refuse: %v\n%s", err, stdout.String())
+	}
+	receipt := mustReadVerifyReceipt(t, dir)
+	if !receipt.WorktreeClean {
+		t.Fatal("report-only dirt must leave worktree_clean true")
+	}
+}

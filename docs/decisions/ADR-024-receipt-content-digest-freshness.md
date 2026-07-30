@@ -37,6 +37,8 @@ Council 2026-07-28 (`docs/changes/20260728-receipt-tree-binding/reports/20260728
 
 Same HEAD yields the same verdict on every clone under any merge strategy. Cohort receipts coexist because receipts are masked. The promotion model can cut rc / promote without expiring evidence by construction. Cost accepted: any real code landing expires cohort receipts until an rc-point re-verify sweep.
 
-ADR-023's freshness section (commit-walk staleness, touch-then-revert) is superseded by this ADR; provenance grades, verify-as-only-runner, and success-required rules remain.
+**ADR-023 successor note.** The receipt attests criteria-against-declared-scope; tree-is-green at cut belongs to CI (the promotion change lands that assertion).
+
+ADR-023's freshness section (commit-walk staleness, touch-then-revert), v1 receipt schema (including `cwd`), and "any later commit stales" cost claim are superseded by this ADR; provenance grades, verify-as-only-runner, and success-required rules remain.
 
 Provenance: `docs/changes/20260728-receipt-tree-binding/` shape.md Decisions 1–8; council board 2026-07-28.

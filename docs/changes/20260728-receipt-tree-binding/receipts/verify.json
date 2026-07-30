@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
   "change": "receipt-tree-binding",
-  "verified_commit": "ecc1b052aedba1eb89273b53c4c164fef5fe9066",
-  "verified_root_tree": "132636e3f86ef6d76ca8789b571408d0102bd973",
-  "verified_at": "2026-07-29T14:45:43Z",
+  "verified_commit": "25440865a5619c3f6469fa799ed43b4143025a32",
+  "verified_root_tree": "9866fdaab48fbc736874e09fe7a7a9410c9a9688",
+  "verified_at": "2026-07-30T01:13:20Z",
   "criteria_digest": "608ef44ab997c5ef661ffc7e1070e269d666d5c009325cf1777819896bc5f9cb",
-  "scope_digest": "d80ea2b5bcad363bf717d5f8bc6572e07285276ecea60f54b08dcc09989eb997",
+  "scope_digest": "4b780218955b7bdc70f16068422210df7ffd04c2856f5d5122ff07956bcfe91e",
   "scope_sections": {
     ".agents": "0cdcb499203f22e1faebbef89e211e4b6d4b253bc5486866ed28a50e15c2dd9e",
     ".claude": "8dc123c00b953695edd9ccc4bb966e986bcea05607d9a125e71038a4c2ebb6be",
@@ -18,10 +18,10 @@
     "cmd": "b2666d27e62ce6fc437436bdc891f05355d29c945300b776d75e662a358b3918",
     "config": "94bafe52ad02231df4b7d27e3282bac82104ad0065e3b065010d88a2777bd1e3",
     "content": "d43d7d776145117867da411fb3d60e0c029cc71f4a1676bb1f6ff72fa25c814a",
-    "docs": "b9b2f20c8503436ef0f058f40cc9ac969f138605c9b13a068484dae5f03e2b7b",
+    "docs": "4c60f1a1b2128e474457784af773578e12cb6075e43c801bc8826258a0145a9b",
     "go.mod": "5f494108c9f9ba4911bbcb82ece8168d5af253742eb632ccac5519348e34ef1c",
     "go.sum": "44a5d68a99a05f3d9aff3321f4b5645d0870cc1afd36e183fbc08c07d8550d6b",
-    "internal": "34c8e68457b64e04118182afb593b506b483864cfd145f1cdb0f06b8fbc4e3d3",
+    "internal": "c5166b2d1240030fa53cdb99fe94a1abf2b7228810b97a4a2efba328d65d1902",
     "package-lock.json": "afd3f2eea505b8289f8b16c35364d4b892b25663b42b2a7ba967cf8c71feb44f"
   },
   "exclusions": [
@@ -48,7 +48,7 @@
       "id": "V1",
       "command": "go test ./internal/cli -run 'TestChangeScopeDigest' -count=1",
       "exit_code": 0,
-      "output_digest": "1a3f0ce8b209e2bf7fd0fb1ea4653fd6edbf0156643e785486dd3d9285b8785e",
+      "output_digest": "85a1b961958eb468e87db88afe4742d74035d0e62ac8fd2bfbc88addbffb47d3",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
@@ -63,7 +63,7 @@
       "id": "V2",
       "command": "go test ./internal/cli -run 'TestChangeVerifySchemaV2' -count=1",
       "exit_code": 0,
-      "output_digest": "095a3dbf3a4f9aa9b6b1e0354cf4a151857ffbf91d3350482a92df512e72d1a5",
+      "output_digest": "2a9bf2cadc07e4bf17b47c5a4621e932c0aaf1b90131af89279a53d0068829d1",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
@@ -78,7 +78,7 @@
       "id": "V3",
       "command": "go test ./internal/cli -run 'TestChangeReceiptFreshness' -count=1",
       "exit_code": 0,
-      "output_digest": "d347655d29360e9c26938f2d52840d0aff77ba167316113b90920a0c63e126ba",
+      "output_digest": "87bd5787a3f3cfc9d2f967b8dc96f4cbe218d648d2a48e3e4b23f74c5434bc4a",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
@@ -93,7 +93,7 @@
       "id": "V4",
       "command": "go test ./...",
       "exit_code": 0,
-      "output_digest": "bb827a40e940b7808a545d3ebf715b5a9bbda2ae71d1f98c0cdca10290584f00",
+      "output_digest": "e1eee8d872b39c2892208c5329e49af502136e1c20fd4751fe7ce71fcf5bbfa4",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
