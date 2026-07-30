@@ -239,9 +239,10 @@ func TestPlanningVocabularyConverged(t *testing.T) {
 			required: []string{
 				"**Change-first workflow**",
 				"## Workflow",
-				"### Explore and Shape",
+				"### Pitch and Shape",
 				"### Implement and Ship",
 				"### Preserve Learning",
+				"/pitch",
 			},
 		},
 		{

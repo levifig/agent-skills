@@ -4,7 +4,9 @@ Reading `loaf change init` and `loaf change check` — the skill teaches reading
 
 ## `loaf change init <slug> [--brief]`
 
-Scaffolds `docs/changes/<YYYYMMDD>-<slug>/change.json + shape.md` from the Change template, where `<YYYYMMDD>` is the creation day (not a target date) and the branch is named by the bare slug — no date prefix on the branch. Fails if the folder already exists. The slug uses lowercase letters, digits, and single hyphens.
+Scaffolds `docs/changes/<YYYYMMDD>-<slug>/` from the Change template, where `<YYYYMMDD>` is the creation day (not a target date) and the branch is named by the bare slug — no date prefix on the branch. Ordinary init writes `change.json + shape.md + tasks/`; `--brief` is capture mode (`change.json + brief.md` only). The slug uses lowercase letters, digits, and single hyphens.
+
+**Capture promotion.** Re-running ordinary `loaf change init <slug>` (no `--brief`) against a structurally valid capture-only folder completes it in place: `brief.md` and every `change.json` value are preserved verbatim, and missing `shape.md` plus the seeded `tasks/` are published atomically (temp-write then rename; existing destinations are never overwritten; `shape.md` is the last rename and the promotion marker). A partial promotion that already holds the byte-identical seed task resumes by filling only the gaps. Everything else fails clearly and leaves the folder untouched — repeated `--brief`, `change.json`-only (missing brief), hybrid `change.md` + `change.json`, diverged `tasks/` content, malformed metadata, and fully-materialized folders (duplicate rejection unchanged).
 
 ## `loaf change check [folder] [--require-executable] [--json]`
 
@@ -19,7 +21,7 @@ Output splits into two tiers:
 
 A branch/Change mismatch (current branch doesn't match the Change's `branch:` field) is a warning, never a violation.
 
-`--json` emits `{command, folder, passed, executable, exitCode, findings, warnings, gaps}` for scripted reads; prefer it when diagnosing rather than scraping the human-readable text.
+`--json` emits `{command, folder, passed, state, executable, exitCode, findings, warnings, gaps}` (plus optional `layout`, `captured`, `notices`) for scripted reads; prefer it when diagnosing rather than scraping the human-readable text. The landing guard reads `state` from this envelope — e.g. `"captured"` for a brief-only folder and `"shaped"` (or higher) once `shape.md` exists — and must not invent a second state surface.
 
 
 ## `loaf change report new <slug> --kind <kind>`

@@ -3,8 +3,8 @@ name: brainstorm
 description: >-
   Preserves the structured divergent-thinking stance consumed by the explore
   workflow: option generation before judgment, trade-off analysis, and spark
-  capture. Explore owns the user-facing inquiry lifecycle; reference this
-  technique from it. Not a ...
+  capture. Not a primary entry point — route "explore this", "help me think
+  through options", or si...
 user-invocable: false
 argument-hint: '[idea or problem]'
 version: 2.0.0-alpha.16
@@ -12,7 +12,7 @@ version: 2.0.0-alpha.16
 
 # Brainstorm
 
-Generative thinking — expanding possibilities before narrowing. This stance is an internal technique consumed by `/loaf:explore`, which owns inquiry continuity through Explorations and portable checkpoints; invoke the technique from there rather than as a standalone workflow.
+Generative thinking — expanding possibilities before narrowing. This stance is an internal technique consumed by `/explore`, which owns inquiry continuity through Explorations and portable checkpoints; invoke the technique from there rather than as a standalone workflow.
 
 ## Critical Rules
 

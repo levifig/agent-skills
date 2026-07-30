@@ -85,7 +85,7 @@ No route names a skill invocation. Research re-interviews an already-scoped ques
 
 ### Source inputs recognized
 
-Step 1 reads whatever `$ARGUMENTS` names, or asks. Recognized sources: a journal entry (cite by ID), a spark, an idea, a brainstorm document, a Linear issue, a PR conversation, a prior Change, or plain conversation with no artifact behind it yet.
+Step 1 reads whatever `$ARGUMENTS` names, or asks. Recognized sources: a change `brief.md` (from `/loaf:pitch` or capture), a journal entry (cite by ID), a spark, an idea, a brainstorm document, a Linear issue, a PR conversation, a prior Change, or plain conversation with no artifact behind it yet.
 
 ---
 
@@ -93,7 +93,7 @@ Step 1 reads whatever `$ARGUMENTS` names, or asks. Recognized sources: a journal
 
 ### Step 1: Gather Context
 
-Parse `$ARGUMENTS` against the source inputs above. Read the journal (`loaf journal recent` / `search`) for related history, and check for a prior Change touching the same area. When VISION.md, STRATEGY.md, and ARCHITECTURE.md exist, read them for strategic fit. Most consumer projects don't have them yet — when absent, shape against the journal, recent Changes, and the conversation instead, and say so in the Change's Source Inputs.
+Parse `$ARGUMENTS` against the source inputs above. When the input names a Change folder that already has `brief.md` (or you find one for this work), treat the brief as primary: restate the problem from it, confirm with the user rather than re-discovering, and keep later grilling on solution-space (how, boundaries, verification) — pitch already framed the problem. When no brief exists, run full narrowing as today; `/loaf:pitch` is the recommended front door for raw concepts, never a gate. Read the journal (`loaf journal recent` / `search`) for related history, and check for a prior Change touching the same area. When VISION.md, STRATEGY.md, and ARCHITECTURE.md exist, read them for strategic fit. Most consumer projects don't have them yet — when absent, shape against the journal, recent Changes, and the conversation instead, and say so in the Change's Source Inputs.
 
 ### Step 2: Evaluate Strategic Fit
 
@@ -107,7 +107,7 @@ Once the shape of the work is nameable, confirm scope with the user, then:
 loaf change init <slug>
 ```
 
-This scaffolds `change.json` + `shape.md` + seeded `tasks/` from the embedded templates (see `templates/shape.md`, `templates/task.md`). Use `loaf change init <slug> --brief` only for capture-before-shape (emits `change.json` + `brief.md`). It does not switch branches — `git switch -c <slug>` yourself. Fill `shape.md` Product Contract sections as understanding solidifies; seed `tasks/TASK-NNN-slug.md` as vertical slices (a task is a commit, not a PR). Optional `plan.md`/`design.md` accrete when the how needs prose. See [references/cli-boundary.md](references/cli-boundary.md).
+On a fresh slug this scaffolds `change.json` + `shape.md` + seeded `tasks/` from the embedded templates (see `templates/shape.md`, `templates/task.md`). On a capture-only folder that already has `change.json` + `brief.md` (from `/loaf:pitch` or `init --brief`), the same command promotes in place — preserving brief and metadata verbatim while materializing `shape.md` and `tasks/` — never hand-copy templates into the folder; rely on that promotion path. Use `loaf change init <slug> --brief` only for capture-before-shape (emits `change.json` + `brief.md`). It does not switch branches — `git switch -c <slug>` yourself. Fill `shape.md` Product Contract sections as understanding solidifies; seed `tasks/TASK-NNN-slug.md` as vertical slices (a task is a commit, not a PR). Optional `plan.md`/`design.md` accrete when the how needs prose. See [references/cli-boundary.md](references/cli-boundary.md).
 
 ### Step 4: Narrow the Unknowns
 
@@ -145,8 +145,9 @@ Offer to push the branch and open a draft PR, using [the PR template](templates/
 
 ## Related Skills
 
-- **idea** — Quick capture; feeds into `/loaf:shape` once a concept has enough weight
-- **brainstorm** — Open-ended divergent thinking before scope narrows enough to shape
+- **pitch** — Problem-discovery ceremony that authors a brief; preferred front door when the problem is not yet framed
+- **idea** — Quick capture; feeds into `/loaf:pitch` or `/loaf:shape` once a concept has enough weight
+- **brainstorm** — Agent technique for divergent thinking (route user entry intent to `/loaf:pitch`)
 - **implement** — Starts execution once a Change is structurally executable; this does not prove implementation completion
 - **reflect** — Updates strategic docs after the shipped work proves what changed
 

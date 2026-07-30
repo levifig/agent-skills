@@ -1,0 +1,123 @@
+<!-- source: pitch-entrypoint · kind review · slug codex-final · stamped 2026-07-29 02:54 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — codex final</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.machine { background: var(--machine-soft); color: var(--machine); }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">pitch-entrypoint · review</div>
+  <h1>Review — codex final</h1>
+  <p class="stamp">kind <b>review</b> · slug <b>codex-final</b> · 2026-07-29 02:54</p>
+
+  <h2>Round</h2>
+  <div class="panel">
+    <p><b>Reviewer:</b> Codex (final gate, fresh thread — <code>gpt-5.6-sol</code> at <code>xhigh</code>) · <b>Subject:</b> draft PR #145 at anchor <code>df9c85c7</code> (five prior rounds applied) · <b>Verdict:</b> <span class="badge bad">not ready — 2 blocking</span> plus 3 should-fix, 1 nit; all six PR-round dispositions verified landed; structural gate green.</p>
+    <p><b>Round outcome:</b> all six findings accepted and applied; the anchor was amended and force-pushed. F1 is the round's defining catch: the "atomic marker" from the PR round was ordered but not atomic — Sol traced the actual <code>os.WriteFile</code> calls and showed a mid-write death strands the folder as materialized. The Intents remain unverifiable from Codex's sandbox (cannot open the global SQLite database) — verified on the host in earlier rounds; treated as an environment limitation, not a finding.</p>
+  </div>
+
+  <h2>Findings</h2>
+  <div class="panel" style="padding:0; overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:.9rem;">
+      <thead>
+        <tr style="text-align:left; border-bottom:1px solid var(--line);">
+          <th style="padding:10px 14px;">ID</th>
+          <th style="padding:10px 14px;">Severity</th>
+          <th style="padding:10px 14px;">Finding</th>
+          <th style="padding:10px 14px;">Disposition</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>F1</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;"><code>shape.md</code> was called an atomic marker, but the protocol only ordered writes: a process death during the final <code>shape.md</code> write leaves a partial file the loader classifies as materialized — duplicate rejection then recreates the dead-end — and a death mid-task-write leaves bytes that fail the byte-identical resume test. The specified injected-failure fixture ran only <i>before</i> the marker write, so it could falsify neither case.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> The protocol is now atomic-by-publication: every destination file is temp-written and renamed into place (refusing existing destinations), <code>shape.md</code> renamed last — a destination either does not exist or is complete. Interruption fixtures added for partial task writes and partial marker writes. Decision 12 and TASK-006 rewritten to say why ordering alone is insufficient.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>F2</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">The human dogfoods never specified how the human invokes the branch-built candidate skills: H1 asked for <code>/pitch</code> before TASK-002's only rebuild step, and H4 could accidentally exercise the installed release's old <code>/shape</code> — the dogfoods could "pass" against the wrong code.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> Both dogfood steps now build the candidate first and load the scratch session explicitly from the branch's <code>plugins/loaf</code> via <code>--plugin-dir</code> (the repo's own smoke-script pattern), recording the candidate commit in the evidence file; the Definition of Done states the branch-built-session condition.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF1</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">H3's scratch dogfood had no durable evidence destination — deleting the scratch project discarded its only proof, and the Definition of Done preserved evidence for H1/H4 only.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> TASK-003 now captures the minted briefs and the one-commit-per-capture log as <code>research/series-prep-dogfood.md</code> before the scratch project is discarded; acceptance and the Definition of Done reference it.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF2</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">Canonical <code>AGENTS.md</code> still instructs registering every new skill in <code>hooks.yaml</code> (checklist line and "Add skill" entry), contradicting Decision 10 — and TASK-005's sweep covered flow narration only.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> TASK-005 gains an explicit step correcting both guidance lines to auto-discovery semantics (hooks.yaml registers hook instances only).</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF3</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">The installed cli-boundary reference documents a check JSON envelope without the <code>state</code> field — the very field the landing guard reads; TASK-006's convergence step required only promotion wording, so the drift could survive implementation.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> TASK-006's convergence step now includes documenting the JSON envelope's <code>state</code> field in <code>cli-boundary.md</code>.</td>
+        </tr>
+        <tr style="vertical-align:top;">
+          <td style="padding:10px 14px;"><code>N1</code></td>
+          <td style="padding:10px 14px;"><span class="badge machine">nit</span></td>
+          <td style="padding:10px 14px;">The live PR body still said the diff contains four review boards; the anchor carries five (six with this round's).</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> PR body reworded to a count-free description of the board trail so it cannot go stale again.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>PR-round disposition verification (by Codex)</h2>
+  <div class="panel">
+    <p><span class="badge ok">confirmed</span> All six whole-PR-round dispositions verified on their primary surfaces at <code>df9c85c7</code>: the <code>change.json</code> read-back guard (Decision 11, TASK-002, TASK-003) · the three-outcome matrix and marker ordering (Decision 12, TASK-006) · the corrected review-history claim (live PR body) · the explicit-path smoke with third-init rejection (TASK-006) · the complete guard sentence with period (V7, TASK-002) · the corrected commit message (commit object). B2's substance is completed by this round's F1.</p>
+  </div>
+
+  <footer>Authored snapshot — findings from the Codex final gate (fresh thread, gpt-5.6-sol · xhigh) over draft PR #145; dispositions applied in the amended shaping anchor. Layout is yours; keep charset, provenance comment, and design tokens intact.</footer>
+</main>

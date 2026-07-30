@@ -1,0 +1,118 @@
+<!-- source: pitch-entrypoint · kind review · slug codex-pr · stamped 2026-07-29 01:57 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — codex pr</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.machine { background: var(--machine-soft); color: var(--machine); }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">pitch-entrypoint · review</div>
+  <h1>Review — codex pr</h1>
+  <p class="stamp">kind <b>review</b> · slug <b>codex-pr</b> · 2026-07-29 01:57</p>
+
+  <h2>Round</h2>
+  <div class="panel">
+    <p><b>Reviewer:</b> Codex (whole-PR review, fresh thread — <code>gpt-5.6-sol</code> at <code>xhigh</code>) · <b>Subject:</b> draft PR #145 (branch <code>pitch-entrypoint</code> vs <code>main</code>) at anchor <code>69035f52</code> · <b>Verdict:</b> <span class="badge bad">request changes</span> — 2 blocking, 3 should-fix, 1 nit.</p>
+    <p><b>Round outcome:</b> all six findings accepted and applied; the anchor was amended (corrected commit message included) and force-pushed to the PR. Both blockers were cross-surface defects visible only at whole-PR altitude — contract, packets, boards, and shipped CLI read together. Codex confirmed the other 21 recorded dispositions are reflected in the committed text and the 13-file diff is correctly bounded to the Change folder.</p>
+  </div>
+
+  <h2>Findings</h2>
+  <div class="panel" style="padding:0; overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:.9rem;">
+      <thead>
+        <tr style="text-align:left; border-bottom:1px solid var(--line);">
+          <th style="padding:10px 14px;">ID</th>
+          <th style="padding:10px 14px;">Severity</th>
+          <th style="padding:10px 14px;">Finding</th>
+          <th style="padding:10px 14px;">Disposition</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B1</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">The landing guard was unexecutable as specified: Decision 11 required explicit-path <code>loaf change check --json</code> to report "the intended target presence or absence," but the shipped <code>changeCheckJSON</code> emits no target field, and no packet owned extending it — a capture missing its intended target could still land as passed/captured.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> Resolved without a new CLI surface: the guard is now check (zero violations + captured state) <i>plus a direct read-back of the folder's <code>change.json</code></i> confirming the target — the check validates the schema, the read-back confirms the promise. Decision 11, both Scope bullets, TASK-002, and TASK-003 updated.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B2</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">The promotion matrix contradicted its own resumability rule: "only brief-only folders promote (no shape.md, no task files); every other state fails" is mutually exclusive with "retry must recognize partially written shape/task files."</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> The matrix now admits exactly three outcomes — promote (valid brief-only), resume (no <code>shape.md</code>, existing <code>tasks/</code> byte-identical to the would-be seed; fills gaps only), fail-untouched (everything else, including diverged partials) — made coherent by ordering: <code>shape.md</code> is written last as the atomic promotion marker, so no interruption can produce a state classified as materialized. TASK-006 and Decision 12 rewritten; the injected-failure fixture now tests resume, and diverged-partial gets its own negative fixture.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF1</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">The PR body claimed "all findings accepted and applied, no re-raises across rounds," but the review history contains carried residuals: round 2 recorded two round-1 leftovers, and round 3 carried round-2 SF4 forward.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> PR body corrected to the accurate claim: every finding accepted, residuals carried forward explicitly and closed by round 4 — the boards record the full trail.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF2</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">TASK-006's manual smoke used bare <code>./bin/loaf change check</code>, which resolves by branch — in a scratch repo still on its default branch it cannot find the <code>demo</code> Change, so the smoke as written could never pass.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> The smoke passes the explicit folder path (<code>change check docs/changes/&lt;date&gt;-demo</code>) with the branch-resolution caveat stated inline, and gains the third-<code>init</code> duplicate-rejection assertion.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF3</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">V7 and TASK-002 promised the literal guard sentence "Agents never initiate a pitch." but both grep commands omitted the trailing period — "Agents never initiate a pitch unless…" would have passed while gutting the invariant.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> Both assertions now grep the complete sentence, period included, with the rationale stated in TASK-002's acceptance.</td>
+        </tr>
+        <tr style="vertical-align:top;">
+          <td style="padding:10px 14px;"><code>N1</code></td>
+          <td style="padding:10px 14px;"><span class="badge machine">nit</span></td>
+          <td style="padding:10px 14px;">The amended anchor's commit message described an earlier tree: "five task packets" and "the Codex round-1 review board" against a commit containing six packets and four boards.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> The message now describes the final tree — six packets, five boards, the review trail — corrected in the same amend that carries this round's fixes.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>Authored snapshot — findings from the Codex whole-PR review (fresh thread, gpt-5.6-sol · xhigh) of draft PR #145; dispositions applied in the amended shaping anchor. Layout is yours; keep charset, provenance comment, and design tokens intact.</footer>
+</main>

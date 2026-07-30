@@ -1,0 +1,110 @@
+<!-- source: pitch-entrypoint · kind review · slug codex-r3 · stamped 2026-07-29 00:23 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — codex r3</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">pitch-entrypoint · review</div>
+  <h1>Review — codex r3</h1>
+  <p class="stamp">kind <b>review</b> · slug <b>codex-r3</b> · 2026-07-29 00:23</p>
+
+  <h2>Round</h2>
+  <div class="panel">
+    <p><b>Reviewer:</b> Codex (design review, fresh thread — round 3) · <b>Baseline:</b> amended shaping anchor <code>5d9a1f2b</code> (rounds 1–2 applied) at Loaf <code>2.0.0-alpha.15</code> · <b>Verdict:</b> <span class="badge bad">needs another shaping pass</span> — 2 blocking, 2 should-fix; mechanically clean at review time.</p>
+    <p><b>Round outcome:</b> all four findings accepted and applied. B1 was verified empirically before acceptance (capture → re-<code>init</code> dead-ends with a duplicate-slug error) and resolved as a new implementation unit, TASK-006. Codex's recheck confirmed every round-1/2 finding resolved except the two it carried forward — both closed this round — and the one open recheck item (Intent readability) was re-verified locally: Codex's sandbox cannot open the global SQLite database; <code>loaf intent show</code> succeeds on the host.</p>
+  </div>
+
+  <h2>Findings</h2>
+  <div class="panel" style="padding:0; overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:.9rem;">
+      <thead>
+        <tr style="text-align:left; border-bottom:1px solid var(--line);">
+          <th style="padding:10px 14px;">ID</th>
+          <th style="padding:10px 14px;">Severity</th>
+          <th style="padding:10px 14px;">Finding</th>
+          <th style="padding:10px 14px;">Disposition</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B1</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">The capture→shape transition had no executable materialization path: <code>init --brief</code> creates <code>change.json</code> + <code>brief.md</code> only, and a later <code>loaf change init &lt;slug&gt;</code> rejects the already-materialized slug — so pitch's primary "shape now" handoff dead-ends before reaching the shipped anatomy. A latent gap in shipped capture mode that this Change would make routine.</td>
+          <td style="padding:10px 14px;"><b>Accepted; reproduced empirically first.</b> New TASK-006: <code>init</code> gains idempotent completion of capture-only folders (brief and metadata preserved verbatim, <code>shape.md</code> + seeded <code>tasks/</code> instantiated; duplicate rejection kept for materialized folders), with promotion regression tests riding V1. Recorded as Decision 12 — promotion through the CLI, never skill-side template copying. TASK-004's shape seam now instructs reliance on this path and is blocked-by TASK-006.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B2</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">Park and series-prep broadened the sole early-merge exception: the shipped model sanctions exactly one early landing on main — a captured brief whose <code>change.json</code> declares a target — while the round-2 Decision 11 let any parked capture commit to the default branch, and series-prep could batch untargeted captures. Round-2 SF4 was only partially resolved.</td>
+          <td style="padding:10px 14px;"><b>Accepted; Decision 11 rewritten as a landing matrix.</b> Targeted capture → docs-only commit on the default branch (the shipped exception, unchanged). Untargeted park → docs-only commit on its slug branch, or stays native intake state (Intent/spark). Untargeted captures never land on main. Series-prep mints one docs-only commit per capture, never a batch, and a concept without even a coarse target stays a BRIEF line or Intent. The full commit/branch/push rules are propagated into TASK-002's ceremony step and TASK-003's series-prep step.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF1</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">Three packets lacked task-local acceptance for their own objectives: TASK-002 claimed all built targets but checked only Claude Code; TASK-003 asserted nothing about <code>source: pitch</code>, gap-only intake, the series-prep guards, or per-mint confirmation; TASK-004 verified neither the triage disposition nor the description reroutes. Checkbox-derived completion could close them with objectives unmet.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> TASK-002 now asserts all five projections; TASK-003 gains a read-the-shipped-text acceptance list (source-pitch recognition, per-mint guard, landing matrix, no-auto-shape) plus a commit-log check in its dogfood; TASK-004 gains diff/grep acceptance for the shape fallback and promotion instruction, both triage dispositions, and both reroutes. V1–V6 remain integration-level.</td>
+        </tr>
+        <tr style="vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF2</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">The guidance task could leave the authoritative shipped work-model account stale: <code>docs/knowledge/work-model.md</code> still narrates triage-seeds-the-brief and the old front door, ADR-022 remains the brief/lifecycle authority, and a new "Loaf Flow" doc beside them would create two overlapping operating accounts.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> TASK-005 now owns <code>docs/knowledge/work-model.md</code> and glossary convergence plus an amended-by pointer in ADR-022; the Durable Outputs section specifies the new entry-stage ADR <i>amends</i> ADR-022's brief semantics rather than superseding it, and the flow knowledge doc converges with the shipped account instead of layering beside it.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Prior-round recheck (by Codex)</h2>
+  <div class="panel">
+    <p><span class="badge ok">resolved</span> r1-B1/r2-B1 hooks phantom · r1-B2 canonical AGENTS path · r1-B3 Durable Outputs ownership · r1-SF1/r2-SF1/r2-NTH dogfood isolation, human invocation, redaction · r1-SF2 cross-target qualification · r1-N1/V6 executable gate · r2-B2 H1/H4 sequencing · r2-SF2 template authority · r2-SF3 five-target V4. <span class="badge ok">cleared locally</span> r1-SF3 Intent readability — Codex's sandbox cannot open the global SQLite database; verified on the host this round. <span class="badge bad">carried &amp; closed</span> the r2-SF4 residual (this round's B2) and the capture→shape seam beneath r2-B2 (this round's B1).</p>
+  </div>
+
+  <footer>Authored snapshot — findings from the Codex round-3 design review (fresh thread) of the twice-revised contract; dispositions applied in the amended shaping anchor. Layout is yours; keep charset, provenance comment, and design tokens intact.</footer>
+</main>

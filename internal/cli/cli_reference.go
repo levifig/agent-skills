@@ -123,13 +123,14 @@ func cliReferenceCommands() []cliReferenceCommand {
 			Name:        "change",
 			Description: "Shape-first Change artifacts: git-canonical work context under docs/changes/",
 			Subcommands: []cliReferenceSubcommand{
-				{Name: "init", Description: "Scaffold a new Change folder from the template", Options: []cliReferenceOption{
+				{Name: "init", Description: "Scaffold a new Change folder, or promote a capture-only folder in place; fully-materialized folders still reject as duplicates", Options: []cliReferenceOption{
 					{Flags: "<slug>", Description: "Change slug: lowercase letters, digits, and single hyphens"},
+					{Flags: "--brief", Description: "Capture mode: change.json + brief.md only; refuses when the slug already exists"},
 				}},
 				{Name: "check", Description: "Validate a Change and report derived executability", Options: []cliReferenceOption{
 					{Flags: "[folder]", Description: "Change folder path; an explicit path wins, otherwise resolves from the current branch"},
 					{Flags: "--require-executable", Description: "Exit non-zero unless the Change is structurally executable; this does not prove implementation completion (CI gate for non-draft PRs)"},
-					{Flags: "--json", Description: "Output folder, passed, executable, findings, warnings, and gaps as JSON"},
+					{Flags: "--json", Description: "Output folder, passed, state, executable, findings, warnings, and gaps as JSON"},
 				}},
 				{Name: "list", Description: "List a retained lineage after merge or branch deletion", Options: []cliReferenceOption{
 					{Flags: "--lineage <key>", Description: "Required lineage key"},

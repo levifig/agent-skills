@@ -1343,6 +1343,47 @@ func TestChangeInitBriefMode(t *testing.T) {
 	}
 }
 
+// Scaffolded --brief output carries the shared problem-space skeleton headings
+// (pitch-entrypoint brief contract). Headings are the contract; placeholder
+// prose may evolve without this test churning.
+func TestChangeInitBriefCarriesSkeletonHeadings(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "init", "skeleton-brief", "--brief"}); err != nil {
+		t.Fatalf("change init --brief error = %v", err)
+	}
+	today := time.Now().Format("20060102")
+	briefPath := filepath.Join(repo, "docs", "changes", today+"-skeleton-brief", "brief.md")
+	body, err := os.ReadFile(briefPath)
+	if err != nil {
+		t.Fatalf("ReadFile(brief.md) error = %v", err)
+	}
+	content := string(body)
+	for _, want := range []string{
+		"## Problem Statement",
+		"## Who Has It",
+		"## Current Alternatives",
+		"## Value Proposition",
+		"## Constraints",
+		"## Sequencing and Relationships",
+		"## Sources and Research Links",
+		"## Open Questions",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("scaffolded brief.md missing skeleton heading %q\n%s", want, content)
+		}
+	}
+	// Supersession/accretion comment still present (Decision 7).
+	for _, want := range []string{
+		"accrete",
+		"freezes when shape.md exists",
+		"never mechanically load-bearing",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("scaffolded brief.md missing accretion/supersession phrase %q\n%s", want, content)
+		}
+	}
+}
+
 // init's success output carries a next-steps hint: work happens on branch
 // <slug>, so create/switch to it or pass the folder path to check explicitly.
 // Without it, `loaf change init` on main followed by a bare `loaf change check`
@@ -1379,6 +1420,334 @@ func TestChangeInitRefusesExistingFolder(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "exists") {
 		t.Fatalf("err = %v, want an 'exists' message", err)
+	}
+}
+
+// --- Captured-folder promotion (TASK-006 / Decision 12) ---------------------
+
+func changeInitCaptureFolder(t *testing.T, repo, slug string) string {
+	t.Helper()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "init", slug, "--brief"}); err != nil {
+		t.Fatalf("change init --brief error = %v", err)
+	}
+	today := time.Now().Format("20060102")
+	return filepath.Join(repo, "docs", "changes", today+"-"+slug)
+}
+
+func readChangeFileBytes(t *testing.T, path string) []byte {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", path, err)
+	}
+	return body
+}
+
+func stampTargetReleaseOnChangeJSON(t *testing.T, folder, version string) {
+	t.Helper()
+	path := filepath.Join(folder, "change.json")
+	var meta map[string]string
+	if err := json.Unmarshal(readChangeFileBytes(t, path), &meta); err != nil {
+		t.Fatalf("Unmarshal change.json: %v", err)
+	}
+	meta["target_release"] = version
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		t.Fatalf("Marshal change.json: %v", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("WriteFile change.json: %v", err)
+	}
+}
+
+func TestChangeInitPromotesCaptureOnlyFolder(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	folder := changeInitCaptureFolder(t, repo, "promo-happy")
+	stampTargetReleaseOnChangeJSON(t, folder, "2.1.0")
+	briefBefore := readChangeFileBytes(t, filepath.Join(folder, "brief.md"))
+	jsonBefore := readChangeFileBytes(t, filepath.Join(folder, "change.json"))
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "init", "promo-happy"}); err != nil {
+		t.Fatalf("promotion init error = %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Promoted capture") {
+		t.Fatalf("promotion output = %q, want Promoted capture message distinct from Created change", out)
+	}
+	if strings.Contains(out, "Created change:") {
+		t.Fatalf("promotion must not print fresh-scaffold Created change; got %q", out)
+	}
+
+	if !bytes.Equal(briefBefore, readChangeFileBytes(t, filepath.Join(folder, "brief.md"))) {
+		t.Fatalf("brief.md bytes mutated by promotion")
+	}
+	if !bytes.Equal(jsonBefore, readChangeFileBytes(t, filepath.Join(folder, "change.json"))) {
+		t.Fatalf("change.json bytes mutated by promotion")
+	}
+	if _, err := os.Stat(filepath.Join(folder, "shape.md")); err != nil {
+		t.Fatalf("shape.md missing after promotion: %v", err)
+	}
+	seedPath := filepath.Join(folder, "tasks", changeSeedTaskFile)
+	gotSeed := readChangeFileBytes(t, seedPath)
+	wantSeed := []byte(stampChangeTaskSeed(changeTaskTemplate, "promo-happy"))
+	if !bytes.Equal(gotSeed, wantSeed) {
+		t.Fatalf("seed task mismatch after promotion")
+	}
+
+	check, err := runChangeCheckJSON(t, repo, folder)
+	if err != nil {
+		t.Fatalf("check after promotion err = %v out=%+v", err, check)
+	}
+	if check.State == "captured" || check.Captured {
+		t.Fatalf("after promotion want shaped-or-better, got state=%q captured=%v", check.State, check.Captured)
+	}
+	if check.State != "shaped" && check.State != "executable" && check.State != "executing" && check.State != "complete" && check.State != "verified" {
+		t.Fatalf("after promotion unexpected state %q", check.State)
+	}
+
+	// Fully-materialized folder still rejects.
+	err = Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}.Run([]string{"change", "init", "promo-happy"})
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("materialized re-init err = %v, want already exists", err)
+	}
+	if !bytes.Equal(briefBefore, readChangeFileBytes(t, filepath.Join(folder, "brief.md"))) {
+		t.Fatalf("brief.md mutated by rejected re-init")
+	}
+}
+
+func TestChangeInitResumesPartialPromotion(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	folder := changeInitCaptureFolder(t, repo, "promo-resume")
+	briefBefore := readChangeFileBytes(t, filepath.Join(folder, "brief.md"))
+	jsonBefore := readChangeFileBytes(t, filepath.Join(folder, "change.json"))
+
+	// Simulate interruption after seed publish, before shape.md marker rename.
+	tasksDir := filepath.Join(folder, "tasks")
+	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll tasks: %v", err)
+	}
+	seedBody := []byte(stampChangeTaskSeed(changeTaskTemplate, "promo-resume"))
+	if err := os.WriteFile(filepath.Join(tasksDir, changeSeedTaskFile), seedBody, 0o644); err != nil {
+		t.Fatalf("WriteFile seed: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: repo}).Run([]string{"change", "init", "promo-resume"}); err != nil {
+		t.Fatalf("resume init error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Resumed capture promotion") {
+		t.Fatalf("resume output = %q, want Resumed capture promotion", stdout.String())
+	}
+	if !bytes.Equal(briefBefore, readChangeFileBytes(t, filepath.Join(folder, "brief.md"))) {
+		t.Fatalf("brief.md mutated by resume")
+	}
+	if !bytes.Equal(jsonBefore, readChangeFileBytes(t, filepath.Join(folder, "change.json"))) {
+		t.Fatalf("change.json mutated by resume")
+	}
+	if !bytes.Equal(seedBody, readChangeFileBytes(t, filepath.Join(tasksDir, changeSeedTaskFile))) {
+		t.Fatalf("seed task overwritten by resume")
+	}
+	if _, err := os.Stat(filepath.Join(folder, "shape.md")); err != nil {
+		t.Fatalf("shape.md missing after resume: %v", err)
+	}
+	check, err := runChangeCheckJSON(t, repo, folder)
+	if err != nil {
+		t.Fatalf("check after resume err = %v", err)
+	}
+	if check.State == "captured" {
+		t.Fatalf("after resume still captured")
+	}
+}
+
+func TestChangeInitPromotionSurvivesStrayTempsAndPartialWrites(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	folder := changeInitCaptureFolder(t, repo, "promo-temps")
+	tasksDir := filepath.Join(folder, "tasks")
+	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll tasks: %v", err)
+	}
+	// Partial task write (temp only) and partial marker write (temp only).
+	if err := os.WriteFile(filepath.Join(tasksDir, changePublishTempPrefix+"seed partial"), []byte("half-written seed"), 0o644); err != nil {
+		t.Fatalf("WriteFile partial seed temp: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, changePublishTempPrefix+"shape partial"), []byte("half-written shape"), 0o644); err != nil {
+		t.Fatalf("WriteFile partial shape temp: %v", err)
+	}
+	// Also a half-written seed destination must not exist; only temps.
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "init", "promo-temps"}); err != nil {
+		t.Fatalf("promotion with stray temps error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(folder, "shape.md")); err != nil {
+		t.Fatalf("shape.md missing: %v", err)
+	}
+	gotSeed := readChangeFileBytes(t, filepath.Join(tasksDir, changeSeedTaskFile))
+	wantSeed := []byte(stampChangeTaskSeed(changeTaskTemplate, "promo-temps"))
+	if !bytes.Equal(gotSeed, wantSeed) {
+		t.Fatalf("seed incomplete after promotion past temps")
+	}
+	check, err := runChangeCheckJSON(t, repo, folder)
+	if err != nil {
+		t.Fatalf("check err = %v", err)
+	}
+	if check.State == "captured" {
+		t.Fatalf("stray temps stranded folder as captured or unresumable")
+	}
+}
+
+func TestChangeInitPromotionFailClosedMatrix(t *testing.T) {
+	t.Run("repeated-brief", func(t *testing.T) {
+		repo := initCLIGitRepo(t)
+		folder := changeInitCaptureFolder(t, repo, "promo-rebrief")
+		before := listChangeFolderSnapshot(t, folder)
+		err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}.Run([]string{"change", "init", "promo-rebrief", "--brief"})
+		if err == nil {
+			t.Fatalf("err = nil, want repeated --brief refusal")
+		}
+		if !strings.Contains(err.Error(), "already exists") {
+			t.Fatalf("err = %v, want already exists", err)
+		}
+		assertChangeFolderUntouched(t, folder, before)
+	})
+
+	t.Run("missing-brief", func(t *testing.T) {
+		repo := initCLIGitRepo(t)
+		today := time.Now().Format("20060102")
+		folder := filepath.Join(repo, "docs", "changes", today+"-promo-jsononly")
+		if err := os.MkdirAll(folder, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		if err := writeChangeJSON(filepath.Join(folder, "change.json"), "promo-jsononly", time.Now()); err != nil {
+			t.Fatalf("writeChangeJSON: %v", err)
+		}
+		before := listChangeFolderSnapshot(t, folder)
+		err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}.Run([]string{"change", "init", "promo-jsononly"})
+		if err == nil || !strings.Contains(err.Error(), "brief.md is missing") {
+			t.Fatalf("err = %v, want missing brief", err)
+		}
+		assertChangeFolderUntouched(t, folder, before)
+	})
+
+	t.Run("hybrid-layout", func(t *testing.T) {
+		repo := initCLIGitRepo(t)
+		folder := changeInitCaptureFolder(t, repo, "promo-hybrid")
+		if err := os.WriteFile(filepath.Join(folder, "change.md"), []byte("---\nchange: promo-hybrid\n---\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile change.md: %v", err)
+		}
+		before := listChangeFolderSnapshot(t, folder)
+		err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}.Run([]string{"change", "init", "promo-hybrid"})
+		if err == nil || !strings.Contains(err.Error(), "hybrid") {
+			t.Fatalf("err = %v, want hybrid refusal", err)
+		}
+		assertChangeFolderUntouched(t, folder, before)
+	})
+
+	t.Run("invalid-schema", func(t *testing.T) {
+		repo := initCLIGitRepo(t)
+		folder := changeInitCaptureFolder(t, repo, "promo-badmeta")
+		if err := os.WriteFile(filepath.Join(folder, "change.json"), []byte(`{"change":"promo-badmeta","created":"2026-07-30","branch":"promo-badmeta","status":"todo"}`+"\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile change.json: %v", err)
+		}
+		before := listChangeFolderSnapshot(t, folder)
+		err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}.Run([]string{"change", "init", "promo-badmeta"})
+		if err == nil || !strings.Contains(err.Error(), "invalid change.json") {
+			t.Fatalf("err = %v, want invalid change.json", err)
+		}
+		assertChangeFolderUntouched(t, folder, before)
+	})
+
+	t.Run("diverged-tasks", func(t *testing.T) {
+		repo := initCLIGitRepo(t)
+		folder := changeInitCaptureFolder(t, repo, "promo-diverged")
+		tasksDir := filepath.Join(folder, "tasks")
+		if err := os.MkdirAll(tasksDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(tasksDir, changeSeedTaskFile), []byte("not the seed\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile diverged seed: %v", err)
+		}
+		before := listChangeFolderSnapshot(t, folder)
+		err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}.Run([]string{"change", "init", "promo-diverged"})
+		if err == nil || !strings.Contains(err.Error(), "diverged") {
+			t.Fatalf("err = %v, want diverged tasks refusal", err)
+		}
+		assertChangeFolderUntouched(t, folder, before)
+	})
+
+	t.Run("materialized", func(t *testing.T) {
+		repo := initCLIGitRepo(t)
+		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "init", "promo-full"}); err != nil {
+			t.Fatalf("full init: %v", err)
+		}
+		today := time.Now().Format("20060102")
+		folder := filepath.Join(repo, "docs", "changes", today+"-promo-full")
+		before := listChangeFolderSnapshot(t, folder)
+		err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}.Run([]string{"change", "init", "promo-full"})
+		if err == nil || !strings.Contains(err.Error(), "already exists") {
+			t.Fatalf("err = %v, want already exists for materialized", err)
+		}
+		assertChangeFolderUntouched(t, folder, before)
+	})
+}
+
+func TestPublishChangeFileExclusiveRefusesOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "shape.md")
+	if err := os.WriteFile(dest, []byte("original\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	err := publishChangeFileExclusive(dest, []byte("replacement\n"))
+	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite") {
+		t.Fatalf("err = %v, want refusing to overwrite", err)
+	}
+	if got := string(readChangeFileBytes(t, dest)); got != "original\n" {
+		t.Fatalf("dest mutated: %q", got)
+	}
+}
+
+func listChangeFolderSnapshot(t *testing.T, folder string) map[string][]byte {
+	t.Helper()
+	snap := map[string][]byte{}
+	err := filepath.Walk(folder, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(folder, path)
+		if err != nil {
+			return err
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		snap[filepath.ToSlash(rel)] = body
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("snapshot walk: %v", err)
+	}
+	return snap
+}
+
+func assertChangeFolderUntouched(t *testing.T, folder string, before map[string][]byte) {
+	t.Helper()
+	after := listChangeFolderSnapshot(t, folder)
+	if len(before) != len(after) {
+		t.Fatalf("folder file count changed: before=%d after=%d", len(before), len(after))
+	}
+	for rel, body := range before {
+		got, ok := after[rel]
+		if !ok {
+			t.Fatalf("file vanished: %s", rel)
+		}
+		if !bytes.Equal(body, got) {
+			t.Fatalf("file mutated: %s", rel)
+		}
 	}
 }
 

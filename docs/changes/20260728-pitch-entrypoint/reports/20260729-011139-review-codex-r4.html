@@ -1,0 +1,122 @@
+<!-- source: pitch-entrypoint · kind review · slug codex-r4 · stamped 2026-07-29 01:11 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — codex r4</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">pitch-entrypoint · review</div>
+  <h1>Review — codex r4</h1>
+  <p class="stamp">kind <b>review</b> · slug <b>codex-r4</b> · 2026-07-29 01:11</p>
+
+  <h2>Round</h2>
+  <div class="panel">
+    <p><b>Reviewer:</b> Codex (design review, fresh thread — round 4, <code>gpt-5.6-sol</code> at <code>xhigh</code> effort) · <b>Baseline:</b> amended shaping anchor <code>ef0866b2</code> (rounds 1–3 applied) at Loaf <code>2.0.0-alpha.15</code> · <b>Verdict:</b> <span class="badge bad">needs another shaping pass</span> — 3 blocking, 3 should-fix; structural check clean at review time.</p>
+    <p><b>Round outcome:</b> all six findings accepted and applied. Every finding targets machinery the prior rounds introduced — promotion safety, shipping atomicity, landing validation — and the recheck holds rounds 1–3 fully closed with no re-raises.</p>
+  </div>
+
+  <h2>Findings</h2>
+  <div class="panel" style="padding:0; overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:.9rem;">
+      <thead>
+        <tr style="text-align:left; border-bottom:1px solid var(--line);">
+          <th style="padding:10px 14px;">ID</th>
+          <th style="padding:10px 14px;">Severity</th>
+          <th style="padding:10px 14px;">Finding</th>
+          <th style="padding:10px 14px;">Disposition</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B1</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">Promotion was described as idempotent completion with no safe transition protocol: the wrong capture-only classification (<code>change.json</code> present, <code>shape.md</code> absent — a json-only folder must not promote), an overwrite-capable sequential writer whose mid-failure would recreate the dead-end on retry, and unspecified edge states (repeated <code>--brief</code>, hybrid legacy/new, missing brief, invalid-but-parseable metadata).</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> TASK-006 rewritten around an explicit state matrix (only ordinary <code>init</code>, only structurally valid brief-only folders; every other state fails clearly and untouched), preflighted overwrite-free writes, resumable interruption, and the full negative-fixture list (injected failure + retry, collision, missing brief, invalid schema, hybrid layout, repeated <code>--brief</code>). Decision 12 now names the protocol.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B2</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">TASK-006 could pass without shipping the behavior: it required a rebuild only "if embedded content changed," and its smoke ran bare <code>loaf</code> — potentially the installed release, not the branch build. The repo tracks native binaries, the artifact verifier rejects stale ones, and ADR-023 requires rebuild + receipt refresh with Go changes; the delivering commit would not have been atomic.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> TASK-006 now builds the candidate runtime, smokes through branch-built <code>./bin/loaf</code>, runs the artifact verifier, and commits <code>bin/native</code> mirrors, <code>plugins/</code>, <code>dist/</code>, and any hash-bound receipt updates in the same task commit — stated in Scope, Steps, and Verification.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>B3</code></td>
+          <td style="padding:10px 14px;"><span class="badge bad">blocking</span></td>
+          <td style="padding:10px 14px;">The landing matrix committed promise carriers without validating the promise: neither pitch nor series-prep required <code>loaf change check</code> before landing a capture, <code>loaf check</code> is a different surface entirely, and a bare <code>loaf change check</code> resolves by branch — missing a capture landing on the default branch. A typo'd target or schema violation could land through the sole early-merge exception.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> Explicit-path <code>loaf change check &lt;folder&gt; --json</code> — zero violations, expected captured state, intended target presence or absence — is now a pre-commit condition for every capture landing: folded into Decision 11, the Scope ceremony and series-prep bullets, TASK-002's ceremony step, and TASK-003's step and acceptance.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF1</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">No task owned converging the existing <code>init</code> contract surfaces: shape's cli-boundary reference says init fails on an existing folder, CLI help and the generated reference describe fresh scaffolding only, and <code>docs/knowledge/task-system.md</code>'s command table was outside every packet — the runtime could ship promotion while installed guidance still calls it impossible.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> TASK-006 now owns the CLI help/generated-reference sources and <code>cli-boundary.md</code> (verified from built output, same commit); TASK-005's convergence sweep gains <code>task-system.md</code>.</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line); vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF2</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">Round-3 B2 had one surviving contradiction: TASK-003's Objective still said series members are "optionally bound" to a target while its Steps, Decision 11, and the Observable Workflow say untargeted concepts are not minted — and bootstrap's no-branch rule leaves an untargeted mint no legal landing.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> TASK-003's Objective now reads "bound to a coarse <code>target_release</code>" with untargeted concepts staying BRIEF lines, sparks, or Intents — matrix-consistent end to end.</td>
+        </tr>
+        <tr style="vertical-align:top;">
+          <td style="padding:10px 14px;"><code>SF3</code></td>
+          <td style="padding:10px 14px;"><span class="badge accent">should-fix</span></td>
+          <td style="padding:10px 14px;">The human-entry invariant was authored but never task-locally verified: V4 and TASK-002 proved only that a SKILL.md file exists per projection — not that Claude Code's built skill carries the merged <code>disable-model-invocation: true</code>, nor that the behavioral Critical Rule survived into each projection.</td>
+          <td style="padding:10px 14px;"><b>Accepted.</b> New V7 asserts the merged mechanical flag in the Claude Code projection and the literal guard sentence ("Agents never initiate a pitch.") in all five built projections; TASK-002 pins that exact sentence in its guard step and mirrors the assertions in its acceptance; the Definition of Done now spans V1–V7.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Prior-round recheck (by Codex)</h2>
+  <div class="panel">
+    <p><span class="badge ok">held</span> Rounds 1 and 2 remain closed. Round-3 B1's duplicate-slug dead-end is not re-raised — this round's B1/B2/SF1 harden the promotion unit it introduced; round-3 B2's targeted-versus-untargeted boundary stands — B3 and SF2 add validation and close a surviving packet contradiction inside it. No prior disposition was reversed.</p>
+  </div>
+
+  <footer>Authored snapshot — findings from the Codex round-4 design review (fresh thread, gpt-5.6-sol · xhigh) of the thrice-revised contract; dispositions applied in the amended shaping anchor. Layout is yours; keep charset, provenance comment, and design tokens intact.</footer>
+</main>
