@@ -21,11 +21,11 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 	if releaseInvocationWantsFlowAdvisory(runtimeRoot, options) {
 		printReleaseFlowAdvisory(out)
 	}
-	// Apply-path resume restores version/changelog/generated dirt from HEAD
-	// before snapshot resolution so candidate derivation reads the pre-bump
-	// baseline. Dry-run and post-merge do not mutate; they skip this restore.
+	// Apply-path resume classifies prepared dirt (verify-then-restore): admit
+	// candidate-matching version files, refuse dirty CHANGELOG, restore only
+	// generated outputs from HEAD. Dry-run and post-merge do not mutate.
 	if !options.dryRun && !options.postMerge {
-		if err := requireReleaseCleanWorktree(runtimeRoot); err != nil {
+		if err := requireReleaseCleanWorktree(runtimeRoot, options); err != nil {
 			return err
 		}
 	}

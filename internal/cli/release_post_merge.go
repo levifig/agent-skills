@@ -12,9 +12,22 @@ import (
 )
 
 type releasePostMergeCommandResult struct {
-	stdout   string
+	// stdout is the command output; callers that need human-facing trim may
+	// TrimSpace themselves. For NUL-delimited git payloads, prefer raw.
+	stdout string
+	// raw is the exact untrimmed stdout. When empty, rawOutput falls back to
+	// stdout. The scripted test seam sets both so NUL bytes survive.
+	raw      string
 	exitCode int
 	notFound bool
+}
+
+// rawOutput returns the untrimmed command stdout for binary-safe parsers.
+func (r releasePostMergeCommandResult) rawOutput() string {
+	if r.raw != "" {
+		return r.raw
+	}
+	return r.stdout
 }
 
 type releasePostMergeCommandRunner func(root string, name string, args ...string) releasePostMergeCommandResult
@@ -457,15 +470,18 @@ func defaultReleasePostMergeCommandRunner(root string, name string, args ...stri
 	cmd := exec.Command(name, args...)
 	cmd.Dir = root
 	output, err := cmd.Output()
+	raw := string(output)
 	if err == nil {
-		return releasePostMergeCommandResult{stdout: strings.TrimSpace(string(output)), exitCode: 0}
+		// Keep raw untrimmed so NUL-delimited name-status paths retain padding.
+		// stdout stays trimmed for call sites that compare human-facing lines.
+		return releasePostMergeCommandResult{stdout: strings.TrimSpace(raw), raw: raw, exitCode: 0}
 	}
 	if errors.Is(err, exec.ErrNotFound) {
 		return releasePostMergeCommandResult{exitCode: 127, notFound: true}
 	}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
-		return releasePostMergeCommandResult{stdout: strings.TrimSpace(string(output)), exitCode: exitErr.ExitCode()}
+		return releasePostMergeCommandResult{stdout: strings.TrimSpace(raw), raw: raw, exitCode: exitErr.ExitCode()}
 	}
 	return releasePostMergeCommandResult{exitCode: 1}
 }

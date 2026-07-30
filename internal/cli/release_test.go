@@ -1432,7 +1432,8 @@ func releasePostMergeCallKeys(calls []releasePostMergeCall) []string {
 }
 
 func releasePostMergeOK(stdout string) releasePostMergeCommandResult {
-	return releasePostMergeCommandResult{stdout: stdout, exitCode: 0}
+	// Set raw and stdout identically so NUL-delimited fixtures survive the seam.
+	return releasePostMergeCommandResult{stdout: stdout, raw: stdout, exitCode: 0}
 }
 
 func releasePostMergeExit(code int) releasePostMergeCommandResult {
