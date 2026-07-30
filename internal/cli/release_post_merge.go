@@ -54,7 +54,7 @@ func runReleasePostMergeWithRunner(root string, snapshot releaseSnapshot, out io
 		return fmt.Errorf("guardrail %d failed: %s", result.guardrail, result.message)
 	}
 
-	fmt.Fprintf(out, "  %s All 8 guardrails passed for %s on %s\n", ansiGreen("✓"), ansiBold("v"+result.version), ansiBold(result.base))
+	fmt.Fprintf(out, "  %s All 9 guardrails passed for %s on %s\n", ansiGreen("✓"), ansiBold("v"+result.version), ansiBold(result.base))
 	if result.featureBranch != "" {
 		fmt.Fprintf(out, "  %s %s\n", ansiGray("feature branch:"), result.featureBranch)
 	}
@@ -132,6 +132,10 @@ func checkReleasePostMergeGuardrails(root string, snapshot releaseSnapshot, runn
 
 	if taggedAbort := checkReleasePostMergeHeadNotTagged(root, runner); taggedAbort != "" {
 		return releasePostMergeAbort(8, taggedAbort)
+	}
+
+	if _, evidenceErr := checkReleaseCapabilityEvidence(root); evidenceErr != nil {
+		return releasePostMergeAbort(9, releasePostMergeCapabilityEvidenceAbortMessage(evidenceErr))
 	}
 
 	featureBranch := ""

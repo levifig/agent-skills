@@ -648,7 +648,7 @@ func TestRunReleasePostMergeFinalizesNatively(t *testing.T) {
 	if err := runReleasePostMergeWithRunner(repo, snap, &stdout, &stderr, runner); err != nil {
 		t.Fatalf("runReleasePostMergeWithRunner error = %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
-	for _, want := range []string{"Verifying post-merge state", "All 8 guardrails passed", "Executing:", "Created tag v1.2.3", "Release v1.2.3 finalized"} {
+	for _, want := range []string{"Verifying post-merge state", "All 9 guardrails passed", "Executing:", "Created tag v1.2.3", "Release v1.2.3 finalized"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 		}

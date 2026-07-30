@@ -499,6 +499,13 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	if len(changePaths) != 0 {
 		return fmt.Errorf("Refusing to commit release artifacts: artifact generation modified docs/changes; reconcile and commit separately before release: %s", strings.Join(changePaths, ", "))
 	}
+	evidencePresent, evidenceErr := checkReleaseCapabilityEvidence(root)
+	if evidenceErr != nil {
+		return releaseApplyCapabilityEvidenceRefusal(evidenceErr)
+	}
+	if evidencePresent {
+		fmt.Fprintf(out, "    %s Capability evidence validated against the rebuilt tree\n", ansiGreen("✓"))
+	}
 
 	if err := releaseCommandRun(root, "git", "add", "-A"); err != nil {
 		return fmt.Errorf("Failed to stage release artifacts: %w", err)

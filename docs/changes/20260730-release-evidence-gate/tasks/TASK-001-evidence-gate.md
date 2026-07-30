@@ -33,11 +33,11 @@ loaf journal log "skill(implement): TASK-001 — evidence-freshness gate in loaf
 
 ## Steps
 
-- [ ] Write failing tests: stale receipt refused on the apply executor (covers `--pre-merge` + direct) and as post-merge guardrail 9; fresh receipts pass; absent config no-ops; refusal asserts no commit/tag was created; copy lists the three runners and the ordering rule
-- [ ] Gate function: presence-probe `TargetCapabilityEvidenceRecordPath` under the release root, then `LoadTargetCapabilityEvidence` in-process (first production caller); classify absent vs invalid
-- [ ] Wire call sites per Planning Contract → Placement: third sibling refusal in `runReleaseApply` after the artifact loop (release_dry_run.go:491) before `git add -A`; guardrail 9 in `checkReleasePostMergeGuardrails`
-- [ ] Refusal copy per register: `Refusing to commit release artifacts: …` on apply; lowercase guardrail message on post-merge; static remediation block (three runner invocations + re-record-after-rebuild rule)
-- [ ] `npm run build` and commit any rebuilt tracked artifacts with the source change
+- [x] Write failing tests: stale receipt refused on the apply executor (covers `--pre-merge` + direct) and as post-merge guardrail 9; fresh receipts pass; absent config no-ops; refusal asserts no commit/tag was created; copy lists the three runners and the ordering rule
+- [x] Gate function: presence-probe `TargetCapabilityEvidenceRecordPath` under the release root, then `LoadTargetCapabilityEvidence` in-process (first production caller); classify absent vs invalid
+- [x] Wire call sites per Planning Contract → Placement: third sibling refusal in `runReleaseApply` after the artifact loop (release_dry_run.go:491) before `git add -A`; guardrail 9 in `checkReleasePostMergeGuardrails`
+- [x] Refusal copy per register: `Refusing to commit release artifacts: …` on apply; lowercase guardrail message on post-merge; static remediation block (three runner invocations + re-record-after-rebuild rule)
+- [x] `npm run build` and commit any rebuilt tracked artifacts with the source change
 
 Notes: the gate refuses on any `LoadTargetCapabilityEvidence` failure, not only hash drift — an invalid evidence file blocks a release equally; copy says "invalid or stale". For stale-receipt fixtures, copy the repo's real evidence file + receipts into the temp root and perturb a pinned artifact (the `build_test.go:981` pattern) instead of hand-building schema-valid JSON.
 
