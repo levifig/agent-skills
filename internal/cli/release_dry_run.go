@@ -549,7 +549,33 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	return nil
 }
 
+// releaseStatusEntry is one unignored porcelain path with whether it is
+// untracked (??). Tracked dirt and untracked dirt are classified differently
+// on the prepared-tree resume path.
+type releaseStatusEntry struct {
+	path      string
+	untracked bool
+}
+
 func releaseUnignoredStatusPaths(root string, pathspec ...string) ([]string, error) {
+	entries, err := releaseUnignoredStatusEntries(root, pathspec...)
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(entries))
+	seen := map[string]bool{}
+	for _, entry := range entries {
+		if seen[entry.path] {
+			continue
+		}
+		seen[entry.path] = true
+		paths = append(paths, entry.path)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func releaseUnignoredStatusEntries(root string, pathspec ...string) ([]releaseStatusEntry, error) {
 	args := []string{"status", "--porcelain=v1", "--untracked-files=all", "-z"}
 	if len(pathspec) != 0 {
 		args = append(args, "--")
@@ -561,43 +587,85 @@ func releaseUnignoredStatusPaths(root string, pathspec ...string) ([]string, err
 	if err != nil {
 		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}
-	entries := strings.Split(string(output), "\x00")
-	paths := map[string]bool{}
-	for index := 0; index < len(entries); index++ {
-		entry := entries[index]
+	raw := strings.Split(string(output), "\x00")
+	var entries []releaseStatusEntry
+	seen := map[string]bool{}
+	add := func(path string, untracked bool) {
+		path = filepath.ToSlash(path)
+		if path == "" || seen[path] {
+			return
+		}
+		seen[path] = true
+		entries = append(entries, releaseStatusEntry{path: path, untracked: untracked})
+	}
+	for index := 0; index < len(raw); index++ {
+		entry := raw[index]
 		if entry == "" {
 			continue
 		}
 		if len(entry) < 4 || entry[2] != ' ' {
 			return nil, fmt.Errorf("parse git status entry %q", entry)
 		}
-		paths[filepath.ToSlash(entry[3:])] = true
+		untracked := entry[0] == '?' && entry[1] == '?'
+		add(entry[3:], untracked)
 		if entry[0] == 'R' || entry[0] == 'C' || entry[1] == 'R' || entry[1] == 'C' {
 			index++
-			if index >= len(entries) || entries[index] == "" {
+			if index >= len(raw) || raw[index] == "" {
 				return nil, fmt.Errorf("parse renamed git status entry %q", entry)
 			}
-			paths[filepath.ToSlash(entries[index])] = true
+			add(raw[index], false)
 		}
 	}
-	return sortedKeys(paths), nil
+	return entries, nil
 }
 
 func requireReleaseCleanWorktree(root string) error {
-	dirtyPaths, err := releaseUnignoredStatusPaths(root)
+	entries, err := releaseUnignoredStatusEntries(root)
 	if err != nil {
 		return fmt.Errorf("Refusing to prepare release: cannot inspect worktree cleanliness: %w", err)
 	}
-	if len(dirtyPaths) == 0 {
+	if len(entries) == 0 {
 		return nil
+	}
+	dirtyPaths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		dirtyPaths = append(dirtyPaths, entry.path)
 	}
 	// A refused evidence gate leaves version files, CHANGELOG, rebuilt
-	// artifacts, and (after re-record) receipts dirty. That set is resumable:
-	// the next apply rewrites/rebuilds idempotently and re-runs the gate.
-	if releaseDirtyPathsArePreparedOnly(root, dirtyPaths) {
-		return nil
+	// artifacts, and (after re-record) receipts dirty. That set is resumable
+	// only via restore-and-regenerate: hard-restore version/changelog/generated
+	// from HEAD, keep evidence-class dirt, then run the normal prepare flow.
+	if !releaseDirtyPathsArePreparedOnly(root, dirtyPaths) {
+		return fmt.Errorf("Refusing to prepare release: mutating release modes require a clean unignored worktree; changelog curation belongs on a release branch in the --pre-merge flow — commit, stash, or remove: %s", strings.Join(dirtyPaths, ", "))
 	}
-	return fmt.Errorf("Refusing to prepare release: mutating release modes require a clean unignored worktree; changelog curation belongs on a release branch in the --pre-merge flow — commit, stash, or remove: %s", strings.Join(dirtyPaths, ", "))
+	// Untracked files are tolerated only under evidence-source trees. An
+	// untracked file under bin/dist/plugins/.claude-plugin would otherwise be
+	// swept into the release commit by git add -A.
+	var untrackedArtifacts []string
+	var untrackedOther []string
+	for _, entry := range entries {
+		if !entry.untracked {
+			continue
+		}
+		if releasePathMatchesEvidenceSourceTree(entry.path) {
+			continue
+		}
+		if releasePathMatchesPreparedArtifact(entry.path) {
+			untrackedArtifacts = append(untrackedArtifacts, entry.path)
+			continue
+		}
+		untrackedOther = append(untrackedOther, entry.path)
+	}
+	if len(untrackedArtifacts) > 0 {
+		return fmt.Errorf("Refusing to prepare release: untracked file under generated-output tree would be swept into the release commit: %s", strings.Join(untrackedArtifacts, ", "))
+	}
+	if len(untrackedOther) > 0 {
+		return fmt.Errorf("Refusing to prepare release: mutating release modes require a clean unignored worktree; changelog curation belongs on a release branch in the --pre-merge flow — commit, stash, or remove: %s", strings.Join(untrackedOther, ", "))
+	}
+	if err := releaseRestorePreparedBaseline(root, entries); err != nil {
+		return err
+	}
+	return nil
 }
 
 func releaseIsGitRepo(root string) bool {
@@ -759,28 +827,6 @@ func loadReleaseVersionFile(root string, relativePath string, strict bool) (rele
 		return releaseVersionFile{}, err
 	}
 	return releaseVersionFile{Path: path, RelativePath: normalized, Format: format, CurrentVersion: version}, nil
-}
-
-// loadReleaseVersionFileAtRef reads a version file from a git tree-ish (typically
-// HEAD) so prepared dirty worktrees do not inflate CurrentVersion.
-func loadReleaseVersionFileAtRef(root string, relativePath string, ref string) (releaseVersionFile, error) {
-	normalized := normalizeReleasePath(relativePath)
-	cmd := exec.Command("git", "show", ref+":"+normalized)
-	cmd.Dir = root
-	body, err := cmd.Output()
-	if err != nil {
-		return releaseVersionFile{}, fmt.Errorf("version file %s not found at %s", normalized, ref)
-	}
-	version, format, err := parseReleaseVersion(normalized, body)
-	if err != nil {
-		return releaseVersionFile{}, fmt.Errorf("version file %s at %s: %v", normalized, ref, err)
-	}
-	return releaseVersionFile{
-		Path:           filepath.Join(root, filepath.FromSlash(normalized)),
-		RelativePath:   normalized,
-		Format:         format,
-		CurrentVersion: version,
-	}, nil
 }
 
 func parseReleaseVersion(relativePath string, body []byte) (string, string, error) {
@@ -1102,14 +1148,10 @@ func prepareReleaseVersionUpdates(files []releaseVersionFile, newVersion string)
 		switch file.Format {
 		case "json":
 			re := regexp.MustCompile(`"version"(\s*:\s*)"` + regexp.QuoteMeta(file.CurrentVersion) + `"`)
-			if re.Match(body) {
-				updated = re.ReplaceAllString(string(body), `"version"$1"`+newVersion+`"`)
-			} else if worktreeVersion, _, parseErr := parseReleaseVersion(file.RelativePath, body); parseErr == nil && worktreeVersion == newVersion {
-				// Resume after a refused apply: worktree already holds the candidate.
-				updated = string(body)
-			} else {
+			if !re.Match(body) {
 				return nil, fmt.Errorf("version file %s does not contain version %s", file.RelativePath, file.CurrentVersion)
 			}
+			updated = re.ReplaceAllString(string(body), `"version"$1"`+newVersion+`"`)
 		case "toml-regex":
 			section := releaseTomlSectionForPath(file.RelativePath)
 			if section == "" {

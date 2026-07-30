@@ -209,13 +209,6 @@ func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapsho
 	if len(versionFiles) == 0 {
 		return releaseSnapshot{}, fmt.Errorf("no version files detected")
 	}
-	// A refused evidence gate leaves version files already at the candidate.
-	// When the dirty set is release-prepared and HEAD still holds the pre-bump
-	// version, key the snapshot on HEAD so resume does not double-bump.
-	versionFiles, err = releaseSnapshotVersionFiles(root, versionFiles)
-	if err != nil {
-		return releaseSnapshot{}, err
-	}
 	current := versionFiles[0].CurrentVersion
 	for _, file := range versionFiles {
 		if file.CurrentVersion != current {
@@ -262,63 +255,20 @@ func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapsho
 
 // assertReleaseSnapshotStillCurrent re-reads the snapshot's version files and
 // blocks when any has drifted from the version the candidate was resolved from.
-// A release-prepared worktree may already hold the candidate (refused apply
-// resume); that is not drift.
 func assertReleaseSnapshotStillCurrent(root string, snapshot releaseSnapshot) error {
 	if snapshot.CurrentVersion == "" {
 		return fmt.Errorf("release blocked: release snapshot was not resolved before apply")
 	}
-	preparedOnly := releaseWorktreeIsPreparedOnly(root)
 	for _, file := range snapshot.VersionFiles {
 		fresh, err := loadReleaseVersionFile(root, file.RelativePath, true)
 		if err != nil {
 			return fmt.Errorf("release blocked: cannot re-read version file %s: %w", file.RelativePath, err)
 		}
-		if fresh.CurrentVersion == snapshot.CurrentVersion {
-			continue
+		if fresh.CurrentVersion != snapshot.CurrentVersion {
+			return fmt.Errorf("release blocked: version drifted from %s to %s since preflight; re-run release", snapshot.CurrentVersion, fresh.CurrentVersion)
 		}
-		if preparedOnly && snapshot.Candidate != "" && fresh.CurrentVersion == snapshot.Candidate {
-			continue
-		}
-		return fmt.Errorf("release blocked: version drifted from %s to %s since preflight; re-run release", snapshot.CurrentVersion, fresh.CurrentVersion)
 	}
 	return nil
-}
-
-// releaseWorktreeIsPreparedOnly is true when the worktree is dirty only with
-// the bounded release-prepared path set (or clean). Used by snapshot resolution
-// so a refused apply can resume without double-bumping.
-func releaseWorktreeIsPreparedOnly(root string) bool {
-	dirtyPaths, err := releaseUnignoredStatusPaths(root)
-	if err != nil || len(dirtyPaths) == 0 {
-		return false
-	}
-	return releaseDirtyPathsArePreparedOnly(root, dirtyPaths)
-}
-
-// releaseSnapshotVersionFiles returns version files keyed for candidate
-// resolution. On a release-prepared dirty tree whose worktree versions already
-// differ from HEAD, the committed (pre-bump) versions are used so resume does
-// not double-bump. Any other state keeps the worktree versions unchanged.
-func releaseSnapshotVersionFiles(root string, versionFiles []releaseVersionFile) ([]releaseVersionFile, error) {
-	if !releaseWorktreeIsPreparedOnly(root) {
-		return versionFiles, nil
-	}
-	committed := make([]releaseVersionFile, 0, len(versionFiles))
-	for _, file := range versionFiles {
-		fromHEAD, err := loadReleaseVersionFileAtRef(root, file.RelativePath, "HEAD")
-		if err != nil {
-			// Untracked/new version files are not a resume of a prepared release.
-			return versionFiles, nil
-		}
-		committed = append(committed, fromHEAD)
-	}
-	for i, file := range versionFiles {
-		if file.CurrentVersion != committed[i].CurrentVersion {
-			return committed, nil
-		}
-	}
-	return versionFiles, nil
 }
 
 // effectiveReleaseBump resolves the bump the release will actually apply: the

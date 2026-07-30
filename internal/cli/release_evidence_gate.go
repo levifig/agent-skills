@@ -23,30 +23,77 @@ var releasePreparedArtifactGlobs = []string{
 	".claude-plugin/**",
 }
 
+// releaseEvidenceSourceTreeGlob is the path class for capability evidence
+// receipts and narrative sources under Change research trees. Untracked
+// re-record files are tolerated only under this tree; a renamed receipt lands
+// here before the registry points at it.
+const releaseEvidenceSourceTreeGlob = "docs/changes/*/research/**"
+
 // checkReleaseCapabilityEvidence validates the capability evidence registry
 // against the tree at root. Absent evidence exempts the project (present is
 // false); any other failure — unreadable, invalid, irregular, or stale
 // receipts — must refuse the release. There is deliberately no override.
 //
-// Presence uses Lstat and requires a regular file so a dangling or external
-// symlink cannot silently disarm the gate by looking absent, or validate
-// content that is not retained in the tree.
+// Presence walks every path component from the repository root with Lstat:
+// intermediate components must be real directories (not symlinks), and the leaf
+// must be a regular file. A symlinked component is present-but-unusable, never
+// absent — so a dangling or external symlink cannot silently disarm the gate.
 func checkReleaseCapabilityEvidence(root string) (present bool, err error) {
-	path := filepath.Join(root, filepath.FromSlash(TargetCapabilityEvidenceRecordPath))
-	info, statErr := os.Lstat(path)
-	if statErr != nil {
-		if os.IsNotExist(statErr) {
-			return false, nil
-		}
-		return true, fmt.Errorf("inspect capability evidence %s: %w", TargetCapabilityEvidenceRecordPath, statErr)
+	path, probeErr := probeCapabilityEvidenceRegistryPath(root)
+	if probeErr != nil {
+		return true, probeErr
 	}
-	if !info.Mode().IsRegular() {
-		return true, fmt.Errorf("capability evidence %s is present but not a regular file (symlinks and other irregular files are unusable)", TargetCapabilityEvidenceRecordPath)
+	if path == "" {
+		return false, nil
 	}
 	if _, loadErr := LoadTargetCapabilityEvidence(path); loadErr != nil {
 		return true, loadErr
 	}
 	return true, nil
+}
+
+// probeCapabilityEvidenceRegistryPath component-walks root → registry. Returns
+// ("", nil) when any component is missing (absent), a non-empty path when the
+// leaf is a regular file, and an error when a component is present but unusable
+// (symlink, non-directory intermediate, non-regular leaf).
+func probeCapabilityEvidenceRegistryPath(root string) (string, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("inspect capability evidence %s: resolve root: %w", TargetCapabilityEvidenceRecordPath, err)
+	}
+	relative := filepath.FromSlash(TargetCapabilityEvidenceRecordPath)
+	current := absRoot
+	components := strings.Split(filepath.Clean(relative), string(filepath.Separator))
+	for index, component := range components {
+		if component == "" || component == "." {
+			continue
+		}
+		current = filepath.Join(current, component)
+		info, statErr := os.Lstat(current)
+		if statErr != nil {
+			if os.IsNotExist(statErr) {
+				return "", nil
+			}
+			return "", fmt.Errorf("inspect capability evidence %s: %w", TargetCapabilityEvidenceRecordPath, statErr)
+		}
+		isLast := index == len(components)-1
+		if info.Mode()&os.ModeSymlink != 0 {
+			if isLast {
+				return "", fmt.Errorf("capability evidence %s is present but not a regular file (symlinks and other irregular files are unusable)", TargetCapabilityEvidenceRecordPath)
+			}
+			return "", fmt.Errorf("capability evidence %s is present but unusable: path component %q is a symlink", TargetCapabilityEvidenceRecordPath, filepath.ToSlash(strings.TrimPrefix(current, absRoot+string(filepath.Separator))))
+		}
+		if isLast {
+			if !info.Mode().IsRegular() {
+				return "", fmt.Errorf("capability evidence %s is present but not a regular file (symlinks and other irregular files are unusable)", TargetCapabilityEvidenceRecordPath)
+			}
+			return current, nil
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("capability evidence %s is present but unusable: path component %q is not a directory", TargetCapabilityEvidenceRecordPath, filepath.ToSlash(strings.TrimPrefix(current, absRoot+string(filepath.Separator))))
+		}
+	}
+	return "", nil
 }
 
 func releaseApplyCapabilityEvidenceRefusal(err error) error {
@@ -60,7 +107,7 @@ func releasePostMergeCapabilityEvidenceAbortMessage(err error) string {
 // releaseDirtyPathsArePreparedOnly reports whether every dirty path is within
 // the bounded release-prepared set: version files, CHANGELOG.md, tracked
 // generated artifact outputs, the capability registry, and evidence
-// receipt/source paths referenced by it.
+// receipt/source paths under docs/changes/*/research/.
 func releaseDirtyPathsArePreparedOnly(root string, dirtyPaths []string) bool {
 	if len(dirtyPaths) == 0 {
 		return true
@@ -106,6 +153,12 @@ func releasePathMatchesPreparedArtifact(path string) bool {
 	return evidencePathExcluded(path, releasePreparedArtifactGlobs)
 }
 
+// releasePathMatchesEvidenceSourceTree reports whether path sits under a Change
+// research tree that holds capability evidence sources and receipts.
+func releasePathMatchesEvidenceSourceTree(path string) bool {
+	return matchEvidenceGlob(filepath.ToSlash(path), releaseEvidenceSourceTreeGlob)
+}
+
 // releaseCapabilityEvidenceReferencedPaths returns the registry path plus every
 // evidence source path it names (anchors stripped). Best-effort: a missing or
 // unreadable registry yields only the registry path itself when present on disk.
@@ -120,6 +173,15 @@ func releaseCapabilityEvidenceReferencedPaths(root string) []string {
 	if err != nil {
 		return sortedKeys(paths)
 	}
+	for _, path := range releaseCapabilityEvidenceSourcePathsFromJSON(data) {
+		paths[path] = true
+	}
+	return sortedKeys(paths)
+}
+
+// releaseCapabilityEvidenceSourcePathsFromJSON extracts evidence source paths
+// from a registry document. It does not include the registry path itself.
+func releaseCapabilityEvidenceSourcePathsFromJSON(data []byte) []string {
 	var contract struct {
 		Records []struct {
 			Context struct {
@@ -137,8 +199,9 @@ func releaseCapabilityEvidenceReferencedPaths(root string) []string {
 		} `json:"records"`
 	}
 	if err := json.Unmarshal(data, &contract); err != nil {
-		return sortedKeys(paths)
+		return nil
 	}
+	paths := map[string]bool{}
 	addSource := func(source string) {
 		relative, err := safeEvidenceRelativePath(source)
 		if err != nil {
@@ -155,11 +218,33 @@ func releaseCapabilityEvidenceReferencedPaths(root string) []string {
 	return sortedKeys(paths)
 }
 
+// releaseIsEvidenceClassPath reports whether path is the capability registry or
+// an evidence source/receipt path. Resume restores every other prepared path
+// from HEAD and leaves this class alone so re-recorded receipts survive.
+func releaseIsEvidenceClassPath(root, path string) bool {
+	path = filepath.ToSlash(path)
+	if path == TargetCapabilityEvidenceRecordPath {
+		return true
+	}
+	if releasePathMatchesEvidenceSourceTree(path) {
+		return true
+	}
+	for _, allowed := range releaseCapabilityEvidenceReferencedPaths(root) {
+		if path == allowed {
+			return true
+		}
+	}
+	return false
+}
+
 // releaseIsEvidenceOnlyPath reports whether path is the capability registry or
-// an evidence source it references — the only paths an evidence-repair commit
-// may touch.
+// an evidence source it references — used for docs/changes residual filtering
+// during apply. Repair classification uses the parent-commit registry instead.
 func releaseIsEvidenceOnlyPath(root, path string) bool {
 	path = filepath.ToSlash(path)
+	if releasePathMatchesEvidenceSourceTree(path) {
+		return true
+	}
 	for _, allowed := range releaseCapabilityEvidenceReferencedPaths(root) {
 		if path == allowed {
 			return true
@@ -169,8 +254,12 @@ func releaseIsEvidenceOnlyPath(root, path string) bool {
 }
 
 // releaseIsEvidenceOnlyRepairCommit reports whether HEAD is a single
-// evidence-only repair commit sitting directly atop a release commit. Depth is
+// receipt-only repair commit sitting directly atop a release commit. Depth is
 // exactly one — history is not scanned.
+//
+// Allowed paths are derived from the PARENT commit's registry (not HEAD's), and
+// the registry file itself must be unchanged. A repair that edits the registry
+// is not receipt-only; recovery is redoing the release PR.
 func releaseIsEvidenceOnlyRepairCommit(root string, runner releasePostMergeCommandRunner) bool {
 	parent := runner(root, "git", "rev-parse", "--verify", "HEAD^")
 	if parent.exitCode != 0 || strings.TrimSpace(parent.stdout) == "" {
@@ -191,7 +280,23 @@ func releaseIsEvidenceOnlyRepairCommit(root string, runner releasePostMergeComma
 		return false
 	}
 	for _, path := range paths {
-		if !releaseIsEvidenceOnlyPath(root, path) {
+		if path == TargetCapabilityEvidenceRecordPath {
+			return false
+		}
+	}
+	show := runner(root, "git", "show", "HEAD^:"+TargetCapabilityEvidenceRecordPath)
+	if show.exitCode != 0 {
+		return false
+	}
+	allowed := map[string]bool{}
+	for _, path := range releaseCapabilityEvidenceSourcePathsFromJSON([]byte(show.stdout)) {
+		allowed[path] = true
+	}
+	if len(allowed) == 0 {
+		return false
+	}
+	for _, path := range paths {
+		if !allowed[path] {
 			return false
 		}
 	}
@@ -199,14 +304,17 @@ func releaseIsEvidenceOnlyRepairCommit(root string, runner releasePostMergeComma
 }
 
 // releasePreparedDirtyPathAllowed is the per-path predicate used by the apply
-// clean-worktree gate: explicit prepared-set membership or a generated-output
-// artifact path.
+// clean-worktree gate: explicit prepared-set membership, a generated-output
+// artifact path, or an evidence source/receipt under a research tree.
 func releasePreparedDirtyPathAllowed(root, path string, prepared map[string]bool) bool {
 	path = filepath.ToSlash(path)
 	if prepared[path] {
 		return true
 	}
-	return releasePathMatchesPreparedArtifact(path)
+	if releasePathMatchesPreparedArtifact(path) {
+		return true
+	}
+	return releasePathMatchesEvidenceSourceTree(path)
 }
 
 func releaseDirtyPathsArePreparedOnlyWithSet(root string, dirtyPaths []string, prepared map[string]bool) bool {
@@ -219,4 +327,30 @@ func releaseDirtyPathsArePreparedOnlyWithSet(root string, dirtyPaths []string, p
 		}
 	}
 	return true
+}
+
+// releaseRestorePreparedBaseline hard-restores tracked dirty files in the
+// version / changelog / generated classes from HEAD so resume re-runs the
+// normal prepare flow. Evidence-class paths (registry + receipts/sources) are
+// left in place — they are the operator's intentional re-record input.
+func releaseRestorePreparedBaseline(root string, entries []releaseStatusEntry) error {
+	var toRestore []string
+	for _, entry := range entries {
+		if entry.untracked {
+			continue
+		}
+		path := filepath.ToSlash(entry.path)
+		if releaseIsEvidenceClassPath(root, path) {
+			continue
+		}
+		toRestore = append(toRestore, path)
+	}
+	if len(toRestore) == 0 {
+		return nil
+	}
+	args := append([]string{"checkout", "HEAD", "--"}, toRestore...)
+	if err := releaseCommandRun(root, "git", args...); err != nil {
+		return fmt.Errorf("Refusing to prepare release: cannot restore prepared baseline from HEAD: %w", err)
+	}
+	return nil
 }

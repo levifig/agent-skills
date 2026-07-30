@@ -378,10 +378,12 @@ func rewriteInstalledSmokeReceiptHashes(t *testing.T, root string) {
 	}
 }
 
-func TestReleaseApplyResumesPreparedTreeAfterEvidenceRerecord(t *testing.T) {
-	repo := seedReleaseApplyRepoWithCapabilityEvidence(t, "feat: first live evidence-gate resume")
-	// Idempotent rebuild that stales the OpenCode receipt once, then stays put
-	// on resume — mirrors the version-stamp staleness without compounding.
+// seedReleaseApplyRepoWithStalingBuild commits a package.json whose build
+// rewrites dist/opencode/plugins/hooks.ts to a fixed body, staling the
+// OpenCode installed-smoke receipt on the first rebuild.
+func seedReleaseApplyRepoWithStalingBuild(t *testing.T, commitSubject string) string {
+	t.Helper()
+	repo := seedReleaseApplyRepoWithCapabilityEvidence(t, commitSubject)
 	packageBody := strings.Join([]string{
 		"{",
 		`  "name": "release-fixture",`,
@@ -397,6 +399,31 @@ func TestReleaseApplyResumesPreparedTreeAfterEvidenceRerecord(t *testing.T) {
 	}
 	gitCLI(t, repo, "add", "package.json")
 	gitCLI(t, repo, "commit", "-m", "fix: make rebuild stale OpenCode hooks once")
+	return repo
+}
+
+func countChangelogHeadings(body, version string) int {
+	want := "## [" + version + "]"
+	count := 0
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), want) {
+			count++
+		}
+	}
+	return count
+}
+
+func releaseCommitChangedPaths(t *testing.T, repo string) []string {
+	t.Helper()
+	out := gitOutputReleaseTest(t, repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+	if out == "" {
+		return nil
+	}
+	return strings.Split(out, "\n")
+}
+
+func TestReleaseApplyResumesPreparedTreeAfterEvidenceRerecord(t *testing.T) {
+	repo := seedReleaseApplyRepoWithStalingBuild(t, "feat: first live evidence-gate resume")
 
 	args := []string{"release", "--yes", "--no-gh"}
 	first := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args)
@@ -412,6 +439,7 @@ func TestReleaseApplyResumesPreparedTreeAfterEvidenceRerecord(t *testing.T) {
 	}
 
 	// Operator re-records against the rebuilt tree (prepared tree stays).
+	// Receipts survive restore; version/changelog/generated are reset from HEAD.
 	rewriteInstalledSmokeReceiptHashes(t, repo)
 
 	var stdout bytes.Buffer
@@ -433,25 +461,98 @@ func TestReleaseApplyResumesPreparedTreeAfterEvidenceRerecord(t *testing.T) {
 	if dirty := gitOutputReleaseTest(t, repo, "status", "--porcelain"); dirty != "" {
 		t.Fatalf("resume left dirty worktree: %q", dirty)
 	}
+
+	// (a) changelog contains exactly one heading for the candidate version.
+	changelog, err := os.ReadFile(filepath.Join(repo, "CHANGELOG.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countChangelogHeadings(string(changelog), "1.1.0"); n != 1 {
+		t.Fatalf("CHANGELOG.md has %d headings for 1.1.0, want exactly 1\n%s", n, changelog)
+	}
+
+	// (b) release commit changed-path set is only version/changelog/generated/evidence.
+	changed := releaseCommitChangedPaths(t, repo)
+	if len(changed) == 0 {
+		t.Fatal("release commit changed no paths")
+	}
+	for _, path := range changed {
+		path = filepath.ToSlash(path)
+		ok := path == "package.json" || path == "CHANGELOG.md" ||
+			releasePathMatchesPreparedArtifact(path) ||
+			releaseIsEvidenceClassPath(repo, path)
+		if !ok {
+			t.Fatalf("release commit includes unexpected path %q; full set: %v", path, changed)
+		}
+	}
+}
+
+func TestReleaseApplyResumeClobbersHandEditedGeneratedFile(t *testing.T) {
+	repo := seedReleaseApplyRepoWithStalingBuild(t, "feat: resume clobbers hand-edited dist")
+
+	args := []string{"release", "--yes", "--no-tag", "--no-gh"}
+	if err := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args); err == nil {
+		t.Fatalf("first Run(%v) error = nil, want stale-evidence refusal", args)
+	}
+	rewriteInstalledSmokeReceiptHashes(t, repo)
+
+	// Hand-edit a tracked generated file after the refused prepare. Restore must
+	// discard this; rebuild must produce the build script's content, not the edit.
+	// The capability-evidence seed already tracks dist/opencode/plugins/hooks.ts.
+	hooksPath := filepath.Join(repo, "dist", "opencode", "plugins", "hooks.ts")
+	const handEdit = "HAND_EDIT_MUST_NOT_LAND\n"
+	if err := os.WriteFile(hooksPath, []byte(handEdit), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args); err != nil {
+		t.Fatalf("resume Run(%v) error = %v\n%s", args, err, stdout.String())
+	}
+	committed, err := os.ReadFile(hooksPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(committed) == handEdit {
+		t.Fatal("hand-edited dist content was committed; want build output after restore-and-regenerate")
+	}
+	if string(committed) != "staled-hooks\n" {
+		t.Fatalf("committed hooks.ts = %q, want build output %q", committed, "staled-hooks\n")
+	}
+	if n := countChangelogHeadings(string(mustReadFile(t, filepath.Join(repo, "CHANGELOG.md"))), "1.1.0"); n != 1 {
+		t.Fatalf("CHANGELOG.md has %d headings for 1.1.0, want exactly 1", n)
+	}
+}
+
+func TestReleaseApplyResumeRefusesUntrackedUnderDist(t *testing.T) {
+	repo := seedReleaseApplyRepoWithStalingBuild(t, "feat: resume refuses untracked dist")
+
+	args := []string{"release", "--yes", "--no-tag", "--no-gh"}
+	if err := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args); err == nil {
+		t.Fatalf("first Run(%v) error = nil, want stale-evidence refusal", args)
+	}
+	rewriteInstalledSmokeReceiptHashes(t, repo)
+
+	extra := filepath.Join(repo, "dist", "extra.js")
+	if err := os.MkdirAll(filepath.Dir(extra), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(extra, []byte("not part of the build\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args)
+	if err == nil {
+		t.Fatal("resume with untracked dist/extra.js error = nil, want refusal")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "untracked file under generated-output tree") || !strings.Contains(msg, "dist/extra.js") {
+		t.Fatalf("error = %q, want untracked-generated refusal naming dist/extra.js", msg)
+	}
 }
 
 func TestReleaseApplyRefusesPreparedTreeWithUnrelatedDirty(t *testing.T) {
-	repo := seedReleaseApplyRepoWithCapabilityEvidence(t, "feat: resume boundary keeps non-release dirt out")
-	packageBody := strings.Join([]string{
-		"{",
-		`  "name": "release-fixture",`,
-		`  "version": "1.0.0",`,
-		`  "scripts": {`,
-		`    "build": "node -e \"require('fs').mkdirSync('dist/opencode/plugins',{recursive:true}); require('fs').writeFileSync('dist/opencode/plugins/hooks.ts','staled-hooks\\n')\""`,
-		"  }",
-		"}",
-		"",
-	}, "\n")
-	if err := os.WriteFile(filepath.Join(repo, "package.json"), []byte(packageBody), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	gitCLI(t, repo, "add", "package.json")
-	gitCLI(t, repo, "commit", "-m", "fix: stale hooks on rebuild")
+	repo := seedReleaseApplyRepoWithStalingBuild(t, "feat: resume boundary keeps non-release dirt out")
 
 	args := []string{"release", "--yes", "--no-tag", "--no-gh"}
 	if err := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args); err == nil {
@@ -470,15 +571,26 @@ func TestReleaseApplyRefusesPreparedTreeWithUnrelatedDirty(t *testing.T) {
 	}
 }
 
+func parentRegistryShowResponse(t *testing.T, repo string) releasePostMergeCommandResult {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(TargetCapabilityEvidenceRecordPath)))
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", TargetCapabilityEvidenceRecordPath, err)
+	}
+	return releasePostMergeOK(string(data))
+}
+
 func TestReleasePostMergeEvidenceOnlyRepairPasses(t *testing.T) {
 	repo := seedReleasePostMergeFiles(t, "1.2.3")
 	seedReleaseCapabilityEvidence(t, repo)
 	receipt := "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.7-isolated-request-smoke.json"
 	responses := releasePostMergeHappyResponses("1.2.3")
-	// Detect repair via HEAD^..HEAD evidence-only diff; subject + release shape
-	// come from the parent release commit; tag still lands on HEAD.
+	// Detect repair via HEAD^..HEAD receipt-only diff against the parent
+	// registry; subject + release shape come from the parent release commit;
+	// tag still lands on HEAD. Registry itself must not appear in the diff.
 	responses["git rev-parse --verify HEAD^"] = releasePostMergeOK("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	responses["git diff HEAD^ HEAD --name-only"] = releasePostMergeOK("config/target-capabilities.json\n" + receipt)
+	responses["git diff HEAD^ HEAD --name-only"] = releasePostMergeOK(receipt)
+	responses["git show HEAD^:"+TargetCapabilityEvidenceRecordPath] = parentRegistryShowResponse(t, repo)
 	responses["git log -1 --pretty=%s HEAD^"] = releasePostMergeOK("chore: release v1.2.3 (#42)")
 	delete(responses, "git log -1 --pretty=%s")
 	responses["git diff HEAD~2 HEAD~1 --name-only"] = releasePostMergeOK("CHANGELOG.md\npackage.json")
@@ -509,14 +621,32 @@ func TestReleasePostMergeEvidenceOnlyRepairPasses(t *testing.T) {
 	}
 }
 
+func TestReleasePostMergeRepairModifyingRegistryRefuses(t *testing.T) {
+	repo := seedReleasePostMergeFiles(t, "1.2.3")
+	seedReleaseCapabilityEvidence(t, repo)
+	receipt := "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.7-isolated-request-smoke.json"
+	responses := releasePostMergeHappyResponses("1.2.3")
+	responses["git rev-parse --verify HEAD^"] = releasePostMergeOK("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	// Registry in the repair commit → not receipt-only; guardrail 5 evaluates HEAD.
+	responses["git diff HEAD^ HEAD --name-only"] = releasePostMergeOK(TargetCapabilityEvidenceRecordPath + "\n" + receipt)
+	responses["git show HEAD^:"+TargetCapabilityEvidenceRecordPath] = parentRegistryShowResponse(t, repo)
+	runner, _ := scriptedReleasePostMergeRunner(responses)
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
+	if result.ok || result.guardrail != 5 {
+		t.Fatalf("result = %#v, want guardrail 5 failure when repair modifies the registry", result)
+	}
+}
+
 func TestReleasePostMergeNonEvidenceRepairStillFailsDiffShape(t *testing.T) {
 	repo := seedReleasePostMergeFiles(t, "1.2.3")
 	seedReleaseCapabilityEvidence(t, repo)
 	receipt := "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.7-isolated-request-smoke.json"
 	responses := releasePostMergeHappyResponses("1.2.3")
 	responses["git rev-parse --verify HEAD^"] = releasePostMergeOK("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	// Touches a version file → not evidence-only; guardrail 5 evaluates HEAD.
+	// Touches a non-receipt path → not evidence-only; guardrail 5 evaluates HEAD.
 	responses["git diff HEAD^ HEAD --name-only"] = releasePostMergeOK(receipt + "\nREADME.md")
+	responses["git show HEAD^:"+TargetCapabilityEvidenceRecordPath] = parentRegistryShowResponse(t, repo)
 	runner, _ := scriptedReleasePostMergeRunner(responses)
 	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
 	result := checkReleasePostMergeGuardrails(repo, snap, runner)
@@ -579,10 +709,68 @@ func TestCheckReleaseCapabilityEvidenceSymlinkRefuses(t *testing.T) {
 		}
 	})
 
+	t.Run("symlinked config directory is present but unusable", func(t *testing.T) {
+		root := t.TempDir()
+		realConfig := filepath.Join(root, "real-config")
+		if err := os.MkdirAll(realConfig, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// Valid-looking leaf behind a symlinked intermediate component.
+		if err := os.WriteFile(filepath.Join(realConfig, "target-capabilities.json"), []byte(`{"contract_version":3,"records":[],"deferred":[{"target":"pi","status":"deferred","not_a_build_target":true,"reason":"deferred"}]`+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(realConfig, filepath.Join(root, "config")); err != nil {
+			t.Fatal(err)
+		}
+		present, err := checkReleaseCapabilityEvidence(root)
+		if !present {
+			t.Fatal("symlinked config/ classified as absent; want present-but-unusable")
+		}
+		if err == nil || !strings.Contains(err.Error(), "symlink") {
+			t.Fatalf("error = %v, want symlink-component refusal", err)
+		}
+	})
+
 	t.Run("absent remains a silent no-op", func(t *testing.T) {
 		present, err := checkReleaseCapabilityEvidence(t.TempDir())
 		if present || err != nil {
 			t.Fatalf("present=%v err=%v, want absent no-op", present, err)
 		}
 	})
+}
+
+func TestReleaseApplyRefusesSymlinkedConfigDirectory(t *testing.T) {
+	repo := seedReleaseApplyRepo(t, "feat: refuse symlinked config on apply")
+	// Real evidence under a temporary real-config, then replace config/ with a symlink.
+	seedReleaseCapabilityEvidence(t, repo)
+	realConfig := filepath.Join(repo, "real-config")
+	if err := os.Rename(filepath.Join(repo, "config"), realConfig); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realConfig, filepath.Join(repo, "config")); err != nil {
+		t.Fatal(err)
+	}
+	// Commit so the worktree is clean except for the symlink structure as HEAD.
+	// Symlink itself must be what the apply path sees for the probe.
+	writeFile(t, filepath.Join(repo, ".gitignore"), "bin/native/\nplugins/loaf/bin/native/\n")
+	gitCLI(t, repo, "add", "-A")
+	gitCLI(t, repo, "commit", "-m", "chore: record evidence behind symlinked config")
+
+	err := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"release", "--yes", "--no-tag", "--no-gh"})
+	if err == nil {
+		t.Fatal("release error = nil, want symlinked-config refusal")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "Refusing to commit release artifacts") || !strings.Contains(msg, "symlink") {
+		t.Fatalf("error = %q, want apply refusal naming symlink", msg)
+	}
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", path, err)
+	}
+	return body
 }

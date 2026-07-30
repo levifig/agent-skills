@@ -21,6 +21,14 @@ func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) err
 	if releaseInvocationWantsFlowAdvisory(runtimeRoot, options) {
 		printReleaseFlowAdvisory(out)
 	}
+	// Apply-path resume restores version/changelog/generated dirt from HEAD
+	// before snapshot resolution so candidate derivation reads the pre-bump
+	// baseline. Dry-run and post-merge do not mutate; they skip this restore.
+	if !options.dryRun && !options.postMerge {
+		if err := requireReleaseCleanWorktree(runtimeRoot); err != nil {
+			return err
+		}
+	}
 	snapshot, err := resolveReleaseSnapshot(runtimeRoot, options)
 	if err != nil {
 		return fmt.Errorf("release blocked: cannot compute candidate version: %w", err)
