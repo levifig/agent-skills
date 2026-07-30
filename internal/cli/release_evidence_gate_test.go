@@ -940,6 +940,154 @@ func TestReleaseApplyAdmitsVersionFileByteEqualToCandidate(t *testing.T) {
 	}
 }
 
+func TestReleaseApplyRefusesVersionFileReplacedBySymlinkToCandidateBytes(t *testing.T) {
+	repo := seedReleaseApplyRepoWithStalingBuild(t, "feat: refuse version symlink admission")
+	args := []string{"release", "--yes", "--no-tag", "--no-gh"}
+	if err := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args); err == nil {
+		t.Fatalf("first Run(%v) error = nil, want stale-evidence refusal", args)
+	}
+	beforeHEAD := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD")
+	candidateBody := mustReadFile(t, filepath.Join(repo, "package.json"))
+	if !bytes.Contains(candidateBody, []byte(`"version": "1.1.0"`)) {
+		t.Fatalf("after refusal package.json = %s, want candidate version", candidateBody)
+	}
+	rewriteInstalledSmokeReceiptHashes(t, repo)
+
+	// External file holds the exact candidate bytes; version path becomes a symlink.
+	external := filepath.Join(t.TempDir(), "external-package.json")
+	if err := os.WriteFile(external, candidateBody, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pkgPath := filepath.Join(repo, "package.json")
+	if err := os.Remove(pkgPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, pkgPath); err != nil {
+		t.Fatal(err)
+	}
+
+	err := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args)
+	if err == nil {
+		t.Fatal("resume with symlinked version file error = nil, want refusal")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "require a clean unignored worktree") || !strings.Contains(msg, "package.json") {
+		t.Fatalf("error = %q, want clean-worktree refusal naming package.json", msg)
+	}
+	if head := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD"); head != beforeHEAD {
+		t.Fatalf("refused resume moved HEAD from %s to %s", beforeHEAD, head)
+	}
+	info, lerr := os.Lstat(pkgPath)
+	if lerr != nil {
+		t.Fatal(lerr)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("package.json was restored or rewritten; want symlink left in place")
+	}
+	// Nothing committed: HEAD package.json must still be a regular blob, not a symlink.
+	mode := gitOutputReleaseTest(t, repo, "ls-tree", "HEAD", "--", "package.json")
+	if !strings.HasPrefix(strings.Fields(mode)[0], "100") {
+		t.Fatalf("HEAD package.json mode = %q, want regular blob", mode)
+	}
+}
+
+func TestReleaseUnignoredStatusEntriesClassifiesTypechange(t *testing.T) {
+	repo := seedReleaseApplyRepoWithStalingBuild(t, "feat: classify porcelain T")
+	// Establish a regular tracked version file, then replace with a symlink so
+	// porcelain reports T (typechange).
+	pkgPath := filepath.Join(repo, "package.json")
+	body := mustReadFile(t, pkgPath)
+	external := filepath.Join(t.TempDir(), "ext.json")
+	if err := os.WriteFile(external, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(pkgPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, pkgPath); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := releaseUnignoredStatusEntries(repo, "package.json")
+	if err != nil {
+		t.Fatalf("releaseUnignoredStatusEntries: %v", err)
+	}
+	var found *releaseStatusEntry
+	for i := range entries {
+		if entries[i].path == "package.json" {
+			found = &entries[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("entries = %+v, want package.json", entries)
+	}
+	if !found.typechange {
+		t.Fatalf("package.json entry = %+v, want typechange=true", *found)
+	}
+	if found.deleted || found.untracked {
+		t.Fatalf("package.json entry = %+v, want only typechange", *found)
+	}
+
+	// Classification must refuse the typechanged version path by name.
+	err = requireReleaseCleanWorktree(repo, releaseOptions{})
+	if err == nil {
+		t.Fatal("requireReleaseCleanWorktree error = nil, want typechange refusal")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "require a clean unignored worktree") || !strings.Contains(msg, "package.json") {
+		t.Fatalf("error = %q, want clean-worktree refusal naming package.json", msg)
+	}
+}
+
+func TestReleaseApplyRefusesVersionFileExecutableBitFlip(t *testing.T) {
+	repo := seedReleaseApplyRepoWithStalingBuild(t, "feat: refuse version mode flip")
+	args := []string{"release", "--yes", "--no-tag", "--no-gh"}
+	if err := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args); err == nil {
+		t.Fatalf("first Run(%v) error = nil, want stale-evidence refusal", args)
+	}
+	beforeHEAD := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD")
+	pkgPath := filepath.Join(repo, "package.json")
+	if !strings.Contains(string(mustReadFile(t, pkgPath)), `"version": "1.1.0"`) {
+		t.Fatal("expected package.json at candidate after refusal")
+	}
+	rewriteInstalledSmokeReceiptHashes(t, repo)
+
+	// Flip executable bit only; candidate bytes stay byte-identical.
+	if err := os.Chmod(pkgPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(pkgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		t.Fatal("chmod +x did not set executable bit")
+	}
+	headMode, err := releaseGitHeadBlobMode(repo, "package.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if headMode != "100644" {
+		t.Fatalf("HEAD package.json mode = %q, want 100644 for this fixture", headMode)
+	}
+	if releaseWorktreeBlobMode(info) == headMode {
+		t.Fatal("worktree mode still matches HEAD after +x; test setup broken")
+	}
+
+	runErr := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args)
+	if runErr == nil {
+		t.Fatal("resume with executable-bit-flipped version file error = nil, want refusal")
+	}
+	msg := runErr.Error()
+	if !strings.Contains(msg, "require a clean unignored worktree") || !strings.Contains(msg, "package.json") {
+		t.Fatalf("error = %q, want clean-worktree refusal naming package.json", msg)
+	}
+	if head := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD"); head != beforeHEAD {
+		t.Fatalf("refused resume moved HEAD from %s to %s", beforeHEAD, head)
+	}
+}
+
 func TestReleaseApplyRefusesDirtyChangelogOnRerun(t *testing.T) {
 	repo := seedReleaseApplyRepoWithStalingBuild(t, "feat: refuse dirty changelog on resume")
 	args := []string{"release", "--yes", "--no-tag", "--no-gh"}

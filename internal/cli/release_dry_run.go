@@ -556,12 +556,14 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 }
 
 // releaseStatusEntry is one unignored porcelain path with whether it is
-// untracked (??) or a tracked deletion. Tracked dirt, deletions, and untracked
-// dirt are classified differently on the prepared-tree resume path.
+// untracked (??), a tracked deletion, or a typechange (T). Tracked dirt,
+// deletions, typechanges, and untracked dirt are classified differently on the
+// prepared-tree resume path.
 type releaseStatusEntry struct {
-	path      string
-	untracked bool
-	deleted   bool
+	path       string
+	untracked  bool
+	deleted    bool
+	typechange bool
 }
 
 func releaseUnignoredStatusPaths(root string, pathspec ...string) ([]string, error) {
@@ -597,13 +599,18 @@ func releaseUnignoredStatusEntries(root string, pathspec ...string) ([]releaseSt
 	raw := strings.Split(string(output), "\x00")
 	var entries []releaseStatusEntry
 	seen := map[string]bool{}
-	add := func(path string, untracked, deleted bool) {
+	add := func(path string, untracked, deleted, typechange bool) {
 		path = filepath.ToSlash(path)
 		if path == "" || seen[path] {
 			return
 		}
 		seen[path] = true
-		entries = append(entries, releaseStatusEntry{path: path, untracked: untracked, deleted: deleted})
+		entries = append(entries, releaseStatusEntry{
+			path:       path,
+			untracked:  untracked,
+			deleted:    deleted,
+			typechange: typechange,
+		})
 	}
 	for index := 0; index < len(raw); index++ {
 		entry := raw[index]
@@ -615,7 +622,8 @@ func releaseUnignoredStatusEntries(root string, pathspec ...string) ([]releaseSt
 		}
 		untracked := entry[0] == '?' && entry[1] == '?'
 		deleted := !untracked && (entry[0] == 'D' || entry[1] == 'D')
-		add(entry[3:], untracked, deleted)
+		typechange := !untracked && (entry[0] == 'T' || entry[1] == 'T')
+		add(entry[3:], untracked, deleted, typechange)
 		if entry[0] == 'R' || entry[0] == 'C' || entry[1] == 'R' || entry[1] == 'C' {
 			index++
 			if index >= len(raw) || raw[index] == "" {
@@ -623,7 +631,7 @@ func releaseUnignoredStatusEntries(root string, pathspec ...string) ([]releaseSt
 			}
 			// Rename/copy retires the origin path — treat as a deletion for
 			// classification (prepare never renames).
-			add(raw[index], false, true)
+			add(raw[index], false, true, false)
 		}
 	}
 	return entries, nil
@@ -633,8 +641,10 @@ func releaseUnignoredStatusEntries(root string, pathspec ...string) ([]releaseSt
 //
 //   - deleted tracked files → classic refusal (prepare never deletes)
 //   - dirty CHANGELOG.md → classic refusal (operator curation is sacred)
-//   - dirty version files → admitted only when bytes equal the candidate
-//     rendering derived from HEAD content + candidate
+//   - dirty version files → admitted only when the path is a regular file whose
+//     mode matches HEAD and whose bytes equal the candidate rendering derived
+//     from HEAD content + candidate; porcelain typechange (T), symlinks, and
+//     mode flips refuse by name
 //   - dirty tracked generated outputs → restore from HEAD (build-owned)
 //   - registry / referenced evidence sources (HEAD ∪ worktree allowlist) → admit
 //   - untracked under generated roots → refuse by name
@@ -685,6 +695,10 @@ func requireReleaseCleanWorktree(root string, options releaseOptions) error {
 			return releaseClassicCleanWorktreeRefusal(dirtyPaths)
 		}
 		if versionPaths[path] {
+			// Typechange (regular↔symlink/etc.) is never candidate-admissible.
+			if entry.typechange {
+				return releaseClassicCleanWorktreeRefusal(dirtyPaths)
+			}
 			if releaseVersionFileMatchesCandidate(root, path, candidate) {
 				continue
 			}

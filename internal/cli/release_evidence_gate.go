@@ -341,10 +341,57 @@ func releaseRenderVersionContent(relPath string, headBody []byte, currentVersion
 	}
 }
 
-// releaseVersionFileMatchesCandidate reports whether the worktree bytes equal
-// the candidate rendering derived in memory from HEAD content + candidate.
+// releaseGitHeadBlobMode returns the git object mode for relPath at HEAD
+// (e.g. "100644", "100755"). Empty or non-blob entries error.
+func releaseGitHeadBlobMode(root, relPath string) (string, error) {
+	cmd := exec.Command("git", "ls-tree", "HEAD", "--", filepath.ToSlash(relPath))
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	line := strings.TrimSpace(string(out))
+	if line == "" {
+		return "", fmt.Errorf("no ls-tree entry for %s at HEAD", relPath)
+	}
+	// "100644 blob <hash>\t<path>" — mode is the first field.
+	fields := strings.Fields(line)
+	if len(fields) < 3 {
+		return "", fmt.Errorf("parse ls-tree entry %q", line)
+	}
+	return fields[0], nil
+}
+
+// releaseWorktreeBlobMode maps a regular worktree file's mode onto git's
+// blob mode alphabet (100644 vs 100755). Non-regular paths return "".
+func releaseWorktreeBlobMode(info os.FileInfo) string {
+	if info == nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return ""
+	}
+	if info.Mode().Perm()&0o111 != 0 {
+		return "100755"
+	}
+	return "100644"
+}
+
+// releaseVersionFileMatchesCandidate reports whether the worktree path is a
+// regular file whose git mode matches HEAD and whose bytes equal the candidate
+// rendering derived in memory from HEAD content + candidate. Symlinks and other
+// non-regular paths are never admitted (os.Lstat; ReadFile must not follow).
 func releaseVersionFileMatchesCandidate(root, relPath, candidate string) bool {
 	if candidate == "" {
+		return false
+	}
+	abs := filepath.Join(root, filepath.FromSlash(relPath))
+	info, err := os.Lstat(abs)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	headMode, err := releaseGitHeadBlobMode(root, relPath)
+	if err != nil || headMode == "" {
+		return false
+	}
+	if releaseWorktreeBlobMode(info) != headMode {
 		return false
 	}
 	headBody, err := releaseGitShowPath(root, "HEAD", relPath)
@@ -359,7 +406,7 @@ func releaseVersionFileMatchesCandidate(root, relPath, candidate string) bool {
 	if err != nil {
 		return false
 	}
-	actual, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relPath)))
+	actual, err := os.ReadFile(abs)
 	if err != nil {
 		return false
 	}
