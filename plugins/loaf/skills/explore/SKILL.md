@@ -1,11 +1,11 @@
 ---
 name: explore
 description: >-
-  Conducts divergent inquiry as a durable Exploration: portable checkpoints,
+  Conducts divergent inquiry as a durable Exploration with portable checkpoints,
   conversation provenance, and Intent capture that survive compaction and
-  harness changes. Use when the direction is genuinely undecided ("explore
-  this", "we don't know which...
-user-invocable: true
+  harness changes. Agent technique — not a user entry point: route "explore
+  this" and similar user...
+user-invocable: false
 argument-hint: '[topic or exploration ref]'
 version: 2.0.0-alpha.16
 ---

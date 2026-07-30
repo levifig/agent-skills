@@ -4,10 +4,10 @@ description: >-
   ideas, brainstorms, tracked and deferred Intents, and unmigrated legacy
   deferrals. Use when the user asks "triage", "process my backlog", or wants
   dispositions chosen across intake items. Produces explicit dispositions:
-  discard, retain, track as Intent, defer, resume, resolve, explore, or hand to
-  shape. Not for reading a single known item (use loaf intent show or journal
-  directly), capturing new ideas (use idea), divergent inquiry (use explore), or
-  bounding one chosen direction (use shape).
+  discard, retain, track as Intent, defer, resume, resolve, explore, hand to
+  pitch, or hand to shape. Not for reading a single known item (use loaf intent
+  show or journal directly), capturing new ideas (use idea), problem discovery
+  (use pitch), or bounding one chosen direction (use shape).
 user-invocable: true
 version: 2.0.0-alpha.16
 ---
@@ -38,7 +38,7 @@ Process the intake queue. Triage is the public funnel where captured material me
 - The CLI never classifies: you and the user interpret each item; commands perform the chosen operation deterministically.
 - Capture, Intent, and Exploration are different claims: a spark or idea is retained material, a tracked Intent is deliberately tracked work, a deferral is an Intent disposition with an immutable payload, an Exploration is an inquiry. Do not conflate them to save a step.
 - One pass through the queue — don't loop or re-present items.
-- **Promote to Change via capture:** when the disposition is "hand to shape" but capture should precede shaping, run `loaf change init <slug> --brief` and seed `brief.md` with the original ask; otherwise hand the item to `/shape` for a full scaffold.
+- **Two doors into a Change:** items needing problem discovery hand to `/pitch`, which owns `loaf change init <slug> --brief` and brief authoring; well-understood directions hand to `/shape`. When capture should precede shaping without a full pitch, run `loaf change init <slug> --brief` and seed `brief.md` with the original ask, then hand to `/shape`.
 
 ## Verification
 
@@ -52,9 +52,9 @@ Process the intake queue. Triage is the public funnel where captured material me
 | Item kind | Comes from | Typical dispositions |
 |-----------|-----------|----------------------|
 | spark | `loaf spark capture` moments | discard, promote to idea, track as Intent |
-| idea | `/idea` capture | archive, explore, track as Intent, hand to `/shape` |
-| brainstorm | archived divergent sessions | archive, explore, promote |
-| intent (tracked) | `loaf intent create` | keep tracking, defer, resolve, explore, hand to `/shape` |
+| idea | `/idea` capture | archive, explore, track as Intent, hand to `/pitch`, hand to `/shape` |
+| brainstorm | archived divergent sessions | archive, explore, promote, hand to `/pitch` |
+| intent (tracked) | `loaf intent create` | keep tracking, defer, resolve, explore, hand to `/pitch`, hand to `/shape` |
 | intent (deferred) | `loaf intent defer` or adapter | resume, resolve, leave deferred |
 | legacy_deferral | pre-conversion `journal defer` | read, then optionally convert (see Legacy Deferrals) |
 
@@ -73,8 +73,9 @@ Process the intake queue. Triage is the public funnel where captured material me
 - **Defer** — an existing Intent: `loaf intent defer <ref> --why <w> --boundary <b> --trigger <t> --operation-id <key>`; a new deferred direction needs the full skeleton: `loaf intent create --title <t> --body <b> --disposition deferred --why <w> --boundary <bd> --trigger <tr> --operation-id <key> [--from <source-ref>]`.
 - **Resume** — `loaf intent resume <ref> --reason <why now>`; appends a tracked disposition linked to the deferral it supersedes.
 - **Resolve** — `loaf intent resolve <ref> --reason <outcome>`; history is never rewritten.
-- **Explore** — hand the item to `/explore`, linking it with `--from` when the Exploration is created.
-- **Shape** — when a direction is ready for bounded delivery, hand it to `/shape`; triage never creates Changes, branches, or worktrees.
+- **Explore** — agent technique for genuinely undecided directions (Explorations and checkpoints); not a user slash entry — prefer `/pitch` when the human needs problem discovery first, then reach for explore from inside that work if still undecided.
+- **Pitch** — items needing problem discovery hand to `/pitch`, which owns init and brief authoring; resolve the promoted item against the created change (`loaf spark resolve` / `loaf idea resolve` / archive brainstorm with the change as the reason).
+- **Shape** — when a direction is already well-understood and ready for bounded delivery, hand it to `/shape`; triage never creates fully-materialized Changes, branches, or worktrees (capture-only brief seeding is the Critical Rules exception above).
 
 ## Legacy Deferrals
 
@@ -90,6 +91,7 @@ Items of kind `legacy_deferral` are pre-conversion `journal defer` records. They
 ## Related Skills
 
 - **idea** — capture a new idea (fast, minimal friction)
-- **explore** — divergent inquiry with portable checkpoints
-- **shape** — develop a chosen direction into a bounded Change
+- **pitch** — problem-discovery ceremony for items that need framing before shape
+- **explore** — agent technique for divergent inquiry with portable checkpoints
+- **shape** — develop a well-understood direction into a bounded Change
 - **housekeeping** — flags stale artifacts; does not choose dispositions

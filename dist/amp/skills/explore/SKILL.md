@@ -1,15 +1,17 @@
 ---
 name: explore
 description: >-
-  Conducts divergent inquiry as a durable Exploration: portable checkpoints,
+  Conducts divergent inquiry as a durable Exploration with portable checkpoints,
   conversation provenance, and Intent capture that survive compaction and
-  harness changes. Use when the direction is genuinely undecided ("explore
-  this", "we don't know which approach yet") or when resuming a named
-  Exploration. Produces Exploration records, portable checkpoints, and tracked
-  or deferred Intents. Not for evidence gathering on a known question (use
-  research), continuing implementation or delivery work (use implement),
-  processing the intake queue (use triage), shaping a bounded Change (use
-  shape), or quick capture (use idea).
+  harness changes. Agent technique — not a user entry point: route "explore
+  this" and similar user asks to /pitch; use this technique from inside pitch or
+  other agent work when the direction is genuinely undecided, or when resuming a
+  named Exploration. Produces Exploration records, portable checkpoints, and
+  tracked or deferred Intents; Exploration machinery and the four-field
+  checkpoint contract stay intact. Not for evidence gathering on a known
+  question (use research), continuing implementation (use implement), processing
+  the intake queue (use triage), shaping a bounded Change (use shape), problem
+  discovery (use pitch), or quick capture (use idea).
 version: 2.0.0-alpha.16
 ---
 

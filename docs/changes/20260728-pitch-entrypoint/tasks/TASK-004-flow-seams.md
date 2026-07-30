@@ -37,11 +37,11 @@ Markdown paragraphs are single lines — never hard-wrap. Description edits foll
 
 ## Steps
 
-- [ ] Shape: Step 1 recognizes an existing `brief.md` — restate the problem from it, confirm rather than re-discover, and focus grilling on solution-space; when no brief exists, full narrowing as today (pitch recommended, never gated). Step 3 handles the captured folder: run `loaf change init <slug>` on it and rely on the promotion path (TASK-006) to materialize `shape.md` + `tasks/` in place — never hand-copy templates. Add pitch to recognized source inputs and Related Skills.
-- [ ] Triage: add the "Pitch" disposition — items needing problem discovery hand to `/pitch`, which owns init and brief authoring; the promoted item resolves against the created change; "Shape" survives for well-understood directions, and the brief-seeding bullet in Critical Rules updates to name both doors.
-- [ ] Explore: sidecar flips to `user-invocable: false`; description reroutes entry intent ("explore this" as a user ask → `/pitch`) while keeping the technique's agent-facing purpose and the untouched Exploration machinery explicit.
-- [ ] Brainstorm: description reroutes to `/pitch` as the user-facing entry (it already routes to explore for the technique).
-- [ ] Rebuild and commit artifacts with the source.
+- [x] Shape: Step 1 recognizes an existing `brief.md` — restate the problem from it, confirm rather than re-discover, and focus grilling on solution-space; when no brief exists, full narrowing as today (pitch recommended, never gated). Step 3 handles the captured folder: run `loaf change init <slug>` on it and rely on the promotion path (TASK-006) to materialize `shape.md` + `tasks/` in place — never hand-copy templates. Add pitch to recognized source inputs and Related Skills.
+- [x] Triage: add the "Pitch" disposition — items needing problem discovery hand to `/pitch`, which owns init and brief authoring; the promoted item resolves against the created change; "Shape" survives for well-understood directions, and the brief-seeding bullet in Critical Rules updates to name both doors.
+- [x] Explore: sidecar flips to `user-invocable: false`; description reroutes entry intent ("explore this" as a user ask → `/pitch`) while keeping the technique's agent-facing purpose and the untouched Exploration machinery explicit.
+- [x] Brainstorm: description reroutes to `/pitch` as the user-facing entry (it already routes to explore for the technique).
+- [x] Rebuild and commit artifacts with the source.
 
 ## Verification
 
