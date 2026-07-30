@@ -301,17 +301,29 @@ func extractReleasePostMergeChangelogSection(content string, version string) []s
 
 func checkReleasePostMergeNoExistingTagOrRelease(root string, runner releasePostMergeCommandRunner, version string) string {
 	tag := "v" + version
+	pushedRemedy := "do not delete a published tag; if the GitHub release is missing assets, re-run the Release workflow or recreate the release from the existing tag instead"
+	// Gather all three states before choosing a remedy. Deletion advice is only
+	// safe for a purely local tag; a failed remote lookup leaves remoteExists
+	// false (degrade, never error) but must not unlock git tag -d when a GitHub
+	// release is present.
 	local := runner(root, "git", "tag", "--list", tag)
-	if local.exitCode == 0 && strings.TrimSpace(local.stdout) == tag {
-		return fmt.Sprintf("tag v%s already exists locally — run `git tag -d v%s` and rerun", version, version)
-	}
+	localExists := local.exitCode == 0 && strings.TrimSpace(local.stdout) == tag
 	remote := runner(root, "git", "ls-remote", "--tags", "origin", "refs/tags/"+tag)
-	if remote.exitCode == 0 && strings.TrimSpace(remote.stdout) != "" {
-		return fmt.Sprintf("tag v%s already exists on remote — run `git push origin :refs/tags/v%s` and rerun", version, version)
-	}
+	remoteExists := remote.exitCode == 0 && strings.TrimSpace(remote.stdout) != ""
 	gh := runner(root, "gh", "release", "view", tag)
-	if !gh.notFound && gh.exitCode == 0 {
-		return fmt.Sprintf("GH release v%s already exists — visit the release page and delete it manually before rerunning", version)
+	ghReleaseExists := !gh.notFound && gh.exitCode == 0
+
+	if remoteExists {
+		if localExists {
+			return fmt.Sprintf("tag %s already exists and is pushed — %s", tag, pushedRemedy)
+		}
+		return fmt.Sprintf("tag %s already exists on remote — %s", tag, pushedRemedy)
+	}
+	if ghReleaseExists {
+		return fmt.Sprintf("GH release %s already exists — do not delete a published release; re-run the Release workflow or update it from the existing tag instead; delete it and rerun only if it is an unpublished draft", tag)
+	}
+	if localExists {
+		return fmt.Sprintf("tag %s already exists locally — run `git tag -d %s` and rerun", tag, tag)
 	}
 	return ""
 }

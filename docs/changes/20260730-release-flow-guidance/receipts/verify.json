@@ -1,0 +1,107 @@
+{
+  "schema_version": 2,
+  "change": "release-flow-guidance",
+  "verified_commit": "711d20dd7c32d71a45aab19f2d4213bfe661658a",
+  "verified_root_tree": "4360c045658f3045470d66ae4f9caa8249105fa2",
+  "verified_at": "2026-07-30T13:35:30Z",
+  "criteria_digest": "4d44b6623928084c69897d8e48bd450e231ac29f92580b2976997a366a897a51",
+  "scope_digest": "6575496fe3b582eaabceb9461d86841d59dc0bc829caca73d2ad463497f4a158",
+  "scope_sections": {
+    ".agents": "0cdcb499203f22e1faebbef89e211e4b6d4b253bc5486866ed28a50e15c2dd9e",
+    ".claude": "8dc123c00b953695edd9ccc4bb966e986bcea05607d9a125e71038a4c2ebb6be",
+    ".github": "42529d8eb65b5025a2a641309b5c789e771402b63fb6093468b2f04ababfabc1",
+    ".gitignore": "bdca2d6bd9b911e4c840fa1471c55e380fccfe92f0c5b352e6536d5f346d7249",
+    ".serena": "749668b92acde130ae6a4514f59b9e08bf7095c8bdd47b6b2e5929b0729ba91f",
+    "AGENTS.md": "5310119234b7665c6d64f2d1b5768f9eedc6f69aba35cfe083255f2d4b2c2fad",
+    "README.md": "9b30876ddbbf893778865069a28ea215bd3b2ce9ebee913d2cf2e60e0c958152",
+    "cli": "702ff0c12b611f68cd970ea1a7dfef4a38fa1be7a9c221544bd44ec9e75bac53",
+    "cmd": "b2666d27e62ce6fc437436bdc891f05355d29c945300b776d75e662a358b3918",
+    "config": "c438af3bcd76afdf5bd561aa26535cf05b6b9b3e3664488aa85bb9f1c65791aa",
+    "content": "da59557fbce33d9966de439f4fb34ac1d15d255fb4ccc233753fb8723a35ba86",
+    "docs": "56009be5d5eedbaa622a08e93783369473cc8e0cab7a6edcaa83f39fc1a0555e",
+    "go.mod": "5f494108c9f9ba4911bbcb82ece8168d5af253742eb632ccac5519348e34ef1c",
+    "go.sum": "44a5d68a99a05f3d9aff3321f4b5645d0870cc1afd36e183fbc08c07d8550d6b",
+    "internal": "06d25293f4f148f05fcebe7552db7ebf8aa162314bc2f823ee7514d2a87cdb2e",
+    "package-lock.json": "afd3f2eea505b8289f8b16c35364d4b892b25663b42b2a7ba967cf8c71feb44f"
+  },
+  "exclusions": [
+    "docs/changes/*/receipts/**",
+    "docs/changes/*/reports/**",
+    "package.json",
+    ".claude-plugin/marketplace.json",
+    "CHANGELOG.md",
+    "dist/**",
+    "plugins/**",
+    "bin/**"
+  ],
+  "digest_spec": "v1",
+  "tool_version": "2.0.0-alpha.16",
+  "toolchain": {
+    "go": "1.26.5",
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "worktree_clean": true,
+  "results": [
+    {
+      "id": "V1",
+      "command": "go test ./internal/cli -run 'TestReleaseFlowAdvisory' -count=1",
+      "exit_code": 0,
+      "output_digest": "53f43c7a43aa78ac5aaf591477359750944195c8bfa9d655f453fc94c47b21b2",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V2",
+      "command": "go test ./internal/cli -run 'TestReleaseGuardrailRemediation' -count=1",
+      "exit_code": 0,
+      "output_digest": "1ab3665c5005ab0423bde251cd70e5817221d4ff5ffa20afbb59567090ff6792",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V3",
+      "command": "bin/loaf build",
+      "exit_code": 0,
+      "output_digest": "36649b688b540420b4dd14cfab1da5cab4cbaa56b0939d9ed78fe3887ca322ae",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V4",
+      "command": "go test ./...",
+      "exit_code": 0,
+      "output_digest": "ba661aa397dc1f99384b932f2e303f36ccab9c4a2db078eee56be73a82385484",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    }
+  ]
+}
