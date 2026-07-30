@@ -139,7 +139,7 @@ TASK-001 (brief contract) and TASK-006 (captured-folder promotion) lead — one 
 ## Definition of Done
 
 - TASK-001 through TASK-006 landed on `pitch-entrypoint` with V1–V7 green and checkboxes flipped in the delivering commits.
-- The H1 and H4 dogfoods happened in an isolated scratch project — never on this branch — with the human invoking each ceremony in a session explicitly loaded from the branch-built plugin, and their evidence (including the candidate commit) lives at `research/pitch-interview-dogfood.md`; H3's series-prep evidence lives at `research/series-prep-dogfood.md`.
+- The H1 dogfood happened (real greenfield project, human-invoked, candidate pinned by the working-tree plugin at a recorded commit) with evidence at `research/pitch-interview-dogfood.md`; H3's series-prep evidence lives at `research/series-prep-dogfood.md`. H4 was descoped pre-merge by owner decision on 2026-07-30 — deferred to post-release fine-tuning; its TASK-005 checkbox stays deliberately unchecked as descoped work, and the end-to-end pitch→shape proof rides the post-release dogfood. H-tier is review material, never gate input; this is the human review tier exercising its judgment.
 - The three routed Intents exist: `INTENT-20260728-loaf-flow-skills-audit-refactor-every-skill-to-the-pitch-to-release-model`, `INTENT-20260728-review-convergence-loop-for-implement-and-ship`, `INTENT-20260728-evidence-check-dedicated-subagents-versus-skills-for-mechanical-operations` (each readable via `loaf intent show <ref>`).
 - Durable Outputs distilled via reflect on the branch before merge, owned by TASK-005 — the knowledge doc under `docs/knowledge/` and the ADR under `docs/decisions/` named below; the PR merges only when everything is done.
 

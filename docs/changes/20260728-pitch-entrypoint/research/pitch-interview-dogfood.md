@@ -37,3 +37,7 @@ Bootstrap gap mode's session-start opening now acknowledges the pitched BRIEF (s
 ## H4
 
 H4 evidence will be appended later.
+
+## H4 — descoped pre-merge
+
+Owner decision, 2026-07-30: the end-to-end pitch→shape consumption proof is deferred to post-release fine-tuning; the change lands with the H4 checkbox deliberately open as descoped work. The promotion path H4 would have exercised live was proven mechanically (TASK-006 regression suite plus the orchestrator's isolated e2e smoke: capture → promote → shaped, materialized re-init rejected).
