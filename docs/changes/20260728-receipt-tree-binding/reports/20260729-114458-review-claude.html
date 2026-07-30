@@ -1,0 +1,144 @@
+<!-- source: receipt-tree-binding · kind review · slug claude · stamped 2026-07-29 · authored report (snapshot semantics) · never auto-updated · dispositions recorded -->
+<meta charset="utf-8">
+<title>Review Round 1 — Receipt Tree Binding</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1080px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h3 { font-family: var(--serif); font-weight: 600; font-size: 1.05rem; margin: 0 0 6px; }
+  h4 { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--ok); margin-bottom: 28px; }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .fname { font-weight: 700; font-size: 1.02rem; flex: 1 1 320px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-medium { background: var(--bad-soft); color: var(--bad); }
+  .sev-low { background: var(--accent-soft); color: var(--accent); }
+  .sev-nit { background: var(--state-soft); color: var(--state); }
+  .disp-accepted { background: var(--ok-soft); color: var(--ok); }
+  .frow { display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px; font-size: .93rem; }
+  .frow dt { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; padding-top: 2px; }
+  .frow dd { margin: 0 0 6px; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  .checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 8px; }
+  .check { background: var(--ok-soft); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: .88rem; }
+  .check b { color: var(--ok); display: block; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; }
+  @media (max-width: 640px) { .frow { grid-template-columns: 1fr; } .frow dt { padding-top: 8px; } }
+</style>
+<main>
+  <div class="eyebrow">Review · Round 1</div>
+  <h1>Receipt Tree Binding — Initial Review</h1>
+  <p class="stamp">change <b>docs/changes/20260728-receipt-tree-binding</b> · reviewer <b>Claude (orchestrator)</b> · reviewed <b>2026-07-29</b> · scope <b>349bbd3d..b71247c2</b> · dispositions folded in <b>ede4953d</b></p>
+
+  <div class="panel verdict">
+    <h3>Round verdict: contract met, six findings, all accepted and fixed</h3>
+    <p>The implementation delivers the shaped contract with no correctness defects: the digest construction matches ADR-024's pinned serialization exactly (injective, ls-tree-only, mode included, domain-separated), the freshness predicate is a pure function of receipt fields and the HEAD tree with no reachability consult anywhere, and the council's three defect reproductions are all encoded as regression fixtures (post-squash protocol clone, N=2 cohort coexistence, inverted touch-then-revert). Findings were mechanical-cleanup and wording tier; all six were accepted and folded in <code>ede4953d</code>. Round 2 re-review: approved.</p>
+    <div class="checks">
+      <div class="check"><b>V1–V4</b> green at HEAD; receipt re-verified after the fold</div>
+      <div class="check"><b>change check</b> zero violations, state derives <code>verified</code></div>
+      <div class="check"><b>DoD grep</b> <code>cannot inspect receipt</code>: no matches in <code>internal/cli</code></div>
+      <div class="check"><b>Full suite</b> <code>go test ./...</code> green before and after the fold</div>
+    </div>
+  </div>
+
+  <h2>Findings</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">F1 — The <code>cannot inspect receipt</code> path survived as dead code</span><span class="chip sev-medium">medium</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The DoD requires this path "deleted, not just avoided," but <code>change_release_gate.go:92</code> kept the branch and error string. <code>changeReceiptStatus</code> returned a nil error on every path, so the branch and the <code>error</code> return were unreachable by construction, along with vestigial <code>receiptErr</code> plumbing in <code>evaluateVerifiedRungAtCommit</code>.</dd>
+      <dt>Disposition</dt><dd>Accepted — dead-by-construction seams contradict the DoD's deletion requirement and invite prose-as-control-flow regressions.</dd>
+      <dt>Fix</dt><dd><code>ede4953d</code>: <code>changeReceiptStatus</code> returns a bare verdict; the gate branch and error string are deleted; <code>evaluateVerifiedRungAtCommit</code> dropped its <code>receiptErr</code> return and callers were simplified.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">F2 — <code>changeReceiptAtHEAD</code> had zero callers and a false comment</span><span class="chip sev-medium">medium-low</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The helper was introduced by this change with its logic already inlined in <code>changeReceiptStatus</code>; nothing called it, and the comment on <code>loadChangeVerifyReceipt</code> claimed gate reads flowed through it.</dd>
+      <dt>Disposition</dt><dd>Accepted — dead code plus a factually wrong comment.</dd>
+      <dt>Fix</dt><dd><code>ede4953d</code>: helper deleted; comment rewritten to name <code>changeReceiptStatus</code> → <code>readCommittedOptional</code> as the committed-read path.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">F3 — Boundary/spec mismatch misrendered as section drift</span><span class="chip sev-low">low</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>An <code>exclusions</code> or <code>digest_spec</code> mismatch reused the content-drift reason with a fabricated <code>digest_spec</code> section, so the user read "content changed under <code>digest_spec</code>" when no content changed. This state will occur the moment the promotion change touches the allowlist.</dd>
+      <dt>Disposition</dt><dd>Accepted — the typed enum exists precisely so causes name real states.</dd>
+      <dt>Fix</dt><dd><code>ede4953d</code>: new <code>changeReceiptBoundaryChanged</code> reason, cause "evidence boundary changed since verification (receipt expired)", covered by a committed-receipt fixture with mutated exclusions.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">F4 — Git-seam failures claimed the receipt was unreadable</span><span class="chip sev-low">low</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>A failed <code>rev-parse</code>, <code>ls-tree</code>, or committed-read yielded "receipt unreadable — re-verify" even when the receipt was fine and re-verifying could not fix a broken repo. Determinism was preserved but the cause misnamed the state.</dd>
+      <dt>Disposition</dt><dd>Accepted — verdict stays blocking and typed; only the cause changes. <code>changeReceiptUnreadable</code> is reserved for a receipt at HEAD that fails to parse.</dd>
+      <dt>Fix</dt><dd><code>ede4953d</code>: new <code>changeReceiptEvidenceUnavailable</code> reason, cause "could not read evidence at HEAD (git error)", no raw error text embedded, message tests still forbid <code>exit status</code> in gate output.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">N5 — Failing-results block dropped the folder and remedy</span><span class="chip sev-nit">nit</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>TASK-004 says every block names folder, cause, and remedy; the failing-criteria block carried only the cause, encoded as a test exemption.</dd>
+      <dt>Disposition</dt><dd>Accepted — cause string preserved verbatim (documented in <code>docs/knowledge/work-model.md</code>), remedy appended.</dd>
+      <dt>Fix</dt><dd><code>ede4953d</code>: block now appends "Fix the failing criteria, then run: loaf change verify &lt;folder&gt; and commit the receipt"; the test exemption was removed and the wording asserted.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">N6 — Stale task citation and misnamed parameter</span><span class="chip sev-nit">nit</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>A comment cited "(TASK-007)" from a previous change's numbering, and <code>runChangeCriterionCommand</code>'s first parameter was named <code>folder</code> while receiving the repo root.</dd>
+      <dt>Disposition</dt><dd>Accepted — work-unit citations don't belong in code comments; the name misled about where criteria run.</dd>
+      <dt>Fix</dt><dd><code>ede4953d</code>: citation removed; parameter renamed <code>rootPath</code>.</dd>
+    </dl>
+  </div>
+
+  <h2>Provenance</h2>
+  <div class="panel">
+    <p>Initial review conducted 2026-07-29 against commits <code>2f86986f..b71247c2</code> (TASK-001–TASK-004) on branch <code>receipt-tree-binding</code>, judged against <code>shape.md</code>'s Planning Contract, Failure-mode table, and Definition of Done, plus ADR-024. All six dispositions accepted by the reviewer and folded by the implementer in <code>ede4953d</code>, which also re-verified the change's own receipt — the fold expiring and re-earning its evidence is the content-digest contract exercising itself. Related: council board <code>20260728-222942-council-receipt-freshness.html</code> (design decisions this review verified against).</p>
+  </div>
+</main>

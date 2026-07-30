@@ -1,0 +1,215 @@
+<!-- source: receipt-tree-binding · kind council · slug receipt-freshness · stamped 2026-07-28 · authored report (snapshot semantics) · never auto-updated · decision recorded -->
+<meta charset="utf-8">
+<title>Council — Receipt Freshness Binding</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1080px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h3 { font-family: var(--serif); font-weight: 600; font-size: 1.05rem; margin: 0 0 6px; }
+  h4 { font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .question { border-left: 4px solid var(--accent); }
+  .pending { border-left: 4px solid var(--state); }
+  .member { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .mhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .mname { font-weight: 700; font-size: 1.02rem; flex: 0 0 auto; }
+  .mpos { color: var(--muted); flex: 1 1 320px; font-size: .92rem; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .camp-folder { background: var(--machine-soft); color: var(--machine); }
+  .camp-root { background: var(--state-soft); color: var(--state); }
+  .conf-high { background: var(--ok-soft); color: var(--ok); }
+  .conf-med { background: var(--accent-soft); color: var(--accent); }
+  .proof { background: var(--bad-soft); color: var(--bad); }
+  .rider { background: var(--ok-soft); color: var(--ok); }
+  .mbody { display: grid; gap: 10px; }
+  .mbody > div { border-top: 1px solid var(--line); padding-top: 8px; }
+  .mbody p:last-child, .mbody ul:last-child { margin-bottom: 0; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin-bottom: 5px; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--machine-soft); color: var(--ink); font-weight: 700; font-size: .82rem; }
+  td.y { color: var(--ok); font-weight: 600; }
+  td.n { color: var(--bad); font-weight: 600; }
+  td.q { color: var(--accent); font-weight: 600; }
+  .tablewrap { overflow-x: auto; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+  .opt { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .opt.reco { border-color: var(--accent-fill); box-shadow: 0 0 0 1px var(--accent-fill); }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">receipt-tree-binding · council · receipt freshness</div>
+  <h1>Council — What Expires a Verification Receipt?</h1>
+  <p class="stamp">convened <b>2026-07-28</b> · five members, same question, independent lenses · trigger: squash-merge unreachability of <code>verified_commit</code> (alpha.15 release canary) · informs the <b>receipt-tree-binding</b> Change, predecessor to <b>release-promotion-model</b> · decision <b>recorded — masked root-tree digest</b></p>
+
+  <div class="panel question" style="margin-top:18px">
+    <h4>The question</h4>
+    <p><b>Once receipt validity binds to content digests instead of commit reachability, what should expire a receipt?</b> The gate must yield the same verdict on every machine under any merge strategy (squash, merge commit, rebase). Today's rule — walk <code>verified_commit..HEAD</code>, any non-receipt path stales — crashes with <code>exit status 128</code> on any fresh clone after a squash merge, because the recorded commit no longer exists there.</p>
+  </div>
+
+  <h2>Proven defects surfaced by the council <span class="chip proof">reproduced, not inferred</span></h2>
+  <div class="panel">
+    <ul>
+      <li><b>Cohorts of two or more are unsatisfiable today.</b> The freshness walk exempts only the change's <em>own</em> receipt path, so member B's committed receipt stales member A's — proven in all commit orderings, including both receipts in one atomic commit. The cohort gate has never been satisfiable for the multi-change cohort it exists to gate. <i>(Git Internals + Correctness, independently)</i></li>
+      <li><b>The machine-split is verdict-versus-crash, not pass-versus-fail.</b> After squash + branch delete, the author's machine (holding orphaned objects) blocks with a clean reason; a protocol clone exits 128 into <code>release blocked: cannot inspect receipt … exit status 128</code> — stderr is discarded by <code>commandOutput</code>, so the consumer sees no path, no cause, no remedy. <i>(DX reproduced end-to-end; Correctness found a third behavior when the branch survives)</i></li>
+      <li><b>Verify attests worktree results under a HEAD label.</b> Criteria run against the working tree while the receipt records <code>git rev-parse HEAD</code> — an uncommitted fix can yield a green committed receipt for code no commit holds. Under content binding this must be closed: verify refuses a dirty tree. <i>(Audit + Correctness + Git, independently)</i></li>
+      <li><b><code>criteria_digest</code> drops the criterion's prose.</b> A V-entry's claim text can be rewritten without expiring anything; only ID/Command/Expect are digested. <i>(Audit)</i></li>
+      <li><b>The gate never runs in CI, and CI tags before testing.</b> <code>releaseCohortPreflight</code> has one caller: the author's local <code>loaf release</code>. <code>release.yml</code> triggers on the pushed tag and runs <code>go test ./...</code> after the tag exists. <i>(Release Engineering)</i></li>
+    </ul>
+  </div>
+
+  <h2>Unanimous riders <span class="chip rider">adopted under either option</span></h2>
+  <div class="panel">
+    <ul>
+      <li>Digests are computed from <b>git tree OIDs</b> (<code>ls-tree -z</code>, byte-sorted, mode included, spec-versioned, domain-separated hash) — never worktree bytes, never filesystem walks. Immune to <code>core.autocrlf</code>, case-folding, <code>core.quotePath</code>.</li>
+      <li><b>Commit reachability leaves the verdict entirely.</b> <code>verified_commit</code> demotes to provenance; no fallback to the walk when the object happens to exist — a fallback is the machine-split formalized. The <code>exit status 128</code> path becomes unreachable code.</li>
+      <li><b>Every checker state maps to a reasoned verdict</b> (block with named remedy), never an inspection error. Errors are reserved for genuine indeterminacy.</li>
+      <li><b>Schema v2 clean break, now.</b> Zero receipts exist anywhere; v1 refused with a re-verify message; no dual-read path. The window closes when the first cohort receipt commits.</li>
+      <li><b>Verify refuses a dirty worktree.</b> Plus: <code>criteria_digest</code> covers criterion text; record <code>tool_version</code> and toolchain; drop the absolute <code>cwd</code> (privacy leak, cross-machine diff noise); record the exclusion set and digest-spec version so changing the construction self-invalidates.</li>
+      <li><b>No configurability knob</b> for expiry scope — a per-project knob makes "is this evidence valid" a repo-local policy answer.</li>
+      <li><b>Drift diagnostics must be machine-independent</b> — never "N commits old" (needs reachability). Name what moved instead (paths / per-directory sub-digests).</li>
+      <li><b>Mask <code>receipts/</code> repo-wide and <code>reports/</code> from whatever digest gates</b> — fixes the cohort deadlock, and committing a review board or this council board must never expire evidence.</li>
+    </ul>
+  </div>
+
+  <h2>The split — 3 : 2 on gating scope</h2>
+  <div class="cols">
+    <div class="opt">
+      <h3>Folder-scoped digest + drift note + CI assertion</h3>
+      <p class="stamp">Release Engineering · Audit Integrity · Portability/DX</p>
+      <p>Receipt binds to the change folder's content (minus <code>receipts/</code>, <code>reports/</code>) + criteria digest. Unrelated repo commits never expire it. A structured drift note carries honesty; the whole-repo currency question moves to the pipeline: <b>block tag creation unless CI is green at the exact HEAD SHA</b>.</p>
+      <ul>
+        <li><b>Pro:</b> N verifications for N changes, zero churn; verification lives in the PR where authors want it; Gerrit's <code>copyCondition</code> is fifteen-year precedent for content-scoped attestations that survive unrelated landings.</li>
+        <li><b>Pro:</b> preserves work-model Decision 17 — a healthy cohort member on main always shows <code>verified</code>.</li>
+        <li><b>Con:</b> the receipt's green quietly means less: rewrite all of <code>internal/cli/</code> and it stays fresh. The claim language must narrow to "criteria last ran against this contract and folder" — repo health is delegated to CI.</li>
+        <li><b>Con:</b> re-adopts what work-model Decision 13 rejected — evidence surviving a revert of the verified work.</li>
+      </ul>
+    </div>
+    <div class="opt reco">
+      <h3>Masked root-tree digest, unified exclusions <span class="chip conf-med">synthesis pick</span></h3>
+      <p class="stamp">Git Internals · Systems Correctness</p>
+      <p>Receipt binds to the whole tree minus a declared, receipt-recorded exclusion set: <code>docs/changes/*/receipts/**</code> (repo-wide) ∪ <code>reports/</code> boards ∪ <b>the promotion designation allowlist</b> (version files, CHANGELOG, regenerated outputs). Digest domain ≈ what the criteria actually read.</p>
+      <ul>
+        <li><b>Pro:</b> the criteria are <code>go test ./...</code>, <code>npm run build</code>, <code>loaf check</code> — they read the repo, not the folder. Code changes and reverts expire evidence, matching Decision 13.</li>
+        <li><b>Pro:</b> <b>designation-legal ⟺ receipt-neutral</b> — the same allowlist drives the promotion diff check and the digest mask, so rc cuts and the promotion commit can never expire cohort receipts. Promotion passes by construction, principled rather than carved out. Matches the Intent's own words: "rc bugfix iterations re-verify cheaply; the rc commit promoted unchanged stays verified."</li>
+        <li><b>Con:</b> any later code landing expires cohort receipts — verification becomes a stabilization-time sweep at rc cut (one receipts-only commit, composable because receipts are masked) plus a re-sweep after rc bugfixes.</li>
+        <li><b>Con:</b> softens Decision 17 — a verified member on main can show "evidence predates current tree" until the rc-point sweep.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Property comparison</h2>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Property</th><th>Folder digest + CI assertion</th><th>Masked root-tree digest</th></tr>
+    <tr><td>Same verdict on every machine, any merge strategy</td><td class="y">yes</td><td class="y">yes</td></tr>
+    <tr><td>Survives squash / rebase / merge-commit unchanged content</td><td class="y">yes</td><td class="y">yes</td></tr>
+    <tr><td>Code change outside the folder expires the receipt</td><td class="n">no — CI assertion compensates at cut</td><td class="y">yes</td></tr>
+    <tr><td>Revert of the verified work expires the receipt</td><td class="n">no (Decision 13 tension)</td><td class="y">yes (revert that restores verified bytes un-stales — deliberate)</td></tr>
+    <tr><td>Cohort of N simultaneously verifiable</td><td class="y">yes</td><td class="y">yes (receipts masked repo-wide)</td></tr>
+    <tr><td>rc cut / promotion expire cohort receipts</td><td class="y">never</td><td class="y">never — allowlist unification, by construction</td></tr>
+    <tr><td>Re-verification cost</td><td class="y">once per change, in its PR</td><td class="q">sweep at rc cut + after rc bugfixes (anticipated by the rc design)</td></tr>
+    <tr><td>Receipt's green claim strength</td><td class="q">narrow — "contract + folder", stated honestly</td><td class="y">strong — "tracked content criteria read is unchanged"</td></tr>
+    <tr><td>Matches work-model Decision 13 (revert precedent)</td><td class="n">no</td><td class="y">yes</td></tr>
+    <tr><td>Matches work-model Decision 17 (main shows verified)</td><td class="y">yes</td><td class="q">softened until rc-point sweep</td></tr>
+    <tr><td>Touch-then-revert detection</td><td class="n" colspan="2">dropped under both — endpoint digests can't see it, and squash merges already erase it on main (Correctness: the property was branch-local fiction)</td></tr>
+  </table>
+  </div>
+
+  <h2>Member positions</h2>
+
+  <div class="member">
+    <div class="mhead"><span class="mname">Release Engineering</span><span class="chip camp-folder">folder + pipeline</span><span class="chip conf-high">high confidence</span><span class="mpos">The receipt and the release suite answer different questions; stop asking one artifact to answer both.</span></div>
+    <div class="mbody">
+      <div><h4>Core argument</h4><p>Folder digest gates; repo drift becomes a path-based advisory (name <code>go.mod</code>, not counts); the blocking whole-repo check moves to the pipeline — refuse to tag unless CI is green at the exact HEAD SHA. Gerrit's <code>copyCondition</code>, SLSA/in-toto content binding, and Debian britney all split per-unit evidence from archive-wide health. Option C generalizes the alpha.15 binary-hash canary to every receipt on every commit, and merge queues exist because repo-wide invalidation convoys don't scale.</p></div>
+      <div><h4>Unique contributions</h4><p>Gate has no CI caller; <code>release.yml</code> tags before testing and needs <code>fetch-depth: 0</code>; <code>verified_at</code> is unread yet is the one release-native signal (drift threshold keyed to the release cycle, not day counts); environment drift (toolchain) is invisible under folder scope — record <code>{go, os, arch}</code>; resolve the parked <code>plan.md</code> exemption Intent here (exclude it); defer per-change <code>evidence_paths</code> until a real case appears.</p></div>
+    </div>
+  </div>
+
+  <div class="member">
+    <div class="mhead"><span class="mname">Evidence &amp; Audit Integrity</span><span class="chip camp-folder">folder + recorded qualifier</span><span class="chip conf-high">high confidence</span><span class="mpos">The drift note is A's entire honesty budget — promote it from printed courtesy to recorded claim-qualifier, or A degrades into B.</span></div>
+    <div class="mbody">
+      <div><h4>Core argument</h4><p>The receipt's unique contribution is "the declared contract was identified and executed at all" — CI never parses <code>shape.md</code>. C's carve-out is an unverifiable global assertion ("allowlisted paths cannot affect any criterion") and carve-outs accrete; A's gap is bounded, stated, constant. Silence (B) is the textbook attestation failure: output text unchanged while its meaning weakens.</p></div>
+      <div><h4>Unique contributions</h4><p>Dirty-worktree false-pass path (block on <code>worktree_clean: false</code>); <code>criteria_digest</code> drops criterion <code>Text</code>; store a literal <code>claim</code> sentence in the receipt; record <code>repo_tree_digest</code> — surfaced, never gating — so tightening policy later needs no re-verification sweep; named anti-pattern for the ADR: never let the reader recompute an absent digest from the current tree ("lenient migration" code that compares a tree against itself).</p></div>
+    </div>
+  </div>
+
+  <div class="member">
+    <div class="mhead"><span class="mname">Portability &amp; Consumer DX</span><span class="chip camp-folder">folder, no knob</span><span class="chip conf-high">high confidence</span><span class="mpos">A doesn't produce a better error for the squash case — it deletes the failure class; there is no git question left that a merge strategy can make unanswerable.</span></div>
+    <div class="mbody">
+      <div><h4>Core argument</h4><p>Zero-config-correct under every merge strategy because the digest reads <code>HEAD:&lt;folder&gt;</code>, content-addressed and identical on every clone. No expiry-scope knob: a consumer meets that setting for the first time while blocked at a release and will set it to the loosest value. If evidence outside the folder matters, the change should declare it (authored, reviewable) — the repo should not globally redefine what evidence means.</p></div>
+      <div><h4>Unique contributions</h4><p>End-to-end reproduction: both machines block, divergence is clean-reason vs <code>exit status 128</code> (a <code>--no-local</code> clone loses the object while <code>--is-shallow-repository</code> still says false — the shallow guard gives false comfort); <code>bash -lc</code> runs criteria in a login shell (nvm/asdf/Homebrew paths locally, absent in CI) — drop the <code>-l</code>; the rc bypass means a consumer's first gate contact is the stable cut, the worst possible moment — add a read-only receipt-status surface; copy-pasteable block messages naming folder, cause, and remedy; fix <code>commandOutput</code> to capture stderr.</p></div>
+    </div>
+  </div>
+
+  <div class="member">
+    <div class="mhead"><span class="mname">Git Internals</span><span class="chip camp-root">masked root tree</span><span class="chip conf-high">high (mechanics)</span><span class="mpos">Folder scope is a silent gutting: the digest's domain does not intersect the criteria's input set — too weak where it matters, too twitchy where it doesn't.</span></div>
+    <div class="mbody">
+      <div><h4>Core argument</h4><p>Not one of the work-model's nine criteria reads a byte of its change folder; under A you can rewrite <code>internal/cli/</code> and stay fresh, while committing a review board expires you. <code>shape.md</code> Decision 13 already rejected this class in writing. The sound construction: one <code>git ls-tree -r -z --full-tree &lt;pinned-sha&gt;</code> (14 ms over 2,098 entries), mask <code>docs/changes/*/receipts/**</code> (+ <code>reports/</code>), byte-sort, keep mode, domain-separation header, SHA-256, record as <code>evidence_digest</code> + <code>evidence_digest_spec</code>.</p></div>
+      <div><h4>Unique contributions</h4><p>Proved the N≥2 cohort deadlock in all orderings; merge-mode behavior table verified empirically (squash preserves root tree when main hasn't diverged; rebase breaks reachability the same as squash; revert that restores bytes un-stales — the better semantics); never <code>mktree</code> (writes objects — a side effect an audit gate must not have, fails on read-only stores); no reachability fallback ever — a verdict that consults the walk when the object exists differs by machine <em>by design</em>; diagnostics guard with <code>cat-file -e</code> and degrade to shorter messages, never different verdicts.</p></div>
+    </div>
+  </div>
+
+  <div class="member">
+    <div class="mhead"><span class="mname">Systems Correctness</span><span class="chip camp-root">masked root + unification</span><span class="chip conf-high">high confidence</span><span class="mpos">A and B are unsound as gating predicates; C without an exclusion set is unworkable; the exclusion set already exists — it's the designation allowlist.</span></div>
+    <div class="mbody">
+      <div><h4>Core argument</h4><p><code>fresh(receipt, HEAD)</code> must be a pure function of receipt fields and the HEAD tree — no refs, no reachability, no worktree, no clock. Define the digest over the tree minus (receipt surface ∪ designation allowlist): then <b>a commit is designation-legal if and only if it is receipt-neutral</b>, and the promotion contradiction cannot be constructed. Same class-fix shape as <code>pinEvidenceAtHEAD</code>: derive the boundary once, thread it everywhere.</p></div>
+      <div><h4>Unique contributions</h4><p>Full failure-mode table — every state (missing, uncommitted, unparseable, unsupported schema, object-format change, digest/criteria mismatch, failing results) maps to a reasoned block; <code>scope_sections</code> per-directory sub-digests give machine-independent drift naming ("content changed under <code>internal/</code>") with no ancestry; touch-then-revert is incoherent on squash-merged main — drop it deliberately and record why; <code>schema_version</code> is written and never read — v2 must be checked explicitly, not rely on zero-value accident; reason strings are load-bearing control flow today (<code>strings.HasPrefix</code> dispatch) — become a typed enum; composition obligation: masking regenerated outputs means the designation check must independently prove they're the deterministic rebuild.</p></div>
+    </div>
+  </div>
+
+  <h2>Synthesis</h2>
+  <div class="panel">
+    <p><b>Both camps converge on the same machinery and differ on one line: the digest's domain.</b> Everything else — OID-based construction, no reachability, reasoned verdicts, schema v2 now, dirty-tree refusal, masked <code>receipts/</code> + <code>reports/</code>, machine-independent drift, no knob — is unanimous and lands identically either way.</p>
+    <p><b>Synthesis recommendation: the masked root-tree digest with the unified exclusion set</b>, composed with the folder camp's riders (CI-green-at-HEAD assertion before tagging, DX's message wordings, Audit's recorded claim-qualifier and <code>repo_tree_digest</code> field, Correctness's <code>scope_sections</code> for drift naming). Rationale: Decision 13 is owner-settled precedent that evidence must not survive a revert of the verified work; the criteria's input domain is the repo, and a gate whose green means less than it reads is the failure mode this project keeps paying to remove; and the allowlist unification makes the promotion model and the receipt layer one system with one invariant. The acknowledged cost — verification becomes an rc-point sweep — is the workflow the rc design already described ("rc bugfix iterations re-verify cheaply").</p>
+    <p>The folder option remains fully coherent if the owner weighs Decision 17's main-state doctrine and per-PR verification ergonomics above evidence strength — in that case the claim language must narrow explicitly and the CI assertion becomes load-bearing rather than advisory.</p>
+  </div>
+
+  <h2>Decision</h2>
+  <div class="panel" style="border-left: 4px solid var(--ok)">
+    <p><b>Decided 2026-07-28, by the owner, after board review: the masked root-tree digest with the unified exclusion set.</b> The digest covers the whole tree minus a declared, receipt-recorded exclusion set — <code>docs/changes/*/receipts/**</code> (repo-wide), <code>docs/changes/*/reports/**</code>, and the release-metadata allowlist (version files, CHANGELOG, regenerated build outputs) — making <b>designation-legal ⟺ receipt-neutral</b>: rc cuts and the promotion commit can never expire cohort receipts. Composed with the unanimous riders (schema v2 clean break, OID-based construction, reachability fully retired, reasoned verdicts everywhere, dirty-worktree refusal at verify, criteria text digested, no knob, per-directory sub-digest drift naming) and the folder camp's adopted riders: the CI-green-at-HEAD assertion before tagging (lands with the promotion change), DX's block-message wordings, and Audit's recorded-never-gating <code>repo_tree_digest</code>. Cost model accepted explicitly: the freshness check is milliseconds everywhere; re-verification is a minutes-scale local sweep only at rc iterations, and never at promotion.</p>
+  </div>
+
+  <footer>Authored snapshot — five parallel advisory deliberations (loaf:reviewer profiles, read-only), same question, independent lenses; both proofs (cohort deadlock, verdict-vs-crash) reproduced against the real gate code with throwaway fixtures since removed. Convened during the shaping of receipt-tree-binding, 2026-07-28; decision recorded the same day and logged to the project journal.</footer>
+</main>

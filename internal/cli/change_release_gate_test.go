@@ -477,7 +477,8 @@ func TestReleaseCohortGateReceiptFreshnessBootstrap(t *testing.T) {
 		t.Fatalf("receipt-only commit should not stale: %v", err)
 	}
 
-	// Touch then revert a non-receipt path — tree diff is empty, commit-by-commit is not.
+	// Decision 4 / ADR-024: touch-then-revert is deliberately undetectable —
+	// byte-identical restore leaves the receipt fresh.
 	other := filepath.Join(repo, "other.txt")
 	if err := os.WriteFile(other, []byte("touch\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile other: %v", err)
@@ -488,28 +489,18 @@ func TestReleaseCohortGateReceiptFreshnessBootstrap(t *testing.T) {
 	}
 	commitAllChangeTest(t, repo, "chore: revert other")
 
-	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
-	if gateErr == nil || !strings.Contains(gateErr.Error(), "later non-receipt path requires criteria re-run") {
-		t.Fatalf("touch-then-revert should stale: %v", gateErr)
-	}
-
-	// Re-verify after the stale commits.
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
-		t.Fatalf("re-verify: %v", err)
-	}
-	commitAllChangeTest(t, repo, "chore: re-verify after stale")
 	if err := releaseCohortPreflight(repo, "1.0.0", nil); err != nil {
-		t.Fatalf("fresh receipt should pass: %v", err)
+		t.Fatalf("touch-then-revert must stay fresh under content digest: %v", err)
 	}
 
-	// Any other later non-receipt path stales.
+	// A lasting content change stales with a typed drift reason.
 	if err := os.WriteFile(filepath.Join(repo, "stale.txt"), []byte("x\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile stale: %v", err)
 	}
-	commitAllChangeTest(t, repo, "chore: later non-receipt path")
-	gateErr = releaseCohortPreflight(repo, "1.0.0", nil)
-	if gateErr == nil || !strings.Contains(gateErr.Error(), "later non-receipt path requires criteria re-run") {
-		t.Fatalf("later path should stale: %v", gateErr)
+	commitAllChangeTest(t, repo, "chore: lasting content change")
+	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "content changed since verification") {
+		t.Fatalf("lasting content change should drift: %v", gateErr)
 	}
 }
 
@@ -714,7 +705,7 @@ func TestReleaseCohortGateV5CriteriaEditExpiresReceipt(t *testing.T) {
 	commitAllChangeTest(t, repo, "docs: edit shape criteria")
 
 	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
-	if gateErr == nil || !strings.Contains(gateErr.Error(), "criteria digest mismatch (receipt expired)") {
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "criteria changed (receipt expired)") {
 		t.Fatalf("criteria edit should expire receipt: %v", gateErr)
 	}
 }
@@ -738,7 +729,7 @@ func TestReleaseCohortGateV5FreshnessRerunAndReceiptOwnCommit(t *testing.T) {
 	}
 	commitAllChangeTest(t, repo, "chore: later non-receipt path")
 	gateErr := releaseCohortPreflight(repo, "1.0.0", nil)
-	if gateErr == nil || !strings.Contains(gateErr.Error(), "later non-receipt path requires criteria re-run") {
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "content changed since verification") {
 		t.Fatalf("non-receipt path should force re-run: %v", gateErr)
 	}
 }
@@ -786,13 +777,13 @@ func TestReleaseCohortGateV5PlanMdEditStalesNotExpires(t *testing.T) {
 		t.Fatal("plan.md-only commit should stale the receipt")
 	}
 	msg := gateErr.Error()
-	if !strings.Contains(msg, "later non-receipt path requires criteria re-run") {
-		t.Fatalf("want re-verify demand, got: %v", gateErr)
+	if !strings.Contains(msg, "content changed since verification") {
+		t.Fatalf("want content-drift demand, got: %v", gateErr)
 	}
 	if strings.Contains(msg, "receipt expired") {
 		t.Fatalf("must not report expiry for plan.md edit: %v", gateErr)
 	}
-	remedy := "run: loaf change verify " + filepath.ToSlash(folderRel) + ", then commit the receipt"
+	remedy := "Run: loaf change verify " + filepath.ToSlash(folderRel) + ", then commit the receipt"
 	if !strings.Contains(msg, remedy) {
 		t.Fatalf("want mechanical remedy %q, got: %v", remedy, gateErr)
 	}
@@ -817,8 +808,8 @@ func TestReleaseCohortGateV5RetargetAfterVerifyRequiresRerun(t *testing.T) {
 
 	// Blind trust would accept the pre-retarget receipt; freshness must force re-run.
 	gateErr := releaseCohortPreflight(repo, "2.1.0", nil)
-	if gateErr == nil || !strings.Contains(gateErr.Error(), "later non-receipt path requires criteria re-run") {
-		t.Fatalf("retarget should trigger re-run path: %v", gateErr)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "content changed since verification") {
+		t.Fatalf("retarget should trigger content drift: %v", gateErr)
 	}
 
 	// Not permanent invalidation: re-verify opens the new cohort.

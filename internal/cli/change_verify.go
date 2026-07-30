@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -33,19 +35,36 @@ type changeCriterion struct {
 }
 
 type changeVerifyReceipt struct {
-	SchemaVersion  int                           `json:"schema_version"`
-	Change         string                        `json:"change"`
-	VerifiedCommit string                        `json:"verified_commit"`
-	VerifiedAt     string                        `json:"verified_at"`
-	CriteriaDigest string                        `json:"criteria_digest"`
-	Cwd            string                        `json:"cwd"`
-	TargetRelease  string                        `json:"target_release,omitempty"`
-	Results        []changeVerifyCriterionResult `json:"results"`
+	SchemaVersion int    `json:"schema_version"`
+	Change        string `json:"change"`
+	// VerifiedCommit is provenance only — never consulted for the freshness verdict (ADR-024).
+	VerifiedCommit   string                `json:"verified_commit"`
+	VerifiedRootTree string                `json:"verified_root_tree"`
+	VerifiedAt       string                `json:"verified_at"`
+	CriteriaDigest   string                `json:"criteria_digest"`
+	ScopeDigest      string                `json:"scope_digest"`
+	ScopeSections    map[string]string     `json:"scope_sections"`
+	Exclusions       []string              `json:"exclusions"`
+	DigestSpec       string                `json:"digest_spec"`
+	ToolVersion      string                `json:"tool_version"`
+	Toolchain        changeVerifyToolchain `json:"toolchain"`
+	// WorktreeClean records execution integrity: the tracked tree was unchanged
+	// and HEAD was unmoved for the whole verify run. False voids the receipt
+	// (ADR-024 dirty-execution rejection); there is no separate schema field
+	// for HEAD movement.
+	WorktreeClean bool                          `json:"worktree_clean"`
+	TargetRelease string                        `json:"target_release,omitempty"`
+	Results       []changeVerifyCriterionResult `json:"results"`
 }
 
-// changeVerifyCriterionResult records one criterion's evidence. Expect fields are
-// additive on schema_version 1: older readers ignore them, and no receipt exists
-// outside fixtures.
+// changeVerifyToolchain records the verify host environment for audit, never gating.
+type changeVerifyToolchain struct {
+	Go   string `json:"go"`
+	OS   string `json:"os"`
+	Arch string `json:"arch"`
+}
+
+// changeVerifyCriterionResult records one criterion's evidence.
 type changeVerifyCriterionResult struct {
 	ID           string                    `json:"id"`
 	Command      string                    `json:"command"`
@@ -97,11 +116,28 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 	if len(criteria) == 0 {
 		return fmt.Errorf("no executable criteria found in shape.md (need V-entries with Command: `...`)")
 	}
+	dirtyPaths, err := changeTrackedWorktreeDivergedPaths(rootPath)
+	if err != nil {
+		return fmt.Errorf("inspect worktree: %w", err)
+	}
+	if len(dirtyPaths) > 0 {
+		return fmt.Errorf("working tree differs from HEAD; commit before verifying")
+	}
 	head, err := commandOutput(rootPath, "git", "rev-parse", "HEAD")
 	if err != nil {
 		return fmt.Errorf("resolve HEAD: %w", err)
 	}
 	head = strings.TrimSpace(head)
+	rootTree, err := commandOutput(rootPath, "git", "rev-parse", "HEAD^{tree}")
+	if err != nil {
+		return fmt.Errorf("resolve HEAD tree: %w", err)
+	}
+	rootTree = strings.TrimSpace(rootTree)
+	exclusions := ChangeEvidenceExclusions()
+	scope, err := scopeDigest(rootPath, head, exclusions, nil)
+	if err != nil {
+		return fmt.Errorf("compute scope digest: %w", err)
+	}
 	results := make([]changeVerifyCriterionResult, 0, len(criteria))
 	failed := false
 	for _, criterion := range criteria {
@@ -135,18 +171,42 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 				ansiYellow("warn"), criterion.ID, clause)
 		}
 	}
-	receipt := changeVerifyReceipt{
-		SchemaVersion:  1,
-		Change:         node.Slug,
-		VerifiedCommit: head,
-		VerifiedAt:     time.Now().UTC().Format(time.RFC3339),
-		CriteriaDigest: changeCriteriaDigest(criteria),
-		Cwd:            rootPath,
-		TargetRelease:  node.TargetRelease,
-		Results:        results,
+	// Post-run dirty check: criteria may mutate tracked files. Receipt/report
+	// masks are exempt (same as pre-run); allowlist paths are not.
+	postDirty, err := changeTrackedWorktreeDivergedPaths(rootPath)
+	if err != nil {
+		return fmt.Errorf("inspect worktree after criteria: %w", err)
 	}
-	// Write-on-failure: persist evidence even when criteria fail; the cohort
-	// gate rejects receipts with any results[].ok == false (TASK-007).
+	postHead, err := commandOutput(rootPath, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return fmt.Errorf("resolve HEAD after criteria: %w", err)
+	}
+	postHead = strings.TrimSpace(postHead)
+	headMoved := postHead != head
+	worktreeClean := len(postDirty) == 0 && !headMoved
+	receipt := changeVerifyReceipt{
+		SchemaVersion:    2,
+		Change:           node.Slug,
+		VerifiedCommit:   head,
+		VerifiedRootTree: rootTree,
+		VerifiedAt:       time.Now().UTC().Format(time.RFC3339),
+		CriteriaDigest:   changeCriteriaDigest(criteria),
+		ScopeDigest:      scope.Digest,
+		ScopeSections:    scope.Sections,
+		Exclusions:       exclusions,
+		DigestSpec:       ChangeEvidenceDigestSpec,
+		ToolVersion:      packageVersion(rootPath),
+		Toolchain: changeVerifyToolchain{
+			Go:   strings.TrimPrefix(runtime.Version(), "go"),
+			OS:   runtime.GOOS,
+			Arch: runtime.GOARCH,
+		},
+		WorktreeClean: worktreeClean,
+		TargetRelease: node.TargetRelease,
+		Results:       results,
+	}
+	// Write-on-failure: persist evidence even when criteria fail or the
+	// worktree diverged mid-run; the cohort gate rejects both.
 	receiptPath := filepath.Join(folder, filepath.FromSlash(changeVerifyReceiptFile))
 	if err := os.MkdirAll(filepath.Dir(receiptPath), 0o755); err != nil {
 		return fmt.Errorf("create receipts/: %w", err)
@@ -161,7 +221,14 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 	}
 	fmt.Fprintf(out, "\nWrote receipt: %s\n", relFromRoot(rootPath, receiptPath))
 	fmt.Fprintf(out, "criteria_digest: %s\n", receipt.CriteriaDigest)
-	fmt.Fprintf(out, "verified_commit: %s\n", shortSHA(receipt.VerifiedCommit))
+	fmt.Fprintf(out, "scope_digest: %s\n", receipt.ScopeDigest)
+	fmt.Fprintf(out, "verified_commit: %s (provenance)\n", shortSHA(receipt.VerifiedCommit))
+	if !worktreeClean {
+		if headMoved {
+			return fmt.Errorf("HEAD moved during verification (%s → %s); receipt is void — re-verify", shortSHA(head), shortSHA(postHead))
+		}
+		return fmt.Errorf("criteria mutated the tracked worktree (%s); receipt is void — restore or commit, then re-verify", strings.Join(postDirty, ", "))
+	}
 	if failed {
 		return ExitError{Code: 1}
 	}
@@ -170,7 +237,7 @@ func (r Runner) runChangeVerify(args []string, out io.Writer, rootPath string) e
 
 func writeChangeVerifyHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf change verify [folder]",
-		"Run executable criteria declared in shape.md and write receipts/verify.json (criteria digest, verified commit, per-criterion evidence). New-layout-only.",
+		"Run executable criteria declared in shape.md and write receipts/verify.json (schema v2 content digest, criteria digest, per-criterion evidence). New-layout-only. Refuses a dirty tracked worktree.",
 		"[folder]  Change folder path; resolves from the current branch when omitted")
 }
 
@@ -390,14 +457,14 @@ func changeExpectFailureNote(runErr error, exitCode int, checks []changeVerifyEx
 func changeCriteriaDigest(criteria []changeCriterion) string {
 	var b strings.Builder
 	for _, c := range criteria {
-		fmt.Fprintf(&b, "%s\n%s\n%s\n", c.ID, c.Command, c.Expect)
+		fmt.Fprintf(&b, "%s\n%s\n%s\n%s\n", c.ID, c.Text, c.Command, c.Expect)
 	}
 	return sha256HexBytes([]byte(b.String()))
 }
 
-func runChangeCriterionCommand(folder, command string) (int, string, error) {
-	cmd := exec.Command("bash", "-lc", command)
-	cmd.Dir = folder
+func runChangeCriterionCommand(rootPath, command string) (int, string, error) {
+	cmd := exec.Command("bash", "-c", command)
+	cmd.Dir = rootPath
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		return 0, string(output), nil
@@ -408,6 +475,92 @@ func runChangeCriterionCommand(folder, command string) (int, string, error) {
 	return 1, string(output), err
 }
 
+// changeTrackedWorktreeDivergedPaths lists tracked/staged paths that differ from
+// HEAD and are not receipt/report-mask exempt. Paths are slash-normalized and sorted.
+// Untracked files do not count — verify may write the receipt into an untracked
+// receipts/ path. The release-metadata allowlist is NOT exempt: digest-excluded
+// paths like dist/** stay dirty-checked because criteria may mutate them.
+//
+// Status uses --ignore-submodules=untracked so a consumer's submodule.<name>.ignore
+// config cannot hide a dirty or HEAD-moved submodule; untracked-only content inside
+// a submodule still does not refuse (mirrors -uno for the superproject).
+func changeTrackedWorktreeDivergedPaths(rootPath string) ([]string, error) {
+	out, err := commandOutput(rootPath, "git", "status", "--porcelain=v1", "-z", "-uno", "--ignore-submodules=untracked")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var paths []string
+	for _, path := range porcelainTrackedPathsZ(out) {
+		if path == "" || changeDirtyCheckExempt(path) || seen[path] {
+			continue
+		}
+		seen[path] = true
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	return paths, nil
+}
+
+// changeDirtyCheckExempt is true only for receipt and report mask paths — never
+// the release-metadata allowlist.
+func changeDirtyCheckExempt(path string) bool {
+	for _, pattern := range ChangeEvidenceReceiptMasks {
+		if matchEvidenceGlob(path, pattern) {
+			return true
+		}
+	}
+	for _, pattern := range ChangeEvidenceReportMasks {
+		if matchEvidenceGlob(path, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// porcelainTrackedPathsZ extracts path(s) from git status --porcelain=v1 -z output.
+// Records are NUL-terminated; paths are never quoted. Rename/copy records (X status
+// R or C) carry a second NUL-terminated original-path field after the primary path.
+func porcelainTrackedPathsZ(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var paths []string
+	data := raw
+	for len(data) > 0 {
+		nul := strings.IndexByte(data, 0)
+		if nul < 0 {
+			break
+		}
+		record := data[:nul]
+		data = data[nul+1:]
+		if len(record) < 3 || record[2] != ' ' {
+			continue
+		}
+		xy := record[:2]
+		path := filepath.ToSlash(record[3:])
+		if path != "" {
+			paths = append(paths, path)
+		}
+		if xy[0] != 'R' && xy[0] != 'C' {
+			continue
+		}
+		if len(data) == 0 {
+			break
+		}
+		nul2 := strings.IndexByte(data, 0)
+		if nul2 < 0 {
+			break
+		}
+		orig := filepath.ToSlash(data[:nul2])
+		data = data[nul2+1:]
+		if orig != "" {
+			paths = append(paths, orig)
+		}
+	}
+	return paths
+}
+
 func sha256HexBytes(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
@@ -415,8 +568,8 @@ func sha256HexBytes(data []byte) string {
 
 // loadChangeVerifyReceipt reads the receipt from the working tree. This is
 // verify's own surface — it writes that file — and never the gate's: gate-context
-// reads go through changeReceiptAtHEAD so evidence is always committed before it
-// is read (ADR-023).
+// reads go through changeReceiptStatus, which reads the committed receipt at HEAD
+// via readCommittedOptional (ADR-023 / ADR-024).
 func loadChangeVerifyReceipt(folderAbs string) (changeVerifyReceipt, error) {
 	data, err := os.ReadFile(filepath.Join(folderAbs, filepath.FromSlash(changeVerifyReceiptFile)))
 	if err != nil {
@@ -431,98 +584,6 @@ func loadChangeVerifyReceipt(folderAbs string) (changeVerifyReceipt, error) {
 
 func changeReceiptRelPath(folderRel string) string {
 	return filepath.ToSlash(filepath.Join(folderRel, changeVerifyReceiptFile))
-}
-
-// changeReceiptAtHEAD loads the receipt as committed at HEAD. found=false means
-// the HEAD tree carries no receipt; the working tree is never consulted for
-// content, so a receipt that exists on one machine only cannot satisfy the gate.
-func changeReceiptAtHEAD(rootPath, folderRel string, outputCommand changeGitOutput) (changeVerifyReceipt, bool, error) {
-	if outputCommand == nil {
-		outputCommand = commandOutput
-	}
-	receiptRel := changeReceiptRelPath(folderRel)
-	content, found, err := readCommittedOptional(rootPath, "HEAD", receiptRel, outputCommand)
-	if err != nil {
-		return changeVerifyReceipt{}, false, err
-	}
-	if !found {
-		return changeVerifyReceipt{}, false, nil
-	}
-	var receipt changeVerifyReceipt
-	if err := json.Unmarshal([]byte(content), &receipt); err != nil {
-		return changeVerifyReceipt{}, false, fmt.Errorf("parse committed receipt %s: %w", receiptRel, err)
-	}
-	return receipt, true, nil
-}
-
-func changeReceiptExistsInWorkingTree(rootPath, folderRel string) bool {
-	folderAbs := filepath.Join(rootPath, filepath.FromSlash(folderRel))
-	_, err := os.Stat(filepath.Join(folderAbs, filepath.FromSlash(changeVerifyReceiptFile)))
-	return err == nil
-}
-
-// changeReceiptStatus reports whether a receipt attests successful verification
-// that still covers HEAD. The receipt is read from committed HEAD, never from the
-// working tree: an uncommitted receipt is evidence on one machine only and blocks
-// with its own reason. Failing criteria block even when the receipt is fresh; the
-// receipt's own commit never stales it; any later commit that touches a
-// non-receipt path stales the receipt with a re-verify demand (Decision 13).
-// Preflight never executes criteria — only loaf change verify does.
-func changeReceiptStatus(rootPath, folderRel string, node changeNode, outputCommand changeGitOutput) (ok bool, reason string, err error) {
-	if outputCommand == nil {
-		outputCommand = commandOutput
-	}
-	receipt, found, err := changeReceiptAtHEAD(rootPath, folderRel, outputCommand)
-	if err != nil {
-		return false, "", err
-	}
-	if !found {
-		if changeReceiptExistsInWorkingTree(rootPath, folderRel) {
-			return false, "receipt not committed at HEAD", nil
-		}
-		return false, "missing receipt", nil
-	}
-	criteria := parseChangeExecutableCriteria(node.Content)
-	digest := changeCriteriaDigest(criteria)
-	if digest != receipt.CriteriaDigest {
-		return false, "criteria digest mismatch (receipt expired)", nil
-	}
-	if failed := receiptFailingCriterionIDs(receipt); len(failed) > 0 {
-		return false, fmt.Sprintf("receipt records failing criteria (%s)", strings.Join(failed, ", ")), nil
-	}
-	head, err := outputCommand(rootPath, "git", "rev-parse", "HEAD")
-	if err != nil {
-		return false, "", err
-	}
-	head = strings.TrimSpace(head)
-	if head == receipt.VerifiedCommit {
-		return true, "", nil
-	}
-	// Commit-by-commit: a touch-then-revert pair still stales, unlike a
-	// verified..HEAD tree diff that would cancel out.
-	logOut, err := outputCommand(rootPath, "git", "log", "--format=%H", receipt.VerifiedCommit+"..HEAD")
-	if err != nil {
-		return false, "", err
-	}
-	receiptRel := changeReceiptRelPath(folderRel)
-	for _, commit := range strings.Split(strings.TrimSpace(logOut), "\n") {
-		commit = strings.TrimSpace(commit)
-		if commit == "" {
-			continue
-		}
-		pathsOut, err := outputCommand(rootPath, "git", "diff-tree", "--no-commit-id", "--name-only", "-r", commit)
-		if err != nil {
-			return false, "", err
-		}
-		for _, p := range strings.Split(pathsOut, "\n") {
-			p = filepath.ToSlash(strings.TrimSpace(p))
-			if p == "" || p == receiptRel {
-				continue
-			}
-			return false, "later non-receipt path requires criteria re-run", nil
-		}
-	}
-	return true, "", nil
 }
 
 func receiptFailingCriterionIDs(receipt changeVerifyReceipt) []string {

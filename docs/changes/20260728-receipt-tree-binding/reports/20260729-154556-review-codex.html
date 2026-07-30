@@ -1,0 +1,124 @@
+<!-- source: receipt-tree-binding · kind review · slug codex · stamped 2026-07-29 · authored report (snapshot semantics) · never auto-updated · dispositions recorded -->
+<meta charset="utf-8">
+<title>Review Round 2 (Codex) — Receipt Tree Binding</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1080px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h3 { font-family: var(--serif); font-weight: 600; font-size: 1.05rem; margin: 0 0 6px; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--ok); margin-bottom: 28px; }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .fname { font-weight: 700; font-size: 1.02rem; flex: 1 1 320px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-high { background: var(--bad); color: #fff; }
+  .sev-medium { background: var(--bad-soft); color: var(--bad); }
+  .sev-low { background: var(--accent-soft); color: var(--accent); }
+  .sev-nit { background: var(--state-soft); color: var(--state); }
+  .disp-accepted { background: var(--ok-soft); color: var(--ok); }
+  .disp-deferred { background: var(--state-soft); color: var(--state); }
+  .frow { display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px; font-size: .93rem; }
+  .frow dt { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; padding-top: 2px; }
+  .frow dd { margin: 0 0 6px; }
+  .checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 8px; }
+  .check { background: var(--ok-soft); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: .88rem; }
+  .check b { color: var(--ok); display: block; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; }
+  @media (max-width: 640px) { .frow { grid-template-columns: 1fr; } .frow dt { padding-top: 8px; } }
+</style>
+<main>
+  <div class="eyebrow">Review · Round 2 · External</div>
+  <h1>Receipt Tree Binding — Codex Review</h1>
+  <p class="stamp">change <b>docs/changes/20260728-receipt-tree-binding</b> · reviewer <b>Codex (gpt-5.6-sol, xhigh)</b> · reviewed <b>2026-07-29</b> · scope <b>main..6d6b43a3</b> · dispositions folded in <b>2cc2c333</b></p>
+
+  <div class="panel verdict">
+    <h3>Round verdict: changes requested → all three findings accepted and fixed</h3>
+    <p>Codex reviewed the branch after round 1's fold, briefed to hunt lifecycle and test blind spots the first round might have missed. It returned changes-requested with three findings — one High, one Medium, one Low — all confirmed by inspection and accepted without modification. The High and Medium findings share a root: the dirty-tree check was a single pre-run snapshot that either missed mutation (during criteria) or over-fired (on committed cohort receipts). The governing fix decision: dirty checks exempt exactly the receipt and report masks, never the release-metadata allowlist, and <code>worktree_clean</code> became a load-bearing receipt field enforced by the freshness predicate. All fixes folded in <code>2cc2c333</code>; round 3 re-review approved.</p>
+    <div class="checks">
+      <div class="check"><b>Full suite</b> <code>go test ./...</code> green with the three new lifecycle fixtures</div>
+      <div class="check"><b>Receipt</b> re-verified; <code>worktree_clean: true</code>; change derives <code>verified</code></div>
+      <div class="check"><b>Design proof</b> receipt survived a post-verify amend — <code>verified_commit</code> no longer exists, verdict unchanged</div>
+    </div>
+  </div>
+
+  <h2>Findings</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">C1 — Criteria could mutate tracked content while the receipt recorded <code>worktree_clean: true</code></span><span class="chip sev-high">high</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>Verify checked cleanliness once pre-run, computed the scope digest, then ran arbitrary writable Bash commands and hardcoded <code>WorktreeClean: true</code>. A criterion mutating a tracked, digest-excluded path (e.g. <code>dist/</code>) yielded a gate-accepted receipt attesting an execution against bytes absent from the recorded commit — the exact defect Decision 5 exists to prevent.</dd>
+      <dt>Disposition</dt><dd>Accepted — the realistic trigger is not malice but a criterion like <code>npm run build</code> regenerating outputs.</dd>
+      <dt>Fix</dt><dd><code>2cc2c333</code>: post-run divergence check (same mask exemptions as pre-run); receipt still written (write-on-failure) with derived <code>worktree_clean</code>; verify exits non-zero naming the diverged paths; new typed reason <code>changeReceiptDirtyExecution</code> makes the predicate reject <code>worktree_clean: false</code> receipts. Pinned by the <code>tracked-dist-mutation-voids-and-blocks-gate</code> fixture.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">C2 — Re-verify sweep self-blocked on previously committed cohort receipts</span><span class="chip sev-medium">medium</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>Re-verifying member A rewrote its tracked receipt, so member B's pre-run dirty check refused with "working tree differs from HEAD" — the contracted verify-all-then-one-sweep-commit workflow (<code>shape.md:61</code>) was impossible once receipts were committed. Round 1's cohort fixture only exercised first-time untracked receipts, which <code>-uno</code> hid.</dd>
+      <dt>Disposition</dt><dd>Accepted — receipts and boards are declared outside the evidence domain, so their dirt cannot invalidate an attestation; the exemption is scoped to those masks only.</dd>
+      <dt>Fix</dt><dd><code>2cc2c333</code>: dirty checks filter porcelain entries through <code>matchEvidenceGlob</code> against the receipt + report masks (rename and quoted-path records handled); allowlist paths deliberately stay checked. Pinned by <code>re-verify-succeeds-with-committed-receipt-after-drift</code> and <code>cohort-reverify-sweep-with-committed-receipts</code> fixtures.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">C3 — Seam-failure block prescribed re-verify through the same broken seam</span><span class="chip sev-low">low</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The <code>changeReceiptEvidenceUnavailable</code> block carried the generic re-verify remedy, but verify performs the same git reads and would fail before writing a receipt; a test asserted the non-remedy.</dd>
+      <dt>Disposition</dt><dd>Accepted as wording — the verdict semantics were already correct (fail closed, typed).</dd>
+      <dt>Fix</dt><dd><code>2cc2c333</code>: the block now ends "Verification cannot proceed until git reads succeed — inspect the repository (git fsck) or re-clone"; the test asserts the new remedy.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">R1 — Residual: <code>changeTrackedWorktreeDirty</code> left with zero callers</span><span class="chip sev-nit">nit</span><span class="chip disp-deferred">deferred</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>Round-3 re-review: the fold rewired verify to <code>changeTrackedWorktreeDivergedPaths</code> and left the boolean wrapper dead — the same class round 1's F1/F2 removed.</dd>
+      <dt>Disposition</dt><dd>Deferred to the ship round's pre-merge cleanup — deleting it touches <code>internal/</code> and would expire the receipt again for an eight-line wrapper; fold it into the next substantive commit instead.</dd>
+      <dt>Fix</dt><dd>Pending — remove the wrapper when the branch next re-verifies anyway.</dd>
+    </dl>
+  </div>
+
+  <h2>Provenance</h2>
+  <div class="panel">
+    <p>External review run 2026-07-29 by Codex (gpt-5.6-sol, xhigh reasoning) via the Codex companion runtime, thread <code>019fad93-0b97-7972-a0a8-e0acbf62d952</code>; the first run wedged mid-suite and was resumed to completion. Findings relayed verbatim, confirmed by orchestrator inspection, and dispositioned the same day; fixes folded by the implementer in <code>2cc2c333</code>, which re-verified the change's own receipt. Related boards: <code>20260729-114458-review-claude.html</code> (round 1), <code>20260728-222942-council-receipt-freshness.html</code> (design provenance).</p>
+  </div>
+</main>
