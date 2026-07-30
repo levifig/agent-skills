@@ -48,11 +48,11 @@ Provenance: shaped from the alpha.16/alpha.17 incident diagnosis (journal entrie
 3. **Presence-probed conditionality.** The gate activates only when the capability-evidence config exists, keeping `loaf release` usable in projects that never recorded evidence.
 4. **`--post-merge` gates too.** Tagging is the last gate before publication; validating the merged tree there catches anything that landed stale through an unguarded path.
 
-Provenance for 5–7: review round 1 (Codex GPT 5.6 Sol), all three findings accepted; fixes landed in-branch.
+Provenance for 5–7: review rounds 1 and 2 (Codex GPT 5.6 Sol), all findings accepted; R2 replaced R1's resume mechanism wholesale.
 
-5. **Bounded resumable prepared tree, not an override.** After a gate refusal the prepared worktree (version files, changelog, generated outputs, registry, referenced evidence sources) is accepted on rerun so refuse → re-record → rerun composes; any other dirt still refuses, and the rerun re-validates everything. Forecloses a `--continue` flag and keeps the gate absolute.
-6. **Evidence-repair-aware post-merge recovery.** Guardrails recognize exactly one evidence-only repair commit atop the release commit (subject and diff-shape checks look through it; the tag lands on repaired HEAD). Recovery copy prescribes re-record → single evidence-only commit → rerun; no tag re-pointing.
-7. **Registry probe is symlink-hostile.** `os.Lstat` + regular-file requirement; a symlinked registry is present-but-unusable and refuses, never silently absent.
+5. **Resume is restore-and-regenerate, not tolerance.** After a gate refusal, rerunning restores prepared-shaped tracked dirt (version files, changelog, generated outputs) from HEAD — keeping only the evidence class (registry + receipts), which is the operator's intentional input — then regenerates everything through the normal prepare. Untracked files under generated roots refuse by name. No persisted resume state, no `--continue` flag, no tolerant writes; hand edits are clobbered, never committed. Dry-run and post-merge never restore.
+6. **Evidence-repair-aware post-merge recovery, parent-anchored.** Guardrails recognize exactly one receipt-only repair commit atop the release commit, with allowed paths derived from the parent commit's registry and the registry itself unchanged; the tag lands on repaired HEAD. Recovery copy prescribes re-record → single evidence-only commit → rerun; a registry change means redoing the release PR, not a repair.
+7. **Registry probe is symlink-hostile, component-wise.** Every path component from the repository root is `Lstat`-checked (no symlinked directories, regular-file leaf); a symlinked component is present-but-unusable and refuses, never silently absent.
 
 ## Planning Contract
 

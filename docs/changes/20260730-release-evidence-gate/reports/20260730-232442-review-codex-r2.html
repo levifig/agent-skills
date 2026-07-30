@@ -1,0 +1,99 @@
+<!-- source: release-evidence-gate · kind review · slug codex-r2 · stamped 2026-07-30 23:24 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — codex r2</title>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.machine { background: var(--machine-soft); color: var(--machine); }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">pitch-entrypoint · review</div>
+  <h1>Review — codex r1</h1>
+
+<main>
+  <div class="eyebrow">release-evidence-gate · review</div>
+  <h1>Review — codex r2</h1>
+  <p class="stamp">kind <b>review</b> · slug <b>codex-r2</b> · 2026-07-30 23:24</p>
+
+  <h2>Round</h2>
+  <div class="panel">
+    <p><b>Reviewer:</b> Codex (GPT 5.6 Sol, high effort, fresh thread, review-only) · <b>Baseline:</b> branch at <code>d0fe4679</code> (R1 fixes <code>bad12844</code> + R1 board) over main <code>8174a30e</code> · <b>Directed scrutiny:</b> the resume machinery R1's fix introduced · <b>Verdict:</b> <span class="badge bad">not merge-ready</span> — 1 blocker, 3 major, 1 minor; reviewer re-ran the targeted round-2 tests and <code>TestRelease</code> green at review time.</p>
+  </div>
+
+  <h2>Findings</h2>
+  <div class="panel">
+    <p><span class="badge bad">blocker</span> <b>F1 — Resume allowance unbound to a prior refusal.</b> Any worktree whose dirt was prepared-shaped counted as a resume: hand-edited tracked <code>dist/</code> or version files survived the tolerant writes and <code>git add -A</code> committed them; untracked files under generated roots were swept in.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>3e727766</code>: resume is now restore-and-regenerate. Prepared-shaped tracked dirt is hard-restored from HEAD (evidence class excepted — re-recorded receipts are the operator's intentional input), untracked files under generated roots refuse by name, and the normal prepare regenerates everything. The tolerant-write and HEAD-keyed snapshot machinery from <code>bad12844</code> was removed outright.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge bad">major</span> <b>F2 — Duplicate changelog section on every resume.</b> The rerun re-inserted the candidate heading above the existing one.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — solved structurally by F1's restore (changelog regenerates from the HEAD baseline exactly once); e2e now asserts exactly one candidate heading.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge bad">major</span> <b>F3 — Repair commit could authorize its own allowlist.</b> Post-merge evidence-only classification read the repaired registry, so a repair editing the registry could make arbitrary paths "evidence".</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>3e727766</code>: allowed paths derive from the parent commit's registry (<code>git show HEAD^:config/target-capabilities.json</code>) and the registry itself must be unchanged in a receipt-only repair; skill recovery copy gained the matching clause.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge bad">major</span> <b>F4 — Leaf-only Lstat.</b> A symlinked <code>config/</code> parent still bypassed the probe (dangling target read as absent → gate silently off).</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>3e727766</code>: component-wise <code>Lstat</code> walk from the repository root, mirroring the evidence-source file checks; symlinked components are present-but-unusable, never absent.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge machine">minor</span> <b>F5 — E2E under-assertion.</b> The resume test rewrote hashes and did not inspect the final changelog or committed path set.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>3e727766</code>: e2e asserts one candidate heading and the exact committed path set; new variants cover hand-edit clobbering, untracked-under-dist refusal, registry-modifying repair refusal, and symlinked-config refusal on apply.</p>
+  </div>
+
+  <h2>Clean areas</h2>
+  <div class="panel">
+    <p>Clean first-time runs unchanged; wrong-version drift not masked; unrelated dirt and non-evidence <code>docs/changes</code> generation still refuse; merge release commits use first-parent range; stacked repairs fail guardrail 5; guardrail 7 collision checks intact; recovery copy identical across source and all seven rebuilt copies; remediation assertions forbid tag-deletion advice.</p>
+  </div>
+
+  <h2>Residuals → r3</h2>
+  <div class="panel">
+    <p>No findings carried. R3 is a convergence pass over the replacement design: restore placement (dry-run/post-merge must not mutate), evidence-class boundary of the restore, removal completeness of the superseded machinery, and any regression in the R1 fixes.</p>
+  </div>
+
+  <footer>release-evidence-gate · review round 2 · reviewer Codex GPT 5.6 Sol high · fixes by Grok 4.5 high (<code>3e727766</code>) · dispositions logged in the project journal</footer>
+</main>
