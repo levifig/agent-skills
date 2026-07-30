@@ -1343,6 +1343,47 @@ func TestChangeInitBriefMode(t *testing.T) {
 	}
 }
 
+// Scaffolded --brief output carries the shared problem-space skeleton headings
+// (pitch-entrypoint brief contract). Headings are the contract; placeholder
+// prose may evolve without this test churning.
+func TestChangeInitBriefCarriesSkeletonHeadings(t *testing.T) {
+	repo := initCLIGitRepo(t)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "init", "skeleton-brief", "--brief"}); err != nil {
+		t.Fatalf("change init --brief error = %v", err)
+	}
+	today := time.Now().Format("20060102")
+	briefPath := filepath.Join(repo, "docs", "changes", today+"-skeleton-brief", "brief.md")
+	body, err := os.ReadFile(briefPath)
+	if err != nil {
+		t.Fatalf("ReadFile(brief.md) error = %v", err)
+	}
+	content := string(body)
+	for _, want := range []string{
+		"## Problem Statement",
+		"## Who Has It",
+		"## Current Alternatives",
+		"## Value Proposition",
+		"## Constraints",
+		"## Sequencing and Relationships",
+		"## Sources and Research Links",
+		"## Open Questions",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("scaffolded brief.md missing skeleton heading %q\n%s", want, content)
+		}
+	}
+	// Supersession/accretion comment still present (Decision 7).
+	for _, want := range []string{
+		"accrete",
+		"freezes when shape.md exists",
+		"never mechanically load-bearing",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("scaffolded brief.md missing accretion/supersession phrase %q\n%s", want, content)
+		}
+	}
+}
+
 // init's success output carries a next-steps hint: work happens on branch
 // <slug>, so create/switch to it or pass the folder path to check explicitly.
 // Without it, `loaf change init` on main followed by a bare `loaf change check`

@@ -35,11 +35,11 @@ Markdown paragraphs are single lines — never hard-wrap. Match each surface's e
 
 ## Steps
 
-- [ ] Define the skeleton in `content/skills/shape/templates/brief.md` (the authoring authority): problem statement, who has it, current alternatives, value proposition, constraints, sequencing and relationships (prose), sources and research links, open questions — problem-space only, with the archeology/supersession comment updated to the accretes-until-shaping semantics (Decision 7).
-- [ ] Mirror it byte-identically into `internal/cli/change_brief_template.md`; `TestChangeScaffoldTemplatesMatchCanonical` gates the match.
-- [ ] Add or extend template-content tests asserting the scaffolded `--brief` output carries the skeleton's section headings.
-- [ ] Align `content/skills/bootstrap/templates/brief.md` to the same skeleton at project altitude and add `pitch` to the `source:` frontmatter vocabulary.
-- [ ] Rebuild (`npm run build`) and commit rebuilt `plugins/` and `dist/` artifacts together with the source changes.
+- [x] Define the skeleton in `content/skills/shape/templates/brief.md` (the authoring authority): problem statement, who has it, current alternatives, value proposition, constraints, sequencing and relationships (prose), sources and research links, open questions — problem-space only, with the archeology/supersession comment updated to the accretes-until-shaping semantics (Decision 7).
+- [x] Mirror it byte-identically into `internal/cli/change_brief_template.md`; `TestChangeScaffoldTemplatesMatchCanonical` gates the match.
+- [x] Add or extend template-content tests asserting the scaffolded `--brief` output carries the skeleton's section headings.
+- [x] Align `content/skills/bootstrap/templates/brief.md` to the same skeleton at project altitude and add `pitch` to the `source:` frontmatter vocabulary.
+- [x] Rebuild (`npm run build`) and commit rebuilt `plugins/` and `dist/` artifacts together with the source changes.
 
 ## Verification
 
