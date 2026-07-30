@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-alpha.17] - 2026-07-30
+
 ### Added
 
 - `/pitch` — the human-invoked entry stage of the Loaf Flow at both scales: a problem-discovery interview (destination pinning, scenario stress-testing, challenge stance) that authors a change-scale `brief.md` via `loaf change init <slug> --brief`, or a project-scale `docs/BRIEF.md` that bootstrap consumes, both on one shared problem-space skeleton ([#145](https://github.com/levifig/loaf/pull/145))

@@ -9,7 +9,7 @@ description: >-
   agent-side divergent inquiry when direction is undecided (use explore as a
   technique).
 subtask: false
-version: 2.0.0-alpha.16
+version: 2.0.0-alpha.17
 ---
 
 # Idea
