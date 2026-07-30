@@ -68,6 +68,6 @@ archived: true          # Always true -- BRIEF is a historical snapshot, not a w
 - **`text`** -- Brief provided as inline text in the `/loaf:bootstrap` invocation.
 - **`folder`** -- Brief synthesized from multiple markdown files in a folder.
 - **`interview`** -- Brief synthesized from a `/loaf:bootstrap` interview session (greenfield+empty mode).
-- **`pitch`** -- Brief authored by `/pitch` at project scale (discovery already done; bootstrap interviews for gaps only).
+- **`pitch`** -- Brief authored by `/loaf:pitch` at project scale (discovery already done; bootstrap interviews for gaps only).
 
 When the brief already exists at `docs/BRIEF.md` within the project, use it in place -- do not copy or overwrite. Add frontmatter if missing.
