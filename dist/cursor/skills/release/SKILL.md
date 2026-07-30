@@ -221,7 +221,7 @@ The default for every release: PR CI runs the full suite against the prepared tr
 4. Hand the PR to `/ship` for review and landing; squash-merge it into one `chore: release vX.Y.Z (#PR)` commit carrying the curated changelog.
 5. After the release PR lands, run `loaf release --post-merge` on the base branch to tag, publish the GitHub Release, and verify installability.
 
-If guardrail 9 fires on `--post-merge`, the merged tree itself carries stale evidence; recovery is a forward repair commit with re-recorded receipts and re-pointing the tag at it.
+If guardrail 9 fires on `--post-merge`, the merged tree itself carries stale evidence; recovery is to re-record against the merged tree, land the receipts as a single evidence-only commit on the base branch, and rerun `loaf release --post-merge`.
 
 Do not hide this handoff inside `/release`: `/ship` remains the PR correctness and merge gate.
 

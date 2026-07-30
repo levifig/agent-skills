@@ -496,8 +496,10 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	if err != nil {
 		return fmt.Errorf("Refusing to commit release artifacts: cannot inspect generated Change paths: %w", err)
 	}
-	if len(changePaths) != 0 {
-		return fmt.Errorf("Refusing to commit release artifacts: artifact generation modified docs/changes; reconcile and commit separately before release: %s", strings.Join(changePaths, ", "))
+	// Evidence re-record dirt under docs/changes is intentional on resume; only
+	// non-evidence Change-path mutations refuse here.
+	if residual := releaseNonEvidenceChangePaths(root, changePaths); len(residual) != 0 {
+		return fmt.Errorf("Refusing to commit release artifacts: artifact generation modified docs/changes; reconcile and commit separately before release: %s", strings.Join(residual, ", "))
 	}
 	evidencePresent, evidenceErr := checkReleaseCapabilityEvidence(root)
 	if evidenceErr != nil {
@@ -586,10 +588,16 @@ func requireReleaseCleanWorktree(root string) error {
 	if err != nil {
 		return fmt.Errorf("Refusing to prepare release: cannot inspect worktree cleanliness: %w", err)
 	}
-	if len(dirtyPaths) != 0 {
-		return fmt.Errorf("Refusing to prepare release: mutating release modes require a clean unignored worktree; changelog curation belongs on a release branch in the --pre-merge flow — commit, stash, or remove: %s", strings.Join(dirtyPaths, ", "))
+	if len(dirtyPaths) == 0 {
+		return nil
 	}
-	return nil
+	// A refused evidence gate leaves version files, CHANGELOG, rebuilt
+	// artifacts, and (after re-record) receipts dirty. That set is resumable:
+	// the next apply rewrites/rebuilds idempotently and re-runs the gate.
+	if releaseDirtyPathsArePreparedOnly(root, dirtyPaths) {
+		return nil
+	}
+	return fmt.Errorf("Refusing to prepare release: mutating release modes require a clean unignored worktree; changelog curation belongs on a release branch in the --pre-merge flow — commit, stash, or remove: %s", strings.Join(dirtyPaths, ", "))
 }
 
 func releaseIsGitRepo(root string) bool {
@@ -751,6 +759,28 @@ func loadReleaseVersionFile(root string, relativePath string, strict bool) (rele
 		return releaseVersionFile{}, err
 	}
 	return releaseVersionFile{Path: path, RelativePath: normalized, Format: format, CurrentVersion: version}, nil
+}
+
+// loadReleaseVersionFileAtRef reads a version file from a git tree-ish (typically
+// HEAD) so prepared dirty worktrees do not inflate CurrentVersion.
+func loadReleaseVersionFileAtRef(root string, relativePath string, ref string) (releaseVersionFile, error) {
+	normalized := normalizeReleasePath(relativePath)
+	cmd := exec.Command("git", "show", ref+":"+normalized)
+	cmd.Dir = root
+	body, err := cmd.Output()
+	if err != nil {
+		return releaseVersionFile{}, fmt.Errorf("version file %s not found at %s", normalized, ref)
+	}
+	version, format, err := parseReleaseVersion(normalized, body)
+	if err != nil {
+		return releaseVersionFile{}, fmt.Errorf("version file %s at %s: %v", normalized, ref, err)
+	}
+	return releaseVersionFile{
+		Path:           filepath.Join(root, filepath.FromSlash(normalized)),
+		RelativePath:   normalized,
+		Format:         format,
+		CurrentVersion: version,
+	}, nil
 }
 
 func parseReleaseVersion(relativePath string, body []byte) (string, string, error) {
@@ -1072,7 +1102,14 @@ func prepareReleaseVersionUpdates(files []releaseVersionFile, newVersion string)
 		switch file.Format {
 		case "json":
 			re := regexp.MustCompile(`"version"(\s*:\s*)"` + regexp.QuoteMeta(file.CurrentVersion) + `"`)
-			updated = re.ReplaceAllString(string(body), `"version"$1"`+newVersion+`"`)
+			if re.Match(body) {
+				updated = re.ReplaceAllString(string(body), `"version"$1"`+newVersion+`"`)
+			} else if worktreeVersion, _, parseErr := parseReleaseVersion(file.RelativePath, body); parseErr == nil && worktreeVersion == newVersion {
+				// Resume after a refused apply: worktree already holds the candidate.
+				updated = string(body)
+			} else {
+				return nil, fmt.Errorf("version file %s does not contain version %s", file.RelativePath, file.CurrentVersion)
+			}
 		case "toml-regex":
 			section := releaseTomlSectionForPath(file.RelativePath)
 			if section == "" {
@@ -1090,6 +1127,22 @@ func prepareReleaseVersionUpdates(files []releaseVersionFile, newVersion string)
 		})
 	}
 	return updates, nil
+}
+
+// releaseNonEvidenceChangePaths filters docs/changes dirt down to paths that
+// are not capability-evidence receipts/sources (which re-record on resume).
+func releaseNonEvidenceChangePaths(root string, changePaths []string) []string {
+	if len(changePaths) == 0 {
+		return nil
+	}
+	var residual []string
+	for _, path := range changePaths {
+		if releaseIsEvidenceOnlyPath(root, path) {
+			continue
+		}
+		residual = append(residual, path)
+	}
+	return residual
 }
 
 func releaseTomlSectionForPath(relativePath string) string {

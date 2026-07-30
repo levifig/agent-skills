@@ -93,7 +93,16 @@ func checkReleasePostMergeGuardrails(root string, snapshot releaseSnapshot, runn
 		return releasePostMergeAbort(2, branchAbort)
 	}
 
-	subjectResult := runner(root, "git", "log", "-1", "--pretty=%s")
+	// An evidence-only repair commit atop the release commit is the recovery
+	// path for guardrail 9: subject and diff-shape checks evaluate the release
+	// commit at HEAD^; HEAD itself stays untagged and receives the new tag.
+	evidenceRepair := releaseIsEvidenceOnlyRepairCommit(root, runner)
+
+	subjectArgs := []string{"log", "-1", "--pretty=%s"}
+	if evidenceRepair {
+		subjectArgs = append(subjectArgs, "HEAD^")
+	}
+	subjectResult := runner(root, "git", subjectArgs...)
 	if subjectResult.exitCode != 0 {
 		return releasePostMergeAbort(3, "could not read HEAD subject")
 	}
@@ -117,7 +126,12 @@ func checkReleasePostMergeGuardrails(root string, snapshot releaseSnapshot, runn
 		return releasePostMergeAbort(4, fmt.Sprintf("tag version %s does not match version-file version %s", snapshot.Candidate, prepared))
 	}
 
-	if diffAbort := checkReleasePostMergeDiffFiles(root, runner, versionFiles); diffAbort != "" {
+	diffFrom, diffTo := "HEAD^", "HEAD"
+	if evidenceRepair {
+		// Release commit is the parent of the repair commit.
+		diffFrom, diffTo = "HEAD~2", "HEAD~1"
+	}
+	if diffAbort := checkReleasePostMergeDiffFiles(root, runner, versionFiles, diffFrom, diffTo); diffAbort != "" {
 		return releasePostMergeAbort(5, diffAbort)
 	}
 
@@ -210,10 +224,16 @@ func detectReleasePostMergeConsistentVersion(files []releaseVersionFile) (string
 	return version, ""
 }
 
-func checkReleasePostMergeDiffFiles(root string, runner releasePostMergeCommandRunner, versionFiles []releaseVersionFile) string {
-	result := runner(root, "git", "diff", "HEAD^", "HEAD", "--name-only")
+func checkReleasePostMergeDiffFiles(root string, runner releasePostMergeCommandRunner, versionFiles []releaseVersionFile, fromRef string, toRef string) string {
+	if fromRef == "" {
+		fromRef = "HEAD^"
+	}
+	if toRef == "" {
+		toRef = "HEAD"
+	}
+	result := runner(root, "git", "diff", fromRef, toRef, "--name-only")
 	if result.exitCode != 0 {
-		return "could not read git diff HEAD^ HEAD — is HEAD a merge of multiple commits or the first commit?"
+		return fmt.Sprintf("could not read git diff %s %s — is HEAD a merge of multiple commits or the first commit?", fromRef, toRef)
 	}
 	changed := map[string]bool{}
 	for _, line := range strings.Split(result.stdout, "\n") {

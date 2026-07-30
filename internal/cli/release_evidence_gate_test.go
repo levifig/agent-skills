@@ -232,15 +232,18 @@ func TestReleasePostMergeGuardrailBlocksStaleCapabilityEvidence(t *testing.T) {
 	for _, want := range []string{
 		"capability evidence is invalid or stale",
 		"does not match current candidate",
-		"cli/scripts/smoke-opencode-request-context.mjs",
-		"after the artifact rebuild",
+		"re-record against the merged tree",
+		"single evidence-only commit",
+		"rerun loaf release --post-merge",
 	} {
 		if !strings.Contains(result.message, want) {
 			t.Fatalf("message = %q, want %q", result.message, want)
 		}
 	}
-	if strings.Contains(result.message, "tag -d") {
-		t.Fatalf("message = %q, must never advise tag deletion", result.message)
+	for _, forbidden := range []string{"tag -d", "re-point", "repoint"} {
+		if strings.Contains(result.message, forbidden) {
+			t.Fatalf("message = %q, must not contain %q", result.message, forbidden)
+		}
 	}
 }
 
@@ -259,7 +262,7 @@ func TestReleasePostMergeGuardrailPassesFreshCapabilityEvidence(t *testing.T) {
 func TestReleaseCapabilityEvidenceRemediation(t *testing.T) {
 	loaderErr := errors.New(`load target capability evidence "config/target-capabilities.json": OpenCode installed-smoke hooks SHA-256 aaa does not match current candidate bbb`)
 
-	t.Run("apply refusal names the runners and the ordering rule", func(t *testing.T) {
+	t.Run("apply refusal names the runners and the executable resume loop", func(t *testing.T) {
 		msg := releaseApplyCapabilityEvidenceRefusal(loaderErr).Error()
 		for _, want := range []string{
 			"Refusing to commit release artifacts:",
@@ -272,7 +275,9 @@ func TestReleaseCapabilityEvidenceRemediation(t *testing.T) {
 			"--expected-version",
 			"--receipt",
 			"after the artifact rebuild",
+			"prepared tree stays in place",
 			"rerun the release",
+			"release-prepared worktree",
 		} {
 			if !strings.Contains(msg, want) {
 				t.Fatalf("message = %q, want %q", msg, want)
@@ -292,19 +297,292 @@ func TestReleaseCapabilityEvidenceRemediation(t *testing.T) {
 			"capability evidence is invalid or stale",
 			loaderErr.Error(),
 			" — ",
-			"cli/scripts/smoke-claude-code-startup.mjs",
-			"cli/scripts/smoke-codex-startup.mjs",
-			"cli/scripts/smoke-opencode-request-context.mjs",
-			"after the artifact rebuild",
+			"re-record against the merged tree",
+			"single evidence-only commit",
+			"rerun loaf release --post-merge",
 		} {
 			if !strings.Contains(msg, want) {
 				t.Fatalf("message = %q, want %q", msg, want)
 			}
 		}
-		for _, forbidden := range []string{"tag -d", "delete"} {
+		for _, forbidden := range []string{"tag -d", "delete", "re-point", "repoint"} {
 			if strings.Contains(msg, forbidden) {
 				t.Fatalf("message = %q, must not contain %q", msg, forbidden)
 			}
+		}
+	})
+}
+
+// rewriteInstalledSmokeReceiptHashes sets each installed-smoke receipt's pinned
+// artifact digests to match the files currently on disk under root — the
+// mechanical stand-in for re-recording after a refused release rebuild.
+func rewriteInstalledSmokeReceiptHashes(t *testing.T, root string) {
+	t.Helper()
+	registry, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(TargetCapabilityEvidenceRecordPath)))
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", TargetCapabilityEvidenceRecordPath, err)
+	}
+	contract, err := DecodeTargetCapabilityEvidence(registry)
+	if err != nil {
+		t.Fatalf("DecodeTargetCapabilityEvidence() error = %v", err)
+	}
+	rewritten := map[string]bool{}
+	rewriteReceipt := func(source string) {
+		relative, err := safeEvidenceRelativePath(source)
+		if err != nil || rewritten[relative] {
+			return
+		}
+		if filepath.Ext(relative) != ".json" {
+			return
+		}
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile(%s) error = %v", relative, err)
+		}
+		var raw map[string]any
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return
+		}
+		artifacts, _ := raw["candidate_artifacts"].(map[string]any)
+		if artifacts == nil {
+			return
+		}
+		for field, key := range map[string]string{"hooks_path": "hooks_sha256", "native_binary_path": "native_binary_sha256"} {
+			rel, _ := artifacts[field].(string)
+			if rel == "" {
+				continue
+			}
+			digest, err := sha256File(filepath.Join(root, filepath.FromSlash(rel)))
+			if err != nil {
+				// Native binaries are gitignored in the fixture; leave pinned.
+				continue
+			}
+			artifacts[key] = digest
+		}
+		encoded, err := json.MarshalIndent(raw, "", "  ")
+		if err != nil {
+			t.Fatalf("MarshalIndent(%s) error = %v", relative, err)
+		}
+		if err := os.WriteFile(path, append(encoded, '\n'), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", relative, err)
+		}
+		rewritten[relative] = true
+	}
+	for _, record := range contract.Records {
+		for _, mode := range record.Context.Modes {
+			if mode.Evidence.Level == "installed-smoke" {
+				rewriteReceipt(mode.Evidence.Source)
+			}
+		}
+	}
+}
+
+func TestReleaseApplyResumesPreparedTreeAfterEvidenceRerecord(t *testing.T) {
+	repo := seedReleaseApplyRepoWithCapabilityEvidence(t, "feat: first live evidence-gate resume")
+	// Idempotent rebuild that stales the OpenCode receipt once, then stays put
+	// on resume — mirrors the version-stamp staleness without compounding.
+	packageBody := strings.Join([]string{
+		"{",
+		`  "name": "release-fixture",`,
+		`  "version": "1.0.0",`,
+		`  "scripts": {`,
+		`    "build": "node -e \"require('fs').mkdirSync('dist/opencode/plugins',{recursive:true}); require('fs').writeFileSync('dist/opencode/plugins/hooks.ts','staled-hooks\\n')\""`,
+		"  }",
+		"}",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(repo, "package.json"), []byte(packageBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCLI(t, repo, "add", "package.json")
+	gitCLI(t, repo, "commit", "-m", "fix: make rebuild stale OpenCode hooks once")
+
+	args := []string{"release", "--yes", "--no-gh"}
+	first := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args)
+	if first == nil {
+		t.Fatalf("first Run(%v) error = nil, want stale-evidence refusal", args)
+	}
+	if !strings.Contains(first.Error(), "Refusing to commit release artifacts") || !strings.Contains(first.Error(), "prepared tree stays in place") {
+		t.Fatalf("first Run(%v) error = %q, want resume-loop refusal copy", args, first.Error())
+	}
+	beforeHEAD := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD")
+	if dirty := gitOutputReleaseTest(t, repo, "status", "--porcelain"); dirty == "" {
+		t.Fatal("first refusal left a clean worktree, want prepared dirt")
+	}
+
+	// Operator re-records against the rebuilt tree (prepared tree stays).
+	rewriteInstalledSmokeReceiptHashes(t, repo)
+
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args); err != nil {
+		t.Fatalf("resume Run(%v) error = %v\n%s", args, err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "Capability evidence validated") {
+		t.Fatalf("stdout = %q, want evidence validation on resume", stdout.String())
+	}
+	if head := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD"); head == beforeHEAD {
+		t.Fatal("resume did not create a release commit")
+	}
+	if subject := gitOutputReleaseTest(t, repo, "log", "-1", "--pretty=%s"); subject != "chore: release v1.1.0" {
+		t.Fatalf("release commit subject = %q, want chore: release v1.1.0", subject)
+	}
+	if tags := gitOutputReleaseTest(t, repo, "tag", "--list"); !strings.Contains(tags, "v1.1.0") {
+		t.Fatalf("tags = %q, want v1.1.0 after resume with tagging enabled", tags)
+	}
+	if dirty := gitOutputReleaseTest(t, repo, "status", "--porcelain"); dirty != "" {
+		t.Fatalf("resume left dirty worktree: %q", dirty)
+	}
+}
+
+func TestReleaseApplyRefusesPreparedTreeWithUnrelatedDirty(t *testing.T) {
+	repo := seedReleaseApplyRepoWithCapabilityEvidence(t, "feat: resume boundary keeps non-release dirt out")
+	packageBody := strings.Join([]string{
+		"{",
+		`  "name": "release-fixture",`,
+		`  "version": "1.0.0",`,
+		`  "scripts": {`,
+		`    "build": "node -e \"require('fs').mkdirSync('dist/opencode/plugins',{recursive:true}); require('fs').writeFileSync('dist/opencode/plugins/hooks.ts','staled-hooks\\n')\""`,
+		"  }",
+		"}",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(repo, "package.json"), []byte(packageBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCLI(t, repo, "add", "package.json")
+	gitCLI(t, repo, "commit", "-m", "fix: stale hooks on rebuild")
+
+	args := []string{"release", "--yes", "--no-tag", "--no-gh"}
+	if err := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args); err == nil {
+		t.Fatalf("first Run(%v) error = nil, want stale-evidence refusal", args)
+	}
+	rewriteInstalledSmokeReceiptHashes(t, repo)
+	writeFile(t, filepath.Join(repo, "unrelated.txt"), "not part of the release\n")
+
+	err := (Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args)
+	if err == nil {
+		t.Fatalf("resume with unrelated dirt error = nil, want clean-worktree refusal")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "require a clean unignored worktree") || !strings.Contains(msg, "unrelated.txt") {
+		t.Fatalf("error = %q, want clean-worktree refusal naming unrelated.txt", msg)
+	}
+}
+
+func TestReleasePostMergeEvidenceOnlyRepairPasses(t *testing.T) {
+	repo := seedReleasePostMergeFiles(t, "1.2.3")
+	seedReleaseCapabilityEvidence(t, repo)
+	receipt := "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.7-isolated-request-smoke.json"
+	responses := releasePostMergeHappyResponses("1.2.3")
+	// Detect repair via HEAD^..HEAD evidence-only diff; subject + release shape
+	// come from the parent release commit; tag still lands on HEAD.
+	responses["git rev-parse --verify HEAD^"] = releasePostMergeOK("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	responses["git diff HEAD^ HEAD --name-only"] = releasePostMergeOK("config/target-capabilities.json\n" + receipt)
+	responses["git log -1 --pretty=%s HEAD^"] = releasePostMergeOK("chore: release v1.2.3 (#42)")
+	delete(responses, "git log -1 --pretty=%s")
+	responses["git diff HEAD~2 HEAD~1 --name-only"] = releasePostMergeOK("CHANGELOG.md\npackage.json")
+
+	runner, calls := scriptedReleasePostMergeRunner(responses)
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
+	if !result.ok {
+		t.Fatalf("result = %#v, want evidence-only repair to pass guardrails", result)
+	}
+	if result.featureBranch != "feat/cool-thing" {
+		t.Fatalf("featureBranch = %q, want PR branch extracted from release subject at HEAD^", result.featureBranch)
+	}
+
+	var out, errOut bytes.Buffer
+	if err := runReleasePostMergeWithRunner(repo, snap, &out, &errOut, runner); err != nil {
+		t.Fatalf("runReleasePostMergeWithRunner error = %v\n%s\n%s", err, out.String(), errOut.String())
+	}
+	keys := releasePostMergeCallKeys(calls())
+	tagged := false
+	for _, key := range keys {
+		if strings.HasPrefix(key, "git tag -s v1.2.3") {
+			tagged = true
+		}
+	}
+	if !tagged {
+		t.Fatalf("calls = %v, want tag created on HEAD after evidence-only repair", keys)
+	}
+}
+
+func TestReleasePostMergeNonEvidenceRepairStillFailsDiffShape(t *testing.T) {
+	repo := seedReleasePostMergeFiles(t, "1.2.3")
+	seedReleaseCapabilityEvidence(t, repo)
+	receipt := "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.7-isolated-request-smoke.json"
+	responses := releasePostMergeHappyResponses("1.2.3")
+	responses["git rev-parse --verify HEAD^"] = releasePostMergeOK("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	// Touches a version file → not evidence-only; guardrail 5 evaluates HEAD.
+	responses["git diff HEAD^ HEAD --name-only"] = releasePostMergeOK(receipt + "\nREADME.md")
+	runner, _ := scriptedReleasePostMergeRunner(responses)
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
+	if result.ok || result.guardrail != 5 {
+		t.Fatalf("result = %#v, want guardrail 5 failure for non-evidence repair", result)
+	}
+}
+
+func TestReleasePostMergeDirectReleaseCommitStillPasses(t *testing.T) {
+	repo := seedReleasePostMergeFiles(t, "1.2.3")
+	seedReleaseCapabilityEvidence(t, repo)
+	// No HEAD^ rev-parse success → not a repair; default happy responses.
+	runner, _ := scriptedReleasePostMergeRunner(releasePostMergeHappyResponses("1.2.3"))
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
+	if !result.ok {
+		t.Fatalf("result = %#v, want direct release commit path unchanged", result)
+	}
+}
+
+func TestCheckReleaseCapabilityEvidenceSymlinkRefuses(t *testing.T) {
+	t.Run("dangling symlink is present but unusable", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, "config"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(root, filepath.FromSlash(TargetCapabilityEvidenceRecordPath))
+		if err := os.Symlink(filepath.Join(root, "config", "missing-target.json"), link); err != nil {
+			t.Fatal(err)
+		}
+		present, err := checkReleaseCapabilityEvidence(root)
+		if !present {
+			t.Fatal("dangling symlink classified as absent; want present")
+		}
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("error = %v, want not-a-regular-file refusal", err)
+		}
+	})
+
+	t.Run("symlink to a valid regular file still refuses", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, "config"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		target := filepath.Join(root, "config", "external.json")
+		// Minimal body — content is irrelevant; the probe must refuse before load.
+		if err := os.WriteFile(target, []byte(`{"contract_version":3,"records":[],"deferred":[{"target":"pi","status":"deferred","not_a_build_target":true,"reason":"deferred"}]`+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(root, filepath.FromSlash(TargetCapabilityEvidenceRecordPath))
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+		present, err := checkReleaseCapabilityEvidence(root)
+		if !present {
+			t.Fatal("symlink to valid file classified as absent; want present")
+		}
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("error = %v, want not-a-regular-file refusal", err)
+		}
+	})
+
+	t.Run("absent remains a silent no-op", func(t *testing.T) {
+		present, err := checkReleaseCapabilityEvidence(t.TempDir())
+		if present || err != nil {
+			t.Fatalf("present=%v err=%v, want absent no-op", present, err)
 		}
 	})
 }
