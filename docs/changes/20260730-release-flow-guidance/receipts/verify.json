@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "change": "release-flow-guidance",
+  "verified_commit": "e6ee0bd46023a8413fea5694c00683220ab891ef",
+  "verified_at": "2026-07-30T12:25:41Z",
+  "criteria_digest": "869a3309c093eee3279f0f894bc172141f4aa99eea7bf58d4574e6ee0799b9d3",
+  "cwd": "/Users/levifig/.cursor/worktrees/loaf/eubj",
+  "results": [
+    {
+      "id": "V1",
+      "command": "go test ./internal/cli -run 'TestReleaseFlowAdvisory' -count=1",
+      "exit_code": 0,
+      "output_digest": "3405b11542b298ac43ae591c7b2a14116a90ef5de2d83c214808ae72edd6a9c4",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V2",
+      "command": "go test ./internal/cli -run 'TestReleaseGuardrailRemediation' -count=1",
+      "exit_code": 0,
+      "output_digest": "5af245d0c998cf2af78c62862b78484d9d48818b61f80db5995e60581d1576bd",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V3",
+      "command": "bin/loaf build",
+      "exit_code": 0,
+      "output_digest": "814fd36bcdf100ea1da704b4f07244d5f7cc54ea7133ac3752ec9eea2f5891e9",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V4",
+      "command": "go test ./...",
+      "exit_code": 0,
+      "output_digest": "1f04d223d325c36ef7fd1227fbabbee37d705aa959b81e161b6ea78a9c10db50",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    }
+  ]
+}
