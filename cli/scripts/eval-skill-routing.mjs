@@ -21,7 +21,7 @@ const API_URL = "https://api.anthropic.com/v1/messages";
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 const DEFAULT_MODEL = "claude-opus-4-6";
 const MAX_DESC_CHARS = 250;
-const EXPECTED_SKILL_COUNT = 35;
+const EXPECTED_SKILL_COUNT = 36;
 
 const PRICING = {
   "claude-opus-4-6": { input: 15, output: 75 },
@@ -146,6 +146,11 @@ const TEST_CASES = {
     "Coordinate work across multiple agents",
     "Plan how these tasks should be delegated",
     "Manage the multi-agent session for this effort",
+  ],
+  pitch: [
+    "I have a concept to pitch",
+    "Let's pitch this idea",
+    "Run problem discovery on this raw concept before we shape a solution",
   ],
   "power-systems-modeling": [
     "Calculate the thermal rating for this conductor",
@@ -321,6 +326,30 @@ const CONFLICT_PROBES = [
     choices: ["brainstorm", "shape"],
     expected: "shape",
     prompt: "We've settled on push notifications — bound the scope, risks, and Implementation Units for it",
+  },
+  {
+    group: "pitch-shape",
+    choices: ["pitch", "shape"],
+    expected: "pitch",
+    prompt: "I have a raw concept — grill the problem, who has it, and value proposition before we bound a solution",
+  },
+  {
+    group: "pitch-shape",
+    choices: ["pitch", "shape"],
+    expected: "shape",
+    prompt: "This idea already has a problem brief — bound it into a Change with scope and risks",
+  },
+  {
+    group: "pitch-triage",
+    choices: ["pitch", "triage"],
+    expected: "pitch",
+    prompt: "Triage handed me this intake item as pitch — run the problem-discovery ceremony on it",
+  },
+  {
+    group: "pitch-triage",
+    choices: ["pitch", "triage"],
+    expected: "triage",
+    prompt: "Process the intake queue and choose dispositions across sparks and ideas",
   },
   {
     group: "foundations-git-workflow-documentation-standards",
