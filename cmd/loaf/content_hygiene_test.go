@@ -254,7 +254,8 @@ func TestPlanningVocabularyConverged(t *testing.T) {
 				"A pipeline that prevents scope creep",
 			},
 			required: []string{
-				"Ideas may be explored before `/shape` turns the chosen direction into a bounded Change.",
+				"The Loaf Flow runs pitch → shape → implement → ship → release, at two scales.",
+				"`/shape` turns a brief into a bounded Change",
 				"Change artifacts and compatible task records keep intent and execution inspectable",
 				"Changes define the intended outcome, boundaries, and proof before implementation",
 			},
@@ -271,7 +272,7 @@ func TestPlanningVocabularyConverged(t *testing.T) {
 			required: []string{
 				"## Proven Principles",
 				"**Continuity belongs to the project journal, not a session lifecycle.**",
-				"**Change-first workflow consistency.**",
+				"**Loaf Flow completeness.**",
 				"Existing spec and task records remain supported compatibility surfaces",
 				"## Open Questions",
 			},
