@@ -1,0 +1,91 @@
+<!-- source: release-evidence-gate · kind review · slug codex-r1 · stamped 2026-07-30 23:00 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — codex r1</title>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.machine { background: var(--machine-soft); color: var(--machine); }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">pitch-entrypoint · review</div>
+  <h1>Review — codex r1</h1>
+
+<main>
+  <div class="eyebrow">release-evidence-gate · review</div>
+  <h1>Review — codex r1</h1>
+  <p class="stamp">kind <b>review</b> · slug <b>codex-r1</b> · 2026-07-30 23:00</p>
+
+  <h2>Round</h2>
+  <div class="panel">
+    <p><b>Reviewer:</b> Codex (GPT 5.6 Sol, high effort, fresh thread, review-only) · <b>Baseline:</b> branch <code>release-evidence-gate</code> at <code>6b62f689</code> over main <code>8174a30e</code> (shape <code>a004c71c</code>, gate <code>ee58f017</code>, skill rule <code>6b62f689</code>) · <b>Verdict:</b> <span class="badge bad">not merge-ready</span> — 1 blocker, 2 major; reviewer ran the release/evidence suites and <code>go test ./... -count=1</code> green at review time.</p>
+  </div>
+
+  <h2>Findings</h2>
+  <div class="panel">
+    <p><span class="badge bad">blocker</span> <b>F1 — Apply refusal has no executable retry path.</b> The gate refuses after the release prep already wrote version files, changelog, and rebuilt artifacts; the copy says "re-record and rerun" but the rerun refuses the dirty tree at <code>requireReleaseCleanWorktree</code>. Loaf's own next release hits this on day one, since every version bump stales the OpenCode receipt.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>bad12844</code>: bounded resumable prepared tree — the clean-worktree check tolerates a dirty set that is exactly release-prepared paths (version files, CHANGELOG, generated outputs, registry, referenced evidence sources); anything else still refuses; the rerun re-validates everything and the gate never skips. Refusal copy now describes the executable loop. End-to-end refuse → re-record → rerun test added.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge bad">major</span> <b>F2 — Post-merge recovery contradicts guardrail 5 and names a nonexistent tag.</b> A receipts-only repair commit fails guardrail 5's diff-shape check (and 3's subject check), and "re-point the tag" is impossible — guardrails 7–8 established no tag exists yet.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>bad12844</code>: guardrails 3 and 5 recognize a single evidence-only repair commit atop the release commit and evaluate the release commit beneath it; the tag lands on repaired HEAD; CLI and skill copy now prescribe re-record → single evidence-only commit → rerun <code>--post-merge</code>. Repair-pass, non-evidence-fail, and direct-path tests added.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge bad">major</span> <b>F3 — Presence probe follows symlinks.</b> A dangling <code>config/target-capabilities.json</code> symlink classified as absent and silently disarmed the gate; an external symlink validated content not retained in the tree.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>bad12844</code>: <code>os.Lstat</code> + regular-file requirement; symlinks are present-but-unusable and refuse. Dangling and valid-target symlink tests added.</p>
+  </div>
+
+  <h2>Clean areas</h2>
+  <div class="panel">
+    <p>No flag-based mutation bypass (direct and <code>--pre-merge</code> share the pre-staging gate; <code>--no-tag</code> still gates the commit; post-merge gates before tagging; dry-run mutates nothing). Guardrail 9 correctly positioned. Stale fixture deterministic; apply tests genuinely assert empty index, unchanged HEAD, no tag. Skill claims and runner flag shapes match the implementation across all seven generated copies.</p>
+  </div>
+
+  <h2>Residuals → r2</h2>
+  <div class="panel">
+    <p>No findings carried. R2 scrutiny is directed at the fix's own resume machinery (HEAD-keyed snapshot resolution, already-at-target version writes, evidence-filtered <code>docs/changes</code> dirt classification) — new surface the R1 baseline did not contain.</p>
+  </div>
+
+  <footer>release-evidence-gate · review round 1 · reviewer Codex GPT 5.6 Sol high · fixes by Grok 4.5 high (<code>bad12844</code>) · orchestrated dispositions logged in the project journal</footer>
+</main>
