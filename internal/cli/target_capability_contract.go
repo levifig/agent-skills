@@ -595,9 +595,22 @@ func validateEvidenceSourceFile(root, source string) error {
 	if err != nil {
 		return err
 	}
-	root, err = filepath.Abs(root)
+	if _, err := requireRegularFilePath(root, relative, source); err != nil {
+		return fmt.Errorf("evidence source %v", err)
+	}
+	return nil
+}
+
+// requireRegularFilePath walks root/relative with Lstat only (never follows
+// symlinks). Every intermediate component must not be a symlink; the leaf must
+// be a regular file. display is the path named in errors.
+func requireRegularFilePath(root, relative, display string) (string, error) {
+	root, err := filepath.Abs(root)
 	if err != nil {
-		return fmt.Errorf("resolve evidence source root: %w", err)
+		return "", fmt.Errorf("resolve path root: %w", err)
+	}
+	if display == "" {
+		display = filepath.ToSlash(relative)
 	}
 	current := root
 	components := strings.Split(filepath.Clean(relative), string(filepath.Separator))
@@ -608,19 +621,19 @@ func validateEvidenceSourceFile(root, source string) error {
 		current = filepath.Join(current, component)
 		info, statErr := os.Lstat(current)
 		if statErr != nil {
-			return fmt.Errorf("evidence source %q is not retained: %w", source, statErr)
+			return "", fmt.Errorf("%q is not retained: %w", display, statErr)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			if index == len(components)-1 {
-				return fmt.Errorf("evidence source %q is not a regular file", source)
+				return "", fmt.Errorf("%q is not a regular file", display)
 			}
-			return fmt.Errorf("evidence source %q traverses a symlink component", source)
+			return "", fmt.Errorf("%q traverses a symlink component", display)
 		}
 		if index == len(components)-1 && !info.Mode().IsRegular() {
-			return fmt.Errorf("evidence source %q is not a regular file", source)
+			return "", fmt.Errorf("%q is not a regular file", display)
 		}
 	}
-	return nil
+	return current, nil
 }
 
 func validateInstalledSmokeEvidence(root string, record TargetCapabilityRecord, mode ModeEvidence) error {
@@ -698,7 +711,7 @@ func validateInstalledSmokeEvidence(root string, record TargetCapabilityRecord, 
 		{"hooks", artifacts.HooksPath, artifacts.HooksSHA256},
 		{"native binary", artifacts.NativeBinaryPath, artifacts.NativeBinarySHA256},
 	} {
-		actual, err := sha256File(filepath.Join(root, artifact.path))
+		actual, err := sha256CandidateArtifact(root, artifact.path)
 		if err != nil {
 			return fmt.Errorf("hash installed-smoke %s artifact: %w", artifact.name, err)
 		}
@@ -816,7 +829,7 @@ func validateOpenCodeInstalledSmokeEvidence(root string, record TargetCapability
 		{"hooks", artifacts.HooksPath, artifacts.HooksSHA256},
 		{"native binary", artifacts.NativeBinaryPath, artifacts.NativeBinarySHA256},
 	} {
-		actual, err := sha256File(filepath.Join(root, artifact.path))
+		actual, err := sha256CandidateArtifact(root, artifact.path)
 		if err != nil {
 			return fmt.Errorf("hash OpenCode installed-smoke %s artifact: %w", artifact.name, err)
 		}
@@ -923,7 +936,7 @@ func validateCodexInstalledSmokeEvidence(root string, record TargetCapabilityRec
 		{"hooks", smoke.CandidateArtifacts.HooksPath, smoke.CandidateArtifacts.HooksSHA256},
 		{"native binary", smoke.CandidateArtifacts.NativeBinaryPath, smoke.CandidateArtifacts.NativeBinarySHA256},
 	} {
-		actual, err := sha256File(filepath.Join(root, artifact.path))
+		actual, err := sha256CandidateArtifact(root, artifact.path)
 		if err != nil {
 			return fmt.Errorf("hash Codex installed-smoke %s artifact: %w", artifact.name, err)
 		}
@@ -951,6 +964,19 @@ func validateCodexInstalledSmokeInvocation(invocation TargetCapabilitySmokeInvoc
 		return errors.New("Codex installed-smoke invocation prompt is blank")
 	}
 	return nil
+}
+
+// sha256CandidateArtifact authenticates a candidate artifact path under root
+// before hashing. The path must resolve component-wise to a regular file with
+// no symlink intermediates; os.ReadFile is only used after that check so a
+// matching-hash symlink cannot pass the gate and later be committed as a link.
+func sha256CandidateArtifact(root, relative string) (string, error) {
+	rel := filepath.FromSlash(relative)
+	abs, err := requireRegularFilePath(root, rel, relative)
+	if err != nil {
+		return "", err
+	}
+	return sha256File(abs)
 }
 
 func sha256File(path string) (string, error) {
