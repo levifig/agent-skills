@@ -1,0 +1,49 @@
+<!-- source: release-evidence-gate · kind review · slug codex-r3 · stamped 2026-07-30 23:54 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — codex r3</title>
+
+
+<main>
+  <div class="eyebrow">release-evidence-gate · review</div>
+  <h1>Review — codex r3</h1>
+  <p class="stamp">kind <b>review</b> · slug <b>codex-r3</b> · 2026-07-30 23:54</p>
+
+  <h2>Round</h2>
+  <div class="panel">
+    <p><b>Reviewer:</b> Codex (GPT 5.6 Sol, high effort, fresh thread, review-only convergence pass) · <b>Baseline:</b> branch at <code>86768796</code> (R2 fixes <code>3e727766</code> + boards) · <b>Verdict:</b> <span class="badge bad">not merge-ready</span> — 4 blockers, 1 minor. Reviewer's sandbox could not run Go tests (read-only temp denial); orchestrator battery covered it.</p>
+  </div>
+
+  <h2>Findings</h2>
+  <div class="panel">
+    <p><span class="badge bad">blocker</span> <b>F1 — Evidence class was the whole research tree.</b> Any <code>docs/changes/*/research/**</code> file counted as evidence input regardless of registry reference; the e2e path-set assertion shared the same broad predicate.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>5aefd95f</code>: admission is the union of source paths referenced by the HEAD and worktree registries (typed decoder); unreferenced research files refuse by name; e2e asserts the literal committed path set.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge bad">blocker</span> <b>F2 — Unbound restore silently destroyed operator work.</b> Any mutating invocation reset dirty changelog/version/dist edits from HEAD — including hand-curated changelog — with no prior refusal required.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>5aefd95f</code>: verify-then-restore. At refusal the run restores only the changelog it wrote, leaving version files at the candidate so the runners hash candidate artifacts; on rerun, version files are admitted only byte-equal to the candidate rendering, dirty changelog always gets the classic refusal, only build-owned generated outputs are restored, deleted tracked files refuse.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge bad">blocker</span> <b>F3 — Repair allowlist ignored evidence level.</b> All parent-registry sources qualified, so a "receipt-only" repair could modify a <code>level: fixture</code> Go test file and get tagged.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>5aefd95f</code>: installed-smoke receipt sources only, parsed with the typed decoder.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge bad">blocker</span> <b>F4 — Whitespace path aliasing in repair diffs.</b> Newline-split <code>--name-only</code> plus <code>TrimSpace</code> let padded filenames alias receipt paths.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>5aefd95f</code>: <code>git diff --name-status --no-renames -z</code>, raw NUL-delimited parsing, only A/M statuses accepted; runner seam carries raw bytes.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge machine">minor</span> <b>F5 — Stale template fragment in the R1/R2 boards.</b> Orchestrator authoring error, not implementation.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed directly in <code>fd5e0665</code>.</p>
+  </div>
+
+  <h2>Clean areas</h2>
+  <div class="panel">
+    <p>Duplicate-changelog fix holds; direct registry modification/deletion in repairs rejected; parent-registry reads fail closed; component-wise probe sound; dry-run/post-merge restore guard correct; double restore idempotent; first-live-use loop converges; superseded machinery fully removed; skill copies identical across all seven targets; no whitespace errors branch-wide.</p>
+  </div>
+
+  <h2>Residuals → r4</h2>
+  <div class="panel">
+    <p>No findings carried. R4 is the convergence check over <code>5aefd95f</code>: byte-equal version admission correctness (including the HEAD-baseline snapshot deviation preventing double-bumps), the registry-union allowlist's poisoning surface (a worktree registry referencing junk is visible in the diff and must still satisfy the full loader), and NUL-seam integrity through the scripted-runner tests.</p>
+  </div>
+
+  <footer>release-evidence-gate · review round 3 · reviewer Codex GPT 5.6 Sol high · fixes by Grok 4.5 high (<code>5aefd95f</code>) · dispositions logged in the project journal</footer>
+</main>
