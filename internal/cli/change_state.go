@@ -52,14 +52,14 @@ func deriveChangeStateDetailed(rootPath string, node changeNode, outputCommand c
 		if pinErr != nil {
 			warnings = append(warnings, "evidence pin failed: "+pinErr.Error())
 		} else {
-			ok, receiptErr, clean, evalErr := evaluateVerifiedRungAtCommit(rootPath, node, evidenceGit)
+			ok, clean, evalErr, receiptWarn := evaluateVerifiedRungAtCommit(rootPath, node, evidenceGit)
 			if evalErr != "" {
 				warnings = append(warnings, "structural evaluation failed: "+evalErr)
 			}
-			if receiptErr != nil {
-				warnings = append(warnings, "receipt evaluation failed: "+receiptErr.Error())
+			if receiptWarn != "" {
+				warnings = append(warnings, receiptWarn)
 			}
-			if receiptErr == nil && ok && clean {
+			if ok && clean {
 				return "verified", warnings
 			}
 		}
@@ -117,29 +117,33 @@ func rewriteHEADToken(arg, sha string) string {
 // evaluateVerifiedRungAtCommit loads the committed node once and feeds that same
 // node (folder + content) into both the structural composite and the receipt
 // check — never the working-tree node the ladder received.
-func evaluateVerifiedRungAtCommit(rootPath string, node changeNode, outputCommand changeGitOutput) (ok bool, receiptErr error, clean bool, evalErr string) {
+func evaluateVerifiedRungAtCommit(rootPath string, node changeNode, outputCommand changeGitOutput) (ok bool, clean bool, evalErr string, receiptWarn string) {
 	if outputCommand == nil {
 		outputCommand = changeEvidenceGitOutput
 	}
 	nodes, err := loadChangeNodesAtHEADWithOutput(rootPath, outputCommand)
 	if err != nil {
-		return false, nil, false, err.Error()
+		return false, false, err.Error(), ""
 	}
 	headNode, found := changeNodeForFolder(nodes, node.Folder)
 	if !found {
 		headNode, found = changeNodeForSlug(nodes, node.Slug)
 	}
 	if !found {
-		return false, nil, false, fmt.Sprintf("change %q missing from committed HEAD", node.Slug)
+		return false, false, fmt.Sprintf("change %q missing from committed HEAD", node.Slug), ""
 	}
 	folderAbs := filepath.Join(rootPath, filepath.FromSlash(headNode.Folder))
 	report, reportErr := composeChangeCheckReport(evaluateChangeNode(headNode, ""), rootPath, folderAbs, headNode, nodes, outputCommand, false, changeTaskContentHEAD)
 	if reportErr != nil {
-		return false, nil, false, reportErr.Error()
+		return false, false, reportErr.Error(), ""
 	}
 	clean = len(report.Violations) == 0 && report.Executable
-	ok, _, receiptErr = changeReceiptStatus(rootPath, headNode.Folder, headNode, outputCommand)
-	return ok, receiptErr, clean, ""
+	verdict := changeReceiptStatus(rootPath, headNode.Folder, headNode, outputCommand)
+	ok = verdict.OK
+	if !verdict.OK && verdict.Reason != changeReceiptMissing && verdict.Reason != changeReceiptOK {
+		receiptWarn = "receipt evaluation failed: " + verdict.Cause()
+	}
+	return ok, clean, "", receiptWarn
 }
 
 // changeStructurallyCleanForState reports whether the gate's structural
@@ -151,7 +155,7 @@ func changeStructurallyCleanForState(rootPath string, node changeNode, outputCom
 	if outputCommand == nil {
 		outputCommand = changeEvidenceGitOutput
 	}
-	_, _, clean, evalErr := evaluateVerifiedRungAtCommit(rootPath, node, outputCommand)
+	_, clean, evalErr, _ := evaluateVerifiedRungAtCommit(rootPath, node, outputCommand)
 	return clean, evalErr
 }
 

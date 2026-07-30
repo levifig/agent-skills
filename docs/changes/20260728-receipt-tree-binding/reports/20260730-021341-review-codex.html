@@ -1,0 +1,129 @@
+<!-- source: receipt-tree-binding · kind review · slug codex · stamped 2026-07-30 · authored report (snapshot semantics) · never auto-updated · dispositions recorded -->
+<meta charset="utf-8">
+<title>Review Round 3 (Codex, fresh thread) — Receipt Tree Binding</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1080px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  h3 { font-family: var(--serif); font-weight: 600; font-size: 1.05rem; margin: 0 0 6px; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--ok); margin-bottom: 28px; }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .fname { font-weight: 700; font-size: 1.02rem; flex: 1 1 320px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-medium { background: var(--bad-soft); color: var(--bad); }
+  .sev-low { background: var(--accent-soft); color: var(--accent); }
+  .sev-nit { background: var(--state-soft); color: var(--state); }
+  .disp-accepted { background: var(--ok-soft); color: var(--ok); }
+  .frow { display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px; font-size: .93rem; }
+  .frow dt { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; padding-top: 2px; }
+  .frow dd { margin: 0 0 6px; }
+  .checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 8px; }
+  .check { background: var(--ok-soft); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: .88rem; }
+  .check b { color: var(--ok); display: block; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; }
+  @media (max-width: 640px) { .frow { grid-template-columns: 1fr; } .frow dt { padding-top: 8px; } }
+</style>
+<main>
+  <div class="eyebrow">Review · Round 3 · External · Fresh Thread</div>
+  <h1>Receipt Tree Binding — Fresh Codex Review</h1>
+  <p class="stamp">change <b>docs/changes/20260728-receipt-tree-binding</b> · reviewer <b>Codex (gpt-5.6-sol, xhigh, new thread)</b> · reviewed <b>2026-07-29</b> · scope <b>main..1fe2eea5</b> · dispositions folded in <b>1c0e82bf</b></p>
+
+  <div class="panel verdict">
+    <h3>Round verdict: changes requested → all four findings accepted and fixed</h3>
+    <p>A deliberately fresh Codex thread — independent of the round-2 reviewer's context — re-read the whole branch plus both prior boards and found four issues none of the earlier rounds caught, concentrated in the newest code (the dirty-check plumbing added in round 2's fold) and in docs supersession completeness. All four were accepted with fix decisions journaled before briefing; fixes folded in <code>1c0e82bf</code>, which also closed the round-2 residual R1. Round-5 re-review: approved.</p>
+    <div class="checks">
+      <div class="check"><b>Full suite</b> <code>go test ./...</code> green with three new fixtures (submodule, HEAD-move, arrow filename)</div>
+      <div class="check"><b>Receipt</b> re-verified; change derives <code>verified</code> at HEAD</div>
+      <div class="check"><b>R1 closed</b> dead <code>changeTrackedWorktreeDirty</code> wrapper deleted in the same fold</div>
+    </div>
+  </div>
+
+  <h2>Findings</h2>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">C4 — Submodule ignore config bypassed both cleanliness checks</span><span class="chip sev-medium">medium</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd><code>git status --porcelain=v1 -uno</code> honors <code>submodule.&lt;name&gt;.ignore=all</code> from repo config, so a consumer repository's configuration could hide a dirty or HEAD-moved submodule from the pre- and post-run checks while criteria executed against those uncommitted bytes. Loaf cannot dictate consumer config, so the check must be configuration-independent.</dd>
+      <dt>Disposition</dt><dd>Accepted — policy pinned as <code>--ignore-submodules=untracked</code>: submodule HEAD moves and tracked-content modifications refuse; untracked-only submodule content does not, mirroring the <code>-uno</code> superproject rule.</dd>
+      <dt>Fix</dt><dd><code>1c0e82bf</code>: the flag is passed explicitly on the status invocation with the policy documented at the call site; pinned by <code>TestChangeVerifySubmoduleIgnoreConfigCannotHideDirt</code> (ignore=all set, dirty submodule refused, clean submodule verifies).</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">C5 — HEAD advancing during criteria bypassed the post-run mutation check</span><span class="chip sev-medium">medium</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The post-run check compared the worktree to the <em>current</em> HEAD, so a criterion that committed (or any concurrent commit during a long verify) read as clean and the receipt recorded <code>worktree_clean: true</code> while attesting an execution nothing at the captured commit produced — for digest-excluded paths the gate then accepted it, contradicting ADR-024's fail-closed promise.</dd>
+      <dt>Disposition</dt><dd>Accepted — fixed via a post-run HEAD equality check reusing the existing void path; no schema field added. <code>worktree_clean</code>'s claim is redefined in place: execution integrity — tracked tree unchanged and HEAD unmoved for the whole run.</dd>
+      <dt>Fix</dt><dd><code>1c0e82bf</code>: post-run <code>rev-parse HEAD</code> compared to the captured commit; movement voids the receipt (<code>worktree_clean: false</code>, non-zero exit naming old → new); pinned by <code>TestChangeVerifyHEADMoveDuringCriteriaVoidsReceipt</code>.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">C6 — Porcelain hand-parsing misclassified quoted filenames containing " -&gt; "</span><span class="chip sev-low">low</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The parser split every record at the first <code>" -&gt; "</code> before considering C-quoting, so an ordinary modified file whose name contains the arrow (emitted by git as one quoted pathname) was split into two garbage paths and lost its report-mask exemption — falsely refusing a sweep over a report-only dirty tree.</dd>
+      <dt>Disposition</dt><dd>Accepted — switched to the NUL format git recommends for machine parsing, the same byte-exactness discipline <code>scopeDigest</code> already gets from <code>ls-tree -z</code>.</dd>
+      <dt>Fix</dt><dd><code>1c0e82bf</code>: status runs with <code>-z</code>; <code>porcelainTrackedPathsZ</code> parses NUL records with the rename/copy second field handled structurally; <code>unquotePorcelainPath</code> and the arrow split are deleted; pinned by <code>TestChangeVerifyPathologicalArrowReportFilenameStaysMaskExempt</code>.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">C7 — ADR-023's supersession was materially incomplete</span><span class="chip sev-low">low</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>Only the freshness paragraph was marked superseded while ADR-023 still specified the v1 schema (including <code>cwd</code>) and the "any post-verify commit imposes a re-verify" cost claim, both contradicting schema v2; the successor note required by shape.md's Durable Outputs was also missing from ADR-024.</dd>
+      <dt>Disposition</dt><dd>Accepted — annotate in place, never rewrite: ADRs are decision records.</dd>
+      <dt>Fix</dt><dd><code>1c0e82bf</code>: both stale ADR-023 paragraphs carry inline supersession annotations with the historical text retained for provenance; ADR-024 gains the successor note ("the receipt attests criteria-against-declared-scope; tree-is-green at cut belongs to CI") and its supersession list names the schema and cost claims explicitly.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">R1 (carried from round 2) — dead <code>changeTrackedWorktreeDirty</code> wrapper</span><span class="chip sev-nit">nit</span><span class="chip disp-accepted">closed</span></div>
+    <dl class="frow">
+      <dt>Resolution</dt><dd>Deleted in <code>1c0e82bf</code> as planned — deferred from round 2 to ride along with the next <code>internal/</code> commit, which this fold was.</dd>
+    </dl>
+  </div>
+
+  <h2>Provenance</h2>
+  <div class="panel">
+    <p>Fresh-thread review run 2026-07-29 by Codex (gpt-5.6-sol, xhigh) via the companion runtime, Codex session <code>019fae81-b450-7e81-b5fd-0df6fe08722f</code>; the first attempt died to a companion worker fault mid-read and was resumed to completion (second worker death that day — runtime flakiness, not task-related). Findings relayed verbatim, confirmed by orchestrator inspection, fix decisions journaled as <code>decision(receipt-tree-binding)</code> 2026-07-30, folded by the implementer in <code>1c0e82bf</code> with the change's receipt re-verified. Related boards: <code>20260729-114458-review-claude.html</code> (round 1), <code>20260729-154556-review-codex.html</code> (round 2), council board <code>20260728-222942-council-receipt-freshness.html</code>.</p>
+  </div>
+</main>

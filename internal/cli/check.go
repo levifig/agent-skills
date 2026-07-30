@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -1391,8 +1392,21 @@ func changelogVersionSectionHasEntries(changelog string, version string) bool {
 func commandOutput(cwd string, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = cwd
-	output, err := cmd.Output()
-	return string(output), err
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	out := stdout.String()
+	if err == nil {
+		return out, nil
+	}
+	stderrText := strings.TrimSpace(stderr.String())
+	if stderrText == "" {
+		return out, err
+	}
+	// Preserve the original error (e.g. *exec.ExitError) while surfacing stderr
+	// so callers never see a bare "exit status N" without cause.
+	return out, fmt.Errorf("%w\n%s", err, stderrText)
 }
 
 func shouldRunSecurityScanners(context checkHookContext) bool {

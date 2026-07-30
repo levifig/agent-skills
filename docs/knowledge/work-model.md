@@ -28,7 +28,7 @@ last_reviewed: '2026-07-28'
 - The Pipeline
 - Projections: Served, Never Committed
 
-How bounded work moves through Loaf: what a Change is, which documents carry which role, how tasks become committed evidence, and how releases read that evidence. Rationale lives in [ADR-022](../decisions/ADR-022-change-anatomy-and-release-cohorts.md) (anatomy, cohorts, commitments) and [ADR-023](../decisions/ADR-023-execution-provenance-and-cohort-receipts.md) (provenance, receipts, the gate); this document is the operating view.
+How bounded work moves through Loaf: what a Change is, which documents carry which role, how tasks become committed evidence, and how releases read that evidence. Rationale lives in [ADR-022](../decisions/ADR-022-change-anatomy-and-release-cohorts.md) (anatomy, cohorts, commitments) and [ADR-023](../decisions/ADR-023-execution-provenance-and-cohort-receipts.md) (provenance, receipts, the gate) and [ADR-024](../decisions/ADR-024-receipt-content-digest-freshness.md) (content-digest freshness); this document is the operating view.
 
 ## The Unit: a Change
 
@@ -81,7 +81,7 @@ captured → shaped → executable → executing → complete
 
 Declaring `target_release: X.Y.Z` in `change.json` (canonical form — no `v`, no leading zeros, no prerelease) opts the change into the strong gate. The cohort — every change sharing that target — is the arc, derived rather than declared. Cutting stable `X.Y.Z` requires the whole cohort executed at flip grade and receipt-verified; one shaped-only member blocks the version. Prerelease candidates always flow. `--bump release` always gates; `--post-merge` keys on the prepared version at HEAD — a prepared prerelease publishes through the valve and tags exactly what the version files carry, while a prepared stable gates that version's cohort before tagging it.
 
-The working loop for a cohort member: land the tasks → `loaf change verify <folder>` → commit `receipts/verify.json` → release. Block messages name their remedy — `structurally invalid (…)` and `not executable (contract gaps: …)` (fix what `loaf change check` reports; a brief-only member reads as `contract gaps: shape.md (missing)`), `not executed` (land a real flip commit), `receipt records failing criteria (V1)` (fix, re-verify, recommit), `receipt is not current` (re-verify after later commits; an uncommitted receipt reads `not committed at HEAD`, and the receipt's own commit never stales it), `legacy member — convert first` (sanctioned atomic conversion, boxes unchecked).
+The working loop for a cohort member: land the tasks → `loaf change verify <folder>` → commit `receipts/verify.json` → release. Block messages name their remedy — `structurally invalid (…)` and `not executable (contract gaps: …)` (fix what `loaf change check` reports; a brief-only member reads as `contract gaps: shape.md (missing)`), `not executed` (land a real flip commit), `receipt records failing criteria (V1)` (fix, re-verify, recommit), `content changed since verification` / `criteria changed (receipt expired)` (re-verify after content or criteria drift; an uncommitted receipt reads `not committed at HEAD`; receipts bind to a masked root-tree content digest — ADR-024 — so squash/rebase and cohort peers never machine-split the verdict), `legacy member — convert first` (sanctioned atomic conversion, boxes unchecked).
 
 Slipping a change to a later release is a retarget: a reviewable `change.json` diff, surfaced at check and preflight, never blocked. The roadmap is this projection — cohorts and their derived states — not a planner.
 
