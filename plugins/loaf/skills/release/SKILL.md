@@ -24,7 +24,7 @@ Publish a coherent version from work that has already landed.
 - Step 2: Change Collection
 - Step 3: Version + Changelog
 - Step 4: Release Execution
-- Step 5: Protected-Branch Handoff
+- Step 5: Release-PR Flow
 - Step 6: Publication Verification
 - Step 7: Post-Release Follow-Up
 - Hook Interaction
@@ -38,6 +38,7 @@ Publish a coherent version from work that has already landed.
 
 - **Release is not merge** -- do not use `/loaf:release` to review, approve, or land a feature PR. Use `/loaf:ship` for PR correctness and landing.
 - **Release from landed work** -- collect changes from the release base branch, normally the repo default branch, since the last release tag.
+- **Release-PR flow is the default** -- prepare on a release branch with `loaf release --pre-merge`, squash-merge the release PR, then finalize with `loaf release --post-merge` on the base branch. Direct `--bump` on the base branch is a named exception used only on explicit user request.
 - **Batch by intent** -- group release notes by user-facing outcome, `CR-*` change bundle, spec, or related PRs; do not mirror individual commits mechanically.
 - **Keep landed and released distinct** -- a PR may be landed without being released; a release may contain multiple landed PRs.
 - **Block on release-readiness failure** -- do not publish if build, tests, version files, changelog, tag, or GitHub release state is inconsistent.
@@ -61,7 +62,7 @@ Publish a coherent version from work that has already landed.
 | Readiness | clean/current base branch, no unresolved release collisions | Yes |
 | Change Collection | landed work since last tag grouped into release themes | Yes |
 | Version + Changelog | bump selected, notes curated, files updated | Yes |
-| Execution | release commit/tag/GitHub Release created or release PR prepared | Yes |
+| Execution | release commit prepared via `--pre-merge`, release PR landed, `--post-merge` finalizes | Yes |
 | Verification | release and install paths checked | Yes |
 | Follow-Up | reflect/loaf:housekeeping suggested when useful | No |
 
@@ -70,7 +71,7 @@ Publish a coherent version from work that has already landed.
 | Topic | Use When |
 |-------|----------|
 | [Context Detection](#context-detection) | Determining release base, last tag, and current branch |
-| [Protected-Branch Handoff](#step-5-protected-branch-handoff) | Branch protection requires a release PR |
+| [Release-PR Flow](#step-5-release-pr-flow) | Preparing, landing, and finalizing every release |
 | [Hook Interaction](#hook-interaction) | Understanding coexistence with git hooks |
 
 ---
@@ -86,9 +87,9 @@ Before anything, establish the release surface:
    ```
 2. Parse `$ARGUMENTS` for an explicit base, tag, or version. If omitted, use the repo default branch as the release base.
 3. Verify the current branch:
-   - If already on the release base, continue.
+   - If already on the release base, continue; the release-PR flow in Step 5 branches from here.
+   - If on a dedicated release branch, resume the release-PR flow at the matching step.
    - If on a feature branch, stop and explain that `/loaf:release` publishes from landed work. Offer `/loaf:ship` if the active PR needs landing first.
-   - If preparing a release branch because direct base-branch pushes are blocked, continue only after the user confirms that release-PR strategy.
 4. Find the previous release tag:
    ```bash
    git describe --tags --abbrev=0
@@ -183,23 +184,17 @@ Choose the bump and curate the changelog from the grouped landed work.
 
 ## Step 4: Release Execution
 
-For a direct release from the base branch, run:
+Every release routes through the release-PR flow in Step 5: prepare the release commit on a release branch with `loaf release --pre-merge`, land the release PR, then finalize with `loaf release --post-merge` on the base branch.
 
-```bash
-loaf release --bump <type> --yes
-```
-
-This should:
+Release preparation should:
 
 1. Update version files
 2. Convert `[Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD`
 3. Reinsert a fresh empty `[Unreleased]` section
 4. Run configured release artifact commands
 5. Create the release commit
-6. Create/push the release tag
-7. Create the GitHub Release when enabled
 
-After execution, verify generated artifacts are current:
+After preparation, verify generated artifacts are current:
 
 ```bash
 npm run build
@@ -208,17 +203,21 @@ git diff --exit-code -- dist plugins content/skills/loaf-reference/SKILL.md
 
 Adjust the path list to the project. For Loaf itself, tracked generated outputs under `dist/`, `plugins/`, and native binaries must match the source changes.
 
+### Direct Release (Named Exception)
+
+`loaf release --bump <type> --yes` on the base branch prepares, commits, tags, and publishes in a single shot. Use it only when the user explicitly requests a direct release; never select it by default. Skipping the release PR means nothing runs the suite against the prepared tree before the tag exists — the v2.0.0-alpha.16 cut took this door and a capability-evidence canary surfaced only in tag CI, after publication. The CLI prints a flow advisory when a mutating release starts on the default branch; treat it as a routing signal, not noise.
+
 ---
 
-## Step 5: Protected-Branch Handoff
+## Step 5: Release-PR Flow
 
-If branch protection prevents direct release commits on the base branch:
+The default for every release: PR CI runs the full suite against the prepared tree, so evidence canaries surface before any tag or GitHub Release exists. This holds regardless of repository settings — where branch protection is enabled it is satisfied as a side effect, not the reason for the flow.
 
-1. Create a dedicated release branch.
-2. Run the release command in a mode that creates the version/changelog/artifact commit but does not publish final tags or GitHub Release artifacts until the release commit lands on the base branch.
+1. Create a dedicated release branch from the release base.
+2. Run `loaf release --pre-merge` on it: this creates the version/changelog/artifact release commit but no tag and no GitHub Release.
 3. Open a release PR with a concise release-focused body.
-4. Hand the PR to `/loaf:ship` for review and landing.
-5. After `/loaf:ship` lands the release PR, resume `/loaf:release` on the base branch to tag, publish the GitHub Release, and verify installability.
+4. Hand the PR to `/loaf:ship` for review and landing; squash-merge it into one `chore: release vX.Y.Z (#PR)` commit carrying the curated changelog.
+5. After the release PR lands, run `loaf release --post-merge` on the base branch to tag, publish the GitHub Release, and verify installability.
 
 Do not hide this handoff inside `/loaf:release`: `/loaf:ship` remains the PR correctness and merge gate.
 
@@ -269,7 +268,7 @@ configured otherwise; security and secret-scanning hooks remain blocking.
 |------|------|---------------------|
 | `github-account` | Force-switch | Switches to the configured GitHub account before `gh` release operations; blocks only if the switch fails |
 | `validate-push` | Advisory | Cross-checks version bump, changelog, and build on push |
-| `workflow-pre-pr` | Advisory | May fire only for protected-branch release PRs |
+| `workflow-pre-pr` | Advisory | Fires when the release PR is opened |
 | `workflow-pre-merge` | Advisory | Belongs to `/loaf:ship` when a release PR must land |
 | `workflow-post-merge` | Advisory | Belongs to `/loaf:ship` after PR landing |
 | `check-secrets` | Blocking | Always respected before writes or shell actions |
