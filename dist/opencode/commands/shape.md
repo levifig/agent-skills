@@ -10,7 +10,9 @@ description: >-
   brief/plan/design optional) plus task packets — never a numbered spec.
   Teaches the problem-boundary test (same problem → another task; different
   problem → Intent) and vertical-slice discipline. Not for quick capture (use
-  idea) or open-ended divergent thinking (use brainstorm).
+  idea), problem discovery that should author a brief first (use pitch), or
+  open-ended divergent thinking (agent technique: explore / brainstorm — user
+  entry intent routes to pitch).
 subtask: false
 version: 2.0.0-alpha.16
 ---

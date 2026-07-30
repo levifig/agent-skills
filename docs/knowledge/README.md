@@ -8,7 +8,9 @@ Loaf's domain knowledge — what agents need to understand about this project.
 | [glossary.md](glossary.md) | glossary | — |
 | [hook-system.md](hook-system.md) | hooks, lifecycle, validation | `config/hooks.yaml`, `internal/cli/check.go`, `content/hooks/**/*` |
 | [knowledge-management-design.md](knowledge-management-design.md) | knowledge, staleness, qmd | `internal/cli/kb.go`, `docs/knowledge/*.md` |
+| [loaf-flow.md](loaf-flow.md) | workflow, pitch, both scales | `content/skills/{pitch,shape,triage,bootstrap,explore,brainstorm,implement,ship,release}/**` |
 | [skill-architecture.md](skill-architecture.md) | skills, agent-skills-standard, sidecars | `content/skills/**/*.md`, `content/skills/**/*.yaml`, `config/hooks.yaml` |
-| [task-system.md](task-system.md) | tasks, specs, shape-up, sessions | `.agents/specs/**/*.md`, SQLite task/session state, `internal/cli/cli.go`, `internal/state/task_*.go` |
+| [task-system.md](task-system.md) | tasks, specs, changes, journal | `docs/changes/**/*.md`, `.agents/specs/**/*.md`, SQLite task state, `internal/cli/cli.go` |
+| [work-model.md](work-model.md) | changes, cohorts, receipts, pipeline | `docs/changes/**/*`, `internal/cli/change_*.go`, pitch/shape/implement/triage skills |
 
 See [../decisions/](../decisions/) for architecture decision records.

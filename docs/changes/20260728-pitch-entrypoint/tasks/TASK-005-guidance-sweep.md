@@ -38,14 +38,14 @@ Markdown paragraphs are single lines — never hard-wrap. Guidance documents sta
 
 ## Steps
 
-- [ ] Sweep root `AGENTS.md` for flow narration: the entry stage is pitch, briefs are authored problem-space documents, shape consumes them (`.claude/CLAUDE.md` follows via the symlink — never edit it directly).
-- [ ] Converge the shipped operating account: update `docs/knowledge/work-model.md` (triage-seeds-the-brief becomes the pitch front door; brief authorship and accretes-until-shaping semantics; the landing matrix), `docs/knowledge/task-system.md` (the work-record command table names capture promotion), and the glossary's affected entries, and add the amended-by pointer to ADR-022 referencing the new entry-stage ADR — one account of the pipeline, not two.
-- [ ] Correct `AGENTS.md`'s skill-registration guidance to match Decision 10: skills are auto-discovered from `content/skills/` at build time, and `hooks.yaml` registers hook instances only — both the "Before Committing" checklist line and the "Add skill" quick-task entry currently instruct registering every new skill in `hooks.yaml`.
-- [ ] Sweep skill cross-references: Related Skills sections that route entry intent name `/pitch`; no skill still presents brainstorm or explore as the user-facing front door.
-- [ ] Distill the Durable Outputs via reflect on the branch: the Loaf Flow knowledge doc under `docs/knowledge/` and the entry-stage ADR under `docs/decisions/` (next free ADR number at authoring time), per `shape.md` Durable Outputs.
+- [x] Sweep root `AGENTS.md` for flow narration: the entry stage is pitch, briefs are authored problem-space documents, shape consumes them (`.claude/CLAUDE.md` follows via the symlink — never edit it directly).
+- [x] Converge the shipped operating account: update `docs/knowledge/work-model.md` (triage-seeds-the-brief becomes the pitch front door; brief authorship and accretes-until-shaping semantics; the landing matrix), `docs/knowledge/task-system.md` (the work-record command table names capture promotion), and the glossary's affected entries, and add the amended-by pointer to ADR-022 referencing the new entry-stage ADR — one account of the pipeline, not two.
+- [x] Correct `AGENTS.md`'s skill-registration guidance to match Decision 10: skills are auto-discovered from `content/skills/` at build time, and `hooks.yaml` registers hook instances only — both the "Before Committing" checklist line and the "Add skill" quick-task entry currently instruct registering every new skill in `hooks.yaml`.
+- [x] Sweep skill cross-references: Related Skills sections that route entry intent name `/pitch`; no skill still presents brainstorm or explore as the user-facing front door.
+- [x] Distill the Durable Outputs via reflect on the branch: the Loaf Flow knowledge doc under `docs/knowledge/` and the entry-stage ADR under `docs/decisions/` (next free ADR number at authoring time), per `shape.md` Durable Outputs.
 - [ ] H4 end-to-end dogfood — a user-invoked checkpoint: with TASK-004's brief-aware shape landed, rebuild and prepare the isolated scratch project with a fresh session explicitly loaded from the branch-built plugin (`--plugin-dir` at this branch's `plugins/loaf`, per `cli/scripts/smoke-claude-code-startup.mjs`) so both ceremonies are the candidate skills rather than the installed release's, then ask the human to run `/pitch` then `/shape` on its output, confirming shape consumes the brief without re-asking problem questions; append the result and the candidate commit to `research/pitch-interview-dogfood.md`.
-- [ ] Run the full verification contract V1–V7 as declared in `shape.md`: `go test ./... -count=1`, `npm run build`, `loaf check`, the five-projection presence check, the explore-demotion grep, `loaf change check docs/changes/20260728-pitch-entrypoint --require-executable`, and the human-entry-guard greps.
-- [ ] Final rebuild; commit any remaining artifact drift with this task.
+- [x] Run the full verification contract V1–V7 as declared in `shape.md`: `go test ./... -count=1`, `npm run build`, `loaf check`, the five-projection presence check, the explore-demotion grep, `loaf change check docs/changes/20260728-pitch-entrypoint --require-executable`, and the human-entry-guard greps.
+- [x] Final rebuild; commit any remaining artifact drift with this task.
 
 ## Verification
 

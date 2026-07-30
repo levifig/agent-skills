@@ -10,7 +10,7 @@ Loaf is an opinionated agentic framework that gives AI coding assistants structu
 
 **Project journal model** — A single SQLite-backed journal captures decisions and progress across every conversation, project-scoped and correlated by an opaque harness id. There is no session entity to open or close, so concurrent conversations across branches and worktrees stay conflict-free. Handoff artifacts live separately in `.agents/handoffs/`. Work survives context loss, compaction, and `/clear`.
 
-**Change-first workflow** — Ideas may be explored before `/shape` creates a bounded Change in `docs/changes/YYYYMMDD-slug/change.md`. `loaf change check` validates the contract before implementation, review, and shipping.
+**Change-first workflow** — The Loaf Flow is pitch → shape → implement → ship → release. `/pitch` authors a problem-space brief; `/shape` bounds a Change under `docs/changes/YYYYMMDD-slug/` (promoting a capture in place when needed). `loaf change check` validates the contract before implementation, review, and shipping.
 
 **Profile-based agents** — Functional profiles are defined by tool access, not job titles. A Smith with `python-development` skills becomes a backend engineer; the same Smith with `infrastructure-management` becomes a DevOps engineer. Skills determine what an agent knows; the profile determines what it can touch.
 
@@ -24,9 +24,9 @@ Loaf keeps intent, implementation, and learning connected:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     EXPLORE AND SHAPE                       │
+│                    PITCH AND SHAPE                          │
 │                                                             │
-│           /idea or /brainstorm → /shape → Change            │
+│     /pitch → brief → /shape → Change (or /bootstrap)        │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
                               ↓
@@ -38,22 +38,23 @@ Loaf keeps intent, implementation, and learning connected:
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                      PRESERVE LEARNING                      │
+│                 RELEASE AND PRESERVE                        │
 │                                                             │
-│             journal · /reflect · optional /wrap             │
+│     /release · journal · /reflect · optional /wrap          │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Explore and Shape
+### Pitch and Shape
 
-Explore uncertainty when useful, then create an implementable Change with explicit boundaries and verification.
+Discover the problem, author a brief, then bound an implementable Change (or bootstrap a project from a pitched BRIEF).
 
 | Command | What It Does |
 |---------|--------------|
-| `/idea` | Quick capture of rough ideas for later evaluation |
-| `/brainstorm` | Deep exploration of a problem space |
-| `/shape` | Create `docs/changes/YYYYMMDD-slug/change.md` with a bounded product and implementation contract |
+| `/pitch` | Human problem-discovery: authors a change `brief.md` or project `docs/BRIEF.md` |
+| `/idea` | Quick capture of rough ideas for later triage / pitch / shape |
+| `/shape` | Create or promote `docs/changes/YYYYMMDD-slug/` into a bounded contract (`shape.md` + `tasks/`) |
+| `/bootstrap` | Populate operating docs; with `source: pitch`, gap-interview and series-prep captured changes |
 | `/strategy` | Discover and document strategic direction |
 
 ### Implement and Ship
@@ -118,22 +119,24 @@ Skills you invoke directly to drive work forward.
 
 | Skill | Activates When |
 |-------|----------------|
-| `shape` | Shaping ideas into bounded Changes |
+| `pitch` | Human problem-discovery; authors a brief at change or project scale |
+| `shape` | Shaping a brief or raw ask into a bounded Change |
 | `breakdown` | Decomposing existing compatible spec/task records |
 | `implement` | Implementing a Change or compatible task/spec record |
 | `ship` | Reviewing, verifying, and landing one PR |
 | `release` | Publishing a version from already-landed work |
-| `brainstorm` | Deep exploration of a problem space |
 | `research` | Investigating questions, comparing options |
 | `strategy` | Discovering or updating strategic direction |
 | `architecture` | Creating Architecture Decision Records |
 | `idea` | Quick capture of ideas for later evaluation |
-| `triage` | Review and process intake queue (sparks + raw ideas) |
+| `triage` | Review and process intake queue (sparks + raw ideas); may hand to pitch or shape |
 | `reflect` | Integrating learnings into strategic docs |
 | `housekeeping` | Reviewing and archiving agent artifacts |
 | `handoff` | Creating disposable transfer packets in `.agents/handoffs/` |
-| `bootstrap` | Bootstrapping new or existing projects |
+| `bootstrap` | Bootstrapping new or existing projects (series-prep after pitched BRIEF) |
 | `wrap` | Optional end-of-conversation checkpoint: shipped, pending, next |
+
+Explore and brainstorm are agent techniques (not user slash entry); agents reach for them when direction is undecided — human entry intent routes to `/pitch`.
 
 ### Orchestration & Knowledge
 

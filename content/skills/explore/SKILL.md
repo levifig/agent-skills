@@ -32,8 +32,9 @@ Divergent inquiry with durable continuity. An Exploration is a relational identi
 - Checkpoint before the context window gets hostile: every checkpoint must carry all four portable fields — purpose, conclusions, unresolved, next action — each self-sufficient without this conversation.
 - A conversation handle or log path is provenance, never context. Presence of handles does not make an Exploration resumable; only a portable checkpoint does.
 - Capture crystallized directions as Intent (`loaf intent create`), deferred bodies with `--disposition deferred`; never leave a substantial direction only in prose.
-- Never create Git artifacts, branches, worktrees, or Changes from Explore; when a direction is ready for bounded delivery, hand it to `/shape`.
+- Never create Git artifacts, branches, worktrees, or Changes from Explore; when a direction is ready for problem discovery hand it to `/pitch`, and when it is ready for bounded delivery hand it to `/shape`.
 - Never store transcripts, prompts, or tool output in checkpoints or items; curate semantic context instead.
+- Not a user slash front door — human "explore this" / "where do I start" intent routes to `/pitch`.
 
 ## Verification
 
@@ -90,7 +91,8 @@ Brainstorm's full divergent stance lives inside Explore: generate options before
 
 ## Related Skills
 
-- **triage** — processes the intake queue and chooses dispositions, including "explore this"
-- **shape** — narrows one direction into a bounded Change; the exit door from Explore
+- **pitch** — human problem-discovery front door; route user entry intent here; reach for explore from inside pitch when still undecided
+- **triage** — processes the intake queue and may disposition items toward pitch, shape, or agent-side explore
+- **shape** — narrows one well-understood direction into a bounded Change
 - **research** — evidence gathering for a known question, usable inside an Exploration
 - **idea** — quick capture without inquiry

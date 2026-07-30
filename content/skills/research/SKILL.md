@@ -4,7 +4,8 @@ description: >-
   Conducts project assessment and topic investigation. Use when stepping back
   to understand the big picture or when the user asks "what's the current state?"
   Produces state assessments, research findings with ranked options, or vision
-  change proposals. Not for multi-agent coordination (use orchestration) or implementation.
+  change proposals. Not for problem discovery that should author a brief (use
+  pitch), multi-agent coordination (use orchestration), or implementation.
 ---
 
 # Research
@@ -53,7 +54,7 @@ Patterns for zooming out, investigating topics, and evolving project direction.
 |---------------|------|
 | Empty / "project state" / "catch me up" | State Assessment |
 | Topic or question | Topic Investigation |
-| "let's brainstorm" / "ideas for X" | Brainstorming |
+| "let's brainstorm" / "ideas for X" | Redirect — user entry intent belongs to `/pitch` (generative stance is an agent technique via explore/brainstorm, not this skill's front door) |
 | "should we change direction?" / "update VISION" | Vision Evolution |
 
 ## Topics
@@ -71,7 +72,7 @@ Parse `$ARGUMENTS` to determine mode:
 |---------------|------|
 | Empty / "project state" / "catch me up" | State Assessment |
 | Topic or question | Topic Investigation |
-| "let's brainstorm" / "ideas for X" | Brainstorming |
+| "let's brainstorm" / "ideas for X" | Redirect to `/pitch` for human entry; do not open research's brainstorming mode as a slash substitute |
 | "should we change direction?" / "update VISION" | Vision Evolution |
 
 ## Confidence Hierarchy
@@ -116,15 +117,11 @@ For SQLite-backed report state, use `loaf report create`, `loaf report
 finalize`, and `loaf report archive`. Do not hand-edit report lifecycle
 frontmatter to represent operational status.
 
-### Brainstorming
+### Entry-intent redirect (not a research mode)
 
-**Trigger:** "Let's brainstorm" / "Ideas for X"
+**Trigger:** "Let's brainstorm" / "Ideas for X" / raw concept entry
 
-1. Interview to understand constraints and goals
-2. Generate diverse options (quantity first)
-3. Filter through constraints
-4. Refine promising directions
-5. Present shaped options with pros/cons
+User-facing entry for a new concept is `/pitch` (problem-discovery brief). Do not treat research as the brainstorm front door. When generative expansion is needed mid-research or mid-pitch, the agent may use the explore/brainstorm *techniques* — they are not slash substitutes for pitch.
 
 ### Vision Evolution
 
@@ -137,8 +134,9 @@ frontmatter to represent operational status.
 
 ## Related Skills
 
+- **pitch** - Human problem-discovery when research crystallizes a concept that needs a brief
 - **orchestration** - For acting on research findings
-- **brainstorm** - For generative exploration
+- **explore** / **brainstorm** - Agent techniques for divergent inquiry (not user front doors)
 - **reflect** - For updating strategy post-shipping
 - **architecture** - For making technical decisions
 - **strategy** - For discovering strategic context

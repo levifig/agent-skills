@@ -9,7 +9,9 @@ description: >-
   constraints to bound. Produces role-named narrative (shape.md required; brief/plan/design
   optional) plus task packets — never a numbered spec. Teaches the problem-boundary test
   (same problem → another task; different problem → Intent) and vertical-slice discipline.
-  Not for quick capture (use idea) or open-ended divergent thinking (use brainstorm).
+  Not for quick capture (use idea), problem discovery that should author a brief
+  first (use pitch), or open-ended divergent thinking (agent technique: explore /
+  brainstorm — user entry intent routes to pitch).
 ---
 
 # Shape

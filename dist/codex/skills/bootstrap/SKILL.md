@@ -5,7 +5,8 @@ description: >-
   structured interviews, and document population. Use when the user asks "how do
   I start a new project?", "set up Loaf," or "bootstrap my project." Produces
   populated project documents and setup recommendations. Not for shaping
-  features (use shape) or brainstorming ideas (use brainstorm).
+  features (use shape), problem discovery for a new concept (use pitch), or
+  quick idea capture (use idea).
 version: 2.0.0-alpha.16
 ---
 
@@ -500,7 +501,7 @@ This skill is designed for Codex (uses `request_user_input`, Write/Edit tools). 
 
 - **pitch** -- Authors a project-scale `docs/BRIEF.md` with `source: pitch` (or a change-scale brief); bootstrap consumes the pitched BRIEF with gap-only interview and series-prep
 - **shape** -- Bound a captured change into a contract (promotes brief-only folders; often follows series-prep)
-- **brainstorm** -- Explore ideas more deeply (when the builder wants to diverge)
+- **explore** -- Agent technique when a concept that emerges during bootstrap is still undecided (not a user front door; prefer `/pitch` for human problem discovery)
 - **research** -- Investigate topics and open questions
 - **idea** -- Quick-capture feature ideas that emerge during bootstrap
 - **strategy** -- Deep persona and market context work

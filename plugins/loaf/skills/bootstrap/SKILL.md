@@ -502,7 +502,7 @@ This skill is designed for Claude Code (uses `AskUserQuestion`, Write/Edit tools
 
 - **pitch** -- Authors a project-scale `docs/BRIEF.md` with `source: pitch` (or a change-scale brief); bootstrap consumes the pitched BRIEF with gap-only interview and series-prep
 - **shape** -- Bound a captured change into a contract (promotes brief-only folders; often follows series-prep)
-- **brainstorm** -- Explore ideas more deeply (when the builder wants to diverge)
+- **explore** -- Agent technique when a concept that emerges during bootstrap is still undecided (not a user front door; prefer `/loaf:pitch` for human problem discovery)
 - **research** -- Investigate topics and open questions
 - **idea** -- Quick-capture feature ideas that emerge during bootstrap
 - **strategy** -- Deep persona and market context work

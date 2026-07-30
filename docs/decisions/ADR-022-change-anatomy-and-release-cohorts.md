@@ -5,6 +5,8 @@ status: Accepted
 date: 2026-07-28
 supersedes: null
 superseded_by: null
+amended_by:
+  - ADR-025
 ---
 
 # ADR-022: Change anatomy and release cohorts
@@ -17,7 +19,7 @@ The lineage graph (`arc`/`previous`/`terminal` chains between changes) collapsed
 
 ## Decision
 
-**Anatomy.** A change is a folder `docs/changes/YYYYMMDD-slug/` containing `change.json` (identity: `change`, `created`, `branch`, plus optional `target_release`), role-named narrative documents — `shape.md` required (the contract: problem, scope, decisions, verification criteria), `brief.md` optional (archeological pre-shaping ask, never updated after shaping, never mechanically load-bearing), `plan.md`/`design.md` optional and accretive (the technical route) — and `tasks/TASK-NNN-slug.md` state files. Change-scoped artifacts live inside the folder: `research/` (inputs to shaping) and `reports/` (authored outputs named `YYYYMMDD-HHMMSS-<kind>-<slug>.html` from a closed kind registry shipped in the binary: ceremony kinds `approval`/`review`, informational `visual`/`audit`/`note`).
+**Anatomy.** A change is a folder `docs/changes/YYYYMMDD-slug/` containing `change.json` (identity: `change`, `created`, `branch`, plus optional `target_release`), role-named narrative documents — `shape.md` required (the contract: problem, scope, decisions, verification criteria), `brief.md` optional (pre-shaping problem-space document; never mechanically load-bearing — brief authorship, accretion-until-shaping, and freeze-on-shape semantics are refined by ADR-025), `plan.md`/`design.md` optional and accretive (the technical route) — and `tasks/TASK-NNN-slug.md` state files. Change-scoped artifacts live inside the folder: `research/` (inputs to shaping) and `reports/` (authored outputs named `YYYYMMDD-HHMMSS-<kind>-<slug>.html` from a closed kind registry shipped in the binary: ceremony kinds `approval`/`review`, informational `visual`/`audit`/`note`).
 
 **Narrative/state split.** Narrative documents settle at shaping; `tasks/` mutates during execution. This boundary is evidentiary, not stylistic: which files change when is what provenance rules read, so prose is shaped and state is executed. Shape edits during execution remain legal but consequential — criteria changes expire receipts and appear as reviewable diffs.
 
@@ -37,4 +39,6 @@ Execution evidence became machine-derivable along the true boundary, closing the
 
 Costs accepted: legacy cohort members must convert before they can verify (prose criteria cannot execute), and one dogfood wrinkle is grandfathered — the conversion commit `acbea950` was simultaneously TASK-003's delivering commit, so its boxes landed checked; the exemption is pinned by commit hash with `INTENT-20260727-dogfood-conversion-manufactured-task-003-execution` tracking the cleanup. The removal boundary for the legacy layout is owed at the first stable release after the new layout has shipped one minor, recorded in the deprecation notice.
 
-Provenance: `docs/changes/20260726-change-work-model/` (shape.md Decisions 3–12 and 16–17; review boards `reports/20260727-160756-review-codex-r1.html`, `…-192707-review-codex-r2.html`, `…-201619-review-codex-r3.html`, `…-234403-review-implementation-round-1.html`, `20260728-021901-review-implementation-round-2.html`), PR #141, journal `decision(work-model)` 2026-07-25→28.
+**Amendment (ADR-025).** Brief semantics: the brief is an authored problem-space document (typically from `/pitch`), may accrete parked problem-space concepts until shaping starts, freezes when `shape.md` exists, and remains non-load-bearing for derived state. Capture-only folders promote through ordinary `loaf change init <slug>`. The entry-stage ceremony, landing matrix, and invocation-surface demotion of explore/brainstorm are decided in ADR-025; this ADR's anatomy, cohorts, and commitments stand.
+
+Provenance: `docs/changes/20260726-change-work-model/` (shape.md Decisions 3–12 and 16–17; review boards `reports/20260727-160756-review-codex-r1.html`, `…-192707-review-codex-r2.html`, `…-201619-review-codex-r3.html`, `…-234403-review-implementation-round-1.html`, `20260728-021901-review-implementation-round-2.html`), PR #141, journal `decision(work-model)` 2026-07-25→28; brief-semantics amendment via `docs/changes/20260728-pitch-entrypoint/` and ADR-025.

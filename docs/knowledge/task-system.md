@@ -10,32 +10,33 @@ covers:
   - .agents/specs/**/*.md
   - internal/cli/cli.go
   - internal/state/task_*.go
+  - content/skills/pitch/**/*
   - content/skills/breakdown/**/*
   - content/skills/implement/**/*
   - content/skills/orchestration/**/*
 consumers:
   - implementer
   - reviewer
-last_reviewed: '2026-07-28'
+last_reviewed: '2026-07-30'
 ---
 
 # Work Records
 
-Loaf uses Change artifacts for new bounded work. Existing specs and tasks remain durable compatibility records with supported CLI surfaces, while the project journal records what happened across conversations. The Change anatomy, task-packet discipline, derived states, and release cohorts are documented in [work-model.md](work-model.md) (rationale: ADR-022, ADR-023); this document covers the compatibility records around it.
+Loaf uses Change artifacts for new bounded work. Existing specs and tasks remain durable compatibility records with supported CLI surfaces, while the project journal records what happened across conversations. The Change anatomy, task-packet discipline, derived states, and release cohorts are documented in [work-model.md](work-model.md); the ceremony front door and both-scale flow in [loaf-flow.md](loaf-flow.md) (rationale: ADR-022, ADR-023, ADR-025); this document covers the CLI and compatibility records around them.
 
 ## Current Workflow
 
 ```
-/idea or /brainstorm → /shape → docs/changes/YYYYMMDD-slug/  (change.json + shape.md + tasks/)
+/pitch (problem-space brief) → /shape (contract + packets) → /implement → review → /ship → /release
+         ↓ promote capture in place via loaf change init <slug>
+  docs/changes/YYYYMMDD-slug/  (change.json + brief.md → shape.md + tasks/)
                                       ↓
                               loaf change check
-                                      ↓
-                         /implement → review → /reflect → /ship
                                       ↓
                                project journal
 ```
 
-`/release` publishes already-landed work separately; changes declaring a `target_release` gate their version's stable cut (see work-model.md). The change PR is the change's whole life — one change, one PR, merged when everything is done; per-task PRs remain the exception for genuinely multi-integration changes.
+`/pitch` authors the brief (change `brief.md` via `loaf change init <slug> --brief`, or project `docs/BRIEF.md`); `/shape` consumes it and promotes capture-only folders; explore/brainstorm are agent techniques, not slash front doors. `/release` publishes already-landed work separately; changes declaring a `target_release` gate their version's stable cut (see work-model.md). The change PR is the change's whole life — one change, one PR, merged when everything is done; per-task PRs remain the exception for genuinely multi-integration changes.
 
 ## Record Types
 
@@ -62,8 +63,9 @@ Loaf uses Change artifacts for new bounded work. Existing specs and tasks remain
 
 | Subcommand | Purpose |
 |------------|---------|
-| `init <slug>` | Scaffold `docs/changes/<YYYYMMDD>-<slug>/` (`change.json` + `shape.md` + seeded `tasks/`; `--brief` for capture-only) |
-| `check [path]` | Validate a Change (both layouts) and report derived executability |
+| `init <slug>` | Scaffold `docs/changes/<YYYYMMDD>-<slug>/` (`change.json` + `shape.md` + seeded `tasks/`). `--brief` creates capture-only (`change.json` + `brief.md`). Re-running ordinary `init` on a capture-only folder promotes in place (preserves brief and metadata, materializes `shape.md` + `tasks/`); fully materialized folders still reject as duplicates |
+| `check [path]` | Validate a Change (both layouts) and report derived executability; pass an explicit folder path when the capture is not on the current branch |
+| `check [path] --json` | Machine-readable validation used by pitch/bootstrap pre-landing guards (state + violations) |
 | `check [path] --require-executable` | Fail unless the implementation contract is structurally executable |
 | `list [--target <X.Y.Z>]` | Units/cohort projection: layout, target, derived state |
 | `tasks --json [path]` | Stable-ID task index with relations and derived completion |
@@ -129,6 +131,7 @@ Linear is an optional task backend. When `integrations.linear.enabled` is true i
 ## Cross-References
 
 - [work-model.md](work-model.md) — the Change anatomy, task packets, derived states, and release cohorts
+- [loaf-flow.md](loaf-flow.md) — pitch → shape → implement → ship → release at both scales
 - [cli-design.md](cli-design.md) — CLI design philosophy and command patterns
 - [knowledge-management-design.md](knowledge-management-design.md) — knowledge system conventions
 - [../changes/](../changes/) — retained Change contracts
