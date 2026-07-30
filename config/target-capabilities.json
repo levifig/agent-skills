@@ -243,7 +243,7 @@
     {
       "target": "codex",
       "surface": "cli",
-      "version": "0.145.0",
+      "version": "0.146.0",
       "platform": "darwin-arm64",
       "installed_mode": "isolated-codex-home",
       "context": {
@@ -259,9 +259,9 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260710-journal-reliability-foundation/research/codex-0.145.0-isolated-startup-smoke.json",
+              "source": "docs/changes/20260710-journal-reliability-foundation/research/codex-0.146.0-isolated-startup-smoke.json",
               "level": "installed-smoke",
-              "summary": "Codex 0.145.0 isolated CODEX_HOME startup smoke observed exact native SessionStart hookSpecificOutput and the random marker was returned by the model."
+              "summary": "Codex 0.146.0 isolated CODEX_HOME startup smoke observed exact native SessionStart hookSpecificOutput and the random marker was returned by the model."
             }
           },
           {

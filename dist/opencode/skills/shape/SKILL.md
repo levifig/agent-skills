@@ -13,7 +13,7 @@ description: >-
   problem → Intent) and vertical-slice discipline. Not for quick capture (use
   idea) or open-ended divergent thinking (use brainstorm).
 subtask: false
-version: 2.0.0-alpha.15
+version: 2.0.0-alpha.16
 ---
 
 # Shape

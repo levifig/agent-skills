@@ -7,7 +7,7 @@ description: >-
   technique from it. Not a ...
 user-invocable: false
 argument-hint: '[idea or problem]'
-version: 2.0.0-alpha.15
+version: 2.0.0-alpha.16
 ---
 
 # Brainstorm
