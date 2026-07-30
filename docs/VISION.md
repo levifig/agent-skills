@@ -10,7 +10,7 @@ Write skills once, deploy to supported harnesses. Skills are the universal knowl
 
 ### Structured Execution
 
-Ideas may be explored before `/shape` turns the chosen direction into a bounded Change. The Change carries the product and verification contract through implementation, review, and shipping; release remains a separate project-level operation.
+The Loaf Flow runs pitch → shape → implement → ship → release, at two scales. `/pitch` grills a problem into an authored brief: a change-scale `brief.md` on an existing project, or a new project's `BRIEF.md` that bootstrap turns into operating documents and a captured initial arc. `/shape` turns a brief into a bounded Change, which carries the product and verification contract through implementation, review, and shipping; release remains a separate project-level operation.
 
 ### Bounded Autonomy
 
