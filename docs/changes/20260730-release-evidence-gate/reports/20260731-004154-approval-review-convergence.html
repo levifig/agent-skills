@@ -1,0 +1,74 @@
+<!-- source: release-evidence-gate · kind approval · slug review-convergence · stamped 2026-07-31 00:41 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Approval — review convergence</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.machine { background: var(--machine-soft); color: var(--machine); }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">release-evidence-gate · approval</div>
+  <h1>Approval — review convergence</h1>
+  <p class="stamp">kind <b>approval</b> · slug <b>review-convergence</b> · 2026-07-31 00:41</p>
+
+  <h2>Verdict</h2>
+  <div class="panel">
+    <p><b>Round 6 (Codex GPT 5.6 Sol high, fresh thread):</b> <span class="badge" style="background:var(--ok-soft);color:var(--ok)">merge-ready</span> — zero findings. Candidate-artifact coverage complete on both artifacts per validator; the shared component walk is behavior-preserving for evidence sources; the only remaining direct hash caller is a test fixture helper; branch hygiene clean.</p>
+  </div>
+
+  <h2>Trail</h2>
+  <div class="panel">
+    <p>Six rounds, per-round boards in this directory. R1: 3 findings (refusal deadlock, contradictory recovery, symlink probe) → <code>bad12844</code>. R2: 5 (unbound resume, changelog duplication, self-authorizing repairs, leaf-only Lstat, e2e gaps) → replaced wholesale in <code>3e727766</code>. R3: 4 blockers + 1 → verified-content admission in <code>5aefd95f</code>. R4: 1 major + 2 docs → <code>4ea165e8</code> / <code>85c2a1bb</code>. R5: 1 major + 2 nits → <code>df993bc5</code> / <code>c51d588e</code>. R6: none. Zero reversed dispositions; every accepted finding maps to a fix commit; residuals (registry-poisoning diff-visibility) explicitly carried into the record rather than silently dropped.</p>
+  </div>
+
+  <h2>Verification at approval</h2>
+  <div class="panel">
+    <p>Orchestrator battery green at <code>df993bc5</code>: <code>npm run typecheck</code>, full <code>npm run test</code>, CI-mirror artifact drift check clean, <code>loaf change check</code> no violations / executable, artifact-names hook passing. Reviewer independently re-ran <code>go test ./internal/cli -count=1</code> green.</p>
+  </div>
+
+  <footer>release-evidence-gate · approval after six review rounds · implementation Grok 4.5 high · review Codex GPT 5.6 Sol high · orchestration and boards per project convention</footer>
+</main>

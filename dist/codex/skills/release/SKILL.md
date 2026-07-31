@@ -203,9 +203,11 @@ git diff --exit-code -- dist plugins content/skills/loaf-reference/SKILL.md
 
 Adjust the path list to the project. For Loaf itself, tracked generated outputs under `dist/`, `plugins/`, and native binaries must match the source changes.
 
+Capability receipts pin artifact SHA-256s, and the release rebuild version-stamps generated artifacts (`dist/opencode/plugins/hooks.ts` embeds `@version`, so every version bump stales the OpenCode receipt; Go changes additionally stale all binary-pinned receipts via `bin/native`). Therefore re-recording runs AFTER `loaf release --pre-merge` completes its artifact rebuild, on the release branch, before pushing the release PR — never before the bump. Verify with `go test ./internal/cli -run TestTargetCapabilityEvidence`. `loaf release` now enforces this mechanically on every mutating path (post-rebuild refusal in apply, guardrail 9 in `--post-merge`) — the rule explains WHY the gate fires; the gate makes skipping it impossible.
+
 ### Direct Release (Named Exception)
 
-`loaf release --bump <type> --yes` on the base branch prepares, commits, tags, and publishes in a single shot. Use it only when the user explicitly requests a direct release; never select it by default. Skipping the release PR means nothing runs the suite against the prepared tree before the tag exists — the v2.0.0-alpha.16 cut took this door and a capability-evidence canary surfaced only in tag CI, after publication. The CLI prints a flow advisory when a mutating release starts on the default branch; treat it as a routing signal, not noise.
+`loaf release --bump <type> --yes` on the base branch prepares, commits, tags, and publishes in a single shot. Use it only when the user explicitly requests a direct release; never select it by default. Skipping the release PR means nothing runs the suite against the prepared tree before the tag exists — the v2.0.0-alpha.16 cut took this door and a capability-evidence canary surfaced only in tag CI, after publication. The same day, v2.0.0-alpha.17 re-recorded evidence minutes before the version bump; the release commit staled it, and the tag again published zero assets — ordering, not diligence, is the failure mode. The CLI prints a flow advisory when a mutating release starts on the default branch; treat it as a routing signal, not noise.
 
 ---
 
@@ -218,6 +220,8 @@ The default for every release: PR CI runs the full suite against the prepared tr
 3. Open a release PR with a concise release-focused body.
 4. Hand the PR to `/ship` for review and landing; squash-merge it into one `chore: release vX.Y.Z (#PR)` commit carrying the curated changelog.
 5. After the release PR lands, run `loaf release --post-merge` on the base branch to tag, publish the GitHub Release, and verify installability.
+
+If guardrail 9 fires on `--post-merge`, the merged tree itself carries stale evidence; recovery is to re-record against the merged tree, land the receipts as a single evidence-only commit on the base branch (the repair commit must not modify the capability registry), and rerun `loaf release --post-merge`.
 
 Do not hide this handoff inside `/release`: `/ship` remains the PR correctness and merge gate.
 
