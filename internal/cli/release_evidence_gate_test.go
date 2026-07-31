@@ -5,11 +5,32 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"unicode"
 )
+
+// hardenFixtureRepoAgainstHostSigning makes a fixture git repo independent of
+// host signing config. Matches seedReleaseApplyRepo: local commit.gpgsign and
+// tag.gpgsign false. Also installs an ephemeral SSH signing key so production
+// `git tag -s` succeeds without a host secret key — tag.gpgsign=false does not
+// suppress -s, and CI has no key while local signing agents mask the gap.
+func hardenFixtureRepoAgainstHostSigning(t *testing.T, repo string) {
+	t.Helper()
+	gitCLI(t, repo, "config", "commit.gpgsign", "false")
+	gitCLI(t, repo, "config", "tag.gpgsign", "false")
+
+	keyDir := t.TempDir()
+	keyPath := filepath.Join(keyDir, "signing_key")
+	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-N", "", "-f", keyPath, "-C", "loaf-test@example.test", "-q")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ssh-keygen for fixture signing key: %v\n%s", err, out)
+	}
+	gitCLI(t, repo, "config", "gpg.format", "ssh")
+	gitCLI(t, repo, "config", "user.signingkey", keyPath)
+}
 
 // seedReleaseCapabilityEvidence copies the repository's real capability
 // evidence registry plus every file it references — evidence sources,
@@ -83,6 +104,7 @@ func seedReleaseCapabilityEvidence(t *testing.T, root string) {
 func seedReleaseApplyRepoWithCapabilityEvidence(t *testing.T, commitSubject string) string {
 	t.Helper()
 	repo := seedReleaseApplyRepo(t, commitSubject)
+	hardenFixtureRepoAgainstHostSigning(t, repo)
 	seedReleaseCapabilityEvidence(t, repo)
 	writeFile(t, filepath.Join(repo, ".gitignore"), "bin/native/\nplugins/loaf/bin/native/\n")
 	gitCLI(t, repo, "add", ".")
@@ -153,6 +175,7 @@ func TestReleaseApplyBlocksWhenCapabilityEvidenceStale(t *testing.T) {
 
 func TestReleaseApplyBlocksWhenCapabilityEvidenceInvalid(t *testing.T) {
 	repo := seedReleaseApplyRepo(t, "feat: gate invalid capability evidence")
+	hardenFixtureRepoAgainstHostSigning(t, repo)
 	if err := os.MkdirAll(filepath.Join(repo, "config"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +217,7 @@ func TestReleaseApplyPassesWithFreshCapabilityEvidence(t *testing.T) {
 
 func TestReleaseApplySkipsCapabilityEvidenceWhenAbsent(t *testing.T) {
 	repo := seedReleaseApplyRepo(t, "feat: release without capability evidence")
+	hardenFixtureRepoAgainstHostSigning(t, repo)
 	var stdout bytes.Buffer
 
 	err := Runner{Stdout: &stdout, WorkingDir: repo}.Run([]string{"release", "--yes", "--no-tag", "--no-gh"})
@@ -816,6 +840,7 @@ func TestCheckReleaseCapabilityEvidenceSymlinkRefuses(t *testing.T) {
 
 func TestReleaseApplyRefusesSymlinkedConfigDirectory(t *testing.T) {
 	repo := seedReleaseApplyRepo(t, "feat: refuse symlinked config on apply")
+	hardenFixtureRepoAgainstHostSigning(t, repo)
 	// Real evidence under a temporary real-config, then replace config/ with a symlink.
 	seedReleaseCapabilityEvidence(t, repo)
 	realConfig := filepath.Join(repo, "real-config")
