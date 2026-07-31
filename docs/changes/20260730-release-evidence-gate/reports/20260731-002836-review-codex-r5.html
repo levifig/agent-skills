@@ -1,0 +1,86 @@
+<!-- source: release-evidence-gate · kind review · slug codex-r5 · stamped 2026-07-31 00:28 · authored report (snapshot semantics) · never auto-updated -->
+<meta charset="utf-8">
+<title>Review — codex r5</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.machine { background: var(--machine-soft); color: var(--machine); }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">release-evidence-gate · review</div>
+  <h1>Review — codex r5</h1>
+  <p class="stamp">kind <b>review</b> · slug <b>codex-r5</b> · 2026-07-31 00:28</p>
+
+  <h2>Round</h2>
+  <div class="panel">
+    <p><b>Reviewer:</b> Codex (GPT 5.6 Sol, high effort, fresh thread, narrow convergence pass over the R4 admission hardening) · <b>Baseline:</b> branch at <code>1eb812e4</code> (R4 fix <code>4ea165e8</code> + board) · <b>Verdict:</b> <span class="badge bad">not merge-ready</span> — 1 major, 2 nits; R4's fix itself verified airtight (non-regular refusal, mode drift, T-status, new-file handling all clean).</p>
+  </div>
+
+  <h2>Findings</h2>
+  <div class="panel">
+    <p><span class="badge bad">major</span> <b>F1 — Generated candidate artifacts retained the symlink-follow class.</b> The installed-smoke SHA-256 validation read via <code>os.ReadFile</code> with no regular-file check: a symlinked artifact whose target matched the receipt hash authenticated the target's bytes while <code>git add -A</code> committed the symlink — the committed tree diverging from what the gate validated.</p>
+    <p><b>Disposition:</b> <span class="badge accent">accepted</span> — fixed in <code>df993bc5</code>: shared component-wise walk (<code>requireRegularFilePath</code>) applied before hashing in all three installed-smoke validators and unified with the evidence-source check; leaf and intermediate symlink regression tests on all surfaces.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge machine">nit</span> <b>F2 — R3 board's style block was empty.</b> Orchestrator authoring chain left R3 unstyled. <b>Disposition:</b> <span class="badge accent">accepted</span> — fixed directly in <code>c51d588e</code>.</p>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <p><span class="badge machine">nit</span> <b>F3 — Drifted line citation in the Planning Contract.</b> <b>Disposition:</b> <span class="badge accent">accepted</span> — fixed directly in <code>c51d588e</code> by dropping brittle numeric cites.</p>
+  </div>
+
+  <h2>Clean areas</h2>
+  <div class="panel">
+    <p>R4 admission hardening airtight; symlinked receipts under research/ already refused by the loader before staging; ordinary M/A classification unaffected; regression tests present and correct; Planning Contract matches implementation; boards structurally sound (modulo F2); branch hygiene clean across all six trail commits.</p>
+  </div>
+
+  <h2>Residuals → r6</h2>
+  <div class="panel">
+    <p>None carried. R6 verifies <code>df993bc5</code> only — the last open surface of the symlink class.</p>
+  </div>
+
+  <footer>release-evidence-gate · review round 5 · reviewer Codex GPT 5.6 Sol high · code fix by Grok 4.5 high (<code>df993bc5</code>), doc fixes by orchestrator (<code>c51d588e</code>) · dispositions logged in the project journal</footer>
+</main>

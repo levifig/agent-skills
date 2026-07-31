@@ -640,6 +640,175 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 	}
 }
 
+func TestInstalledSmokeEvidenceRejectsSymlinkedCandidateArtifacts(t *testing.T) {
+	// Candidate artifact hashing must refuse symlink leaves and intermediate
+	// symlink directories even when target bytes match the receipt digest —
+	// otherwise the gate authenticates target content and git add -A commits
+	// the symlink itself.
+	tests := []struct {
+		name       string
+		target     string
+		receipt    string
+		modeName   string
+		validateFn func(string, TargetCapabilityRecord, ModeEvidence) error
+	}{
+		{
+			name:       "claude-code-hooks-leaf-symlink",
+			target:     "claude-code",
+			receipt:    "claude-code-2.1.220-plugin-startup-smoke.json",
+			modeName:   "startup",
+			validateFn: validateInstalledSmokeEvidence,
+		},
+		{
+			name:       "codex-hooks-leaf-symlink",
+			target:     "codex",
+			receipt:    "codex-0.146.0-isolated-startup-smoke.json",
+			modeName:   "startup",
+			validateFn: validateCodexInstalledSmokeEvidence,
+		},
+		{
+			name:       "opencode-hooks-leaf-symlink",
+			target:     "opencode",
+			receipt:    "opencode-1.18.7-isolated-request-smoke.json",
+			modeName:   "request",
+			validateFn: validateOpenCodeInstalledSmokeEvidence,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research", tt.receipt)
+			raw := readSmokeReceiptRaw(t, receiptPath)
+			artifacts := raw["candidate_artifacts"].(map[string]any)
+			hooksRel := artifacts["hooks_path"].(string)
+			nativeRel := artifacts["native_binary_path"].(string)
+
+			root := t.TempDir()
+			// Write native binary as a real file with matching hash.
+			nativeSrc := filepath.Join(testRepositoryRoot(t), filepath.FromSlash(nativeRel))
+			nativeContent, err := os.ReadFile(nativeSrc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nativeDst := filepath.Join(root, filepath.FromSlash(nativeRel))
+			if err := os.MkdirAll(filepath.Dir(nativeDst), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(nativeDst, nativeContent, 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			// Leaf: candidate hooks path is a symlink to an external file whose
+			// bytes match the receipt hash (would pass ReadFile-based hashing).
+			hooksSrc := filepath.Join(testRepositoryRoot(t), filepath.FromSlash(hooksRel))
+			hooksContent, err := os.ReadFile(hooksSrc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			outside := filepath.Join(t.TempDir(), "hooks-payload")
+			if err := os.WriteFile(outside, hooksContent, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			hooksDst := filepath.Join(root, filepath.FromSlash(hooksRel))
+			if err := os.MkdirAll(filepath.Dir(hooksDst), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outside, hooksDst); err != nil {
+				t.Fatal(err)
+			}
+
+			encoded, err := json.Marshal(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "receipt.json"), encoded, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			record := capabilityTestRecord(t, tt.target, "cli")
+			mode := modeEvidenceByName(record.Context.Modes)[tt.modeName]
+			mode.Evidence.Source = "receipt.json"
+			err = tt.validateFn(root, record, mode)
+			if err == nil {
+				t.Fatalf("validate() = nil, want leaf symlink rejection naming %q", hooksRel)
+			}
+			if !strings.Contains(err.Error(), hooksRel) {
+				t.Fatalf("validate() error = %v, want path %q named", err, hooksRel)
+			}
+			if !strings.Contains(err.Error(), "not a regular file") {
+				t.Fatalf("validate() error = %v, want regular-file refusal", err)
+			}
+		})
+	}
+
+	t.Run("opencode-intermediate-dir-symlink", func(t *testing.T) {
+		receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260710-journal-reliability-foundation/research/opencode-1.18.7-isolated-request-smoke.json")
+		raw := readSmokeReceiptRaw(t, receiptPath)
+		artifacts := raw["candidate_artifacts"].(map[string]any)
+		hooksRel := artifacts["hooks_path"].(string)
+		nativeRel := artifacts["native_binary_path"].(string)
+
+		root := t.TempDir()
+		// Real native binary under root.
+		nativeContent, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), filepath.FromSlash(nativeRel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		nativeDst := filepath.Join(root, filepath.FromSlash(nativeRel))
+		if err := os.MkdirAll(filepath.Dir(nativeDst), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(nativeDst, nativeContent, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Intermediate: dist/opencode is a symlink to an external tree that holds
+		// hooks.ts with matching bytes.
+		hooksContent, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), filepath.FromSlash(hooksRel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		outsideRoot := t.TempDir()
+		// hooks path is dist/opencode/plugins/hooks.ts — place payload under
+		// outsideRoot/plugins/hooks.ts and symlink root/dist/opencode -> outsideRoot.
+		outsideHooks := filepath.Join(outsideRoot, "plugins", "hooks.ts")
+		if err := os.MkdirAll(filepath.Dir(outsideHooks), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(outsideHooks, hooksContent, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(root, "dist", "opencode")
+		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outsideRoot, link); err != nil {
+			t.Fatal(err)
+		}
+
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "receipt.json"), encoded, 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		record := capabilityTestRecord(t, "opencode", "cli")
+		mode := modeEvidenceByName(record.Context.Modes)["request"]
+		mode.Evidence.Source = "receipt.json"
+		err = validateOpenCodeInstalledSmokeEvidence(root, record, mode)
+		if err == nil {
+			t.Fatal("validateOpenCodeInstalledSmokeEvidence() = nil, want intermediate symlink rejection")
+		}
+		if !strings.Contains(err.Error(), hooksRel) {
+			t.Fatalf("validate() error = %v, want path %q named", err, hooksRel)
+		}
+		if !strings.Contains(err.Error(), "symlink component") {
+			t.Fatalf("validate() error = %v, want symlink-component refusal", err)
+		}
+	})
+}
+
 func TestExactCapabilityVersionGrammar(t *testing.T) {
 	valid := []string{"2.1.220", "3.11.19", "2026.05.09-0afadcc", "0.145.0", "1.18.7", "0.0.1783873056-g278461", "1.2.3-alpha9"}
 	for _, version := range valid {

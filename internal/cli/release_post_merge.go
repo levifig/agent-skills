@@ -12,9 +12,22 @@ import (
 )
 
 type releasePostMergeCommandResult struct {
-	stdout   string
+	// stdout is the command output; callers that need human-facing trim may
+	// TrimSpace themselves. For NUL-delimited git payloads, prefer raw.
+	stdout string
+	// raw is the exact untrimmed stdout. When empty, rawOutput falls back to
+	// stdout. The scripted test seam sets both so NUL bytes survive.
+	raw      string
 	exitCode int
 	notFound bool
+}
+
+// rawOutput returns the untrimmed command stdout for binary-safe parsers.
+func (r releasePostMergeCommandResult) rawOutput() string {
+	if r.raw != "" {
+		return r.raw
+	}
+	return r.stdout
 }
 
 type releasePostMergeCommandRunner func(root string, name string, args ...string) releasePostMergeCommandResult
@@ -54,7 +67,7 @@ func runReleasePostMergeWithRunner(root string, snapshot releaseSnapshot, out io
 		return fmt.Errorf("guardrail %d failed: %s", result.guardrail, result.message)
 	}
 
-	fmt.Fprintf(out, "  %s All 8 guardrails passed for %s on %s\n", ansiGreen("✓"), ansiBold("v"+result.version), ansiBold(result.base))
+	fmt.Fprintf(out, "  %s All 9 guardrails passed for %s on %s\n", ansiGreen("✓"), ansiBold("v"+result.version), ansiBold(result.base))
 	if result.featureBranch != "" {
 		fmt.Fprintf(out, "  %s %s\n", ansiGray("feature branch:"), result.featureBranch)
 	}
@@ -93,7 +106,16 @@ func checkReleasePostMergeGuardrails(root string, snapshot releaseSnapshot, runn
 		return releasePostMergeAbort(2, branchAbort)
 	}
 
-	subjectResult := runner(root, "git", "log", "-1", "--pretty=%s")
+	// An evidence-only repair commit atop the release commit is the recovery
+	// path for guardrail 9: subject and diff-shape checks evaluate the release
+	// commit at HEAD^; HEAD itself stays untagged and receives the new tag.
+	evidenceRepair := releaseIsEvidenceOnlyRepairCommit(root, runner)
+
+	subjectArgs := []string{"log", "-1", "--pretty=%s"}
+	if evidenceRepair {
+		subjectArgs = append(subjectArgs, "HEAD^")
+	}
+	subjectResult := runner(root, "git", subjectArgs...)
 	if subjectResult.exitCode != 0 {
 		return releasePostMergeAbort(3, "could not read HEAD subject")
 	}
@@ -117,7 +139,12 @@ func checkReleasePostMergeGuardrails(root string, snapshot releaseSnapshot, runn
 		return releasePostMergeAbort(4, fmt.Sprintf("tag version %s does not match version-file version %s", snapshot.Candidate, prepared))
 	}
 
-	if diffAbort := checkReleasePostMergeDiffFiles(root, runner, versionFiles); diffAbort != "" {
+	diffFrom, diffTo := "HEAD^", "HEAD"
+	if evidenceRepair {
+		// Release commit is the parent of the repair commit.
+		diffFrom, diffTo = "HEAD~2", "HEAD~1"
+	}
+	if diffAbort := checkReleasePostMergeDiffFiles(root, runner, versionFiles, diffFrom, diffTo); diffAbort != "" {
 		return releasePostMergeAbort(5, diffAbort)
 	}
 
@@ -132,6 +159,10 @@ func checkReleasePostMergeGuardrails(root string, snapshot releaseSnapshot, runn
 
 	if taggedAbort := checkReleasePostMergeHeadNotTagged(root, runner); taggedAbort != "" {
 		return releasePostMergeAbort(8, taggedAbort)
+	}
+
+	if _, evidenceErr := checkReleaseCapabilityEvidence(root); evidenceErr != nil {
+		return releasePostMergeAbort(9, releasePostMergeCapabilityEvidenceAbortMessage(evidenceErr))
 	}
 
 	featureBranch := ""
@@ -206,10 +237,16 @@ func detectReleasePostMergeConsistentVersion(files []releaseVersionFile) (string
 	return version, ""
 }
 
-func checkReleasePostMergeDiffFiles(root string, runner releasePostMergeCommandRunner, versionFiles []releaseVersionFile) string {
-	result := runner(root, "git", "diff", "HEAD^", "HEAD", "--name-only")
+func checkReleasePostMergeDiffFiles(root string, runner releasePostMergeCommandRunner, versionFiles []releaseVersionFile, fromRef string, toRef string) string {
+	if fromRef == "" {
+		fromRef = "HEAD^"
+	}
+	if toRef == "" {
+		toRef = "HEAD"
+	}
+	result := runner(root, "git", "diff", fromRef, toRef, "--name-only")
 	if result.exitCode != 0 {
-		return "could not read git diff HEAD^ HEAD — is HEAD a merge of multiple commits or the first commit?"
+		return fmt.Sprintf("could not read git diff %s %s — is HEAD a merge of multiple commits or the first commit?", fromRef, toRef)
 	}
 	changed := map[string]bool{}
 	for _, line := range strings.Split(result.stdout, "\n") {
@@ -433,15 +470,18 @@ func defaultReleasePostMergeCommandRunner(root string, name string, args ...stri
 	cmd := exec.Command(name, args...)
 	cmd.Dir = root
 	output, err := cmd.Output()
+	raw := string(output)
 	if err == nil {
-		return releasePostMergeCommandResult{stdout: strings.TrimSpace(string(output)), exitCode: 0}
+		// Keep raw untrimmed so NUL-delimited name-status paths retain padding.
+		// stdout stays trimmed for call sites that compare human-facing lines.
+		return releasePostMergeCommandResult{stdout: strings.TrimSpace(raw), raw: raw, exitCode: 0}
 	}
 	if errors.Is(err, exec.ErrNotFound) {
 		return releasePostMergeCommandResult{exitCode: 127, notFound: true}
 	}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
-		return releasePostMergeCommandResult{stdout: strings.TrimSpace(string(output)), exitCode: exitErr.ExitCode()}
+		return releasePostMergeCommandResult{stdout: strings.TrimSpace(raw), raw: raw, exitCode: exitErr.ExitCode()}
 	}
 	return releasePostMergeCommandResult{exitCode: 1}
 }
