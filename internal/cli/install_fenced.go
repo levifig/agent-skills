@@ -76,10 +76,10 @@ func installFencedSection(targetFile string, version string, upgrade bool) (fenc
 	if version == "" {
 		version = "0.0.0"
 	}
-	body, err := os.ReadFile(targetFile)
+	body, err := readRegularFile(targetFile, projectFileReadLimit)
 	fileExisted := err == nil
 	if err != nil && !os.IsNotExist(err) {
-		return fencedInstallResult{}, err
+		return fencedInstallResult{}, refuseProjectFileRead(err)
 	}
 	content := string(body)
 	if err := validateFencedStructure(content); err != nil {

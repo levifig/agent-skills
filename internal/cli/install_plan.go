@@ -858,10 +858,10 @@ func planFencedSection(targetFile string, version string) (string, string) {
 	if version == "" {
 		version = "0.0.0"
 	}
-	body, err := os.ReadFile(targetFile)
+	body, err := readRegularFile(targetFile, projectFileReadLimit)
 	fileExisted := err == nil
 	if err != nil && !os.IsNotExist(err) {
-		return "error", err.Error()
+		return "error", refuseProjectFileRead(err).Error()
 	}
 	content := string(body)
 	if err := validateFencedStructure(content); err != nil {

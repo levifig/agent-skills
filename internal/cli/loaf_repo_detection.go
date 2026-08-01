@@ -168,9 +168,22 @@ func detectLoafProjectConfig(rootPath string) (string, bool) {
 	return "Loaf project config at .agents/loaf.json", true
 }
 
+// openDetectionFile is the probe view of openRegularFile. A probe asks one
+// question — can these bytes be read as a file — so every way the open can fail
+// collapses into the same "no signal" answer, and a probe never reports on a
+// path it did not read.
+func openDetectionFile(path string) (*os.File, bool) {
+	file, err := openRegularFile(path)
+	if err != nil {
+		return nil, false
+	}
+	return file, true
+}
+
 // readDetectionFilePrefix reads at most limit bytes of a probe path, and only
 // once openDetectionFile has established that the descriptor it returns is a
-// regular file.
+// regular file. A prefix is enough here, and only here: the probe is answering
+// whether a marker is present, not preparing to rewrite the file.
 func readDetectionFilePrefix(path string, limit int64) (string, bool) {
 	file, ok := openDetectionFile(path)
 	if !ok {

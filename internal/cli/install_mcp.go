@@ -561,14 +561,15 @@ func unreadableLoafConfig(path string, reason error) unusableLoafConfigError {
 // readInstallLoafConfigDocument reads the project config, and its outcome is
 // four-valued because the writers downstream need all four kept apart: absent
 // (an empty document a writer may create), a JSON object (the document),
-// malformed (present, but not an object), and unreadable (present, but no bytes
-// came back — a permission bite, a directory at the path, an I/O failure).
+// malformed (present, but not an object), and unreadable (present, but no
+// usable bytes came back — a permission bite, a directory or a FIFO at the
+// path, a file too large to be a config, an I/O failure).
 // Only absence licenses a write. Folding unreadable into it, which is what
 // answering every read error with an empty document did, let a writer truncate
 // a file it had not read a single byte of.
 func readInstallLoafConfigDocument(projectRoot string) (map[string]any, error) {
 	path := filepath.Join(projectRoot, ".agents", "loaf.json")
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return map[string]any{}, nil
