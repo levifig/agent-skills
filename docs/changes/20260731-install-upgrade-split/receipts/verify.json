@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "change": "install-upgrade-split",
-  "verified_commit": "d445fd68eb70195aa3f462951464702c6b12a894",
-  "verified_root_tree": "6392beb9b168ebc2cdf32d0b85575729e1b0e5e4",
-  "verified_at": "2026-08-01T04:50:59Z",
+  "verified_commit": "bde9217ad97528e14b7ff4c0c1579330c1e50ea0",
+  "verified_root_tree": "58fb0295d069b4446d41ebce858b28bfae0247b3",
+  "verified_at": "2026-08-01T04:54:44Z",
   "criteria_digest": "35d47f93fd0ca2cdb36deb72230dcd057387523b76aa27d46daa1926fca1321c",
   "scope_digest": "6b624a26542c9396724373913c2d9d2cfbe23b6b1925d586592338e7988ee8af",
   "scope_sections": {
@@ -47,7 +47,7 @@
       "id": "V1",
       "command": "go test ./...",
       "exit_code": 0,
-      "output_digest": "cd7c5a46e177ffdee7464d0f1d8e5a4d3d10d1ec8d242a562f10182a7568c6fd",
+      "output_digest": "bb0da0607a95570024189ba96395ce7e7f361a975566bfe9b3352fabe7e0f8d9",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
@@ -167,7 +167,7 @@
       "id": "V7",
       "command": "npm run build",
       "exit_code": 0,
-      "output_digest": "5dfc7d4c30b10fa80aaa19a4928d1c018e3940df7c2835a697effe7a8aa3f65c",
+      "output_digest": "5520ff487cba407fbf490ffeab0f3ae7ae7935389d5e7a299f3cbe8be55aaa5b",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
