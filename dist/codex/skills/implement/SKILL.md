@@ -7,7 +7,7 @@ description: >-
   delivering commits. Logs to the project journal and produces agent spawn plans
   and progress tracking. Not for shaping (use shape), breakdown (use breakdown),
   research, or review.
-version: 2.0.0-alpha.17
+version: 2.0.0-alpha.18
 ---
 
 # Implement
