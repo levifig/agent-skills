@@ -61,6 +61,42 @@ func TestRunnerSetupRunsInitBuildAndInstallNatively(t *testing.T) {
 	assertNoStateDatabase(t, target, stateHome)
 }
 
+// TestRunnerSetupDeploysProjectSurfacesItJustScaffolded guards the seam between
+// setup's two steps: init writes the project config, which makes the detector
+// call this folder a Loaf repo, which is exactly the state that stops install
+// from touching a project. Setup owns that decision for the project it created,
+// so the managed section still lands.
+func TestRunnerSetupDeploysProjectSurfacesItJustScaffolded(t *testing.T) {
+	root := setupCommandLoafRoot(t)
+	stateHome := t.TempDir()
+	setupFakeNPM(t, 0)
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(filepath.Join(home, ".cursor"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.cursor) error = %v", err)
+	}
+	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	target := filepath.Join(root, "fixture-project")
+
+	var stdout bytes.Buffer
+	err := Runner{
+		Stdout:     &stdout,
+		WorkingDir: root,
+		StateHome:  stateHome,
+		Executable: distributionFixtureExecutable(root),
+	}.Run([]string{"setup", target})
+	if err != nil {
+		t.Fatalf("setup error = %v\n%s", err, stdout.String())
+	}
+
+	if strings.Contains(stdout.String(), "already deployed here") {
+		t.Fatalf("setup output = %q, want the project it just scaffolded to be deployed, not skipped", stdout.String())
+	}
+	body := string(readFileBytes(t, filepath.Join(target, "AGENTS.md")))
+	if !strings.Contains(body, "## Loaf Framework") || !strings.Contains(body, "<!-- loaf:managed:start sha256=") {
+		t.Fatalf("AGENTS.md = %q, want the managed Loaf section deployed by setup", body)
+	}
+}
+
 func TestRunnerSetupRejectsExistingFilePath(t *testing.T) {
 	root := setupCommandLoafRoot(t)
 	target := filepath.Join(root, "not-a-directory")

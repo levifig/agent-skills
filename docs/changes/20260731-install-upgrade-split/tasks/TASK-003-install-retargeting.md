@@ -36,11 +36,11 @@ export LOAF_DB="$(mktemp -d)/loaf.sqlite"
 
 ## Steps
 
-- [ ] `--upgrade` parses to a hard error: exit 1, message names `loaf upgrade`. Word the tombstone so it never contains the literal phrase `install --upgrade` (e.g. "the `--upgrade` flag was removed from install; use `loaf upgrade`") — V5's sweep grep then needs no source exception.
-- [ ] Branch project enforcement on the detector: outside → consent prompt before any project write (files **and** MCP `.agents/loaf.json` writes); inside → skip all of it with the suggestion; `--to <target>` performs the harness-global install in both cases.
-- [ ] Non-TTY without `-y`: report that deploy consent is required, exit cleanly, create nothing — no files, no `.agents/`.
-- [ ] Update install help text to describe onboarding semantics.
-- [ ] Tests: consent accepted/declined, no-op suggestion, net-new `--to`, tombstone error, non-TTY, `config check --fix` regression.
+- [x] `--upgrade` parses to a hard error: exit 1, message names `loaf upgrade`. Word the tombstone so it never contains the literal phrase `install --upgrade` (e.g. "the `--upgrade` flag was removed from install; use `loaf upgrade`") — V5's sweep grep then needs no source exception.
+- [x] Branch project enforcement on the detector: outside → consent prompt before any project write (files **and** MCP `.agents/loaf.json` writes); inside → skip all of it with the suggestion; `--to <target>` performs the harness-global install in both cases.
+- [x] Non-TTY without `-y`: report that deploy consent is required, exit cleanly, create nothing — no files, no `.agents/`.
+- [x] Update install help text to describe onboarding semantics.
+- [x] Tests: consent accepted/declined, no-op suggestion, net-new `--to`, tombstone error, non-TTY, `config check --fix` regression.
 
 ## Verification
 

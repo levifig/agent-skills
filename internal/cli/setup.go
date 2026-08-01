@@ -58,7 +58,16 @@ func (r Runner) runSetup(args []string, out io.Writer, runtimeRoot string) error
 	fmt.Fprintln(out)
 
 	fmt.Fprintf(out, "  %s Distributing to detected tools...\n", ansiCyan("install"))
-	if err := setupRunner.runInstall([]string{"--to", "all", "--yes"}, out, targetRoot); err != nil {
+	// Init has just written .agents/loaf.json, so the detector now reads this
+	// folder as a Loaf repo — which is exactly the state that makes install
+	// leave a project alone. Setup owns the deploy decision for the project it
+	// scaffolded, so it says so instead of asking or being turned away.
+	deployOptions, err := parseInstallArgs([]string{"--to", "all", "--yes"})
+	if err != nil {
+		return err
+	}
+	deployOptions.projectDeployGranted = true
+	if err := setupRunner.runInstallWithOptions(deployOptions, out, targetRoot); err != nil {
 		return err
 	}
 

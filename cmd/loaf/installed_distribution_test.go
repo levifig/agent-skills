@@ -44,13 +44,16 @@ func TestInstalledDistributionUpgradeAuthorityFromStaleCheckout(t *testing.T) {
 	env := isolatedInstallEnv(t)
 	home := envValue(t, env, "HOME")
 
-	// A pre-existing Cursor install so --upgrade selects it.
+	// A pre-existing Cursor install so the upgrade selects it, and a project
+	// config so the checkout reads as the Loaf repo it is — that is what opens
+	// the project half of the upgrade.
 	writeFixtureFile(t, filepath.Join(home, ".cursor", ".loaf-version"), staleTestVersion+"\n")
 	writeFixtureFile(t, filepath.Join(home, ".cursor", "skills", "foundations", "SKILL.md"), "# Previously Installed Foundations\n")
+	writeFixtureFile(t, filepath.Join(staleCheckout, ".agents", "loaf.json"), "{\"integrations\":{}}\n")
 
-	output, err := runInstalledLoaf(installedRoot, staleCheckout, env, "install", "--upgrade", "--yes")
+	output, err := runInstalledLoaf(installedRoot, staleCheckout, env, "upgrade", "--yes")
 	if err != nil {
-		t.Fatalf("installed loaf install --upgrade from stale checkout error = %v\n%s", err, output)
+		t.Fatalf("installed loaf upgrade from stale checkout error = %v\n%s", err, output)
 	}
 
 	marker := readFixtureFile(t, filepath.Join(home, ".cursor", ".loaf-version"))
