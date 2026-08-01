@@ -32,10 +32,10 @@ loaf journal log "skill(implement): TASK-004 — channel detection and currency 
 
 ## Steps
 
-- [ ] Implement channel detection from the resolved binary/distribution path; unknown channels degrade to no advisory.
-- [ ] Implement the GitHub Releases check behind an interface so tests stub it; enforce the one-second budget; prerelease-vs-stable comparison rule; treat every failure as "no advisory".
-- [ ] Emit the advisory line with current version, available version, and the exact channel command.
-- [ ] Tests: three channel fixtures, golden output for stale/current/offline per channel, unparseable-version silence, timeout respected.
+- [x] Implement channel detection from the resolved binary/distribution path; unknown channels degrade to no advisory.
+- [x] Implement the GitHub Releases check behind an interface so tests stub it; enforce the one-second budget; prerelease-vs-stable comparison rule; treat every failure as "no advisory".
+- [x] Emit the advisory line with current version, available version, and the exact channel command.
+- [x] Tests: three channel fixtures, golden output for stale/current/offline per channel, unparseable-version silence, timeout respected.
 
 ## Verification
 

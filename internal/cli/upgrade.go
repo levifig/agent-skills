@@ -77,7 +77,14 @@ func (r Runner) runUpgrade(args []string, out io.Writer, runtimeRoot string) err
 	if err := r.upgradeInstalledTargets(out, options, targets, tools, loafRoot, distRoot, version, projectRoot.Path()); err != nil {
 		return err
 	}
-	return r.refreshUpgradeProjectSurfaces(out, projectRoot.Path(), detection, targets, hasClaudeCode, assumeYes, version)
+	if err := r.refreshUpgradeProjectSurfaces(out, projectRoot.Path(), detection, targets, hasClaudeCode, assumeYes, version); err != nil {
+		return err
+	}
+	// The epilogue: content is now current, but the binary that synced it may
+	// not be. The advisory is best-effort and never affects what came before it
+	// (see upgrade_advisory.go).
+	writeUpgradeCurrencyAdvisory(out, loafRoot, version)
+	return nil
 }
 
 func parseUpgradeArgs(args []string) (upgradeOptions, error) {
