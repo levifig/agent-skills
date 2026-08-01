@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-alpha.18] - 2026-08-01
+
 ### Changed
 
 - `loaf release` refuses to create a release commit or tag when installed-smoke capability evidence is invalid or stale against the just-rebuilt tree — on every mutating path (`--pre-merge`, direct, and `--post-merge` as guardrail 9); refusals name the smoke runners and the re-record-after-rebuild ordering, and projects without `config/target-capabilities.json` are untouched ([#147](https://github.com/levifig/loaf/pull/147))

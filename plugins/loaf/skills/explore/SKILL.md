@@ -7,7 +7,7 @@ description: >-
   this" and similar user...
 user-invocable: false
 argument-hint: '[topic or exploration ref]'
-version: 2.0.0-alpha.17
+version: 2.0.0-alpha.18
 ---
 
 # Explore
