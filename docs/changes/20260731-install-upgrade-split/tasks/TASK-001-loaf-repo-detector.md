@@ -33,10 +33,10 @@ loaf journal log "skill(implement): TASK-001 — tiered Loaf-repo detector"
 
 ## Steps
 
-- [ ] Define the tier type and detection result (tier + human-readable basis strings) in a new `internal/cli` file.
-- [ ] Implement probes: SQLite project record for the resolved root, fenced marker in root `AGENTS.md`, `.agents/loaf.json`, legacy `.agents/` subfolders.
-- [ ] Resolution order returns the strongest tier with all matched bases; detector never prompts and never writes.
-- [ ] Unit tests: one per tier, mixed signals resolve to the strongest, moved-repo case (fenced marker present, no SQLite record) resolves `strong`.
+- [x] Define the tier type and detection result (tier + human-readable basis strings) in a new `internal/cli` file.
+- [x] Implement probes: SQLite project record for the resolved root, fenced marker in root `AGENTS.md`, `.agents/loaf.json`, legacy `.agents/` subfolders.
+- [x] Resolution order returns the strongest tier with all matched bases; detector never prompts and never writes.
+- [x] Unit tests: one per tier, mixed signals resolve to the strongest, moved-repo case (fenced marker present, no SQLite record) resolves `strong`.
 
 ## Verification
 
