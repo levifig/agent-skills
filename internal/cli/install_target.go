@@ -1204,9 +1204,19 @@ func loadCodexHooksFile(path string) (codexHooksFile, error) {
 	if err != nil {
 		return codexHooksFile{}, refuseProjectFileRead(err)
 	}
+	// Decode as a top-level object first so a JSON array, null, or truncated
+	// payload is a refusal rather than an empty document the merge would write
+	// back as Loaf-only content.
+	var topLevel map[string]json.RawMessage
+	if err := json.Unmarshal(body, &topLevel); err != nil {
+		return codexHooksFile{}, fmt.Errorf("parse Codex hooks file %s: %w — preserving it as written", path, err)
+	}
+	if topLevel == nil {
+		return codexHooksFile{}, fmt.Errorf("parse Codex hooks file %s: top-level value must be an object — preserving it as written", path)
+	}
 	var hooks codexHooksFile
 	if err := json.Unmarshal(body, &hooks); err != nil {
-		return codexHooksFile{Hooks: map[string][]map[string]any{}}, nil
+		return codexHooksFile{}, fmt.Errorf("parse Codex hooks file %s: %w — preserving it as written", path, err)
 	}
 	if hooks.Hooks == nil {
 		hooks.Hooks = map[string][]map[string]any{}

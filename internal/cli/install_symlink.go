@@ -22,10 +22,10 @@ type installSymlinkResult struct {
 	BackupPath string
 	Merged     bool
 	Error      string
-	// Refused marks the errors that are statements about the project rather
-	// than about the operation: a path the migration was about to read whole
-	// turned out not to be a regular file, or to be larger than Loaf will take
-	// in. The run treats those the way it treats a refused fenced write.
+	// Refused marks a migration step that stopped because a whole-file read
+	// failed. Every failure carries the same abort semantics: the project part
+	// fails, the fenced and MCP writers that follow are skipped, and the run
+	// exits non-zero. Dry-run and apply agree on that reading.
 	Refused bool
 }
 
@@ -294,13 +294,14 @@ func installSymlinkError(action string, message string, err error) installSymlin
 }
 
 // installSymlinkReadRefusal reports a migration step that stopped because a
-// path it was about to read whole is not a file it can read whole. The step is
-// abandoned before it writes anything, and the run treats the result as a
-// failed project part rather than a note in passing — the same reading the
-// fenced writer already takes of the same projects.
+// whole-file read failed — not a regular file, too large, permission denied,
+// or any other I/O failure. The step is abandoned before it writes anything,
+// and the run treats the result as a failed project part rather than a note in
+// passing: the fenced writers that follow would meet the same path, so the
+// project part reports itself failed and upgrade exits non-zero.
 func installSymlinkReadRefusal(prefix string, err error) installSymlinkResult {
 	result := installSymlinkError("error", fmt.Sprintf("%s: %v", prefix, err), err)
-	result.Refused = isProjectFileRefusal(err)
+	result.Refused = true
 	return result
 }
 

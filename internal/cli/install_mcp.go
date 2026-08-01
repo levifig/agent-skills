@@ -325,17 +325,16 @@ func joinInstallMcpNotices(first string, second string) string {
 }
 
 // installMcpFileConfigured answers whether a harness config already names this
-// server, and reports the paths it could not answer for. A config that is not
-// a regular file, or is too large to be one, produces no signal rather than a
-// false negative dressed as a fact — the caller prints the notice and the merge
-// that would follow refuses on the same path.
+// server, and reports the paths it could not answer for. Only absence is a
+// silent no: any other failure is a no-signal-plus-notice, so the interview
+// and the dry-run plan never dress "could not look" as "not configured".
 func installMcpFileConfigured(path string, mcpID string) (bool, string) {
 	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
-		if isProjectFileRefusal(err) {
-			return false, fmt.Sprintf("%v — could not be inspected", err)
+		if os.IsNotExist(err) || errors.Is(err, fs.ErrNotExist) {
+			return false, ""
 		}
-		return false, ""
+		return false, fmt.Sprintf("%v — could not be inspected", err)
 	}
 	text := strings.ToLower(string(body))
 	switch mcpID {
@@ -491,22 +490,33 @@ func resolveInstallMcpPath(path string, projectRoot string, global bool) string 
 
 // readInstallMcpConfigForMerge reads a harness MCP config that is about to be
 // rewritten. Absence is an empty document, because writing the first config is
-// the point of the merge. Anything else that stops the bytes arriving is a
-// refusal: the merge rewrites the whole file, so a config Loaf could not read
-// would be replaced by one holding only Loaf's own entry.
+// the point of the merge. Anything else is a refusal: the merge rewrites the
+// whole file, so a config Loaf could not read — or could not parse as a JSON
+// object — would be replaced by one holding only Loaf's own entry. That is the
+// same four-valued contract `.agents/loaf.json` already has.
 func readInstallMcpConfigForMerge(path string) (map[string]any, error) {
-	data := map[string]any{}
 	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return data, nil
+		if os.IsNotExist(err) || errors.Is(err, fs.ErrNotExist) {
+			return map[string]any{}, nil
 		}
 		return nil, refuseProjectFileRead(err)
 	}
+	var data map[string]any
 	if err := json.Unmarshal(body, &data); err != nil {
-		return map[string]any{}, nil
+		return nil, malformedHarnessConfig(path, err)
+	}
+	if data == nil {
+		return nil, malformedHarnessConfig(path, errors.New("top-level value is null, not an object"))
 	}
 	return data, nil
+}
+
+// malformedHarnessConfig reports a harness JSON config that is present but does
+// not parse as a JSON object. Callers must preserve the file and continue the
+// rest of the run — the same contract as malformedLoafConfig.
+func malformedHarnessConfig(path string, reason error) error {
+	return fmt.Errorf("%s does not parse as a JSON object (%v) — preserving it as written", path, reason)
 }
 
 func mergeJSONMcpConfig(path string, mcpKey string, serverID string, args []string) error {

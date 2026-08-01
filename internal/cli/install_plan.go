@@ -427,14 +427,31 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 			decisions = append(decisions, decision)
 			continue
 		}
+		// A destination the apply path cannot parse as the artifact kind must
+		// never be promised as a merge: report the refusal and leave the rest
+		// of the plan free to continue.
+		if artifact.Kind == "hook-projection" {
+			if refuse, detail := planHookProjectionRefusal(options.Target, path, snapshot.body); refuse {
+				decision.Action = planActionConflict
+				decision.Detail = detail
+				decisions = append(decisions, decision)
+				continue
+			}
+		}
 		matchesDesired, err := targetAdapterSnapshotMatchesArtifact(options.Target, artifact, snapshot)
 		if err != nil {
-			return nil, fmt.Errorf("inspect target artifact %q: %w", artifact.ID, err)
+			decision.Action = planActionConflict
+			decision.Detail = err.Error()
+			decisions = append(decisions, decision)
+			continue
 		}
 		if owned {
 			matchesInstalled, err := targetAdapterSnapshotMatchesArtifact(options.Target, installedByID[artifact.ID], snapshot)
 			if err != nil {
-				return nil, fmt.Errorf("inspect managed target artifact %q: %w", artifact.ID, err)
+				decision.Action = planActionConflict
+				decision.Detail = err.Error()
+				decisions = append(decisions, decision)
+				continue
 			}
 			switch {
 			case !matchesInstalled && !matchesDesired:
@@ -662,6 +679,28 @@ func planCodexGuidanceFile(guidanceDest string, ownedGuidance bool, ownedGuidanc
 		decision.Action = planActionCreate
 	}
 	return decision, nil
+}
+
+// planHookProjectionRefusal reports whether a hook-projection destination is
+// present but not a JSON object the apply merge would accept. The plan must
+// refuse rather than promise a merge that would serialize Loaf-only content
+// over the bytes it could not parse.
+func planHookProjectionRefusal(target string, path string, body []byte) (bool, string) {
+	switch target {
+	case "cursor":
+		var topLevel map[string]json.RawMessage
+		if err := json.Unmarshal(body, &topLevel); err != nil {
+			return true, fmt.Sprintf("%s does not parse as a JSON object (%v) — preserving it as written", path, err)
+		}
+		if topLevel == nil {
+			return true, fmt.Sprintf("%s does not parse as a JSON object (top-level value is null, not an object) — preserving it as written", path)
+		}
+	case "codex":
+		if _, err := decodeCodexHooksBodyStrict(body); err != nil {
+			return true, fmt.Sprintf("%s could not be parsed as Codex hooks (%v) — preserving it as written", path, err)
+		}
+	}
+	return false, ""
 }
 
 // planInstallDeprecations reuses applyInstallDeprecationCleanup with

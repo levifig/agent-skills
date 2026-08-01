@@ -690,11 +690,11 @@ func planWorktreeMoves(worktreeAgents string, mainAgents string, policy worktree
 }
 
 func filesHaveSameContent(a string, b string) bool {
-	left, err := os.ReadFile(a)
+	left, err := readRegularFile(a, projectFileReadLimit)
 	if err != nil {
 		return false
 	}
-	right, err := os.ReadFile(b)
+	right, err := readRegularFile(b, projectFileReadLimit)
 	if err != nil {
 		return false
 	}
@@ -751,7 +751,11 @@ func isCrossDeviceRename(err error) bool {
 }
 
 func copyFilePreservingMode(from string, to string) error {
-	source, err := os.Open(from)
+	// Verify regular-file-ness through the descriptor-checked non-blocking
+	// open before copying. There is no size cap on the copy itself — the type
+	// check is the point — so a non-regular entry is refused with a reported
+	// skip rather than hanging the open on a FIFO.
+	source, err := openRegularFile(from)
 	if err != nil {
 		return err
 	}

@@ -297,11 +297,11 @@ func runNativeRenderDrift(context checkHookContext, cwd string) checkResult {
 				continue
 			}
 			path := filepath.Join(target.dir, entry.Name())
-			content, err := os.ReadFile(path)
+			content, err := readRegularFile(path, projectFileReadLimit)
 			if err != nil {
-				result.Passed = false
-				result.Blocked = true
-				result.Errors = append(result.Errors, fmt.Sprintf("Read durable render %s: %v", renderDriftRelativePath(root, path), err))
+				// Enumerated discovered paths: a refusal must not crash the
+				// listing. Skip the entry with a reported notice and continue.
+				result.Warnings = append(result.Warnings, fmt.Sprintf("Skip durable render %s: %v", renderDriftRelativePath(root, path), err))
 				continue
 			}
 			if !hasFinalDurableRenderStamp(string(content)) {
@@ -382,11 +382,11 @@ func runNativeEphemeralProvenance(context checkHookContext, cwd string) checkRes
 			continue
 		}
 		path := filepath.Join(specsDir, entry.Name())
-		content, err := os.ReadFile(path)
+		content, err := readRegularFile(path, projectFileReadLimit)
 		if err != nil {
-			result.Passed = false
-			result.Blocked = true
-			result.Errors = append(result.Errors, fmt.Sprintf("Read active spec %s: %v", renderDriftRelativePath(root, path), err))
+			// Enumerated discovered paths: skip the entry with a notice rather
+			// than blocking the whole listing on one unreadable path.
+			result.Warnings = append(result.Warnings, fmt.Sprintf("Skip active spec %s: %v", renderDriftRelativePath(root, path), err))
 			continue
 		}
 		for lineNumber, line := range strings.Split(string(content), "\n") {

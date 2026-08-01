@@ -1013,8 +1013,10 @@ func scanReleaseIncompleteTasks(root string) []releaseIncompleteTask {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 			continue
 		}
-		body, err := os.ReadFile(filepath.Join(tasksDir, entry.Name()))
+		body, err := readRegularFile(filepath.Join(tasksDir, entry.Name()), projectFileReadLimit)
 		if err != nil {
+			// Enumerated discovered path: skip non-regular or unreadable
+			// entries rather than hanging the release dry-run on one of them.
 			continue
 		}
 		lines := strings.Split(string(body), "\n")
