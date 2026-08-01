@@ -342,11 +342,10 @@ func compareUpgradePrerelease(a string, b string) int {
 }
 
 func compareUpgradePrereleaseIdentifier(a string, b string) int {
-	leftNumber, leftNumeric := numericPrereleaseIdentifier(a)
-	rightNumber, rightNumeric := numericPrereleaseIdentifier(b)
+	leftNumeric, rightNumeric := isSemverDigits(a), isSemverDigits(b)
 	switch {
 	case leftNumeric && rightNumeric:
-		return cmp.Compare(leftNumber, rightNumber)
+		return compareNumericPrereleaseIdentifiers(a, b)
 	case leftNumeric:
 		return -1
 	case rightNumeric:
@@ -356,18 +355,19 @@ func compareUpgradePrereleaseIdentifier(a string, b string) int {
 	}
 }
 
-func numericPrereleaseIdentifier(value string) (int, bool) {
-	if value == "" {
-		return 0, false
+// compareNumericPrereleaseIdentifiers orders two all-digit identifiers by
+// numeric value, reading them as decimal strings rather than parsing them into
+// a machine integer. SemVer puts no ceiling on a numeric identifier, and
+// strconv.Atoi did: past the int range it failed, the identifier stopped
+// counting as numeric, and the pair fell back to lexical order, which ranks
+// "9…" (twenty digits) above "1…" (twenty-one digits) — precedence inverted on
+// exactly the values that overflowed. Digit strings compare directly because
+// strict parsing rejects a leading zero on a numeric identifier, so the
+// spelling is canonical: the longer string is the larger number, and equal
+// lengths compare byte by byte.
+func compareNumericPrereleaseIdentifiers(a string, b string) int {
+	if len(a) != len(b) {
+		return cmp.Compare(len(a), len(b))
 	}
-	for _, char := range value {
-		if char < '0' || char > '9' {
-			return 0, false
-		}
-	}
-	number, err := strconv.Atoi(value)
-	if err != nil {
-		return 0, false
-	}
-	return number, true
+	return cmp.Compare(a, b)
 }

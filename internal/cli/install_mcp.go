@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,7 +73,7 @@ func (r Runner) runInstallMcpRecommendations(out io.Writer, projectRoot string, 
 	// cannot be read as an object, none of them can happen, so the interview is
 	// not worth conducting: its questions would be answered into nothing.
 	if _, err := readInstallLoafConfigDocument(projectRoot); err != nil {
-		if writeMalformedLoafConfigReport(out, err) {
+		if writePreservedLoafConfigReport(out, err) {
 			return nil
 		}
 		return err
@@ -529,46 +530,63 @@ func writeInstallJSON(path string, data map[string]any) error {
 	return os.WriteFile(path, body, 0o644)
 }
 
-// malformedLoafConfigError reports a `.agents/loaf.json` that exists but is not
-// a JSON object. It is a distinct error because it is not a failure to act on:
-// the file is somebody's state, Loaf cannot merge into what it cannot read, and
+// unusableLoafConfigError reports a `.agents/loaf.json` that is present but
+// cannot be used — it does not parse as a JSON object, or its bytes never
+// arrived at all. Both are one decision rather than a failure to act on: the
+// file is somebody's state, Loaf cannot merge into what it cannot read, and
 // rewriting it would replace hand-authored content with Loaf's defaults. Every
 // writer refuses on it and every caller reports it and carries on.
-type malformedLoafConfigError struct {
-	path   string
-	reason error
+type unusableLoafConfigError struct {
+	path    string
+	problem string
+	reason  error
 }
 
-func (e malformedLoafConfigError) Error() string {
-	return fmt.Sprintf("%s does not parse as a JSON object (%v) — preserving it as written; MCP recommendations were not recorded", e.path, e.reason)
+func (e unusableLoafConfigError) Error() string {
+	return fmt.Sprintf("%s %s (%v) — preserving it as written; MCP recommendations were not recorded", e.path, e.problem, e.reason)
 }
 
-func (e malformedLoafConfigError) Unwrap() error {
+func (e unusableLoafConfigError) Unwrap() error {
 	return e.reason
 }
 
-// readInstallLoafConfigDocument reads the project config as a JSON object. A
-// missing or unreadable file is an empty document a writer may create; a file
-// that is present and unparseable is a malformedLoafConfigError, which no
-// writer may pave over.
+func malformedLoafConfig(path string, reason error) unusableLoafConfigError {
+	return unusableLoafConfigError{path: path, problem: "does not parse as a JSON object", reason: reason}
+}
+
+func unreadableLoafConfig(path string, reason error) unusableLoafConfigError {
+	return unusableLoafConfigError{path: path, problem: "could not be read", reason: reason}
+}
+
+// readInstallLoafConfigDocument reads the project config, and its outcome is
+// four-valued because the writers downstream need all four kept apart: absent
+// (an empty document a writer may create), a JSON object (the document),
+// malformed (present, but not an object), and unreadable (present, but no bytes
+// came back — a permission bite, a directory at the path, an I/O failure).
+// Only absence licenses a write. Folding unreadable into it, which is what
+// answering every read error with an empty document did, let a writer truncate
+// a file it had not read a single byte of.
 func readInstallLoafConfigDocument(projectRoot string) (map[string]any, error) {
 	path := filepath.Join(projectRoot, ".agents", "loaf.json")
 	body, err := os.ReadFile(path)
 	if err != nil {
-		return map[string]any{}, nil
+		if errors.Is(err, fs.ErrNotExist) {
+			return map[string]any{}, nil
+		}
+		return nil, unreadableLoafConfig(path, err)
 	}
 	var config map[string]any
 	if err := json.Unmarshal(body, &config); err != nil {
-		return nil, malformedLoafConfigError{path: path, reason: err}
+		return nil, malformedLoafConfig(path, err)
 	}
 	if config == nil {
-		return nil, malformedLoafConfigError{path: path, reason: errors.New("top-level value is null, not an object")}
+		return nil, malformedLoafConfig(path, errors.New("top-level value is null, not an object"))
 	}
 	return config, nil
 }
 
 // readInstallLoafConfig is the read-only view: callers that only want to know
-// what has been recorded treat an unreadable file as nothing recorded.
+// what has been recorded treat a config they cannot read as nothing recorded.
 func readInstallLoafConfig(projectRoot string) map[string]any {
 	config, err := readInstallLoafConfigDocument(projectRoot)
 	if err != nil {
@@ -577,15 +595,16 @@ func readInstallLoafConfig(projectRoot string) map[string]any {
 	return config
 }
 
-// writeMalformedLoafConfigReport prints the preservation notice when err is one,
-// and reports whether it did. Both the install interview and the upgrade record
-// refresh call it, so the two surfaces say the same thing.
-func writeMalformedLoafConfigReport(out io.Writer, err error) bool {
-	var malformed malformedLoafConfigError
-	if !errors.As(err, &malformed) {
+// writePreservedLoafConfigReport prints the preservation notice when err is a
+// refusal to touch a config Loaf cannot use, and reports whether it did. Both
+// the install interview and the upgrade record refresh call it, so the two
+// surfaces say the same thing about the same file.
+func writePreservedLoafConfigReport(out io.Writer, err error) bool {
+	var unusable unusableLoafConfigError
+	if !errors.As(err, &unusable) {
 		return false
 	}
-	fmt.Fprintf(out, "  %s %s\n\n", ansiYellow("⚠"), malformed.Error())
+	fmt.Fprintf(out, "  %s %s\n\n", ansiYellow("⚠"), unusable.Error())
 	return true
 }
 

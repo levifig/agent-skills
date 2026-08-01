@@ -502,16 +502,11 @@ func (r Runner) enforceInstallProjectFiles(out io.Writer, projectRoot string, se
 	if hasClaudeCode {
 		fencedTargets = append([]string{"claude-code"}, fencedTargets...)
 	}
-	fencedResults := installFencedSectionsForTargets(fencedTargets, projectRoot, version, upgrade)
+	fencedResults, fencedErr := installFencedSectionsForTargets(fencedTargets, projectRoot, version, upgrade)
 	if writeInstallFencedResults(out, fencedResults) {
 		outcome.wrote = true
 	}
-	for _, result := range fencedResults {
-		if result.Action == "error" {
-			outcome.fenceFailed = true
-			break
-		}
-	}
+	outcome.fenceFailed = fencedErr != nil
 	return outcome
 }
 

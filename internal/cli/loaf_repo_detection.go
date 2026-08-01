@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/levifig/loaf/internal/project"
@@ -62,23 +63,41 @@ func (detection *loafRepoDetection) record(tier loafRepoTier, basis string) {
 // the evidence basis reads the same way on every machine.
 var legacyLoafArtifactDirs = []string{"councils", "drafts", "handoffs", "reports", "sessions", "specs"}
 
+// loafRepoSignal is one probe's answer: the tier it justifies, and the evidence
+// line that says why. A probe carries its own tier because not every probe
+// answers at a fixed strength — a managed AGENTS.md section means one thing
+// when its header parses and another when it does not.
+type loafRepoSignal struct {
+	tier  loafRepoTier
+	basis string
+}
+
 // detectLoafRepo answers "is this a Loaf-powered repo?" for the commands that
 // branch on it. It is a pure read: it never prompts, never writes, and never
 // creates the state database. Every probe degrades to "no signal" on error, so
 // a missing or unreadable database only costs the authoritative tier.
 func detectLoafRepo(root project.Root, stateHome string) loafRepoDetection {
-	detection := loafRepoDetection{}
+	var signals []loafRepoSignal
 	if basis, ok := detectLoafProjectRecord(root, stateHome); ok {
-		detection.record(loafRepoTierAuthoritative, basis)
+		signals = append(signals, loafRepoSignal{tier: loafRepoTierAuthoritative, basis: basis})
 	}
-	if basis, ok := detectLoafFencedMarker(root.Path()); ok {
-		detection.record(loafRepoTierStrong, basis)
+	if signal, ok := detectLoafFencedMarker(root.Path()); ok {
+		signals = append(signals, signal)
 	}
 	if basis, ok := detectLoafProjectConfig(root.Path()); ok {
-		detection.record(loafRepoTierStrong, basis)
+		signals = append(signals, loafRepoSignal{tier: loafRepoTierStrong, basis: basis})
 	}
 	if basis, ok := detectLegacyLoafArtifacts(root.Path()); ok {
-		detection.record(loafRepoTierLegacy, basis)
+		signals = append(signals, loafRepoSignal{tier: loafRepoTierLegacy, basis: basis})
+	}
+	// Callers print Bases[0] as the reason they are treating this directory as a
+	// Loaf repo, so the slice has to lead with a basis recorded at the tier that
+	// was actually reached. Probe order alone stopped guaranteeing that once one
+	// probe could answer at either of two tiers.
+	sort.SliceStable(signals, func(i, j int) bool { return signals[i].tier > signals[j].tier })
+	detection := loafRepoDetection{}
+	for _, signal := range signals {
+		detection.record(signal.tier, signal.basis)
 	}
 	return detection
 }
@@ -112,60 +131,52 @@ func detectLoafProjectRecord(root project.Root, stateHome string) (string, bool)
 const detectionReadLimit = 256 << 10
 
 // detectLoafFencedMarker requires a complete managed section — both fences —
-// before it will call this a Loaf repo. A lone start marker is a fragment: an
+// before it will say anything at all. A lone start marker is a fragment: an
 // interrupted write, a quoted example, or a hand-edited file, and none of those
-// mean Loaf manages this AGENTS.md. Promoting a fragment to the strong tier
-// would let `loaf upgrade` write project files without asking.
-func detectLoafFencedMarker(rootPath string) (string, bool) {
+// mean Loaf manages this AGENTS.md. Promoting a fragment would let `loaf
+// upgrade` write project files without asking.
+//
+// A complete section whose header does not parse is the third answer, and it is
+// neither of the other two. Not strong: the header is the one part of the
+// section Loaf writes and can recognize, and proceeding on one it cannot read
+// would mean writing project files on the strength of a marker that has been
+// tampered with, truncated, or left by something else. Not silence either: a
+// paired fence is real evidence, and the legacy tier routes it to the explicit
+// "is this a Loaf project?" confirmation, which is the question this state
+// actually raises.
+func detectLoafFencedMarker(rootPath string) (loafRepoSignal, bool) {
 	body, ok := readDetectionFilePrefix(filepath.Join(rootPath, "AGENTS.md"), detectionReadLimit)
 	if !ok {
-		return "", false
+		return loafRepoSignal{}, false
 	}
-	if _, complete := findFencedSectionRange(body); !complete {
-		return "", false
+	section, complete := findFencedSectionRange(body)
+	if !complete {
+		return loafRepoSignal{}, false
 	}
-	return "managed Loaf section in AGENTS.md", true
+	if section.malformedHeader {
+		return loafRepoSignal{tier: loafRepoTierLegacy, basis: "tampered or malformed managed section in AGENTS.md"}, true
+	}
+	return loafRepoSignal{tier: loafRepoTierStrong, basis: "managed Loaf section in AGENTS.md"}, true
 }
 
 func detectLoafProjectConfig(rootPath string) (string, bool) {
-	if !isRegularFileForDetection(filepath.Join(rootPath, ".agents", "loaf.json")) {
+	file, ok := openDetectionFile(filepath.Join(rootPath, ".agents", "loaf.json"))
+	if !ok {
 		return "", false
 	}
+	file.Close()
 	return "Loaf project config at .agents/loaf.json", true
 }
 
-// isRegularFileForDetection reports whether path is a regular file, resolving a
-// symlink but never accepting anything else at either end. A FIFO would block
-// the probe until somebody wrote to it, and a device would answer with whatever
-// its driver decides; neither is a file the detector has any business opening,
-// so the type is settled with Lstat before anything is opened.
-func isRegularFileForDetection(path string) bool {
-	link, err := os.Lstat(path)
-	if err != nil {
-		return false
-	}
-	if link.Mode()&os.ModeSymlink == 0 {
-		return link.Mode().IsRegular()
-	}
-	info, err := os.Stat(path)
-	return err == nil && info.Mode().IsRegular()
-}
-
-// readDetectionFilePrefix reads at most limit bytes of a regular file. The
-// type check happens twice — once on the path and once on the open descriptor —
-// because only the second one describes the file actually being read.
+// readDetectionFilePrefix reads at most limit bytes of a probe path, and only
+// once openDetectionFile has established that the descriptor it returns is a
+// regular file.
 func readDetectionFilePrefix(path string, limit int64) (string, bool) {
-	if !isRegularFileForDetection(path) {
-		return "", false
-	}
-	file, err := os.Open(path)
-	if err != nil {
+	file, ok := openDetectionFile(path)
+	if !ok {
 		return "", false
 	}
 	defer file.Close()
-	if info, err := file.Stat(); err != nil || !info.Mode().IsRegular() {
-		return "", false
-	}
 	body, err := io.ReadAll(io.LimitReader(file, limit))
 	if err != nil {
 		return "", false

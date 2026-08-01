@@ -148,6 +148,57 @@ func TestDetectLoafRepoRequiresACompleteFencedSection(t *testing.T) {
 	})
 }
 
+// TestDetectLoafRepoTreatsAMalformedFenceHeaderAsLegacy covers the state between
+// the other two: both fences are present, so something wrote a managed section
+// here, but the header does not parse, so it is not a section Loaf can vouch
+// for. Answering "strong" would let upgrade write project files on the strength
+// of a marker that has been tampered with or truncated; answering "none" would
+// throw away real evidence. Legacy is the tier that asks.
+func TestDetectLoafRepoTreatsAMalformedFenceHeaderAsLegacy(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		header string
+	}{
+		{name: "garbage in the header", header: "not-a-version garbage"},
+		{name: "truncated fingerprint", header: "sha256=" + strings.Repeat("a", 12)},
+		{name: "no header fields at all", header: ""},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
+			_, body, _ := strings.Cut(generateFencedContent(), "\n")
+			writeDetectionFile(t, filepath.Join(dir, "AGENTS.md"), "# Project\n\n"+fencedStartMarker+" "+testCase.header+" -->\n"+body+"\n")
+
+			detection := detectLoafRepo(mustResolveDetectionRoot(t, dir), "")
+
+			if detection.Tier != loafRepoTierLegacy {
+				t.Fatalf("detectLoafRepo() tier = %s, want legacy for a paired fence with a malformed header (bases %v)", detection.Tier, detection.Bases)
+			}
+			assertDetectionBases(t, detection.Bases, []string{"tampered or malformed managed section in AGENTS.md"})
+		})
+	}
+
+	// A stronger signal elsewhere still leads the evidence, so the line callers
+	// print is the one that justifies the tier they acted on.
+	t.Run("a stronger signal still leads the bases", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
+		_, body, _ := strings.Cut(generateFencedContent(), "\n")
+		writeDetectionFile(t, filepath.Join(dir, "AGENTS.md"), fencedStartMarker+" garbage -->\n"+body+"\n")
+		mustWriteLoafProjectConfig(t, dir)
+
+		detection := detectLoafRepo(mustResolveDetectionRoot(t, dir), "")
+
+		if detection.Tier != loafRepoTierStrong {
+			t.Fatalf("detectLoafRepo() tier = %s, want strong from the project config", detection.Tier)
+		}
+		assertDetectionBases(t, detection.Bases, []string{
+			"Loaf project config at .agents/loaf.json",
+			"tampered or malformed managed section in AGENTS.md",
+		})
+	})
+}
+
 // TestDetectLoafRepoBoundsTheMarkerProbe proves the read is capped rather than
 // trusted: a marker past the limit is simply not seen, and the probe never
 // reads the whole file to find that out.

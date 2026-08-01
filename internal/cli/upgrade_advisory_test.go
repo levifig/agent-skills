@@ -211,6 +211,40 @@ func TestCompareUpgradeSemverFollowsPrereleasePrecedence(t *testing.T) {
 	}
 }
 
+// TestCompareUpgradeSemverOrdersNumericIdentifiersBeyondMachineIntegers pins the
+// range SemVer leaves open and a machine integer does not. A numeric prerelease
+// identifier has no ceiling in the spec; parsing one with strconv.Atoi failed
+// past the int range, which demoted the identifier to an alphanumeric and
+// handed the pair to lexical order — where a twenty-digit "9…" outranks a
+// twenty-one-digit "1…" and precedence comes out backwards on exactly the
+// values that overflowed.
+func TestCompareUpgradeSemverOrdersNumericIdentifiersBeyondMachineIntegers(t *testing.T) {
+	for _, testCase := range []struct {
+		left  string
+		right string
+		want  int
+	}{
+		{"1.0.0-100000000000000000000", "1.0.0-90000000000000000000", 1},
+		{"1.0.0-99999999999999999999", "1.0.0-99999999999999999998", 1},
+		{"1.0.0-18446744073709551616", "1.0.0-18446744073709551615", 1},
+		{"1.0.0-90000000000000000000", "1.0.0-90000000000000000000", 0},
+		{"1.0.0-alpha", "1.0.0-100000000000000000000", 1},
+		{"1.0.0-100000000000000000000.1", "1.0.0-100000000000000000000", 1},
+	} {
+		left, leftOK := parseUpgradeSemver(testCase.left)
+		right, rightOK := parseUpgradeSemver(testCase.right)
+		if !leftOK || !rightOK {
+			t.Fatalf("parseUpgradeSemver(%q, %q) failed to parse", testCase.left, testCase.right)
+		}
+		if got := compareUpgradeSemver(left, right); got != testCase.want {
+			t.Fatalf("compare(%q, %q) = %d, want %d", testCase.left, testCase.right, got, testCase.want)
+		}
+		if got := compareUpgradeSemver(right, left); got != -testCase.want {
+			t.Fatalf("compare(%q, %q) = %d, want %d", testCase.right, testCase.left, got, -testCase.want)
+		}
+	}
+}
+
 // upgradeNonCanonicalVersions are the shapes that look like versions but are
 // not ones. Each has a precedence nobody agreed on — is "alpha.01" before or
 // after "alpha.1"? does "2.1.0+" mean 2.1.0? — so the advisory and the drift

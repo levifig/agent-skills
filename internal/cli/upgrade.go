@@ -287,7 +287,7 @@ func (r Runner) refreshUpgradeProjectSurfaces(out io.Writer, projectRoot string,
 	// the correct outcome, and the line says what was left alone and why.
 	config, err := readInstallLoafConfigDocument(projectRoot)
 	if err != nil {
-		if writeMalformedLoafConfigReport(out, err) {
+		if writePreservedLoafConfigReport(out, err) {
 			return false, nil
 		}
 		return true, err
