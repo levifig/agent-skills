@@ -11,9 +11,9 @@ import (
 )
 
 // install_plan.go builds a deterministic, byte-for-byte non-mutating plan for
-// `loaf install --upgrade --dry-run`. Every function here reuses the same
-// read-only ownership, content-digest, deprecation-manifest, MCP, and
-// project-file primitives the apply path uses, but records intended
+// `loaf upgrade --dry-run`. Every function here reuses the same read-only
+// ownership, content-digest, deprecation-manifest, MCP, and project-file
+// primitives the apply path uses, but records intended
 // creates/updates/removals/preservations/conflicts without writing files,
 // manifests, config, or state. The apply path is left untouched; a plan/apply
 // parity test guards against drift.
@@ -36,10 +36,22 @@ type installDryRunPlan struct {
 	DryRun           bool                     `json:"dry_run"`
 	Targets          []targetDistributionPlan `json:"targets"`
 	Deprecations     []deprecationPlanEntry   `json:"deprecations"`
+	ProjectPart      *projectPartPlan         `json:"project_part,omitempty"`
 	ProjectFiles     []projectFilePlanEntry   `json:"project_files"`
 	Mcp              []mcpPlanEntry           `json:"mcp"`
 	FollowUpCommands []string                 `json:"follow_up_commands"`
 	ConsentRequired  bool                     `json:"consent_required"`
+}
+
+// projectPartPlan reports the Loaf-repo detector gate that decides whether the
+// project half of the work runs at all, so a consumer can tell an empty
+// project_files list that means "nothing to do" from one that means "not a Loaf
+// project". Callers that plan project files unconditionally leave it nil.
+type projectPartPlan struct {
+	InScope              bool     `json:"in_scope"`
+	Tier                 string   `json:"tier"`
+	ConfirmationRequired bool     `json:"confirmation_required"`
+	Bases                []string `json:"bases,omitempty"`
 }
 
 type targetDistributionPlan struct {
@@ -88,8 +100,22 @@ type mcpPlanEntry struct {
 	Action     string `json:"action"`
 }
 
-func (r Runner) runInstallDryRun(options installOptions, out io.Writer, loafRoot string, projectRoot string, version string, distRoot string, tools []detectedInstallTool, hasClaudeCode bool, assumeYes bool) error {
-	plan, err := r.buildInstallDryRunPlan(options, loafRoot, projectRoot, version, distRoot, tools, hasClaudeCode, assumeYes)
+// runInstallDryRun renders the plan document.
+//
+// Schema decision (the plan surface moving from install to upgrade): the
+// document stays field-compatible at contract version 1. Every field a consumer
+// reads today keeps its name, type, and meaning; the only value change is
+// `command`, which now names `upgrade` because that is the command that applies
+// the plan. `project_part` is a new optional object, omitted entirely when the
+// caller plans project files unconditionally, so the previously documented
+// document is emitted byte-for-byte unchanged for those callers. Adding an
+// omitted-by-default field is additive, so the contract version does not move.
+//
+// projectPart nil means "plan project files unconditionally"; non-nil carries
+// the detector gate and suppresses project-file planning when it is closed, so
+// the plan never promises writes the apply path would refuse to make.
+func (r Runner) runInstallDryRun(options installOptions, out io.Writer, loafRoot string, projectRoot string, version string, distRoot string, tools []detectedInstallTool, hasClaudeCode bool, assumeYes bool, projectPart *projectPartPlan) error {
+	plan, err := r.buildInstallDryRunPlan(options, loafRoot, projectRoot, version, distRoot, tools, hasClaudeCode, assumeYes, projectPart)
 	if err != nil {
 		return err
 	}
@@ -100,13 +126,14 @@ func (r Runner) runInstallDryRun(options installOptions, out io.Writer, loafRoot
 	return nil
 }
 
-func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, projectRoot string, version string, distRoot string, tools []detectedInstallTool, hasClaudeCode bool, assumeYes bool) (installDryRunPlan, error) {
+func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, projectRoot string, version string, distRoot string, tools []detectedInstallTool, hasClaudeCode bool, assumeYes bool, projectPart *projectPartPlan) (installDryRunPlan, error) {
 	plan := installDryRunPlan{
 		ContractVersion: installPlanContractVersion,
-		Command:         "install",
+		Command:         planCommandName(options),
 		DryRun:          true,
 		Targets:         []targetDistributionPlan{},
 		Deprecations:    []deprecationPlanEntry{},
+		ProjectPart:     projectPart,
 		ProjectFiles:    []projectFilePlanEntry{},
 		Mcp:             []mcpPlanEntry{},
 	}
@@ -175,10 +202,16 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	sort.Slice(plan.Targets, func(i, j int) bool { return plan.Targets[i].Target < plan.Targets[j].Target })
 
 	// Project files mirror enforceInstallProjectFiles: symlinks first, then the
-	// managed fenced section for every target that carries a project file.
+	// managed fenced section for every target that carries a project file, then
+	// upgrade's own MCP-recommendation record. A closed detector gate skips all
+	// of it, exactly as the apply path does.
 	targetsInScope := append([]string{}, selectedTargets...)
-	projectFiles := planInstallProjectFiles(projectRoot, targetsInScope, hasClaudeCode, assumeYes, version)
-	plan.ProjectFiles = projectFiles
+	if projectPart == nil || projectPart.InScope {
+		plan.ProjectFiles = planInstallProjectFiles(projectRoot, targetsInScope, hasClaudeCode, assumeYes, version)
+		if projectPart != nil {
+			plan.ProjectFiles = append(plan.ProjectFiles, planUpgradeMcpRecord(projectRoot))
+		}
+	}
 
 	// MCP recommendations do not run during --upgrade; report read-only
 	// detection so the plan is informative while making it explicit that
@@ -924,13 +957,25 @@ func installPlanHasChanges(plan installDryRunPlan) bool {
 	return false
 }
 
+// planCommandName resolves the command a plan speaks for. Every command string
+// the plan emits — JSON envelope, human title, apply and follow-up commands —
+// is built from it, so a plan can never advertise an entry point that does not
+// exist. An unset command resolves to `upgrade`: the document describes an
+// upgrade, and upgrade is the command that applies it.
+func planCommandName(options installOptions) string {
+	if options.command == "" {
+		return upgradeCommandName
+	}
+	return options.command
+}
+
+// installPlanApplyCommand emits only flags the resolved command accepts. The
+// Codex basic-command policy is an install-time opt-in, so it is never part of
+// an apply command.
 func installPlanApplyCommand(options installOptions, consentRequired bool) string {
-	parts := []string{"loaf", "install", "--upgrade"}
+	parts := []string{"loaf", planCommandName(options)}
 	if options.target != "" {
 		parts = append(parts, "--to", options.target)
-	}
-	if options.codexBasicCommands {
-		parts = append(parts, "--codex-basic-commands")
 	}
 	if consentRequired {
 		parts = append(parts, "--yes")
@@ -967,7 +1012,7 @@ func emitInstallDryRunJSON(out io.Writer, plan installDryRunPlan) error {
 
 func writeInstallDryRunHuman(out io.Writer, plan installDryRunPlan) {
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, ansiBold("loaf install --upgrade --dry-run"))
+	fmt.Fprintln(out, ansiBold("loaf "+plan.Command+" --dry-run"))
 	fmt.Fprintf(out, "  %s\n\n", ansiGray("Plan only — no files, manifests, config, or state will change."))
 
 	if len(plan.Targets) == 0 {
@@ -1000,6 +1045,13 @@ func writeInstallDryRunHuman(out io.Writer, plan installDryRunPlan) {
 		fmt.Fprintln(out)
 	}
 
+	if part := plan.ProjectPart; part != nil && !part.InScope {
+		reason := "no Loaf project detected here"
+		if part.ConfirmationRequired {
+			reason = "legacy Loaf artifacts only; confirmation required"
+		}
+		fmt.Fprintf(out, "  %s %s\n\n", ansiBold("Project files"), ansiGray("skipped — "+reason))
+	}
 	if len(plan.ProjectFiles) > 0 {
 		fmt.Fprintf(out, "  %s\n", ansiBold("Project files"))
 		for _, entry := range plan.ProjectFiles {

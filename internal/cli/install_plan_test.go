@@ -105,9 +105,11 @@ func TestRunnerInstallUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
 		if _, err := os.Stat(retired); err != nil {
 			t.Fatalf("retired target stat = %v, want still present after dry-run", err)
 		}
+		// The apply command names the command that applies the plan, which is
+		// `loaf upgrade` regardless of the entry point that produced it.
 		foundApply := false
 		for _, command := range plan.FollowUpCommands {
-			if command == "loaf install --upgrade --yes" {
+			if command == "loaf upgrade --yes" {
 				foundApply = true
 			}
 		}
@@ -136,8 +138,11 @@ func TestRunnerInstallUpgradeDryRunJSONIsDeterministic(t *testing.T) {
 	if err := json.Unmarshal([]byte(first), &plan); err != nil {
 		t.Fatalf("unmarshal dry-run JSON: %v\n%s", err, first)
 	}
-	if plan.ContractVersion != installPlanContractVersion || plan.Command != "install" || !plan.DryRun {
-		t.Fatalf("plan envelope = %#v, want contract %d command install dry_run true", plan, installPlanContractVersion)
+	if plan.ContractVersion != installPlanContractVersion || plan.Command != upgradeCommandName || !plan.DryRun {
+		t.Fatalf("plan envelope = %#v, want contract %d command %s dry_run true", plan, installPlanContractVersion, upgradeCommandName)
+	}
+	if plan.ProjectPart != nil {
+		t.Fatalf("project_part = %#v, want it omitted when the caller plans project files unconditionally", plan.ProjectPart)
 	}
 }
 

@@ -22,6 +22,10 @@ type installOptions struct {
 	help               bool
 	dryRun             bool
 	json               bool
+	// command names the CLI entry point these options were parsed for. It is
+	// the seam the shared plan builder reads to stay command-aware; see
+	// planCommandName for how an unset value resolves.
+	command string
 }
 
 type detectedInstallTool struct {
@@ -67,7 +71,7 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 	assumeYes := installAssumeYes(options)
 
 	if options.dryRun {
-		return r.runInstallDryRun(options, out, loafRoot, projectRoot.Path(), version, distRoot, tools, hasClaudeCode, assumeYes)
+		return r.runInstallDryRun(options, out, loafRoot, projectRoot.Path(), version, distRoot, tools, hasClaudeCode, assumeYes, nil)
 	}
 
 	fmt.Fprintln(out)

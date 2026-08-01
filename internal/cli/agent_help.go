@@ -69,6 +69,17 @@ func agentHelpCommands() []agentHelpCommand {
 			},
 		},
 		{
+			Name:        "upgrade",
+			Description: "Refresh Loaf in place: harness content sync plus deprecation cleanup anywhere, and project-surface refresh only inside a detected Loaf repo",
+			Options: []agentHelpOption{
+				{Flags: "--to <target>", Description: "Filter the harness sync to one already-installed target, or all; an uninstalled target is an error pointing at loaf install --to"},
+				{Flags: "--dry-run", Description: "Report the deterministic non-mutating plan, including whether the project part is in scope, without writing files, manifests, config, or state"},
+				{Flags: "--json", Description: "With --dry-run, emit the plan as one JSON document with exact follow-up commands, project_part, and consent_required"},
+				{Flags: "-y, --yes", Description: "Assume yes to safe project-file symlink migrations and destructive deprecation cleanup"},
+				{Flags: "--no-yes", Description: "Force prompt-style declines in non-interactive mode"},
+			},
+		},
+		{
 			Name:        "config",
 			Description: "Validate and refresh project Loaf config",
 			Subcommands: []agentHelpSubcommand{

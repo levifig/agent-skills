@@ -27,6 +27,7 @@ blocks:
 - Contract: `shape.md` — Observable Workflow, Decisions 1/2/5/6, Planning Contract › Placement and Risks.
 - Reused machinery: `installTargetDistribution` (`install_target.go`), `runInstallDeprecationCleanup` (`install_deprecations.go`), plan builder (`install_plan.go`), project-file enforcement (`install.go`, `install_fenced.go`, `install_symlink.go`).
 - Open question owned here: plan JSON schema for the moved `--dry-run --json` — keep byte-compatible with the documented consumer flow in `content/skills/loaf-reference/references/maintenance.md`, or version it deliberately and update that doc in TASK-006.
+- **Resolved:** field-compatible at contract version 1. Every documented field keeps its name, type, and meaning; the only value change is `command`, which now reads `upgrade` because that is the command that applies the plan. A new optional `project_part` object (`in_scope`, `tier`, `confirmation_required`, `bases`) reports the detector gate and is omitted entirely for callers that plan project files unconditionally, so their document is byte-identical to before. TASK-006's doc sweep therefore only has to rename the command and describe the new optional object — no version bump, no consumer break.
 
 ## Acquisition
 
@@ -38,11 +39,11 @@ export LOAF_DB="$(mktemp -d)/loaf.sqlite"   # isolate all manual smokes
 
 ## Steps
 
-- [ ] Add `upgrade` dispatch, flag parsing (`--dry-run`, `--json`, `-y`/`--yes`, `--no-yes`, `--to <target>` filter, `--help`), and help text.
-- [ ] Global part: detect installed targets, sync from installed distribution, run deprecation cleanup with existing `-y` consent semantics, stamp `.loaf-version`. `--to` narrows to installed targets only; uninstalled target → error naming `loaf install --to`.
-- [ ] Project part gated on detector tier: `authoritative`/`strong` proceed (print basis); `legacy` prompts for confirmation; `none` skips with a one-line note. Includes the MCP-recommendation refresh (`.agents/loaf.json`) — it is a project write and never runs outside the gate.
-- [ ] Move the dry-run plan surface; make the plan builder command-aware (`install_plan.go` doc strings, follow-up commands, and human titles emit `loaf upgrade`); decide and document the schema-compat call.
-- [ ] Tests: each matrix row, legacy prompt yes/no, non-TTY consent reporting, dry-run byte-stability, `--to` filter/error cases, and a plan assertion that no emitted command contains the removed flag (V6's in-process twin).
+- [x] Add `upgrade` dispatch, flag parsing (`--dry-run`, `--json`, `-y`/`--yes`, `--no-yes`, `--to <target>` filter, `--help`), and help text.
+- [x] Global part: detect installed targets, sync from installed distribution, run deprecation cleanup with existing `-y` consent semantics, stamp `.loaf-version`. `--to` narrows to installed targets only; uninstalled target → error naming `loaf install --to`.
+- [x] Project part gated on detector tier: `authoritative`/`strong` proceed (print basis); `legacy` prompts for confirmation; `none` skips with a one-line note. Includes the MCP-recommendation refresh (`.agents/loaf.json`) — it is a project write and never runs outside the gate.
+- [x] Move the dry-run plan surface; make the plan builder command-aware (`install_plan.go` doc strings, follow-up commands, and human titles emit `loaf upgrade`); decide and document the schema-compat call.
+- [x] Tests: each matrix row, legacy prompt yes/no, non-TTY consent reporting, dry-run byte-stability, `--to` filter/error cases, and a plan assertion that no emitted command contains the removed flag (V6's in-process twin).
 
 ## Verification
 
