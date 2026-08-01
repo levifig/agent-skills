@@ -1,0 +1,121 @@
+<!-- source: install-upgrade-split · kind review · slug sentinel · stamped 2026-08-01 06:39 · authored report (snapshot semantics) · never auto-updated · dispositions recorded -->
+<meta charset="utf-8">
+<title>Review round 2 (Sentinel) — Install/Upgrade Split</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--ok); margin-bottom: 28px; }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .fname { font-weight: 700; font-size: 1.02rem; flex: 1 1 320px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-p2 { background: var(--bad-soft); color: var(--bad); }
+  .sev-p3 { background: var(--state-soft); color: var(--state); }
+  .disp-accepted { background: var(--ok-soft); color: var(--ok); }
+  .disp-modified { background: var(--accent-soft); color: var(--accent); }
+  .frow { display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px; font-size: .93rem; }
+  .frow dt { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; padding-top: 2px; }
+  .frow dd { margin: 0 0 6px; }
+  @media (max-width: 640px) { .frow { grid-template-columns: 1fr; } }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">install-upgrade-split · review round 2</div>
+  <h1>Sentinel review of the implemented branch</h1>
+  <p class="stamp">reviewer <b>Loaf Sentinel (Claude Opus 5, read-only)</b> · reviewed range <b>8d186a0d..51d23e29</b> · dispositioned <b>2026-08-01</b> · fixes landed in <b>38d73439</b></p>
+
+  <div class="panel verdict">
+    <p><strong>Reviewer verdict: APPROVE — 0 P1, 3 P2, 3 P3.</strong> All contract-critical surfaces traced clean by the reviewer: consent gate covers every project write path, detector tier routing matches Decision 1, <code>upgrade --to</code> is filter-only with dry-run/apply agreement, the tombstone never spells the removed invocation, the plan document matches the recorded schema decision, all five "quiet killers" hold (parse≠equal, advisory byte-neutrality, the one-second budget, <code>config check --fix</code> parity, setup's unreachable pre-grant), commit hygiene and test isolation verified, and all gates re-run independently. All six findings accepted (one modified) and fixed in <code>38d73439</code>.</p>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">P2-1 · OpenCode never receives the SessionStart drift nudge</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>OpenCode's sessionstart hook invoked the bare <code>journal context --from-hook</code>, which renders via the generic path and never reaches the digest emitter — so the one harness whose plugin Loaf generates, with a real stamped marker, was structurally excluded from the nudge. Exactly the alpha.16→17 incident shape.</dd>
+      <dt>Fix</dt><dd><code>38d73439</code>: new <code>--opencode-hook</code> dispatch variant (journal_hook_opencode.go) parallel to the claude/cursor/codex forms, marker resolved from the config dir install stamps, hooks.yaml updated, dist/opencode regenerated, per-variant stale/equal/missing/unparseable tests added.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">P2-2 · Claude Code nudge variant unreachable in production</span><span class="chip sev-p2">P2</span><span class="chip disp-modified">accepted · modified</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>Nothing ever stamps <code>.loaf-version</code> into <code>~/.claude</code> (the marketplace owns that channel per Scope Out), so the claude-code variant always read empty and stayed silent — and had it ever fired, its advice (<code>loaf upgrade</code>) cannot refresh Claude Code content. Its per-variant test passed only on a fabricated marker.</dd>
+      <dt>Fix</dt><dd><code>38d73439</code>: the claude-code variant is now deliberately silent on drift with a code comment recording why; the fabricated-marker test asserts silence even when a marker exists. Modified rather than removed: silence is the honest contract-consistent behavior, not a missing feature.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">P2-3 · <code>upgrade --to</code> silently narrowed the project part</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>Help text and Decision 8 scope <code>--to</code> to the global sync, but the filtered slice flowed into the project refresh, so <code>upgrade --to cursor</code> in a Loaf repo left other targets' fenced sections stale with no indication — and the case had no test.</dd>
+      <dt>Fix</dt><dd><code>38d73439</code>: the project part now refreshes surfaces for all installed targets regardless of <code>--to</code>; new test covers <code>--to</code> inside a Loaf repo (filtered global, unfiltered project).</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">P3-1 · Test-map report self-contradictory after forced edit</span><span class="chip sev-p3">P3</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd><code>command_surface_test.go</code> forces edits into the dated snapshot report, whose "Last updated" header still read 2026-06-11 while its inventory described 2026-08-01 work — a living document wearing an archival header.</dd>
+      <dt>Fix</dt><dd><code>38d73439</code> bumps the header. The structural point — relocate the enforced inventory into a living doc — is captured as a spark for /triage rather than expanded here.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">P3-2 · Consent prompt offered with nothing to deploy</span><span class="chip sev-p3">P3</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The zero-targets branch prompted "Deploy Loaf to this folder?" even when no target and no Claude Code meant a yes produced nothing — teaching users the prompt is meaningless.</dd>
+      <dt>Fix</dt><dd><code>38d73439</code>: consent is only offered when the deploy would produce something (selected targets non-empty or Claude Code present), restoring pre-branch behavior, with a test.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">P3-3 · "Report-only" changelog wording hid the doctor exit-code effect</span><span class="chip sev-p3">P3</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The new harness-drift check warns → increments failures → <code>loaf doctor</code> exits 1 on stale/missing/unparseable markers, consistent with existing drift checks — but the changelog's "report-only" implied no outcome effect, an ambush for CI users.</dd>
+      <dt>Fix</dt><dd><code>38d73439</code>: changelog clause makes the exit-code effect explicit. The reviewer's Amp legacy-directory nuance (unknown-state on <code>~/.config/amp</code> under a legacy layout) is self-healing via the advised <code>loaf upgrade</code> and was accepted as-noted with no code change.</dd>
+    </dl>
+  </div>
+
+  <footer>Authored snapshot — review round 2, post-implementation, full branch range. Round 1 (shaping contract) lives in <a href="20260801-024619-review-codex.html">20260801-024619-review-codex.html</a>. After fixes: loaf change check reports state complete / no violations / executable yes; all nine V-criteria green with the receipt tree-bound at the delivering commit.</footer>
+</main>
