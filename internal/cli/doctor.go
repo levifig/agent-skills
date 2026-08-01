@@ -32,6 +32,11 @@ type doctorFixResult struct {
 
 type doctorContext struct {
 	projectRoot string
+	// cliVersion is the installed distribution's version — the binary the
+	// caller just ran. Checks that compare project or harness state against
+	// the running loaf read it here; an empty value means provenance could
+	// not be resolved and those checks must skip rather than guess.
+	cliVersion string
 }
 
 type doctorCheck struct {
@@ -106,7 +111,7 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 		cliVersion = packageVersion(distributionRoot)
 	}
 	if options.jsonOutput {
-		result := runDoctorChecksJSON(doctorContext{projectRoot: runtimeRoot}, cliVersion)
+		result := runDoctorChecksJSON(doctorContext{projectRoot: runtimeRoot, cliVersion: cliVersion}, cliVersion)
 		if err := writeJSON(out, result); err != nil {
 			return err
 		}
@@ -115,7 +120,7 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 		}
 		return nil
 	}
-	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot}, options, cliVersion, r.Stdin)
+	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot, cliVersion: cliVersion}, options, cliVersion, r.Stdin)
 	if report.Failures > 0 {
 		return ExitError{Code: 1}
 	}
@@ -297,6 +302,44 @@ func doctorChecks() []doctorCheck {
 		checkStaleCursorMdc(),
 		checkFencedContent(),
 		checkDuplicateFencedSections(),
+		checkHarnessContentDrift(),
+	}
+}
+
+// checkHarnessContentDrift reports installed harnesses whose stamped content
+// no longer matches the binary. It is deliberately report-only: the repair is
+// running `loaf upgrade` yourself, which is a global-config mutation that must
+// not ride along inside a project-scoped `doctor --fix` run.
+func checkHarnessContentDrift() doctorCheck {
+	return doctorCheck{
+		Name:        "harness-content-drift",
+		Description: "Installed harness content matches the running loaf binary",
+		Run: func(ctx doctorContext) doctorResult {
+			if ctx.cliVersion == "" {
+				return doctorResult{Status: doctorSkip, Message: "No installed loaf distribution to compare harness content against"}
+			}
+			readings := installedHarnessDriftReadings(ctx.cliVersion)
+			if len(readings) == 0 {
+				return doctorResult{Status: doctorSkip, Message: "No harness carries installed Loaf content"}
+			}
+			var details []string
+			for _, reading := range readings {
+				if line := reading.doctorDetailLine(ctx.cliVersion); line != "" {
+					details = append(details, line)
+				}
+			}
+			if len(details) == 0 {
+				return doctorResult{
+					Status:  doctorPass,
+					Message: fmt.Sprintf("All %d installed harnesses carry loaf %s", len(readings), ctx.cliVersion),
+				}
+			}
+			return doctorResult{
+				Status:  doctorWarn,
+				Message: fmt.Sprintf("%d of %d installed harnesses do not carry loaf %s", len(details), len(readings), ctx.cliVersion),
+				Detail:  strings.Join(details, "\n"),
+			}
+		},
 	}
 }
 

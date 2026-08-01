@@ -69,7 +69,7 @@ func (r Runner) runClaudeSessionStartContext(out io.Writer, runtime state.Runtim
 		if result.context == nil {
 			return errors.New("Claude Code SessionStart context result is missing its neutral context")
 		}
-		additionalContext := renderClaudeSessionStartContext(*result.context)
+		additionalContext := r.renderSessionStartDigest(*result.context, harnessDriftClaudeCode)
 		if additionalContext == "" {
 			return errors.New("Claude Code SessionStart context renderer produced an empty digest")
 		}
@@ -115,10 +115,4 @@ func claudeSessionStartSuppressed(input journalHookInput) bool {
 	}
 	agentType := strings.ToLower(strings.TrimSpace(firstMapString(input.Raw, input.Raw, "agent_type", "agent_mode", "mode")))
 	return strings.Contains(agentType, "child") || strings.Contains(agentType, "background")
-}
-
-func renderClaudeSessionStartContext(result journalContextCLIResult) string {
-	var out strings.Builder
-	writeJournalContextHuman(&out, result)
-	return strings.TrimSpace(out.String())
 }

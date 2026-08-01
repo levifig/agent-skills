@@ -34,9 +34,9 @@ loaf journal log "skill(implement): TASK-005 — harness drift surfacing"
 
 ## Steps
 
-- [ ] Doctor check: enumerate installed harness config dirs, compare markers to the binary version per the marker-semantics contract, report stale ones with the `loaf upgrade` remediation and newer-than-binary ones with the channel command.
-- [ ] Nudge line: resolve the invoking harness's config dir from the dispatch variant, apply the same comparison, append the one-liner in the shared emitter so all three harness variants carry it; equal/missing/unparseable stay silent at session start.
-- [ ] Tests: stale, current, missing, unparseable, and newer-marker cases for doctor; per-variant (claude/cursor/codex) output tests for the SessionStart nudge; no-installed-harness case for both surfaces.
+- [x] Doctor check: enumerate installed harness config dirs, compare markers to the binary version per the marker-semantics contract, report stale ones with the `loaf upgrade` remediation and newer-than-binary ones with the channel command.
+- [x] Nudge line: resolve the invoking harness's config dir from the dispatch variant, apply the same comparison, append the one-liner in the shared emitter so all three harness variants carry it; equal/missing/unparseable stay silent at session start.
+- [x] Tests: stale, current, missing, unparseable, and newer-marker cases for doctor; per-variant (claude/cursor/codex) output tests for the SessionStart nudge; no-installed-harness case for both surfaces.
 
 ## Verification
 
