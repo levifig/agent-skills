@@ -137,7 +137,12 @@ func TestHarnessContentDriftCheckIsRegisteredAndReportOnly(t *testing.T) {
 	t.Fatal("doctorChecks() does not register harness-content-drift")
 }
 
-func TestCompareHarnessDriftVersionsOrdersPrereleasesAndRejectsGarbage(t *testing.T) {
+// TestCompareHarnessDriftVersionsSeparatesUnparseableFromEqual guards the one
+// thing the wrapper adds over the shared semver comparison: an unparseable side
+// reports "no comparison" rather than zero. Ordering itself belongs to
+// TestCompareUpgradeSemverFollowsPrereleasePrecedence; what is pinned here is
+// that a garbage marker never arrives at the caller looking like a tie.
+func TestCompareHarnessDriftVersionsSeparatesUnparseableFromEqual(t *testing.T) {
 	for _, tc := range []struct {
 		left  string
 		right string
@@ -145,14 +150,7 @@ func TestCompareHarnessDriftVersionsOrdersPrereleasesAndRejectsGarbage(t *testin
 		fails bool
 	}{
 		{left: "2.0.0-alpha.16", right: "2.0.0-alpha.17", want: -1},
-		{left: "2.0.0-alpha.17", right: "2.0.0-alpha.16", want: 1},
-		{left: "2.0.0-alpha.2", right: "2.0.0-alpha.10", want: -1},
-		{left: "2.0.0-alpha.17", right: "2.0.0", want: -1},
-		{left: "2.0.0", right: "2.0.0-alpha.17", want: 1},
-		{left: "2.0.0-alpha", right: "2.0.0-alpha.1", want: -1},
-		{left: "2.0.0-alpha.1", right: "2.0.0-beta.1", want: -1},
-		{left: "1.9.9", right: "2.0.0", want: -1},
-		{left: "2.1.0", right: "2.0.9", want: 1},
+		{left: "2.0.0-alpha.18", right: "2.0.0-alpha.17", want: 1},
 		{left: "v2.0.0", right: "2.0.0+build.5", want: 0},
 		{left: "2.0.0-alpha.17", right: "2.0.0-alpha.17", want: 0},
 		{left: "not-a-version", right: "2.0.0", fails: true},
@@ -169,6 +167,30 @@ func TestCompareHarnessDriftVersionsOrdersPrereleasesAndRejectsGarbage(t *testin
 			}
 			if !ok || got != tc.want {
 				t.Fatalf("compareHarnessDriftVersions(%q, %q) = %d, %t; want %d, true", tc.left, tc.right, got, ok, tc.want)
+			}
+		})
+	}
+}
+
+// TestClassifyHarnessDriftKeepsUnparseableApartFromCurrent pins the same
+// distinction at the classifier that consumes it: doctor's unknown-state report
+// and SessionStart's silence both depend on an unreadable marker landing on
+// harnessDriftUnknown, not on harnessDriftCurrent.
+func TestClassifyHarnessDriftKeepsUnparseableApartFromCurrent(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		marker string
+		want   harnessDriftState
+	}{
+		{name: "equal", marker: harnessDriftBinaryFixtureVersion, want: harnessDriftCurrent},
+		{name: "older", marker: harnessDriftStaleFixtureVersion, want: harnessDriftContentStale},
+		{name: "newer", marker: harnessDriftNewerFixtureVersion, want: harnessDriftBinaryStale},
+		{name: "unparseable", marker: "not-a-version", want: harnessDriftUnknown},
+		{name: "missing", marker: "", want: harnessDriftUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := classifyHarnessDrift(tc.marker, harnessDriftBinaryFixtureVersion); got != tc.want {
+				t.Fatalf("classifyHarnessDrift(%q, %q) = %q, want %q", tc.marker, harnessDriftBinaryFixtureVersion, got, tc.want)
 			}
 		})
 	}

@@ -54,13 +54,21 @@ func cliReferenceCommands() []cliReferenceCommand {
 		},
 		{
 			Name:        "install",
-			Description: "Install Loaf to detected AI tool configurations",
+			Description: "Onboard Loaf into a folder or a not-yet-installed AI tool configuration",
 			Options: []cliReferenceOption{
 				{Flags: "--to <target>", Description: `Target to install to (or "all")`},
-				{Flags: "--upgrade", Description: "Update installed targets and apply deprecation-manifest cleanup"},
-				{Flags: "--dry-run", Description: "With --upgrade, report the deterministic non-mutating upgrade plan: per-artifact actions, preserved conflicts, deprecations, project-file effects, and consent requirements"},
-				{Flags: "--json", Description: "With --dry-run, emit the plan as one JSON document with exact follow-up commands and consent_required"},
 				{Flags: "--codex-basic-commands", Description: "Explicitly install the least-privilege Codex basic command policy (requires --to codex or --to all)"},
+				{Flags: "-y, --yes", Description: "Assume 'yes' to safe migrations and destructive deprecation cleanup"},
+				{Flags: "--no-yes", Description: "Force interactive prompts even when stdin is not a TTY (testing)"},
+			},
+		},
+		{
+			Name:        "upgrade",
+			Description: "Refresh Loaf in place: harness content sync plus deprecation cleanup anywhere, and project-surface refresh only inside a detected Loaf repo",
+			Options: []cliReferenceOption{
+				{Flags: "--to <target>", Description: `Filter the harness sync to one already-installed target (or "all"); an uninstalled target is an error pointing at loaf install --to`},
+				{Flags: "--dry-run", Description: "Report the deterministic non-mutating plan: per-artifact actions, preserved conflicts, deprecations, project-file effects, whether the project part is in scope, and consent requirements"},
+				{Flags: "--json", Description: "With --dry-run, emit the plan as one JSON document with exact follow-up commands, project_part, and consent_required"},
 				{Flags: "-y, --yes", Description: "Assume 'yes' to safe migrations and destructive deprecation cleanup"},
 				{Flags: "--no-yes", Description: "Force interactive prompts even when stdin is not a TTY (testing)"},
 			},

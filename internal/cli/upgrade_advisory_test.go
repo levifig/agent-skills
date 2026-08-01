@@ -189,6 +189,8 @@ func TestCompareUpgradeSemverFollowsPrereleasePrecedence(t *testing.T) {
 		{"2.0.0-alpha", "2.0.0-1", 1},
 		{"2.0.0+build.5", "2.0.0", 0},
 		{"v2.0.0", "2.0.0", 0},
+		{"2.0.0-alpha.17", "2.0.0-alpha.16", 1},
+		{"v2.0.0", "2.0.0+build.5", 0},
 	} {
 		left, leftOK := parseUpgradeSemver(testCase.left)
 		right, rightOK := parseUpgradeSemver(testCase.right)
@@ -202,8 +204,10 @@ func TestCompareUpgradeSemverFollowsPrereleasePrecedence(t *testing.T) {
 			t.Fatalf("compare(%q, %q) = %d, want %d", testCase.right, testCase.left, got, -testCase.want)
 		}
 	}
-	if _, ok := parseUpgradeSemver("2.0"); ok {
-		t.Fatal("parseUpgradeSemver(2.0) parsed, want a version short of three fields rejected")
+	for _, unparseable := range []string{"2.0", "not-a-version", "", "2.0.0-", "2.0.0.1"} {
+		if _, ok := parseUpgradeSemver(unparseable); ok {
+			t.Fatalf("parseUpgradeSemver(%q) parsed, want rejected", unparseable)
+		}
 	}
 }
 

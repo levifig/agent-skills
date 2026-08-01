@@ -168,109 +168,17 @@ func harnessDriftBinaryVersion(r Runner) string {
 	return packageVersion(root)
 }
 
-// compareHarnessDriftVersions orders two semver strings including prerelease
-// precedence (1.0.0-alpha sorts before 1.0.0). ok is false when either side
-// does not parse, which the callers treat as an unknown state rather than a
-// comparison result.
+// compareHarnessDriftVersions adapts the shared semver comparison — the one the
+// currency advisory reads GitHub release tags with — to the shape drift
+// classification needs. The (int, bool) pair exists so a version that does not
+// parse stays distinguishable from one that compares equal: the first is an
+// unknown harness state, the second is a current harness, and collapsing them
+// would report every unreadable marker as up to date.
 func compareHarnessDriftVersions(left string, right string) (int, bool) {
-	leftVersion, leftOK := parseHarnessDriftVersion(left)
-	rightVersion, rightOK := parseHarnessDriftVersion(right)
+	leftVersion, leftOK := parseUpgradeSemver(left)
+	rightVersion, rightOK := parseUpgradeSemver(right)
 	if !leftOK || !rightOK {
 		return 0, false
 	}
-	if leftVersion.major != rightVersion.major {
-		return compareHarnessDriftInts(leftVersion.major, rightVersion.major), true
-	}
-	if leftVersion.minor != rightVersion.minor {
-		return compareHarnessDriftInts(leftVersion.minor, rightVersion.minor), true
-	}
-	if leftVersion.patch != rightVersion.patch {
-		return compareHarnessDriftInts(leftVersion.patch, rightVersion.patch), true
-	}
-	return compareHarnessDriftPrerelease(leftVersion.prerelease, rightVersion.prerelease), true
-}
-
-func parseHarnessDriftVersion(value string) (releaseSemver, bool) {
-	trimmed := strings.TrimPrefix(strings.TrimSpace(value), "v")
-	if core, _, found := strings.Cut(trimmed, "+"); found {
-		trimmed = core
-	}
-	if trimmed == "" {
-		return releaseSemver{}, false
-	}
-	return parseReleaseSemver(trimmed)
-}
-
-// compareHarnessDriftPrerelease applies semver §11.4: a version without a
-// prerelease outranks one with it, identifiers compare field by field with
-// numeric fields ordered numerically and below alphanumeric ones, and a longer
-// identifier list wins when every shared field is equal.
-func compareHarnessDriftPrerelease(left string, right string) int {
-	if left == right {
-		return 0
-	}
-	if left == "" {
-		return 1
-	}
-	if right == "" {
-		return -1
-	}
-	leftFields := strings.Split(left, ".")
-	rightFields := strings.Split(right, ".")
-	for index := 0; index < len(leftFields) && index < len(rightFields); index++ {
-		leftField, rightField := leftFields[index], rightFields[index]
-		leftNumber, leftNumeric := harnessDriftNumericIdentifier(leftField)
-		rightNumber, rightNumeric := harnessDriftNumericIdentifier(rightField)
-		switch {
-		case leftNumeric && rightNumeric:
-			if leftNumber != rightNumber {
-				return compareHarnessDriftInts(leftNumber, rightNumber)
-			}
-		case leftNumeric:
-			return -1
-		case rightNumeric:
-			return 1
-		default:
-			if leftField != rightField {
-				return compareHarnessDriftStrings(leftField, rightField)
-			}
-		}
-	}
-	return compareHarnessDriftInts(len(leftFields), len(rightFields))
-}
-
-func harnessDriftNumericIdentifier(field string) (int, bool) {
-	if field == "" {
-		return 0, false
-	}
-	value := 0
-	for _, char := range field {
-		if char < '0' || char > '9' {
-			return 0, false
-		}
-		value = value*10 + int(char-'0')
-	}
-	return value, true
-}
-
-func compareHarnessDriftInts(left int, right int) int {
-	switch {
-	case left < right:
-		return -1
-	case left > right:
-		return 1
-	default:
-		return 0
-	}
-}
-
-func compareHarnessDriftStrings(left string, right string) int {
-	switch {
-	case left < right:
-		return -1
-	case left > right:
-		return 1
-	default:
-		return 0
-	}
+	return compareUpgradeSemver(leftVersion, rightVersion), true
 }

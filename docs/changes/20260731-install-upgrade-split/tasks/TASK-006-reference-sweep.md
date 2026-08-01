@@ -34,13 +34,13 @@ grep -rn -- "install --upgrade" content/ internal/cli/ README.md docs/ | grep -v
 
 ## Steps
 
-- [ ] Sweep every live reference to `install --upgrade` onto the new command split; re-run V5's grep until it exits 1 with only test files excluded.
-- [ ] Update doctor remediation strings to name `loaf upgrade`.
-- [ ] Changelog entry for the breaking removal; README/CLI-reference regeneration; refresh this repo's `AGENTS.md` managed section from the rebuilt content.
-- [ ] `loaf build`; commit rebuilt `dist/` and `plugins/` with the content changes.
-- [ ] Close the loop on provenance: `loaf intent resolve INTENT-20260725-split-install-and-upgrade-by-scope-and-detect-a-newer-binary` with this Change as the resolving disposition (and, if TASK-005 was cut, confirm its follow-up capture exists before resolving).
+- [x] Sweep every live reference to `install --upgrade` onto the new command split; re-run V5's grep until it exits 1 with only test files excluded.
+- [x] Update doctor remediation strings to name `loaf upgrade`.
+- [x] Changelog entry for the breaking removal; README/CLI-reference regeneration; refresh this repo's `AGENTS.md` managed section from the rebuilt content.
+- [x] `loaf build`; commit rebuilt `dist/` and `plugins/` with the content changes.
+- [x] Close the loop on provenance: `loaf intent resolve INTENT-20260725-split-install-and-upgrade-by-scope-and-detect-a-newer-binary` with this Change as the resolving disposition (and, if TASK-005 was cut, confirm its follow-up capture exists before resolving).
 
 ## Verification
 
-- `bash -c 'grep -rq -- "install --upgrade" --exclude="*_test.go" internal/cli/ content/ dist/ plugins/ README.md AGENTS.md'` exits 1 (V5).
+- `bash -c 'grep -rqI --exclude="*_test.go" -- "install --upgrade" internal/cli/ content/ dist/ plugins/ README.md AGENTS.md'` exits 1 (V5).
 - `loaf build` succeeds; `npm run typecheck` and `go test ./...` green.

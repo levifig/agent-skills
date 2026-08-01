@@ -58,12 +58,9 @@ func agentHelpCommands() []agentHelpCommand {
 		},
 		{
 			Name:        "install",
-			Description: "Install Loaf into detected or selected agent tools",
+			Description: "Onboard Loaf into a folder or a not-yet-installed agent tool; refreshing an existing install is loaf upgrade",
 			Options: []agentHelpOption{
 				{Flags: "--to <target>", Description: "Target to install to, or all"},
-				{Flags: "--upgrade", Description: "Upgrade already-installed targets"},
-				{Flags: "--dry-run", Description: "With --upgrade, report the deterministic non-mutating upgrade plan without writing files, manifests, config, or state"},
-				{Flags: "--json", Description: "With --dry-run, emit the plan as one JSON document with exact follow-up commands and consent_required"},
 				{Flags: "-y, --yes", Description: "Assume yes to safe project-file symlink migrations and destructive deprecation cleanup"},
 				{Flags: "--no-yes", Description: "Force prompt-style declines in non-interactive mode"},
 			},

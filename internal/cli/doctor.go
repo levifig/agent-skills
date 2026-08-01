@@ -582,7 +582,7 @@ func checkFencedContent() doctorCheck {
 				return doctorResult{
 					Status:  doctorWarn,
 					Message: "Fenced section was modified (stored fingerprint does not match body)",
-					Detail:  "Reconcile hand edits with the managed section before upgrading; `loaf install --upgrade` will refuse to overwrite this state.",
+					Detail:  "Reconcile hand edits with the managed section before upgrading; `loaf upgrade` will refuse to overwrite this state.",
 				}
 			}
 			// Drift second: intact or sha-less section whose body differs from generated.
@@ -590,7 +590,7 @@ func checkFencedContent() doctorCheck {
 				return doctorResult{
 					Status:  doctorWarn,
 					Message: "Fenced section content differs from installed loaf",
-					Detail:  "Run `loaf install --upgrade` to refresh the fenced section.",
+					Detail:  "Run `loaf upgrade` to refresh the fenced section.",
 				}
 			}
 			return doctorResult{Status: doctorPass, Message: "Fenced section content matches installed loaf"}
