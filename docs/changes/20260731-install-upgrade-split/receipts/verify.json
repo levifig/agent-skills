@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
   "change": "install-upgrade-split",
-  "verified_commit": "bde9217ad97528e14b7ff4c0c1579330c1e50ea0",
-  "verified_root_tree": "58fb0295d069b4446d41ebce858b28bfae0247b3",
-  "verified_at": "2026-08-01T04:54:44Z",
+  "verified_commit": "b58b935baedaef128efd07bac7a920a1decf8ea4",
+  "verified_root_tree": "fbb39abf87a740d04841b9a30ee4f5d92f10c8f4",
+  "verified_at": "2026-08-01T05:36:11Z",
   "criteria_digest": "35d47f93fd0ca2cdb36deb72230dcd057387523b76aa27d46daa1926fca1321c",
-  "scope_digest": "6b624a26542c9396724373913c2d9d2cfbe23b6b1925d586592338e7988ee8af",
+  "scope_digest": "041bedfd4ca20fb44d5cb9fb389ba412c5e3a85b1b985542f05bb61e40ca4ae8",
   "scope_sections": {
     ".agents": "0cdcb499203f22e1faebbef89e211e4b6d4b253bc5486866ed28a50e15c2dd9e",
     ".claude": "8dc123c00b953695edd9ccc4bb966e986bcea05607d9a125e71038a4c2ebb6be",
@@ -16,12 +16,12 @@
     "README.md": "32cecbbf375e1b689ac4702acc72a81f5ad89be495f87680524b1fcd76f5089b",
     "cli": "4f77105d500684e00f8948bd7dc9326398c4ad9cd57dab4f3ed94dd0d1f61572",
     "cmd": "40aabf3662a461cb93247f3c4eeacdadfdf1d1fef7ddc2cd79f10ace2827ad69",
-    "config": "c438af3bcd76afdf5bd561aa26535cf05b6b9b3e3664488aa85bb9f1c65791aa",
+    "config": "63979d2d624025fd0e7c659144744f4c3c92fe0cbccc95364172cf0d13c27967",
     "content": "24e73ee3606dc315b1aae0106535b903f14d27cc7fd113a0f25864d55a47e391",
-    "docs": "5cfeedbcbddd9013acc3f5fa2551d842e2df8073c5564215376a134eed78b7d6",
+    "docs": "68f643b3712aed3ed6758a4d130dd16bf01f561d4feeab95c782e6ab54a90119",
     "go.mod": "5f494108c9f9ba4911bbcb82ece8168d5af253742eb632ccac5519348e34ef1c",
     "go.sum": "44a5d68a99a05f3d9aff3321f4b5645d0870cc1afd36e183fbc08c07d8550d6b",
-    "internal": "aba67538406828a5a37770858ee66378dbd3e45b44609cf2e039c65e0ede52e2",
+    "internal": "cc8eb8190c7e0b3da34ae3944be7b8ec80124c269e9fcca3bb61edf627088e81",
     "package-lock.json": "b35b76623b23c34994a941b2e70c9f395b6e29d36af7bca90dfbfa29f9bc0943"
   },
   "exclusions": [
@@ -47,7 +47,7 @@
       "id": "V1",
       "command": "go test ./...",
       "exit_code": 0,
-      "output_digest": "bb0da0607a95570024189ba96395ce7e7f361a975566bfe9b3352fabe7e0f8d9",
+      "output_digest": "61d53f23c958af06cae9e32c05983b38b0a104934f2e26d70c3a642fb7b37039",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
@@ -147,7 +147,7 @@
       "id": "V9",
       "command": "bash -c 'LOAF_DB=\"$(mktemp -d)/v9.sqlite\" ./bin/loaf upgrade --dry-run --json'",
       "exit_code": 0,
-      "output_digest": "157af4c75555730599dbed74e76efc036de7607e5624834ada1d1e2068e5e835",
+      "output_digest": "fe246fe44599f9514d5cf422f28bdd3397f90d6a7b1342c0c4aa5fa76febb6cf",
       "ok": true,
       "expect": "contains `\"command\": \"upgrade\"`.",
       "expect_checks": [
@@ -167,7 +167,7 @@
       "id": "V7",
       "command": "npm run build",
       "exit_code": 0,
-      "output_digest": "5520ff487cba407fbf490ffeab0f3ae7ae7935389d5e7a299f3cbe8be55aaa5b",
+      "output_digest": "6c25e63ce96e23aef7198210ffdbe1e1d546dc71e40b1438e1822c41c0bac8f4",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [

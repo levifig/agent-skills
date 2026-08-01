@@ -280,6 +280,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--cursor-hook", Description: "Read Cursor sessionStart JSON and emit its additional_context envelope"},
 					{Flags: "--claude-code", Description: "Read Claude Code SessionStart JSON and emit its native hook envelope"},
 					{Flags: "--codex-hook", Description: "Read Codex SessionStart JSON and emit its native hook envelope"},
+					{Flags: "--opencode-hook", Description: "Read the OpenCode session lifecycle payload and emit the digest as plain-text system context"},
 					{Flags: "--json", Description: "Output contract-v2 project metadata, named layers with availability/counts/truncation/expansion, and diagnostics as JSON"},
 					{Flags: "for-prompt|for-compact|for-resumption", Description: "Hook subcommands: inject implementation principles, journal-flush guidance, or the resumption digest"},
 				}},

@@ -130,6 +130,27 @@ func TestRunnerInstallWithoutATerminalReportsRequiredDeployConsent(t *testing.T)
 	assertInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "9.8.7-test.1\n")
 }
 
+// TestRunnerInstallWithNothingToDeployNeitherAsksNorWrites covers the machine
+// with no harness and no Claude Code: every project surface install manages
+// belongs to some harness, so with none selected there is nothing to deploy —
+// and consent must not be requested for it, let alone spent.
+func TestRunnerInstallWithNothingToDeployNeitherAsksNorWrites(t *testing.T) {
+	root, _ := setupInstallCommandFixture(t)
+
+	// Decline every harness the host happens to expose, then leave a yes on
+	// stdin: if a deploy prompt is asked anyway, it is answered in the affirmative
+	// and the project assertions below catch whatever it writes.
+	output := runInstallWithStdin(t, root, strings.Repeat("n\n", len(detectInstallTools()))+"y\n", "install")
+
+	if strings.Contains(output, "Deploy Loaf to this folder?") {
+		t.Fatalf("install output = %q, want no consent prompt when there is nothing to deploy", output)
+	}
+	if !strings.Contains(output, "No targets selected") {
+		t.Fatalf("install output = %q, want the no-targets note", output)
+	}
+	assertNoInstallProjectFiles(t, root)
+}
+
 // TestRunnerConfigCheckFixStillRefreshesTargetsThroughTheSharedInstaller is the
 // regression the retargeting risked: `config check --fix` drives
 // installTargetDistribution directly, and none of install's new gating may

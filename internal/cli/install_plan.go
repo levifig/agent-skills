@@ -204,8 +204,13 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	// Project files mirror enforceInstallProjectFiles: symlinks first, then the
 	// managed fenced section for every target that carries a project file, then
 	// upgrade's own MCP-recommendation record. A closed detector gate skips all
-	// of it, exactly as the apply path does.
+	// of it, exactly as the apply path does. Upgrade (the caller that supplies a
+	// project part) refreshes the surfaces of every installed target regardless
+	// of --to, so the plan reports that same unfiltered set.
 	targetsInScope := append([]string{}, selectedTargets...)
+	if projectPart != nil {
+		targetsInScope = installedUpgradeTargets(tools)
+	}
 	if projectPart == nil || projectPart.InScope {
 		plan.ProjectFiles = planInstallProjectFiles(projectRoot, targetsInScope, hasClaudeCode, assumeYes, version)
 		if projectPart != nil {

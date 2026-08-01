@@ -77,7 +77,10 @@ func (r Runner) runUpgrade(args []string, out io.Writer, runtimeRoot string) err
 	if err := r.upgradeInstalledTargets(out, options, targets, tools, loafRoot, distRoot, version, projectRoot.Path()); err != nil {
 		return err
 	}
-	if err := r.refreshUpgradeProjectSurfaces(out, projectRoot.Path(), detection, targets, hasClaudeCode, assumeYes, version); err != nil {
+	// `--to` filters the global sync only. The project surfaces describe every
+	// harness this repo is set up for, so narrowing them to the synced target
+	// would silently retire the others' fenced sections and symlinks.
+	if err := r.refreshUpgradeProjectSurfaces(out, projectRoot.Path(), detection, installedUpgradeTargets(tools), hasClaudeCode, assumeYes, version); err != nil {
 		return err
 	}
 	// The epilogue: content is now current, but the binary that synced it may
@@ -141,12 +144,7 @@ func (o upgradeOptions) installPlanOptions() installOptions {
 // filters; it never onboards. Naming a target that is not installed is an
 // error that points at install, which owns onboarding.
 func selectUpgradeTargets(options upgradeOptions, tools []detectedInstallTool) ([]string, error) {
-	var installed []string
-	for _, tool := range tools {
-		if tool.installed {
-			installed = append(installed, tool.key)
-		}
-	}
+	installed := installedUpgradeTargets(tools)
 	if options.target == "" || options.target == upgradeAllTargets {
 		return installed, nil
 	}
@@ -157,6 +155,18 @@ func selectUpgradeTargets(options upgradeOptions, tools []detectedInstallTool) (
 		return nil, fmt.Errorf("%s is not installed here, so there is nothing to upgrade; run `loaf install --to %s` to add it", installDisplayName(options.target), options.target)
 	}
 	return []string{options.target}, nil
+}
+
+// installedUpgradeTargets is the unfiltered set the project part always works
+// from: every harness that actually carries Loaf content here.
+func installedUpgradeTargets(tools []detectedInstallTool) []string {
+	var installed []string
+	for _, tool := range tools {
+		if tool.installed {
+			installed = append(installed, tool.key)
+		}
+	}
+	return installed
 }
 
 // upgradeInstalledTargets is the global part: deprecation cleanup followed by a

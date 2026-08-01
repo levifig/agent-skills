@@ -1,7 +1,7 @@
 # Native Go Cutover Test Map
 
 Date: 2026-06-10
-Last updated: 2026-06-11 13:03
+Last updated: 2026-08-01 06:12
 Branch: `feat/native-go-cutover-xdg-data`
 Scope: TypeScript-to-Go migration for Loaf's stateful runtime, with `loaf session` as the first command family to cut over.
 

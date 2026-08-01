@@ -154,6 +154,39 @@ func TestRunnerUpgradeToFiltersInstalledTargetsOnly(t *testing.T) {
 	assertInstallFile(t, filepath.Join(home, ".config", "opencode", loafInstallMarkerFile), "old\n")
 }
 
+// TestRunnerUpgradeToNarrowsTheGlobalSyncOnly pins Decision 8's scope: `--to`
+// filters the harness content sync, and the project surfaces — which describe
+// every harness this repo is set up for — are refreshed whole. Narrowing them
+// with the sync would silently retire the unnamed harnesses' fenced sections.
+func TestRunnerUpgradeToNarrowsTheGlobalSyncOnly(t *testing.T) {
+	root, home := setupUpgradeFixture(t)
+	installUpgradeFixtureTarget(t, root, home, "cursor")
+	installUpgradeFixtureTarget(t, root, home, "opencode")
+	writeInstallFile(t, filepath.Join(home, ".config", "opencode", loafInstallMarkerFile), "old\n")
+	writeInstallFile(t, filepath.Join(root, ".agents", "loaf.json"), "{\"integrations\":{}}\n")
+
+	output := runInstallCapture(t, root, "upgrade", "--to", "cursor", "--yes")
+
+	if !strings.Contains(output, "Cursor refreshed") || strings.Contains(output, "OpenCode refreshed") {
+		t.Fatalf("upgrade output = %q, want only cursor's content synced", output)
+	}
+	assertInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "9.8.7-test.1\n")
+	assertInstallFile(t, filepath.Join(home, ".config", "opencode", loafInstallMarkerFile), "old\n")
+
+	if !strings.Contains(output, "Loaf project detected") {
+		t.Fatalf("upgrade output = %q, want the project part to run", output)
+	}
+	for _, name := range []string{"Cursor", "OpenCode"} {
+		if !hasUpgradeProjectFileLine(output, name) {
+			t.Fatalf("upgrade output = %q, want a project-file line for %s", output, name)
+		}
+	}
+	body := string(readFileBytes(t, filepath.Join(root, "AGENTS.md")))
+	if !strings.Contains(body, "<!-- loaf:managed:start sha256=") {
+		t.Fatalf("AGENTS.md = %q, want the managed fenced section refreshed", body)
+	}
+}
+
 func TestRunnerUpgradeToUninstalledTargetPointsAtInstall(t *testing.T) {
 	root, _ := setupUpgradeFixture(t)
 
@@ -349,6 +382,17 @@ func assertNoUpgradeProjectFiles(t *testing.T, root string) {
 	for _, path := range []string{"AGENTS.md", ".agents", ".claude"} {
 		assertInstallPathMissing(t, filepath.Join(root, path))
 	}
+}
+
+// hasUpgradeProjectFileLine finds one harness's managed-project-file line in
+// upgrade output, whichever of the create/append/update/skip verbs it took.
+func hasUpgradeProjectFileLine(output string, name string) bool {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, name) && strings.Contains(line, "Loaf framework section") {
+			return true
+		}
+	}
+	return false
 }
 
 func hasUpgradePlanPath(plan installDryRunPlan, path string) bool {

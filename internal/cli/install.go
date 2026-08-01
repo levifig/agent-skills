@@ -111,8 +111,14 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 	}
 
 	if len(selectedTargets) == 0 {
-		if err := r.deployInstallProjectSurfaces(out, options, projectRoot.Path(), detection, nil, hasClaudeCode, assumeYes, version); err != nil {
-			return err
+		// Consent is only worth asking for when there is something to deploy.
+		// With no target and no Claude Code the project half has no surface to
+		// write — every fenced section and symlink it manages belongs to a
+		// harness — so onboarding asks nothing and writes nothing.
+		if hasClaudeCode {
+			if err := r.deployInstallProjectSurfaces(out, options, projectRoot.Path(), detection, nil, hasClaudeCode, assumeYes, version); err != nil {
+				return err
+			}
 		}
 		fmt.Fprintf(out, "  %s\n\n", ansiGray("No targets selected"))
 		return nil

@@ -156,10 +156,25 @@ func generateNativeOpenCodePlugin(hooksPath string, dist string, version string)
 func renderNativeOpenCodePlugin(hooks []nativeBuildHook, version string) string {
 	return nativeOpenCodeHeader(version) + "\n\n" +
 		nativeAmpCoreFunctions() + "\n\n" +
-		nativeAmpHookData(hooks) + "\n\n" +
+		nativeAmpHookData(retargetNativeOpenCodeSessionStart(hooks)) + "\n\n" +
 		nativeOpenCodeSessionHelpers() + "\n\n" +
 		"export default async function AgentSkillsPlugin({ client, $ }: { client: OpenCodeClient; $?: unknown }) {\n  void $;\n  return {\n" +
 		nativeOpenCodePluginBody() + "\n  };\n}"
+}
+
+// retargetNativeOpenCodeSessionStart points the shared SessionStart hook at
+// OpenCode's own dispatch variant, the way the Claude Code, Cursor, and Codex
+// builders point it at theirs. config/hooks.yaml keeps the neutral command as
+// the declaration; only the harness that has an adapter renders the adapter.
+func retargetNativeOpenCodeSessionStart(hooks []nativeBuildHook) []nativeBuildHook {
+	retargeted := make([]nativeBuildHook, 0, len(hooks))
+	for _, hook := range hooks {
+		if hook.section == "session" && hook.id == "session-start-loaf" && hook.event == "SessionStart" {
+			hook.command = "loaf journal context --from-hook --opencode-hook"
+		}
+		retargeted = append(retargeted, hook)
+	}
+	return retargeted
 }
 
 func nativeOpenCodeHeader(version string) string {

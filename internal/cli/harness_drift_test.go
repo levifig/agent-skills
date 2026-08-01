@@ -207,27 +207,12 @@ type harnessDriftSessionStartVariant struct {
 	extract   func(t *testing.T, output string) string
 }
 
+// harnessDriftSessionStartVariants lists the variants whose harness Loaf
+// delivers content to, and which therefore have a marker to compare. Claude
+// Code is not among them by design — see
+// TestClaudeCodeSessionStartIsSilentOnDriftByDesign.
 func harnessDriftSessionStartVariants() []harnessDriftSessionStartVariant {
 	return []harnessDriftSessionStartVariant{
-		{
-			name:      "claude",
-			args:      []string{"journal", "context", "--from-hook", "--claude-code"},
-			configDir: func(home string) string { return filepath.Join(home, ".claude") },
-			input: func(string) string {
-				return `{"hook_event_name":"SessionStart","source":"startup","session_id":"s1"}`
-			},
-			extract: func(t *testing.T, output string) string {
-				t.Helper()
-				var payload claudeSessionStartOutput
-				if err := json.Unmarshal([]byte(output), &payload); err != nil {
-					t.Fatalf("claude output = %q: %v", output, err)
-				}
-				if payload.HookSpecificOutput == nil {
-					t.Fatalf("claude output = %q, want hookSpecificOutput", output)
-				}
-				return payload.HookSpecificOutput.AdditionalContext
-			},
-		},
 		{
 			name:      "cursor",
 			args:      []string{"journal", "context", "--from-hook", "--cursor-hook"},
@@ -263,7 +248,28 @@ func harnessDriftSessionStartVariants() []harnessDriftSessionStartVariant {
 				return payload.HookSpecificOutput.AdditionalContext
 			},
 		},
+		{
+			name:      "opencode",
+			args:      []string{"journal", "context", "--from-hook", "--opencode-hook"},
+			configDir: func(home string) string { return filepath.Join(home, ".config", "opencode") },
+			input: func(string) string {
+				return openCodeSessionStartPayload
+			},
+			// OpenCode consumes plain text, so the digest is the output itself.
+			extract: func(t *testing.T, output string) string {
+				t.Helper()
+				return output
+			},
+		},
 	}
+}
+
+func harnessDriftSessionStartVariantsByName() map[string]harnessDriftSessionStartVariant {
+	variants := map[string]harnessDriftSessionStartVariant{}
+	for _, variant := range harnessDriftSessionStartVariants() {
+		variants[variant.name] = variant
+	}
+	return variants
 }
 
 func runHarnessDriftSessionStart(t *testing.T, variant harnessDriftSessionStartVariant, workingDir string, stateHome string, distRoot string, input string) string {
@@ -333,10 +339,7 @@ func TestSessionStartNudgeReadsOnlyTheInvokingHarnessMarker(t *testing.T) {
 	distRoot := harnessDriftDistribution(t, harnessDriftBinaryFixtureVersion)
 	workingDir, stateHome := setupJournalHookRunner(t)
 
-	variants := map[string]harnessDriftSessionStartVariant{}
-	for _, variant := range harnessDriftSessionStartVariants() {
-		variants[variant.name] = variant
-	}
+	variants := harnessDriftSessionStartVariantsByName()
 
 	codex := variants["codex"]
 	codexDigest := codex.extract(t, runHarnessDriftSessionStart(t, codex, workingDir, stateHome, distRoot, codex.input(workingDir)))
@@ -351,17 +354,83 @@ func TestSessionStartNudgeReadsOnlyTheInvokingHarnessMarker(t *testing.T) {
 	}
 }
 
+// TestSessionStartDriftNudgeStaysSilentForSubagents pins the ordering every
+// variant depends on: suppression short-circuits before the nudge, so a
+// subagent inherits silence even when its harness content is stale.
 func TestSessionStartDriftNudgeStaysSilentForSubagents(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		subdirs []string
+		input   string
+	}{
+		{
+			name:    "cursor",
+			subdirs: []string{".cursor"},
+			input:   `{"hook_event_name":"sessionStart","is_background_agent":true,"cursor_version":"3.11.19"}`,
+		},
+		{
+			name:    "opencode",
+			subdirs: []string{".config", "opencode"},
+			input:   `{"target":"opencode","session_id":"ses_1","lifecycle_event":"system.transform","agent_id":"child-1"}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := harnessDriftHome(t)
+			harnessDriftInstalledHarness(t, filepath.Join(append([]string{home}, tc.subdirs...)...), harnessDriftStaleFixtureVersion)
+			distRoot := harnessDriftDistribution(t, harnessDriftBinaryFixtureVersion)
+			workingDir, stateHome := setupJournalHookRunner(t)
+
+			variants := harnessDriftSessionStartVariantsByName()
+			output := runHarnessDriftSessionStart(t, variants[tc.name], workingDir, stateHome, distRoot, tc.input)
+
+			if output != "" {
+				t.Fatalf("subagent output = %q, want silent exit even with a stale marker", output)
+			}
+		})
+	}
+}
+
+// TestClaudeCodeSessionStartIsSilentOnDriftByDesign pins the deliberate hole in
+// the drift surface. Claude Code content ships on the plugin-marketplace
+// channel: nothing Loaf runs stamps a marker into its config home, and
+// `loaf upgrade` could not refresh that content if it did — so a fabricated
+// marker must produce neither a session-start nudge nor a doctor finding,
+// rather than advice that cannot work.
+func TestClaudeCodeSessionStartIsSilentOnDriftByDesign(t *testing.T) {
 	home := harnessDriftHome(t)
 	harnessDriftInstalledHarness(t, filepath.Join(home, ".claude"), harnessDriftStaleFixtureVersion)
 	distRoot := harnessDriftDistribution(t, harnessDriftBinaryFixtureVersion)
 	workingDir, stateHome := setupJournalHookRunner(t)
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"journal", "log", "wrap(drift): continuity marker"}); err != nil {
+		t.Fatal(err)
+	}
 
-	claude := harnessDriftSessionStartVariants()[0]
-	output := runHarnessDriftSessionStart(t, claude, workingDir, stateHome, distRoot,
-		`{"hook_event_name":"SessionStart","source":"startup","session_id":"s1","agent_id":"child-1"}`)
+	var stdout bytes.Buffer
+	if err := (Runner{
+		Stdout:     &stdout,
+		WorkingDir: workingDir,
+		StateHome:  stateHome,
+		Stdin:      strings.NewReader(`{"hook_event_name":"SessionStart","source":"startup","session_id":"s1"}`),
+		Executable: distributionFixtureExecutable(distRoot),
+	}).Run([]string{"journal", "context", "--from-hook", "--claude-code"}); err != nil {
+		t.Fatalf("claude session start error = %v\n%s", err, stdout.String())
+	}
+	var payload claudeSessionStartOutput
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("claude output = %q: %v", stdout.String(), err)
+	}
+	if payload.HookSpecificOutput == nil {
+		t.Fatalf("claude output = %q, want hookSpecificOutput", stdout.String())
+	}
+	digest := payload.HookSpecificOutput.AdditionalContext
+	if !strings.Contains(digest, "wrap(drift): continuity marker") {
+		t.Fatalf("digest = %q, want the continuity digest itself", digest)
+	}
+	if strings.Contains(digest, "run loaf upgrade") || strings.Contains(digest, "Loaf content in this harness") {
+		t.Fatalf("digest = %q, want no drift advice for the marketplace channel", digest)
+	}
 
-	if output != "" {
-		t.Fatalf("subagent output = %q, want silent exit even with a stale marker", output)
+	if result := checkHarnessContentDrift().Run(doctorContext{projectRoot: home, cliVersion: harnessDriftBinaryFixtureVersion}); result.Status != doctorSkip {
+		t.Fatalf("harness-content-drift result = %#v, want doctor to skip a home with only Claude Code content", result)
 	}
 }

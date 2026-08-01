@@ -7,15 +7,16 @@ import (
 	"strings"
 )
 
-// Harness identities used by drift surfacing. The install targets reuse their
-// install keys so the marker lookup stays on the same table install stamps
-// with; Claude Code has no install key because its content ships through the
-// plugin marketplace, so it only ever appears as a SessionStart dispatch
-// variant and resolves to its own config home.
+// Harness identities used by drift surfacing. Each one is an install key, so
+// the marker lookup stays on the same table install stamps markers with.
+// Claude Code is deliberately absent: its content ships through the plugin
+// marketplace, nothing here ever writes a marker into its config home, and
+// `loaf upgrade` cannot refresh it — so it has no drift to report and its
+// SessionStart variant stays silent (see journal_hook_claude.go).
 const (
-	harnessDriftClaudeCode = "claude-code"
-	harnessDriftCursor     = "cursor"
-	harnessDriftCodex      = "codex"
+	harnessDriftCursor   = "cursor"
+	harnessDriftCodex    = "codex"
+	harnessDriftOpenCode = "opencode"
 )
 
 // harnessDriftState classifies one harness's stamped content against the
@@ -43,21 +44,7 @@ type harnessDriftReading struct {
 // `.loaf-version` marker lives in, through the same table install writes the
 // marker with.
 func harnessDriftConfigDir(harness string) string {
-	if harness == harnessDriftClaudeCode {
-		return claudeCodeConfigHome()
-	}
 	return defaultInstallConfigDirs()[harness]
-}
-
-func claudeCodeConfigHome() string {
-	if configured := strings.TrimRight(os.Getenv("CLAUDE_CONFIG_DIR"), string(filepath.Separator)); configured != "" {
-		return configured
-	}
-	home := installHome()
-	if home == "" {
-		return ""
-	}
-	return filepath.Join(home, ".claude")
 }
 
 func readHarnessVersionMarker(configDir string) string {
