@@ -215,15 +215,19 @@ func detectLegacyCodexJournalCapability(rulePath string, guidancePath string) (b
 	return false, nil
 }
 
+// readOptionalInstallFile reads a file under the harness's own config home —
+// the installed rule, and the AGENTS.md Loaf merges its guidance block into.
+// Absence is a fact the callers act on; anything else is a refusal, because
+// every one of them decides a rewrite of the same path from what comes back.
 func readOptionalInstallFile(path string, description string) ([]byte, bool, error) {
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err == nil {
 		return body, true, nil
 	}
 	if os.IsNotExist(err) {
 		return nil, false, nil
 	}
-	return nil, false, fmt.Errorf("read %s: %w", description, err)
+	return nil, false, fmt.Errorf("read %s: %w", description, refuseProjectFileRead(err))
 }
 
 func retireCodexJournalCapability(ruleDest string, guidanceDest string, manifestPath string, manifest codexManagedRuleManifest, ownedRule bool, ownedRuleSHA string, ownedGuidanceSHA string, ownedGuidance bool) error {
@@ -425,12 +429,12 @@ func (m *codexManagedRuleManifest) remove(path string) {
 }
 
 func readCodexManagedRuleManifest(path string) (codexManagedRuleManifest, error) {
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return codexManagedRuleManifest{Version: 1}, nil
 		}
-		return codexManagedRuleManifest{}, fmt.Errorf("read Codex rule ownership manifest: %w", err)
+		return codexManagedRuleManifest{}, fmt.Errorf("read Codex rule ownership manifest: %w", refuseProjectFileRead(err))
 	}
 	var manifest codexManagedRuleManifest
 	if err := json.Unmarshal(body, &manifest); err != nil {

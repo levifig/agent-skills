@@ -331,7 +331,7 @@ func readTargetAdapterManifest(path string) (targetAdapterManifest, error) {
 	if !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 {
 		return targetAdapterManifest{}, fmt.Errorf("target adapter manifest %s must be a regular file", path)
 	}
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		return targetAdapterManifest{}, err
 	}
@@ -791,7 +791,7 @@ func readTargetAdapterSnapshot(path string) (targetAdapterSnapshot, error) {
 	if !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 {
 		return targetAdapterSnapshot{}, fmt.Errorf("target adapter destination %s must be a regular file", path)
 	}
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		return targetAdapterSnapshot{}, err
 	}

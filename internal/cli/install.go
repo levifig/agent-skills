@@ -480,8 +480,13 @@ func installLoafBinary(out io.Writer, loafRoot string) bool {
 }
 
 // installProjectFileOutcome reports what the managed project-file pass did:
-// whether it printed anything, and whether a fenced-section write failed. The
+// whether it printed anything, and whether the pass refused to finish. The
 // second field is what stops the writes that come after it.
+//
+// Both halves of the pass can raise it. A fenced write fails on a section that
+// is not Loaf's to manage; the symlink pass fails on a path it was about to
+// read whole that is not a file it can read whole. They are the same statement
+// about the project, so they get the same answer.
 type installProjectFileOutcome struct {
 	wrote       bool
 	fenceFailed bool
@@ -498,6 +503,10 @@ func (r Runner) enforceInstallProjectFiles(out io.Writer, projectRoot string, se
 		NonInteractive: !assumeYes,
 	})
 	outcome := installProjectFileOutcome{wrote: writeInstallSymlinkResults(out, symlinkResults)}
+	if anyInstallSymlinkRefusal(symlinkResults) {
+		outcome.fenceFailed = true
+		return outcome
+	}
 	fencedTargets := append([]string{}, selectedTargets...)
 	if hasClaudeCode {
 		fencedTargets = append([]string{"claude-code"}, fencedTargets...)
@@ -508,6 +517,19 @@ func (r Runner) enforceInstallProjectFiles(out io.Writer, projectRoot string, se
 	}
 	outcome.fenceFailed = fencedErr != nil
 	return outcome
+}
+
+// anyInstallSymlinkRefusal reports whether the symlink pass refused a path it
+// could not read whole. The fenced pass runs after it and writes into the same
+// files, so a refusal stops the pass here rather than letting the next writer
+// meet the same path.
+func anyInstallSymlinkRefusal(results map[string]installSymlinkResult) bool {
+	for _, result := range results {
+		if result.Refused {
+			return true
+		}
+	}
+	return false
 }
 
 func writeInstallDetection(out io.Writer, tools []detectedInstallTool, hasClaudeCode bool, loafRoot string) {

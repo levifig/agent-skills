@@ -488,7 +488,7 @@ func realpathOrSelfNative(path string) string {
 }
 
 func readGitdirPointerMainRootNative(wtRoot string) string {
-	body, err := os.ReadFile(filepath.Join(wtRoot, ".git"))
+	body, err := readRegularFile(filepath.Join(wtRoot, ".git"), projectFileReadLimit)
 	if err != nil {
 		return ""
 	}

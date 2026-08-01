@@ -473,21 +473,21 @@ func checkCanonicalAgentsFile() doctorCheck {
 			legacyIsReal := doctorRegularFileExists(legacy) && !isSymlinkForDoctor(legacy)
 			if legacyIsReal {
 				var err error
-				body, err = os.ReadFile(legacy)
+				body, err = readRegularFile(legacy, projectFileReadLimit)
 				if err != nil {
-					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", err)}
+					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", refuseProjectFileRead(err))}
 				}
 			} else if pathExistsForDoctor(canonical) {
 				var err error
-				body, err = os.ReadFile(canonical)
+				body, err = readRegularFile(canonical, projectFileReadLimit)
 				if err != nil && !os.IsNotExist(err) {
-					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", err)}
+					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", refuseProjectFileRead(err))}
 				}
 			} else if pathExistsForDoctor(claudeLink) && !isSymlinkForDoctor(claudeLink) {
 				var err error
-				body, err = os.ReadFile(claudeLink)
+				body, err = readRegularFile(claudeLink, projectFileReadLimit)
 				if err != nil {
-					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", err)}
+					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", refuseProjectFileRead(err))}
 				}
 			}
 			canonicalWasSymlink := isSymlinkForDoctor(canonical)
@@ -556,8 +556,15 @@ func checkFencedContent() doctorCheck {
 			if !doctorRegularFileExists(canonical) {
 				return doctorResult{Status: doctorSkip, Message: "No root AGENTS.md to inspect"}
 			}
-			body, err := os.ReadFile(canonical)
+			body, err := readRegularFile(canonical, projectFileReadLimit)
 			if err != nil {
+				if isProjectFileRefusal(err) {
+					return doctorResult{
+						Status:  doctorWarn,
+						Message: "Root AGENTS.md could not be inspected",
+						Detail:  fmt.Sprintf("%v. Loaf reads the whole file to compare the managed section; replace the path with a regular file before installing or upgrading.", err),
+					}
+				}
 				return doctorResult{
 					Status:  doctorWarn,
 					Message: "No loaf:managed fenced section found in AGENTS.md",
@@ -799,9 +806,9 @@ func retireLegacyDoctorAgentsFile(projectRoot string) doctorFixResult {
 	if !doctorRegularFileExists(canonical) || isSymlinkForDoctor(canonical) {
 		return doctorFixResult{Fixed: false, Message: "Canonical root AGENTS.md is not ready - re-run doctor"}
 	}
-	body, err := os.ReadFile(legacy)
+	body, err := readRegularFile(legacy, projectFileReadLimit)
 	if err != nil {
-		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", err)}
+		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", refuseProjectFileRead(err))}
 	}
 	stripped := stripDoctorLoafFence(string(body))
 	backup := collisionSafeInstallBackupPath(legacy)
@@ -827,9 +834,9 @@ func retireLegacyDoctorAgentsFile(projectRoot string) doctorFixResult {
 }
 
 func migrateRealFileToDoctorSymlink(linkPath string, canonical string, projectRoot string) doctorFixResult {
-	sourceContent, err := os.ReadFile(linkPath)
+	sourceContent, err := readRegularFile(linkPath, projectFileReadLimit)
 	if err != nil {
-		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", err)}
+		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", refuseProjectFileRead(err))}
 	}
 	relSource, err := filepath.Rel(projectRoot, linkPath)
 	if err != nil {
@@ -880,9 +887,9 @@ func mergeDoctorContentIntoCanonical(canonical string, stripped string, relSourc
 		}
 		return true, os.WriteFile(canonical, []byte(stripped+"\n"), 0o644)
 	}
-	existing, err := os.ReadFile(canonical)
+	existing, err := readRegularFile(canonical, projectFileReadLimit)
 	if err != nil {
-		return false, err
+		return false, refuseProjectFileRead(err)
 	}
 	trimmedExisting := strings.TrimRight(string(existing), " \t\r\n")
 	appended := trimmedExisting + "\n\n## Migrated from " + relSource + "\n\n" + stripped + "\n"
@@ -904,7 +911,7 @@ func stripDoctorLoafFence(content string) string {
 }
 
 func hasDoctorFencedSection(path string) bool {
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		return false
 	}

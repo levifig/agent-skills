@@ -729,7 +729,7 @@ func detectReleaseVersionFiles(root string, overrides []string) ([]releaseVersio
 func loadReleaseVersionFile(root string, relativePath string, strict bool) (releaseVersionFile, error) {
 	normalized := normalizeReleasePath(relativePath)
 	path := filepath.Join(root, filepath.FromSlash(normalized))
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		if strict {
 			return releaseVersionFile{}, fmt.Errorf("version file %s not found", normalized)
@@ -903,7 +903,7 @@ func parseReleaseSemver(value string) (releaseSemver, bool) {
 }
 
 func releaseChangelogSection(root string, version string, date string, commits []releaseCommit) string {
-	body, err := os.ReadFile(filepath.Join(root, "CHANGELOG.md"))
+	body, err := readRegularFile(filepath.Join(root, "CHANGELOG.md"), projectFileReadLimit)
 	if err == nil {
 		if curated := extractReleaseUnreleasedBody(string(body)); curated != "" {
 			return fmt.Sprintf("## [%s] - %s\n\n%s", version, date, curated)
@@ -1057,7 +1057,7 @@ func confirmRelease(in io.Reader, out io.Writer, tagName string) (bool, error) {
 func prepareReleaseVersionUpdates(files []releaseVersionFile, newVersion string) ([]releaseVersionUpdate, error) {
 	var updates []releaseVersionUpdate
 	for _, file := range files {
-		body, err := os.ReadFile(file.Path)
+		body, err := readRegularFile(file.Path, projectFileReadLimit)
 		if err != nil {
 			return nil, err
 		}
@@ -1127,7 +1127,7 @@ func replaceReleaseTomlVersion(content string, section string, newVersion string
 
 func writeReleaseChangelog(root string, releaseSection string) error {
 	path := filepath.Join(root, "CHANGELOG.md")
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return os.WriteFile(path, []byte(createReleaseChangelog(releaseSection)), 0o644)
@@ -1250,7 +1250,7 @@ func unignoredReleaseVirtualEnvStatusPaths(root string) []string {
 }
 
 func releasePackageHasBuildScript(path string) bool {
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		return false
 	}

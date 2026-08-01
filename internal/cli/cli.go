@@ -8769,20 +8769,6 @@ func gitUncommittedFileCount(worktree string) (int, error) {
 	return count, nil
 }
 
-func writeMarkdownCurrentState(path string, stateSection string) error {
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	updated, err := setFrontmatterScalar(body, "last_updated", time.Now().UTC().Format(time.RFC3339))
-	if err != nil {
-		return err
-	}
-	frontmatter, markdownBody := splitMarkdownDocument(string(updated))
-	markdownBody = upsertMarkdownCurrentState(markdownBody, stateSection)
-	return os.WriteFile(path, []byte(frontmatter+markdownBody), 0o600)
-}
-
 func splitMarkdownDocument(text string) (string, string) {
 	if strings.HasPrefix(text, "---\n") {
 		if offset := strings.Index(text[len("---\n"):], "\n---\n"); offset >= 0 {

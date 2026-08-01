@@ -33,6 +33,11 @@ type installMcpTargetConfig struct {
 type installMcpTargetStatus struct {
 	configured bool
 	scope      string
+	// notice carries a config path detection could not read. Detection answers
+	// yes or no, so an unreadable path is a no — but a silent no would report a
+	// harness as unconfigured when the truth is that Loaf never looked, and the
+	// merge that follows a no is the write this refusal exists to prevent.
+	notice string
 }
 
 var installMcpDefinitions = []installMcpDefinition{
@@ -293,40 +298,69 @@ func detectInstallMcpForTarget(projectRoot string, target string, mcpID string) 
 	if !ok {
 		return installMcpTargetStatus{}
 	}
-	if installMcpFileConfigured(resolveInstallMcpPath(config.globalPath, projectRoot, true), mcpID) {
+	globalPath := resolveInstallMcpPath(config.globalPath, projectRoot, true)
+	projectPath := resolveInstallMcpPath(config.projectPath, projectRoot, false)
+	configured, notice := installMcpFileConfigured(globalPath, mcpID)
+	if configured {
 		return installMcpTargetStatus{configured: true, scope: "global"}
 	}
-	if installMcpFileConfigured(resolveInstallMcpPath(config.projectPath, projectRoot, false), mcpID) {
-		return installMcpTargetStatus{configured: true, scope: "project"}
+	projectConfigured, projectNotice := installMcpFileConfigured(projectPath, mcpID)
+	if projectNotice != "" {
+		notice = joinInstallMcpNotices(notice, projectNotice)
 	}
-	return installMcpTargetStatus{}
+	if projectConfigured {
+		return installMcpTargetStatus{configured: true, scope: "project", notice: notice}
+	}
+	return installMcpTargetStatus{notice: notice}
 }
 
-func installMcpFileConfigured(path string, mcpID string) bool {
-	body, err := os.ReadFile(path)
+func joinInstallMcpNotices(first string, second string) string {
+	if first == "" {
+		return second
+	}
+	if second == "" {
+		return first
+	}
+	return first + "; " + second
+}
+
+// installMcpFileConfigured answers whether a harness config already names this
+// server, and reports the paths it could not answer for. A config that is not
+// a regular file, or is too large to be one, produces no signal rather than a
+// false negative dressed as a fact — the caller prints the notice and the merge
+// that would follow refuses on the same path.
+func installMcpFileConfigured(path string, mcpID string) (bool, string) {
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
-		return false
+		if isProjectFileRefusal(err) {
+			return false, fmt.Sprintf("%v — could not be inspected", err)
+		}
+		return false, ""
 	}
 	text := strings.ToLower(string(body))
 	switch mcpID {
 	case "linear":
-		return strings.Contains(text, "mcp.linear.app") || strings.Contains(text, "linear")
+		return strings.Contains(text, "mcp.linear.app") || strings.Contains(text, "linear"), ""
 	case "serena":
-		return strings.Contains(text, "serena") || strings.Contains(text, "serena start-mcp-server")
+		return strings.Contains(text, "serena") || strings.Contains(text, "serena start-mcp-server"), ""
 	default:
-		return strings.Contains(text, strings.ToLower(mcpID))
+		return strings.Contains(text, strings.ToLower(mcpID)), ""
 	}
 }
 
 func formatInstallMcpTargetLine(target string, status installMcpTargetStatus) string {
+	notice := ""
+	if status.notice != "" {
+		notice = "\n      " + ansiYellow("⚠") + " " + ansiGray(status.notice)
+	}
 	if status.configured {
 		where := ""
 		if status.scope != "" {
 			where = " (" + status.scope + ")"
 		}
-		return fmt.Sprintf("    %s %s%s", ansiGreen("✓"), target, where)
+		return fmt.Sprintf("    %s %s%s%s", ansiGreen("✓"), target, where, notice)
 	}
-	return fmt.Sprintf("    %s %s: not configured", ansiYellow("⚡"), target)
+	return fmt.Sprintf("    %s %s: not configured%s", ansiYellow("⚡"), target, notice)
 }
 
 func installMcpDoneForTargets(statuses map[string]installMcpTargetStatus, targets []string) bool {
@@ -455,12 +489,30 @@ func resolveInstallMcpPath(path string, projectRoot string, global bool) string 
 	return filepath.Join(projectRoot, filepath.FromSlash(path))
 }
 
-func mergeJSONMcpConfig(path string, mcpKey string, serverID string, args []string) error {
+// readInstallMcpConfigForMerge reads a harness MCP config that is about to be
+// rewritten. Absence is an empty document, because writing the first config is
+// the point of the merge. Anything else that stops the bytes arriving is a
+// refusal: the merge rewrites the whole file, so a config Loaf could not read
+// would be replaced by one holding only Loaf's own entry.
+func readInstallMcpConfigForMerge(path string) (map[string]any, error) {
 	data := map[string]any{}
-	if body, err := os.ReadFile(path); err == nil {
-		if err := json.Unmarshal(body, &data); err != nil {
-			data = map[string]any{}
+	body, err := readRegularFile(path, projectFileReadLimit)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return data, nil
 		}
+		return nil, refuseProjectFileRead(err)
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return map[string]any{}, nil
+	}
+	return data, nil
+}
+
+func mergeJSONMcpConfig(path string, mcpKey string, serverID string, args []string) error {
+	data, err := readInstallMcpConfigForMerge(path)
+	if err != nil {
+		return err
 	}
 	servers := ensureJSONMcpMap(data, mcpKey)
 	servers[serverID] = map[string]any{
@@ -471,11 +523,9 @@ func mergeJSONMcpConfig(path string, mcpKey string, serverID string, args []stri
 }
 
 func mergeOpenCodeMcpConfig(path string, serverID string, args []string) error {
-	data := map[string]any{}
-	if body, err := os.ReadFile(path); err == nil {
-		if err := json.Unmarshal(body, &data); err != nil {
-			data = map[string]any{}
-		}
+	data, err := readInstallMcpConfigForMerge(path)
+	if err != nil {
+		return err
 	}
 	mcp, ok := data["mcp"].(map[string]any)
 	if !ok {

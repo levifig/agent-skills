@@ -112,6 +112,84 @@ func TestReadInstallLoafConfigDocumentRefusesAnOversizedConfig(t *testing.T) {
 	}
 }
 
+// TestMergeMcpConfigRefusesAnOversizedConfig is the size half for the harness
+// configs. The merge rewrites the whole file, so a truncated read would hand
+// back a document missing every server past the limit and write that back as
+// the config.
+func TestMergeMcpConfigRefusesAnOversizedConfig(t *testing.T) {
+	dir := t.TempDir()
+	mcpPath := filepath.Join(dir, ".cursor", "mcp.json")
+	oversized := oversizedProjectFileBody()
+	writeInstallFile(t, mcpPath, oversized)
+
+	err := mergeJSONMcpConfig(mcpPath, "mcpServers", "linear", []string{"npx", "-y", "mcp-remote"})
+
+	if !errors.Is(err, errFileTooLarge) {
+		t.Fatalf("mergeJSONMcpConfig(oversized) error = %v, want errFileTooLarge", err)
+	}
+	if !strings.Contains(err.Error(), "refusing to overwrite") {
+		t.Fatalf("mergeJSONMcpConfig(oversized) error = %q, want it phrased as a refusal to overwrite", err)
+	}
+	if got := readFileBytes(t, mcpPath); !bytes.Equal(got, []byte(oversized)) {
+		t.Fatalf("mcp.json changed (%d bytes, want %d); a config Loaf could not read must not be rewritten", len(got), len(oversized))
+	}
+}
+
+// TestInstallMcpDetectionReportsAnOversizedConfig is the detection half of the
+// same file: no signal, and a notice naming the path rather than a silent
+// "not configured".
+func TestInstallMcpDetectionReportsAnOversizedConfig(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", filepath.Join(root, "home"))
+	t.Setenv("USERPROFILE", filepath.Join(root, "home"))
+	mcpPath := filepath.Join(root, ".cursor", "mcp.json")
+	writeInstallFile(t, mcpPath, oversizedProjectFileBody())
+
+	status := detectInstallMcpForTarget(root, "cursor", "linear")
+
+	if status.configured {
+		t.Fatalf("status = %#v, want a config that could not be read reported as unconfigured", status)
+	}
+	if !strings.Contains(status.notice, mcpPath) || !strings.Contains(status.notice, "project read limit") {
+		t.Fatalf("status.notice = %q, want the path and the size refusal", status.notice)
+	}
+}
+
+// TestUpgradeSymlinkPassRefusesAnOversizedLegacyFile pins the migration pass's
+// size refusal at the seam the plan and the apply path share: both read the
+// legacy file whole in order to merge it, so both refuse the same file.
+func TestUpgradeSymlinkPassRefusesAnOversizedLegacyFile(t *testing.T) {
+	root := t.TempDir()
+	canonical := filepath.Join(root, "AGENTS.md")
+	writeInstallFile(t, canonical, "# Project\n")
+	legacy := filepath.Join(root, ".agents", "AGENTS.md")
+	oversized := oversizedProjectFileBody()
+	writeInstallFile(t, legacy, oversized)
+
+	result := ensureRootInstallAgentsFile(root, installSymlinkOptions{AssumeYes: true})
+
+	if result.Action != "error" || !result.Refused {
+		t.Fatalf("ensureRootInstallAgentsFile() = %#v, want a refusal that fails the project part", result)
+	}
+	if !strings.Contains(result.Message, "project read limit") || !strings.Contains(result.Message, "refusing to overwrite") {
+		t.Fatalf("result.Message = %q, want the size refusal", result.Message)
+	}
+	if got := readFileBytes(t, legacy); !bytes.Equal(got, []byte(oversized)) {
+		t.Fatalf("legacy file changed (%d bytes, want %d); a refused migration must not move it", len(got), len(oversized))
+	}
+	if got := readFileBytes(t, canonical); string(got) != "# Project\n" {
+		t.Fatalf("AGENTS.md = %q, want it untouched", got)
+	}
+
+	action, detail, isError := planRootInstallAgentsFile(root, true)
+	if action != "error" || !isError {
+		t.Fatalf("planRootInstallAgentsFile() = %q, %q, %v, want the same refusal in the plan", action, detail, isError)
+	}
+	if !strings.Contains(detail, "project read limit") {
+		t.Fatalf("plan detail = %q, want the size refusal", detail)
+	}
+}
+
 // TestProjectFileReadersAcceptAFileAtTheLimit is the other edge of the same
 // boundary. A limit that refused an ordinary project file would be a bug of its
 // own, so each reader is shown taking the largest file it is meant to take.

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -51,7 +50,7 @@ func readHarnessVersionMarker(configDir string) string {
 	if configDir == "" {
 		return ""
 	}
-	body, err := os.ReadFile(filepath.Join(configDir, loafInstallMarkerFile))
+	body, err := readRegularFile(filepath.Join(configDir, loafInstallMarkerFile), projectFileReadLimit)
 	if err != nil {
 		return ""
 	}

@@ -98,6 +98,7 @@ type mcpPlanEntry struct {
 	Configured bool   `json:"configured"`
 	Scope      string `json:"scope,omitempty"`
 	Action     string `json:"action"`
+	Notice     string `json:"notice,omitempty"`
 }
 
 // runInstallDryRun renders the plan document.
@@ -764,10 +765,23 @@ func planInstallProjectSymlinks(projectRoot string, selectedTargets []string, ha
 	if wantClaude {
 		linkPath := filepath.Join(projectRoot, ".claude", "CLAUDE.md")
 		relTarget := relativeInstallLinkTarget(linkPath, canonical)
-		action, detail := planInstallSymlink(linkPath, relTarget, ".claude/CLAUDE.md", assumeYes)
+		action, detail := planInstallSymlink(linkPath, relTarget, ".claude/CLAUDE.md", canonical, assumeYes)
 		entries = append(entries, projectFilePlanEntry{Target: "claude-code", Path: ".claude/CLAUDE.md", Action: action, Detail: detail})
 	}
 	return entries
+}
+
+// planProjectFileReadable answers, for the plan, the question the apply path
+// answers by reading: will a whole-file read of this path be refused? The plan
+// has to ask it the same way, because a migration the plan promises and apply
+// refuses is worse than either outcome on its own. Absence is not a refusal —
+// the callers already branch on it — and the read costs what the apply read
+// costs, which is what planFencedSection already pays.
+func planProjectFileReadable(path string) error {
+	if _, err := readRegularFile(path, projectFileReadLimit); err != nil && !os.IsNotExist(err) {
+		return refuseProjectFileRead(err)
+	}
+	return nil
 }
 
 // planRootInstallAgentsFile mirrors the read-only branch decisions of
@@ -792,11 +806,20 @@ func planRootInstallAgentsFile(projectRoot string, assumeYes bool) (string, stri
 		if !assumeYes {
 			return "skipped-no-tty", "./AGENTS.md is a symlink; skipped conversion in non-interactive mode", false
 		}
+		if err := planProjectFileReadable(canonical); err != nil {
+			return "error", fmt.Sprintf("Failed to read ./AGENTS.md: %v", err), true
+		}
 		return "replaced-file", "Back up the ./AGENTS.md symlink and create a canonical real file", false
 	}
 	if legacyExists {
 		if !assumeYes {
 			return "skipped-no-tty", "Both ./AGENTS.md and .agents/AGENTS.md are real files; skipped merge in non-interactive mode", false
+		}
+		if err := planProjectFileReadable(legacy); err != nil {
+			return "error", fmt.Sprintf("Failed to migrate .agents/AGENTS.md: %v", err), true
+		}
+		if err := planProjectFileReadable(canonical); err != nil {
+			return "error", fmt.Sprintf("Failed to migrate .agents/AGENTS.md: %v", err), true
 		}
 		return "migrated", "Merge legacy .agents/AGENTS.md into canonical ./AGENTS.md", false
 	}
@@ -805,7 +828,7 @@ func planRootInstallAgentsFile(projectRoot string, assumeYes bool) (string, stri
 
 // planInstallSymlink mirrors the read-only branch decisions of
 // ensureInstallSymlink.
-func planInstallSymlink(linkPath string, relativeTarget string, description string, assumeYes bool) (string, string) {
+func planInstallSymlink(linkPath string, relativeTarget string, description string, canonicalPath string, assumeYes bool) (string, string) {
 	expectedAbs := filepath.Clean(filepath.Join(filepath.Dir(linkPath), relativeTarget))
 	if !installPathExists(linkPath) {
 		return "created", fmt.Sprintf("Create %s -> %s", description, relativeTarget)
@@ -821,6 +844,14 @@ func planInstallSymlink(linkPath string, relativeTarget string, description stri
 	}
 	if !assumeYes {
 		return "skipped-no-tty", fmt.Sprintf("%s exists as a real file; skipped in non-interactive mode", description)
+	}
+	if err := planProjectFileReadable(linkPath); err != nil {
+		return "error", fmt.Sprintf("Failed to replace %s: %v", description, err)
+	}
+	if canonicalPath != "" {
+		if err := planProjectFileReadable(canonicalPath); err != nil {
+			return "error", fmt.Sprintf("Failed to replace %s: %v", description, err)
+		}
 	}
 	return "replaced-file", fmt.Sprintf("Back up %s and replace with a symlink -> %s", description, relativeTarget)
 }
@@ -901,6 +932,7 @@ func planInstallMcp(projectRoot string, availableTargets []string) []mcpPlanEntr
 				Configured: status.configured,
 				Scope:      status.scope,
 				Action:     planActionNone,
+				Notice:     status.notice,
 			})
 		}
 	}
@@ -1065,6 +1097,18 @@ func writeInstallDryRunHuman(out io.Writer, plan installDryRunPlan) {
 		fmt.Fprintln(out)
 	}
 
+	// Only the notices are printed, not the MCP detection table: a plan the
+	// human reads says what will change, and detection changes nothing. A
+	// config that could not be inspected is the exception, because it is the
+	// one MCP line that says the plan is incomplete.
+	if notices := installMcpPlanNotices(plan.Mcp); len(notices) > 0 {
+		fmt.Fprintf(out, "  %s\n", ansiBold("MCP configs"))
+		for _, notice := range notices {
+			fmt.Fprintf(out, "    %s %s\n", ansiYellow("⚠"), ansiGray(notice))
+		}
+		fmt.Fprintln(out)
+	}
+
 	if len(plan.FollowUpCommands) > 0 {
 		fmt.Fprintf(out, "  %s\n", ansiBold("Apply with"))
 		for _, command := range plan.FollowUpCommands {
@@ -1075,6 +1119,23 @@ func writeInstallDryRunHuman(out io.Writer, plan installDryRunPlan) {
 	if plan.ConsentRequired {
 		fmt.Fprintf(out, "  %s Explicit consent (--yes) is required to apply destructive deprecation cleanup.\n", ansiYellow("⚠"))
 	}
+}
+
+// installMcpPlanNotices collects the distinct unreadable-config notices from
+// the MCP plan. One unreadable path is reported once however many servers were
+// asked about it.
+func installMcpPlanNotices(entries []mcpPlanEntry) []string {
+	var notices []string
+	seen := map[string]bool{}
+	for _, entry := range entries {
+		if entry.Notice == "" || seen[entry.Notice] {
+			continue
+		}
+		seen[entry.Notice] = true
+		notices = append(notices, entry.Notice)
+	}
+	sort.Strings(notices)
+	return notices
 }
 
 func planActionGlyph(action string) string {

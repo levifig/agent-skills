@@ -169,6 +169,251 @@ func TestUpgradeDryRunReportsAFifoAtTheProjectConfig(t *testing.T) {
 	assertStillNotARegularFile(t, configPath)
 }
 
+// TestUpgradeRefusesAFifoAtTheLegacyAgentsFile covers the migration pass, which
+// runs before the fenced writers and therefore had its own unhardened reads. A
+// legacy .agents/AGENTS.md that is a pipe stops the pass where the fenced write
+// would have stopped: nothing migrated, nothing backed up, and the run reports
+// the project part as incomplete.
+func TestUpgradeRefusesAFifoAtTheLegacyAgentsFile(t *testing.T) {
+	root, home := setupUpgradeFixture(t)
+	installUpgradeFixtureTarget(t, root, home, "cursor")
+	canonical := filepath.Join(root, "AGENTS.md")
+	writeManagedAgentsFileForTest(t, root)
+	before := readFileBytes(t, canonical)
+	legacy := filepath.Join(root, ".agents", "AGENTS.md")
+	mkfifoForTest(t, legacy)
+
+	result := runInstallWithDeadline(t, root, "upgrade", "--yes")
+
+	var exitErr ExitError
+	if !errors.As(result.err, &exitErr) || exitErr.Code == 0 {
+		t.Fatalf("upgrade error = %v, want a non-zero ExitError\n%s", result.err, result.output)
+	}
+	if !strings.Contains(result.output, "Failed to migrate .agents/AGENTS.md") {
+		t.Fatalf("upgrade output = %q, want the refused step named", result.output)
+	}
+	if !strings.Contains(result.output, "not a regular file") || !strings.Contains(result.output, "refusing to overwrite") {
+		t.Fatalf("upgrade output = %q, want the migration refusal reported", result.output)
+	}
+	if !strings.Contains(result.output, "project surfaces incomplete") {
+		t.Fatalf("upgrade output = %q, want the failure summary to name the project part", result.output)
+	}
+	assertStillNotARegularFile(t, legacy)
+	if got := readFileBytes(t, canonical); !bytes.Equal(got, before) {
+		t.Fatalf("AGENTS.md = %q, want it untouched; a refused migration must not half-write", got)
+	}
+	if _, err := os.Lstat(legacy + ".bak"); err == nil {
+		t.Fatal("the refused migration left a backup behind; nothing should have moved")
+	}
+}
+
+// TestUpgradeDryRunReportsAFifoAtTheLegacyAgentsFile is that migration's plan
+// side. The metadata the plan used to decide on — is it a file, is it a
+// symlink — says yes to a pipe, so a plan that asked only that promised a
+// migration the apply path refuses to perform.
+func TestUpgradeDryRunReportsAFifoAtTheLegacyAgentsFile(t *testing.T) {
+	root, home := setupUpgradeFixture(t)
+	installUpgradeFixtureTarget(t, root, home, "cursor")
+	writeManagedAgentsFileForTest(t, root)
+	legacy := filepath.Join(root, ".agents", "AGENTS.md")
+	mkfifoForTest(t, legacy)
+
+	result := runInstallWithDeadline(t, root, "upgrade", "--dry-run", "--json", "--yes")
+
+	if result.err != nil {
+		t.Fatalf("upgrade --dry-run --json error = %v\n%s", result.err, result.output)
+	}
+	plan := parseInstallPlanJSON(t, result.output)
+	entry, found := findInstallPlanEntry(plan, "./AGENTS.md")
+	if !found {
+		t.Fatalf("project_files = %#v, want an entry for the root instruction file", plan.ProjectFiles)
+	}
+	if entry.Action != "error" {
+		t.Fatalf("plan entry = %#v, want the migration reported as refused rather than promised", entry)
+	}
+	if !strings.Contains(entry.Detail, "not a regular file") || !strings.Contains(entry.Detail, "refusing to overwrite") {
+		t.Fatalf("plan entry detail = %q, want the special-file refusal", entry.Detail)
+	}
+	assertStillNotARegularFile(t, legacy)
+}
+
+// TestUpgradeRefusesAFifoAtTheClaudeCompatibilityFile is the other half of the
+// same pass: the real file that is about to be merged into AGENTS.md and
+// replaced by a symlink.
+func TestUpgradeRefusesAFifoAtTheClaudeCompatibilityFile(t *testing.T) {
+	root, home := setupUpgradeFixture(t)
+	writeFixtureClaudeCLI(t, root)
+	installUpgradeFixtureTarget(t, root, home, "cursor")
+	canonical := filepath.Join(root, "AGENTS.md")
+	writeManagedAgentsFileForTest(t, root)
+	before := readFileBytes(t, canonical)
+	claudeLink := filepath.Join(root, ".claude", "CLAUDE.md")
+	mkfifoForTest(t, claudeLink)
+
+	result := runInstallWithDeadline(t, root, "upgrade", "--yes")
+
+	var exitErr ExitError
+	if !errors.As(result.err, &exitErr) || exitErr.Code == 0 {
+		t.Fatalf("upgrade error = %v, want a non-zero ExitError\n%s", result.err, result.output)
+	}
+	if !strings.Contains(result.output, "Failed to replace .claude/CLAUDE.md") {
+		t.Fatalf("upgrade output = %q, want the refused step named", result.output)
+	}
+	if !strings.Contains(result.output, "not a regular file") || !strings.Contains(result.output, "refusing to overwrite") {
+		t.Fatalf("upgrade output = %q, want the replace refusal reported", result.output)
+	}
+	if !strings.Contains(result.output, "project surfaces incomplete") {
+		t.Fatalf("upgrade output = %q, want the failure summary to name the project part", result.output)
+	}
+	assertStillNotARegularFile(t, claudeLink)
+	if got := readFileBytes(t, canonical); !bytes.Equal(got, before) {
+		t.Fatalf("AGENTS.md = %q, want it untouched; the merge never read anything to merge", got)
+	}
+}
+
+// TestUpgradeDryRunReportsAFifoAtTheClaudeCompatibilityFile is its plan side.
+func TestUpgradeDryRunReportsAFifoAtTheClaudeCompatibilityFile(t *testing.T) {
+	root, home := setupUpgradeFixture(t)
+	writeFixtureClaudeCLI(t, root)
+	installUpgradeFixtureTarget(t, root, home, "cursor")
+	writeManagedAgentsFileForTest(t, root)
+	claudeLink := filepath.Join(root, ".claude", "CLAUDE.md")
+	mkfifoForTest(t, claudeLink)
+
+	result := runInstallWithDeadline(t, root, "upgrade", "--dry-run", "--json", "--yes")
+
+	if result.err != nil {
+		t.Fatalf("upgrade --dry-run --json error = %v\n%s", result.err, result.output)
+	}
+	plan := parseInstallPlanJSON(t, result.output)
+	entry, found := findInstallPlanEntry(plan, ".claude/CLAUDE.md")
+	if !found {
+		t.Fatalf("project_files = %#v, want an entry for the compatibility file", plan.ProjectFiles)
+	}
+	if entry.Action != "error" {
+		t.Fatalf("plan entry = %#v, want the replacement reported as refused", entry)
+	}
+	if !strings.Contains(entry.Detail, "not a regular file") || !strings.Contains(entry.Detail, "refusing to overwrite") {
+		t.Fatalf("plan entry detail = %q, want the special-file refusal", entry.Detail)
+	}
+	assertStillNotARegularFile(t, claudeLink)
+}
+
+// TestUpgradeDryRunReportsAFifoAtTheMcpConfig covers the detection half of the
+// harness configs. Detection answers yes or no, so it cannot refuse — but it
+// can say which path it never managed to ask about, and it must answer at all
+// rather than wait on the pipe.
+func TestUpgradeDryRunReportsAFifoAtTheMcpConfig(t *testing.T) {
+	root, home := setupUpgradeFixture(t)
+	installUpgradeFixtureTarget(t, root, home, "cursor")
+	writeManagedAgentsFileForTest(t, root)
+	mcpPath := filepath.Join(root, ".cursor", "mcp.json")
+	mkfifoForTest(t, mcpPath)
+
+	result := runInstallWithDeadline(t, root, "upgrade", "--dry-run", "--json")
+
+	if result.err != nil {
+		t.Fatalf("upgrade --dry-run --json error = %v\n%s", result.err, result.output)
+	}
+	plan := parseInstallPlanJSON(t, result.output)
+	notices := installMcpPlanNotices(plan.Mcp)
+	if len(notices) == 0 {
+		t.Fatalf("mcp = %#v, want the config it could not inspect reported", plan.Mcp)
+	}
+	if !strings.Contains(notices[0], "not a regular file") || !strings.Contains(notices[0], mcpPath) {
+		t.Fatalf("mcp notice = %q, want the path and the reason", notices[0])
+	}
+	for _, entry := range plan.Mcp {
+		if entry.Target == "cursor" && entry.Configured {
+			t.Fatalf("mcp entry = %#v, want a config that could not be read reported as unconfigured", entry)
+		}
+	}
+	assertStillNotARegularFile(t, mcpPath)
+}
+
+// TestMergeMcpConfigRefusesAFifo is the apply half. The merge rewrites the
+// whole file, so a config it could not read would come back holding only
+// Loaf's own entry.
+func TestMergeMcpConfigRefusesAFifo(t *testing.T) {
+	dir := t.TempDir()
+	mcpPath := filepath.Join(dir, ".cursor", "mcp.json")
+	mkfifoForTest(t, mcpPath)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- mergeJSONMcpConfig(mcpPath, "mcpServers", "linear", []string{"npx", "-y", "mcp-remote"})
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, errNotRegularFile) {
+			t.Fatalf("mergeJSONMcpConfig(FIFO) error = %v, want errNotRegularFile", err)
+		}
+		if !strings.Contains(err.Error(), "refusing to overwrite") {
+			t.Fatalf("mergeJSONMcpConfig(FIFO) error = %q, want it phrased as a refusal to overwrite", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("mergeJSONMcpConfig blocked on a FIFO; the merge read must be non-blocking")
+	}
+	assertStillNotARegularFile(t, mcpPath)
+}
+
+// TestCodexUserConfigReadersRefuseAFifo covers the Codex readers that reach
+// into CODEX_HOME: the guidance file the journal block is merged into, and the
+// hooks file the matcher groups are merged into.
+func TestCodexUserConfigReadersRefuseAFifo(t *testing.T) {
+	dir := t.TempDir()
+	guidance := filepath.Join(dir, "AGENTS.md")
+	mkfifoForTest(t, guidance)
+	hooks := filepath.Join(dir, "hooks.json")
+	mkfifoForTest(t, hooks)
+
+	type refusal struct {
+		name string
+		run  func() error
+	}
+	for _, subject := range []refusal{
+		{"guidance", func() error {
+			_, _, err := readOptionalInstallFile(guidance, "Codex journal guidance")
+			return err
+		}},
+		{"hooks", func() error {
+			_, err := loadCodexHooksRawFileStrict(hooks)
+			return err
+		}},
+		{"legacy hooks", func() error {
+			_, err := loadCodexHooksFile(hooks)
+			return err
+		}},
+	} {
+		t.Run(subject.name, func(t *testing.T) {
+			done := make(chan error, 1)
+			go func() { done <- subject.run() }()
+			select {
+			case err := <-done:
+				if !errors.Is(err, errNotRegularFile) {
+					t.Fatalf("%s reader error = %v, want errNotRegularFile", subject.name, err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatalf("%s reader blocked on a FIFO", subject.name)
+			}
+		})
+	}
+	assertStillNotARegularFile(t, guidance)
+	assertStillNotARegularFile(t, hooks)
+}
+
+// writeFixtureClaudeCLI puts a `claude` on the fixture PATH, which is the only
+// signal upgrade uses to decide the project wants a .claude/CLAUDE.md.
+func writeFixtureClaudeCLI(t *testing.T, root string) {
+	t.Helper()
+	path := filepath.Join(root, "bin", "claude")
+	writeInstallFile(t, path, "#!/bin/sh\nexit 0\n")
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatalf("Chmod(%s) error = %v", path, err)
+	}
+}
+
 // installRunResult is what a command produced, carried back from the goroutine
 // it ran on so the assertions stay on the test's own goroutine.
 type installRunResult struct {

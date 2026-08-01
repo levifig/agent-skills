@@ -473,7 +473,7 @@ func readManagedSkillsState(dest string) (managedSkillsState, error) {
 	} else if !os.IsNotExist(err) {
 		return managedSkillsState{}, err
 	}
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return managedSkillsState{legacy: true, digests: map[string]string{}}, nil
@@ -1131,9 +1131,9 @@ func loadCodexHooksRawFileStrict(path string) (codexHooksRawFile, error) {
 	if !fileExistsForInstall(path) {
 		return codexHooksRawFile{Hooks: map[string][]json.RawMessage{}}, nil
 	}
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
-		return codexHooksRawFile{}, err
+		return codexHooksRawFile{}, refuseProjectFileRead(err)
 	}
 	var topLevel map[string]json.RawMessage
 	if err := json.Unmarshal(body, &topLevel); err != nil {
@@ -1200,9 +1200,9 @@ func loadCodexHooksFile(path string) (codexHooksFile, error) {
 	if !fileExistsForInstall(path) {
 		return codexHooksFile{Hooks: map[string][]map[string]any{}}, nil
 	}
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
-		return codexHooksFile{}, err
+		return codexHooksFile{}, refuseProjectFileRead(err)
 	}
 	var hooks codexHooksFile
 	if err := json.Unmarshal(body, &hooks); err != nil {

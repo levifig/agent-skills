@@ -241,7 +241,7 @@ func checkReleasePostMergeDiffFiles(root string, runner releasePostMergeCommandR
 
 func checkReleasePostMergeChangelogSection(root string, version string) ([]string, string) {
 	path := filepath.Join(root, "CHANGELOG.md")
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, "CHANGELOG.md not found at HEAD"

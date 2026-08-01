@@ -839,7 +839,7 @@ func runNativeWorkflowPrePR(hookContext checkHookContext, cwd string) checkResul
 		return result
 	}
 
-	changelog, err := os.ReadFile(filepath.Join(cwd, "CHANGELOG.md"))
+	changelog, err := readRegularFile(filepath.Join(cwd, "CHANGELOG.md"), projectFileReadLimit)
 	if err != nil {
 		result.Passed = false
 		result.Blocked = true
@@ -1350,7 +1350,7 @@ func configuredWorkflowVersionFiles(cwd string) []string {
 }
 
 func readWorkflowVersionFile(cwd string, path string) string {
-	body, err := os.ReadFile(filepath.Join(cwd, filepath.FromSlash(path)))
+	body, err := readRegularFile(filepath.Join(cwd, filepath.FromSlash(path)), projectFileReadLimit)
 	if err != nil {
 		return ""
 	}
