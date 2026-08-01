@@ -211,6 +211,97 @@ func TestCompareUpgradeSemverFollowsPrereleasePrecedence(t *testing.T) {
 	}
 }
 
+// upgradeNonCanonicalVersions are the shapes that look like versions but are
+// not ones. Each has a precedence nobody agreed on — is "alpha.01" before or
+// after "alpha.1"? does "2.1.0+" mean 2.1.0? — so the advisory and the drift
+// check both refuse to guess.
+var upgradeNonCanonicalVersions = []struct {
+	name  string
+	value string
+}{
+	{name: "empty build metadata", value: "2.1.0+"},
+	{name: "empty build identifier", value: "2.1.0+build..1"},
+	{name: "leading zero in prerelease", value: "2.1.0-alpha.01"},
+	{name: "leading zero in major", value: "02.1.0"},
+	{name: "leading zero in minor", value: "2.01.0"},
+	{name: "leading zero in patch", value: "2.1.00"},
+	{name: "empty prerelease segment", value: "2.1.0-alpha..1"},
+	{name: "trailing prerelease dot", value: "2.1.0-alpha."},
+	{name: "illegal prerelease character", value: "2.1.0-alpha_1"},
+}
+
+func TestParseUpgradeSemverRejectsNonCanonicalVersions(t *testing.T) {
+	for _, testCase := range upgradeNonCanonicalVersions {
+		t.Run(testCase.name, func(t *testing.T) {
+			if parsed, ok := parseUpgradeSemver(testCase.value); ok {
+				t.Fatalf("parseUpgradeSemver(%q) = %#v, true; want rejected", testCase.value, parsed)
+			}
+		})
+	}
+	for _, canonical := range []string{"2.1.0", "0.0.0", "2.1.0-alpha.1", "2.1.0-0.3.7", "2.1.0-alpha-1", "2.1.0+build.1", "v2.1.0-rc.1+exp.sha.5114f85"} {
+		if _, ok := parseUpgradeSemver(canonical); !ok {
+			t.Fatalf("parseUpgradeSemver(%q) rejected, want a canonical version accepted", canonical)
+		}
+	}
+}
+
+// TestUpgradeCurrencyAdvisoryIsSilentOnNonCanonicalVersions is the first of the
+// two surfaces the strict parse serves: a version it cannot read produces no
+// line, whichever side of the comparison it arrives on.
+func TestUpgradeCurrencyAdvisoryIsSilentOnNonCanonicalVersions(t *testing.T) {
+	channel := resolveInstallChannel(homebrewKegFixture(t, "loaf", "2.0.0"))
+	for _, testCase := range upgradeNonCanonicalVersions {
+		t.Run(testCase.name, func(t *testing.T) {
+			local := &stubCurrencySource{latest: "9.9.9"}
+			if advisory := upgradeCurrencyAdvisory(context.Background(), local, channel, testCase.value); advisory != "" {
+				t.Fatalf("advisory = %q, want silence for local version %q", advisory, testCase.value)
+			}
+			if local.calls != 0 {
+				t.Fatalf("source consulted %d times, want no request for local version %q", local.calls, testCase.value)
+			}
+			remote := &stubCurrencySource{latest: testCase.value}
+			if advisory := upgradeCurrencyAdvisory(context.Background(), remote, channel, "2.0.0"); advisory != "" {
+				t.Fatalf("advisory = %q, want silence for offered version %q", advisory, testCase.value)
+			}
+		})
+	}
+}
+
+// TestParseReleaseSemverKeepsItsPermissiveContract records the deliberate
+// split. The release pipeline reads versions this repo authored and derives the
+// next one from them; tightening that parser would change which releases are
+// cuttable, which is not this change's business. Strictness lives on the two
+// surfaces that read versions from outside.
+func TestParseReleaseSemverKeepsItsPermissiveContract(t *testing.T) {
+	for _, value := range []string{"02.1.0", "2.1.0-alpha.01"} {
+		if _, ok := parseReleaseSemver(value); !ok {
+			t.Fatalf("parseReleaseSemver(%q) rejected; the release parser's behavior must stay unchanged", value)
+		}
+		if _, ok := parseUpgradeSemver(value); ok {
+			t.Fatalf("parseUpgradeSemver(%q) accepted; the advisory parser is the strict one", value)
+		}
+	}
+}
+
+// TestGithubReleasesCurrencyIdentifiesItself pins the request header GitHub
+// attributes the traffic by.
+func TestGithubReleasesCurrencyIdentifiesItself(t *testing.T) {
+	var userAgent string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userAgent = r.Header.Get("User-Agent")
+		fmt.Fprint(w, `[{"tag_name":"v2.0.0"}]`)
+	}))
+	t.Cleanup(server.Close)
+
+	if _, err := (githubReleasesCurrency{endpoint: server.URL, version: "2.0.0-alpha.17"}).LatestVersion(context.Background(), false); err != nil {
+		t.Fatalf("LatestVersion() error = %v", err)
+	}
+
+	if userAgent != "loaf/2.0.0-alpha.17" {
+		t.Fatalf("User-Agent = %q, want loaf/2.0.0-alpha.17", userAgent)
+	}
+}
+
 // TestSelectLatestReleaseTagPicksByPrecedenceNotOrder guards the assumption
 // that would otherwise be invisible: the feed is ordered by creation, so a
 // patch published after a minor appears first and must still lose.

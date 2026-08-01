@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,6 +138,116 @@ func TestRunnerUpgradeLegacyProjectPromptRoutes(t *testing.T) {
 		assertInstallPathMissing(t, filepath.Join(root, "AGENTS.md"))
 		assertInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "9.8.7-test.1\n")
 	})
+}
+
+// TestRunnerUpgradePreservesAnUnparseableProjectConfig covers the file upgrade
+// must never rewrite from scratch. Whatever `.agents/loaf.json` holds, if it is
+// not a JSON object then Loaf cannot merge into it, and replacing it with
+// defaults would destroy state somebody else owns. The run reports what it left
+// alone and finishes normally.
+func TestRunnerUpgradePreservesAnUnparseableProjectConfig(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		body string
+	}{
+		{name: "truncated object", body: "{\"integrations\": {\"linear\": {\"enabled\""},
+		{name: "json array", body: "[{\"integrations\": {}}]\n"},
+		{name: "not json at all", body: "# hand-written notes, not configuration\n"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			root, home := setupUpgradeFixture(t)
+			installUpgradeFixtureTarget(t, root, home, "cursor")
+			configPath := filepath.Join(root, ".agents", "loaf.json")
+			writeInstallFile(t, configPath, testCase.body)
+
+			output := runInstallCapture(t, root, "upgrade", "--yes")
+
+			if got := string(readFileBytes(t, configPath)); got != testCase.body {
+				t.Fatalf("loaf.json = %q, want it preserved byte-for-byte as %q", got, testCase.body)
+			}
+			if !strings.Contains(output, "does not parse as a JSON object") || !strings.Contains(output, filepath.Join(".agents", "loaf.json")) {
+				t.Fatalf("upgrade output = %q, want the parse failure and the path reported", output)
+			}
+			// The rest of the project part still ran.
+			if !strings.Contains(string(readFileBytes(t, filepath.Join(root, "AGENTS.md"))), "<!-- loaf:managed:start sha256=") {
+				t.Fatalf("AGENTS.md missing its managed section; the fenced write must still happen")
+			}
+		})
+	}
+
+	t.Run("a valid object is still refreshed", func(t *testing.T) {
+		root, home := setupUpgradeFixture(t)
+		installUpgradeFixtureTarget(t, root, home, "cursor")
+		writeInstallFile(t, filepath.Join(root, ".agents", "loaf.json"), "{\"integrations\":{}}\n")
+
+		output := runInstallCapture(t, root, "upgrade", "--yes")
+
+		if strings.Contains(output, "does not parse") {
+			t.Fatalf("upgrade output = %q, want no preservation notice for a well-formed object", output)
+		}
+		config := readInstallCommandJSON(t, filepath.Join(root, ".agents", "loaf.json"))
+		integrations, ok := config["integrations"].(map[string]any)
+		if !ok || integrations["linear"] == nil {
+			t.Fatalf("integrations = %#v, want the recommendations recorded", config["integrations"])
+		}
+	})
+}
+
+// TestRunnerUpgradeStopsTheProjectPartAfterAFenceError pins the abort: a
+// managed section upgrade refuses to overwrite means this project is not
+// currently Loaf's to refresh, so nothing after that write happens and the run
+// carries the failure out as an exit code.
+func TestRunnerUpgradeStopsTheProjectPartAfterAFenceError(t *testing.T) {
+	root, home := setupUpgradeFixture(t)
+	installUpgradeFixtureTarget(t, root, home, "cursor")
+	tampered := tamperedFencedAgentsBody()
+	agentsPath := filepath.Join(root, "AGENTS.md")
+	writeInstallFile(t, agentsPath, tampered)
+
+	output := runUpgradeExpectingExitError(t, root, "upgrade", "--yes")
+
+	if !strings.Contains(output, "refusing to overwrite") {
+		t.Fatalf("upgrade output = %q, want the fenced-section refusal reported", output)
+	}
+	if !strings.Contains(output, "skipping the remaining project surfaces") {
+		t.Fatalf("upgrade output = %q, want the abort reported", output)
+	}
+	if !strings.Contains(output, "project surfaces incomplete") {
+		t.Fatalf("upgrade output = %q, want the failure summary to name the project part", output)
+	}
+	assertInstallPathMissing(t, filepath.Join(root, ".agents", "loaf.json"))
+	if got := string(readFileBytes(t, agentsPath)); got != tampered {
+		t.Fatalf("AGENTS.md = %q, want it untouched after the refusal", got)
+	}
+}
+
+// TestRunnerUpgradeExitsNonZeroAfterATargetFailure is the scripting contract: a
+// partial upgrade finishes its remaining work, prints what failed, and does not
+// report success.
+func TestRunnerUpgradeExitsNonZeroAfterATargetFailure(t *testing.T) {
+	root, home := setupUpgradeFixture(t)
+	installUpgradeFixtureTarget(t, root, home, "cursor")
+	installUpgradeFixtureTarget(t, root, home, "opencode")
+	writeInstallFile(t, filepath.Join(root, ".agents", "loaf.json"), "{\"integrations\":{}}\n")
+	// OpenCode still looks installed, but there is nothing to sync from.
+	if err := os.RemoveAll(filepath.Join(root, "dist", "opencode")); err != nil {
+		t.Fatalf("RemoveAll(dist/opencode) error = %v", err)
+	}
+
+	output := runUpgradeExpectingExitError(t, root, "upgrade", "--yes")
+
+	if !strings.Contains(output, "Cursor refreshed") {
+		t.Fatalf("upgrade output = %q, want the healthy target synced anyway", output)
+	}
+	if !strings.Contains(output, "Upgrade finished with errors: harness content not synced for OpenCode") {
+		t.Fatalf("upgrade output = %q, want the failure summary naming OpenCode", output)
+	}
+	assertInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "9.8.7-test.1\n")
+	// The project part runs after the targets, so it must have completed too.
+	config := readInstallCommandJSON(t, filepath.Join(root, ".agents", "loaf.json"))
+	if integrations, ok := config["integrations"].(map[string]any); !ok || integrations["linear"] == nil {
+		t.Fatalf("integrations = %#v, want the project part completed despite the target failure", config["integrations"])
+	}
 }
 
 func TestRunnerUpgradeToFiltersInstalledTargetsOnly(t *testing.T) {
@@ -360,6 +471,27 @@ func withoutTerminalStdin(t *testing.T) {
 		os.Stdin = original
 		reader.Close()
 	})
+}
+
+// runUpgradeExpectingExitError runs a command that must fail through the CLI's
+// exit convention and returns everything it printed on the way.
+func runUpgradeExpectingExitError(t *testing.T, root string, args ...string) string {
+	t.Helper()
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run(args)
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code == 0 {
+		t.Fatalf("%v error = %v, want a non-zero ExitError\n%s", args, err, stdout.String())
+	}
+	return stdout.String()
+}
+
+// tamperedFencedAgentsBody is a complete managed section whose recorded
+// fingerprint does not describe its body — the shape install and upgrade refuse
+// to overwrite.
+func tamperedFencedAgentsBody() string {
+	_, body, _ := strings.Cut(generateFencedContent(), "\n")
+	return "# Project\n\n" + fencedStartMarker + " sha256=" + strings.Repeat("b", 64) + " -->\n" + body + "\n"
 }
 
 func runUpgradeWithStdin(t *testing.T, root string, stdin string, args ...string) string {

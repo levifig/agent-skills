@@ -196,6 +196,23 @@ func TestClassifyHarnessDriftKeepsUnparseableApartFromCurrent(t *testing.T) {
 	}
 }
 
+// TestHarnessDriftReadsNonCanonicalMarkersAsUnknown is the drift half of the
+// strict parse. A marker whose precedence nobody agreed on is an unknown
+// harness state — doctor says so and SessionStart stays quiet — rather than a
+// version guessed at and then compared.
+func TestHarnessDriftReadsNonCanonicalMarkersAsUnknown(t *testing.T) {
+	for _, testCase := range upgradeNonCanonicalVersions {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := classifyHarnessDrift(testCase.value, harnessDriftBinaryFixtureVersion); got != harnessDriftUnknown {
+				t.Fatalf("classifyHarnessDrift(%q, %q) = %q, want %q", testCase.value, harnessDriftBinaryFixtureVersion, got, harnessDriftUnknown)
+			}
+			if _, ok := compareHarnessDriftVersions(testCase.value, harnessDriftBinaryFixtureVersion); ok {
+				t.Fatalf("compareHarnessDriftVersions(%q, ...) reported a comparison, want unparseable", testCase.value)
+			}
+		})
+	}
+}
+
 // harnessDriftSessionStartVariant is one target-specific --from-hook dispatch
 // form: its own invocation, its own native payload shape, and the config dir
 // its marker lives in.

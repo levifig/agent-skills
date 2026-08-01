@@ -303,6 +303,10 @@ func TestRunnerUpgradeCleansRetiredAgentFromManifest(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	agentHome := filepath.Join(home, ".cursor", "agents")
 	retiredAgent := filepath.Join(agentHome, "old-agent.md")
+	// The marker makes Cursor look installed, so the sync runs and must have
+	// something to sync; without it the run ends in a target failure this test
+	// is not about.
+	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
 	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 	writeInstallFile(t, retiredAgent, "# Old Agent\n")
 	writeInstallDeprecationManifest(t, root, `{

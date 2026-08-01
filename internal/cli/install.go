@@ -194,8 +194,16 @@ func (r Runner) deployInstallProjectSurfaces(out io.Writer, options installOptio
 	if err != nil || !deploy {
 		return err
 	}
-	if wrote := r.enforceInstallProjectFiles(out, projectRoot, targets, hasClaudeCode, assumeYes, version, false); wrote {
+	outcome := r.enforceInstallProjectFiles(out, projectRoot, targets, hasClaudeCode, assumeYes, version, false)
+	if outcome.wrote {
 		fmt.Fprintln(out)
+	}
+	// A fenced-section write that failed means this project file is not Loaf's
+	// to manage right now. The MCP interview would write into the same project
+	// on that reading, so onboarding stops rather than half-deploying.
+	if outcome.fenceFailed {
+		fmt.Fprintf(out, "  %s\n\n", ansiGray("Managed project file could not be written — skipping the remaining project surfaces. Resolve the reported conflict and rerun loaf install."))
+		return nil
 	}
 	mcpTargets := append([]string{}, targets...)
 	if hasClaudeCode {
@@ -471,21 +479,40 @@ func installLoafBinary(out io.Writer, loafRoot string) bool {
 	return true
 }
 
-func (r Runner) enforceInstallProjectFiles(out io.Writer, projectRoot string, selectedTargets []string, hasClaudeCode bool, assumeYes bool, version string, upgrade bool) bool {
+// installProjectFileOutcome reports what the managed project-file pass did:
+// whether it printed anything, and whether a fenced-section write failed. The
+// second field is what stops the writes that come after it.
+type installProjectFileOutcome struct {
+	wrote       bool
+	fenceFailed bool
+}
+
+// enforceInstallProjectFiles writes the managed project files: the instruction
+// symlinks first, then the fenced sections. That order is load-bearing rather
+// than incidental — the fence write resolves symlinks before choosing a path,
+// so `.claude/CLAUDE.md` must already point at `AGENTS.md` when it runs, or the
+// section lands in a real file the symlink pass would then offer to replace.
+func (r Runner) enforceInstallProjectFiles(out io.Writer, projectRoot string, selectedTargets []string, hasClaudeCode bool, assumeYes bool, version string, upgrade bool) installProjectFileOutcome {
 	symlinkResults := ensureProjectInstallSymlinks(projectRoot, selectedTargets, hasClaudeCode, installSymlinkOptions{
 		AssumeYes:      assumeYes,
 		NonInteractive: !assumeYes,
 	})
-	wrote := writeInstallSymlinkResults(out, symlinkResults)
+	outcome := installProjectFileOutcome{wrote: writeInstallSymlinkResults(out, symlinkResults)}
 	fencedTargets := append([]string{}, selectedTargets...)
 	if hasClaudeCode {
 		fencedTargets = append([]string{"claude-code"}, fencedTargets...)
 	}
 	fencedResults := installFencedSectionsForTargets(fencedTargets, projectRoot, version, upgrade)
 	if writeInstallFencedResults(out, fencedResults) {
-		wrote = true
+		outcome.wrote = true
 	}
-	return wrote
+	for _, result := range fencedResults {
+		if result.Action == "error" {
+			outcome.fenceFailed = true
+			break
+		}
+	}
+	return outcome
 }
 
 func writeInstallDetection(out io.Writer, tools []detectedInstallTool, hasClaudeCode bool, loafRoot string) {

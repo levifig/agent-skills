@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -66,6 +67,15 @@ var serenaInstallCommand = []string{"tool", "install", "-p", "3.13", "serena-age
 func (r Runner) runInstallMcpRecommendations(out io.Writer, projectRoot string, upgrade bool, availableTargets []string) error {
 	if upgrade {
 		return nil
+	}
+	// Every branch below ends in a write to .agents/loaf.json. If that file
+	// cannot be read as an object, none of them can happen, so the interview is
+	// not worth conducting: its questions would be answered into nothing.
+	if _, err := readInstallLoafConfigDocument(projectRoot); err != nil {
+		if writeMalformedLoafConfigReport(out, err) {
+			return nil
+		}
+		return err
 	}
 	availableTargets = uniqueInstallTargets(availableTargets)
 	if !r.installMcpInteractive() {
@@ -176,7 +186,10 @@ func (r Runner) installMcpInteractive() bool {
 
 func recordDefaultInstallMcpChoices(projectRoot string) error {
 	updates := map[string]bool{}
-	existing := readInstallLoafConfig(projectRoot)
+	existing, err := readInstallLoafConfigDocument(projectRoot)
+	if err != nil {
+		return err
+	}
 	integrations, _ := existing["integrations"].(map[string]any)
 	for _, def := range installMcpDefinitions {
 		if integrations == nil || integrations[def.id] == nil {
@@ -516,23 +529,71 @@ func writeInstallJSON(path string, data map[string]any) error {
 	return os.WriteFile(path, body, 0o644)
 }
 
-func readInstallLoafConfig(projectRoot string) map[string]any {
-	body, err := os.ReadFile(filepath.Join(projectRoot, ".agents", "loaf.json"))
+// malformedLoafConfigError reports a `.agents/loaf.json` that exists but is not
+// a JSON object. It is a distinct error because it is not a failure to act on:
+// the file is somebody's state, Loaf cannot merge into what it cannot read, and
+// rewriting it would replace hand-authored content with Loaf's defaults. Every
+// writer refuses on it and every caller reports it and carries on.
+type malformedLoafConfigError struct {
+	path   string
+	reason error
+}
+
+func (e malformedLoafConfigError) Error() string {
+	return fmt.Sprintf("%s does not parse as a JSON object (%v) — preserving it as written; MCP recommendations were not recorded", e.path, e.reason)
+}
+
+func (e malformedLoafConfigError) Unwrap() error {
+	return e.reason
+}
+
+// readInstallLoafConfigDocument reads the project config as a JSON object. A
+// missing or unreadable file is an empty document a writer may create; a file
+// that is present and unparseable is a malformedLoafConfigError, which no
+// writer may pave over.
+func readInstallLoafConfigDocument(projectRoot string) (map[string]any, error) {
+	path := filepath.Join(projectRoot, ".agents", "loaf.json")
+	body, err := os.ReadFile(path)
 	if err != nil {
-		return map[string]any{}
+		return map[string]any{}, nil
 	}
 	var config map[string]any
 	if err := json.Unmarshal(body, &config); err != nil {
-		return map[string]any{}
+		return nil, malformedLoafConfigError{path: path, reason: err}
 	}
 	if config == nil {
+		return nil, malformedLoafConfigError{path: path, reason: errors.New("top-level value is null, not an object")}
+	}
+	return config, nil
+}
+
+// readInstallLoafConfig is the read-only view: callers that only want to know
+// what has been recorded treat an unreadable file as nothing recorded.
+func readInstallLoafConfig(projectRoot string) map[string]any {
+	config, err := readInstallLoafConfigDocument(projectRoot)
+	if err != nil {
 		return map[string]any{}
 	}
 	return config
 }
 
+// writeMalformedLoafConfigReport prints the preservation notice when err is one,
+// and reports whether it did. Both the install interview and the upgrade record
+// refresh call it, so the two surfaces say the same thing.
+func writeMalformedLoafConfigReport(out io.Writer, err error) bool {
+	var malformed malformedLoafConfigError
+	if !errors.As(err, &malformed) {
+		return false
+	}
+	fmt.Fprintf(out, "  %s %s\n\n", ansiYellow("⚠"), malformed.Error())
+	return true
+}
+
 func mergeInstallLoafConfigIntegrations(projectRoot string, updates map[string]bool, preserveExisting bool) error {
-	config := readInstallLoafConfig(projectRoot)
+	config, err := readInstallLoafConfigDocument(projectRoot)
+	if err != nil {
+		return err
+	}
 	integrations, ok := config["integrations"].(map[string]any)
 	if !ok {
 		integrations = map[string]any{}

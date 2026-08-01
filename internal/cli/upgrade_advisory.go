@@ -49,11 +49,24 @@ var upgradeCurrency upgradeCurrencySource = githubReleasesCurrency{endpoint: upg
 // only on the applied human run: the dry-run plan — including its JSON document
 // and the schema consumers read — returns before this and stays untouched.
 func writeUpgradeCurrencyAdvisory(out io.Writer, distributionRoot string, version string) {
-	advisory := upgradeCurrencyAdvisory(context.Background(), upgradeCurrency, resolveInstallChannel(distributionRoot), version)
+	advisory := upgradeCurrencyAdvisory(context.Background(), upgradeCurrencySourceFor(version), resolveInstallChannel(distributionRoot), version)
 	if advisory == "" {
 		return
 	}
 	fmt.Fprintf(out, "  %s %s\n\n", ansiYellow("⚠"), advisory)
+}
+
+// upgradeCurrencySourceFor stamps the default source with the version this
+// binary reports, so the request identifies itself. Only the GitHub source has
+// an identity to carry, and tests substitute their own source wholesale, so the
+// version is bound here rather than widened into the interface every source
+// would then have to accept and ignore.
+func upgradeCurrencySourceFor(version string) upgradeCurrencySource {
+	if source, ok := upgradeCurrency.(githubReleasesCurrency); ok {
+		source.version = version
+		return source
+	}
+	return upgradeCurrency
 }
 
 func upgradeCurrencyAdvisory(ctx context.Context, source upgradeCurrencySource, channel installChannel, version string) string {
@@ -104,6 +117,7 @@ func upgradeCurrencyAdvisoryWithin(ctx context.Context, budget time.Duration, so
 
 type githubReleasesCurrency struct {
 	endpoint string
+	version  string
 }
 
 type githubRelease struct {
@@ -123,6 +137,10 @@ func (source githubReleasesCurrency) LatestVersion(ctx context.Context, includeP
 		return "", err
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
+	// GitHub asks callers to identify themselves, and an explicit product token
+	// is what makes this traffic attributable in a rate-limit conversation. Go
+	// would otherwise send its own default, which names the runtime, not us.
+	request.Header.Set("User-Agent", upgradeCurrencyUserAgent(source.version))
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return "", err
@@ -140,6 +158,17 @@ func (source githubReleasesCurrency) LatestVersion(ctx context.Context, includeP
 		return "", fmt.Errorf("no comparable release in the feed")
 	}
 	return tag, nil
+}
+
+// upgradeCurrencyUserAgent names the product and its version. A binary whose
+// version could not be resolved still identifies the product rather than
+// falling back to the runtime's default.
+func upgradeCurrencyUserAgent(version string) string {
+	version = normalizeUpgradeVersion(version)
+	if version == "" {
+		version = "0.0.0"
+	}
+	return "loaf/" + version
 }
 
 // selectLatestReleaseTag picks the highest release the caller may be offered.
@@ -168,13 +197,105 @@ func selectLatestReleaseTag(releases []githubRelease, includePrereleases bool) (
 	return bestTag, bestTag != ""
 }
 
-// parseUpgradeSemver normalizes the shapes a version arrives in — a leading "v"
-// on a release tag, build metadata that semver excludes from precedence —
-// before handing the core to the release parser both sides of this comparison
-// share.
+// parseUpgradeSemver parses a version strictly, as SemVer 2.0.0 defines one,
+// allowing only the leading "v" a release tag carries. It is deliberately
+// tighter than the release pipeline's parser, which reads versions this repo
+// authored: the advisory and the drift check compare versions that arrive from
+// outside — a tag anyone can push, a marker file some older build wrote — and a
+// string that is nearly a version has no agreed precedence. "2.1.0+" is not a
+// version, and neither is "1.2.0-alpha.01"; treating them as one would mean
+// deciding, unilaterally, what they meant. Rejecting them keeps the advisory
+// silent and the drift state unknown, which are both already-designed outcomes.
 func parseUpgradeSemver(value string) (releaseSemver, bool) {
-	core, _, _ := strings.Cut(normalizeUpgradeVersion(value), "+")
-	return parseReleaseSemver(core)
+	value = normalizeUpgradeVersion(value)
+	// Build metadata is excluded from precedence, but only a well-formed one is
+	// ignorable; a bare "+" is a truncated version, not a version without notes.
+	if core, build, found := strings.Cut(value, "+"); found {
+		if !isSemverDotSeparatedIdentifiers(build, false) {
+			return releaseSemver{}, false
+		}
+		value = core
+	}
+	core, prerelease := value, ""
+	if before, after, found := strings.Cut(value, "-"); found {
+		core, prerelease = before, after
+		if !isSemverDotSeparatedIdentifiers(prerelease, true) {
+			return releaseSemver{}, false
+		}
+	}
+	parts := strings.Split(core, ".")
+	if len(parts) != 3 {
+		return releaseSemver{}, false
+	}
+	var numbers [3]int
+	for i, part := range parts {
+		number, ok := parseSemverNumericIdentifier(part)
+		if !ok {
+			return releaseSemver{}, false
+		}
+		numbers[i] = number
+	}
+	return releaseSemver{major: numbers[0], minor: numbers[1], patch: numbers[2], prerelease: prerelease}, true
+}
+
+// parseSemverNumericIdentifier reads a version number: digits only, and no
+// leading zero unless the number is exactly 0. Without the leading-zero rule,
+// "01.2.3" and "1.2.3" would be two spellings of one version that compare equal
+// while looking different, and "alpha.01" would sort where "alpha.1" does.
+func parseSemverNumericIdentifier(value string) (int, bool) {
+	if !isSemverNumericIdentifier(value) {
+		return 0, false
+	}
+	number, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, false
+	}
+	return number, true
+}
+
+// isSemverDotSeparatedIdentifiers validates a prerelease or build-metadata
+// series: at least one identifier, none of them empty, alphanumerics and
+// hyphens only. Prerelease identifiers additionally reject a leading zero on a
+// numeric one; build metadata does not, because it never affects precedence.
+func isSemverDotSeparatedIdentifiers(value string, prerelease bool) bool {
+	if value == "" {
+		return false
+	}
+	for _, identifier := range strings.Split(value, ".") {
+		if identifier == "" || !isSemverIdentifier(identifier) {
+			return false
+		}
+		if prerelease && isSemverDigits(identifier) && !isSemverNumericIdentifier(identifier) {
+			return false
+		}
+	}
+	return true
+}
+
+func isSemverNumericIdentifier(value string) bool {
+	if !isSemverDigits(value) {
+		return false
+	}
+	return len(value) == 1 || value[0] != '0'
+}
+
+func isSemverIdentifier(value string) bool {
+	for _, char := range value {
+		if char >= '0' && char <= '9' || char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char == '-' {
+			continue
+		}
+		return false
+	}
+	return value != ""
+}
+
+func isSemverDigits(value string) bool {
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return value != ""
 }
 
 func normalizeUpgradeVersion(value string) string {

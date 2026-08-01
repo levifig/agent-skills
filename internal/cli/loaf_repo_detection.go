@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,20 +103,74 @@ func detectLoafProjectRecord(root project.Root, stateHome string) (string, bool)
 	return fmt.Sprintf("project record %s in the state database", identity.ID), true
 }
 
+// detectionReadLimit bounds what a probe will read. The detector runs on every
+// install and upgrade against a directory nobody has vouched for yet, so the
+// file at a probe path is untrusted input: it can be arbitrarily large, and
+// reading all of it to answer a yes/no question is the whole exposure. A marker
+// beyond the limit contributes no signal, which is the same degradation every
+// other probe here already has.
+const detectionReadLimit = 256 << 10
+
+// detectLoafFencedMarker requires a complete managed section — both fences —
+// before it will call this a Loaf repo. A lone start marker is a fragment: an
+// interrupted write, a quoted example, or a hand-edited file, and none of those
+// mean Loaf manages this AGENTS.md. Promoting a fragment to the strong tier
+// would let `loaf upgrade` write project files without asking.
 func detectLoafFencedMarker(rootPath string) (string, bool) {
-	body, err := os.ReadFile(filepath.Join(rootPath, "AGENTS.md"))
-	if err != nil || !strings.Contains(string(body), fencedStartMarker) {
+	body, ok := readDetectionFilePrefix(filepath.Join(rootPath, "AGENTS.md"), detectionReadLimit)
+	if !ok {
+		return "", false
+	}
+	if _, complete := findFencedSectionRange(body); !complete {
 		return "", false
 	}
 	return "managed Loaf section in AGENTS.md", true
 }
 
 func detectLoafProjectConfig(rootPath string) (string, bool) {
-	info, err := os.Stat(filepath.Join(rootPath, ".agents", "loaf.json"))
-	if err != nil || info.IsDir() {
+	if !isRegularFileForDetection(filepath.Join(rootPath, ".agents", "loaf.json")) {
 		return "", false
 	}
 	return "Loaf project config at .agents/loaf.json", true
+}
+
+// isRegularFileForDetection reports whether path is a regular file, resolving a
+// symlink but never accepting anything else at either end. A FIFO would block
+// the probe until somebody wrote to it, and a device would answer with whatever
+// its driver decides; neither is a file the detector has any business opening,
+// so the type is settled with Lstat before anything is opened.
+func isRegularFileForDetection(path string) bool {
+	link, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+	if link.Mode()&os.ModeSymlink == 0 {
+		return link.Mode().IsRegular()
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
+}
+
+// readDetectionFilePrefix reads at most limit bytes of a regular file. The
+// type check happens twice — once on the path and once on the open descriptor —
+// because only the second one describes the file actually being read.
+func readDetectionFilePrefix(path string, limit int64) (string, bool) {
+	if !isRegularFileForDetection(path) {
+		return "", false
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer file.Close()
+	if info, err := file.Stat(); err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	body, err := io.ReadAll(io.LimitReader(file, limit))
+	if err != nil {
+		return "", false
+	}
+	return string(body), true
 }
 
 func detectLegacyLoafArtifacts(rootPath string) (string, bool) {

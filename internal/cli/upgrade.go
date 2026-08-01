@@ -74,20 +74,54 @@ func (r Runner) runUpgrade(args []string, out io.Writer, runtimeRoot string) err
 	fmt.Fprintln(out, ansiBold("loaf upgrade"))
 	fmt.Fprintln(out)
 
-	if err := r.upgradeInstalledTargets(out, options, targets, tools, loafRoot, distRoot, version, projectRoot.Path()); err != nil {
+	failedTargets, err := r.upgradeInstalledTargets(out, options, targets, tools, loafRoot, distRoot, version, projectRoot.Path())
+	if err != nil {
 		return err
 	}
 	// `--to` filters the global sync only. The project surfaces describe every
 	// harness this repo is set up for, so narrowing them to the synced target
 	// would silently retire the others' fenced sections and symlinks.
-	if err := r.refreshUpgradeProjectSurfaces(out, projectRoot.Path(), detection, installedUpgradeTargets(tools), hasClaudeCode, assumeYes, version); err != nil {
+	projectFailed, err := r.refreshUpgradeProjectSurfaces(out, projectRoot.Path(), detection, installedUpgradeTargets(tools), hasClaudeCode, assumeYes, version)
+	if err != nil {
 		return err
+	}
+	// Every part has had its turn by now, which is the point: a target that
+	// could not be synced does not stop the ones after it, and the summary that
+	// names the failures is written once, at the end, over the whole run.
+	failure := upgradeFailureSummary(failedTargets, projectFailed)
+	if failure != "" {
+		fmt.Fprintf(out, "  %s %s\n\n", ansiRed("✗"), failure)
 	}
 	// The epilogue: content is now current, but the binary that synced it may
 	// not be. The advisory is best-effort and never affects what came before it
 	// (see upgrade_advisory.go).
 	writeUpgradeCurrencyAdvisory(out, loafRoot, version)
+	if failure != "" {
+		return ExitError{Code: 1}
+	}
 	return nil
+}
+
+// upgradeFailureSummary names what did not finish, or "" when everything did.
+// Reporting failures on stdout and carrying them out as an exit code is what
+// makes `loaf upgrade` usable from a script: the per-target lines scroll past,
+// the exit status does not.
+func upgradeFailureSummary(failedTargets []string, projectFailed bool) string {
+	var parts []string
+	if len(failedTargets) > 0 {
+		names := make([]string, 0, len(failedTargets))
+		for _, target := range failedTargets {
+			names = append(names, installDisplayName(target))
+		}
+		parts = append(parts, "harness content not synced for "+strings.Join(names, ", "))
+	}
+	if projectFailed {
+		parts = append(parts, "project surfaces incomplete")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Upgrade finished with errors: " + strings.Join(parts, "; ")
 }
 
 func parseUpgradeArgs(args []string) (upgradeOptions, error) {
@@ -171,8 +205,11 @@ func installedUpgradeTargets(tools []detectedInstallTool) []string {
 
 // upgradeInstalledTargets is the global part: deprecation cleanup followed by a
 // content sync of each installed harness from the installed distribution.
-// installTargetDistribution stamps every .loaf-version marker as it goes.
-func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, targets []string, tools []detectedInstallTool, loafRoot string, distRoot string, version string, projectRoot string) error {
+// installTargetDistribution stamps every .loaf-version marker as it goes. It
+// returns the targets that could not be synced — one broken harness must not
+// cost the others their refresh, so the failures are collected rather than
+// raised, and the caller decides the exit code once.
+func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, targets []string, tools []detectedInstallTool, loafRoot string, distRoot string, version string, projectRoot string) ([]string, error) {
 	if len(targets) == 0 {
 		fmt.Fprintf(out, "  %s\n", ansiGray("No installed targets to upgrade"))
 	} else {
@@ -184,15 +221,17 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 	// nothing, never assuming consent from the absence of a terminal.
 	allowDestructiveCleanup := options.yes != nil && *options.yes
 	if err := runInstallDeprecationCleanup(loafRoot, out, allowDestructiveCleanup); err != nil {
-		return err
+		return nil, err
 	}
 
+	var failed []string
 	defaults := defaultInstallConfigDirs()
 	toolByKey := installToolsByKey(tools)
 	for _, target := range targets {
 		distDir := filepath.Join(distRoot, target)
 		if !dirExistsForInstall(distDir) {
 			fmt.Fprintf(out, "  %s %s - no build output found. Run %s first.\n", ansiRed("✗"), installDisplayName(target), ansiBold("loaf build"))
+			failed = append(failed, target)
 			continue
 		}
 		configDir := defaults[target]
@@ -211,34 +250,57 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 		})
 		if err != nil {
 			fmt.Fprintf(out, "  %s %s - %v\n", ansiRed("✗"), installDisplayName(target), err)
+			failed = append(failed, target)
 			continue
 		}
 		fmt.Fprintf(out, "  %s %s refreshed at %s (v%s)\n", ansiGreen("✓"), installDisplayName(target), ansiGray(configDir), version)
 	}
 	fmt.Fprintln(out)
-	return nil
+	return failed, nil
 }
 
 // refreshUpgradeProjectSurfaces is the project part. It runs only behind the
-// detector gate; when the gate is closed it writes nothing at all.
-func (r Runner) refreshUpgradeProjectSurfaces(out io.Writer, projectRoot string, detection loafRepoDetection, targets []string, hasClaudeCode bool, assumeYes bool, version string) error {
+// detector gate; when the gate is closed it writes nothing at all. It reports
+// whether the part completed, which is the second half of the run's exit code.
+func (r Runner) refreshUpgradeProjectSurfaces(out io.Writer, projectRoot string, detection loafRepoDetection, targets []string, hasClaudeCode bool, assumeYes bool, version string) (bool, error) {
 	proceed, err := r.upgradeProjectPartInScope(out, detection)
 	if err != nil || !proceed {
-		return err
+		return false, err
 	}
 
-	if wrote := r.enforceInstallProjectFiles(out, projectRoot, targets, hasClaudeCode, assumeYes, version, true); wrote {
+	outcome := r.enforceInstallProjectFiles(out, projectRoot, targets, hasClaudeCode, assumeYes, version, true)
+	if outcome.wrote {
 		fmt.Fprintln(out)
 	}
-	pending := pendingUpgradeMcpRecommendations(projectRoot)
+	// A fenced-section write fails when the managed section was tampered with,
+	// its header is malformed, or the fences are unbalanced — all of which say
+	// this project file is not currently Loaf's to manage. Continuing to the
+	// recommendation record would leave the repo half-refreshed on that reading,
+	// so the part stops here and reports itself failed.
+	if outcome.fenceFailed {
+		fmt.Fprintf(out, "  %s %s\n\n", ansiYellow("⚠"), ansiGray("Managed project file could not be written — skipping the remaining project surfaces. Resolve the reported conflict and rerun loaf upgrade."))
+		return true, nil
+	}
+
+	// A project config Loaf cannot read is preserved and reported, not repaired
+	// and not treated as a failed run: declining to overwrite somebody's file is
+	// the correct outcome, and the line says what was left alone and why.
+	config, err := readInstallLoafConfigDocument(projectRoot)
+	if err != nil {
+		if writeMalformedLoafConfigReport(out, err) {
+			return false, nil
+		}
+		return true, err
+	}
+	pending := pendingMcpRecommendationsIn(config)
 	if len(pending) == 0 {
-		return nil
+		return false, nil
 	}
 	if err := recordDefaultInstallMcpChoices(projectRoot); err != nil {
-		return err
+		return true, err
 	}
 	fmt.Fprintf(out, "  %s Recorded new MCP recommendations (%s) in %s\n\n", ansiGreen("✓"), strings.Join(pending, ", "), ansiGray(".agents/loaf.json"))
-	return nil
+	return false, nil
 }
 
 // upgradeProjectPartInScope applies the tiered detector's confirmation floor:
@@ -279,7 +341,11 @@ func (r Runner) confirmLegacyUpgradeProject(out io.Writer, detection loafRepoDet
 // shipped recommendation is visible in .agents/loaf.json; the interview that
 // turns an answer into configuration belongs to onboarding.
 func pendingUpgradeMcpRecommendations(projectRoot string) []string {
-	integrations, _ := readInstallLoafConfig(projectRoot)["integrations"].(map[string]any)
+	return pendingMcpRecommendationsIn(readInstallLoafConfig(projectRoot))
+}
+
+func pendingMcpRecommendationsIn(config map[string]any) []string {
+	integrations, _ := config["integrations"].(map[string]any)
 	var pending []string
 	for _, def := range installMcpDefinitions {
 		if integrations == nil || integrations[def.id] == nil {
@@ -302,7 +368,14 @@ func planUpgradeProjectPart(detection loafRepoDetection) *projectPartPlan {
 // planUpgradeMcpRecord mirrors the recommendation-record refresh read-only.
 func planUpgradeMcpRecord(projectRoot string) projectFilePlanEntry {
 	entry := projectFilePlanEntry{Path: ".agents/loaf.json"}
-	pending := pendingUpgradeMcpRecommendations(projectRoot)
+	config, err := readInstallLoafConfigDocument(projectRoot)
+	if err != nil {
+		// The plan may never promise a write the apply path refuses to make.
+		entry.Action = "skipped"
+		entry.Detail = err.Error()
+		return entry
+	}
+	pending := pendingMcpRecommendationsIn(config)
 	if len(pending) == 0 {
 		entry.Action = "already-correct"
 		entry.Detail = "MCP recommendations already recorded"
@@ -329,6 +402,9 @@ func writeUpgradeHelp(out io.Writer) {
 		"           instruction symlinks and their migrations, and the MCP",
 		"           recommendation record in .agents/loaf.json. Legacy-only signals",
 		"           are confirmed first; outside a Loaf repo nothing is written.",
+		"",
+		"A harness that cannot be synced does not stop the others: the run finishes,",
+		"names what failed, and exits non-zero.",
 		"",
 		"Options:",
 		"  --to <target>  Filter the global part to one already-installed target (or \"all\")",

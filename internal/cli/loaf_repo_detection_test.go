@@ -105,6 +105,118 @@ func TestDetectLoafRepoTiers(t *testing.T) {
 	}
 }
 
+// TestDetectLoafRepoRequiresACompleteFencedSection pins the fragment rule: the
+// start marker alone is not a managed section, so it cannot promote a directory
+// to the tier that lets upgrade write without asking.
+func TestDetectLoafRepoRequiresACompleteFencedSection(t *testing.T) {
+	fragment := "# Project\n\n" + fencedStartMarker + " sha256=" + strings.Repeat("a", 64) + " -->\n<!-- Maintained by loaf -->\n## Loaf Framework\n"
+
+	t.Run("fragment alone is no signal", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
+		writeDetectionFile(t, filepath.Join(dir, "AGENTS.md"), fragment)
+
+		detection := detectLoafRepo(mustResolveDetectionRoot(t, dir), "")
+
+		if detection.Tier != loafRepoTierNone {
+			t.Fatalf("detectLoafRepo() tier = %s, want none for a start-marker fragment (bases %v)", detection.Tier, detection.Bases)
+		}
+	})
+
+	t.Run("fragment never lifts legacy to strong", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
+		mustMakeDetectionDirs(t, dir, ".agents/specs")
+		writeDetectionFile(t, filepath.Join(dir, "AGENTS.md"), fragment)
+
+		detection := detectLoafRepo(mustResolveDetectionRoot(t, dir), "")
+
+		if detection.Tier != loafRepoTierLegacy {
+			t.Fatalf("detectLoafRepo() tier = %s, want legacy (bases %v)", detection.Tier, detection.Bases)
+		}
+		assertDetectionBases(t, detection.Bases, []string{"legacy Loaf artifact folders: .agents/specs"})
+	})
+
+	t.Run("complete section is strong", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
+		mustWriteFencedAgentsFile(t, dir)
+
+		if detection := detectLoafRepo(mustResolveDetectionRoot(t, dir), ""); detection.Tier != loafRepoTierStrong {
+			t.Fatalf("detectLoafRepo() tier = %s, want strong for a complete section", detection.Tier)
+		}
+	})
+}
+
+// TestDetectLoafRepoBoundsTheMarkerProbe proves the read is capped rather than
+// trusted: a marker past the limit is simply not seen, and the probe never
+// reads the whole file to find that out.
+func TestDetectLoafRepoBoundsTheMarkerProbe(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
+	padding := strings.Repeat("filler line to push the section past the read limit\n", (detectionReadLimit/52)+64)
+	writeDetectionFile(t, filepath.Join(dir, "AGENTS.md"), padding+generateFencedContent()+"\n")
+
+	detection := detectLoafRepo(mustResolveDetectionRoot(t, dir), "")
+
+	if detection.Tier != loafRepoTierNone {
+		t.Fatalf("detectLoafRepo() tier = %s, want none when the section sits beyond the read limit", detection.Tier)
+	}
+}
+
+// TestDetectLoafRepoIgnoresIrregularProbeTargets covers the file types a probe
+// path can hold that are not files to read. A directory at either path and a
+// symlink into nothing contribute nothing; the FIFO case, which is the one that
+// would hang rather than mislead, has its own timeout-guarded test.
+func TestDetectLoafRepoIgnoresIrregularProbeTargets(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		setup func(t *testing.T, dir string)
+	}{
+		{
+			name: "directories at both probe paths",
+			setup: func(t *testing.T, dir string) {
+				mustMakeDetectionDirs(t, dir, "AGENTS.md", ".agents/loaf.json")
+			},
+		},
+		{
+			name: "symlinks pointing at nothing",
+			setup: func(t *testing.T, dir string) {
+				mustMakeDetectionDirs(t, dir, ".agents")
+				mustSymlinkForDetection(t, filepath.Join(dir, "missing-instructions.md"), filepath.Join(dir, "AGENTS.md"))
+				mustSymlinkForDetection(t, filepath.Join(dir, "missing-config.json"), filepath.Join(dir, ".agents", "loaf.json"))
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
+			testCase.setup(t, dir)
+
+			if detection := detectLoafRepo(mustResolveDetectionRoot(t, dir), ""); detection.Tier != loafRepoTierNone {
+				t.Fatalf("detectLoafRepo() tier = %s, want none (bases %v)", detection.Tier, detection.Bases)
+			}
+		})
+	}
+}
+
+// TestDetectLoafRepoFollowsSymlinksToRegularFiles keeps the tightening honest:
+// pointing AGENTS.md at another real file is a normal repo layout, and it still
+// answers.
+func TestDetectLoafRepoFollowsSymlinksToRegularFiles(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LOAF_DB", filepath.Join(t.TempDir(), "loaf.sqlite"))
+	mustMakeDetectionDirs(t, dir, "docs")
+	writeDetectionFile(t, filepath.Join(dir, "docs", "instructions.md"), generateFencedContent()+"\n")
+	mustSymlinkForDetection(t, filepath.Join("docs", "instructions.md"), filepath.Join(dir, "AGENTS.md"))
+
+	detection := detectLoafRepo(mustResolveDetectionRoot(t, dir), "")
+
+	if detection.Tier != loafRepoTierStrong {
+		t.Fatalf("detectLoafRepo() tier = %s, want strong through the symlink", detection.Tier)
+	}
+}
+
 func TestDetectLoafRepoDegradesOnUnreadableDatabase(t *testing.T) {
 	dir := t.TempDir()
 	databasePath := filepath.Join(t.TempDir(), "loaf.sqlite")
@@ -197,6 +309,20 @@ func mustWriteLoafProjectConfig(t *testing.T, dir string) {
 	mustMakeDetectionDirs(t, dir, ".agents")
 	if err := os.WriteFile(filepath.Join(dir, ".agents", "loaf.json"), []byte("{\"integrations\":{}}\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(loaf.json) error = %v", err)
+	}
+}
+
+func writeDetectionFile(t *testing.T, path string, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
+	}
+}
+
+func mustSymlinkForDetection(t *testing.T, target string, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("Symlink(%s -> %s) error = %v", link, target, err)
 	}
 }
 
