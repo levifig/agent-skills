@@ -152,7 +152,7 @@ func buildNativeCodexTarget(root string) error {
 // the trusted absolute Loaf executable is known.
 func copyNativeCodexRules(root string, dist string) error {
 	src := filepath.Join(root, "content", "codex", "rules", "loaf.rules.tmpl")
-	body, err := os.ReadFile(src)
+	body, err := readRegularFileNoFollow(src, projectFileReadLimit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("Codex journal rule template missing at %s", src)
@@ -241,7 +241,7 @@ func copyNativeBuildSkills(options nativeBuildSkillCopyOptions) error {
 
 func writeNativeBuildSkillMarkdown(skillSrc string, skillDest string, options nativeBuildSkillCopyOptions) error {
 	path := filepath.Join(skillSrc, "SKILL.md")
-	body, err := os.ReadFile(path)
+	body, err := readRegularFileNoFollow(path, projectFileReadLimit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -452,7 +452,14 @@ func copyNativeBuildDir(src string, dest string, transform func(string) string, 
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		body, err := os.ReadFile(path)
+		// Leaf no-follow (symlink escape) without the text-size ceiling: this helper
+		// also copies bin/native binaries, which exceed projectFileReadLimit.
+		srcFile, err := openRegularFileNoFollow(path)
+		if err != nil {
+			return err
+		}
+		body, err := io.ReadAll(srcFile)
+		srcFile.Close()
 		if err != nil {
 			return err
 		}
@@ -478,7 +485,7 @@ func copyNativeSharedTemplates(skill string, skillDest string, srcDir string, co
 		if pathExistsNative(dest) || !pathExistsNative(src) {
 			continue
 		}
-		body, err := os.ReadFile(src)
+		body, err := readRegularFileNoFollow(src, projectFileReadLimit)
 		if err != nil {
 			return err
 		}

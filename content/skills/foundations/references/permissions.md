@@ -23,11 +23,11 @@ Coding harnesses use permission prompts to protect against unintended actions. C
 
 ## Read-Only Fence Rule
 
-Claude Code's `Bash(cmd *)` form matches any arguments and cannot exclude a flag. Therefore any command that exposes a write, output-to-file, or exec flag must not be auto-allowed under a wildcard in a read-only (or "no modifications") fence — no matter how read-only the subcommand sounds.
+A fence labelled read-only (or "no modifications") must not auto-allow a command that can mutate. Audit every entry against all three hazards below — using the command's real help text and what the project configures, not recollection.
 
-Worked example: `git log` and `git diff` accept the common git option `--output=<file>`, which writes the command's result to an arbitrary path. Verified on git 2.55: `git log -1 --output=/tmp/probe` wrote the log to that path. So `Bash(git log *)` and `Bash(git diff *)` grant arbitrary file writes while looking like inspection tools. Prefer an exact allowlist entry with no wildcard (`Bash(git log)`, `Bash(git diff)`), or leave argument-bearing forms approval-gated.
-
-The same class previously caught `docker *`, `docker compose config` (`-o`/`--output`), and `terraform plan` (`-out`). Audit every new fence entry against the command's real help text, not recollection.
+1. **Wildcard write flags.** Claude Code's `Bash(cmd *)` form matches any arguments and cannot exclude a flag. Any command that exposes a write, output-to-file, or exec flag must not be auto-allowed under a wildcard. Worked example: `git log` and `git diff` accept `--output=<file>`, which writes to an arbitrary path (verified on git 2.55: `git log -1 --output=/tmp/probe`). Prefer an exact entry with no wildcard (`Bash(git log)`, `Bash(git diff)`), or leave argument-bearing forms approval-gated. The same class previously caught `docker *`, `docker compose config` (`-o`/`--output`), and `terraform plan` (`-out`).
+2. **Project-defined dispatch.** An exact-match entry is not intrinsically read-only when the fixed invocation runs project-controlled code — a package script (`npm run build`), a Makefile target, or a test collector that loads `conftest.py`. The project, not the allowlist, decides what that command does. Do not put such entries in a fence that claims writes are disabled; either keep them approval-gated, or label them plainly as mutation-capable.
+3. **Network-command argument scope.** A trailing `*` matches any sequence of characters including spaces, so it spans further arguments (`Bash(git *)` matches `git log --oneline --all`). Therefore `Bash(curl https://api.example.com/*)` also matches `curl https://api.example.com/path -o /tmp/file`, `-T /etc/secret`, and `-X POST`. Do not use Bash URL patterns for network control — deny `curl`/`wget` and prefer domain-scoped `WebFetch(domain:…)` or a validating PreToolUse hook (Claude Code's own guidance).
 
 ## Permission Commands by Harness
 
@@ -64,19 +64,16 @@ Bash(git status), Bash(git diff), Bash(git log)
 
 #### CI/Autonomous Mode
 
-For unattended execution in CI pipelines:
+For unattended execution in CI pipelines. This is not a read-only fence: package scripts and tool runners mutate the tree (in this repository `npm run build` writes `bin/`, `dist/`, and `plugins/`).
 
 ```
-# Strict read-only
+# Read tools (Write, Edit stay off)
 Read, Glob, Grep
 
-# Build commands only (exact script names — no wildcards)
+# Mutation-capable project dispatch (exact names — no wildcards). Approval-gate these if the pipeline must stay non-mutating.
 Bash(npm run build), Bash(npm run test)
 Bash(pytest), Bash(mypy)
-# Not auto-allowed as wildcards: pytest exposes --junitxml=<path>; mypy exposes --junit-xml, --*-report DIR, and --cache-dir. Bash(cmd *) cannot exclude those write flags, so argument-bearing forms stay approval-gated.
-
-# No write permissions in CI
-# Write, Edit - DISABLED
+# Wildcards stay approval-gated: pytest exposes --junitxml=<path>; mypy exposes --junit-xml, --*-report DIR, and --cache-dir (see Read-Only Fence Rule hazard 1). Exact forms still run project-defined code (hazard 2).
 ```
 
 #### Code Review
@@ -87,10 +84,10 @@ For review-focused sessions:
 # Read everything
 Read, Glob, Grep
 
-# Analysis tools (exact forms — no wildcards)
+# Inspection only (exact forms — no wildcards, no project-script dispatch)
 Bash(git diff), Bash(git log)
-Bash(npm run lint), Bash(pytest --collect-only)
-# Argument-bearing git diff/log stay approval-gated: both accept --output=<file> (arbitrary write). See Read-Only Fence Rule.
+# Argument-bearing git diff/log stay approval-gated: both accept --output=<file> (hazard 1).
+# Not auto-allowed: Bash(npm run lint), Bash(pytest --collect-only) — exact forms still dispatch into package scripts / conftest.py (hazard 2). Keep approval-gated.
 
 # No modifications
 # Write, Edit - DISABLED
@@ -214,7 +211,7 @@ Limit permissions to task scope:
 # Instead of blanket permissions:
 Bash(*)  # Too broad
 
-# Use scoped permissions:
+# Use scoped permissions (still mutation-capable when they dispatch into project scripts — see Read-Only Fence Rule hazard 2):
 Bash(npm run test), Bash(npm run lint)
 Bash(pytest tests/)
 ```
@@ -310,21 +307,28 @@ Combining skills with network access creates a risk path for data exfiltration. 
 
 ### Default Posture
 
-- **No network tools unless explicitly required** - Don't include `WebFetch`, `Bash(curl *)`, or `Bash(wget *)` in default agent allowlists
-- **Scope to specific domains** - When network access is needed, use `Bash(curl https://api.example.com/*)` not `Bash(curl *)`
+- **No network tools unless explicitly required** — don't include `WebFetch`, `Bash(curl *)`, or `Bash(wget *)` in default agent allowlists
+- **Do not constrain network with Bash URL patterns** — a trailing `*` spans arguments (hazard 3), and flag reordering / redirects / variables bypass string matches. Prefer `WebFetch(domain:api.example.com)` for allowed domains, or deny `curl`/`wget` and enforce destinations in a PreToolUse hook
 - **Never combine broad network + broad file read** in the same agent session without explicit approval
-- **Prefer MCP tools for external APIs** - MCP servers handle auth at the transport layer, keeping credentials out of prompts
+- **Prefer MCP tools for external APIs** — MCP servers handle auth at the transport layer, keeping credentials out of prompts
 
 ### Authenticated API Calls
 
 When agents need to call authenticated APIs:
 
 ```
-# Good: environment variable reference (agent never sees the secret)
-Bash(curl -H "Authorization: Bearer $API_TOKEN" https://api.example.com/*)
+# Good: domain-scoped WebFetch (or an MCP tool that holds the credential)
+WebFetch(domain:api.example.com)
+
+# Also good: environment variable reference when a Bash network call is explicitly approved
+# (still not a domain boundary — keep curl/wget deny-listed unless the session truly needs them)
+# Authorization: Bearer $API_TOKEN
 
 # Bad: literal credential in prompt
 "Use API key sk-abc123 to call the API"
+
+# Bad: Bash URL wildcard pretending to be domain-scoped (hazard 3)
+# Bash(curl https://api.example.com/*)
 ```
 
 **Rules:**
@@ -340,4 +344,4 @@ Bash(curl -H "Authorization: Bearer $API_TOKEN" https://api.example.com/*)
 3. **Scope narrowly** - use specific patterns over broad wildcards
 4. **Review regularly** - audit permissions at session boundaries
 5. **Separate concerns** - different permission sets for different roles
-6. **Isolate network access** - grant only to agents that need it, scope to specific domains
+6. **Isolate network access** — grant only to agents that need it; prefer `WebFetch(domain:…)` over Bash URL wildcards (hazard 3)

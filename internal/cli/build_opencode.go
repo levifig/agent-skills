@@ -98,7 +98,7 @@ func generateNativeOpenCodeCommands(root string, version string) error {
 			return err
 		}
 		skillPath := filepath.Join(skillsSrc, skill, "SKILL.md")
-		body, err := os.ReadFile(skillPath)
+		body, err := readRegularFileNoFollow(skillPath, projectFileReadLimit)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue

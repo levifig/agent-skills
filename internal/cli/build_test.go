@@ -1254,6 +1254,106 @@ func TestNativeBuildSkillSidecarAuthorizedValuesRefusesSymlink(t *testing.T) {
 	}
 }
 
+func TestReadNativeBuildAgentSidecarRefusesSymlink(t *testing.T) {
+	dir := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "escape.yaml")
+	writeFile(t, outside, "description: escaped\n")
+	sidecar := filepath.Join(dir, "reviewer.cursor.yaml")
+	if err := os.Symlink(outside, sidecar); err != nil {
+		t.Fatalf("Symlink(sidecar) = %v", err)
+	}
+	_, err := readNativeBuildAgentSidecar(sidecar, false)
+	if err == nil || !errors.Is(err, errNotRegularFile) {
+		t.Fatalf("error = %v, want errNotRegularFile for symlinked agent sidecar", err)
+	}
+}
+
+func TestCopyNativeBuildAgentsRefusesSymlinkedCursorSidecar(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	agents := filepath.Join(root, "content", "agents")
+	mkdirAll(t, agents)
+	writeFile(t, filepath.Join(agents, "reviewer.md"), "# Reviewer\n\nRead-only audits.\n")
+	outside := filepath.Join(t.TempDir(), "escape.yaml")
+	writeFile(t, outside, "name: reviewer\ndescription: escaped\n")
+	if err := os.Symlink(outside, filepath.Join(agents, "reviewer.cursor.yaml")); err != nil {
+		t.Fatalf("Symlink(cursor sidecar) = %v", err)
+	}
+	err := copyNativeBuildAgents(filepath.Join(root, "content"), filepath.Join(root, "dist", "cursor", "agents"), "cursor", "1.0.0", nil, false)
+	if err == nil || !errors.Is(err, errNotRegularFile) {
+		t.Fatalf("copyNativeBuildAgents error = %v, want errNotRegularFile via Cursor sidecar path", err)
+	}
+}
+
+func TestCopyNativeBuildAgentsRefusesSymlinkedAgentBody(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	agents := filepath.Join(root, "content", "agents")
+	mkdirAll(t, agents)
+	outside := filepath.Join(t.TempDir(), "escape.md")
+	writeFile(t, outside, "# Escaped\n")
+	if err := os.Symlink(outside, filepath.Join(agents, "reviewer.md")); err != nil {
+		t.Fatalf("Symlink(agent body) = %v", err)
+	}
+	err := copyNativeBuildAgents(filepath.Join(root, "content"), filepath.Join(root, "dist", "cursor", "agents"), "cursor", "1.0.0", nil, false)
+	if err == nil || !errors.Is(err, errNotRegularFile) {
+		t.Fatalf("copyNativeBuildAgents error = %v, want errNotRegularFile for symlinked agent body", err)
+	}
+}
+
+func TestGenerateNativeOpenCodeCommandsRefusesSymlinkedOpencodeSidecar(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	skill := filepath.Join(root, "content", "skills", "demo")
+	mkdirAll(t, skill)
+	writeFile(t, filepath.Join(skill, "SKILL.claude-code.yaml"), "user-invocable: true\n")
+	outside := filepath.Join(t.TempDir(), "escape.yaml")
+	writeFile(t, outside, "description: escaped\n")
+	if err := os.Symlink(outside, filepath.Join(skill, "SKILL.opencode.yaml")); err != nil {
+		t.Fatalf("Symlink(opencode sidecar) = %v", err)
+	}
+	built := filepath.Join(root, "dist", "skills", "demo")
+	mkdirAll(t, built)
+	writeFile(t, filepath.Join(built, "SKILL.md"), "---\nname: demo\ndescription: Demo\n---\n\n# Demo\n")
+	err := generateNativeOpenCodeCommands(root, "1.0.0")
+	if err == nil || !errors.Is(err, errNotRegularFile) {
+		t.Fatalf("generateNativeOpenCodeCommands error = %v, want errNotRegularFile via OpenCode sidecar path", err)
+	}
+}
+
+func TestGenerateNativeOpenCodeCommandsRefusesSymlinkedClaudeSidecar(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	skill := filepath.Join(root, "content", "skills", "demo")
+	mkdirAll(t, skill)
+	outside := filepath.Join(t.TempDir(), "escape.yaml")
+	writeFile(t, outside, "user-invocable: true\n")
+	if err := os.Symlink(outside, filepath.Join(skill, "SKILL.claude-code.yaml")); err != nil {
+		t.Fatalf("Symlink(claude-code sidecar) = %v", err)
+	}
+	built := filepath.Join(root, "dist", "skills", "demo")
+	mkdirAll(t, built)
+	writeFile(t, filepath.Join(built, "SKILL.md"), "---\nname: demo\ndescription: Demo\n---\n\n# Demo\n")
+	err := generateNativeOpenCodeCommands(root, "1.0.0")
+	if err == nil || !errors.Is(err, errNotRegularFile) {
+		t.Fatalf("generateNativeOpenCodeCommands error = %v, want errNotRegularFile via Claude sidecar invocable check", err)
+	}
+}
+
+func TestWriteNativeBuildSkillMarkdownRefusesSymlinkedSkillBody(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	skillSrc := filepath.Join(root, "dist", "skills", "demo")
+	mkdirAll(t, skillSrc)
+	outside := filepath.Join(t.TempDir(), "escape.md")
+	writeFile(t, outside, "---\nname: demo\ndescription: escaped\n---\n\n# Escaped\n")
+	if err := os.Symlink(outside, filepath.Join(skillSrc, "SKILL.md")); err != nil {
+		t.Fatalf("Symlink(SKILL.md) = %v", err)
+	}
+	err := writeNativeBuildSkillMarkdown(skillSrc, filepath.Join(root, "dist", "cursor", "skills", "demo"), nativeBuildSkillCopyOptions{
+		targetName: "cursor",
+		version:    "1.0.0",
+	})
+	if err == nil || !errors.Is(err, errNotRegularFile) {
+		t.Fatalf("writeNativeBuildSkillMarkdown error = %v, want errNotRegularFile for symlinked skill body", err)
+	}
+}
+
 func TestNativeBuildUnresolvedPlaceholdersRejectExtraCodexToken(t *testing.T) {
 	root := realpath(t, t.TempDir())
 	path := filepath.Join(root, "dist", "codex", ".codex", "hooks.json")
@@ -1370,6 +1470,44 @@ func TestIsOpaqueNativeBuildArtifactMagic(t *testing.T) {
 	}
 	if isOpaqueNativeBuildArtifact([]byte("plain{{TOKEN}}")) {
 		t.Fatal("plain text must not be opaque")
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersFindsTokenPastProbeInUnknownMagic(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "amp", ".amp", "plugins", "odd.bin")
+	mkdirAll(t, filepath.Dir(path))
+	// Unknown magic (not Mach-O/ELF/PE): must still be scanned, not skipped, and
+	// must not require loading the whole artifact before the token line.
+	payload := make([]byte, nativeBuildOpacityProbeBytes+64)
+	payload[0], payload[1], payload[2], payload[3] = 0x01, 0x02, 0x03, 0x04
+	copy(payload[nativeBuildOpacityProbeBytes:], []byte("tail{{UNKNOWN_MAGIC_TOKEN}}\n"))
+	if err := os.WriteFile(path, payload, 0o644); err != nil {
+		t.Fatalf("WriteFile(unknown magic) = %v", err)
+	}
+	err := validateNativeBuildUnresolvedPlaceholders(root, "amp")
+	if err == nil || !strings.Contains(err.Error(), "{{UNKNOWN_MAGIC_TOKEN}}") {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want token past probe on unknown magic", err)
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersRefusesOversizedLineUnknownMagic(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "codex", ".codex", "blob.bin")
+	mkdirAll(t, filepath.Dir(path))
+	// No newlines and larger than the scanner's max token: refuse with a bounded
+	// error rather than ReadAll into memory. Unknown magic must not be skipped.
+	payload := make([]byte, projectFileReadLimit+1024)
+	payload[0], payload[1], payload[2], payload[3] = 0xde, 0xad, 0xbe, 0xef
+	for i := 4; i < len(payload); i++ {
+		payload[i] = 'x'
+	}
+	if err := os.WriteFile(path, payload, 0o644); err != nil {
+		t.Fatalf("WriteFile(oversized line) = %v", err)
+	}
+	err := validateNativeBuildUnresolvedPlaceholders(root, "codex")
+	if err == nil || !strings.Contains(err.Error(), "refusing unbounded read") {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want bounded refusal for oversized unknown-magic line", err)
 	}
 }
 

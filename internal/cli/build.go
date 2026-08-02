@@ -451,26 +451,15 @@ func validateNativeBuildUnresolvedPlaceholders(root string, targetName string) e
 		if path == manifestPath {
 			continue
 		}
-		body, opaque, err := readNativeBuildArtifactForPlaceholderScan(path)
+		relative := nativeBuildRelativePath(root, path)
+		opaque, fileFindings, err := scanNativeBuildArtifactPlaceholders(path, relative)
 		if err != nil {
 			return err
 		}
 		if opaque {
 			continue
 		}
-		relative := nativeBuildRelativePath(root, path)
-		for lineNumber, line := range strings.Split(string(body), "\n") {
-			for _, token := range nativeBuildUnresolvedTokensInLine(line) {
-				if nativeBuildInstallTimePlaceholders[token] {
-					continue
-				}
-				findings = append(findings, nativeBuildUnresolvedPlaceholderFinding{
-					path:  relative,
-					line:  lineNumber + 1,
-					token: token,
-				})
-			}
-		}
+		findings = append(findings, fileFindings...)
 	}
 	if len(findings) == 0 {
 		return nil
@@ -519,37 +508,53 @@ func isOpaqueNativeBuildArtifact(prefix []byte) bool {
 	return false
 }
 
-// readNativeBuildArtifactForPlaceholderScan classifies opacity from a bounded
-// prefix, then reads the rest only when the file is text worth scanning. The
-// native binaries under bin/native/ are tens of MiB each; reading them whole
-// merely to discover they are opaque was the round-3 cost this closes.
-func readNativeBuildArtifactForPlaceholderScan(path string) (body []byte, opaque bool, err error) {
+// scanNativeBuildArtifactPlaceholders classifies opacity from a bounded prefix,
+// then streams the remainder line-by-line looking for unresolved tokens. Known
+// native binaries (Mach-O/ELF/PE) are skipped after the probe. Unknown magic is
+// never skipped: it is scanned in chunks so an unsupported binary or a huge
+// hook cannot force a whole-file ReadAll into memory, while a text artifact
+// that merely lacks a known header still cannot hide a token past the probe.
+func scanNativeBuildArtifactPlaceholders(path string, relative string) (opaque bool, findings []nativeBuildUnresolvedPlaceholderFinding, err error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, false, err
+		return false, nil, err
 	}
 	defer file.Close()
 
 	prefix := make([]byte, nativeBuildOpacityProbeBytes)
 	n, err := file.Read(prefix)
 	if err != nil && err != io.EOF {
-		return nil, false, err
+		return false, nil, err
 	}
 	prefix = prefix[:n]
 	if isOpaqueNativeBuildArtifact(prefix) {
-		return nil, true, nil
+		return true, nil, nil
 	}
-	rest, err := io.ReadAll(file)
-	if err != nil {
-		return nil, false, err
+
+	reader := io.MultiReader(bytes.NewReader(prefix), file)
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), projectFileReadLimit)
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		for _, token := range nativeBuildUnresolvedTokensInLine(scanner.Text()) {
+			if nativeBuildInstallTimePlaceholders[token] {
+				continue
+			}
+			findings = append(findings, nativeBuildUnresolvedPlaceholderFinding{
+				path:  relative,
+				line:  lineNumber,
+				token: token,
+			})
+		}
 	}
-	if len(rest) == 0 {
-		return prefix, false, nil
+	if err := scanner.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			return false, nil, fmt.Errorf("%s: line exceeds %d bytes while scanning for unresolved placeholders (unrecognized binary or non-line-oriented artifact); refusing unbounded read", relative, projectFileReadLimit)
+		}
+		return false, nil, err
 	}
-	body = make([]byte, 0, len(prefix)+len(rest))
-	body = append(body, prefix...)
-	body = append(body, rest...)
-	return body, false, nil
+	return false, findings, nil
 }
 
 // nativeBuildUnresolvedTokensInLine returns every {{...}} span on the line.
