@@ -948,7 +948,7 @@ func glossaryPath(gitRoot string) string {
 }
 
 func loadNativeGlossaryForRead(gitRoot string) (glossaryData, bool, error) {
-	body, err := os.ReadFile(glossaryPath(gitRoot))
+	body, err := readRegularFile(glossaryPath(gitRoot), projectFileReadLimit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return glossaryData{}, false, nil
@@ -1450,7 +1450,7 @@ func loadNativeKnowledgeFiles(gitRoot string, config kbConfig, errOut io.Writer,
 }
 
 func loadNativeKnowledgeFile(gitRoot string, absPath string, errOut io.Writer, includeInvalid bool) (knowledgeFile, bool) {
-	body, err := os.ReadFile(absPath)
+	body, err := readRegularFile(absPath, projectFileReadLimit)
 	rel, relErr := filepath.Rel(gitRoot, absPath)
 	if relErr != nil {
 		rel = absPath

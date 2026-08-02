@@ -3,8 +3,10 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,6 +33,11 @@ type installMcpTargetConfig struct {
 type installMcpTargetStatus struct {
 	configured bool
 	scope      string
+	// notice carries a config path detection could not read. Detection answers
+	// yes or no, so an unreadable path is a no — but a silent no would report a
+	// harness as unconfigured when the truth is that Loaf never looked, and the
+	// merge that follows a no is the write this refusal exists to prevent.
+	notice string
 }
 
 var installMcpDefinitions = []installMcpDefinition{
@@ -66,6 +73,15 @@ var serenaInstallCommand = []string{"tool", "install", "-p", "3.13", "serena-age
 func (r Runner) runInstallMcpRecommendations(out io.Writer, projectRoot string, upgrade bool, availableTargets []string) error {
 	if upgrade {
 		return nil
+	}
+	// Every branch below ends in a write to .agents/loaf.json. If that file
+	// cannot be read as an object, none of them can happen, so the interview is
+	// not worth conducting: its questions would be answered into nothing.
+	if _, err := readInstallLoafConfigDocument(projectRoot); err != nil {
+		if writePreservedLoafConfigReport(out, err) {
+			return nil
+		}
+		return err
 	}
 	availableTargets = uniqueInstallTargets(availableTargets)
 	if !r.installMcpInteractive() {
@@ -176,7 +192,10 @@ func (r Runner) installMcpInteractive() bool {
 
 func recordDefaultInstallMcpChoices(projectRoot string) error {
 	updates := map[string]bool{}
-	existing := readInstallLoafConfig(projectRoot)
+	existing, err := readInstallLoafConfigDocument(projectRoot)
+	if err != nil {
+		return err
+	}
 	integrations, _ := existing["integrations"].(map[string]any)
 	for _, def := range installMcpDefinitions {
 		if integrations == nil || integrations[def.id] == nil {
@@ -279,40 +298,68 @@ func detectInstallMcpForTarget(projectRoot string, target string, mcpID string) 
 	if !ok {
 		return installMcpTargetStatus{}
 	}
-	if installMcpFileConfigured(resolveInstallMcpPath(config.globalPath, projectRoot, true), mcpID) {
+	globalPath := resolveInstallMcpPath(config.globalPath, projectRoot, true)
+	projectPath := resolveInstallMcpPath(config.projectPath, projectRoot, false)
+	configured, notice := installMcpFileConfigured(globalPath, mcpID)
+	if configured {
 		return installMcpTargetStatus{configured: true, scope: "global"}
 	}
-	if installMcpFileConfigured(resolveInstallMcpPath(config.projectPath, projectRoot, false), mcpID) {
-		return installMcpTargetStatus{configured: true, scope: "project"}
+	projectConfigured, projectNotice := installMcpFileConfigured(projectPath, mcpID)
+	if projectNotice != "" {
+		notice = joinInstallMcpNotices(notice, projectNotice)
 	}
-	return installMcpTargetStatus{}
+	if projectConfigured {
+		return installMcpTargetStatus{configured: true, scope: "project", notice: notice}
+	}
+	return installMcpTargetStatus{notice: notice}
 }
 
-func installMcpFileConfigured(path string, mcpID string) bool {
-	body, err := os.ReadFile(path)
+func joinInstallMcpNotices(first string, second string) string {
+	if first == "" {
+		return second
+	}
+	if second == "" {
+		return first
+	}
+	return first + "; " + second
+}
+
+// installMcpFileConfigured answers whether a harness config already names this
+// server, and reports the paths it could not answer for. Only absence is a
+// silent no: any other failure is a no-signal-plus-notice, so the interview
+// and the dry-run plan never dress "could not look" as "not configured".
+func installMcpFileConfigured(path string, mcpID string) (bool, string) {
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
-		return false
+		if os.IsNotExist(err) || errors.Is(err, fs.ErrNotExist) {
+			return false, ""
+		}
+		return false, fmt.Sprintf("%v — could not be inspected", err)
 	}
 	text := strings.ToLower(string(body))
 	switch mcpID {
 	case "linear":
-		return strings.Contains(text, "mcp.linear.app") || strings.Contains(text, "linear")
+		return strings.Contains(text, "mcp.linear.app") || strings.Contains(text, "linear"), ""
 	case "serena":
-		return strings.Contains(text, "serena") || strings.Contains(text, "serena start-mcp-server")
+		return strings.Contains(text, "serena") || strings.Contains(text, "serena start-mcp-server"), ""
 	default:
-		return strings.Contains(text, strings.ToLower(mcpID))
+		return strings.Contains(text, strings.ToLower(mcpID)), ""
 	}
 }
 
 func formatInstallMcpTargetLine(target string, status installMcpTargetStatus) string {
+	notice := ""
+	if status.notice != "" {
+		notice = "\n      " + ansiYellow("⚠") + " " + ansiGray(status.notice)
+	}
 	if status.configured {
 		where := ""
 		if status.scope != "" {
 			where = " (" + status.scope + ")"
 		}
-		return fmt.Sprintf("    %s %s%s", ansiGreen("✓"), target, where)
+		return fmt.Sprintf("    %s %s%s%s", ansiGreen("✓"), target, where, notice)
 	}
-	return fmt.Sprintf("    %s %s: not configured", ansiYellow("⚡"), target)
+	return fmt.Sprintf("    %s %s: not configured%s", ansiYellow("⚡"), target, notice)
 }
 
 func installMcpDoneForTargets(statuses map[string]installMcpTargetStatus, targets []string) bool {
@@ -441,12 +488,41 @@ func resolveInstallMcpPath(path string, projectRoot string, global bool) string 
 	return filepath.Join(projectRoot, filepath.FromSlash(path))
 }
 
-func mergeJSONMcpConfig(path string, mcpKey string, serverID string, args []string) error {
-	data := map[string]any{}
-	if body, err := os.ReadFile(path); err == nil {
-		if err := json.Unmarshal(body, &data); err != nil {
-			data = map[string]any{}
+// readInstallMcpConfigForMerge reads a harness MCP config that is about to be
+// rewritten. Absence is an empty document, because writing the first config is
+// the point of the merge. Anything else is a refusal: the merge rewrites the
+// whole file, so a config Loaf could not read — or could not parse as a JSON
+// object — would be replaced by one holding only Loaf's own entry. That is the
+// same four-valued contract `.agents/loaf.json` already has.
+func readInstallMcpConfigForMerge(path string) (map[string]any, error) {
+	body, err := readRegularFile(path, projectFileReadLimit)
+	if err != nil {
+		if os.IsNotExist(err) || errors.Is(err, fs.ErrNotExist) {
+			return map[string]any{}, nil
 		}
+		return nil, refuseProjectFileRead(err)
+	}
+	var data map[string]any
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, malformedHarnessConfig(path, err)
+	}
+	if data == nil {
+		return nil, malformedHarnessConfig(path, errors.New("top-level value is null, not an object"))
+	}
+	return data, nil
+}
+
+// malformedHarnessConfig reports a harness JSON config that is present but does
+// not parse as a JSON object. Callers must preserve the file and continue the
+// rest of the run — the same contract as malformedLoafConfig.
+func malformedHarnessConfig(path string, reason error) error {
+	return fmt.Errorf("%s does not parse as a JSON object (%v) — preserving it as written", path, reason)
+}
+
+func mergeJSONMcpConfig(path string, mcpKey string, serverID string, args []string) error {
+	data, err := readInstallMcpConfigForMerge(path)
+	if err != nil {
+		return err
 	}
 	servers := ensureJSONMcpMap(data, mcpKey)
 	servers[serverID] = map[string]any{
@@ -457,11 +533,9 @@ func mergeJSONMcpConfig(path string, mcpKey string, serverID string, args []stri
 }
 
 func mergeOpenCodeMcpConfig(path string, serverID string, args []string) error {
-	data := map[string]any{}
-	if body, err := os.ReadFile(path); err == nil {
-		if err := json.Unmarshal(body, &data); err != nil {
-			data = map[string]any{}
-		}
+	data, err := readInstallMcpConfigForMerge(path)
+	if err != nil {
+		return err
 	}
 	mcp, ok := data["mcp"].(map[string]any)
 	if !ok {
@@ -516,23 +590,90 @@ func writeInstallJSON(path string, data map[string]any) error {
 	return os.WriteFile(path, body, 0o644)
 }
 
-func readInstallLoafConfig(projectRoot string) map[string]any {
-	body, err := os.ReadFile(filepath.Join(projectRoot, ".agents", "loaf.json"))
+// unusableLoafConfigError reports a `.agents/loaf.json` that is present but
+// cannot be used — it does not parse as a JSON object, or its bytes never
+// arrived at all. Both are one decision rather than a failure to act on: the
+// file is somebody's state, Loaf cannot merge into what it cannot read, and
+// rewriting it would replace hand-authored content with Loaf's defaults. Every
+// writer refuses on it and every caller reports it and carries on.
+type unusableLoafConfigError struct {
+	path    string
+	problem string
+	reason  error
+}
+
+func (e unusableLoafConfigError) Error() string {
+	return fmt.Sprintf("%s %s (%v) — preserving it as written; MCP recommendations were not recorded", e.path, e.problem, e.reason)
+}
+
+func (e unusableLoafConfigError) Unwrap() error {
+	return e.reason
+}
+
+func malformedLoafConfig(path string, reason error) unusableLoafConfigError {
+	return unusableLoafConfigError{path: path, problem: "does not parse as a JSON object", reason: reason}
+}
+
+func unreadableLoafConfig(path string, reason error) unusableLoafConfigError {
+	return unusableLoafConfigError{path: path, problem: "could not be read", reason: reason}
+}
+
+// readInstallLoafConfigDocument reads the project config, and its outcome is
+// four-valued because the writers downstream need all four kept apart: absent
+// (an empty document a writer may create), a JSON object (the document),
+// malformed (present, but not an object), and unreadable (present, but no
+// usable bytes came back — a permission bite, a directory or a FIFO at the
+// path, a file too large to be a config, an I/O failure).
+// Only absence licenses a write. Folding unreadable into it, which is what
+// answering every read error with an empty document did, let a writer truncate
+// a file it had not read a single byte of.
+func readInstallLoafConfigDocument(projectRoot string) (map[string]any, error) {
+	path := filepath.Join(projectRoot, ".agents", "loaf.json")
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
-		return map[string]any{}
+		if errors.Is(err, fs.ErrNotExist) {
+			return map[string]any{}, nil
+		}
+		return nil, unreadableLoafConfig(path, err)
 	}
 	var config map[string]any
 	if err := json.Unmarshal(body, &config); err != nil {
-		return map[string]any{}
+		return nil, malformedLoafConfig(path, err)
 	}
 	if config == nil {
+		return nil, malformedLoafConfig(path, errors.New("top-level value is null, not an object"))
+	}
+	return config, nil
+}
+
+// readInstallLoafConfig is the read-only view: callers that only want to know
+// what has been recorded treat a config they cannot read as nothing recorded.
+func readInstallLoafConfig(projectRoot string) map[string]any {
+	config, err := readInstallLoafConfigDocument(projectRoot)
+	if err != nil {
 		return map[string]any{}
 	}
 	return config
 }
 
+// writePreservedLoafConfigReport prints the preservation notice when err is a
+// refusal to touch a config Loaf cannot use, and reports whether it did. Both
+// the install interview and the upgrade record refresh call it, so the two
+// surfaces say the same thing about the same file.
+func writePreservedLoafConfigReport(out io.Writer, err error) bool {
+	var unusable unusableLoafConfigError
+	if !errors.As(err, &unusable) {
+		return false
+	}
+	fmt.Fprintf(out, "  %s %s\n\n", ansiYellow("⚠"), unusable.Error())
+	return true
+}
+
 func mergeInstallLoafConfigIntegrations(projectRoot string, updates map[string]bool, preserveExisting bool) error {
-	config := readInstallLoafConfig(projectRoot)
+	config, err := readInstallLoafConfigDocument(projectRoot)
+	if err != nil {
+		return err
+	}
 	integrations, ok := config["integrations"].(map[string]any)
 	if !ok {
 		integrations = map[string]any{}

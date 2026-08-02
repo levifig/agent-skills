@@ -68,7 +68,7 @@ func TestRunnerDoctorFixPromptsBeforeEachRepairAndAcceptsYes(t *testing.T) {
 		t.Fatalf("stale cursor file still exists: %v", err)
 	}
 	output := stripANSI(stdout.String())
-	for _, want := range []string{"Create .claude/CLAUDE.md", "Remove stale .cursor/rules/loaf.mdc", "[y/N]", "2 fixed", "5 passed", "1 skipped"} {
+	for _, want := range []string{"Create .claude/CLAUDE.md", "Remove stale .cursor/rules/loaf.mdc", "[y/N]", "2 fixed", "5 passed", "2 skipped"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("doctor --fix output = %q, want %q", output, want)
 		}
@@ -266,9 +266,9 @@ func TestCheckFencedContentPassDriftTamperAndPrecedence(t *testing.T) {
 		{name: "new_form_pass", body: generated + "\n", wantStatus: doctorPass, wantMessage: "Fenced section content matches installed loaf"},
 		{name: "legacy_stamp_pending_pass", body: legacyStampedFencedContent("0.0.1-test") + "\n", wantStatus: doctorPass, wantMessage: "Fenced section content matches installed loaf"},
 		{name: "legacy_v_only_matching_pass", body: "<!-- loaf:managed:start v9.8.7-test.1 -->\n" + generatedBody + "\n", wantStatus: doctorPass, wantMessage: "Fenced section content matches installed loaf"},
-		{name: "drift_intact_sha", body: "<!-- loaf:managed:start sha256=" + oldFP + " -->\n" + oldBody + "\n", wantStatus: doctorWarn, wantMessage: "Fenced section content differs from installed loaf", wantDetail: "loaf install --upgrade", reject: "was modified"},
-		{name: "drift_legacy_v_only", body: "<!-- loaf:managed:start v9.8.7-test.1 -->\n" + fencedWarning + "\nSample fenced content.\n" + fencedEndMarker + "\n", wantStatus: doctorWarn, wantMessage: "Fenced section content differs from installed loaf", wantDetail: "loaf install --upgrade"},
-		{name: "tamper_new_form", body: "<!-- loaf:managed:start sha256=" + generatedFP + " -->\ntampered\n" + fencedEndMarker + "\n", wantStatus: doctorWarn, wantMessage: "Fenced section was modified", wantDetail: "will refuse", reject: "loaf install --upgrade` to refresh"},
+		{name: "drift_intact_sha", body: "<!-- loaf:managed:start sha256=" + oldFP + " -->\n" + oldBody + "\n", wantStatus: doctorWarn, wantMessage: "Fenced section content differs from installed loaf", wantDetail: "loaf upgrade", reject: "was modified"},
+		{name: "drift_legacy_v_only", body: "<!-- loaf:managed:start v9.8.7-test.1 -->\n" + fencedWarning + "\nSample fenced content.\n" + fencedEndMarker + "\n", wantStatus: doctorWarn, wantMessage: "Fenced section content differs from installed loaf", wantDetail: "loaf upgrade"},
+		{name: "tamper_new_form", body: "<!-- loaf:managed:start sha256=" + generatedFP + " -->\ntampered\n" + fencedEndMarker + "\n", wantStatus: doctorWarn, wantMessage: "Fenced section was modified", wantDetail: "will refuse", reject: "loaf upgrade` to refresh"},
 		{name: "tamper_over_drift_joint", body: "<!-- loaf:managed:start sha256=" + oldFP + " -->\ntampered and drifted\n" + fencedEndMarker + "\n", wantStatus: doctorWarn, wantMessage: "Fenced section was modified", reject: "content differs from installed loaf"},
 		{name: "malformed_fingerprint", body: "<!-- loaf:managed:start v9.8.7-test.1 sha256=bad -->\nbody\n<!-- loaf:managed:end -->\n", wantStatus: doctorWarn, wantMessage: "No loaf:managed fenced section"},
 		{name: "malformed_header", body: "<!-- loaf:managed:start v9.8.7-test.1 extra -->\nbody\n<!-- loaf:managed:end -->\n", wantStatus: doctorWarn, wantMessage: "No loaf:managed fenced section"},
@@ -446,6 +446,11 @@ func TestRunnerDoctorRejectsUnknownOptionsNatively(t *testing.T) {
 
 func writeDoctorFixture(t *testing.T, version string) string {
 	t.Helper()
+	// harness-content-drift enumerates the developer's real harness config dirs
+	// unless HOME and every config-dir override point somewhere empty, so every
+	// doctor fixture pins them and the check's verdict stays the same on a
+	// laptop with Loaf installed as on a bare CI runner.
+	harnessDriftHome(t)
 	root := realpath(t, t.TempDir())
 	writeFile(t, filepath.Join(root, "package.json"), `{"name":"loaf","version":"`+version+`"}`+"\n")
 	return root

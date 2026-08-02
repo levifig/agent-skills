@@ -551,8 +551,12 @@ func fileContains(path string, needle string) bool {
 	return strings.Contains(safeReadNative(path), needle)
 }
 
+// safeReadNative reads a project file during stack detection. Detection probes
+// paths nobody has vouched for yet — the directory `loaf init` was pointed at —
+// so it reads through the descriptor-hardened open and treats anything it
+// cannot read whole as an absent signal.
 func safeReadNative(path string) string {
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		return ""
 	}

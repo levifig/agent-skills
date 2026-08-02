@@ -22,6 +22,11 @@ type installSymlinkResult struct {
 	BackupPath string
 	Merged     bool
 	Error      string
+	// Refused marks a migration step that stopped because a whole-file read
+	// failed. Every failure carries the same abort semantics: the project part
+	// fails, the fenced and MCP writers that follow are skipped, and the run
+	// exits non-zero. Dry-run and apply agree on that reading.
+	Refused bool
 }
 
 var agentsMDInstallTargets = map[string]bool{
@@ -91,9 +96,9 @@ func ensureInstallSymlink(linkPath string, relativeTarget string, description st
 		return installSymlinkResult{Action: "declined-replace", Message: fmt.Sprintf("Left %s as a regular file (fenced sections may drift)", description)}
 	}
 
-	sourceContent, err := os.ReadFile(linkPath)
+	sourceContent, err := readRegularFile(linkPath, projectFileReadLimit)
 	if err != nil {
-		return installSymlinkError("error", fmt.Sprintf("Failed to replace %s: %v", description, err), err)
+		return installSymlinkReadRefusal(fmt.Sprintf("Failed to replace %s", description), refuseProjectFileRead(err))
 	}
 	stripped := stripDoctorLoafFence(string(sourceContent))
 	merged := false
@@ -108,7 +113,7 @@ func ensureInstallSymlink(linkPath string, relativeTarget string, description st
 		}
 		merged, err = mergeDoctorContentIntoCanonical(options.CanonicalPath, stripped, relSource)
 		if err != nil {
-			return installSymlinkError("error", fmt.Sprintf("Failed to replace %s: %v", description, err), err)
+			return installSymlinkReadRefusal(fmt.Sprintf("Failed to replace %s", description), err)
 		}
 	}
 
@@ -226,9 +231,9 @@ func ensureRootInstallAgentsFile(projectRoot string, options installSymlinkOptio
 		if !approved {
 			return installSymlinkResult{Action: "declined-replace", Message: "Left ./AGENTS.md as a symlink"}
 		}
-		body, err := os.ReadFile(canonical)
+		body, err := readRegularFile(canonical, projectFileReadLimit)
 		if err != nil && !os.IsNotExist(err) {
-			return installSymlinkError("error", fmt.Sprintf("Failed to read ./AGENTS.md: %v", err), err)
+			return installSymlinkReadRefusal("Failed to read ./AGENTS.md", refuseProjectFileRead(err))
 		}
 		backup := collisionSafeInstallBackupPath(canonical)
 		if err := os.Rename(canonical, backup); err != nil {
@@ -254,9 +259,9 @@ func ensureRootInstallAgentsFile(projectRoot string, options installSymlinkOptio
 		if !approved {
 			return installSymlinkResult{Action: "declined-replace", Message: "Left both ./AGENTS.md and .agents/AGENTS.md unchanged"}
 		}
-		body, err := os.ReadFile(legacy)
+		body, err := readRegularFile(legacy, projectFileReadLimit)
 		if err != nil {
-			return installSymlinkError("error", fmt.Sprintf("Failed to migrate .agents/AGENTS.md: %v", err), err)
+			return installSymlinkReadRefusal("Failed to migrate .agents/AGENTS.md", refuseProjectFileRead(err))
 		}
 		stripped := stripDoctorLoafFence(string(body))
 		backup := collisionSafeInstallBackupPath(legacy)
@@ -268,7 +273,7 @@ func ensureRootInstallAgentsFile(projectRoot string, options installSymlinkOptio
 			if rollbackErr := os.Rename(backup, legacy); rollbackErr != nil {
 				err = fmt.Errorf("%w (rollback failed: %v)", err, rollbackErr)
 			}
-			return installSymlinkError("error", fmt.Sprintf("Failed to migrate .agents/AGENTS.md: %v", err), err)
+			return installSymlinkReadRefusal("Failed to migrate .agents/AGENTS.md", err)
 		}
 		return installSymlinkResult{Action: "migrated", Message: "Migrated legacy .agents/AGENTS.md into canonical ./AGENTS.md", BackupPath: backup, Merged: merged}
 	}
@@ -286,6 +291,18 @@ func relativeInstallLinkTarget(linkPath string, canonicalPath string) string {
 
 func installSymlinkError(action string, message string, err error) installSymlinkResult {
 	return installSymlinkResult{Action: action, Message: message, Error: err.Error()}
+}
+
+// installSymlinkReadRefusal reports a migration step that stopped because a
+// whole-file read failed — not a regular file, too large, permission denied,
+// or any other I/O failure. The step is abandoned before it writes anything,
+// and the run treats the result as a failed project part rather than a note in
+// passing: the fenced writers that follow would meet the same path, so the
+// project part reports itself failed and upgrade exits non-zero.
+func installSymlinkReadRefusal(prefix string, err error) installSymlinkResult {
+	result := installSymlinkError("error", fmt.Sprintf("%s: %v", prefix, err), err)
+	result.Refused = true
+	return result
 }
 
 func installPathExists(path string) bool {
@@ -320,9 +337,9 @@ func mergeLegacyAgentsContentIntoCanonical(canonical string, stripped string, re
 	if stripped == "" {
 		return false, nil
 	}
-	existing, err := os.ReadFile(canonical)
+	existing, err := readRegularFile(canonical, projectFileReadLimit)
 	if err != nil {
-		return false, err
+		return false, refuseProjectFileRead(err)
 	}
 	trimmedExisting := strings.TrimRight(string(existing), " \t\r\n")
 	merged := trimmedExisting + "\n\n## Migrated from " + relSource + "\n\n" + stripped + "\n"

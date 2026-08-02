@@ -408,7 +408,7 @@ func listChangeTaskFileContents(rootPath, folderAbs, folderRel string, source ch
 		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
-		body, readErr := os.ReadFile(filepath.Join(tasksDir, entry.Name()))
+		body, readErr := readRegularFile(filepath.Join(tasksDir, entry.Name()), projectFileReadLimit)
 		if readErr != nil {
 			findings = append(findings, fmt.Sprintf("%s: %v", filepath.ToSlash(filepath.Join(folderRel, "tasks", entry.Name())), readErr))
 			continue

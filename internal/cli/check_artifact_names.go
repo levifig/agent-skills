@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"io/fs"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -208,7 +207,7 @@ var artifactNameFinalizedStatusRE = regexp.MustCompile(`(?mi)^\s*status:\s*["']?
 // leading front-matter block is consulted, so a status word in the body cannot
 // silence the guard.
 func isFinalizedArtifact(root string, rel string) bool {
-	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	body, err := readRegularFile(filepath.Join(root, filepath.FromSlash(rel)), projectFileReadLimit)
 	if err != nil {
 		return false
 	}

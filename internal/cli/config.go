@@ -161,11 +161,11 @@ func runConfigCheck(projectRoot string, loafRoot string, options configCheckOpti
 func checkProjectLoafConfig(projectRoot string, fix bool, now time.Time) configFileStatus {
 	path := filepath.Join(projectRoot, ".agents", "loaf.json")
 	status := configFileStatus{Path: ".agents/loaf.json", Status: "ok"}
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			status.Status = "invalid"
-			status.Errors = append(status.Errors, fmt.Sprintf("could not read .agents/loaf.json: %v", err))
+			status.Errors = append(status.Errors, fmt.Sprintf("could not read .agents/loaf.json: %v", refuseProjectFileRead(err)))
 			return status
 		}
 		status.Status = "missing"
@@ -398,7 +398,7 @@ func installedConfigTargets() []detectedInstallTool {
 }
 
 func readConfigInstallRecord(target string) (installTargetRecord, bool) {
-	body, err := os.ReadFile(installRecordPath(installHome(), target))
+	body, err := readRegularFile(installRecordPath(installHome(), target), projectFileReadLimit)
 	if err != nil {
 		return installTargetRecord{}, false
 	}
@@ -500,7 +500,7 @@ func configHookIDsFromFile(path string) ([]string, error) {
 	if path == "" {
 		return nil, fmt.Errorf("unknown hook path")
 	}
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		return nil, err
 	}

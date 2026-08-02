@@ -14,26 +14,10 @@ import (
 	"testing"
 )
 
-func TestParseInstallDryRunFlagGuards(t *testing.T) {
-	if _, err := parseInstallArgs([]string{"--dry-run"}); err == nil || !strings.Contains(err.Error(), "requires --upgrade") {
-		t.Fatalf("parseInstallArgs(--dry-run) error = %v, want requires --upgrade", err)
-	}
-	if _, err := parseInstallArgs([]string{"--json", "--upgrade"}); err == nil || !strings.Contains(err.Error(), "requires --dry-run") {
-		t.Fatalf("parseInstallArgs(--json --upgrade) error = %v, want requires --dry-run", err)
-	}
-	options, err := parseInstallArgs([]string{"--upgrade", "--dry-run", "--json"})
-	if err != nil {
-		t.Fatalf("parseInstallArgs(--upgrade --dry-run --json) error = %v", err)
-	}
-	if !options.upgrade || !options.dryRun || !options.json {
-		t.Fatalf("options = %#v, want upgrade/dryRun/json all set", options)
-	}
-}
-
-// TestRunnerInstallUpgradeDryRunNonMutatingAcrossSurfaces hashes the fixture
+// TestRunnerUpgradeDryRunNonMutatingAcrossSurfaces hashes the fixture
 // trees before and after a dry-run and requires byte-identical trees across the
 // acceptance scenarios.
-func TestRunnerInstallUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
+func TestRunnerUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
 	t.Run("installed-target-stale-modified-foreign", func(t *testing.T) {
 		root, home := setupInstallCommandFixture(t)
 		writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
@@ -49,7 +33,7 @@ func TestRunnerInstallUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
 		// Foreign unowned content that Loaf must never touch.
 		writeInstallFile(t, filepath.Join(sharedSkills, "foreign", "SKILL.md"), "# Mine\n")
 
-		plan := assertDryRunNonMutating(t, root, home, "install", "--to", "cursor", "--upgrade", "--dry-run", "--json")
+		plan := assertDryRunNonMutating(t, root, home, "upgrade", "--to", "cursor", "--dry-run", "--json")
 		cursor := findTargetPlan(t, plan, "cursor")
 		if got := skillAction(cursor, "go-development"); got != planActionUpdate {
 			t.Fatalf("go-development action = %q, want update (stale owned)", got)
@@ -67,7 +51,7 @@ func TestRunnerInstallUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
 
 	t.Run("no-installed-targets", func(t *testing.T) {
 		root, home := setupInstallCommandFixture(t)
-		plan := assertDryRunNonMutating(t, root, home, "install", "--upgrade", "--dry-run", "--json")
+		plan := assertDryRunNonMutating(t, root, home, "upgrade", "--dry-run", "--json")
 		if len(plan.Targets) != 0 {
 			t.Fatalf("targets = %#v, want none for a fixture with no installed targets", plan.Targets)
 		}
@@ -94,7 +78,7 @@ func TestRunnerInstallUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
   "aliases": []
 }`)
 
-		plan := assertDryRunNonMutating(t, root, home, "install", "--upgrade", "--dry-run", "--json")
+		plan := assertDryRunNonMutating(t, root, home, "upgrade", "--dry-run", "--json")
 		if !plan.ConsentRequired {
 			t.Fatalf("consent_required = false, want true for a destructive deprecation without --yes")
 		}
@@ -105,9 +89,11 @@ func TestRunnerInstallUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
 		if _, err := os.Stat(retired); err != nil {
 			t.Fatalf("retired target stat = %v, want still present after dry-run", err)
 		}
+		// The apply command names the command that applies the plan, which is
+		// `loaf upgrade` regardless of the entry point that produced it.
 		foundApply := false
 		for _, command := range plan.FollowUpCommands {
-			if command == "loaf install --upgrade --yes" {
+			if command == "loaf upgrade --yes" {
 				foundApply = true
 			}
 		}
@@ -117,9 +103,9 @@ func TestRunnerInstallUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
 	})
 }
 
-// TestRunnerInstallUpgradeDryRunJSONIsDeterministic requires byte-identical JSON
+// TestRunnerUpgradeDryRunJSONIsDeterministic requires byte-identical JSON
 // across two independent runs over the same fixture state.
-func TestRunnerInstallUpgradeDryRunJSONIsDeterministic(t *testing.T) {
+func TestRunnerUpgradeDryRunJSONIsDeterministic(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
 	writeInstallFile(t, filepath.Join(root, "dist", "opencode", "skills", "foundations", "SKILL.md"), "# Foundations\n")
@@ -127,8 +113,8 @@ func TestRunnerInstallUpgradeDryRunJSONIsDeterministic(t *testing.T) {
 	mkdirAll(t, filepath.Join(home, ".config", "opencode"))
 	writeInstallFile(t, filepath.Join(home, ".config", "opencode", loafInstallMarkerFile), "old\n")
 
-	first := runInstallCapture(t, root, "install", "--upgrade", "--dry-run", "--json")
-	second := runInstallCapture(t, root, "install", "--upgrade", "--dry-run", "--json")
+	first := runInstallCapture(t, root, "upgrade", "--dry-run", "--json")
+	second := runInstallCapture(t, root, "upgrade", "--dry-run", "--json")
 	if first != second {
 		t.Fatalf("dry-run JSON is not deterministic:\n--- first ---\n%s\n--- second ---\n%s", first, second)
 	}
@@ -136,15 +122,18 @@ func TestRunnerInstallUpgradeDryRunJSONIsDeterministic(t *testing.T) {
 	if err := json.Unmarshal([]byte(first), &plan); err != nil {
 		t.Fatalf("unmarshal dry-run JSON: %v\n%s", err, first)
 	}
-	if plan.ContractVersion != installPlanContractVersion || plan.Command != "install" || !plan.DryRun {
-		t.Fatalf("plan envelope = %#v, want contract %d command install dry_run true", plan, installPlanContractVersion)
+	if plan.ContractVersion != installPlanContractVersion || plan.Command != upgradeCommandName || !plan.DryRun {
+		t.Fatalf("plan envelope = %#v, want contract %d command %s dry_run true", plan, installPlanContractVersion, upgradeCommandName)
+	}
+	if plan.ProjectPart == nil || plan.ProjectPart.InScope || plan.ProjectPart.Tier != loafRepoTierNone.String() {
+		t.Fatalf("project_part = %#v, want the detector gate reported and closed for a fixture that is not a Loaf repo", plan.ProjectPart)
 	}
 }
 
-// TestRunnerInstallUpgradeDryRunSkillPlanMatchesApply verifies plan/apply
+// TestRunnerUpgradeDryRunSkillPlanMatchesApply verifies plan/apply
 // parity: the per-artifact actions predicted by the dry-run are exactly what a
 // subsequent apply performs.
-func TestRunnerInstallUpgradeDryRunSkillPlanMatchesApply(t *testing.T) {
+func TestRunnerUpgradeDryRunSkillPlanMatchesApply(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	distSkills := filepath.Join(root, "dist", "cursor", "skills")
 	writeInstallFile(t, filepath.Join(distSkills, "foundations", "SKILL.md"), "# Foundations\n")
@@ -164,7 +153,7 @@ func TestRunnerInstallUpgradeDryRunSkillPlanMatchesApply(t *testing.T) {
 	}
 	writeInstallFile(t, filepath.Join(distSkills, "new-skill", "SKILL.md"), "# New\n")
 
-	plan := parseInstallPlanJSON(t, runInstallCapture(t, root, "install", "--to", "cursor", "--upgrade", "--dry-run", "--json"))
+	plan := parseInstallPlanJSON(t, runInstallCapture(t, root, "upgrade", "--to", "cursor", "--dry-run", "--json"))
 	cursor := findTargetPlan(t, plan, "cursor")
 	want := map[string]string{
 		"foundations":    planActionPreserve,
@@ -179,7 +168,7 @@ func TestRunnerInstallUpgradeDryRunSkillPlanMatchesApply(t *testing.T) {
 	}
 
 	// Apply and confirm the predicted effects actually happened.
-	runInstallFixture(t, root, "install", "--to", "cursor", "--upgrade", "--yes")
+	runInstallFixture(t, root, "upgrade", "--to", "cursor", "--yes")
 	assertInstallFile(t, filepath.Join(sharedSkills, "foundations", "SKILL.md"), "# Foundations\n")
 	assertInstallFile(t, filepath.Join(sharedSkills, "go-development", "SKILL.md"), "# Go v2\n")
 	assertInstallFile(t, filepath.Join(sharedSkills, "new-skill", "SKILL.md"), "# New\n")

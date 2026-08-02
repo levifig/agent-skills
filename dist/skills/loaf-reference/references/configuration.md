@@ -40,9 +40,9 @@ Loaf-managed hook files — regenerate them through `loaf build` and `loaf insta
 
 ## Refresh installed targets
 
-`loaf install --upgrade` updates already-installed targets and applies
-deprecation-manifest cleanup (removing retired skills and targets). Run it after
-config or skill changes so installed harnesses match the source.
+`loaf upgrade` updates already-installed targets and applies deprecation-manifest cleanup (removing retired skills and targets). Run it after config or skill changes so installed harnesses match the source. It is safe to run from anywhere: project surfaces are refreshed only inside a detected Loaf repo, and `--to <target>` narrows the sync to one already-installed target.
+
+`loaf install` is for onboarding — deploying Loaf into a folder that does not have it, or adding a harness that is not installed yet. Inside a Loaf repo it no-ops the project part and points at `loaf upgrade`.
 
 If the Codex Auto-journal rule was previously enabled, upgrade refreshes it only while the installed body still matches Loaf's recorded digest. Unowned or locally modified rule files are preserved and reported as conflicts.
 

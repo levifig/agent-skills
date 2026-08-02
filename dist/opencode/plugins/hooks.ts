@@ -346,7 +346,7 @@ const sessionHooks: Record<string, HookEntry[]> = {
   "sessionstart": [
     {
       "id": "session-start-loaf",
-      "command": "loaf journal context --from-hook",
+      "command": "loaf journal context --from-hook --opencode-hook",
       "timeout": 60000,
       "failClosed": false
     }

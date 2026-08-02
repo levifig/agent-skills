@@ -14,14 +14,38 @@ import (
 	"github.com/levifig/loaf/internal/project"
 )
 
+// install.go owns `loaf install`, and install is onboarding: it adds Loaf to a
+// harness that does not have it, and it deploys Loaf's surfaces into a project
+// that is not yet a Loaf repo. Refreshing either of those in place is
+// `loaf upgrade`'s job, and the two never overlap.
+//
+// The project half — AGENTS.md and its managed section, the instruction
+// symlinks, and the MCP-recommendation record in .agents/loaf.json — sits
+// behind one gate. Outside a Loaf repo the gate asks for consent before the
+// first write; inside one it stays shut and points at `loaf upgrade`. The
+// harness half runs either way, so `--to <target>` still onboards a net-new
+// tool from inside a Loaf repo.
+
 type installOptions struct {
 	target             string
-	upgrade            bool
 	codexBasicCommands bool
 	yes                *bool
 	help               bool
-	dryRun             bool
-	json               bool
+	// projectDeployGranted settles the onboarding consent gate before it is
+	// reached. Only `loaf setup` sets it: setup scaffolds the project itself
+	// moments earlier, so the decision is already made and the marker it just
+	// wrote must not read back as somebody else's deployment.
+	projectDeployGranted bool
+	// upgrade, dryRun, and json are inputs to the shared plan builder that
+	// `loaf upgrade` fills in through installPlanOptions. `loaf install` never
+	// parses them; the flags that used to set them are tombstoned.
+	upgrade bool
+	dryRun  bool
+	json    bool
+	// command names the CLI entry point these options were parsed for. It is
+	// the seam the shared plan builder reads to stay command-aware; see
+	// planCommandName for how an unset value resolves.
+	command string
 }
 
 type detectedInstallTool struct {
@@ -51,7 +75,13 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 		writeInstallHelp(out)
 		return nil
 	}
+	return r.runInstallWithOptions(options, out, runtimeRoot)
+}
 
+// runInstallWithOptions is the install flow proper, reachable with options no
+// command line can produce. `loaf setup` is the one caller that needs that: it
+// composes init + build + install and already owns the deploy decision.
+func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, runtimeRoot string) error {
 	loafRoot, err := r.resolveInstalledDistributionRoot()
 	if err != nil {
 		return err
@@ -65,10 +95,7 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 	tools := detectInstallTools()
 	hasClaudeCode := installCommandExists("claude")
 	assumeYes := installAssumeYes(options)
-
-	if options.dryRun {
-		return r.runInstallDryRun(options, out, loafRoot, projectRoot.Path(), version, distRoot, tools, hasClaudeCode, assumeYes)
-	}
+	detection := detectLoafRepo(projectRoot, r.StateHome)
 
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, ansiBold("loaf install"))
@@ -82,34 +109,18 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 	if options.codexBasicCommands && !containsString(selectedTargets, "codex") {
 		return fmt.Errorf("Codex basic command policy requested, but Codex is not selected or detected")
 	}
-	if options.upgrade && len(selectedTargets) > 0 {
-		fmt.Fprintf(out, "  %s %s\n", ansiGray("Upgrading:"), strings.Join(selectedTargets, ", "))
-	}
-	if options.upgrade {
-		allowDestructiveCleanup := options.yes != nil && *options.yes
-		if err := runInstallDeprecationCleanup(loafRoot, out, allowDestructiveCleanup); err != nil {
-			return err
-		}
-	}
 
 	if len(selectedTargets) == 0 {
+		// Consent is only worth asking for when there is something to deploy.
+		// With no target and no Claude Code the project half has no surface to
+		// write — every fenced section and symlink it manages belongs to a
+		// harness — so onboarding asks nothing and writes nothing.
 		if hasClaudeCode {
-			if wrote := r.enforceInstallProjectFiles(out, projectRoot.Path(), nil, true, assumeYes, version, options.upgrade); wrote {
-				fmt.Fprintln(out)
+			if err := r.deployInstallProjectSurfaces(out, options, projectRoot.Path(), detection, nil, hasClaudeCode, assumeYes, version); err != nil {
+				return err
 			}
 		}
-		mcpTargets := []string{}
-		if hasClaudeCode {
-			mcpTargets = append(mcpTargets, "claude-code")
-		}
-		if err := r.runInstallMcpRecommendations(out, projectRoot.Path(), options.upgrade, mcpTargets); err != nil {
-			return err
-		}
-		if options.upgrade {
-			fmt.Fprintf(out, "  %s\n\n", ansiGray("No installed targets to upgrade"))
-		} else {
-			fmt.Fprintf(out, "  %s\n\n", ansiGray("No targets selected"))
-		}
+		fmt.Fprintf(out, "  %s\n\n", ansiGray("No targets selected"))
 		return nil
 	}
 
@@ -138,7 +149,6 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 			Target:             target,
 			DistDir:            distDir,
 			ConfigDir:          configDir,
-			Upgrade:            options.upgrade,
 			CodexBasicCommands: options.codexBasicCommands,
 			Version:            version,
 			HomeDir:            installHome(),
@@ -156,7 +166,7 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 		if target == "codex" {
 			if options.codexBasicCommands {
 				fmt.Fprintf(out, "  %s Codex basic command policy explicitly enabled (Loaf-owned exact-prefix rules)\n", ansiGreen("✓"))
-			} else if !options.upgrade {
+			} else {
 				fmt.Fprintf(out, "  %s Codex basic command policy not installed; opt in with --codex-basic-commands\n", ansiGray("○"))
 			}
 		}
@@ -166,20 +176,76 @@ func (r Runner) runInstall(args []string, out io.Writer, runtimeRoot string) err
 
 	targetsInScope := append([]string{}, selectedTargets...)
 	targetsInScope = append(targetsInScope, installedTargets...)
-	if wrote := r.enforceInstallProjectFiles(out, projectRoot.Path(), targetsInScope, hasClaudeCode, assumeYes, version, options.upgrade); wrote {
-		fmt.Fprintln(out)
-	}
-	mcpTargets := append([]string{}, targetsInScope...)
-	if hasClaudeCode {
-		mcpTargets = append(mcpTargets, "claude-code")
-	}
-	if err := r.runInstallMcpRecommendations(out, projectRoot.Path(), options.upgrade, mcpTargets); err != nil {
+	if err := r.deployInstallProjectSurfaces(out, options, projectRoot.Path(), detection, targetsInScope, hasClaudeCode, assumeYes, version); err != nil {
 		return err
 	}
 	if codexBasicCommandsErr != nil {
 		return codexBasicCommandsErr
 	}
 	return nil
+}
+
+// deployInstallProjectSurfaces is install's project half. Every write it can
+// make lands inside the project, so all of it — files and the
+// MCP-recommendation record alike — is one decision, taken before the first
+// byte is written.
+func (r Runner) deployInstallProjectSurfaces(out io.Writer, options installOptions, projectRoot string, detection loafRepoDetection, targets []string, hasClaudeCode bool, assumeYes bool, version string) error {
+	deploy, err := r.installProjectDeployApproved(out, options, detection)
+	if err != nil || !deploy {
+		return err
+	}
+	outcome := r.enforceInstallProjectFiles(out, projectRoot, targets, hasClaudeCode, assumeYes, version, false)
+	if outcome.wrote {
+		fmt.Fprintln(out)
+	}
+	// A fenced-section write that failed means this project file is not Loaf's
+	// to manage right now. The MCP interview would write into the same project
+	// on that reading, so onboarding stops rather than half-deploying.
+	if outcome.fenceFailed {
+		fmt.Fprintf(out, "  %s\n\n", ansiGray("Managed project file could not be written — skipping the remaining project surfaces. Resolve the reported conflict and rerun loaf install."))
+		return nil
+	}
+	mcpTargets := append([]string{}, targets...)
+	if hasClaudeCode {
+		mcpTargets = append(mcpTargets, "claude-code")
+	}
+	return r.runInstallMcpRecommendations(out, projectRoot, false, mcpTargets)
+}
+
+// installProjectDeployApproved answers the only question onboarding asks about
+// this directory: may install write into it? A Loaf repo answers no — its
+// surfaces exist already and refreshing them is `loaf upgrade`'s job. Anything
+// weaker than that, legacy artifacts included, is a folder Loaf has never been
+// deployed to, so it takes consent: an explicit --yes, or a yes to the prompt.
+// Without a terminal and without --yes, install reports the consent it needs
+// and writes nothing rather than reading silence as agreement.
+func (r Runner) installProjectDeployApproved(out io.Writer, options installOptions, detection loafRepoDetection) (bool, error) {
+	if options.projectDeployGranted {
+		return true, nil
+	}
+	if detection.Tier >= loafRepoTierStrong {
+		fmt.Fprintf(out, "  %s %s\n\n", ansiGray("○"), ansiGray("Loaf is already deployed here ("+detection.Bases[0]+") — run loaf upgrade to refresh project surfaces"))
+		return false, nil
+	}
+	if options.yes != nil && *options.yes {
+		return true, nil
+	}
+	if !r.installPromptInteractive() {
+		fmt.Fprintf(out, "  %s\n\n", ansiGray("Deploy consent required: rerun with --yes, or answer \"Deploy Loaf to this folder?\" in a terminal. No project files written."))
+		return false, nil
+	}
+	if detection.Tier == loafRepoTierLegacy {
+		fmt.Fprintf(out, "  %s %s\n", ansiYellow("⚠"), ansiGray(detection.Bases[0]))
+	}
+	yes, err := askInstallYesNo(r.installPromptReader(), out, "  No Loaf project detected here. Deploy Loaf to this folder? [y/N] ", false)
+	if err != nil {
+		return false, err
+	}
+	if !yes {
+		fmt.Fprintf(out, "  %s\n\n", ansiGray("Skipping project files. Harness content only."))
+		return false, nil
+	}
+	return true, nil
 }
 
 func parseInstallArgs(args []string) (installOptions, error) {
@@ -194,11 +260,11 @@ func parseInstallArgs(args []string) (installOptions, error) {
 			i++
 			options.target = args[i]
 		case "--upgrade":
-			options.upgrade = true
+			return installOptions{}, installFlagRemovedError("--upgrade", "loaf upgrade")
 		case "--dry-run":
-			options.dryRun = true
+			return installOptions{}, installFlagRemovedError("--dry-run", "loaf upgrade --dry-run")
 		case "--json":
-			options.json = true
+			return installOptions{}, installFlagRemovedError("--json", "loaf upgrade --dry-run --json")
 		case "--codex-basic-commands":
 			options.codexBasicCommands = true
 		case "-y", "--yes":
@@ -216,30 +282,39 @@ func parseInstallArgs(args []string) (installOptions, error) {
 	if options.codexBasicCommands && options.target != "codex" && options.target != "all" {
 		return installOptions{}, fmt.Errorf("--codex-basic-commands requires --to codex or --to all")
 	}
-	if options.dryRun && !options.upgrade {
-		return installOptions{}, fmt.Errorf("--dry-run requires --upgrade")
-	}
-	if options.json && !options.dryRun {
-		return installOptions{}, fmt.Errorf("--json requires --dry-run")
-	}
 	return options, nil
+}
+
+// installFlagRemovedError tombstones a flag that left install for
+// `loaf upgrade`. It names the replacement without ever spelling the removed
+// invocation, so the sweep proving no live surface still advertises that
+// invocation needs no exception for the tombstone itself.
+func installFlagRemovedError(flag string, replacement string) error {
+	return fmt.Errorf("the %q flag was removed from install; run %q instead", flag, replacement)
 }
 
 func writeInstallHelp(out io.Writer) {
 	fmt.Fprintln(out, strings.Join([]string{
 		"Usage: loaf install [options]",
 		"",
-		"Install Loaf to detected AI tool configurations.",
+		"Onboard Loaf. Install does two things, and only ever adds:",
+		"",
+		"  Harness  Installs the Loaf distribution into an agent tool's global config",
+		"           directory. Use --to <target> to onboard a tool that does not have",
+		"           it yet, from anywhere.",
+		"  Project  Deploys Loaf's project surfaces here: AGENTS.md and its managed",
+		"           section, the instruction symlinks, and the MCP recommendation",
+		"           record in .agents/loaf.json. Outside a Loaf repo install asks",
+		"           before writing anything; inside one it leaves the project alone.",
 		"",
 		"Options:",
 		"  --to <target>  Target to install to (or \"all\")",
-		"  --upgrade      Update installed targets and apply deprecation-manifest cleanup",
-		"  --dry-run      Report the upgrade plan without writing anything (requires --upgrade)",
-		"  --json         Emit the dry-run plan as a single JSON document (requires --dry-run)",
 		"  --codex-basic-commands  Explicitly install the least-privilege Codex basic command policy (requires --to codex or --to all)",
-		"  -y, --yes      Assume yes to safe project-file symlink migrations and destructive deprecation cleanup",
+		"  -y, --yes      Assume yes: grants project deploy consent and safe project-file symlink migrations",
 		"  --no-yes       Force prompt-style declines in non-interactive mode",
 		"  -h, --help     Show help",
+		"",
+		"Refreshing an install that already exists is loaf upgrade's job.",
 	}, "\n"))
 }
 
@@ -404,21 +479,57 @@ func installLoafBinary(out io.Writer, loafRoot string) bool {
 	return true
 }
 
-func (r Runner) enforceInstallProjectFiles(out io.Writer, projectRoot string, selectedTargets []string, hasClaudeCode bool, assumeYes bool, version string, upgrade bool) bool {
+// installProjectFileOutcome reports what the managed project-file pass did:
+// whether it printed anything, and whether the pass refused to finish. The
+// second field is what stops the writes that come after it.
+//
+// Both halves of the pass can raise it. A fenced write fails on a section that
+// is not Loaf's to manage; the symlink pass fails on a path it was about to
+// read whole that is not a file it can read whole. They are the same statement
+// about the project, so they get the same answer.
+type installProjectFileOutcome struct {
+	wrote       bool
+	fenceFailed bool
+}
+
+// enforceInstallProjectFiles writes the managed project files: the instruction
+// symlinks first, then the fenced sections. That order is load-bearing rather
+// than incidental — the fence write resolves symlinks before choosing a path,
+// so `.claude/CLAUDE.md` must already point at `AGENTS.md` when it runs, or the
+// section lands in a real file the symlink pass would then offer to replace.
+func (r Runner) enforceInstallProjectFiles(out io.Writer, projectRoot string, selectedTargets []string, hasClaudeCode bool, assumeYes bool, version string, upgrade bool) installProjectFileOutcome {
 	symlinkResults := ensureProjectInstallSymlinks(projectRoot, selectedTargets, hasClaudeCode, installSymlinkOptions{
 		AssumeYes:      assumeYes,
 		NonInteractive: !assumeYes,
 	})
-	wrote := writeInstallSymlinkResults(out, symlinkResults)
+	outcome := installProjectFileOutcome{wrote: writeInstallSymlinkResults(out, symlinkResults)}
+	if anyInstallSymlinkRefusal(symlinkResults) {
+		outcome.fenceFailed = true
+		return outcome
+	}
 	fencedTargets := append([]string{}, selectedTargets...)
 	if hasClaudeCode {
 		fencedTargets = append([]string{"claude-code"}, fencedTargets...)
 	}
-	fencedResults := installFencedSectionsForTargets(fencedTargets, projectRoot, version, upgrade)
+	fencedResults, fencedErr := installFencedSectionsForTargets(fencedTargets, projectRoot, version, upgrade)
 	if writeInstallFencedResults(out, fencedResults) {
-		wrote = true
+		outcome.wrote = true
 	}
-	return wrote
+	outcome.fenceFailed = fencedErr != nil
+	return outcome
+}
+
+// anyInstallSymlinkRefusal reports whether the symlink pass refused a path it
+// could not read whole. The fenced pass runs after it and writes into the same
+// files, so a refusal stops the pass here rather than letting the next writer
+// meet the same path.
+func anyInstallSymlinkRefusal(results map[string]installSymlinkResult) bool {
+	for _, result := range results {
+		if result.Refused {
+			return true
+		}
+	}
+	return false
 }
 
 func writeInstallDetection(out io.Writer, tools []detectedInstallTool, hasClaudeCode bool, loafRoot string) {

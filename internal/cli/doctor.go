@@ -32,6 +32,11 @@ type doctorFixResult struct {
 
 type doctorContext struct {
 	projectRoot string
+	// cliVersion is the installed distribution's version — the binary the
+	// caller just ran. Checks that compare project or harness state against
+	// the running loaf read it here; an empty value means provenance could
+	// not be resolved and those checks must skip rather than guess.
+	cliVersion string
 }
 
 type doctorCheck struct {
@@ -106,7 +111,7 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 		cliVersion = packageVersion(distributionRoot)
 	}
 	if options.jsonOutput {
-		result := runDoctorChecksJSON(doctorContext{projectRoot: runtimeRoot}, cliVersion)
+		result := runDoctorChecksJSON(doctorContext{projectRoot: runtimeRoot, cliVersion: cliVersion}, cliVersion)
 		if err := writeJSON(out, result); err != nil {
 			return err
 		}
@@ -115,7 +120,7 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 		}
 		return nil
 	}
-	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot}, options, cliVersion, r.Stdin)
+	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot, cliVersion: cliVersion}, options, cliVersion, r.Stdin)
 	if report.Failures > 0 {
 		return ExitError{Code: 1}
 	}
@@ -297,6 +302,44 @@ func doctorChecks() []doctorCheck {
 		checkStaleCursorMdc(),
 		checkFencedContent(),
 		checkDuplicateFencedSections(),
+		checkHarnessContentDrift(),
+	}
+}
+
+// checkHarnessContentDrift reports installed harnesses whose stamped content
+// no longer matches the binary. It is deliberately report-only: the repair is
+// running `loaf upgrade` yourself, which is a global-config mutation that must
+// not ride along inside a project-scoped `doctor --fix` run.
+func checkHarnessContentDrift() doctorCheck {
+	return doctorCheck{
+		Name:        "harness-content-drift",
+		Description: "Installed harness content matches the running loaf binary",
+		Run: func(ctx doctorContext) doctorResult {
+			if ctx.cliVersion == "" {
+				return doctorResult{Status: doctorSkip, Message: "No installed loaf distribution to compare harness content against"}
+			}
+			readings := installedHarnessDriftReadings(ctx.cliVersion)
+			if len(readings) == 0 {
+				return doctorResult{Status: doctorSkip, Message: "No harness carries installed Loaf content"}
+			}
+			var details []string
+			for _, reading := range readings {
+				if line := reading.doctorDetailLine(ctx.cliVersion); line != "" {
+					details = append(details, line)
+				}
+			}
+			if len(details) == 0 {
+				return doctorResult{
+					Status:  doctorPass,
+					Message: fmt.Sprintf("All %d installed harnesses carry loaf %s", len(readings), ctx.cliVersion),
+				}
+			}
+			return doctorResult{
+				Status:  doctorWarn,
+				Message: fmt.Sprintf("%d of %d installed harnesses do not carry loaf %s", len(details), len(readings), ctx.cliVersion),
+				Detail:  strings.Join(details, "\n"),
+			}
+		},
 	}
 }
 
@@ -430,21 +473,21 @@ func checkCanonicalAgentsFile() doctorCheck {
 			legacyIsReal := doctorRegularFileExists(legacy) && !isSymlinkForDoctor(legacy)
 			if legacyIsReal {
 				var err error
-				body, err = os.ReadFile(legacy)
+				body, err = readRegularFile(legacy, projectFileReadLimit)
 				if err != nil {
-					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", err)}
+					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", refuseProjectFileRead(err))}
 				}
 			} else if pathExistsForDoctor(canonical) {
 				var err error
-				body, err = os.ReadFile(canonical)
+				body, err = readRegularFile(canonical, projectFileReadLimit)
 				if err != nil && !os.IsNotExist(err) {
-					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", err)}
+					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", refuseProjectFileRead(err))}
 				}
 			} else if pathExistsForDoctor(claudeLink) && !isSymlinkForDoctor(claudeLink) {
 				var err error
-				body, err = os.ReadFile(claudeLink)
+				body, err = readRegularFile(claudeLink, projectFileReadLimit)
 				if err != nil {
-					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", err)}
+					return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", refuseProjectFileRead(err))}
 				}
 			}
 			canonicalWasSymlink := isSymlinkForDoctor(canonical)
@@ -513,8 +556,15 @@ func checkFencedContent() doctorCheck {
 			if !doctorRegularFileExists(canonical) {
 				return doctorResult{Status: doctorSkip, Message: "No root AGENTS.md to inspect"}
 			}
-			body, err := os.ReadFile(canonical)
+			body, err := readRegularFile(canonical, projectFileReadLimit)
 			if err != nil {
+				if isProjectFileRefusal(err) {
+					return doctorResult{
+						Status:  doctorWarn,
+						Message: "Root AGENTS.md could not be inspected",
+						Detail:  fmt.Sprintf("%v. Loaf reads the whole file to compare the managed section; replace the path with a regular file before installing or upgrading.", err),
+					}
+				}
 				return doctorResult{
 					Status:  doctorWarn,
 					Message: "No loaf:managed fenced section found in AGENTS.md",
@@ -539,7 +589,7 @@ func checkFencedContent() doctorCheck {
 				return doctorResult{
 					Status:  doctorWarn,
 					Message: "Fenced section was modified (stored fingerprint does not match body)",
-					Detail:  "Reconcile hand edits with the managed section before upgrading; `loaf install --upgrade` will refuse to overwrite this state.",
+					Detail:  "Reconcile hand edits with the managed section before upgrading; `loaf upgrade` will refuse to overwrite this state.",
 				}
 			}
 			// Drift second: intact or sha-less section whose body differs from generated.
@@ -547,7 +597,7 @@ func checkFencedContent() doctorCheck {
 				return doctorResult{
 					Status:  doctorWarn,
 					Message: "Fenced section content differs from installed loaf",
-					Detail:  "Run `loaf install --upgrade` to refresh the fenced section.",
+					Detail:  "Run `loaf upgrade` to refresh the fenced section.",
 				}
 			}
 			return doctorResult{Status: doctorPass, Message: "Fenced section content matches installed loaf"}
@@ -756,9 +806,9 @@ func retireLegacyDoctorAgentsFile(projectRoot string) doctorFixResult {
 	if !doctorRegularFileExists(canonical) || isSymlinkForDoctor(canonical) {
 		return doctorFixResult{Fixed: false, Message: "Canonical root AGENTS.md is not ready - re-run doctor"}
 	}
-	body, err := os.ReadFile(legacy)
+	body, err := readRegularFile(legacy, projectFileReadLimit)
 	if err != nil {
-		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", err)}
+		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", refuseProjectFileRead(err))}
 	}
 	stripped := stripDoctorLoafFence(string(body))
 	backup := collisionSafeInstallBackupPath(legacy)
@@ -784,9 +834,9 @@ func retireLegacyDoctorAgentsFile(projectRoot string) doctorFixResult {
 }
 
 func migrateRealFileToDoctorSymlink(linkPath string, canonical string, projectRoot string) doctorFixResult {
-	sourceContent, err := os.ReadFile(linkPath)
+	sourceContent, err := readRegularFile(linkPath, projectFileReadLimit)
 	if err != nil {
-		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", err)}
+		return doctorFixResult{Fixed: false, Message: fmt.Sprintf("Migration failed: %v", refuseProjectFileRead(err))}
 	}
 	relSource, err := filepath.Rel(projectRoot, linkPath)
 	if err != nil {
@@ -837,9 +887,9 @@ func mergeDoctorContentIntoCanonical(canonical string, stripped string, relSourc
 		}
 		return true, os.WriteFile(canonical, []byte(stripped+"\n"), 0o644)
 	}
-	existing, err := os.ReadFile(canonical)
+	existing, err := readRegularFile(canonical, projectFileReadLimit)
 	if err != nil {
-		return false, err
+		return false, refuseProjectFileRead(err)
 	}
 	trimmedExisting := strings.TrimRight(string(existing), " \t\r\n")
 	appended := trimmedExisting + "\n\n## Migrated from " + relSource + "\n\n" + stripped + "\n"
@@ -861,7 +911,7 @@ func stripDoctorLoafFence(content string) string {
 }
 
 func hasDoctorFencedSection(path string) bool {
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		return false
 	}

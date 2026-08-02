@@ -116,6 +116,7 @@ func writeJournalContextHelp(out io.Writer) {
 		"--cursor-hook     Read Cursor sessionStart JSON and emit its additional_context envelope",
 		"--claude-code     Read Claude Code SessionStart JSON and emit its native hook envelope",
 		"--codex-hook      Read Codex SessionStart JSON and emit its native hook envelope",
+		"--opencode-hook   Read the OpenCode session lifecycle payload and emit its plain-text system context",
 		"--json            Output contract-v2 project metadata, layers, and diagnostics as JSON",
 		"",
 		"Hook subcommands (read stdin, exit silently for subagents):",
@@ -845,17 +846,18 @@ var canonicalJournalContextLayers = []string{
 }
 
 type journalContextCLIOptions struct {
-	branch     string
-	branchSet  bool
-	layer      string
-	limit      int
-	limitSet   bool
-	cursor     string
-	jsonOutput bool
-	fromHook   bool
-	claudeCode bool
-	cursorHook bool
-	codexHook  bool
+	branch       string
+	branchSet    bool
+	layer        string
+	limit        int
+	limitSet     bool
+	cursor       string
+	jsonOutput   bool
+	fromHook     bool
+	claudeCode   bool
+	cursorHook   bool
+	codexHook    bool
+	opencodeHook bool
 }
 
 type journalContextLayersJSON struct {
@@ -898,6 +900,8 @@ func parseJournalContextArgs(args []string) (journalContextCLIOptions, error) {
 			options.cursorHook = true
 		case "--codex-hook":
 			options.codexHook = true
+		case "--opencode-hook":
+			options.opencodeHook = true
 		case "--branch", "--layer", "--limit", "--cursor":
 			flag := args[i]
 			value, err := consumeFlagValue(args, &i, flag)
@@ -946,19 +950,27 @@ func parseJournalContextArgs(args []string) (journalContextCLIOptions, error) {
 	if options.codexHook && !options.fromHook {
 		return journalContextCLIOptions{}, errors.New("--codex-hook requires --from-hook")
 	}
+	if options.opencodeHook && !options.fromHook {
+		return journalContextCLIOptions{}, errors.New("--opencode-hook requires --from-hook")
+	}
 	if options.claudeCode {
-		if options.cursorHook || options.branchSet || options.layer != "" || options.limitSet || options.cursor != "" || options.jsonOutput {
+		if options.cursorHook || options.opencodeHook || options.branchSet || options.layer != "" || options.limitSet || options.cursor != "" || options.jsonOutput {
 			return journalContextCLIOptions{}, errors.New("--claude-code cannot combine selectors or output overrides; it always emits the complete native SessionStart digest")
 		}
 	}
 	if options.cursorHook {
-		if options.claudeCode || options.codexHook || options.branchSet || options.layer != "" || options.limitSet || options.cursor != "" || options.jsonOutput {
+		if options.claudeCode || options.codexHook || options.opencodeHook || options.branchSet || options.layer != "" || options.limitSet || options.cursor != "" || options.jsonOutput {
 			return journalContextCLIOptions{}, errors.New("--cursor-hook cannot combine selectors or output overrides; it always emits the complete native sessionStart digest")
 		}
 	}
 	if options.codexHook {
-		if options.claudeCode || options.cursorHook || options.branchSet || options.layer != "" || options.limitSet || options.cursor != "" || options.jsonOutput {
+		if options.claudeCode || options.cursorHook || options.opencodeHook || options.branchSet || options.layer != "" || options.limitSet || options.cursor != "" || options.jsonOutput {
 			return journalContextCLIOptions{}, errors.New("--codex-hook cannot combine selectors or output overrides; it always emits the complete native SessionStart digest")
+		}
+	}
+	if options.opencodeHook {
+		if options.claudeCode || options.cursorHook || options.codexHook || options.branchSet || options.layer != "" || options.limitSet || options.cursor != "" || options.jsonOutput {
+			return journalContextCLIOptions{}, errors.New("--opencode-hook cannot combine selectors or output overrides; it always emits the complete session digest")
 		}
 	}
 	return options, nil
@@ -983,7 +995,7 @@ func (r Runner) runJournalContextDigest(args []string, out io.Writer, runtime st
 }
 
 func (r Runner) runJournalContextDigestWithHookInput(args []string, out io.Writer, runtime state.Runtime, hookInvocation bool, hookInput *journalHookInput) error {
-	if (hasFlag(args, "--claude-code") || hasFlag(args, "--cursor-hook") || hasFlag(args, "--codex-hook")) && len(args) > 0 && strings.HasPrefix(args[0], "for-") {
+	if (hasFlag(args, "--claude-code") || hasFlag(args, "--cursor-hook") || hasFlag(args, "--codex-hook") || hasFlag(args, "--opencode-hook")) && len(args) > 0 && strings.HasPrefix(args[0], "for-") {
 		return errors.New("target-specific hook adapters cannot combine generic journal context selectors")
 	}
 	// Hook subcommands: SessionStart/PostCompact emit the layered digest, while
@@ -1015,6 +1027,9 @@ func (r Runner) runJournalContextDigestWithHookInput(args []string, out io.Write
 	}
 	if options.codexHook {
 		return r.runCodexSessionStartContext(out, runtime, options)
+	}
+	if options.opencodeHook {
+		return r.runOpenCodeSessionStartContext(out, runtime, options)
 	}
 	// SessionStart/PostCompact pass --from-hook. The common evaluator owns
 	// normalization and suppression after this operation reads the payload.

@@ -1,0 +1,101 @@
+<!-- source: install-upgrade-split · kind review · slug codex-confirm · stamped 2026-08-01 18:56 · authored report (snapshot semantics) · never auto-updated · dispositions recorded -->
+<meta charset="utf-8">
+<title>Review round 5 (Codex confirmation) — Install/Upgrade Split</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--accent); margin-bottom: 28px; }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .fname { font-weight: 700; font-size: 1.02rem; flex: 1 1 320px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-p2 { background: var(--bad-soft); color: var(--bad); }
+  .disp-accepted { background: var(--ok-soft); color: var(--ok); }
+  .chip-fixed { background: var(--ok-soft); color: var(--ok); }
+  .frow { display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px; font-size: .93rem; }
+  .frow dt { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; padding-top: 2px; }
+  .frow dd { margin: 0 0 6px; }
+  @media (max-width: 640px) { .frow { grid-template-columns: 1fr; } }
+  ul.compact { margin: 0 0 10px; padding-left: 20px; }
+  ul.compact li { margin-bottom: 4px; font-size: .93rem; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">install-upgrade-split · review round 5 · confirmation</div>
+  <h1>Codex confirmation of the round-4 delta fixes</h1>
+  <p class="stamp">reviewer <b>Codex gpt-5.6-luna · xhigh</b> · resumed thread <b>019fbd93-3f7d-7df3-8d06-e79412bd7dce</b> · verified fix commit <b>dea0660f</b> · dispositioned <b>2026-08-01</b> · fixes landed in <b>23733c82</b></p>
+
+  <div class="panel verdict">
+    <p><strong>Reviewer verdict: REQUEST CHANGES — 0 P1, 2 P2.</strong> Four of five deltas confirmed <span class="chip chip-fixed">fixed</span> with file:line evidence — including cross-platform build-tag selection for the fd-based probes and an on-merits endorsement of the D5 legacy-routing disposition. The two P2s are one fix class: the descriptor hardening stopped at the detector, leaving the downstream project readers on plain <code>os.ReadFile</code>. Both accepted and closed uniformly in <code>23733c82</code>; receipt re-bound in <code>da017e81</code>.</p>
+  </div>
+
+  <h2>Round-4 delta verification (by the resumed thread)</h2>
+  <div class="panel">
+    <ul class="compact">
+      <li><strong>D1 unreadable config:</strong> partially fixed — ENOENT-only absence, typed refusals, plan mirroring, and tests all confirmed; residual: a special file blocks before the refusal triggers (→ merged into N1's fix class).</li>
+      <li><strong>D2 batch fence abort:</strong> <em>fixed</em> — first-error return, both callers propagate, two-target regression test confirmed.</li>
+      <li><strong>D3 prerelease overflow:</strong> <em>fixed</em> — canonical decimal-string comparison, no <code>Atoi</code>, release-parser split intact and pinned.</li>
+      <li><strong>D4 probe TOCTOU:</strong> <em>fixed</em> — <code>O_NONBLOCK</code> + descriptor-Stat on unix, portable fallback rechecks the descriptor, build selection verified across Darwin/Linux/BSD vs Windows/Plan9/JS/WASI.</li>
+      <li><strong>D5 malformed-header routing:</strong> <em>fixed</em> — paired-invalid-header yields the legacy signal, tier-sorted bases keep the displayed basis honest, upgrade routes through explicit confirmation; the modified disposition judged sound.</li>
+    </ul>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">D1-residual · Special files bypass the config refusal</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The four-valued read refuses permission errors and directories, but <code>os.ReadFile</code> on a FIFO blocks before the refusal is ever reached — the refusal logic is correct and unreachable.</dd>
+      <dt>Fix</dt><dd><code>23733c82</code>: <code>readInstallLoafConfigDocument</code> reads through the shared descriptor-hardened helper; not-a-regular-file joins the existing unreadable refusal (preserve, report, refuse writes, plan mirrors).</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">N1 · Project readers bypass the descriptor hardening</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>A FIFO at <code>AGENTS.md</code> (with the config granting strong tier) or at <code>.agents/loaf.json</code> (with the fence granting it) hangs apply — and <code>upgrade --dry-run --json</code>, the surface whose entire purpose is non-committal inspection.</dd>
+      <dt>Fix</dt><dd><code>23733c82</code>: one shared bounded reader (unix <code>O_NONBLOCK</code> open + descriptor-Stat, portable fallback, 4 MiB cap, typed not-regular/too-large refusals) routed through all three readers — <code>installFencedSection</code>, the plan-side project read, and the config document read. FIFO-under-strong-signal tests cover apply and dry-run for each path; dry-run is now provably prompt.</dd>
+    </dl>
+  </div>
+
+  <footer>Authored snapshot — review round 5, confirmation pass on the round-4 deltas plus delta sweep of <code>dea0660f</code>. Prior rounds: <a href="20260801-024619-review-codex.html">1 · shaping</a> · <a href="20260801-063956-review-sentinel.html">2 · Sentinel branch</a> · <a href="20260801-153342-review-codex.html">3 · Codex code</a> · <a href="20260801-180514-review-codex-gate.html">4 · merge gate</a>. After fixes: loaf change check state complete / no violations / executable yes; all V-criteria green; verify receipt bound at <code>23733c82</code>, recorded in <code>da017e81</code>; installed-smoke receipts re-recorded. Every file Loaf reads that it does not own now passes through one guarded open — the hardening theme this and the prior round circled is closed at its fixed point.</footer>
+</main>

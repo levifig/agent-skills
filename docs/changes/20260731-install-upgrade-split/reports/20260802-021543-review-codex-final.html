@@ -1,0 +1,102 @@
+<!-- source: install-upgrade-split · kind review · slug codex-final · stamped 2026-08-02 02:15 · authored report (snapshot semantics) · never auto-updated · dispositions recorded -->
+<meta charset="utf-8">
+<title>Review round 8 (Codex final) — Install/Upgrade Split</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--bad); margin-bottom: 28px; }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .fname { font-weight: 700; font-size: 1.02rem; flex: 1 1 320px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-p2 { background: var(--bad-soft); color: var(--bad); }
+  .disp-accepted { background: var(--ok-soft); color: var(--ok); }
+  .chip-fixed { background: var(--ok-soft); color: var(--ok); }
+  .frow { display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px; font-size: .93rem; }
+  .frow dt { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; padding-top: 2px; }
+  .frow dd { margin: 0 0 6px; }
+  @media (max-width: 640px) { .frow { grid-template-columns: 1fr; } }
+  ul.compact { margin: 0 0 10px; padding-left: 20px; }
+  ul.compact li { margin-bottom: 4px; font-size: .93rem; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">install-upgrade-split · review round 8 · final gate</div>
+  <h1>Final Codex round — new-author audit of the Grok commit</h1>
+  <p class="stamp">reviewer <b>Codex gpt-5.6-luna · xhigh</b> · resumed thread <b>019fbd93-3f7d-7df3-8d06-e79412bd7dce</b> · reviewed <b>da8ce47c</b> as unreviewed new-author code · dispositioned <b>2026-08-02</b> · fixes landed in <b>830f90dc</b></p>
+
+  <div class="panel verdict">
+    <p><strong>Reviewer verdict: REQUEST CHANGES — 0 P1, 2 P2</strong>, alongside the coverage statement this round existed to obtain: <em>"No additional <code>da8ce47c</code> source surface remains unreviewed after this audit. The two residual paths above are reviewed, concrete defects — not unexamined code."</em> Four of five round-7 fixes verified FIXED outright; the P1's fix holds in all normal paths with one plan-ledger residual. Both P2s accepted and fixed in <code>830f90dc</code> (authored again by Grok 4.5 under the implementer profile); receipt re-bound in <code>7f529a4b</code> with all nine criteria ok.</p>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">R1 · Legacy no-manifest plan branch over-promises malformed hook merges</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd><code>install_plan.go:255-269</code> reported <code>hook-legacy</code> updates without reading the destination, so on an older distribution without a target manifest, a malformed <code>hooks.json</code> appeared as <code>update</code> in dry-run while apply refused — file safe, ledger false.</dd>
+      <dt>Fix</dt><dd><code>830f90dc</code>: the no-manifest branch reads the destination through the guarded reader and emits the same refusal entry the manifest branch produces — the plan never promises a merge apply will refuse. No-manifest truncated-hooks fixture test on both surfaces.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">R2 · Enforcement checks failed open on ordinary read errors</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>Regression introduced by <code>da8ce47c</code>: <code>render-drift</code> and <code>ephemeral-provenance</code> converted every read failure into a warning and continued, where they previously blocked — a permission-denied spec with drift passed <code>loaf check</code> uninspected.</dd>
+      <dt>Fix</dt><dd><code>830f90dc</code>: only the typed not-a-regular-file refusal (the intended FIFO skip) warns and continues; permission, size, and I/O failures restore <code>Passed=false</code>, <code>Blocked=true</code>, non-zero — an enforcement hook never passes a file it could not inspect. Four new fail-closed tests (permission-denied and oversized, per check).</dd>
+    </dl>
+  </div>
+
+  <h2>Round-7 fix verification (by the resumed thread)</h2>
+  <div class="panel">
+    <ul class="compact">
+      <li><strong>Malformed merge preservation (was P1):</strong> partially fixed at <code>da8ce47c</code> — all three MCP variants and legacy hooks refuse before rewrite, planner conflict via <code>planHookProjectionRefusal</code>; residual was R1's no-manifest ledger gap, closed by <code>830f90dc</code>.</li>
+      <li><strong>Migration abort parity:</strong> <em>fixed</em> — every read error refuses, fenced pass stops, plan and apply agree.</li>
+      <li><strong>ENOENT-vs-notice detection:</strong> <em>fixed</em> — notices carried through status and plan JSON.</li>
+      <li><strong>Enumerated walkers:</strong> <em>fixed</em> for the FIFO contract (deadline-tested per walker); the fail-open regression was R2, closed by <code>830f90dc</code>.</li>
+      <li><strong>Non-ReadFile readers:</strong> <em>fixed</em> — bounded guarded opens with descriptor revalidation; no new plain reads introduced.</li>
+    </ul>
+    <p>New-author sweep found no idiom drift, message inconsistency, or test-quality gaps rising to findings; formatting, isolation, and the full suite verified clean by the reviewer.</p>
+  </div>
+
+  <footer>Authored snapshot — review round 8, the final gate: the Grok-authored commit audited as new-author code, with the branch-wide coverage statement recorded. Prior rounds: <a href="20260801-024619-review-codex.html">1</a> · <a href="20260801-063956-review-sentinel.html">2</a> · <a href="20260801-153342-review-codex.html">3</a> · <a href="20260801-180514-review-codex-gate.html">4</a> · <a href="20260801-185612-review-codex-confirm.html">5</a> · <a href="20260801-204103-review-codex-closure.html">6</a> · <a href="20260801-212744-review-codex-audit.html">7</a>. After fixes: loaf change check state complete / no violations / executable yes; verify receipt bound at <code>830f90dc</code> (<code>7f529a4b</code>), all nine criteria ok; smoke receipts re-recorded against the rebuilt binary via the capability runners. Grok stalled at the commit ceremony a third time; authorship remains Grok's, ceremony the orchestrator's, gates re-run green on both sides of the commit.</footer>
+</main>

@@ -1,0 +1,129 @@
+<!-- source: install-upgrade-split · kind review · slug codex-gate · stamped 2026-08-01 18:05 · authored report (snapshot semantics) · never auto-updated · dispositions recorded -->
+<meta charset="utf-8">
+<title>Review round 4 (Codex merge gate) — Install/Upgrade Split</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--bad); margin-bottom: 28px; }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .fname { font-weight: 700; font-size: 1.02rem; flex: 1 1 320px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-p1 { background: var(--bad); color: #fff; }
+  .sev-p2 { background: var(--bad-soft); color: var(--bad); }
+  .disp-accepted { background: var(--ok-soft); color: var(--ok); }
+  .disp-modified { background: var(--accent-soft); color: var(--accent); }
+  .chip-fixed { background: var(--ok-soft); color: var(--ok); }
+  .chip-partial { background: var(--accent-soft); color: var(--accent); }
+  .frow { display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px; font-size: .93rem; }
+  .frow dt { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; padding-top: 2px; }
+  .frow dd { margin: 0 0 6px; }
+  @media (max-width: 640px) { .frow { grid-template-columns: 1fr; } }
+  ul.compact { margin: 0 0 10px; padding-left: 20px; }
+  ul.compact li { margin-bottom: 4px; font-size: .93rem; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">install-upgrade-split · review round 4 · merge gate</div>
+  <h1>Codex merge-gate verification and delta sweep</h1>
+  <p class="stamp">reviewer <b>Codex gpt-5.6-luna · xhigh</b> · resumed thread <b>019fbd93-3f7d-7df3-8d06-e79412bd7dce</b> · verified fix commit <b>e42fd864</b> · dispositioned <b>2026-08-01</b> · delta fixes landed in <b>dea0660f</b></p>
+
+  <div class="panel verdict">
+    <p><strong>Reviewer verdict: REQUEST CHANGES — 1 P1, 4 P2.</strong> The resumed thread verified its round-3 findings against <code>e42fd864</code>: findings 4 and 6 <span class="chip chip-fixed">fixed</span>, findings 1, 2, 3, 5 <span class="chip chip-partial">partially fixed</span> — correct for the original scenarios, each leaving a residual that became a delta finding below. The release-parser split (strict on external inputs, permissive for repo-authored versions) was judged correct with its pinning test. All five deltas dispositioned (D5 modified) and fixed in <code>dea0660f</code>; verify receipt re-bound in <code>95b1e156</code>.</p>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">D1 · Unreadable or non-file <code>.agents/loaf.json</code> treated as absent</span><span class="chip sev-p1">P1</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>All read errors collapsed to an empty document, so <code>upgrade --yes</code> could truncate a write-only config through <code>writeInstallJSON</code>, while the dry-run plan promised <code>updated</code>/<code>created</code> for states apply should refuse.</dd>
+      <dt>Fix</dt><dd><code>dea0660f</code>: the read is four-valued — absent (ENOENT only) / valid object / malformed / unreadable — and unreadable refuses every write like malformed does: file preserved, path and error reported, dry-run plan emits the same refusal entry. Tests: write-only file, directory-at-path, permission-denied parent; each survives untouched in both apply and plan.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">D2 · Fence-failure abort not enforced across targets</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd><code>installFencedSectionsForTargets</code> kept attempting later targets after an earlier fence error, so a refused Claude fence could still be followed by creating <code>AGENTS.md</code> for Cursor before the failure was observed.</dd>
+      <dt>Fix</dt><dd><code>dea0660f</code>: the batch stops at the first fence error and returns immediately; both callers treat it as the project-part failure they already handle. Two-target failure test proves no file is created for the second target and upgrade exits non-zero.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">D3 · Numeric prerelease identifiers overflow to lexical ordering</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>Identifiers past <code>Atoi</code> range fell back to alphanumeric comparison, inverting SemVer numeric precedence (<code>1.0.0-90000000000000000000</code> ordered above <code>1.0.0-100000000000000000000</code>).</dd>
+      <dt>Fix</dt><dd><code>dea0660f</code>: all-digit identifiers compare with arbitrary precision as digit strings — longer is larger, equal length compares lexicographically (leading zeros already rejected by strict parsing) — keeping numeric &lt; alphanumeric per SemVer. Table tests cover the reported pair both ways.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">D4 · TOCTOU between the type probe and <code>os.Open</code></span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The regular-file check and the open were separate operations; a concurrent rename/symlink swap to a FIFO between them could still hang the detector despite the round-3 fix.</dd>
+      <dt>Fix</dt><dd><code>dea0660f</code>: probes are fd-based on unix — <code>O_RDONLY|O_NONBLOCK</code> open, then <code>Stat</code> on the descriptor, proceeding only if regular (build-tagged <code>loaf_repo_detection_unix.go</code>, portable fallback in <code>_other.go</code>). Applied to both probes; descriptor-stat FIFO rejection tested.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">D5 · Paired-but-malformed fence header promoted strong tier</span><span class="chip sev-p2">P2</span><span class="chip disp-modified">accepted · modified</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>Detection checked only that a fenced range exists, not that its header is well-formed, so <code>&lt;!-- loaf:managed:start garbage --&gt; … end --&gt;</code> skipped onboarding consent and let upgrade begin project writes before the fence writer refused.</dd>
+      <dt>Fix</dt><dd>Modified routing rather than demotion to none: a well-formed complete section stays <em>strong</em>; a paired range with a malformed header contributes a <em>legacy</em>-tier signal ("tampered or malformed managed section") so both commands route through the explicit confirmation — preserving the tampered-but-real-Loaf-repo recovery path instead of denying identity. Landed in <code>dea0660f</code> with tier tests for all three shapes.</dd>
+    </dl>
+  </div>
+
+  <h2>Round-3 finding verification (by the resumed thread)</h2>
+  <div class="panel">
+    <ul class="compact">
+      <li><strong>F1 detector probes:</strong> partially fixed at <code>e42fd864</code> (direct FIFO + cap correct; residual → D4). Closed by <code>dea0660f</code>.</li>
+      <li><strong>F2 malformed loaf.json:</strong> partially fixed (malformed preserved byte-for-byte incl. plan refusal; unreadable residual → D1). Closed by <code>dea0660f</code>.</li>
+      <li><strong>F3 fence fragment / abort:</strong> partially fixed (complete-fence detection + MCP-write abort correct; cross-target residual → D2, header residual → D5). Closed by <code>dea0660f</code>.</li>
+      <li><strong>F4 exit codes:</strong> <em>fixed</em> — collected failures, one summary, non-zero exit, integration-tested.</li>
+      <li><strong>F5 strict semver:</strong> partially fixed (strict validation + drift unknown correct; release-parser split judged correct and pinned; overflow residual → D3). Closed by <code>dea0660f</code>.</li>
+      <li><strong>F6 User-Agent:</strong> <em>fixed</em> — <code>loaf/&lt;version&gt;</code> stamped and header-asserted; budget enforcement re-confirmed.</li>
+    </ul>
+  </div>
+
+  <footer>Authored snapshot — review round 4, merge gate for PR #151: the round-3 Codex thread resumed to verify its own findings, then delta-swept the fix commit. Prior rounds: <a href="20260801-024619-review-codex.html">round 1 (shaping)</a> · <a href="20260801-063956-review-sentinel.html">round 2 (Sentinel, branch)</a> · <a href="20260801-153342-review-codex.html">round 3 (Codex, code)</a>. After delta fixes: loaf change check state complete / no violations / executable yes; all V-criteria green; verify receipt bound at <code>dea0660f</code> and recorded in <code>95b1e156</code>; installed-smoke receipts re-recorded. Codex's sandbox again blocked its journal write; logged by the orchestrator on its behalf.</footer>
+</main>

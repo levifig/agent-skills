@@ -1,0 +1,117 @@
+<!-- source: install-upgrade-split · kind review · slug codex-audit · stamped 2026-08-01 21:27 · authored report (snapshot semantics) · never auto-updated · dispositions recorded -->
+<meta charset="utf-8">
+<title>Review round 7 (Codex audit-of-the-audit) — Install/Upgrade Split</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--bad); margin-bottom: 28px; }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .fname { font-weight: 700; font-size: 1.02rem; flex: 1 1 320px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-p1 { background: var(--bad); color: #fff; }
+  .sev-p2 { background: var(--bad-soft); color: var(--bad); }
+  .disp-accepted { background: var(--ok-soft); color: var(--ok); }
+  .frow { display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px; font-size: .93rem; }
+  .frow dt { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; padding-top: 2px; }
+  .frow dd { margin: 0 0 6px; }
+  @media (max-width: 640px) { .frow { grid-template-columns: 1fr; } }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">install-upgrade-split · review round 7 · audit of the audit</div>
+  <h1>Codex round 7 — and the first Grok-implemented fixes</h1>
+  <p class="stamp">reviewer <b>Codex gpt-5.6-luna · xhigh</b> · resumed thread <b>019fbd93-3f7d-7df3-8d06-e79412bd7dce</b> · verified closure commit <b>709b819f</b> · dispositioned <b>2026-08-01</b> · fixes authored by <b>Grok 4.5 (loaf implementer profile, permission-mode auto)</b> in <b>da8ce47c</b></p>
+
+  <div class="panel verdict">
+    <p><strong>Reviewer verdict: REQUEST CHANGES — 1 P1, 4 P2.</strong> Asked to audit the round-6 audit, the round graded N2/N3 partially fixed and proved the point of the exercise: the 75-site count was exact, but classification is not safety — enumerated paths are discovered paths, and two whole-file readers sat outside the <code>os.ReadFile</code> inventory entirely. The P1 is the third data-loss catch of the series, in the same family as round 4's: merge readers parsing user configs to empty and rebuilding them Loaf-only. All five accepted; fixed in <code>da8ce47c</code>; verify receipt re-bound in <code>8f81a92f</code>.</p>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">1 · Malformed merge inputs still rebuilt Loaf-only</span><span class="chip sev-p1">P1</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd><code>install_mcp.go:497-508</code> and the legacy Codex hooks reader (<code>install_target.go:1199-1210</code>) parsed any malformed or non-object JSON to an empty structure, and the writers then replaced <code>.cursor/mcp.json</code>, <code>opencode.json</code>, <code>.amp/settings.json</code>, or a user <code>hooks.json</code> with Loaf-only content — destructive loss, not a failed merge.</dd>
+      <dt>Fix</dt><dd><code>da8ce47c</code>: the <code>loaf.json</code> contract extended to every merge reader — malformed/non-object → refuse that file, preserve byte-for-byte, report path and cause, plan mirrors the refusal; <code>mergeHookFiles</code> refuses rather than serializing empty. Tests per file kind, truncated and <code>[]</code> forms, both surfaces.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">2 · Generic migration read errors skipped abort semantics</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd><code>installSymlinkReadRefusal</code> marked only the typed refusals; an EACCES during migration left <code>Refused</code> false, the fenced pass continued, apply could exit zero while dry-run reported an error — plan/apply parity broken.</dd>
+      <dt>Fix</dt><dd><code>da8ce47c</code>: every read failure in the migration pass carries the abort semantics — project part fails, downstream writes skipped, non-zero exit, plan and apply agree. Permission-denied tests at both link paths.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">3 · Detection failures lost their required notice</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd><code>installMcpFileConfigured</code> returned bare "not configured" for unreadable configs, inviting consent to an inappropriate merge with no path/reason shown.</dd>
+      <dt>Fix</dt><dd><code>da8ce47c</code>: only ENOENT is silently unconfigured; every other failure emits the path-and-reason notice in status and plan.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">4 · "Loaf-artifact" rows that are actually discovered paths</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>The spec/report walkers (<code>check.go</code>), the change-tasks reader, the release changelog reader, and the worktree agent-tree walkers read directory-enumerated entries plainly — a FIFO named like a real entry blocks the command. Enumeration is discovery regardless of who authored the directory.</dd>
+      <dt>Fix</dt><dd><code>da8ce47c</code>: all routed through the guarded reader; aggregating commands skip non-regular entries with a notice instead of blocking, single-file readers fail cleanly. FIFO-named-entry tests per walker.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">5 · Whole-file readers outside the os.ReadFile inventory</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd><code>change_origin.go</code> opened with blocking <code>os.Open</code> + unbounded <code>io.ReadAll</code>; the worktree cross-device copy fallback opened enumerated paths with plain <code>os.Open</code>/<code>io.Copy</code> — both bypassed the guarded open because the audit only inventoried <code>os.ReadFile</code>.</dd>
+      <dt>Fix</dt><dd><code>da8ce47c</code>: origin capture reads through the guarded bounded open; the copy fallback descriptor-checks regular-file-ness before copying and refuses non-regular entries with a reported skip.</dd>
+    </dl>
+  </div>
+
+  <h2>Process note — first non-Claude implementer</h2>
+  <div class="panel">
+    <p>The fixes were authored by Grok 4.5 running headless (<code>grok --permission-mode auto</code>, never <code>--always-approve</code>, with an explicit deny on <code>git push</code>), operating under the Loaf implementer profile and skills loaded in-prompt. Implementation, tests, build, and smoke-receipt re-recording completed in its sessions; the run twice concluded on narration at the commit step, so the orchestrator performed the git ceremony over Grok's verified work — authorship Grok's, ceremony orchestrated, gates (<code>go test ./...</code>, typecheck, all nine V-criteria) independently re-run green before and after commit.</p>
+  </div>
+
+  <footer>Authored snapshot — review round 7: verification of the round-6 closure plus the audit-of-the-audit. Prior rounds: <a href="20260801-024619-review-codex.html">1 · shaping</a> · <a href="20260801-063956-review-sentinel.html">2 · Sentinel</a> · <a href="20260801-153342-review-codex.html">3 · code</a> · <a href="20260801-180514-review-codex-gate.html">4 · merge gate</a> · <a href="20260801-185612-review-codex-confirm.html">5 · confirmation</a> · <a href="20260801-204103-review-codex-closure.html">6 · closure</a>. After fixes: loaf change check state complete / no violations / executable yes; verify receipt bound at <code>da8ce47c</code>, recorded in <code>8f81a92f</code>.</footer>
+</main>

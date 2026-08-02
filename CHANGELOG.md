@@ -6,7 +6,19 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Added
+
+- `loaf upgrade` — the command for bringing an existing installation current, split from install by scope. It syncs every installed harness config directory from the installed distribution and runs deprecation cleanup wherever you invoke it, then refreshes project surfaces (fenced sections, symlinks, migrations, and the MCP recommendation in `.agents/loaf.json`) only when the working directory is a detected Loaf repo — so it is safe to run from anywhere and no longer scatters project files into unrelated folders. Detection is tiered: a registered project or a fenced `AGENTS.md` marker proceeds on its own and prints the basis, legacy `.agents/` folders alone ask first, and nothing detected skips the project half with a note — and the marker must be a complete managed section with a header that parses, so a lone opening fence is not mistaken for one and a section that has been tampered with routes to the confirmation prompt instead of proceeding on its own. `--to <target>` narrows the sync to an already-installed target and errors on an uninstalled one, pointing at `loaf install --to`. The `--dry-run --json` planning surface moves here. A harness that cannot be synced does not stop the others: the run completes the remaining targets and the project part, then names what failed and exits non-zero. Both commands leave a `.agents/loaf.json` they cannot use exactly as they found it — one that does not parse as an object, and one whose bytes never come back at all — reporting the path and the reason instead of replacing the file with defaults.
+- A currency advisory closes `loaf upgrade`: when it can identify the running binary's install channel — Homebrew, npm, or a dev checkout — it reports the available version and that channel's exact upgrade command, and never runs it. The check is best-effort inside a one-second budget and degrades silently, so upgrade stays fully functional offline.
+- Harness content drift is now visible instead of silent. `loaf doctor` gains a `harness-content-drift` check comparing each installed harness's `.loaf-version` marker to the running binary — naming `loaf upgrade` for stale content, and blaming the binary when a marker is ahead of it. The check offers no repair, but it warns like the other drift checks, so `loaf doctor` exits non-zero while any harness is out of step. Conversation start carries a one-line nudge in the harnesses Loaf delivers content to — Cursor, Codex, and OpenCode — when the invoking harness's content is behind; Claude Code stays silent because its content ships on the plugin-marketplace channel that `loaf upgrade` does not touch.
+
+### Changed
+
+- `loaf install` is now onboarding only: deploying Loaf into a folder that does not have it, or adding a harness that is not installed yet. Every project write — `AGENTS.md`, the fenced section, symlinks, and the MCP recommendation in `.agents/loaf.json` — sits behind a consent prompt outside a Loaf repo, and a non-interactive run reports the consent it needs rather than assuming it. Inside a Loaf repo the project half no-ops and points at `loaf upgrade`.
+
+### Removed
+
+- **Breaking: `install --upgrade` is removed.** The flag now errors with a pointer to `loaf upgrade`, as do `--dry-run` and `--json` on install; the documented dry-run planning flow is `loaf upgrade --dry-run --json`. The plan document stays at contract version 1 and every field keeps its name, type, and meaning — the only value that changed is `command`, which reads `upgrade`. One optional object is new: `project_part` (`in_scope`, `tier`, `confirmation_required`, `bases`) reports the detector gate and is omitted entirely for callers that plan project files unconditionally, so their document is byte-identical to before.
 
 ## [2.0.0-alpha.18] - 2026-08-01
 

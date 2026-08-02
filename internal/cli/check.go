@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -297,8 +298,16 @@ func runNativeRenderDrift(context checkHookContext, cwd string) checkResult {
 				continue
 			}
 			path := filepath.Join(target.dir, entry.Name())
-			content, err := os.ReadFile(path)
+			content, err := readRegularFile(path, projectFileReadLimit)
 			if err != nil {
+				// Only the typed special-file refusal (FIFO/device) is a skip:
+				// the entry is not a document. Every other read failure means
+				// the check could not inspect a regular file and must fail
+				// closed rather than pass a path it never saw.
+				if errors.Is(err, errNotRegularFile) {
+					result.Warnings = append(result.Warnings, fmt.Sprintf("Skip durable render %s: %v", renderDriftRelativePath(root, path), err))
+					continue
+				}
 				result.Passed = false
 				result.Blocked = true
 				result.Errors = append(result.Errors, fmt.Sprintf("Read durable render %s: %v", renderDriftRelativePath(root, path), err))
@@ -382,8 +391,15 @@ func runNativeEphemeralProvenance(context checkHookContext, cwd string) checkRes
 			continue
 		}
 		path := filepath.Join(specsDir, entry.Name())
-		content, err := os.ReadFile(path)
+		content, err := readRegularFile(path, projectFileReadLimit)
 		if err != nil {
+			// Only the typed special-file refusal (FIFO/device) is a skip.
+			// Permission, size, and I/O failures fail closed: an enforcement
+			// hook must never pass a file it could not inspect.
+			if errors.Is(err, errNotRegularFile) {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("Skip active spec %s: %v", renderDriftRelativePath(root, path), err))
+				continue
+			}
 			result.Passed = false
 			result.Blocked = true
 			result.Errors = append(result.Errors, fmt.Sprintf("Read active spec %s: %v", renderDriftRelativePath(root, path), err))
@@ -839,7 +855,7 @@ func runNativeWorkflowPrePR(hookContext checkHookContext, cwd string) checkResul
 		return result
 	}
 
-	changelog, err := os.ReadFile(filepath.Join(cwd, "CHANGELOG.md"))
+	changelog, err := readRegularFile(filepath.Join(cwd, "CHANGELOG.md"), projectFileReadLimit)
 	if err != nil {
 		result.Passed = false
 		result.Blocked = true
@@ -1350,7 +1366,7 @@ func configuredWorkflowVersionFiles(cwd string) []string {
 }
 
 func readWorkflowVersionFile(cwd string, path string) string {
-	body, err := os.ReadFile(filepath.Join(cwd, filepath.FromSlash(path)))
+	body, err := readRegularFile(filepath.Join(cwd, filepath.FromSlash(path)), projectFileReadLimit)
 	if err != nil {
 		return ""
 	}

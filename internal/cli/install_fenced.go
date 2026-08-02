@@ -76,10 +76,10 @@ func installFencedSection(targetFile string, version string, upgrade bool) (fenc
 	if version == "" {
 		version = "0.0.0"
 	}
-	body, err := os.ReadFile(targetFile)
+	body, err := readRegularFile(targetFile, projectFileReadLimit)
 	fileExisted := err == nil
 	if err != nil && !os.IsNotExist(err) {
-		return fencedInstallResult{}, err
+		return fencedInstallResult{}, refuseProjectFileRead(err)
 	}
 	content := string(body)
 	if err := validateFencedStructure(content); err != nil {
@@ -173,14 +173,26 @@ func validateFencedStructure(content string) error {
 	return nil
 }
 
-func installFencedSectionsForTargets(targets []string, projectRoot string, version string, upgrade bool) map[string]fencedInstallResult {
+// installFencedSectionsForTargets writes each target's managed section and
+// stops the batch at the first failure, returning the results gathered so far
+// alongside the error so the caller can still report what happened.
+//
+// Stopping is the point. A refusal is a statement about this project, not about
+// one harness: the targets share files — cursor, codex, opencode, and amp all
+// name AGENTS.md — and a fenced write is refused precisely when the file is not
+// currently Loaf's to manage. Carrying on past that let a refused write to
+// AGENTS.md be followed by creating .claude/CLAUDE.md for the next target in
+// the list, which is the half-deployed project both callers already stop for
+// once they see the failure.
+func installFencedSectionsForTargets(targets []string, projectRoot string, version string, upgrade bool) (map[string]fencedInstallResult, error) {
 	results := map[string]fencedInstallResult{}
 	writtenPaths := map[string]string{}
 	for _, target := range targets {
 		relPath, ok := fencedTargetFiles[target]
 		if !ok {
-			results[target] = fencedInstallResult{Action: "error", Error: fmt.Sprintf("Unknown target: %s", target)}
-			continue
+			err := fmt.Errorf("Unknown target: %s", target)
+			results[target] = fencedInstallResult{Action: "error", Error: err.Error()}
+			return results, err
 		}
 		targetFile := filepath.Join(projectRoot, filepath.FromSlash(relPath))
 		canonicalBefore := canonicalInstallPath(targetFile)
@@ -191,12 +203,12 @@ func installFencedSectionsForTargets(targets []string, projectRoot string, versi
 		result, err := installFencedSection(targetFile, version, upgrade)
 		if err != nil {
 			results[target] = fencedInstallResult{Action: "error", Error: err.Error()}
-			continue
+			return results, err
 		}
 		results[target] = result
 		writtenPaths[canonicalInstallPath(targetFile)] = result.Version
 	}
-	return results
+	return results, nil
 }
 
 func findFencedSectionRange(content string) (fencedSectionRange, bool) {
