@@ -843,6 +843,101 @@ func TestSkillTreeIsTargetInvariant(t *testing.T) {
 	}
 }
 
+func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
+	// Contract: labeled harness sections are authored content that ships
+	// byte-identical on every target. Exact product tokens must survive
+	// the build once each — never doubled by residual substitution.
+	root := testRepositoryRoot(t)
+	if _, err := os.Stat(filepath.Join(root, "content", "skills")); err != nil {
+		t.Skipf("repository content/skills unavailable: %v", err)
+	}
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+
+	type labeledFile struct {
+		rel     string
+		needles []string
+		// exactOnce counts must appear exactly once in the built file.
+		exactOnce []string
+	}
+	files := []labeledFile{
+		{
+			rel: "foundations/references/permissions.md",
+			needles: []string{
+				"## Orchestrator Allowlists by Harness",
+				"### Claude Code",
+				"### Codex",
+				"TodoWrite, TodoRead",
+				"update_plan",
+				"## Permission Commands by Harness",
+			},
+			exactOnce: []string{"update_plan", "TodoWrite, TodoRead"},
+		},
+		{
+			rel: "orchestration/references/background-agents.md",
+			needles: []string{
+				"### Claude Code",
+				"### Cursor",
+				"### Other harnesses",
+				`subagent_type="background-runner"`,
+				"run_in_background=True",
+				"is_background: true",
+				"@background-runner",
+			},
+			exactOnce: []string{
+				`subagent_type="background-runner"`,
+				"is_background: true",
+			},
+		},
+	}
+	// Historical substitution doubled the same replacement into adjacent
+	// tokens (TodoWrite + TodoRead → update_plan, update_plan).
+	banned := []string{
+		"update_plan, update_plan",
+		"TodoWrite, TodoWrite",
+		"TodoRead, TodoRead",
+		"native task/todo surface when available, native task/todo surface when available",
+		"task list or chat checklist, task list or chat checklist",
+		"Amp thread checklist, Amp thread checklist",
+	}
+
+	var baseline map[string]string
+	for _, target := range defaultBuildTargets {
+		skillsDir := nativeBuildSkillTreeDir(root, target)
+		for _, file := range files {
+			path := filepath.Join(skillsDir, filepath.FromSlash(file.rel))
+			body := readBuildFileString(t, path)
+			for _, needle := range file.needles {
+				if !strings.Contains(body, needle) {
+					t.Errorf("%s skills/%s missing labeled-section string %q", target, file.rel, needle)
+				}
+			}
+			for _, token := range file.exactOnce {
+				if count := strings.Count(body, token); count != 1 {
+					t.Errorf("%s skills/%s: %q appears %d times, want exactly 1", target, file.rel, token, count)
+				}
+			}
+			for _, phrase := range banned {
+				if strings.Contains(body, phrase) {
+					t.Errorf("%s skills/%s contains doubled tool phrase %q", target, file.rel, phrase)
+				}
+			}
+			if baseline == nil {
+				baseline = map[string]string{}
+			}
+			if prev, ok := baseline[file.rel]; ok {
+				if body != prev {
+					t.Errorf("skills/%s differs between targets (not target-invariant under labeled sections)", file.rel)
+				}
+			} else {
+				baseline[file.rel] = body
+			}
+		}
+	}
+}
+
 func TestNativeBuildParityMatrixDerivesFromSource(t *testing.T) {
 	root := setupBuildCommandLoafRoot(t)
 	seedNativeBuildParityFixture(t, root)

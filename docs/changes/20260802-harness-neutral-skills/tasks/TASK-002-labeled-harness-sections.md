@@ -35,11 +35,11 @@ loaf journal log "skill(implement): TASK-002 — labeled harness-section convent
 
 ## Steps
 
-- [ ] Inventory every place a fact is genuinely product-specific, and separate it from places where substitution merely papered over prose that should be neutral
-- [ ] Choose the section shape against the real counterexamples — subsection per harness, table, or inline conditional — weighing readability for the readers a section does not apply to
-- [ ] Convert the `permissions.md` allowed-tools lists and the `background-agents.md` mechanisms
-- [ ] Document the convention where skill authors will find it
-- [ ] Add `TestLabeledHarnessSectionsRenderVerbatim`, asserting every section is present with its exact strings and no tool name is duplicated
+- [x] Inventory every place a fact is genuinely product-specific, and separate it from places where substitution merely papered over prose that should be neutral
+- [x] Choose the section shape against the real counterexamples — subsection per harness, table, or inline conditional — weighing readability for the readers a section does not apply to
+- [x] Convert the `permissions.md` allowed-tools lists and the `background-agents.md` mechanisms
+- [x] Document the convention where skill authors will find it
+- [x] Add `TestLabeledHarnessSectionsRenderVerbatim`, asserting every section is present with its exact strings and no tool name is duplicated
 
 ## Verification
 
