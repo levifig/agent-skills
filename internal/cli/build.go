@@ -410,6 +410,13 @@ type nativeBuildUnresolvedPlaceholderFinding struct {
 	token string
 }
 
+// nativeBuildUnresolvedPlaceholderFindingCap bounds how many findings we retain
+// per artifact and in the aggregate diagnostic. An artifact of millions of
+// newline-separated {{TOKEN}} values would otherwise grow the slice and the
+// error string with the whole file; the scanner still counts every hit so the
+// message can say "showing N of M" instead of silently truncating.
+const nativeBuildUnresolvedPlaceholderFindingCap = 32
+
 // validateNativeBuildUnresolvedPlaceholders rejects unresolved {{TOKEN}} forms in
 // generated non-skill artifacts. Skills/, commands/, and agents/ still carry
 // retired content tokens until TASK-003, so those trees are skipped. Everything
@@ -447,25 +454,42 @@ func validateNativeBuildUnresolvedPlaceholders(root string, targetName string) e
 		return err
 	}
 	var findings []nativeBuildUnresolvedPlaceholderFinding
+	totalFound := 0
 	for _, path := range paths {
 		if path == manifestPath {
 			continue
 		}
 		relative := nativeBuildRelativePath(root, path)
-		opaque, fileFindings, err := scanNativeBuildArtifactPlaceholders(path, relative)
+		opaque, fileFindings, fileTotal, err := scanNativeBuildArtifactPlaceholders(path, relative)
 		if err != nil {
 			return err
 		}
 		if opaque {
 			continue
 		}
-		findings = append(findings, fileFindings...)
+		totalFound += fileTotal
+		room := nativeBuildUnresolvedPlaceholderFindingCap - len(findings)
+		if room <= 0 {
+			continue
+		}
+		if len(fileFindings) > room {
+			findings = append(findings, fileFindings[:room]...)
+		} else {
+			findings = append(findings, fileFindings...)
+		}
 	}
-	if len(findings) == 0 {
+	if totalFound == 0 {
 		return nil
 	}
 	var out strings.Builder
-	out.WriteString("unresolved placeholder lint failed:")
+	if totalFound > len(findings) {
+		out.WriteString(fmt.Sprintf(
+			"unresolved placeholder lint failed: showing %d of %d findings (%d suppressed):",
+			len(findings), totalFound, totalFound-len(findings),
+		))
+	} else {
+		out.WriteString("unresolved placeholder lint failed:")
+	}
 	for _, finding := range findings {
 		out.WriteString("\n")
 		out.WriteString(finding.path)
@@ -514,21 +538,23 @@ func isOpaqueNativeBuildArtifact(prefix []byte) bool {
 // never skipped: it is scanned in chunks so an unsupported binary or a huge
 // hook cannot force a whole-file ReadAll into memory, while a text artifact
 // that merely lacks a known header still cannot hide a token past the probe.
-func scanNativeBuildArtifactPlaceholders(path string, relative string) (opaque bool, findings []nativeBuildUnresolvedPlaceholderFinding, err error) {
+// Findings retained are capped at nativeBuildUnresolvedPlaceholderFindingCap;
+// total counts every hit so callers can report suppression honestly.
+func scanNativeBuildArtifactPlaceholders(path string, relative string) (opaque bool, findings []nativeBuildUnresolvedPlaceholderFinding, total int, err error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return false, nil, err
+		return false, nil, 0, err
 	}
 	defer file.Close()
 
 	prefix := make([]byte, nativeBuildOpacityProbeBytes)
 	n, err := file.Read(prefix)
 	if err != nil && err != io.EOF {
-		return false, nil, err
+		return false, nil, 0, err
 	}
 	prefix = prefix[:n]
 	if isOpaqueNativeBuildArtifact(prefix) {
-		return true, nil, nil
+		return true, nil, 0, nil
 	}
 
 	reader := io.MultiReader(bytes.NewReader(prefix), file)
@@ -541,20 +567,23 @@ func scanNativeBuildArtifactPlaceholders(path string, relative string) (opaque b
 			if nativeBuildInstallTimePlaceholders[token] {
 				continue
 			}
-			findings = append(findings, nativeBuildUnresolvedPlaceholderFinding{
-				path:  relative,
-				line:  lineNumber,
-				token: token,
-			})
+			total++
+			if len(findings) < nativeBuildUnresolvedPlaceholderFindingCap {
+				findings = append(findings, nativeBuildUnresolvedPlaceholderFinding{
+					path:  relative,
+					line:  lineNumber,
+					token: token,
+				})
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		if errors.Is(err, bufio.ErrTooLong) {
-			return false, nil, fmt.Errorf("%s: line exceeds %d bytes while scanning for unresolved placeholders (unrecognized binary or non-line-oriented artifact); refusing unbounded read", relative, projectFileReadLimit)
+			return false, nil, 0, fmt.Errorf("%s: line exceeds %d bytes while scanning for unresolved placeholders (unrecognized binary or non-line-oriented artifact); refusing unbounded read", relative, projectFileReadLimit)
 		}
-		return false, nil, err
+		return false, nil, 0, err
 	}
-	return false, findings, nil
+	return false, findings, total, nil
 }
 
 // nativeBuildUnresolvedTokensInLine returns every {{...}} span on the line.

@@ -84,7 +84,7 @@ For review-focused sessions:
 # Read everything
 Read, Glob, Grep
 
-# Inspection only (exact forms — no wildcards, no project-script dispatch)
+# Inspection only (exact forms — no wildcards, no project-script dispatch). Assumes no diff.external or textconv helpers; those execute project-configured code and make even exact git diff/log hazard-2 dispatch.
 Bash(git diff), Bash(git log)
 # Argument-bearing git diff/log stay approval-gated: both accept --output=<file> (hazard 1).
 # Not auto-allowed: Bash(npm run lint), Bash(pytest --collect-only) — exact forms still dispatch into package scripts / conftest.py (hazard 2). Keep approval-gated.
@@ -287,7 +287,7 @@ search_for_pattern, read_file
 
 1. Review the harness permission surface (on Claude Code: `/permissions`)
 2. Add specific allowlist entries
-3. Use patterns (`Bash(npm *)`) not wildcards (`Bash(*)`)
+3. Prefer specific or scoped entries (`Bash(git status)`, `Bash(npm run test)`) over blanket wildcards (`Bash(*)`); reserve broad grants like `Bash(npm *)` for an explicitly full-development fence — that pattern admits install, publish, and exec, so it is not a generic prompt-reduction tweak
 
 ### Permission Denied Errors
 

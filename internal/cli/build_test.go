@@ -1511,6 +1511,35 @@ func TestNativeBuildUnresolvedPlaceholdersRefusesOversizedLineUnknownMagic(t *te
 	}
 }
 
+func TestNativeBuildUnresolvedPlaceholdersCapsFindingsWithSuppressionCount(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "amp", ".amp", "plugins", "tokens.ts")
+	mkdirAll(t, filepath.Dir(path))
+	total := nativeBuildUnresolvedPlaceholderFindingCap + 8
+	var body strings.Builder
+	for i := 1; i <= total; i++ {
+		body.WriteString(fmt.Sprintf("{{TOKEN_%d}}\n", i))
+	}
+	writeFile(t, path, body.String())
+
+	err := validateNativeBuildUnresolvedPlaceholders(root, "amp")
+	if err == nil {
+		t.Fatal("validateNativeBuildUnresolvedPlaceholders error = nil, want capped findings")
+	}
+	msg := err.Error()
+	wantShown := fmt.Sprintf("showing %d of %d findings (%d suppressed)",
+		nativeBuildUnresolvedPlaceholderFindingCap, total, total-nativeBuildUnresolvedPlaceholderFindingCap)
+	if !strings.Contains(msg, wantShown) {
+		t.Fatalf("error = %q, want %q", msg, wantShown)
+	}
+	if !strings.Contains(msg, "{{TOKEN_1}}") {
+		t.Fatalf("error = %q, want first retained token", msg)
+	}
+	if strings.Contains(msg, fmt.Sprintf("{{TOKEN_%d}}", total)) {
+		t.Fatalf("error = %q, must not list suppressed token {{TOKEN_%d}}", msg, total)
+	}
+}
+
 func TestConfirmOpenedRegularFileNoFollowRejectsLeafSymlinkSwap(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "outside.txt")
