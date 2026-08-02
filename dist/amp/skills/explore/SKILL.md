@@ -12,7 +12,7 @@ description: >-
   question (use research), continuing implementation (use implement), processing
   the intake queue (use triage), shaping a bounded Change (use shape), problem
   discovery (use pitch), or quick capture (use idea).
-version: 2.0.0-alpha.18
+version: 2.0.0-alpha.19
 ---
 
 # Explore

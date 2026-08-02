@@ -9,7 +9,7 @@ description: >-
   pitch, or hand to shape. Not for reading a single known item (use loaf intent
   show or journal directly), capturing new ideas (use idea), problem discovery
   (use pitch), or bounding one chosen direction (use shape).
-version: 2.0.0-alpha.18
+version: 2.0.0-alpha.19
 ---
 
 # Triage

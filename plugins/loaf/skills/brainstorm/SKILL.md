@@ -7,7 +7,7 @@ description: >-
   through options", or si...
 user-invocable: false
 argument-hint: '[idea or problem]'
-version: 2.0.0-alpha.18
+version: 2.0.0-alpha.19
 ---
 
 # Brainstorm
