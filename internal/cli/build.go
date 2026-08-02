@@ -431,7 +431,7 @@ func validateNativeBuildUnresolvedPlaceholders(root string, targetName string) e
 			// TASK-003. Agents are authored profiles, not the generated Codex/config
 			// artifacts this guard targets. bin/ is walked: text launchers and
 			// package.json there are scanned; opaque native binaries are skipped
-			// later by the NUL-byte check, not by directory name.
+			// later by magic-byte classification, not by directory name.
 			if name == "node_modules" || name == "skills" || name == "commands" || name == "agents" {
 				return filepath.SkipDir
 			}
@@ -451,13 +451,11 @@ func validateNativeBuildUnresolvedPlaceholders(root string, targetName string) e
 		if path == manifestPath {
 			continue
 		}
-		body, err := os.ReadFile(path)
+		body, opaque, err := readNativeBuildArtifactForPlaceholderScan(path)
 		if err != nil {
 			return err
 		}
-		// Skip opaque binaries that slipped outside bin/ (NUL is never valid in
-		// the text artifacts this lint targets).
-		if bytes.IndexByte(body, 0) >= 0 {
+		if opaque {
 			continue
 		}
 		relative := nativeBuildRelativePath(root, path)
@@ -488,6 +486,70 @@ func validateNativeBuildUnresolvedPlaceholders(root string, targetName string) e
 		out.WriteString(finding.token)
 	}
 	return errors.New(out.String())
+}
+
+// nativeBuildOpacityProbeBytes is how many leading bytes we read to decide
+// whether an artifact is an opaque native binary. Mach-O, ELF, and PE magic all
+// sit in the first four bytes; the probe is larger only so a future format with
+// a slightly deeper signature still classifies without a full read.
+const nativeBuildOpacityProbeBytes = 512
+
+// isOpaqueNativeBuildArtifact reports whether prefix is a known native binary
+// format. Opacity is decided by magic, not by "contains a NUL somewhere": a
+// text artifact that embeds \x00{{TOKEN}} must still be scanned (NUL alone is
+// not a skip signal), and a Mach-O/ELF/PE with no NUL must still be skipped.
+// Checking only a bounded prefix for NUL would still let the embedded-NUL
+// bypass through, which is why magic wins over the NUL heuristic.
+func isOpaqueNativeBuildArtifact(prefix []byte) bool {
+	if len(prefix) >= 4 {
+		// ELF
+		if prefix[0] == 0x7f && prefix[1] == 'E' && prefix[2] == 'L' && prefix[3] == 'F' {
+			return true
+		}
+		// Mach-O 32/64-bit, both endians, plus fat/universal.
+		switch uint32(prefix[0])<<24 | uint32(prefix[1])<<16 | uint32(prefix[2])<<8 | uint32(prefix[3]) {
+		case 0xfeedface, 0xcefaedfe, 0xfeedfacf, 0xcffaedfe, 0xcafebabe, 0xbebafeca:
+			return true
+		}
+	}
+	// PE / DOS stub
+	if len(prefix) >= 2 && prefix[0] == 'M' && prefix[1] == 'Z' {
+		return true
+	}
+	return false
+}
+
+// readNativeBuildArtifactForPlaceholderScan classifies opacity from a bounded
+// prefix, then reads the rest only when the file is text worth scanning. The
+// native binaries under bin/native/ are tens of MiB each; reading them whole
+// merely to discover they are opaque was the round-3 cost this closes.
+func readNativeBuildArtifactForPlaceholderScan(path string) (body []byte, opaque bool, err error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, false, err
+	}
+	defer file.Close()
+
+	prefix := make([]byte, nativeBuildOpacityProbeBytes)
+	n, err := file.Read(prefix)
+	if err != nil && err != io.EOF {
+		return nil, false, err
+	}
+	prefix = prefix[:n]
+	if isOpaqueNativeBuildArtifact(prefix) {
+		return nil, true, nil
+	}
+	rest, err := io.ReadAll(file)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(rest) == 0 {
+		return prefix, false, nil
+	}
+	body = make([]byte, 0, len(prefix)+len(rest))
+	body = append(body, prefix...)
+	body = append(body, rest...)
+	return body, false, nil
 }
 
 // nativeBuildUnresolvedTokensInLine returns every {{...}} span on the line.
