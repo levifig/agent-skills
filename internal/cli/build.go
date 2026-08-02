@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -260,6 +261,9 @@ func validateNativeBuildArtifacts(root string, targetName string) ([]string, err
 			return nil, fmt.Errorf("JavaScript validation failed for %s: %w", nativeBuildRelativePath(root, path), err)
 		}
 	}
+	if err := validateNativeBuildUnresolvedPlaceholders(root, targetName); err != nil {
+		return nil, err
+	}
 	if len(tsFiles) == 0 {
 		return nil, nil
 	}
@@ -389,6 +393,117 @@ declare module '@ampcode/plugin' {
   }
 }
 `
+}
+
+// nativeBuildInstallTimePlaceholders are {{TOKEN}} forms that generated non-skill
+// artifacts may still carry at build time because install resolves them once the
+// trusted absolute Loaf executable is known. Any other {{TOKEN}} in those
+// artifacts is a stray placeholder and fails the build.
+var nativeBuildInstallTimePlaceholders = map[string]bool{
+	"{{LOAF_EXECUTABLE}}":  true,
+	"{{LOAF_BASIC_RULES}}": true,
+}
+
+type nativeBuildUnresolvedPlaceholderFinding struct {
+	path  string
+	line  int
+	token string
+}
+
+// validateNativeBuildUnresolvedPlaceholders rejects unresolved {{TOKEN}} forms in
+// generated non-skill config artifacts (hooks JSON, rules templates, and similar).
+// Markdown under skills/, commands/, and agents/ still carries retired content
+// tokens until TASK-003, so those trees and .md leaves are skipped. Codex hooks
+// JSON and rules templates are always checked when present.
+func validateNativeBuildUnresolvedPlaceholders(root string, targetName string) error {
+	outputDir := nativeBuildTargetOutputDir(root, targetName)
+	var paths []string
+	err := filepath.WalkDir(outputDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			name := entry.Name()
+			// Skills and OpenCode commands still carry retired content tokens until
+			// TASK-003. Agents are authored profiles, not the generated Codex/config
+			// artifacts this guard targets.
+			if name == "node_modules" || name == "skills" || name == "commands" || name == "agents" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		switch ext {
+		case ".json", ".tmpl", ".yaml", ".yml", ".toml":
+			paths = append(paths, path)
+		}
+		return nil
+	})
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var findings []nativeBuildUnresolvedPlaceholderFinding
+	for _, path := range paths {
+		if filepath.Base(path) == targetBuildManifestFile {
+			continue
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		relative := nativeBuildRelativePath(root, path)
+		for lineNumber, line := range strings.Split(string(body), "\n") {
+			for _, token := range nativeBuildUnresolvedTokensInLine(line) {
+				if nativeBuildInstallTimePlaceholders[token] {
+					continue
+				}
+				findings = append(findings, nativeBuildUnresolvedPlaceholderFinding{
+					path:  relative,
+					line:  lineNumber + 1,
+					token: token,
+				})
+			}
+		}
+	}
+	if len(findings) == 0 {
+		return nil
+	}
+	var out strings.Builder
+	out.WriteString("unresolved placeholder lint failed:")
+	for _, finding := range findings {
+		out.WriteString("\n")
+		out.WriteString(finding.path)
+		out.WriteString(":")
+		out.WriteString(fmt.Sprintf("%d", finding.line))
+		out.WriteString(": unresolved harness token ")
+		out.WriteString(finding.token)
+	}
+	return errors.New(out.String())
+}
+
+func nativeBuildUnresolvedTokensInLine(line string) []string {
+	var tokens []string
+	remaining := line
+	for {
+		start := strings.Index(remaining, "{{")
+		if start < 0 {
+			return tokens
+		}
+		if start > 0 && remaining[start-1] == '$' {
+			remaining = remaining[start+2:]
+			continue
+		}
+		end := strings.Index(remaining[start+2:], "}}")
+		if end < 0 {
+			return tokens
+		}
+		token := remaining[start : start+2+end+2]
+		tokens = append(tokens, token)
+		remaining = remaining[start+len(token):]
+	}
 }
 
 func nativeBuildTargetOutputDir(root string, targetName string) string {
