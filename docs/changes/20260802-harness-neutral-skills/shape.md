@@ -32,7 +32,8 @@ Skill content does not need to be rendered per harness. Models know their own to
 **Out** (deferred, not rejected)
 
 - `loaf skills` for third-party installation — the next Change in the arc, unblocked by neutrality because foreign content can then be installed without being rewritten.
-- The skills audit: taxonomy, whether Loaf's `orchestration` survives standalone or is absorbed, and description quality. That remains the sweep carrier gating 2.0.0.
+- The skills audit: taxonomy, whether Loaf's `orchestration` survives standalone or is absorbed, and description quality. That remains the sweep carrier gating 2.0.0. Renaming a skill outright rather than prefixing it belongs there too — `orchestration` keeps its noun form here because it is `user-invocable: false` ambient knowledge and the prefix already resolves the collision.
+- Skill-to-agent binding. Two gaps surfaced while scoping the prefix and are recorded rather than fixed: the `implementer` profile declares no `skills:` list despite promising "speciality determined by skills loaded at spawn time", where `librarian` and `background-runner` both declare one; and Loaf has no way to mark a skill as always loaded for the root session, since `skills:` lists bind only to subagents and no skill declares `context: fork`. Both are binding architecture, not naming, and neither blocks this Change.
 - Runtime deprecation state — self-pruning manifests or report-once acknowledgement. Manifest hygiene here is authored, not stateful.
 
 **Cut** (explicitly rejected)
