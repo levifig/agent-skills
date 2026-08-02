@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [2.0.0-alpha.19] - 2026-08-02
+
 ### Added
 
 - `loaf upgrade` — the command for bringing an existing installation current, split from install by scope. It syncs every installed harness config directory from the installed distribution and runs deprecation cleanup wherever you invoke it, then refreshes project surfaces (fenced sections, symlinks, migrations, and the MCP recommendation in `.agents/loaf.json`) only when the working directory is a detected Loaf repo — so it is safe to run from anywhere and no longer scatters project files into unrelated folders. Detection is tiered: a registered project or a fenced `AGENTS.md` marker proceeds on its own and prints the basis, legacy `.agents/` folders alone ask first, and nothing detected skips the project half with a note — and the marker must be a complete managed section with a header that parses, so a lone opening fence is not mistaken for one and a section that has been tampered with routes to the confirmation prompt instead of proceeding on its own. `--to <target>` narrows the sync to an already-installed target and errors on an uninstalled one, pointing at `loaf install --to`. The `--dry-run --json` planning surface moves here. A harness that cannot be synced does not stop the others: the run completes the remaining targets and the project part, then names what failed and exits non-zero. Both commands leave a `.agents/loaf.json` they cannot use exactly as they found it — one that does not parse as an object, and one whose bytes never come back at all — reporting the path and the reason instead of replacing the file with defaults.

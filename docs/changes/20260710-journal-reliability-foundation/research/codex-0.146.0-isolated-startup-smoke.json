@@ -1,6 +1,6 @@
 {
   "evidence_version": 2,
-  "timestamp": "2026-08-02T02:18:43.771Z",
+  "timestamp": "2026-08-02T02:34:42.209Z",
   "target": "codex",
   "surface": "cli",
   "version": "0.146.0",
@@ -39,7 +39,7 @@
   "stderr": "Reading additional input from stdin...",
   "model_visible_marker_observed": true,
   "assistant_marker_match": true,
-  "marker": "LOAF_CODEX_STARTUP_SMOKE_F2CA179F498D",
+  "marker": "LOAF_CODEX_STARTUP_SMOKE_39FA19D14C1F",
   "hook_observation": {
     "event_name": "SessionStart:startup",
     "native_json": true,
