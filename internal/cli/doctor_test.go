@@ -68,7 +68,7 @@ func TestRunnerDoctorFixPromptsBeforeEachRepairAndAcceptsYes(t *testing.T) {
 		t.Fatalf("stale cursor file still exists: %v", err)
 	}
 	output := stripANSI(stdout.String())
-	for _, want := range []string{"Create .claude/CLAUDE.md", "Remove stale .cursor/rules/loaf.mdc", "[y/N]", "2 fixed", "5 passed", "1 skipped"} {
+	for _, want := range []string{"Create .claude/CLAUDE.md", "Remove stale .cursor/rules/loaf.mdc", "[y/N]", "2 fixed", "5 passed", "2 skipped"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("doctor --fix output = %q, want %q", output, want)
 		}
@@ -446,6 +446,11 @@ func TestRunnerDoctorRejectsUnknownOptionsNatively(t *testing.T) {
 
 func writeDoctorFixture(t *testing.T, version string) string {
 	t.Helper()
+	// harness-content-drift enumerates the developer's real harness config dirs
+	// unless HOME and every config-dir override point somewhere empty, so every
+	// doctor fixture pins them and the check's verdict stays the same on a
+	// laptop with Loaf installed as on a bare CI runner.
+	harnessDriftHome(t)
 	root := realpath(t, t.TempDir())
 	writeFile(t, filepath.Join(root, "package.json"), `{"name":"loaf","version":"`+version+`"}`+"\n")
 	return root
