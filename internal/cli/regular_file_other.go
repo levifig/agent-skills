@@ -33,6 +33,28 @@ func openRegularFile(path string) (*os.File, error) {
 	return file, nil
 }
 
+// openRegularFileNoFollow refuses a symlink at the leaf before opening. Mirrors
+// the unix O_NOFOLLOW path for untrusted authored content.
+func openRegularFileNoFollow(path string) (*os.File, error) {
+	if err := checkRegularFilePathNoFollow(path); err != nil {
+		return nil, err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		file.Close()
+		return nil, &fs.PathError{Op: "open", Path: path, Err: errNotRegularFile}
+	}
+	return file, nil
+}
+
 // checkRegularFilePath settles the file type on the path, resolving a symlink
 // but never accepting anything but a regular file at either end.
 func checkRegularFilePath(path string) error {
@@ -47,6 +69,18 @@ func checkRegularFilePath(path string) error {
 		}
 	}
 	if !info.Mode().IsRegular() {
+		return &fs.PathError{Op: "open", Path: path, Err: errNotRegularFile}
+	}
+	return nil
+}
+
+// checkRegularFilePathNoFollow refuses a symlink at the path itself.
+func checkRegularFilePathNoFollow(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return &fs.PathError{Op: "open", Path: path, Err: errNotRegularFile}
 	}
 	return nil

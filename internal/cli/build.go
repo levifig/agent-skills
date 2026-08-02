@@ -429,9 +429,10 @@ func validateNativeBuildUnresolvedPlaceholders(root string, targetName string) e
 			name := entry.Name()
 			// Skills and OpenCode commands still carry retired content tokens until
 			// TASK-003. Agents are authored profiles, not the generated Codex/config
-			// artifacts this guard targets. bin/ holds shipped native binaries whose
-			// bytes are not text and would false-positive on {{ spans.
-			if name == "node_modules" || name == "skills" || name == "commands" || name == "agents" || name == "bin" {
+			// artifacts this guard targets. bin/ is walked: text launchers and
+			// package.json there are scanned; opaque native binaries are skipped
+			// later by the NUL-byte check, not by directory name.
+			if name == "node_modules" || name == "skills" || name == "commands" || name == "agents" {
 				return filepath.SkipDir
 			}
 			return nil

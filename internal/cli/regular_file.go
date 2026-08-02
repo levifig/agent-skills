@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 )
 
 // projectFileReadLimit bounds a whole-file read of something in the project
@@ -32,8 +33,24 @@ var (
 // content, so a truncated read could miss a fence that is really there and
 // append a second one, or hash a body it only partly saw. Detection can afford
 // a prefix because it answers yes or no; a rewrite cannot.
+//
+// Symlinks to regular files are followed: repo detection and install/doctor
+// paths treat "AGENTS.md → another real file" as a normal layout. Untrusted
+// authored paths that must not escape the tree (skill sidecars) use
+// readRegularFileNoFollow instead.
 func readRegularFile(path string, limit int64) ([]byte, error) {
-	file, err := openRegularFile(path)
+	return readOpenedRegularFile(path, limit, openRegularFile)
+}
+
+// readRegularFileNoFollow is readRegularFile without following a symlink at the
+// target path. Use it when the path itself is untrusted authored content and
+// following would let a checkout point the read outside the repository.
+func readRegularFileNoFollow(path string, limit int64) ([]byte, error) {
+	return readOpenedRegularFile(path, limit, openRegularFileNoFollow)
+}
+
+func readOpenedRegularFile(path string, limit int64, open func(string) (*os.File, error)) ([]byte, error) {
+	file, err := open(path)
 	if err != nil {
 		return nil, err
 	}
