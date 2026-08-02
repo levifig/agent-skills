@@ -130,7 +130,7 @@ housekeeping.
 
 ## Suggests Next
 
-After housekeeping, suggest `/reflect` if the session produced key decisions or learnings worth integrating into strategic docs.
+After housekeeping, suggest reflect if the session produced key decisions or learnings worth integrating into strategic docs.
 
 ## Topics
 

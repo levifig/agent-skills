@@ -177,7 +177,7 @@ know which issues happen to be parents.
 
 ### Who creates it
 
-`/breakdown` creates the `spec` label on first Linear-native breakdown in a
+breakdown creates the `spec` label on first Linear-native breakdown in a
 workspace that doesn't already have it. Subsequent breakdowns reuse the
 existing label. Log whether the label was created this run or already
 existed — this matters for first-time setup.

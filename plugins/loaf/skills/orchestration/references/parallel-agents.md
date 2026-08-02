@@ -78,10 +78,10 @@ For each parallel task:
 
 ### 3. Dispatch
 
-Use the Task tool with multiple parallel invocations:
+Spawn multiple specialized agents in parallel (one turn with multiple spawn calls, if your harness supports it):
 
 ```
-[Single message with multiple Task tool calls]
+[Single turn with multiple agent-spawn calls]
 - Task 1: Backend API implementation
 - Task 2: Frontend component implementation
 - Task 3: Database migration
@@ -117,9 +117,9 @@ When streams complete:
 
 | Command | Parallel Opportunity |
 |---------|---------------------|
-| `/breakdown` | Identify parallelizable tasks during decomposition |
-| `/implement` | Single task, usually sequential |
-| `/implement` | Runs dependency-aware orchestration, including parallel-safe tasks |
+| breakdown | Identify parallelizable tasks during decomposition |
+| implement | Single task, usually sequential |
+| implement | Runs dependency-aware orchestration, including parallel-safe tasks |
 
 ## Conflict Resolution
 

@@ -317,7 +317,7 @@ the full local-task model.
 
 ## Suggests Next
 
-After breakdown completes, suggest `/implement` to start working on the tasks.
+After breakdown completes, suggest implement to start working on the tasks.
 
 ## Related Skills
 

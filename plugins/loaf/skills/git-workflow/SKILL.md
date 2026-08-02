@@ -50,5 +50,5 @@ Git conventions for branching, commits, PRs, and merge workflow.
 | Topic | Reference | Use When |
 |-------|-----------|----------|
 | Commits | `references/commits.md` | Writing commit messages, creating PRs, branching, curating CHANGELOG entries, pre-PR/pre-push/post-merge hooks |
-| PR shipping | `/ship` skill | Reviewing, verifying, and squash-merging one PR |
-| Release ritual | `/release` skill | Publishing a version from already-landed work |
+| PR shipping | ship skill | Reviewing, verifying, and squash-merging one PR |
+| Release ritual | release skill | Publishing a version from already-landed work |

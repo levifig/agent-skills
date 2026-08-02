@@ -47,17 +47,17 @@ You are the coordinator. Start by understanding the task:
 
 ### Orchestrator Can Do Directly
 - Log journal entries, read journal context, create council files
-- Use TodoWrite/TodoRead; **if `integrations.linear.enabled` is `true` in `.agents/loaf.json`**, use Linear MCP tools when helpful
+- Use your harness's task/todo tracking surface; **if `integrations.linear.enabled` is `true` in `.agents/loaf.json`**, use Linear MCP tools when helpful
 - Read any file for context
 - Ask clarifying questions
 
-### Orchestrator MUST Delegate (via Task Tool)
+### Orchestrator MUST Delegate (via agent spawn)
 **ALL code changes, documentation edits, and implementation work** to specialized agents. **No exceptions**, even for "trivial" 1-line fixes.
 
 ## Verification
 
 - The invocation is logged to the project journal before implementation work begins — no session start step, no "active session" precondition
-- All code changes delegated via Task tool -- no direct edits by orchestrator
+- All code changes delegated via your harness's agent-spawn mechanism -- no direct edits by orchestrator
 - The journal is continuously updated with spawns, progress, and decisions as work happens
 - Spec artifacts closed out on branch before PR creation
 - **Linear-native mode:** `blockedBy` of the target sub-issue is fully `completed` before work begins; starting a sub-issue also promotes an unstarted parent rollup to active; parent rollup is auto-closed only when all sub-issues are `completed`
@@ -123,7 +123,7 @@ When input is free-text description (not matching any known pattern):
 3. **Write criteria** (if multi-sentence): edit the task `.md` file body to add the remaining sentences as acceptance criteria
 4. **Fall through** to the task-coupled flow above — the result is a `TASK-XXX` ID that enters the existing planning pipeline unchanged
 
-**No user interaction required.** The description IS the task; invoking `/implement` already expressed intent.
+**No user interaction required.** The description IS the task; invoking implement already expressed intent.
 
 ### Non-Existent Task ID Error
 
@@ -159,7 +159,7 @@ The issue represents a spec. Do **not** implement it directly — spec-level
      in-progress sub-issue. Resume that.
    - Else, if one unblocked `unstarted` sub-issue exists, pick it.
    - Else, if multiple unblocked `unstarted` sub-issues exist, use
-     `AskUserQuestion` to let the user choose: pick one, or delegate N in
+     your harness's structured question tool (if it has one) to let the user choose: pick one, or delegate N in
      parallel via parallel agents. List each sub-issue's title + ID.
    - Else (all remaining sub-issues are blocked), refuse with a summary:
      "All remaining sub-issues under <parent-id> are blocked. Blockers:
@@ -225,9 +225,9 @@ When the sub-issue's implementation passes review and tests:
 - Does not pull down the full spec text. The parent's description already
   links to `.agents/specs/SPEC-NNN-*.md`. Read the local file for shape,
   rabbit holes, and strategic tensions.
-- Does not create or rewrite sub-issues. That's `/breakdown`'s job. If
+- Does not create or rewrite sub-issues. That's breakdown's job. If
   implementation reveals a missing task, surface it to the user; they
-  decide whether to run `/breakdown` again or add an ad-hoc sub-issue.
+  decide whether to run breakdown again or add an ad-hoc sub-issue.
 - Does not sync in-progress state bidirectionally. Source of truth at any
   moment: Linear for issue state, local files for spec content, the project
   journal for current handoff.
@@ -236,7 +236,7 @@ When the sub-issue's implementation passes review and tests:
 
 ## Agent Spawning
 
-Use the **Task tool** with appropriate `subagent_type`:
+Spawn specialized agents with the appropriate profile:
 
 | Work Type | Profile | Skills to Load |
 |-----------|---------|---------------|
@@ -263,16 +263,16 @@ loaf journal log "skill(implement): <task/spec/context>"
 
 Entries are project-scoped and tagged with this conversation's harness id automatically. Continuity from prior conversations may arrive through a supported startup adapter; when the exact current target mode is candidate or unsupported, pull it explicitly with `loaf journal context`. Use `loaf journal recent` when you need a narrower timeline.
 
-Suggest renaming the harness conversation with a meaningful name derived from context:
-- From spec: `Suggestion: /rename SPEC-027-session-stability`
-- From task: `Suggestion: /rename TASK-042-login-fix`
-- From ad-hoc: `Suggestion: /rename {short-slug-from-description}`
+Suggest renaming the harness conversation with a meaningful name derived from context (use your harness's rename surface if it has one):
+- From spec: `SPEC-027-session-stability`
+- From task: `TASK-042-login-fix`
+- From ad-hoc: `{short-slug-from-description}`
 
 ---
 
 ## Guardrails
 
-1. **Strict delegation** -- ALL implementation via Task tool
+1. **Strict delegation** -- ALL implementation via your harness's agent-spawn mechanism
 2. **Keep this conversation lean** -- focus on planning, coordination, oversight
 3. **When uncertain** -- convene council, present results, **wait for user approval**
 4. **Ensure quality** -- spawn implementer for tests, route reviews to reviewer subagents
@@ -306,7 +306,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 6. [ ] Create dedicated branch (see [branch-and-completion.md](references/branch-and-completion.md))
 7. [ ] Suggest team based on task context
 8. [ ] Log initial context and references with `loaf journal log`
-9. [ ] Break down work using TodoWrite
+9. [ ] Break down work using your harness's task/todo tracking surface
 10. [ ] Identify needed specialized agents
 11. [ ] Log next steps before spawning
 12. [ ] **Get user approval** before spawning
@@ -323,7 +323,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 5. Get user approval
 
 ### DURING (Execution)
-1. Spawn specialized agents via Task tool
+1. Spawn specialized agents via your harness's agent-spawn mechanism
 2. Log each spawn with `loaf journal log "todo(agent): spawned <agent> for <task>"`
 3. Update Linear with progress (no emoji, no file paths)
 4. Keep journal entries handoff-ready
@@ -339,11 +339,11 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
    - Write a `wrap(scope)` journal entry if the work produced synthesis worth saving (next steps, abandoned paths); otherwise skip it
    - Commit: `chore: close SPEC-XXX — archive tasks and spec`
 4. If on a feature branch: push and create PR (`gh pr create`). Follow PR format and squash merge conventions in [commits reference](../git-workflow/references/commits.md).
-5. After PR is created and approved, use `/ship` to review, verify, and land the PR. Use `/release` later when a coherent batch of landed work is ready to publish.
+5. After PR is created and approved, use ship to review, verify, and land the PR. Use release later when a coherent batch of landed work is ready to publish.
 6. **Suggest reflection:** Check the journal for extractable learnings before closing out:
    - `decision(...)` entries are present
    - ADRs, report verdicts, or spec changelog entries were recorded
-   If any signal is present, suggest: *"This produced key decisions. Consider running `/reflect` to update strategic docs."* If none are present, stay silent.
+   If any signal is present, suggest: *"This produced key decisions. Consider running reflect to update strategic docs."* If none are present, stay silent.
 
 ---
 
@@ -358,7 +358,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 
 ## Suggests Next
 
-After all tasks are complete, suggest `/ship` to land the PR. Suggest `/release` only when the landed work forms a coherent release batch.
+After all tasks are complete, suggest ship to land the PR. Suggest release only when the landed work forms a coherent release batch.
 
 ## Related Skills
 

@@ -1,9 +1,9 @@
 # PLAN Template
 
-Minimal artifact shape for `/refactor-deepen` output. A PLAN is leaner than a
+Minimal artifact shape for refactor-deepen output. A PLAN is leaner than a
 SPEC: it captures one deepening proposal end-to-end without the
 problem/strategic-alignment/risks scaffolding a feature SPEC carries. Use this
-template when terminating the `/refactor-deepen` grilling loop.
+template when terminating the refactor-deepen grilling loop.
 
 **Location:** `.agents/plans/{YYYYMMDD-HHMMSS}-{slug}.md`
 
@@ -92,7 +92,7 @@ Example: `.agents/plans/20260502-033000-cli-lib-install-deepening.md`.
 
 The sequential-ID allocation race that an `id: PLAN-NNN` scheme would carry
 is gone — there is no shared counter to contend over. Same-second filename
-collisions remain theoretically possible if two `/refactor-deepen` runs
+collisions remain theoretically possible if two refactor-deepen runs
 write within the same UTC second; in practice this is unlikely at human
 typing speed but not impossible at scripted speed. The broader plan-
 lifecycle question (list / archive / doctor recognition) is tracked
@@ -104,13 +104,13 @@ The `.agents/plans/` directory is created **on first plan write**, never
 upfront. Skill logic must `mkdir -p .agents/plans` immediately before writing
 the plan file, not at skill load time and not as part of any setup step.
 
-Rationale: a repository that never invokes `/refactor-deepen` should never
+Rationale: a repository that never invokes refactor-deepen should never
 acquire an empty `.agents/plans/` directory. Lazy creation keeps tree noise
 proportional to actual usage, matching how `.agents/specs/` behaves.
 
 ## Linear-Native Mode: Fail Fast
 
-PLAN files are **local-only storage**. Write commands must fail fast in Linear-native mode rather than silently degrade. The consuming skill (`/refactor-deepen`) is responsible for:
+PLAN files are **local-only storage**. Write commands must fail fast in Linear-native mode rather than silently degrade. The consuming skill (refactor-deepen) is responsible for:
 
 1. Reading `.agents/loaf.json` and checking `integrations.linear.enabled`.
 2. If true: aborting before `mkdir -p .agents/plans` and before any write,

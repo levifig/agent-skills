@@ -33,7 +33,7 @@ Project TDD conventions and workflow.
 
 | Symptom | Likely Cause | Solution |
 |---------|--------------|----------|
-| Can't write test first | Don't understand requirements | Clarify with `/brainstorm` or `/shape` |
+| Can't write test first | Don't understand requirements | Clarify with brainstorm or shape |
 | Test is too complex | Testing too much at once | Break into smaller behaviors |
 | Implementation explodes | Test scope too large | Smaller test, smaller implementation |
 | Refactor breaks tests | Tests coupled to implementation | Test behavior, not structure |
@@ -53,7 +53,7 @@ If the failing test points to a non-obvious root cause, or if your first fix att
 
 | Phase | TDD Role |
 |-------|----------|
-| `/shape` | Test conditions become TDD test cases |
-| `/breakdown` | Each task should have clear test targets |
-| `/implement` | Follow TDD cycle for each task |
-| `/reflect` | Note TDD friction points for improvement |
+| shape | Test conditions become TDD test cases |
+| breakdown | Each task should have clear test targets |
+| implement | Follow TDD cycle for each task |
+| reflect | Note TDD friction points for improvement |

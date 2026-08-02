@@ -4,7 +4,7 @@ description: >-
   Preserves the structured divergent-thinking stance consumed by the explore
   workflow: option generation before judgment, trade-off analysis, and spark
   capture. Not a primary entry point — route "explore this", "help me think
-  through options", or similar user entry intent to /pitch; explore owns the
+  through options", or similar user entry intent to pitch; explore owns the
   agent-facing inquiry lifecycle that consumes this technique. Not for problem
   discovery as a ceremony (use pitch) or bounding a chosen direction (use
   shape).
@@ -12,7 +12,7 @@ description: >-
 
 # Brainstorm
 
-Generative thinking — expanding possibilities before narrowing. This stance is an internal technique consumed by `/explore`, which owns inquiry continuity through Explorations and portable checkpoints; invoke the technique from there rather than as a standalone workflow.
+Generative thinking — expanding possibilities before narrowing. This stance is an internal technique consumed by explore, which owns inquiry continuity through Explorations and portable checkpoints; invoke the technique from there rather than as a standalone workflow.
 
 ## Critical Rules
 
@@ -61,7 +61,7 @@ Sparks are lightweight byproducts worth remembering; their dispositions belong t
 
 ## Suggests Next
 
-After a divergent pass, checkpoint the surrounding Exploration (`loaf exploration checkpoint`), then suggest `/shape` if a clear direction emerged or `/triage` to disposition captured sparks and ideas.
+After a divergent pass, checkpoint the surrounding Exploration (`loaf exploration checkpoint`), then suggest shape if a clear direction emerged or triage to disposition captured sparks and ideas.
 
 ## Topics
 

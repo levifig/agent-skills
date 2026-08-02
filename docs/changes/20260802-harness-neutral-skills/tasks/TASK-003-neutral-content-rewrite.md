@@ -32,14 +32,14 @@ loaf journal log "skill(implement): TASK-003 — harness-neutral content rewrite
 
 ## Steps
 
-- [ ] Capture the affected-file list from the pre-change target diff so coverage is provable rather than asserted
-- [ ] Rewrite tool references as behaviour: name what the model should accomplish and let it select its own tool, e.g. "ask one question at a time, with a recommendation, using your harness's structured question tool if it has one"
-- [ ] Replace harness-name prose with second person or neutral phrasing rather than naming any single harness
-- [ ] Convert genuinely product-specific facts into labeled sections per TASK-002's convention, rather than deleting them — `permissions.md`, `background-agents.md`, `bootstrap/SKILL.md`, and `foundations/references/review.md` all contain intentional cross-harness material that must survive
-- [ ] Stop hard-coding slash-command forms. TASK-001 removed the Claude body rewriter that turned `/implement` into `/loaf:implement`, so every bare `/name` in content now ships unscoped to Claude Code, where the plugin form is `loaf:name`. Name the workflow in prose, or carry the invocation forms in a labeled section — do not reintroduce a rewriter
-- [ ] Clear the residual `{{IMPLEMENT_CMD}}` literals TASK-001 left in `implement/references/batch-orchestration.md` (3), `loaf-reference/references/command-routing.md` (1), and `orchestration/references/local-tasks.md` (1)
-- [ ] Leave `{{AGENTS_FILE}}` handling to whatever TASK-001 decided
-- [ ] Confirm no paragraph is hard-wrapped — Loaf prose is one continuous line per paragraph
+- [x] Capture the affected-file list from the pre-change target diff so coverage is provable rather than asserted
+- [x] Rewrite tool references as behaviour: name what the model should accomplish and let it select its own tool, e.g. "ask one question at a time, with a recommendation, using your harness's structured question tool if it has one"
+- [x] Replace harness-name prose with second person or neutral phrasing rather than naming any single harness
+- [x] Convert genuinely product-specific facts into labeled sections per TASK-002's convention, rather than deleting them — `permissions.md`, `background-agents.md`, `bootstrap/SKILL.md`, and `foundations/references/review.md` all contain intentional cross-harness material that must survive
+- [x] Stop hard-coding slash-command forms. TASK-001 removed the Claude body rewriter that turned `/implement` into `/loaf:implement`, so every bare `/name` in content now ships unscoped to Claude Code, where the plugin form is `loaf:name`. Name the workflow in prose, or carry the invocation forms in a labeled section — do not reintroduce a rewriter
+- [x] Clear the residual `{{IMPLEMENT_CMD}}` literals TASK-001 left in `implement/references/batch-orchestration.md` (3), `loaf-reference/references/command-routing.md` (1), and `orchestration/references/local-tasks.md` (1)
+- [x] Leave `{{AGENTS_FILE}}` handling to whatever TASK-001 decided
+- [x] Confirm no paragraph is hard-wrapped — Loaf prose is one continuous line per paragraph
 
 ## Verification
 

@@ -83,7 +83,7 @@ Include:
 ### 4. Dispatch and Monitor
 
 ```
-[Task tool invocation]
+[Agent-spawn invocation]
 - Subagent type: implementer
 - Skills: [language skill + domain skills]
 - Task: [Clear description]
@@ -211,9 +211,9 @@ After subagent completes:
 
 | Command | Subagent Role |
 |---------|---------------|
-| `/breakdown` | Tasks become subagent assignments |
-| `/implement` | May dispatch subagents for specialized work |
-| `/implement` | Automatically coordinates single-task and multi-task subagent work |
+| breakdown | Tasks become subagent assignments |
+| implement | May dispatch subagents for specialized work |
+| implement | Automatically coordinates single-task and multi-task subagent work |
 
 ## Related Skills
 

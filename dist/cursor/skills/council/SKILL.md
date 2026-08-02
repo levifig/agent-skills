@@ -81,7 +81,7 @@ When a council resolves a spec's open questions:
 
 - Include the spec ID in council frontmatter (e.g., `spec: SPEC-024`). This
   is already the common pattern.
-- If the spec's `linear_parent` has been populated by `/breakdown`, also
+- If the spec's `linear_parent` has been populated by breakdown, also
   include `linear_parent: ENG-198` in council frontmatter so a reader on
   Linear can trace back to the deliberation.
 - Do not post council content to the Linear parent issue. A brief one-line

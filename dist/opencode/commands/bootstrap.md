@@ -39,7 +39,7 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 
 - **Detect, don't ask** -- auto-classify project mode (brownfield/greenfield+brief/greenfield+empty), confirm briefly, let the user correct
 - **Never overwrite existing documents** without explicit confirmation -- read first, note what exists, ask before changing
-- **Always interview** -- even with a rich brief, confirm understanding through structured questions using `AskUserQuestion`
+- **Always interview** -- even with a rich brief, confirm understanding through structured questions — one at a time, with a recommendation, using your harness's structured question tool if it has one
 - **Pitched BRIEF is discovery-already-done** -- when `docs/BRIEF.md` has `source: pitch`, do not re-excavate the problem space; quote-back and gap-fill only for operating-document population
 - **BRIEF is input, not output** -- the BRIEF is raw intake. Extract every useful fact into VISION/STRATEGY/ARCHITECTURE/AGENTS during bootstrap.
 - **BRIEF is archeological after bootstrap** -- once extraction completes (including series-prep reading scoped concepts from it), the BRIEF is a frozen historical snapshot. No skill, agent, command, or template should reference `docs/BRIEF.md` post-bootstrap. Operating documents and minted change briefs must stand on their own.
@@ -83,10 +83,10 @@ Parse `$ARGUMENTS` to determine brief intake mode:
 
 | Input Pattern | Mode | Example |
 |---------------|------|---------|
-| Text description | Inline brief | `/bootstrap Build a CLI tool that manages knowledge bases` |
-| File path | File brief | `/bootstrap ~/Desktop/project-brief.md` |
-| Folder path | Folder brief | `/bootstrap ./docs/` |
-| Empty | Interactive | `/bootstrap` |
+| Text description | Inline brief | `bootstrap Build a CLI tool that manages knowledge bases` |
+| File path | File brief | `bootstrap ~/Desktop/project-brief.md` |
+| Folder path | Folder brief | `bootstrap ./docs/` |
+| Empty | Interactive | bootstrap |
 
 After determining intake mode, proceed to state detection -- they are independent concerns.
 
@@ -178,7 +178,7 @@ archived: true                             # always true -- BRIEF is a historica
 ---
 ```
 
-When `source: pitch`, discovery is already done by `/pitch` — greenfield+brief mode interviews for gaps only (see Interview Flow).
+When `source: pitch`, discovery is already done by pitch — greenfield+brief mode interviews for gaps only (see Interview Flow).
 
 ### Existing Brief
 
@@ -193,7 +193,7 @@ If `docs/BRIEF.md` already exists and no new brief was provided:
 
 ## Interview Flow
 
-Interview depth adapts to the detected mode. All interviews use `AskUserQuestion`. The full interview framework is in [references/interview-guide.md](../skills/bootstrap/references/interview-guide.md).
+Interview depth adapts to the detected mode. All interviews ask one question at a time, with a recommendation, using your harness's structured question tool if it has one. The full interview framework is in [references/interview-guide.md](../skills/bootstrap/references/interview-guide.md).
 
 ### Brownfield: Nuance-Capturing Interview
 
@@ -323,7 +323,7 @@ Start with detected/discussed stack info and build up:
 
 ## Structured Review
 
-After drafting each document, present it section-by-section for iteration using `AskUserQuestion`.
+After drafting each document, present it section-by-section for iteration — one question at a time, using your harness's structured question tool if it has one.
 
 ### Review Pattern
 
@@ -417,12 +417,12 @@ After operating documents are populated (and Knowledge Base Scaffolding above ha
 **When to run**
 
 - Always offer series-prep when a project BRIEF exists and names more than one scoped concept (typical after a pitched BRIEF; also after a rich non-pitch brief).
-- If the BRIEF is a single atomic concept with no series, say so and skip to Next Steps — one future `/shape` or a single capture later is enough.
+- If the BRIEF is a single atomic concept with no series, say so and skip to Next Steps — one future shape or a single capture later is enough.
 - Series-prep **reads** the BRIEF during this phase only. After bootstrap ends, nothing references `docs/BRIEF.md` again; minted change briefs and operating docs stand alone.
 
 **Procedure**
 
-1. **Enumerate concepts** with the builder from the BRIEF's scoped problem space (Sequencing and Relationships, Open Questions, and distinct problem threads in Problem Statement). List candidates as recommendation-first options via `AskUserQuestion`.
+1. **Enumerate concepts** with the builder from the BRIEF's scoped problem space (Sequencing and Relationships, Open Questions, and distinct problem threads in Problem Statement). List candidates as recommendation-first options using your harness's structured question tool if it has one.
 2. **Apply granularity** per [references/interview-guide.md](../skills/bootstrap/references/interview-guide.md) (Series-Prep Granularity): a concept earns its own captured change when it is independently shippable **and** its problem can be **stated precisely now** (the mint-time specifiability test — not answered now, stated now) without the others; otherwise it stays a BRIEF line, becomes a spark, or an Intent — never a half-minted folder.
 3. **Per confirmed concept (one at a time — never batch):**
    1. Confirm mint with the builder (slug, coarse `target_release`, one-line problem restatement). If the builder will not bind even a coarse target, do not mint — park as spark/Intent/BRIEF line.
@@ -434,7 +434,7 @@ After operating documents are populated (and Knowledge Base Scaffolding above ha
       ```
 
       Creates `docs/changes/YYYYMMDD-<slug>/` with `change.json` + `brief.md` only.
-   4. **Seed `brief.md` problem-space-only** from the BRIEF's content for that concept (Problem Statement, Who Has It, Current Alternatives, Value Proposition, Constraints, Sequencing and Relationships as prose order relative to the arc, Sources if any, Open Questions). Do not copy solution design. The seeded brief must stand alone as intent for later `/shape` — cold-read without the project BRIEF or this session.
+   4. **Seed `brief.md` problem-space-only** from the BRIEF's content for that concept (Problem Statement, Who Has It, Current Alternatives, Value Proposition, Constraints, Sequencing and Relationships as prose order relative to the arc, Sources if any, Open Questions). Do not copy solution design. The seeded brief must stand alone as intent for later shape — cold-read without the project BRIEF or this session.
    5. **Stamp `target_release`** on that folder's `change.json` with the builder's coarse binding (canonical `MAJOR.MINOR.PATCH`, no `v`, no prerelease). Series-prep mints only targeted captures (promise-carrier path).
    6. **Pre-landing guard** (required before every commit):
 
@@ -446,38 +446,38 @@ After operating documents are populated (and Knowledge Base Scaffolding above ha
    7. **Land as its own docs-only commit on the default branch** (one commit per capture, never a batch). Example subject: `docs(change): capture <slug> brief`. Bootstrap prepares the commit; never push; never open a PR.
 4. **Guards (hard):**
    - Every mint is user-confirmed — never auto-mint the whole list
-   - Never auto-run `/shape` and never create slug branches during series-prep
+   - Never auto-run shape and never create slug branches during series-prep
    - No priority, date, estimate, or dependency fields on captures
    - No batching multiple captures into one commit
    - Concepts without a coarse target stay BRIEF lines, sparks, or Intents
 
 **After the series**
 
-Log the arc: `loaf journal log "decision(bootstrap): series-prep minted <n> captures for <cohort or targets>"`. Hand off by naming the first capture folder for `/shape` when the builder is ready.
+Log the arc: `loaf journal log "decision(bootstrap): series-prep minted <n> captures for <cohort or targets>"`. Hand off by naming the first capture folder for shape when the builder is ready.
 
 ### 5. Next Steps
 
 Suggest relevant next steps based on what was learned:
 
-- `/shape` -- on a series-prep capture (or any ready concept) to promote the folder and bound implementation
-- `/pitch` -- if a new concept still needs problem discovery (not for re-grilling the BRIEF)
-- `/idea` -- if specific feature ideas emerged during the interview and should not become captures yet
-- `/research` -- if there are open questions that need investigation
+- shape -- on a series-prep capture (or any ready concept) to promote the folder and bound implementation
+- pitch -- if a new concept still needs problem discovery (not for re-grilling the BRIEF)
+- idea -- if specific feature ideas emerged during the interview and should not become captures yet
+- research -- if there are open questions that need investigation
 - `loaf doctor` -- to verify the setup is healthy
 
 Suggest at least 2 relevant paths. Don't auto-run any of them.
 
 ---
 
-## Cross-Harness Support
+## Manual Setup Fallback
 
-This skill is designed for Claude Code (uses `AskUserQuestion`, Write/Edit tools). For other harnesses, the equivalent workflow is:
+When the interactive interview path is unavailable, bootstrap the operating documents manually:
 
 1. Run `loaf setup` (or `loaf init && loaf build && loaf install --to all` manually)
 2. Create `docs/VISION.md`, `docs/STRATEGY.md`, `docs/ARCHITECTURE.md` manually -- these are the load-bearing operating documents
 3. Populate `AGENTS.md` with build commands, test commands, and project structure
 4. Optionally snapshot intake (problem, users, constraints) to `docs/BRIEF.md` as a historical record -- not referenced again after bootstrap
-5. Create the compatibility symlink: `.claude/CLAUDE.md -> ../AGENTS.md`
+5. Create the Claude Code compatibility symlink when that harness is in use: `.claude/CLAUDE.md -> ../AGENTS.md`
 6. Run `loaf kb init` if available, or create `docs/knowledge/` with a README
 
 ---
@@ -491,7 +491,7 @@ This skill is designed for Claude Code (uses `AskUserQuestion`, Write/Edit tools
 5. **Extract, don't preserve** -- pull every useful fact from the BRIEF into operating docs (and series-prep seeds change briefs from it once). The BRIEF is archeological after bootstrap; nothing should reference it again.
 6. **Record the session** -- decisions and rationale are preserved
 7. **Suggest, don't execute** -- recommend next skills, don't auto-run them; series-prep never auto-shapes or creates branches
-8. **Use AskUserQuestion** -- structured, conversational interaction throughout
+8. **Interview structured** -- one question at a time, with a recommendation, using your harness's structured question tool if it has one
 9. **Series-prep is not roadmap planning** -- coarse `target_release` + prose sequencing only; no dates, priorities, or dependency fields
 
 ---
@@ -500,7 +500,7 @@ This skill is designed for Claude Code (uses `AskUserQuestion`, Write/Edit tools
 
 - **pitch** -- Authors a project-scale `docs/BRIEF.md` with `source: pitch` (or a change-scale brief); bootstrap consumes the pitched BRIEF with gap-only interview and series-prep
 - **shape** -- Bound a captured change into a contract (promotes brief-only folders; often follows series-prep)
-- **explore** -- Agent technique when a concept that emerges during bootstrap is still undecided (not a user front door; prefer `/pitch` for human problem discovery)
+- **explore** -- Agent technique when a concept that emerges during bootstrap is still undecided (not a user front door; prefer pitch for human problem discovery)
 - **research** -- Investigate topics and open questions
 - **idea** -- Quick-capture feature ideas that emerge during bootstrap
 - **strategy** -- Deep persona and market context work

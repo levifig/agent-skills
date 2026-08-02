@@ -86,7 +86,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 | Background Agents | [references/background-agents.md](references/background-agents.md) | Running non-interactive work in background |
 | Council Workflow | [../council/SKILL.md](../council/SKILL.md) | Convening councils for complex decisions |
 | Journal Continuity | [references/journal.md](references/journal.md) | Journal-first model, logging protocol, derived continuity, recovery |
-| Context Management | [references/context-management.md](references/context-management.md) | Using /clear, /compact, managing context limits |
+| Context Management | [references/context-management.md](references/context-management.md) | Clearing/compacting context, managing context limits |
 | Linear Integration | [references/linear.md](references/linear.md) | Updating Linear issues, magic words, status conventions |
 | Script Surface | [references/script-surface.md](references/script-surface.md) | Deciding whether helper scripts should become CLI commands |
 
@@ -124,7 +124,7 @@ This skill uses paths from `.agents/loaf.json`:
 |----------|----------|---------|--------|
 | Journal | Global SQLite (`loaf journal recent/search`) | N/A — continuous project-scoped log | Project-scoped, harness-id tagged |
 | Councils | `.agents/councils/` | `.agents/councils/archive/` | `YYYYMMDD-HHMMSS-topic.md` |
-| Handoffs | `.agents/handoffs/` | delete after deprecated | Created by `/handoff` |
+| Handoffs | `.agents/handoffs/` | delete after deprecated | Created by handoff |
 | Reports | `.agents/reports/` | N/A | `YYYYMMDD-HHMMSS-subject.md` |
 | Tasks | SQLite (`loaf task show/list`) | N/A | Per task manager conventions |
 
