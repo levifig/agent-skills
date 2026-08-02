@@ -35,10 +35,10 @@ loaf journal log "skill(implement): TASK-001 — harness-neutral build contract"
 - [ ] Delete the second-stage replacer (`Claude Code`→harness name, `CLAUDE.md`→agents file, `subagent`→mechanism, `TodoWrite`/`TodoRead`→todo tool, `/loaf:`→`/`, and the rest), along with the `{{LOAF_CLAUDE_COMPAT_PATH}}` stash it needs
 - [ ] Decide and record the disposition of each token: `{{HARNESS_NAME}}`, `{{INTERVIEW_TOOL}}`, `{{SUBAGENT_MECHANISM}}`, `{{TODO_TOOL}}` are expected to retire in favour of behavioural prose; `{{AGENTS_FILE}}` is the open question — resolve it against ADR-020 and note the answer in `shape.md` Decisions
 - [ ] Move whatever survives out of the Codex-specific file into a home named for the cross-target concern it serves
-- [ ] Add `TestSkillBodiesAreTargetInvariant`, comparing built skill bodies across all targets with frontmatter excluded
-- [ ] Add `TestNoHarnessProseSubstitution`, asserting no replacer operates on rendered markdown outside the literal-config path
+- [ ] Add `TestSkillTreeIsTargetInvariant`, comparing the full built tree across all targets — frontmatter included, excepting only fields a target sidecar legitimately owns
+- [ ] Add `TestNoHarnessProseSubstitution`, asserting no replacer operates on rendered markdown at all
 
 ## Verification
 
 - `go test ./internal/cli/ -run TestNoHarnessProseSubstitution` passes
-- `go test ./internal/cli/ -run TestSkillBodiesAreTargetInvariant` fails for content reasons only, and passes once TASK-003 lands
+- `go test ./internal/cli/ -run TestSkillTreeIsTargetInvariant` fails for content reasons only, and passes once TASK-003 lands — this task and TASK-003 land together, so neither is a standalone commit
