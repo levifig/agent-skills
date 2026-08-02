@@ -129,7 +129,7 @@ func copyNativeBuildAgents(srcDir string, destDir string, targetName string, ver
 	sort.Strings(files)
 	for _, file := range files {
 		srcPath := filepath.Join(agentsDir, file)
-		body, err := os.ReadFile(srcPath)
+		body, err := readRegularFileNoFollow(srcPath, projectFileReadLimit)
 		if err != nil {
 			return err
 		}
@@ -157,7 +157,7 @@ func copyNativeBuildAgents(srcDir string, destDir string, targetName string, ver
 }
 
 func readNativeBuildAgentSidecar(path string, required bool) ([]nativeBuildYAMLFieldValue, error) {
-	body, err := os.ReadFile(path)
+	body, err := readRegularFileNoFollow(path, projectFileReadLimit)
 	if err != nil {
 		if os.IsNotExist(err) && !required {
 			return nil, nil
@@ -379,14 +379,21 @@ func copyNativeCursorHookFiles(src string, dest string) error {
 }
 
 func copyNativeBuildFile(src string, dest string) error {
-	info, err := os.Stat(src)
+	info, err := os.Lstat(src)
 	if err != nil {
 		return err
 	}
 	if info.IsDir() {
 		return nil
 	}
-	body, err := os.ReadFile(src)
+	// Authored hook/script copies refuse a leaf symlink; size is unbounded because
+	// this helper also copies the Node launcher and similar non-text build inputs.
+	srcFile, err := openRegularFileNoFollow(src)
+	if err != nil {
+		return err
+	}
+	body, err := io.ReadAll(srcFile)
+	srcFile.Close()
 	if err != nil {
 		return err
 	}
