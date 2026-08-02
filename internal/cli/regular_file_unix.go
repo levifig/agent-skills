@@ -33,6 +33,10 @@ func openRegularFile(path string) (*os.File, error) {
 // openRegularFileNoFollow is openRegularFile with O_NOFOLLOW so a symlink at
 // the leaf is refused rather than resolved. Used for untrusted authored paths
 // (skill sidecars) where following would read outside the repository.
+//
+// O_NOFOLLOW is leaf-only. A symlinked intermediate directory still resolves;
+// that residual is acknowledged on readRegularFileNoFollow and is out of scope
+// for this helper's threat model.
 func openRegularFileNoFollow(path string) (*os.File, error) {
 	return openRegularFileFlags(path, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW)
 }

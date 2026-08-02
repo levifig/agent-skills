@@ -966,14 +966,15 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 				{
 					heading: "### DevOps Agent (Claude Code)",
 					tokens: map[string]int{
-						"Bash(docker *)":                  0,
-						"Bash(docker ps *)":               1,
-						"Bash(docker images *)":           1,
-						"Bash(docker inspect *)":          1,
-						"Bash(kubectl get *)":             1,
-						"Bash(terraform validate *)":      1,
-						"Bash(terraform plan *)":          0,
-						"Bash(docker compose config *)":   0,
+						"Bash(docker *)":                0,
+						"Bash(docker ps *)":             1,
+						"Bash(docker images *)":         1,
+						"Bash(docker inspect *)":        1,
+						"Bash(kubectl get *)":           0, // --profile-output write; approval-gated
+						"Bash(terraform validate *)":    1,
+						"Bash(terraform plan *)":        0,
+						"Bash(docker compose config *)": 0,
+						"--profile-output":              1,
 					},
 				},
 			},
@@ -1111,7 +1112,7 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 							"exec_command  #":                  0,
 							"Linear MCP tools (if configured)": 1,
 							"prefix_rule":                      2,
-							"~/.codex/rules/":                   1,
+							"~/.codex/rules/":                  1,
 							"argument-scoped execution":        0,
 						} {
 							if got := strings.Count(codexBody, token); got != want {
@@ -1291,17 +1292,130 @@ func TestNativeBuildUnresolvedPlaceholdersRejectsTextBinArtifactToken(t *testing
 	}
 }
 
-func TestNativeBuildUnresolvedPlaceholdersSkipsOpaqueBinBinary(t *testing.T) {
+func TestNativeBuildUnresolvedPlaceholdersSkipsOpaqueBinaryByMagic(t *testing.T) {
 	root := realpath(t, t.TempDir())
-	path := filepath.Join(root, "plugins", "loaf", "bin", "native", "darwin-arm64", "loaf")
+	// Outside bin/: the pre-fix wholesale bin/ skip would not cover this path,
+	// so a green result proves magic classification rather than directory exclusion.
+	path := filepath.Join(root, "plugins", "loaf", ".claude", "hooks", "session-start")
 	mkdirAll(t, filepath.Dir(path))
-	// NUL marks an opaque payload; the {{ span must not false-positive.
-	if err := os.WriteFile(path, []byte("native\x00payload{{FAKE_TOKEN}}tail"), 0o755); err != nil {
-		t.Fatalf("WriteFile(native bin) = %v", err)
+	// Genuine Mach-O 64-bit little-endian magic (darwin-arm64 loaf header), then a
+	// {{ span with no NUL — the old "contains NUL" heuristic would have scanned
+	// this and false-rejected.
+	payload := append([]byte{0xcf, 0xfa, 0xed, 0xfe}, []byte("rest-of-header{{FAKE_TOKEN}}tail")...)
+	if err := os.WriteFile(path, payload, 0o755); err != nil {
+		t.Fatalf("WriteFile(mach-o fixture) = %v", err)
 	}
 
 	if err := validateNativeBuildUnresolvedPlaceholders(root, "claude-code"); err != nil {
-		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want opaque bin/ skipped", err)
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want opaque Mach-O skipped", err)
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersRejectsNULBearingTextToken(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "plugins", "loaf", ".claude", "hooks", "nul-text.sh")
+	mkdirAll(t, filepath.Dir(path))
+	// A text artifact with an embedded NUL must not evade the scan: opacity is
+	// magic-based, not "any NUL anywhere".
+	if err := os.WriteFile(path, []byte("prefix\x00{{STRAY_NUL_TOKEN}}suffix\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(nul text) = %v", err)
+	}
+
+	err := validateNativeBuildUnresolvedPlaceholders(root, "claude-code")
+	if err == nil || !strings.Contains(err.Error(), "{{STRAY_NUL_TOKEN}}") {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want NUL-bearing text token rejection", err)
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersSkipsELFBinaryWithoutNUL(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "amp", ".amp", "plugins", "helper")
+	mkdirAll(t, filepath.Dir(path))
+	payload := append([]byte{0x7f, 'E', 'L', 'F'}, []byte("no-nul-body{{ELF_TOKEN}}")...)
+	if err := os.WriteFile(path, payload, 0o755); err != nil {
+		t.Fatalf("WriteFile(elf fixture) = %v", err)
+	}
+
+	if err := validateNativeBuildUnresolvedPlaceholders(root, "amp"); err != nil {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want no-NUL ELF skipped", err)
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersSkipsPEBinaryWithoutNUL(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "codex", ".codex", "helper.exe")
+	mkdirAll(t, filepath.Dir(path))
+	payload := append([]byte{'M', 'Z'}, []byte("pe-stub{{PE_TOKEN}}")...)
+	if err := os.WriteFile(path, payload, 0o755); err != nil {
+		t.Fatalf("WriteFile(pe fixture) = %v", err)
+	}
+
+	if err := validateNativeBuildUnresolvedPlaceholders(root, "codex"); err != nil {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want no-NUL PE skipped", err)
+	}
+}
+
+func TestIsOpaqueNativeBuildArtifactMagic(t *testing.T) {
+	if !isOpaqueNativeBuildArtifact([]byte{0xcf, 0xfa, 0xed, 0xfe, 0x00}) {
+		t.Fatal("Mach-O 64 LE should be opaque")
+	}
+	if !isOpaqueNativeBuildArtifact([]byte{0x7f, 'E', 'L', 'F'}) {
+		t.Fatal("ELF should be opaque")
+	}
+	if !isOpaqueNativeBuildArtifact([]byte{'M', 'Z', 'x'}) {
+		t.Fatal("PE/MZ should be opaque")
+	}
+	if isOpaqueNativeBuildArtifact([]byte("\x00{{TOKEN}}")) {
+		t.Fatal("NUL-bearing text must not be opaque")
+	}
+	if isOpaqueNativeBuildArtifact([]byte("plain{{TOKEN}}")) {
+		t.Fatal("plain text must not be opaque")
+	}
+}
+
+func TestConfirmOpenedRegularFileNoFollowRejectsLeafSymlinkSwap(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "outside.txt")
+	writeFile(t, target, "escaped-contents\n")
+	leaf := filepath.Join(dir, "sidecar.yaml")
+	writeFile(t, leaf, "original\n")
+	before, err := os.Lstat(leaf)
+	if err != nil {
+		t.Fatalf("Lstat(before) = %v", err)
+	}
+	// Simulate the portable race: after Lstat, replace the leaf with a symlink.
+	if err := os.Remove(leaf); err != nil {
+		t.Fatalf("Remove(leaf) = %v", err)
+	}
+	if err := os.Symlink(target, leaf); err != nil {
+		t.Fatalf("Symlink(leaf) = %v", err)
+	}
+	file, err := os.Open(leaf) // follows, as the portable Open would
+	if err != nil {
+		t.Fatalf("Open(swapped leaf) = %v", err)
+	}
+	defer file.Close()
+	err = confirmOpenedRegularFileNoFollow(leaf, file, before)
+	if err == nil || !errors.Is(err, errNotRegularFile) {
+		t.Fatalf("confirmOpenedRegularFileNoFollow = %v, want errNotRegularFile after leaf symlink swap", err)
+	}
+}
+
+func TestConfirmOpenedRegularFileNoFollowAcceptsStableRegularFile(t *testing.T) {
+	dir := t.TempDir()
+	leaf := filepath.Join(dir, "sidecar.yaml")
+	writeFile(t, leaf, "stable\n")
+	before, err := os.Lstat(leaf)
+	if err != nil {
+		t.Fatalf("Lstat = %v", err)
+	}
+	file, err := os.Open(leaf)
+	if err != nil {
+		t.Fatalf("Open = %v", err)
+	}
+	defer file.Close()
+	if err := confirmOpenedRegularFileNoFollow(leaf, file, before); err != nil {
+		t.Fatalf("confirmOpenedRegularFileNoFollow(stable) = %v, want nil", err)
 	}
 }
 

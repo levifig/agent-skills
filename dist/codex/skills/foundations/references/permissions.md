@@ -2,6 +2,7 @@
 
 ## Contents
 - Overview
+- Read-Only Fence Rule
 - Permission Commands by Harness
 - Recommended Allowlists by Harness
 - Orchestrator Allowlists by Harness
@@ -19,6 +20,14 @@ Permission patterns for autonomous operation and interactive workflows.
 ## Overview
 
 Coding harnesses use permission prompts to protect against unintended actions. Configure permissions to reduce interruptions while maintaining appropriate safety. Exact command names and allowlist tokens are product-specific — paste only from the labeled section for the harness you are configuring.
+
+## Read-Only Fence Rule
+
+Claude Code's `Bash(cmd *)` form matches any arguments and cannot exclude a flag. Therefore any command that exposes a write, output-to-file, or exec flag must not be auto-allowed under a wildcard in a read-only (or "no modifications") fence — no matter how read-only the subcommand sounds.
+
+Worked example: `git log` and `git diff` accept the common git option `--output=<file>`, which writes the command's result to an arbitrary path. Verified on git 2.55: `git log -1 --output=/tmp/probe` wrote the log to that path. So `Bash(git log *)` and `Bash(git diff *)` grant arbitrary file writes while looking like inspection tools. Prefer an exact allowlist entry with no wildcard (`Bash(git log)`, `Bash(git diff)`), or leave argument-bearing forms approval-gated.
+
+The same class previously caught `docker *`, `docker compose config` (`-o`/`--output`), and `terraform plan` (`-out`). Audit every new fence entry against the command's real help text, not recollection.
 
 ## Permission Commands by Harness
 
@@ -49,7 +58,8 @@ Write, Edit, NotebookEdit
 
 # Execution (allow with caution)
 Bash(npm run *), Bash(pytest *), Bash(make *)
-Bash(git status), Bash(git diff), Bash(git log *)
+Bash(git status), Bash(git diff), Bash(git log)
+# Argument-bearing git log/diff stay approval-gated: both accept --output=<file> (see Read-Only Fence Rule).
 ```
 
 #### CI/Autonomous Mode
@@ -60,9 +70,10 @@ For unattended execution in CI pipelines:
 # Strict read-only
 Read, Glob, Grep
 
-# Build commands only
+# Build commands only (exact script names — no wildcards)
 Bash(npm run build), Bash(npm run test)
-Bash(pytest *), Bash(mypy *)
+Bash(pytest), Bash(mypy)
+# Not auto-allowed as wildcards: pytest exposes --junitxml=<path>; mypy exposes --junit-xml, --*-report DIR, and --cache-dir. Bash(cmd *) cannot exclude those write flags, so argument-bearing forms stay approval-gated.
 
 # No write permissions in CI
 # Write, Edit - DISABLED
@@ -76,9 +87,10 @@ For review-focused sessions:
 # Read everything
 Read, Glob, Grep
 
-# Analysis tools
-Bash(git diff *), Bash(git log *)
+# Analysis tools (exact forms — no wildcards)
+Bash(git diff), Bash(git log)
 Bash(npm run lint), Bash(pytest --collect-only)
+# Argument-bearing git diff/log stay approval-gated: both accept --output=<file> (arbitrary write). See Read-Only Fence Rule.
 
 # No modifications
 # Write, Edit - DISABLED
@@ -152,9 +164,10 @@ Bash(psql --help), Bash(pg_dump --help)
 Read, Write, Edit, Glob, Grep
 Bash(docker ps *), Bash(docker images *), Bash(docker inspect *)
 Bash(docker logs *), Bash(docker compose ps *)
-Bash(kubectl get *), Bash(terraform validate *)
+Bash(terraform validate *)
 # Apply / mutate operations (docker run/exec/rm, kubectl apply, terraform apply) require explicit approval
-# Not auto-allowed: docker compose config (accepts -o/--output write) and terraform plan (accepts -out write). Claude Code's Bash(cmd *) form cannot exclude a flag, so those stay approval-gated.
+# Not auto-allowed (write/output flags; Bash(cmd *) cannot exclude them — see Read-Only Fence Rule):
+#   docker compose config (-o/--output), terraform plan (-out), kubectl get (--profile-output writes a pprof file).
 ```
 
 ## Sandbox Configuration

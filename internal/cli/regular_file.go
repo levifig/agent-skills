@@ -45,6 +45,14 @@ func readRegularFile(path string, limit int64) ([]byte, error) {
 // readRegularFileNoFollow is readRegularFile without following a symlink at the
 // target path. Use it when the path itself is untrusted authored content and
 // following would let a checkout point the read outside the repository.
+//
+// The no-follow guarantee is leaf-only: O_NOFOLLOW (unix) and the portable
+// Lstat/open/SameFile check refuse a symlink at the final path component, but
+// a symlinked intermediate directory still resolves. Validating every component
+// (openat-style) is possible and deliberately out of scope here — the build
+// already trusts its own checkout for most reads, and the threat this helper
+// closes is an authored leaf that points outside the tree, not a rewritten
+// content/skills mount. Callers that need a full no-escape walk must add one.
 func readRegularFileNoFollow(path string, limit int64) ([]byte, error) {
 	return readOpenedRegularFile(path, limit, openRegularFileNoFollow)
 }
@@ -63,6 +71,34 @@ func readOpenedRegularFile(path string, limit int64, open func(string) (*os.File
 		return nil, &fs.PathError{Op: "read", Path: path, Err: fmt.Errorf("%w of %d bytes", errFileTooLarge, limit)}
 	}
 	return body, nil
+}
+
+// confirmOpenedRegularFileNoFollow re-checks the leaf after open so a portable
+// Lstat-then-open path cannot accept a symlink that replaced the leaf between
+// the two steps. O_NOFOLLOW closes that window atomically on unix; this is the
+// non-atomic equivalent: refuse if the leaf is now a symlink, or if the opened
+// descriptor is not the same regular file Lstat saw.
+//
+// Intermediate symlinked directories are not checked — see readRegularFileNoFollow.
+func confirmOpenedRegularFileNoFollow(path string, file *os.File, before os.FileInfo) error {
+	opened, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if !opened.Mode().IsRegular() {
+		return &fs.PathError{Op: "open", Path: path, Err: errNotRegularFile}
+	}
+	after, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if after.Mode()&os.ModeSymlink != 0 || !after.Mode().IsRegular() {
+		return &fs.PathError{Op: "open", Path: path, Err: errNotRegularFile}
+	}
+	if !os.SameFile(before, opened) || !os.SameFile(after, opened) {
+		return &fs.PathError{Op: "open", Path: path, Err: errNotRegularFile}
+	}
+	return nil
 }
 
 // isProjectFileRefusal reports whether a read failed because of what the path
