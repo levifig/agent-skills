@@ -411,12 +411,15 @@ type nativeBuildUnresolvedPlaceholderFinding struct {
 }
 
 // validateNativeBuildUnresolvedPlaceholders rejects unresolved {{TOKEN}} forms in
-// generated non-skill config artifacts (hooks JSON, rules templates, and similar).
-// Markdown under skills/, commands/, and agents/ still carries retired content
-// tokens until TASK-003, so those trees and .md leaves are skipped. Codex hooks
-// JSON and rules templates are always checked when present.
+// generated non-skill artifacts. Skills/, commands/, and agents/ still carry
+// retired content tokens until TASK-003, so those trees are skipped. Everything
+// else under the target output — including .ts plugins, shell/Python hooks, and
+// instruction Markdown — is scanned. The root adapter manifest is excluded by
+// exact path (not basename) so a nested copy named .loaf-target-manifest.json
+// cannot hide unresolved tokens.
 func validateNativeBuildUnresolvedPlaceholders(root string, targetName string) error {
 	outputDir := nativeBuildTargetOutputDir(root, targetName)
+	manifestPath := filepath.Join(outputDir, targetBuildManifestFile)
 	var paths []string
 	err := filepath.WalkDir(outputDir, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -426,17 +429,14 @@ func validateNativeBuildUnresolvedPlaceholders(root string, targetName string) e
 			name := entry.Name()
 			// Skills and OpenCode commands still carry retired content tokens until
 			// TASK-003. Agents are authored profiles, not the generated Codex/config
-			// artifacts this guard targets.
-			if name == "node_modules" || name == "skills" || name == "commands" || name == "agents" {
+			// artifacts this guard targets. bin/ holds shipped native binaries whose
+			// bytes are not text and would false-positive on {{ spans.
+			if name == "node_modules" || name == "skills" || name == "commands" || name == "agents" || name == "bin" {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		ext := strings.ToLower(filepath.Ext(path))
-		switch ext {
-		case ".json", ".tmpl", ".yaml", ".yml", ".toml":
-			paths = append(paths, path)
-		}
+		paths = append(paths, path)
 		return nil
 	})
 	if err != nil {
@@ -447,12 +447,17 @@ func validateNativeBuildUnresolvedPlaceholders(root string, targetName string) e
 	}
 	var findings []nativeBuildUnresolvedPlaceholderFinding
 	for _, path := range paths {
-		if filepath.Base(path) == targetBuildManifestFile {
+		if path == manifestPath {
 			continue
 		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			return err
+		}
+		// Skip opaque binaries that slipped outside bin/ (NUL is never valid in
+		// the text artifacts this lint targets).
+		if bytes.IndexByte(body, 0) >= 0 {
+			continue
 		}
 		relative := nativeBuildRelativePath(root, path)
 		for lineNumber, line := range strings.Split(string(body), "\n") {
@@ -484,6 +489,10 @@ func validateNativeBuildUnresolvedPlaceholders(root string, targetName string) e
 	return errors.New(out.String())
 }
 
+// nativeBuildUnresolvedTokensInLine returns every {{...}} span on the line.
+// A leading $ does not exempt a token: GitHub Actions ${{ github.* }} forms live
+// only under skipped skill trees, and "${{ARBITRARY}}" must not bypass the guard
+// in generated artifacts.
 func nativeBuildUnresolvedTokensInLine(line string) []string {
 	var tokens []string
 	remaining := line
@@ -491,10 +500,6 @@ func nativeBuildUnresolvedTokensInLine(line string) []string {
 		start := strings.Index(remaining, "{{")
 		if start < 0 {
 			return tokens
-		}
-		if start > 0 && remaining[start-1] == '$' {
-			remaining = remaining[start+2:]
-			continue
 		}
 		end := strings.Index(remaining[start+2:], "}}")
 		if end < 0 {

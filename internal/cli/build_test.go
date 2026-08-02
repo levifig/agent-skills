@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -923,6 +924,10 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 				"## Orchestrator Allowlists by Harness": 1,
 				"## Permission Commands by Harness":     1,
 				"### Codex":                             1,
+				"### Backend Developer (Claude Code)":   1,
+				"### Frontend Developer (Claude Code)":  1,
+				"### DBA Agent (Claude Code)":           1,
+				"### DevOps Agent (Claude Code)":        1,
 			},
 			sections: []sectionExpect{
 				{
@@ -933,7 +938,40 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 						"TodoWrite":                        0,
 						"TodoRead":                         0,
 						"Linear MCP tools (if configured)": 1,
-						"exec_command":                     1,
+						"exec_command":                     1, // warned against in prose; must not be an allowlist line
+						"exec_command  #":                  0,
+					},
+				},
+				{
+					heading: "### Backend Developer (Claude Code)",
+					tokens: map[string]int{
+						"Bash(pytest *)": 1,
+						"Bash(docker *)": 0,
+					},
+				},
+				{
+					heading: "### Frontend Developer (Claude Code)",
+					tokens: map[string]int{
+						"Bash(npm *)":    1,
+						"Bash(docker *)": 0,
+					},
+				},
+				{
+					heading: "### DBA Agent (Claude Code)",
+					tokens: map[string]int{
+						"Bash(psql --help)": 1,
+						"Write, Edit":       0,
+					},
+				},
+				{
+					heading: "### DevOps Agent (Claude Code)",
+					tokens: map[string]int{
+						"Bash(docker *)":         0,
+						"Bash(docker ps *)":      1,
+						"Bash(docker images *)":  1,
+						"Bash(docker inspect *)": 1,
+						"Bash(kubectl get *)":    1,
+						"Bash(terraform plan *)": 1,
 					},
 				},
 			},
@@ -1068,7 +1106,9 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 							"TodoWrite, TodoRead":              0,
 							"TodoWrite":                        0,
 							"exec_command":                     1,
+							"exec_command  #":                  0,
 							"Linear MCP tools (if configured)": 1,
+							"argument-scoped execution":        1,
 						} {
 							if got := strings.Count(codexBody, token); got != want {
 								t.Errorf("%s skills/%s Codex orchestrator: %q appears %d times, want %d", target, file.rel, token, got, want)
@@ -1093,6 +1133,103 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 				baseline[file.rel] = body
 			}
 		}
+	}
+}
+
+func TestLabeledHarnessSectionBodyRejectsSubstringAndFencedHeading(t *testing.T) {
+	doc := strings.Join([]string{
+		"## Parent",
+		"",
+		"### Codex-extra",
+		"",
+		"wrong body",
+		"",
+		"```",
+		"### Codex",
+		"fenced body",
+		"```",
+		"",
+		"### Codex",
+		"",
+		"real body",
+		"",
+		"### Other",
+		"",
+	}, "\n")
+	body, ok := labeledHarnessSectionBody(doc, "### Codex")
+	if !ok {
+		t.Fatal("labeledHarnessSectionBody(### Codex) = false, want the real heading")
+	}
+	if strings.Contains(body, "wrong body") || strings.Contains(body, "fenced body") {
+		t.Fatalf("body = %q, matched substring or fenced heading", body)
+	}
+	if !strings.Contains(body, "real body") {
+		t.Fatalf("body = %q, want real body", body)
+	}
+	if _, ok := labeledHarnessSectionBody(doc, "### Codex-extra"); !ok {
+		t.Fatal("labeledHarnessSectionBody(### Codex-extra) = false, want its own heading")
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersRejectExecutableArtifactToken(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts")
+	mkdirAll(t, filepath.Dir(path))
+	writeFile(t, path, "export const cmd = \"{{STRAY_TOKEN}} journal\";\n")
+
+	err := validateNativeBuildUnresolvedPlaceholders(root, "amp")
+	if err == nil || !strings.Contains(err.Error(), "{{STRAY_TOKEN}}") {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want executable-artifact rejection", err)
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersRejectDollarPrefixedArbitraryToken(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "opencode", "plugins.ts")
+	mkdirAll(t, filepath.Dir(path))
+	writeFile(t, path, "export const leak = \"${{ARBITRARY}}\";\n")
+
+	err := validateNativeBuildUnresolvedPlaceholders(root, "opencode")
+	if err == nil || !strings.Contains(err.Error(), "{{ARBITRARY}}") {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want ${{ARBITRARY}} rejection", err)
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersRejectsNestedManifestBasename(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	nested := filepath.Join(root, "dist", "codex", "nested", targetBuildManifestFile)
+	mkdirAll(t, filepath.Dir(nested))
+	writeFile(t, nested, "{\n  \"token\": \"{{NESTED_MANIFEST}}\"\n}\n")
+
+	err := validateNativeBuildUnresolvedPlaceholders(root, "codex")
+	if err == nil || !strings.Contains(err.Error(), "{{NESTED_MANIFEST}}") {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want nested-manifest basename rejection", err)
+	}
+}
+
+func TestNativeBuildSkillInvarianceRejectsForeignTargetSidecarKey(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	sidecar := filepath.Join(root, "content", "skills", "demo", "SKILL.opencode.yaml")
+	mkdirAll(t, filepath.Dir(sidecar))
+	writeFile(t, sidecar, "allowed-tools: Bash(rm -rf *)\n")
+
+	_, err := nativeBuildSkillSidecarAuthorizedValues(root, "demo", "opencode")
+	if err == nil || !strings.Contains(err.Error(), "allowed-tools") || !strings.Contains(err.Error(), "opencode") {
+		t.Fatalf("error = %v, want foreign allowed-tools rejection for opencode sidecar", err)
+	}
+}
+
+func TestNativeBuildSkillSidecarAuthorizedValuesRefusesNonRegularFile(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	dir := filepath.Join(root, "content", "skills", "demo")
+	mkdirAll(t, dir)
+	sidecar := filepath.Join(dir, "SKILL.claude-code.yaml")
+	if err := os.Mkdir(sidecar, 0o755); err != nil {
+		t.Fatalf("Mkdir(sidecar-as-dir) = %v", err)
+	}
+	_, err := nativeBuildSkillSidecarAuthorizedValues(root, "demo", "claude-code")
+	if err == nil || !errors.Is(err, errNotRegularFile) {
+		t.Fatalf("error = %v, want errNotRegularFile", err)
 	}
 }
 
@@ -1179,6 +1316,68 @@ func TestNativeBuildSkillInvarianceSeesNestedFrontmatter(t *testing.T) {
 	}
 	if !strings.Contains(gotStrict, "mode: strict") || !strings.Contains(gotPermissive, "mode: permissive") {
 		t.Fatalf("normalize dropped nested frontmatter:\n strict: %q\n permissive: %q", gotStrict, gotPermissive)
+	}
+
+	listA := strings.Join([]string{
+		"---",
+		"name: demo",
+		"description: Demo",
+		"tags:",
+		"  - alpha",
+		"  - beta",
+		"# retained comment between keys",
+		"metadata:",
+		"  nested:",
+		"    leaf: one",
+		"notes: |",
+		"  line one",
+		"  line two",
+		"version: 1.0.0",
+		"---",
+		"",
+		"# Demo",
+		"",
+	}, "\n")
+	listB := strings.Join([]string{
+		"---",
+		"name: demo",
+		"description: Demo",
+		"tags:",
+		"  - alpha",
+		"  - gamma",
+		"# retained comment between keys",
+		"metadata:",
+		"  nested:",
+		"    leaf: two",
+		"notes: |",
+		"  line one",
+		"  line two changed",
+		"version: 1.0.0",
+		"---",
+		"",
+		"# Demo",
+		"",
+	}, "\n")
+	gotA, _, err := normalizeNativeBuildSkillFileForInvariance("demo/SKILL.md", listA, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotB, _, err := normalizeNativeBuildSkillFileForInvariance("demo/SKILL.md", listB, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotA == gotB {
+		t.Fatalf("list/deeper/block frontmatter compared equal after normalize:\n a: %q\n b: %q", gotA, gotB)
+	}
+	for _, want := range []string{"- beta", "leaf: one", "line two", "# retained comment between keys"} {
+		if !strings.Contains(gotA, want) {
+			t.Fatalf("normalize dropped %q from complex frontmatter:\n %q", want, gotA)
+		}
+	}
+	for _, want := range []string{"- gamma", "leaf: two", "line two changed"} {
+		if !strings.Contains(gotB, want) {
+			t.Fatalf("normalize dropped %q from complex frontmatter:\n %q", want, gotB)
+		}
 	}
 }
 
