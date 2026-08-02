@@ -254,7 +254,11 @@ func writeNativeBuildSkillMarkdown(skillSrc string, skillDest string, options na
 	if options.sidecarSrcDir != "" {
 		sidecarSrc = filepath.Join(options.sidecarSrcDir, "skills", filepath.Base(skillSrc))
 	}
-	fields = mergeNativeBuildTargetSidecar(fields, filepath.Join(sidecarSrc, "SKILL."+options.targetName+".yaml"))
+	var errMerge error
+	fields, errMerge = mergeNativeBuildTargetSidecar(fields, filepath.Join(sidecarSrc, "SKILL."+options.targetName+".yaml"), options.targetName)
+	if errMerge != nil {
+		return errMerge
+	}
 	if options.version != "" {
 		fields = setNativeBuildYAMLField(fields, "version", options.version)
 	}
@@ -333,15 +337,22 @@ func foldNativeBuildYAMLBlockValue(lines []string) string {
 	return strings.Join(paragraphs, "\n")
 }
 
-func mergeNativeBuildTargetSidecar(fields []nativeBuildYAMLField, sidecarPath string) []nativeBuildYAMLField {
-	body, err := os.ReadFile(sidecarPath)
+func mergeNativeBuildTargetSidecar(fields []nativeBuildYAMLField, sidecarPath string, targetName string) ([]nativeBuildYAMLField, error) {
+	body, err := readRegularFile(sidecarPath, projectFileReadLimit)
 	if err != nil {
-		return fields
+		if os.IsNotExist(err) {
+			return fields, nil
+		}
+		return fields, err
 	}
+	owned := nativeBuildSidecarOwnedFrontmatterKeys(targetName)
 	for _, field := range parseNativeBuildSimpleYAMLScalarFields(string(body)) {
+		if !owned[field.key] {
+			return fields, fmt.Errorf("SKILL.%s.yaml key %q is not owned by target %q", targetName, field.key, targetName)
+		}
 		fields = setNativeBuildYAMLField(fields, field.key, field.value)
 	}
-	return fields
+	return fields, nil
 }
 
 func setNativeBuildYAMLField(fields []nativeBuildYAMLField, key string, value string) []nativeBuildYAMLField {

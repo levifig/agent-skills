@@ -14,17 +14,45 @@ import (
 // (plus the stamped version) may differ — and only when the built value matches
 // that authorization.
 
-// nativeBuildSidecarOwnedFrontmatterKeys are frontmatter keys targets may set
-// via SKILL.<target>.yaml sidecars. Presence of the key alone is not enough:
-// the built value must match the sidecar (see normalizeNativeBuildSkillFileForInvariance).
-var nativeBuildSidecarOwnedFrontmatterKeys = map[string]bool{
-	"subtask":                  true, // SKILL.opencode.yaml
-	"user-invocable":           true, // SKILL.claude-code.yaml (and some opencode sidecars)
-	"argument-hint":            true, // SKILL.claude-code.yaml
-	"allowed-tools":            true, // SKILL.claude-code.yaml
-	"context":                  true, // SKILL.claude-code.yaml
-	"model":                    true, // SKILL.claude-code.yaml
-	"disable-model-invocation": true, // SKILL.claude-code.yaml
+// nativeBuildSidecarOwnedFrontmatterKeysByTarget maps each build target to the
+// frontmatter keys that target's SKILL.<target>.yaml may set. Ownership is
+// per-target: a key in the wrong sidecar is an error, not an authorized
+// difference. Presence of an owned key alone is still not enough — the built
+// value must match the sidecar (see normalizeNativeBuildSkillFileForInvariance).
+var nativeBuildSidecarOwnedFrontmatterKeysByTarget = map[string]map[string]bool{
+	"claude-code": {
+		"user-invocable":           true,
+		"argument-hint":            true,
+		"allowed-tools":            true,
+		"context":                  true,
+		"model":                    true,
+		"disable-model-invocation": true,
+	},
+	"opencode": {
+		"subtask":        true,
+		"user-invocable": true, // some OpenCode sidecars declare invocability
+	},
+}
+
+// nativeBuildAnySidecarOwnedFrontmatterKey is the union of every target's owned
+// keys. Built SKILL.md may carry these only when the current target's sidecar
+// authorized the exact value; otherwise invariance fails rather than stripping
+// a foreign key as "owned somewhere".
+var nativeBuildAnySidecarOwnedFrontmatterKey = func() map[string]bool {
+	out := map[string]bool{}
+	for _, owned := range nativeBuildSidecarOwnedFrontmatterKeysByTarget {
+		for key := range owned {
+			out[key] = true
+		}
+	}
+	return out
+}()
+
+func nativeBuildSidecarOwnedFrontmatterKeys(targetName string) map[string]bool {
+	if owned := nativeBuildSidecarOwnedFrontmatterKeysByTarget[targetName]; owned != nil {
+		return owned
+	}
+	return map[string]bool{}
 }
 
 func nativeBuildSkillTreeDir(root string, targetName string) string {
@@ -41,18 +69,20 @@ func nativeBuildSkillSidecarPath(root string, skill string, targetName string) s
 
 func nativeBuildSkillSidecarAuthorizedValues(root string, skill string, targetName string) (map[string]string, error) {
 	path := nativeBuildSkillSidecarPath(root, skill, targetName)
-	body, err := os.ReadFile(path)
+	body, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]string{}, nil
 		}
 		return nil, err
 	}
+	owned := nativeBuildSidecarOwnedFrontmatterKeys(targetName)
 	values := map[string]string{}
 	for _, field := range parseNativeBuildSimpleYAMLScalarFields(string(body)) {
-		if nativeBuildSidecarOwnedFrontmatterKeys[field.key] {
-			values[field.key] = field.value
+		if !owned[field.key] {
+			return nil, fmt.Errorf("SKILL.%s.yaml key %q is not owned by target %q", targetName, field.key, targetName)
 		}
+		values[field.key] = field.value
 	}
 	return values, nil
 }
@@ -105,7 +135,7 @@ func stripAuthorizedNativeBuildFrontmatter(frontmatter string, authorized map[st
 			}
 			continue
 		}
-		if nativeBuildSidecarOwnedFrontmatterKeys[key] {
+		if nativeBuildAnySidecarOwnedFrontmatterKey[key] {
 			auth, ok := authorized[key]
 			if !ok {
 				return "", "", fmt.Errorf("sidecar-owned frontmatter key %q present without a matching SKILL.<target>.yaml entry", key)
@@ -340,8 +370,10 @@ func harnessProseSubstitutionBannedProducts() []string {
 
 // labeledHarnessSectionBody returns the body under a markdown heading until the
 // next ## / ### ATX heading of the same or higher level (fewer #), or EOF. Child
-// ### sections stay inside a ## parent. Only space-terminated ATX headings at
-// level 2+ count — fenced comments like "# Coordination only" are not headings.
+// ### sections stay inside a ## parent. Matching requires a complete ATX heading
+// line (so "### Codex-extra" is not "### Codex"), and headings inside fenced
+// code blocks are ignored — only space-terminated ATX headings at level 2+
+// outside fences count.
 func labeledHarnessSectionBody(doc string, heading string) (string, bool) {
 	marker := strings.TrimSpace(heading)
 	if !strings.HasPrefix(marker, "#") {
@@ -351,36 +383,48 @@ func labeledHarnessSectionBody(doc string, heading string) (string, bool) {
 	for level < len(marker) && marker[level] == '#' {
 		level++
 	}
-	index := strings.Index(doc, marker)
-	if index < 0 {
-		return "", false
-	}
-	if index > 0 && doc[index-1] != '\n' {
-		return "", false
-	}
-	rest := doc[index+len(marker):]
-	if len(rest) > 0 && rest[0] == '\n' {
-		rest = rest[1:]
-	}
-	end := len(rest)
-	offset := 0
-	for offset < len(rest) {
-		i := strings.Index(rest[offset:], "\n#")
-		if i < 0 {
+	lines := strings.Split(doc, "\n")
+	start := -1
+	inFence := false
+	for i, line := range lines {
+		trimmed := strings.TrimRight(line, " \t")
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		if trimmed == marker {
+			start = i + 1
 			break
 		}
-		abs := offset + i
+	}
+	if start < 0 {
+		return "", false
+	}
+	inFence = false
+	end := len(lines)
+	for i := start; i < len(lines); i++ {
+		trimmed := strings.TrimRight(lines[i], " \t")
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
 		hashes := 0
-		for abs+1+hashes < len(rest) && rest[abs+1+hashes] == '#' {
+		for hashes < len(trimmed) && trimmed[hashes] == '#' {
 			hashes++
 		}
-		// Require ## or ### (or more) followed by a space — not "# comment" fences.
-		next := abs + 1 + hashes
-		if hashes >= 2 && next < len(rest) && rest[next] == ' ' && hashes <= level {
-			end = abs
+		if hashes >= 2 && hashes < len(trimmed) && trimmed[hashes] == ' ' && hashes <= level {
+			end = i
 			break
 		}
-		offset = abs + 1
 	}
-	return rest[:end], true
+	if start >= end {
+		return "", true
+	}
+	return strings.Join(lines[start:end], "\n"), true
 }
