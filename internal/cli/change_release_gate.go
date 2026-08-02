@@ -193,6 +193,10 @@ func releaseSemverLess(a, b releaseSemver) bool {
 // resolveReleaseSnapshot is the single derivation shared by the cohort gate and
 // every release consumer: one immutable snapshot of version-file state, bump,
 // candidate, and the commit range those fields were resolved from.
+//
+// Non-post-merge cuts key CurrentVersion on HEAD blobs so a refused prepare's
+// worktree candidate bumps do not shift the candidate on resume. Post-merge
+// still keys on the prepared worktree/HEAD version (they match on a clean tree).
 func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapshot, error) {
 	configOverrides, err := releaseConfigVersionFiles(root)
 	if err != nil {
@@ -208,6 +212,9 @@ func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapsho
 	}
 	if len(versionFiles) == 0 {
 		return releaseSnapshot{}, fmt.Errorf("no version files detected")
+	}
+	if !options.postMerge {
+		versionFiles = releaseVersionFilesWithHEADBaseline(root, versionFiles)
 	}
 	current := versionFiles[0].CurrentVersion
 	for _, file := range versionFiles {
@@ -253,8 +260,30 @@ func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapsho
 	return snap, nil
 }
 
+// releaseVersionFilesWithHEADBaseline rewrites CurrentVersion from HEAD blobs
+// when available so snapshot derivation ignores uncommitted candidate bumps.
+func releaseVersionFilesWithHEADBaseline(root string, files []releaseVersionFile) []releaseVersionFile {
+	out := make([]releaseVersionFile, len(files))
+	for i, file := range files {
+		out[i] = file
+		headBody, err := releaseGitShowPath(root, "HEAD", file.RelativePath)
+		if err != nil {
+			continue
+		}
+		version, format, err := parseReleaseVersion(file.RelativePath, headBody)
+		if err != nil {
+			continue
+		}
+		out[i].CurrentVersion = version
+		out[i].Format = format
+	}
+	return out
+}
+
 // assertReleaseSnapshotStillCurrent re-reads the snapshot's version files and
 // blocks when any has drifted from the version the candidate was resolved from.
+// An uncommitted worktree already at Candidate is allowed when HEAD still
+// carries CurrentVersion (resume after an evidence-gate refusal).
 func assertReleaseSnapshotStillCurrent(root string, snapshot releaseSnapshot) error {
 	if snapshot.CurrentVersion == "" {
 		return fmt.Errorf("release blocked: release snapshot was not resolved before apply")
@@ -264,9 +293,17 @@ func assertReleaseSnapshotStillCurrent(root string, snapshot releaseSnapshot) er
 		if err != nil {
 			return fmt.Errorf("release blocked: cannot re-read version file %s: %w", file.RelativePath, err)
 		}
-		if fresh.CurrentVersion != snapshot.CurrentVersion {
-			return fmt.Errorf("release blocked: version drifted from %s to %s since preflight; re-run release", snapshot.CurrentVersion, fresh.CurrentVersion)
+		if fresh.CurrentVersion == snapshot.CurrentVersion {
+			continue
 		}
+		if snapshot.Candidate != "" && fresh.CurrentVersion == snapshot.Candidate {
+			if headBody, err := releaseGitShowPath(root, "HEAD", file.RelativePath); err == nil {
+				if headVersion, _, parseErr := parseReleaseVersion(file.RelativePath, headBody); parseErr == nil && headVersion == snapshot.CurrentVersion {
+					continue
+				}
+			}
+		}
+		return fmt.Errorf("release blocked: version drifted from %s to %s since preflight; re-run release", snapshot.CurrentVersion, fresh.CurrentVersion)
 	}
 	return nil
 }

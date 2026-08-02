@@ -20,6 +20,20 @@ is a Loaf workflow staging section for curated entries before release.
 
 - **Breaking: `install --upgrade` is removed.** The flag now errors with a pointer to `loaf upgrade`, as do `--dry-run` and `--json` on install; the documented dry-run planning flow is `loaf upgrade --dry-run --json`. The plan document stays at contract version 1 and every field keeps its name, type, and meaning — the only value that changed is `command`, which reads `upgrade`. One optional object is new: `project_part` (`in_scope`, `tier`, `confirmation_required`, `bases`) reports the detector gate and is omitted entirely for callers that plan project files unconditionally, so their document is byte-identical to before.
 
+## [2.0.0-alpha.18] - 2026-08-01
+
+### Changed
+
+- `loaf release` refuses to create a release commit or tag when installed-smoke capability evidence is invalid or stale against the just-rebuilt tree — on every mutating path (`--pre-merge`, direct, and `--post-merge` as guardrail 9); refusals name the smoke runners and the re-record-after-rebuild ordering, and projects without `config/target-capabilities.json` are untouched ([#147](https://github.com/levifig/loaf/pull/147))
+- Rerunning a release after an evidence refusal is a verified resume: prepared-tree dirt is restored and regenerated, re-recorded receipts are the only operator input carried through, and untracked files under generated roots refuse by name ([#147](https://github.com/levifig/loaf/pull/147))
+- `--post-merge` recovery accepts a single receipt-only repair commit atop the release commit, classified against the parent commit's registry ([#147](https://github.com/levifig/loaf/pull/147))
+- The release skill states the evidence-ordering rule (re-record after the `--pre-merge` rebuild) and the guardrail-9 recovery flow; STRATEGY and ARCHITECTURE record the arc's proven principles ([#147](https://github.com/levifig/loaf/pull/147), [#149](https://github.com/levifig/loaf/pull/149))
+
+### Fixed
+
+- Registry and candidate-artifact reads in the release gate refuse symlinked or irregular paths through a shared component-wise walk, so validated bytes and committed bytes cannot diverge ([#147](https://github.com/levifig/loaf/pull/147))
+- The 2.1.207 smoke narrative names its receipt's supersession instead of linking a removed file ([#148](https://github.com/levifig/loaf/pull/148))
+
 ## [2.0.0-alpha.17] - 2026-07-30
 
 ### Added
