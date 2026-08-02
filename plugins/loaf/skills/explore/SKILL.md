@@ -4,7 +4,14 @@ description: >-
   Conducts divergent inquiry as a durable Exploration with portable checkpoints,
   conversation provenance, and Intent capture that survive compaction and
   harness changes. Agent technique — not a user entry point: route "explore
-  this" and similar user...
+  this" and similar user asks to /pitch; use this technique from inside pitch or
+  other agent work when the direction is genuinely undecided, or when resuming a
+  named Exploration. Produces Exploration records, portable checkpoints, and
+  tracked or deferred Intents; Exploration machinery and the four-field
+  checkpoint contract stay intact. Not for evidence gathering on a known
+  question (use research), continuing implementation (use implement), processing
+  the intake queue (use triage), shaping a bounded Change (use shape), problem
+  discovery (use pitch), or quick capture (use idea).
 user-invocable: false
 argument-hint: '[topic or exploration ref]'
 version: 2.0.0-alpha.19
@@ -35,9 +42,9 @@ Divergent inquiry with durable continuity. An Exploration is a relational identi
 - Checkpoint before the context window gets hostile: every checkpoint must carry all four portable fields — purpose, conclusions, unresolved, next action — each self-sufficient without this conversation.
 - A conversation handle or log path is provenance, never context. Presence of handles does not make an Exploration resumable; only a portable checkpoint does.
 - Capture crystallized directions as Intent (`loaf intent create`), deferred bodies with `--disposition deferred`; never leave a substantial direction only in prose.
-- Never create Git artifacts, branches, worktrees, or Changes from Explore; when a direction is ready for problem discovery hand it to `/loaf:pitch`, and when it is ready for bounded delivery hand it to `/loaf:shape`.
+- Never create Git artifacts, branches, worktrees, or Changes from Explore; when a direction is ready for problem discovery hand it to `/pitch`, and when it is ready for bounded delivery hand it to `/shape`.
 - Never store transcripts, prompts, or tool output in checkpoints or items; curate semantic context instead.
-- Not a user slash front door — human "explore this" / "where do I start" intent routes to `/loaf:pitch`.
+- Not a user slash front door — human "explore this" / "where do I start" intent routes to `/pitch`.
 
 ## Verification
 

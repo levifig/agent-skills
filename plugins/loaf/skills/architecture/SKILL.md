@@ -4,7 +4,14 @@ description: >-
   Creates Architecture Decision Records for architecturally significant
   decisions — choices that affect the system's structure, key quality
   attributes, dependencies, interfaces, or construction techniques, or that are
-  difficult to reverse. Captures ...
+  difficult to reverse. Captures the rationale for a single such choice and its
+  alternatives so future debate has the why preserved. Not for development
+  patterns or implementation evidence (use /shape for SPECs), guiding principles
+  (update ARCHITECTURE.md or VISION.md), workflow conventions (document in the
+  owning skill), or local choices changeable in a single PR (log a
+  `decision(scope)` entry to the project journal instead). The ADR log is
+  append-only — when circumstances change, write a new ADR that supersedes the
+  old one.
 user-invocable: true
 argument-hint: '[topic or decision]'
 version: 2.0.0-alpha.19
@@ -59,17 +66,17 @@ Q1 and Q2 form a disjunction (matches Microsoft's bar — either canonical-domai
 | Decision shape | Destination |
 |---|---|
 | Passes the gate | **ADR** (`docs/decisions/`) |
-| Development pattern, direction, implementation evidence | SPEC via `/loaf:shape` |
-| Guiding principle, philosophy, operating model (stance, not architectural choice) | `ARCHITECTURE.md` / `VISION.md` (mutable, `/loaf:reflect`-revisable) |
+| Development pattern, direction, implementation evidence | SPEC via `/shape` |
+| Guiding principle, philosophy, operating model (stance, not architectural choice) | `ARCHITECTURE.md` / `VISION.md` (mutable, `/reflect`-revisable) |
 | Workflow convention, skill-specific lore | Owning skill's `SKILL.md` or references |
 | Local choice, single-PR scope, no consequence to divergence | Log a `decision(scope)` entry to the project journal + code comment if needed |
 
 ### Skip ADR When
 
 - Decision is a convention or naming preference — no measurable effect on architecture (fails the architectural-significance test)
-- Decision is a stance, principle, philosophy, or vision — even if alternatives are named, the choice is being made on philosophical or operational grounds rather than architectural ones (specific quality attributes, dependencies, interfaces, or construction techniques). Record in `ARCHITECTURE.md` or `VISION.md` (strategic), where principles can evolve via `/loaf:reflect`. ADRs are immutable post-acceptance and reserved for architectural choices.
+- Decision is a stance, principle, philosophy, or vision — even if alternatives are named, the choice is being made on philosophical or operational grounds rather than architectural ones (specific quality attributes, dependencies, interfaces, or construction techniques). Record in `ARCHITECTURE.md` or `VISION.md` (strategic), where principles can evolve via `/reflect`. ADRs are immutable post-acceptance and reserved for architectural choices.
 - Decision is workflow lore belonging to a specific skill — document in that skill, not in `docs/decisions/`
-- Decision is exploration of alternatives without a chosen direction — that's a SPEC via `/loaf:shape`; the ADR comes after if the chosen direction is architecturally significant
+- Decision is exploration of alternatives without a chosen direction — that's a SPEC via `/shape`; the ADR comes after if the chosen direction is architecturally significant
 - Decision can be changed in a single PR with no downstream coordination — log a `decision(scope)` entry to the project journal and a code comment if needed
 - Rationale is aesthetic ("looks/feels better", "scans nicer", "more consistent visually") — never an ADR
 
@@ -158,8 +165,8 @@ After work completes, verify:
 | Decision shape | Destination |
 |---|---|
 | Passes the gate | **ADR** (`docs/decisions/`) |
-| Development pattern, direction, implementation evidence | SPEC via `/loaf:shape` |
-| Guiding principle, philosophy, operating model (stance, not architectural choice) | `ARCHITECTURE.md` / `VISION.md` (mutable, `/loaf:reflect`-revisable) |
+| Development pattern, direction, implementation evidence | SPEC via `/shape` |
+| Guiding principle, philosophy, operating model (stance, not architectural choice) | `ARCHITECTURE.md` / `VISION.md` (mutable, `/reflect`-revisable) |
 | Workflow convention, skill-specific lore | Owning skill's `SKILL.md` or references |
 | Local choice, single-PR scope, no consequence to divergence | Log a `decision(scope)` entry to the project journal + code comment if needed |
 
@@ -191,7 +198,7 @@ This skill *stabilizes* terms — promote a previously-proposed candidate, or wr
 | `loaf kb glossary stabilize <term>` | A previously-proposed candidate has firmed up into a load-bearing decision |
 | `loaf kb glossary upsert <term> --definition <d> --avoid <list>` | A load-bearing term emerges fresh and is canonical from the outset |
 
-`propose` is reserved for upstream skills that resolve ambiguity (e.g., a future `/loaf:shape` evolution) — do not call it here.
+`propose` is reserved for upstream skills that resolve ambiguity (e.g., a future `/shape` evolution) — do not call it here.
 
 ## Topics
 

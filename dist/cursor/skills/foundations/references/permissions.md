@@ -16,7 +16,7 @@ Permission patterns for autonomous operation and interactive workflows.
 
 ## Overview
 
-Cursor uses permission prompts to protect against unintended actions. Configure permissions to reduce interruptions while maintaining appropriate safety.
+Claude Code uses permission prompts to protect against unintended actions. Configure permissions to reduce interruptions while maintaining appropriate safety.
 
 ## Permission Commands
 
@@ -83,7 +83,7 @@ Bash(npm run lint), Bash(pytest --collect-only)
 ```
 # Coordination only - no implementation
 Read, Glob, Grep
-task list or chat checklist, task list or chat checklist
+TodoWrite, TodoRead
 Linear MCP tools (if configured)
 Bash(date *), Bash(git status)
 ```

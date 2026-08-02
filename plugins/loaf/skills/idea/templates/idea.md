@@ -31,5 +31,5 @@ origin:                # Optional: draft filename this spark came from (e.g. dra
 
 ---
 
-*Captured via /loaf:idea -- shape with /loaf:shape when ready*
+*Captured via /idea -- shape with /shape when ready*
 ```

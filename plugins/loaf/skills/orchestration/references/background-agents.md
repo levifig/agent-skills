@@ -107,4 +107,4 @@ state is available.
 - `loaf journal log` records spawn and completion facts.
 - `loaf journal recent` surfaces recent background-work entries.
 - `loaf report` commands own durable report lifecycle when available.
-- `/loaf:wrap` should mention unprocessed background reports when writing a wrap.
+- `/wrap` should mention unprocessed background reports when writing a wrap.

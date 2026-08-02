@@ -122,10 +122,10 @@ npm run lint    # Check: No errors or warnings
 
 | Command | Verification Point |
 |---------|-------------------|
-| `/loaf:implement` | Before marking session complete |
-| `/loaf:breakdown` | Each task has verification criteria |
-| `/loaf:shape` | Test conditions define verification |
-| `/loaf:reflect` | Note verification gaps discovered |
+| `/implement` | Before marking session complete |
+| `/breakdown` | Each task has verification criteria |
+| `/shape` | Test conditions define verification |
+| `/reflect` | Note verification gaps discovered |
 
 ## Red Flags
 

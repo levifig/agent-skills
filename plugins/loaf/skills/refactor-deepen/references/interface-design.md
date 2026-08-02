@@ -1,6 +1,6 @@
 # Interface Design — Parallel Sub-Agent Pattern
 
-The Interface Design activity of `/loaf:refactor-deepen` proposes the public surface
+The Interface Design activity of `/refactor-deepen` proposes the public surface
 of a deepened module by sampling three independent design attempts and
 presenting all three to the user. Variety must come from sampling, not from
 manufactured opposition.
@@ -230,7 +230,7 @@ design pass against the same context. With more-agents escalation, the
 cost scales linearly (4 agents = ~4 ×, 5 agents = ~5 ×).
 
 This pattern is **opt-in inside the grilling loop**. It is not
-auto-triggered on every `/loaf:refactor-deepen` invocation. The 3-agent default
+auto-triggered on every `/refactor-deepen` invocation. The 3-agent default
 is the cost ceiling for the default settings — the skill does not scale
 agent count silently. If a candidate's interface is obvious, skip the
 activity entirely and propose a single design.

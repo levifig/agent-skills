@@ -169,7 +169,7 @@ Refs BACK-124
 - **Write a clean extended description** for the squash merge commit — a one-line summary followed by bullet points grouped by feature area
 - **Never use the automatic squash description** that dumps all individual commit messages — it's noisy and unhelpful in git history
 - Don't push or merge without explicit request
-- The `/loaf:ship` skill automates this workflow when ready to squash merge a PR; `/loaf:release` publishes a version later from already-landed work
+- The `/ship` skill automates this workflow when ready to squash merge a PR; `/release` publishes a version later from already-landed work
 
 ## Changelog Discipline
 

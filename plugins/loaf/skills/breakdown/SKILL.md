@@ -4,7 +4,7 @@ description: >-
   Decomposes specifications into atomic tasks with dependencies and priorities.
   Use when the user asks "break this down" or "create tasks for this spec."
   Produces task files with estimates, dependencies, and acceptance criteria. Not
-  for shaping idea...
+  for shaping ideas (use shape) or implementation work (use implement).
 user-invocable: true
 argument-hint: '[spec-file or topic]'
 version: 2.0.0-alpha.19
@@ -317,7 +317,7 @@ the full local-task model.
 
 ## Suggests Next
 
-After breakdown completes, suggest `/loaf:implement` to start working on the tasks.
+After breakdown completes, suggest `/implement` to start working on the tasks.
 
 ## Related Skills
 

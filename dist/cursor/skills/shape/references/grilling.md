@@ -6,7 +6,7 @@ This is a distinct, shape-specific technique — not the shared `templates/grill
 
 ## The Mechanic
 
-One question at a time, through `built-in chat clarification`. Harnesses without that tool degrade to one inline question per message — same semantics, just without the structured UI. Never batch questions into a form; a form invites the user to skim and accept defaults, which is exactly the quick-capture failure grilling exists to avoid.
+One question at a time, through `AskUserQuestion`. Harnesses without that tool degrade to one inline question per message — same semantics, just without the structured UI. Never batch questions into a form; a form invites the user to skim and accept defaults, which is exactly the quick-capture failure grilling exists to avoid.
 
 Every question carries a recommended answer with rationale — never "what do you think?" alone. The recommendation forces a position; the user is free to override it, but the question isn't complete without one.
 

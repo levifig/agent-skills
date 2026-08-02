@@ -4,7 +4,8 @@ description: >-
   Establishes code quality, commit conventions, documentation standards, and
   security patterns. Use when writing or reviewing code, running checks, or
   setting up project standards. Covers naming, TDD, verification, and review
-  workflows. Not for git ...
+  workflows. Not for git workflow (use git-workflow), debugging (use debugging),
+  or security audits (use security-compliance).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
 version: 2.0.0-alpha.19

@@ -39,7 +39,7 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 
 - **Detect, don't ask** -- auto-classify project mode (brownfield/greenfield+brief/greenfield+empty), confirm briefly, let the user correct
 - **Never overwrite existing documents** without explicit confirmation -- read first, note what exists, ask before changing
-- **Always interview** -- even with a rich brief, confirm understanding through structured questions using `prompt the user in chat`
+- **Always interview** -- even with a rich brief, confirm understanding through structured questions using `AskUserQuestion`
 - **Pitched BRIEF is discovery-already-done** -- when `docs/BRIEF.md` has `source: pitch`, do not re-excavate the problem space; quote-back and gap-fill only for operating-document population
 - **BRIEF is input, not output** -- the BRIEF is raw intake. Extract every useful fact into VISION/STRATEGY/ARCHITECTURE/AGENTS during bootstrap.
 - **BRIEF is archeological after bootstrap** -- once extraction completes (including series-prep reading scoped concepts from it), the BRIEF is a frozen historical snapshot. No skill, agent, command, or template should reference `docs/BRIEF.md` post-bootstrap. Operating documents and minted change briefs must stand on their own.
@@ -193,7 +193,7 @@ If `docs/BRIEF.md` already exists and no new brief was provided:
 
 ## Interview Flow
 
-Interview depth adapts to the detected mode. All interviews use `prompt the user in chat`. The full interview framework is in [references/interview-guide.md](../skills/bootstrap/references/interview-guide.md).
+Interview depth adapts to the detected mode. All interviews use `AskUserQuestion`. The full interview framework is in [references/interview-guide.md](../skills/bootstrap/references/interview-guide.md).
 
 ### Brownfield: Nuance-Capturing Interview
 
@@ -323,7 +323,7 @@ Start with detected/discussed stack info and build up:
 
 ## Structured Review
 
-After drafting each document, present it section-by-section for iteration using `prompt the user in chat`.
+After drafting each document, present it section-by-section for iteration using `AskUserQuestion`.
 
 ### Review Pattern
 
@@ -422,7 +422,7 @@ After operating documents are populated (and Knowledge Base Scaffolding above ha
 
 **Procedure**
 
-1. **Enumerate concepts** with the builder from the BRIEF's scoped problem space (Sequencing and Relationships, Open Questions, and distinct problem threads in Problem Statement). List candidates as recommendation-first options via `prompt the user in chat`.
+1. **Enumerate concepts** with the builder from the BRIEF's scoped problem space (Sequencing and Relationships, Open Questions, and distinct problem threads in Problem Statement). List candidates as recommendation-first options via `AskUserQuestion`.
 2. **Apply granularity** per [references/interview-guide.md](../skills/bootstrap/references/interview-guide.md) (Series-Prep Granularity): a concept earns its own captured change when it is independently shippable **and** its problem can be **stated precisely now** (the mint-time specifiability test — not answered now, stated now) without the others; otherwise it stays a BRIEF line, becomes a spark, or an Intent — never a half-minted folder.
 3. **Per confirmed concept (one at a time — never batch):**
    1. Confirm mint with the builder (slug, coarse `target_release`, one-line problem restatement). If the builder will not bind even a coarse target, do not mint — park as spark/Intent/BRIEF line.
@@ -471,7 +471,7 @@ Suggest at least 2 relevant paths. Don't auto-run any of them.
 
 ## Cross-Harness Support
 
-This skill is designed for OpenCode (uses `prompt the user in chat`, Write/Edit tools). For other harnesses, the equivalent workflow is:
+This skill is designed for Claude Code (uses `AskUserQuestion`, Write/Edit tools). For other harnesses, the equivalent workflow is:
 
 1. Run `loaf setup` (or `loaf init && loaf build && loaf install --to all` manually)
 2. Create `docs/VISION.md`, `docs/STRATEGY.md`, `docs/ARCHITECTURE.md` manually -- these are the load-bearing operating documents
@@ -491,7 +491,7 @@ This skill is designed for OpenCode (uses `prompt the user in chat`, Write/Edit 
 5. **Extract, don't preserve** -- pull every useful fact from the BRIEF into operating docs (and series-prep seeds change briefs from it once). The BRIEF is archeological after bootstrap; nothing should reference it again.
 6. **Record the session** -- decisions and rationale are preserved
 7. **Suggest, don't execute** -- recommend next skills, don't auto-run them; series-prep never auto-shapes or creates branches
-8. **Use prompt the user in chat** -- structured, conversational interaction throughout
+8. **Use AskUserQuestion** -- structured, conversational interaction throughout
 9. **Series-prep is not roadmap planning** -- coarse `target_release` + prose sequencing only; no dates, priorities, or dependency fields
 
 ---

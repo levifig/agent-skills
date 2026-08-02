@@ -4,7 +4,7 @@ description: >-
   Covers threat modeling, secrets management, security reviews, and compliance
   verification. Use when reviewing code for security, managing secrets,
   performing threat analysis, or running compliance audits. Not for debugging
-  (use debugging) or gener...
+  (use debugging) or general code review (use foundations).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
 version: 2.0.0-alpha.19

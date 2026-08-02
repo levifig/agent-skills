@@ -191,13 +191,6 @@ func buildNativeClaudeCodeTarget(root string) error {
 		return err
 	}
 
-	knownCommands, err := nativeClaudeKnownCommands(root)
-	if err != nil {
-		return err
-	}
-	transformMd := func(content string) string {
-		return nativeClaudeScopeCommands(substituteNativeBuildHarnessLanguage(content, "claude-code"), knownCommands)
-	}
 	if err := copyNativeBuildSkills(nativeBuildSkillCopyOptions{
 		srcDir:        filepath.Join(root, "dist"),
 		destDir:       filepath.Join(pluginDir, "skills"),
@@ -205,7 +198,6 @@ func buildNativeClaudeCodeTarget(root string) error {
 		targetName:    "claude-code",
 		version:       version,
 		targetsConfig: targetsConfig,
-		transformMd:   transformMd,
 	}); err != nil {
 		return err
 	}
@@ -474,99 +466,6 @@ var nativeClaudeBinaryPathHooks = map[string]bool{
 	"generate-task-board":     true,
 	"journal-task-completed":  true,
 	"detect-linear-magic":     true,
-}
-
-func nativeClaudeKnownCommands(root string) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(root, "dist", "skills"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var commands []string
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		skill := entry.Name()
-		distSkill := filepath.Join(root, "dist", "skills", skill)
-		if !pathExistsNative(filepath.Join(distSkill, "SKILL.md")) && !pathExistsNative(filepath.Join(distSkill, "references")) {
-			continue
-		}
-		contentSkill := filepath.Join(root, "content", "skills", skill)
-		if !pathExistsNative(contentSkill) {
-			continue
-		}
-		extensions := parseNativeBuildSimpleYAMLScalars(readFileStringNative(filepath.Join(contentSkill, "SKILL.claude-code.yaml")))
-		if extensions["user-invocable"] == "false" {
-			continue
-		}
-		commands = append(commands, skill)
-	}
-	return commands, nil
-}
-
-func nativeClaudeScopeCommands(content string, commands []string) string {
-	result := content
-	for _, command := range commands {
-		result = nativeClaudeScopeCommand(result, command)
-	}
-	return result
-}
-
-func nativeClaudeScopeCommand(content string, command string) string {
-	needle := "/" + command
-	var out strings.Builder
-	offset := 0
-	for {
-		index := strings.Index(content[offset:], needle)
-		if index < 0 {
-			out.WriteString(content[offset:])
-			break
-		}
-		index += offset
-		out.WriteString(content[offset:index])
-		after := index + len(needle)
-		if nativeClaudeAlreadyScoped(content, index) || !nativeClaudeCommandBoundary(content, after) {
-			out.WriteString(needle)
-		} else {
-			out.WriteString("/loaf:" + command)
-		}
-		offset = after
-	}
-	return out.String()
-}
-
-func nativeClaudeAlreadyScoped(content string, slashIndex int) bool {
-	prefix := content[:slashIndex]
-	lastSlash := strings.LastIndex(prefix, "/")
-	if lastSlash < 0 {
-		return false
-	}
-	scope := prefix[lastSlash+1:]
-	if !strings.HasSuffix(scope, ":") || len(scope) < 2 {
-		return false
-	}
-	scope = strings.TrimSuffix(scope, ":")
-	for _, r := range scope {
-		if !(r == '_' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
-			return false
-		}
-	}
-	return true
-}
-
-func nativeClaudeCommandBoundary(content string, index int) bool {
-	if index >= len(content) {
-		return true
-	}
-	switch content[index] {
-	case ' ', '\n', '\t', '\r', ')', ']', ',', '`':
-		return true
-	default:
-		return false
-	}
 }
 
 func copyNativeClaudeHooks(hooks []nativeBuildHook, srcDir string, pluginDir string) error {

@@ -4,7 +4,8 @@ description: >-
   Covers Docker, Kubernetes, GitOps, CI/CD pipelines, and container security.
   Use when writing Dockerfiles, configuring K8s manifests, setting up CI/CD, or
   managing deployments. Provides patterns for infrastructure as code. Not for
-  application code ...
+  application code (use development skills), database schema (use
+  database-design), or security audits (use security-compliance).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
 version: 2.0.0-alpha.19

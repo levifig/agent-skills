@@ -148,8 +148,11 @@ func TestRunnerBuildTargetCodexRunsNativeTarget(t *testing.T) {
 	if !strings.HasPrefix(sharedSkill, wantSharedFrontmatter) {
 		t.Fatalf("shared skill frontmatter = %q, want prefix %q", sharedSkill, wantSharedFrontmatter)
 	}
-	if strings.Contains(sharedSkill, "{{IMPLEMENT_CMD}}") || !strings.Contains(sharedSkill, "/implement") {
-		t.Fatalf("shared skill = %q, want shared command substitution", sharedSkill)
+	if !strings.Contains(sharedSkill, "{{IMPLEMENT_CMD}}") {
+		t.Fatalf("shared skill = %q, want authored tokens left unsubstituted", sharedSkill)
+	}
+	if strings.Contains(sharedSkill, "Run /implement now.") {
+		t.Fatalf("shared skill = %q, must not rewrite {{IMPLEMENT_CMD}}", sharedSkill)
 	}
 	if strings.Contains(sharedSkill, "version: 9.8.7-test.1") {
 		t.Fatalf("shared skill = %q, should not inject version into shared intermediate", sharedSkill)
@@ -169,13 +172,11 @@ func TestRunnerBuildTargetCodexRunsNativeTarget(t *testing.T) {
 	if !strings.HasPrefix(codexSkill, wantCodexFrontmatter) {
 		t.Fatalf("codex skill frontmatter = %q, want prefix %q", codexSkill, wantCodexFrontmatter)
 	}
-	for _, want := range []string{"/implement"} {
-		if !strings.Contains(codexSkill, want) {
-			t.Fatalf("codex skill = %q, want %q", codexSkill, want)
-		}
+	if !strings.Contains(codexSkill, "{{IMPLEMENT_CMD}}") {
+		t.Fatalf("codex skill = %q, want authored tokens left unsubstituted", codexSkill)
 	}
-	if !strings.Contains(readBuildFileString(t, filepath.Join(root, "dist", "codex", "skills", "demo", "templates", "session.md")), "/implement") {
-		t.Fatalf("shared template was not copied with command substitution")
+	if !strings.Contains(readBuildFileString(t, filepath.Join(root, "dist", "codex", "skills", "demo", "templates", "session.md")), "{{RESUME_CMD}}") {
+		t.Fatalf("shared template was not copied without prose substitution")
 	}
 	scriptPath := filepath.Join(root, "dist", "codex", "skills", "demo", "scripts", "demo.sh")
 	if readBuildFileString(t, scriptPath) != "#!/bin/sh\necho demo\n" {
@@ -235,8 +236,8 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 	}
 
 	ampSkill := readBuildFileString(t, filepath.Join(root, "dist", "amp", "skills", "demo", "SKILL.md"))
-	if !strings.Contains(ampSkill, "version: 9.8.7-test.1") || strings.Contains(ampSkill, "{{IMPLEMENT_CMD}}") || !strings.Contains(ampSkill, "/implement") {
-		t.Fatalf("amp skill = %q, want version injection and shared command substitution", ampSkill)
+	if !strings.Contains(ampSkill, "version: 9.8.7-test.1") || !strings.Contains(ampSkill, "{{IMPLEMENT_CMD}}") {
+		t.Fatalf("amp skill = %q, want version injection without command substitution", ampSkill)
 	}
 	plugin := readBuildFileString(t, filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"))
 	for _, want := range []string{
@@ -294,8 +295,8 @@ func TestRunnerBuildTargetAmpRunsNativePluginTarget(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "dist", "amp", "plugins", "loaf.js")); !os.IsNotExist(err) {
 		t.Fatalf("amp loaf.js stat = %v, want TypeScript project plugin only", err)
 	}
-	if !strings.Contains(readBuildFileString(t, filepath.Join(root, "dist", "amp", "skills", "demo", "templates", "session.md")), "/implement") {
-		t.Fatalf("amp shared template was not copied from substituted shared intermediate")
+	if !strings.Contains(readBuildFileString(t, filepath.Join(root, "dist", "amp", "skills", "demo", "templates", "session.md")), "{{RESUME_CMD}}") {
+		t.Fatalf("amp shared template was not copied without prose substitution")
 	}
 	if _, err := os.Stat(filepath.Join(root, "dist", "amp", ".codex", "hooks.json")); !os.IsNotExist(err) {
 		t.Fatalf("amp hooks stat = %v, want Amp plugin target without Codex hooks", err)
@@ -328,8 +329,8 @@ func TestRunnerBuildTargetCursorRunsNativeTarget(t *testing.T) {
 	}
 
 	cursorSkill := readBuildFileString(t, filepath.Join(root, "dist", "cursor", "skills", "demo", "SKILL.md"))
-	if !strings.Contains(cursorSkill, "version: 9.8.7-test.1") || strings.Contains(cursorSkill, "{{IMPLEMENT_CMD}}") || !strings.Contains(cursorSkill, "/implement") {
-		t.Fatalf("cursor skill = %q, want version injection and shared command substitution", cursorSkill)
+	if !strings.Contains(cursorSkill, "version: 9.8.7-test.1") || !strings.Contains(cursorSkill, "{{IMPLEMENT_CMD}}") {
+		t.Fatalf("cursor skill = %q, want version injection without command substitution", cursorSkill)
 	}
 	agent := readBuildFileString(t, filepath.Join(root, "dist", "cursor", "agents", "implementer.md"))
 	for _, want := range []string{
@@ -402,7 +403,7 @@ func TestRunnerBuildTargetOpenCodeRunsNativeTarget(t *testing.T) {
 		"description: >-",
 		"subtask: false",
 		"version: 9.8.7-test.1",
-		"/implement",
+		"{{IMPLEMENT_CMD}}",
 	} {
 		if !strings.Contains(command, want) {
 			t.Fatalf("opencode command = %q, want %q", command, want)
@@ -412,7 +413,7 @@ func TestRunnerBuildTargetOpenCodeRunsNativeTarget(t *testing.T) {
 	for _, want := range []string{
 		"description: Workflow-only skill without an OpenCode sidecar.",
 		"version: 9.8.7-test.1",
-		"/implement",
+		"{{IMPLEMENT_CMD}}",
 	} {
 		if !strings.Contains(workflowCommand, want) {
 			t.Fatalf("opencode workflow-only command = %q, want %q", workflowCommand, want)
@@ -529,14 +530,14 @@ func TestRunnerBuildTargetClaudeCodeRunsNativeTarget(t *testing.T) {
 	for _, want := range []string{
 		"allowed-tools: Bash",
 		"version: 9.8.7-test.1",
-		"/loaf:implement",
+		"{{IMPLEMENT_CMD}}",
 	} {
 		if !strings.Contains(skill, want) {
 			t.Fatalf("claude skill = %q, want %q", skill, want)
 		}
 	}
-	if strings.Contains(skill, "{{IMPLEMENT_CMD}}") || strings.Contains(skill, "/loaf:loaf:implement") {
-		t.Fatalf("claude skill = %q, want scoped command substitution exactly once", skill)
+	if strings.Contains(skill, "/loaf:implement") {
+		t.Fatalf("claude skill = %q, must not scope slash commands in skill bodies", skill)
 	}
 	agent := readBuildFileString(t, filepath.Join(root, "plugins", "loaf", "agents", "implementer.md"))
 	for _, want := range []string{
@@ -795,71 +796,50 @@ func TestNativeBuildValidationRejectsMalformedTypeScriptWhenEnabled(t *testing.T
 	}
 }
 
-func TestNativeBuildHarnessLanguageReportsFileAndLine(t *testing.T) {
-	root := realpath(t, t.TempDir())
-	path := filepath.Join(root, "dist", "codex", "skills", "bad", "SKILL.md")
-	mkdirAll(t, filepath.Dir(path))
-	writeFile(t, path, "# Bad\n\nUse AskUserQuestion here.\n")
-
-	err := validateNativeBuildHarnessLanguage(root, "codex", []string{path})
-	if err == nil {
-		t.Fatal("validateNativeBuildHarnessLanguage error = nil, want Claudeism failure")
+func TestNoHarnessProseSubstitution(t *testing.T) {
+	// Contract: no markdown transform on the skill-copy path rewrites authored prose.
+	// The build sets transformMd to nil for every target; probes would catch any
+	// residual replacer if a target reintroduced one.
+	samples := harnessProseSubstitutionProbeSamples()
+	if err := skillMarkdownTransformIsIdentity(nil, samples); err != nil {
+		t.Fatal(err)
 	}
-	for _, want := range []string{"dist/codex/skills/bad/SKILL.md:3", "AskUserQuestion"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error = %v, want %q", err, want)
+
+	root := setupBuildCommandLoafRoot(t)
+	seedNativeCodexBuildFixture(t, root)
+	// Seed Claude-flavored prose that the retired second-stage replacer rewrote.
+	writeFile(t, filepath.Join(root, "content", "skills", "demo", "references", "probe.md"), strings.Join(samples, "\n")+"\n")
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build", "--target", "codex"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
+	}
+	built := readBuildFileString(t, filepath.Join(root, "dist", "codex", "skills", "demo", "references", "probe.md"))
+	want := strings.Join(samples, "\n") + "\n"
+	if built != want {
+		t.Fatalf("built probe markdown was rewritten:\n got: %q\nwant: %q", built, want)
+	}
+	skill := readBuildFileString(t, filepath.Join(root, "dist", "codex", "skills", "demo", "SKILL.md"))
+	if !strings.Contains(skill, "{{IMPLEMENT_CMD}}") {
+		t.Fatalf("skill body lost authored token: %q", skill)
+	}
+	for _, banned := range []string{"Codex uses permission", "update_plan", "request_user_input"} {
+		if strings.Contains(built, banned) {
+			t.Fatalf("built probe contains harness-substituted prose %q:\n%s", banned, built)
 		}
 	}
 }
 
-func TestNativeBuildHarnessLanguagePreservesClaudeCompatibilityPath(t *testing.T) {
-	input := "Create `.claude/CLAUDE.md -> ../AGENTS.md` with `ln -sf ../AGENTS.md .claude/CLAUDE.md`."
-	for _, target := range []string{"cursor", "codex", "opencode", "amp"} {
-		t.Run(target, func(t *testing.T) {
-			got := substituteNativeBuildHarnessLanguage(input, target)
-			if got != input {
-				t.Fatalf("substituteNativeBuildHarnessLanguage(%s) = %q, want compatibility path preserved", target, got)
-			}
-		})
+func TestSkillTreeIsTargetInvariant(t *testing.T) {
+	root := testRepositoryRoot(t)
+	if _, err := os.Stat(filepath.Join(root, "content", "skills")); err != nil {
+		t.Skipf("repository content/skills unavailable: %v", err)
 	}
-}
-
-func TestNativeBuildHarnessLanguageAllowsOnlyQualifiedClaudeCompatibilityPath(t *testing.T) {
-	root := realpath(t, t.TempDir())
-	path := filepath.Join(root, "dist", "codex", "skills", "bootstrap", "SKILL.md")
-	mkdirAll(t, filepath.Dir(path))
-	writeFile(t, path, "Create `.claude/CLAUDE.md -> ../AGENTS.md`.\n")
-	if err := validateNativeBuildHarnessLanguage(root, "codex", []string{path}); err != nil {
-		t.Fatalf("qualified compatibility path rejected: %v", err)
+	var stdout bytes.Buffer
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
+		t.Fatalf("build error = %v\n%s", err, stdout.String())
 	}
-
-	writeFile(t, path, "Edit CLAUDE.md directly.\n")
-	err := validateNativeBuildHarnessLanguage(root, "codex", []string{path})
-	if err == nil || !strings.Contains(err.Error(), "non-Claude output contains CLAUDE.md") {
-		t.Fatalf("unqualified CLAUDE.md error = %v, want lint rejection", err)
-	}
-}
-
-func TestNativeBuildHarnessLanguageAllowsOpenCodeSubagentMode(t *testing.T) {
-	root := realpath(t, t.TempDir())
-	path := filepath.Join(root, "dist", "opencode", "agents", "reviewer.md")
-	mkdirAll(t, filepath.Dir(path))
-	writeFile(t, path, "---\nmode: subagent\n---\n")
-
-	if err := validateNativeBuildHarnessLanguage(root, "opencode", []string{path}); err != nil {
-		t.Fatalf("validateNativeBuildHarnessLanguage error = %v, want allowlisted OpenCode agent mode", err)
-	}
-}
-
-func TestNativeBuildHarnessLanguageRejectsExtraCodexExecutableToken(t *testing.T) {
-	root := realpath(t, t.TempDir())
-	path := filepath.Join(root, "dist", "codex", ".codex", "hooks.json")
-	mkdirAll(t, filepath.Dir(path))
-	writeFile(t, path, "{\n  \"hooks\": {\n    \"SessionStart\": [{\n      \"matcher\": \"startup|resume|clear|compact\",\n      \"hooks\": [{\n        \"type\": \"command\",\n        \"command\": \"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook {{OTHER}}\"\n      }]\n    }]\n  }\n}\n")
-
-	err := validateNativeBuildHarnessLanguage(root, "codex", []string{path})
-	if err == nil || !strings.Contains(err.Error(), "unresolved harness token") {
-		t.Fatalf("validateNativeBuildHarnessLanguage error = %v, want extra unresolved token rejection", err)
+	if err := compareNativeBuildSkillTrees(root, defaultBuildTargets); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -880,9 +860,6 @@ func TestNativeBuildParityMatrixDerivesFromSource(t *testing.T) {
 	}
 	if err := assertNativeBuildParityHookSemantics(root, expectations); err != nil {
 		t.Fatalf("assertNativeBuildParityHookSemantics error = %v", err)
-	}
-	if err := assertNativeBuildParityHarnessLanguage(root, expectations.targets); err != nil {
-		t.Fatalf("assertNativeBuildParityHarnessLanguage error = %v", err)
 	}
 }
 
@@ -926,25 +903,6 @@ func TestNativeBuildParityMatrixDetectsSeededHookSemanticGap(t *testing.T) {
 	err = assertNativeBuildParityHookSemantics(root, expectations)
 	if err == nil || !strings.Contains(err.Error(), "codex hook check-secrets missing SessionStart context group") {
 		t.Fatalf("assertNativeBuildParityHookSemantics error = %v, want seeded hook semantic gap", err)
-	}
-}
-
-func TestNativeBuildParityMatrixDetectsSeededHarnessLanguageLeak(t *testing.T) {
-	root := setupBuildCommandLoafRoot(t)
-	seedNativeBuildParityFixture(t, root)
-	var stdout bytes.Buffer
-	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
-		t.Fatalf("build error = %v\n%s", err, stdout.String())
-	}
-	expectations, err := nativeBuildParityExpectationsFromSource(root)
-	if err != nil {
-		t.Fatalf("nativeBuildParityExpectationsFromSource error = %v", err)
-	}
-	writeFile(t, filepath.Join(root, "dist", "codex", "skills", "workflow-only", "SKILL.md"), "AskUserQuestion\n")
-
-	err = assertNativeBuildParityHarnessLanguage(root, expectations.targets)
-	if err == nil || !strings.Contains(err.Error(), "AskUserQuestion") {
-		t.Fatalf("assertNativeBuildParityHarnessLanguage error = %v, want seeded harness leak", err)
 	}
 }
 
@@ -1512,32 +1470,6 @@ func readNativeBuildPluginPreToolHooks(path string) (map[string][]nativeAmpHookE
 		return nil, err
 	}
 	return hooks, nil
-}
-
-func assertNativeBuildParityHarnessLanguage(root string, targets []string) error {
-	for _, target := range targets {
-		outputDir := nativeBuildTargetOutputDir(root, target)
-		var paths []string
-		if err := filepath.WalkDir(outputDir, func(path string, entry os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if entry.IsDir() {
-				return nil
-			}
-			switch strings.ToLower(filepath.Ext(path)) {
-			case ".md", ".json", ".yaml", ".yml", ".toml", ".ts":
-				paths = append(paths, path)
-			}
-			return nil
-		}); err != nil {
-			return err
-		}
-		if err := validateNativeBuildHarnessLanguage(root, target, paths); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func readNativeBuildJSON(path string, out any) error {

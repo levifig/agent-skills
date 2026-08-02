@@ -45,7 +45,7 @@ What each framework contributes and what to skip.
 
 **What to skip:** Betting tables, cool-down cycles, hill charts. These are team process mechanics, not 0-to-1 discovery tools.
 
-**Connection to documents:** Complexity sizing and boundaries flow directly into the spec format that `/loaf:shape` produces. The pitch format IS the spec.
+**Connection to documents:** Complexity sizing and boundaries flow directly into the spec format that `/shape` produces. The pitch format IS the spec.
 
 ### Jobs to Be Done (Christensen, Ulwick, Klement)
 
@@ -303,7 +303,7 @@ Interview content lands in the *operating documents* (VISION/STRATEGY/ARCHITECTU
 The BRIEF was captured at intake as a historical snapshot. The job here is to draft the *operating documents* using the BRIEF and interview as inputs.
 
 1. **VISION.md** -- Purpose, target users, success criteria, non-goals. Draft first -- this is the load-bearing operating doc that downstream work derives from. Synthesize from the intake BRIEF and the interview.
-2. **STRATEGY.md** -- Only if enough signal exists. Personas, landscape, positioning. If the builder is still figuring this out, note it as an open area and suggest `/loaf:strategy` or `/loaf:research` later.
+2. **STRATEGY.md** -- Only if enough signal exists. Personas, landscape, positioning. If the builder is still figuring this out, note it as an open area and suggest `/strategy` or `/research` later.
 3. **ARCHITECTURE.md** -- Only if technical decisions were made. If the builder hasn't decided on a stack yet, don't force it. Capture constraints and known decisions only.
 
 ### Structured Review
@@ -440,9 +440,9 @@ Each document gets section-by-section review. Don't dump 3 documents at once.
 
 If the builder is energized and wants to explore further after the core documents are drafted, suggest:
 - `/brainstorm` for divergent exploration
-- `/loaf:research` for topic investigation
-- `/loaf:strategy` for deep persona/market work
-- `/loaf:shape` for bounding a specific feature
+- `/research` for topic investigation
+- `/strategy` for deep persona/market work
+- `/shape` for bounding a specific feature
 
 The bootstrap interview creates the foundation. Other skills deepen specific areas.
 

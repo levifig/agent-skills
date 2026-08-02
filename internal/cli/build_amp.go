@@ -85,7 +85,6 @@ func buildNativeAmpTarget(root string) error {
 		targetName:    "amp",
 		version:       version,
 		targetsConfig: targetsConfig,
-		transformMd:   func(content string) string { return substituteNativeBuildHarnessLanguage(content, "amp") },
 	}); err != nil {
 		return err
 	}

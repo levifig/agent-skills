@@ -65,9 +65,9 @@ archived: true          # Always true -- BRIEF is a historical snapshot, not a w
 ## Source Behaviors
 
 - **`file`** -- Brief copied from an external file path. `original_path` records where it came from.
-- **`text`** -- Brief provided as inline text in the `/loaf:bootstrap` invocation.
+- **`text`** -- Brief provided as inline text in the `/bootstrap` invocation.
 - **`folder`** -- Brief synthesized from multiple markdown files in a folder.
-- **`interview`** -- Brief synthesized from a `/loaf:bootstrap` interview session (greenfield+empty mode).
-- **`pitch`** -- Brief authored by `/loaf:pitch` at project scale (discovery already done; bootstrap interviews for gaps only).
+- **`interview`** -- Brief synthesized from a `/bootstrap` interview session (greenfield+empty mode).
+- **`pitch`** -- Brief authored by `/pitch` at project scale (discovery already done; bootstrap interviews for gaps only).
 
 When the brief already exists at `docs/BRIEF.md` within the project, use it in place -- do not copy or overwrite. Add frontmatter if missing.

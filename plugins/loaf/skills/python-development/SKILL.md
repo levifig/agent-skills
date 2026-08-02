@@ -4,7 +4,8 @@ description: >-
   Covers Python 3.12+ with FastAPI, Pydantic, async patterns, pytest,
   SQLAlchemy, and uv toolchain. Use when building Python services, APIs, data
   models, or tests. Provides patterns for modern Python development. Not for
-  schema design (use database-...
+  schema design (use database-design), infrastructure (use
+  infrastructure-management), or frontend code (use typescript-development).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
 version: 2.0.0-alpha.19

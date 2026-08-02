@@ -56,7 +56,7 @@ Who experiences this problem? Role, context, and how often the pain shows up. "D
 
 What do they do today? Existing tools, manual workarounds, cobbled scripts, or "nothing" are all valid. Understanding the status quo clarifies what "better" means and whether the pain is real (evidence of spend, time, or workarounds).
 
-**Applicability:** competitive analysis is for concepts that compete with external products or obvious substitutes. Skip a formal landscape scan for pure internal refactors, bug fixes, and infra chores — "current alternative" can be one sentence ("we live with the flaky path"). When a scan is warranted, delegate a researcher separate Codex thread or explicit multi-agent tool when available (see SKILL.md Evidence Delegation); do not invent competitor claims.
+**Applicability:** competitive analysis is for concepts that compete with external products or obvious substitutes. Skip a formal landscape scan for pure internal refactors, bug fixes, and infra chores — "current alternative" can be one sentence ("we live with the flaky path"). When a scan is warranted, delegate a researcher subagent (see SKILL.md Evidence Delegation); do not invent competitor claims.
 
 ### 4. Value Proposition
 
@@ -82,7 +82,7 @@ Non-negotiable bounds: technical, legal, organizational, philosophical, sequenci
 
 | Pitch kind | Personas / who | Competitive scan | Value depth |
 |------------|----------------|------------------|-------------|
-| Product / multi-audience concept | Specific roles required | Usually yes — researcher separate Codex thread or explicit multi-agent tool when available | Full UVP sentence |
+| Product / multi-audience concept | Specific roles required | Usually yes — researcher subagent | Full UVP sentence |
 | Feature on an existing product | One concrete affected role | Only if a substitute is obvious | Why-now + better-than-today |
 | Bug fix / reliability | Operator or user of the broken path | No | Cost of the failure |
 | Internal refactor / chore | Team or subsystem owner | No | Why now (risk, drag, blocked work) |
@@ -96,7 +96,7 @@ When unsure, ask one applicability question first: "Is this competing with somet
 
 ### One question at a time
 
-Use `request_user_input` when available; otherwise one inline question per message with the same semantics. Never batch dimensions into a multi-field form — forms invite skimmed defaults and are the failure mode this ceremony exists to prevent.
+Use `AskUserQuestion` when available; otherwise one inline question per message with the same semantics. Never batch dimensions into a multi-field form — forms invite skimmed defaults and are the failure mode this ceremony exists to prevent.
 
 ### Recommendation-first
 
@@ -138,7 +138,7 @@ Also enforce **canonical language** during the interview:
 
 ### Mid-interview evidence
 
-When competitive landscape or external facts would change the brief and the human lacks them, pause the grill, delegate a researcher separate Codex thread or explicit multi-agent tool when available, land evidence (change-scale: `research/` in the change folder; project-scale: links in Sources), then resume with a recommendation informed by the scan. Evidence supports framing; it does not become solution design.
+When competitive landscape or external facts would change the brief and the human lacks them, pause the grill, delegate a researcher subagent, land evidence (change-scale: `research/` in the change folder; project-scale: links in Sources), then resume with a recommendation informed by the scan. Evidence supports framing; it does not become solution design.
 
 ---
 

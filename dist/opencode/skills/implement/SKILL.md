@@ -46,7 +46,7 @@ You are the coordinator. Start by understanding the task:
 
 ### Orchestrator Can Do Directly
 - Log journal entries, read journal context, create council files
-- Use native task/todo surface when available; **if `integrations.linear.enabled` is `true` in `.agents/loaf.json`**, use Linear MCP tools when helpful
+- Use TodoWrite/TodoRead; **if `integrations.linear.enabled` is `true` in `.agents/loaf.json`**, use Linear MCP tools when helpful
 - Read any file for context
 - Ask clarifying questions
 
@@ -56,7 +56,7 @@ You are the coordinator. Start by understanding the task:
 ## Verification
 
 - The invocation is logged to the project journal before implementation work begins — no session start step, no "active session" precondition
-- All code changes delegated via subtask agent -- no direct edits by orchestrator
+- All code changes delegated via Task tool -- no direct edits by orchestrator
 - The journal is continuously updated with spawns, progress, and decisions as work happens
 - Spec artifacts closed out on branch before PR creation
 - **Linear-native mode:** `blockedBy` of the target sub-issue is fully `completed` before work begins; starting a sub-issue also promotes an unstarted parent rollup to active; parent rollup is auto-closed only when all sub-issues are `completed`
@@ -158,7 +158,7 @@ The issue represents a spec. Do **not** implement it directly — spec-level
      in-progress sub-issue. Resume that.
    - Else, if one unblocked `unstarted` sub-issue exists, pick it.
    - Else, if multiple unblocked `unstarted` sub-issues exist, use
-     `prompt the user in chat` to let the user choose: pick one, or delegate N in
+     `AskUserQuestion` to let the user choose: pick one, or delegate N in
      parallel via parallel agents. List each sub-issue's title + ID.
    - Else (all remaining sub-issues are blocked), refuse with a summary:
      "All remaining sub-issues under <parent-id> are blocked. Blockers:
@@ -235,7 +235,7 @@ When the sub-issue's implementation passes review and tests:
 
 ## Agent Spawning
 
-Use the **subtask agent** with appropriate `agent_type`:
+Use the **Task tool** with appropriate `subagent_type`:
 
 | Work Type | Profile | Skills to Load |
 |-----------|---------|---------------|
@@ -271,10 +271,10 @@ Suggest renaming the harness conversation with a meaningful name derived from co
 
 ## Guardrails
 
-1. **Strict delegation** -- ALL implementation via subtask agent
+1. **Strict delegation** -- ALL implementation via Task tool
 2. **Keep this conversation lean** -- focus on planning, coordination, oversight
 3. **When uncertain** -- convene council, present results, **wait for user approval**
-4. **Ensure quality** -- spawn implementer for tests, route reviews to reviewer subtask agent
+4. **Ensure quality** -- spawn implementer for tests, route reviews to reviewer subagents
 5. **When debugging** -- if a test failure or error isn't immediately obvious, load the **debugging** skill for structured hypothesis tracking before retrying
 6. **Journal continuously** -- log spawns, progress, blockers, and decisions with `loaf journal log` as they happen
 7. **Clean up** -- no ephemeral files; write an optional `wrap` entry only when there's synthesis worth saving
@@ -305,7 +305,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 6. [ ] Create dedicated branch (see [branch-and-completion.md](references/branch-and-completion.md))
 7. [ ] Suggest team based on task context
 8. [ ] Log initial context and references with `loaf journal log`
-9. [ ] Break down work using native task/todo surface when available
+9. [ ] Break down work using TodoWrite
 10. [ ] Identify needed specialized agents
 11. [ ] Log next steps before spawning
 12. [ ] **Get user approval** before spawning
@@ -322,7 +322,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 5. Get user approval
 
 ### DURING (Execution)
-1. Spawn specialized agents via subtask agent
+1. Spawn specialized agents via Task tool
 2. Log each spawn with `loaf journal log "todo(agent): spawned <agent> for <task>"`
 3. Update Linear with progress (no emoji, no file paths)
 4. Keep journal entries handoff-ready

@@ -7,7 +7,7 @@ dependencies, interfaces, or construction techniques — and that is
 difficult to reverse in the project's current state.
 
 If the decision is a development pattern, exploration, or implementation
-direction, use a SPEC via /loaf:shape instead.
+direction, use a SPEC via /shape instead.
 If it's a guiding principle or operating philosophy, update ARCHITECTURE.md
 or VISION.md.
 If it's workflow lore for a specific skill, document it in that skill.

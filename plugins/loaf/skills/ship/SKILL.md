@@ -4,7 +4,8 @@ description: >-
   Reviews, verifies, and lands one pull request. Use when the user says "ship
   it," "merge this PR," "ready to merge," "land this branch," or asks for a
   final merge gate. Produces a reviewed, squash-merged PR and post-merge
-  cleanup. Not for version b...
+  cleanup. Not for version bumps, tags, GitHub Releases, or install verification
+  (use release).
 user-invocable: true
 argument-hint: '[PR number or URL]'
 version: 2.0.0-alpha.19
@@ -37,7 +38,7 @@ Review, verify, and land one PR. Shipping is the PR gate; releasing is the versi
 ## Critical Rules
 
 - **Ship is not release** -- do not bump versions, create tags, publish GitHub Releases, or verify package installation here.
-- **Keep PR quality local** -- smaller PRs are welcome, but `/loaf:ship` must still verify correctness before merge.
+- **Keep PR quality local** -- smaller PRs are welcome, but `/ship` must still verify correctness before merge.
 - **Detect-first** -- auto-detect the PR from the current branch before asking for a PR number.
 - **Review before merge** -- inspect code, docs, tests, changelog, PR body, and CI state before approval.
 - **Never merge without explicit confirmation** -- present the PR, checks, findings, and squash body first.
@@ -66,7 +67,7 @@ Review, verify, and land one PR. Shipping is the PR gate; releasing is the versi
 | Local Verification | relevant checks pass | Yes |
 | Squash Merge | user approves body text | Yes |
 | Cleanup | base pulled, children retargeted and rebased, branch deletion handled | Yes when a child exists |
-| Release Suggestion | enough landed work may justify `/loaf:release` | No |
+| Release Suggestion | enough landed work may justify `/release` | No |
 
 ## Topics
 
@@ -256,13 +257,13 @@ Report the numbers rather than asserting success: the before and after file coun
 
 ## Step 6: Release Suggestion
 
-After landing, decide whether to suggest `/loaf:release`:
+After landing, decide whether to suggest `/release`:
 
-- Suggest `/loaf:release` when the landed PR completes a coherent batch, user-facing feature, fix train, or release branch.
-- Do not suggest `/loaf:release` for every small PR by default.
+- Suggest `/release` when the landed PR completes a coherent batch, user-facing feature, fix train, or release branch.
+- Do not suggest `/release` for every small PR by default.
 - If multiple related PRs are expected, say the PR is landed and can wait for a later batched release.
 
-Use language carefully: the PR is **landed** or **shipped**; it is not **released** until `/loaf:release` publishes a version.
+Use language carefully: the PR is **landed** or **shipped**; it is not **released** until `/release` publishes a version.
 
 ---
 
@@ -270,7 +271,7 @@ Use language carefully: the PR is **landed** or **shipped**; it is not **release
 
 This skill coexists with existing hooks.
 
-| Hook | Type | When `/loaf:ship` Runs |
+| Hook | Type | When `/ship` Runs |
 |------|------|------------------|
 | `github-account` | Force-switch | Switches to the configured GitHub account before `gh` PR operations; blocks only if the switch fails |
 | `workflow-pre-merge` | Advisory | Fires on `gh pr merge`; use it as a final squash reminder |
@@ -284,7 +285,7 @@ Do not disable hooks to force a PR through.
 
 ## Suggests Next
 
-After a successful ship, suggest `/loaf:release` only when the landed work forms a coherent release batch or the user asks to publish.
+After a successful ship, suggest `/release` only when the landed work forms a coherent release batch or the user asks to publish.
 
 ## Related Skills
 

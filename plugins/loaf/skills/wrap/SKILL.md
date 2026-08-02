@@ -4,7 +4,9 @@ description: >-
   Optional end-of-conversation checkpoint: flushes journal entries, surfaces
   loose ends, prompts for action on uncommitted/unpushed work, and writes a wrap
   entry to the project journal when there is synthesis worth saving. Use at the
-  end of a work s...
+  end of a work session or when the user asks "wrap up." Not for archiving (use
+  housekeeping) or capturing ideas (use idea). Produces a Session Wrap-Up
+  summary and an optional wrap journal entry.
 user-invocable: true
 version: 2.0.0-alpha.19
 ---
@@ -92,7 +94,7 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 |-----------|--------|
 | Uncommitted changes | "N file(s) uncommitted — commit, stash, or leave for next session?" |
 | Unpushed commits | "N commit(s) on <branch> not pushed — push now?" |
-| Release candidate | "This session landed work that may belong in the next release — run `/loaf:release` now?" |
+| Release candidate | "This session landed work that may belong in the next release — run `/release` now?" |
 | Stale KB files | "N stale knowledge file(s) — address now or defer?" |
 | Unresolved blocks | "Block on <scope> still open — note for next session?" |
 | No changelog entries | "N commit(s) on branch but `[Unreleased]` is empty — add changelog entries?" |
@@ -101,7 +103,7 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 **Detection logic:**
 - **Changelog entries:** check if the current branch has commits vs the base branch (e.g., `git rev-list --count origin/main..HEAD`) AND `CHANGELOG.md` `[Unreleased]` section has no list items (`^[-*]\s`). If both are true, prompt. **Skip when HEAD is tagged** (post-release state).
 - **Housekeeping:** scan the journal for a `skill(housekeeping)` entry. If absent and the session had significant work, suggest it.
-- **Release candidate:** scan the journal for a `decision(release)` entry. If absent and the session has landed commits, suggest `/loaf:release` only when the work forms a coherent release batch.
+- **Release candidate:** scan the journal for a `decision(release)` entry. If absent and the session has landed commits, suggest `/release` only when the work forms a coherent release batch.
 
 ### Step 4: Generate Report
 
@@ -121,11 +123,11 @@ Entries are project-scoped and tagged with this conversation's harness id automa
 
 ## Composability
 
-When called near `/loaf:ship` or `/loaf:release`, wrap runs the same steps but keeps PR landing and version publication distinct. `/loaf:ship` may wrap a landed PR; `/loaf:release` may wrap a published version.
+When called near `/ship` or `/release`, wrap runs the same steps but keeps PR landing and version publication distinct. `/ship` may wrap a landed PR; `/release` may wrap a published version.
 
 ## Suggests Next
 
-After the wrap-up report, suggest `/loaf:housekeeping` if it wasn't run this session and artifacts need attention. When sparks or open ideas need problem discovery before shaping, point at `/loaf:triage` (disposition hand to `/loaf:pitch`) rather than treating explore or brainstorm as the next slash step.
+After the wrap-up report, suggest `/housekeeping` if it wasn't run this session and artifacts need attention. When sparks or open ideas need problem discovery before shaping, point at `/triage` (disposition hand to `/pitch`) rather than treating explore or brainstorm as the next slash step.
 
 ## Related Skills
 
@@ -159,6 +161,6 @@ Use backtick formatting for code identifiers, file paths, spec/task IDs, version
 - Stale KB files
 
 **What's Next**
-- Run `/loaf:triage` to process ideas (hand problem-discovery items to `/loaf:pitch`)
+- Run `/triage` to process ideas (hand problem-discovery items to `/pitch`)
 - Follow-ups from this session's work
 ```

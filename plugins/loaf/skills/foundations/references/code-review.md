@@ -85,6 +85,6 @@ Project code review conventions and workflow.
 
 | Command | Code Review Role |
 |---------|-----------------|
-| `/loaf:implement` | Self-review before marking complete |
-| `/loaf:breakdown` | Review task scope and approach |
-| `/loaf:reflect` | Note review feedback patterns |
+| `/implement` | Self-review before marking complete |
+| `/breakdown` | Review task scope and approach |
+| `/reflect` | Note review feedback patterns |

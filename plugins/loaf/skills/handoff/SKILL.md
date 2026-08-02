@@ -4,7 +4,9 @@ description: >-
   Creates explicit context-transfer packets in .agents/handoffs/ for another
   agent, branch, task, or future conversation. Use when the user asks "handoff
   this," "prepare the next session," "write transfer context," or when work is
-  being parked for l...
+  being parked for later. Not for routine journal continuity (use orchestration)
+  or an end-of-conversation checkpoint (use wrap). Produces a disposable handoff
+  artifact that housekeeping deletes after confirmed deprecation.
 user-invocable: true
 argument-hint: '[next-session focus]'
 version: 2.0.0-alpha.19
@@ -55,7 +57,7 @@ Create a concise transfer packet for a fresh agent or future conversation.
 | Template | [templates/handoff.md](templates/handoff.md) |
 | Active statuses | `draft`, `final` |
 | Disposable status | `deprecated` |
-| Cleanup owner | `/loaf:housekeeping` |
+| Cleanup owner | `/housekeeping` |
 
 ## Process
 
@@ -111,7 +113,7 @@ Handoffs are first-class but disposable:
 
 1. `draft` — incomplete or awaiting review
 2. `final` — active transfer packet
-3. `deprecated` — confirmed obsolete; `/loaf:housekeeping` may delete after confirmation
+3. `deprecated` — confirmed obsolete; `/housekeeping` may delete after confirmation
 
 Set `deprecated_at` and `deprecated_by` only when moving to `deprecated`.
 

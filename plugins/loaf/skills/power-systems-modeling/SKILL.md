@@ -4,7 +4,8 @@ description: >-
   Covers thermal rating models (CIGRE TB 601, IEEE 738), conductor physics, and
   electrical properties for overhead transmission lines. Use when implementing
   thermal calculations, validating conductors, or computing sag and resistance.
-  Not for infras...
+  Not for infrastructure deployment (use infrastructure-management) or system
+  architecture.
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep, Bash(python:*), Bash(*.sh)'
 version: 2.0.0-alpha.19

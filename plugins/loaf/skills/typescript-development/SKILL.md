@@ -4,7 +4,7 @@ description: >-
   Covers TypeScript 5+, React 18+, Next.js 14+ App Router, Zustand, Tailwind
   CSS, and Vitest testing. Use when writing TypeScript applications, React
   components, or Node.js services. Not for UI/UX design (use interface-design),
-  database schema (use ...
+  database schema (use database-design), or Python (use python-development).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
 version: 2.0.0-alpha.19

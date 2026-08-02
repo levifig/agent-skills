@@ -4,7 +4,8 @@ description: >-
   Covers idiomatic Go development: project structure, concurrency patterns,
   error handling, and testing. Use when writing Go services, CLIs, or libraries.
   Follows Effective Go principles and community conventions. Not for database
-  schema design (use...
+  schema design (use database-design) or infrastructure orchestration (use
+  infrastructure-management).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
 version: 2.0.0-alpha.19

@@ -80,9 +80,9 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 | Shaping Specs | [../shape/SKILL.md](../shape/SKILL.md) | Creating specs, shaping work, defining test conditions |
 | Breaking Work Into Tasks | [../breakdown/SKILL.md](../breakdown/SKILL.md) | Turning shaped specs into implementation tasks |
 | Local Tasks | [references/local-tasks.md](references/local-tasks.md) | Managing tasks locally or with Linear backend |
-| Agent Delegation | [references/delegation.md](references/delegation.md) | Choosing agents, spawning subtask agent, decision trees |
+| Agent Delegation | [references/delegation.md](references/delegation.md) | Choosing agents, spawning subagents, decision trees |
 | Parallel Agents | [references/parallel-agents.md](references/parallel-agents.md) | Dispatching independent work concurrently |
-| subtask agent Development | [references/subtask agent-development.md](references/subtask agent-development.md) | Delegating to specialized agents |
+| Subagent Development | [references/subagent-development.md](references/subagent-development.md) | Delegating to specialized agents |
 | Background Agents | [references/background-agents.md](references/background-agents.md) | Running non-interactive work in background |
 | Council Workflow | [../council/SKILL.md](../council/SKILL.md) | Convening councils for complex decisions |
 | Journal Continuity | [references/journal.md](references/journal.md) | Journal-first model, logging protocol, derived continuity, recovery |

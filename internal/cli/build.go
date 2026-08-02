@@ -3,13 +3,11 @@ package cli
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -233,7 +231,6 @@ func validateNativeBuildArtifacts(root string, targetName string) ([]string, err
 	outputDir := nativeBuildTargetOutputDir(root, targetName)
 	var jsFiles []string
 	var tsFiles []string
-	var textFiles []string
 	if err := filepath.WalkDir(outputDir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -250,9 +247,6 @@ func validateNativeBuildArtifacts(root string, targetName string) ([]string, err
 			jsFiles = append(jsFiles, path)
 		case ".ts", ".mts", ".cts":
 			tsFiles = append(tsFiles, path)
-			textFiles = append(textFiles, path)
-		case ".md", ".json", ".yaml", ".yml", ".toml":
-			textFiles = append(textFiles, path)
 		}
 		return nil
 	}); err != nil {
@@ -265,9 +259,6 @@ func validateNativeBuildArtifacts(root string, targetName string) ([]string, err
 		if err := runNativeBuildArtifactCheck("node", []string{"--check", path}); err != nil {
 			return nil, fmt.Errorf("JavaScript validation failed for %s: %w", nativeBuildRelativePath(root, path), err)
 		}
-	}
-	if err := validateNativeBuildHarnessLanguage(root, targetName, textFiles); err != nil {
-		return nil, err
 	}
 	if len(tsFiles) == 0 {
 		return nil, nil
@@ -398,107 +389,6 @@ declare module '@ampcode/plugin' {
   }
 }
 `
-}
-
-type nativeBuildHarnessLanguageFinding struct {
-	path   string
-	line   int
-	reason string
-}
-
-func validateNativeBuildHarnessLanguage(root string, targetName string, paths []string) error {
-	var findings []nativeBuildHarnessLanguageFinding
-	for _, path := range paths {
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		relative := nativeBuildRelativePath(root, path)
-		if filepath.Base(path) == targetBuildManifestFile {
-			continue
-		}
-		for lineNumber, line := range strings.Split(string(body), "\n") {
-			if hasNativeBuildUnresolvedToken(line) && !nativeBuildAllowedCodexExecutablePlaceholder(targetName, relative, line) {
-				findings = append(findings, nativeBuildHarnessLanguageFinding{path: relative, line: lineNumber + 1, reason: "unresolved harness token"})
-			}
-			if targetName == "claude-code" {
-				continue
-			}
-			for _, forbidden := range nativeBuildNonClaudeForbiddenTerms() {
-				if strings.Contains(line, forbidden) && !nativeBuildHarnessLanguageAllowed(targetName, relative, line, forbidden) {
-					findings = append(findings, nativeBuildHarnessLanguageFinding{path: relative, line: lineNumber + 1, reason: "non-Claude output contains " + forbidden})
-				}
-			}
-		}
-	}
-	if len(findings) == 0 {
-		return nil
-	}
-	var out strings.Builder
-	out.WriteString("harness language lint failed:")
-	for _, finding := range findings {
-		out.WriteString("\n")
-		out.WriteString(finding.path)
-		out.WriteString(":")
-		out.WriteString(strconv.Itoa(finding.line))
-		out.WriteString(": ")
-		out.WriteString(finding.reason)
-	}
-	return errors.New(out.String())
-}
-
-func hasNativeBuildUnresolvedToken(line string) bool {
-	index := strings.Index(line, "{{")
-	for index >= 0 {
-		if index == 0 || line[index-1] != '$' {
-			return true
-		}
-		next := strings.Index(line[index+2:], "{{")
-		if next < 0 {
-			return false
-		}
-		index += next + 2
-	}
-	return false
-}
-
-func nativeBuildAllowedCodexExecutablePlaceholder(targetName string, relative string, line string) bool {
-	if targetName != "codex" || filepath.ToSlash(relative) != "dist/codex/.codex/hooks.json" {
-		return false
-	}
-	switch strings.TrimSuffix(strings.TrimSpace(line), ",") {
-	case `"command": "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"`,
-		`"commandWindows": "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"`:
-		return true
-	default:
-		return false
-	}
-}
-
-func nativeBuildNonClaudeForbiddenTerms() []string {
-	return []string{
-		"CLAUDE.md",
-		"AskUserQuestionTool",
-		"AskUserQuestion",
-		"TodoWrite",
-		"/loaf:",
-		"Task tool",
-		"subagent_type",
-		"Subagents",
-		"subagents",
-		"Subagent",
-		"subagent",
-	}
-}
-
-func nativeBuildHarnessLanguageAllowed(targetName string, relativePath string, line string, term string) bool {
-	if term == "CLAUDE.md" && !strings.Contains(strings.ReplaceAll(line, ".claude/CLAUDE.md", ""), term) {
-		return true
-	}
-	if targetName == "opencode" && term == "subagent" && strings.HasPrefix(relativePath, "dist/opencode/agents/") {
-		return true
-	}
-	return false
 }
 
 func nativeBuildTargetOutputDir(root string, targetName string) string {
