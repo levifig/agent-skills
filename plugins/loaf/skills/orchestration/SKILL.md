@@ -4,7 +4,7 @@ description: >-
   Coordinates multi-agent work: agent delegation, journal continuity, Linear
   integration, and council workflows. Use when delegating to agents or
   coordinating cross-cutting work across multiple agents. Not for single-task
-  implementation (use direct ...
+  implementation (use direct tool delegation) or solo research (use research).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep, TodoWrite, TodoRead'
 version: 2.0.0-alpha.19
@@ -126,7 +126,7 @@ This skill uses paths from `.agents/loaf.json`:
 |----------|----------|---------|--------|
 | Journal | Global SQLite (`loaf journal recent/search`) | N/A — continuous project-scoped log | Project-scoped, harness-id tagged |
 | Councils | `.agents/councils/` | `.agents/councils/archive/` | `YYYYMMDD-HHMMSS-topic.md` |
-| Handoffs | `.agents/handoffs/` | delete after deprecated | Created by `/loaf:handoff` |
+| Handoffs | `.agents/handoffs/` | delete after deprecated | Created by `/handoff` |
 | Reports | `.agents/reports/` | N/A | `YYYYMMDD-HHMMSS-subject.md` |
 | Tasks | SQLite (`loaf task show/list`) | N/A | Per task manager conventions |
 

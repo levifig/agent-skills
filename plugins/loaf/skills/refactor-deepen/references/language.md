@@ -32,7 +32,7 @@ Everything a caller must know to use the module correctly. Includes the type sig
 _Avoid_: API, signature (too narrow — those refer only to the type-level surface).
 
 > **Loaf mapping.** Loaf documentation occasionally uses "API" loosely (e.g.,
-> "the CLI API"). Inside `/loaf:refactor-deepen` outputs, prefer **interface**;
+> "the CLI API"). Inside `/refactor-deepen` outputs, prefer **interface**;
 > reserve "API" for the literal HTTP/CLI surface of an external system, not
 > for any module's public shape.
 

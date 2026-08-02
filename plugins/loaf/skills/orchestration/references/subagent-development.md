@@ -211,9 +211,9 @@ After subagent completes:
 
 | Command | Subagent Role |
 |---------|---------------|
-| `/loaf:breakdown` | Tasks become subagent assignments |
-| `/loaf:implement` | May dispatch subagents for specialized work |
-| `/loaf:implement` | Automatically coordinates single-task and multi-task subagent work |
+| `/breakdown` | Tasks become subagent assignments |
+| `/implement` | May dispatch subagents for specialized work |
+| `/implement` | Automatically coordinates single-task and multi-task subagent work |
 
 ## Related Skills
 

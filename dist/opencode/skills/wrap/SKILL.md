@@ -32,13 +32,13 @@ An optional checkpoint before the conversation ends — the conscious review of 
 ## Critical Rules
 
 - Log `skill(wrap): <context>` to the project journal as the first action (e.g. "end-of-session summary" or "user requested wrap-up")
-- **Use `prompt the user in chat` for all decisions and confirmations** — commit, push, stash, or skip choices. Never use inline text questions for permission prompts
+- **Use `AskUserQuestion` for all decisions and confirmations** — commit, push, stash, or skip choices. Never use inline text questions for permission prompts
 - Never commit or push without explicit user confirmation
 - Flush journal entries BEFORE generating the report — unrecorded decisions are lost after this conversation
 - Pull from live data (git, filesystem), not memory or assumptions
 - Keep the report concise — one screen, not a wall of text
 - Scope to THIS conversation, not the full backlog
-- When delegated subtask agent are available, use the `librarian` profile as the
+- When delegated subagents are available, use the `librarian` profile as the
   durable artifact handler for `.agents/`-scoped wrap cleanup, report hygiene,
   and knowledge note preservation. The main wrap flow remains responsible for
   user-facing decisions and commit/push prompts.
@@ -98,7 +98,7 @@ Surface each loose end with a clear action the user can take. Ask once, respect 
 | Stale KB files | "N stale knowledge file(s) — address now or defer?" |
 | Unresolved blocks | "Block on <scope> still open — note for next session?" |
 | No changelog entries | "N commit(s) on branch but `[Unreleased]` is empty — add changelog entries?" |
-| No `/housekeeping` this session | "No housekeeping run this session — run `/housekeeping` now?" |
+| No `/loaf:housekeeping` this session | "No housekeeping run this session — run `/loaf:housekeeping` now?" |
 
 **Detection logic:**
 - **Changelog entries:** check if the current branch has commits vs the base branch (e.g., `git rev-list --count origin/main..HEAD`) AND `CHANGELOG.md` `[Unreleased]` section has no list items (`^[-*]\s`). If both are true, prompt. **Skip when HEAD is tagged** (post-release state).

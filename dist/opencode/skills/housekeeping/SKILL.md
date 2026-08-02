@@ -35,7 +35,7 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 - Treat `.agents/handoffs/` as first-class but disposable: keep active/final handoffs, delete only after confirmed deprecated status
 - Check report `status` is `processed` before archiving reports (see [templates/report.md](templates/report.md))
 - In SQLite-backed projects, verify lifecycle changes through `loaf task list --json`, `loaf spec list --json`, and `loaf report list --json`; use `loaf task sync` only for Markdown compatibility repair
-- When delegated subtask agent are available, use the `librarian` profile for
+- When delegated subagents are available, use the `librarian` profile for
   `.agents/`-scoped durable artifact tending: report/spec/handoff hygiene,
   staleness notes, and lifecycle-safe cleanup recommendations.
   Housekeeping still owns user confirmation and final archive decisions.

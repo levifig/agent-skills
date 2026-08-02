@@ -4,7 +4,9 @@ description: >-
   Orchestrates implementation work through agent delegation and batch execution.
   Use for all implementation work — features, bug fixes, refactors, and code
   changes. Picks Change task files when present and flips checkboxes in
-  delivering commits. Log...
+  delivering commits. Logs to the project journal and produces agent spawn plans
+  and progress tracking. Not for shaping (use shape), breakdown (use breakdown),
+  research, or review.
 user-invocable: true
 argument-hint: '[TASK-XXX | SPEC-XXX | TASK-XXX..YYY | TASK-XXX,YYY | description]'
 version: 2.0.0-alpha.19
@@ -121,7 +123,7 @@ When input is free-text description (not matching any known pattern):
 3. **Write criteria** (if multi-sentence): edit the task `.md` file body to add the remaining sentences as acceptance criteria
 4. **Fall through** to the task-coupled flow above — the result is a `TASK-XXX` ID that enters the existing planning pipeline unchanged
 
-**No user interaction required.** The description IS the task; invoking `/loaf:implement` already expressed intent.
+**No user interaction required.** The description IS the task; invoking `/implement` already expressed intent.
 
 ### Non-Existent Task ID Error
 
@@ -223,9 +225,9 @@ When the sub-issue's implementation passes review and tests:
 - Does not pull down the full spec text. The parent's description already
   links to `.agents/specs/SPEC-NNN-*.md`. Read the local file for shape,
   rabbit holes, and strategic tensions.
-- Does not create or rewrite sub-issues. That's `/loaf:breakdown`'s job. If
+- Does not create or rewrite sub-issues. That's `/breakdown`'s job. If
   implementation reveals a missing task, surface it to the user; they
-  decide whether to run `/loaf:breakdown` again or add an ad-hoc sub-issue.
+  decide whether to run `/breakdown` again or add an ad-hoc sub-issue.
 - Does not sync in-progress state bidirectionally. Source of truth at any
   moment: Linear for issue state, local files for spec content, the project
   journal for current handoff.
@@ -337,11 +339,11 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
    - Write a `wrap(scope)` journal entry if the work produced synthesis worth saving (next steps, abandoned paths); otherwise skip it
    - Commit: `chore: close SPEC-XXX — archive tasks and spec`
 4. If on a feature branch: push and create PR (`gh pr create`). Follow PR format and squash merge conventions in [commits reference](../git-workflow/references/commits.md).
-5. After PR is created and approved, use `/loaf:ship` to review, verify, and land the PR. Use `/loaf:release` later when a coherent batch of landed work is ready to publish.
+5. After PR is created and approved, use `/ship` to review, verify, and land the PR. Use `/release` later when a coherent batch of landed work is ready to publish.
 6. **Suggest reflection:** Check the journal for extractable learnings before closing out:
    - `decision(...)` entries are present
    - ADRs, report verdicts, or spec changelog entries were recorded
-   If any signal is present, suggest: *"This produced key decisions. Consider running `/loaf:reflect` to update strategic docs."* If none are present, stay silent.
+   If any signal is present, suggest: *"This produced key decisions. Consider running `/reflect` to update strategic docs."* If none are present, stay silent.
 
 ---
 
@@ -356,7 +358,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 
 ## Suggests Next
 
-After all tasks are complete, suggest `/loaf:ship` to land the PR. Suggest `/loaf:release` only when the landed work forms a coherent release batch.
+After all tasks are complete, suggest `/ship` to land the PR. Suggest `/release` only when the landed work forms a coherent release batch.
 
 ## Related Skills
 

@@ -4,7 +4,9 @@ description: >-
   Convenes multi-agent council deliberations for decisions requiring diverse
   perspectives. Use when the user asks "call a council", "gather specialists",
   "get a council opinion", or "what do the experts think". Also activate when
-  the user wants a st...
+  the user wants a structured debate between domain-specific viewpoints. Not for
+  single-perspective research (use research) or architectural decisions that
+  don't need multi-agent deliberation (use architecture).
 user-invocable: true
 argument-hint: '[topic]'
 version: 2.0.0-alpha.19
@@ -81,7 +83,7 @@ When a council resolves a spec's open questions:
 
 - Include the spec ID in council frontmatter (e.g., `spec: SPEC-024`). This
   is already the common pattern.
-- If the spec's `linear_parent` has been populated by `/loaf:breakdown`, also
+- If the spec's `linear_parent` has been populated by `/breakdown`, also
   include `linear_parent: ENG-198` in council frontmatter so a reader on
   Linear can trace back to the deliberation.
 - Do not post council content to the Linear parent issue. A brief one-line

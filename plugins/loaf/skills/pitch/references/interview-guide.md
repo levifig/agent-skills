@@ -1,6 +1,6 @@
 # Pitch Interview Guide
 
-Problem-discovery interview for `/loaf:pitch`. Borrows shape's grilling mechanics (one question at a time, recommendation-first, architectural-impact ordering) and bootstrap's interview anti-patterns. The register is problem-space only — approach, architecture, and decomposition belong to `/loaf:shape`.
+Problem-discovery interview for `/pitch`. Borrows shape's grilling mechanics (one question at a time, recommendation-first, architectural-impact ordering) and bootstrap's interview anti-patterns. The register is problem-space only — approach, architecture, and decomposition belong to `/shape`.
 
 ## Contents
 - How This Guide Works
@@ -28,7 +28,7 @@ Before dimension grilling, converge on a **destination**: one or two lines namin
 | Scale | Destination feeds |
 |-------|-------------------|
 | **Project** | VISION success criteria (bootstrap extracts it; pitch keeps it as the project's north star in the BRIEF) |
-| **Change** | The eventual Hypothesis when `/loaf:shape` promotes the capture — a sharper "what good looks like" than a feature list |
+| **Change** | The eventual Hypothesis when `/shape` promotes the capture — a sharper "what good looks like" than a feature list |
 
 **How to pin:** offer a recommendation-first draft from the human's opening words ("Destination: operators can ship a release without a manual config audit"). Confirm, tighten, or rewrite until both parties can restate it. Do not start deep dimension probes until the destination is on the table.
 
@@ -212,7 +212,7 @@ Adopted from bootstrap's interview guide; binding on pitch.
 
 **Third Interview Idiom.** Do not invent pitch-specific interview machinery. Destination pinning, scenario stress-testing, and challenge stance deepen the same grilling mechanics — they are not a parallel framework.
 
-**Pseudo-Shape in the Brief.** Approach, architecture, task breakdown, or verification design must not enter `brief.md` / `docs/BRIEF.md`. If it appears while drafting, move it out and note it for `/loaf:shape`.
+**Pseudo-Shape in the Brief.** Approach, architecture, task breakdown, or verification design must not enter `brief.md` / `docs/BRIEF.md`. If it appears while drafting, move it out and note it for `/shape`.
 
 **Fake Precision.** Pre-slicing vague unknowns into numbered open questions that cannot yet be stated precisely. Coarse notes beat counterfeit clarity.
 

@@ -4,7 +4,8 @@ description: >-
   Covers Ruby and Rails 8+ development: Hotwire, Solid Queue, Minitest, and
   Rails conventions. Use when building Rails applications, writing Ruby code, or
   following Rails patterns. Follows DHH/37signals conventions. Not for database
-  schema design (u...
+  schema design (use database-design) or frontend outside Hotwire (use
+  typescript-development).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
 version: 2.0.0-alpha.19

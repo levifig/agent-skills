@@ -28,13 +28,13 @@ and produce a report or durable artifact.
 
 ## Spawning Background Agents
 
-### Cursor
+### Claude Code
 
-Use the background agent with `run_in_background: true`:
+Use the Task tool with `run_in_background: true`:
 
 ```python
 Task(
-    agent_type="background-runner",
+    subagent_type="background-runner",
     prompt="""
     Run full security audit on backend codebase.
 

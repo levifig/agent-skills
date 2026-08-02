@@ -22,11 +22,11 @@
 |--------|------|
 | Log journal entries | `loaf journal log` |
 | Create/edit council files | Write |
-| Track tasks | Amp thread checklist |
+| Track tasks | TodoWrite/TodoRead |
 | Manage external issues | Linear, GitHub |
 | Read files for context | Read, Grep, Glob |
-| Ask clarifying questions | Amp UI input (OpenCode: `question`) |
-| Assign Amp check/agent mode or new thread work | Amp thread checklist (Amp check/agent mode or new thread read via Amp thread checklist) |
+| Ask clarifying questions | AskUserQuestion (OpenCode: `question`) |
+| Assign subagent work | TodoWrite (subagents read via TodoRead) |
 
 ### Orchestrator MUST Delegate
 
@@ -95,7 +95,7 @@ What type of work is needed?
 |   +-- Product Requirements --> researcher
 
 +-- Complex Decision?
-    +-- Council (5-7 Amp check/agent mode or new thread, odd number)
+    +-- Council (5-7 subagents, odd number)
 ```
 
 ## Spawn Patterns
@@ -108,17 +108,17 @@ Use when output of one agent is input to another:
 
 ```python
 # Step 1: Schema first
-Agent(agent_type="implementer", prompt="Create users table... Follow database-design skill.")
+Task(subagent_type="implementer", prompt="Create users table... Follow database-design skill.")
 
 # Wait for completion
 
 # Step 2: Implementation uses schema
-Agent(agent_type="implementer", prompt="Implement user service... Follow python-development skill.")
+Task(subagent_type="implementer", prompt="Implement user service... Follow python-development skill.")
 
 # Wait for completion
 
 # Step 3: Tests use implementation
-Agent(agent_type="implementer", prompt="Write user tests... Follow foundations + python-development skills.")
+Task(subagent_type="implementer", prompt="Write user tests... Follow foundations + python-development skills.")
 ```
 
 **Common sequences:**
@@ -132,8 +132,8 @@ Use when work is truly independent:
 
 ```python
 # Both can run simultaneously
-Agent(agent_type="implementer", prompt="Implement API... Follow python-development skill.")
-Agent(agent_type="implementer", prompt="Build UI... Follow typescript-development + interface-design skills.")
+Task(subagent_type="implementer", prompt="Implement API... Follow python-development skill.")
+Task(subagent_type="implementer", prompt="Build UI... Follow typescript-development + interface-design skills.")
 ```
 
 **Requirements for parallel:**
@@ -146,7 +146,7 @@ Agent(agent_type="implementer", prompt="Build UI... Follow typescript-developmen
 1. **Be specific in prompts** - Include file paths, requirements, constraints
 2. **One concern per agent** - Don't ask a backend implementer to also write tests
 3. **Include context** - Task/spec IDs, issue ID, previous outcomes
-4. **Reference durable artifacts** - Task, spec, and report IDs; the Amp check/agent mode or new thread's journal entries are harness-id tagged automatically
+4. **Reference durable artifacts** - Task, spec, and report IDs; the subagent's journal entries are harness-id tagged automatically
 5. **Include skill hints** - Name the skills that should guide the agent's work
 
 ### Skill Hints
@@ -175,7 +175,7 @@ prompt="... Build the API endpoint."
 
 ```python
 Task(
-    agent_type="implementer",
+    subagent_type="implementer",
     prompt="""
     Implement POST /api/v1/users endpoint.
 

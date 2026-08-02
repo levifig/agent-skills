@@ -63,9 +63,9 @@ When blocked, always print:
 - Recovery commands:
 
 ```bash
-/implement --continue
-/implement --skip TASK-XXX
-/implement --abort
+{{IMPLEMENT_CMD}} --continue
+{{IMPLEMENT_CMD}} --skip TASK-XXX
+{{IMPLEMENT_CMD}} --abort
 ```
 
 Use these semantics:

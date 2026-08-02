@@ -4,7 +4,9 @@ description: >-
   Orchestrates standalone releases from already-landed work: release readiness,
   version selection, changelog curation, release commit, tag, GitHub Release,
   install verification, and post-release follow-up. Use when the user says "cut
-  a release," "pu...
+  a release," "publish a version," "release from main," or asks whether enough
+  landed work should become a release. Not for reviewing or merging a PR (use
+  ship).
 user-invocable: true
 argument-hint: '[version, base, or release intent]'
 version: 2.0.0-alpha.19
@@ -36,7 +38,7 @@ Publish a coherent version from work that has already landed.
 
 ## Critical Rules
 
-- **Release is not merge** -- do not use `/loaf:release` to review, approve, or land a feature PR. Use `/loaf:ship` for PR correctness and landing.
+- **Release is not merge** -- do not use `/release` to review, approve, or land a feature PR. Use `/ship` for PR correctness and landing.
 - **Release from landed work** -- collect changes from the release base branch, normally the repo default branch, since the last release tag.
 - **Release-PR flow is the default** -- prepare on a release branch with `loaf release --pre-merge`, squash-merge the release PR, then finalize with `loaf release --post-merge` on the base branch. Direct `--bump` on the base branch is a named exception used only on explicit user request.
 - **Batch by intent** -- group release notes by user-facing outcome, `CR-*` change bundle, spec, or related PRs; do not mirror individual commits mechanically.
@@ -64,7 +66,7 @@ Publish a coherent version from work that has already landed.
 | Version + Changelog | bump selected, notes curated, files updated | Yes |
 | Execution | release commit prepared via `--pre-merge`, release PR landed, `--post-merge` finalizes | Yes |
 | Verification | release and install paths checked | Yes |
-| Follow-Up | reflect/loaf:housekeeping suggested when useful | No |
+| Follow-Up | reflect/housekeeping suggested when useful | No |
 
 ## Topics
 
@@ -89,7 +91,7 @@ Before anything, establish the release surface:
 3. Verify the current branch:
    - If already on the release base, continue; the release-PR flow in Step 5 branches from here.
    - If on a dedicated release branch, resume the release-PR flow at the matching step.
-   - If on a feature branch, stop and explain that `/loaf:release` publishes from landed work. Offer `/loaf:ship` if the active PR needs landing first.
+   - If on a feature branch, stop and explain that `/release` publishes from landed work. Offer `/ship` if the active PR needs landing first.
 4. Find the previous release tag:
    ```bash
    git describe --tags --abbrev=0
@@ -218,12 +220,12 @@ The default for every release: PR CI runs the full suite against the prepared tr
 1. Create a dedicated release branch from the release base.
 2. Run `loaf release --pre-merge` on it: this creates the version/changelog/artifact release commit but no tag and no GitHub Release.
 3. Open a release PR with a concise release-focused body.
-4. Hand the PR to `/loaf:ship` for review and landing; squash-merge it into one `chore: release vX.Y.Z (#PR)` commit carrying the curated changelog.
+4. Hand the PR to `/ship` for review and landing; squash-merge it into one `chore: release vX.Y.Z (#PR)` commit carrying the curated changelog.
 5. After the release PR lands, run `loaf release --post-merge` on the base branch to tag, publish the GitHub Release, and verify installability.
 
 If guardrail 9 fires on `--post-merge`, the merged tree itself carries stale evidence; recovery is to re-record against the merged tree, land the receipts as a single evidence-only commit on the base branch (the repair commit must not modify the capability registry), and rerun `loaf release --post-merge`.
 
-Do not hide this handoff inside `/loaf:release`: `/loaf:ship` remains the PR correctness and merge gate.
+Do not hide this handoff inside `/release`: `/ship` remains the PR correctness and merge gate.
 
 ---
 
@@ -257,8 +259,8 @@ After verification:
    ```bash
    loaf journal log "decision(release): vX.Y.Z published from <base> with <summary>"
    ```
-2. Suggest `/loaf:reflect` when the release produced durable product or workflow learnings.
-3. Suggest `/loaf:housekeeping` when release branches or temporary reports need cleanup.
+2. Suggest `/reflect` when the release produced durable product or workflow learnings.
+3. Suggest `/housekeeping` when release branches or temporary reports need cleanup.
 4. Keep future-work discoveries out of the release notes; capture them as tasks, ideas, or sparks instead.
 
 ---
@@ -268,13 +270,13 @@ After verification:
 This skill coexists with existing hooks. Git workflow hooks are advisory unless
 configured otherwise; security and secret-scanning hooks remain blocking.
 
-| Hook | Type | When `/loaf:release` Runs |
+| Hook | Type | When `/release` Runs |
 |------|------|---------------------|
 | `github-account` | Force-switch | Switches to the configured GitHub account before `gh` release operations; blocks only if the switch fails |
 | `validate-push` | Advisory | Cross-checks version bump, changelog, and build on push |
 | `workflow-pre-pr` | Advisory | Fires when the release PR is opened |
-| `workflow-pre-merge` | Advisory | Belongs to `/loaf:ship` when a release PR must land |
-| `workflow-post-merge` | Advisory | Belongs to `/loaf:ship` after PR landing |
+| `workflow-pre-merge` | Advisory | Belongs to `/ship` when a release PR must land |
+| `workflow-post-merge` | Advisory | Belongs to `/ship` after PR landing |
 | `check-secrets` | Blocking | Always respected before writes or shell actions |
 
 Do not disable hooks to force a release through.
@@ -283,7 +285,7 @@ Do not disable hooks to force a release through.
 
 ## Suggests Next
 
-After a successful release, suggest `/loaf:reflect` for durable learnings and `/loaf:housekeeping` if temporary release artifacts need attention.
+After a successful release, suggest `/reflect` for durable learnings and `/housekeeping` if temporary release artifacts need attention.
 
 ## Related Skills
 

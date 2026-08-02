@@ -4,7 +4,10 @@ description: >-
   Preserves the structured divergent-thinking stance consumed by the explore
   workflow: option generation before judgment, trade-off analysis, and spark
   capture. Not a primary entry point — route "explore this", "help me think
-  through options", or si...
+  through options", or similar user entry intent to /pitch; explore owns the
+  agent-facing inquiry lifecycle that consumes this technique. Not for problem
+  discovery as a ceremony (use pitch) or bounding a chosen direction (use
+  shape).
 user-invocable: false
 argument-hint: '[idea or problem]'
 version: 2.0.0-alpha.19
@@ -61,7 +64,7 @@ Sparks are lightweight byproducts worth remembering; their dispositions belong t
 
 ## Suggests Next
 
-After a divergent pass, checkpoint the surrounding Exploration (`loaf exploration checkpoint`), then suggest `/loaf:shape` if a clear direction emerged or `/loaf:triage` to disposition captured sparks and ideas.
+After a divergent pass, checkpoint the surrounding Exploration (`loaf exploration checkpoint`), then suggest `/shape` if a clear direction emerged or `/triage` to disposition captured sparks and ideas.
 
 ## Topics
 

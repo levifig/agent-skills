@@ -1,4 +1,4 @@
-# background agent-Driven Development
+# Subagent-Driven Development
 
 Delegate specialized work to specialized agents.
 
@@ -6,7 +6,7 @@ Delegate specialized work to specialized agents.
 
 - Philosophy
 - Quick Reference
-- When to Use background agent
+- When to Use Subagents
 - Delegation Pattern
 - Task Definition Template
 - Critical Rules
@@ -22,9 +22,9 @@ Delegate specialized work to specialized agents.
 
 **Coordinate, don't micromanage.** Define clear inputs and outputs, let agents work autonomously, integrate results. Don't dictate implementation details.
 
-**Fail fast, escalate early.** If a background agent hits a blocker, surface it immediately. Don't let agents spin on problems outside their expertise.
+**Fail fast, escalate early.** If a subagent hits a blocker, surface it immediately. Don't let agents spin on problems outside their expertise.
 
-**Integration is your job.** background agent produce components. Integration, verification, and ensuring coherence is the coordinator's responsibility.
+**Integration is your job.** Subagents produce components. Integration, verification, and ensuring coherence is the coordinator's responsibility.
 
 ## Quick Reference
 
@@ -36,7 +36,7 @@ Delegate specialized work to specialized agents.
 | `implementer` | Testing | Test suites, quality checks (with foundations) |
 | `implementer` | Infrastructure | CI/CD, deployment, config (with infrastructure-management) |
 
-## When to Use background agent
+## When to Use Subagents
 
 ### Good Fit
 
@@ -83,8 +83,8 @@ Include:
 ### 4. Dispatch and Monitor
 
 ```
-[background agent invocation]
-- background agent type: implementer
+[Task tool invocation]
+- Subagent type: implementer
 - Skills: [language skill + domain skills]
 - Task: [Clear description]
 - Context: [Relevant details]
@@ -92,7 +92,7 @@ Include:
 
 ### 5. Integrate Results
 
-When background agent completes:
+When subagent completes:
 - Verify the output
 - Check integration points
 - Run tests
@@ -101,7 +101,7 @@ When background agent completes:
 ## Task Definition Template
 
 ```markdown
-## background agent Task
+## Subagent Task
 
 **Profile:** [implementer | reviewer | researcher]
 
@@ -138,13 +138,13 @@ When background agent completes:
 - Match tasks to agent specialization
 - Define clear success criteria
 - Provide necessary context
-- Verify background agent output
+- Verify subagent output
 - Handle integration yourself
 
 ### Never
 
 - Delegate tasks with unclear scope
-- Assume background agent output is correct without verification
+- Assume subagent output is correct without verification
 - Micromanage implementation details
 - Dispatch without success criteria
 - Skip integration testing
@@ -187,7 +187,7 @@ When tasks share an interface:
 
 ## Integration Checklist
 
-After background agent completes:
+After subagent completes:
 
 ```
 □ Output matches success criteria
@@ -202,21 +202,21 @@ After background agent completes:
 
 | Issue | Solution |
 |-------|----------|
-| background agent stuck | Check if task is in their expertise; escalate if not |
+| Subagent stuck | Check if task is in their expertise; escalate if not |
 | Output doesn't integrate | Clarify interface contract, retry with more context |
 | Quality issues | Review task definition; was it clear enough? |
 | Wrong approach | Provide more context about constraints and patterns |
 
 ## Integration with Loaf Workflow
 
-| Command | background agent Role |
+| Command | Subagent Role |
 |---------|---------------|
-| `/breakdown` | Tasks become background agent assignments |
-| `/implement` | May dispatch background agent for specialized work |
-| `/implement` | Automatically coordinates single-task and multi-task background agent work |
+| `/breakdown` | Tasks become subagent assignments |
+| `/implement` | May dispatch subagents for specialized work |
+| `/implement` | Automatically coordinates single-task and multi-task subagent work |
 
 ## Related Skills
 
-- `parallel-agents` - Running multiple background agent concurrently
+- `parallel-agents` - Running multiple subagents concurrently
 - `orchestration` - Higher-level task coordination
-- `verification` - Verifying background agent output
+- `verification` - Verifying subagent output

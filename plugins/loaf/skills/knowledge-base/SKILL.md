@@ -4,7 +4,8 @@ description: >-
   Provides guidance for creating, updating, and reviewing project knowledge
   files. Covers frontmatter schema, naming conventions, staleness detection via
   covers: field, and the review workflow. Not for retrieval or search (use QMD
-  directly), archite...
+  directly), architectural decisions (use ADRs), or agent instructions (use
+  AGENTS.md).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
 version: 2.0.0-alpha.19

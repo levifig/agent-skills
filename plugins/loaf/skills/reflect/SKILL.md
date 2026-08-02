@@ -4,7 +4,8 @@ description: >-
   Integrates learnings from shipped work into strategic documents. Use after
   completing significant work or when the user asks "what did we learn?" Updates
   VISION.md, STRATEGY.md, and ARCHITECTURE.md based on implementation
-  experience. Not for pre-i...
+  experience. Not for pre-implementation strategy (use strategy) or ADRs (use
+  architecture).
 user-invocable: true
 argument-hint: '[SPEC-ID or topic]'
 version: 2.0.0-alpha.19
@@ -65,7 +66,7 @@ Update VISION, STRATEGY, and ARCHITECTURE based on proven implementation.
 
 Strategy evolves through **shipping**, not theorizing.
 
-After completing work, `/loaf:reflect` extracts learnings and proposes updates to strategic documents. **Don't update strategy during planning or shaping.** Update after implementation proves (or disproves) assumptions.
+After completing work, `/reflect` extracts learnings and proposes updates to strategic documents. **Don't update strategy during planning or shaping.** Update after implementation proves (or disproves) assumptions.
 
 ---
 
@@ -121,7 +122,7 @@ User may: approve all, approve some, modify proposals, defer updates, or request
 
 After approval:
 1. Update documents with approved changes
-2. Create ADRs if needed (see `/loaf:architecture` for format)
+2. Create ADRs if needed (see `/architecture` for format)
 3. Archive completed specs if appropriate
 4. Announce what was updated
 

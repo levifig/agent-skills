@@ -4,7 +4,9 @@ description: >-
   Documents how agents operate the Loaf CLI: command discovery via loaf --help,
   JSON diagnosis surfaces, config-aware maintenance, and troubleshooting. Use
   when unsure which loaf command to invoke, how to validate project state, or
-  when asked to upg...
+  when asked to upgrade, diagnose, repair, configure, or bring a Loaf project
+  current. Not for workflow guidance (workflow skills own their CLI contracts)
+  or build internals.
 user-invocable: false
 version: 2.0.0-alpha.19
 ---

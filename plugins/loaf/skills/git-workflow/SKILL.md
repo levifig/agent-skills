@@ -4,7 +4,8 @@ description: >-
   Covers branching strategies, commit conventions, PR creation, and squash merge
   workflow. Use when creating branches, writing commits, creating or merging
   PRs, or managing git history. Provides patterns for collaborative git
-  workflows. Not for code...
+  workflows. Not for code style (use foundations) or CI/CD pipelines (use
+  infrastructure-management).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
 version: 2.0.0-alpha.19
@@ -49,5 +50,5 @@ Git conventions for branching, commits, PRs, and merge workflow.
 | Topic | Reference | Use When |
 |-------|-----------|----------|
 | Commits | `references/commits.md` | Writing commit messages, creating PRs, branching, curating CHANGELOG entries, pre-PR/pre-push/post-merge hooks |
-| PR shipping | `/loaf:ship` skill | Reviewing, verifying, and squash-merging one PR |
-| Release ritual | `/loaf:release` skill | Publishing a version from already-landed work |
+| PR shipping | `/ship` skill | Reviewing, verifying, and squash-merging one PR |
+| Release ritual | `/release` skill | Publishing a version from already-landed work |

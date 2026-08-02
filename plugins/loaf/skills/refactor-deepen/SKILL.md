@@ -3,8 +3,10 @@ name: refactor-deepen
 description: >-
   Surfaces refactoring opportunities through a deepening lens — modules that
   hide complexity behind narrow interfaces. Not for renames, extractions, or
-  generic restructuring (use `/loaf:implement`). Use when looking for structural
-  improvements, or when t...
+  generic restructuring (use `/implement`). Use when looking for structural
+  improvements, or when the user asks "is this module too shallow?" or "where
+  should we deepen this code?" Produces either a read-only report or a PLAN file
+  with candidates, dependency categories, and proposed deepened modules.
 user-invocable: true
 argument-hint: '[module or area]'
 version: 2.0.0-alpha.19
@@ -173,7 +175,7 @@ skill terminates by writing a PLAN file using [templates/plan.md](templates/plan
 > Plan saved to `.agents/plans/<filename>.md`. Workflow handoff is pending
 > the SPEC/PLAN/TASKS artifact taxonomy spec — for now, decide manually.
 
-Do **not** recommend `/loaf:breakdown` or `/loaf:implement` as the next step. The
+Do **not** recommend `/breakdown` or `/implement` as the next step. The
 handoff design is downstream of a deferred taxonomy spec.
 
 ### Codex Review (Opt-In, Plugin-Gated)
@@ -255,7 +257,7 @@ speed but are unlikely at human pace.
 | `loaf kb glossary list` | At interview start (see grilling protocol) |
 
 `propose` and `stabilize` are not used by this skill — they belong to
-`/loaf:architecture` and exploratory flows.
+`/architecture` and exploratory flows.
 
 ### When to Deepen vs. Leave Alone
 

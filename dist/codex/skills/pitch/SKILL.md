@@ -31,10 +31,10 @@ Human problem-discovery ceremony. Authors a brief at the matching scale so `/sha
 
 ## Critical Rules
 
-1. **Agents never initiate a pitch.** This ceremony is human-invoked only. On Codex the sidecar sets `disable-model-invocation: true`; on every target this rule binds behaviorally. Agent legwork *inside* a human-opened pitch (competitive scans, file writes the skill directs) is fine — opening one is not.
+1. **Agents never initiate a pitch.** This ceremony is human-invoked only. On Claude Code the sidecar sets `disable-model-invocation: true`; on every target this rule binds behaviorally. Agent legwork *inside* a human-opened pitch (competitive scans, file writes the skill directs) is fine — opening one is not.
 2. **Log invocation first** — `loaf journal log "skill(pitch): <idea, problem, or intake item>"` before interviewing.
 3. **Problem-space only** — grill what, who, and why-valuable. Approach, architecture, decomposition, and verification design belong to `/shape`. A brief that reads like a pseudo-shape is a failure; rewrite before landing.
-4. **One question at a time, recommendation-first** — via `request_user_input` (or one inline question per message). Never a multi-field form. Order by impact on the brief. Full mechanics: [references/interview-guide.md](references/interview-guide.md).
+4. **One question at a time, recommendation-first** — via `AskUserQuestion` (or one inline question per message). Never a multi-field form. Order by impact on the brief. Full mechanics: [references/interview-guide.md](references/interview-guide.md).
 5. **Never write `shape.md`, seed `tasks/`, push, or open PRs** — pitch prepares commits and hands off; push and PR stay human. Never auto-run `/shape` or `/bootstrap`.
 6. **Landing is validated, then committed once** — every capture landing runs explicit-path `loaf change check <folder> --json` (zero violations, expected captured state) and a direct read-back of that folder's `change.json` confirming intended `target_release` presence or absence, then one docs-only commit per capture. Never batch captures into one commit.
 7. **Slug identity is local** — propose a slug that names the concept, never another work unit (no `spec-042`, no task ids). Provenance lives in frontmatter and the change folder.
@@ -121,7 +121,7 @@ If the direction is genuinely undecided mid-interview, offer the **explore** tec
 
 When competitive or landscape facts would change the brief and are not already known:
 
-1. Spawn a **researcher** separate Codex thread or explicit multi-agent tool when available with a bounded question (competitors, substitutes, prior art — not solution design).
+1. Spawn a **researcher** subagent with a bounded question (competitors, substitutes, prior art — not solution design).
 2. Land evidence:
    - **Change scale:** files under the change folder's `research/` (create the folder with the change); link from Sources and Research Links
    - **Project scale:** inline source links in `docs/BRIEF.md` Sources and Research Links (no change `research/` yet)
@@ -208,7 +208,7 @@ The journal line is mechanical; the human-facing close is the closing ceremony i
 - **triage** — queue dispositions; may hand an item to pitch when problem discovery is needed
 - **explore** — agent-side technique when pitch finds the direction still undecided
 - **idea** — quick capture without ceremony; not a substitute for pitch
-- **research** — patterns the researcher separate Codex thread or explicit multi-agent tool when available follows for landscape scans
+- **research** — patterns the researcher subagent follows for landscape scans
 
 ## Topics
 

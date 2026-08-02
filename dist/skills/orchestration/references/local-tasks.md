@@ -136,7 +136,7 @@ When a task is done:
 
 ## Journal Integration
 
-When `/implement TASK-001`:
+When `{{IMPLEMENT_CMD}} TASK-001`:
 
 1. Load task metadata via `loaf task show TASK-001` for context
 2. Read linked spec for full picture
