@@ -1,7 +1,6 @@
 # Background Agents
 
-Background agents handle low-priority, long-running, or non-interactive work
-while the user continues with other tasks.
+Background agents handle low-priority, long-running, or non-interactive work while the user continues with other tasks.
 
 ## Contents
 
@@ -23,10 +22,11 @@ while the user continues with other tasks.
 | Documentation audits | Work needing user decisions mid-task |
 | Dependency vulnerability scans | Blocking tasks for current work |
 
-Good candidates have clear completion criteria, can run without clarification,
-and produce a report or durable artifact.
+Good candidates have clear completion criteria, can run without clarification, and produce a report or durable artifact.
 
 ## Spawning Background Agents
+
+Background-agent APIs differ by product. Read only the labeled section for the harness you are running; the others are intentional cross-harness documentation, not instructions for you.
 
 ### Claude Code
 
@@ -51,8 +51,7 @@ Task(
 
 ### Cursor
 
-Background agents are configured via the `is_background: true` YAML property.
-When spawning, specify the report destination and any task/spec IDs:
+Background agents are configured via the `is_background: true` YAML property. When spawning, specify the report destination and any task/spec IDs:
 
 ```
 @background-runner Run security audit on backend codebase.
@@ -60,8 +59,11 @@ Write report to .agents/reports/.
 Reference TASK-123 if relevant.
 ```
 
-The background agent's journal entries are tagged with its own harness id
-automatically — there is no session alias to pass.
+The background agent's journal entries are tagged with its own harness id automatically — there is no session alias to pass.
+
+### Other harnesses
+
+If your product has no dedicated background-agent API, run the work in a separate conversation or thread, give it the same report path and durable IDs, and track spawn/completion with `loaf journal log` as below.
 
 ## Tracking
 
@@ -72,23 +74,18 @@ Track background work with durable references:
 3. When complete, log `discover(background): <id> wrote <report>`.
 4. Process findings into tasks, specs, ADRs, or report verdicts as appropriate.
 
-Use a stable ID such as `bg-YYYYMMDD-HHMMSS-description` in the prompt and
-journal entries.
+Use a stable ID such as `bg-YYYYMMDD-HHMMSS-description` in the prompt and journal entries.
 
 ## Result Retrieval
 
-Background agents write results to `.agents/reports/` with enough metadata to
-identify the source task and report status. In SQLite-backed projects, use
-`loaf report list`, `loaf report show`, and `loaf report archive` when report
-state is available.
+Background agents write results to `.agents/reports/` with enough metadata to identify the source task and report status. In SQLite-backed projects, use `loaf report list`, `loaf report show`, and `loaf report archive` when report state is available.
 
 ## Workflow Example
 
 1. Orchestrator identifies non-blocking security audit work.
 2. Orchestrator logs the background spawn to the journal.
 3. Background agent writes `.agents/reports/YYYYMMDD-HHMMSS-auth-security.md`.
-4. Orchestrator reviews the report, creates follow-up tasks, and logs the
-   outcome.
+4. Orchestrator reviews the report, creates follow-up tasks, and logs the outcome.
 5. Report state is finalized or archived through the report lifecycle.
 
 ## Anti-Patterns

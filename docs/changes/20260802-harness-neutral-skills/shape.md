@@ -120,6 +120,7 @@ Group one lands together: removing the rewriters leaves content that is inaccura
 ## Definition of Done
 
 - V1 through V9 pass, and the H-tier observations are recorded with evidence rather than assertion.
+- Installed-smoke receipts in `config/target-capabilities.json` are re-recorded against the final native binary. This Change touches Go source, so every rebuild changes the binary SHA-256 and the evidence gate correctly fails the suite until the receipts are refreshed — the alpha.16 canary working as designed. Re-record once, after the last Go change lands, not per task.
 - The migration receipt exists and shows nothing unowned was modified.
 - Discovery smokes exist for all four canonical-store harnesses, not only one.
 - The dogfooding machine completes `loaf upgrade` with no conflicts, no absent-retirement lines, no `~/.gemini` warning, and no duplicate skill listings in any harness.
@@ -134,7 +135,7 @@ An amendment to ADR-018 rather than a competing ADR: its destination decision st
 <!-- Fog register: tag entries [KU]/[UK]; a route is named for each. -->
 
 - [KU] Do Cursor and OpenCode deduplicate a skill discovered through more than one of their search paths, or list it twice? This sets how aggressive migration must be. → Installed discovery smoke in TASK-006.
-- [KU] What is the right labeled-section shape — a subsection per harness, a table, or a single "if your harness is X" paragraph? The choice affects readability for the four-fifths of readers a section does not apply to. → Decide in TASK-002 against the real counterexamples in `permissions.md`, `background-agents.md`, and `orchestration/references/`.
+- [KU] What is the right labeled-section shape — a subsection per harness, a table, or a single "if your harness is X" paragraph? The choice affects readability for the four-fifths of readers a section does not apply to. → **Resolved in TASK-002:** primary shape is topic parent + `### <Product Name>` subsections for multi-line fences and multi-paragraph mechanisms; compact harness table for one-line facts (slash forms, single tokens); reject inline "if your harness is X" for anything longer than a parenthetical. Documented in `AGENTS.md` (Harness-Neutral Authoring).
 - [KU] Does `{{AGENTS_FILE}}` survive as the one legitimate token, or become a labeled section? ADR-020 makes root `AGENTS.md` canonical with `.claude/CLAUDE.md` symlinked, which may collapse the distinction inside Loaf-managed projects but not outside them. → **Resolved in TASK-001 (Decision 9):** retired. Author `AGENTS.md` in prose; carry `.claude/CLAUDE.md` only as a labeled harness-specific path when the symlink itself is the fact.
 - [KU] Should the unprefixed-name retirement use the standard one-release window, given that it retires 35 entries at once rather than the usual one or two? → Decide in TASK-005, after ownership hardening makes the retirement safe at all.
 - [KU] Do Claude Code plugin skill names need the prefix for cross-skill loads to resolve identically on both channels, or can bodies stop naming sibling skills entirely? → Decide in TASK-005; the second option is simpler and may be better regardless.

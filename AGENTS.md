@@ -290,6 +290,59 @@ allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 | `model` | Override model for this skill |
 | `hooks` | Skill-scoped lifecycle hooks |
 
+### Harness-Neutral Authoring
+
+Skill bodies are harness-neutral by authoring, not by build-time substitution. Every target opens the same bytes: there is no target identity at read time and no per-harness rewrite on the skill-copy path.
+
+**Default:** describe the behaviour and let the model select its own tools. Prefer "ask one question at a time, with a recommendation, using your harness's structured question tool if it has one" over naming `AskUserQuestion` as the only interview surface. Prefer naming a workflow in prose (`the implement workflow`) over hard-coding a slash form that is wrong on some harnesses.
+
+**Labeled harness sections** carry facts that are genuinely product-specific — paste-ready allowlist tokens, product-unique spawn APIs, product-unique paths, or invocation forms that differ by channel. They are not a licence to relabel content that should simply be neutral prose.
+
+Primary shape — topic parent, then one `### <Product Name>` subsection per product that has a known distinct fact:
+
+```markdown
+## Spawning Background Agents
+
+Background-agent APIs differ by product. Read only the labeled section for the harness you are running.
+
+### Claude Code
+
+Use the Task tool with run_in_background: true and subagent_type background-runner.
+(Paste-ready call site lives in a fenced block under this heading.)
+
+### Cursor
+
+Background agents are configured via the is_background: true YAML property.
+```
+
+See `content/skills/orchestration/references/background-agents.md` and `content/skills/foundations/references/permissions.md` for full worked examples with multi-line fences.
+
+Rules for the primary shape:
+
+1. Product headings use the product's display name (`Claude Code`, `Codex`, `Cursor`, `OpenCode`, `Amp`), not build target slugs.
+2. Include only harnesses with a known distinct fact — omit speculative "same as X" sections.
+3. Fenced configuration is paste-ready configuration for that product alone; never merge two products' tokens into one fence (the historical `TodoWrite, TodoRead` → `update_plan, update_plan` corruption).
+4. Lead with a one-line instruction that the reader takes only their product's section.
+
+Compact shape — a table with a Harness column — for one-line facts (slash invocation forms, a single allowlist token):
+
+```markdown
+| Harness | Invoke skill |
+|---------|----------------|
+| Claude Code (plugin) | `/loaf:name` |
+| OpenCode, Cursor, Codex, Amp | `/name` |
+```
+
+Use the compact table when every row is a single token or short phrase; use `###` subsections when a variant needs multi-paragraph explanation or a multi-line fence. Do not use inline "if your harness is X" clauses for anything longer than a parenthetical — they bury the common case and do not scale past two products.
+
+Worked examples of genuine product-specific facts (keep as labeled content; do not neutralize away):
+
+- Fenced allowlist entries whose literal tokens differ by product (`foundations/references/permissions.md`)
+- Distinct spawn/configuration mechanisms (`orchestration/references/background-agents.md`)
+- Creating the Claude compatibility symlink `.claude/CLAUDE.md -> ../AGENTS.md` (the path is the fact; root `AGENTS.md` stays the canonical project-instructions name in prose)
+- Review policy that must inspect both `AGENTS.md` and `CLAUDE.md` when both exist
+- Slash-command invocation forms that differ by channel (`/loaf:name` on Claude Code's plugin path vs bare `/name` elsewhere)
+
 ### Reference Files
 
 #### Organization
@@ -532,6 +585,9 @@ Configure target-specific behavior and sidecars.
 | Leave success criteria undefined for workflow skills | Add "Produces..." in description |
 | Embed artifact templates inline in SKILL.md | Extract to `templates/` and link |
 | Restate general knowledge models already have | Document only decisions and constraints |
+| Name a harness-specific tool as the only option | Describe the behaviour; let the model pick its tool |
+| Merge product tokens into one fence or rely on build-time rewrite | Use a labeled harness section (`### Product`) or compact harness table |
+| Reintroduce per-target skill body rendering | Keep one authored body; labeled sections carry product-specific facts |
 
 ## Version Management
 

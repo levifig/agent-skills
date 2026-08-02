@@ -2,23 +2,27 @@
 
 ## Contents
 - Overview
-- Permission Commands
-- Recommended Allowlists
-- Agent-Specific Recommendations
+- Permission Commands by Harness
+- Recommended Allowlists by Harness
+- Orchestrator Allowlists by Harness
+- Other Agent Roles (Claude Code Tokens)
 - Sandbox Configuration
 - Permission Patterns
 - Security Considerations
 - MCP Tool Permissions
 - Troubleshooting
+- Network Access Posture
 - Best Practices
 
 Permission patterns for autonomous operation and interactive workflows.
 
 ## Overview
 
-Claude Code uses permission prompts to protect against unintended actions. Configure permissions to reduce interruptions while maintaining appropriate safety.
+Coding harnesses use permission prompts to protect against unintended actions. Configure permissions to reduce interruptions while maintaining appropriate safety. Exact command names and allowlist tokens are product-specific — paste only from the labeled section for the harness you are configuring.
 
-## Permission Commands
+## Permission Commands by Harness
+
+### Claude Code
 
 | Command | Purpose |
 |---------|---------|
@@ -26,9 +30,13 @@ Claude Code uses permission prompts to protect against unintended actions. Confi
 | `/allowed-tools` | Show currently allowed tools |
 | `/sandbox` | Configure sandboxed execution environment |
 
-## Recommended Allowlists
+## Recommended Allowlists by Harness
 
-### Development Work
+Paste-ready fences use product tool tokens. Only the labeled product's fence is valid configuration for that product; do not paste Claude Code tokens into a non-Claude allowlist.
+
+### Claude Code
+
+#### Development Work
 
 For standard development sessions:
 
@@ -44,7 +52,7 @@ Bash(npm run *), Bash(pytest *), Bash(make *)
 Bash(git status), Bash(git diff), Bash(git log *)
 ```
 
-### CI/Autonomous Mode
+#### CI/Autonomous Mode
 
 For unattended execution in CI pipelines:
 
@@ -60,7 +68,7 @@ Bash(pytest *), Bash(mypy *)
 # Write, Edit - DISABLED
 ```
 
-### Code Review
+#### Code Review
 
 For review-focused sessions:
 
@@ -76,9 +84,11 @@ Bash(npm run lint), Bash(pytest --collect-only)
 # Write, Edit - DISABLED
 ```
 
-## Agent-Specific Recommendations
+## Orchestrator Allowlists by Harness
 
-### Orchestrator
+Coordination only — no implementation. Task-tracking tokens differ by product and must never be merged into one fence. Choose exactly one product's fence.
+
+### Claude Code
 
 ```
 # Coordination only - no implementation
@@ -87,6 +97,19 @@ TodoWrite, TodoRead
 Linear MCP tools (if configured)
 Bash(date *), Bash(git status)
 ```
+
+### Codex
+
+```
+# Coordination only - no implementation
+update_plan
+```
+
+Other harnesses: keep the same coordination scope (read/search, journal-friendly status commands, Linear MCP when configured) and include that product's native task or checklist surface only when it exists as a real allowlist entry — never invent a Claude tool name on a non-Claude product.
+
+## Other Agent Roles (Claude Code Tokens)
+
+The fences below use Claude Code tool tokens as role templates. Map the same roles (full development, frontend toolchain, schema analysis, infrastructure) to another product's vocabulary when configuring that product.
 
 ### Backend Developer
 
@@ -129,16 +152,18 @@ Bash(terraform plan *), Bash(terraform validate *)
 
 ## Sandbox Configuration
 
+### Claude Code
+
 Use `/sandbox` for isolated execution environments:
 
-### When to Use Sandbox
+#### When to Use Sandbox
 
 - Testing untrusted code
 - Running unfamiliar build systems
 - Executing user-provided scripts
 - CI pipeline verification
 
-### Sandbox Restrictions
+#### Sandbox Restrictions
 
 ```
 # Sandboxed execution limits:
@@ -176,7 +201,7 @@ Bash(pytest tests/)
 
 ### Time-Limited Pattern
 
-For sensitive operations:
+For sensitive operations on Claude Code:
 
 ```
 # Grant temporarily for specific task
@@ -219,8 +244,7 @@ When granting permissions:
 
 ## MCP Tool Permissions (When Configured)
 
-MCPs are not bundled with Loaf — users configure them independently.
-Run `loaf install` to see recommendations.
+MCPs are not bundled with Loaf — users configure them independently. Run `loaf install` to see recommendations.
 
 ### Linear MCP
 
@@ -244,13 +268,13 @@ search_for_pattern, read_file
 
 ### Too Many Permission Prompts
 
-1. Review `/permissions` output
+1. Review the harness permission surface (on Claude Code: `/permissions`)
 2. Add specific allowlist entries
 3. Use patterns (`Bash(npm *)`) not wildcards (`Bash(*)`)
 
 ### Permission Denied Errors
 
-1. Check `/allowed-tools`
+1. Check the currently allowed tools surface (on Claude Code: `/allowed-tools`)
 2. Verify command matches allowlist exactly
 3. Consider if permission should be granted
 
