@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
   "change": "install-upgrade-split",
-  "verified_commit": "c89efe851b13e72cc5b497d87965893b914fac5d",
-  "verified_root_tree": "93fb6ed52205f6e494e4e97168f8731e79fa856f",
-  "verified_at": "2026-08-02T01:53:51Z",
+  "verified_commit": "fdb53b2345c91c4a481e6440e8b36ece579f1dd2",
+  "verified_root_tree": "f1096204cc2627a758c8d67bc5dd8ea5152cd827",
+  "verified_at": "2026-08-02T02:23:56Z",
   "criteria_digest": "35d47f93fd0ca2cdb36deb72230dcd057387523b76aa27d46daa1926fca1321c",
-  "scope_digest": "c829bc6a09f93c840f3d511b4136ecc1538318c5155310caa3fe38e0f86634ab",
+  "scope_digest": "1a56240d4529b5326e61501a7dc4e7d7733e4fd5e4089119d437ae1846eb485f",
   "scope_sections": {
     ".agents": "0cdcb499203f22e1faebbef89e211e4b6d4b253bc5486866ed28a50e15c2dd9e",
     ".claude": "8dc123c00b953695edd9ccc4bb966e986bcea05607d9a125e71038a4c2ebb6be",
@@ -18,10 +18,10 @@
     "cmd": "40aabf3662a461cb93247f3c4eeacdadfdf1d1fef7ddc2cd79f10ace2827ad69",
     "config": "63979d2d624025fd0e7c659144744f4c3c92fe0cbccc95364172cf0d13c27967",
     "content": "a5f957e72238d12ad3be6e070f6811337cffc91f79caad2ceb0363f4b8bad757",
-    "docs": "8e0614544ed88ff4fff872b08c96ee5eb9248095d293e4e1f80cce291e037f3b",
-    "go.mod": "5f494108c9f9ba4911bbcb82ece8168d5af253742eb632ccac5519348e34ef1c",
+    "docs": "32105e9c9bd1df667a7a6186abe312ee531c363dd7e22515596cdd1c21aa37da",
+    "go.mod": "b9247690761e43ce92335c553e1f916132580b2a1e7f434c7d99742e56fb8b21",
     "go.sum": "44a5d68a99a05f3d9aff3321f4b5645d0870cc1afd36e183fbc08c07d8550d6b",
-    "internal": "7f2f4faa683a62121ead4106e0577562d2b617b50c6cb472bc0e40c78a516a55",
+    "internal": "c70ec2ca6568a79449a281f45573d5f0a64e491720759d0f1fcab349fe6fa7fd",
     "package-lock.json": "b35b76623b23c34994a941b2e70c9f395b6e29d36af7bca90dfbfa29f9bc0943"
   },
   "exclusions": [
@@ -46,15 +46,15 @@
     {
       "id": "V1",
       "command": "go test ./...",
-      "exit_code": 0,
-      "output_digest": "08f879120b2083a47262a7aeecc5d59372ade18d8efff60714c7101b6fd7e3be",
-      "ok": true,
+      "exit_code": 1,
+      "output_digest": "34353dfeb196d32feed569695733270aa640484c6109b1280026e5ed3f633246",
+      "ok": false,
       "expect": "exit 0.",
       "expect_checks": [
         {
           "kind": "exit",
           "value": "0",
-          "ok": true
+          "ok": false
         }
       ]
     },
@@ -167,7 +167,7 @@
       "id": "V7",
       "command": "npm run build",
       "exit_code": 0,
-      "output_digest": "3af969f858f558a5a566b3f8aed55f4240b62b31b3ce01116ec99d1787821203",
+      "output_digest": "da2eb7000c4a4f0ff022752995c004223fbb4091bfd5ff2b9dccf1b51cc6b5a0",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
