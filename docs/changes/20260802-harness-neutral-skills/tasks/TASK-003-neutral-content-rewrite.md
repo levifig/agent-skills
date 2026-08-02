@@ -4,6 +4,7 @@ id: TASK-003
 title: Harness-neutral content rewrite
 blocked-by:
   - TASK-001
+  - TASK-002
 ---
 
 # TASK-003 — Harness-neutral content rewrite
@@ -16,7 +17,7 @@ Skill prose describes behaviour instead of naming harness-specific tools, so eve
 
 **In:** Prose in `content/skills/` that currently relies on substitution — roughly 27 files by the pre-change target diff, concentrated in the workflow skills and in `foundations/references/`.
 
-**Out:** Editing skills for quality, structure, taxonomy, or description wording. If a skill reads badly for reasons unrelated to harness coupling, leave it and note it for the skills audit. Literal config blocks belong to TASK-002.
+**Out:** Editing skills for quality, structure, taxonomy, or description wording. If a skill reads badly for reasons unrelated to harness coupling, leave it and note it for the skills audit. The labeled-section convention itself is TASK-002; this task applies it.
 
 ## Context pointers
 
@@ -34,10 +35,11 @@ loaf journal log "skill(implement): TASK-003 — harness-neutral content rewrite
 - [ ] Capture the affected-file list from the pre-change target diff so coverage is provable rather than asserted
 - [ ] Rewrite tool references as behaviour: name what the model should accomplish and let it select its own tool, e.g. "ask one question at a time, with a recommendation, using your harness's structured question tool if it has one"
 - [ ] Replace harness-name prose with second person or neutral phrasing rather than naming any single harness
+- [ ] Convert genuinely product-specific facts into labeled sections per TASK-002's convention, rather than deleting them — `permissions.md`, `background-agents.md`, `bootstrap/SKILL.md`, and `foundations/references/review.md` all contain intentional cross-harness material that must survive
 - [ ] Leave `{{AGENTS_FILE}}` handling to whatever TASK-001 decided
 - [ ] Confirm no paragraph is hard-wrapped — Loaf prose is one continuous line per paragraph
 
 ## Verification
 
-- `go test ./internal/cli/ -run TestSkillBodiesAreTargetInvariant` passes
+- `go test ./internal/cli/ -run TestSkillTreeIsTargetInvariant` passes
 - Every file on the captured affected-file list is accounted for, either rewritten or explicitly justified as needing no change

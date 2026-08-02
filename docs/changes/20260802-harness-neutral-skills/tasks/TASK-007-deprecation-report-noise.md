@@ -14,7 +14,7 @@ The deprecation report says something only when there is something to say. Retir
 
 **In:** `internal/cli/install_deprecations.go` reporting behaviour and the `gemini` retired-target entry in `config/deprecations.json`.
 
-**Out:** The cleanup semantics themselves — what gets removed and under what ownership proof is unchanged. This is a reporting fix, not a behaviour change.
+**Out:** The cleanup semantics themselves — what gets removed and under what ownership proof is unchanged; that hardening is TASK-006. Any runtime state: no persistent "already reported" acknowledgement, and no version-comparison engine that prunes entries at runtime. Manifest hygiene here is authored — expired entries are deleted from the file by hand, because a self-pruning manifest is a different, stateful feature that would contradict this task's reporting-only boundary.
 
 ## Context pointers
 
@@ -32,13 +32,11 @@ loaf journal log "skill(implement): TASK-007 — deprecation report noise"
 ## Steps
 
 - [ ] Drop the `missing` action from the report entirely — a retirement with nothing present is a no-op, not news
-- [ ] Stop warning on every run about retired paths Loaf does not own; report once at most, or not at all
-- [ ] Age out entries whose window has expired, so the manifest is self-pruning rather than accumulating
-- [ ] Remove the `gemini` retired-target entry
-- [ ] Add `TestDeprecationReportOmitsAbsent`
+- [ ] Stop reporting retired paths Loaf does not own; no state, so the choice is report always or never, and never is right for a path Loaf will never touch
+- [ ] Delete entries whose window has already expired from `config/deprecations.json`, including `gemini`
+- [ ] Add `TestDeprecationReport`, covering all three behaviours plus the case that must still report
 
 ## Verification
 
-- `go test ./internal/cli/ -run TestDeprecationReportOmitsAbsent` passes
+- `go test ./internal/cli/ -run TestDeprecationReport` passes: absent retirements omitted, unowned paths omitted, a retirement with something genuinely present still reported, and no expired entry remains in the manifest
 - `loaf upgrade --dry-run` on the dogfooding machine prints no `absent` lines and no `~/.gemini` warning
-- A retirement with something genuinely present still reports it

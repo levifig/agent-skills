@@ -4,127 +4,130 @@
 
 ## Problem
 
-Loaf renders every skill five times, once per target, by running seventeen blind string replacements over finished prose — `Claude Code`→`OpenCode`, `CLAUDE.md`→`AGENTS.md`, `subagent`→`subtask agent`, `TodoWrite`→`update_plan`, and so on. This is an artifact of content authored Claude-Code-first and find-replaced outward, and it produces 20–27 divergent files per target pair. It is also wrong in a way that ships: `content/skills/foundations/references/permissions.md` contains a fenced allowed-tools list reading `TodoWrite, TodoRead`, and because both names match independently the built docs instruct Codex to configure `update_plan, update_plan` and OpenCode to configure `native task/todo surface when available, native task/todo surface when available`. Substitution ran inside a code fence where the literal string is the artifact, while leaving the surrounding prose it should have handled to chance.
+Loaf renders every skill once per target by running blind string replacement over already-finished prose. The pass is an eight-pair token replacer followed by a sixteen-pair replacer bracketed by two whole-document `ReplaceAll` calls, mapping `Claude Code`→`OpenCode`, `CLAUDE.md`→`AGENTS.md`, `subagent`→`subtask agent`, `TodoWrite`→`update_plan`, and the rest. It is an artifact of content authored Claude-Code-first and find-replaced outward, and it leaves 20 skill bodies differing between any two targets — the higher whole-file counts of 20 to 27 include legitimate sidecar frontmatter, which targets own and which is not a defect.
 
-That divergence then collides with the install path. All four non-Claude targets record `skills_dir=~/.agents/skills` (`internal/cli/install_target.go:308`), and `syncManagedSkillsDirIfExists` is last-writer-wins, so installing four targets whose builds differ means three of them read another harness's skills. Installing opencode, cursor, codex, and amp in sequence into a sandbox HOME confirms it: after each install the shared directory holds exactly that target's flavor and no other's.
+The replacement is wrong in a way that ships. `content/skills/foundations/references/permissions.md` contains a fenced allowed-tools list reading `TodoWrite, TodoRead`; both names match independently, so the built docs instruct Codex to configure `update_plan, update_plan` and OpenCode to configure `native task/todo surface when available, native task/todo surface when available`. Substitution ran inside a code fence, where the literal string is the artifact, while the surrounding prose it should have handled was left to chance.
 
-Separately, and worse, Amp does not read `~/.agents/skills` at all — it reads `~/.config/agents/skills`. Loaf's own June relocation (`amp-skills-to-agents-home` in `config/deprecations.json`) moved Amp's skills out of the only directory Amp scans, and that directory is empty on the dogfooding machine. The Amp target has most likely delivered zero skills since June.
+That divergence then collides with the install path. All four non-Claude targets resolve skills to `~/.agents/skills` (`internal/cli/install_target.go:294`–`308`) and each calls `syncManagedSkillsDirIfExists` with its own distribution. A target's tree is admitted when its installed digest still matches the previous manifest and is then republished as an update, so four target-scoped writers share one destination and the last one wins. Installing opencode, cursor, codex, and amp in sequence into a sandbox HOME confirms it: after each install the shared directory holds exactly that target's flavor and no other's. Three of four harnesses therefore read another harness's skills.
 
-Finally, one conflict currently freezes everything. Orca installed its own `orchestration` skill into `~/.agents/skills/orchestration`, a name Loaf's manifest claims. The content-hash ownership guard correctly refuses to overwrite it, and because all four targets share that destination the refusal blocks skill sync for every target at once — reported as four conflicts when it is one directory.
+One conflict currently freezes all of it. Orca installed its own `orchestration` skill into `~/.agents/skills/orchestration`, a name Loaf's manifest claims. The content-hash ownership guard correctly refuses to overwrite it, and because every target shares that destination the refusal blocks skill sync for all of them — reported as four conflicts when it is one directory.
 
 ## Hypothesis
 
-Skill content does not actually need to differ per harness. Models know their own tool inventory; a skill that says "ask one question at a time, with a recommendation, using your harness's structured question tool if it has one" works everywhere, while `{{INTERVIEW_TOOL}}` merely guesses at what the model already knows. The most-used skills collection in the ecosystem — `mattpocock/skills`, roughly 143k stars — ships one `SKILL.md` per skill with no per-harness rendering whatsoever, and its only harness-awareness is an unanswered issue about which agents-file a setup script should edit. If Loaf's skill bodies become target-invariant, the divergence that motivates per-target copies disappears, one canonical copy legitimately serves every harness that reads the shared store, the clobber bug is removed rather than routed around, and third-party skills become installable later without any rendering step at all.
+Skill content does not need to be rendered per harness. Models know their own tool inventory, so a skill that says "ask one question at a time, with a recommendation, using your harness's structured question tool if it has one" works everywhere, while `{{INTERVIEW_TOOL}}` merely guesses at what the model already has in context. Where a fact genuinely is harness-specific — an exact allowlist entry, a configuration mechanism that differs by product — one body can carry every harness's variant in an explicitly labeled section and let the reader take the one that applies. The most-used skills collection in the ecosystem, `mattpocock/skills`, ships one `SKILL.md` per skill with no per-harness rendering at all. If Loaf's bodies become target-invariant the same way, the divergence that motivates per-target copies disappears, one canonical copy legitimately serves every harness, the last-writer-wins bug is removed rather than routed around, and third-party skills become installable later without any rendering step.
 
 ## Scope
 
 **In**
 
-- Delete the blind prose substitution in `substituteNativeBuildHarnessLanguage` and rewrite the affected skill content to be harness-neutral by authoring.
-- Keep an explicit, narrow per-target mechanism for literal config blocks, where the exact string is the artifact rather than a description of one.
-- Install exactly one canonical copy per skill to `~/.agents/skills`, matching the model `vercel-labs/skills` implements.
-- Bridge Amp with a symlink from `~/.config/agents/skills` into the canonical store, restoring skill delivery to that target.
-- Prefix Loaf's canonical skills `loaf-*`, with `retired_skills` manifest entries for the unprefixed names.
-- Migrate existing installs: leave vendor-replaced and foreign directories untouched, retire Loaf's own stale unprefixed copies.
-- Rider: silence deprecation-report lines for retirements that are already absent, and remove the expired `gemini` retired-target entry.
+- Delete blind prose substitution from the build, and rewrite the affected content to be harness-neutral by authoring.
+- Where a fact is genuinely harness-specific, carry every variant in explicitly labeled sections inside one body, so no rendering path survives.
+- Collapse skill installation to exactly one canonical write to `~/.agents/skills`, across the install orchestration layers as well as the per-target installers.
+- Give Loaf's skills `loaf-` prefixed identity under a complete contract: directory name, frontmatter `name`, agent `skills:` lists, cross-skill loads named in bodies, permission patterns, manifest keys, and Claude plugin names.
+- Harden ownership before any mass retirement is activated, so migration cannot delete what Loaf does not provably own.
+- Rider: stop reporting retirements that are already absent or paths Loaf does not own, and remove manifest entries whose window has expired.
 
 **Out** (deferred, not rejected)
 
-- `loaf skills` for third-party skill installation — the next Change in the arc, unblocked by neutrality because foreign content can then be installed without being rewritten.
-- The skills audit: taxonomy, whether Loaf's `orchestration` survives as a standalone skill or is absorbed, and description quality. That remains the sweep carrier gating 2.0.0.
-- Publishing Loaf skills to harnesses Loaf has no build target for.
+- `loaf skills` for third-party installation — the next Change in the arc, unblocked by neutrality because foreign content can then be installed without being rewritten.
+- The skills audit: taxonomy, whether Loaf's `orchestration` survives standalone or is absorbed, and description quality. That remains the sweep carrier gating 2.0.0.
+- Runtime deprecation state — self-pruning manifests or report-once acknowledgement. Manifest hygiene here is authored, not stateful.
 
 **Cut** (explicitly rejected)
 
-- A Loaf-private canonical store. `vercel-labs/skills` hard-codes `~/.agents/skills` as canonical and symlinks only harnesses that cannot read it, explicitly to prevent redundant copies and double-listing; a parallel private store would fragment a working convention for no gain.
-- Per-target skill flavors. If content must diverge per harness, the divergence is a content bug to fix, not a topology to support.
+- A Loaf-private canonical store. `vercel-labs/skills` hard-codes `~/.agents/skills` as canonical and gives no symlink to agents that read it directly, explicitly to prevent redundant copies and double-listing; ADR-018 already reached the same destination from primary documentation.
+- Per-target rendered bodies. If a body must differ per harness, that is a content problem to solve in the body, not a topology to support.
+- Writing Loaf skills to `~/.config/agents/skills`. Amp reads it at higher precedence than the canonical store, so anything placed there shadows canonical updates and recreates the stale-flavor problem this Change exists to remove.
 - Any further blind string replacement over authored prose, for any reason.
 
 ## Observable Workflow
 
-`loaf build` produces skill bodies that are byte-identical across every target; only frontmatter, which sidecars legitimately own, differs. `loaf install --to all` writes one copy of each skill to `~/.agents/skills/loaf-<name>` and creates `~/.config/agents/skills/loaf-<name>` as a symlink into it, and installing targets in any order leaves the same bytes on disk. Codex, Cursor, and OpenCode read the canonical directory natively, so nothing is copied for them. Claude Code is untouched and continues to ship through its plugin channel. `loaf upgrade` no longer reports retirements that are already absent, no longer warns about `~/.gemini`, and no longer refuses an entire target because one directory in a shared store belongs to another vendor.
+`loaf build` produces skill bodies that are byte-identical across every target; only frontmatter, which sidecars legitimately own, differs. `loaf install --to all` performs one canonical write per skill to `~/.agents/skills/loaf-<name>`, plans it once rather than once per target, and reports a shared conflict once rather than four times. Codex, Cursor, OpenCode, and Amp all read that directory natively, so nothing is copied anywhere else. Claude Code is untouched and continues to ship through its plugin channel. `loaf upgrade` no longer reports retirements that are already absent, no longer warns about `~/.gemini`, and no longer refuses every target because one directory in a shared store belongs to another vendor.
 
 ## Rabbit Holes and No-Gos
 
-Rewriting skill prose for neutrality is not an invitation to edit skills for quality, structure, or taxonomy — that is the skills audit, and pulling it in here would make the diff unreviewable. Building a general templating or conditional-content engine is likewise out; the literal-config exception should be the smallest mechanism that works, and if it starts attracting feature requests that is a signal to stop. The `vercel-labs/skills` registry supports 75+ agents; Loaf supports five, and this Change does not change that number. Ownership must never be resolved by force: a directory Loaf cannot prove it owns is left alone and un-managed, never overwritten and never deleted, and a hash mismatch means "someone else's now" at least as often as it means "the user edited it".
+Rewriting prose for neutrality is not an invitation to edit skills for quality, structure, or taxonomy — that is the skills audit, and pulling it in would make the diff unreviewable. Labeled harness sections are for facts that are genuinely product-specific; they are not a licence to reintroduce per-target content under a new name, and a section that merely restates behaviour the model can infer should be prose instead. Ownership must never be resolved by force: a directory Loaf cannot prove it owns is left alone and un-managed, never overwritten and never deleted, and a digest mismatch means "another vendor's now" at least as often as it means "the user edited it". The reference implementation validates the destination but is not a migration design — Loaf is a vendor publisher with upgrade and ownership obligations that `vercel-labs/skills` does not carry.
 
 ## Decisions
 
-Provenance: source reading of `vercel-labs/skills` (`src/installer.ts`, `src/agents.ts`), primary harness documentation for Codex, Cursor, OpenCode, and Amp, a sandbox-HOME install experiment, and operator interview across two sessions.
+Provenance: ADR-018 and the deprecation manifest that implements it; primary documentation for Codex, Cursor, OpenCode, and Amp; source reading of `vercel-labs/skills` (`src/installer.ts`, `src/agents.ts`); a sandbox-HOME install experiment; operator interview; and a constructive shape review that refuted one premise and reshaped three units.
 
-1. **The canonical store is `~/.agents/skills`, not a Loaf-private directory.** `getCanonicalSkillsDir()` hard-codes it, and agents whose `skillsDir` equals `.agents/skills` are treated as "universal" and deliberately given no symlink, because doing so "prevents redundant symlinks and double-listing of skills". Codex, Cursor, and OpenCode are all universal by that definition. Adopting the same store means Loaf participates in the convention instead of shadowing it; it forecloses per-target flavors, since a canonical store holds exactly one copy.
-2. **Skill bodies are harness-neutral by authoring, not by build-time substitution.** Describe the behavior and let the model select its own tool. This forecloses naming specific tools in prose and requires the content rewrite to land with the build change rather than after it.
-3. **Literal config blocks are the sole exception and are authored explicitly per target.** Where a fenced block is configuration the user or harness consumes verbatim, the exact string matters and neutral prose cannot substitute for it. This inverts today's behavior, which rewrites literal config and leaves prose to chance.
-4. **Loaf's canonical skills are prefixed `loaf-*`.** Sharing a canonical store with other vendors makes name discipline the only available defense — the ecosystem offers no namespacing, scoping, or collision mechanism at all. Prefixing dissolves the Orca `orchestration` conflict rather than contesting it, and is no longer deferrable to the skills audit now that the shared store is the chosen destination. Typed commands are unaffected: OpenCode's `/shape` comes from a separately generated `command/shape.md`, and Claude Code's from the plugin.
-5. **Amp is bridged by symlink into the canonical store.** Amp reads `~/.config/agents/skills` and not `~/.agents/skills`, which makes it non-universal in exactly the sense the reference implementation defines, and a symlink is the mechanism that implementation uses for that case.
-6. **Claude Code is unchanged.** It ships through `plugins/loaf/` and gets plugin-scoped naming for free; adding it to the canonical store would double-list every skill.
+1. **The canonical store is `~/.agents/skills`.** ADR-018 already decided this from primary documentation, and `vercel-labs/skills` independently hard-codes the same path, classifying agents that read it as "universal" and giving them no symlink because doing so "prevents redundant symlinks and double-listing of skills". All four non-Claude targets are universal by that definition. This forecloses per-target flavors: a canonical store holds exactly one copy.
+2. **Skill bodies are harness-neutral by authoring, not by build-time substitution.** Describe the behaviour and let the model select its own tool. This forecloses naming a harness-specific tool as though it were the only one, and requires the content rewrite to land with the build change rather than after it.
+3. **Genuinely harness-specific facts live in explicitly labeled sections inside one body.** There is no target identity at read time — every harness opens the same file — so a per-target rendering of the same position is incoherent under a canonical store. A labeled section is legible to every reader and correct for the one it names. This is what makes the byte-identical invariant hold without an exception clause, and it reframes intentional cross-harness documentation as correct content rather than leaked vocabulary.
+4. **The `loaf-` prefix is an identity contract, not a directory rename.** OpenCode requires frontmatter `name` to match the containing directory, so a renamed directory with an unrenamed `name` is invalid. Bare names also resolve outside installation, in agent `skills:` lists and in bodies that instruct an agent to load another skill. Every one of those surfaces moves together or the rename is broken. Sharing a canonical store with other vendors makes name discipline the only available defense, since the ecosystem offers no namespacing or scoping mechanism.
+5. **Amp needs no bridge.** Amp's manual lists `~/.config/agents/skills` first and `~/.agents/skills` second in precedence, so it reads the canonical store directly; ADR-018's relocation was deliberate and correct and is preserved, not reversed. Writing to the higher-precedence path would shadow every later canonical update.
+6. **Claude Code stays on its plugin channel.** It gets plugin-scoped naming for free, and adding it to the canonical store would double-list every skill. Its plugin skill names are still part of the identity contract in Decision 4, because bodies that name other skills are shared across both channels.
+7. **Ownership hardening precedes any mass retirement.** Retired-skill cleanup currently treats the presence of `SKILL.md` as proof of Loaf ownership and calls `os.RemoveAll` under `--yes` without consulting the digest manifest. Activating 35 retirement entries against that code could delete another vendor's directory, so the naming and migration work lands as one atomic unit.
 
 ## Planning Contract
 
 ### Approach
 
-Neutrality lands before topology within the Change, because a single canonical copy is only correct once the bodies are genuinely identical — shipping the store first would install one arbitrary flavor for everyone. The build change and the content rewrite are separate units but must land together to keep the tree green: the build unit adds a test asserting cross-target body identity, and that test fails until the content unit completes.
+The work forms three landing groups rather than seven independent commits. The first fixes what a canonical artifact *is*: remove substitution, settle the labeled-section convention, rewrite the content, and prove bodies are invariant. The second changes install topology, naming, and migration together, because each is unsafe without the others — a canonical write needs final names, and retirement needs ownership hardening. The third is an independent reporting rider.
 
 ### Placement
 
-Substitution lives in `internal/cli/build_codex.go` (`substituteNativeBuildHarnessLanguage`, `nativeBuildHarnessLanguages`) despite serving every target; the neutrality unit should move whatever survives to a clearly-named home rather than leave a cross-target concern in a per-target file. Install destinations resolve through `installSkillsDestination` in `internal/cli/install_target.go`. Deprecation reporting is `internal/cli/install_deprecations.go`, with data in `config/deprecations.json`.
+Substitution lives in `internal/cli/build_codex.go` (`substituteNativeBuildHarnessLanguage`, `nativeBuildHarnessLanguages`) despite serving every target; whatever survives should move to a home named for the cross-target concern. Skill destinations resolve through `installSkillsDestination` in `internal/cli/install_target.go`, but a single canonical write also requires the orchestration layers in `internal/cli/install.go` and `internal/cli/install_plan.go`, which currently iterate targets and independently plan and sync the shared store — without those, dry-run keeps reporting one shared collision four times even after content becomes identical. Deprecation reporting is `internal/cli/install_deprecations.go`, with data in `config/deprecations.json`.
 
 ### Risks
 
-The load-bearing unknown is whether OpenCode, Cursor, and Amp follow symlinks when scanning skill directories. Codex documents that it does — "Codex supports symlinked skill folders and follows the symlink target when scanning these locations" — but only Amp actually needs a symlink under this design, so the exposure is narrower than it first appears: if Amp does not traverse symlinks, that one target falls back to a copy, which is the same fallback the reference implementation offers for platforms without symlink support. Windows needs that fallback regardless, since symlink creation there requires privilege; the reference implementation uses junctions.
+The destructive-migration path is the sharpest risk. `install_deprecations.go` treats any directory containing `SKILL.md` as Loaf-owned and removes it wholesale under `--yes`, and the same helper backs the general ownership check. Until that consults the digest manifest, any retirement entry is a potential deletion of someone else's work. This is why naming and migration land atomically and why the regression test must exercise the real destructive path rather than an ordinary install conflict.
 
-A second risk is double-listing. Cursor reads both `~/.agents/skills` and `~/.cursor/skills`, and OpenCode reads `~/.agents/skills`, `~/.config/opencode/skills`, and `~/.claude/skills`. Stale Loaf copies left behind in any of those paths would surface alongside the canonical ones under a different name, so migration must retire them rather than merely stop managing them.
+Double-listing is the second risk. Cursor reads both `~/.agents/skills` and `~/.cursor/skills`; OpenCode reads `~/.agents/skills`, `~/.config/opencode/skills`, and `~/.claude/skills`; Amp reads `~/.config/agents/skills` ahead of the canonical store. Stale Loaf copies in any of those paths would surface alongside canonical ones under a different name, and on Amp would take precedence over them. Migration must retire them, not merely stop managing them.
 
 ### Sequencing
 
-The content rewrite is the long pole and is independent of the install work once the build contract is fixed, so it can proceed in parallel with topology. Prefixing must land after the canonical destination is settled but before migration, because migration retires the unprefixed names the prefix change orphans. The deprecation-noise rider is independent of everything else and can land at any point.
+Group one lands together: the identity test added with the build change fails until the content rewrite completes, so neither is a standalone commit. Group two lands together for the safety reason above. The rider is independent and can land at any point. Within group one the content rewrite is the long pole and can proceed in parallel with group two's install work, provided group two does not land first.
 
 ## Implementation Units
 
-- **TASK-001 — Harness-neutral build contract.** Remove blind prose substitution, decide the fate of each of the five tokens, relocate what survives out of the Codex-specific file, and add the cross-target body-identity test that the content rewrite must satisfy.
-- **TASK-002 — Literal config block mechanism.** The narrow per-target path for fenced content consumed verbatim, replacing the substitution that currently corrupts it.
-- **TASK-003 — Harness-neutral content rewrite.** Rewrite the affected prose across the skill corpus so bodies are identical for every target, without editing skills for quality or structure.
-- **TASK-004 — Canonical single-flavor install.** One copy to `~/.agents/skills`, no per-target skill fan-out, Amp bridged by symlink with a copy fallback, and a regression test that installing every target in sequence leaves one set of bytes.
-- **TASK-005 — Prefix and retirement of unprefixed names.** Rename in the canonical store and add `retired_skills` entries for the old names.
-- **TASK-006 — Migration and symlink-aware ownership.** Retire Loaf's own stale copies across every path a harness scans, leave vendor-replaced and foreign directories untouched and un-managed, and resolve or explicitly defer the open dangling-symlink recovery intent.
-- **TASK-007 — Deprecation report noise.** Silence already-absent retirements, stop warning about unowned retired paths on every run, age out expired entries, and remove the `gemini` entry.
+- **TASK-001 — Harness-neutral build contract.** Remove blind prose substitution, decide the fate of each token, relocate what survives out of the Codex-specific file, and add the invariance tests the rewrite must satisfy.
+- **TASK-002 — Labeled harness-section convention.** The authoring convention that lets one body carry genuinely product-specific facts, replacing the substitution that currently corrupts them.
+- **TASK-003 — Harness-neutral content rewrite.** Rewrite the affected prose so bodies are identical for every target, converting real per-harness facts into labeled sections, without editing skills for quality or structure.
+- **TASK-004 — Single canonical write.** One planned and executed write to `~/.agents/skills` across the orchestration layers as well as the per-target installers, with order-invariance and single-conflict-report tests.
+- **TASK-005 — Prefix identity contract.** Directory, frontmatter `name`, agent `skills:` lists, cross-skill loads, permission patterns, manifest keys, and plugin names moved together.
+- **TASK-006 — Ownership hardening and migration.** Make retirement digest-aware before activating it, retire Loaf's stale copies across every path a harness scans, leave foreign and vendor-replaced directories untouched, and land atomically with TASK-005.
+- **TASK-007 — Deprecation report noise.** Stop reporting already-absent retirements and unowned paths, and remove expired entries from the authored manifest. Reporting and authored data only; no runtime state.
 
 ## Verification Contract
 
 <!-- Executable (machine-checkable): each V-entry declares Command and Expect for loaf change verify. -->
 
-- **V1.** Skill bodies are byte-identical across every built target; only frontmatter differs. Command: `go test ./internal/cli/ -run TestSkillBodiesAreTargetInvariant`. Expect: exit 0.
-- **V2.** No blind prose substitution remains in the build path. Command: `go test ./internal/cli/ -run TestNoHarnessProseSubstitution`. Expect: exit 0.
-- **V3.** Literal config blocks render their exact per-target strings, with no duplicated or prose-substituted tool names. Command: `go test ./internal/cli/ -run TestLiteralConfigBlocksRenderVerbatim`. Expect: exit 0.
-- **V4.** Every target resolves skills to the canonical store, and Amp additionally receives a link or copy at its own path. Command: `go test ./internal/cli/ -run TestCanonicalSkillsDestination`. Expect: exit 0.
-- **V5.** Installing all targets in sequence leaves one flavor on disk regardless of order. Command: `go test ./internal/cli/ -run TestSequentialInstallLeavesOneFlavor`. Expect: exit 0.
-- **V6.** Migration leaves foreign and vendor-replaced directories untouched while retiring Loaf's own stale copies. Command: `go test ./internal/cli/ -run TestMigrationPreservesUnownedSkills`. Expect: exit 0.
-- **V7.** The deprecation report omits already-absent retirements and does not warn about unowned paths. Command: `go test ./internal/cli/ -run TestDeprecationReportOmitsAbsent`. Expect: exit 0.
-- **V8.** The full build and test suite are green. Command: `npm run build && npm run test`. Expect: exit 0.
+- **V1.** The built skill tree is byte-identical across every target, frontmatter included, except for fields a target sidecar legitimately owns. Command: `go test ./internal/cli/ -run TestSkillTreeIsTargetInvariant`. Expect: exit 0.
+- **V2.** No blind prose substitution remains anywhere in the build path. Command: `go test ./internal/cli/ -run TestNoHarnessProseSubstitution`. Expect: exit 0.
+- **V3.** Every labeled harness section is present and carries its exact strings, with no duplicated or prose-substituted tool names. Command: `go test ./internal/cli/ -run TestLabeledHarnessSectionsRenderVerbatim`. Expect: exit 0.
+- **V4.** Frontmatter `name` matches the containing directory for every built skill, and every agent `skills:` reference and cross-skill load resolves to a real skill. Command: `go test ./internal/cli/ -run TestSkillIdentityContract`. Expect: exit 0.
+- **V5.** Install plans and executes exactly one canonical write per skill and reports a shared conflict once, regardless of target order. Command: `go test ./internal/cli/ -run TestSingleCanonicalWrite`. Expect: exit 0.
+- **V6.** Destructive migration under `--yes` preserves a foreign `orchestration`, a manifest entry whose digest no longer matches, and a dangling symlink, while retiring Loaf's provable copies from every prior skill home. Command: `go test ./internal/cli/ -run TestDestructiveMigrationPreservesUnowned`. Expect: exit 0.
+- **V7.** Bare typed commands still exist and invoke the intended prefixed skill behaviour. Command: `go test ./internal/cli/ -run TestBareCommandsResolveToPrefixedSkills`. Expect: exit 0.
+- **V8.** The deprecation report omits already-absent retirements and unowned paths, still reports a retirement with something genuinely present, and carries no expired manifest entries. Command: `go test ./internal/cli/ -run TestDeprecationReport`. Expect: exit 0.
+- **V9.** The full build and test suite are green. Command: `npm run build && npm run test`. Expect: exit 0.
 
 <!-- Human review (H-tier): review material, never gate input. -->
 
-- **H1.** A reviewer confirms the rewritten prose reads naturally on a non-Claude harness and leaks no Claude-specific vocabulary, and that neutrality did not quietly become an editorial pass.
-- **H2.** An installed smoke on Amp surfaces Loaf skills, proving the invisibility bug is actually fixed rather than inferred from paths.
-- **H3.** A reviewer confirms no directory Loaf could not prove it owned was overwritten or deleted during migration.
+- **H1.** A reviewer confirms the rewritten prose reads naturally on every harness and carries no *accidental* target assumption, while intentional labeled cross-harness material is preserved rather than stripped — and that neutrality did not become an editorial pass.
+- **H2.** An installed discovery smoke shows a prefixed Loaf skill actually listed and loadable in Codex, Cursor, OpenCode, and Amp. Path existence is not discovery.
+- **H3.** A before-and-after tree-hash receipt for the migration is recorded as machine evidence, and a reviewer reads it. A reviewer's unaided confirmation is not strong enough for a destructive contract.
 
 ## Definition of Done
 
-- V1 through V8 pass, and the H-tier observations are recorded with evidence rather than assertion.
-- An installed smoke exists for Amp skill visibility, and for symlink traversal on any target that depends on it.
-- The dogfooding machine completes `loaf upgrade` with no conflicts, no absent-retirement lines, and no `~/.gemini` warning.
+- V1 through V9 pass, and the H-tier observations are recorded with evidence rather than assertion.
+- The migration receipt exists and shows nothing unowned was modified.
+- Discovery smokes exist for all four canonical-store harnesses, not only one.
+- The dogfooding machine completes `loaf upgrade` with no conflicts, no absent-retirement lines, no `~/.gemini` warning, and no duplicate skill listings in any harness.
 - `loaf change check` reports zero violations.
 
 ## Durable Outputs
 
-An ADR recording that the canonical store is `~/.agents/skills` and why a Loaf-private store was rejected, since that decision will look arbitrary later without the reference-implementation evidence behind it. A knowledge-base entry capturing the per-harness skill search paths and which harnesses are universal, because that table was expensive to assemble and is the input to every future target decision. An authoring rule in the project guidelines stating that skill prose describes behavior and never names a harness-specific tool, with the literal-config exception spelled out.
+An amendment to ADR-018 rather than a competing ADR: its destination decision stands and is reinforced, but it needs the universal-agent rationale, the Amp precedence ordering that makes `~/.config/agents/skills` unsafe to write, and the single-canonical-write consequence. A knowledge-base entry capturing the per-harness skill search paths in precedence order, because that table was expensive to assemble, was misread once already, and is the input to every future target decision. An authoring rule in the project guidelines stating that skill prose describes behaviour and never names a harness-specific tool as though it were the only one, with the labeled-section convention spelled out as the sanctioned way to carry product-specific facts.
 
 ## Open Questions
 
-<!-- Fog register: tag entries [KU]/[UK]/[UU] with a route. -->
+<!-- Fog register: tag entries [KU]/[UK]; a route is named for each. -->
 
-- [KU] Do OpenCode, Cursor, and Amp follow symlinks when scanning skill directories? Codex documents that it does. → Installed smoke in TASK-004; only Amp's answer is load-bearing, and a copy fallback covers a negative.
-- [KU] Is Amp's skill invisibility real, or is there an undocumented path it also scans? → Installed smoke in TASK-004 before this is stated as fact anywhere user-visible.
-- [KU] Does `{{AGENTS_FILE}}` survive as the one legitimate token? ADR-020 makes root `AGENTS.md` canonical with `.claude/CLAUDE.md` symlinked to it, which may already collapse the distinction inside Loaf-managed projects but not outside them. → Decide in TASK-001.
-- [UU] Do harnesses that scan several paths deduplicate a skill discovered through more than one of them, or list it twice? Cursor and OpenCode each scan three or more locations. → Blindspot pass over harness discovery behavior during TASK-006, since the answer sets how aggressive migration must be.
-- [KU] Should the unprefixed-name retirement use the standard one-release window, given that it retires 35 entries at once rather than the usual one or two? → Decide in TASK-005.
+- [KU] Do Cursor and OpenCode deduplicate a skill discovered through more than one of their search paths, or list it twice? This sets how aggressive migration must be. → Installed discovery smoke in TASK-006.
+- [KU] What is the right labeled-section shape — a subsection per harness, a table, or a single "if your harness is X" paragraph? The choice affects readability for the four-fifths of readers a section does not apply to. → Decide in TASK-002 against the real counterexamples in `permissions.md`, `background-agents.md`, and `orchestration/references/`.
+- [KU] Does `{{AGENTS_FILE}}` survive as the one legitimate token, or become a labeled section? ADR-020 makes root `AGENTS.md` canonical with `.claude/CLAUDE.md` symlinked, which may collapse the distinction inside Loaf-managed projects but not outside them. → Decide in TASK-001.
+- [KU] Should the unprefixed-name retirement use the standard one-release window, given that it retires 35 entries at once rather than the usual one or two? → Decide in TASK-005, after ownership hardening makes the retirement safe at all.
+- [KU] Do Claude Code plugin skill names need the prefix for cross-skill loads to resolve identically on both channels, or can bodies stop naming sibling skills entirely? → Decide in TASK-005; the second option is simpler and may be better regardless.
