@@ -69,7 +69,7 @@ func nativeBuildSkillSidecarPath(root string, skill string, targetName string) s
 
 func nativeBuildSkillSidecarAuthorizedValues(root string, skill string, targetName string) (map[string]string, error) {
 	path := nativeBuildSkillSidecarPath(root, skill, targetName)
-	body, err := readRegularFile(path, projectFileReadLimit)
+	body, err := readRegularFileNoFollow(path, projectFileReadLimit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]string{}, nil

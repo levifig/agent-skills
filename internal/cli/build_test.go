@@ -966,12 +966,14 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 				{
 					heading: "### DevOps Agent (Claude Code)",
 					tokens: map[string]int{
-						"Bash(docker *)":         0,
-						"Bash(docker ps *)":      1,
-						"Bash(docker images *)":  1,
-						"Bash(docker inspect *)": 1,
-						"Bash(kubectl get *)":    1,
-						"Bash(terraform plan *)": 1,
+						"Bash(docker *)":                  0,
+						"Bash(docker ps *)":               1,
+						"Bash(docker images *)":           1,
+						"Bash(docker inspect *)":          1,
+						"Bash(kubectl get *)":             1,
+						"Bash(terraform validate *)":      1,
+						"Bash(terraform plan *)":          0,
+						"Bash(docker compose config *)":   0,
 					},
 				},
 			},
@@ -1108,7 +1110,9 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 							"exec_command":                     1,
 							"exec_command  #":                  0,
 							"Linear MCP tools (if configured)": 1,
-							"argument-scoped execution":        1,
+							"prefix_rule":                      2,
+							"~/.codex/rules/":                   1,
+							"argument-scoped execution":        0,
 						} {
 							if got := strings.Count(codexBody, token); got != want {
 								t.Errorf("%s skills/%s Codex orchestrator: %q appears %d times, want %d", target, file.rel, token, got, want)
@@ -1233,6 +1237,22 @@ func TestNativeBuildSkillSidecarAuthorizedValuesRefusesNonRegularFile(t *testing
 	}
 }
 
+func TestNativeBuildSkillSidecarAuthorizedValuesRefusesSymlink(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	dir := filepath.Join(root, "content", "skills", "demo")
+	mkdirAll(t, dir)
+	outside := filepath.Join(t.TempDir(), "escape.yaml")
+	writeFile(t, outside, "allowed-tools: Bash(rm -rf *)\n")
+	sidecar := filepath.Join(dir, "SKILL.claude-code.yaml")
+	if err := os.Symlink(outside, sidecar); err != nil {
+		t.Fatalf("Symlink(sidecar) = %v", err)
+	}
+	_, err := nativeBuildSkillSidecarAuthorizedValues(root, "demo", "claude-code")
+	if err == nil || !errors.Is(err, errNotRegularFile) {
+		t.Fatalf("error = %v, want errNotRegularFile for symlinked sidecar", err)
+	}
+}
+
 func TestNativeBuildUnresolvedPlaceholdersRejectExtraCodexToken(t *testing.T) {
 	root := realpath(t, t.TempDir())
 	path := filepath.Join(root, "dist", "codex", ".codex", "hooks.json")
@@ -1256,6 +1276,32 @@ func TestNativeBuildUnresolvedPlaceholdersAllowsInstallTimeCodexTokens(t *testin
 
 	if err := validateNativeBuildUnresolvedPlaceholders(root, "codex"); err != nil {
 		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want allow install-time tokens", err)
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersRejectsTextBinArtifactToken(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "plugins", "loaf", "bin", "loaf")
+	mkdirAll(t, filepath.Dir(path))
+	writeFile(t, path, "#!/usr/bin/env node\nconsole.log('{{STRAY_BIN_TOKEN}}');\n")
+
+	err := validateNativeBuildUnresolvedPlaceholders(root, "claude-code")
+	if err == nil || !strings.Contains(err.Error(), "{{STRAY_BIN_TOKEN}}") {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want text bin/ token rejection", err)
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersSkipsOpaqueBinBinary(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "plugins", "loaf", "bin", "native", "darwin-arm64", "loaf")
+	mkdirAll(t, filepath.Dir(path))
+	// NUL marks an opaque payload; the {{ span must not false-positive.
+	if err := os.WriteFile(path, []byte("native\x00payload{{FAKE_TOKEN}}tail"), 0o755); err != nil {
+		t.Fatalf("WriteFile(native bin) = %v", err)
+	}
+
+	if err := validateNativeBuildUnresolvedPlaceholders(root, "claude-code"); err != nil {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want opaque bin/ skipped", err)
 	}
 }
 

@@ -338,7 +338,7 @@ func foldNativeBuildYAMLBlockValue(lines []string) string {
 }
 
 func mergeNativeBuildTargetSidecar(fields []nativeBuildYAMLField, sidecarPath string, targetName string) ([]nativeBuildYAMLField, error) {
-	body, err := readRegularFile(sidecarPath, projectFileReadLimit)
+	body, err := readRegularFileNoFollow(sidecarPath, projectFileReadLimit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fields, nil

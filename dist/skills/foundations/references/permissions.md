@@ -100,7 +100,7 @@ Bash(date *), Bash(git status)
 
 ### Codex
 
-Codex does not expose an argument-scoped execution allowlist analogous to Claude Code's `Bash(git status)` form. Its controls are sandbox mode, approval policy, and execpolicy prefix rules — none of which let a paste-ready fence pre-approve only read/search commands while withholding writes. Do not put `exec_command` in a coordination fence: that token is unrestricted execution.
+This coordination fence has no Claude-style `Bash(git status)` tool-token entry — Codex does not paste tool tokens into an allowlist fence the way Claude Code does. Do not put `exec_command` in a coordination fence: that token is unrestricted execution.
 
 ```
 # Coordination only - no implementation
@@ -108,7 +108,7 @@ update_plan
 Linear MCP tools (if configured)
 ```
 
-Grant read/search and status commands (rg, cat, ls, date, git status) through Codex's own approval or sandbox flow for the session — not by pre-approving an unrestricted execution token in this fence.
+Grant scoped read/search and status commands (rg, cat, ls, date, git status) through Codex execpolicy `prefix_rule` entries in `~/.codex/rules/` (Starlark `prefix_rule(pattern=[...], decision="allow"|"prompt"|"forbidden")`), or through the session's approval/sandbox flow — not by pre-approving an unrestricted execution token in this fence.
 
 Other harnesses: keep the same coordination scope (read/search, journal-friendly status commands, Linear MCP when configured) and include that product's native task or checklist surface only when it exists as a real allowlist entry — never invent a Claude tool name on a non-Claude product.
 
@@ -151,9 +151,10 @@ Bash(psql --help), Bash(pg_dump --help)
 # Claude Code — infrastructure management
 Read, Write, Edit, Glob, Grep
 Bash(docker ps *), Bash(docker images *), Bash(docker inspect *)
-Bash(docker logs *), Bash(docker compose ps *), Bash(docker compose config *)
-Bash(kubectl get *), Bash(terraform plan *), Bash(terraform validate *)
+Bash(docker logs *), Bash(docker compose ps *)
+Bash(kubectl get *), Bash(terraform validate *)
 # Apply / mutate operations (docker run/exec/rm, kubectl apply, terraform apply) require explicit approval
+# Not auto-allowed: docker compose config (accepts -o/--output write) and terraform plan (accepts -out write). Claude Code's Bash(cmd *) form cannot exclude a flag, so those stay approval-gated.
 ```
 
 ## Sandbox Configuration
