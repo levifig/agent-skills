@@ -4,10 +4,9 @@ description: >-
   says "I have an idea" or "note this down." Also activate when a specific
   actionable concept crystallizes during conversation. Ideas and sparks are
   capture primitives routed through triage, which chooses dispositions such as
-  tracking an Intent or handing to /pitch. Not for problem discovery (use
-  pitch), processing the intake queue (use triage), shaping (use shape), or
-  agent-side divergent inquiry when direction is undecided (use explore as a
-  technique).
+  tracking an Intent or handing to pitch. Not for problem discovery (use pitch),
+  processing the intake queue (use triage), shaping (use shape), or agent-side
+  divergent inquiry when direction is undecided (use explore as a technique).
 subtask: false
 version: 2.0.0-alpha.19
 ---
@@ -36,7 +35,7 @@ Capture ideas quickly with minimal friction.
 - 2-3 questions maximum -- don't turn capture into an interview
 - Infer metadata automatically -- don't ask for tags, title, or links
 - One idea per captured row/artifact -- keep them atomic
-- No shaping or pitching here -- problem discovery is `/pitch`; bounding is `/shape`
+- No shaping or pitching here -- problem discovery is pitch; bounding is shape
 - Capture through `loaf idea capture --title ...` when SQLite state is
   initialized; log notable context with `loaf journal log`
 
@@ -58,7 +57,7 @@ Capture ideas quickly with minimal friction.
 
 ## Purpose
 
-Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal is **speed of capture**, not thoroughness. An idea is retained material, nothing more: tracking it as an Intent, handing it to `/pitch` for problem discovery, handing it to `/shape` when already well-understood, or archiving it are triage dispositions chosen later by the user.
+Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal is **speed of capture**, not thoroughness. An idea is retained material, nothing more: tracking it as an Intent, handing it to pitch for problem discovery, handing it to shape when already well-understood, or archiving it are triage dispositions chosen later by the user.
 
 ---
 
@@ -66,7 +65,7 @@ Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal
 
 1. **Parse input.** If `$ARGUMENTS` contains the idea, capture directly. If empty, ask at most 2-3 questions: core idea, problem/opportunity, immediate constraints.
 2. **Capture.** Run `loaf idea capture --title "..."` with the inferred title; log notable context with `loaf journal log`.
-3. **Announce.** Report the captured alias and point at `/triage` for disposition.
+3. **Announce.** Report the captured alias and point at triage for disposition.
 
 ---
 
@@ -82,7 +81,7 @@ Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal
 
 ## Related Skills
 
-- **triage** — process the intake queue and choose dispositions (including hand to `/pitch` or `/shape`)
+- **triage** — process the intake queue and choose dispositions (including hand to pitch or shape)
 - **pitch** — problem-discovery ceremony when a captured idea needs a brief before shaping
 - **shape** — develop a well-understood direction into a bounded Change
 - **explore** — agent technique when direction is genuinely undecided (not a user front door)

@@ -30,7 +30,7 @@ Process the intake queue. Triage is the public funnel where captured material me
 - The CLI never classifies: you and the user interpret each item; commands perform the chosen operation deterministically.
 - Capture, Intent, and Exploration are different claims: a spark or idea is retained material, a tracked Intent is deliberately tracked work, a deferral is an Intent disposition with an immutable payload, an Exploration is an inquiry. Do not conflate them to save a step.
 - One pass through the queue — don't loop or re-present items.
-- **Two doors into a Change:** items needing problem discovery hand to `/pitch`, which owns `loaf change init <slug> --brief` and brief authoring; well-understood directions hand to `/shape`. When capture should precede shaping without a full pitch, run `loaf change init <slug> --brief` and seed `brief.md` with the original ask, then hand to `/shape`.
+- **Two doors into a Change:** items needing problem discovery hand to pitch, which owns `loaf change init <slug> --brief` and brief authoring; well-understood directions hand to shape. When capture should precede shaping without a full pitch, run `loaf change init <slug> --brief` and seed `brief.md` with the original ask, then hand to shape.
 
 ## Verification
 
@@ -44,9 +44,9 @@ Process the intake queue. Triage is the public funnel where captured material me
 | Item kind | Comes from | Typical dispositions |
 |-----------|-----------|----------------------|
 | spark | `loaf spark capture` moments | discard, promote to idea, track as Intent |
-| idea | `/idea` capture | archive, explore, track as Intent, hand to `/pitch`, hand to `/shape` |
-| brainstorm | archived divergent sessions | archive, explore, promote, hand to `/pitch` |
-| intent (tracked) | `loaf intent create` | keep tracking, defer, resolve, explore, hand to `/pitch`, hand to `/shape` |
+| idea | idea capture | archive, explore, track as Intent, hand to pitch, hand to shape |
+| brainstorm | archived divergent sessions | archive, explore, promote, hand to pitch |
+| intent (tracked) | `loaf intent create` | keep tracking, defer, resolve, explore, hand to pitch, hand to shape |
 | intent (deferred) | `loaf intent defer` or adapter | resume, resolve, leave deferred |
 | legacy_deferral | pre-conversion `journal defer` | read, then optionally convert (see Legacy Deferrals) |
 
@@ -65,9 +65,9 @@ Process the intake queue. Triage is the public funnel where captured material me
 - **Defer** — an existing Intent: `loaf intent defer <ref> --why <w> --boundary <b> --trigger <t> --operation-id <key>`; a new deferred direction needs the full skeleton: `loaf intent create --title <t> --body <b> --disposition deferred --why <w> --boundary <bd> --trigger <tr> --operation-id <key> [--from <source-ref>]`.
 - **Resume** — `loaf intent resume <ref> --reason <why now>`; appends a tracked disposition linked to the deferral it supersedes.
 - **Resolve** — `loaf intent resolve <ref> --reason <outcome>`; history is never rewritten.
-- **Explore** — agent technique for genuinely undecided directions (Explorations and checkpoints); not a user slash entry — prefer `/pitch` when the human needs problem discovery first, then reach for explore from inside that work if still undecided.
-- **Pitch** — items needing problem discovery hand to `/pitch`, which owns init and brief authoring; resolve the promoted item against the created change (`loaf spark resolve` / `loaf idea resolve` / archive brainstorm with the change as the reason).
-- **Shape** — when a direction is already well-understood and ready for bounded delivery, hand it to `/shape`; triage never creates fully-materialized Changes, branches, or worktrees (capture-only brief seeding is the Critical Rules exception above).
+- **Explore** — agent technique for genuinely undecided directions (Explorations and checkpoints); not a user slash entry — prefer pitch when the human needs problem discovery first, then reach for explore from inside that work if still undecided.
+- **Pitch** — items needing problem discovery hand to pitch, which owns init and brief authoring; resolve the promoted item against the created change (`loaf spark resolve` / `loaf idea resolve` / archive brainstorm with the change as the reason).
+- **Shape** — when a direction is already well-understood and ready for bounded delivery, hand it to shape; triage never creates fully-materialized Changes, branches, or worktrees (capture-only brief seeding is the Critical Rules exception above).
 
 ## Legacy Deferrals
 

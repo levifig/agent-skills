@@ -44,16 +44,16 @@ Use `--branch` to select `branch-recency` scope and bind state cursors. It does 
 
 ## Context Commands
 
-| Command | Purpose |
-|---------|---------|
-| `/clear` | Start fresh conversation, reset context |
-| `/compact` | Summarize and compress current context |
-| `/cost` | Show token usage and cost estimates |
+| Action | Purpose |
+|--------|---------|
+| Clear conversation | Start fresh, reset context (use your harness's clear/new-chat surface) |
+| Compact / summarize | Compress current context (use your harness's compact surface if it has one) |
+| Cost / usage | Show token usage and cost estimates when the harness exposes them |
 | `loaf journal context` | Read active continuity truth and obtain exact layer expansions |
 
 ## When to Clear Context
 
-Use `/clear` when starting a completely new task, after the previous task is complete, when debugging noise crowds out the current objective, or when switching between unrelated codebases. Avoid clearing mid-task until enough state is logged for recovery.
+Clear the conversation when starting a completely new task, after the previous task is complete, when debugging noise crowds out the current objective, or when switching between unrelated codebases. Avoid clearing mid-task until enough state is logged for recovery.
 
 ## Compaction Lifecycle
 

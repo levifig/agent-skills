@@ -55,7 +55,7 @@ Create a concise transfer packet for a fresh agent or future conversation.
 | Template | [templates/handoff.md](templates/handoff.md) |
 | Active statuses | `draft`, `final` |
 | Disposable status | `deprecated` |
-| Cleanup owner | `/housekeeping` |
+| Cleanup owner | housekeeping |
 
 ## Process
 
@@ -111,7 +111,7 @@ Handoffs are first-class but disposable:
 
 1. `draft` — incomplete or awaiting review
 2. `final` — active transfer packet
-3. `deprecated` — confirmed obsolete; `/housekeeping` may delete after confirmation
+3. `deprecated` — confirmed obsolete; housekeeping may delete after confirmation
 
 Set `deprecated_at` and `deprecated_by` only when moving to `deprecated`.
 

@@ -40,7 +40,7 @@ Third-party services (Stripe, Twilio, etc.) you don't control. The deepened modu
 
 > **Loaf mapping.** Loaf currently has very few category-3 / category-4
 > dependencies in its own codebase (the harness is mostly category 1 and 2 —
-> filesystem and in-process logic). When `/refactor-deepen` runs against
+> filesystem and in-process logic). When refactor-deepen runs against
 > Loaf itself, expect most candidates to land in categories 1 or 2; categories
 > 3 and 4 apply when the skill is invoked against user codebases that own
 > remote services or integrate third-party APIs.

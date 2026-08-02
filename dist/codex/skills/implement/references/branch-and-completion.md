@@ -129,7 +129,7 @@ For complex tasks, explore before implementing:
 ### Exploration Pattern
 
 ```
-1. Use Task(Explore) or Task(Plan) to investigate codebase
+1. Spawn an explore or plan agent to investigate the codebase
 2. Map existing patterns and conventions
 3. Identify integration points
 4. Log findings with `loaf journal log` and reference durable artifacts

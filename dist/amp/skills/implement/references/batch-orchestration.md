@@ -60,16 +60,10 @@ When blocked, always print:
 - Failed task ID and title
 - Dependency-ready round and current progress
 - Failure reason + key error output
-- Recovery commands:
+- Recovery options:
 
-```bash
-{{IMPLEMENT_CMD}} --continue
-{{IMPLEMENT_CMD}} --skip TASK-XXX
-{{IMPLEMENT_CMD}} --abort
-```
+Re-invoke the implement workflow with:
 
-Use these semantics:
-
-- `--continue`: after fixes are applied, retry from the blocked task
-- `--skip`: skip only the specified task and continue remaining tasks in the current dependency-ready round
-- `--abort`: finalize the orchestration as aborted with no further execution
+- `--continue` — after fixes are applied, retry from the blocked task
+- `--skip TASK-XXX` — skip only the specified task and continue remaining tasks in the current dependency-ready round
+- `--abort` — finalize the orchestration as aborted with no further execution

@@ -21,12 +21,12 @@
 | Action | Tool |
 |--------|------|
 | Log journal entries | `loaf journal log` |
-| Create/edit council files | Write |
-| Track tasks | TodoWrite/TodoRead |
+| Create/edit council files | file write |
+| Track tasks | your harness's task/todo tracking surface |
 | Manage external issues | Linear, GitHub |
-| Read files for context | Read, Grep, Glob |
-| Ask clarifying questions | AskUserQuestion (OpenCode: `question`) |
-| Assign subagent work | TodoWrite (subagents read via TodoRead) |
+| Read files for context | file read / search |
+| Ask clarifying questions | your harness's structured question tool if it has one |
+| Assign subagent work | your harness's task/todo tracking surface (subagents read the same surface) |
 
 ### Orchestrator MUST Delegate
 
@@ -100,26 +100,15 @@ What type of work is needed?
 
 ## Spawn Patterns
 
-**OpenCode requirement:** Interview the user with the `question` tool before drafting a plan or research strategy.
+Before drafting a plan or research strategy, interview the user — one question at a time, with a recommendation, using your harness's structured question tool if it has one. Paste-ready spawn APIs differ by product; see [background-agents.md](background-agents.md) for labeled harness sections when you need exact call sites.
 
 ### Sequential (Dependencies)
 
-Use when output of one agent is input to another:
+Use when output of one agent is input to another. Spawn one agent, wait for completion, then spawn the next:
 
-```python
-# Step 1: Schema first
-Task(subagent_type="implementer", prompt="Create users table... Follow database-design skill.")
-
-# Wait for completion
-
-# Step 2: Implementation uses schema
-Task(subagent_type="implementer", prompt="Implement user service... Follow python-development skill.")
-
-# Wait for completion
-
-# Step 3: Tests use implementation
-Task(subagent_type="implementer", prompt="Write user tests... Follow foundations + python-development skills.")
-```
+1. Schema first — implementer with database-design: "Create users table..."
+2. Implementation uses schema — implementer with language skill: "Implement user service..."
+3. Tests use implementation — implementer with foundations + language skill: "Write user tests..."
 
 **Common sequences:**
 - Schema -> Code -> Tests
@@ -128,13 +117,10 @@ Task(subagent_type="implementer", prompt="Write user tests... Follow foundations
 
 ### Parallel (Independent)
 
-Use when work is truly independent:
+Use when work is truly independent. Spawn multiple agents in the same turn when your harness supports it:
 
-```python
-# Both can run simultaneously
-Task(subagent_type="implementer", prompt="Implement API... Follow python-development skill.")
-Task(subagent_type="implementer", prompt="Build UI... Follow typescript-development + interface-design skills.")
-```
+- implementer with language skill: "Implement API..."
+- implementer with typescript-development + interface-design: "Build UI..."
 
 **Requirements for parallel:**
 - No dependencies between tasks
@@ -153,14 +139,8 @@ Task(subagent_type="implementer", prompt="Build UI... Follow typescript-developm
 
 When delegating, explicitly name the skills that should guide the agent's work. This creates deterministic contracts instead of leaving skill selection to the model's discretion.
 
-```python
-# Explicit: agent knows which patterns to follow
-prompt="... Follow python-development skill for FastAPI conventions.
-        Follow database-design skill for schema decisions."
-
-# Implicit: agent may or may not pick the right skill
-prompt="... Build the API endpoint."
-```
+- **Explicit:** "... Follow python-development skill for FastAPI conventions. Follow database-design skill for schema decisions."
+- **Implicit (weaker):** "... Build the API endpoint."
 
 **When to include skill hints:**
 - The task spans multiple skill domains (e.g., backend code + database schema)
@@ -171,31 +151,28 @@ prompt="... Build the API endpoint."
 - Single-domain tasks where the agent only has one relevant skill
 - The task description already clearly implies the domain
 
-### Example Task() Call
+### Example Spawn Prompt
 
-```python
-Task(
-    subagent_type="implementer",
-    prompt="""
-    Implement POST /api/v1/users endpoint.
+Spawn an implementer with a prompt that covers requirements, skills, files, and provenance:
 
-    Requirements:
-    - Validate email format
-    - Hash password with bcrypt
-    - Return 201 with user object
-    - Handle duplicate email (409)
+```
+Implement POST /api/v1/users endpoint.
 
-    Follow python-development skill for FastAPI conventions.
-    Follow foundations skill for commit and security patterns.
+Requirements:
+- Validate email format
+- Hash password with bcrypt
+- Return 201 with user object
+- Handle duplicate email (409)
 
-    Files:
-    - src/api/users.py
-    - src/models/user.py
+Follow python-development skill for FastAPI conventions.
+Follow foundations skill for commit and security patterns.
 
-    Task: TASK-042
-    Linear: BACK-123
-    """
-)
+Files:
+- src/api/users.py
+- src/models/user.py
+
+Task: TASK-042
+Linear: BACK-123
 ```
 
 ## Anti-Patterns

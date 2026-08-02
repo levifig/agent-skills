@@ -13,7 +13,7 @@
   - Do not run tests/linters/builds unless explicitly requested.
   - Subagents must **never** post comments; only the main agent posts comments.
   - Use `gh` for GitHub interactions and `git` for local diff/context.
-  - Do not use AskUserQuestion or equivalent user-interrupt flow.
+  - Do not interrupt the user with structured questions or equivalent user-interrupt flow.
 
   ---
 

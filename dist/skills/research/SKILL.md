@@ -54,7 +54,7 @@ Patterns for zooming out, investigating topics, and evolving project direction.
 |---------------|------|
 | Empty / "project state" / "catch me up" | State Assessment |
 | Topic or question | Topic Investigation |
-| "let's brainstorm" / "ideas for X" | Redirect — user entry intent belongs to `/pitch` (generative stance is an agent technique via explore/brainstorm, not this skill's front door) |
+| "let's brainstorm" / "ideas for X" | Redirect — user entry intent belongs to pitch (generative stance is an agent technique via explore/brainstorm, not this skill's front door) |
 | "should we change direction?" / "update VISION" | Vision Evolution |
 
 ## Topics
@@ -72,7 +72,7 @@ Parse `$ARGUMENTS` to determine mode:
 |---------------|------|
 | Empty / "project state" / "catch me up" | State Assessment |
 | Topic or question | Topic Investigation |
-| "let's brainstorm" / "ideas for X" | Redirect to `/pitch` for human entry; do not open research's brainstorming mode as a slash substitute |
+| "let's brainstorm" / "ideas for X" | Redirect to pitch for human entry; do not open research's brainstorming mode as a pitch substitute |
 | "should we change direction?" / "update VISION" | Vision Evolution |
 
 ## Confidence Hierarchy
@@ -102,7 +102,7 @@ Always check project context first. Rate findings: **High** (official/verified),
 
 **Trigger:** Specific topic or question
 
-1. **Interview** with AskUserQuestion: what are you trying to understand? What context do you have? What decision will this inform?
+1. **Interview** (one question at a time, with a recommendation, using your harness's structured question tool if it has one): what are you trying to understand? What context do you have? What decision will this inform?
 2. Check project context first (ADRs, ARCHITECTURE, the project journal)
 3. Apply confidence hierarchy for external sources
 4. For a transient review artifact, use `loaf report generate` when an existing
@@ -121,7 +121,7 @@ frontmatter to represent operational status.
 
 **Trigger:** "Let's brainstorm" / "Ideas for X" / raw concept entry
 
-User-facing entry for a new concept is `/pitch` (problem-discovery brief). Do not treat research as the brainstorm front door. When generative expansion is needed mid-research or mid-pitch, the agent may use the explore/brainstorm *techniques* — they are not slash substitutes for pitch.
+User-facing entry for a new concept is pitch (problem-discovery brief). Do not treat research as the brainstorm front door. When generative expansion is needed mid-research or mid-pitch, the agent may use the explore/brainstorm *techniques* — they are not substitutes for the pitch front door.
 
 ### Vision Evolution
 

@@ -7,7 +7,7 @@ Which command a task needs. For exact flags, run `loaf <command> --help`.
 | Intent | Route |
 |--------|-------|
 | Shape new bounded work | `loaf change init <slug>`, then `loaf change check` |
-| Start implementing new bounded work | the implement workflow ({{IMPLEMENT_CMD}}) after shaping and validating its Change |
+| Start implementing new bounded work | the implement workflow after shaping and validating its Change |
 | Continue an existing task or spec record | `loaf task` and `loaf spec` remain supported for existing records |
 | Continue after a restart | `loaf journal context` |
 | Skills or content changed | `loaf build && loaf install --to <target>` |
