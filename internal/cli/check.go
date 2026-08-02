@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -299,9 +300,17 @@ func runNativeRenderDrift(context checkHookContext, cwd string) checkResult {
 			path := filepath.Join(target.dir, entry.Name())
 			content, err := readRegularFile(path, projectFileReadLimit)
 			if err != nil {
-				// Enumerated discovered paths: a refusal must not crash the
-				// listing. Skip the entry with a reported notice and continue.
-				result.Warnings = append(result.Warnings, fmt.Sprintf("Skip durable render %s: %v", renderDriftRelativePath(root, path), err))
+				// Only the typed special-file refusal (FIFO/device) is a skip:
+				// the entry is not a document. Every other read failure means
+				// the check could not inspect a regular file and must fail
+				// closed rather than pass a path it never saw.
+				if errors.Is(err, errNotRegularFile) {
+					result.Warnings = append(result.Warnings, fmt.Sprintf("Skip durable render %s: %v", renderDriftRelativePath(root, path), err))
+					continue
+				}
+				result.Passed = false
+				result.Blocked = true
+				result.Errors = append(result.Errors, fmt.Sprintf("Read durable render %s: %v", renderDriftRelativePath(root, path), err))
 				continue
 			}
 			if !hasFinalDurableRenderStamp(string(content)) {
@@ -384,9 +393,16 @@ func runNativeEphemeralProvenance(context checkHookContext, cwd string) checkRes
 		path := filepath.Join(specsDir, entry.Name())
 		content, err := readRegularFile(path, projectFileReadLimit)
 		if err != nil {
-			// Enumerated discovered paths: skip the entry with a notice rather
-			// than blocking the whole listing on one unreadable path.
-			result.Warnings = append(result.Warnings, fmt.Sprintf("Skip active spec %s: %v", renderDriftRelativePath(root, path), err))
+			// Only the typed special-file refusal (FIFO/device) is a skip.
+			// Permission, size, and I/O failures fail closed: an enforcement
+			// hook must never pass a file it could not inspect.
+			if errors.Is(err, errNotRegularFile) {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("Skip active spec %s: %v", renderDriftRelativePath(root, path), err))
+				continue
+			}
+			result.Passed = false
+			result.Blocked = true
+			result.Errors = append(result.Errors, fmt.Sprintf("Read active spec %s: %v", renderDriftRelativePath(root, path), err))
 			continue
 		}
 		for lineNumber, line := range strings.Split(string(content), "\n") {

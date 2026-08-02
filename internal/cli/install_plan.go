@@ -260,13 +260,11 @@ func planTargetDistribution(options targetInstallOptions) ([]artifactPlanDecisio
 		}
 		decisions = append(decisions, adapters...)
 	} else {
-		decisions = append(decisions, artifactPlanDecision{
-			ID:          "hooks",
-			Kind:        "hook-legacy",
-			Destination: options.ConfigDir,
-			Action:      planActionUpdate,
-			Detail:      "legacy build output without a target adapter manifest; hooks/plugins refreshed on apply",
-		})
+		legacy, err := planLegacyHookArtifacts(options)
+		if err != nil {
+			return nil, err
+		}
+		decisions = append(decisions, legacy...)
 	}
 	if options.Target == "codex" {
 		codex, err := planCodexJournalRule(options)
@@ -679,6 +677,58 @@ func planCodexGuidanceFile(guidanceDest string, ownedGuidance bool, ownedGuidanc
 		decision.Action = planActionCreate
 	}
 	return decision, nil
+}
+
+// planLegacyHookArtifacts reports the no-manifest hook refresh. For cursor and
+// codex the apply path merges into hooks.json, so the plan must refuse the same
+// destinations that mergeHookFiles / mergeCodexHookFiles would rather than
+// promise an update apply will decline.
+func planLegacyHookArtifacts(options targetInstallOptions) ([]artifactPlanDecision, error) {
+	decision := artifactPlanDecision{
+		ID:          "hooks",
+		Kind:        "hook-legacy",
+		Destination: options.ConfigDir,
+		Action:      planActionUpdate,
+		Detail:      "legacy build output without a target adapter manifest; hooks/plugins refreshed on apply",
+	}
+	path, refusalTarget := legacyHookMergePath(options)
+	if path == "" {
+		return []artifactPlanDecision{decision}, nil
+	}
+	decision.Destination = path
+	body, err := readRegularFile(path, projectFileReadLimit)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []artifactPlanDecision{decision}, nil
+		}
+		decision.Action = planActionConflict
+		decision.Detail = fmt.Sprintf("%s could not be inspected (%v) — preserving it as written", path, err)
+		return []artifactPlanDecision{decision}, nil
+	}
+	if refuse, detail := planHookProjectionRefusal(refusalTarget, path, body); refuse {
+		decision.Action = planActionConflict
+		decision.Detail = detail
+		return []artifactPlanDecision{decision}, nil
+	}
+	return []artifactPlanDecision{decision}, nil
+}
+
+// legacyHookMergePath returns the hooks.json path the no-manifest apply path
+// merges into for cursor and codex, plus the planHookProjectionRefusal target
+// key. Other targets do not merge a legacy hooks.json here.
+func legacyHookMergePath(options targetInstallOptions) (path string, refusalTarget string) {
+	switch options.Target {
+	case "cursor":
+		return filepath.Join(options.ConfigDir, "hooks.json"), "cursor"
+	case "codex":
+		codexHome := options.CodexHome
+		if codexHome == "" {
+			codexHome = filepath.Join(installHomeDir(options), ".codex")
+		}
+		return filepath.Join(codexHome, "hooks.json"), "codex"
+	default:
+		return "", ""
+	}
 }
 
 // planHookProjectionRefusal reports whether a hook-projection destination is

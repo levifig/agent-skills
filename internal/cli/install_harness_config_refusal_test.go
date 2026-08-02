@@ -302,3 +302,53 @@ func TestMergeHookFilesPreservesUserHooksOnValidFile(t *testing.T) {
 		t.Fatalf("merged hooks missing Loaf content: %s", body)
 	}
 }
+
+// A no-manifest Cursor distribution must not promise a hooks.json update that
+// apply will refuse: dry-run carries the conflict, apply fails, file stays put.
+func TestPlanLegacyHookNoManifestRefusesTruncatedHooksJSON(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	// Source hooks so the apply path reaches mergeHookFiles rather than no-op.
+	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "hooks.json"), `{"version":1,"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"true","loaf-managed":true}]}]}}`+"\n")
+	// No .loaf-target-manifest.json — the legacy/no-manifest branch.
+	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
+	malformed := `{"hooks":`
+	hooksPath := filepath.Join(home, ".cursor", "hooks.json")
+	writeInstallFile(t, hooksPath, malformed)
+
+	plan := parseInstallPlanJSON(t, runInstallCapture(t, root, "upgrade", "--to", "cursor", "--dry-run", "--json"))
+	cursor := findTargetPlan(t, plan, "cursor")
+	if !cursor.Blocked {
+		t.Fatalf("cursor plan Blocked = false, want true for a malformed legacy hooks.json")
+	}
+	var hooksDecision artifactPlanDecision
+	found := false
+	for _, artifact := range cursor.Artifacts {
+		if artifact.ID == "hooks" && artifact.Kind == "hook-legacy" {
+			hooksDecision = artifact
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("artifacts = %#v, want a hook-legacy decision", cursor.Artifacts)
+	}
+	if hooksDecision.Action != planActionConflict {
+		t.Fatalf("hook-legacy action = %q, want conflict (not update)", hooksDecision.Action)
+	}
+	if !strings.Contains(hooksDecision.Detail, "preserving it as written") {
+		t.Fatalf("hook-legacy detail = %q, want the refusal that apply will raise", hooksDecision.Detail)
+	}
+	if !strings.Contains(hooksDecision.Destination, "hooks.json") {
+		t.Fatalf("hook-legacy destination = %q, want the hooks.json path", hooksDecision.Destination)
+	}
+
+	// Apply must refuse and leave the truncated file byte-for-byte.
+	output := runUpgradeExpectingExitError(t, root, "upgrade", "--to", "cursor", "--yes")
+	if !strings.Contains(output, "hooks.json") && !strings.Contains(output, "Cursor") {
+		t.Fatalf("upgrade output = %q, want the failed hooks merge named", output)
+	}
+	if got := string(readFileBytes(t, hooksPath)); got != malformed {
+		t.Fatalf("hooks.json = %q after refused apply, want it preserved as %q", got, malformed)
+	}
+}
