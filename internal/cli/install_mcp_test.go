@@ -1,9 +1,48 @@
 package cli
 
 import (
+	"bytes"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// TestInstallPreservesAnUnparseableProjectConfig is the install-side half of
+// the same protection upgrade has: the deploy consent that `loaf setup` grants
+// authorizes writing Loaf's files, not overwriting a project config Loaf cannot
+// read.
+func TestInstallPreservesAnUnparseableProjectConfig(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		body string
+	}{
+		{name: "truncated object", body: "{\"integrations\":"},
+		{name: "json array", body: "[]\n"},
+		{name: "not json at all", body: "notes\n"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			root, home := setupInstallCommandFixture(t)
+			writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+			mkdirAll(t, filepath.Join(home, ".cursor"))
+			configPath := filepath.Join(root, ".agents", "loaf.json")
+			writeInstallFile(t, configPath, testCase.body)
+
+			var stdout bytes.Buffer
+			options := installOptions{target: "cursor", projectDeployGranted: true}
+			runner := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}
+			if err := runner.runInstallWithOptions(options, &stdout, root); err != nil {
+				t.Fatalf("install error = %v\n%s", err, stdout.String())
+			}
+
+			if got := string(readFileBytes(t, configPath)); got != testCase.body {
+				t.Fatalf("loaf.json = %q, want it preserved byte-for-byte as %q", got, testCase.body)
+			}
+			if !strings.Contains(stdout.String(), "does not parse as a JSON object") {
+				t.Fatalf("install output = %q, want the parse failure reported", stdout.String())
+			}
+		})
+	}
+}
 
 func TestInstallMcpDetectionFindsProjectConfiguredTargets(t *testing.T) {
 	root := realpath(t, t.TempDir())

@@ -350,6 +350,9 @@ func resolveCanonicalChangeFile(gitRoot, base, baseReal, candidate string) (cano
 	if info.IsDir() {
 		return canonicalChangePath{}, changeOriginFailure(ChangeOriginCodeOutsideCanonicalDirectory, candidate, resolved, "Change path is a directory", nil)
 	}
+	if !info.Mode().IsRegular() {
+		return canonicalChangePath{}, changeOriginFailure(ChangeOriginCodeEvidenceUnavailable, candidate, resolved, "Change path is not a regular file", errNotRegularFile)
+	}
 
 	rel, err := filepath.Rel(baseReal, resolved)
 	if err != nil || !pathWithin(baseReal, resolved) {
@@ -380,10 +383,17 @@ func canonicalChangeLexicalShape(path string) bool {
 }
 
 func readValidatedChange(gitRoot, ref, changeFile, relPath string, ops changeOriginOps) ([]byte, error) {
-	opened, err := os.Open(changeFile)
+	ops = normalizeChangeOriginOps(ops)
+	// Open through the descriptor-hardened non-blocking path so a FIFO or
+	// device at change.md cannot hang the reader, then bound the read to the
+	// project-file ceiling used everywhere else for change-scale documents.
+	opened, err := openRegularFile(changeFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, changeOriginFailure(ChangeOriginCodeNotFound, ref, relPath, "open working Change", err)
+		}
+		if isProjectFileRefusal(err) {
+			return nil, changeOriginFailure(ChangeOriginCodeEvidenceUnavailable, ref, relPath, "open working Change", err)
 		}
 		return nil, changeOriginFailure(ChangeOriginCodeEvidenceUnavailable, ref, relPath, "open working Change", err)
 	}
@@ -392,9 +402,6 @@ func readValidatedChange(gitRoot, ref, changeFile, relPath string, ops changeOri
 	openedInfo, err := opened.Stat()
 	if err != nil {
 		return nil, changeOriginFailure(ChangeOriginCodeEvidenceUnavailable, ref, relPath, "stat opened Change", err)
-	}
-	if openedInfo.IsDir() {
-		return nil, changeOriginFailure(ChangeOriginCodeOutsideCanonicalDirectory, ref, relPath, "opened Change path is a directory", nil)
 	}
 	ops.afterOpenBeforeRevalidate()
 
@@ -425,9 +432,12 @@ func readValidatedChange(gitRoot, ref, changeFile, relPath string, ops changeOri
 		return nil, changeOriginFailure(ChangeOriginCodeEvidenceUnavailable, ref, relPath, "opened Change inode changed during revalidation", nil)
 	}
 
-	content, err := io.ReadAll(opened)
+	content, err := io.ReadAll(io.LimitReader(opened, projectFileReadLimit+1))
 	if err != nil {
 		return nil, changeOriginFailure(ChangeOriginCodeEvidenceUnavailable, ref, relPath, "read opened Change", err)
+	}
+	if int64(len(content)) > projectFileReadLimit {
+		return nil, changeOriginFailure(ChangeOriginCodeEvidenceUnavailable, ref, relPath, "read opened Change", errFileTooLarge)
 	}
 	readInfo, err := opened.Stat()
 	if err != nil {

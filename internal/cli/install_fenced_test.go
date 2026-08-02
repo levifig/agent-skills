@@ -354,7 +354,10 @@ func TestParseFencedStartHeaderAcceptsThreeForms(t *testing.T) {
 
 func TestInstallFencedSectionsForTargetsDedupesSharedCanonicalPath(t *testing.T) {
 	root := realpath(t, t.TempDir())
-	results := installFencedSectionsForTargets([]string{"cursor", "codex", "opencode"}, root, "2.0.0-test.1", false)
+	results, err := installFencedSectionsForTargets([]string{"cursor", "codex", "opencode"}, root, "2.0.0-test.1", false)
+	if err != nil {
+		t.Fatalf("installFencedSectionsForTargets() error = %v", err)
+	}
 
 	if results["cursor"].Action != "created" {
 		t.Fatalf("cursor result = %#v, want created", results["cursor"])
@@ -380,7 +383,10 @@ func TestInstallFencedSectionsForTargetsDedupesSymlinkedClaudeFile(t *testing.T)
 		t.Fatalf("Symlink(CLAUDE.md) error = %v", err)
 	}
 
-	results := installFencedSectionsForTargets([]string{"claude-code", "cursor"}, root, "2.0.0-test.1", false)
+	results, err := installFencedSectionsForTargets([]string{"claude-code", "cursor"}, root, "2.0.0-test.1", false)
+	if err != nil {
+		t.Fatalf("installFencedSectionsForTargets() error = %v", err)
+	}
 	if results["claude-code"].Action != "appended" {
 		t.Fatalf("claude-code result = %#v, want appended through symlink", results["claude-code"])
 	}
@@ -464,9 +470,41 @@ func TestInstallFencedSectionRejectsInvalidStartHeaderFields(t *testing.T) {
 	}
 }
 
+// TestInstallFencedSectionsForTargetsStopsAtTheFirstFailure pins the abort. A
+// refused fenced write says this project's managed files are not currently
+// Loaf's to write, which is a fact about the project rather than about the one
+// harness whose turn it was; carrying on let a refusal on .claude/CLAUDE.md be
+// followed by creating AGENTS.md from scratch for the next target in the list.
+func TestInstallFencedSectionsForTargetsStopsAtTheFirstFailure(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	claudeFile := filepath.Join(root, ".claude", "CLAUDE.md")
+	mkdirAll(t, filepath.Dir(claudeFile))
+	tampered := tamperedFencedAgentsBody()
+	writeInstallFile(t, claudeFile, tampered)
+
+	results, err := installFencedSectionsForTargets([]string{"claude-code", "cursor"}, root, "2.0.0-test.1", true)
+
+	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite") {
+		t.Fatalf("installFencedSectionsForTargets() error = %v, want the refusal returned", err)
+	}
+	if results["claude-code"].Action != "error" {
+		t.Fatalf("claude-code result = %#v, want error", results["claude-code"])
+	}
+	if _, attempted := results["cursor"]; attempted {
+		t.Fatalf("cursor result = %#v, want the batch stopped before it", results["cursor"])
+	}
+	assertInstallPathMissing(t, filepath.Join(root, "AGENTS.md"))
+	if got := string(readFileBytes(t, claudeFile)); got != tampered {
+		t.Fatalf("CLAUDE.md = %q, want it untouched after the refusal", got)
+	}
+}
+
 func TestInstallFencedSectionsForTargetsReportsUnknownTarget(t *testing.T) {
 	root := realpath(t, t.TempDir())
-	results := installFencedSectionsForTargets([]string{"cursor", "wat"}, root, "2.0.0-test.1", false)
+	results, err := installFencedSectionsForTargets([]string{"cursor", "wat"}, root, "2.0.0-test.1", false)
+	if err == nil || !strings.Contains(err.Error(), "Unknown target") {
+		t.Fatalf("installFencedSectionsForTargets() error = %v, want the unknown target reported", err)
+	}
 	if results["cursor"].Action != "created" {
 		t.Fatalf("cursor result = %#v, want created", results["cursor"])
 	}

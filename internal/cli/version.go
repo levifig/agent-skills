@@ -126,11 +126,16 @@ func packageVersion(root string) string {
 	return pkg.Version
 }
 
+// readPackageJSON reads a package.json that may belong to anyone: the Loaf
+// distribution, the project being verified, or an ancestor directory the root
+// search walked through on its way up. The last of those is why it reads
+// through the descriptor-hardened open — the search visits directories chosen
+// by where the operator happened to be standing.
 func readPackageJSON(root string, target any) error {
 	if root == "" {
 		return fmt.Errorf("missing root")
 	}
-	body, err := os.ReadFile(filepath.Join(root, "package.json"))
+	body, err := readRegularFile(filepath.Join(root, "package.json"), projectFileReadLimit)
 	if err != nil {
 		return err
 	}

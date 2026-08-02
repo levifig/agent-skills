@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/levifig/loaf/internal/project"
 	"github.com/levifig/loaf/internal/state"
@@ -83,7 +82,7 @@ func (r Runner) runCodexSessionStartContext(out io.Writer, runtime state.Runtime
 		if result.context == nil {
 			return errors.New("Codex SessionStart context result is missing its neutral context")
 		}
-		additionalContext := renderCodexSessionStartContext(*result.context)
+		additionalContext := r.renderSessionStartDigest(*result.context, harnessDriftCodex)
 		if additionalContext == "" {
 			return errors.New("Codex SessionStart context renderer produced an empty digest")
 		}
@@ -151,10 +150,4 @@ func validateCodexSessionStartInput(input journalHookInput) (string, error) {
 		}
 	}
 	return source, nil
-}
-
-func renderCodexSessionStartContext(result journalContextCLIResult) string {
-	var out strings.Builder
-	writeJournalContextHuman(&out, result)
-	return strings.TrimSpace(out.String())
 }

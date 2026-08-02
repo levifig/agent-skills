@@ -175,6 +175,11 @@ hooks:
     # recent branch entries + open tasks). --from-hook preserves the subagent
     # silent-exit guard: no start marker is ever written. The session entity is
     # dead; the digest is a deterministic read-time query, never persisted.
+    # The command below is the neutral declaration: each target's builder
+    # retargets it to that harness's dispatch variant (--claude-code,
+    # --cursor-hook, --codex-hook, --opencode-hook), which is what makes the
+    # digest native to the harness and names the config dir whose
+    # .loaf-version marker the drift nudge reads.
     - id: session-start-loaf
       skill: orchestration
       type: command

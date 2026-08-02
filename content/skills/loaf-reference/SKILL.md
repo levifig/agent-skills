@@ -53,7 +53,8 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | Command | Purpose | Subcommands |
 |---------|---------|-------------|
 | `loaf build` | Build skill distributions for agent harnesses | — |
-| `loaf install` | Install Loaf to detected AI tool configurations | — |
+| `loaf install` | Onboard Loaf into a folder or a not-yet-installed AI tool configuration | — |
+| `loaf upgrade` | Refresh Loaf in place: harness content sync plus deprecation cleanup anywhere, and project-surface refresh only inside a detected Loaf repo | — |
 | `loaf config` | Validate and refresh project Loaf config | check |
 | `loaf init` | Initialize a project with Loaf structure | — |
 | `loaf release` | Create a new release with changelog, version bump, and tag | — |

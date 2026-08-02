@@ -213,7 +213,7 @@ Updates happen automatically via plugin marketplace. Commands are scoped under `
 npx github:levifig/loaf install
 ```
 
-Detects installed tools, lets you select targets, and installs pre-built distributions. Re-run with `--upgrade` to update. Codex's optional outside-sandbox policy is explicit: `loaf install --to codex --codex-basic-commands` installs only centrally classified basic command leaves with absolute executable prefixes; unclassified and operator commands remain gated. Other harness adapters are not implied by this policy.
+Detects installed tools, lets you select targets, and installs pre-built distributions. To bring an existing installation current afterwards, run `loaf upgrade` — it syncs every installed harness from anywhere, and refreshes project files only inside a Loaf repo. Codex's optional outside-sandbox policy is explicit: `loaf install --to codex --codex-basic-commands` installs only centrally classified basic command leaves with absolute executable prefixes; unclassified and operator commands remain gated. Other harness adapters are not implied by this policy.
 
 ### Upgrading Existing Projects
 

@@ -1,0 +1,99 @@
+<!-- source: install-upgrade-split · kind review · slug codex-closure · stamped 2026-08-01 20:41 · authored report (snapshot semantics) · never auto-updated · dispositions recorded -->
+<meta charset="utf-8">
+<title>Review round 6 (Codex closure) — Install/Upgrade Split</title>
+<style>
+  :root {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  } }
+  :root[data-theme="light"] {
+    --bg: #FBFAF6; --panel: #FFFFFF; --line: #E4E0D6; --ink: #23262A; --muted: #6B7076;
+    --accent: #9A6A00; --accent-fill: #E9B94E; --accent-soft: #F6EBD2;
+    --machine: #44618C; --machine-soft: #E5ECF5;
+    --ok: #3E7C4F; --ok-soft: #E2F0E5; --bad: #A94438; --bad-soft: #F6E3E0;
+    --state: #7A5EA6; --state-soft: #EEE8F6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171B; --panel: #1D2025; --line: #33373D; --ink: #E7E4DD; --muted: #9BA0A6;
+    --accent: #E2AC4B; --accent-fill: #B98322; --accent-soft: #2E2714;
+    --machine: #8FB0DA; --machine-soft: #232B38;
+    --ok: #7CC08D; --ok-soft: #1E2E22; --bad: #E08A7E; --bad-soft: #382220;
+    --state: #B9A3DE; --state-soft: #2A2436;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; margin: 0; }
+  main { max-width: 1040px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.95rem; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.3rem; margin: 44px 0 12px; }
+  p { margin: 0 0 10px; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .stamp { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .stamp b { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--machine-soft); color: var(--machine); padding: 1px 4px; border-radius: 3px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .verdict { border-left: 4px solid var(--accent); margin-bottom: 28px; }
+  .finding { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .fname { font-weight: 700; font-size: 1.02rem; flex: 1 1 320px; }
+  .chip { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .sev-p2 { background: var(--bad-soft); color: var(--bad); }
+  .disp-accepted { background: var(--ok-soft); color: var(--ok); }
+  .chip-fixed { background: var(--ok-soft); color: var(--ok); }
+  .frow { display: grid; grid-template-columns: 110px 1fr; gap: 4px 14px; font-size: .93rem; }
+  .frow dt { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; padding-top: 2px; }
+  .frow dd { margin: 0 0 6px; }
+  @media (max-width: 640px) { .frow { grid-template-columns: 1fr; } }
+  ul.compact { margin: 0 0 10px; padding-left: 20px; }
+  ul.compact li { margin-bottom: 4px; font-size: .93rem; }
+  footer { margin-top: 56px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+<main>
+  <div class="eyebrow">install-upgrade-split · review round 6 · class closure</div>
+  <h1>Codex round 6 and the terminal closure of the unowned-read class</h1>
+  <p class="stamp">reviewer <b>Codex gpt-5.6-luna · xhigh</b> · resumed thread <b>019fbd93-3f7d-7df3-8d06-e79412bd7dce</b> · verified fix commit <b>23733c82</b> · dispositioned <b>2026-08-01</b> · fixes landed in <b>709b819f</b></p>
+
+  <div class="panel verdict">
+    <p><strong>Reviewer verdict: REQUEST CHANGES — 0 P1, 2 P2.</strong> Both round-5 findings confirmed <span class="chip chip-fixed">fixed</span>, with the zero-exit-for-preserved-config behavior explicitly endorsed as deliberate design and the unix/portable build split given a clean bill. The two P2s widened the same hardening theme one more ring. Rather than patch the named sites, the fix commit closed the class terminally: every read of a file Loaf <em>discovers</em> now routes through the shared guarded reader, and a 75-site audit in the commit message classifies every remaining plain read as Loaf-authored input.</p>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">N2 · Symlink/migration pass read project files plain</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>Four reads in <code>install_symlink.go</code> ran before the hardened fenced readers: a FIFO at <code>.agents/AGENTS.md</code> or <code>.claude/CLAUDE.md</code> blocked apply indefinitely, while dry-run reported a migration apply could not perform.</dd>
+      <dt>Fix</dt><dd><code>709b819f</code>: all four reads route through <code>readRegularFile</code>; a typed refusal aborts that migration/link step with the fence-failure semantics (report, project part failed, non-zero exit, no half-writes), and the plan mirrors the refusal. A <code>Refused</code> marker distinguishes statements-about-the-project from operational errors.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <div class="fhead"><span class="fname">N3 · MCP and Codex user-config reads plain and unbounded</span><span class="chip sev-p2">P2</span><span class="chip disp-accepted">accepted</span></div>
+    <dl class="frow">
+      <dt>Claim</dt><dd>Six reader sites (<code>install_mcp.go</code>, <code>install_codex_rules.go</code>, <code>install_target.go</code>) opened harness-owned config plainly: a FIFO at <code>.cursor/mcp.json</code> blocked even <code>upgrade --dry-run --json</code>, and oversized configs were read without bound.</dd>
+      <dt>Fix</dt><dd><code>709b819f</code>: routed with per-site semantics — detection-style reads degrade to "no signal" with a notice; merge-style reads refuse that file, preserve it untouched, continue the run, and surface the refusal in the plan. FIFO and oversized tests on both apply and dry-run.</dd>
+    </dl>
+  </div>
+
+  <h2>Terminal closure, not another patch</h2>
+  <div class="panel">
+    <p>The commit's stated policy: reads of paths Loaf <em>discovers</em> (project trees, harness config homes, walked ancestors) are guarded; reads of paths Loaf <em>authors or is handed</em> stay plain for a stated reason. The routing swept beyond the named findings to the doctor migrations, Codex hooks/skills manifests, install records and version markers, <code>loaf init</code> stack detection, the package.json ancestor probe, the worktree gitdir pointer, release/check readers, and the knowledge/glossary readers; one dead function was deleted rather than hardened.</p>
+    <ul class="compact">
+      <li><strong>Audit:</strong> 75 remaining plain <code>os.ReadFile</code> sites classified in the commit message of <code>709b819f</code> — loaf-distribution, loaf-artifact, git-enumerated (an index cannot hold a FIFO), and operator-named (<code>/dev/stdin</code> is a feature).</li>
+      <li><strong>Checkable claim for any future round:</strong> no plain read of a discovered path remains in <code>internal/cli</code>.</li>
+    </ul>
+  </div>
+
+  <footer>Authored snapshot — review round 6: confirmation of the round-5 fixes plus the widened residuals, answered with class-level closure. Prior rounds: <a href="20260801-024619-review-codex.html">1 · shaping</a> · <a href="20260801-063956-review-sentinel.html">2 · Sentinel branch</a> · <a href="20260801-153342-review-codex.html">3 · Codex code</a> · <a href="20260801-180514-review-codex-gate.html">4 · merge gate</a> · <a href="20260801-185612-review-codex-confirm.html">5 · confirmation</a>. After fixes: loaf change check state complete / no violations / executable yes; all V-criteria green; verify receipt bound at <code>709b819f</code>, recorded in <code>3d76b630</code>; installed-smoke receipts re-recorded.</footer>
+</main>

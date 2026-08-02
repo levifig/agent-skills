@@ -73,7 +73,7 @@ func (r Runner) runCursorSessionStartContext(out io.Writer, runtime state.Runtim
 		if result.context == nil {
 			return errors.New("Cursor sessionStart context result is missing its neutral context")
 		}
-		additionalContext := renderCursorSessionStartContext(*result.context)
+		additionalContext := r.renderSessionStartDigest(*result.context, harnessDriftCursor)
 		if additionalContext == "" {
 			return errors.New("Cursor sessionStart context renderer produced an empty digest")
 		}
@@ -143,10 +143,4 @@ func cursorSessionStartSuppressed(input journalHookInput) bool {
 		return true
 	}
 	return normalizeJournalHookEnvelope(input, "").suppressesContext()
-}
-
-func renderCursorSessionStartContext(result journalContextCLIResult) string {
-	var out strings.Builder
-	writeJournalContextHuman(&out, result)
-	return strings.TrimSpace(out.String())
 }

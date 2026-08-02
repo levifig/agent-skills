@@ -1,0 +1,197 @@
+{
+  "schema_version": 2,
+  "change": "install-upgrade-split",
+  "verified_commit": "fdb53b2345c91c4a481e6440e8b36ece579f1dd2",
+  "verified_root_tree": "f1096204cc2627a758c8d67bc5dd8ea5152cd827",
+  "verified_at": "2026-08-02T02:23:56Z",
+  "criteria_digest": "35d47f93fd0ca2cdb36deb72230dcd057387523b76aa27d46daa1926fca1321c",
+  "scope_digest": "1a56240d4529b5326e61501a7dc4e7d7733e4fd5e4089119d437ae1846eb485f",
+  "scope_sections": {
+    ".agents": "0cdcb499203f22e1faebbef89e211e4b6d4b253bc5486866ed28a50e15c2dd9e",
+    ".claude": "8dc123c00b953695edd9ccc4bb966e986bcea05607d9a125e71038a4c2ebb6be",
+    ".github": "42529d8eb65b5025a2a641309b5c789e771402b63fb6093468b2f04ababfabc1",
+    ".gitignore": "bdca2d6bd9b911e4c840fa1471c55e380fccfe92f0c5b352e6536d5f346d7249",
+    ".serena": "749668b92acde130ae6a4514f59b9e08bf7095c8bdd47b6b2e5929b0729ba91f",
+    "AGENTS.md": "be286c826e244e45606f5036ce5c13a3cfcb4ccc852ad95e594fd69045325e2a",
+    "README.md": "32cecbbf375e1b689ac4702acc72a81f5ad89be495f87680524b1fcd76f5089b",
+    "cli": "4f77105d500684e00f8948bd7dc9326398c4ad9cd57dab4f3ed94dd0d1f61572",
+    "cmd": "40aabf3662a461cb93247f3c4eeacdadfdf1d1fef7ddc2cd79f10ace2827ad69",
+    "config": "63979d2d624025fd0e7c659144744f4c3c92fe0cbccc95364172cf0d13c27967",
+    "content": "a5f957e72238d12ad3be6e070f6811337cffc91f79caad2ceb0363f4b8bad757",
+    "docs": "32105e9c9bd1df667a7a6186abe312ee531c363dd7e22515596cdd1c21aa37da",
+    "go.mod": "b9247690761e43ce92335c553e1f916132580b2a1e7f434c7d99742e56fb8b21",
+    "go.sum": "44a5d68a99a05f3d9aff3321f4b5645d0870cc1afd36e183fbc08c07d8550d6b",
+    "internal": "c70ec2ca6568a79449a281f45573d5f0a64e491720759d0f1fcab349fe6fa7fd",
+    "package-lock.json": "b35b76623b23c34994a941b2e70c9f395b6e29d36af7bca90dfbfa29f9bc0943"
+  },
+  "exclusions": [
+    "docs/changes/*/receipts/**",
+    "docs/changes/*/reports/**",
+    "package.json",
+    ".claude-plugin/marketplace.json",
+    "CHANGELOG.md",
+    "dist/**",
+    "plugins/**",
+    "bin/**"
+  ],
+  "digest_spec": "v1",
+  "tool_version": "2.0.0-alpha.18",
+  "toolchain": {
+    "go": "1.26.3",
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "worktree_clean": true,
+  "results": [
+    {
+      "id": "V1",
+      "command": "go test ./...",
+      "exit_code": 1,
+      "output_digest": "34353dfeb196d32feed569695733270aa640484c6109b1280026e5ed3f633246",
+      "ok": false,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "id": "V2",
+      "command": "go run ./cmd/loaf upgrade --help",
+      "exit_code": 0,
+      "output_digest": "fe78df8eceaf08e7e5527a693625849d1c8ae88bad96e91b950253603c87e081",
+      "ok": true,
+      "expect": "exit 0 and contains `loaf upgrade`.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        },
+        {
+          "kind": "contains",
+          "value": "loaf upgrade",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V3",
+      "command": "go run ./cmd/loaf install --upgrade --dry-run",
+      "exit_code": 1,
+      "output_digest": "f6f9456e1bb6c604ec8fd9322c5af075e49f9958ea3cc6066cc973516bc72ab8",
+      "ok": true,
+      "expect": "exit 1 and contains `loaf upgrade`.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "1",
+          "ok": true
+        },
+        {
+          "kind": "contains",
+          "value": "loaf upgrade",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V4",
+      "command": "npm run typecheck",
+      "exit_code": 0,
+      "output_digest": "ef548c60433d9b017c7ded77cf176b124a4b763911b5b40191328877e5b2a7ad",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V5",
+      "command": "bash -c 'grep -rqI --exclude=\"*_test.go\" -- \"install --upgrade\" internal/cli/ content/ dist/ plugins/ README.md AGENTS.md'",
+      "exit_code": 1,
+      "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "ok": true,
+      "expect": "exit 1.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "1",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V6",
+      "command": "bash -c 'LOAF_DB=\"$(mktemp -d)/v6.sqlite\" ./bin/loaf upgrade --dry-run --json | grep -q -- \"install --upgrade\"'",
+      "exit_code": 1,
+      "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "ok": true,
+      "expect": "exit 1.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "1",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V9",
+      "command": "bash -c 'LOAF_DB=\"$(mktemp -d)/v9.sqlite\" ./bin/loaf upgrade --dry-run --json'",
+      "exit_code": 0,
+      "output_digest": "db0132117f4b98ae9a5870b37ae5fe5a619630ddc5870d9cc777b11d3ed805ea",
+      "ok": true,
+      "expect": "contains `\"command\": \"upgrade\"`.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        },
+        {
+          "kind": "contains",
+          "value": "\"command\": \"upgrade\"",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V7",
+      "command": "npm run build",
+      "exit_code": 0,
+      "output_digest": "da2eb7000c4a4f0ff022752995c004223fbb4091bfd5ff2b9dccf1b51cc6b5a0",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V8",
+      "command": "bash -c 'd=\"$(mktemp -d)\"; r=\"$PWD\"; (cd \"$d\" \u0026\u0026 LOAF_DB=\"$d/db.sqlite\" \"$r/bin/loaf\" install \u003c/dev/null \u003e/dev/null 2\u003e\u00261); test ! -e \"$d/AGENTS.md\" -a ! -e \"$d/.agents\" -a ! -e \"$d/.claude\"'",
+      "exit_code": 0,
+      "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    }
+  ]
+}

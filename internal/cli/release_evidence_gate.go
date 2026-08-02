@@ -135,7 +135,7 @@ func releaseCapabilityEvidenceAllowlist(root string) map[string]bool {
 		addJSON(data)
 	}
 	registryPath := filepath.Join(root, filepath.FromSlash(TargetCapabilityEvidenceRecordPath))
-	if data, err := os.ReadFile(registryPath); err == nil {
+	if data, err := readRegularFile(registryPath, projectFileReadLimit); err == nil {
 		addJSON(data)
 	}
 	return paths
@@ -377,7 +377,9 @@ func releaseWorktreeBlobMode(info os.FileInfo) string {
 // releaseVersionFileMatchesCandidate reports whether the worktree path is a
 // regular file whose git mode matches HEAD and whose bytes equal the candidate
 // rendering derived in memory from HEAD content + candidate. Symlinks and other
-// non-regular paths are never admitted (os.Lstat; ReadFile must not follow).
+// non-regular paths are never admitted: the Lstat settles the git mode, and the
+// body is read through the descriptor-hardened open so the type is decided on
+// the descriptor rather than on the name.
 func releaseVersionFileMatchesCandidate(root, relPath, candidate string) bool {
 	if candidate == "" {
 		return false
@@ -406,7 +408,7 @@ func releaseVersionFileMatchesCandidate(root, relPath, candidate string) bool {
 	if err != nil {
 		return false
 	}
-	actual, err := os.ReadFile(abs)
+	actual, err := readRegularFile(abs, projectFileReadLimit)
 	if err != nil {
 		return false
 	}

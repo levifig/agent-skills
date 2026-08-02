@@ -11,9 +11,9 @@ import (
 )
 
 // install_plan.go builds a deterministic, byte-for-byte non-mutating plan for
-// `loaf install --upgrade --dry-run`. Every function here reuses the same
-// read-only ownership, content-digest, deprecation-manifest, MCP, and
-// project-file primitives the apply path uses, but records intended
+// `loaf upgrade --dry-run`. Every function here reuses the same read-only
+// ownership, content-digest, deprecation-manifest, MCP, and project-file
+// primitives the apply path uses, but records intended
 // creates/updates/removals/preservations/conflicts without writing files,
 // manifests, config, or state. The apply path is left untouched; a plan/apply
 // parity test guards against drift.
@@ -36,10 +36,22 @@ type installDryRunPlan struct {
 	DryRun           bool                     `json:"dry_run"`
 	Targets          []targetDistributionPlan `json:"targets"`
 	Deprecations     []deprecationPlanEntry   `json:"deprecations"`
+	ProjectPart      *projectPartPlan         `json:"project_part,omitempty"`
 	ProjectFiles     []projectFilePlanEntry   `json:"project_files"`
 	Mcp              []mcpPlanEntry           `json:"mcp"`
 	FollowUpCommands []string                 `json:"follow_up_commands"`
 	ConsentRequired  bool                     `json:"consent_required"`
+}
+
+// projectPartPlan reports the Loaf-repo detector gate that decides whether the
+// project half of the work runs at all, so a consumer can tell an empty
+// project_files list that means "nothing to do" from one that means "not a Loaf
+// project". Callers that plan project files unconditionally leave it nil.
+type projectPartPlan struct {
+	InScope              bool     `json:"in_scope"`
+	Tier                 string   `json:"tier"`
+	ConfirmationRequired bool     `json:"confirmation_required"`
+	Bases                []string `json:"bases,omitempty"`
 }
 
 type targetDistributionPlan struct {
@@ -86,10 +98,25 @@ type mcpPlanEntry struct {
 	Configured bool   `json:"configured"`
 	Scope      string `json:"scope,omitempty"`
 	Action     string `json:"action"`
+	Notice     string `json:"notice,omitempty"`
 }
 
-func (r Runner) runInstallDryRun(options installOptions, out io.Writer, loafRoot string, projectRoot string, version string, distRoot string, tools []detectedInstallTool, hasClaudeCode bool, assumeYes bool) error {
-	plan, err := r.buildInstallDryRunPlan(options, loafRoot, projectRoot, version, distRoot, tools, hasClaudeCode, assumeYes)
+// runInstallDryRun renders the plan document.
+//
+// Schema decision (the plan surface moving from install to upgrade): the
+// document stays field-compatible at contract version 1. Every field a consumer
+// reads today keeps its name, type, and meaning; the only value change is
+// `command`, which now names `upgrade` because that is the command that applies
+// the plan. `project_part` is a new optional object, omitted entirely when the
+// caller plans project files unconditionally, so the previously documented
+// document is emitted byte-for-byte unchanged for those callers. Adding an
+// omitted-by-default field is additive, so the contract version does not move.
+//
+// projectPart nil means "plan project files unconditionally"; non-nil carries
+// the detector gate and suppresses project-file planning when it is closed, so
+// the plan never promises writes the apply path would refuse to make.
+func (r Runner) runInstallDryRun(options installOptions, out io.Writer, loafRoot string, projectRoot string, version string, distRoot string, tools []detectedInstallTool, hasClaudeCode bool, assumeYes bool, projectPart *projectPartPlan) error {
+	plan, err := r.buildInstallDryRunPlan(options, loafRoot, projectRoot, version, distRoot, tools, hasClaudeCode, assumeYes, projectPart)
 	if err != nil {
 		return err
 	}
@@ -100,13 +127,14 @@ func (r Runner) runInstallDryRun(options installOptions, out io.Writer, loafRoot
 	return nil
 }
 
-func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, projectRoot string, version string, distRoot string, tools []detectedInstallTool, hasClaudeCode bool, assumeYes bool) (installDryRunPlan, error) {
+func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, projectRoot string, version string, distRoot string, tools []detectedInstallTool, hasClaudeCode bool, assumeYes bool, projectPart *projectPartPlan) (installDryRunPlan, error) {
 	plan := installDryRunPlan{
 		ContractVersion: installPlanContractVersion,
-		Command:         "install",
+		Command:         planCommandName(options),
 		DryRun:          true,
 		Targets:         []targetDistributionPlan{},
 		Deprecations:    []deprecationPlanEntry{},
+		ProjectPart:     projectPart,
 		ProjectFiles:    []projectFilePlanEntry{},
 		Mcp:             []mcpPlanEntry{},
 	}
@@ -175,10 +203,21 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	sort.Slice(plan.Targets, func(i, j int) bool { return plan.Targets[i].Target < plan.Targets[j].Target })
 
 	// Project files mirror enforceInstallProjectFiles: symlinks first, then the
-	// managed fenced section for every target that carries a project file.
+	// managed fenced section for every target that carries a project file, then
+	// upgrade's own MCP-recommendation record. A closed detector gate skips all
+	// of it, exactly as the apply path does. Upgrade (the caller that supplies a
+	// project part) refreshes the surfaces of every installed target regardless
+	// of --to, so the plan reports that same unfiltered set.
 	targetsInScope := append([]string{}, selectedTargets...)
-	projectFiles := planInstallProjectFiles(projectRoot, targetsInScope, hasClaudeCode, assumeYes, version)
-	plan.ProjectFiles = projectFiles
+	if projectPart != nil {
+		targetsInScope = installedUpgradeTargets(tools)
+	}
+	if projectPart == nil || projectPart.InScope {
+		plan.ProjectFiles = planInstallProjectFiles(projectRoot, targetsInScope, hasClaudeCode, assumeYes, version)
+		if projectPart != nil {
+			plan.ProjectFiles = append(plan.ProjectFiles, planUpgradeMcpRecord(projectRoot))
+		}
+	}
 
 	// MCP recommendations do not run during --upgrade; report read-only
 	// detection so the plan is informative while making it explicit that
@@ -221,13 +260,11 @@ func planTargetDistribution(options targetInstallOptions) ([]artifactPlanDecisio
 		}
 		decisions = append(decisions, adapters...)
 	} else {
-		decisions = append(decisions, artifactPlanDecision{
-			ID:          "hooks",
-			Kind:        "hook-legacy",
-			Destination: options.ConfigDir,
-			Action:      planActionUpdate,
-			Detail:      "legacy build output without a target adapter manifest; hooks/plugins refreshed on apply",
-		})
+		legacy, err := planLegacyHookArtifacts(options)
+		if err != nil {
+			return nil, err
+		}
+		decisions = append(decisions, legacy...)
 	}
 	if options.Target == "codex" {
 		codex, err := planCodexJournalRule(options)
@@ -388,14 +425,31 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 			decisions = append(decisions, decision)
 			continue
 		}
+		// A destination the apply path cannot parse as the artifact kind must
+		// never be promised as a merge: report the refusal and leave the rest
+		// of the plan free to continue.
+		if artifact.Kind == "hook-projection" {
+			if refuse, detail := planHookProjectionRefusal(options.Target, path, snapshot.body); refuse {
+				decision.Action = planActionConflict
+				decision.Detail = detail
+				decisions = append(decisions, decision)
+				continue
+			}
+		}
 		matchesDesired, err := targetAdapterSnapshotMatchesArtifact(options.Target, artifact, snapshot)
 		if err != nil {
-			return nil, fmt.Errorf("inspect target artifact %q: %w", artifact.ID, err)
+			decision.Action = planActionConflict
+			decision.Detail = err.Error()
+			decisions = append(decisions, decision)
+			continue
 		}
 		if owned {
 			matchesInstalled, err := targetAdapterSnapshotMatchesArtifact(options.Target, installedByID[artifact.ID], snapshot)
 			if err != nil {
-				return nil, fmt.Errorf("inspect managed target artifact %q: %w", artifact.ID, err)
+				decision.Action = planActionConflict
+				decision.Detail = err.Error()
+				decisions = append(decisions, decision)
+				continue
 			}
 			switch {
 			case !matchesInstalled && !matchesDesired:
@@ -625,6 +679,80 @@ func planCodexGuidanceFile(guidanceDest string, ownedGuidance bool, ownedGuidanc
 	return decision, nil
 }
 
+// planLegacyHookArtifacts reports the no-manifest hook refresh. For cursor and
+// codex the apply path merges into hooks.json, so the plan must refuse the same
+// destinations that mergeHookFiles / mergeCodexHookFiles would rather than
+// promise an update apply will decline.
+func planLegacyHookArtifacts(options targetInstallOptions) ([]artifactPlanDecision, error) {
+	decision := artifactPlanDecision{
+		ID:          "hooks",
+		Kind:        "hook-legacy",
+		Destination: options.ConfigDir,
+		Action:      planActionUpdate,
+		Detail:      "legacy build output without a target adapter manifest; hooks/plugins refreshed on apply",
+	}
+	path, refusalTarget := legacyHookMergePath(options)
+	if path == "" {
+		return []artifactPlanDecision{decision}, nil
+	}
+	decision.Destination = path
+	body, err := readRegularFile(path, projectFileReadLimit)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []artifactPlanDecision{decision}, nil
+		}
+		decision.Action = planActionConflict
+		decision.Detail = fmt.Sprintf("%s could not be inspected (%v) — preserving it as written", path, err)
+		return []artifactPlanDecision{decision}, nil
+	}
+	if refuse, detail := planHookProjectionRefusal(refusalTarget, path, body); refuse {
+		decision.Action = planActionConflict
+		decision.Detail = detail
+		return []artifactPlanDecision{decision}, nil
+	}
+	return []artifactPlanDecision{decision}, nil
+}
+
+// legacyHookMergePath returns the hooks.json path the no-manifest apply path
+// merges into for cursor and codex, plus the planHookProjectionRefusal target
+// key. Other targets do not merge a legacy hooks.json here.
+func legacyHookMergePath(options targetInstallOptions) (path string, refusalTarget string) {
+	switch options.Target {
+	case "cursor":
+		return filepath.Join(options.ConfigDir, "hooks.json"), "cursor"
+	case "codex":
+		codexHome := options.CodexHome
+		if codexHome == "" {
+			codexHome = filepath.Join(installHomeDir(options), ".codex")
+		}
+		return filepath.Join(codexHome, "hooks.json"), "codex"
+	default:
+		return "", ""
+	}
+}
+
+// planHookProjectionRefusal reports whether a hook-projection destination is
+// present but not a JSON object the apply merge would accept. The plan must
+// refuse rather than promise a merge that would serialize Loaf-only content
+// over the bytes it could not parse.
+func planHookProjectionRefusal(target string, path string, body []byte) (bool, string) {
+	switch target {
+	case "cursor":
+		var topLevel map[string]json.RawMessage
+		if err := json.Unmarshal(body, &topLevel); err != nil {
+			return true, fmt.Sprintf("%s does not parse as a JSON object (%v) — preserving it as written", path, err)
+		}
+		if topLevel == nil {
+			return true, fmt.Sprintf("%s does not parse as a JSON object (top-level value is null, not an object) — preserving it as written", path)
+		}
+	case "codex":
+		if _, err := decodeCodexHooksBodyStrict(body); err != nil {
+			return true, fmt.Sprintf("%s could not be parsed as Codex hooks (%v) — preserving it as written", path, err)
+		}
+	}
+	return false, ""
+}
+
 // planInstallDeprecations reuses applyInstallDeprecationCleanup with
 // allowDestructive=false, which is guaranteed non-mutating, then interprets the
 // classified result. explicitYes reflects an explicit --yes; destructive
@@ -726,10 +854,23 @@ func planInstallProjectSymlinks(projectRoot string, selectedTargets []string, ha
 	if wantClaude {
 		linkPath := filepath.Join(projectRoot, ".claude", "CLAUDE.md")
 		relTarget := relativeInstallLinkTarget(linkPath, canonical)
-		action, detail := planInstallSymlink(linkPath, relTarget, ".claude/CLAUDE.md", assumeYes)
+		action, detail := planInstallSymlink(linkPath, relTarget, ".claude/CLAUDE.md", canonical, assumeYes)
 		entries = append(entries, projectFilePlanEntry{Target: "claude-code", Path: ".claude/CLAUDE.md", Action: action, Detail: detail})
 	}
 	return entries
+}
+
+// planProjectFileReadable answers, for the plan, the question the apply path
+// answers by reading: will a whole-file read of this path be refused? The plan
+// has to ask it the same way, because a migration the plan promises and apply
+// refuses is worse than either outcome on its own. Absence is not a refusal —
+// the callers already branch on it — and the read costs what the apply read
+// costs, which is what planFencedSection already pays.
+func planProjectFileReadable(path string) error {
+	if _, err := readRegularFile(path, projectFileReadLimit); err != nil && !os.IsNotExist(err) {
+		return refuseProjectFileRead(err)
+	}
+	return nil
 }
 
 // planRootInstallAgentsFile mirrors the read-only branch decisions of
@@ -754,11 +895,20 @@ func planRootInstallAgentsFile(projectRoot string, assumeYes bool) (string, stri
 		if !assumeYes {
 			return "skipped-no-tty", "./AGENTS.md is a symlink; skipped conversion in non-interactive mode", false
 		}
+		if err := planProjectFileReadable(canonical); err != nil {
+			return "error", fmt.Sprintf("Failed to read ./AGENTS.md: %v", err), true
+		}
 		return "replaced-file", "Back up the ./AGENTS.md symlink and create a canonical real file", false
 	}
 	if legacyExists {
 		if !assumeYes {
 			return "skipped-no-tty", "Both ./AGENTS.md and .agents/AGENTS.md are real files; skipped merge in non-interactive mode", false
+		}
+		if err := planProjectFileReadable(legacy); err != nil {
+			return "error", fmt.Sprintf("Failed to migrate .agents/AGENTS.md: %v", err), true
+		}
+		if err := planProjectFileReadable(canonical); err != nil {
+			return "error", fmt.Sprintf("Failed to migrate .agents/AGENTS.md: %v", err), true
 		}
 		return "migrated", "Merge legacy .agents/AGENTS.md into canonical ./AGENTS.md", false
 	}
@@ -767,7 +917,7 @@ func planRootInstallAgentsFile(projectRoot string, assumeYes bool) (string, stri
 
 // planInstallSymlink mirrors the read-only branch decisions of
 // ensureInstallSymlink.
-func planInstallSymlink(linkPath string, relativeTarget string, description string, assumeYes bool) (string, string) {
+func planInstallSymlink(linkPath string, relativeTarget string, description string, canonicalPath string, assumeYes bool) (string, string) {
 	expectedAbs := filepath.Clean(filepath.Join(filepath.Dir(linkPath), relativeTarget))
 	if !installPathExists(linkPath) {
 		return "created", fmt.Sprintf("Create %s -> %s", description, relativeTarget)
@@ -783,6 +933,14 @@ func planInstallSymlink(linkPath string, relativeTarget string, description stri
 	}
 	if !assumeYes {
 		return "skipped-no-tty", fmt.Sprintf("%s exists as a real file; skipped in non-interactive mode", description)
+	}
+	if err := planProjectFileReadable(linkPath); err != nil {
+		return "error", fmt.Sprintf("Failed to replace %s: %v", description, err)
+	}
+	if canonicalPath != "" {
+		if err := planProjectFileReadable(canonicalPath); err != nil {
+			return "error", fmt.Sprintf("Failed to replace %s: %v", description, err)
+		}
 	}
 	return "replaced-file", fmt.Sprintf("Back up %s and replace with a symlink -> %s", description, relativeTarget)
 }
@@ -820,10 +978,10 @@ func planFencedSection(targetFile string, version string) (string, string) {
 	if version == "" {
 		version = "0.0.0"
 	}
-	body, err := os.ReadFile(targetFile)
+	body, err := readRegularFile(targetFile, projectFileReadLimit)
 	fileExisted := err == nil
 	if err != nil && !os.IsNotExist(err) {
-		return "error", err.Error()
+		return "error", refuseProjectFileRead(err).Error()
 	}
 	content := string(body)
 	if err := validateFencedStructure(content); err != nil {
@@ -863,6 +1021,7 @@ func planInstallMcp(projectRoot string, availableTargets []string) []mcpPlanEntr
 				Configured: status.configured,
 				Scope:      status.scope,
 				Action:     planActionNone,
+				Notice:     status.notice,
 			})
 		}
 	}
@@ -924,13 +1083,25 @@ func installPlanHasChanges(plan installDryRunPlan) bool {
 	return false
 }
 
+// planCommandName resolves the command a plan speaks for. Every command string
+// the plan emits — JSON envelope, human title, apply and follow-up commands —
+// is built from it, so a plan can never advertise an entry point that does not
+// exist. An unset command resolves to `upgrade`: the document describes an
+// upgrade, and upgrade is the command that applies it.
+func planCommandName(options installOptions) string {
+	if options.command == "" {
+		return upgradeCommandName
+	}
+	return options.command
+}
+
+// installPlanApplyCommand emits only flags the resolved command accepts. The
+// Codex basic-command policy is an install-time opt-in, so it is never part of
+// an apply command.
 func installPlanApplyCommand(options installOptions, consentRequired bool) string {
-	parts := []string{"loaf", "install", "--upgrade"}
+	parts := []string{"loaf", planCommandName(options)}
 	if options.target != "" {
 		parts = append(parts, "--to", options.target)
-	}
-	if options.codexBasicCommands {
-		parts = append(parts, "--codex-basic-commands")
 	}
 	if consentRequired {
 		parts = append(parts, "--yes")
@@ -967,7 +1138,7 @@ func emitInstallDryRunJSON(out io.Writer, plan installDryRunPlan) error {
 
 func writeInstallDryRunHuman(out io.Writer, plan installDryRunPlan) {
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, ansiBold("loaf install --upgrade --dry-run"))
+	fmt.Fprintln(out, ansiBold("loaf "+plan.Command+" --dry-run"))
 	fmt.Fprintf(out, "  %s\n\n", ansiGray("Plan only — no files, manifests, config, or state will change."))
 
 	if len(plan.Targets) == 0 {
@@ -1000,10 +1171,29 @@ func writeInstallDryRunHuman(out io.Writer, plan installDryRunPlan) {
 		fmt.Fprintln(out)
 	}
 
+	if part := plan.ProjectPart; part != nil && !part.InScope {
+		reason := "no Loaf project detected here"
+		if part.ConfirmationRequired {
+			reason = "legacy Loaf artifacts only; confirmation required"
+		}
+		fmt.Fprintf(out, "  %s %s\n\n", ansiBold("Project files"), ansiGray("skipped — "+reason))
+	}
 	if len(plan.ProjectFiles) > 0 {
 		fmt.Fprintf(out, "  %s\n", ansiBold("Project files"))
 		for _, entry := range plan.ProjectFiles {
 			fmt.Fprintf(out, "    %s %s %s%s\n", planActionGlyph(entry.Action), entry.Action, entry.Path, planDetailSuffix(entry.Detail))
+		}
+		fmt.Fprintln(out)
+	}
+
+	// Only the notices are printed, not the MCP detection table: a plan the
+	// human reads says what will change, and detection changes nothing. A
+	// config that could not be inspected is the exception, because it is the
+	// one MCP line that says the plan is incomplete.
+	if notices := installMcpPlanNotices(plan.Mcp); len(notices) > 0 {
+		fmt.Fprintf(out, "  %s\n", ansiBold("MCP configs"))
+		for _, notice := range notices {
+			fmt.Fprintf(out, "    %s %s\n", ansiYellow("⚠"), ansiGray(notice))
 		}
 		fmt.Fprintln(out)
 	}
@@ -1018,6 +1208,23 @@ func writeInstallDryRunHuman(out io.Writer, plan installDryRunPlan) {
 	if plan.ConsentRequired {
 		fmt.Fprintf(out, "  %s Explicit consent (--yes) is required to apply destructive deprecation cleanup.\n", ansiYellow("⚠"))
 	}
+}
+
+// installMcpPlanNotices collects the distinct unreadable-config notices from
+// the MCP plan. One unreadable path is reported once however many servers were
+// asked about it.
+func installMcpPlanNotices(entries []mcpPlanEntry) []string {
+	var notices []string
+	seen := map[string]bool{}
+	for _, entry := range entries {
+		if entry.Notice == "" || seen[entry.Notice] {
+			continue
+		}
+		seen[entry.Notice] = true
+		notices = append(notices, entry.Notice)
+	}
+	sort.Strings(notices)
+	return notices
 }
 
 func planActionGlyph(action string) string {

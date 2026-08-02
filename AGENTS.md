@@ -388,7 +388,7 @@ loaf build                     # Build all targets
 loaf build --target claude-code  # Specific target
 loaf install --to all          # Install to all detected tools
 loaf install --to cursor       # Install to specific tool
-loaf install --upgrade         # Update already-installed targets
+loaf upgrade                   # Refresh installed harnesses (+ project surfaces in a Loaf repo)
 loaf check                     # Run enforcement hooks manually
 loaf journal log "type(scope): desc"  # Append a project journal entry
 loaf journal recent            # Show the recent journal timeline
