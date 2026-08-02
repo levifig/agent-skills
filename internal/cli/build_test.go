@@ -797,43 +797,95 @@ func TestNativeBuildValidationRejectsMalformedTypeScriptWhenEnabled(t *testing.T
 }
 
 func TestNoHarnessProseSubstitution(t *testing.T) {
-	// Contract: no markdown transform on the skill-copy path rewrites authored prose.
-	// The build sets transformMd to nil for every target; probes would catch any
-	// residual replacer if a target reintroduced one.
+	// Contract: no markdown transform on skill-copy, OpenCode command generation,
+	// or agent-copy paths rewrites authored prose. Probe every target with the
+	// pre-substitution forms so a reintroduced replacer would emit banned products.
 	samples := harnessProseSubstitutionProbeSamples()
-	if err := skillMarkdownTransformIsIdentity(nil, samples); err != nil {
+	probeBody := strings.Join(samples, "\n") + "\n"
+	identity := func(content string) string { return content }
+	if err := skillMarkdownTransformIsIdentity(identity, samples); err != nil {
 		t.Fatal(err)
+	}
+	if err := skillMarkdownTransformIsIdentity(nil, samples); err == nil {
+		t.Fatal("skillMarkdownTransformIsIdentity(nil) = nil, want non-nil (nil transform must not vacuously pass)")
 	}
 
 	root := setupBuildCommandLoafRoot(t)
-	seedNativeCodexBuildFixture(t, root)
-	// Seed Claude-flavored prose that the retired second-stage replacer rewrote.
-	writeFile(t, filepath.Join(root, "content", "skills", "demo", "references", "probe.md"), strings.Join(samples, "\n")+"\n")
+	seedNativeBuildParityFixture(t, root)
+	mkdirAll(t, filepath.Join(root, "content", "skills", "demo", "templates"))
+	writeFile(t, filepath.Join(root, "content", "skills", "demo", "references", "probe.md"), probeBody)
+	writeFile(t, filepath.Join(root, "content", "skills", "demo", "templates", "probe.md"), probeBody)
+	writeFile(t, filepath.Join(root, "content", "skills", "demo", "SKILL.claude-code.yaml"), strings.Join([]string{
+		"user-invocable: true",
+		"allowed-tools: Bash",
+		"",
+	}, "\n"))
+	// Overwrite the skill body so SKILL.md itself carries the probe samples.
+	writeFile(t, filepath.Join(root, "content", "skills", "demo", "SKILL.md"), strings.Join([]string{
+		"---",
+		"name: demo",
+		"description: Demo skill that has enough words to require folded YAML output from gray matter when the native builder writes frontmatter for generated skills.",
+		"---",
+		"",
+		"# Demo",
+		"",
+		probeBody,
+	}, "\n"))
+	writeFile(t, filepath.Join(root, "content", "agents", "implementer.md"), strings.Join([]string{
+		"---",
+		"name: implementer",
+		"description: Implementer probe agent.",
+		"---",
+		"",
+		"# Implementer",
+		"",
+		probeBody,
+	}, "\n"))
+	// Claude agents require sidecars; keep a minimal one so the full build succeeds.
+	writeFile(t, filepath.Join(root, "content", "agents", "implementer.claude-code.yaml"), strings.Join([]string{
+		"name: implementer",
+		"description: Implementer probe agent.",
+		"",
+	}, "\n"))
+
 	var stdout bytes.Buffer
-	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build", "--target", "codex"}); err != nil {
+	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
 		t.Fatalf("build error = %v\n%s", err, stdout.String())
 	}
-	built := readBuildFileString(t, filepath.Join(root, "dist", "codex", "skills", "demo", "references", "probe.md"))
-	want := strings.Join(samples, "\n") + "\n"
-	if built != want {
-		t.Fatalf("built probe markdown was rewritten:\n got: %q\nwant: %q", built, want)
-	}
-	skill := readBuildFileString(t, filepath.Join(root, "dist", "codex", "skills", "demo", "SKILL.md"))
-	if !strings.Contains(skill, "{{IMPLEMENT_CMD}}") {
-		t.Fatalf("skill body lost authored token: %q", skill)
-	}
-	for _, banned := range []string{"Codex uses permission", "update_plan", "request_user_input"} {
-		if strings.Contains(built, banned) {
-			t.Fatalf("built probe contains harness-substituted prose %q:\n%s", banned, built)
+
+	banned := harnessProseSubstitutionBannedProducts()
+	checkProbe := func(label, body string) {
+		t.Helper()
+		for _, sample := range samples {
+			if !strings.Contains(body, sample) {
+				t.Errorf("%s missing probe sample %q", label, sample)
+			}
 		}
+		for _, phrase := range banned {
+			if strings.Contains(body, phrase) {
+				t.Errorf("%s contains harness-substituted prose %q", label, phrase)
+			}
+		}
+	}
+
+	for _, target := range defaultBuildTargets {
+		skillsDir := nativeBuildSkillTreeDir(root, target)
+		checkProbe(target+" skills/demo/SKILL.md", readBuildFileString(t, filepath.Join(skillsDir, "demo", "SKILL.md")))
+		checkProbe(target+" skills/demo/references/probe.md", readBuildFileString(t, filepath.Join(skillsDir, "demo", "references", "probe.md")))
+		checkProbe(target+" skills/demo/templates/probe.md", readBuildFileString(t, filepath.Join(skillsDir, "demo", "templates", "probe.md")))
+	}
+
+	opencodeCommand := readBuildFileString(t, filepath.Join(root, "dist", "opencode", "commands", "demo.md"))
+	checkProbe("opencode commands/demo.md", opencodeCommand)
+
+	for _, target := range []string{"claude-code", "opencode", "cursor"} {
+		agentPath := filepath.Join(nativeBuildTargetOutputDir(root, target), "agents", "implementer.md")
+		checkProbe(target+" agents/implementer.md", readBuildFileString(t, agentPath))
 	}
 }
 
 func TestSkillTreeIsTargetInvariant(t *testing.T) {
-	root := testRepositoryRoot(t)
-	if _, err := os.Stat(filepath.Join(root, "content", "skills")); err != nil {
-		t.Skipf("repository content/skills unavailable: %v", err)
-	}
+	root := setupIsolatedRepositoryBuildRoot(t)
 	var stdout bytes.Buffer
 	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
 		t.Fatalf("build error = %v\n%s", err, stdout.String())
@@ -845,50 +897,79 @@ func TestSkillTreeIsTargetInvariant(t *testing.T) {
 
 func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 	// Contract: labeled harness sections are authored content that ships
-	// byte-identical on every target. Exact product tokens must survive
-	// the build once each — never doubled by residual substitution.
-	root := testRepositoryRoot(t)
-	if _, err := os.Stat(filepath.Join(root, "content", "skills")); err != nil {
-		t.Skipf("repository content/skills unavailable: %v", err)
-	}
+	// byte-identical on every target. Product tokens must appear inside their
+	// own product section — never swapped across section boundaries, never
+	// doubled by residual substitution.
+	root := setupIsolatedRepositoryBuildRoot(t)
 	var stdout bytes.Buffer
 	if err := (Runner{Stdout: &stdout, WorkingDir: root}).Run([]string{"build"}); err != nil {
 		t.Fatalf("build error = %v\n%s", err, stdout.String())
 	}
 
+	type sectionExpect struct {
+		heading string
+		tokens  map[string]int // token -> exact count inside this section
+	}
 	type labeledFile struct {
-		rel     string
-		needles []string
-		// exactOnce counts must appear exactly once in the built file.
-		exactOnce []string
+		rel      string
+		sections []sectionExpect
+		// documentTokens are asserted on the full file (headings, shared prose).
+		documentTokens map[string]int
 	}
 	files := []labeledFile{
 		{
 			rel: "foundations/references/permissions.md",
-			needles: []string{
-				"## Orchestrator Allowlists by Harness",
-				"### Claude Code",
-				"### Codex",
-				"TodoWrite, TodoRead",
-				"update_plan",
-				"## Permission Commands by Harness",
+			documentTokens: map[string]int{
+				"## Orchestrator Allowlists by Harness": 1,
+				"## Permission Commands by Harness":     1,
+				"### Codex":                             1,
 			},
-			exactOnce: []string{"update_plan", "TodoWrite, TodoRead"},
+			sections: []sectionExpect{
+				{
+					heading: "### Codex",
+					tokens: map[string]int{
+						"update_plan":                      1,
+						"TodoWrite, TodoRead":              0,
+						"TodoWrite":                        0,
+						"TodoRead":                         0,
+						"Linear MCP tools (if configured)": 1,
+						"exec_command":                     1,
+					},
+				},
+			},
 		},
 		{
 			rel: "orchestration/references/background-agents.md",
-			needles: []string{
-				"### Claude Code",
-				"### Cursor",
-				"### Other harnesses",
-				`subagent_type="background-runner"`,
-				"run_in_background=True",
-				"is_background: true",
-				"@background-runner",
+			documentTokens: map[string]int{
+				"### Claude Code":     1,
+				"### Cursor":          1,
+				"### Other harnesses": 1,
 			},
-			exactOnce: []string{
-				`subagent_type="background-runner"`,
-				"is_background: true",
+			sections: []sectionExpect{
+				{
+					heading: "### Claude Code",
+					tokens: map[string]int{
+						`subagent_type="background-runner"`: 1,
+						"run_in_background=True":            1,
+						"is_background: true":               0,
+					},
+				},
+				{
+					heading: "### Cursor",
+					tokens: map[string]int{
+						"is_background: true":               1,
+						"@background-runner":                1,
+						`subagent_type="background-runner"`: 0,
+					},
+				},
+				{
+					heading: "### Other harnesses",
+					tokens: map[string]int{
+						"@background-runner":                0,
+						`subagent_type="background-runner"`: 0,
+						"is_background: true":               0,
+					},
+				},
 			},
 		},
 	}
@@ -903,20 +984,97 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 		"Amp thread checklist, Amp thread checklist",
 	}
 
+	// permissions.md has multiple ### Claude Code headings (Permission Commands,
+	// Recommended Allowlists, Orchestrator). Bind orchestrator tokens by
+	// locating the Orchestrator parent, then its Claude Code child.
 	var baseline map[string]string
 	for _, target := range defaultBuildTargets {
 		skillsDir := nativeBuildSkillTreeDir(root, target)
 		for _, file := range files {
 			path := filepath.Join(skillsDir, filepath.FromSlash(file.rel))
 			body := readBuildFileString(t, path)
-			for _, needle := range file.needles {
-				if !strings.Contains(body, needle) {
-					t.Errorf("%s skills/%s missing labeled-section string %q", target, file.rel, needle)
+			for token, want := range file.documentTokens {
+				if got := strings.Count(body, token); got != want {
+					t.Errorf("%s skills/%s: %q appears %d times, want %d", target, file.rel, token, got, want)
 				}
 			}
-			for _, token := range file.exactOnce {
-				if count := strings.Count(body, token); count != 1 {
-					t.Errorf("%s skills/%s: %q appears %d times, want exactly 1", target, file.rel, token, count)
+			for _, section := range file.sections {
+				sectionBody, ok := labeledHarnessSectionBody(body, section.heading)
+				if !ok {
+					t.Errorf("%s skills/%s missing section %q", target, file.rel, section.heading)
+					continue
+				}
+				// For permissions orchestrator Claude fence, disambiguate among
+				// multiple ### Claude Code headings by preferring the one under
+				// the Orchestrator parent that contains TodoWrite.
+				if file.rel == "foundations/references/permissions.md" && section.heading == "### Claude Code" {
+					parent, ok := labeledHarnessSectionBody(body, "## Orchestrator Allowlists by Harness")
+					if !ok {
+						t.Errorf("%s skills/%s missing orchestrator parent", target, file.rel)
+						continue
+					}
+					sectionBody, ok = labeledHarnessSectionBody(parent, "### Claude Code")
+					if !ok {
+						t.Errorf("%s skills/%s missing Claude Code under orchestrator parent", target, file.rel)
+						continue
+					}
+				}
+				if file.rel == "foundations/references/permissions.md" && section.heading == "### Codex" {
+					parent, ok := labeledHarnessSectionBody(body, "## Orchestrator Allowlists by Harness")
+					if !ok {
+						t.Errorf("%s skills/%s missing orchestrator parent", target, file.rel)
+						continue
+					}
+					sectionBody, ok = labeledHarnessSectionBody(parent, "### Codex")
+					if !ok {
+						t.Errorf("%s skills/%s missing Codex under orchestrator parent", target, file.rel)
+						continue
+					}
+				}
+				for token, want := range section.tokens {
+					if got := strings.Count(sectionBody, token); got != want {
+						t.Errorf("%s skills/%s section %q: %q appears %d times, want %d", target, file.rel, section.heading, token, got, want)
+					}
+				}
+			}
+			// Explicit cross-section binding for permissions orchestrator fences.
+			if file.rel == "foundations/references/permissions.md" {
+				parent, ok := labeledHarnessSectionBody(body, "## Orchestrator Allowlists by Harness")
+				if !ok {
+					t.Errorf("%s skills/%s missing orchestrator parent", target, file.rel)
+				} else {
+					claudeBody, ok := labeledHarnessSectionBody(parent, "### Claude Code")
+					if !ok {
+						t.Errorf("%s skills/%s missing Claude Code orchestrator section", target, file.rel)
+					} else {
+						for token, want := range map[string]int{
+							"TodoWrite, TodoRead": 1,
+							"update_plan":         0,
+							"Read, Glob, Grep":    1,
+							"Bash(date *)":        1,
+							"Bash(git status)":    1,
+						} {
+							if got := strings.Count(claudeBody, token); got != want {
+								t.Errorf("%s skills/%s Claude orchestrator: %q appears %d times, want %d", target, file.rel, token, got, want)
+							}
+						}
+					}
+					codexBody, ok := labeledHarnessSectionBody(parent, "### Codex")
+					if !ok {
+						t.Errorf("%s skills/%s missing Codex orchestrator section", target, file.rel)
+					} else {
+						for token, want := range map[string]int{
+							"update_plan":                      1,
+							"TodoWrite, TodoRead":              0,
+							"TodoWrite":                        0,
+							"exec_command":                     1,
+							"Linear MCP tools (if configured)": 1,
+						} {
+							if got := strings.Count(codexBody, token); got != want {
+								t.Errorf("%s skills/%s Codex orchestrator: %q appears %d times, want %d", target, file.rel, token, got, want)
+							}
+						}
+					}
 				}
 			}
 			for _, phrase := range banned {
@@ -935,6 +1093,92 @@ func TestLabeledHarnessSectionsRenderVerbatim(t *testing.T) {
 				baseline[file.rel] = body
 			}
 		}
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersRejectExtraCodexToken(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	path := filepath.Join(root, "dist", "codex", ".codex", "hooks.json")
+	mkdirAll(t, filepath.Dir(path))
+	writeFile(t, path, "{\n  \"hooks\": {\n    \"SessionStart\": [{\n      \"matcher\": \"startup|resume|clear|compact\",\n      \"hooks\": [{\n        \"type\": \"command\",\n        \"command\": \"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook {{OTHER}}\"\n      }]\n    }]\n  }\n}\n")
+
+	err := validateNativeBuildUnresolvedPlaceholders(root, "codex")
+	if err == nil || !strings.Contains(err.Error(), "unresolved harness token") || !strings.Contains(err.Error(), "{{OTHER}}") {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want extra unresolved token rejection", err)
+	}
+}
+
+func TestNativeBuildUnresolvedPlaceholdersAllowsInstallTimeCodexTokens(t *testing.T) {
+	root := realpath(t, t.TempDir())
+	hooks := filepath.Join(root, "dist", "codex", ".codex", "hooks.json")
+	rules := filepath.Join(root, "dist", "codex", ".codex", "rules", "loaf.rules.tmpl")
+	mkdirAll(t, filepath.Dir(hooks))
+	mkdirAll(t, filepath.Dir(rules))
+	writeFile(t, hooks, "{\n  \"hooks\": {\n    \"SessionStart\": [{\n      \"matcher\": \"startup|resume|clear|compact\",\n      \"hooks\": [{\n        \"type\": \"command\",\n        \"command\": \"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook\",\n        \"commandWindows\": \"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook\"\n      }]\n    }]\n  }\n}\n")
+	writeFile(t, rules, "# Loaf Codex policy\n{{LOAF_BASIC_RULES}}\n")
+
+	if err := validateNativeBuildUnresolvedPlaceholders(root, "codex"); err != nil {
+		t.Fatalf("validateNativeBuildUnresolvedPlaceholders error = %v, want allow install-time tokens", err)
+	}
+}
+
+func TestNativeBuildSkillInvarianceRejectsUnauthorizedSidecarField(t *testing.T) {
+	// A sidecar-owned key whose value did not come from the sidecar must fail,
+	// not be silently stripped.
+	_, _, err := normalizeNativeBuildSkillFileForInvariance("demo/SKILL.md", strings.Join([]string{
+		"---",
+		"name: demo",
+		"description: Demo",
+		"allowed-tools: Bash(rm -rf *)",
+		"version: 1.0.0",
+		"---",
+		"",
+		"# Demo",
+		"",
+	}, "\n"), map[string]string{})
+	if err == nil || !strings.Contains(err.Error(), "allowed-tools") {
+		t.Fatalf("error = %v, want unauthorized allowed-tools rejection", err)
+	}
+}
+
+func TestNativeBuildSkillInvarianceSeesNestedFrontmatter(t *testing.T) {
+	strict := strings.Join([]string{
+		"---",
+		"name: demo",
+		"description: Demo",
+		"metadata:",
+		"  mode: strict",
+		"version: 1.0.0",
+		"---",
+		"",
+		"# Demo",
+		"",
+	}, "\n")
+	permissive := strings.Join([]string{
+		"---",
+		"name: demo",
+		"description: Demo",
+		"metadata:",
+		"  mode: permissive",
+		"version: 1.0.0",
+		"---",
+		"",
+		"# Demo",
+		"",
+	}, "\n")
+	gotStrict, _, err := normalizeNativeBuildSkillFileForInvariance("demo/SKILL.md", strict, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotPermissive, _, err := normalizeNativeBuildSkillFileForInvariance("demo/SKILL.md", permissive, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotStrict == gotPermissive {
+		t.Fatalf("nested frontmatter compared equal after normalize:\n strict: %q\n permissive: %q", gotStrict, gotPermissive)
+	}
+	if !strings.Contains(gotStrict, "mode: strict") || !strings.Contains(gotPermissive, "mode: permissive") {
+		t.Fatalf("normalize dropped nested frontmatter:\n strict: %q\n permissive: %q", gotStrict, gotPermissive)
 	}
 }
 
@@ -999,6 +1243,36 @@ func TestNativeBuildParityMatrixDetectsSeededHookSemanticGap(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "codex hook check-secrets missing SessionStart context group") {
 		t.Fatalf("assertNativeBuildParityHookSemantics error = %v, want seeded hook semantic gap", err)
 	}
+}
+
+// setupIsolatedRepositoryBuildRoot points a temporary loaf root at the
+// repository's content/, config/, and bin/ via symlinks and a copied
+// package.json, so tests can run `loaf build` without rewriting the real
+// plugins/ or dist/ trees (and without deleting untracked files there).
+func setupIsolatedRepositoryBuildRoot(t *testing.T) string {
+	t.Helper()
+	repo := testRepositoryRoot(t)
+	if _, err := os.Stat(filepath.Join(repo, "content", "skills")); err != nil {
+		t.Skipf("repository content/skills unavailable: %v", err)
+	}
+	root := realpath(t, t.TempDir())
+	for _, name := range []string{"content", "config", "bin"} {
+		src := filepath.Join(repo, name)
+		if _, err := os.Stat(src); err != nil {
+			t.Fatalf("stat(%s) error = %v", src, err)
+		}
+		if err := os.Symlink(src, filepath.Join(root, name)); err != nil {
+			t.Fatalf("Symlink(%s) error = %v", name, err)
+		}
+	}
+	packageJSON, err := os.ReadFile(filepath.Join(repo, "package.json"))
+	if err != nil {
+		t.Fatalf("ReadFile(package.json) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package.json"), packageJSON, 0o644); err != nil {
+		t.Fatalf("WriteFile(package.json) error = %v", err)
+	}
+	return root
 }
 
 func setupBuildCommandLoafRoot(t *testing.T) string {

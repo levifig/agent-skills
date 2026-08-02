@@ -103,47 +103,49 @@ Bash(date *), Bash(git status)
 ```
 # Coordination only - no implementation
 update_plan
+Linear MCP tools (if configured)
+exec_command  # read/search (rg, cat, ls) and status (date, git status) only — no writes
 ```
 
 Other harnesses: keep the same coordination scope (read/search, journal-friendly status commands, Linear MCP when configured) and include that product's native task or checklist surface only when it exists as a real allowlist entry — never invent a Claude tool name on a non-Claude product.
 
 ## Other Agent Roles (Claude Code Tokens)
 
-The fences below use Claude Code tool tokens as role templates. Map the same roles (full development, frontend toolchain, schema analysis, infrastructure) to another product's vocabulary when configuring that product.
+The fences below are Claude Code allowlist tokens. Paste only into Claude Code configuration — map the same roles to another product's vocabulary when configuring that product.
 
-### Backend Developer
+### Backend Developer (Claude Code)
 
 ```
-# Full development permissions
+# Claude Code — full development permissions
 Read, Write, Edit, Glob, Grep
 Bash(pytest *), Bash(mypy *), Bash(ruff *)
 Bash(pip *), Bash(poetry *)
 Bash(git add *), Bash(git commit *)
 ```
 
-### Frontend Developer
+### Frontend Developer (Claude Code)
 
 ```
-# Frontend toolchain
+# Claude Code — frontend toolchain
 Read, Write, Edit, Glob, Grep
 Bash(npm *), Bash(pnpm *), Bash(yarn *)
 Bash(tsc *), Bash(eslint *)
 Bash(git add *), Bash(git commit *)
 ```
 
-### DBA Agent
+### DBA Agent (Claude Code)
 
 ```
-# Schema analysis, no direct execution
+# Claude Code — schema analysis, no direct execution
 Read, Glob, Grep
 Bash(psql --help), Bash(pg_dump --help)
 # Direct database commands require explicit approval
 ```
 
-### DevOps Agent
+### DevOps Agent (Claude Code)
 
 ```
-# Infrastructure management
+# Claude Code — infrastructure management
 Read, Write, Edit, Glob, Grep
 Bash(docker *), Bash(kubectl get *)
 Bash(terraform plan *), Bash(terraform validate *)
