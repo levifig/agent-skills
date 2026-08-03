@@ -69,7 +69,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 | Stuck on task | Check priority order, consider reshaping |
 | Pre-compaction | On an exact target mode with supported compaction delivery, hooks may nudge a journal flush and emit the digest afterward; otherwise flush manually and run `loaf journal context` after compaction |
 | Durable artifact handling | Delegate `.agents/`-scoped report/spec/handoff/knowledge tending to `librarian` |
-| Low-priority work | Spawn background-runner with run_in_background |
+| Low-priority work | Spawn background-runner (see Background Agents) |
 | New feature workflow | Research -> Architecture -> Shape -> Breakdown -> Implement |
 
 ## Topics
