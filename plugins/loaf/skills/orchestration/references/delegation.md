@@ -22,11 +22,11 @@
 |--------|------|
 | Log journal entries | `loaf journal log` |
 | Create/edit council files | file write |
-| Track tasks | your harness's task/todo tracking surface |
+| Track tasks | your harness's task/todo tracking surface (if it has one; not all do, and not all share it with subagents) |
 | Manage external issues | Linear, GitHub |
 | Read files for context | file read / search |
 | Ask clarifying questions | your harness's structured question tool if it has one |
-| Assign subagent work | your harness's task/todo tracking surface (subagents read the same surface) |
+| Assign subagent work | your harness's agent-spawn mechanism; pass task context explicitly in the spawn prompt (tracking is not assignment — a todo surface does not spawn agents or carry the prompt) |
 
 ### Orchestrator MUST Delegate
 

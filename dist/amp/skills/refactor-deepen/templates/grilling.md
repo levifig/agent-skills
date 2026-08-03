@@ -23,7 +23,7 @@ Stop only when one of:
 
 ### 2. Walk the Decision Tree
 
-Each question opens branches. Walk all of them before returning to the parent. If a branch is closed by an existing decision (ADR, glossary entry, prior `/refactor-deepen` plan), surface that closure to the user — do not silently re-derive.
+Each question opens branches. Walk all of them before returning to the parent. If a branch is closed by an existing decision (ADR, glossary entry, prior refactor-deepen plan), surface that closure to the user — do not silently re-derive.
 
 Order branches by **load-bearing weight**, not by ease of answering. Cosmetic questions go last, even when they're easy.
 

@@ -104,4 +104,4 @@ Background agents write results to `.agents/reports/` with enough metadata to id
 - `loaf journal log` records spawn and completion facts.
 - `loaf journal recent` surfaces recent background-work entries.
 - `loaf report` commands own durable report lifecycle when available.
-- `/wrap` should mention unprocessed background reports when writing a wrap.
+- The wrap workflow should mention unprocessed background reports when writing a wrap.
