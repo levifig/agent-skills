@@ -53,11 +53,11 @@ def save_config(config: dict) -> None:
 def get_workspace_teams() -> list[dict]:
     """Fetch all teams from Linear workspace via MCP.
 
-    Note: This is a placeholder. In practice, Claude will use the
+    Note: This is a placeholder. In practice, the agent uses the
     Linear MCP tools directly. This script provides the logic.
     """
     # Return cached teams if available, or empty list
-    # The actual team fetching happens via Linear MCP in Claude
+    # The actual team fetching happens via Linear MCP in the harness
     return []
 
 
@@ -122,8 +122,8 @@ def suggest_team(description: str) -> dict:
         config = load_config()
     except FileNotFoundError:
         return {
-            "error": "No config.json found",
-            "suggestion": "Run /init-config to set up project configuration"
+            "error": "No project configuration found",
+            "suggestion": "Create project configuration under .agents/ (or legacy .claude/) with Linear team routing: default_team, team_keywords, and known_teams"
         }
 
     linear_config = config.get("linear", {})
