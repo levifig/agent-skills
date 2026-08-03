@@ -1,4 +1,4 @@
-**Note:** If you used `/ship`, these steps were already handled by the skill. This checklist is for manual merges.
+**Note:** If you used the ship workflow, these steps were already handled by the skill. This checklist is for manual merges.
 
 # Pre-Merge Checklist
 
@@ -13,7 +13,7 @@ Complete these steps on the feature branch before creating the PR.
    Write an optional `wrap(scope)` journal entry with `loaf journal log` if the work produced synthesis worth saving.
 
 2. **Update CHANGELOG.md when the PR has release-facing impact:**
-   Add curated entries under `[Unreleased]` describing what the PR lands. Do not move entries to a versioned section here; `/release` publishes the batch later.
+   Add curated entries under `[Unreleased]` describing what the PR lands. Do not move entries to a versioned section here; the release workflow publishes the batch later.
 
 3. **Rebuild all targets:**
    ```
@@ -48,4 +48,4 @@ Complete these steps on main after merging.
 
 3. **Suggest reflection** if the session had key decisions or learnings.
 
-4. **Suggest `/release` only when appropriate** — if this PR completes a coherent batch or release branch, publish from the base branch after the landed work is present there.
+4. **Suggest release only when appropriate** — if this PR completes a coherent batch or release branch, publish from the base branch after the landed work is present there.

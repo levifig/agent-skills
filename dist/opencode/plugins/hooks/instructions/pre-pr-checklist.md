@@ -19,7 +19,7 @@ include internal spec/task IDs.
 ```markdown
 ### Added
 
-- Add `/bootstrap` guidance for 0-to-1 project setup
+- Add bootstrap guidance for 0-to-1 project setup
 ```
 
 If `CHANGELOG.md` does not exist, create it first:

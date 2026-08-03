@@ -60,7 +60,7 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 - Useful BRIEF content has been extracted into operating documents (no future reader should need to open the BRIEF)
 - When `source: pitch`, the interview was gap-only (no re-excavation of already-specific problem sections)
 - When series-prep ran: each minted folder has `change.json` with stamped `target_release`, a standalone problem-space `brief.md`, zero-violation captured state via explicit-path `loaf change check <folder> --json`, and its own docs-only commit (never a batch); no branches created for the series; no auto-shape
-- The compatibility symlink is correct: `.claude/CLAUDE.md -> ../AGENTS.md`; root `AGENTS.md` is a real file
+- Root `AGENTS.md` is a real file; on Claude Code, the compatibility symlink `.claude/CLAUDE.md -> ../AGENTS.md` exists (see Finalization)
 - Key decisions and interview outcomes were logged with `loaf journal log` and are readable with `loaf journal recent`
 
 ---
@@ -83,14 +83,19 @@ The goal is to go from "I have an idea" (or "I have a codebase") to a populated 
 
 ## Input Parsing
 
-Parse `$ARGUMENTS` to determine brief intake mode:
+Parse `$ARGUMENTS` to determine brief intake mode. Invocation forms differ by harness — use only your product's row:
 
-| Input Pattern | Mode | Example |
-|---------------|------|---------|
-| Text description | Inline brief | `bootstrap Build a CLI tool that manages knowledge bases` |
-| File path | File brief | `bootstrap ~/Desktop/project-brief.md` |
-| Folder path | Folder brief | `bootstrap ./docs/` |
-| Empty | Interactive | bootstrap |
+| Harness | Invoke |
+|---------|--------|
+| Claude Code (plugin) | `/loaf:bootstrap` |
+| OpenCode, Cursor, Codex, Amp | `/bootstrap` |
+
+| Input Pattern | Mode | Example `$ARGUMENTS` |
+|---------------|------|----------------------|
+| Text description | Inline brief | `Build a CLI tool that manages knowledge bases` |
+| File path | File brief | `~/Desktop/project-brief.md` |
+| Folder path | Folder brief | `./docs/` |
+| Empty | Interactive | _(empty)_ |
 
 After determining intake mode, proceed to state detection -- they are independent concerns.
 
@@ -384,9 +389,13 @@ knowledge base structure.
 
 After scaffolding, ask the builder if they have other Loaf projects they would like to import knowledge from. Don't auto-detect -- ask explicitly.
 
-### 2. Symlink Creation
+### 2. Claude Code Compatibility Symlink
 
-Create symlinks per Loaf convention:
+Root `AGENTS.md` is the canonical project-instructions file on every harness. The `.claude/CLAUDE.md` path is Claude Code-specific — create and verify it only on that product. Read only the labeled section for the harness you are running.
+
+### Claude Code
+
+Create the compatibility symlink so Claude Code also loads project instructions:
 
 ```bash
 # .claude/CLAUDE.md -> ../AGENTS.md
@@ -394,7 +403,11 @@ mkdir -p .claude
 ln -sf ../AGENTS.md .claude/CLAUDE.md
 ```
 
-If symlinks already exist and point to the right targets, skip silently. If they exist but point elsewhere, warn the user and ask before changing.
+If the symlink already exists and points at `../AGENTS.md`, skip silently. If it exists but points elsewhere, warn the user and ask before changing.
+
+### Other harnesses
+
+Do not create `.claude/CLAUDE.md`. Ensure root `AGENTS.md` exists and is populated; that is the file every harness reads.
 
 ### 3. Journal Recording
 

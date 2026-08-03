@@ -36,7 +36,7 @@ repository and edit access scoped to `.agents/` only.
   `.agents/specs/`, and `.agents/knowledge/` hygiene when invoked by wrap,
   housekeeping, or orchestration
 - **Knowledge artifacts** in `.agents/knowledge/` — staleness markers, coverage notes
-- **Wrap checkpoints** — end-of-conversation distillation when invoked by `/wrap`
+- **Wrap checkpoints** — end-of-conversation distillation when invoked by the wrap workflow
 - **Decision persistence** — extract durable decisions to spec changelog and log a `decision()` entry with `loaf journal log`
 - **Journal completion** — when invoked with a conversation summary, identify
   missing semantic entries (decisions, discoveries, context) and append them
