@@ -87,6 +87,16 @@ Double-listing is the second risk. Cursor reads both `~/.agents/skills` and `~/.
 
 Group one lands together: removing the rewriters leaves content that is inaccurate on some harnesses until the rewrite corrects it, so neither is a standalone commit. Group two lands together for the safety reason above. The rider is independent and can land at any point. Within group one the content rewrite is the long pole and can proceed in parallel with group two's install work, provided group two does not land first.
 
+### Derive surface sets, never enumerate them
+
+Group one learned this the expensive way and group two will face it again. Any unit whose scope is "everything of a kind" must derive that set from the code that produces it, and the derivation belongs in the delegation brief so the implementer produces the list rather than trusting an authored one.
+
+The content rewrite's boundary was wrong four consecutive times, always by omission: `content/skills/` missed `content/templates/`, which reaches every target through `copyNativeSharedTemplates`; fixing that missed `content/hooks/instructions/` and `content/agents/`, where a single file ships into three target trees; deriving the directory list from `internal/cli/build_*.go` finally produced a complete inventory — and a Markdown-only grep over that correct list still missed `content/skills/*/scripts/`. Two distinct failures live here: a wrong list, and a right list searched with too narrow a filter. Shipped scripts and configuration carry the same obligations as prose, because a printed string in a copied script is user-facing content.
+
+The permission fences showed the same shape from the other side. Four review rounds each removed the single bad allowlist entry they found, and a fifth kept appearing; what converged was authoring the rule that generates them — `Bash(cmd *)` matches any arguments and therefore cannot exclude a flag — with the least obvious case worked out in the document.
+
+TASK-006 is where this bites next. "Retire Loaf's stale copies across every path a harness scans" is exactly the shape that fails: derive the path set from the harness search-path table and the install code, ask for the disposition of every entry including the ones deliberately left, and treat silence about an entry as indistinguishable from missing it.
+
 ## Implementation Units
 
 - **TASK-001 — Harness-neutral build contract.** Remove blind prose substitution, decide the fate of each token, relocate what survives out of the Codex-specific file, and add the invariance tests the rewrite must satisfy.
