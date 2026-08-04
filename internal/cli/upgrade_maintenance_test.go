@@ -126,7 +126,7 @@ func TestRunnerUpgradeRelocatesOpenCodeAndAmpSkillHomes(t *testing.T) {
 			oldSkills := tc.oldSkills(home)
 			ownerMarker := tc.ownerMarker(home)
 			writeInstallFile(t, ownerMarker, "old\n")
-			writeInstallFile(t, filepath.Join(oldSkills, "foundations", "SKILL.md"), "# Old foundations\n")
+			seedOwnedManagedSkill(t, oldSkills, "foundations", "# Old foundations\n")
 			writeInstallFile(t, filepath.Join(root, "dist", tc.target, "skills", "go-development", "SKILL.md"), "# Go\n")
 			writeInstallDeprecationManifest(t, root, fmt.Sprintf(`{
   "version": 1,
@@ -152,7 +152,10 @@ func TestRunnerUpgradeRelocatesOpenCodeAndAmpSkillHomes(t *testing.T) {
 				t.Fatalf("upgrade error = %v\n%s", err, stdout.String())
 			}
 			assertInstallPathMissing(t, oldSkills)
-			assertInstallFile(t, filepath.Join(home, ".agents", "skills", "foundations", "SKILL.md"), "# Old foundations\n")
+			// Claim transfer lets canonical sync own the destination. foundations is
+			// not in dist, so sync retires it as a stale managed skill; go-development
+			// is installed fresh.
+			assertInstallPathMissing(t, filepath.Join(home, ".agents", "skills", "foundations"))
 			assertInstallFile(t, filepath.Join(home, ".agents", "skills", "go-development", "SKILL.md"), "# Go\n")
 			if !strings.Contains(stdout.String(), "relocated path "+tc.target+"-skills-to-agents-home") {
 				t.Fatalf("stdout = %q, want relocation report", stdout.String())
@@ -165,7 +168,6 @@ func TestRunnerUpgradeCleansRetiredTargetFromManifest(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	retiredTarget := filepath.Join(home, ".retired-tool")
 	writeInstallFile(t, filepath.Join(retiredTarget, loafInstallMarkerFile), "old\n")
-	writeInstallFile(t, filepath.Join(retiredTarget, "skills", "stale", "SKILL.md"), "stale\n")
 	writeInstallDeprecationManifest(t, root, `{
   "version": 1,
   "retired_targets": [
@@ -197,11 +199,15 @@ func TestRunnerUpgradeCleansRetiredTargetFromManifest(t *testing.T) {
 	}
 }
 
-func TestRunnerUpgradeCleansRetiredGeminiTargetWithoutReintroducingIt(t *testing.T) {
+// TestRunnerUpgradePreservesForeignRetiredTargetHomeWithoutReintroducingIt proves
+// a marked retired target that still holds foreign content is not RemoveAll'd,
+// and that the retired target name is not reintroduced as an install target.
+// Named for what it asserts: preservation of foreign content, not "cleaning".
+func TestRunnerUpgradePreservesForeignRetiredTargetHomeWithoutReintroducingIt(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	geminiHome := filepath.Join(home, ".gemini")
 	writeInstallFile(t, filepath.Join(geminiHome, loafInstallMarkerFile), "old\n")
-	writeInstallFile(t, filepath.Join(geminiHome, "skills", "stale", "SKILL.md"), "# Stale\n")
+	writeInstallFile(t, filepath.Join(geminiHome, "user-settings.json"), "{\"theme\":\"dark\"}\n")
 	writeInstallDeprecationManifest(t, root, `{
   "version": 1,
   "retired_targets": [
@@ -223,19 +229,23 @@ func TestRunnerUpgradeCleansRetiredGeminiTargetWithoutReintroducingIt(t *testing
 	if err != nil {
 		t.Fatalf("upgrade error = %v\n%s", err, stdout.String())
 	}
-	assertInstallPathMissing(t, geminiHome)
+	assertInstallFile(t, filepath.Join(geminiHome, "user-settings.json"), "{\"theme\":\"dark\"}\n")
 	if isValidInstallTarget("gemini") {
 		t.Fatal("gemini target was reintroduced")
 	}
-	if !strings.Contains(stdout.String(), "removed retired target gemini") {
-		t.Fatalf("stdout = %q, want gemini cleanup report", stdout.String())
+	if strings.Contains(stdout.String(), "removed retired target gemini") {
+		t.Fatalf("stdout = %q, must not RemoveAll gemini home with foreign content", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "un-managed") {
+		t.Fatalf("stdout = %q, want un-managed gemini report", stdout.String())
 	}
 }
 
 func TestRunnerUpgradeCleansRetiredSkillFromManifest(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
-	retiredSkill := filepath.Join(home, ".agents", "skills", "old-skill")
-	writeInstallFile(t, filepath.Join(retiredSkill, "SKILL.md"), "# Old skill\n")
+	skillHome := filepath.Join(home, ".agents", "skills")
+	retiredSkill := filepath.Join(skillHome, "old-skill")
+	seedOwnedManagedSkill(t, skillHome, "old-skill", "# Old skill\n")
 	writeInstallDeprecationManifest(t, root, `{
   "version": 1,
   "retired_targets": [],
@@ -331,13 +341,12 @@ func TestRunnerUpgradeCleansRetiredAgentFromManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upgrade error = %v\n%s", err, stdout.String())
 	}
-	if _, err := os.Stat(retiredAgent); !os.IsNotExist(err) {
-		t.Fatalf("retired agent stat = %v, want removed", err)
+	assertInstallFile(t, retiredAgent, "# Old Agent\n")
+	if strings.Contains(stdout.String(), "removed retired agent old-agent") {
+		t.Fatalf("stdout = %q, must not delete agent on marker alone", stdout.String())
 	}
-	for _, want := range []string{"removed retired agent old-agent", "old-agent was retired"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
-		}
+	if !strings.Contains(stdout.String(), "un-managed") || !strings.Contains(stdout.String(), "old-agent") {
+		t.Fatalf("stdout = %q, want un-managed agent report", stdout.String())
 	}
 }
 
@@ -375,8 +384,8 @@ func TestRunnerUpgradeSkipsUnmarkedRetiredAgent(t *testing.T) {
 
 func TestRunnerUpgradeReportsDefaultDeprecationWindow(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
-	retiredSkill := filepath.Join(home, ".agents", "skills", "old-skill")
-	writeInstallFile(t, filepath.Join(retiredSkill, "SKILL.md"), "# Old skill\n")
+	skillHome := filepath.Join(home, ".agents", "skills")
+	seedOwnedManagedSkill(t, skillHome, "old-skill", "# Old skill\n")
 	writeInstallDeprecationManifest(t, root, `{
   "version": 1,
   "retired_targets": [],
@@ -404,8 +413,8 @@ func TestRunnerUpgradeReportsDefaultDeprecationWindow(t *testing.T) {
 
 func TestRunnerUpgradeReportsDeprecationSignoff(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
-	retiredSkill := filepath.Join(home, ".agents", "skills", "old-skill")
-	writeInstallFile(t, filepath.Join(retiredSkill, "SKILL.md"), "# Old skill\n")
+	skillHome := filepath.Join(home, ".agents", "skills")
+	seedOwnedManagedSkill(t, skillHome, "old-skill", "# Old skill\n")
 	writeInstallDeprecationManifest(t, root, `{
   "version": 1,
   "retired_targets": [],
@@ -552,7 +561,7 @@ func TestRunnerUpgradeRelocatesManifestPathExactlyOnce(t *testing.T) {
 	oldPath := filepath.Join(home, ".old-agents", "skills")
 	newPath := filepath.Join(home, ".agents", "skills")
 	writeInstallFile(t, filepath.Join(oldPath, loafInstallMarkerFile), "old\n")
-	writeInstallFile(t, filepath.Join(oldPath, "foundations", "SKILL.md"), "# Foundations\n")
+	seedOwnedManagedSkill(t, oldPath, "foundations", "# Foundations\n")
 	writeInstallDeprecationManifest(t, root, `{
   "version": 1,
   "retired_targets": [],
@@ -590,12 +599,54 @@ func TestRunnerUpgradeRelocatesManifestPathExactlyOnce(t *testing.T) {
 	assertInstallFile(t, filepath.Join(newPath, "foundations", "SKILL.md"), "# Foundations\n")
 }
 
-func TestRunnerUpgradeRemovesStaleRelocatedPathWhenDestinationExists(t *testing.T) {
+// TestRunnerUpgradeRelocatesOwnedSkillWhenDestinationHomeExistsButSkillAbsent
+// covers the common case: ~/.agents/skills already exists (prior install) but
+// does not hold the skill being relocated. Existence of the destination home
+// is not proof the skill is already there — the source must be moved.
+
+func TestRunnerUpgradeRemovesStaleSourceWhenDestinationHoldsEquivalent(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	oldPath := filepath.Join(home, ".old-agents", "skills")
 	newPath := filepath.Join(home, ".agents", "skills")
 	writeInstallFile(t, filepath.Join(oldPath, loafInstallMarkerFile), "old\n")
-	writeInstallFile(t, filepath.Join(oldPath, "stale", "SKILL.md"), "# Stale\n")
+	body := "# Shared foundations\n"
+	seedOwnedManagedSkill(t, oldPath, "foundations", body)
+	seedOwnedManagedSkill(t, newPath, "foundations", body)
+	writeInstallDeprecationManifest(t, root, `{
+  "version": 1,
+  "retired_targets": [],
+  "retired_skills": [],
+  "relocations": [
+    {
+      "id": "old-agents-skills",
+      "from": "${HOME}/.old-agents/skills",
+      "to": "${HOME}/.agents/skills",
+      "since": "v9.9.0",
+      "window": "one-release",
+      "reason": "skills moved to ~/.agents/skills"
+    }
+  ],
+  "aliases": []
+}`)
+
+	var stdout bytes.Buffer
+	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"upgrade", "--yes"})
+	if err != nil {
+		t.Fatalf("upgrade error = %v\n%s", err, stdout.String())
+	}
+	assertInstallPathMissing(t, filepath.Join(oldPath, "foundations"))
+	assertInstallFile(t, filepath.Join(newPath, "foundations", "SKILL.md"), body)
+	if !strings.Contains(stdout.String(), "removed stale relocated path old-agents-skills") {
+		t.Fatalf("stdout = %q, want removed-stale when destination already holds equivalent", stdout.String())
+	}
+}
+
+func TestRunnerUpgradeRelocatesOwnedSkillWhenDestinationHomeExistsButSkillAbsent(t *testing.T) {
+	root, home := setupInstallCommandFixture(t)
+	oldPath := filepath.Join(home, ".old-agents", "skills")
+	newPath := filepath.Join(home, ".agents", "skills")
+	writeInstallFile(t, filepath.Join(oldPath, loafInstallMarkerFile), "old\n")
+	seedOwnedManagedSkill(t, oldPath, "stale", "# Stale\n")
 	writeInstallFile(t, filepath.Join(newPath, "foundations", "SKILL.md"), "# Foundations\n")
 	writeInstallDeprecationManifest(t, root, `{
   "version": 1,
@@ -621,7 +672,8 @@ func TestRunnerUpgradeRemovesStaleRelocatedPathWhenDestinationExists(t *testing.
 	}
 	assertInstallPathMissing(t, oldPath)
 	assertInstallFile(t, filepath.Join(newPath, "foundations", "SKILL.md"), "# Foundations\n")
-	if !strings.Contains(stdout.String(), "removed stale relocated path old-agents-skills") {
-		t.Fatalf("stdout = %q, want stale relocation removal report", stdout.String())
+	assertInstallFile(t, filepath.Join(newPath, "stale", "SKILL.md"), "# Stale\n")
+	if !strings.Contains(stdout.String(), "relocated path old-agents-skills") {
+		t.Fatalf("stdout = %q, want relocation report (dest home exists but skill was absent)", stdout.String())
 	}
 }
