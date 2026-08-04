@@ -7,6 +7,7 @@ blocked-by:
   - TASK-003
 blocks:
   - TASK-005
+  - TASK-006
 ---
 
 # TASK-004 — Single canonical write
@@ -36,13 +37,13 @@ loaf journal log "skill(implement): TASK-004 — single canonical write"
 
 ## Steps
 
-- [ ] Collapse skill installation to one canonical write, so selecting several targets does not repeat it
-- [ ] Fix the planning layer too, so dry-run plans the write once and reports a shared conflict once
-- [ ] Confirm no target writes skills anywhere else, and that the test-only `AmpSkillsDir` override remains test-only
-- [ ] Add `TestSingleCanonicalWrite`, asserting one planned write, one executed write, and one conflict report across several target orderings
+- [x] Collapse skill installation to one canonical write, so selecting several targets does not repeat it
+- [x] Fix the planning layer too, so dry-run plans the write once and reports a shared conflict once
+- [x] Confirm no target writes skills anywhere else, and that the test-only `AmpSkillsDir` override remains test-only
+- [x] Add `TestSingleCanonicalWrite`, asserting one planned write, one executed write, and one conflict report across several target orderings
 
 ## Verification
 
 - `go test ./internal/cli/ -run TestSingleCanonicalWrite` passes
-- `loaf install --to all --dry-run` against a sandbox HOME with a foreign `orchestration` reports that conflict once, not four times
+- A dry run against a sandbox HOME with a foreign `orchestration` reports that conflict once, not four times. Note `--dry-run` is a `loaf upgrade` flag, not `loaf install`
 - Installing targets in more than one order leaves identical bytes
