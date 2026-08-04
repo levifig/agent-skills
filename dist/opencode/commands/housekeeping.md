@@ -32,7 +32,7 @@ Systematic review and archival of all `.agents/` artifacts with Linear-aware che
 - Extract lessons learned and decisions before archiving
 - Use CLI (`loaf housekeeping`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
 - Treat `.agents/handoffs/` as first-class but disposable: keep active/final handoffs, delete only after confirmed deprecated status
-- Check report `status` is `processed` before archiving reports (see [templates/report.md](../skills/housekeeping/templates/report.md))
+- Check report `status` is `processed` before archiving reports (see [templates/report.md](templates/report.md))
 - In SQLite-backed projects, verify lifecycle changes through `loaf task list --json`, `loaf spec list --json`, and `loaf report list --json`; use `loaf task sync` only for Markdown compatibility repair
 - When delegated subagents are available, use the `librarian` profile for
   `.agents/`-scoped durable artifact tending: report/spec/handoff hygiene,
@@ -135,7 +135,7 @@ After housekeeping, suggest reflect if the session produced key decisions or lea
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Report Template | [templates/report.md](../skills/housekeeping/templates/report.md) | Creating cleanup reports |
+| Report Template | [templates/report.md](templates/report.md) | Creating cleanup reports |
 | Linear Integration | `orchestration/references/linear.md` | Checking external issue status |
 | Journal Continuity | `orchestration/references/journal.md` | Understanding the project journal model |
 

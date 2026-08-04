@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -159,17 +160,28 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 		})
 	}
 	skillsErr := syncCanonicalManagedSkills(installOptions)
+	var skillConflicts *skillSyncConflictsError
+	hardSkillsErr := skillsErr
+	if errors.As(skillsErr, &skillConflicts) {
+		// Conflict-only: non-conflicted skills already installed. Continue
+		// target adapters (hooks/commands/plugins) then propagate at the end.
+		hardSkillsErr = nil
+	}
 	skillsErrReported := false
 	for _, opts := range installOptions {
-		if skillsErr != nil {
+		if hardSkillsErr != nil {
 			if !skillsErrReported {
-				fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillsErr)
+				fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), hardSkillsErr)
 				skillsErrReported = true
 			}
 			if opts.Target == "codex" && options.codexBasicCommands {
-				codexBasicCommandsErr = fmt.Errorf("Codex basic command policy installation failed: %w", skillsErr)
+				codexBasicCommandsErr = fmt.Errorf("Codex basic command policy installation failed: %w", hardSkillsErr)
 			}
 			continue
+		}
+		if skillConflicts != nil && !skillsErrReported {
+			fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillConflicts)
+			skillsErrReported = true
 		}
 		err := installTargetDistribution(opts)
 		if err != nil {
@@ -198,6 +210,13 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 	}
 	if codexBasicCommandsErr != nil {
 		return codexBasicCommandsErr
+	}
+	if skillConflicts != nil {
+		// Already printed once above; ExitError is silent so main does not reprint.
+		return ExitError{Code: 1}
+	}
+	if hardSkillsErr != nil {
+		return hardSkillsErr
 	}
 	return nil
 }

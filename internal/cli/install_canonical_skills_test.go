@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,9 +73,17 @@ func TestSingleCanonicalWrite(t *testing.T) {
 			if target == "codex" {
 				writeInstallFile(t, filepath.Join(root, "dist", target, ".codex", "hooks.json"), `{"hooks":{}}`+"\n")
 			}
+			// Seed adapter artifacts so upgrade has something concrete to refresh.
+			if target == "opencode" {
+				writeInstallFile(t, filepath.Join(root, "dist", target, "commands", "foundations.md"), "# Cmd\nSee [guide](references/guide.md).\n")
+				writeInstallFile(t, filepath.Join(root, "dist", target, "agents", "implementer.md"), "# Implementer\n")
+			}
 			mkdirAll(t, defaultInstallConfigDirsForHome(home)[target])
 		}
 		runInstallFixture(t, root, "install", "--to", "all", "--yes")
+		for _, target := range targets {
+			writeInstallFile(t, filepath.Join(defaultInstallConfigDirsForHome(home)[target], loafInstallMarkerFile), "old\n")
+		}
 
 		sharedSkills := filepath.Join(home, ".agents", "skills")
 		writeInstallFile(t, filepath.Join(sharedSkills, "orchestration", "SKILL.md"), "# Foreign orchestration\n")
@@ -84,19 +93,90 @@ func TestSingleCanonicalWrite(t *testing.T) {
 
 		plan := parseInstallPlanJSON(t, runInstallCapture(t, root, "upgrade", "--to", "all", "--dry-run", "--json"))
 		conflicts := 0
+		foundationsAction := ""
 		for _, artifact := range plan.Skills {
 			if artifact.ID == "skill:orchestration" && artifact.Action == planActionConflict {
 				conflicts++
+			}
+			if artifact.ID == "skill:foundations" {
+				foundationsAction = artifact.Action
 			}
 		}
 		if conflicts != 1 {
 			t.Fatalf("orchestration conflicts = %d, want 1; skills=%#v", conflicts, plan.Skills)
 		}
+		// Foundations is already current; conflict on orchestration must not
+		// rewrite the plan into an indeterminate preserve/update either-or.
+		if foundationsAction != planActionPreserve {
+			t.Fatalf("foundations action = %q, want preserve while orchestration conflicts", foundationsAction)
+		}
+		// Skill conflicts leave the shared set incomplete but do not block
+		// target adapter work — plan must match apply.
 		for _, target := range plan.Targets {
-			if !target.Blocked {
-				t.Fatalf("target %q Blocked = false, want true when shared skills conflict", target.Target)
+			if target.Blocked {
+				t.Fatalf("target %q Blocked = true, want false for conflict-only skill errors (adapters still run)", target.Target)
 			}
 		}
+
+		var stdout bytes.Buffer
+		err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"upgrade", "--to", "all", "--yes"})
+		if err == nil {
+			t.Fatalf("upgrade with orchestration conflict error = nil, want non-zero conflict failure\n%s", stdout.String())
+		}
+		out := stdout.String()
+		if strings.Count(out, "orchestration") < 1 {
+			t.Fatalf("upgrade stdout missing orchestration conflict report:\n%s", out)
+		}
+		if strings.Count(out, "managed skills sync conflicts") != 1 {
+			t.Fatalf("conflict report count = %d, want exactly 1\n%s", strings.Count(out, "managed skills sync conflicts"), out)
+		}
+		for _, target := range targets {
+			config := defaultInstallConfigDirsForHome(home)[target]
+			assertInstallFile(t, filepath.Join(config, loafInstallMarkerFile), "9.8.7-test.1\n")
+			recordPath := installRecordPath(home, target)
+			if _, statErr := os.Stat(recordPath); statErr != nil {
+				t.Fatalf("install record for %s missing after conflicted upgrade: %v", target, statErr)
+			}
+			if !strings.Contains(out, installDisplayName(target)) {
+				t.Fatalf("upgrade stdout missing refreshed target %q:\n%s", target, out)
+			}
+		}
+		opencodeCommands := filepath.Join(defaultInstallConfigDirsForHome(home)["opencode"], "commands", "foundations.md")
+		body, readErr := os.ReadFile(opencodeCommands)
+		if readErr != nil {
+			t.Fatalf("ReadFile(%s) error = %v", opencodeCommands, readErr)
+		}
+		if strings.Contains(string(body), "](references/") {
+			t.Fatalf("opencode command still has unrewritten skill-local links:\n%s", body)
+		}
+		assertInstallFile(t, filepath.Join(sharedSkills, "foundations", "SKILL.md"), sharedBody)
+		assertInstallFile(t, filepath.Join(sharedSkills, "orchestration", "SKILL.md"), "# Foreign orchestration\n")
+
+		// Second run: unowned collision stays unowned; foundations stays managed;
+		// no oscillation into claiming orchestration.
+		state, stateErr := readManagedSkillsState(sharedSkills)
+		if stateErr != nil {
+			t.Fatalf("readManagedSkillsState error = %v", stateErr)
+		}
+		if _, ok := state.digests["orchestration"]; ok {
+			t.Fatalf("manifest gained unowned orchestration after conflicted upgrade")
+		}
+		if _, ok := state.digests["foundations"]; !ok {
+			t.Fatalf("manifest dropped foundations after conflicted upgrade")
+		}
+		var stdout2 bytes.Buffer
+		err2 := Runner{Stdout: &stdout2, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"upgrade", "--to", "all", "--yes"})
+		if err2 == nil {
+			t.Fatalf("second upgrade error = nil, want persistent orchestration conflict\n%s", stdout2.String())
+		}
+		state2, stateErr := readManagedSkillsState(sharedSkills)
+		if stateErr != nil {
+			t.Fatalf("readManagedSkillsState(second) error = %v", stateErr)
+		}
+		if _, ok := state2.digests["orchestration"]; ok {
+			t.Fatalf("second upgrade granted ownership of unowned orchestration")
+		}
+		assertInstallFile(t, filepath.Join(sharedSkills, "orchestration", "SKILL.md"), "# Foreign orchestration\n")
 	})
 
 	t.Run("order-invariant-destination-bytes", func(t *testing.T) {

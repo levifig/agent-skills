@@ -54,7 +54,7 @@ and erode the lens.
 | **Leverage** | How much downstream code is simplified per unit of interface |
 | **Locality** | Whether related concerns live near each other or are scattered |
 
-Full semantics live in [references/language.md](../skills/refactor-deepen/references/language.md). Read
+Full semantics live in [references/language.md](references/language.md). Read
 that file on every invocation before naming anything.
 
 ### Glossary Integration
@@ -83,7 +83,7 @@ adds new ones when a deepening clearly names a structural module.
 ### Grilling Protocol
 
 The interview imports the shared
-[templates/grilling.md](../skills/refactor-deepen/templates/grilling.md) template — relentless
+[templates/grilling.md](templates/grilling.md) template — relentless
 interview, walk the decision tree, recommend per question, prefer exploration
 when the codebase can answer. Do not re-derive the protocol; follow it.
 
@@ -95,7 +95,7 @@ opposing constraints (no "Agent 1 minimal, Agent 2 flexible"). Variety must
 emerge from sampling, not manufactured opposition. If the three designs
 converge accidentally, the fallback is a 4th agent or a rerun with different
 seeds — *not* introducing priming. See
-[references/interface-design.md](../skills/refactor-deepen/references/interface-design.md).
+[references/interface-design.md](references/interface-design.md).
 
 ### Report-Only Mode
 
@@ -165,7 +165,7 @@ closing message:
 > break that brief down into tasks.
 
 If report-only mode is **not** active and Linear-native is **not** enabled, the
-skill terminates by writing a PLAN file using [templates/plan.md](../skills/refactor-deepen/templates/plan.md) at
+skill terminates by writing a PLAN file using [templates/plan.md](templates/plan.md) at
 `.agents/plans/<YYYYMMDD-HHMMSS>-<slug>.md`, with this exact closing message
 (substitute the actual filename you wrote):
 
@@ -193,7 +193,7 @@ surface adds plugin-level detection, this rule can switch to it.
 - **Always** route an accepted review through the `codex:codex-rescue`
   agent (or the `codex:rescue` skill if that's what the harness exposes),
   passing the PLAN file path and a pointer to
-  [references/deepening.md](../skills/refactor-deepen/references/deepening.md) for vocabulary context.
+  [references/deepening.md](references/deepening.md) for vocabulary context.
 - **Never** mention Codex if the plugin is absent — proceed straight to the
   termination message below.
 - **Never** invoke Codex review by default, on a non-affirmative reply, or
@@ -272,24 +272,24 @@ architecture and exploratory flows.
 
 1. **Read context.** Open `docs/knowledge/glossary.md` (via `loaf kb glossary
    list`), `docs/decisions/ADR-*.md`, and `docs/ARCHITECTURE.md`. Read
-   [references/language.md](../skills/refactor-deepen/references/language.md) and
-   [references/deepening.md](../skills/refactor-deepen/references/deepening.md).
+   [references/language.md](references/language.md) and
+   [references/deepening.md](references/deepening.md).
 2. **Survey candidates.** Walk the target module/area. Produce a numbered list
    of shallow-module candidates with one-line rationales using the eight terms.
 3. **Pick a candidate** (with the user) and enter the grilling loop following
-   [templates/grilling.md](../skills/refactor-deepen/templates/grilling.md). Surface canonical terms
+   [templates/grilling.md](templates/grilling.md). Surface canonical terms
    inline; challenge drift on contact.
 4. **Classify dependencies.** For each candidate, classify dependencies by
    category (in-process, local-substitutable, ports-and-adapters, true-external)
-   per [references/deepening.md](../skills/refactor-deepen/references/deepening.md).
+   per [references/deepening.md](references/deepening.md).
 5. **Design the interface** by spawning 3 unprimed sub-agents per the rules in
-   [references/interface-design.md](../skills/refactor-deepen/references/interface-design.md). Present
+   [references/interface-design.md](references/interface-design.md). Present
    all three designs to the user; do not pre-rank.
 6. **Check report-only and Linear-native mode.** For broad reports, or when the
    inline Linear-native check exits `1`, continue in report-only mode and skip
    steps 7-9.
 7. **Write the PLAN** to `.agents/plans/<YYYYMMDD-HHMMSS>-<slug>.md` using
-   [templates/plan.md](../skills/refactor-deepen/templates/plan.md). The filename timestamp must match
+   [templates/plan.md](templates/plan.md). The filename timestamp must match
    the frontmatter `created` field. Required sections: candidate, dependency
    category, proposed deepened module, what survives in tests, rejected
    alternatives.
@@ -308,11 +308,11 @@ architecture and exploratory flows.
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Vocabulary | [references/language.md](../skills/refactor-deepen/references/language.md) | Naming any module, interface, or seam — read first, every invocation |
-| Deepening Patterns | [references/deepening.md](../skills/refactor-deepen/references/deepening.md) | Classifying dependencies and applying seam discipline |
-| Interface Design | [references/interface-design.md](../skills/refactor-deepen/references/interface-design.md) | Running the parallel 3-agent Interface Design |
-| Grilling Protocol | [templates/grilling.md](../skills/refactor-deepen/templates/grilling.md) | Interview discipline during the candidate-selection loop |
-| PLAN Template | [templates/plan.md](../skills/refactor-deepen/templates/plan.md) | Writing the terminating PLAN artifact |
+| Vocabulary | [references/language.md](references/language.md) | Naming any module, interface, or seam — read first, every invocation |
+| Deepening Patterns | [references/deepening.md](references/deepening.md) | Classifying dependencies and applying seam discipline |
+| Interface Design | [references/interface-design.md](references/interface-design.md) | Running the parallel 3-agent Interface Design |
+| Grilling Protocol | [templates/grilling.md](templates/grilling.md) | Interview discipline during the candidate-selection loop |
+| PLAN Template | [templates/plan.md](templates/plan.md) | Writing the terminating PLAN artifact |
 
 ---
 

@@ -79,9 +79,9 @@ An entry resolves by becoming a Decision, a Planning Contract subsection, or a n
 
 | Tag | Meaning | Routes to |
 |-----|---------|-----------|
-| `[KU]` known unknown | A question you can state precisely | [Grilling](../skills/shape/references/grilling.md) (architecture-changing answers first) or a research spike |
-| `[UK]` unknown known | You'd recognize the right answer if you saw it, but can't state it yet | [Reaction artifact](../skills/shape/references/reaction-artifact.md) — a variant or mock in `research/`, react and pick |
-| `[UU]` suspected blind spot | Unfamiliar territory; you don't yet know what you don't know | [Blindspot pass](../skills/shape/references/blindspot-pass.md) |
+| `[KU]` known unknown | A question you can state precisely | [Grilling](references/grilling.md) (architecture-changing answers first) or a research spike |
+| `[UK]` unknown known | You'd recognize the right answer if you saw it, but can't state it yet | [Reaction artifact](references/reaction-artifact.md) — a variant or mock in `research/`, react and pick |
+| `[UU]` suspected blind spot | Unfamiliar territory; you don't yet know what you don't know | [Blindspot pass](references/blindspot-pass.md) |
 
 No route names a skill invocation. Research re-interviews an already-scoped question and writes to `.agents/reports/`; brainstorm forces a strategic frame onto a Change-local question and sends resolutions to intake. Shape runs all three techniques itself, in-session, and writes evidence into the Change's own `research/` — never `.agents/reports/`.
 
@@ -114,7 +114,7 @@ Once the shape of the work is nameable, confirm scope with the user, then:
 loaf change init <slug>
 ```
 
-On a fresh slug this scaffolds `change.json` + `shape.md` + seeded `tasks/` from the embedded templates (see `templates/shape.md`, `templates/task.md`). On a capture-only folder that already has `change.json` + `brief.md` (from pitch or `init --brief`), the same command promotes in place — preserving brief and metadata verbatim while materializing `shape.md` and `tasks/` — never hand-copy templates into the folder; rely on that promotion path. Use `loaf change init <slug> --brief` only for capture-before-shape (emits `change.json` + `brief.md`). It does not switch branches — `git switch -c <slug>` yourself. Fill `shape.md` Product Contract sections as understanding solidifies; seed `tasks/TASK-NNN-slug.md` as vertical slices (a task is a commit, not a PR). Optional `plan.md`/`design.md` accrete when the how needs prose. See [references/cli-boundary.md](../skills/shape/references/cli-boundary.md).
+On a fresh slug this scaffolds `change.json` + `shape.md` + seeded `tasks/` from the embedded templates (see `templates/shape.md`, `templates/task.md`). On a capture-only folder that already has `change.json` + `brief.md` (from pitch or `init --brief`), the same command promotes in place — preserving brief and metadata verbatim while materializing `shape.md` and `tasks/` — never hand-copy templates into the folder; rely on that promotion path. Use `loaf change init <slug> --brief` only for capture-before-shape (emits `change.json` + `brief.md`). It does not switch branches — `git switch -c <slug>` yourself. Fill `shape.md` Product Contract sections as understanding solidifies; seed `tasks/TASK-NNN-slug.md` as vertical slices (a task is a commit, not a PR). Optional `plan.md`/`design.md` accrete when the how needs prose. See [references/cli-boundary.md](references/cli-boundary.md).
 
 ### Step 4: Narrow the Unknowns
 
@@ -122,7 +122,7 @@ Offer the blindspot pass when the territory is unfamiliar (a new domain, an unfa
 
 ### Step 5: Decompose into Implementation Units
 
-Absorbed from the retired breakdown step — see [references/decomposition.md](../skills/shape/references/decomposition.md) for the Right Size Test and per-unit verification discipline, including the V-tier `Command:` / `Expect:` forms `loaf change verify` parses (commands run from the repository root; H-tier is never gate input). Order units by likelihood-of-change; state real sequencing constraints in prose, never by list order alone.
+Absorbed from the retired breakdown step — see [references/decomposition.md](references/decomposition.md) for the Right Size Test and per-unit verification discipline, including the V-tier `Command:` / `Expect:` forms `loaf change verify` parses (commands run from the repository root; H-tier is never gate input). Order units by likelihood-of-change; state real sequencing constraints in prose, never by list order alone.
 
 ### Step 6: Fill the Planning Contract
 
@@ -130,7 +130,7 @@ Write the free-form `###` subsections the work actually needs (approach, placeme
 
 ### Step 7: Run the Critique Gate
 
-Before finalizing, challenge the draft — see [references/critique-gate.md](../skills/shape/references/critique-gate.md). Is scope still bounded, does every new command or state name its ceremony, is a status field creeping back in under another name, is the CLI/skill boundary drawn correctly, and could this be smaller and still deliver the Hypothesis?
+Before finalizing, challenge the draft — see [references/critique-gate.md](references/critique-gate.md). Is scope still bounded, does every new command or state name its ceremony, is a status field creeping back in under another name, is the CLI/skill boundary drawn correctly, and could this be smaller and still deliver the Hypothesis?
 
 ### Step 8: Validate
 
@@ -138,11 +138,11 @@ Before finalizing, challenge the draft — see [references/critique-gate.md](../
 loaf change check
 ```
 
-Read violations (always block — fix them) separately from the executability report (derived, informational unless `--require-executable` is passed — that flag is implement's preflight and CI's non-draft gate, not shape's business). See [references/cli-boundary.md](../skills/shape/references/cli-boundary.md).
+Read violations (always block — fix them) separately from the executability report (derived, informational unless `--require-executable` is passed — that flag is implement's preflight and CI's non-draft gate, not shape's business). See [references/cli-boundary.md](references/cli-boundary.md).
 
 ### Step 9: Offer the Draft PR
 
-Offer to push the branch and open a draft PR, using [the PR template](../skills/shape/templates/pr.md) — opt-in, never automatic. `loaf change check` (with no `--require-executable`) plus `gh pr list` is the cross-branch index either way.
+Offer to push the branch and open a draft PR, using [the PR template](templates/pr.md) — opt-in, never automatic. `loaf change check` (with no `--require-executable`) plus `gh pr list` is the cross-branch index either way.
 
 ### Step 10: Log the Outcome
 
@@ -162,12 +162,12 @@ Offer to push the branch and open a draft PR, using [the PR template](../skills/
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Blindspot pass | [references/blindspot-pass.md](../skills/shape/references/blindspot-pass.md) | Deciding whether to offer reconnaissance, and how to prompt it |
-| Grilling | [references/grilling.md](../skills/shape/references/grilling.md) | Running the one-question-at-a-time interview for `[KU]` entries |
-| Reaction artifacts | [references/reaction-artifact.md](../skills/shape/references/reaction-artifact.md) | Resolving `[UK]` entries with a variant, mock, or prototype |
-| Decomposition | [references/decomposition.md](../skills/shape/references/decomposition.md) | Sizing and ordering Implementation Units |
-| CLI boundary | [references/cli-boundary.md](../skills/shape/references/cli-boundary.md) | Reading `loaf change init`/`check`/`verify` output, or explaining `--require-executable` |
-| Critique Gate | [references/critique-gate.md](../skills/shape/references/critique-gate.md) | Self-challenging scope and boundaries before finalizing |
+| Blindspot pass | [references/blindspot-pass.md](references/blindspot-pass.md) | Deciding whether to offer reconnaissance, and how to prompt it |
+| Grilling | [references/grilling.md](references/grilling.md) | Running the one-question-at-a-time interview for `[KU]` entries |
+| Reaction artifacts | [references/reaction-artifact.md](references/reaction-artifact.md) | Resolving `[UK]` entries with a variant, mock, or prototype |
+| Decomposition | [references/decomposition.md](references/decomposition.md) | Sizing and ordering Implementation Units |
+| CLI boundary | [references/cli-boundary.md](references/cli-boundary.md) | Reading `loaf change init`/`check`/`verify` output, or explaining `--require-executable` |
+| Critique Gate | [references/critique-gate.md](references/critique-gate.md) | Self-challenging scope and boundaries before finalizing |
 
 ## Artifact Naming
 

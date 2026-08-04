@@ -187,7 +187,7 @@ func installOpencodeTarget(options targetInstallOptions) error {
 			return err
 		}
 	}
-	dirs := []string{"agents", "commands", "templates"}
+	dirs := []string{"agents", "templates"}
 	if !hasAdapterManifest {
 		dirs = append(dirs, "plugins")
 	}
@@ -196,10 +196,167 @@ func installOpencodeTarget(options targetInstallOptions) error {
 			return err
 		}
 	}
+	if err := syncOpenCodeCommandsDir(options.DistDir, options.ConfigDir, skillsDest); err != nil {
+		return err
+	}
 	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {
 		return err
 	}
 	return writeInstallRecord(options, skillsDest)
+}
+
+// syncOpenCodeCommandsDir installs OpenCode command files and rewrites
+// skill-local template/reference links to paths that resolve from the
+// installed commands directory to the canonical skills store.
+//
+// The distribution commands tree is fully validated before any destination
+// mutation. A symlinked commands directory or any symlink inside it is a
+// refusal — distinct from a legitimate symlinked config destination, which
+// resolveInstallPath handles for link rewriting.
+//
+// Failure mode: if a user copies an installed command file to a different
+// directory, Rel-based links break. That is acceptable; the install location
+// is the contract. When Rel cannot be computed (different volumes), links fall
+// back to an absolute path.
+func syncOpenCodeCommandsDir(distDir string, configDir string, skillsStore string) error {
+	src := filepath.Join(distDir, "commands")
+	info, err := os.Lstat(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if info.Mode()&fs.ModeSymlink != 0 {
+		return fmt.Errorf("opencode commands source is a symlink")
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("opencode commands source is not a directory")
+	}
+	// Fail closed: command bodies link into the canonical skills store. A
+	// partial distribution (commands without skills) must not stamp success
+	// for links that cannot resolve.
+	if !dirExistsForInstall(skillsStore) {
+		return fmt.Errorf("cannot install OpenCode commands: canonical skills store %s does not exist", skillsStore)
+	}
+	// Validate the entire source tree before touching the destination. A
+	// refusal here must leave existing installed commands intact.
+	if err := validateOpenCodeCommandsSource(src); err != nil {
+		return err
+	}
+
+	// Source fully accepted. First destination mutation:
+	dest := filepath.Join(configDir, "commands")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dest)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(dest, entry.Name())); err != nil {
+			return err
+		}
+	}
+	srcEntries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, entry := range srcEntries {
+		name := entry.Name()
+		from := filepath.Join(src, name)
+		to := filepath.Join(dest, name)
+		info, err := os.Lstat(from)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("opencode command %q is a symlink", name)
+		}
+		if info.IsDir() {
+			if err := copyDirContentsForInstall(from, to); err != nil {
+				return err
+			}
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("opencode command %q is not a regular file", name)
+		}
+		body, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		if strings.HasSuffix(name, ".md") {
+			skill := strings.TrimSuffix(name, ".md")
+			body = []byte(rewriteOpenCodeCommandSkillLinks(string(body), skill, dest, skillsStore))
+		}
+		if err := os.WriteFile(to, body, info.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateOpenCodeCommandsSource walks the distribution commands tree with
+// Lstat and refuses any symlink or non-regular leaf. The root must already be
+// a real directory (caller Lstats it); this walk covers nested paths that a
+// top-level entry check would miss.
+func validateOpenCodeCommandsSource(src string) error {
+	return filepath.WalkDir(src, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&fs.ModeSymlink != 0 {
+			rel, relErr := filepath.Rel(src, path)
+			if relErr != nil {
+				rel = path
+			}
+			if rel == "." {
+				return fmt.Errorf("opencode commands source is a symlink")
+			}
+			return fmt.Errorf("opencode command %q is a symlink", filepath.ToSlash(rel))
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if !info.Mode().IsRegular() {
+			rel, relErr := filepath.Rel(src, path)
+			if relErr != nil {
+				rel = path
+			}
+			return fmt.Errorf("opencode command %q is not a regular file", filepath.ToSlash(rel))
+		}
+		return nil
+	})
+}
+
+// rewriteOpenCodeCommandSkillLinks rewrites skill-local and legacy build-time
+// template/reference markdown links so they resolve from commandsDir to
+// skillsStore/<skill>. Paths are symlink-resolved first so Rel matches what
+// the filesystem resolver sees when config directories are legitimate symlinks.
+// Prefer filepath.Rel; fall back to absolute paths when Rel fails (cross-volume).
+// Copied-elsewhere breakage is an accepted failure mode.
+func rewriteOpenCodeCommandSkillLinks(content string, skill string, commandsDir string, skillsStore string) string {
+	commandsResolved := resolveInstallPath(commandsDir)
+	storeResolved := resolveInstallPath(skillsStore)
+	skillRoot := filepath.Join(storeResolved, skill)
+	rel, err := filepath.Rel(commandsResolved, skillRoot)
+	linkBase := filepath.ToSlash(skillRoot)
+	if err == nil {
+		linkBase = filepath.ToSlash(rel)
+	}
+	legacyTemplates := "](../skills/" + skill + "/templates/"
+	legacyReferences := "](../skills/" + skill + "/references/"
+	content = strings.ReplaceAll(content, legacyTemplates, "]("+linkBase+"/templates/")
+	content = strings.ReplaceAll(content, legacyReferences, "]("+linkBase+"/references/")
+	content = strings.ReplaceAll(content, "](templates/", "]("+linkBase+"/templates/")
+	content = strings.ReplaceAll(content, "](references/", "]("+linkBase+"/references/")
+	return content
 }
 
 func installCursorTarget(options targetInstallOptions) error {
@@ -601,6 +758,31 @@ func stripOwnedFrontmatterKeysByMembership(frontmatter string, ownedKeys map[str
 	return strings.Join(out, "\n"), version, nil
 }
 
+// skillSyncConflict names one skill the apply path refused to mutate.
+type skillSyncConflict struct {
+	Skill  string
+	Reason string
+}
+
+// skillSyncConflictsError is returned after a partial managed-skills sync when
+// one or more skills were skipped for ownership conflicts. Non-conflicted
+// skills were installed; callers must still run target adapters and then
+// propagate this error so scripts observe non-zero.
+type skillSyncConflictsError struct {
+	Conflicts []skillSyncConflict
+}
+
+func (e *skillSyncConflictsError) Error() string {
+	if e == nil || len(e.Conflicts) == 0 {
+		return "managed skills sync conflicts"
+	}
+	parts := make([]string, 0, len(e.Conflicts))
+	for _, c := range e.Conflicts {
+		parts = append(parts, fmt.Sprintf("%s: %s", c.Skill, c.Reason))
+	}
+	return "managed skills sync conflicts: " + strings.Join(parts, "; ")
+}
+
 // syncCanonicalManagedSkills performs exactly one syncManagedSkillsDirIfExists
 // per resolved destination across the selected targets. The source tree is the
 // canonical store-sharing target (see selectCanonicalSkillsSource), not the
@@ -610,6 +792,7 @@ func syncCanonicalManagedSkills(options []targetInstallOptions) error {
 	if err != nil {
 		return err
 	}
+	var conflicts *skillSyncConflictsError
 	for _, group := range groups {
 		source, err := selectCanonicalSkillsSource(group.Options)
 		if err != nil {
@@ -617,8 +800,19 @@ func syncCanonicalManagedSkills(options []targetInstallOptions) error {
 		}
 		src := filepath.Join(source.DistDir, "skills")
 		if err := syncManagedSkillsDirIfExists(src, group.Destination); err != nil {
+			var groupConflicts *skillSyncConflictsError
+			if errors.As(err, &groupConflicts) {
+				if conflicts == nil {
+					conflicts = &skillSyncConflictsError{}
+				}
+				conflicts.Conflicts = append(conflicts.Conflicts, groupConflicts.Conflicts...)
+				continue
+			}
 			return err
 		}
+	}
+	if conflicts != nil && len(conflicts.Conflicts) > 0 {
+		return conflicts
 	}
 	return nil
 }
@@ -675,7 +869,10 @@ func syncManagedSkillsDirIfExists(src string, dest string) (returnErr error) {
 		}
 		current[skill] = digest
 	}
-	// Complete all ownership checks before mutating the destination.
+
+	// Collect ownership conflicts for the whole source set before mutating.
+	// Blast radius is per-skill: non-conflicted skills still install.
+	conflicts := map[string]string{}
 	for skill, recordedDigest := range previous.digests {
 		path := filepath.Join(dest, skill)
 		if previous.legacy {
@@ -689,18 +886,20 @@ func syncManagedSkillsDirIfExists(src string, dest string) (returnErr error) {
 			return fmt.Errorf("managed skill %q cannot be verified: %w", skill, err)
 		}
 		if actual != recordedDigest && actual != current[skill] {
-			return fmt.Errorf("managed skill %q was modified; refusing to overwrite or remove", skill)
+			conflicts[skill] = fmt.Sprintf("managed skill %q was modified; refusing to overwrite or remove", skill)
 		}
 	}
 	for _, skill := range sourceSkills {
-		if _, owned := previous.digests[skill]; !owned {
-			if _, err := os.Lstat(filepath.Join(dest, skill)); err == nil {
-				return fmt.Errorf("skill destination %q already exists and is not managed by Loaf", skill)
-			} else if !os.IsNotExist(err) {
-				return err
-			}
+		if _, owned := previous.digests[skill]; owned {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(dest, skill)); err == nil {
+			conflicts[skill] = fmt.Sprintf("skill destination %q already exists and is not managed by Loaf", skill)
+		} else if !os.IsNotExist(err) {
+			return err
 		}
 	}
+
 	stageRoot, err := os.MkdirTemp(filepath.Dir(dest), "."+filepath.Base(dest)+".loaf-skills-stage-")
 	if err != nil {
 		return err
@@ -714,6 +913,9 @@ func syncManagedSkillsDirIfExists(src string, dest string) (returnErr error) {
 		}
 	}()
 	for _, skill := range sourceSkills {
+		if _, bad := conflicts[skill]; bad {
+			continue
+		}
 		staged := filepath.Join(stageRoot, "desired", skill)
 		if err := copyInstallSkillTree(filepath.Join(src, skill), staged); err != nil {
 			return fmt.Errorf("stage skill %q: %w", skill, err)
@@ -727,17 +929,25 @@ func syncManagedSkillsDirIfExists(src string, dest string) (returnErr error) {
 		}
 	}
 	for skill := range previous.digests {
-		if _, keep := current[skill]; !keep {
-			retain, err := retireManagedSkill(filepath.Join(dest, skill), filepath.Join(stageRoot, "backups", skill), previous.digests[skill], previous.legacy)
-			if retain {
-				retainStageRoot = true
-			}
-			if err != nil {
-				return err
-			}
+		if _, keep := current[skill]; keep {
+			continue
+		}
+		if _, bad := conflicts[skill]; bad {
+			// Ownership refusal: never delete a directory Loaf cannot prove it owns.
+			continue
+		}
+		retain, err := retireManagedSkill(filepath.Join(dest, skill), filepath.Join(stageRoot, "backups", skill), previous.digests[skill], previous.legacy)
+		if retain {
+			retainStageRoot = true
+		}
+		if err != nil {
+			return err
 		}
 	}
 	for _, skill := range sourceSkills {
+		if _, bad := conflicts[skill]; bad {
+			continue
+		}
 		installed := filepath.Join(dest, skill)
 		if actual, err := hashInstallSkillTree(installed); err == nil && actual == current[skill] {
 			continue
@@ -753,11 +963,57 @@ func syncManagedSkillsDirIfExists(src string, dest string) (returnErr error) {
 			return err
 		}
 	}
-	manifest := managedSkillsManifestV2{Version: 2, Skills: make([]managedSkillDigest, 0, len(sourceSkills))}
+
+	// Manifest retention for conflicted skills:
+	// - Modified-managed: keep the previous digest entry even though the skill
+	//   was not updated. Dropping it would make the next run treat the
+	//   destination as never-managed and silently change the ownership story.
+	//   Retaining keeps Loaf's claim visible; the conflict report makes the
+	//   "claims but does not control" state explicit.
+	// - Unowned collision (never in manifest): do not add a new entry.
+	manifestSkills := map[string]string{}
 	for _, skill := range sourceSkills {
-		manifest.Skills = append(manifest.Skills, managedSkillDigest{Name: skill, SHA256: current[skill]})
+		if _, bad := conflicts[skill]; bad {
+			if _, owned := previous.digests[skill]; owned {
+				manifestSkills[skill] = previous.digests[skill]
+			}
+			continue
+		}
+		manifestSkills[skill] = current[skill]
 	}
-	return writeManagedSkillsManifest(dest, manifest)
+	for skill, digest := range previous.digests {
+		if _, keep := current[skill]; keep {
+			continue
+		}
+		if _, bad := conflicts[skill]; bad {
+			manifestSkills[skill] = digest
+		}
+	}
+	names := make([]string, 0, len(manifestSkills))
+	for name := range manifestSkills {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	manifest := managedSkillsManifestV2{Version: 2, Skills: make([]managedSkillDigest, 0, len(names))}
+	for _, name := range names {
+		manifest.Skills = append(manifest.Skills, managedSkillDigest{Name: name, SHA256: manifestSkills[name]})
+	}
+	if err := writeManagedSkillsManifest(dest, manifest); err != nil {
+		return err
+	}
+	if len(conflicts) == 0 {
+		return nil
+	}
+	names = make([]string, 0, len(conflicts))
+	for skill := range conflicts {
+		names = append(names, skill)
+	}
+	sort.Strings(names)
+	out := &skillSyncConflictsError{Conflicts: make([]skillSyncConflict, 0, len(names))}
+	for _, skill := range names {
+		out.Conflicts = append(out.Conflicts, skillSyncConflict{Skill: skill, Reason: conflicts[skill]})
+	}
+	return out
 }
 
 func listInstallSkillDirs(path string) ([]string, error) {
@@ -1225,6 +1481,13 @@ func copyDirContentsForInstall(src string, dest string) error {
 		if err != nil {
 			return err
 		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("contains symlink %q", path)
+		}
 		rel, err := filepath.Rel(src, path)
 		if err != nil {
 			return err
@@ -1233,12 +1496,11 @@ func copyDirContentsForInstall(src string, dest string) error {
 			return os.MkdirAll(dest, 0o755)
 		}
 		target := filepath.Join(dest, rel)
-		if entry.IsDir() {
+		if info.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("contains non-regular file %q", path)
 		}
 		return copyFileWithModeForInstall(path, target, info.Mode().Perm())
 	})
@@ -1897,6 +2159,21 @@ func installHookSignature(hook map[string]any) string {
 	default:
 		return ""
 	}
+}
+
+// resolveInstallPath returns an absolute, symlink-resolved path when possible.
+// Config directories may legitimately be symlinks; resolved form is the goal so
+// relative links match the filesystem resolver. Missing paths fall back to Abs.
+func resolveInstallPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return abs
+	}
+	return resolved
 }
 
 func dirExistsForInstall(path string) bool {

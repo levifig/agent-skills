@@ -114,8 +114,11 @@ func generateNativeOpenCodeCommands(root string, version string) error {
 			fields = setNativeBuildYAMLFieldValue(fields, field.key, field.value)
 		}
 		fields = setNativeBuildYAMLFieldValue(fields, "version", nativeBuildStringValue(version))
-		content = strings.ReplaceAll(content, "](templates/", "](../skills/"+skill+"/templates/")
-		content = strings.ReplaceAll(content, "](references/", "](../skills/"+skill+"/references/")
+		// Keep skill-local ](templates/ and ](references/ links as stable
+		// placeholders. Build-time ../skills/<name>/ assumes skills live under
+		// the OpenCode config dir (false since ADR-018 moved them to
+		// ~/.agents/skills). Install rewrites these once the real commands
+		// directory and skills store are known (see rewriteOpenCodeCommandSkillLinks).
 		output := "---\n" + renderNativeBuildYAMLFieldValues(fields) + "---\n" + content
 		if err := os.MkdirAll(commandsDest, 0o755); err != nil {
 			return err

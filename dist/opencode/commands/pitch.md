@@ -33,7 +33,7 @@ Human problem-discovery ceremony. Authors a brief at the matching scale so shape
 1. **Agents never initiate a pitch.** This ceremony is human-invoked only. On Claude Code the sidecar sets `disable-model-invocation: true`; on every target this rule binds behaviorally. Agent legwork *inside* a human-opened pitch (competitive scans, file writes the skill directs) is fine — opening one is not.
 2. **Log invocation first** — `loaf journal log "skill(pitch): <idea, problem, or intake item>"` before interviewing.
 3. **Problem-space only** — grill what, who, and why-valuable. Approach, architecture, decomposition, and verification design belong to shape. A brief that reads like a pseudo-shape is a failure; rewrite before landing.
-4. **One question at a time, recommendation-first** — using your harness's structured question tool if it has one (otherwise one inline question per message). Never a multi-field form. Order by impact on the brief. Full mechanics: [references/interview-guide.md](../skills/pitch/references/interview-guide.md).
+4. **One question at a time, recommendation-first** — using your harness's structured question tool if it has one (otherwise one inline question per message). Never a multi-field form. Order by impact on the brief. Full mechanics: [references/interview-guide.md](references/interview-guide.md).
 5. **Never write `shape.md`, seed `tasks/`, push, or open PRs** — pitch prepares commits and hands off; push and PR stay human. Never auto-run shape or bootstrap.
 6. **Landing is validated, then committed once** — every capture landing runs explicit-path `loaf change check <folder> --json` (zero violations, expected captured state) and a direct read-back of that folder's `change.json` confirming intended `target_release` presence or absence, then one docs-only commit per capture. Never batch captures into one commit.
 7. **Slug identity is local** — propose a slug that names the concept, never another work unit (no `spec-042`, no task ids). Provenance lives in frontmatter and the change folder.
@@ -105,7 +105,7 @@ Apply the Quick Reference table. Confirm: "I'll treat this as a **change-scale**
 
 ### Step 3: Problem-discovery interview
 
-Run the interview per [references/interview-guide.md](../skills/pitch/references/interview-guide.md):
+Run the interview per [references/interview-guide.md](references/interview-guide.md):
 
 - Pin a one-or-two-line **destination** before dimension grilling (fixes brief scope; project scale feeds VISION success criteria, change scale sharpens the eventual Hypothesis)
 - Dimensions: problem, who has it, current alternatives / competitive landscape, value proposition, constraints (plus sequencing and open questions when needed)
@@ -213,7 +213,7 @@ The journal line is mechanical; the human-facing close is the closing ceremony i
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Interview guide | [references/interview-guide.md](../skills/pitch/references/interview-guide.md) | Running or adapting the problem-discovery grill |
+| Interview guide | [references/interview-guide.md](references/interview-guide.md) | Running or adapting the problem-discovery grill |
 
 ## Artifact Naming
 
