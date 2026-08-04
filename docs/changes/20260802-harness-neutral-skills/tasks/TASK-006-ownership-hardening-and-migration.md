@@ -36,16 +36,26 @@ loaf journal log "skill(implement): TASK-006 — ownership hardening and migrati
 
 ## Steps
 
-- [ ] Make retirement consult the managed-skills digest manifest before removing anything, and refuse on mismatch rather than proceeding
+- [x] Make retirement consult the managed-skills digest manifest before removing anything, and refuse on mismatch rather than proceeding
 - [ ] Run the discovery smoke that answers whether Cursor and OpenCode deduplicate a skill found through several search paths, since the answer sets how aggressive migration must be. The same smoke answers a question TASK-004 left open and documentation could not settle: whether Cursor and Amp tolerate the OpenCode-owned frontmatter keys (`subtask`, `user-invocable`) that reach them through the single canonical copy
-- [ ] Enumerate the paths migration sweeps from the harness search-path table, in precedence order, rather than from memory
-- [ ] Retire Loaf's provable copies; un-manage rather than delete where ownership is not provable, and report the two distinctly
-- [ ] Handle dangling symlinks at managed targets, or record the explicit deferral
-- [ ] Emit a before-and-after tree-hash receipt for the migration as machine evidence
-- [ ] Add `TestDestructiveMigrationPreservesUnowned`, exercising the real `--yes` path
+- [x] Enumerate the paths migration sweeps from the harness search-path table, in precedence order, rather than from memory
+- [x] Retire Loaf's provable copies; un-manage rather than delete where ownership is not provable, and report the two distinctly
+- [x] Handle dangling symlinks at managed targets, or record the explicit deferral
+- [x] Emit a before-and-after tree-hash receipt for the migration as machine evidence
+- [x] Add `TestDestructiveMigrationPreservesUnowned`, exercising the real `--yes` path
 
 ## Verification
 
 - `go test ./internal/cli/ -run TestDestructiveMigrationPreservesUnowned` passes, covering a foreign `orchestration/SKILL.md`, a manifest entry whose digest no longer matches, a dangling symlink, every prior skill home, and interruption followed by retry
 - The migration receipt shows nothing unowned was modified
 - On the dogfooding machine, `loaf upgrade` completes with no conflicts and no duplicate skill listings in any harness
+
+## Landed state
+
+Delivered at `d37297d7` after five adversarial review passes. Every data-loss finding is closed: nothing is deleted, overwritten, or moved without a digest-proven claim, deliberate refusals preserve and report rather than aborting, and real I/O errors surface instead of being flattened into "absent".
+
+Two items are deliberately open.
+
+**The discovery smoke is unrun.** It needs real harnesses rather than fixtures, so it is the operator's to run, not an implementer's. Its absence is why migration is conservative rather than aggressive — the conservatism is the mitigation, not a gap.
+
+**One refusal path is knowingly incomplete.** When an ancestor of the relocation destination is itself a regular file — `${HOME}/.agents` rather than `${HOME}/.agents/skills` — the destructive receipt hash runs before any refusal classification, and it treats only `ENOENT` as non-fatal, so the upgrade aborts instead of emitting an actionable `unmanaged` report. The source is preserved either way, which makes this a wrong refusal rather than a wrong deletion. The classification is already correct in `isDeliberateMigrationDestinationPathError`; it is simply not consulted on the root probe and hash paths.

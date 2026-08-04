@@ -35,12 +35,12 @@ loaf journal log "skill(implement): TASK-005 — conflict isolation and command 
 
 ## Steps
 
-- [ ] Make both preflight checks collect conflicts rather than return on the first, and install every non-conflicting skill
-- [ ] Decide and state what happens to a conflicted skill's manifest entry, so a skip does not silently change ownership on the next run
-- [ ] Report skipped skills by name and reason, distinguishing "not ours" from "modified since we wrote it"
-- [ ] Keep the planning mirror in agreement: a skill the plan calls conflicted must be exactly the skill apply skips
-- [ ] Fix the generated-command link rewriting so it resolves from the installed command location to the canonical store, deriving the relative path rather than assuming a config-directory depth — or use a form that resolves regardless of where the config directory lives, and say which and why
-- [ ] Add `TestSkillConflictIsolation` and `TestGeneratedCommandLinksResolve`
+- [x] Make both preflight checks collect conflicts rather than return on the first, and install every non-conflicting skill
+- [x] Decide and state what happens to a conflicted skill's manifest entry, so a skip does not silently change ownership on the next run
+- [x] Report skipped skills by name and reason, distinguishing "not ours" from "modified since we wrote it"
+- [x] Keep the planning mirror in agreement: a skill the plan calls conflicted must be exactly the skill apply skips
+- [x] Fix the generated-command link rewriting so it resolves from the installed command location to the canonical store, deriving the relative path rather than assuming a config-directory depth — or use a form that resolves regardless of where the config directory lives, and say which and why
+- [x] Add `TestSkillConflictIsolation` and `TestGeneratedCommandLinksResolve`
 
 ## Verification
 
