@@ -227,6 +227,7 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 	var failed []string
 	defaults := defaultInstallConfigDirs()
 	toolByKey := installToolsByKey(tools)
+	var upgradeOptions []targetInstallOptions
 	for _, target := range targets {
 		distDir := filepath.Join(distRoot, target)
 		if !dirExistsForInstall(distDir) {
@@ -238,22 +239,36 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 		if tool, ok := toolByKey[target]; ok && tool.configDir != "" {
 			configDir = tool.configDir
 		}
-		err := installTargetDistribution(targetInstallOptions{
-			Target:      target,
-			DistDir:     distDir,
-			ConfigDir:   configDir,
-			Upgrade:     true,
-			Version:     version,
-			HomeDir:     installHome(),
-			CodexHome:   os.Getenv("CODEX_HOME"),
-			ProjectRoot: projectRoot,
+		upgradeOptions = append(upgradeOptions, targetInstallOptions{
+			Target:         target,
+			DistDir:        distDir,
+			ConfigDir:      configDir,
+			Upgrade:        true,
+			Version:        version,
+			HomeDir:        installHome(),
+			CodexHome:      os.Getenv("CODEX_HOME"),
+			ProjectRoot:    projectRoot,
+			SkipSkillsSync: true,
 		})
-		if err != nil {
-			fmt.Fprintf(out, "  %s %s - %v\n", ansiRed("✗"), installDisplayName(target), err)
-			failed = append(failed, target)
+	}
+	skillsErr := syncCanonicalManagedSkills(upgradeOptions)
+	skillsErrReported := false
+	for _, opts := range upgradeOptions {
+		if skillsErr != nil {
+			if !skillsErrReported {
+				fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillsErr)
+				skillsErrReported = true
+			}
+			failed = append(failed, opts.Target)
 			continue
 		}
-		fmt.Fprintf(out, "  %s %s refreshed at %s (v%s)\n", ansiGreen("✓"), installDisplayName(target), ansiGray(configDir), version)
+		err := installTargetDistribution(opts)
+		if err != nil {
+			fmt.Fprintf(out, "  %s %s - %v\n", ansiRed("✗"), installDisplayName(opts.Target), err)
+			failed = append(failed, opts.Target)
+			continue
+		}
+		fmt.Fprintf(out, "  %s %s refreshed at %s (v%s)\n", ansiGreen("✓"), installDisplayName(opts.Target), ansiGray(opts.ConfigDir), version)
 	}
 	fmt.Fprintln(out)
 	return failed, nil

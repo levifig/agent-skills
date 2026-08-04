@@ -35,6 +35,7 @@ type installDryRunPlan struct {
 	Command          string                   `json:"command"`
 	DryRun           bool                     `json:"dry_run"`
 	Targets          []targetDistributionPlan `json:"targets"`
+	Skills           []artifactPlanDecision   `json:"skills"`
 	Deprecations     []deprecationPlanEntry   `json:"deprecations"`
 	ProjectPart      *projectPartPlan         `json:"project_part,omitempty"`
 	ProjectFiles     []projectFilePlanEntry   `json:"project_files"`
@@ -133,6 +134,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 		Command:         planCommandName(options),
 		DryRun:          true,
 		Targets:         []targetDistributionPlan{},
+		Skills:          []artifactPlanDecision{},
 		Deprecations:    []deprecationPlanEntry{},
 		ProjectPart:     projectPart,
 		ProjectFiles:    []projectFilePlanEntry{},
@@ -159,6 +161,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	toolByKey := installToolsByKey(tools)
 	defaults := defaultInstallConfigDirs()
 	buildNeeded := false
+	var plannedOptions []targetInstallOptions
 	for _, target := range selectedTargets {
 		distDir := filepath.Join(distRoot, target)
 		configDir := defaults[target]
@@ -188,6 +191,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 			CodexHome:          os.Getenv("CODEX_HOME"),
 			ProjectRoot:        projectRoot,
 		}
+		plannedOptions = append(plannedOptions, installOpts)
 		decisions, err := planTargetDistribution(installOpts)
 		if err != nil {
 			return installDryRunPlan{}, err
@@ -201,6 +205,26 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 		plan.Targets = append(plan.Targets, targetPlan)
 	}
 	sort.Slice(plan.Targets, func(i, j int) bool { return plan.Targets[i].Target < plan.Targets[j].Target })
+
+	skills, blockedDests, err := planCanonicalManagedSkills(plannedOptions)
+	if err != nil {
+		return installDryRunPlan{}, err
+	}
+	plan.Skills = skills
+	if len(blockedDests) > 0 {
+		for i := range plan.Targets {
+			dest := ""
+			for _, opt := range plannedOptions {
+				if opt.Target == plan.Targets[i].Target {
+					dest = installSkillsDestination(opt)
+					break
+				}
+			}
+			if dest != "" && blockedDests[dest] {
+				plan.Targets[i].Blocked = true
+			}
+		}
+	}
 
 	// Project files mirror enforceInstallProjectFiles: symlinks first, then the
 	// managed fenced section for every target that carries a project file, then
@@ -246,11 +270,8 @@ func containsInstallToolInstalled(tools []detectedInstallTool, target string) bo
 // writing anything.
 func planTargetDistribution(options targetInstallOptions) ([]artifactPlanDecision, error) {
 	var decisions []artifactPlanDecision
-	skills, err := planManagedSkills(filepath.Join(options.DistDir, "skills"), installSkillsDestination(options))
-	if err != nil {
-		return nil, err
-	}
-	decisions = append(decisions, skills...)
+	// Skills are planned once per destination by planCanonicalManagedSkills;
+	// including them here would re-report shared conflicts once per target.
 
 	hasAdapterManifest := fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile))
 	if hasAdapterManifest {
@@ -275,6 +296,42 @@ func planTargetDistribution(options targetInstallOptions) ([]artifactPlanDecisio
 	}
 	sort.SliceStable(decisions, func(i, j int) bool { return decisions[i].ID < decisions[j].ID })
 	return decisions, nil
+}
+
+// planCanonicalManagedSkills plans managed-skill actions once per resolved
+// destination across the selected targets. Divergent source trees fail loudly.
+// The planned source is selectCanonicalSkillsSource's pick, matching the write.
+func planCanonicalManagedSkills(options []targetInstallOptions) ([]artifactPlanDecision, map[string]bool, error) {
+	groups, err := groupSkillsInstallByDestination(options)
+	if err != nil {
+		return nil, nil, err
+	}
+	blockedDests := map[string]bool{}
+	var decisions []artifactPlanDecision
+	for _, group := range groups {
+		source, err := selectCanonicalSkillsSource(group.Options)
+		if err != nil {
+			return nil, nil, err
+		}
+		src := filepath.Join(source.DistDir, "skills")
+		skills, err := planManagedSkills(src, group.Destination)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, skill := range skills {
+			if skill.Action == planActionConflict {
+				blockedDests[group.Destination] = true
+			}
+		}
+		decisions = append(decisions, skills...)
+	}
+	sort.SliceStable(decisions, func(i, j int) bool {
+		if decisions[i].Destination != decisions[j].Destination {
+			return decisions[i].Destination < decisions[j].Destination
+		}
+		return decisions[i].ID < decisions[j].ID
+	})
+	return decisions, blockedDests, nil
 }
 
 // planManagedSkills mirrors the read-only preflight and classification of
@@ -1056,6 +1113,12 @@ func installPlanFollowUpCommands(options installOptions, plan installDryRunPlan,
 }
 
 func installPlanHasChanges(plan installDryRunPlan) bool {
+	for _, artifact := range plan.Skills {
+		switch artifact.Action {
+		case planActionCreate, planActionUpdate, planActionRetire, planActionConflict:
+			return true
+		}
+	}
 	for _, target := range plan.Targets {
 		if target.Note != "" || target.Blocked {
 			return true
@@ -1143,6 +1206,13 @@ func writeInstallDryRunHuman(out io.Writer, plan installDryRunPlan) {
 
 	if len(plan.Targets) == 0 {
 		fmt.Fprintf(out, "  %s\n", ansiGray("No installed targets to upgrade"))
+	}
+	if len(plan.Skills) > 0 {
+		fmt.Fprintf(out, "  %s\n", ansiBold("Skills"))
+		for _, artifact := range plan.Skills {
+			fmt.Fprintf(out, "    %s %s %s%s\n", planActionGlyph(artifact.Action), artifact.Action, artifact.ID, planDetailSuffix(artifact.Detail))
+		}
+		fmt.Fprintln(out)
 	}
 	for _, target := range plan.Targets {
 		header := ansiBold(installDisplayName(target.Target))
