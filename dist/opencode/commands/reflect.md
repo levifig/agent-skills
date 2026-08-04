@@ -56,7 +56,7 @@ Update VISION, STRATEGY, and ARCHITECTURE based on proven implementation.
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Update Proposal | [templates/update-proposal.md](../skills/reflect/templates/update-proposal.md) | Drafting proposals for strategic doc changes |
+| Update Proposal | [templates/update-proposal.md](templates/update-proposal.md) | Drafting proposals for strategic doc changes |
 
 ---
 
@@ -108,7 +108,7 @@ Map learnings to documents:
 
 ### Step 5: Draft Proposals
 
-For each document needing updates, create proposals following [update-proposal template](../skills/reflect/templates/update-proposal.md).
+For each document needing updates, create proposals following [update-proposal template](templates/update-proposal.md).
 
 ### Step 6: Present and Await Approval
 

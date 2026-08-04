@@ -149,7 +149,7 @@ ask. Otherwise, decide and move on.
 
 ### Step 5: Draft Task List
 
-Draft tasks following [task template](../skills/breakdown/templates/task.md). Each task needs: clear title, priority, file hints, verification command, observable done condition, labels (if routing by team).
+Draft tasks following [task template](templates/task.md). Each task needs: clear title, priority, file hints, verification command, observable done condition, labels (if routing by team).
 
 ### Step 6: Present the Plan
 

@@ -52,7 +52,7 @@ Create a concise transfer packet for a fresh agent or future conversation.
 |-------|-------|
 | Location | `.agents/handoffs/` |
 | Naming | `YYYYMMDD-HHMMSS-{slug}.md` |
-| Template | [templates/handoff.md](../skills/handoff/templates/handoff.md) |
+| Template | [templates/handoff.md](templates/handoff.md) |
 | Active statuses | `draft`, `final` |
 | Disposable status | `deprecated` |
 | Cleanup owner | housekeeping |
@@ -79,7 +79,7 @@ only what the next agent needs to act.
 
 ### Step 3: Write the Handoff
 
-Create the file from [templates/handoff.md](../skills/handoff/templates/handoff.md).
+Create the file from [templates/handoff.md](templates/handoff.md).
 
 Use `date -u +"%Y%m%d-%H%M%S"` for the filename timestamp and
 `date -u +"%Y-%m-%dT%H:%M:%SZ"` for frontmatter timestamps.

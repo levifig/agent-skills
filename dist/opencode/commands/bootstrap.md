@@ -65,7 +65,7 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Interview Guide | [interview-guide.md](../skills/bootstrap/references/interview-guide.md) | Conducting the builder interview (all modes) |
+| Interview Guide | [interview-guide.md](references/interview-guide.md) | Conducting the builder interview (all modes) |
 
 ---
 
@@ -172,7 +172,7 @@ When `$ARGUMENTS` is empty and no `docs/BRIEF.md` exists:
 
 ### Brief Frontmatter Schema
 
-Follow [templates/brief.md](../skills/bootstrap/templates/brief.md) for the full brief template. Frontmatter:
+Follow [templates/brief.md](templates/brief.md) for the full brief template. Frontmatter:
 
 ```yaml
 ---
@@ -198,7 +198,7 @@ If `docs/BRIEF.md` already exists and no new brief was provided:
 
 ## Interview Flow
 
-Interview depth adapts to the detected mode. All interviews ask one question at a time, with a recommendation, using your harness's structured question tool if it has one. The full interview framework is in [references/interview-guide.md](../skills/bootstrap/references/interview-guide.md).
+Interview depth adapts to the detected mode. All interviews ask one question at a time, with a recommendation, using your harness's structured question tool if it has one. The full interview framework is in [references/interview-guide.md](references/interview-guide.md).
 
 ### Brownfield: Nuance-Capturing Interview
 
@@ -259,7 +259,7 @@ Then continue:
 
 No code, no brief, just a person with an idea. Deepest interview.
 
-**Run all four sections from [references/interview-guide.md](../skills/bootstrap/references/interview-guide.md):**
+**Run all four sections from [references/interview-guide.md](references/interview-guide.md):**
 
 1. **Excavation (The Spark)** -- understand the problem, who has it, what they do today
 2. **Sharpening (The Shape)** -- define scope, boundaries, no-gos, complexity
@@ -420,7 +420,7 @@ The journal should capture:
 - The original problem framing and user intent
 - Any open questions or deferred decisions
 
-Use [templates/journal.md](../skills/bootstrap/templates/journal.md) only as the rendered entry
+Use [templates/journal.md](templates/journal.md) only as the rendered entry
 format reference; do not hand-author journal markdown as the source of truth.
 
 ### 4. Series-Prep (initial arc as captured changes)
@@ -436,7 +436,7 @@ After operating documents are populated (and Knowledge Base Scaffolding above ha
 **Procedure**
 
 1. **Enumerate concepts** with the builder from the BRIEF's scoped problem space (Sequencing and Relationships, Open Questions, and distinct problem threads in Problem Statement). List candidates as recommendation-first options using your harness's structured question tool if it has one.
-2. **Apply granularity** per [references/interview-guide.md](../skills/bootstrap/references/interview-guide.md) (Series-Prep Granularity): a concept earns its own captured change when it is independently shippable **and** its problem can be **stated precisely now** (the mint-time specifiability test — not answered now, stated now) without the others; otherwise it stays a BRIEF line, becomes a spark, or an Intent — never a half-minted folder.
+2. **Apply granularity** per [references/interview-guide.md](references/interview-guide.md) (Series-Prep Granularity): a concept earns its own captured change when it is independently shippable **and** its problem can be **stated precisely now** (the mint-time specifiability test — not answered now, stated now) without the others; otherwise it stays a BRIEF line, becomes a spark, or an Intent — never a half-minted folder.
 3. **Per confirmed concept (one at a time — never batch):**
    1. Confirm mint with the builder (slug, coarse `target_release`, one-line problem restatement). If the builder will not bind even a coarse target, do not mint — park as spark/Intent/BRIEF line.
    2. Propose a **local slug** that names the concept, never another work unit (`spec-042`, task ids, change folder names). Confirm the slug.

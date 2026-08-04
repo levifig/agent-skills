@@ -62,8 +62,8 @@ Patterns for zooming out, investigating topics, and evolving project direction.
 
 | Topic | Template | Use When |
 |-------|----------|----------|
-| State Assessment | [state-assessment.md](../skills/research/templates/state-assessment.md) | Producing a project state overview |
-| Report | [report.md](../skills/research/templates/report.md) | Writing research, audit, analysis, or council output |
+| State Assessment | [state-assessment.md](templates/state-assessment.md) | Producing a project state overview |
+| Report | [report.md](templates/report.md) | Writing research, audit, analysis, or council output |
 
 ## Input Parsing
 
@@ -97,7 +97,7 @@ Always check project context first. Rate findings: **High** (official/verified),
 2. Check ideas with `loaf idea list --json` and specs with `loaf spec list --json`
 3. Review recent journal activity with `loaf journal recent --json` and `loaf journal context`
 4. Check recent commits: `git log --oneline -20`
-5. Synthesize following [state-assessment template](../skills/research/templates/state-assessment.md)
+5. Synthesize following [state-assessment template](templates/state-assessment.md)
 
 ### Topic Investigation
 
@@ -108,7 +108,7 @@ Always check project context first. Rate findings: **High** (official/verified),
 3. Apply confidence hierarchy for external sources
 4. For a transient review artifact, use `loaf report generate` when an existing
    SQLite-backed export kind fits; for authored long-form research, create a
-   Markdown report following the [report template](../skills/research/templates/report.md)
+   Markdown report following the [report template](templates/report.md)
 
 **Output:** generated report Markdown to stdout, or an authored report at
 `.agents/reports/{YYYYMMDD}-{HHMMSS}-research-{slug}.md` when a durable prose

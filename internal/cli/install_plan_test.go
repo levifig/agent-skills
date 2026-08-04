@@ -41,8 +41,10 @@ func TestRunnerUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
 		if got := planSkillAction(plan, "foundations"); got != planActionConflict {
 			t.Fatalf("foundations action = %q, want conflict (locally modified)", got)
 		}
-		if !cursor.Blocked {
-			t.Fatalf("cursor plan Blocked = false, want true when a conflict is present")
+		// Conflict-only skill errors leave adapters runnable; Blocked means the
+		// target's own adapter work will be skipped, which is not this case.
+		if cursor.Blocked {
+			t.Fatalf("cursor plan Blocked = true, want false for conflict-only skill errors")
 		}
 		if hasPlanSkillDecision(plan, "foreign") {
 			t.Fatalf("plan referenced foreign unowned skill; it must be ignored")

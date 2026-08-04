@@ -189,7 +189,7 @@ The issue is an actual task. Implement it directly — with a pre-flight gate.
      reconciliation error naming the parent issue before continuing.
    - Resolve branch name from the sub-issue's `branchName` field (Linear
      auto-generates one) — see
-     [branch-and-completion.md](../skills/implement/references/branch-and-completion.md).
+     [branch-and-completion.md](references/branch-and-completion.md).
    - Log the task coupling, then continue with the standard Startup Checklist.
 
 ### Completion (after implementer + reviewer finish cleanly)
@@ -301,7 +301,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 3. [ ] If TASK-XXX: load task via `loaf task show TASK-XXX`, log task coupling, load parent spec
 4. [ ] If Linear ID (or `SPEC-XXX` with `linear_parent`): follow [Linear-Native Routing](#linear-native-routing). Parent → walk sub-issues and select next. Sub-issue → verify `blockedBy` is clear, then start it as one logical Linear operation so the parent is promoted when needed
 5. [ ] If description: auto-create task (see Ad-hoc Task Auto-Creation above)
-6. [ ] Create dedicated branch (see [branch-and-completion.md](../skills/implement/references/branch-and-completion.md))
+6. [ ] Create dedicated branch (see [branch-and-completion.md](references/branch-and-completion.md))
 7. [ ] Suggest team based on task context
 8. [ ] Log initial context and references with `loaf journal log`
 9. [ ] Break down work using your harness's task/todo tracking surface
@@ -349,8 +349,8 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Batch Orchestration | [batch-orchestration.md](../skills/implement/references/batch-orchestration.md) | Running specs, task ranges, or task lists with dependency-ready rounds |
-| Branch and Completion | [branch-and-completion.md](../skills/implement/references/branch-and-completion.md) | Branch management, team routing, diagrams, Linear sync, journaling, task completion |
+| Batch Orchestration | [batch-orchestration.md](references/batch-orchestration.md) | Running specs, task ranges, or task lists with dependency-ready rounds |
+| Branch and Completion | [branch-and-completion.md](references/branch-and-completion.md) | Branch management, team routing, diagrams, Linear sync, journaling, task completion |
 
 ---
 

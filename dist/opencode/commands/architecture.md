@@ -127,7 +127,7 @@ Supersession is healthy. The bar for *writing* an ADR is high; once written, the
 - Read existing VISION.md, ARCHITECTURE.md, and ADRs before proposing changes
 - Read `docs/knowledge/glossary.md` at interview start (via `loaf kb glossary list`); use canonical terms throughout
 - When fuzzy/drifted language surfaces, challenge inline; if a load-bearing term emerges, offer `loaf kb glossary upsert` or `stabilize`
-- Follow the shared interview protocol in [templates/grilling.md](../skills/architecture/templates/grilling.md)
+- Follow the shared interview protocol in [templates/grilling.md](templates/grilling.md)
 - Present multiple options with pros/cons and "fits when" context
 - Wait for explicit user decision before proceeding with documentation
 - Log decision to the project journal: `loaf journal log "decision(architecture): ADR-NNN adopted for X"`
@@ -150,7 +150,7 @@ After work completes, verify:
 - Decision passes the bar: architecturally significant (canonical domains) OR difficult to reverse (cost of divergence)
 - ADR captures rationale, not exploration (exploration belongs in a SPEC)
 - If the decision supersedes a prior ADR, the new ADR has `supersedes:` and the old one has `superseded_by:`
-- ADR created using template at [templates/adr.md](../skills/architecture/templates/adr.md)
+- ADR created using template at [templates/adr.md](templates/adr.md)
 - ARCHITECTURE.md updated with new constraints and ADR reference
 - ADR number assigned sequentially (ls docs/decisions/ADR-*.md for next number)
 - Council convened if decision affects multiple domains
@@ -202,8 +202,8 @@ This skill *stabilizes* terms — promote a previously-proposed candidate, or wr
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| ADR Template | [templates/adr.md](../skills/architecture/templates/adr.md) | Creating new architecture decision records |
-| Grilling Protocol | [templates/grilling.md](../skills/architecture/templates/grilling.md) | Running the structured interview, including glossary discipline |
+| ADR Template | [templates/adr.md](templates/adr.md) | Creating new architecture decision records |
+| Grilling Protocol | [templates/grilling.md](templates/grilling.md) | Running the structured interview, including glossary discipline |
 | Council Workflow | `council/SKILL.md` | Multi-agent deliberation for complex decisions |
 | Documentation | `documentation-standards/references/documentation.md` | ADR formatting and standards |
 | Canonical ADR sources | [https://adr.github.io/](https://adr.github.io/) | Reference for ADR practice; format hub |

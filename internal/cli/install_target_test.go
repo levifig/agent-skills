@@ -614,25 +614,36 @@ func TestSyncManagedSkillsMigratesV1AndRefusesV2Tampering(t *testing.T) {
 		t.Fatalf("manifest = %q, want v2 digest", manifest)
 	}
 	writeInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "tampered\n")
-	if err := syncManagedSkillsDirIfExists(src, dest); err == nil || !strings.Contains(err.Error(), "was modified") {
-		t.Fatalf("tampered overwrite error = %v, want conflict", err)
+	writeInstallFile(t, filepath.Join(src, "sibling", "SKILL.md"), "sibling\n")
+	err := syncManagedSkillsDirIfExists(src, dest)
+	if err == nil || !strings.Contains(err.Error(), "was modified") || !strings.Contains(err.Error(), "foundations") {
+		t.Fatalf("tampered overwrite error = %v, want foundations modified conflict", err)
 	}
+	assertInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "tampered\n")
+	assertInstallFile(t, filepath.Join(dest, "sibling", "SKILL.md"), "sibling\n")
 	if err := os.RemoveAll(filepath.Join(src, "foundations")); err != nil {
 		t.Fatal(err)
 	}
-	if err := syncManagedSkillsDirIfExists(src, dest); err == nil || !strings.Contains(err.Error(), "was modified") {
-		t.Fatalf("tampered removal error = %v, want conflict", err)
+	err = syncManagedSkillsDirIfExists(src, dest)
+	if err == nil || !strings.Contains(err.Error(), "was modified") || !strings.Contains(err.Error(), "foundations") {
+		t.Fatalf("tampered removal error = %v, want foundations modified conflict", err)
 	}
+	assertInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "tampered\n")
+	assertInstallFile(t, filepath.Join(dest, "sibling", "SKILL.md"), "sibling\n")
 }
 
 func TestSyncManagedSkillsPreservesForeignAndRejectsInvalidManifests(t *testing.T) {
 	root := t.TempDir()
 	src, dest := filepath.Join(root, "dist", "opencode", "skills"), filepath.Join(root, "dest")
 	writeInstallFile(t, filepath.Join(src, "foundations", "SKILL.md"), "new\n")
+	writeInstallFile(t, filepath.Join(src, "sibling", "SKILL.md"), "sibling\n")
 	writeInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "foreign\n")
-	if err := syncManagedSkillsDirIfExists(src, dest); err == nil || !strings.Contains(err.Error(), "not managed") {
-		t.Fatalf("foreign collision error = %v, want conflict", err)
+	err := syncManagedSkillsDirIfExists(src, dest)
+	if err == nil || !strings.Contains(err.Error(), "not managed") || !strings.Contains(err.Error(), "foundations") {
+		t.Fatalf("foreign collision error = %v, want foundations not-managed conflict", err)
 	}
+	assertInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "foreign\n")
+	assertInstallFile(t, filepath.Join(dest, "sibling", "SKILL.md"), "sibling\n")
 	for _, body := range []string{
 		`{"version":2,"skills":[{"name":"../escape","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`,
 		`{"version":2,"skills":[{"name":"a","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"name":"a","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`,

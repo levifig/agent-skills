@@ -206,25 +206,14 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 	}
 	sort.Slice(plan.Targets, func(i, j int) bool { return plan.Targets[i].Target < plan.Targets[j].Target })
 
-	skills, blockedDests, err := planCanonicalManagedSkills(plannedOptions)
+	// Skill conflicts are reported on plan.Skills. They do not set target
+	// Blocked: apply continues adapters after conflict-only skill errors, so
+	// marking targets blocked here would lie about what apply will do.
+	skills, err := planCanonicalManagedSkills(plannedOptions)
 	if err != nil {
 		return installDryRunPlan{}, err
 	}
 	plan.Skills = skills
-	if len(blockedDests) > 0 {
-		for i := range plan.Targets {
-			dest := ""
-			for _, opt := range plannedOptions {
-				if opt.Target == plan.Targets[i].Target {
-					dest = installSkillsDestination(opt)
-					break
-				}
-			}
-			if dest != "" && blockedDests[dest] {
-				plan.Targets[i].Blocked = true
-			}
-		}
-	}
 
 	// Project files mirror enforceInstallProjectFiles: symlinks first, then the
 	// managed fenced section for every target that carries a project file, then
@@ -287,6 +276,13 @@ func planTargetDistribution(options targetInstallOptions) ([]artifactPlanDecisio
 		}
 		decisions = append(decisions, legacy...)
 	}
+	if options.Target == "opencode" {
+		commands, err := planOpenCodeCommandsGuard(options)
+		if err != nil {
+			return nil, err
+		}
+		decisions = append(decisions, commands...)
+	}
 	if options.Target == "codex" {
 		codex, err := planCodexJournalRule(options)
 		if err != nil {
@@ -298,30 +294,63 @@ func planTargetDistribution(options targetInstallOptions) ([]artifactPlanDecisio
 	return decisions, nil
 }
 
+// planOpenCodeCommandsGuard mirrors syncOpenCodeCommandsDir's fail-closed skills
+// store requirement. Commands sync runs whenever a real commands directory is
+// present; when the canonical store is absent and no skills tree will create
+// it, apply fails after adapter work — so the plan must block rather than look
+// preservable.
+func planOpenCodeCommandsGuard(options targetInstallOptions) ([]artifactPlanDecision, error) {
+	src := filepath.Join(options.DistDir, "commands")
+	info, err := os.Lstat(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	// Symlinked or non-directory sources are refused on apply before the store
+	// check; this guard covers only the store failure mode.
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return nil, nil
+	}
+	skillsDest := installSkillsDestination(options)
+	if dirExistsForInstall(skillsDest) {
+		return nil, nil
+	}
+	// Canonical skills sync creates the store when a skills source tree exists,
+	// and that sync precedes command install on the apply path.
+	if dirExistsForInstall(filepath.Join(options.DistDir, "skills")) {
+		return nil, nil
+	}
+	return []artifactPlanDecision{{
+		ID:          "opencode:commands",
+		Kind:        "commands",
+		Destination: filepath.Join(options.ConfigDir, "commands"),
+		Action:      planActionConflict,
+		Detail:      fmt.Sprintf("cannot install OpenCode commands: canonical skills store %s does not exist", skillsDest),
+	}}, nil
+}
+
 // planCanonicalManagedSkills plans managed-skill actions once per resolved
 // destination across the selected targets. Divergent source trees fail loudly.
 // The planned source is selectCanonicalSkillsSource's pick, matching the write.
-func planCanonicalManagedSkills(options []targetInstallOptions) ([]artifactPlanDecision, map[string]bool, error) {
+// Conflicted skills are listed with action "conflict"; they do not block
+// target adapters (see buildInstallDryRunPlan).
+func planCanonicalManagedSkills(options []targetInstallOptions) ([]artifactPlanDecision, error) {
 	groups, err := groupSkillsInstallByDestination(options)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	blockedDests := map[string]bool{}
 	var decisions []artifactPlanDecision
 	for _, group := range groups {
 		source, err := selectCanonicalSkillsSource(group.Options)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		src := filepath.Join(source.DistDir, "skills")
 		skills, err := planManagedSkills(src, group.Destination)
 		if err != nil {
-			return nil, nil, err
-		}
-		for _, skill := range skills {
-			if skill.Action == planActionConflict {
-				blockedDests[group.Destination] = true
-			}
+			return nil, err
 		}
 		decisions = append(decisions, skills...)
 	}
@@ -331,7 +360,7 @@ func planCanonicalManagedSkills(options []targetInstallOptions) ([]artifactPlanD
 		}
 		return decisions[i].ID < decisions[j].ID
 	})
-	return decisions, blockedDests, nil
+	return decisions, nil
 }
 
 // planManagedSkills mirrors the read-only preflight and classification of

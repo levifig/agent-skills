@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -75,7 +76,8 @@ func (r Runner) runUpgrade(args []string, out io.Writer, runtimeRoot string) err
 	fmt.Fprintln(out)
 
 	failedTargets, err := r.upgradeInstalledTargets(out, options, targets, tools, loafRoot, distRoot, version, projectRoot.Path())
-	if err != nil {
+	var skillConflicts *skillSyncConflictsError
+	if err != nil && !errors.As(err, &skillConflicts) {
 		return err
 	}
 	// `--to` filters the global sync only. The project surfaces describe every
@@ -92,11 +94,13 @@ func (r Runner) runUpgrade(args []string, out io.Writer, runtimeRoot string) err
 	if failure != "" {
 		fmt.Fprintf(out, "  %s %s\n\n", ansiRed("✗"), failure)
 	}
+	// Skill conflicts were already printed once in upgradeInstalledTargets;
+	// do not reprint them in the summary. Still exit non-zero.
 	// The epilogue: content is now current, but the binary that synced it may
 	// not be. The advisory is best-effort and never affects what came before it
 	// (see upgrade_advisory.go).
 	writeUpgradeCurrencyAdvisory(out, loafRoot, version)
-	if failure != "" {
+	if failure != "" || skillConflicts != nil {
 		return ExitError{Code: 1}
 	}
 	return nil
@@ -252,15 +256,24 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 		})
 	}
 	skillsErr := syncCanonicalManagedSkills(upgradeOptions)
+	var skillConflicts *skillSyncConflictsError
+	hardSkillsErr := skillsErr
+	if errors.As(skillsErr, &skillConflicts) {
+		hardSkillsErr = nil
+	}
 	skillsErrReported := false
 	for _, opts := range upgradeOptions {
-		if skillsErr != nil {
+		if hardSkillsErr != nil {
 			if !skillsErrReported {
-				fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillsErr)
+				fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), hardSkillsErr)
 				skillsErrReported = true
 			}
 			failed = append(failed, opts.Target)
 			continue
+		}
+		if skillConflicts != nil && !skillsErrReported {
+			fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillConflicts)
+			skillsErrReported = true
 		}
 		err := installTargetDistribution(opts)
 		if err != nil {
@@ -271,6 +284,9 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 		fmt.Fprintf(out, "  %s %s refreshed at %s (v%s)\n", ansiGreen("✓"), installDisplayName(opts.Target), ansiGray(opts.ConfigDir), version)
 	}
 	fmt.Fprintln(out)
+	if skillConflicts != nil {
+		return failed, skillConflicts
+	}
 	return failed, nil
 }
 
