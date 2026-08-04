@@ -601,7 +601,7 @@ func TestInstallTargetAdapterManifestDetectsRaceAndRollsBackPublication(t *testi
 
 func TestSyncManagedSkillsMigratesV1AndRefusesV2Tampering(t *testing.T) {
 	root := t.TempDir()
-	src, dest := filepath.Join(root, "src"), filepath.Join(root, "dest")
+	src, dest := filepath.Join(root, "dist", "opencode", "skills"), filepath.Join(root, "dest")
 	writeInstallFile(t, filepath.Join(src, "foundations", "SKILL.md"), "new\n")
 	writeInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "old\n")
 	writeInstallFile(t, filepath.Join(dest, loafSkillManifestFile), `{"version":1,"skills":["foundations"]}`)
@@ -627,7 +627,7 @@ func TestSyncManagedSkillsMigratesV1AndRefusesV2Tampering(t *testing.T) {
 
 func TestSyncManagedSkillsPreservesForeignAndRejectsInvalidManifests(t *testing.T) {
 	root := t.TempDir()
-	src, dest := filepath.Join(root, "src"), filepath.Join(root, "dest")
+	src, dest := filepath.Join(root, "dist", "opencode", "skills"), filepath.Join(root, "dest")
 	writeInstallFile(t, filepath.Join(src, "foundations", "SKILL.md"), "new\n")
 	writeInstallFile(t, filepath.Join(dest, "foundations", "SKILL.md"), "foreign\n")
 	if err := syncManagedSkillsDirIfExists(src, dest); err == nil || !strings.Contains(err.Error(), "not managed") {
@@ -803,7 +803,8 @@ func TestManagedSkillsManifestRejectsUnsafeAndStrictV2Shapes(t *testing.T) {
 }
 
 func TestListInstallSkillDirsRejectsInvalidSourceName(t *testing.T) {
-	src := t.TempDir()
+	root := t.TempDir()
+	src := filepath.Join(root, "dist", "opencode", "skills")
 	mkdirAll(t, filepath.Join(src, "Invalid_Name"))
 	if _, err := listInstallSkillDirs(src); err == nil {
 		t.Fatal("invalid source skill name accepted")
@@ -812,7 +813,7 @@ func TestListInstallSkillDirsRejectsInvalidSourceName(t *testing.T) {
 
 func TestSyncManagedSkillsRecoversMissingAndInterruptedPublication(t *testing.T) {
 	root := t.TempDir()
-	src, dest := filepath.Join(root, "src"), filepath.Join(root, "dest")
+	src, dest := filepath.Join(root, "dist", "opencode", "skills"), filepath.Join(root, "dest")
 	writeInstallFile(t, filepath.Join(src, "foundations", "SKILL.md"), "current\n")
 	oldRoot := filepath.Join(root, "old")
 	writeInstallFile(t, filepath.Join(oldRoot, "SKILL.md"), "old\n")

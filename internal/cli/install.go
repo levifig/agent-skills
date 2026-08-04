@@ -132,6 +132,7 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 	var codexBasicCommandsErr error
 	defaults := defaultInstallConfigDirs()
 	toolByKey := installToolsByKey(tools)
+	var installOptions []targetInstallOptions
 	for _, target := range selectedTargets {
 		distDir := filepath.Join(distRoot, target)
 		if !dirExistsForInstall(distDir) {
@@ -145,7 +146,7 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 		if tool, ok := toolByKey[target]; ok && tool.configDir != "" {
 			configDir = tool.configDir
 		}
-		err := installTargetDistribution(targetInstallOptions{
+		installOptions = append(installOptions, targetInstallOptions{
 			Target:             target,
 			DistDir:            distDir,
 			ConfigDir:          configDir,
@@ -154,23 +155,39 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 			HomeDir:            installHome(),
 			CodexHome:          os.Getenv("CODEX_HOME"),
 			ProjectRoot:        projectRoot.Path(),
+			SkipSkillsSync:     true,
 		})
+	}
+	skillsErr := syncCanonicalManagedSkills(installOptions)
+	skillsErrReported := false
+	for _, opts := range installOptions {
+		if skillsErr != nil {
+			if !skillsErrReported {
+				fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillsErr)
+				skillsErrReported = true
+			}
+			if opts.Target == "codex" && options.codexBasicCommands {
+				codexBasicCommandsErr = fmt.Errorf("Codex basic command policy installation failed: %w", skillsErr)
+			}
+			continue
+		}
+		err := installTargetDistribution(opts)
 		if err != nil {
-			fmt.Fprintf(out, "  %s %s - %v\n", ansiRed("✗"), installDisplayName(target), err)
-			if target == "codex" && options.codexBasicCommands {
+			fmt.Fprintf(out, "  %s %s - %v\n", ansiRed("✗"), installDisplayName(opts.Target), err)
+			if opts.Target == "codex" && options.codexBasicCommands {
 				codexBasicCommandsErr = fmt.Errorf("Codex basic command policy installation failed: %w", err)
 			}
 			continue
 		}
-		fmt.Fprintf(out, "  %s %s installed to %s\n", ansiGreen("✓"), installDisplayName(target), ansiGray(configDir))
-		if target == "codex" {
+		fmt.Fprintf(out, "  %s %s installed to %s\n", ansiGreen("✓"), installDisplayName(opts.Target), ansiGray(opts.ConfigDir))
+		if opts.Target == "codex" {
 			if options.codexBasicCommands {
 				fmt.Fprintf(out, "  %s Codex basic command policy explicitly enabled (Loaf-owned exact-prefix rules)\n", ansiGreen("✓"))
 			} else {
 				fmt.Fprintf(out, "  %s Codex basic command policy not installed; opt in with --codex-basic-commands\n", ansiGray("○"))
 			}
 		}
-		installedTargets = append(installedTargets, target)
+		installedTargets = append(installedTargets, opts.Target)
 	}
 	fmt.Fprintln(out)
 

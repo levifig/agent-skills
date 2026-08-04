@@ -35,16 +35,16 @@ func TestRunnerUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
 
 		plan := assertDryRunNonMutating(t, root, home, "upgrade", "--to", "cursor", "--dry-run", "--json")
 		cursor := findTargetPlan(t, plan, "cursor")
-		if got := skillAction(cursor, "go-development"); got != planActionUpdate {
+		if got := planSkillAction(plan, "go-development"); got != planActionUpdate {
 			t.Fatalf("go-development action = %q, want update (stale owned)", got)
 		}
-		if got := skillAction(cursor, "foundations"); got != planActionConflict {
+		if got := planSkillAction(plan, "foundations"); got != planActionConflict {
 			t.Fatalf("foundations action = %q, want conflict (locally modified)", got)
 		}
 		if !cursor.Blocked {
 			t.Fatalf("cursor plan Blocked = false, want true when a conflict is present")
 		}
-		if hasSkillDecision(cursor, "foreign") {
+		if hasPlanSkillDecision(plan, "foreign") {
 			t.Fatalf("plan referenced foreign unowned skill; it must be ignored")
 		}
 	})
@@ -154,7 +154,7 @@ func TestRunnerUpgradeDryRunSkillPlanMatchesApply(t *testing.T) {
 	writeInstallFile(t, filepath.Join(distSkills, "new-skill", "SKILL.md"), "# New\n")
 
 	plan := parseInstallPlanJSON(t, runInstallCapture(t, root, "upgrade", "--to", "cursor", "--dry-run", "--json"))
-	cursor := findTargetPlan(t, plan, "cursor")
+	_ = findTargetPlan(t, plan, "cursor")
 	want := map[string]string{
 		"foundations":    planActionPreserve,
 		"go-development": planActionUpdate,
@@ -162,7 +162,7 @@ func TestRunnerUpgradeDryRunSkillPlanMatchesApply(t *testing.T) {
 		"new-skill":      planActionCreate,
 	}
 	for skill, action := range want {
-		if got := skillAction(cursor, skill); got != action {
+		if got := planSkillAction(plan, skill); got != action {
 			t.Fatalf("predicted %s action = %q, want %q", skill, got, action)
 		}
 	}
@@ -228,8 +228,8 @@ func findTargetPlan(t *testing.T, plan installDryRunPlan, target string) targetD
 	return targetDistributionPlan{}
 }
 
-func skillAction(target targetDistributionPlan, skill string) string {
-	for _, artifact := range target.Artifacts {
+func planSkillAction(plan installDryRunPlan, skill string) string {
+	for _, artifact := range plan.Skills {
 		if artifact.ID == "skill:"+skill {
 			return artifact.Action
 		}
@@ -237,8 +237,8 @@ func skillAction(target targetDistributionPlan, skill string) string {
 	return ""
 }
 
-func hasSkillDecision(target targetDistributionPlan, skill string) bool {
-	return skillAction(target, skill) != ""
+func hasPlanSkillDecision(plan installDryRunPlan, skill string) bool {
+	return planSkillAction(plan, skill) != ""
 }
 
 // hashInstallFixtureTrees hashes the project root and home trees including file

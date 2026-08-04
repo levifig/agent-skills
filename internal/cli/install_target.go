@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 const (
@@ -105,6 +106,10 @@ type targetInstallOptions struct {
 	AmpSkillsDir        string
 	AmpPluginsDir       string
 	TargetAdapterOps    *targetAdapterInstallOperations
+	// SkipSkillsSync leaves the shared skills store alone. Multi-target
+	// install/upgrade sets it after syncCanonicalManagedSkills has already
+	// performed the one write per destination for the run.
+	SkipSkillsSync bool
 }
 
 type codexHooksFile struct {
@@ -171,8 +176,10 @@ func installTargetDistribution(options targetInstallOptions) error {
 
 func installOpencodeTarget(options targetInstallOptions) error {
 	skillsDest := installSkillsDestination(options)
-	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
-		return err
+	if !options.SkipSkillsSync {
+		if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
+			return err
+		}
 	}
 	hasAdapterManifest := fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile))
 	if hasAdapterManifest {
@@ -197,8 +204,10 @@ func installOpencodeTarget(options targetInstallOptions) error {
 
 func installCursorTarget(options targetInstallOptions) error {
 	skillsDest := installSkillsDestination(options)
-	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
-		return err
+	if !options.SkipSkillsSync {
+		if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
+			return err
+		}
 	}
 	if err := os.RemoveAll(filepath.Join(options.ConfigDir, "commands")); err != nil {
 		return err
@@ -242,8 +251,10 @@ func installCodexTarget(options targetInstallOptions) error {
 		codexHome = filepath.Join(homeDir, ".codex")
 	}
 	skillsDest := installSkillsDestination(options)
-	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
-		return err
+	if !options.SkipSkillsSync {
+		if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
+			return err
+		}
 	}
 	if fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile)) {
 		if err := syncTargetAdapterManifest(options); err != nil {
@@ -263,8 +274,10 @@ func installCodexTarget(options targetInstallOptions) error {
 
 func installAmpTarget(options targetInstallOptions) error {
 	skillsDest := installSkillsDestination(options)
-	if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
-		return err
+	if !options.SkipSkillsSync {
+		if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
+			return err
+		}
 	}
 	if fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile)) {
 		if err := syncTargetAdapterManifest(options); err != nil {
@@ -302,11 +315,318 @@ func installHomeDir(options targetInstallOptions) string {
 }
 
 func installSkillsDestination(options targetInstallOptions) string {
+	// AmpSkillsDir is a test-only override (see TestInstallTargetAmpUsesSharedAndCustomHomes).
+	// Production install/upgrade never set it; collapse still groups by the
+	// resolved destination so a genuine per-target override would stay correct.
 	if options.Target == "amp" && options.AmpSkillsDir != "" {
 		return options.AmpSkillsDir
 	}
 	return filepath.Join(installHomeDir(options), ".agents", "skills")
 }
+
+// skillsDestinationGroup is one resolved skills destination and the selected
+// targets that would write into it.
+type skillsDestinationGroup struct {
+	Destination string
+	Options     []targetInstallOptions
+}
+
+// groupSkillsInstallByDestination collapses selected targets onto the distinct
+// destinations their skills would land in. Targets without a skills tree are
+// omitted — they contribute no write.
+//
+// Install assumes dist/ is stable for the duration of the run: source trees are
+// verified once before planning/sync, then read again to write. Concurrent
+// mutation of dist/ between those steps is not detected. That TOCTOU property
+// predates the single-canonical-write collapse — each per-target installer
+// already read its DistDir without a re-hash lock.
+func groupSkillsInstallByDestination(options []targetInstallOptions) ([]skillsDestinationGroup, error) {
+	byDest := map[string][]targetInstallOptions{}
+	for _, opt := range options {
+		src := filepath.Join(opt.DistDir, "skills")
+		if !dirExistsForInstall(src) {
+			continue
+		}
+		dest := installSkillsDestination(opt)
+		byDest[dest] = append(byDest[dest], opt)
+	}
+	dests := make([]string, 0, len(byDest))
+	for dest := range byDest {
+		dests = append(dests, dest)
+	}
+	sort.Strings(dests)
+	groups := make([]skillsDestinationGroup, 0, len(dests))
+	for _, dest := range dests {
+		opts := byDest[dest]
+		sort.Slice(opts, func(i, j int) bool { return opts[i].Target < opts[j].Target })
+		if err := verifyIdenticalSkillsSources(opts); err != nil {
+			return nil, err
+		}
+		groups = append(groups, skillsDestinationGroup{Destination: dest, Options: opts})
+	}
+	return groups, nil
+}
+
+// selectCanonicalSkillsSource picks which selected target's skills tree is
+// copied into the shared store. A single store copy can carry only one
+// frontmatter shape, so the source is the unique store-sharing target that
+// declares owned sidecar keys in nativeBuildSidecarOwnedFrontmatterKeysByTarget.
+// Claude Code is never among options here (plugin channel). If none declare
+// owned keys, any tree is equivalent and the alphabetical first wins. If more
+// than one declares owned keys, fail — that is a design conflict a future
+// sidecar could introduce and must not resolve silently.
+func selectCanonicalSkillsSource(options []targetInstallOptions) (targetInstallOptions, error) {
+	return selectCanonicalSkillsSourceWithOwnedKeys(options, nativeBuildSidecarOwnedFrontmatterKeysByTarget)
+}
+
+func selectCanonicalSkillsSourceWithOwnedKeys(options []targetInstallOptions, ownedByTarget map[string]map[string]bool) (targetInstallOptions, error) {
+	if len(options) == 0 {
+		return targetInstallOptions{}, fmt.Errorf("no skills sources to select")
+	}
+	var owners []targetInstallOptions
+	for _, opt := range options {
+		if len(ownedByTarget[opt.Target]) > 0 {
+			owners = append(owners, opt)
+		}
+	}
+	if len(owners) > 1 {
+		parts := make([]string, 0, len(owners))
+		for _, opt := range owners {
+			keys := make([]string, 0, len(ownedByTarget[opt.Target]))
+			for key := range ownedByTarget[opt.Target] {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			parts = append(parts, fmt.Sprintf("%s (%s)", opt.Target, strings.Join(keys, ", ")))
+		}
+		return targetInstallOptions{}, fmt.Errorf("multiple store-sharing targets declare owned sidecar frontmatter keys; a single canonical skills copy cannot satisfy all of them: %s", strings.Join(parts, "; "))
+	}
+	if len(owners) == 1 {
+		return owners[0], nil
+	}
+	return options[0], nil
+}
+
+// verifyIdenticalSkillsSources requires every selected target's skills tree to
+// match (after stripping known sidecar-owned frontmatter keys and the stamped
+// version) before a shared destination accepts a single write.
+//
+// Guarantee: detects accidental body divergence between built target trees in
+// dist/. Non-guarantee: does not and cannot detect tampering of owned-key
+// values or of dist/ itself — dist/ is trusted input (as it was when each
+// per-target installer copied dist/<target>/skills with no check). Source
+// sidecars (content/skills/*/SKILL.<target>.yaml) are not shipped in the
+// distribution, so value-level authorization is impossible at install time.
+// Silent first-wins would install one target's tree while claiming to serve
+// the rest.
+//
+// Comparison is scoped to the skill directories listInstallSkillDirs returns —
+// the same set syncManagedSkillsDirIfExists installs — so stray regular files
+// under the skills root are neither hashed nor admitted.
+func verifyIdenticalSkillsSources(options []targetInstallOptions) error {
+	if len(options) == 0 {
+		return nil
+	}
+	// Single-target installs still validate the source path (dist → DistDir →
+	// skills) even though there is nothing to compare against. Skipping here
+	// left a symlinked DistDir uncaught when only one store-sharing target was
+	// selected.
+	if len(options) == 1 {
+		_, err := listInstallSkillDirs(filepath.Join(options[0].DistDir, "skills"))
+		return err
+	}
+	if _, err := selectCanonicalSkillsSource(options); err != nil {
+		return err
+	}
+	baseline := options[0]
+	baselineFiles, baselineVersion, err := loadNormalizedInstallSkillFiles(baseline)
+	if err != nil {
+		return fmt.Errorf("normalize skills tree for target %q: %w", baseline.Target, err)
+	}
+	for _, opt := range options[1:] {
+		files, version, err := loadNormalizedInstallSkillFiles(opt)
+		if err != nil {
+			return fmt.Errorf("normalize skills tree for target %q: %w", opt.Target, err)
+		}
+		if version != baselineVersion {
+			return fmt.Errorf("skills trees diverge between targets %q and %q; stamped versions %q vs %q; refusing shared install into %s", baseline.Target, opt.Target, baselineVersion, version, installSkillsDestination(opt))
+		}
+		for rel, body := range files {
+			want, ok := baselineFiles[rel]
+			if !ok {
+				return fmt.Errorf("skills trees diverge between targets %q and %q; refusing shared install into %s", baseline.Target, opt.Target, installSkillsDestination(opt))
+			}
+			if body != want {
+				return fmt.Errorf("skills trees diverge between targets %q and %q; refusing shared install into %s", baseline.Target, opt.Target, installSkillsDestination(opt))
+			}
+		}
+		for rel := range baselineFiles {
+			if _, ok := files[rel]; !ok {
+				return fmt.Errorf("skills trees diverge between targets %q and %q; refusing shared install into %s", baseline.Target, opt.Target, installSkillsDestination(opt))
+			}
+		}
+	}
+	return nil
+}
+
+// loadNormalizedInstallSkillFiles returns the comparable form of every regular
+// file under each skill directory listInstallSkillDirs admits. SKILL.md strips
+// known sidecar-owned keys by membership only (see
+// normalizeInstallSkillFileForDivergence); other files compare as raw bytes.
+//
+// The skills source path and walk use the same symlink/non-directory guards as
+// sync (via requireInstallSkillsSourcePath → requireInstallSkillTreeRoot in
+// listInstallSkillDirs, and Lstat rejection in the walk). Per-file reads are
+// bounded by projectFileReadLimit.
+func loadNormalizedInstallSkillFiles(opt targetInstallOptions) (map[string]string, string, error) {
+	src := filepath.Join(opt.DistDir, "skills")
+	skills, err := listInstallSkillDirs(src)
+	if err != nil {
+		return nil, "", err
+	}
+	out := map[string]string{}
+	var stampedVersion string
+	for _, skill := range skills {
+		skillDir := filepath.Join(src, skill)
+		if _, err := requireInstallSkillTreeRoot(skillDir); err != nil {
+			return nil, "", err
+		}
+		err := filepath.WalkDir(skillDir, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			info, err := os.Lstat(path)
+			if err != nil {
+				return err
+			}
+			if info.Mode()&fs.ModeSymlink != 0 {
+				return fmt.Errorf("contains symlink %q", path)
+			}
+			if info.IsDir() {
+				return nil
+			}
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("contains non-regular file %q", path)
+			}
+			rel, err := filepath.Rel(src, path)
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(rel)
+			body, err := readRegularFileNoFollow(path, projectFileReadLimit)
+			if err != nil {
+				return err
+			}
+			if filepath.Base(rel) != "SKILL.md" {
+				out[rel] = string(body)
+				return nil
+			}
+			normalized, version, err := normalizeInstallSkillFileForDivergence(rel, string(body))
+			if err != nil {
+				return err
+			}
+			if stampedVersion == "" {
+				stampedVersion = version
+			} else if version != stampedVersion {
+				return fmt.Errorf("inconsistent stamped versions %q and %q", stampedVersion, version)
+			}
+			out[rel] = normalized
+			return nil
+		})
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	return out, stampedVersion, nil
+}
+
+// normalizeInstallSkillFileForDivergence returns the comparable form of a skill
+// file for cross-target divergence detection at install time.
+//
+// Build-time invariance (normalizeNativeBuildSkillFileForInvariance) authorizes
+// owned-key values against content/skills sidecars. Install cannot: those
+// sidecars are not present in dist/. Owned keys in
+// nativeBuildAnySidecarOwnedFrontmatterKey are therefore stripped by key
+// membership only — value-independently — along with the stamped version.
+// Detects accidental body divergence between target trees; does not detect
+// tampering of owned-key values in dist/.
+func normalizeInstallSkillFileForDivergence(rel string, body string) (normalized string, version string, err error) {
+	if filepath.Base(rel) != "SKILL.md" {
+		return body, "", nil
+	}
+	frontmatter, content := splitNativeBuildFrontmatter(body)
+	if frontmatter == "" {
+		return body, "", nil
+	}
+	kept, version, err := stripOwnedFrontmatterKeysByMembership(frontmatter, nativeBuildAnySidecarOwnedFrontmatterKey)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", rel, err)
+	}
+	if strings.TrimSpace(kept) == "" {
+		return content, version, nil
+	}
+	return "---\n" + kept + "---\n" + content, version, nil
+}
+
+// stripOwnedFrontmatterKeysByMembership walks raw frontmatter lines, removing
+// top-level keys present in ownedKeys (and the stamped version) without
+// comparing values. Nested YAML under kept keys is preserved.
+func stripOwnedFrontmatterKeysByMembership(frontmatter string, ownedKeys map[string]bool) (kept string, version string, err error) {
+	lines := strings.Split(frontmatter, "\n")
+	var out []string
+	for i := 0; i < len(lines); {
+		line := lines[i]
+		if line == "" || strings.HasPrefix(strings.TrimSpace(line), "#") || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") || !strings.Contains(line, ":") {
+			out = append(out, line)
+			i++
+			continue
+		}
+		key, rawValue, _ := strings.Cut(strings.TrimSpace(line), ":")
+		key = strings.TrimSpace(key)
+		block, next := collectNativeBuildFrontmatterKeyBlock(lines, i)
+		i = next
+
+		if key == "version" {
+			version = unquoteNativeBuildYAML(strings.TrimSpace(rawValue))
+			if version == ">-" || version == ">" || version == "|" || version == "|-" {
+				version = strings.TrimSpace(strings.Join(block[1:], "\n"))
+			}
+			continue
+		}
+		if ownedKeys[key] {
+			continue
+		}
+		out = append(out, block...)
+	}
+	return strings.Join(out, "\n"), version, nil
+}
+
+// syncCanonicalManagedSkills performs exactly one syncManagedSkillsDirIfExists
+// per resolved destination across the selected targets. The source tree is the
+// canonical store-sharing target (see selectCanonicalSkillsSource), not the
+// alphabetical first option.
+func syncCanonicalManagedSkills(options []targetInstallOptions) error {
+	groups, err := groupSkillsInstallByDestination(options)
+	if err != nil {
+		return err
+	}
+	for _, group := range groups {
+		source, err := selectCanonicalSkillsSource(group.Options)
+		if err != nil {
+			return err
+		}
+		src := filepath.Join(source.DistDir, "skills")
+		if err := syncManagedSkillsDirIfExists(src, group.Destination); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// managedSkillsSyncCalls counts syncManagedSkillsDirIfExists invocations that
+// pass the source-exists gate. Tests reset and read it to prove multi-target
+// installs collapse to one write per destination.
+var managedSkillsSyncCalls atomic.Int64
 
 func syncTargetSubdir(distDir string, configDir string, name string) error {
 	return syncTargetDirIfExists(filepath.Join(distDir, name), filepath.Join(configDir, name))
@@ -335,6 +655,7 @@ func syncManagedSkillsDirIfExists(src string, dest string) (returnErr error) {
 	if !dirExistsForInstall(src) {
 		return nil
 	}
+	managedSkillsSyncCalls.Add(1)
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
 	}
@@ -440,6 +761,9 @@ func syncManagedSkillsDirIfExists(src string, dest string) (returnErr error) {
 }
 
 func listInstallSkillDirs(path string) ([]string, error) {
+	if err := requireInstallSkillsSourcePath(path); err != nil {
+		return nil, err
+	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return nil, err
@@ -669,13 +993,62 @@ func isHexString(value string) bool {
 	return true
 }
 
-func hashInstallSkillTree(root string) (string, error) {
+// requireInstallSkillTreeRoot Lstats path and refuses a symlink or non-directory.
+// Shared by hashInstallSkillTree, requireInstallSkillsSourcePath, and the
+// install divergence verifier so the guards cannot drift apart.
+func requireInstallSkillTreeRoot(root string) (os.FileInfo, error) {
 	info, err := os.Lstat(root)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if !info.IsDir() || info.Mode()&fs.ModeSymlink != 0 {
-		return "", fmt.Errorf("not a directory or is a symlink")
+		return nil, fmt.Errorf("not a directory or is a symlink")
+	}
+	return info, nil
+}
+
+// requireInstallSkillsSourcePath Lstats every directory from the distribution
+// root through DistDir and DistDir/skills. skillsSrc is Join(DistDir, "skills");
+// DistDir is derived as its parent, and the distribution root as DistDir's parent
+// (typically <prefix>/dist). The leaf must be named "skills" and both parents
+// must be distinct establishable paths — if the boundary cannot be established,
+// refuse rather than silently checking fewer components.
+//
+// A symlink at dist/ or at DistDir is the exfiltration class this closes:
+// leaf-only Lstat of .../skills misses it because os.Stat/ReadDir follow
+// ancestors. Ancestors *above* the distribution root are not inspected, so a
+// checkout or install prefix reached through a legitimate symlink (macOS
+// /tmp → /private/tmp) remains valid. EvalSymlinks containment is deliberately
+// not used: resolving a component that *is* the symlink would make the external
+// tree look "inside" the resolved root and false-pass.
+func requireInstallSkillsSourcePath(skillsSrc string) error {
+	skillsSrc = filepath.Clean(skillsSrc)
+	if skillsSrc == "" || skillsSrc == "." {
+		return fmt.Errorf("skills source path is required")
+	}
+	if filepath.Base(skillsSrc) != "skills" {
+		return fmt.Errorf("skills source %q must end with a skills directory component", skillsSrc)
+	}
+	distDir := filepath.Dir(skillsSrc)
+	if distDir == "." || distDir == skillsSrc {
+		return fmt.Errorf("cannot establish distribution directory for skills source %q", skillsSrc)
+	}
+	distRoot := filepath.Dir(distDir)
+	if distRoot == "." || distRoot == distDir {
+		return fmt.Errorf("cannot establish distribution root above %q", distDir)
+	}
+	for _, path := range []string{distRoot, distDir, skillsSrc} {
+		if _, err := requireInstallSkillTreeRoot(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func hashInstallSkillTree(root string) (string, error) {
+	info, err := requireInstallSkillTreeRoot(root)
+	if err != nil {
+		return "", err
 	}
 	hash := sha256.New()
 	var rootPermissions [4]byte
