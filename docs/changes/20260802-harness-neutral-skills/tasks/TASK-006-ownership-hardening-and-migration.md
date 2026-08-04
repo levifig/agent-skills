@@ -4,8 +4,6 @@ id: TASK-006
 title: Ownership hardening and migration
 blocked-by:
   - TASK-004
-relates-to:
-  - TASK-005
 ---
 
 # TASK-006 — Ownership hardening and migration
@@ -20,7 +18,7 @@ Retirement becomes digest-aware *before* any mass retirement is activated, and e
 
 **Out:** Deleting or overwriting unowned content, under any circumstance. Reversing ADR-018's relocations — `amp-skills-to-agents-home` and `opencode-skills-to-agents-home` implemented a correct decision and are preserved, aged out only on their own established window.
 
-**Lands atomically with TASK-005.** Ownership hardening must be in the same tree as the retirement entries it protects against.
+**Lands independently.** Shaping paired this with a mass retirement of unprefixed names; Decision 4 dropped the prefix, so there are no such entries. The hazard survives without them — four directories Loaf does not own sit in the shared store today, and the existing relocation entries already walk prior skill homes.
 
 ## Context pointers
 
@@ -39,7 +37,7 @@ loaf journal log "skill(implement): TASK-006 — ownership hardening and migrati
 ## Steps
 
 - [ ] Make retirement consult the managed-skills digest manifest before removing anything, and refuse on mismatch rather than proceeding
-- [ ] Run the discovery smoke that answers whether Cursor and OpenCode deduplicate a skill found through several search paths, since the answer sets how aggressive migration must be
+- [ ] Run the discovery smoke that answers whether Cursor and OpenCode deduplicate a skill found through several search paths, since the answer sets how aggressive migration must be. The same smoke answers a question TASK-004 left open and documentation could not settle: whether Cursor and Amp tolerate the OpenCode-owned frontmatter keys (`subtask`, `user-invocable`) that reach them through the single canonical copy
 - [ ] Enumerate the paths migration sweeps from the harness search-path table, in precedence order, rather than from memory
 - [ ] Retire Loaf's provable copies; un-manage rather than delete where ownership is not provable, and report the two distinctly
 - [ ] Handle dangling symlinks at managed targets, or record the explicit deferral
