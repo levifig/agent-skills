@@ -247,21 +247,18 @@ func applyInstallDeprecationCleanup(manifest installDeprecationManifest, pathCon
 			}
 			if err := requireMigrationSkillHomeRoot(path); err != nil {
 				if os.IsNotExist(err) {
-					action.Action = "missing"
-					result.Skipped = append(result.Skipped, action)
+					// Absent retirement: no-op, not news — omit from the report.
 					continue
 				}
 				if isDeliberateMigrationRootRefusal(err) {
-					action.Action = "unmarked"
-					result.Skipped = append(result.Skipped, action)
+					// Unowned / refused root: Loaf will never touch it — omit.
 					continue
 				}
 				return result, fmt.Errorf("inspect retired target %s: %w", path, err)
 			}
 			marker := filepath.Join(path, loafInstallMarkerFile)
 			if !isRegularLoafMarkerFile(marker) {
-				action.Action = "unmarked"
-				result.Skipped = append(result.Skipped, action)
+				// Path exists but Loaf has no ownership claim — omit.
 				continue
 			}
 			if !allowDestructive {
@@ -306,8 +303,7 @@ func applyInstallDeprecationCleanup(manifest installDeprecationManifest, pathCon
 			}
 			if err := requireMigrationSkillHomeRoot(home); err != nil {
 				if os.IsNotExist(err) {
-					action.Action = "missing"
-					result.Skipped = append(result.Skipped, action)
+					// Absent retirement: no-op, not news — omit from the report.
 					continue
 				}
 				if isDeliberateMigrationRootRefusal(err) {
@@ -318,10 +314,8 @@ func applyInstallDeprecationCleanup(manifest installDeprecationManifest, pathCon
 					} else if pathExistsForDeprecation(path) {
 						action.Action = "confirmation-required"
 						result.Skipped = append(result.Skipped, action)
-					} else {
-						action.Action = "missing"
-						result.Skipped = append(result.Skipped, action)
 					}
+					// Absent under a refused root: omit (not news).
 					continue
 				}
 				return result, fmt.Errorf("inspect retired skill home %s: %w", home, err)
@@ -344,10 +338,8 @@ func applyInstallDeprecationCleanup(manifest installDeprecationManifest, pathCon
 						action.Action = "confirmation-required"
 						result.Skipped = append(result.Skipped, action)
 					}
-				} else {
-					action.Action = "missing"
-					result.Skipped = append(result.Skipped, action)
 				}
+				// Unclaimed absence: omit from the report.
 			case skillOwnershipDangling:
 				if allowDestructive {
 					if verdict.Claimed {
@@ -382,10 +374,8 @@ func applyInstallDeprecationCleanup(manifest installDeprecationManifest, pathCon
 				if verdict.Claimed || pathExistsForDeprecation(path) {
 					action.Action = "confirmation-required"
 					result.Skipped = append(result.Skipped, action)
-				} else {
-					action.Action = "missing"
-					result.Skipped = append(result.Skipped, action)
 				}
+				// Unclaimed absence under mismatch/unmanaged/unreadable: omit.
 			case skillOwnershipOwned:
 				if !allowDestructive {
 					action.Action = "confirmation-required"
@@ -434,25 +424,21 @@ func applyInstallDeprecationCleanup(manifest installDeprecationManifest, pathCon
 			fileInfo, fileErr := os.Lstat(path)
 			if fileErr != nil {
 				if os.IsNotExist(fileErr) {
-					action.Action = "missing"
-					result.Skipped = append(result.Skipped, action)
+					// Absent retirement: omit.
 					continue
 				}
 				if shouldSurfaceMigrationInspectionError(fileErr) {
 					return result, fmt.Errorf("inspect retired agent %s: %w", path, fileErr)
 				}
-				action.Action = "unmarked"
-				result.Skipped = append(result.Skipped, action)
+				// Uninspectable without a surfacing I/O error: treat as unowned — omit.
 				continue
 			}
 			if !fileInfo.Mode().IsRegular() || fileInfo.Mode()&os.ModeSymlink != 0 {
-				action.Action = "missing"
-				result.Skipped = append(result.Skipped, action)
+				// Not a regular agent file Loaf would retire — omit.
 				continue
 			}
 			if !isLoafOwnedAgentFile(home) {
-				action.Action = "unmarked"
-				result.Skipped = append(result.Skipped, action)
+				// Agent home is not Loaf-owned — omit.
 				continue
 			}
 			if !allowDestructive {
@@ -541,13 +527,11 @@ func applyInstallDeprecationCleanup(manifest installDeprecationManifest, pathCon
 		}
 		if err := requireMigrationSkillHomeRoot(from); err != nil {
 			if os.IsNotExist(err) {
-				action.Action = "missing"
-				result.Skipped = append(result.Skipped, action)
+				// Absent relocation source: omit.
 				continue
 			}
 			if isDeliberateMigrationRootRefusal(err) {
-				action.Action = "unmarked"
-				result.Skipped = append(result.Skipped, action)
+				// Refused source root: omit.
 				continue
 			}
 			return result, fmt.Errorf("inspect relocation source %s: %w", from, err)
@@ -557,8 +541,7 @@ func applyInstallDeprecationCleanup(manifest installDeprecationManifest, pathCon
 			return result, fmt.Errorf("inspect relocation candidacy for %s: %w", from, candErr)
 		}
 		if !candidate {
-			action.Action = "unmarked"
-			result.Skipped = append(result.Skipped, action)
+			// Not a Loaf relocation candidate — omit.
 			continue
 		}
 		owned, unmanaged, stranded, err := listRelocationSkillVerdicts(from)
@@ -585,8 +568,7 @@ func applyInstallDeprecationCleanup(manifest installDeprecationManifest, pathCon
 			})
 		}
 		if len(owned) == 0 && len(stranded) == 0 {
-			action.Action = "unmarked"
-			result.Skipped = append(result.Skipped, action)
+			// Candidate home with nothing Loaf would move — omit.
 			continue
 		}
 		if !allowDestructive {
@@ -2166,12 +2148,10 @@ func writeInstallDeprecationCleanup(out io.Writer, result installDeprecationClea
 		writeInstallDeprecationMetadata(out, action)
 		fmt.Fprintln(out)
 	}
+	// "missing" and "unmarked" are deliberately omitted from the action model:
+	// absent retirements are no-ops, and unowned paths are never Loaf's to mention.
 	for _, action := range result.Skipped {
 		switch action.Action {
-		case "missing":
-			fmt.Fprintf(out, "    %s retired %s %s already absent at %s\n", ansiGray("-"), action.Kind, action.Name, ansiGray(action.Path))
-		case "unmarked":
-			fmt.Fprintf(out, "    %s skipped retired %s %s at %s; path is not marked as Loaf-owned\n", ansiYellow("⚠"), action.Kind, action.Name, ansiGray(action.Path))
 		case "confirmation-required":
 			fmt.Fprintf(out, "    %s skipped %s %s at %s; rerun with --yes to apply destructive deprecation cleanup\n", ansiYellow("⚠"), action.Kind, action.Name, ansiGray(action.Path))
 		}

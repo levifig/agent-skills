@@ -1,16 +1,6 @@
 {
   "version": 1,
-  "retired_targets": [
-    {
-      "target": "gemini",
-      "since": "v2.0.0-pre.20260614235428",
-      "reason": "Gemini is no longer a first-class Loaf install target",
-      "signoff": "SPEC-047-SPEC-052",
-      "paths": [
-        "${HOME}/.gemini"
-      ]
-    }
-  ],
+  "retired_targets": [],
   "retired_skills": [
     {
       "skill": "cli-reference",

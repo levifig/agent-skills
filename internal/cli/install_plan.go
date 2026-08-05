@@ -877,12 +877,10 @@ func planInstallDeprecations(loafRoot string, explicitYes bool) ([]deprecationPl
 	for _, action := range result.Aliases {
 		appendEntry(action, "alias", false)
 	}
+	// "missing"/"unmarked" are not recorded on the cleanup result; the plan stays
+	// silent for those cases if any legacy caller still emits them.
 	for _, action := range result.Skipped {
 		switch action.Action {
-		case "missing":
-			appendEntry(action, "absent", false)
-		case "unmarked":
-			appendEntry(action, "skip-unmarked", false)
 		case "confirmation-required":
 			appendEntry(action, destructiveDeprecationAction(action.Kind), !explicitYes)
 		}
