@@ -40,14 +40,22 @@ loaf journal log "skill(implement): TASK-007 — deprecation report noise"
 
 ## Steps
 
-- [ ] Drop the `missing` action from the report entirely — a retirement with nothing present is a no-op, not news
-- [ ] Stop reporting retired paths Loaf does not own; no state, so the choice is report always or never, and never is right for a path Loaf will never touch
-- [ ] Delete entries whose window has already expired from `config/deprecations.json`, including `gemini`
-- [ ] Correct the `.gitignore` comment that still names Gemini among the tracked `dist/` targets
-- [ ] Add `TestDeprecationReport`, covering all three behaviours plus the case that must still report, and an empty `retired_targets` list
+- [x] Drop the `missing` action from the report entirely — a retirement with nothing present is a no-op, not news
+- [x] Stop reporting retired paths Loaf does not own; no state, so the choice is report always or never, and never is right for a path Loaf will never touch
+- [x] Delete entries whose window has already expired from `config/deprecations.json`, including `gemini`
+- [x] Correct the `.gitignore` comment that still names Gemini among the tracked `dist/` targets
+- [x] Add `TestDeprecationReport`, covering all three behaviours plus the case that must still report, and an empty `retired_targets` list
 
 ## Verification
 
 - `go test ./internal/cli/ -run TestDeprecationReport` passes: absent retirements omitted, unowned paths omitted, a retirement with something genuinely present still reported, an empty `retired_targets` handled without error, and no expired entry remains in the manifest
 - `loaf upgrade --dry-run` on the dogfooding machine prints no `absent` lines and no `~/.gemini` warning
 - `rg -i gemini` over tracked files returns only historical records, the `check.go` attribution patterns, and rebuilt binaries — no live target, manifest, or config surface
+
+## Landed state
+
+Delivered at `0cb70404`. `missing` and `unmarked` are gone from the action model and from the plan's mirror of it, so dry-run and apply still describe the same run. Every action the ownership hardening added to say Loaf declined to act still prints, each guarded by an identity-bound assertion.
+
+The `gemini` entry is deleted and `retired_targets` is empty. One entry was deliberately **not** deleted: `cli-reference` is expired by arithmetic but still drives leftover cleanup, and nothing in this repository can prove every install has migrated. `relocations` and `externalized_skills` are likewise untouched — the first drives real migration, the second is standing guidance rather than a timed retirement. Ageing an entry out is a judgement about the installed population, which is why this manifest is authored rather than self-pruning.
+
+Worth remembering how the review earned its keep. The regression guard protecting `relocated` asserted the bare substring `relocated`, which the `removed-stale` line satisfies because its text reads `removed stale relocated ...`. The guard would have passed with `relocated` silenced outright. Actions here share vocabulary, so an assertion on one word is not an assertion about the action — bind the identity, and prove the guard fails when the thing it guards is removed.
