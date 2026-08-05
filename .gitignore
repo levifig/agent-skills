@@ -2,7 +2,7 @@
 node_modules/
 
 # Build output (committed by CI)
-# dist/ - tracked (for OpenCode, Cursor, Codex, Gemini)
+# dist/ - tracked (for OpenCode, Cursor, Codex, Amp)
 # plugins/ - tracked (for Claude Code marketplace)
 # .claude-plugin/ - tracked (for Claude Code marketplace)
 

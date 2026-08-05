@@ -377,8 +377,12 @@ func TestRunnerUpgradeSkipsUnmarkedRetiredAgent(t *testing.T) {
 		t.Fatalf("upgrade error = %v\n%s", err, stdout.String())
 	}
 	assertInstallFile(t, retiredAgent, "# User-owned Agent\n")
-	if !strings.Contains(stdout.String(), "path is not marked as Loaf-owned") {
-		t.Fatalf("stdout = %q, want unmarked skip", stdout.String())
+	out := stdout.String()
+	if strings.Contains(out, "path is not marked as Loaf-owned") {
+		t.Fatalf("stdout = %q, unowned agent must not be reported", out)
+	}
+	if strings.Contains(out, "install deprecation cleanup") && strings.Contains(out, "old-agent") {
+		t.Fatalf("stdout = %q, unowned agent must not appear in deprecation report", out)
 	}
 }
 
@@ -551,8 +555,12 @@ func TestRunnerUpgradeSkipsUnmarkedRetiredTarget(t *testing.T) {
 		t.Fatalf("upgrade error = %v\n%s", err, stdout.String())
 	}
 	assertInstallFile(t, filepath.Join(retiredTarget, "user-file.txt"), "keep me\n")
-	if !strings.Contains(stdout.String(), "path is not marked as Loaf-owned") {
-		t.Fatalf("stdout = %q, want unmarked skip", stdout.String())
+	out := stdout.String()
+	if strings.Contains(out, "path is not marked as Loaf-owned") {
+		t.Fatalf("stdout = %q, unowned target must not be reported", out)
+	}
+	if strings.Contains(out, "install deprecation cleanup") && strings.Contains(out, "unmarked-tool") {
+		t.Fatalf("stdout = %q, unowned target must not appear in deprecation report", out)
 	}
 }
 
