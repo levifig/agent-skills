@@ -39,7 +39,7 @@ loaf journal log "skill(implement): TASK-006 — 0.2.20 release readiness and wi
 
 - [x] Stamp `target_release: "0.2.20"` in this Change's `change.json`
 - [x] Curate `[Unreleased]` so the ceremony's `0.2.20` section tells the reset story (scheme, renumber map pointer, forced-downgrade note instructing `loaf upgrade` after install)
-- [ ] `loaf release --dry-run --base HEAD` passes its gates against the committed `loaf change verify` receipt (bare `--dry-run` derives a 0.3.0 candidate from conventional commits; `--base HEAD` is the invocation that names 0.2.20 pre-merge)
+- [x] `loaf release --dry-run --base HEAD` passes its gates against the committed `loaf change verify` receipt (bare `--dry-run` derives a 0.3.0 candidate from conventional commits; `--base HEAD` is the invocation that names 0.2.20 pre-merge)
 - [x] Record the full remote tag/Release inventory (`git ls-remote --tags origin`, `gh release list`) into `research/` as the pre-wipe record
 
 ## Post-merge runbook
