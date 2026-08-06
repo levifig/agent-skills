@@ -33,7 +33,7 @@ loaf journal log "skill(implement): TASK-002 — rebuild, evidence re-record, 0.
 ## Steps
 
 - [x] Stamp `target_release: "0.2.20"` in this Change's `change.json`
-- [ ] `npm run build`; commit the rebuilt trees with the version-stamp-only diff check
+- [x] `npm run build`; commit the rebuilt trees with the version-stamp-only diff check
 - [ ] Re-record capability evidence against the rebuilt binary; commit
 - [ ] Add the `[Unreleased]` changelog line for the gate fix
 - [ ] After the final flip: run `loaf change verify docs/changes/20260806-receipt-vouched-execution` and land the receipt as the branch's last, content-free commit
