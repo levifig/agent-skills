@@ -32,7 +32,7 @@ loaf journal log "skill(implement): TASK-002 — rebuild, evidence re-record, 0.
 
 ## Steps
 
-- [ ] Stamp `target_release: "0.2.20"` in this Change's `change.json`
+- [x] Stamp `target_release: "0.2.20"` in this Change's `change.json`
 - [ ] `npm run build`; commit the rebuilt trees with the version-stamp-only diff check
 - [ ] Re-record capability evidence against the rebuilt binary; commit
 - [ ] Add the `[Unreleased]` changelog line for the gate fix
