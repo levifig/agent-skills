@@ -8,7 +8,7 @@ description: >-
   agent-facing inquiry lifecycle that consumes this technique. Not for problem
   discovery as a ceremony (use pitch) or bounding a chosen direction (use
   shape).
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Brainstorm

@@ -8,7 +8,7 @@ description: >-
   current. Not for workflow guidance (workflow skills own their CLI contracts)
   or build internals.
 user-invocable: false
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Loaf Reference

@@ -266,13 +266,13 @@ func TestReleaseWorkflowVerifiesEvidenceBeforeStampedBuild(t *testing.T) {
 	}
 }
 
-func TestHomebrewFormulaUpdaterGeneratesAuditSafePrereleaseURLs(t *testing.T) {
+func TestHomebrewFormulaUpdaterGeneratesAuditSafeURLs(t *testing.T) {
 	node := requireNode(t)
 	root := repoRoot(t)
 	tempDir := t.TempDir()
 	formulaPath := filepath.Join(tempDir, "loaf.rb")
 	checksumsPath := filepath.Join(tempDir, "checksums.txt")
-	version := "2.0.0-alpha.4"
+	version := "0.2.4"
 	checksums := map[string]string{
 		"darwin-arm64": strings.Repeat("a", 64),
 		"darwin-x64":   strings.Repeat("b", 64),
@@ -312,10 +312,10 @@ func TestHomebrewFormulaUpdaterGeneratesAuditSafePrereleaseURLs(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		`url "https://github.com/levifig/loaf/releases/download/v2.0.0-alpha.4/loaf_2.0.0-alpha.4_darwin-arm64.tar.gz"`,
-		`url "https://github.com/levifig/loaf/releases/download/v2.0.0-alpha.4/loaf_2.0.0-alpha.4_darwin-x64.tar.gz"`,
-		`url "https://github.com/levifig/loaf/releases/download/v2.0.0-alpha.4/loaf_2.0.0-alpha.4_linux-arm64.tar.gz"`,
-		`url "https://github.com/levifig/loaf/releases/download/v2.0.0-alpha.4/loaf_2.0.0-alpha.4_linux-x64.tar.gz"`,
+		`url "https://github.com/levifig/loaf/releases/download/v0.2.4/loaf_0.2.4_darwin-arm64.tar.gz"`,
+		`url "https://github.com/levifig/loaf/releases/download/v0.2.4/loaf_0.2.4_darwin-x64.tar.gz"`,
+		`url "https://github.com/levifig/loaf/releases/download/v0.2.4/loaf_0.2.4_linux-arm64.tar.gz"`,
+		`url "https://github.com/levifig/loaf/releases/download/v0.2.4/loaf_0.2.4_linux-x64.tar.gz"`,
 	} {
 		if !strings.Contains(formula, want) {
 			t.Fatalf("generated formula missing %q:\n%s", want, formula)

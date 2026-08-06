@@ -35,6 +35,49 @@ func TestNewRunnerWiresBuildInfo(t *testing.T) {
 	if runner.BuildDate != "2026-06-27T12:00:00Z" {
 		t.Fatalf("runner.BuildDate = %q, want %q", runner.BuildDate, "2026-06-27T12:00:00Z")
 	}
+	if !runner.DevBuildTime.IsZero() {
+		t.Fatalf("runner.DevBuildTime = %v, want the zero time for a release build", runner.DevBuildTime)
+	}
+}
+
+// TestDevBuildTimeSeparatesReleaseBuildsFromDevBuilds pins the switch every
+// version surface hangs off. Release metadata present means a release build,
+// which reports the distribution's version; its absence means a locally linked
+// binary, whose identity is when it was linked. The link-time variables are
+// assigned directly here because that is exactly what the linker does to them.
+func TestDevBuildTimeSeparatesReleaseBuildsFromDevBuilds(t *testing.T) {
+	originalCommit, originalDate := buildCommit, buildDate
+	t.Cleanup(func() {
+		buildCommit, buildDate = originalCommit, originalDate
+	})
+
+	for _, tc := range []struct {
+		name   string
+		commit string
+		date   string
+	}{
+		{name: "commit_and_date", commit: "abc1234", date: "2026-06-27T12:00:00Z"},
+		{name: "commit_only", commit: "abc1234"},
+		{name: "date_only", date: "2026-06-27T12:00:00Z"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			buildCommit, buildDate = tc.commit, tc.date
+			if got := devBuildTime(); !got.IsZero() {
+				t.Fatalf("devBuildTime() = %v, want the zero time for a release build", got)
+			}
+		})
+	}
+
+	// This test binary was linked locally with no release metadata, so it is
+	// the dev build the carrier has to work for.
+	buildCommit, buildDate = "", ""
+	got := devBuildTime()
+	if got.IsZero() {
+		t.Fatal("devBuildTime() = zero time, want the executable's link time for a build with no release metadata")
+	}
+	if got.Unix() < 1_000_000_000 {
+		t.Fatalf("devBuildTime() = %v, want a link time of timestamp magnitude", got)
+	}
 }
 
 func TestPublicBinaryVersionShowsInjectedBuildInfoNatively(t *testing.T) {
@@ -56,7 +99,9 @@ func TestPublicBinaryVersionShowsInjectedBuildInfoNatively(t *testing.T) {
 		}
 	}
 
-	// A plain build (no ldflags) must keep the clean version line.
+	// A plain build (no ldflags) must keep the clean version line. It resolves no
+	// distribution from a temp directory, so it is not a dev build either: with
+	// no checkout around it there is nothing for a build clock to date.
 	cleanBinary := filepath.Join(t.TempDir(), "loaf-clean")
 	if output, err := runCommand(repoRoot, "go", "build", "-o", cleanBinary, "./cmd/loaf"); err != nil {
 		t.Fatalf("go build (clean) error = %v\n%s", err, output)
@@ -65,8 +110,10 @@ func TestPublicBinaryVersionShowsInjectedBuildInfoNatively(t *testing.T) {
 	if err != nil {
 		t.Fatalf("clean loaf --version error = %v\n%s", err, cleanOutput)
 	}
-	if strings.Contains(cleanOutput, "(built") || strings.Contains(cleanOutput, "git abc1234") {
-		t.Fatalf("clean --version output = %q, want no injected build info", cleanOutput)
+	for _, forbidden := range []string{"(built", "git abc1234", "(dev build)"} {
+		if strings.Contains(cleanOutput, forbidden) {
+			t.Fatalf("clean --version output = %q, want no %q", cleanOutput, forbidden)
+		}
 	}
 }
 

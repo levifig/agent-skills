@@ -14,7 +14,7 @@ user-invocable: true
 disable-model-invocation: true
 argument-hint: '[idea, problem, or intake item]'
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion'
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Pitch
