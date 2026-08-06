@@ -37,8 +37,8 @@ loaf journal log "skill(implement): TASK-006 — 0.2.20 release readiness and wi
 
 ## Steps
 
-- [ ] Stamp `target_release: "0.2.20"` in this Change's `change.json`
-- [ ] Curate `[Unreleased]` so the ceremony's `0.2.20` section tells the reset story (scheme, renumber map pointer, forced-downgrade note instructing `loaf upgrade` after install)
+- [x] Stamp `target_release: "0.2.20"` in this Change's `change.json`
+- [x] Curate `[Unreleased]` so the ceremony's `0.2.20` section tells the reset story (scheme, renumber map pointer, forced-downgrade note instructing `loaf upgrade` after install)
 - [ ] Re-record capability evidence against the rebuilt binary; `loaf release --dry-run` passes its gates
 - [ ] Record the full remote tag/Release inventory (`git ls-remote --tags origin`, `gh release list`) into `research/` as the pre-wipe record
 

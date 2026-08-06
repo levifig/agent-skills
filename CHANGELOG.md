@@ -6,7 +6,19 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Changed
+
+- **Breaking: the version line resets from `2.0.0-alpha.19` to `0.2.20`.** Releases are plain major-zero numbers with no prerelease suffix. Nineteen alphas over two months each implied a 2.0 that was never close, and the implied ceremony is why fixes sat unshipped; under the new scheme the patch slot counts releases within a minor, so a merged fix is a patch bump and nothing more. `0.3.0` is the next stabilization epoch and `1.0.0` a milestone to reach rather than defend. In SemVer terms this is a deliberate downgrade: **run `loaf upgrade` once after installing 0.2.20** so every harness's `.loaf-version` marker is restamped. Until you do, markers written by `2.0.0-alpha.19` sit above the new binary and `loaf doctor` reports each harness as ahead of it ([#153](https://github.com/levifig/loaf/pull/153), ADR-026).
+- The changelog history is renumbered 1:1 onto the new scheme with entry content untouched: `2.0.0-alpha.N` → `0.2.N`, `2.0.0-dev.N` → `0.1.N`, the four `pre.<timestamp>` builds → `0.1.50`–`0.1.53`, and the pre-CLI 1.x era collapsed into an authored `0.1.0` anchor. This file is the sole carrier of the renumbered history — no tag or artifact carries the new numbers for anything before `0.2.20`, and GitHub keeps exactly a `v0.1.0` era marker and `v0.2.20`. ADR-026 holds the translation table; pre-reset ADRs keep their original citations as dated records ([#153](https://github.com/levifig/loaf/pull/153)).
+
+### Added
+
+- A dev build reports an identity of its own — `<major>.<minor>.<unix timestamp>` with a `(dev build)` suffix — so a local build and a release are unmistakable on sight (`0.2.20` versus `0.2.1786022455`) instead of differing only by the absence of build metadata. A timestamp patch is valid SemVer and sorts above every release in the minor, which is the truth about a machine running its own build. The identity takes two facts rather than one: no release build metadata, and a resolved distribution carrying `go.mod` beside its content — so the locally built binaries this repository ships at a release tag (the Claude Code plugin marketplace payload, and what `npx github:levifig/loaf` compiles during install) keep reporting their release version. Tracked build artifacts always carry the release version; dev identity is binary-level only ([#153](https://github.com/levifig/loaf/pull/153), ADR-026).
+- The release pipeline refuses its ceremony for a dev build's version. The refusal sits on the release snapshot, the one derivation dry-run, apply, and post-merge all read, so a timestamp-magnitude candidate is rejected once rather than in three places; the release workflow mirrors it on the way in, skipping cleanly when such a tag is pushed instead of failing downstream on a tag/version mismatch. The guardrail is drawn at ceremony, not at visibility: commits, lightweight tags, and prerelease-marked uploads stay available ([#153](https://github.com/levifig/loaf/pull/153)).
+
+### Fixed
+
+- `loaf doctor`'s harness-content-drift advice no longer treats a marker above the binary as proof the binary is behind. A renumbered version line leaves an older marker sitting above a newer binary, and the only advice offered was to upgrade a binary that was already current; both remedies are now named. A marker of timestamp magnitude — a dev build's clock, above everything published by construction — is never read as evidence the binary is stale ([#153](https://github.com/levifig/loaf/pull/153)).
 
 ## [0.2.19] - 2026-08-02
 
