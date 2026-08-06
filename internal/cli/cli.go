@@ -38,6 +38,12 @@ type Runner struct {
 	// and `go test`, and surface in `loaf --version` / `loaf version` when set.
 	BuildCommit string
 	BuildDate   string
+	// DevBuildTime carries the moment a binary with no release metadata was
+	// linked (see cmd/loaf/main.go). A non-zero value is the dev-build signal:
+	// `loaf --version` then reports the timestamp identity devVersion mints
+	// instead of the distribution's release version. It is zero for release
+	// builds and for every Runner a test constructs.
+	DevBuildTime time.Time
 	// Executable optionally overrides os.Executable as the source of
 	// installed-distribution provenance (see distribution.go). Tests inject
 	// fixture layouts through it; nil means the real executable.

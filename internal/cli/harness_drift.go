@@ -20,8 +20,10 @@ const (
 
 // harnessDriftState classifies one harness's stamped content against the
 // running binary. Both stale directions are named because they have different
-// remediations: stale content is what `loaf upgrade` fixes, while a marker
-// newer than the binary means the binary is the side left behind.
+// remediations: stale content is what `loaf upgrade` fixes, while a marker that
+// outranks the binary points at the binary as the side left behind — points,
+// rather than proves, since a renumbered version line leaves an older marker
+// sitting above a newer binary.
 type harnessDriftState string
 
 const (
@@ -59,7 +61,8 @@ func readHarnessVersionMarker(configDir string) string {
 
 // classifyHarnessDrift implements the marker semantics: equal is current, an
 // older marker is stale content, a newer marker makes the binary the stale
-// side, and a missing or unparseable marker is an unknown state.
+// side unless the marker carries dev identity, and a missing or unparseable
+// marker is an unknown state.
 func classifyHarnessDrift(marker string, binaryVersion string) harnessDriftState {
 	if marker == "" {
 		return harnessDriftUnknown
@@ -67,6 +70,14 @@ func classifyHarnessDrift(marker string, binaryVersion string) harnessDriftState
 	comparison, ok := compareHarnessDriftVersions(marker, binaryVersion)
 	if !ok {
 		return harnessDriftUnknown
+	}
+	// A marker of timestamp magnitude was stamped by a dev build's clock, not by
+	// a release line, so it outranks everything published by construction and is
+	// never evidence that the binary is behind. The content came from somebody's
+	// local build, and `loaf upgrade` is what puts this distribution's content
+	// back.
+	if isDevVersion(marker) && !isDevVersion(binaryVersion) {
+		return harnessDriftContentStale
 	}
 	switch {
 	case comparison < 0:
@@ -119,7 +130,13 @@ func (reading harnessDriftReading) doctorDetailLine(binaryVersion string) string
 	case harnessDriftContentStale:
 		return fmt.Sprintf("%s content is %s (%s) - run `loaf upgrade`", reading.name, reading.marker, reading.configDir)
 	case harnessDriftBinaryStale:
-		return fmt.Sprintf("%s content is %s, ahead of the binary's %s (%s) - the binary is the stale side; upgrade it (e.g. `brew upgrade loaf`)", reading.name, reading.marker, binaryVersion, reading.configDir)
+		// Both directions are named because the marker alone cannot choose
+		// between them: a marker above the binary means a newer binary stamped
+		// this content, or that the version line was renumbered underneath a
+		// binary that is in fact current. Upgrading a binary that is already
+		// current does nothing; `loaf upgrade` restamps content that was never
+		// newer. The reader knows which binary they are running.
+		return fmt.Sprintf("%s content is %s, ahead of the binary's %s (%s) - upgrade the binary if it is behind (e.g. `brew upgrade loaf`), or run `loaf upgrade` to restamp the content from this binary", reading.name, reading.marker, binaryVersion, reading.configDir)
 	case harnessDriftUnknown:
 		if reading.marker == "" {
 			return fmt.Sprintf("%s content version is unknown - no %s in %s - run `loaf upgrade`", reading.name, loafInstallMarkerFile, reading.configDir)
@@ -146,6 +163,13 @@ func (r Runner) harnessDriftNudge(harness string) string {
 	return fmt.Sprintf("Loaf content in this harness is %s; binary is %s — run loaf upgrade", reading.marker, binaryVersion)
 }
 
+// harnessDriftBinaryVersion is the version markers are compared against: the
+// installed distribution's, which is exactly what install stamps into the
+// marker it writes. A dev build's own identity (version.go) stays out of it
+// deliberately — a dev binary installs this distribution's content, so
+// comparing a marker against a build clock would report drift on every harness
+// of every dev machine, forever, and the nudge would fire at every session
+// start with an upgrade that changes nothing.
 func harnessDriftBinaryVersion(r Runner) string {
 	root, err := r.resolveInstalledDistributionRoot()
 	if err != nil {

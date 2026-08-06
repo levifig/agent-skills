@@ -57,7 +57,7 @@ func TestHarnessContentDriftDoctorReportsEachMarkerState(t *testing.T) {
 		{name: "current_marker_passes", marker: harnessDriftBinaryFixtureVersion, wantStatus: doctorPass},
 		{name: "missing_marker_reports_unknown", marker: "", wantStatus: doctorWarn, wantDetail: "content version is unknown"},
 		{name: "unparseable_marker_reports_unknown", marker: "not-a-version", wantStatus: doctorWarn, wantDetail: "is unreadable"},
-		{name: "newer_marker_blames_the_binary", marker: harnessDriftNewerFixtureVersion, wantStatus: doctorWarn, wantDetail: "brew upgrade loaf", reject: "run `loaf upgrade`"},
+		{name: "newer_marker_names_both_directions", marker: harnessDriftNewerFixtureVersion, wantStatus: doctorWarn, wantDetail: "brew upgrade loaf", reject: "the binary is the stale side"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home := harnessDriftHome(t)
@@ -121,6 +121,84 @@ func TestHarnessContentDriftDoctorCountsEveryInstalledHarness(t *testing.T) {
 		if !strings.Contains(result.Detail, want) {
 			t.Fatalf("harness-content-drift detail = %q, want containing %q", result.Detail, want)
 		}
+	}
+}
+
+// TestHarnessDriftBinaryVersionIgnoresTheDevStamp pins the split between the
+// two versions a dev build carries. `loaf --version` reports the build's own
+// timestamp identity; drift compares markers against the distribution's release
+// version, because that is the content a dev binary installs and the number it
+// stamps into the marker. Comparing a marker against the build clock instead
+// would report drift on every harness of every dev machine.
+func TestHarnessDriftBinaryVersionIgnoresTheDevStamp(t *testing.T) {
+	distRoot := harnessDriftDistribution(t, "0.2.20")
+	runner := Runner{Executable: distributionFixtureExecutable(distRoot), DevBuildTime: devBuildFixtureTime}
+
+	if got := runner.reportedVersion(distRoot); got != "0.2.1754593012" {
+		t.Fatalf("reportedVersion = %q, want the dev identity", got)
+	}
+	binaryVersion := harnessDriftBinaryVersion(runner)
+	if binaryVersion != "0.2.20" {
+		t.Fatalf("harnessDriftBinaryVersion = %q, want the distribution's release version", binaryVersion)
+	}
+	if got := classifyHarnessDrift("0.2.20", binaryVersion); got != harnessDriftCurrent {
+		t.Fatalf("classifyHarnessDrift(release marker, dev binary) = %q, want %q", got, harnessDriftCurrent)
+	}
+}
+
+// TestHarnessDriftReadsDevMarkersAsContentDrift covers the other side: content
+// installed by a dev build carries a timestamp marker that outranks every
+// published version by construction, so it can never mean the binary is behind.
+func TestHarnessDriftReadsDevMarkersAsContentDrift(t *testing.T) {
+	const devMarker = "0.2.1754593012"
+
+	if got := classifyHarnessDrift(devMarker, "0.2.20"); got != harnessDriftContentStale {
+		t.Fatalf("classifyHarnessDrift(%q, %q) = %q, want %q", devMarker, "0.2.20", got, harnessDriftContentStale)
+	}
+
+	home := harnessDriftHome(t)
+	harnessDriftInstalledHarness(t, filepath.Join(home, ".cursor"), devMarker)
+	result := checkHarnessContentDrift().Run(doctorContext{projectRoot: home, cliVersion: "0.2.20"})
+
+	if result.Status != doctorWarn {
+		t.Fatalf("harness-content-drift result = %#v, want warn", result)
+	}
+	if !strings.Contains(result.Detail, "Cursor content is "+devMarker) || !strings.Contains(result.Detail, "run `loaf upgrade`") {
+		t.Fatalf("harness-content-drift detail = %q, want the dev marker reported as content to refresh", result.Detail)
+	}
+	if strings.Contains(result.Detail, "brew upgrade loaf") {
+		t.Fatalf("harness-content-drift detail = %q, must not blame the binary for a build-clock marker", result.Detail)
+	}
+}
+
+// TestHarnessDriftAdviceSurvivesTheVersionSchemeReset covers the transit this
+// repo performed: markers stamped by 2.0.0-alpha.19 sit above the 0.2.20 binary
+// that replaced them, so the marker is higher while the binary is the newer
+// side. The state stays binary-stale — nothing in a marker can prove otherwise
+// — but the advice must name `loaf upgrade`, the command that actually resolves
+// it, instead of sending the reader to upgrade a binary that is already current.
+func TestHarnessDriftAdviceSurvivesTheVersionSchemeReset(t *testing.T) {
+	const marker = "2.0.0-alpha.19"
+	const binaryVersion = "0.2.20"
+
+	if got := classifyHarnessDrift(marker, binaryVersion); got != harnessDriftBinaryStale {
+		t.Fatalf("classifyHarnessDrift(%q, %q) = %q, want %q", marker, binaryVersion, got, harnessDriftBinaryStale)
+	}
+
+	home := harnessDriftHome(t)
+	harnessDriftInstalledHarness(t, filepath.Join(home, ".cursor"), marker)
+	result := checkHarnessContentDrift().Run(doctorContext{projectRoot: home, cliVersion: binaryVersion})
+
+	if result.Status != doctorWarn {
+		t.Fatalf("harness-content-drift result = %#v, want warn", result)
+	}
+	for _, want := range []string{"Cursor content is " + marker, "ahead of the binary's " + binaryVersion, "brew upgrade loaf", "run `loaf upgrade`"} {
+		if !strings.Contains(result.Detail, want) {
+			t.Fatalf("harness-content-drift detail = %q, want containing %q", result.Detail, want)
+		}
+	}
+	if strings.Contains(result.Detail, "the binary is the stale side") {
+		t.Fatalf("harness-content-drift detail = %q, must not assert a direction the marker cannot prove", result.Detail)
 	}
 }
 

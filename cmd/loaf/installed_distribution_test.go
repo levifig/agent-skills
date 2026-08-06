@@ -29,10 +29,15 @@ func TestInstalledDistributionVersionAuthorityFromStaleCheckout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("installed loaf version from stale checkout error = %v\n%s", err, output)
 	}
-	if !strings.Contains(output, installedTestVersion) {
-		t.Fatalf("version output = %q, want installed distribution version %q", output, installedTestVersion)
+	// The fixture binary is compiled here, so it carries no release metadata and
+	// reports the dev identity: its link time in the patch slot under the major
+	// and minor of the distribution it resolved. Those two numbers are the
+	// authority under test — they come from the installed root, never the
+	// checkout the caller is standing in.
+	if !strings.Contains(output, "loaf\x1b[0m 9.9.") || !strings.Contains(output, "(dev build)") {
+		t.Fatalf("version output = %q, want a dev identity in the installed distribution's 9.9 line", output)
 	}
-	if strings.Contains(output, staleTestVersion) {
+	if strings.Contains(output, staleTestVersion) || strings.Contains(output, "1.1.") {
 		t.Fatalf("version output = %q, must not report the stale checkout version %q", output, staleTestVersion)
 	}
 }
@@ -98,8 +103,14 @@ func TestInstalledDistributionCheckoutOwnBinaryReportsCheckoutVersion(t *testing
 	if err != nil {
 		t.Fatalf("checkout-owned loaf version error = %v\n%s", err, output)
 	}
-	if !strings.Contains(string(output), "3.3.3-dev") {
-		t.Fatalf("version output = %q, want the owning checkout's version", output)
+	// A checkout's own binary is a dev build by definition, so it reports the
+	// dev identity built from its owning checkout's major and minor rather than
+	// that checkout's release version.
+	if !strings.Contains(string(output), "loaf\x1b[0m 3.3.") || !strings.Contains(string(output), "(dev build)") {
+		t.Fatalf("version output = %q, want the owning checkout's dev identity", output)
+	}
+	if strings.Contains(string(output), "3.3.3-dev") {
+		t.Fatalf("version output = %q, want the dev identity instead of the checkout's release version", output)
 	}
 }
 

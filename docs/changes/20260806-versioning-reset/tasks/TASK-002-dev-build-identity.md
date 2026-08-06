@@ -34,11 +34,11 @@ loaf journal log "skill(implement): TASK-002 — dev-build identity and drift-cl
 
 ## Steps
 
-- [ ] Mint `0.2.{unix_timestamp}` at build time for non-CI binary builds, using the CI-env absence signal; decide and document the carrier (ldflags variable or equivalent)
-- [ ] Teach the version report to prefer the dev stamp when present; release builds keep the runtime `package.json` read
-- [ ] Add the shared dev-identity predicate (timestamp-magnitude patch) where version code lives; use it in the drift classifier so a dev binary against release-marked content classifies and advises correctly
-- [ ] Correct `doctorDetailLine` advice so a higher marker no longer unconditionally means "binary is stale"; cover the `2.0.0-alpha.19` marker → `0.2.20` binary transit in a test
-- [ ] Go tests for predicate, stamping selection, and drift classification across dev/release/downgrade combinations
+- [x] Mint `0.2.{unix_timestamp}` at build time for non-CI binary builds, using the CI-env absence signal; decide and document the carrier (ldflags variable or equivalent)
+- [x] Teach the version report to prefer the dev stamp when present; release builds keep the runtime `package.json` read
+- [x] Add the shared dev-identity predicate (timestamp-magnitude patch) where version code lives; use it in the drift classifier so a dev binary against release-marked content classifies and advises correctly
+- [x] Correct `doctorDetailLine` advice so a higher marker no longer unconditionally means "binary is stale"; cover the `2.0.0-alpha.19` marker → `0.2.20` binary transit in a test
+- [x] Go tests for predicate, stamping selection, and drift classification across dev/release/downgrade combinations
 
 ## Verification
 
