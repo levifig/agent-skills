@@ -6,7 +6,7 @@ description: >-
   Produces task files with estimates, dependencies, and acceptance criteria. Not
   for shaping ideas (use shape) or implementation work (use implement).
 subtask: false
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Breakdown

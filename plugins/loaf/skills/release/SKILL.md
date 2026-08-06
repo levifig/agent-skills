@@ -9,7 +9,7 @@ description: >-
   ship).
 user-invocable: true
 argument-hint: '[version, base, or release intent]'
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Release

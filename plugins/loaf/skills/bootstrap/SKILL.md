@@ -10,7 +10,7 @@ description: >-
 user-invocable: true
 argument-hint: '[brief or path]'
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion'
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Bootstrap

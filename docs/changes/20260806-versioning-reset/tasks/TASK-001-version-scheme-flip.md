@@ -30,9 +30,9 @@ loaf journal log "skill(implement): TASK-001 — version scheme flip to 0.2.20"
 
 ## Steps
 
-- [ ] Set `"version": "0.2.20"` in `package.json` and refresh `package-lock.json` (stale at `2.0.0-alpha.17`; no dependency changes — version fields only)
-- [ ] Run `npm run build` so every stamped artifact regenerates; confirm the diff touches only version stamps
-- [ ] Run the suite; commit as one flip commit
+- [x] Set `"version": "0.2.20"` in `package.json` and refresh `package-lock.json` (stale at `2.0.0-alpha.17`; no dependency changes — version fields only)
+- [x] Run `npm run build` so every stamped artifact regenerates; confirm the diff touches only version stamps
+- [x] Run the suite; commit as one flip commit
 
 ## Verification
 

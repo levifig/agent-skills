@@ -8,7 +8,7 @@ description: >-
   pitch), multi-agent coordination (use orchestration), or implementation.
 user-invocable: true
 argument-hint: '[topic]'
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Research

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "target": "opencode",
-  "package_version": "2.0.0-alpha.19",
+  "package_version": "0.2.20",
   "capability_contract_version": 3,
   "adapters": [
     "opencode-plugin-v1"
@@ -114,7 +114,7 @@
       "kind": "plugin",
       "source_path": "plugins/hooks.ts",
       "destination": "plugins/hooks.ts",
-      "sha256": "0c4064b08ef78d4da2c462be6fd9f30aadce89efafd6e99f397caf4d8e03a0a7",
+      "sha256": "bc46b68b592e8b2232001703c3ba4b2bda739992db488a36ec37b14fc77f74f2",
       "mode": 420
     }
   ]

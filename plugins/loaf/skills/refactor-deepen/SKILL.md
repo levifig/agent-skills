@@ -9,7 +9,7 @@ description: >-
   with candidates, dependency categories, and proposed deepened modules.
 user-invocable: true
 argument-hint: '[module or area]'
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Refactor-Deepen

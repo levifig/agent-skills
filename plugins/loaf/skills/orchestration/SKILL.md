@@ -7,7 +7,7 @@ description: >-
   implementation (use direct tool delegation) or solo research (use research).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep, TodoWrite, TodoRead'
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Orchestration

@@ -14,7 +14,7 @@ description: >-
   old one.
 user-invocable: true
 argument-hint: '[topic or decision]'
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Architecture
