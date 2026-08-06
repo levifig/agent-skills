@@ -33,8 +33,8 @@ loaf journal log "skill(implement): TASK-005 — ADR-026 major-zero versioning p
 
 ## Steps
 
-- [ ] Author ADR-026 covering scheme, dev identity, guardrail, renumber map, milestone semantics, and the rejected alternatives with rationale
-- [ ] Cross-link: ADR notes that pre-reset ADRs cite old-scheme versions and carries the translation map
+- [x] Author ADR-026 covering scheme, dev identity, guardrail, renumber map, milestone semantics, and the rejected alternatives with rationale
+- [x] Cross-link: ADR notes that pre-reset ADRs cite old-scheme versions and carries the translation map
 
 ## Verification
 
