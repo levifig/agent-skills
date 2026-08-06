@@ -1,0 +1,168 @@
+{
+  "schema_version": 2,
+  "change": "versioning-reset",
+  "verified_commit": "886fb8d4374e154f2c23f3fb730642995e49be21",
+  "verified_root_tree": "03ba672caa7b31044f900d2e449176b639fc3b3b",
+  "verified_at": "2026-08-06T14:20:15Z",
+  "criteria_digest": "b6d5e048dd0fc8d3e6d6e9f4686fddd711bd9fc6fc076fc62661d9f8e91681a2",
+  "scope_digest": "a6c8c846d927143684364a568fa423224ab1bb4f3e44ecf95e2ecc8be620adc2",
+  "scope_sections": {
+    ".agents": "0cdcb499203f22e1faebbef89e211e4b6d4b253bc5486866ed28a50e15c2dd9e",
+    ".claude": "8dc123c00b953695edd9ccc4bb966e986bcea05607d9a125e71038a4c2ebb6be",
+    ".github": "1620d60edd726d78c03e1810a690c54669d4dbca40699b4489125696f1b28525",
+    ".gitignore": "4ec1c977b3002200cfe2c9a652cbbe1cb31e934d12a7c0029b1dd6cdc668099a",
+    ".serena": "749668b92acde130ae6a4514f59b9e08bf7095c8bdd47b6b2e5929b0729ba91f",
+    "AGENTS.md": "96a27c8deab6683f3c9ae669520ed0ed8cd2f22bc71231af8e00e205a7ea71e6",
+    "README.md": "32cecbbf375e1b689ac4702acc72a81f5ad89be495f87680524b1fcd76f5089b",
+    "cli": "8db750c2213e3f87846b57e51b2362ec1df384d394edf5460cf3efa0a5a90338",
+    "cmd": "3d4f455f2eea30cecbef4ea78280e6b86b5b48033074369f476a1805d513d217",
+    "config": "af9cddbad9f2b2a96a6917e8ef3bfe73dc7a10199da07f9332fb883ef7f7c2e2",
+    "content": "acb99f53a758c4edff0f6b4a6644d2e4c60fa62fdca232ffbc0d5fe786f661d9",
+    "docs": "bcf2ea35c5e20a6874e404b06ba126689ce14d813eaf2b4e3ebae2c9d35fb1f6",
+    "go.mod": "b9247690761e43ce92335c553e1f916132580b2a1e7f434c7d99742e56fb8b21",
+    "go.sum": "44a5d68a99a05f3d9aff3321f4b5645d0870cc1afd36e183fbc08c07d8550d6b",
+    "internal": "27bb6fd40cffd217d52ee96f6c98b84641bd3a9ecbcf2ac8728e8ee22ca7bc82",
+    "package-lock.json": "9a3e1b4d99a42b2fefa998dd5c753c1f00ee12a43d1a477b674fe04e6c779f01"
+  },
+  "exclusions": [
+    "docs/changes/*/receipts/**",
+    "docs/changes/*/reports/**",
+    "package.json",
+    ".claude-plugin/marketplace.json",
+    "CHANGELOG.md",
+    "dist/**",
+    "plugins/**",
+    "bin/**"
+  ],
+  "digest_spec": "v1",
+  "tool_version": "0.2.20",
+  "toolchain": {
+    "go": "1.26.5",
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "worktree_clean": true,
+  "target_release": "0.2.20",
+  "results": [
+    {
+      "id": "V1",
+      "command": "node -p \"require('./package.json').version\"",
+      "exit_code": 0,
+      "output_digest": "f2b441d0c9b7b81e8d9385e7e89ede33d7521583579dcb7b42fa366fd49758ab",
+      "ok": true,
+      "expect": "exit 0 and contains `0.2.20`.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        },
+        {
+          "kind": "contains",
+          "value": "0.2.20",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V2",
+      "command": "node -p \"require('./.claude-plugin/marketplace.json').metadata.version\"",
+      "exit_code": 0,
+      "output_digest": "f2b441d0c9b7b81e8d9385e7e89ede33d7521583579dcb7b42fa366fd49758ab",
+      "ok": true,
+      "expect": "exit 0 and contains `0.2.20`.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        },
+        {
+          "kind": "contains",
+          "value": "0.2.20",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V3",
+      "command": "npm run test",
+      "exit_code": 0,
+      "output_digest": "c37becf08a8ab175c494bf072a1e6b2e97be6e1a31a02d1f59c704f51abf8a3a",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V4",
+      "command": "go test ./internal/cli -run TestReleaseSnapshotRefusesTimestampPatch -count=1",
+      "exit_code": 0,
+      "output_digest": "78c7284bb8b660e8c786fc4e74b4717c7747528f625ac47be5bd8cf2318346c6",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V5",
+      "command": "grep -c \"^## \\[2\\.0\\.0\" CHANGELOG.md",
+      "exit_code": 1,
+      "output_digest": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "ok": true,
+      "expect": "exit 1.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "1",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V6",
+      "command": "grep -c \"^## \\[0\\.1\\.0\\]\" CHANGELOG.md",
+      "exit_code": 0,
+      "output_digest": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "ok": true,
+      "expect": "exit 0 and contains `1`.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        },
+        {
+          "kind": "contains",
+          "value": "1",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V7",
+      "command": "test -f docs/decisions/ADR-026-major-zero-versioning.md",
+      "exit_code": 0,
+      "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    }
+  ]
+}
