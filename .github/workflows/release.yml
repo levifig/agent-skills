@@ -21,7 +21,8 @@ jobs:
   # The ceremony guardrail, on the way in: a dev build stamps a Unix timestamp
   # in the patch slot, and such a tag never packages a release. Pushing one is
   # allowed — it just skips this workflow instead of failing it downstream. The
-  # floor below is the one in internal/cli/version.go (devVersionPatchFloor).
+  # floor below is devVersionPatchFloor from internal/cli/version.go, pinned to
+  # it by TestReleaseWorkflowSkipsAtTheDevVersionFloor.
   resolve:
     runs-on: ubuntu-latest
     outputs:
@@ -46,9 +47,11 @@ jobs:
           core="${tag#v}"
           core="${core%%-*}"
           core="${core%%+*}"
-          patch="${core##*.}"
           dev=false
-          if [[ "$patch" =~ ^[1-9][0-9]*$ ]] && (( patch >= 1000000000 )); then
+          # Three numeric parts or nothing, mirroring parseUpgradeSemver. A
+          # malformed tag is not a dev build, so it must stay on the loud path
+          # and fail the version check below rather than skip out silently.
+          if [[ "$core" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] && (( ${BASH_REMATCH[3]} >= 1000000000 )); then
             dev=true
             echo "Release ceremony guardrail: $tag carries a dev build identity (a Unix timestamp in the patch slot). Skipping the release."
           fi

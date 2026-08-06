@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -221,6 +222,20 @@ func TestReleaseSnapshotRefusesTimestampPatch(t *testing.T) {
 		if err != nil || snap.Candidate != tc.want {
 			t.Fatalf("%s on a plain version: candidate = %q err = %v, want %s", tc.name, snap.Candidate, err, tc.want)
 		}
+	}
+}
+
+// CI mirrors the guardrail in bash, where it cannot read a Go constant. So the
+// constant reads the workflow: the floor the release job skips at is this
+// floor, or the pair has silently drifted and a dev tag packages a release.
+func TestReleaseWorkflowSkipsAtTheDevVersionFloor(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatalf("ReadFile(release.yml) error = %v", err)
+	}
+	want := fmt.Sprintf("(( ${BASH_REMATCH[3]} >= %d ))", devVersionPatchFloor)
+	if !strings.Contains(string(workflow), want) {
+		t.Fatalf("release.yml is missing the dev-version floor comparison %q", want)
 	}
 }
 
