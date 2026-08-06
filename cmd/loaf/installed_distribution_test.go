@@ -29,15 +29,17 @@ func TestInstalledDistributionVersionAuthorityFromStaleCheckout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("installed loaf version from stale checkout error = %v\n%s", err, output)
 	}
-	// The fixture binary is compiled here, so it carries no release metadata and
-	// reports the dev identity: its link time in the patch slot under the major
-	// and minor of the distribution it resolved. Those two numbers are the
-	// authority under test — they come from the installed root, never the
-	// checkout the caller is standing in.
-	if !strings.Contains(output, "loaf\x1b[0m 9.9.") || !strings.Contains(output, "(dev build)") {
-		t.Fatalf("version output = %q, want a dev identity in the installed distribution's 9.9 line", output)
+	if !strings.Contains(output, installedTestVersion) {
+		t.Fatalf("version output = %q, want installed distribution version %q", output, installedTestVersion)
 	}
-	if strings.Contains(output, staleTestVersion) || strings.Contains(output, "1.1.") {
+	// The fixture binary is compiled here and carries no release metadata, yet
+	// the distribution around it is a release-archive layout — the same shape
+	// the plugin marketplace and npm serve from committed binaries. Missing
+	// metadata alone must never dress one of those as a dev build.
+	if strings.Contains(output, "(dev build)") {
+		t.Fatalf("version output = %q, must not report a shipped distribution as a dev build", output)
+	}
+	if strings.Contains(output, staleTestVersion) {
 		t.Fatalf("version output = %q, must not report the stale checkout version %q", output, staleTestVersion)
 	}
 }
@@ -165,11 +167,13 @@ func writeInstalledDistributionFixture(t *testing.T, repo string, version string
 }
 
 // writeStaleCheckoutFixture lays out an older Loaf source checkout: package
-// metadata, a .git marker, content, and stale built dist/ output.
+// metadata, a .git marker, the Go module that makes it a checkout rather than
+// an unpacked distribution, content, and stale built dist/ output.
 func writeStaleCheckoutFixture(t *testing.T, version string) string {
 	t.Helper()
 	root := realpath(t, t.TempDir())
 	writeFixtureFile(t, filepath.Join(root, "package.json"), `{"name":"loaf","version":"`+version+`"}`)
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module github.com/levifig/loaf\n\ngo 1.25.0\n")
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatalf("MkdirAll .git error = %v", err)
 	}

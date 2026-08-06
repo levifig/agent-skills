@@ -8,15 +8,17 @@
  *
  * Build metadata (commit + date) is injected via `-X main.buildCommit/buildDate`
  * only when LOAF_BUILD_COMMIT / LOAF_BUILD_DATE are present in the environment.
- * Only the release workflow sets them, so their absence is also what marks a
- * binary as a dev build.
+ * Only the release workflow sets them, so their absence is half of what marks a
+ * binary as a dev build — the other half is running out of a source checkout,
+ * since the binaries this script commits also ship as releases through the
+ * plugin marketplace (see internal/cli/version.go).
  *
  * A dev build reports `<major>.<minor>.<unix timestamp>`, and that stamp is
  * deliberately not injected here: the timestamp would differ between the build
  * and the rebuild verify-go-artifacts.mjs compares it against, breaking the
- * reproducibility assertion on every run. cmd/loaf/main.go reads the link time
- * from the executable's own modification time instead, which leaves these flags
- * — and the binary — deterministic.
+ * reproducibility assertion on every run. cmd/loaf/main.go reads the executable's
+ * own modification time instead, which leaves these flags — and the binary —
+ * deterministic.
  */
 
 export function goLdflags(env = process.env) {

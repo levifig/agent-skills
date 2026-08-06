@@ -28,7 +28,7 @@ func (r Runner) runVersion(out io.Writer) error {
 	if rootErr != nil {
 		root = ""
 	}
-	fmt.Fprintf(out, "\n%s %s%s\n", ansiBold("loaf"), r.reportedVersion(root), r.versionSuffix())
+	fmt.Fprintf(out, "\n%s %s%s\n", ansiBold("loaf"), r.reportedVersion(root), r.versionSuffix(root))
 	fmt.Fprintf(out, "%s %s\n", ansiGray("go"), strings.TrimPrefix(runtimeVersion(), "go"))
 
 	// Targets and Content describe the installed distribution. Without
@@ -71,8 +71,8 @@ const devVersionPatchFloor = 1_000_000_000
 // isDevVersion is the shared dev-identity predicate. One rule — a patch of
 // timestamp magnitude — serves every surface that has to tell a dev build from
 // a release: the version report mints these, the drift classifier reads them
-// off install markers, and the release pipeline refuses to run its ceremony for
-// one. There is no flag, suffix, or second source to keep in step.
+// off install markers, and the release pipeline will refuse to run its ceremony
+// for one. There is no flag, suffix, or second source to keep in step.
 func isDevVersion(version string) bool {
 	parsed, ok := parseUpgradeSemver(version)
 	if !ok {
@@ -82,15 +82,16 @@ func isDevVersion(version string) bool {
 }
 
 // devVersion mints a dev build's identity: the distribution's major and minor
-// with the moment the binary was linked in the patch slot. A timestamp patch is
-// valid SemVer and sorts above every release in the minor, which is the truth
-// about a machine running its own build — a prerelease suffix would sort below
-// the latest release instead, and nag that machine to "upgrade" forever.
+// with the moment the binary landed on this machine in the patch slot. A
+// timestamp patch is valid SemVer and sorts above every release in the minor,
+// which is the truth about a machine running its own build — a prerelease
+// suffix would sort below the latest release instead, and nag that machine to
+// "upgrade" forever.
 //
 // The stamp is not linked into the binary. The committed native binaries are
 // asserted byte-for-byte reproducible (cli/scripts/verify-go-artifacts.mjs), so
-// a build-varying ldflag would fail that assertion on every build; the linker's
-// own output timestamp carries it instead (see cmd/loaf/main.go).
+// a build-varying ldflag would fail that assertion on every build; the
+// executable's own file timestamp carries it instead (see cmd/loaf/main.go).
 //
 // A clock that has not been set would mint a patch below the floor — a version
 // no surface could tell from a release — so that falls back to the release
@@ -116,14 +117,46 @@ func devVersion(releaseVersion string, buildTime time.Time) string {
 // because content always carries the release version whichever binary deployed
 // it.
 func (r Runner) reportedVersion(root string) string {
-	return devVersion(packageVersion(root), r.DevBuildTime)
+	return devVersion(packageVersion(root), r.devBuildStamp(root))
+}
+
+// devBuildStamp is the dev-build signal, and it takes two facts rather than
+// one. Absent release metadata (cmd/loaf/main.go) says no release pipeline
+// built this binary; a resolved distribution that is the source checkout says
+// it is running out of the tree that did.
+//
+// Absence alone would be wrong, because this repository ships its own locally
+// built binaries: the Claude Code plugin marketplace serves the committed
+// plugins/loaf/bin/native/<platform>/loaf at a release tag, and `npx
+// github:levifig/loaf` builds one at install time. Both are releases carrying
+// no metadata, and reading that absence as proof would tell a user on 0.2.20
+// they were running a dev build.
+func (r Runner) devBuildStamp(root string) time.Time {
+	if !isSourceCheckout(root) {
+		return time.Time{}
+	}
+	return r.DevBuildTime
+}
+
+// isSourceCheckout reports whether a resolved distribution root is the Loaf
+// checkout that builds this binary. Every shipped distribution — release
+// archive, Homebrew keg, npm package, plugin payload — is content plus a
+// prebuilt binary; only a checkout carries the Go module beside them. An
+// unresolved root is never a checkout: probing it would read go.mod relative to
+// wherever the caller happened to be standing.
+func isSourceCheckout(root string) bool {
+	if root == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(root, "go.mod"))
+	return err == nil
 }
 
 // versionSuffix annotates the version line. A release build carries its commit
 // and date; a dev build says what it is, because a ten-digit patch only reads
 // as a timestamp once you know to read it as one.
-func (r Runner) versionSuffix() string {
-	if !r.DevBuildTime.IsZero() {
+func (r Runner) versionSuffix(root string) string {
+	if !r.devBuildStamp(root).IsZero() {
 		return " (dev build)"
 	}
 	return buildInfoSuffix(r.BuildCommit, r.BuildDate)

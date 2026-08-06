@@ -247,7 +247,7 @@ func TestDevVersionFallsBackWithoutAUsableBuildTime(t *testing.T) {
 }
 
 func TestRunnerVersionReportsTheDevStampForDevBuilds(t *testing.T) {
-	root := writeVersionFixture(t)
+	root := markSourceCheckout(t, writeVersionFixture(t))
 	var stdout bytes.Buffer
 
 	err := Runner{
@@ -267,6 +267,53 @@ func TestRunnerVersionReportsTheDevStampForDevBuilds(t *testing.T) {
 	}
 	if strings.Contains(output, "9.8.7-test.1") {
 		t.Fatalf("version output = %q, want the dev identity instead of the release version", output)
+	}
+}
+
+// TestRunnerVersionKeepsShippedDistributionsOnTheReleaseVersion is the reason
+// missing release metadata cannot be the whole dev signal. The native binaries
+// this repository commits are built locally, and the Claude Code plugin
+// marketplace serves exactly those bytes at a release tag — so a build time in
+// hand means nothing unless the distribution around the binary is the checkout
+// that produced it.
+func TestRunnerVersionKeepsShippedDistributionsOnTheReleaseVersion(t *testing.T) {
+	root := writeVersionFixture(t)
+	var stdout bytes.Buffer
+
+	err := Runner{
+		Stdout:       &stdout,
+		WorkingDir:   root,
+		Executable:   distributionFixtureExecutable(root),
+		DevBuildTime: devBuildFixtureTime,
+	}.Run([]string{"version"})
+	if err != nil {
+		t.Fatalf("version error = %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "loaf\x1b[0m 9.8.7-test.1\n") {
+		t.Fatalf("version output = %q, want the shipped distribution's release version", output)
+	}
+	for _, forbidden := range []string{devBuildFixtureVersion, "(dev build)"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("version output = %q, must not contain %q for a shipped distribution", output, forbidden)
+		}
+	}
+}
+
+// TestIsSourceCheckoutSeparatesCheckoutsFromShippedDistributions pins the one
+// file the distinction rests on, and the empty root that must never be probed:
+// go.mod is a relative path, so an unresolved distribution would otherwise ask
+// the working directory whether the binary is a dev build.
+func TestIsSourceCheckoutSeparatesCheckoutsFromShippedDistributions(t *testing.T) {
+	if isSourceCheckout("") {
+		t.Fatal(`isSourceCheckout("") = true, want false for an unresolved distribution`)
+	}
+	if shipped := writeVersionFixture(t); isSourceCheckout(shipped) {
+		t.Fatalf("isSourceCheckout(%q) = true, want false for a shipped distribution", shipped)
+	}
+	if checkout := markSourceCheckout(t, writeVersionFixture(t)); !isSourceCheckout(checkout) {
+		t.Fatalf("isSourceCheckout(%q) = false, want true for a source checkout", checkout)
 	}
 }
 
@@ -297,6 +344,14 @@ func writeVersionFixture(t *testing.T) string {
 		"  pre-commit:",
 		"    - id: ignored-by-version-command",
 	}, "\n"))
+	return root
+}
+
+// markSourceCheckout adds the one file that separates a checkout from a shipped
+// distribution: the Go module that builds the binary.
+func markSourceCheckout(t *testing.T, root string) string {
+	t.Helper()
+	writeFile(t, filepath.Join(root, "go.mod"), "module github.com/levifig/loaf\n\ngo 1.25.0\n")
 	return root
 }
 

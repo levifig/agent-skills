@@ -99,7 +99,9 @@ func TestPublicBinaryVersionShowsInjectedBuildInfoNatively(t *testing.T) {
 		}
 	}
 
-	// A plain build (no ldflags) must keep the clean version line.
+	// A plain build (no ldflags) must keep the clean version line. It resolves no
+	// distribution from a temp directory, so it is not a dev build either: with
+	// no checkout around it there is nothing for a build clock to date.
 	cleanBinary := filepath.Join(t.TempDir(), "loaf-clean")
 	if output, err := runCommand(repoRoot, "go", "build", "-o", cleanBinary, "./cmd/loaf"); err != nil {
 		t.Fatalf("go build (clean) error = %v\n%s", err, output)
@@ -108,8 +110,10 @@ func TestPublicBinaryVersionShowsInjectedBuildInfoNatively(t *testing.T) {
 	if err != nil {
 		t.Fatalf("clean loaf --version error = %v\n%s", err, cleanOutput)
 	}
-	if strings.Contains(cleanOutput, "(built") || strings.Contains(cleanOutput, "git abc1234") {
-		t.Fatalf("clean --version output = %q, want no injected build info", cleanOutput)
+	for _, forbidden := range []string{"(built", "git abc1234", "(dev build)"} {
+		if strings.Contains(cleanOutput, forbidden) {
+			t.Fatalf("clean --version output = %q, want no %q", cleanOutput, forbidden)
+		}
 	}
 }
 

@@ -131,7 +131,7 @@ func TestHarnessContentDriftDoctorCountsEveryInstalledHarness(t *testing.T) {
 // stamps into the marker. Comparing a marker against the build clock instead
 // would report drift on every harness of every dev machine.
 func TestHarnessDriftBinaryVersionIgnoresTheDevStamp(t *testing.T) {
-	distRoot := harnessDriftDistribution(t, "0.2.20")
+	distRoot := markSourceCheckout(t, harnessDriftDistribution(t, "0.2.20"))
 	runner := Runner{Executable: distributionFixtureExecutable(distRoot), DevBuildTime: devBuildFixtureTime}
 
 	if got := runner.reportedVersion(distRoot); got != "0.2.1754593012" {
