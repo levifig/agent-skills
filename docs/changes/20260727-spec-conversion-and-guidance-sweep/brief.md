@@ -1,4 +1,4 @@
-<!-- Captured promise carrier for target_release 2.0.0 — materializes the live
+<!-- Captured promise carrier for target_release 0.3.0 — materializes the live
      release-after promise from journal-reliability-foundation. Shape arrives
      when the sweep (or its successor) is ready to execute. -->
 
@@ -6,7 +6,7 @@
 
 ## Original ask
 
-Carry the 2.0.0 release promise formerly held by `release-after: spec-conversion-and-guidance-sweep` on `journal-reliability-foundation`. Declaring `target_release: 2.0.0` opts this change into the strong gate: stable 2.0.0 cannot cut until this carrier is converted (if needed), executed at flip grade, and receipt-verified.
+Carry the stable-epoch release promise formerly held by `release-after: spec-conversion-and-guidance-sweep` on `journal-reliability-foundation`. Declaring `target_release: 0.3.0` opts this change into the strong gate: stable 0.3.0 cannot cut until this carrier is converted (if needed), executed at flip grade, and receipt-verified.
 
 ## Context
 
@@ -15,3 +15,5 @@ Materialized by change-work-model TASK-004 atomically with lineage freeze-replay
 ## Notes
 
 Captured, not shaped. Do not treat this brief as a pseudo-shape.
+
+The promise was originally pinned to `2.0.0`. The versioning reset makes that number unreachable and names `0.3.0` the next stable epoch, so the promise moved there intact — this carrier never shipped, and pinning it to a past release would have claimed membership in a cohort that went out without it.

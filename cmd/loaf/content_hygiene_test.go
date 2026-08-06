@@ -313,8 +313,8 @@ func TestPlanningVocabularyConverged(t *testing.T) {
 		},
 		{
 			rel:       ".github/workflows/release.yml",
-			forbidden: []string{"v2.0.0-dev.49"},
-			required:  []string{"Release tag to publish, for example v2.0.0"},
+			forbidden: []string{"v2.0.0-dev.49", "for example v2.0.0"},
+			required:  []string{"Release tag to publish, for example v0.2.20", "if: needs.resolve.outputs.dev != 'true'"},
 		},
 		{
 			rel:       "content/skills/loaf-reference/SKILL.md",

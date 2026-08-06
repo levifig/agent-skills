@@ -8,7 +8,7 @@ description: >-
   architecture).
 user-invocable: true
 argument-hint: '[SPEC-ID or topic]'
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Reflect

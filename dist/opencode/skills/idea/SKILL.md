@@ -9,7 +9,7 @@ description: >-
   processing the intake queue (use triage), shaping (use shape), or agent-side
   divergent inquiry when direction is undecided (use explore as a technique).
 subtask: false
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Idea

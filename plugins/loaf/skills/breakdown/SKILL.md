@@ -7,7 +7,7 @@ description: >-
   for shaping ideas (use shape) or implementation work (use implement).
 user-invocable: true
 argument-hint: '[spec-file or topic]'
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Breakdown

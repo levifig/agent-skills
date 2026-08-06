@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to publish, for example v2.0.0'
+        description: 'Release tag to publish, for example v0.2.20'
         required: true
       update_tap:
         description: 'Update levifig/homebrew-tap after uploading assets'
@@ -18,12 +18,21 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  # The ceremony guardrail, on the way in: a dev build stamps a Unix timestamp
+  # in the patch slot, and such a tag never packages a release. Pushing one is
+  # allowed — it just skips this workflow instead of failing it downstream. The
+  # floor below is devVersionPatchFloor from internal/cli/version.go, pinned to
+  # it by TestReleaseWorkflowSkipsAtTheDevVersionFloor.
+  resolve:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      ref: ${{ steps.resolve.outputs.ref }}
+      dev: ${{ steps.resolve.outputs.dev }}
 
     steps:
       - name: Resolve release ref
-        id: release
+        id: resolve
         shell: bash
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -35,13 +44,31 @@ jobs:
             echo "Release tag must start with v." >&2
             exit 1
           fi
+          core="${tag#v}"
+          core="${core%%-*}"
+          core="${core%%+*}"
+          dev=false
+          # Three numeric parts or nothing, mirroring parseUpgradeSemver. A
+          # malformed tag is not a dev build, so it must stay on the loud path
+          # and fail the version check below rather than skip out silently.
+          if [[ "$core" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] && (( ${BASH_REMATCH[3]} >= 1000000000 )); then
+            dev=true
+            echo "Release ceremony guardrail: $tag carries a dev build identity (a Unix timestamp in the patch slot). Skipping the release."
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "ref=refs/tags/$tag" >> "$GITHUB_OUTPUT"
+          echo "dev=$dev" >> "$GITHUB_OUTPUT"
 
+  release:
+    needs: resolve
+    if: needs.resolve.outputs.dev != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.release.outputs.ref }}
+          ref: ${{ needs.resolve.outputs.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -66,8 +93,8 @@ jobs:
         run: |
           version="$(node -p "require('./package.json').version")"
           expected_tag="v$version"
-          if [[ "${{ steps.release.outputs.tag }}" != "$expected_tag" ]]; then
-            echo "Tag ${{ steps.release.outputs.tag }} does not match package version $version." >&2
+          if [[ "${{ needs.resolve.outputs.tag }}" != "$expected_tag" ]]; then
+            echo "Tag ${{ needs.resolve.outputs.tag }} does not match package version $version." >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -88,7 +115,7 @@ jobs:
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
         shell: bash
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then

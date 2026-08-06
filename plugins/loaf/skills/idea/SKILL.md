@@ -10,7 +10,7 @@ description: >-
   divergent inquiry when direction is undecided (use explore as a technique).
 user-invocable: true
 argument-hint: '[idea description]'
-version: 2.0.0-alpha.19
+version: 0.2.20
 ---
 
 # Idea

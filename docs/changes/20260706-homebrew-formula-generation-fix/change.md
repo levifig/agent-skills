@@ -78,7 +78,7 @@ Add a Go test that creates a temp checksum file with all four Homebrew targets, 
 
 <!-- Executable (machine-checkable): -->
 
-- **V1.** `go test ./cmd/loaf -run TestHomebrewFormulaUpdaterGeneratesAuditSafePrereleaseURLs` passes.
+- **V1.** `go test ./cmd/loaf -run TestHomebrewFormulaUpdaterGeneratesAuditSafeURLs` passes.
 - **V2.** `go test ./...` passes.
 - **V3.** `loaf change check --require-executable docs/changes/20260706-homebrew-formula-generation-fix` passes.
 

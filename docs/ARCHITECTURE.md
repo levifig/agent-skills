@@ -384,7 +384,7 @@ CWD-relative fixtures are forbidden for subprocess tests because workers may sha
 
 The active test harness is now Go. `npm test` delegates to `go test ./...`, and `npm run typecheck` compiles all Go packages with `go test ./... -run=^$`.
 
-Migration and state-classification code gets one explicit fixture per supported starting state — every schema version a classifier branches on — never transitive coverage through neighboring versions. The v2.0.0-alpha.10 regression shipped exactly through an accepted "covered transitively" gap: schema-11 databases were unclassifiable and unupgradeable until the same-day alpha.11 hotfix (#124). A review note of "unproven but transitively covered" on classification code is blocking, not advisory.
+Migration and state-classification code gets one explicit fixture per supported starting state — every schema version a classifier branches on — never transitive coverage through neighboring versions. The v0.2.10 regression shipped exactly through an accepted "covered transitively" gap: schema-11 databases were unclassifiable and unupgradeable until the same-day 0.2.11 hotfix (#124). A review note of "unproven but transitively covered" on classification code is blocking, not advisory.
 
 ## Cross-Cutting Patterns
 

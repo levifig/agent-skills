@@ -32,6 +32,13 @@ func TestInstalledDistributionVersionAuthorityFromStaleCheckout(t *testing.T) {
 	if !strings.Contains(output, installedTestVersion) {
 		t.Fatalf("version output = %q, want installed distribution version %q", output, installedTestVersion)
 	}
+	// The fixture binary is compiled here and carries no release metadata, yet
+	// the distribution around it is a release-archive layout — the same shape
+	// the plugin marketplace and npm serve from committed binaries. Missing
+	// metadata alone must never dress one of those as a dev build.
+	if strings.Contains(output, "(dev build)") {
+		t.Fatalf("version output = %q, must not report a shipped distribution as a dev build", output)
+	}
 	if strings.Contains(output, staleTestVersion) {
 		t.Fatalf("version output = %q, must not report the stale checkout version %q", output, staleTestVersion)
 	}
@@ -98,8 +105,14 @@ func TestInstalledDistributionCheckoutOwnBinaryReportsCheckoutVersion(t *testing
 	if err != nil {
 		t.Fatalf("checkout-owned loaf version error = %v\n%s", err, output)
 	}
-	if !strings.Contains(string(output), "3.3.3-dev") {
-		t.Fatalf("version output = %q, want the owning checkout's version", output)
+	// A checkout's own binary is a dev build by definition, so it reports the
+	// dev identity built from its owning checkout's major and minor rather than
+	// that checkout's release version.
+	if !strings.Contains(string(output), "loaf\x1b[0m 3.3.") || !strings.Contains(string(output), "(dev build)") {
+		t.Fatalf("version output = %q, want the owning checkout's dev identity", output)
+	}
+	if strings.Contains(string(output), "3.3.3-dev") {
+		t.Fatalf("version output = %q, want the dev identity instead of the checkout's release version", output)
 	}
 }
 
@@ -154,11 +167,13 @@ func writeInstalledDistributionFixture(t *testing.T, repo string, version string
 }
 
 // writeStaleCheckoutFixture lays out an older Loaf source checkout: package
-// metadata, a .git marker, content, and stale built dist/ output.
+// metadata, a .git marker, the Go module that makes it a checkout rather than
+// an unpacked distribution, content, and stale built dist/ output.
 func writeStaleCheckoutFixture(t *testing.T, version string) string {
 	t.Helper()
 	root := realpath(t, t.TempDir())
 	writeFixtureFile(t, filepath.Join(root, "package.json"), `{"name":"loaf","version":"`+version+`"}`)
+	writeFixtureFile(t, filepath.Join(root, "go.mod"), "module github.com/levifig/loaf\n\ngo 1.25.0\n")
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatalf("MkdirAll .git error = %v", err)
 	}

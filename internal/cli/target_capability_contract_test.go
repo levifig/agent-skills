@@ -22,11 +22,11 @@ func TestTargetCapabilityEvidenceContractLoadsCurrentRecords(t *testing.T) {
 		t.Fatalf("records = %d, want six exact target surface records", len(contract.Records))
 	}
 	want := map[string]string{
-		"claude-code\x00cli":     "2.1.222\x00plugin-dir",
+		"claude-code\x00cli":     "2.1.223\x00plugin-dir",
 		"cursor\x00ide":          "3.11.19\x00candidate-build",
 		"cursor\x00cursor-agent": "2026.05.09-0afadcc\x00candidate-build",
 		"codex\x00cli":           "0.146.0\x00isolated-codex-home",
-		"opencode\x00cli":        "1.18.7\x00isolated-xdg",
+		"opencode\x00cli":        "1.18.13\x00isolated-xdg",
 		"amp\x00cli":             "0.0.1783873056-g278461\x00candidate-build",
 	}
 	for _, record := range contract.Records {
@@ -421,7 +421,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 }
 
 func TestInstalledSmokeEvidenceRejectsUnknownVersionsAndHashDrift(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t))), "docs/changes/20260802-harness-neutral-skills/research/claude-code-2.1.222-plugin-startup-smoke.json"))
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t))), "docs/changes/20260806-versioning-reset/research/claude-code-2.1.223-plugin-startup-smoke.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +483,7 @@ func TestOpenCodeInstalledSmokeEvidenceAcceptsFixture(t *testing.T) {
 }
 
 func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHashAndCleanup(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260802-harness-neutral-skills/research/opencode-1.18.7-isolated-request-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/opencode-1.18.13-isolated-request-smoke.json")
 	data, err := os.ReadFile(receiptPath)
 	if err != nil {
 		t.Fatal(err)
@@ -546,7 +546,7 @@ func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHas
 }
 
 func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260802-harness-neutral-skills/research/claude-code-2.1.222-plugin-startup-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/claude-code-2.1.223-plugin-startup-smoke.json")
 	raw := readSmokeReceiptRaw(t, receiptPath)
 	artifacts := raw["candidate_artifacts"].(map[string]any)
 	sourceNativePath := artifacts["native_binary_path"].(string)
@@ -568,7 +568,7 @@ func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *t
 }
 
 func TestCodexInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260802-harness-neutral-skills/research/codex-0.146.0-isolated-startup-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/codex-0.146.0-isolated-startup-smoke.json")
 	raw := readSmokeReceiptRaw(t, receiptPath)
 	artifacts := raw["candidate_artifacts"].(map[string]any)
 	sourceNativePath := artifacts["native_binary_path"].(string)
@@ -601,7 +601,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 		{
 			name:       "claude-receives-codex-path",
 			target:     "claude-code",
-			receipt:    "claude-code-2.1.222-plugin-startup-smoke.json",
+			receipt:    "claude-code-2.1.223-plugin-startup-smoke.json",
 			modeName:   "startup",
 			wrongPath:  "bin/native/darwin-arm64/loaf",
 			validateFn: validateInstalledSmokeEvidence,
@@ -617,7 +617,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260802-harness-neutral-skills/research", tt.receipt)
+			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research", tt.receipt)
 			raw := readSmokeReceiptRaw(t, receiptPath)
 			artifacts := raw["candidate_artifacts"].(map[string]any)
 			sourceNativePath := artifacts["native_binary_path"].(string)
@@ -655,7 +655,7 @@ func TestInstalledSmokeEvidenceRejectsSymlinkedCandidateArtifacts(t *testing.T) 
 		{
 			name:       "claude-code-hooks-leaf-symlink",
 			target:     "claude-code",
-			receipt:    "claude-code-2.1.222-plugin-startup-smoke.json",
+			receipt:    "claude-code-2.1.223-plugin-startup-smoke.json",
 			modeName:   "startup",
 			validateFn: validateInstalledSmokeEvidence,
 		},
@@ -669,14 +669,14 @@ func TestInstalledSmokeEvidenceRejectsSymlinkedCandidateArtifacts(t *testing.T) 
 		{
 			name:       "opencode-hooks-leaf-symlink",
 			target:     "opencode",
-			receipt:    "opencode-1.18.7-isolated-request-smoke.json",
+			receipt:    "opencode-1.18.13-isolated-request-smoke.json",
 			modeName:   "request",
 			validateFn: validateOpenCodeInstalledSmokeEvidence,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260802-harness-neutral-skills/research", tt.receipt)
+			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research", tt.receipt)
 			raw := readSmokeReceiptRaw(t, receiptPath)
 			artifacts := raw["candidate_artifacts"].(map[string]any)
 			hooksRel := artifacts["hooks_path"].(string)
@@ -741,7 +741,7 @@ func TestInstalledSmokeEvidenceRejectsSymlinkedCandidateArtifacts(t *testing.T) 
 	}
 
 	t.Run("opencode-intermediate-dir-symlink", func(t *testing.T) {
-		receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260802-harness-neutral-skills/research/opencode-1.18.7-isolated-request-smoke.json")
+		receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/opencode-1.18.13-isolated-request-smoke.json")
 		raw := readSmokeReceiptRaw(t, receiptPath)
 		artifacts := raw["candidate_artifacts"].(map[string]any)
 		hooksRel := artifacts["hooks_path"].(string)

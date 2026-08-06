@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	stdlibRuntime "runtime"
 	"strings"
+	"time"
 )
 
 type builtTarget struct {
@@ -27,9 +28,7 @@ func (r Runner) runVersion(out io.Writer) error {
 	if rootErr != nil {
 		root = ""
 	}
-	version := packageVersion(root)
-
-	fmt.Fprintf(out, "\n%s %s%s\n", ansiBold("loaf"), version, buildInfoSuffix(r.BuildCommit, r.BuildDate))
+	fmt.Fprintf(out, "\n%s %s%s\n", ansiBold("loaf"), r.reportedVersion(root), r.versionSuffix(root))
 	fmt.Fprintf(out, "%s %s\n", ansiGray("go"), strings.TrimPrefix(runtimeVersion(), "go"))
 
 	// Targets and Content describe the installed distribution. Without
@@ -61,6 +60,106 @@ func (r Runner) runVersion(out io.Writer) error {
 	fmt.Fprintf(out, "  Agents:  %d\n", countAgentFiles(root))
 	fmt.Fprintf(out, "  Hooks:   %d\n\n", countHookEntries(root))
 	return nil
+}
+
+// devVersionPatchFloor is the smallest patch number that can only be a Unix
+// timestamp. The patch slot counts releases within a minor and will never
+// approach a billion, so a patch at or above this floor identifies a dev build
+// and nothing else.
+const devVersionPatchFloor = 1_000_000_000
+
+// isDevVersion is the shared dev-identity predicate. One rule — a patch of
+// timestamp magnitude — serves every surface that has to tell a dev build from
+// a release: the version report mints these, the drift classifier reads them
+// off install markers, and the release snapshot refuses to cut a ceremony for
+// one. There is no flag, suffix, or second source to keep in step.
+func isDevVersion(version string) bool {
+	parsed, ok := parseUpgradeSemver(version)
+	if !ok {
+		return false
+	}
+	return parsed.patch >= devVersionPatchFloor
+}
+
+// devVersion mints a dev build's identity: the distribution's major and minor
+// with the moment the binary landed on this machine in the patch slot. A
+// timestamp patch is valid SemVer and sorts above every release in the minor,
+// which is the truth about a machine running its own build — a prerelease
+// suffix would sort below the latest release instead, and nag that machine to
+// "upgrade" forever.
+//
+// The stamp is not linked into the binary. The committed native binaries are
+// asserted byte-for-byte reproducible (cli/scripts/verify-go-artifacts.mjs), so
+// a build-varying ldflag would fail that assertion on every build; the
+// executable's own file timestamp carries it instead (see cmd/loaf/main.go).
+//
+// A clock that has not been set would mint a patch below the floor — a version
+// no surface could tell from a release — so that falls back to the release
+// version rather than claim to be a build it cannot name. So does a binary with
+// no resolvable distribution: its version is unknown, and dressing the unknown
+// sentinel in a timestamp would claim an identity it does not have.
+func devVersion(releaseVersion string, buildTime time.Time) string {
+	parsed, ok := parseUpgradeSemver(releaseVersion)
+	if !ok || buildTime.IsZero() || releaseVersion == packageVersionUnknown {
+		return releaseVersion
+	}
+	stamp := buildTime.Unix()
+	if stamp < devVersionPatchFloor {
+		return releaseVersion
+	}
+	return fmt.Sprintf("%d.%d.%d", parsed.major, parsed.minor, stamp)
+}
+
+// reportedVersion is the version this binary answers with: a release build
+// reports the distribution's, a dev build reports its own identity. Only the
+// version report reads it. Everything describing installed *content* — install
+// markers, doctor's CLI version, change receipts — stays on packageVersion,
+// because content always carries the release version whichever binary deployed
+// it.
+func (r Runner) reportedVersion(root string) string {
+	return devVersion(packageVersion(root), r.devBuildStamp(root))
+}
+
+// devBuildStamp is the dev-build signal, and it takes two facts rather than
+// one. Absent release metadata (cmd/loaf/main.go) says no release pipeline
+// built this binary; a resolved distribution that is the source checkout says
+// it is running out of the tree that did.
+//
+// Absence alone would be wrong, because this repository ships its own locally
+// built binaries: the Claude Code plugin marketplace serves the committed
+// plugins/loaf/bin/native/<platform>/loaf at a release tag, and `npx
+// github:levifig/loaf` builds one at install time. Both are releases carrying
+// no metadata, and reading that absence as proof would tell a user on 0.2.20
+// they were running a dev build.
+func (r Runner) devBuildStamp(root string) time.Time {
+	if !isSourceCheckout(root) {
+		return time.Time{}
+	}
+	return r.DevBuildTime
+}
+
+// isSourceCheckout reports whether a resolved distribution root is the Loaf
+// checkout that builds this binary. Every shipped distribution — release
+// archive, Homebrew keg, npm package, plugin payload — is content plus a
+// prebuilt binary; only a checkout carries the Go module beside them. An
+// unresolved root is never a checkout: probing it would read go.mod relative to
+// wherever the caller happened to be standing.
+func isSourceCheckout(root string) bool {
+	if root == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(root, "go.mod"))
+	return err == nil
+}
+
+// versionSuffix annotates the version line. A release build carries its commit
+// and date; a dev build says what it is, because a ten-digit patch only reads
+// as a timestamp once you know to read it as one.
+func (r Runner) versionSuffix(root string) string {
+	if !r.devBuildStamp(root).IsZero() {
+		return " (dev build)"
+	}
+	return buildInfoSuffix(r.BuildCommit, r.BuildDate)
 }
 
 // buildInfoSuffix renders optional build metadata for the version line. The
@@ -116,12 +215,17 @@ func packageName(root string) string {
 	return pkg.Name
 }
 
+// packageVersionUnknown is what packageVersion answers when there is no
+// readable distribution package.json: a version that says so rather than one
+// that guesses.
+const packageVersionUnknown = "0.0.0"
+
 func packageVersion(root string) string {
 	var pkg struct {
 		Version string `json:"version"`
 	}
 	if err := readPackageJSON(root, &pkg); err != nil || pkg.Version == "" {
-		return "0.0.0"
+		return packageVersionUnknown
 	}
 	return pkg.Version
 }
