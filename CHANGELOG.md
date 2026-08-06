@@ -1190,7 +1190,7 @@ The pre-CLI era, collapsed into a single anchor entry. Fifty-three commits betwe
 ### Added
 
 - Loaf as a shell-and-Node content distribution: skills, agents, hooks, templates, and config authored under `src/` and built by `build/build.js` into per-harness outputs for Claude Code, OpenCode, Cursor, Codex, and Gemini
-- `install.sh`, the installer with tool detection (`scripts/detect-tools.sh`) and a gum-based TUI
+- `install.sh`, the installer with tool detection (`scripts/detect-tools.sh`) and a hand-rolled 256-color ANSI terminal UI
 
 ### Changed
 
