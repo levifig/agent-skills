@@ -24,6 +24,13 @@ export function shellQuote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+// The Codex CLI's --ephemeral mode ignores CODEX_HOME/config.toml, so the model
+// can only be selected on the command line. The receipt records it through
+// invocation.args.
+export function buildCodexArgs(model) {
+  return ["exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", ...(model ? ["-m", model] : []), "--json", "-C", "<disposable-repo>", "Return exactly the unique marker supplied by SessionStart context, and nothing else."];
+}
+
 export function parseCodexJSONL(raw, marker) {
   const events = raw.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
   const serialized = events.map((event) => JSON.stringify(event));
@@ -112,7 +119,8 @@ process.exitCode = result.status ?? 1;
 }
 
 function main(argv = process.argv.slice(2)) {
-  const { client, expectedVersion, receiptPath } = parseRunnerArgs(argv);
+  const { client, expectedVersion, receiptPath, optional } = parseRunnerArgs(argv, ["codex-model"]);
+  const codexModel = optional["codex-model"];
   const marker = `LOAF_CODEX_STARTUP_SMOKE_${randomBytes(6).toString("hex").toUpperCase()}`;
   if (!markerPattern.test(marker)) throw new Error("generated marker does not match the required format");
   const timestamp = new Date().toISOString();
@@ -171,7 +179,7 @@ function main(argv = process.argv.slice(2)) {
     const candidateEnv = { CODEX_HOME: codexHome, LOAF_DB: dbPath };
     if (run(candidateBinary, ["state", "init", "--json"], disposableRepo, candidateEnv).status !== 0) throw new Error("isolated Loaf state initialization failed");
     if (run(candidateBinary, ["journal", "log", `discover(smoke): ${marker}`], disposableRepo, candidateEnv).status !== 0) throw new Error("isolated journal marker write failed");
-    const codexArgs = ["exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "--json", "-C", "<disposable-repo>", "Return exactly the unique marker supplied by SessionStart context, and nothing else."];
+    const codexArgs = buildCodexArgs(codexModel);
     const codex = run(client, [...codexArgs.slice(0, -2), disposableRepo, codexArgs.at(-1)], disposableRepo, candidateEnv);
     const parsed = parseCodexJSONL(codex.stdout, marker);
     if (!existsSync(observationPath)) throw new Error("Codex hook observation file was not written");
