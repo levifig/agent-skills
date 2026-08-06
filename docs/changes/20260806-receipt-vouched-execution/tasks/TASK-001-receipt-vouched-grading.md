@@ -31,10 +31,10 @@ loaf journal log "skill(implement): TASK-001 — receipt-vouched execution gradi
 
 ## Steps
 
-- [ ] Add the disjunct: executed when flip-scan passes, or when the folder's receipt verdict is fresh and every task checkbox in the folder is checked at HEAD (reuse the existing receipt verdict; reuse or extract the unchecked-box reader)
-- [ ] Upgrade `formatChangeExecutionBlock`: checked packets + code + no vouching receipt names the squash cause and the `loaf change verify` remedy
-- [ ] Test matrix: squash shape + fresh receipt passes; shaping-only (no receipt) still blocks; stale/digest-mismatched receipt blocks; flip path passes with no receipt; existing attack replay untouched and green
-- [ ] Suite green
+- [x] Add the disjunct: executed when flip-scan passes, or when the folder's receipt verdict is fresh and every task checkbox in the folder is checked at HEAD (reuse the existing receipt verdict; reuse or extract the unchecked-box reader)
+- [x] Upgrade `formatChangeExecutionBlock`: checked packets + code + no vouching receipt names the squash cause and the `loaf change verify` remedy
+- [x] Test matrix: squash shape + fresh receipt passes; shaping-only (no receipt) still blocks; stale/digest-mismatched receipt blocks; flip path passes with no receipt; existing attack replay untouched and green
+- [x] Suite green
 
 ## Verification
 

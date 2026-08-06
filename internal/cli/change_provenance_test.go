@@ -481,3 +481,132 @@ func TestProvenanceFlipHandlesRootCommit(t *testing.T) {
 		t.Fatalf("root commit creating a checked task file is not a flip")
 	}
 }
+
+// TestChangeExecutionGradeDisjunct pins the grading rule and the two refusal
+// shapes it renders: the bare one, and the squash-aware one that names the
+// cause and the single command that fixes it.
+func TestChangeExecutionGradeDisjunct(t *testing.T) {
+	folder := "docs/changes/20260727-prov"
+	cases := []struct {
+		name         string
+		evidence     changeMemberEvidence
+		wantExecuted bool
+		wantContains []string
+		wantMissing  []string
+	}{
+		{
+			name:         "flip alone executes",
+			evidence:     changeMemberEvidence{FolderRel: folder, Status: changeExecutionStatus{PathExecuted: true, FlipExecuted: true}},
+			wantExecuted: true,
+		},
+		{
+			name: "fresh receipt over checked packets executes",
+			evidence: changeMemberEvidence{
+				FolderRel:       folder,
+				Status:          changeExecutionStatus{PathExecuted: true},
+				Verdict:         changeReceiptVerdict{OK: true, Reason: changeReceiptOK},
+				AllTasksChecked: true,
+			},
+			wantExecuted: true,
+		},
+		{
+			name: "checked packets without a receipt name cause and remedy",
+			evidence: changeMemberEvidence{
+				FolderRel:       folder,
+				Status:          changeExecutionStatus{PathExecuted: true},
+				Verdict:         changeReceiptVerdict{Reason: changeReceiptMissing},
+				AllTasksChecked: true,
+			},
+			wantContains: []string{"is not executed", "missing receipt", "loaf change verify " + folder},
+		},
+		{
+			name: "stale receipt over checked packets does not vouch",
+			evidence: changeMemberEvidence{
+				FolderRel:       folder,
+				Status:          changeExecutionStatus{PathExecuted: true},
+				Verdict:         changeReceiptVerdict{Reason: changeReceiptContentDrift},
+				AllTasksChecked: true,
+			},
+			wantContains: []string{"is not executed", "content changed since verification"},
+		},
+		{
+			name: "fresh receipt over unchecked packets does not vouch",
+			evidence: changeMemberEvidence{
+				FolderRel: folder,
+				Status:    changeExecutionStatus{PathExecuted: true},
+				Verdict:   changeReceiptVerdict{OK: true, Reason: changeReceiptOK},
+			},
+			wantContains: []string{"is not executed"},
+			wantMissing:  []string{"loaf change verify"},
+		},
+		{
+			name:         "shaping-only merge gets the bare refusal",
+			evidence:     changeMemberEvidence{FolderRel: folder, AllTasksChecked: true},
+			wantContains: []string{`change "prov" targets 2.0.0 but is not executed`},
+			wantMissing:  []string{"loaf change verify"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.evidence.executed(); got != tc.wantExecuted {
+				t.Fatalf("executed() = %v, want %v", got, tc.wantExecuted)
+			}
+			msg := formatChangeExecutionBlock("prov", "2.0.0", changeLayoutNew, tc.evidence, true)
+			if tc.wantExecuted {
+				if msg != "" {
+					t.Fatalf("executed member must not be blocked: %q", msg)
+				}
+				return
+			}
+			for _, want := range tc.wantContains {
+				if !strings.Contains(msg, want) {
+					t.Fatalf("message = %q, want it to name %q", msg, want)
+				}
+			}
+			for _, unwanted := range tc.wantMissing {
+				if strings.Contains(msg, unwanted) {
+					t.Fatalf("message = %q, must not carry %q", msg, unwanted)
+				}
+			}
+		})
+	}
+}
+
+// TestChangeExecutionGradeReadsCheckboxesFromHEAD proves the content half of the
+// grade is evidence: boxes checked only in the working tree never vouch.
+func TestChangeExecutionGradeReadsCheckboxesFromHEAD(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-head-boxes", "head-boxes", "2.0.0", "")
+	task := filepath.Join(dir, "tasks", "TASK-001-work.md")
+	unchecked := "---\nchange: head-boxes\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [ ] Do it\n"
+	if err := os.WriteFile(task, []byte(unchecked), 0o644); err != nil {
+		t.Fatalf("WriteFile task: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: shape head-boxes")
+
+	nodes, err := loadChangeNodesAtHEADWithOutput(repo, commandOutput)
+	if err != nil {
+		t.Fatalf("loadChangeNodesAtHEAD: %v", err)
+	}
+	node, found := changeNodeForSlug(nodes, "head-boxes")
+	if !found {
+		t.Fatal("node head-boxes missing at HEAD")
+	}
+	if changeFolderTasksAllChecked(repo, node, nil) {
+		t.Fatal("an unchecked committed packet must not read as complete")
+	}
+
+	checked := strings.Replace(unchecked, "- [ ]", "- [x]", 1)
+	if err := os.WriteFile(task, []byte(checked), 0o644); err != nil {
+		t.Fatalf("WriteFile checked task: %v", err)
+	}
+	if changeFolderTasksAllChecked(repo, node, nil) {
+		t.Fatal("a box checked only in the working tree must not vouch")
+	}
+
+	commitAllChangeTest(t, repo, "docs: check the box")
+	if !changeFolderTasksAllChecked(repo, node, nil) {
+		t.Fatal("a checked committed packet must read as complete")
+	}
+}

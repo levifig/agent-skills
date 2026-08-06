@@ -9,8 +9,9 @@ import (
 
 // releaseCohortPreflight is the candidate-first gate (TASK-004). Stable
 // candidates require every change with matching target_release to be
-// materialized, structurally valid, flip-executed, and (once TASK-005 lands)
-// receipt-verified. Prerelease candidates bypass the cohort gate.
+// materialized, structurally valid, executed (flip in ancestry or a receipt
+// vouching for fully checked packets), and receipt-verified. Prerelease
+// candidates bypass the cohort gate.
 func releaseCohortPreflight(rootPath string, candidate string, warnings *[]string) error {
 	return releaseCohortPreflightWithOutput(rootPath, candidate, commandOutput, warnings)
 }
@@ -59,7 +60,7 @@ func releaseCohortPreflightWithOutput(rootPath, candidate string, outputCommand 
 
 	for _, node := range cohort {
 		if node.Layout == changeLayoutLegacy {
-			blocked = append(blocked, formatChangeExecutionBlock(node.Slug, candidate, node.Layout, changeExecutionStatus{}, true))
+			blocked = append(blocked, formatChangeExecutionBlock(node.Slug, candidate, node.Layout, changeMemberEvidence{}, true))
 			continue
 		}
 		report, reportErr := changeCohortStructuralReport(rootPath, node, nodes, outputCommand)
@@ -77,17 +78,16 @@ func releaseCohortPreflightWithOutput(rootPath, candidate string, outputCommand 
 				node.Slug, candidate, strings.Join(report.Gaps, ", "), folderRel))
 			continue
 		}
-		status, err := changeFolderExecuted(rootPath, node.Folder, node.Layout, outputCommand)
+		evidence, err := changeMemberExecutionEvidence(rootPath, node, outputCommand)
 		if err != nil {
 			return fmt.Errorf("release blocked: cannot derive execution provenance for %q: %w", node.Slug, err)
 		}
-		if msg := formatChangeExecutionBlock(node.Slug, candidate, node.Layout, status, true); msg != "" {
+		if msg := formatChangeExecutionBlock(node.Slug, candidate, node.Layout, evidence, true); msg != "" {
 			blocked = append(blocked, msg)
 			continue
 		}
-		verdict := changeReceiptStatus(rootPath, node.Folder, node, outputCommand)
-		if !verdict.OK {
-			blocked = append(blocked, formatChangeReceiptBlock(node.Slug, candidate, verdict, node.Folder))
+		if !evidence.Verdict.OK {
+			blocked = append(blocked, formatChangeReceiptBlock(node.Slug, candidate, evidence.Verdict, node.Folder))
 		}
 	}
 
@@ -165,8 +165,8 @@ func lowerCohortWarnings(nodes []changeNode, candidate string, rootPath string, 
 				incomplete = true
 				break
 			}
-			status, err := changeFolderExecuted(rootPath, member.Folder, member.Layout, outputCommand)
-			if err != nil || !status.FlipExecuted {
+			evidence, err := changeMemberExecutionEvidence(rootPath, member, outputCommand)
+			if err != nil || !evidence.executed() {
 				incomplete = true
 				break
 			}
