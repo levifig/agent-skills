@@ -4,7 +4,7 @@
     {
       "target": "claude-code",
       "surface": "cli",
-      "version": "2.1.222",
+      "version": "2.1.223",
       "platform": "darwin-arm64",
       "installed_mode": "plugin-dir",
       "context": {
@@ -20,9 +20,9 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260802-harness-neutral-skills/research/claude-code-2.1.222-plugin-startup-smoke.json",
+              "source": "docs/changes/20260806-versioning-reset/research/claude-code-2.1.223-plugin-startup-smoke.json",
               "level": "installed-smoke",
-              "summary": "Claude Code 2.1.222 startup smoke returned SessionStart additionalContext and the isolated marker was model-visible exactly."
+              "summary": "Claude Code 2.1.223 startup smoke returned SessionStart additionalContext and the isolated marker was model-visible exactly."
             }
           },
           {
@@ -259,7 +259,7 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260802-harness-neutral-skills/research/codex-0.146.0-isolated-startup-smoke.json",
+              "source": "docs/changes/20260806-versioning-reset/research/codex-0.146.0-isolated-startup-smoke.json",
               "level": "installed-smoke",
               "summary": "Codex 0.146.0 isolated CODEX_HOME startup smoke observed exact native SessionStart hookSpecificOutput and the random marker was returned by the model."
             }
@@ -324,7 +324,7 @@
     {
       "target": "opencode",
       "surface": "cli",
-      "version": "1.18.7",
+      "version": "1.18.13",
       "platform": "darwin-arm64",
       "installed_mode": "isolated-xdg",
       "context": {
@@ -340,9 +340,9 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260802-harness-neutral-skills/research/opencode-1.18.7-isolated-request-smoke.json",
+              "source": "docs/changes/20260806-versioning-reset/research/opencode-1.18.13-isolated-request-smoke.json",
               "level": "installed-smoke",
-              "summary": "OpenCode 1.18.7 isolated-XDG request smoke returned the exact random continuity marker through the model-visible plugin system transformation."
+              "summary": "OpenCode 1.18.13 isolated-XDG request smoke returned the exact random continuity marker through the model-visible plugin system transformation."
             }
           },
           {
