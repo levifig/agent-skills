@@ -71,8 +71,8 @@ const devVersionPatchFloor = 1_000_000_000
 // isDevVersion is the shared dev-identity predicate. One rule — a patch of
 // timestamp magnitude — serves every surface that has to tell a dev build from
 // a release: the version report mints these, the drift classifier reads them
-// off install markers, and the release pipeline will refuse to run its ceremony
-// for one. There is no flag, suffix, or second source to keep in step.
+// off install markers, and the release snapshot refuses to cut a ceremony for
+// one. There is no flag, suffix, or second source to keep in step.
 func isDevVersion(version string) bool {
 	parsed, ok := parseUpgradeSemver(version)
 	if !ok {

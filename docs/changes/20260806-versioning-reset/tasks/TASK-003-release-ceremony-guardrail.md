@@ -33,10 +33,10 @@ loaf journal log "skill(implement): TASK-003 — release ceremony guardrail for 
 
 ## Steps
 
-- [ ] Refuse timestamp-magnitude candidates in `resolveReleaseSnapshot` with a message naming the guardrail and pointing at plain `0.X.X`; author `TestReleaseSnapshotRefusesTimestampPatch` proving dry-run, apply, and post-merge are all covered
-- [ ] Add the release.yml early-skip: timestamp-magnitude tag ⇒ exit the workflow cleanly before packaging; update the workflow_dispatch example to a `0.x` form
-- [ ] Update `content_hygiene_test.go` to require the new example text; renumber the `native_cutover_files_test.go` formula fixture to a plain-version form consistent with the new scheme
-- [ ] Suite green
+- [x] Refuse timestamp-magnitude candidates in `resolveReleaseSnapshot` with a message naming the guardrail and pointing at plain `0.X.X`; author `TestReleaseSnapshotRefusesTimestampPatch` proving dry-run, apply, and post-merge are all covered
+- [x] Add the release.yml early-skip: timestamp-magnitude tag ⇒ exit the workflow cleanly before packaging; update the workflow_dispatch example to a `0.x` form
+- [x] Update `content_hygiene_test.go` to require the new example text; renumber the `native_cutover_files_test.go` formula fixture to a plain-version form consistent with the new scheme
+- [x] Suite green
 
 ## Verification
 

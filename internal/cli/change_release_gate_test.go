@@ -164,6 +164,66 @@ func TestResolveReleaseSnapshotFinalization(t *testing.T) {
 	}
 }
 
+func TestReleaseSnapshotRefusesTimestampPatch(t *testing.T) {
+	// A dev build stamps the moment it landed into the patch slot. No ceremony
+	// can be cut from that number, and the snapshot is where every consumer
+	// learns so.
+	repo := seedCohortGateRepo(t, "0.2.1754476800")
+	commitAllChangeTest(t, repo, "fix: carry a dev build stamp in the version file")
+
+	for _, tc := range []struct {
+		name    string
+		options releaseOptions
+	}{
+		{"suggested bump", releaseOptions{}},
+		{"explicit patch bump", releaseOptions{bump: "patch"}},
+		{"post-merge", releaseOptions{postMerge: true}},
+	} {
+		snap, err := resolveReleaseSnapshot(repo, tc.options)
+		if err == nil {
+			t.Fatalf("%s: snapshot = %#v, want the ceremony guardrail to refuse", tc.name, snap)
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "release ceremony guardrail") || !strings.Contains(msg, "plain 0.2.X version") {
+			t.Fatalf("%s: err = %v, want the guardrail named and plain 0.2.X pointed at", tc.name, err)
+		}
+		if snap.Candidate != "" {
+			t.Fatalf("%s: refused snapshot carries candidate %q, want an empty snapshot", tc.name, snap.Candidate)
+		}
+	}
+
+	// The three doors a release runs through, all closed by that one refusal.
+	for _, args := range [][]string{
+		{"release", "--dry-run"},
+		{"release", "-y", "--no-tag", "--no-gh"},
+		{"release", "--post-merge"},
+	} {
+		var stdout bytes.Buffer
+		err := (Runner{Stdout: &stdout, Stderr: &bytes.Buffer{}, WorkingDir: repo}).Run(args)
+		if err == nil || !strings.Contains(err.Error(), "release ceremony guardrail") {
+			t.Fatalf("loaf %s = %v, want the ceremony guardrail refusal\n%s", strings.Join(args, " "), err, stdout.String())
+		}
+	}
+
+	// The guardrail refuses timestamps, not releases: the same paths resolve a
+	// plain candidate untouched.
+	plain := seedCohortGateRepo(t, "0.2.20")
+	commitAllChangeTest(t, plain, "fix: carry a release version")
+	for _, tc := range []struct {
+		name    string
+		options releaseOptions
+		want    string
+	}{
+		{"suggested bump", releaseOptions{}, "0.2.21"},
+		{"post-merge", releaseOptions{postMerge: true}, "0.2.20"},
+	} {
+		snap, err := resolveReleaseSnapshot(plain, tc.options)
+		if err != nil || snap.Candidate != tc.want {
+			t.Fatalf("%s on a plain version: candidate = %q err = %v, want %s", tc.name, snap.Candidate, err, tc.want)
+		}
+	}
+}
+
 // --- TASK-015: one candidate for the gate and the executor ---
 
 func TestReleaseCohortGateNoBumpGatesSuggestedCandidate(t *testing.T) {

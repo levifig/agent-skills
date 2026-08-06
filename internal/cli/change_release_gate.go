@@ -242,14 +242,14 @@ func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapsho
 		if !releaseVersionIsPrerelease(current) {
 			snap.Bump = "release"
 		}
-		return snap, nil
+		return guardReleaseCeremony(snap)
 	}
 	bump := effectiveReleaseBumpFrom(options, commits)
 	if bump == "" {
 		// Nothing unreleased: the executor stops before cutting anything, so the
 		// candidate is the version the repository already carries.
 		snap.Candidate = current
-		return snap, nil
+		return guardReleaseCeremony(snap)
 	}
 	next := bumpReleaseVersion(current, bump)
 	if next == "" {
@@ -257,7 +257,27 @@ func resolveReleaseSnapshot(root string, options releaseOptions) (releaseSnapsho
 	}
 	snap.Bump = bump
 	snap.Candidate = next
-	return snap, nil
+	return guardReleaseCeremony(snap)
+}
+
+// guardReleaseCeremony refuses to hand back a snapshot whose candidate is a dev
+// build's identity. Dev builds mint a Unix timestamp in the patch slot
+// (isDevVersion), and the ceremony a release runs — changelog entry, release
+// build, packaged GitHub Release, Homebrew bump — is meaningless for a number
+// that names a build clock rather than a published version.
+//
+// It sits on the snapshot because that is the one derivation every release
+// consumer reads, so dry-run, apply, and post-merge are covered by a single
+// refusal. Cheaper acts never pass through here and stay available: commits,
+// lightweight tags, and prerelease-marked uploads. What it judges is the
+// candidate, because that is the number a run would publish.
+func guardReleaseCeremony(snap releaseSnapshot) (releaseSnapshot, error) {
+	if !isDevVersion(snap.Candidate) {
+		return snap, nil
+	}
+	parsed, _ := parseUpgradeSemver(snap.Candidate)
+	return releaseSnapshot{}, fmt.Errorf("release ceremony guardrail: %s is a dev build identity (a Unix timestamp in the patch slot), not a release version; cut releases from a plain %d.%d.X version",
+		snap.Candidate, parsed.major, parsed.minor)
 }
 
 // releaseVersionFilesWithHEADBaseline rewrites CurrentVersion from HEAD blobs
