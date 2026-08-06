@@ -137,21 +137,21 @@ TASK-001 (flip) lands first; TASK-002 (dev identity), TASK-003 (guardrail), and 
 - **V6.** The 1.x era anchor exists. Command: `grep -c "^## \[0\.1\.0\]" CHANGELOG.md`. Expect: exit 0 and contains `1`.
 - **V7.** The policy ADR exists. Command: `test -f docs/decisions/ADR-026-major-zero-versioning.md`. Expect: exit 0.
 
-Post-ceremony entries — these pass only after TASK-006's post-merge runbook has run; they are the Definition of Done's machine half:
-
-- **V8.** The release is live. Command: `gh release view v0.2.20`. Expect: exit 0.
-- **V9.** Pre-reset tags are gone from the remote. Command: `git ls-remote --tags origin | grep -cE "refs/tags/v(1\.|2\.)"`. Expect: exit 1.
-- **V10.** The era marker exists on the remote. Command: `git ls-remote --tags origin refs/tags/v0.1.0 | grep -c "v0\.1\.0"`. Expect: exit 0 and contains `1`.
-
 Human review (H-tier):
 
 - **H1.** A reviewer confirms the renumbered CHANGELOG maps 1:1 to the old headings (numeral-preserving for dev/alpha, positional for the pre builds) with entry content untouched.
 - **H2.** A reviewer builds locally and confirms `loaf --version` reports a timestamp-magnitude patch, and that drift advice against a release-marked install reads correctly in both directions.
 - **H3.** A reviewer confirms the release workflow's early-skip path: a timestamp tag exits cleanly without packaging, a plain tag proceeds.
 
+Post-ceremony operator confirmations run only after TASK-006's post-merge runbook, performed by the operator who ran it. They are unsatisfiable before merge, so they stay human-tier and never gate the pre-merge verify receipt:
+
+- **H4.** The operator confirms the release is live: `gh release view v0.2.20` exits 0.
+- **H5.** The operator confirms the pre-reset tags are gone from the remote: `git ls-remote --tags origin | grep -cE "refs/tags/v(1\.|2\.)"` exits 1.
+- **H6.** The operator confirms the era marker survives the wipe: `git ls-remote --tags origin refs/tags/v0.1.0` shows exactly one ref.
+
 ## Definition of Done
 
-- All V-entries pass, V8–V10 after the post-merge runbook.
+- V1–V7 pass and the `loaf change verify` receipt is committed pre-merge; the post-ceremony confirmations (H4–H6) pass after the runbook.
 - The 0.2.20 GitHub Release is live and `brew install levifig/tap/loaf` serves it.
 - All pre-reset tags and Releases are gone from GitHub; `v0.1.0` marks the 1.x-era commit.
 - A fresh local build reports `0.2.{unix_timestamp}` and a canary machine's `loaf upgrade` reports clean afterward.
