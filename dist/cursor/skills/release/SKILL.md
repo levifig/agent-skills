@@ -207,7 +207,7 @@ Capability receipts pin artifact SHA-256s, and the release rebuild version-stamp
 
 ### Direct Release (Named Exception)
 
-`loaf release --bump <type> --yes` on the base branch prepares, commits, tags, and publishes in a single shot. Use it only when the user explicitly requests a direct release; never select it by default. Skipping the release PR means nothing runs the suite against the prepared tree before the tag exists — the v2.0.0-alpha.16 cut took this door and a capability-evidence canary surfaced only in tag CI, after publication. The same day, v2.0.0-alpha.17 re-recorded evidence minutes before the version bump; the release commit staled it, and the tag again published zero assets — ordering, not diligence, is the failure mode. The CLI prints a flow advisory when a mutating release starts on the default branch; treat it as a routing signal, not noise.
+`loaf release --bump <type> --yes` on the base branch prepares, commits, tags, and publishes in a single shot. Use it only when the user explicitly requests a direct release; never select it by default. Skipping the release PR means nothing runs the suite against the prepared tree before the tag exists — the v0.2.16 cut took this door and a capability-evidence canary surfaced only in tag CI, after publication. The same day, v0.2.17 re-recorded evidence minutes before the version bump; the release commit staled it, and the tag again published zero assets — ordering, not diligence, is the failure mode. The CLI prints a flow advisory when a mutating release starts on the default branch; treat it as a routing signal, not noise.
 
 ---
 

@@ -8,7 +8,7 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
-## [2.0.0-alpha.19] - 2026-08-02
+## [0.2.19] - 2026-08-02
 
 ### Added
 
@@ -24,7 +24,7 @@ is a Loaf workflow staging section for curated entries before release.
 
 - **Breaking: `install --upgrade` is removed.** The flag now errors with a pointer to `loaf upgrade`, as do `--dry-run` and `--json` on install; the documented dry-run planning flow is `loaf upgrade --dry-run --json`. The plan document stays at contract version 1 and every field keeps its name, type, and meaning — the only value that changed is `command`, which reads `upgrade`. One optional object is new: `project_part` (`in_scope`, `tier`, `confirmation_required`, `bases`) reports the detector gate and is omitted entirely for callers that plan project files unconditionally, so their document is byte-identical to before.
 
-## [2.0.0-alpha.18] - 2026-08-01
+## [0.2.18] - 2026-08-01
 
 ### Changed
 
@@ -38,7 +38,7 @@ is a Loaf workflow staging section for curated entries before release.
 - Registry and candidate-artifact reads in the release gate refuse symlinked or irregular paths through a shared component-wise walk, so validated bytes and committed bytes cannot diverge ([#147](https://github.com/levifig/loaf/pull/147))
 - The 2.1.207 smoke narrative names its receipt's supersession instead of linking a removed file ([#148](https://github.com/levifig/loaf/pull/148))
 
-## [2.0.0-alpha.17] - 2026-07-30
+## [0.2.17] - 2026-07-30
 
 ### Added
 
@@ -54,7 +54,7 @@ is a Loaf workflow staging section for curated entries before release.
 - `/explore` and `/brainstorm` leave the user-facing slash surface: they remain agent-side techniques, and user entry routes to `/pitch` ([#145](https://github.com/levifig/loaf/pull/145))
 - Brief templates at both scales carry the shared problem-space skeleton, and the release-cohort vocabulary reads as the "target version" bucket in the operating docs ([#145](https://github.com/levifig/loaf/pull/145))
 
-## [2.0.0-alpha.16] - 2026-07-30
+## [0.2.16] - 2026-07-30
 
 ### Changed
 - Receipt freshness is now judged from repository content, not commit history: `loaf change verify` writes schema v2 receipts bound to a masked root-tree digest, so the release gate returns the same verdict on every clone under squash, rebase, or merge-commit merge strategies ([#144](https://github.com/levifig/loaf/pull/144), ADR-024).
@@ -66,7 +66,7 @@ is a Loaf workflow staging section for curated entries before release.
 - Cohorts of two or more changes can all hold fresh receipts simultaneously; previously each member's receipt commit staled the others ([#144](https://github.com/levifig/loaf/pull/144)).
 - CLI git failures surface stderr in returned errors instead of a bare `exit status N` ([#144](https://github.com/levifig/loaf/pull/144)).
 
-## [2.0.0-alpha.15] - 2026-07-28
+## [0.2.15] - 2026-07-28
 
 ### Added
 
@@ -87,7 +87,7 @@ is a Loaf workflow staging section for curated entries before release.
 - State surfaces (`show`, `list`, `check --json`) warn instead of silently demoting when structural evaluation or committed-receipt reads fail.
 - `validate-commit` attributes heredoc bodies to their own command, and release tooling labels prereleases correctly (#138).
 
-## [2.0.0-alpha.14] - 2026-07-25
+## [0.2.14] - 2026-07-25
 
 ### Added
 
@@ -100,7 +100,7 @@ is a Loaf workflow staging section for curated entries before release.
 - Living project documentation and distributed skill guidance describe Change-first work in permanent language, without implementation-unit names, numbered development stages, or volatile inventory counts that go stale the moment anything is added. Historical Change, SPEC, and ADR citations remain where they serve as decision provenance.
 - The `ship` skill handles pull requests stacked on the one being landed. It detects child pull requests before the merge, refuses to delete a head branch while a child still points at it, and afterwards retargets, rebases, and re-verifies each child. Neither repair is optional: GitHub does not reliably retarget a child when its base merges, and a squash merge leaves the child carrying commits that would re-apply its parent's entire diff.
 
-## [2.0.0-alpha.13] - 2026-07-24
+## [0.2.13] - 2026-07-24
 
 ### Changed
 
@@ -115,7 +115,7 @@ is a Loaf workflow staging section for curated entries before release.
 - `loaf migrate markdown` re-import no longer aborts wholesale on journal-origin collisions: origins matching the schema-0011 backfill fingerprint are reclaimed as migration provenance, every other foreign-provenance entry is skipped untouched and listed, and a project blocked since the 0011 upgrade imports cleanly (#132).
 - Manual relationships created with `loaf link` are never claimed or deleted by markdown re-import, even when they share the importer's deterministic relationship id (#132).
 
-## [2.0.0-alpha.12] - 2026-07-20
+## [0.2.12] - 2026-07-20
 
 ### Changed
 
@@ -127,13 +127,13 @@ is a Loaf workflow staging section for curated entries before release.
 - `loaf state repair relationship-origin` reclassifies the retired legacy origins (`intent-create`, `legacy-conversion`, `exploration-create`, `system`) to `command`, backup-first and idempotent; bare invocation is reclassify-only, `--origin imported|manual` still enables the missing-origin backfill, and unrecognized foreign origins are reported but never rewritten (#127).
 - Live help agrees with dispatchable commands: `loaf state migrate --help` lists all six sources from the same registry that dispatches them, and bare or leaf `--help` invocations (`migrate`, `conversation handle add`, `exploration conversation add`) print usage and exit 0 (#127).
 
-## [2.0.0-alpha.11] - 2026-07-19
+## [0.2.11] - 2026-07-19
 
 ### Fixed
 
-- Classify schema-11 databases as upgradable behind-schema state instead of invalid, restoring the backup-first `loaf state migrate schema --apply` path for every installation upgrading from v2.0.0-alpha.9 — with or without an applied journal-first ceremony (#124).
+- Classify schema-11 databases as upgradable behind-schema state instead of invalid, restoring the backup-first `loaf state migrate schema --apply` path for every installation upgrading from v0.2.9 — with or without an applied journal-first ceremony (#124).
 
-## [2.0.0-alpha.10] - 2026-07-19
+## [0.2.10] - 2026-07-19
 
 ### Added
 
@@ -150,13 +150,13 @@ is a Loaf workflow staging section for curated entries before release.
 - `loaf journal context` treats unresolved deferred Intents as active truth regardless of journal recency and adds a bounded exploration-checkpoints layer with exact resume commands (#122).
 - `/triage` processes the full intake queue with explicit dispositions (discard, retain, track, defer, resume, resolve, explore, shape); `/idea` narrows to pure capture; brainstorm's divergent stance now lives inside `/explore` (#122).
 
-## [2.0.0-alpha.9] - 2026-07-18
+## [0.2.9] - 2026-07-18
 
 ### Fixed
 
 - Use the installed executable's packaged distribution for version reporting, upgrades, configuration maintenance, and diagnostics, preventing stale source checkouts from silently downgrading managed installations while preserving explicit source-checkout builds (#120).
 
-## [2.0.0-alpha.8] - 2026-07-18
+## [0.2.8] - 2026-07-18
 
 ### Added
 
@@ -170,7 +170,7 @@ is a Loaf workflow staging section for curated entries before release.
 
 - Verify release smoke evidence before version stamping and stamp artifacts from the checked-out tag, preventing failed verification from leaving misleading release metadata (#116).
 
-## [2.0.0-alpha.7] - 2026-07-18
+## [0.2.7] - 2026-07-18
 
 ### Changed
 
@@ -182,7 +182,7 @@ is a Loaf workflow staging section for curated entries before release.
 
 - Prevent command text alone from creating automatic commit, pull-request, or task-completion history when the target cannot prove both success and a durable identity (#106).
 
-## [2.0.0-alpha.6] - 2026-07-12
+## [0.2.6] - 2026-07-12
 
 ### Changed
 
@@ -199,7 +199,7 @@ is a Loaf workflow staging section for curated entries before release.
 - Keep journal logging, recent entries, and SessionStart continuity available when only the derived search index is divergent, while journal search remains fail-closed until repaired (#103).
 - Converge the configured GitHub CLI account automatically before guarded commands instead of blocking the command needed to switch accounts (#99).
 
-## [2.0.0-alpha.5] - 2026-07-06
+## [0.2.5] - 2026-07-06
 
 ### Added
 - Enforce configured GitHub account (357ebcbc)
@@ -207,7 +207,7 @@ is a Loaf workflow staging section for curated entries before release.
 ### Fixed
 - Generate audit-safe Homebrew formula (b1392bca)
 
-## [2.0.0-alpha.4] - 2026-07-06
+## [0.2.4] - 2026-07-06
 
 ### Added
 
@@ -218,13 +218,13 @@ is a Loaf workflow staging section for curated entries before release.
 
 - Scoped `render-drift` and `ephemeral-provenance` hook checks to real Bash `git push` hook contexts while preserving manual `loaf check --hook ...` behavior, removing noisy non-push interruptions during normal tool use (#92) (6ce08acc).
 
-## [2.0.0-alpha.3] - 2026-07-04
+## [0.2.3] - 2026-07-04
 
 ### Fixed
 - Honor advisory hook contract and scope release checks to release-flow pushes (#89) (f5c1d56d)
 - Bootstrap identical worktree agents state (#90) (7c9c298c)
 
-## [2.0.0-alpha.2] - 2026-07-04
+## [0.2.2] - 2026-07-04
 
 ### Changed
 
@@ -248,7 +248,7 @@ is a Loaf workflow staging section for curated entries before release.
 - Treat command-authored relationship provenance as valid in `loaf state doctor`, avoiding a misleading `relationship-origin-unknown` repair prompt for rows created by current Loaf commands.
 - Stop `loaf release --dry-run` after reporting that no unreleased changes exist, instead of generating a bogus next-version release plan.
 
-## [2.0.0-alpha.1] - 2026-06-27
+## [0.2.1] - 2026-06-27
 
 ### Added
 
@@ -270,7 +270,7 @@ is a Loaf workflow staging section for curated entries before release.
 - Corrected ADR-017 to record that ADRs and knowledge live under `docs/`, not `.agents/`, fixing an ADR-013 factual error.
 - Made `migrate markdown --remove-source` atomic: it now byte-verifies the entire ephemeral set before deleting any file, so a later-file mismatch leaves earlier files intact (SPEC-045 "deletes nothing on failure" invariant for the reusable primitive).
 
-## [2.0.0-pre.20260625192947] - 2026-06-25
+## [0.1.53] - 2026-06-25
 
 ### Added
 
@@ -282,7 +282,7 @@ is a Loaf workflow staging section for curated entries before release.
 - Made ephemeral agent artifacts SQLite-only by removing tracked `.agents` tasks, sessions, ideas, drafts, brainstorms, and `.agents/TASKS.json` from git after the migration gate.
 - Changed `loaf session enrich` to record native SQLite journal checkpoints instead of recreating or editing session Markdown.
 
-## [2.0.0-pre.20260625190923] - 2026-06-25
+## [0.1.52] - 2026-06-25
 
 ### Added
 
@@ -299,7 +299,7 @@ is a Loaf workflow staging section for curated entries before release.
 - SPEC-049 lifecycle list, show, export, and help surfaces now display canonical statuses while accepting legacy status filters during the migration window.
 - SPEC-049 generated CLI reference output and report templates now document canonical lifecycle statuses, including report `done` and the lifecycle-status migration command.
 
-## [2.0.0-pre.20260625183349] - 2026-06-25
+## [0.1.51] - 2026-06-25
 
 ### Added
 
@@ -320,7 +320,7 @@ is a Loaf workflow staging section for curated entries before release.
 - SPEC-045 updates `loaf state doctor --json` to report whether the post-cutover ephemeral Markdown surface is clear, including explicit zero counts for legacy ephemeral Markdown files and `.agents/TASKS.json` presence.
 - SPEC-045 changes `loaf session enrich <ref>` to record a native SQLite journal checkpoint linked to the requested session instead of recreating or editing session Markdown.
 
-## [2.0.0-pre.20260614235428] - 2026-06-14
+## [0.1.50] - 2026-06-14
 
 ### Changed
 
@@ -484,13 +484,13 @@ is a Loaf workflow staging section for curated entries before release.
 
 - Removed the bundled TypeScript command runtime and obsolete TypeScript build/test toolchain from the shipped CLI.
 
-## [2.0.0-dev.49] - 2026-05-31
+## [0.1.49] - 2026-05-31
 
 ### Fixed
 
 - `findActiveSessionForBranch` now applies a deterministic `filePath` tiebreaker on both the branch-match and most-recent-active fallback paths, so candidates with byte-identical effective timestamps resolve to the same session across repeated calls regardless of `readdirSync` order.
 
-## [2.0.0-dev.48] - 2026-05-29
+## [0.1.48] - 2026-05-29
 
 ### Changed
 
@@ -552,7 +552,7 @@ is a Loaf workflow staging section for curated entries before release.
 - Resolve installed TypeScript fallback assets from the namespaced `~/.local/share/loaf/dist-cli` layout used by `loaf install`.
 - Keep SQLite writes transactional for tag creation and apply per-connection SQLite pragmas for foreign keys, WAL journaling, and busy timeout handling.
 
-## [2.0.0-dev.47] - 2026-05-28
+## [0.1.47] - 2026-05-28
 
 ### Fixed
 
@@ -561,7 +561,7 @@ is a Loaf workflow staging section for curated entries before release.
 - Branch-fallback WARN now names the resolved session file and its origin branch (e.g., `WARN: no session for branch 'release/v0.16.0'; logging to most-recent active session '20260101-120000-session.md' (origin branch 'cwt/foo'). Pass --session-id <id> to silence.`), so misroutes are visible at a glance. A distinct WARN fires when no active session exists to fall back to.
 - Branch-fallback WARN now distinguishes rename-link adoption (`WARN: branch '<new>' appears to be a rename of '<old>'; logging to its session ...`) from most-recent-active adoption, so operators can tell why a log landed where it did instead of seeing the inaccurate "most-recent active" wording on every adoption.
 
-## [2.0.0-dev.46] - 2026-05-28
+## [0.1.46] - 2026-05-28
 
 ### Changed
 
@@ -574,18 +574,18 @@ is a Loaf workflow staging section for curated entries before release.
 - `agents-config` now throws an actionable error (instead of silently writing a stale shadow config) when a linked worktree's recorded main has been removed, mirroring the diagnostic surfaced by `loaf migrate worktree-storage`.
 - `workflow-pre-pr` no longer treats backtick-quoted `## [Unreleased]` mentions in CHANGELOG prose as the real section header, so PRs whose intro text references the staging area no longer false-block with "empty Unreleased section".
 
-## [2.0.0-dev.45] - 2026-05-27
+## [0.1.45] - 2026-05-27
 
 ### Fixed
 
 - `loaf release` refreshes uv-managed Python release artifacts with package-local `uv sync`, and refuses to commit unignored `.venv` files created during release artifact refresh.
 
-## [2.0.0-dev.44] - 2026-05-22
+## [0.1.44] - 2026-05-22
 
 ### Added
 - Add dedicated handoff skill (b9a97b51)
 
-## [2.0.0-dev.43] - 2026-05-20
+## [0.1.43] - 2026-05-20
 
 ### Added
 
@@ -605,7 +605,7 @@ is a Loaf workflow staging section for curated entries before release.
 - Task and session lock staleness detection share one PID/host-aware policy, avoiding false eviction of live same-host lock holders.
 - Linked-worktree migration refusal preserves unknown-command feedback while still nudging users toward `loaf migrate worktree-storage`.
 
-## [2.0.0-dev.42] - 2026-05-19
+## [0.1.42] - 2026-05-19
 
 ### Added
 
@@ -622,13 +622,13 @@ is a Loaf workflow staging section for curated entries before release.
 
 Users with active `git worktree add` linked worktrees containing `.agents/` content must run `loaf migrate worktree-storage --apply` once after upgrading. Single-checkout repositories require no action.
 
-## [2.0.0-dev.40] - 2026-05-02
+## [0.1.40] - 2026-05-02
 
 ### Added
 
 - `git-workflow` skill — new "Changelog Discipline" section in `references/commits.md`. Codifies the rule that user-facing CHANGELOG entries describe what changed from a user/operator's perspective, not how the work was tracked or organized internally. Drops internal terms (spec/task IDs, internal session references, hook IDs that aren't user-facing); keeps references to public artifacts (`ADR-NNN`, public CLI flags, documented file paths); requires curating auto-generated `loaf release --pre-merge` output before bumping.
 
-## [2.0.0-dev.39] - 2026-05-02
+## [0.1.39] - 2026-05-02
 
 ### Added
 
@@ -644,7 +644,7 @@ Users with active `git worktree add` linked worktrees containing `.agents/` cont
   - **Adversarial Review for Substantive Guidance Changes** — `loaf:reviewer` is the baseline (internal-consistency auditor); `codex:rescue` or equivalent adversarial reviewer is recommended when available, since the two readers catch different defect classes. Codex is plugin-dependent and optional.
   - **Recategorization as a General Lifecycle Pattern** — distinguishes supersession (the answer changed; new artifact replaces old) from recategorization (the artifact's classification was wrong; the underlying rule still holds; deprecate-in-place and point to new home). Generalizes beyond ADRs.
 
-## [2.0.0-dev.38] - 2026-05-02
+## [0.1.38] - 2026-05-02
 
 ### Changed
 
@@ -664,7 +664,7 @@ Users with active `git worktree add` linked worktrees containing `.agents/` cont
 - ADR-006 (Agent-Creates, Human-Curates Model) — recategorized as a guiding principle (philosophical/operational rationale, not architectural). Active source: `docs/ARCHITECTURE.md` Operating Principles section.
 - ADR-009 (Sparks Convention in Brainstorm Documents) — recategorized as workflow lore for the `brainstorm` skill. Owning skill is the canonical source.
 
-## [2.0.0-dev.37] - 2026-05-02
+## [0.1.37] - 2026-05-02
 
 ### Added
 
@@ -683,17 +683,17 @@ Users with active `git worktree add` linked worktrees containing `.agents/` cont
 
 - 96 new tests in `cli/lib/kb/glossary.test.ts` and `cli/commands/kb-glossary.test.ts` covering lossless round-trip, fence handling (backtick + tilde), Linear-native gating in all three write verbs, and read-time-no-creation regressions.
 
-## [2.0.0-dev.36] - 2026-04-30
+## [0.1.36] - 2026-04-30
 
 ### Fixed
 - Validate flags early in release and let dry-run preview when no commits (4083f362)
 
-## [2.0.0-dev.35] - 2026-04-30
+## [0.1.35] - 2026-04-30
 
 ### Added
 - Add artifact journal entry types (TASK-103) (9443c355)
 
-## [2.0.0-dev.34] - 2026-04-30
+## [0.1.34] - 2026-04-30
 
 ### Added
 
@@ -705,16 +705,16 @@ Users with active `git worktree add` linked worktrees containing `.agents/` cont
 
 ### Fixed
 
-- `extractUnreleasedEntries` (renamed to `extractUnreleasedBody`) preserves curated `[Unreleased]` body verbatim — including `### Added`, `### Changed`, `### Removed`, `### Fixed`, `### Internal` subsection headers — under the new versioned section. Previously filtered to list-item lines only, flattening the categorical structure. Caught when the comprehensive 6-section CHANGELOG drafted for v2.0.0-dev.33 was reduced to a single bulleted list.
+- `extractUnreleasedEntries` (renamed to `extractUnreleasedBody`) preserves curated `[Unreleased]` body verbatim — including `### Added`, `### Changed`, `### Removed`, `### Fixed`, `### Internal` subsection headers — under the new versioned section. Previously filtered to list-item lines only, flattening the categorical structure. Caught when the comprehensive 6-section CHANGELOG drafted for v0.1.33 was reduced to a single bulleted list.
 
-## [2.0.0-dev.33] - 2026-04-30
+## [0.1.33] - 2026-04-30
 
 - `loaf release --pre-merge` flag bundling `--no-tag --no-gh --base <auto-detected>` with 4-step base detection (explicit `--base` → open-PR base via `gh pr view` → `git config loaf.release.base` → default branch).
 - `loaf release --post-merge` flag with 8-point guardrail checklist that finalizes a release after squash-merge: tag → push tag → GH release from CHANGELOG section → pull base → best-effort feature-branch cleanup. Light idempotency: each guardrail is rerun-safe; partial-failure aborts produce actionable manual-fix messages naming the exact recovery command.
 - `loaf release --version-file <path>` repeatable CLI flag for ad-hoc version-file selection, complementing declared `release.versionFiles` in `.agents/loaf.json` for monorepo layouts (e.g., `["backend/pyproject.toml", "frontend/package.json"]`).
 - Release-only PR classifier in `workflow-pre-pr`: a PR whose diff is exactly version-file paths + `CHANGELOG.md` with a non-empty `## [<version>]` section bypasses the empty-`[Unreleased]` block. Enables release-only PRs on repos with protected default branches.
 - `loaf release` commit subject is now `chore: release v<semver>` (was `release: vX.Y.Z`). Conventional-Commits compliant; passes `@commitlint/config-conventional` without rewording. `workflow-pre-pr` and `validate-push` accept the new shape as a pre-merge escape hatch (shape-validated, not prefix-only — `chore: release notes draft` is still rejected).
-- `loaf release` preserves curated `[Unreleased]` entries when present: existing list items are copied verbatim under the new `## [X.Y.Z]` header and auto-generation does not run. Resolves the recurring overwrite/jargon friction observed in dev.31 and dev.32.
+- `loaf release` preserves curated `[Unreleased]` entries when present: existing list items are copied verbatim under the new `## [X.Y.Z]` header and auto-generation does not run. Resolves the recurring overwrite/jargon friction observed in 0.1.31 and 0.1.32.
 - `loaf release` re-inserts the `- _No unreleased changes yet._` stub under fresh `[Unreleased]` after each release, so subsequent `gh pr create` does not block on an "empty" section.
 - `/loaf:release` skill collapses Step 4 to `loaf release --pre-merge --bump <type> --yes` and Step 6 to `loaf release --post-merge`. Replaces the prior manual `git tag` / `git push --tags` / `gh release create` / `git checkout` / `git pull` / `git branch -d` sequence.
 - CI `Build Distributions` workflow now verifies build-artifact freshness instead of auto-committing to `main`. Fails loudly when `dist/`, `plugins/`, or `.claude-plugin/` are out of sync with source. Also runs on `pull_request` so drift is caught during PR review, not only after merge. Removes the `GH013` auto-push rejection that had been failing every push to `main`.
@@ -724,7 +724,7 @@ Users with active `git worktree add` linked worktrees containing `.agents/` cont
 - Unified base-branch resolver via `skipPRLookup?` option in `cli/lib/release/base.ts`. Replaces the divergent `resolveBaseForPostMerge` that had drifted into `post-merge.ts`. One resolver now serves `--pre-merge`, `--post-merge` (skips PR tier — the PR is closed/merged at that point), and the release-only PR classifier.
 - Regression coverage added across the spec: `validate-commit` AI-attribution path-token pass cases + structured-attribution reject cases, `loaf release` end-to-end commit subject assertion (real commit, not `--dry-run`), post-merge guardrails 4/5/7/8 + idempotency rerun, base-detection 4-step precedence, monorepo declared-file resolution, release-only PR classifier mixed-diff disqualification.
 
-## [2.0.0-dev.32] - 2026-04-29
+## [0.1.32] - 2026-04-29
 
 Note: An earlier iteration of this release explored a configurable soul catalog with a `loaf soul` CLI; that work was reviewed in-flight and pivoted away from before merge — the lore decoupling stands, the soul layer does not. See the SPEC-033 archive for the full exploration.
 
@@ -736,13 +736,13 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 ### Removed
 - The deprecated `content/templates/soul.md` template.
 
-## [2.0.0-dev.31] - 2026-04-28
+## [0.1.31] - 2026-04-28
 
 ### Added
 - `--session-id <id>` flag on `loaf session log`, `loaf session archive`, and `loaf session enrich` for explicit session targeting independent of git branch.
 
 ### Fixed
-- Session journal misrouting: `loaf session log` now routes by `claude_session_id` first, then hook stdin payload, then branch fallback. Resolves silent corruption observed during the v2.0.0-dev.30 release where post-merge wrap entries landed in stopped sessions instead of the active one.
+- Session journal misrouting: `loaf session log` now routes by `claude_session_id` first, then hook stdin payload, then branch fallback. Resolves silent corruption observed during the v0.1.30 release where post-merge wrap entries landed in stopped sessions instead of the active one.
 - `loaf session log --from-hook --session-id <id>` with empty stdin now honors the explicit `--session-id` override instead of silently no-opping.
 
 ### Changed
@@ -751,20 +751,20 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 ### Internal
 - Session lookup helpers extracted to a new `cli/lib/session/` module (`store.ts` for persistence primitives, `find.ts` for finders, `resolve.ts` for the 3-tier resolution chain).
 
-## [2.0.0-dev.30] - 2026-04-24
+## [0.1.30] - 2026-04-24
 
 ### Fixed
 - Escape regex literals in opencode runtime plugin (b9357605)
 - Post-ADR-010 doctor + version followups (7ef8ab1b)
 
-## [2.0.0-dev.29] - 2026-04-22
+## [0.1.29] - 2026-04-22
 
 ### Added
 - Linear-native routing in implement skill (parent + sub-issue) (1c12a442)
 - Mode-aware linear reconciliation checks in housekeeping (ae130564)
 - Linear-native mode in breakdown skill (parent + sub-issues) (2ad67e30)
 
-## [2.0.0-dev.28] - 2026-04-22
+## [0.1.28] - 2026-04-22
 
 ### Added
 - Enforce project symlinks and migrate user content on loaf install (0abf44bd)
@@ -776,7 +776,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 ### Fixed
 - Isolate check.test.ts fixtures and serialize vitest file runs (89f62d5d)
 
-## [2.0.0-dev.27] - 2026-04-11
+## [0.1.27] - 2026-04-11
 
 ### Added
 - `loaf session enrich` CLI command — reviews JSONL conversation logs via librarian agent, fills in missing journal entries (decisions, discoveries, context)
@@ -789,7 +789,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - Session status `complete` renamed to `done`, `paused` removed (stopped covers it)
 - Session statuses: `active | stopped | done | blocked | archived`
 
-## [2.0.0-dev.26] - 2026-04-10
+## [0.1.26] - 2026-04-10
 
 ### Added
 - `loaf session housekeeping` command — orphan detection, split consolidation, age-based archival, spec linkage repair
@@ -816,7 +816,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - `claude_session_id` priority over branch for session lookup
 - `appendEntry` blank line handling after `session(stop)` markers
 
-## [2.0.0-dev.24] - 2026-04-09
+## [0.1.24] - 2026-04-09
 
 ### Changed
 - Release skill: tags and GH Releases now created post-merge on `main` instead of pre-merge on feature branch, fixing dangling tag references after squash merge
@@ -832,7 +832,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - Report and session tests use isolated temp directories (`mkdtempSync` + `realpathSync`) to eliminate flaky failures from cross-file interference in parallel vitest runs
 - Session test timeout increased to 15s to accommodate temp directory operations
 
-## [2.0.0-dev.23] - 2026-04-08
+## [0.1.23] - 2026-04-08
 
 ### Added
 - `/wrap` skill writes Session Wrap-Up report into session file above `## Current State` for archival persistence
@@ -848,7 +848,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 ### Removed
 - Dead `isNewConversation` variable in session start logic (set but never read)
 
-## [2.0.0-dev.22] - 2026-04-08
+## [0.1.22] - 2026-04-08
 
 ### Fixed
 - Journal-nudge hook moved from Stop event to PostToolUse(Agent|WebFetch|WebSearch) — Stop forced full-turn retrospection that degraded to only logging commits; PostToolUse gives fresh context per tool result
@@ -856,7 +856,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - `validate-commit` hook now correctly parses heredoc-style commit messages instead of capturing raw shell syntax
 - `validate-commit` hook skips `-F`/`--file` commits (can't validate file contents from command text)
 
-## [2.0.0-dev.20] - 2026-04-08
+## [0.1.20] - 2026-04-08
 
 ### Added
 - `loaf report` CLI with `list`, `create`, `finalize`, `archive` subcommands
@@ -876,7 +876,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - Report CLI `list --status archived` now scans `archive/` directory
 - Report CLI rejects ambiguous substring matches with candidate list
 
-## [2.0.0-dev.19] - 2026-04-07
+## [0.1.19] - 2026-04-07
 
 ### Fixed
 - `validate-push` no longer false-positives when pushing a release commit (tag at HEAD)
@@ -889,7 +889,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - Wrap skill prompts for missing changelog entries on branches with commits
 - 3 new hook tests: release-push pass, tagged-PR pass, spoofed-commit-message block
 
-## [2.0.0-dev.18] - 2026-04-07
+## [0.1.18] - 2026-04-07
 
 ### Fixed
 - Session end now sets status to `stopped` instead of `paused`
@@ -907,7 +907,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 ### Added
 - Test coverage for branch adoption and same-session-id resume
 
-## [2.0.0-dev.17] - 2026-04-07
+## [0.1.17] - 2026-04-07
 
 ### Added
 - Add journal logging to workflow skills, broaden nudge hook (0beac80)
@@ -924,7 +924,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - PreCompact detects stale Current State via timestamp, nudge requests timestamped heading (e720ca5)
 - Resolve all test failures, update 4 stale KB files (e75372b)
 
-## [2.0.0-dev.16] - 2026-04-07
+## [0.1.16] - 2026-04-07
 
 ### Added
 - Session stability: subagent detection via `agent_id` in hook JSON — subagent spawns no longer create session churn
@@ -958,7 +958,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - Blank line rules simplified: after PAUSE, before start/resume, nothing else
 - Session entry scopes removed from system entries (`pause:` not `pause(branch):`)
 
-## [2.0.0-dev.15] - 2026-04-07
+## [0.1.15] - 2026-04-07
 
 ### Added
 - `Suggests Next` section in 8 pipeline skills for workflow continuity (triage→shape→breakdown→implement→release→wrap→housekeeping→reflect)
@@ -970,7 +970,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 ### Changed
 - Session filenames simplified to fixed `YYYYMMDD-HHMMSS-session.md` — descriptions in frontmatter, not filenames
 
-## [2.0.0-dev.14] - 2026-04-07
+## [0.1.14] - 2026-04-07
 
 ### Added
 - `/wrap` skill — responsible session shutdown with journal flush, loose end prompts, and housekeeping check
@@ -986,7 +986,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - `workflow-pre-pr` hook warns when base branch has unpushed commits that would be absorbed into squash merge
 - `loaf release` now auto-detects `.claude-plugin/marketplace.json` as a version file
 
-## [2.0.0-dev.13] - 2026-04-06
+## [0.1.13] - 2026-04-06
 
 ### Fixed
 - Session journal blank line between every entry — `trimEnd()` made separator condition unreachable
@@ -1002,7 +1002,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - Dead `formatEntry` function, unused `timestamp` parameter, filesystem sync retry loop
 - Unnecessary `lockAcquired` flags, session variable aliases, multiline entry display handling
 
-## [2.0.0-dev.12] - 2026-04-06
+## [0.1.12] - 2026-04-06
 
 ### Fixed
 - Three advisory hooks (pre-merge, pre-push, post-merge) broken since SPEC-020 — `json-parser.sh` dependency deleted but hooks not migrated
@@ -1015,7 +1015,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - Release skill now creates PR before version bump when no PR exists (fixes `[Unreleased]` empty conflict)
 - All three target builders (Claude Code, Cursor, OpenCode) generate `cat` commands for instruction-file hooks
 
-## [2.0.0-dev.11] - 2026-04-04
+## [0.1.11] - 2026-04-04
 
 ### Added
 - MCP detection library — detects Linear and Serena across Claude Code and Cursor configurations
@@ -1037,7 +1037,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - `linear-mcp.sh` wrapper script
 - `.agents/config.json` (merged into `.agents/loaf.json`)
 
-## [2.0.0-dev.9] - 2026-04-03
+## [0.1.9] - 2026-04-03
 
 ### Added
 - Amp target (experimental) — skills + runtime plugin for the Amp editor
@@ -1067,13 +1067,13 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - 4 shared bash libraries (`json-parser.sh`, `config-reader.sh`, `agent-detector.sh`, `timeout-manager.sh`)
 - `resume-session` and `reference-session` skills (absorbed by `loaf session`)
 
-## [2.0.0-dev.8] - 2026-03-31
+## [0.1.8] - 2026-03-31
 
 ### Changed
 - All 30 skill descriptions rewritten to fit Claude Code's 250-char truncation budget (SPEC-014 follow-up)
 - Removed `/ship` alias skill — `/release` already triggers on "ship it"
 
-## [2.0.0-dev.7] - 2026-03-30
+## [0.1.7] - 2026-03-30
 
 ### Added
 - `/release` skill — orchestrates squash merge ritual: pre-flight, docs freshness, housekeeping, version bump, merge, cleanup (SPEC-019)
@@ -1088,7 +1088,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - Option validation and skip-flag logic extracted to `cli/lib/release/options.ts`
 - `/release` skill detects curated changelog entries under `[Unreleased]` and preserves them instead of regenerating from commits
 
-## [2.0.0-dev.6] - 2026-03-30
+## [0.1.6] - 2026-03-30
 
 ### Added
 - 4 focused skills extracted from foundations: git-workflow, debugging, security-compliance, documentation-standards (SPEC-014)
@@ -1109,7 +1109,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - `{{AGENT:...}}` substitution system from build pipeline (SPEC-014)
 - Legacy `plugin-groups` section from hooks.yaml (SPEC-014)
 
-## [2.0.0-dev.5] - 2026-03-29
+## [0.1.5] - 2026-03-29
 
 ### Added
 - `loaf cleanup` command — scan `.agents/` artifacts and recommend cleanup actions (SPEC-012)
@@ -1136,7 +1136,7 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - Pre-push hook changed from unconditionally blocking (exit 2) to advisory (exit 0)
 - Stale `docs/specs/` paths in `/reflect`, `/shape`, and spec template — now `.agents/specs/`
 
-## [2.0.0-dev.4] - 2026-03-27
+## [0.1.4] - 2026-03-27
 
 ### Added
 - `loaf task archive` command — move completed tasks to archive and update TASKS.json atomically
@@ -1153,19 +1153,19 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - Skills and references replaced `.agents/` path references with CLI commands and IDs
 - `council-session` skill changed to model-invoked (not user-invocable)
 
-## [2.0.0-dev.3] - 2026-03-27
+## [0.1.3] - 2026-03-27
 
 ### Added
 - Workflow enforcement hooks: pre-PR (conditional blocker), post-merge (housekeeping checklist), pre-push (branch safety) (SPEC-015)
 - Project-level CHANGELOG.md in Keep a Changelog format with retroactive entries
 - Hook library functions `parse_command` and `parse_exit_code` in json-parser.sh
 
-## [2.0.0-dev.2] - 2026-03-27
+## [0.1.2] - 2026-03-27
 
 ### Added
 - `/bootstrap` skill and `loaf setup` CLI command for 0-to-1 project setup (SPEC-013)
 
-## [2.0.0-dev.1] - 2026-03-25
+## [0.1.1] - 2026-03-25
 
 ### Added
 - Knowledge management system with staleness tracking and lifecycle hooks (SPEC-009)
@@ -1182,3 +1182,16 @@ Note: An earlier iteration of this release explored a configurable soul catalog 
 - Post-merge housekeeping steps added to implement skill
 - Code review findings from SPEC-008 implementation addressed
 - Redundant root CLAUDE.md symlink removed
+
+## [0.1.0] - 2026-03-15
+
+The pre-CLI era, collapsed into a single anchor entry. Fifty-three commits between 2026-01-18 and 2026-03-15 carried their own version line — `1.0.0` through `1.17.4` — and predate this changelog, which was introduced later (see `0.1.3`). They are not renumbered individually; `0.1.0` stands for the whole era, and the tag `v1.17.4` (`c7e7eb9d`, "chore: pre-CLI restructuring snapshot") marks its final commit.
+
+### Added
+
+- Loaf as a shell-and-Node content distribution: skills, agents, hooks, templates, and config authored under `src/` and built by `build/build.js` into per-harness outputs for Claude Code, OpenCode, Cursor, Codex, and Gemini
+- `install.sh`, the installer with tool detection (`scripts/detect-tools.sh`) and a gum-based TUI
+
+### Changed
+
+- The era ends at the pre-CLI restructuring snapshot; the CLI rewrite that replaced the shell installer and the Node builder opens the next entry, `0.1.1`

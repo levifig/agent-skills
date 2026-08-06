@@ -32,10 +32,10 @@ loaf journal log "skill(implement): TASK-004 — changelog renumbering per the r
 
 ## Steps
 
-- [ ] Renumber all CHANGELOG headings and version-carrying reference lines per the map; author the `0.1.0` entry summarizing the 1.x era (tag `v1.17.4`, predates this changelog)
-- [ ] Resolve which release the spec-conversion sweep rode via tag ancestry; retarget both pinned `change.json` files to their renumbered releases
-- [ ] Renumber the living-doc citations; rebuild so distributed skill copies follow
-- [ ] Record the old→new heading map in the commit message body for H1 review
+- [x] Renumber all CHANGELOG headings and version-carrying reference lines per the map; author the `0.1.0` entry summarizing the 1.x era (tag `v1.17.4`, predates this changelog)
+- [x] Resolve which release the spec-conversion sweep rode via tag ancestry; retarget both pinned `change.json` files to their renumbered releases
+- [x] Renumber the living-doc citations; rebuild so distributed skill copies follow
+- [x] Record the old→new heading map in the commit message body for H1 review
 
 ## Verification
 
