@@ -28,7 +28,7 @@ Dev builds had no identity at all. A local build reported exactly the string a r
 
 **Dev identity takes two facts, not one.** Absent release build metadata says no release pipeline built this binary; a resolved distribution root carrying `go.mod` beside the content says it is running out of the tree that did. Every shipped distribution — release archive, Homebrew keg, npm package, plugin payload — is content plus a prebuilt binary; only the checkout has the Go module. Absence alone would have told a user who installed `0.2.20` from the marketplace that they were running a dev build.
 
-**Dev identity lives at the binary level; tracked artifacts always carry the release version.** The version is stamped into 232 tracked files under `dist/`, `plugins/`, and `.claude-plugin/`, and CI's artifact-sync gate (ADR-012) rejects any drift, so a timestamp there would make every local `loaf build` dirty the tree. The old signal inverts cleanly: dev used to be the *absence* of build metadata, and is now the *presence* of a dev stamp on the version line.
+**Dev identity lives at the binary level; tracked artifacts always carry the release version.** The version is stamped into 224 tracked files under `dist/`, `plugins/`, and `.claude-plugin/`, and CI's artifact-sync gate (ADR-012) rejects any drift, so a timestamp there would make every local `loaf build` dirty the tree. The old signal inverts cleanly: dev used to be the *absence* of build metadata, and is now the *presence* of a dev stamp on the version line.
 
 **One predicate, three readers.** The version report mints dev versions, the harness-drift classifier reads them off install markers, and the release snapshot refuses to cut a ceremony for one. There is no flag, suffix, or second source to keep in step.
 
@@ -40,7 +40,7 @@ Dev builds had no identity at all. A local build reported exactly the string a r
 
 | Old | New | Rule |
 |---|---|---|
-| `1.0.0` – `1.17.4` (pre-CLI era) | `0.1.0` | Collapsed into one authored anchor; `v1.17.4` (`c7e7eb9d`) marks its final commit |
+| `1.0.0` – `1.17.4` (pre-CLI era) | `0.1.0` | Collapsed into one authored anchor; `c7e7eb9d`, the era's final commit, carries the `v0.1.0` marker after the wipe |
 | `2.0.0-dev.N` | `0.1.N` | Numeral-preserving, N = 1–49; the unreleased gaps (10, 21, 25, 41) stay absent |
 | `2.0.0-pre.20260614235428` | `0.1.50` | Positional, chronological |
 | `2.0.0-pre.20260625183349` | `0.1.51` | Positional, chronological |
@@ -64,7 +64,7 @@ Provenance: `docs/changes/20260806-versioning-reset/` shape.md Decisions 1–12;
 
 SemVer precedence sorts prereleases *below* the release they annotate, so a canary machine on its own build would be told forever that an update is available. The whole point of the dev identity is that the canary is ahead.
 
-### A fourth version part (`0.2.20.1754487043`)
+### A fourth version part (`0.2.20.1786022455`)
 
 Not valid SemVer, and npm rejects it. The patch slot is the only place a monotonic build number fits inside the standard.
 
@@ -74,7 +74,7 @@ The committed native binaries must rebuild byte-for-byte identical for the repro
 
 ### Stamping dev versions into tracked build artifacts
 
-232 version stamps live in `dist/`, `plugins/`, and `.claude-plugin/`, and CI verifies rather than fixes them (ADR-012). Every local `loaf build` would dirty the tree with a number that changes each run.
+Every tracked build artifact under `dist/`, `plugins/`, and `.claude-plugin/` carries the version, and CI verifies rather than fixes them (ADR-012). Every local `loaf build` would dirty the tree with a number that changes each run.
 
 ### Treating absent release metadata as the entire dev signal
 
