@@ -33,9 +33,9 @@ loaf journal log "skill(implement): TASK-001 — relax post-merge guardrail 5 fo
 
 ## Steps
 
-- [ ] Add the `versionFilesAtCandidate` attestation to `checkReleasePostMergeDiffFiles`, make the missing-version-file abort conditional on its absence, and pass guardrail 4's own comparison at the call site
-- [ ] Author the matrix: changelog-only accepted under attestation, changelog-only rejected without it, missing-changelog rejected under attestation, and a guardrail-level self-carrying release passing end to end while a candidate/version-file divergence still aborts at guardrail 4
-- [ ] Add the `[Unreleased]` changelog line
+- [x] Add the `versionFilesAtCandidate` attestation to `checkReleasePostMergeDiffFiles`, make the missing-version-file abort conditional on its absence, and pass guardrail 4's own comparison at the call site
+- [x] Author the matrix: changelog-only accepted under attestation, changelog-only rejected without it, missing-changelog rejected under attestation, and a guardrail-level self-carrying release passing end to end while a candidate/version-file divergence still aborts at guardrail 4
+- [x] Add the `[Unreleased]` changelog line
 - [ ] `npm run build`; commit the rebuilt trees
 - [ ] Re-record all three capability smokes against the rebuilt binary into this Change's `research/`, repoint `config/target-capabilities.json` and the two test files, and build nothing afterwards
 - [ ] After the final flip: run `loaf change verify docs/changes/20260807-self-carried-release-guardrail` and land the receipt as the branch's last, content-free commit
