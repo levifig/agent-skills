@@ -219,7 +219,7 @@ This pattern generalizes beyond ADRs. When any Loaf artifact is later judged to 
 
 ## Change-First Execution Model
 
-New bounded work uses a Change as its primary contract. The Change folder splits role-named narrative (settles at shaping) from task-file state (mutates during execution), so execution evidence is machine-derivable from git history alone (ADR-022, ADR-023; operating view in [knowledge/work-model.md](knowledge/work-model.md)). The project journal remains the execution trace and resumption protocol.
+New bounded work uses a Change as its primary contract. The Change folder splits role-named narrative (settles at shaping) from task-file state (mutates during execution), so execution evidence is machine-derivable from committed content — checkbox-flip history where the merge strategy preserves it, receipt-vouched content where it does not (ADR-022, ADR-023, ADR-027; operating view in [knowledge/work-model.md](knowledge/work-model.md)). The project journal remains the execution trace and resumption protocol.
 
 ```
 capture → /shape → Change → /implement (task commits) → review → /reflect → /ship
@@ -243,7 +243,7 @@ SQLite journal_entries                # Project-scoped event record across conve
 
 **Changes** define the problem, scope, decisions, verification contract, and definition of done. `loaf change check` validates both layouts and derives the display ladder (captured → shaped → executable → executing → complete, plus verified for cohort members) — no status fields exist anywhere; every state is computed.
 
-**Releases read cohorts.** A change declaring `target_release` opts into the strong gate: cutting that version stable requires the whole cohort executed at flip grade (true `- [ ]`→`- [x]` transitions outside fences, same hunk and label) and receipt-verified, with all criteria passing. The gate is a pure reader of committed evidence — `loaf change verify` is the only surface that runs criteria; stale or failing receipts block with the mechanical remedy named. Prereleases always flow; retargets are reviewable diffs, surfaced and never blocked (ADR-023).
+**Releases read cohorts.** A change declaring `target_release` opts into the strong gate: cutting that version stable requires the whole cohort executed and receipt-verified, with all criteria passing. Execution grades as a disjunct — a true `- [ ]`→`- [x]` flip transition in ancestry (outside fences, same hunk and label), **or** a fresh verify receipt vouching for a folder whose every committed box is checked — so the grade holds under every merge strategy, squash included; a receipt cannot exist without the implementation in the tree, which is what keeps the shaping-only attack blocked (ADR-023, ADR-027; PR #154). Release commits may be changelog-only when version files already carry the candidate, the self-carrying shape guardrail 4 proves before guardrail 5 reads the diff (PR #155). In a multi-Change cohort, later members' content stales earlier members' receipts: all cohort receipts re-verify at the final pre-merge tree, terminating because receipt commits are content-free and digest-excluded. The gate is a pure reader of committed evidence — `loaf change verify` is the only surface that runs criteria; stale or failing receipts block with the mechanical remedy named. Prereleases always flow; retargets are reviewable diffs, surfaced and never blocked (ADR-023).
 
 **Releases gate on capability evidence.** `loaf release` validates the capability-evidence registry in-process after the artifact rebuild on every mutating path — a post-rebuild refusal in the shared apply executor and a ninth post-merge guardrail. Resume after a refusal is verify-then-restore with no persisted state; post-merge recovery is a single receipt-only repair commit classified against the parent commit's registry; every registry and candidate-artifact read is symlink-hostile through a shared component-wise regular-file walk (PR #147; change record `docs/changes/20260730-release-evidence-gate/`).
 
@@ -395,6 +395,8 @@ Patterns that apply across multiple subsystems and emerged from specific post-re
 The native CLI version must report the package version consistently through the launcher, native runtime, generated targets, and install markers. Go runtime paths read package metadata directly; the obsolete TypeScript version helper was removed after the install and version surfaces moved to native Go.
 
 Any value that must be identical across runtime modes should be injected at build time, not independently resolved by multiple runtime paths. Divergent version discovery creates false positives in every downstream comparison.
+
+One deliberate exception: a dev build's timestamp identity (`<major>.<minor>.<unix timestamp>`, ADR-026) is *not* build-time-injected, because a baked timestamp would break the byte-for-byte reproducibility that `verify:go-artifacts` asserts. It derives at runtime from two facts — absent release build metadata and a source checkout beside the distribution — with the executable's own mtime as the clock. Injecting it via ldflags would be the natural "fix"; it is the one that breaks the build contract.
 
 ### Generated Runtime Plugin Artifacts Parsed From Emitted Output
 
