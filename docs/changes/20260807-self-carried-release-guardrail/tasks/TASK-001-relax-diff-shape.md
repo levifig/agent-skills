@@ -38,7 +38,7 @@ loaf journal log "skill(implement): TASK-001 — relax post-merge guardrail 5 fo
 - [x] Add the `[Unreleased]` changelog line
 - [x] `npm run build`; commit the rebuilt trees
 - [x] Re-record all three capability smokes against the rebuilt binary into this Change's `research/`, repoint `config/target-capabilities.json` and the two test files, and build nothing afterwards
-- [ ] After the final flip: run `loaf change verify docs/changes/20260807-self-carried-release-guardrail` and land the receipt as the branch's last, content-free commit
+- [x] After the final flip: run `loaf change verify docs/changes/20260807-self-carried-release-guardrail` and land the receipt as the branch's last, content-free commit
 
 ## Verification
 
