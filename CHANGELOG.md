@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [0.2.20] - 2026-08-07
+
 ### Changed
 
 - **Breaking: the version line resets from `2.0.0-alpha.19` to `0.2.20`.** Releases are plain major-zero numbers with no prerelease suffix. Nineteen alphas over two months each implied a 2.0 that was never close, and the implied ceremony is why fixes sat unshipped; under the new scheme the patch slot counts releases within a minor, so a merged fix is a patch bump and nothing more. `0.3.0` is the next stabilization epoch and `1.0.0` a milestone to reach rather than defend. In SemVer terms this is a deliberate downgrade: **run `loaf upgrade` once after installing 0.2.20** so every harness's `.loaf-version` marker is restamped. Until you do, markers written by `2.0.0-alpha.19` sit above the new binary and `loaf doctor` reports each harness as ahead of it ([#153](https://github.com/levifig/loaf/pull/153), ADR-026).
