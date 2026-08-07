@@ -421,7 +421,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 }
 
 func TestInstalledSmokeEvidenceRejectsUnknownVersionsAndHashDrift(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t))), "docs/changes/20260806-versioning-reset/research/claude-code-2.1.223-plugin-startup-smoke.json"))
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t))), "docs/changes/20260806-receipt-vouched-execution/research/claude-code-2.1.223-plugin-startup-smoke.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +483,7 @@ func TestOpenCodeInstalledSmokeEvidenceAcceptsFixture(t *testing.T) {
 }
 
 func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHashAndCleanup(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/opencode-1.18.13-isolated-request-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research/opencode-1.18.13-isolated-request-smoke.json")
 	data, err := os.ReadFile(receiptPath)
 	if err != nil {
 		t.Fatal(err)
@@ -546,7 +546,7 @@ func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHas
 }
 
 func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/claude-code-2.1.223-plugin-startup-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research/claude-code-2.1.223-plugin-startup-smoke.json")
 	raw := readSmokeReceiptRaw(t, receiptPath)
 	artifacts := raw["candidate_artifacts"].(map[string]any)
 	sourceNativePath := artifacts["native_binary_path"].(string)
@@ -568,7 +568,7 @@ func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *t
 }
 
 func TestCodexInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/codex-0.146.0-isolated-startup-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research/codex-0.146.0-isolated-startup-smoke.json")
 	raw := readSmokeReceiptRaw(t, receiptPath)
 	artifacts := raw["candidate_artifacts"].(map[string]any)
 	sourceNativePath := artifacts["native_binary_path"].(string)
@@ -644,7 +644,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research", tt.receipt)
+			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research", tt.receipt)
 			raw := readSmokeReceiptRaw(t, receiptPath)
 			artifacts := raw["candidate_artifacts"].(map[string]any)
 			sourceNativePath := artifacts["native_binary_path"].(string)
@@ -703,7 +703,7 @@ func TestInstalledSmokeEvidenceRejectsSymlinkedCandidateArtifacts(t *testing.T) 
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research", tt.receipt)
+			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research", tt.receipt)
 			raw := readSmokeReceiptRaw(t, receiptPath)
 			artifacts := raw["candidate_artifacts"].(map[string]any)
 			hooksRel := artifacts["hooks_path"].(string)
@@ -768,7 +768,7 @@ func TestInstalledSmokeEvidenceRejectsSymlinkedCandidateArtifacts(t *testing.T) 
 	}
 
 	t.Run("opencode-intermediate-dir-symlink", func(t *testing.T) {
-		receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/opencode-1.18.13-isolated-request-smoke.json")
+		receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research/opencode-1.18.13-isolated-request-smoke.json")
 		raw := readSmokeReceiptRaw(t, receiptPath)
 		artifacts := raw["candidate_artifacts"].(map[string]any)
 		hooksRel := artifacts["hooks_path"].(string)
