@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
   "change": "versioning-reset",
-  "verified_commit": "7071e6c2fd9c837876622e4e95d0ec8f76cb8eb8",
-  "verified_root_tree": "2b9aff5ff6acf9ec62b1cb038fc19ab4ae65d0d8",
-  "verified_at": "2026-08-07T01:29:00Z",
+  "verified_commit": "104df6c96e9e48d297af6fa39044ccd71e5a7b73",
+  "verified_root_tree": "37811a5e09e69786a895a253911f6886e0d84e9a",
+  "verified_at": "2026-08-07T02:04:52Z",
   "criteria_digest": "b6d5e048dd0fc8d3e6d6e9f4686fddd711bd9fc6fc076fc62661d9f8e91681a2",
-  "scope_digest": "5c3c7af2d1bd4c541f4aa5ebb39740b10b5893217b8378d6276b4755416a5dd1",
+  "scope_digest": "11158dc58a8aaed5a169c64fe2c9e50a565afe3439b4658b2f7486aac08a3230",
   "scope_sections": {
     ".agents": "0cdcb499203f22e1faebbef89e211e4b6d4b253bc5486866ed28a50e15c2dd9e",
     ".claude": "8dc123c00b953695edd9ccc4bb966e986bcea05607d9a125e71038a4c2ebb6be",
@@ -16,12 +16,12 @@
     "README.md": "32cecbbf375e1b689ac4702acc72a81f5ad89be495f87680524b1fcd76f5089b",
     "cli": "cccb406db757aa65127b9657fde0c8a20c722c9ec9e3ae16269d1c0b3c21208a",
     "cmd": "3d4f455f2eea30cecbef4ea78280e6b86b5b48033074369f476a1805d513d217",
-    "config": "ded6312d159d4346a92f3b4242678c8cd12453b6a09e0be828d5330a595bf83c",
+    "config": "ed88cb91f75fb35580ffe31433b1664efc91f31253abba6a27a645ddb009ae09",
     "content": "acb99f53a758c4edff0f6b4a6644d2e4c60fa62fdca232ffbc0d5fe786f661d9",
-    "docs": "8973aebd7885a5e21122469bc96f9e92d3a54ddecaabbcdafe703b5cc8eded68",
+    "docs": "e2b8b6516d85bc89bd3477c373df9a5af77053bdf045900276f2fa9bea97c027",
     "go.mod": "b9247690761e43ce92335c553e1f916132580b2a1e7f434c7d99742e56fb8b21",
     "go.sum": "44a5d68a99a05f3d9aff3321f4b5645d0870cc1afd36e183fbc08c07d8550d6b",
-    "internal": "22757b2653de9ecebac41cb5b5bc2fe408ce1ea08468b0fe76f4b74deec59302",
+    "internal": "b13ada616588e4afe4be7ab16058db33b93d6ed7762941dec3b43063875526aa",
     "package-lock.json": "9a3e1b4d99a42b2fefa998dd5c753c1f00ee12a43d1a477b674fe04e6c779f01"
   },
   "exclusions": [
@@ -88,7 +88,7 @@
       "id": "V3",
       "command": "npm run test",
       "exit_code": 0,
-      "output_digest": "14d894f93b5881084b501deaaae4f43cb7e0d56532cc5b5fcc442ec48eacf5cd",
+      "output_digest": "6c3a7ab2d9872a396566ba1f44a58f6e019dd02598901b33845d020f9105da0a",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
@@ -103,7 +103,7 @@
       "id": "V4",
       "command": "go test ./internal/cli -run TestReleaseSnapshotRefusesTimestampPatch -count=1",
       "exit_code": 0,
-      "output_digest": "ab4686394ec7385c3cc24bfc4d822a6996abe4c417224f362dde175a27b91862",
+      "output_digest": "d356a689b3e9c26c3c2c16677ff9902dbaf71e221fdf4b21930a07e8740b2a38",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
