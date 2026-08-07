@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "change": "receipt-vouched-execution",
-  "verified_commit": "56582a9f25788affae6e544297ba7fe3e243bd94",
-  "verified_root_tree": "cbbee0c1c5878ba23fb649ea0b23037aca734eaa",
-  "verified_at": "2026-08-07T02:08:04Z",
-  "criteria_digest": "db72a0471897f327641d4a70063880770c5f504cd456a4dec4a783ae401d0375",
+  "change": "self-carried-release-guardrail",
+  "verified_commit": "92738013cfbf695f84f7f394d9e34c2d87c90710",
+  "verified_root_tree": "c222624abd68857c63ce467cacf1af060a35fc9b",
+  "verified_at": "2026-08-07T02:02:05Z",
+  "criteria_digest": "bbcf4c15715a8e05ccd6c6724fc5480613ed9e0c1727c7663ff6414c0c2b37b4",
   "scope_digest": "11158dc58a8aaed5a169c64fe2c9e50a565afe3439b4658b2f7486aac08a3230",
   "scope_sections": {
     ".agents": "0cdcb499203f22e1faebbef89e211e4b6d4b253bc5486866ed28a50e15c2dd9e",
@@ -46,9 +46,9 @@
   "results": [
     {
       "id": "V1",
-      "command": "go test ./internal/cli -run 'TestChangeExecut|TestReleaseCohort' -count=1",
+      "command": "go test ./internal/cli -run TestReleasePostMerge -count=1",
       "exit_code": 0,
-      "output_digest": "5b1647c3503daa4cc34abb8862b55942de938c5837b6bd11c3bdcbb8eae40670",
+      "output_digest": "ea1d8c7b98f7b8000b907b4e8dcc2e1323119ac31bd176bbd68502af5ae0aeec",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
@@ -63,22 +63,7 @@
       "id": "V2",
       "command": "npm run test",
       "exit_code": 0,
-      "output_digest": "03c235490a0f54e31e9155f197c578f61214c33ca5abec440a971cb20345c324",
-      "ok": true,
-      "expect": "exit 0.",
-      "expect_checks": [
-        {
-          "kind": "exit",
-          "value": "0",
-          "ok": true
-        }
-      ]
-    },
-    {
-      "id": "V3",
-      "command": "go test ./internal/cli -run TestReleaseGateBlocksShapingOnlyMerge -count=1",
-      "exit_code": 0,
-      "output_digest": "0518ea2878e2d56a4ff8b7aed125bef86679441759045d3afebc714a5dcd065e",
+      "output_digest": "24a5889f7e630bf2865666a57433410bfbb9cafc3d4ff7eeb7f362a2da95ec03",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [

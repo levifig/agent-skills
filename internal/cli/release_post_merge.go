@@ -135,7 +135,8 @@ func checkReleasePostMergeGuardrails(root string, snapshot releaseSnapshot, runn
 	if versionAbort != "" {
 		return releasePostMergeAbort(4, versionAbort)
 	}
-	if snapshot.Candidate != prepared {
+	versionFilesAtCandidate := snapshot.Candidate == prepared
+	if !versionFilesAtCandidate {
 		return releasePostMergeAbort(4, fmt.Sprintf("tag version %s does not match version-file version %s", snapshot.Candidate, prepared))
 	}
 
@@ -144,7 +145,9 @@ func checkReleasePostMergeGuardrails(root string, snapshot releaseSnapshot, runn
 		// Release commit is the parent of the repair commit.
 		diffFrom, diffTo = "HEAD~2", "HEAD~1"
 	}
-	if diffAbort := checkReleasePostMergeDiffFiles(root, runner, versionFiles, diffFrom, diffTo); diffAbort != "" {
+	// Guardrail 4 refused every other version-file state above, so what reaches
+	// guardrail 5 is a proof, not a hope: the release commit may be changelog-only.
+	if diffAbort := checkReleasePostMergeDiffFiles(root, runner, versionFiles, diffFrom, diffTo, versionFilesAtCandidate); diffAbort != "" {
 		return releasePostMergeAbort(5, diffAbort)
 	}
 
@@ -237,7 +240,14 @@ func detectReleasePostMergeConsistentVersion(files []releaseVersionFile) (string
 	return version, ""
 }
 
-func checkReleasePostMergeDiffFiles(root string, runner releasePostMergeCommandRunner, versionFiles []releaseVersionFile, fromRef string, toRef string) string {
+// checkReleasePostMergeDiffFiles reads the release commit's diff and refuses a
+// shape that is not a release. versionFilesAtCandidate is the caller's
+// attestation that every version file already reports the version being tagged
+// — guardrail 4's verdict. Under it, a self-carrying release (one whose version
+// flip landed earlier as Change content) leaves the release commit nothing to
+// diff in a version file, and demanding one asks for evidence of a fact already
+// proven; without it the demand stands. The changelog demand never relaxes.
+func checkReleasePostMergeDiffFiles(root string, runner releasePostMergeCommandRunner, versionFiles []releaseVersionFile, fromRef string, toRef string, versionFilesAtCandidate bool) string {
 	if fromRef == "" {
 		fromRef = "HEAD^"
 	}
@@ -270,7 +280,7 @@ func checkReleasePostMergeDiffFiles(root string, runner releasePostMergeCommandR
 	if !hasChangelog {
 		return "release commit is missing a CHANGELOG.md diff — verify the changelog was updated"
 	}
-	if !hasVersionFile {
+	if !hasVersionFile && !versionFilesAtCandidate {
 		return fmt.Sprintf("release commit is missing a version-file diff (expected one of: %s)", strings.Join(versionPaths, ", "))
 	}
 	return ""
