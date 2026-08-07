@@ -3,14 +3,15 @@ import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const requiredOptions = ["client", "expected-version", "receipt"];
-const safeVersionPattern = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/;
+const safeIdentityPattern = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/;
 
-export function parseRunnerArgs(argv) {
+export function parseRunnerArgs(argv, optionalOptions = []) {
+  const knownOptions = [...requiredOptions, ...optionalOptions];
   const values = {};
   for (let index = 0; index < argv.length; index += 2) {
     const option = argv[index];
     const value = argv[index + 1];
-    if (!option?.startsWith("--") || !requiredOptions.includes(option.slice(2))) throw new Error(`unknown option ${option ?? "<missing>"}`);
+    if (!option?.startsWith("--") || !knownOptions.includes(option.slice(2))) throw new Error(`unknown option ${option ?? "<missing>"}`);
     const name = option.slice(2);
     if (Object.hasOwn(values, name)) throw new Error(`duplicate option --${name}`);
     if (value === undefined || value.startsWith("--")) throw new Error(`option --${name} requires a value`);
@@ -18,12 +19,19 @@ export function parseRunnerArgs(argv) {
   }
   for (const name of requiredOptions) if (!Object.hasOwn(values, name)) throw new Error(`missing required option --${name}`);
   if (values.client === "" || values.client.startsWith("-") || /[\0\r\n]/.test(values.client)) throw new Error("--client must be a safe executable name or path");
-  if (!safeVersionPattern.test(values["expected-version"])) throw new Error("--expected-version must be an exact safe identity");
+  if (!safeIdentityPattern.test(values["expected-version"])) throw new Error("--expected-version must be an exact safe identity");
   if (values.receipt === "" || /[\0\r\n]/.test(values.receipt) || !values.receipt.endsWith(".json")) throw new Error("--receipt must be a safe JSON path");
+  const optional = {};
+  for (const name of optionalOptions) {
+    if (!Object.hasOwn(values, name)) continue;
+    if (!safeIdentityPattern.test(values[name])) throw new Error(`--${name} must be an exact safe identity`);
+    optional[name] = values[name];
+  }
   return {
     client: values.client,
     expectedVersion: values["expected-version"],
     receiptPath: resolve(values.receipt),
+    optional,
   };
 }
 

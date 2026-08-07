@@ -1,0 +1,93 @@
+{
+  "schema_version": 2,
+  "change": "receipt-vouched-execution",
+  "verified_commit": "cb9ff0b194f25050f7fe15853543f376fc898cce",
+  "verified_root_tree": "04f361f2c8cfc11d2243cf3157377ca8d756eb1d",
+  "verified_at": "2026-08-07T00:30:49Z",
+  "criteria_digest": "db72a0471897f327641d4a70063880770c5f504cd456a4dec4a783ae401d0375",
+  "scope_digest": "5c3c7af2d1bd4c541f4aa5ebb39740b10b5893217b8378d6276b4755416a5dd1",
+  "scope_sections": {
+    ".agents": "0cdcb499203f22e1faebbef89e211e4b6d4b253bc5486866ed28a50e15c2dd9e",
+    ".claude": "8dc123c00b953695edd9ccc4bb966e986bcea05607d9a125e71038a4c2ebb6be",
+    ".github": "1620d60edd726d78c03e1810a690c54669d4dbca40699b4489125696f1b28525",
+    ".gitignore": "4ec1c977b3002200cfe2c9a652cbbe1cb31e934d12a7c0029b1dd6cdc668099a",
+    ".serena": "749668b92acde130ae6a4514f59b9e08bf7095c8bdd47b6b2e5929b0729ba91f",
+    "AGENTS.md": "96a27c8deab6683f3c9ae669520ed0ed8cd2f22bc71231af8e00e205a7ea71e6",
+    "README.md": "32cecbbf375e1b689ac4702acc72a81f5ad89be495f87680524b1fcd76f5089b",
+    "cli": "cccb406db757aa65127b9657fde0c8a20c722c9ec9e3ae16269d1c0b3c21208a",
+    "cmd": "3d4f455f2eea30cecbef4ea78280e6b86b5b48033074369f476a1805d513d217",
+    "config": "ded6312d159d4346a92f3b4242678c8cd12453b6a09e0be828d5330a595bf83c",
+    "content": "acb99f53a758c4edff0f6b4a6644d2e4c60fa62fdca232ffbc0d5fe786f661d9",
+    "docs": "8973aebd7885a5e21122469bc96f9e92d3a54ddecaabbcdafe703b5cc8eded68",
+    "go.mod": "b9247690761e43ce92335c553e1f916132580b2a1e7f434c7d99742e56fb8b21",
+    "go.sum": "44a5d68a99a05f3d9aff3321f4b5645d0870cc1afd36e183fbc08c07d8550d6b",
+    "internal": "22757b2653de9ecebac41cb5b5bc2fe408ce1ea08468b0fe76f4b74deec59302",
+    "package-lock.json": "9a3e1b4d99a42b2fefa998dd5c753c1f00ee12a43d1a477b674fe04e6c779f01"
+  },
+  "exclusions": [
+    "docs/changes/*/receipts/**",
+    "docs/changes/*/reports/**",
+    "package.json",
+    ".claude-plugin/marketplace.json",
+    "CHANGELOG.md",
+    "dist/**",
+    "plugins/**",
+    "bin/**"
+  ],
+  "digest_spec": "v1",
+  "tool_version": "0.2.20",
+  "toolchain": {
+    "go": "1.26.5",
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "worktree_clean": true,
+  "target_release": "0.2.20",
+  "results": [
+    {
+      "id": "V1",
+      "command": "go test ./internal/cli -run 'TestChangeExecut|TestReleaseCohort' -count=1",
+      "exit_code": 0,
+      "output_digest": "6e6cdb09cb39e51ef00bfd7f3c44dd30a31e7d7cb4fe2b3abde4891b4da26b1e",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V2",
+      "command": "npm run test",
+      "exit_code": 0,
+      "output_digest": "2d6552cd24d24e7fe88453563302019e0273a991bbe143052161aecd17c7bc09",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V3",
+      "command": "go test ./internal/cli -run TestReleaseGateBlocksShapingOnlyMerge -count=1",
+      "exit_code": 0,
+      "output_digest": "3bbdeba5d81ff61d611670bb4ca7c8f5a2102b19a259343a7f170eba1b4fb500",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    }
+  ]
+}

@@ -421,7 +421,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 }
 
 func TestInstalledSmokeEvidenceRejectsUnknownVersionsAndHashDrift(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t))), "docs/changes/20260806-versioning-reset/research/claude-code-2.1.223-plugin-startup-smoke.json"))
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t))), "docs/changes/20260806-receipt-vouched-execution/research/claude-code-2.1.223-plugin-startup-smoke.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +483,7 @@ func TestOpenCodeInstalledSmokeEvidenceAcceptsFixture(t *testing.T) {
 }
 
 func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHashAndCleanup(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/opencode-1.18.13-isolated-request-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research/opencode-1.18.13-isolated-request-smoke.json")
 	data, err := os.ReadFile(receiptPath)
 	if err != nil {
 		t.Fatal(err)
@@ -546,7 +546,7 @@ func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHas
 }
 
 func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/claude-code-2.1.223-plugin-startup-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research/claude-code-2.1.223-plugin-startup-smoke.json")
 	raw := readSmokeReceiptRaw(t, receiptPath)
 	artifacts := raw["candidate_artifacts"].(map[string]any)
 	sourceNativePath := artifacts["native_binary_path"].(string)
@@ -568,7 +568,7 @@ func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *t
 }
 
 func TestCodexInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/codex-0.146.0-isolated-startup-smoke.json")
+	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research/codex-0.146.0-isolated-startup-smoke.json")
 	raw := readSmokeReceiptRaw(t, receiptPath)
 	artifacts := raw["candidate_artifacts"].(map[string]any)
 	sourceNativePath := artifacts["native_binary_path"].(string)
@@ -586,6 +586,33 @@ func TestCodexInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *te
 	mode.Evidence.Source = "receipt.json"
 	if err := validateCodexInstalledSmokeEvidence(root, record, mode); err == nil || !strings.Contains(err.Error(), "native binary path") {
 		t.Fatalf("validateCodexInstalledSmokeEvidence() error = %v, want platform-specific native binary path rejection", err)
+	}
+}
+
+func TestCodexInstalledSmokeInvocationAcceptsOnlyASanctionedModelSelection(t *testing.T) {
+	prompt := "Return exactly the unique marker supplied by SessionStart context, and nothing else."
+	sanctioned := []string{"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "--json", "-C", "<disposable-repo>", prompt}
+	withModel := []string{"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m", "gpt-5.3-codex-spark", "--json", "-C", "<disposable-repo>", prompt}
+	for name, args := range map[string][]string{"no-model": sanctioned, "model": withModel} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateCodexInstalledSmokeInvocation(TargetCapabilitySmokeInvocation{Command: "codex", CWD: "<disposable-repo>", Args: args}); err != nil {
+				t.Fatalf("validateCodexInstalledSmokeInvocation() error = %v, want accepted", err)
+			}
+		})
+	}
+	rejected := map[string][]string{
+		"blank-model":       {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m", "  ", "--json", "-C", "<disposable-repo>", prompt},
+		"dangling-model":    {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m"},
+		"weakened-sandbox":  {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "danger-full-access", "-m", "gpt-5.3-codex-spark", "--json", "-C", "<disposable-repo>", prompt},
+		"smuggled-flag":     {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m", "gpt-5.3-codex-spark", "--yolo", "--json", "-C", "<disposable-repo>", prompt},
+		"model-out-of-slot": {"exec", "--ephemeral", "-m", "gpt-5.3-codex-spark", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "--json", "-C", "<disposable-repo>", prompt},
+	}
+	for name, args := range rejected {
+		t.Run(name, func(t *testing.T) {
+			if err := validateCodexInstalledSmokeInvocation(TargetCapabilitySmokeInvocation{Command: "codex", CWD: "<disposable-repo>", Args: args}); err == nil {
+				t.Fatalf("validateCodexInstalledSmokeInvocation() = nil, want %s rejection", name)
+			}
+		})
 	}
 }
 
@@ -617,7 +644,7 @@ func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T)
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research", tt.receipt)
+			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research", tt.receipt)
 			raw := readSmokeReceiptRaw(t, receiptPath)
 			artifacts := raw["candidate_artifacts"].(map[string]any)
 			sourceNativePath := artifacts["native_binary_path"].(string)
@@ -676,7 +703,7 @@ func TestInstalledSmokeEvidenceRejectsSymlinkedCandidateArtifacts(t *testing.T) 
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research", tt.receipt)
+			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research", tt.receipt)
 			raw := readSmokeReceiptRaw(t, receiptPath)
 			artifacts := raw["candidate_artifacts"].(map[string]any)
 			hooksRel := artifacts["hooks_path"].(string)
@@ -741,7 +768,7 @@ func TestInstalledSmokeEvidenceRejectsSymlinkedCandidateArtifacts(t *testing.T) 
 	}
 
 	t.Run("opencode-intermediate-dir-symlink", func(t *testing.T) {
-		receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-versioning-reset/research/opencode-1.18.13-isolated-request-smoke.json")
+		receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260806-receipt-vouched-execution/research/opencode-1.18.13-isolated-request-smoke.json")
 		raw := readSmokeReceiptRaw(t, receiptPath)
 		artifacts := raw["candidate_artifacts"].(map[string]any)
 		hooksRel := artifacts["hooks_path"].(string)

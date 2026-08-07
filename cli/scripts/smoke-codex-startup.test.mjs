@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { codexVersionMatches, parseCodexHookObservation, parseCodexJSONL, shellQuote } from "./smoke-codex-startup.mjs";
+import { buildCodexArgs, codexVersionMatches, parseCodexHookObservation, parseCodexJSONL, shellQuote } from "./smoke-codex-startup.mjs";
+import { parseRunnerArgs } from "./capability-runner-utils.mjs";
 
 test("parses native SessionStart marker and exact assistant marker", () => {
   const marker = "LOAF_CODEX_STARTUP_SMOKE_ABCDEF123456";
@@ -43,6 +44,26 @@ test("shell quotes executable paths literally", () => {
 
 test("rejects malformed JSONL", () => {
   assert.throws(() => parseCodexJSONL("not-json", "marker"), SyntaxError);
+});
+
+test("omits model selection unless a model is requested", () => {
+  const args = buildCodexArgs(undefined);
+  assert.equal(args.includes("-m"), false);
+  assert.deepEqual(args.slice(0, 7), ["exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "--json"]);
+});
+
+test("selects the requested model on the command line", () => {
+  const args = buildCodexArgs("gpt-5.3-codex-spark");
+  assert.deepEqual(args.slice(6, 8), ["-m", "gpt-5.3-codex-spark"]);
+  assert.equal(args.at(-2), "<disposable-repo>");
+});
+
+test("accepts an optional model identity and rejects an unsafe one", () => {
+  const base = ["--client", "codex", "--expected-version", "9.8.7", "--receipt", "proof.json"];
+  assert.equal(parseRunnerArgs(base, ["codex-model"]).optional["codex-model"], undefined);
+  assert.equal(parseRunnerArgs([...base, "--codex-model", "gpt-5.3-codex-spark"], ["codex-model"]).optional["codex-model"], "gpt-5.3-codex-spark");
+  assert.throws(() => parseRunnerArgs([...base, "--codex-model", "-evil"], ["codex-model"]), /exact safe identity/);
+  assert.throws(() => parseRunnerArgs([...base, "--codex-model", "model"]), /unknown option/);
 });
 
 test("requires the exact Codex CLI version token", () => {
