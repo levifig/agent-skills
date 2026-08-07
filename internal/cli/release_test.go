@@ -576,6 +576,105 @@ func TestReleasePostMergeGuardrailsAbortOnGitHubAccountMismatch(t *testing.T) {
 	}
 }
 
+// A self-carrying release — version flip already landed as Change content —
+// leaves the release commit nothing to write but the changelog. Guardrail 5
+// accepts that shape only under guardrail 4's proof that the version files
+// already report the candidate.
+func TestReleasePostMergeDiffFilesRelaxesVersionDemandOnlyUnderProof(t *testing.T) {
+	cases := []struct {
+		name                    string
+		diff                    string
+		versionFilesAtCandidate bool
+		want                    string
+	}{
+		{
+			name:                    "changelog-only under proof",
+			diff:                    "CHANGELOG.md",
+			versionFilesAtCandidate: true,
+		},
+		{
+			name: "changelog-only without proof",
+			diff: "CHANGELOG.md",
+			want: "release commit is missing a version-file diff (expected one of: package.json)",
+		},
+		{
+			name:                    "version file without changelog under proof",
+			diff:                    "package.json",
+			versionFilesAtCandidate: true,
+			want:                    "release commit is missing a CHANGELOG.md diff — verify the changelog was updated",
+		},
+		{
+			name:                    "neither under proof",
+			diff:                    "README.md",
+			versionFilesAtCandidate: true,
+			want:                    "release commit is missing both CHANGELOG.md and any version file diffs — this does not look like a release commit",
+		},
+		{
+			name:                    "conventional release commit under proof",
+			diff:                    "CHANGELOG.md\npackage.json",
+			versionFilesAtCandidate: true,
+		},
+		{
+			name: "conventional release commit without proof",
+			diff: "CHANGELOG.md\npackage.json",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := seedReleasePostMergeFiles(t, "1.2.3")
+			versionFiles := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true}).VersionFiles
+			responses := releasePostMergeHappyResponses("1.2.3")
+			responses["git diff HEAD^ HEAD --name-only"] = releasePostMergeOK(tc.diff)
+			runner, _ := scriptedReleasePostMergeRunner(responses)
+
+			got := checkReleasePostMergeDiffFiles(repo, runner, versionFiles, "HEAD^", "HEAD", tc.versionFilesAtCandidate)
+			if got != tc.want {
+				t.Fatalf("abort = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestReleasePostMergeGuardrailsAcceptSelfCarryingReleaseCommit(t *testing.T) {
+	repo := seedReleasePostMergeFiles(t, "1.2.3")
+	responses := releasePostMergeHappyResponses("1.2.3")
+	responses["git diff HEAD^ HEAD --name-only"] = releasePostMergeOK("CHANGELOG.md")
+	runner, _ := scriptedReleasePostMergeRunner(responses)
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
+
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
+	if !result.ok {
+		t.Fatalf("guardrail %d failed: %s", result.guardrail, result.message)
+	}
+	if result.version != "1.2.3" {
+		t.Fatalf("result = %#v, want candidate version", result)
+	}
+}
+
+// The relaxation cannot be reached without the proof: a candidate that diverges
+// from the version files aborts at guardrail 4, before guardrail 5 reads a diff.
+func TestReleasePostMergeGuardrailsBlockChangelogOnlyWhenCandidateDiverges(t *testing.T) {
+	repo := seedReleasePostMergeFiles(t, "1.2.3")
+	snap := mustResolveReleaseSnapshot(t, repo, releaseOptions{postMerge: true})
+	snap.Candidate = "1.3.0"
+	responses := releasePostMergeHappyResponses("1.3.0")
+	responses["git diff HEAD^ HEAD --name-only"] = releasePostMergeOK("CHANGELOG.md")
+	runner, calls := scriptedReleasePostMergeRunner(responses)
+
+	result := checkReleasePostMergeGuardrails(repo, snap, runner)
+	if result.ok || result.guardrail != 4 {
+		t.Fatalf("result = %#v, want guardrail 4 abort", result)
+	}
+	if !strings.Contains(result.message, "does not match version-file version") {
+		t.Fatalf("message = %q, want tag-equals-files diagnostic", result.message)
+	}
+	for _, call := range releasePostMergeCallKeys(calls()) {
+		if strings.HasPrefix(call, "git diff HEAD^ HEAD") {
+			t.Fatalf("calls = %#v, want abort before the diff-shape read", releasePostMergeCallKeys(calls()))
+		}
+	}
+}
+
 func TestReleasePostMergeActionsHappyPath(t *testing.T) {
 	repo := seedReleasePostMergeFiles(t, "1.2.3")
 	runner, calls := scriptedReleasePostMergeRunner(releasePostMergeHappyResponses("1.2.3"))

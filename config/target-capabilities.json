@@ -20,7 +20,7 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260806-receipt-vouched-execution/research/claude-code-2.1.223-plugin-startup-smoke.json",
+              "source": "docs/changes/20260807-self-carried-release-guardrail/research/claude-code-2.1.223-plugin-startup-smoke.json",
               "level": "installed-smoke",
               "summary": "Claude Code 2.1.223 startup smoke returned SessionStart additionalContext and the isolated marker was model-visible exactly."
             }
@@ -259,7 +259,7 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260806-receipt-vouched-execution/research/codex-0.146.0-isolated-startup-smoke.json",
+              "source": "docs/changes/20260807-self-carried-release-guardrail/research/codex-0.146.0-isolated-startup-smoke.json",
               "level": "installed-smoke",
               "summary": "Codex 0.146.0 isolated CODEX_HOME startup smoke observed exact native SessionStart hookSpecificOutput and the random marker was returned by the model."
             }
@@ -340,7 +340,7 @@
             "status": "supported",
             "model_visible": true,
             "evidence": {
-              "source": "docs/changes/20260806-receipt-vouched-execution/research/opencode-1.18.13-isolated-request-smoke.json",
+              "source": "docs/changes/20260807-self-carried-release-guardrail/research/opencode-1.18.13-isolated-request-smoke.json",
               "level": "installed-smoke",
               "summary": "OpenCode 1.18.13 isolated-XDG request smoke returned the exact random continuity marker through the model-visible plugin system transformation."
             }
