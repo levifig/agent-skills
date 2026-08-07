@@ -512,9 +512,9 @@ func TestReleaseApplyResumesPreparedTreeAfterEvidenceRerecord(t *testing.T) {
 	wantPaths := []string{
 		"CHANGELOG.md",
 		"dist/opencode/plugins/hooks.ts",
-		"docs/changes/20260806-receipt-vouched-execution/research/claude-code-2.1.223-plugin-startup-smoke.json",
-		"docs/changes/20260806-receipt-vouched-execution/research/codex-0.146.0-isolated-startup-smoke.json",
-		"docs/changes/20260806-receipt-vouched-execution/research/opencode-1.18.13-isolated-request-smoke.json",
+		"docs/changes/20260807-self-carried-release-guardrail/research/claude-code-2.1.223-plugin-startup-smoke.json",
+		"docs/changes/20260807-self-carried-release-guardrail/research/codex-0.146.0-isolated-startup-smoke.json",
+		"docs/changes/20260807-self-carried-release-guardrail/research/opencode-1.18.13-isolated-request-smoke.json",
 		"package.json",
 	}
 	if len(changed) != len(wantPaths) {
@@ -643,7 +643,7 @@ func nameStatusZ(paths ...string) string {
 func TestReleasePostMergeEvidenceOnlyRepairPasses(t *testing.T) {
 	repo := seedReleasePostMergeFiles(t, "1.2.3")
 	seedReleaseCapabilityEvidence(t, repo)
-	receipt := "docs/changes/20260806-receipt-vouched-execution/research/opencode-1.18.13-isolated-request-smoke.json"
+	receipt := "docs/changes/20260807-self-carried-release-guardrail/research/opencode-1.18.13-isolated-request-smoke.json"
 	responses := releasePostMergeHappyResponses("1.2.3")
 	// Detect repair via HEAD^..HEAD receipt-only diff against the parent
 	// registry; subject + release shape come from the parent release commit;
@@ -684,7 +684,7 @@ func TestReleasePostMergeEvidenceOnlyRepairPasses(t *testing.T) {
 func TestReleasePostMergeRepairModifyingRegistryRefuses(t *testing.T) {
 	repo := seedReleasePostMergeFiles(t, "1.2.3")
 	seedReleaseCapabilityEvidence(t, repo)
-	receipt := "docs/changes/20260806-receipt-vouched-execution/research/opencode-1.18.13-isolated-request-smoke.json"
+	receipt := "docs/changes/20260807-self-carried-release-guardrail/research/opencode-1.18.13-isolated-request-smoke.json"
 	responses := releasePostMergeHappyResponses("1.2.3")
 	responses["git rev-parse --verify HEAD^"] = releasePostMergeOK("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	// Registry in the repair commit → not receipt-only; guardrail 5 evaluates HEAD.
@@ -702,7 +702,7 @@ func TestReleasePostMergeRepairModifyingRegistryRefuses(t *testing.T) {
 func TestReleasePostMergeNonEvidenceRepairStillFailsDiffShape(t *testing.T) {
 	repo := seedReleasePostMergeFiles(t, "1.2.3")
 	seedReleaseCapabilityEvidence(t, repo)
-	receipt := "docs/changes/20260806-receipt-vouched-execution/research/opencode-1.18.13-isolated-request-smoke.json"
+	receipt := "docs/changes/20260807-self-carried-release-guardrail/research/opencode-1.18.13-isolated-request-smoke.json"
 	responses := releasePostMergeHappyResponses("1.2.3")
 	responses["git rev-parse --verify HEAD^"] = releasePostMergeOK("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	// Touches a non-receipt path → not evidence-only; guardrail 5 evaluates HEAD.
@@ -738,7 +738,7 @@ func TestReleasePostMergeRepairTouchingFixtureSourceRefuses(t *testing.T) {
 func TestReleasePostMergeRepairWhitespacePaddedFilenameRefuses(t *testing.T) {
 	repo := seedReleasePostMergeFiles(t, "1.2.3")
 	seedReleaseCapabilityEvidence(t, repo)
-	receipt := "docs/changes/20260806-receipt-vouched-execution/research/opencode-1.18.13-isolated-request-smoke.json"
+	receipt := "docs/changes/20260807-self-carried-release-guardrail/research/opencode-1.18.13-isolated-request-smoke.json"
 	// Leading spaces must not alias the real receipt path after TrimSpace.
 	padded := "  " + receipt
 	responses := releasePostMergeHappyResponses("1.2.3")
