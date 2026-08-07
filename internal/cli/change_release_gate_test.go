@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1342,5 +1343,175 @@ func TestReleasePostMergeGuardrail4TagEqualsVersionFiles(t *testing.T) {
 		if strings.Contains(call, "tag -s") {
 			t.Fatalf("must not tag; calls=%#v", releasePostMergeCallKeys(calls()))
 		}
+	}
+}
+
+// --- Receipt-vouched execution: the merge strategies the flip scan cannot see ---
+
+// squashLandChange materializes the shape a squash merge leaves on main: the
+// change folder, its already-checked task packets, and the code arrive as one
+// commit, so no `- [ ]`→`- [x]` transition survives anywhere in ancestry.
+func squashLandChange(t *testing.T, repo, dir, slug string) {
+	t.Helper()
+	task := filepath.Join(dir, "tasks", "TASK-001-work.md")
+	if err := os.MkdirAll(filepath.Dir(task), 0o755); err != nil {
+		t.Fatalf("MkdirAll tasks: %v", err)
+	}
+	checked := "---\nchange: " + slug + "\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [x] Do it\n"
+	if err := os.WriteFile(task, []byte(checked), 0o644); err != nil {
+		t.Fatalf("WriteFile task: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile main.go: %v", err)
+	}
+	commitAllChangeTest(t, repo, "feat: squash-land "+slug+" (#1)")
+}
+
+func TestReleaseCohortGateAcceptsSquashMergedMemberWithFreshReceipt(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-squashed", "squashed", "2.0.0", "")
+	squashLandChange(t, repo, dir, "squashed")
+
+	folderRel := filepath.Join("docs", "changes", "20260727-squashed")
+	status, err := changeFolderExecuted(repo, filepath.ToSlash(folderRel), changeLayoutNew, nil)
+	if err != nil {
+		t.Fatalf("changeFolderExecuted: %v", err)
+	}
+	if status.FlipExecuted {
+		t.Fatalf("a squash landing leaves no flip transition to find")
+	}
+
+	// The incident: packets checked, code in the tree, nothing verified yet.
+	gateErr := releaseCohortPreflight(repo, "2.0.0", nil)
+	if gateErr == nil {
+		t.Fatal("a receipt-less squash must still block")
+	}
+	for _, want := range []string{
+		"is not executed",
+		"every task box is checked",
+		"missing receipt",
+		"a squash merge rewrites the checkbox flips",
+		"loaf change verify " + filepath.ToSlash(folderRel),
+	} {
+		if !strings.Contains(gateErr.Error(), want) {
+			t.Fatalf("refusal = %v, want it to name %q", gateErr, want)
+		}
+	}
+
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+
+	if err := releaseCohortPreflight(repo, "2.0.0", nil); err != nil {
+		t.Fatalf("squash-merged member with a fresh receipt must release: %v", err)
+	}
+
+	// The same member no longer drags a higher candidate's warning either.
+	var warnings []string
+	if err := releaseCohortPreflight(repo, "2.1.0", &warnings); err != nil {
+		t.Fatalf("higher candidate: %v", err)
+	}
+	if findingsContain(warnings, "incomplete lower cohort") {
+		t.Fatalf("warnings = %v, want no incomplete-cohort warning for a vouched member", warnings)
+	}
+}
+
+// TestReleaseGateBlocksShapingOnlyMerge replays the attack ADR-023 exists to
+// stop: a merge that creates its packets already checked and ships no work. The
+// receipt disjunct must not weaken it — checked boxes alone vouch for nothing.
+func TestReleaseGateBlocksShapingOnlyMerge(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
+	commitAllChangeTest(t, repo, "chore: seed version files")
+
+	dir := writeNewLayoutChange(t, repo, "20260727-shaping-only", "shaping-only", "2.0.0", "")
+	checked := "---\nchange: shaping-only\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [x] Do it\n"
+	if err := os.WriteFile(filepath.Join(dir, "tasks", "TASK-001-work.md"), []byte(checked), 0o644); err != nil {
+		t.Fatalf("WriteFile task: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: shape with the boxes already checked")
+
+	gateErr := releaseCohortPreflight(repo, "2.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), `change "shaping-only" targets 2.0.0 but is not executed`) {
+		t.Fatalf("shaping-only merge must still block: %v", gateErr)
+	}
+	if strings.Contains(gateErr.Error(), "loaf change verify") {
+		t.Fatalf("no code landed, so the squash remedy must not be offered: %v", gateErr)
+	}
+}
+
+func TestReleaseCohortGateBlocksSquashShapeWithStaleOrTamperedReceipt(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-stale-vouch", "stale-vouch", "2.0.0", "")
+	squashLandChange(t, repo, dir, "stale-vouch")
+	folderRel := filepath.Join("docs", "changes", "20260727-stale-vouch")
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}).Run([]string{"change", "verify", folderRel}); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: commit verify receipt")
+	if err := releaseCohortPreflight(repo, "2.0.0", nil); err != nil {
+		t.Fatalf("fresh receipt should open the gate: %v", err)
+	}
+
+	// Content landing after verification stales the receipt; the checked boxes
+	// it vouched for do not survive the drift.
+	late := filepath.Join(repo, "late.go")
+	if err := os.WriteFile(late, []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile late.go: %v", err)
+	}
+	commitAllChangeTest(t, repo, "feat: land more code after verifying")
+	gateErr := releaseCohortPreflight(repo, "2.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "is not executed") ||
+		!strings.Contains(gateErr.Error(), "content changed since verification") {
+		t.Fatalf("stale receipt must block as unexecuted: %v", gateErr)
+	}
+
+	// Restore the verified tree, then forge the digest instead of re-verifying.
+	if err := os.Remove(late); err != nil {
+		t.Fatalf("Remove late.go: %v", err)
+	}
+	commitAllChangeTest(t, repo, "revert: drop the post-verify code")
+	if err := releaseCohortPreflight(repo, "2.0.0", nil); err != nil {
+		t.Fatalf("byte-identical restore should be fresh again: %v", err)
+	}
+	receiptPath := filepath.Join(dir, "receipts", "verify.json")
+	data, err := os.ReadFile(receiptPath)
+	if err != nil {
+		t.Fatalf("ReadFile receipt: %v", err)
+	}
+	var receipt map[string]any
+	if err := json.Unmarshal(data, &receipt); err != nil {
+		t.Fatalf("Unmarshal receipt: %v", err)
+	}
+	receipt["scope_digest"] = strings.Repeat("0", 64)
+	forged, err := json.MarshalIndent(receipt, "", "  ")
+	if err != nil {
+		t.Fatalf("Marshal receipt: %v", err)
+	}
+	if err := os.WriteFile(receiptPath, append(forged, '\n'), 0o644); err != nil {
+		t.Fatalf("WriteFile forged receipt: %v", err)
+	}
+	commitAllChangeTest(t, repo, "chore: forge the receipt digest")
+	gateErr = releaseCohortPreflight(repo, "2.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "is not executed") ||
+		!strings.Contains(gateErr.Error(), "content changed since verification") {
+		t.Fatalf("a forged digest must block as unexecuted: %v", gateErr)
+	}
+}
+
+// TestChangeExecutionGradeFlipPathNeedsNoReceipt keeps the first grading path
+// independent of the second: a flip in ancestry grades executed on its own, and
+// the missing receipt is the gate's separate, differently-worded complaint.
+func TestChangeExecutionGradeFlipPathNeedsNoReceipt(t *testing.T) {
+	repo := seedCohortGateRepo(t, "2.0.0-alpha.1")
+	dir := writeNewLayoutChange(t, repo, "20260727-flip-only", "flip-only", "2.0.0", "")
+	flipExecuteChange(t, repo, dir, "flip-only")
+
+	gateErr := releaseCohortPreflight(repo, "2.0.0", nil)
+	if gateErr == nil || !strings.Contains(gateErr.Error(), "missing receipt") {
+		t.Fatalf("gate err = %v, want the missing-receipt block", gateErr)
+	}
+	if strings.Contains(gateErr.Error(), "not executed") {
+		t.Fatalf("a flip in ancestry grades executed without any receipt: %v", gateErr)
 	}
 }
