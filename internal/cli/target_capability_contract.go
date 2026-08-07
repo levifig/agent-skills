@@ -951,16 +951,28 @@ func validateCodexInstalledSmokeInvocation(invocation TargetCapabilitySmokeInvoc
 	if invocation.Command != "codex" || invocation.CWD != "<disposable-repo>" {
 		return errors.New("Codex installed-smoke invocation is incomplete or not sanitized")
 	}
-	expected := []string{"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "--json", "-C", "<disposable-repo>"}
-	if len(invocation.Args) != len(expected)+1 {
+	sandboxFlags := []string{"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only"}
+	outputFlags := []string{"--json", "-C", "<disposable-repo>"}
+	args := invocation.Args
+	// --ephemeral ignores CODEX_HOME/config.toml, so a model can only be
+	// selected on the command line. Dropping that one pair restores the pinned
+	// shape, which keeps every sandbox flag exactly as sanctioned.
+	if len(args) > len(sandboxFlags) && args[len(sandboxFlags)] == "-m" {
+		if len(args) < len(sandboxFlags)+2 || strings.TrimSpace(args[len(sandboxFlags)+1]) == "" {
+			return errors.New("Codex installed-smoke invocation model selection is incomplete")
+		}
+		args = append(args[:len(sandboxFlags):len(sandboxFlags)], args[len(sandboxFlags)+2:]...)
+	}
+	expected := append(sandboxFlags, outputFlags...)
+	if len(args) != len(expected)+1 {
 		return fmt.Errorf("Codex installed-smoke invocation has %d arguments, want exact candidate shape", len(invocation.Args))
 	}
 	for index, want := range expected {
-		if invocation.Args[index] != want {
-			return fmt.Errorf("Codex installed-smoke invocation argument %d = %q, want %q", index, invocation.Args[index], want)
+		if args[index] != want {
+			return fmt.Errorf("Codex installed-smoke invocation argument %d = %q, want %q", index, args[index], want)
 		}
 	}
-	if strings.TrimSpace(invocation.Args[len(expected)]) == "" {
+	if strings.TrimSpace(args[len(expected)]) == "" {
 		return errors.New("Codex installed-smoke invocation prompt is blank")
 	}
 	return nil

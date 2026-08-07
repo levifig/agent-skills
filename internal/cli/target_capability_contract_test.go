@@ -589,6 +589,33 @@ func TestCodexInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *te
 	}
 }
 
+func TestCodexInstalledSmokeInvocationAcceptsOnlyASanctionedModelSelection(t *testing.T) {
+	prompt := "Return exactly the unique marker supplied by SessionStart context, and nothing else."
+	sanctioned := []string{"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "--json", "-C", "<disposable-repo>", prompt}
+	withModel := []string{"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m", "gpt-5.3-codex-spark", "--json", "-C", "<disposable-repo>", prompt}
+	for name, args := range map[string][]string{"no-model": sanctioned, "model": withModel} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateCodexInstalledSmokeInvocation(TargetCapabilitySmokeInvocation{Command: "codex", CWD: "<disposable-repo>", Args: args}); err != nil {
+				t.Fatalf("validateCodexInstalledSmokeInvocation() error = %v, want accepted", err)
+			}
+		})
+	}
+	rejected := map[string][]string{
+		"blank-model":       {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m", "  ", "--json", "-C", "<disposable-repo>", prompt},
+		"dangling-model":    {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m"},
+		"weakened-sandbox":  {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "danger-full-access", "-m", "gpt-5.3-codex-spark", "--json", "-C", "<disposable-repo>", prompt},
+		"smuggled-flag":     {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m", "gpt-5.3-codex-spark", "--yolo", "--json", "-C", "<disposable-repo>", prompt},
+		"model-out-of-slot": {"exec", "--ephemeral", "-m", "gpt-5.3-codex-spark", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "--json", "-C", "<disposable-repo>", prompt},
+	}
+	for name, args := range rejected {
+		t.Run(name, func(t *testing.T) {
+			if err := validateCodexInstalledSmokeInvocation(TargetCapabilitySmokeInvocation{Command: "codex", CWD: "<disposable-repo>", Args: args}); err == nil {
+				t.Fatalf("validateCodexInstalledSmokeInvocation() = nil, want %s rejection", name)
+			}
+		})
+	}
+}
+
 func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T) {
 	tests := []struct {
 		name       string
