@@ -42,13 +42,13 @@ export LOAF_DB="$(mktemp -d)/loaf.sqlite"   # tests and smokes never touch the p
 
 ## Steps
 
-- [ ] Enumerate every schema reference to `journal_entries.id` and record the sweep list in the migration's doc comment
-- [ ] Classification: window-gated natural-key pairing with `unproven` refusal for ambiguous matches; preview reports pair counts, unproven counts, and per-window row totals
-- [ ] Apply: mandatory backup, fsynced JSON rollback manifest, June-13-copy retirement with full reference sweep, `--retire` dispositions recorded verbatim, `--realias` rejected
-- [ ] Rollback: restore rows and reference edges from the manifest; round-trip test
-- [ ] FTS: keep `journal_search` consistent (targeted deletes or a post-apply `RepairJournalSearch` rebuild — pick one, justify in the code)
-- [ ] Tests (`TestJournalDuplicate*`): fixture reproducing the two-window duplication, pairing correctness, ambiguity refusal, apply/rollback round-trip, idempotency, FTS parity after apply
-- [ ] Wire into TASK-004's ceremony sequence (alias-orphans → journal-duplicates → lifecycle-statuses)
+- [x] Enumerate every schema reference to `journal_entries.id` and record the sweep list in the migration's doc comment
+- [x] Classification: window-gated natural-key pairing with `unproven` refusal for ambiguous matches; preview reports pair counts, unproven counts, and per-window row totals
+- [x] Apply: mandatory backup, fsynced JSON rollback manifest, June-13-copy retirement with full reference sweep, `--retire` dispositions recorded verbatim, `--realias` rejected
+- [x] Rollback: restore rows and reference edges from the manifest; round-trip test
+- [x] FTS: keep `journal_search` consistent (targeted deletes or a post-apply `RepairJournalSearch` rebuild — pick one, justify in the code)
+- [x] Tests (`TestJournalDuplicate*`): fixture reproducing the two-window duplication, pairing correctness, ambiguity refusal, apply/rollback round-trip, idempotency, FTS parity after apply
+- [x] Wire into TASK-004's ceremony sequence (alias-orphans → journal-duplicates → lifecycle-statuses)
 
 ## Verification
 
