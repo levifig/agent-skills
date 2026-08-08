@@ -1,0 +1,846 @@
+{
+  "generated_against": "dist @ main 4edd80d6 (0.2.20)",
+  "summary": [
+    {
+      "target": "codex",
+      "disposition": "deleted",
+      "count": 1
+    },
+    {
+      "target": "codex",
+      "disposition": "foreign",
+      "count": 1
+    },
+    {
+      "target": "cursor",
+      "disposition": "foreign",
+      "count": 33
+    },
+    {
+      "target": "cursor",
+      "disposition": "in-sync",
+      "count": 17
+    }
+  ],
+  "rows": [
+    {
+      "target": "cursor",
+      "event": "postToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf task refresh",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Edit|Write",
+        "command": "loaf task refresh"
+      },
+      "actual": {
+        "command": "loaf task refresh",
+        "loaf-managed": true,
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "postToolUse",
+      "disposition": "in-sync",
+      "identity": "bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Edit|Write",
+        "command": "bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh"
+      },
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh",
+        "loaf-managed": true,
+        "matcher": "Edit|Write",
+        "timeout": 5
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "postToolUse",
+      "disposition": "in-sync",
+      "identity": "cat \"$HOME/.cursor/hooks/instructions/post-merge.md\"",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "cat \"$HOME/.cursor/hooks/instructions/post-merge.md\"",
+        "if": "Bash(gh pr merge:*)"
+      },
+      "actual": {
+        "command": "cat \"$HOME/.cursor/hooks/instructions/post-merge.md\"",
+        "if": "Bash(gh pr merge:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 5
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "postToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/post-tool/python-ruff-check.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/post-tool/python-ruff-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "postToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/post-tool/typescript-eslint-check.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/post-tool/typescript-eslint-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "postToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/post-tool/rails-rubocop-check.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/post-tool/rails-rubocop-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "postToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/post-tool/design-a11y-validation.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/post-tool/design-a11y-validation.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "postToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/post-tool/design-token-check.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/post-tool/design-token-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "postToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/post-tool/design-a11y-audit.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/post-tool/design-a11y-audit.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "postToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/post-tool/foundations-changelog-reminder.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/post-tool/foundations-changelog-reminder.sh",
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "postToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/post-tool/orchestration-generate-task-board.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/post-tool/orchestration-generate-task-board.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf-check:artifact-body-write",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Edit|Write|Bash",
+        "failClosed": true,
+        "command": "loaf check --hook artifact-body-write"
+      },
+      "actual": {
+        "command": "loaf check --hook artifact-body-write",
+        "failClosed": true,
+        "loaf-managed": true,
+        "matcher": "Edit|Write|Bash",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf-check:check-secrets",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Edit|Write|Bash",
+        "failClosed": true,
+        "command": "loaf check --hook check-secrets"
+      },
+      "actual": {
+        "command": "loaf check --hook check-secrets",
+        "failClosed": true,
+        "loaf-managed": true,
+        "matcher": "Edit|Write|Bash",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf-check:security-audit",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 600,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook security-audit"
+      },
+      "actual": {
+        "command": "loaf check --hook security-audit",
+        "failClosed": true,
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 600
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf-check:render-drift",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook render-drift",
+        "if": "Bash(git push:*)"
+      },
+      "actual": {
+        "command": "loaf check --hook render-drift",
+        "failClosed": true,
+        "if": "Bash(git push:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf-check:ephemeral-provenance",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook ephemeral-provenance",
+        "if": "Bash(git push:*)"
+      },
+      "actual": {
+        "command": "loaf check --hook ephemeral-provenance",
+        "failClosed": true,
+        "if": "Bash(git push:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf-check:artifact-names",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook artifact-names",
+        "if": "Bash(git commit:*)"
+      },
+      "actual": {
+        "command": "loaf check --hook artifact-names",
+        "failClosed": true,
+        "if": "Bash(git commit:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf-check:github-account",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 10,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook github-account"
+      },
+      "actual": {
+        "command": "loaf check --hook github-account",
+        "failClosed": true,
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 10
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf-check:validate-push",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 60,
+        "matcher": "Bash",
+        "command": "loaf check --hook validate-push --advisory",
+        "if": "Bash(git push:*)"
+      },
+      "actual": {
+        "command": "loaf check --hook validate-push --advisory",
+        "if": "Bash(git push:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 60
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf-check:workflow-pre-pr",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "loaf check --hook workflow-pre-pr --advisory",
+        "if": "Bash(gh pr create:*)"
+      },
+      "actual": {
+        "command": "loaf check --hook workflow-pre-pr --advisory",
+        "if": "Bash(gh pr create:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 5
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "cat \"$HOME/.cursor/hooks/instructions/pre-merge.md\"",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-merge.md\"",
+        "if": "Bash(gh pr merge:*)"
+      },
+      "actual": {
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-merge.md\"",
+        "if": "Bash(gh pr merge:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 5
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "cat \"$HOME/.cursor/hooks/instructions/pre-push.md\"",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-push.md\"",
+        "if": "Bash(git push:*)"
+      },
+      "actual": {
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-push.md\"",
+        "if": "Bash(git push:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 5
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf-check:validate-commit",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook validate-commit",
+        "if": "Bash(git commit:*)"
+      },
+      "actual": {
+        "command": "loaf check --hook validate-commit",
+        "failClosed": true,
+        "if": "Bash(git commit:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "in-sync",
+      "identity": "loaf journal log --detect-linear",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "command": "loaf journal log --detect-linear",
+        "if": "Bash(git commit:*)"
+      },
+      "actual": {
+        "command": "loaf journal log --detect-linear",
+        "if": "Bash(git commit:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/foundations-check-secrets.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-check-secrets.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/foundations-validate-changelog.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-validate-changelog.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/foundations-format-check.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-format-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/foundations-security-audit.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-security-audit.sh",
+        "matcher": "Bash",
+        "timeout": 600
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/foundations-tdd-advisory.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-tdd-advisory.sh",
+        "matcher": "Edit|Write",
+        "timeout": 5
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/foundations-validate-push.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-validate-push.sh",
+        "matcher": "Bash",
+        "timeout": 60
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "python3 $HOME/.cursor/hooks/pre-tool/orchestration-validate-commit.py",
+      "desired": null,
+      "actual": {
+        "command": "python3 $HOME/.cursor/hooks/pre-tool/orchestration-validate-commit.py",
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "python3 $HOME/.cursor/hooks/pre-tool/orchestration-detect-linear-magic.py",
+      "desired": null,
+      "actual": {
+        "command": "python3 $HOME/.cursor/hooks/pre-tool/orchestration-detect-linear-magic.py",
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/python-type-check.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-type-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/python-pytest-validation.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-pytest-validation.sh",
+        "matcher": "Edit|Write",
+        "timeout": 120
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/python-type-check-progressive.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-type-check-progressive.sh",
+        "matcher": "Edit|Write",
+        "timeout": 120
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/python-ruff-lint.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-ruff-lint.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/python-pytest-execution.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-pytest-execution.sh",
+        "matcher": "Edit|Write",
+        "timeout": 480
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/python-bandit-scan.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-bandit-scan.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/typescript-tsc-check.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/typescript-tsc-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/typescript-bundle-analysis.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/typescript-bundle-analysis.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/rails-migration-safety.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-migration-safety.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/rails-migration-safety-deep.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-migration-safety-deep.sh",
+        "matcher": "Edit|Write",
+        "timeout": 300
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/rails-test-execution.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-test-execution.sh",
+        "matcher": "Edit|Write",
+        "timeout": 480
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/rails-brakeman-scan.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-brakeman-scan.sh",
+        "matcher": "Edit|Write",
+        "timeout": 120
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/infra-validate-k8s.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-validate-k8s.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/infra-dockerfile-lint.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-dockerfile-lint.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/infra-k8s-dry-run-server.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-k8s-dry-run-server.sh",
+        "matcher": "Edit|Write",
+        "timeout": 120
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "preToolUse",
+      "disposition": "foreign",
+      "identity": "bash $HOME/.cursor/hooks/pre-tool/infra-terraform-plan-cost.sh",
+      "desired": null,
+      "actual": {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-terraform-plan-cost.sh",
+        "matcher": "Edit|Write",
+        "timeout": 300
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "sessionStart",
+      "disposition": "in-sync",
+      "identity": "loaf journal context --from-hook --cursor-hook",
+      "desired": {
+        "loaf-managed": true,
+        "timeout": 60,
+        "command": "loaf journal context --from-hook --cursor-hook"
+      },
+      "actual": {
+        "command": "loaf journal context --from-hook --cursor-hook",
+        "loaf-managed": true,
+        "timeout": 60
+      },
+      "diff": []
+    },
+    {
+      "target": "cursor",
+      "event": "sessionStart",
+      "disposition": "foreign",
+      "identity": "bash '/Users/levifig/.cursor/herdr-agent-state.sh' session",
+      "desired": null,
+      "actual": {
+        "command": "bash '/Users/levifig/.cursor/herdr-agent-state.sh' session"
+      },
+      "diff": []
+    },
+    {
+      "target": "codex",
+      "event": "SessionStart",
+      "disposition": "deleted",
+      "identity": "prompt:",
+      "desired": {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook",
+            "commandWindows": "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"
+          }
+        ]
+      },
+      "actual": null,
+      "diff": []
+    },
+    {
+      "target": "codex",
+      "event": "SessionStart",
+      "disposition": "foreign",
+      "identity": "prompt:",
+      "desired": null,
+      "actual": {
+        "hooks": [
+          {
+            "command": "bash '/Users/levifig/.config/codex/herdr-agent-state.sh' session",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      },
+      "diff": []
+    }
+  ]
+}
