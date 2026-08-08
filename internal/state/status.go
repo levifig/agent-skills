@@ -29,6 +29,7 @@ const (
 	RepairCategoryMarkdownImport         = "markdown-import"
 	RepairCategoryCompatibilityExport    = "compatibility-export"
 	RepairCategoryJournalSearch          = "journal-search"
+	RepairCategoryAliasIdentity          = "alias-identity"
 )
 
 const (
@@ -390,6 +391,16 @@ func RepairPlanForStatus(status Status) []RepairAction {
 				Path:           status.DatabasePath,
 				Safe:           false,
 			})
+		case AliasParityDivergenceCode:
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "migrate-alias-orphans",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryAliasIdentity,
+				Description:    "Preview and then apply alias-orphan migration to retire twin rows and delete dangling aliases.",
+				Command:        AliasParityRepairCommand,
+				Path:           status.DatabasePath,
+				Safe:           false,
+			})
 		case "local-markdown-not-imported":
 			actions = appendRepairAction(actions, RepairAction{
 				Code:           "migrate-current-project-markdown",
@@ -547,6 +558,14 @@ func inspectOperationalInvariants(ctx context.Context, store *Store) ([]Diagnost
 			},
 		})
 	}
+
+	aliasParity, err := InspectAliasParity(ctx, store)
+	if err != nil {
+		return nil, false, err
+	}
+	// Always emit a diagnostic: info all-clear when Ready, error when diverged.
+	// Mode stays ready either way — identity damage is detectable, not invalidating.
+	diagnostics = append(diagnostics, aliasParityDiagnostic(aliasParity))
 
 	journalProvenance, err := InspectJournalProvenanceIntegrity(ctx, store)
 	if err != nil {

@@ -3451,6 +3451,12 @@ VALUES ('task-linear-typo', ?, NULL, 'Linear typo task', 'todo', 'P2', NULL, '20
 					t.Fatalf("insert task fixture error = %v", err)
 				}
 				if _, err := db.Exec(`
+INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
+VALUES ('alias-task-linear-typo', ?, 'task', 'task-linear-typo', 'task', 'TASK-LINEAR-TYPO', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+					t.Fatalf("insert task alias fixture error = %v", err)
+				}
+				if _, err := db.Exec(`
 INSERT INTO backend_mappings (id, project_id, backend, entity_kind, entity_id, external_kind, external_id, external_url, sync_status, created_at, updated_at)
 VALUES ('backend-mapping-linear-typo', ?, 'linear', 'task', 'task-linear-typo', 'issue', 'ENG-126', 'https://linear.app/workspace/issue/ENG-126', 'lnked', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
 `, initialized.ProjectID); err != nil {
@@ -3492,6 +3498,12 @@ INSERT INTO tasks (id, project_id, spec_id, title, status, priority, body_source
 VALUES ('task-active-unmapped', ?, NULL, 'Active unmapped task', 'todo', 'P2', NULL, '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
 `, initialized.ProjectID); err != nil {
 					t.Fatalf("insert task fixture error = %v", err)
+				}
+				if _, err := db.Exec(`
+INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
+VALUES ('alias-task-active-unmapped', ?, 'task', 'task-active-unmapped', 'task', 'TASK-ACTIVE-UNMAPPED', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+					t.Fatalf("insert task alias fixture error = %v", err)
 				}
 				closeCLITestDB(t, db)
 				return workingDir, stateHome
@@ -4457,6 +4469,12 @@ INSERT INTO tasks (id, project_id, spec_id, title, status, priority, body_source
 VALUES ('task-active-unmapped', ?, NULL, 'Active unmapped task', 'todo', 'P2', NULL, '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
 `, initialized.ProjectID); err != nil {
 			t.Fatalf("insert task fixture error = %v", err)
+		}
+		if _, err := db.Exec(`
+INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
+VALUES ('alias-task-active-unmapped', ?, 'task', 'task-active-unmapped', 'task', 'TASK-ACTIVE-UNMAPPED', '2026-06-13T10:00:00Z', '2026-06-13T10:00:00Z')
+`, initialized.ProjectID); err != nil {
+			t.Fatalf("insert task alias fixture error = %v", err)
 		}
 		closeCLITestDB(t, db)
 

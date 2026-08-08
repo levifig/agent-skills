@@ -32,9 +32,9 @@ export LOAF_DB="$(mktemp -d)/loaf.sqlite"
 
 ## Steps
 
-- [ ] Add an alias-parity section to `loaf state doctor` output (human and JSON): per project, per entity table — raw count, alias-reachable count, orphan delta, dangling aliases
-- [ ] Green state is exact parity and zero dangling aliases; any delta renders as a finding that names `loaf state migrate alias-orphans` as the repair
-- [ ] Tests (`TestStateDoctorAliasParity*`): parity on a clean fixture; orphan and dangling-alias fixtures produce the finding with correct counts; diagnostic performs no writes
+- [x] Add an alias-parity section to `loaf state doctor` output (human and JSON): per project, per entity table — raw count, alias-reachable count, orphan delta, dangling aliases
+- [x] Green state is exact parity and zero dangling aliases; any delta renders as a finding that names `loaf state migrate alias-orphans` as the repair
+- [x] Tests (`TestStateDoctorAliasParity*`): parity on a clean fixture; orphan and dangling-alias fixtures produce the finding with correct counts; diagnostic performs no writes
 
 ## Verification
 
