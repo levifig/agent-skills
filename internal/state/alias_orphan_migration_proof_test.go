@@ -98,8 +98,9 @@ VALUES (?, ?, ?, 0, ?, ?, ?, ?)
 }
 
 // Sparks are minted from (path, line), never from an alias, so alias-salt
-// recomputation can never reach them. Their own source ID carries the salt.
-func TestAliasOrphanSparkEarnsDerivationProof(t *testing.T) {
+// recomputation can never reach them. Their own source ID carries the salt, and
+// the manifest labels the resulting proof for what it is: half salt, half content.
+func TestAliasOrphanSparkEarnsSourceDerivationProof(t *testing.T) {
 	ctx := context.Background()
 	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
 	legacyID := hex.EncodeToString(sha256Sum(path))
@@ -120,8 +121,50 @@ func TestAliasOrphanSparkEarnsDerivationProof(t *testing.T) {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
 	got := aliasOrphanClassification(t, preview, orphanID)
-	if got.Proof != aliasOrphanProofDerivation || got.TwinID != twinID {
-		t.Fatalf("spark classification = %#v, want derivation against %s", got, twinID)
+	if got.Proof != aliasOrphanProofSourceDerivation || got.TwinID != twinID {
+		t.Fatalf("spark classification = %#v, want source-derivation against %s", got, twinID)
+	}
+}
+
+// Two pre-rekey sparks with identical text from one file against a single alias
+// holder is a merge, not a twin proof. Both rows stay unproven and untouched.
+func TestAliasOrphanSourceSaltRefusesManyOrphansToOneHolder(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
+	legacyID := hex.EncodeToString(sha256Sum(path))
+	relPath := ".agents/sessions/20260613-merge.md"
+
+	legacySourceID := stableMigrationID("source", legacyID, relPath)
+	currentSourceID := stableMigrationID("source", projectID, relPath)
+	seedSource(t, stateHome, root, projectID, legacySourceID, relPath)
+	seedSource(t, stateHome, root, projectID, currentSourceID, relPath)
+
+	text := "dedupe the state tables one day"
+	holderID := stableMigrationID("spark", projectID, relPath, "12")
+	firstOrphan := stableMigrationID("spark", legacyID, relPath, "12")
+	secondOrphan := stableMigrationID("spark", legacyID, relPath, "31")
+	seedSpark(t, stateHome, root, projectID, holderID, text, currentSourceID, "2026-06-24T13:03:00Z", "SPARK-dedupe")
+	seedSpark(t, stateHome, root, projectID, firstOrphan, text, legacySourceID, "2026-06-13T10:00:00Z", "")
+	seedSpark(t, stateHome, root, projectID, secondOrphan, text, legacySourceID, "2026-06-13T10:05:00Z", "")
+
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
+	}
+	for _, orphanID := range []string{firstOrphan, secondOrphan} {
+		got := aliasOrphanClassification(t, preview, orphanID)
+		if got.Proof != aliasOrphanProofUnproven || got.Disposition != "" {
+			t.Fatalf("classification for %s = %#v, want unproven with no disposition", orphanID, got)
+		}
+	}
+
+	if _, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{}); err != nil {
+		t.Fatalf("ApplyAliasOrphanMigration() error = %v", err)
+	}
+	for _, orphanID := range []string{firstOrphan, secondOrphan} {
+		if !entityExists(t, stateHome, root, "sparks", orphanID) {
+			t.Fatalf("unproven spark %s was retired against a shared holder", orphanID)
+		}
 	}
 }
 
@@ -262,7 +305,7 @@ func TestAliasOrphanApplyRejectsDispositionsThatMatchNothing(t *testing.T) {
 		t.Fatalf("preview warnings = %v, want none", preview.Warnings)
 	}
 
-	_, err = ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{
+	refused, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{
 		Retire: []string{"task:doesnotexist00000001"},
 		Flags:  []string{"--retire task:doesnotexist00000001"},
 	})
@@ -272,8 +315,85 @@ func TestAliasOrphanApplyRejectsDispositionsThatMatchNothing(t *testing.T) {
 	if !strings.Contains(err.Error(), "task:doesnotexist00000001") {
 		t.Fatalf("error = %v, want it to name the unmatched id", err)
 	}
+	// The refusal happens after the backup, so the result has to name it — an
+	// error that hides the artifact it just created is an artifact nobody cleans up.
+	if refused.Applied || refused.BackupPath == "" {
+		t.Fatalf("refused result = %#v, want applied=false with the backup path", refused)
+	}
 	if !entityExists(t, stateHome, root, "tasks", "task:realorphan0000000001") {
 		t.Fatal("apply mutated rows despite the rejected disposition")
+	}
+}
+
+// An explicit --realias outranks the automatic classification: a row the
+// operator named for preservation is preserved, whatever the proof says.
+func TestAliasOrphanRealiasOutranksAProvenRetirement(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
+	legacyID := hex.EncodeToString(sha256Sum(path))
+	alias := "TASK-777"
+	twinID := stableMigrationID("task", projectID, alias)
+	orphanID := stableMigrationID("task", legacyID, alias)
+	seedTask(t, stateHome, root, projectID, twinID, "Proven Twin", "todo", "2026-06-24T13:03:00Z", true, alias)
+	seedTask(t, stateHome, root, projectID, orphanID, "Proven Twin", "todo", "2026-06-13T10:00:00Z", false, "")
+
+	applied, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{
+		Realias: map[string]string{orphanID: "TASK-KEEPME"},
+		Flags:   []string{"--realias " + orphanID + "=TASK-KEEPME"},
+	})
+	if err != nil {
+		t.Fatalf("ApplyAliasOrphanMigration() error = %v", err)
+	}
+	if !entityExists(t, stateHome, root, "tasks", orphanID) {
+		t.Fatal("--realias on a proven orphan deleted the row the operator asked to keep")
+	}
+	if !aliasPointsTo(t, stateHome, root, projectID, "task", "TASK-KEEPME", orphanID) {
+		t.Fatal("--realias did not attach the requested alias")
+	}
+	if applied.Totals.EntitiesRetired != 0 {
+		t.Fatalf("entities retired = %d, want 0", applied.Totals.EntitiesRetired)
+	}
+	for _, disposition := range applied.Dispositions {
+		if disposition.EntityID == orphanID && disposition.Action != aliasOrphanDispositionRealias {
+			t.Fatalf("manifest disposition for %s = %q, want realias", orphanID, disposition.Action)
+		}
+	}
+}
+
+// The ceremony records the exact apply command; running it again has to be a
+// no-op, not a hard error about flags the first run already carried out.
+func TestAliasOrphanSecondApplyWithTheSameDispositionsIsANoOp(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID, _ := seedAliasOrphanFixtureBase(t)
+	retireID := "task:rerunretire00000000001"
+	realiasID := "task:rerunrealias0000000001"
+	seedTask(t, stateHome, root, projectID, retireID, "Retire On Rerun", "todo", "2026-05-01T00:00:00Z", false, "")
+	seedTask(t, stateHome, root, projectID, realiasID, "Realias On Rerun", "todo", "2026-05-01T00:00:00Z", false, "")
+
+	options := AliasOrphanApplyOptions{
+		Retire:  []string{retireID},
+		Realias: map[string]string{realiasID: "TASK-RERUN"},
+		Flags:   []string{"--retire " + retireID, "--realias " + realiasID + "=TASK-RERUN"},
+	}
+	if _, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, options); err != nil {
+		t.Fatalf("first ApplyAliasOrphanMigration() error = %v", err)
+	}
+
+	second, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, options)
+	if err != nil {
+		t.Fatalf("second ApplyAliasOrphanMigration() error = %v", err)
+	}
+	if len(second.Warnings) != 0 {
+		t.Fatalf("second apply warnings = %v, want none", second.Warnings)
+	}
+	if second.Totals.EntitiesRetired != 0 || second.Totals.AliasesInserted != 0 {
+		t.Fatalf("second apply totals = %#v, want a no-op", second.Totals)
+	}
+	if entityExists(t, stateHome, root, "tasks", retireID) {
+		t.Fatal("the retired row came back")
+	}
+	if !aliasPointsTo(t, stateHome, root, projectID, "task", "TASK-RERUN", realiasID) {
+		t.Fatal("the realiased row lost its alias")
 	}
 }
 
@@ -337,7 +457,65 @@ func TestAliasOrphanRollbackRestoresUpdatedAt(t *testing.T) {
 	}
 }
 
+// The housekeeping scanner counts shaping drafts and the importer gives them
+// aliases, so they can orphan exactly like the other six tables. Detector and
+// repair have to reach them or the count-agreement receipt is not a receipt.
+func TestAliasOrphanCoversShapingDrafts(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
+	legacyID := hex.EncodeToString(sha256Sum(path))
+	alias := "shape-token-rotation"
+	twinID := stableMigrationID("shaping_draft", projectID, alias)
+	orphanID := stableMigrationID("shaping_draft", legacyID, alias)
+
+	seedShapingDraft(t, stateHome, root, projectID, twinID, "Token Rotation Shape", "2026-06-24T13:03:00Z", alias)
+	seedShapingDraft(t, stateHome, root, projectID, orphanID, "Token Rotation Shape", "2026-06-13T10:00:00Z", "")
+
+	store := openTestStore(t, root, stateHome)
+	parity, err := InspectAliasParity(ctx, store)
+	store.Close()
+	if err != nil {
+		t.Fatalf("InspectAliasParity() error = %v", err)
+	}
+	drafts := findAliasParityTable(t, parity, projectID, "shaping_drafts")
+	if drafts.RawCount != 2 || drafts.AliasReachableCount != 1 || drafts.OrphanDelta != 1 {
+		t.Fatalf("shaping_drafts parity = %#v, want raw=2 reachable=1 orphan=1", drafts)
+	}
+
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
+	}
+	if got := aliasOrphanClassification(t, preview, orphanID); got.Proof != aliasOrphanProofDerivation || got.TwinID != twinID {
+		t.Fatalf("shaping draft classification = %#v, want derivation against %s", got, twinID)
+	}
+
+	if _, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{}); err != nil {
+		t.Fatalf("ApplyAliasOrphanMigration() error = %v", err)
+	}
+	if entityExists(t, stateHome, root, "shaping_drafts", orphanID) {
+		t.Fatal("orphan shaping draft survived apply")
+	}
+	if !entityExists(t, stateHome, root, "shaping_drafts", twinID) {
+		t.Fatal("the alias-holding shaping draft was retired")
+	}
+}
+
 // --- fixture helpers ---
+
+func seedShapingDraft(t *testing.T, stateHome string, root project.Root, projectID, id, title, createdAt, alias string) {
+	t.Helper()
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO shaping_drafts (id, project_id, title, status, body_source_id, created_at, updated_at)
+VALUES (?, ?, ?, 'draft', NULL, ?, ?)
+`, id, projectID, title, createdAt, createdAt)
+	if alias != "" {
+		mustExecOpen(t, stateHome, root, `
+INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
+VALUES (?, ?, 'shaping_draft', ?, 'shaping_draft', ?, ?, ?)
+`, stableMigrationID("alias", projectID, "shaping_draft", alias), projectID, id, alias, createdAt, createdAt)
+	}
+}
 
 func aliasOrphanClassification(t *testing.T, result AliasOrphanMigrationResult, entityID string) AliasOrphanRowClassify {
 	t.Helper()

@@ -306,3 +306,78 @@ func findAliasParityDetailTable(t *testing.T, diagnostic Diagnostic, projectID, 
 	t.Fatalf("table %s for project %s not found in %#v", table, projectID, raw)
 	return nil
 }
+
+// A depends_on naming a task with no file is a forward reference: the importer
+// registers its alias so the dependency renders by name, the doctor stays green,
+// and the repair migration leaves it alone. Import → migrate → import converges.
+// When the dependency leaves the markdown the alias goes dead, and only then is
+// it collected.
+func TestImportForwardReferenceAliasSurvivesUntilItsReferenceGoes(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	writeAgentsFile(t, root.Path(), "tasks/TASK-001-example.md", `---
+id: TASK-001
+title: Example Task
+status: todo
+depends_on: [TASK-999]
+---
+# Example Task
+`)
+
+	first, err := ApplyMarkdownMigration(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	assertAliasParityReady(t, first.DatabasePath, true)
+
+	applied, err := ApplyAliasOrphanMigration(ctx, root, resolver, AliasOrphanApplyOptions{})
+	if err != nil {
+		t.Fatalf("ApplyAliasOrphanMigration() error = %v", err)
+	}
+	if applied.Totals.AliasesDeleted != 0 {
+		t.Fatalf("aliases deleted = %d, want the forward reference left alone", applied.Totals.AliasesDeleted)
+	}
+
+	if _, err := ApplyMarkdownMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("re-import error = %v", err)
+	}
+	assertAliasParityReady(t, first.DatabasePath, true)
+
+	// The reference leaves the markdown: the edge goes with it, and the alias it
+	// forward-declared becomes wreckage.
+	writeAgentsFile(t, root.Path(), "tasks/TASK-001-example.md", `---
+id: TASK-001
+title: Example Task
+status: todo
+---
+# Example Task
+`)
+	if _, err := ApplyMarkdownMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("third ApplyMarkdownMigration() error = %v", err)
+	}
+	assertAliasParityReady(t, first.DatabasePath, false)
+
+	collected, err := ApplyAliasOrphanMigration(ctx, root, resolver, AliasOrphanApplyOptions{})
+	if err != nil {
+		t.Fatalf("second ApplyAliasOrphanMigration() error = %v", err)
+	}
+	if collected.Totals.AliasesDeleted != 1 {
+		t.Fatalf("aliases deleted = %d, want the dead forward reference collected", collected.Totals.AliasesDeleted)
+	}
+	assertAliasParityReady(t, first.DatabasePath, true)
+}
+
+func assertAliasParityReady(t *testing.T, databasePath string, want bool) {
+	t.Helper()
+	store := openStoreAt(t, databasePath)
+	defer store.Close()
+	parity, err := InspectAliasParity(context.Background(), store)
+	if err != nil {
+		t.Fatalf("InspectAliasParity() error = %v", err)
+	}
+	if parity.Ready != want {
+		t.Fatalf("alias parity ready = %t, want %t (%#v)", parity.Ready, want, parity)
+	}
+}

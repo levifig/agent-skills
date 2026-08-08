@@ -18,7 +18,7 @@ If alias-orphans are classified and retired by an audited migration, the importe
 
 **In**
 
-- An alias-orphan repair migration (`loaf state migrate alias-orphans`) with the full preview → backup → manifest → apply → verify → rollback ceremony, covering all six entity tables (tasks, specs, reports, ideas, sparks, brainstorms), orphaned `sources` rows, dangling alias rows, and the reference-table sweep (events, entity_tags, bundle_members, backend_mappings, exports, relationships, artifact bodies/FTS) for every retired row.
+- An alias-orphan repair migration (`loaf state migrate alias-orphans`) with the full preview → backup → manifest → apply → verify → rollback ceremony, covering all seven aliased entity tables (tasks, specs, reports, ideas, sparks, brainstorms, shaping drafts — the seventh added in review, because the housekeeping scanner counts it and the importer aliases it), orphaned `sources` rows, dangling alias rows, and the reference-table sweep (events, entity_tags, bundle_members, backend_mappings, exports, relationships, artifact bodies/FTS) for every retired row.
 - Importer identity fix: markdown import resolves `(project_id, namespace, alias)` against the aliases table first and reuses the existing entity ID; derivation only mints IDs for genuinely new entities.
 - `loaf state doctor` gains an alias-parity diagnostic: per-project, per-table raw counts vs alias-reachable counts, plus dangling-alias detection.
 - Explicit disposition of the broken-evidence report row: archive as moot with an event recording why (evidence unrecoverable; SPEC-047 already shipped the simplification this report guarded against deepening).
@@ -89,7 +89,7 @@ Classification, per project, per entity table:
 - **Orphan** = entity row with no `aliases` row matching `(project_id, entity_kind, entity_id, namespace)`.
 - **Retire (twin proven):** recompute `stableMigrationID(kind, legacy_project_id, alias)` for every alias in the project, where `legacy_project_id = hex(sha256(current_path))`; an orphan whose ID matches proves the alias-holder is its twin. Fallback proof: exact title match against an alias-holder within the June-24 event cluster — recorded in the manifest as `content-identity`, distinctly from `derivation`.
 - **Unproven:** orphans with neither proof are listed, refused by default, and require explicit per-row operator disposition supplied as repeatable apply flags — `--retire <entity-id>` and `--realias <entity-id>=<alias>` — recorded verbatim in the manifest. No disposition, no touch.
-- **Dangling aliases** (entity row missing) are deleted.
+- **Dangling aliases** are deleted when they are dead: the entity row is missing *and* nothing in the project still names that entity. An alias the importer forward-declares for a referenced-but-unimported artifact (a `depends_on` naming a task with no file) keeps a live relationship edge and is a reference, not damage — the detector and the repair both pass over it, or import → repair → import never converges. The edge goes when the reference leaves the markdown, and the alias it left behind is then collected. (Refinement discovered in review: the production `[]` alias is dead by exactly this test.)
 - **Orphaned sources:** `sources` rows referenced only by retired rows retire with them.
 - **Named dispositions:** special-cased rows (the broken-evidence report) carry their disposition in the plan and manifest.
 
@@ -123,14 +123,14 @@ TASK-001 (migration) → TASK-002 (importer) and TASK-003 (doctor) are independe
 
 <!-- Human review (H-tier): review material, never gate input. -->
 
-- **H1.** Ceremony receipts: backup ID, preview output for all projects, apply manifest path, post-apply doctor parity green, scanner-vs-list equality for all six tables, lifecycle-statuses manifest, journal entries.
+- **H1.** Ceremony receipts: backup ID, preview output for all projects, apply manifest path, post-apply doctor parity green, scanner-vs-list equality for all seven aliased tables, lifecycle-statuses manifest, journal entries.
 - **H2.** The broken-evidence report row is archived with its moot-rationale event; the unrecoverable evidence is documented, not fabricated.
 - **H3.** The three unproven task orphans (66 orphans vs 63 title twins) received explicit manifest-recorded dispositions.
 
 ## Definition of Done
 
 - V1–V4 green in CI.
-- On the production database: for every project and every entity table, raw row counts equal alias-reachable counts, and zero dangling aliases remain (doctor parity green).
+- On the production database: for every project and every entity table, raw row counts equal alias-reachable counts, and zero dead aliases remain (doctor parity green).
 - Housekeeping scanner counts equal canonical list counts — the brief's acceptance signal.
 - The broken-evidence report is archived with recorded rationale.
 - Backup and rollback manifests retained per Recovery Tiers; ceremony receipts journaled.

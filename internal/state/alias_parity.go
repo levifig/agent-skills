@@ -164,17 +164,15 @@ WHERE e.project_id = ?
 		return result, fmt.Errorf("count orphan %s rows: %w", table.table, err)
 	}
 
+	// Dead aliases only — a forward reference the importer registered for an
+	// artifact that has no row yet is not divergence. See
+	// aliasOrphanDeadAliasPredicate: detector and repair share one definition.
 	if err := store.db.QueryRowContext(ctx, fmt.Sprintf(`
 SELECT COUNT(*)
 FROM aliases AS a
 WHERE a.project_id = ?
   AND a.entity_kind = ?
-  AND a.namespace = ?
-  AND NOT EXISTS (
-    SELECT 1 FROM %s AS e
-    WHERE e.project_id = a.project_id AND e.id = a.entity_id
-  )
-`, quotedTable), projectID, table.kind, table.namespace).Scan(&result.DanglingAliases); err != nil {
+  AND a.namespace = ?`+aliasOrphanDeadAliasPredicate, quotedTable), projectID, table.kind, table.namespace).Scan(&result.DanglingAliases); err != nil {
 		return result, fmt.Errorf("count dangling %s aliases: %w", table.table, err)
 	}
 
