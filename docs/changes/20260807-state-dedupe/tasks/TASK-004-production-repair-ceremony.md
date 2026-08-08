@@ -37,7 +37,7 @@ npm run build   # ceremony runs the binary built from this branch — no LOAF_DB
 
 - [ ] `loaf state backup` and record the backup ID (Recovery Tier: local rollback)
 - [ ] `loaf state migrate alias-orphans` (preview): read per-project classification for all projects; record counts
-- [ ] Disposition the unproven rows explicitly — expected: the 3 task orphans without title twins (`--retire` or `--realias` per row) and the 10 June-24-born spark collision victims, which hold real distinct content and get `--realias`, never `--retire`
+- [ ] Disposition the unproven rows explicitly — expected: 23 rows (rehearsed on a production copy during review). 3 task orphans without title twins (`--retire` or `--realias` per row), and 20 sparks forming 10 both-orphan message pairs: one copy per import instant, neither holding an alias, no surviving twin to bind to. Each pair takes one `--realias` (the member that lives on) and one `--retire`; which member survives is ceremony judgment — the June-24-survives convention from entity twins is the sensible default
 - [ ] Rehearse the exact apply invocation as a preview first: `loaf state migrate alias-orphans --retire … --realias …` (dispositions are accepted in preview and reflected in its totals) — the rehearsed and applied invocations must be identical
 - [ ] `loaf state migrate alias-orphans --apply --retire … --realias …`; record the manifest path; first run must exit 0 with post-apply verification passing and a truthful non-zero `orphaned_sources` figure
 - [ ] `loaf state migrate journal-duplicates` (preview): read pair counts and ambiguous matches; disposition ambiguities via `--retire`; then `--apply`; record the manifest path
