@@ -2,9 +2,12 @@ package state
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -310,6 +313,14 @@ VALUES (?, ?, 'render', 'markdown', 'out-j24.md', 'journal_entry', ?, ?, ?, ?)
 	if len(beforeJ24) == 0 {
 		t.Fatal("expected twin residue on June-24 row before apply")
 	}
+	beforeBodies := snapshotArtifactBodiesNullable(t, stateHome, root, projectID, "journal_entry", june13ID)
+	if len(beforeBodies) == 0 {
+		t.Fatal("expected artifact_bodies row for June-13 before apply")
+	}
+	beforeSearch := snapshotArtifactSearchIndex(t, stateHome, root, "needlexyz")
+	if len(beforeSearch) == 0 {
+		t.Fatal("expected artifact_search index membership for needlexyz before apply")
+	}
 
 	applied, err := ApplyJournalDuplicateMigration(ctx, root, PathResolver{StateHome: stateHome}, JournalDuplicateApplyOptions{})
 	if err != nil {
@@ -378,9 +389,84 @@ VALUES (?, ?, 'render', 'markdown', 'out-j24.md', 'journal_entry', ?, ?, ?, ?)
 	if !equalRowSnapshots(beforeJ24, afterRollbackJ24) {
 		t.Fatalf("June-24 twin residue changed after rollback\nbefore=%v\nafter=%v", beforeJ24, afterRollbackJ24)
 	}
+	afterBodies := snapshotArtifactBodiesNullable(t, stateHome, root, projectID, "journal_entry", june13ID)
+	if !equalArtifactBodySnaps(beforeBodies, afterBodies) {
+		t.Fatalf("artifact_bodies not restored byte-identically\nbefore=%v\nafter=%v", beforeBodies, afterBodies)
+	}
+	afterSearch := snapshotArtifactSearchIndex(t, stateHome, root, "needlexyz")
+	if !reflect.DeepEqual(beforeSearch, afterSearch) {
+		t.Fatalf("artifact_search index state not restored\nbefore=%v\nafter=%v", beforeSearch, afterSearch)
+	}
 	if n := artifactSearchMatchCount(t, stateHome, root, "needlexyz"); n != 1 {
 		t.Fatalf("artifact_search hits after rollback = %d, want 1", n)
 	}
+}
+
+func TestJournalDuplicateApplyToleratesMissingArtifactSearchMirror(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID := seedJournalDuplicateFixtureBase(t)
+
+	const (
+		june13ID = "je-desync-june13"
+		june24ID = "je-desync-june24"
+		bodyText = "journal desync body needledesync"
+	)
+	seedJournalDuplicateEntry(t, stateHome, root, projectID, june13ID, "decision", "auth", "chose desync rotation", "2026-06-13T01:39:42Z")
+	seedJournalDuplicateEntry(t, stateHome, root, projectID, june24ID, "decision", "auth", "chose desync rotation", "2026-06-24T13:03:15Z")
+
+	store := openTestStore(t, root, stateHome)
+	if _, err := store.UpsertArtifactBody(ctx, projectID, "journal_entry", june13ID, ArtifactBodyKindMarkdown, bodyText, ""); err != nil {
+		store.Close()
+		t.Fatalf("UpsertArtifactBody: %v", err)
+	}
+	var rowID int64
+	var proj, kind, eid, bkind, content string
+	if err := store.db.QueryRow(`
+SELECT rowid, project_id, entity_kind, entity_id, body_kind, content
+FROM artifact_bodies
+WHERE project_id = ? AND entity_kind = 'journal_entry' AND entity_id = ? AND body_kind = ?
+`, projectID, june13ID, ArtifactBodyKindMarkdown).Scan(&rowID, &proj, &kind, &eid, &bkind, &content); err != nil {
+		store.Close()
+		t.Fatalf("read artifact body for desync setup: %v", err)
+	}
+	if _, err := store.db.Exec(`
+INSERT INTO artifact_search(artifact_search, rowid, project_id, entity_kind, entity_id, body_kind, content)
+VALUES('delete', ?, ?, ?, ?, ?, ?)
+`, rowID, proj, kind, eid, bkind, content); err != nil {
+		store.Close()
+		t.Fatalf("remove artifact_search index entry: %v", err)
+	}
+	store.Close()
+
+	if n := artifactSearchMatchCount(t, stateHome, root, "needledesync"); n != 0 {
+		t.Fatalf("artifact_search hits after desync setup = %d, want 0", n)
+	}
+
+	applied, err := ApplyJournalDuplicateMigration(ctx, root, PathResolver{StateHome: stateHome}, JournalDuplicateApplyOptions{})
+	if err != nil {
+		t.Fatalf("ApplyJournalDuplicateMigration() error = %v", err)
+	}
+	if applied.Totals.EntriesRetired != 1 {
+		t.Fatalf("entries_retired = %d, want 1", applied.Totals.EntriesRetired)
+	}
+	if journalEntryExists(t, stateHome, root, june13ID) {
+		t.Fatal("June-13 pair still present after apply")
+	}
+
+	rolled, err := RollbackJournalDuplicateMigration(ctx, root, PathResolver{StateHome: stateHome}, applied.RollbackManifestPath)
+	if err != nil {
+		t.Fatalf("RollbackJournalDuplicateMigration() error = %v", err)
+	}
+	if !rolled.Applied {
+		t.Fatalf("rollback result = %#v, want applied", rolled)
+	}
+	if !journalEntryExists(t, stateHome, root, june13ID) {
+		t.Fatal("June-13 pair not restored after rollback")
+	}
+	if n := artifactSearchMatchCount(t, stateHome, root, "needledesync"); n != 1 {
+		t.Fatalf("artifact_search hits after rollback = %d, want 1", n)
+	}
+	assertArtifactSearchMatchReadable(t, stateHome, root, "needledesync", projectID, "journal_entry", june13ID)
 }
 
 // --- fixture helpers ---
@@ -600,4 +686,122 @@ func artifactSearchMatchCount(t *testing.T, stateHome string, root project.Root,
 		t.Fatalf("artifact_search MATCH %q: %v", term, err)
 	}
 	return n
+}
+
+func assertArtifactSearchMatchReadable(t *testing.T, stateHome string, root project.Root, term, projectID, entityKind, entityID string) {
+	t.Helper()
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	var gotProjectID, gotKind, gotEntityID, gotBodyKind, gotContent string
+	err := store.db.QueryRow(`
+SELECT project_id, entity_kind, entity_id, body_kind, content
+FROM artifact_search
+WHERE artifact_search MATCH ?
+`, term).Scan(&gotProjectID, &gotKind, &gotEntityID, &gotBodyKind, &gotContent)
+	if err != nil {
+		t.Fatalf("read artifact_search MATCH columns for %q: %v", term, err)
+	}
+	if gotProjectID != projectID || gotKind != entityKind || gotEntityID != entityID {
+		t.Fatalf("MATCH columns = project=%q kind=%q id=%q, want project=%q kind=%q id=%q",
+			gotProjectID, gotKind, gotEntityID, projectID, entityKind, entityID)
+	}
+	if gotBodyKind == "" || gotContent == "" {
+		t.Fatalf("MATCH body_kind/content empty: body_kind=%q content=%q", gotBodyKind, gotContent)
+	}
+}
+
+type artifactBodyNullableSnap struct {
+	ID          string
+	ProjectID   string
+	EntityKind  string
+	EntityID    string
+	BodyKind    string
+	Content     string
+	ContentHash string
+	SourceID    *string
+	CreatedAt   string
+	UpdatedAt   string
+}
+
+// Restored rows get fresh rowids (artifact_bodies keys on a TEXT id), so index
+// membership is compared by logical columns, never by rowid.
+type artifactSearchMatchSnap struct {
+	ProjectID  string
+	EntityKind string
+	EntityID   string
+	BodyKind   string
+	Content    string
+}
+
+func snapshotArtifactBodiesNullable(t *testing.T, stateHome string, root project.Root, projectID, entityKind, entityID string) []artifactBodyNullableSnap {
+	t.Helper()
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	rows, err := store.db.Query(`
+SELECT id, project_id, entity_kind, entity_id, body_kind, content, content_hash, source_id, created_at, updated_at
+FROM artifact_bodies
+WHERE project_id = ? AND entity_kind = ? AND entity_id = ?
+ORDER BY body_kind, id
+`, projectID, entityKind, entityID)
+	if err != nil {
+		t.Fatalf("query artifact_bodies: %v", err)
+	}
+	defer rows.Close()
+	var out []artifactBodyNullableSnap
+	for rows.Next() {
+		var snap artifactBodyNullableSnap
+		var sourceID sql.NullString
+		if err := rows.Scan(
+			&snap.ID, &snap.ProjectID, &snap.EntityKind, &snap.EntityID, &snap.BodyKind,
+			&snap.Content, &snap.ContentHash, &sourceID, &snap.CreatedAt, &snap.UpdatedAt,
+		); err != nil {
+			t.Fatalf("scan artifact_bodies: %v", err)
+		}
+		if sourceID.Valid {
+			s := sourceID.String
+			snap.SourceID = &s
+		}
+		out = append(out, snap)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate artifact_bodies: %v", err)
+	}
+	return out
+}
+
+func equalArtifactBodySnaps(a, b []artifactBodyNullableSnap) bool {
+	return reflect.DeepEqual(a, b)
+}
+
+func snapshotArtifactSearchIndex(t *testing.T, stateHome string, root project.Root, term string) []artifactSearchMatchSnap {
+	t.Helper()
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	rows, err := store.db.Query(`
+SELECT project_id, entity_kind, entity_id, body_kind, content
+FROM artifact_search
+WHERE artifact_search MATCH ?
+`, term)
+	if err != nil {
+		t.Fatalf("query artifact_search MATCH %q: %v", term, err)
+	}
+	defer rows.Close()
+	var snaps []artifactSearchMatchSnap
+	for rows.Next() {
+		var m artifactSearchMatchSnap
+		if err := rows.Scan(&m.ProjectID, &m.EntityKind, &m.EntityID, &m.BodyKind, &m.Content); err != nil {
+			t.Fatalf("scan artifact_search MATCH: %v", err)
+		}
+		snaps = append(snaps, m)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate artifact_search MATCH: %v", err)
+	}
+	sort.Slice(snaps, func(i, j int) bool {
+		if snaps[i].EntityID != snaps[j].EntityID {
+			return snaps[i].EntityID < snaps[j].EntityID
+		}
+		return snaps[i].BodyKind < snaps[j].BodyKind
+	})
+	return snaps
 }

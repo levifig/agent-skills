@@ -977,6 +977,8 @@ func rollbackJournalDuplicateMigrationManifest(ctx context.Context, store *Store
 			}
 		}
 		if row.Table == "artifact_bodies" {
+			// FTS mirror is derived data: re-derive from the restored body rather than
+			// capturing artifact_search bytes in the rollback manifest.
 			if err := restoreArtifactSearchTx(ctx, tx,
 				journalDuplicateRowValueString(row, "project_id"),
 				journalDuplicateRowValueString(row, "entity_kind"),
