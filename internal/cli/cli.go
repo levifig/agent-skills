@@ -1696,6 +1696,7 @@ func writeStateMigrateHelp(out io.Writer) {
 	fmt.Fprintln(out, "  lifecycle-statuses  Normalize legacy lifecycle statuses in SQLite")
 	fmt.Fprintln(out, "  journal-first       Transform the global database to the journal-first model")
 	fmt.Fprintln(out, "  deferrals           Convert historical journal deferrals into canonical deferred Intents")
+	fmt.Fprintln(out, "  alias-orphans       Retire alias-orphaned entity rows with backup and rollback")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
 	fmt.Fprintln(out, "  -h, --help    Show help")
@@ -3205,9 +3206,10 @@ var stateMigrateSources = map[string]stateMigrateSource{
 		},
 		help: writeStateMigrateSchemaHelp,
 	},
-	"markdown":     {run: Runner.runStateMigrateMarkdown, help: writeStateMigrateMarkdownHelp},
-	"storage-home": {run: Runner.runStateMigrateStorageHome, help: writeStateMigrateStorageHomeHelp},
-	"deferrals":    {run: Runner.runStateMigrateDeferrals, help: writeStateMigrateDeferralsHelp},
+	"markdown":      {run: Runner.runStateMigrateMarkdown, help: writeStateMigrateMarkdownHelp},
+	"storage-home":  {run: Runner.runStateMigrateStorageHome, help: writeStateMigrateStorageHomeHelp},
+	"deferrals":     {run: Runner.runStateMigrateDeferrals, help: writeStateMigrateDeferralsHelp},
+	"alias-orphans": {run: Runner.runStateMigrateAliasOrphans, help: writeStateMigrateAliasOrphansHelp},
 }
 
 // stateMigrateSourceHelp derives the `loaf state migrate <source> --help`
@@ -3244,6 +3246,10 @@ func writeStateMigrateStorageHomeHelp(out io.Writer) {
 
 func writeStateMigrateLifecycleStatusesHelp(out io.Writer) {
 	writeUsageHelp(out, "loaf state migrate lifecycle-statuses [--dry-run|--apply|--rollback <manifest>] [--json]", "Normalize legacy lifecycle statuses in SQLite with a backup and rollback manifest.", "--dry-run  Preview on a temporary database copy", "--apply    Normalize live SQLite statuses after creating a backup", "--rollback Restore statuses from a lifecycle-statuses rollback manifest", "--json     Output migration contract, project context, counts, backup, and rollback fields as JSON")
+}
+
+func writeStateMigrateAliasOrphansHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf state migrate alias-orphans [--dry-run|--apply|--rollback <manifest>] [--retire <entity-id>]... [--realias <entity-id>=<alias>]... [--json]", "Retire alias-orphaned entity rows across every project with a backup and rollback manifest.", "--dry-run              Preview classification on a temporary database copy (default)", "--apply                Apply the repair after creating a backup", "--rollback <manifest>  Restore deleted rows from an alias-orphans rollback manifest", "--retire <entity-id>   Force-retire an unproven orphan (repeatable)", "--realias <id>=<alias> Attach an alias to an unproven orphan (repeatable)", "--json                 Output migration contract, per-project classification, counts, backup, and rollback fields as JSON")
 }
 
 func writeStateMigrateSchemaHelp(out io.Writer) {
@@ -3407,6 +3413,50 @@ func (r Runner) runStateMigrateStorageHome(args []string, out io.Writer, runtime
 
 func (r Runner) runStateMigrateLifecycleStatuses(args []string, out io.Writer, runtime state.Runtime) error {
 	return r.runLifecycleStatusMigration(args, out, runtime, "loaf state migrate lifecycle-statuses")
+}
+
+func (r Runner) runStateMigrateAliasOrphans(args []string, out io.Writer, runtime state.Runtime) error {
+	return r.runAliasOrphanMigration(args, out, runtime, "loaf state migrate alias-orphans")
+}
+
+func (r Runner) runAliasOrphanMigration(args []string, out io.Writer, runtime state.Runtime, displayCommand string) error {
+	command := strings.TrimPrefix(displayCommand, "loaf ")
+	jsonRequested := hasFlag(args, "--json")
+	options, err := parseAliasOrphanMigrationArgs(args, command)
+	if err != nil {
+		if jsonRequested {
+			return writeJSONCommandError(out, command, err)
+		}
+		return err
+	}
+	projectRoot, err := project.ResolveRoot(runtime.RootPath())
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, command, err)
+		}
+		return err
+	}
+	resolver := state.PathResolver{StateHome: r.StateHome}
+	var result state.AliasOrphanMigrationResult
+	switch {
+	case options.rollbackPath != "":
+		result, err = state.RollbackAliasOrphanMigration(context.Background(), projectRoot, resolver, options.rollbackPath)
+	case options.apply:
+		result, err = state.ApplyAliasOrphanMigration(context.Background(), projectRoot, resolver, options.applyOptions)
+	default:
+		result, err = state.PreviewAliasOrphanMigration(context.Background(), projectRoot, resolver)
+	}
+	if err != nil {
+		if options.jsonOutput {
+			return writeJSONCommandError(out, command, err)
+		}
+		return err
+	}
+	if options.jsonOutput {
+		return writeJSON(out, result)
+	}
+	writeAliasOrphanMigrationHuman(out, displayCommand, result)
+	return nil
 }
 
 func (r Runner) runLifecycleStatusMigration(args []string, out io.Writer, runtime state.Runtime, displayCommand string) error {
@@ -3727,6 +3777,67 @@ func writeStorageHomeMigrationPlan(out io.Writer, plan state.StorageHomeMigratio
 	fmt.Fprintf(out, "applied: %t\n", plan.Applied)
 	for _, warning := range plan.Warnings {
 		fmt.Fprintf(out, "warning: %s\n", warning)
+	}
+}
+
+func writeAliasOrphanMigrationHuman(out io.Writer, displayCommand string, result state.AliasOrphanMigrationResult) {
+	switch result.Action {
+	case state.AliasOrphanMigrationActionApply:
+		fmt.Fprintf(out, "%s --apply\n", displayCommand)
+	case state.AliasOrphanMigrationActionRollback:
+		fmt.Fprintf(out, "%s --rollback\n", displayCommand)
+	default:
+		fmt.Fprintf(out, "%s --dry-run\n", displayCommand)
+	}
+	fmt.Fprintf(out, "scope: %s database, alias-orphan migration\n", result.DatabaseScope)
+	fmt.Fprintf(out, "database: %s\n", result.DatabasePath)
+	fmt.Fprintf(out, "action: %s\n", result.Action)
+	fmt.Fprintf(out, "applied: %t\n", result.Applied)
+	fmt.Fprintf(out, "copy run: %t\n", result.CopyRun)
+	if result.BackupPath != "" {
+		fmt.Fprintf(out, "backup: %s\n", result.BackupPath)
+	}
+	if result.RollbackManifestPath != "" {
+		fmt.Fprintf(out, "rollback manifest: %s\n", result.RollbackManifestPath)
+	}
+	fmt.Fprintf(out, "totals: orphans=%d retire=%d unproven=%d dangling_aliases=%d\n",
+		result.Totals.Orphans, result.Totals.Retire, result.Totals.Unproven, result.Totals.DanglingAliases)
+	for _, project := range result.Projects {
+		if project.Counts.Orphans == 0 && project.Counts.DanglingAliases == 0 && project.Counts.NamedDispositions == 0 {
+			continue
+		}
+		fmt.Fprintf(out, "project %s (%s):\n", project.ProjectID, project.ProjectName)
+		for _, table := range project.Tables {
+			if table.Orphans == 0 && table.DanglingAliases == 0 {
+				continue
+			}
+			fmt.Fprintf(out, "  %s: %d orphans — %d retire, %d unproven; dangling_aliases=%d\n",
+				table.Table, table.Orphans, table.Retire, table.Unproven, table.DanglingAliases)
+		}
+		for _, d := range project.Dispositions {
+			if d.Action == "archive-as-moot" {
+				fmt.Fprintf(out, "  dispositions: %s → archive-as-moot\n", d.EntityID)
+			}
+		}
+	}
+	for _, warning := range result.Warnings {
+		fmt.Fprintf(out, "warning: %s\n", warning)
+	}
+	switch result.Action {
+	case state.AliasOrphanMigrationActionDryRun:
+		if result.Totals.Retire > 0 || result.Totals.DanglingAliases > 0 || result.Totals.NamedDispositions > 0 {
+			fmt.Fprintln(out, "next: rerun with --apply to repair after a backup; pass --retire/--realias for unproven rows")
+		} else if result.Totals.Unproven > 0 {
+			fmt.Fprintln(out, "next: unproven orphans require explicit --retire or --realias on --apply")
+		} else {
+			fmt.Fprintln(out, "next: no alias-orphan repair is needed")
+		}
+	case state.AliasOrphanMigrationActionApply:
+		if result.RollbackManifestPath != "" {
+			fmt.Fprintln(out, "next: keep the rollback manifest until the migration is verified")
+		}
+	case state.AliasOrphanMigrationActionRollback:
+		fmt.Fprintln(out, "next: inspect state before rerunning alias-orphan migration")
 	}
 }
 
@@ -13396,6 +13507,14 @@ type lifecycleStatusMigrationOptions struct {
 	rollbackPath string
 }
 
+type aliasOrphanMigrationOptions struct {
+	jsonOutput   bool
+	apply        bool
+	dryRun       bool
+	rollbackPath string
+	applyOptions state.AliasOrphanApplyOptions
+}
+
 type relationshipOriginRepairOptions struct {
 	jsonOutput bool
 	apply      bool
@@ -13514,6 +13633,89 @@ func parseLifecycleStatusMigrationArgs(args []string, command string) (lifecycle
 		return lifecycleStatusMigrationOptions{}, fmt.Errorf("%s cannot combine --rollback with --apply or --dry-run", command)
 	}
 	return options, nil
+}
+
+func parseAliasOrphanMigrationArgs(args []string, command string) (aliasOrphanMigrationOptions, error) {
+	var options aliasOrphanMigrationOptions
+	options.applyOptions.Realias = map[string]string{}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--dry-run":
+			options.dryRun = true
+		case arg == "--json":
+			options.jsonOutput = true
+		case arg == "--apply":
+			options.apply = true
+		case arg == "--rollback":
+			if i+1 >= len(args) {
+				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s requires --rollback <manifest>", command)
+			}
+			i++
+			options.rollbackPath = args[i]
+		case arg == "--retire":
+			if i+1 >= len(args) {
+				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s requires --retire <entity-id>", command)
+			}
+			i++
+			entityID := strings.TrimSpace(args[i])
+			if entityID == "" {
+				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s --retire requires a non-empty entity id", command)
+			}
+			options.applyOptions.Retire = append(options.applyOptions.Retire, entityID)
+			options.applyOptions.Flags = append(options.applyOptions.Flags, "--retire "+entityID)
+		case strings.HasPrefix(arg, "--retire="):
+			entityID := strings.TrimSpace(strings.TrimPrefix(arg, "--retire="))
+			if entityID == "" {
+				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s --retire requires a non-empty entity id", command)
+			}
+			options.applyOptions.Retire = append(options.applyOptions.Retire, entityID)
+			options.applyOptions.Flags = append(options.applyOptions.Flags, "--retire "+entityID)
+		case arg == "--realias":
+			if i+1 >= len(args) {
+				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s requires --realias <entity-id>=<alias>", command)
+			}
+			i++
+			entityID, alias, err := parseAliasOrphanRealiasValue(args[i])
+			if err != nil {
+				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s: %w", command, err)
+			}
+			options.applyOptions.Realias[entityID] = alias
+			options.applyOptions.Flags = append(options.applyOptions.Flags, "--realias "+entityID+"="+alias)
+		case strings.HasPrefix(arg, "--realias="):
+			entityID, alias, err := parseAliasOrphanRealiasValue(strings.TrimPrefix(arg, "--realias="))
+			if err != nil {
+				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s: %w", command, err)
+			}
+			options.applyOptions.Realias[entityID] = alias
+			options.applyOptions.Flags = append(options.applyOptions.Flags, "--realias "+entityID+"="+alias)
+		default:
+			return aliasOrphanMigrationOptions{}, fmt.Errorf("unknown option %q", arg)
+		}
+	}
+	if options.apply && options.dryRun {
+		return aliasOrphanMigrationOptions{}, fmt.Errorf("%s cannot combine --apply and --dry-run", command)
+	}
+	if options.rollbackPath != "" && (options.apply || options.dryRun) {
+		return aliasOrphanMigrationOptions{}, fmt.Errorf("%s cannot combine --rollback with --apply or --dry-run", command)
+	}
+	if options.rollbackPath != "" && (len(options.applyOptions.Retire) > 0 || len(options.applyOptions.Realias) > 0) {
+		return aliasOrphanMigrationOptions{}, fmt.Errorf("%s cannot combine --rollback with --retire or --realias", command)
+	}
+	if !options.apply && (len(options.applyOptions.Retire) > 0 || len(options.applyOptions.Realias) > 0) {
+		return aliasOrphanMigrationOptions{}, fmt.Errorf("%s requires --apply with --retire or --realias", command)
+	}
+	return options, nil
+}
+
+func parseAliasOrphanRealiasValue(value string) (string, string, error) {
+	entityID, alias, ok := strings.Cut(value, "=")
+	entityID = strings.TrimSpace(entityID)
+	alias = strings.TrimSpace(alias)
+	if !ok || entityID == "" || alias == "" {
+		return "", "", fmt.Errorf("--realias requires <entity-id>=<alias>")
+	}
+	return entityID, alias, nil
 }
 
 func parseLegacyProjectDatabaseRepairArgs(args []string) (legacyProjectDatabaseRepairOptions, error) {

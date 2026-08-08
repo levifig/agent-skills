@@ -34,12 +34,12 @@ export LOAF_DB="$(mktemp -d)/loaf.sqlite"   # never touch the production DB from
 
 ## Steps
 
-- [ ] Classification: per project, per entity table (tasks, specs, reports, ideas, sparks, brainstorms), find entity rows with no matching `aliases` row; prove twins by recomputing `stableMigrationID(kind, hex(sha256(current_path)), alias)` for the project's aliases, with exact-title match in the event's timestamp cluster as a distinctly-labeled `content-identity` fallback; everything else is `unproven`
-- [ ] Preview: run classification against a temp copy; report per project and per table — retire/unproven/dangling-alias/orphaned-source counts and the named dispositions
-- [ ] Apply: mandatory `Backup` first, JSON rollback manifest beside it (every deleted row preserved), retirement sweep per row (bodies, FTS, events, entity_tags, bundle_members, backend_mappings, exports, relationships, then the row) under `PRAGMA defer_foreign_keys = ON`, dangling aliases deleted, unproven rows untouched unless an explicit per-row disposition is supplied via repeatable flags (`--retire <entity-id>`, `--realias <entity-id>=<alias>`) recorded verbatim in the manifest
-- [ ] Named disposition: the broken-evidence report (`report:7644bb23d2664de93b6cb6a5`) archives as moot — status normalized and an event recording the unrecoverable evidence and SPEC-047 rationale
-- [ ] Rollback: restore deleted rows from the manifest; verify round-trip in tests
-- [ ] Tests (`TestAliasOrphan*`): classification correctness on a fixture reproducing the June-24 shape (rekey + re-import), derivation vs content-identity vs unproven labeling, apply/rollback round-trip, idempotency (second preview classifies zero, second apply no-ops), reference-table residue fully removed, unproven rows refused without disposition
+- [x] Classification: per project, per entity table (tasks, specs, reports, ideas, sparks, brainstorms), find entity rows with no matching `aliases` row; prove twins by recomputing `stableMigrationID(kind, hex(sha256(current_path)), alias)` for the project's aliases, with exact-title match in the event's timestamp cluster as a distinctly-labeled `content-identity` fallback; everything else is `unproven`
+- [x] Preview: run classification against a temp copy; report per project and per table — retire/unproven/dangling-alias/orphaned-source counts and the named dispositions
+- [x] Apply: mandatory `Backup` first, JSON rollback manifest beside it (every deleted row preserved), retirement sweep per row (bodies, FTS, events, entity_tags, bundle_members, backend_mappings, exports, relationships, then the row) under `PRAGMA defer_foreign_keys = ON`, dangling aliases deleted, unproven rows untouched unless an explicit per-row disposition is supplied via repeatable flags (`--retire <entity-id>`, `--realias <entity-id>=<alias>`) recorded verbatim in the manifest
+- [x] Named disposition: the broken-evidence report (`report:7644bb23d2664de93b6cb6a5`) archives as moot — status normalized and an event recording the unrecoverable evidence and SPEC-047 rationale
+- [x] Rollback: restore deleted rows from the manifest; verify round-trip in tests
+- [x] Tests (`TestAliasOrphan*`): classification correctness on a fixture reproducing the June-24 shape (rekey + re-import), derivation vs content-identity vs unproven labeling, apply/rollback round-trip, idempotency (second preview classifies zero, second apply no-ops), reference-table residue fully removed, unproven rows refused without disposition
 
 ## Verification
 
