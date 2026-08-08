@@ -15,7 +15,13 @@ const AliasParityClearCode = "alias-parity-clear"
 // AliasParityRepairCommand is the preview-form migration that repairs alias orphans.
 const AliasParityRepairCommand = "loaf state migrate alias-orphans"
 
-// AliasParityTable holds raw vs alias-reachable counts for one project entity table.
+// AliasParityTable holds raw vs alias-reachable counts for one project entity
+// table. AliasReachableCount mirrors what the list surfaces return: they INNER
+// JOIN through aliases, so their cardinality is the number of alias rows that
+// resolve, not the number of entities that happen to hold one. AliasedEntities
+// counts the distinct entities behind those rows, so both directions of
+// divergence — entities with no alias, entities with more than one — are
+// visible instead of cancelling out.
 type AliasParityTable struct {
 	ProjectID           string `json:"project_id"`
 	Kind                string `json:"kind"`
@@ -23,7 +29,9 @@ type AliasParityTable struct {
 	Namespace           string `json:"namespace"`
 	RawCount            int    `json:"raw_count"`
 	AliasReachableCount int    `json:"alias_reachable_count"`
+	AliasedEntities     int    `json:"aliased_entities"`
 	OrphanDelta         int    `json:"orphan_delta"`
+	MultiAlias          int    `json:"multi_alias"`
 	DanglingAliases     int    `json:"dangling_aliases"`
 }
 
@@ -34,7 +42,9 @@ type AliasParity struct {
 	TablesChecked       int                `json:"tables_checked"`
 	RawCount            int                `json:"raw_count"`
 	AliasReachableCount int                `json:"alias_reachable_count"`
+	AliasedEntities     int                `json:"aliased_entities"`
 	OrphanDelta         int                `json:"orphan_delta"`
+	MultiAlias          int                `json:"multi_alias"`
 	DanglingAliases     int                `json:"dangling_aliases"`
 	Ready               bool               `json:"ready"`
 }
@@ -65,12 +75,14 @@ func InspectAliasParity(ctx context.Context, store *Store) (AliasParity, error) 
 			parity.Tables = append(parity.Tables, row)
 			parity.RawCount += row.RawCount
 			parity.AliasReachableCount += row.AliasReachableCount
+			parity.AliasedEntities += row.AliasedEntities
 			parity.OrphanDelta += row.OrphanDelta
+			parity.MultiAlias += row.MultiAlias
 			parity.DanglingAliases += row.DanglingAliases
 		}
 	}
 	parity.TablesChecked = len(parity.Tables)
-	if parity.OrphanDelta > 0 || parity.DanglingAliases > 0 {
+	if parity.OrphanDelta > 0 || parity.MultiAlias > 0 || parity.DanglingAliases > 0 {
 		parity.Ready = false
 	}
 	return parity, nil
@@ -112,6 +124,16 @@ func inspectAliasParityTable(ctx context.Context, store *Store, projectID string
 		return result, fmt.Errorf("count raw %s rows: %w", table.table, err)
 	}
 
+	// One row per alias — the exact cardinality `loaf <kind> list` returns.
+	if err := store.db.QueryRowContext(ctx, fmt.Sprintf(`
+SELECT COUNT(*)
+FROM aliases AS a
+JOIN %s AS e ON e.project_id = a.project_id AND e.id = a.entity_id
+WHERE a.project_id = ? AND a.entity_kind = ? AND a.namespace = ?
+`, quotedTable), projectID, table.kind, table.namespace).Scan(&result.AliasReachableCount); err != nil {
+		return result, fmt.Errorf("count alias-reachable %s rows: %w", table.table, err)
+	}
+
 	if err := store.db.QueryRowContext(ctx, fmt.Sprintf(`
 SELECT COUNT(*)
 FROM %s AS e
@@ -123,8 +145,8 @@ WHERE e.project_id = ?
       AND a.entity_id = e.id
       AND a.namespace = ?
   )
-`, quotedTable), projectID, table.kind, table.namespace).Scan(&result.AliasReachableCount); err != nil {
-		return result, fmt.Errorf("count alias-reachable %s rows: %w", table.table, err)
+`, quotedTable), projectID, table.kind, table.namespace).Scan(&result.AliasedEntities); err != nil {
+		return result, fmt.Errorf("count aliased %s entities: %w", table.table, err)
 	}
 
 	if err := store.db.QueryRowContext(ctx, fmt.Sprintf(`
@@ -156,10 +178,11 @@ WHERE a.project_id = ?
 		return result, fmt.Errorf("count dangling %s aliases: %w", table.table, err)
 	}
 
-	if result.OrphanDelta != result.RawCount-result.AliasReachableCount {
+	result.MultiAlias = result.AliasReachableCount - result.AliasedEntities
+	if result.OrphanDelta != result.RawCount-result.AliasedEntities {
 		return result, fmt.Errorf(
-			"alias parity internal inconsistency for %s project %s: orphan_delta=%d raw=%d reachable=%d",
-			table.table, projectID, result.OrphanDelta, result.RawCount, result.AliasReachableCount,
+			"alias parity internal inconsistency for %s project %s: orphan_delta=%d raw=%d aliased=%d",
+			table.table, projectID, result.OrphanDelta, result.RawCount, result.AliasedEntities,
 		)
 	}
 	return result, nil
@@ -171,7 +194,7 @@ func aliasParityDiagnostic(parity AliasParity) Diagnostic {
 	}
 	divergent := make([]map[string]any, 0)
 	for _, table := range parity.Tables {
-		if table.OrphanDelta == 0 && table.DanglingAliases == 0 {
+		if table.OrphanDelta == 0 && table.MultiAlias == 0 && table.DanglingAliases == 0 {
 			continue
 		}
 		divergent = append(divergent, map[string]any{
@@ -181,7 +204,9 @@ func aliasParityDiagnostic(parity AliasParity) Diagnostic {
 			"namespace":             table.Namespace,
 			"raw_count":             table.RawCount,
 			"alias_reachable_count": table.AliasReachableCount,
+			"aliased_entities":      table.AliasedEntities,
 			"orphan_delta":          table.OrphanDelta,
+			"multi_alias":           table.MultiAlias,
 			"dangling_aliases":      table.DanglingAliases,
 		})
 	}
@@ -191,15 +216,18 @@ func aliasParityDiagnostic(parity AliasParity) Diagnostic {
 		Category: RepairCategoryAliasIdentity,
 		Policy:   DiagnosticPolicyInvalidLocalData,
 		Message: fmt.Sprintf(
-			"alias parity diverged (orphan_delta=%d, dangling_aliases=%d); run: %s",
+			"alias parity diverged (orphan_delta=%d, multi_alias=%d, dangling_aliases=%d); run: %s",
 			parity.OrphanDelta,
+			parity.MultiAlias,
 			parity.DanglingAliases,
 			AliasParityRepairCommand,
 		),
 		Details: map[string]any{
 			"raw_count":             parity.RawCount,
 			"alias_reachable_count": parity.AliasReachableCount,
+			"aliased_entities":      parity.AliasedEntities,
 			"orphan_delta":          parity.OrphanDelta,
+			"multi_alias":           parity.MultiAlias,
 			"dangling_aliases":      parity.DanglingAliases,
 			"tables":                divergent,
 			"preview_command":       AliasParityRepairCommand,
@@ -213,7 +241,7 @@ func aliasParityClearDiagnostic(parity AliasParity) Diagnostic {
 		Code:     AliasParityClearCode,
 		Category: RepairCategoryAliasIdentity,
 		Message: fmt.Sprintf(
-			"alias parity clear: %d project(s), %d table check(s); raw_count=%d equals alias_reachable_count; dangling_aliases=0",
+			"alias parity clear: %d project(s), %d table check(s); raw_count=%d equals alias_reachable_count; multi_alias=0; dangling_aliases=0",
 			parity.ProjectsChecked,
 			parity.TablesChecked,
 			parity.RawCount,
@@ -223,7 +251,9 @@ func aliasParityClearDiagnostic(parity AliasParity) Diagnostic {
 			"tables_checked":        parity.TablesChecked,
 			"raw_count":             parity.RawCount,
 			"alias_reachable_count": parity.AliasReachableCount,
+			"aliased_entities":      parity.AliasedEntities,
 			"orphan_delta":          parity.OrphanDelta,
+			"multi_alias":           parity.MultiAlias,
 			"dangling_aliases":      parity.DanglingAliases,
 		},
 	}

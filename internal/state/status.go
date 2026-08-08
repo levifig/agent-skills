@@ -85,8 +85,22 @@ type Status struct {
 	RepairPlan           []RepairAction `json:"repair_plan"`
 }
 
+// InspectOptions selects diagnostics too expensive for the hot path. Every
+// entry here scans whole tables across every project in the global database, so
+// only surfaces that exist to diagnose — `loaf state doctor` — turn them on.
+type InspectOptions struct {
+	// AliasParity compares raw entity counts with alias-reachable counts and
+	// looks for dangling aliases, per project and per entity table.
+	AliasParity bool
+}
+
 // Inspect returns the current state-runtime status without creating files.
 func Inspect(root project.Root, resolver PathResolver) (Status, error) {
+	return InspectWithOptions(root, resolver, InspectOptions{})
+}
+
+// InspectWithOptions is Inspect with the expensive diagnostics selectable.
+func InspectWithOptions(root project.Root, resolver PathResolver, options InspectOptions) (Status, error) {
 	databasePath, err := resolver.DatabasePath(root)
 	if err != nil {
 		return Status{}, err
@@ -161,7 +175,7 @@ func Inspect(root project.Root, resolver PathResolver) (Status, error) {
 			status.Mode = ModeInvalid
 			return status, nil
 		}
-		invariantDiagnostics, invariantValid, err := inspectOperationalInvariants(context.Background(), store)
+		invariantDiagnostics, invariantValid, err := inspectOperationalInvariants(context.Background(), store, options)
 		if err != nil {
 			status.Diagnostics = append(status.Diagnostics, Diagnostic{
 				Severity: "error",
@@ -494,7 +508,7 @@ func inspectSchemaMigrations(ctx context.Context, store *Store, version int) ([]
 	return diagnostics, valid
 }
 
-func inspectOperationalInvariants(ctx context.Context, store *Store) ([]Diagnostic, bool, error) {
+func inspectOperationalInvariants(ctx context.Context, store *Store, options InspectOptions) ([]Diagnostic, bool, error) {
 	diagnostics := []Diagnostic{}
 	valid := true
 
@@ -559,13 +573,15 @@ func inspectOperationalInvariants(ctx context.Context, store *Store) ([]Diagnost
 		})
 	}
 
-	aliasParity, err := InspectAliasParity(ctx, store)
-	if err != nil {
-		return nil, false, err
+	if options.AliasParity {
+		aliasParity, err := InspectAliasParity(ctx, store)
+		if err != nil {
+			return nil, false, err
+		}
+		// Always emit a diagnostic: info all-clear when Ready, error when diverged.
+		// Mode stays ready either way — identity damage is detectable, not invalidating.
+		diagnostics = append(diagnostics, aliasParityDiagnostic(aliasParity))
 	}
-	// Always emit a diagnostic: info all-clear when Ready, error when diverged.
-	// Mode stays ready either way — identity damage is detectable, not invalidating.
-	diagnostics = append(diagnostics, aliasParityDiagnostic(aliasParity))
 
 	journalProvenance, err := InspectJournalProvenanceIntegrity(ctx, store)
 	if err != nil {

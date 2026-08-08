@@ -2375,7 +2375,7 @@ func (r Runner) runStateDoctor(args []string, out io.Writer, runtime state.Runti
 		}
 		return err
 	}
-	status, err := r.inspectState(runtime)
+	status, err := r.inspectStateWithOptions(runtime, state.InspectOptions{AliasParity: true})
 	if err != nil {
 		if jsonOutput {
 			return writeJSONCommandError(out, "state doctor", err)
@@ -3780,6 +3780,24 @@ func writeStorageHomeMigrationPlan(out io.Writer, plan state.StorageHomeMigratio
 	}
 }
 
+func aliasOrphanTitleSuffix(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return ""
+	}
+	if len(title) > 72 {
+		title = title[:69] + "..."
+	}
+	return " — " + title
+}
+
+func aliasOrphanDispositionSuffix(disposition string) string {
+	if disposition == "" {
+		return ""
+	}
+	return " [" + disposition + "]"
+}
+
 func writeAliasOrphanMigrationHuman(out io.Writer, displayCommand string, result state.AliasOrphanMigrationResult) {
 	switch result.Action {
 	case state.AliasOrphanMigrationActionApply:
@@ -3800,8 +3818,8 @@ func writeAliasOrphanMigrationHuman(out io.Writer, displayCommand string, result
 	if result.RollbackManifestPath != "" {
 		fmt.Fprintf(out, "rollback manifest: %s\n", result.RollbackManifestPath)
 	}
-	fmt.Fprintf(out, "totals: orphans=%d retire=%d unproven=%d dangling_aliases=%d\n",
-		result.Totals.Orphans, result.Totals.Retire, result.Totals.Unproven, result.Totals.DanglingAliases)
+	fmt.Fprintf(out, "totals: orphans=%d retire=%d unproven=%d dangling_aliases=%d orphaned_sources=%d\n",
+		result.Totals.Orphans, result.Totals.Retire, result.Totals.Unproven, result.Totals.DanglingAliases, result.Totals.OrphanedSources)
 	for _, project := range result.Projects {
 		if project.Counts.Orphans == 0 && project.Counts.DanglingAliases == 0 && project.Counts.NamedDispositions == 0 {
 			continue
@@ -3811,8 +3829,16 @@ func writeAliasOrphanMigrationHuman(out io.Writer, displayCommand string, result
 			if table.Orphans == 0 && table.DanglingAliases == 0 {
 				continue
 			}
-			fmt.Fprintf(out, "  %s: %d orphans — %d retire, %d unproven; dangling_aliases=%d\n",
-				table.Table, table.Orphans, table.Retire, table.Unproven, table.DanglingAliases)
+			fmt.Fprintf(out, "  %s: %d orphans — %d retire, %d unproven; dangling_aliases=%d; sources=%d orphan-referenced rows to retire\n",
+				table.Table, table.Orphans, table.Retire, table.Unproven, table.DanglingAliases, table.OrphanedSources)
+			// The operator has to name these on --apply, so they cannot live in
+			// --json alone.
+			for _, c := range table.Classifications {
+				if c.Proof != "unproven" {
+					continue
+				}
+				fmt.Fprintf(out, "    unproven: %s%s%s\n", c.EntityID, aliasOrphanTitleSuffix(c.Title), aliasOrphanDispositionSuffix(c.Disposition))
+			}
 		}
 		for _, d := range project.Dispositions {
 			if d.Action == "archive-as-moot" {
@@ -3924,11 +3950,15 @@ func writeSchemaUpgradeHuman(out io.Writer, displayCommand string, result state.
 }
 
 func (r Runner) inspectState(runtime state.Runtime) (state.Status, error) {
+	return r.inspectStateWithOptions(runtime, state.InspectOptions{})
+}
+
+func (r Runner) inspectStateWithOptions(runtime state.Runtime, options state.InspectOptions) (state.Status, error) {
 	projectRoot, err := project.ResolveRoot(runtime.RootPath())
 	if err != nil {
 		return state.Status{}, err
 	}
-	return state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
+	return state.InspectWithOptions(projectRoot, state.PathResolver{StateHome: r.StateHome}, options)
 }
 
 func (r Runner) initializeState(runtime state.Runtime) (state.Status, error) {

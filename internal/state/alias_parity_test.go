@@ -17,9 +17,9 @@ func TestStateDoctorAliasParityCleanFixture(t *testing.T) {
 	seedTask(t, stateHome, root, projectID, "task:clean0000000000000001", "Clean Task", "todo", "2026-06-24T13:03:00Z", true, "TASK-CLEAN")
 	seedSpec(t, stateHome, root, projectID, "spec:clean0000000000000001", "Clean Spec", "active", "2026-06-24T13:03:00Z", true, "SPEC-CLEAN")
 
-	status, err := Inspect(root, resolver)
+	status, err := InspectWithOptions(root, resolver, InspectOptions{AliasParity: true})
 	if err != nil {
-		t.Fatalf("Inspect() error = %v", err)
+		t.Fatalf("InspectWithOptions() error = %v", err)
 	}
 	if status.Mode != ModeSQLiteReady {
 		t.Fatalf("Mode = %q, want %q; diagnostics = %#v", status.Mode, ModeSQLiteReady, status.Diagnostics)
@@ -62,6 +62,51 @@ func TestStateDoctorAliasParityCleanFixture(t *testing.T) {
 	}
 }
 
+func TestAliasParityStaysOffTheDefaultInspectPath(t *testing.T) {
+	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
+	resolver := PathResolver{StateHome: stateHome}
+	legacyID := hex.EncodeToString(sha256Sum(path))
+	alias := "TASK-HOTPATH"
+	seedTask(t, stateHome, root, projectID, stableMigrationID("task", projectID, alias), "Hot Path Task", "todo", "2026-06-24T13:03:00Z", true, alias)
+	seedTask(t, stateHome, root, projectID, stableMigrationID("task", legacyID, alias), "Hot Path Task", "todo", "2026-06-13T10:00:00Z", false, "")
+
+	status, err := Inspect(root, resolver)
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if status.Mode != ModeSQLiteReady {
+		t.Fatalf("Mode = %q, want %q; diagnostics = %#v", status.Mode, ModeSQLiteReady, status.Diagnostics)
+	}
+	// Every list/read command calls Inspect; a global 27-project table scan does
+	// not belong on that path.
+	assertNoDiagnostic(t, status.Diagnostics, AliasParityDivergenceCode)
+	assertNoDiagnostic(t, status.Diagnostics, AliasParityClearCode)
+}
+
+func TestAliasParityCountsAliasRowsNotAliasedEntities(t *testing.T) {
+	root, stateHome, projectID, _ := seedAliasOrphanFixtureBase(t)
+	seedTask(t, stateHome, root, projectID, "task:multialias00000000001", "Two Aliases", "todo", "2026-06-24T13:03:00Z", true, "TASK-ONE")
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
+VALUES (?, ?, 'task', 'task:multialias00000000001', 'task', 'TASK-TWO', ?, ?)
+`, "alias:multialias0000000001", projectID, "2026-06-24T13:03:00Z", "2026-06-24T13:03:00Z")
+
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	parity, err := InspectAliasParity(context.Background(), store)
+	if err != nil {
+		t.Fatalf("InspectAliasParity() error = %v", err)
+	}
+	tasks := findAliasParityTable(t, parity, projectID, "tasks")
+	// `loaf task list` INNER JOINs aliases, so it returns two rows for one task.
+	if tasks.AliasReachableCount != 2 || tasks.RawCount != 1 || tasks.MultiAlias != 1 {
+		t.Fatalf("tasks parity = %#v, want raw=1 reachable=2 multi_alias=1", tasks)
+	}
+	if parity.Ready {
+		t.Fatalf("parity = %#v, want Ready=false while the scanner and list disagree", parity)
+	}
+}
+
 func TestStateDoctorAliasParityOrphanFinding(t *testing.T) {
 	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
 	resolver := PathResolver{StateHome: stateHome}
@@ -73,9 +118,9 @@ func TestStateDoctorAliasParityOrphanFinding(t *testing.T) {
 	seedTask(t, stateHome, root, projectID, twinID, "Twin Task", "todo", "2026-06-24T13:03:00Z", true, alias)
 	seedTask(t, stateHome, root, projectID, orphanID, "Twin Task", "todo", "2026-06-13T10:00:00Z", false, "")
 
-	status, err := Inspect(root, resolver)
+	status, err := InspectWithOptions(root, resolver, InspectOptions{AliasParity: true})
 	if err != nil {
-		t.Fatalf("Inspect() error = %v", err)
+		t.Fatalf("InspectWithOptions() error = %v", err)
 	}
 	if status.Mode != ModeSQLiteReady {
 		t.Fatalf("Mode = %q, want usable sqlite-ready despite alias damage; diagnostics = %#v", status.Mode, status.Diagnostics)
@@ -127,9 +172,9 @@ INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, c
 VALUES (?, ?, 'task', 'task:missing0000000000001', 'task', 'TASK-MISSING', ?, ?)
 `, danglingAliasID, projectID, "2026-06-24T13:03:00Z", "2026-06-24T13:03:00Z")
 
-	status, err := Inspect(root, resolver)
+	status, err := InspectWithOptions(root, resolver, InspectOptions{AliasParity: true})
 	if err != nil {
-		t.Fatalf("Inspect() error = %v", err)
+		t.Fatalf("InspectWithOptions() error = %v", err)
 	}
 	if status.Mode != ModeSQLiteReady {
 		t.Fatalf("Mode = %q, want usable sqlite-ready; diagnostics = %#v", status.Mode, status.Diagnostics)
@@ -197,9 +242,9 @@ VALUES (?, ?, 'task', 'task:missing-nowrite000001', 'task', 'TASK-DANGLING-NW', 
 	}
 	beforeHash := sha256.Sum256(before)
 
-	status, err := Inspect(root, resolver)
+	status, err := InspectWithOptions(root, resolver, InspectOptions{AliasParity: true})
 	if err != nil {
-		t.Fatalf("Inspect() error = %v", err)
+		t.Fatalf("InspectWithOptions() error = %v", err)
 	}
 	assertDiagnostic(t, status.Diagnostics, AliasParityDivergenceCode)
 
@@ -211,13 +256,13 @@ VALUES (?, ?, 'task', 'task:missing-nowrite000001', 'task', 'TASK-DANGLING-NW', 
 	}
 	afterHash := sha256.Sum256(after)
 	if !bytes.Equal(beforeHash[:], afterHash[:]) {
-		t.Fatalf("Inspect mutated database bytes: before=%x after=%x", beforeHash, afterHash)
+		t.Fatalf("InspectWithOptions mutated database bytes: before=%x after=%x", beforeHash, afterHash)
 	}
 	if !entityExists(t, stateHome, root, "tasks", orphanID) {
-		t.Fatal("orphan row missing after Inspect")
+		t.Fatal("orphan row missing after InspectWithOptions")
 	}
 	if !entityExists(t, stateHome, root, "aliases", "alias:dangling-nowrite000001") {
-		t.Fatal("dangling alias missing after Inspect")
+		t.Fatal("dangling alias missing after InspectWithOptions")
 	}
 }
 
