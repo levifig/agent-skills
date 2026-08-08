@@ -159,7 +159,7 @@ TASK-001 (migration) → TASK-002 (importer), TASK-003 (doctor), and TASK-005 (j
 
 <!-- Fog register: tag entries [KU]/[UK]/[UU] with a route. Tags are convention, never parsed by check. -->
 
-- [KU] Do the other 26 projects carry alias-orphans, and does each have a recomputable legacy ID (`sha256(current_path)`)? → TASK-001 preview reports per project; ceremony reads it before any apply.
+- [KU] Do the other 26 projects carry alias-orphans, and does each have a recomputable legacy ID (`sha256(current_path)`)? → **Resolved by the production-copy rehearsal:** all 191 orphans belong to this project; post-apply doctor reports alias-parity clear across all 27 projects and 189 table checks. The other projects carry no alias-orphan damage.
 - [KU] What are the three task orphans without title twins? → TASK-001 preview classifies them as unproven; operator dispositions in TASK-004, manifest-recorded.
 - [KU] Which out-of-vocabulary free-text statuses can the lifecycle-statuses migration not map? → surfaced by its preview in TASK-004; handling recorded in ceremony receipts; any needed set-status verb routes to TASK-408, not this Change.
-- [KU] How many of the ~1,020 journal twin pairs are ambiguous (multi-candidate) and need explicit `--retire` dispositions? → TASK-005 preview against a production copy; ceremony reads it before apply.
+- [KU] How many of the ~1,020 journal twin pairs are ambiguous (multi-candidate) and need explicit `--retire` dispositions? → **Resolved by the production-copy rehearsal:** 1,019 duplicated triples decompose into 866 clean 1:1 pairs (retired automatically) and 153 ambiguous groups spanning 614 rows, which refuse by default. The Definition of Done's zero-twins line is reachable only through ceremony dispositions — scriptable from the preview JSON — not a bare apply.
