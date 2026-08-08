@@ -570,7 +570,10 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 				return err
 			}
 			if slug != "" {
-				alias := "SPARK-" + slug
+				alias, err := m.freeSparkAlias(ctx, sparkID, "SPARK-"+slug)
+				if err != nil {
+					return err
+				}
 				if err := m.upsertAlias(ctx, "spark", sparkID, "spark", alias); err != nil {
 					return err
 				}
@@ -1023,6 +1026,19 @@ ON CONFLICT(project_id, namespace, alias) DO UPDATE SET
 	return nil
 }
 
+func (m markdownImporter) entityRowExists(ctx context.Context, entityKind string, entityID string) (bool, error) {
+	table := registeredEntityTable(entityKind)
+	if table == "" {
+		return false, nil
+	}
+	var found int
+	query := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM %s WHERE project_id = ? AND id = ?)`, quoteSQLiteIdentifier(table))
+	if err := m.tx.QueryRowContext(ctx, query, m.projectID, entityID).Scan(&found); err != nil {
+		return false, fmt.Errorf("look for %s row %s: %w", entityKind, entityID, err)
+	}
+	return found == 1, nil
+}
+
 func (m markdownImporter) resolveImportedEntityID(ctx context.Context, entityKind string, namespace string, alias string, derivedID string) (string, error) {
 	if strings.TrimSpace(alias) == "" {
 		return derivedID, nil
@@ -1045,34 +1061,105 @@ WHERE project_id = ? AND namespace = ? AND alias = ?
 	return entityID, nil
 }
 
-// resolveImportedSparkID reuses the entity a spark alias already names only
-// when that row is unmistakably this same journal line: same source file, same
-// text. A spark alias is the message's first word, so two unrelated sparks
-// routinely share one — resolving on the alias alone would make the second
-// import overwrite the first spark's text.
+// resolveImportedSparkID reuses an alias-reachable spark only when that row is
+// unmistakably this same journal line: same source file, same text, and exactly
+// one candidate. A spark alias is the message's first word, so two unrelated
+// sparks routinely share one — resolving on the alias alone would make the
+// second import overwrite the first spark's text — and identity is looked up by
+// content rather than by the alias so a spark that had to take a disambiguated
+// alias is still found after a rekey.
 func (m markdownImporter) resolveImportedSparkID(ctx context.Context, slug string, message string, sourceID string, derivedID string) (string, error) {
 	if slug == "" {
 		return derivedID, nil
 	}
-	var entityID string
-	err := m.tx.QueryRowContext(ctx, `
+	rows, err := m.tx.QueryContext(ctx, `
 SELECT sparks.id
-FROM aliases
-JOIN sparks ON sparks.project_id = aliases.project_id AND sparks.id = aliases.entity_id
-WHERE aliases.project_id = ?
-  AND aliases.namespace = 'spark'
-  AND aliases.entity_kind = 'spark'
-  AND aliases.alias = ?
+FROM sparks
+WHERE sparks.project_id = ?
   AND sparks.text = ?
   AND sparks.source_id IS ?
-`, m.projectID, "SPARK-"+slug, message, emptyToNil(sourceID)).Scan(&entityID)
-	if errors.Is(err, sql.ErrNoRows) {
+  AND EXISTS (
+    SELECT 1 FROM aliases
+    WHERE aliases.project_id = sparks.project_id
+      AND aliases.namespace = 'spark'
+      AND aliases.entity_kind = 'spark'
+      AND aliases.entity_id = sparks.id
+  )
+ORDER BY sparks.id
+LIMIT 2
+`, m.projectID, message, emptyToNil(sourceID))
+	if err != nil {
+		return "", fmt.Errorf("resolve spark for SPARK-%s: %w", slug, err)
+	}
+	defer rows.Close()
+	var candidates []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return "", fmt.Errorf("scan spark candidate for SPARK-%s: %w", slug, err)
+		}
+		candidates = append(candidates, id)
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("resolve spark for SPARK-%s: %w", slug, err)
+	}
+	if len(candidates) != 1 {
 		return derivedID, nil
 	}
-	if err != nil {
-		return "", fmt.Errorf("resolve spark alias SPARK-%s: %w", slug, err)
+	return candidates[0], nil
+}
+
+// freeSparkAlias returns the alias this spark may claim without evicting
+// another. Re-pointing a claimed alias is the mechanic that forked identity in
+// the first place, and a spark alias is only the message's first word, so
+// collisions between unrelated sparks are routine rather than exceptional: the
+// later spark takes a numbered alias instead of stealing the base one. An alias
+// this spark already holds, and one whose entity row is gone, are both free.
+func (m markdownImporter) freeSparkAlias(ctx context.Context, sparkID string, base string) (string, error) {
+	for attempt := 1; attempt <= 64; attempt++ {
+		candidate := base
+		if attempt > 1 {
+			candidate = fmt.Sprintf("%s-%d", base, attempt)
+		}
+		free, err := m.sparkAliasIsFree(ctx, sparkID, candidate)
+		if err != nil {
+			return "", err
+		}
+		if free {
+			return candidate, nil
+		}
 	}
-	return entityID, nil
+	candidate := base + "-" + strings.TrimPrefix(sparkID, "spark:")[:8]
+	free, err := m.sparkAliasIsFree(ctx, sparkID, candidate)
+	if err != nil {
+		return "", err
+	}
+	if !free {
+		return "", fmt.Errorf("no free spark alias for %s under %s", sparkID, base)
+	}
+	return candidate, nil
+}
+
+func (m markdownImporter) sparkAliasIsFree(ctx context.Context, sparkID string, alias string) (bool, error) {
+	var holder string
+	err := m.tx.QueryRowContext(ctx, `
+SELECT entity_id FROM aliases WHERE project_id = ? AND namespace = 'spark' AND alias = ?
+`, m.projectID, alias).Scan(&holder)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read spark alias %s: %w", alias, err)
+	}
+	if holder == sparkID {
+		return true, nil
+	}
+	// An alias whose spark no longer exists is dangling, not claimed.
+	exists, err := m.entityRowExists(ctx, "spark", holder)
+	if err != nil {
+		return false, err
+	}
+	return !exists, nil
 }
 
 func (m markdownImporter) resolveSourceID(ctx context.Context, relPath string) (string, error) {

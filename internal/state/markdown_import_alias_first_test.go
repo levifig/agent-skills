@@ -499,12 +499,67 @@ branch: feature/sparks
 		}
 	}
 
-	// Re-import is still idempotent: no third row, no rewritten text.
+	// Both rows keep an alias of their own: the second spark takes a numbered
+	// alias instead of evicting the first, so neither is orphaned.
+	if orphans := countAliasOrphans(t, store, result.ProjectID); orphans != 0 {
+		t.Fatalf("alias orphans after a first import = %d, want 0", orphans)
+	}
+	aliases := aliasEntityMap(t, store, result.ProjectID)
+	for _, want := range []string{"spark\x00SPARK-dedupe", "spark\x00SPARK-dedupe-2"} {
+		if _, ok := aliases[want]; !ok {
+			t.Fatalf("alias %q missing from %v", want, aliases)
+		}
+	}
+
+	// Re-import is still idempotent: no third row, no rewritten text, no churn
+	// in which spark holds which alias.
 	if _, err := ApplyMarkdownMigration(ctx, root, resolver); err != nil {
 		t.Fatalf("second ApplyMarkdownMigration() error = %v", err)
 	}
 	if again := sparkTexts(t, store, result.ProjectID); len(again) != 2 {
 		t.Fatalf("spark rows after re-import = %v, want 2", again)
+	}
+	if orphans := countAliasOrphans(t, store, result.ProjectID); orphans != 0 {
+		t.Fatalf("alias orphans after re-import = %d, want 0", orphans)
+	}
+	if !mapsEqual(aliases, aliasEntityMap(t, store, result.ProjectID)) {
+		t.Fatalf("alias→entity map drifted on re-import\nbefore=%v\nafter=%v", aliases, aliasEntityMap(t, store, result.ProjectID))
+	}
+}
+
+// A colliding spark that had to take a numbered alias is still found by the
+// rekey re-import: identity is looked up by content, not by the base alias.
+func TestImportAliasFirstCollidingSparksSurviveRekeyReimport(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	writeAgentsFile(t, root.Path(), "sessions/20260528-sparks.md", `---
+branch: feature/sparks
+---
+[2026-05-28 10:00] spark(scope): dedupe the state tables one day
+[2026-05-28 10:05] spark(scope): dedupe something entirely different
+`)
+
+	first, err := ApplyMarkdownMigration(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("first ApplyMarkdownMigration() error = %v", err)
+	}
+	store := openStoreAt(t, first.DatabasePath)
+	defer store.Close()
+	beforeIDs := entityIDSet(t, store, first.ProjectID)
+
+	newProjectID := "proj_sparkcollision_00000001"
+	rekeyProjectLikeLegacy(t, store, first.ProjectID, newProjectID, root.Path())
+
+	if _, err := ApplyMarkdownMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("second ApplyMarkdownMigration() error = %v", err)
+	}
+	if orphans := countAliasOrphans(t, store, newProjectID); orphans != 0 {
+		t.Fatalf("alias orphans after rekey re-import = %d, want 0", orphans)
+	}
+	if afterIDs := entityIDSet(t, store, newProjectID); !stringSetsEqual(beforeIDs, afterIDs) {
+		t.Fatalf("entity IDs changed across rekey re-import\nbefore=%v\nafter=%v", sortedKeys(beforeIDs), sortedKeys(afterIDs))
 	}
 }
 
