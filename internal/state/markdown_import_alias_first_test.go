@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -468,11 +467,98 @@ func stringSetsEqual(a, b map[string]struct{}) bool {
 	return true
 }
 
-func sortedKeys(set map[string]struct{}) []string {
-	keys := make([]string, 0, len(set))
-	for k := range set {
-		keys = append(keys, k)
+// A spark's alias is the message's first word, so unrelated sparks collide on
+// it routinely. Alias-first resolution must never let the second one overwrite
+// the first one's text.
+func TestImportAliasFirstKeepsCollidingSparksDistinct(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	writeAgentsFile(t, root.Path(), "sessions/20260528-sparks.md", `---
+branch: feature/sparks
+---
+[2026-05-28 10:00] spark(scope): dedupe the state tables one day
+[2026-05-28 10:05] spark(scope): dedupe something entirely different
+`)
+
+	result, err := ApplyMarkdownMigration(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
 	}
-	sort.Strings(keys)
-	return keys
+	store := openStoreAt(t, result.DatabasePath)
+	defer store.Close()
+
+	texts := sparkTexts(t, store, result.ProjectID)
+	if len(texts) != 2 {
+		t.Fatalf("spark rows = %v, want both journal lines preserved", texts)
+	}
+	for _, want := range []string{"dedupe the state tables one day", "dedupe something entirely different"} {
+		if _, ok := texts[want]; !ok {
+			t.Fatalf("spark %q missing from %v", want, texts)
+		}
+	}
+
+	// Re-import is still idempotent: no third row, no rewritten text.
+	if _, err := ApplyMarkdownMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("second ApplyMarkdownMigration() error = %v", err)
+	}
+	if again := sparkTexts(t, store, result.ProjectID); len(again) != 2 {
+		t.Fatalf("spark rows after re-import = %v, want 2", again)
+	}
+}
+
+// The rekey that caused the damage must not fork spark identity either.
+func TestImportAliasFirstSparkSurvivesRekeyReimport(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	writeAgentsFile(t, root.Path(), "sessions/20260528-one-spark.md", `---
+branch: feature/sparks
+---
+[2026-05-28 10:00] spark(scope): dedupe the state tables one day
+`)
+
+	first, err := ApplyMarkdownMigration(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("first ApplyMarkdownMigration() error = %v", err)
+	}
+	store := openStoreAt(t, first.DatabasePath)
+	defer store.Close()
+	beforeIDs := entityIDSet(t, store, first.ProjectID)
+
+	newProjectID := "proj_sparkrekey_000000000001"
+	rekeyProjectLikeLegacy(t, store, first.ProjectID, newProjectID, root.Path())
+
+	if _, err := ApplyMarkdownMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("second ApplyMarkdownMigration() error = %v", err)
+	}
+	if orphans := countAliasOrphans(t, store, newProjectID); orphans != 0 {
+		t.Fatalf("alias orphans after rekey re-import = %d, want 0", orphans)
+	}
+	if afterIDs := entityIDSet(t, store, newProjectID); !stringSetsEqual(beforeIDs, afterIDs) {
+		t.Fatalf("entity IDs changed across rekey re-import\nbefore=%v\nafter=%v", sortedKeys(beforeIDs), sortedKeys(afterIDs))
+	}
+}
+
+func sparkTexts(t *testing.T, store *Store, projectID string) map[string]struct{} {
+	t.Helper()
+	rows, err := store.db.QueryContext(context.Background(), `SELECT text FROM sparks WHERE project_id = ?`, projectID)
+	if err != nil {
+		t.Fatalf("list sparks: %v", err)
+	}
+	defer rows.Close()
+	texts := map[string]struct{}{}
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			t.Fatalf("scan spark: %v", err)
+		}
+		texts[text] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("list sparks: %v", err)
+	}
+	return texts
 }

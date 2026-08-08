@@ -561,15 +561,10 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 		}
 		if entryType == "spark" {
 			derivedSparkID := stableMigrationID("spark", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
-			sparkID := derivedSparkID
 			slug := sparkSlugFromMessage(message)
-			if slug != "" {
-				alias := "SPARK-" + slug
-				resolved, err := m.resolveImportedEntityID(ctx, "spark", "spark", alias, derivedSparkID)
-				if err != nil {
-					return err
-				}
-				sparkID = resolved
+			sparkID, err := m.resolveImportedSparkID(ctx, slug, message, sourceID, derivedSparkID)
+			if err != nil {
+				return err
 			}
 			if err := m.upsertSpark(ctx, sparkID, scope, message, sourceID); err != nil {
 				return err
@@ -1046,6 +1041,36 @@ WHERE project_id = ? AND namespace = ? AND alias = ?
 	}
 	if kind != entityKind {
 		return derivedID, nil
+	}
+	return entityID, nil
+}
+
+// resolveImportedSparkID reuses the entity a spark alias already names only
+// when that row is unmistakably this same journal line: same source file, same
+// text. A spark alias is the message's first word, so two unrelated sparks
+// routinely share one — resolving on the alias alone would make the second
+// import overwrite the first spark's text.
+func (m markdownImporter) resolveImportedSparkID(ctx context.Context, slug string, message string, sourceID string, derivedID string) (string, error) {
+	if slug == "" {
+		return derivedID, nil
+	}
+	var entityID string
+	err := m.tx.QueryRowContext(ctx, `
+SELECT sparks.id
+FROM aliases
+JOIN sparks ON sparks.project_id = aliases.project_id AND sparks.id = aliases.entity_id
+WHERE aliases.project_id = ?
+  AND aliases.namespace = 'spark'
+  AND aliases.entity_kind = 'spark'
+  AND aliases.alias = ?
+  AND sparks.text = ?
+  AND sparks.source_id IS ?
+`, m.projectID, "SPARK-"+slug, message, emptyToNil(sourceID)).Scan(&entityID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return derivedID, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve spark alias SPARK-%s: %w", slug, err)
 	}
 	return entityID, nil
 }
