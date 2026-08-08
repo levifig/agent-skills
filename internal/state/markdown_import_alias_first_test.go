@@ -527,6 +527,53 @@ branch: feature/sparks
 	}
 }
 
+// A journal file may carry the same spark line twice. Those are two intake
+// items: identity resolution must not match the second onto the row the first
+// line just minted.
+func TestImportAliasFirstKeepsRepeatedSparkLinesDistinct(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	writeAgentsFile(t, root.Path(), "sessions/20260613-repeats.md", `---
+branch: feature/sparks
+---
+[2026-06-13 10:00] spark(x): widget idea worth keeping
+[2026-06-13 10:10] spark(x): widget idea worth keeping
+`)
+
+	result, err := ApplyMarkdownMigration(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("ApplyMarkdownMigration() error = %v", err)
+	}
+	store := openStoreAt(t, result.DatabasePath)
+	defer store.Close()
+
+	if got := sparkRowCount(t, store, result.ProjectID); got != 2 {
+		t.Fatalf("spark rows = %d, want one per journal line", got)
+	}
+	if orphans := countAliasOrphans(t, store, result.ProjectID); orphans != 0 {
+		t.Fatalf("alias orphans after a first import = %d, want 0", orphans)
+	}
+	aliases := aliasEntityMap(t, store, result.ProjectID)
+	for _, want := range []string{"spark\x00SPARK-widget", "spark\x00SPARK-widget-2"} {
+		if _, ok := aliases[want]; !ok {
+			t.Fatalf("alias %q missing from %v", want, aliases)
+		}
+	}
+
+	// Re-import adds nothing and reshuffles nothing.
+	if _, err := ApplyMarkdownMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("second ApplyMarkdownMigration() error = %v", err)
+	}
+	if got := sparkRowCount(t, store, result.ProjectID); got != 2 {
+		t.Fatalf("spark rows after re-import = %d, want 2", got)
+	}
+	if !mapsEqual(aliases, aliasEntityMap(t, store, result.ProjectID)) {
+		t.Fatalf("alias→entity map drifted on re-import\nbefore=%v\nafter=%v", aliases, aliasEntityMap(t, store, result.ProjectID))
+	}
+}
+
 // A colliding spark that had to take a numbered alias is still found by the
 // rekey re-import: identity is looked up by content, not by the base alias.
 func TestImportAliasFirstCollidingSparksSurviveRekeyReimport(t *testing.T) {
@@ -595,6 +642,15 @@ branch: feature/sparks
 	if afterIDs := entityIDSet(t, store, newProjectID); !stringSetsEqual(beforeIDs, afterIDs) {
 		t.Fatalf("entity IDs changed across rekey re-import\nbefore=%v\nafter=%v", sortedKeys(beforeIDs), sortedKeys(afterIDs))
 	}
+}
+
+func sparkRowCount(t *testing.T, store *Store, projectID string) int {
+	t.Helper()
+	var count int
+	if err := store.db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sparks WHERE project_id = ?`, projectID).Scan(&count); err != nil {
+		t.Fatalf("count sparks: %v", err)
+	}
+	return count
 }
 
 func sparkTexts(t *testing.T, store *Store, projectID string) map[string]struct{} {

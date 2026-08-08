@@ -70,6 +70,12 @@ type markdownImporter struct {
 	taskIndex    map[string]taskIndexEntry
 	specIndex    map[string]specIndexEntry
 	sparkAliases map[string]string
+	// writtenSparks holds the spark IDs this import pass already wrote, keyed by
+	// the (text, source) pair identity resolution matches on. A journal file may
+	// carry the same spark line twice; without this, the second line resolves
+	// onto the row the first line just minted and one of the two intake items
+	// disappears.
+	writtenSparks map[string][]string
 	// report accumulates in-transaction provenance/status outcomes.
 	// Shared pointer so value-receiver methods can mutate the same report.
 	report *ImportReport
@@ -157,14 +163,15 @@ func (s *Store) importMarkdown(ctx context.Context, root project.Root) (ImportRe
 	defer tx.Rollback()
 
 	importer := markdownImporter{
-		tx:           tx,
-		root:         root,
-		projectID:    projectID,
-		now:          time.Now().UTC().Format(time.RFC3339),
-		taskIndex:    loadTaskIndex(root.Path()),
-		specIndex:    loadSpecIndex(root.Path()),
-		sparkAliases: map[string]string{},
-		report:       &report,
+		tx:            tx,
+		root:          root,
+		projectID:     projectID,
+		now:           time.Now().UTC().Format(time.RFC3339),
+		taskIndex:     loadTaskIndex(root.Path()),
+		specIndex:     loadSpecIndex(root.Path()),
+		sparkAliases:  map[string]string{},
+		writtenSparks: map[string][]string{},
+		report:        &report,
 	}
 	if err := importer.importAll(ctx); err != nil {
 		return emptyImportReport(), err
@@ -569,6 +576,8 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 			if err := m.upsertSpark(ctx, sparkID, scope, message, sourceID); err != nil {
 				return err
 			}
+			key := sparkIdentityKey(message, sourceID)
+			m.writtenSparks[key] = append(m.writtenSparks[key], sparkID)
 			if slug != "" {
 				alias, err := m.freeSparkAlias(ctx, sparkID, "SPARK-"+slug)
 				if err != nil {
@@ -1061,18 +1070,28 @@ WHERE project_id = ? AND namespace = ? AND alias = ?
 	return entityID, nil
 }
 
+// sparkIdentityKey is the pair spark identity resolution matches on: the exact
+// text of the journal line and the file it came from.
+func sparkIdentityKey(message string, sourceID string) string {
+	return message + "\x00" + sourceID
+}
+
 // resolveImportedSparkID reuses an alias-reachable spark only when that row is
-// unmistakably this same journal line: same source file, same text, and exactly
-// one candidate. A spark alias is the message's first word, so two unrelated
-// sparks routinely share one — resolving on the alias alone would make the
-// second import overwrite the first spark's text — and identity is looked up by
-// content rather than by the alias so a spark that had to take a disambiguated
-// alias is still found after a rekey.
+// unmistakably this same journal line: same source file, same text, exactly one
+// candidate, and not a row this same import pass already wrote. A spark alias is
+// the message's first word, so two unrelated sparks routinely share one —
+// resolving on the alias alone would make the second import overwrite the first
+// spark's text — and identity is looked up by content rather than by the alias
+// so a spark that had to take a disambiguated alias is still found after a
+// rekey. Rows written earlier in this pass are excluded because a file may
+// repeat a spark line verbatim: those are two intake items, and matching the
+// second onto the first would silently drop one. A rekey re-import is unaffected
+// — the rows it has to find were written by an earlier run, not this one.
 func (m markdownImporter) resolveImportedSparkID(ctx context.Context, slug string, message string, sourceID string, derivedID string) (string, error) {
 	if slug == "" {
 		return derivedID, nil
 	}
-	rows, err := m.tx.QueryContext(ctx, `
+	query := `
 SELECT sparks.id
 FROM sparks
 WHERE sparks.project_id = ?
@@ -1084,10 +1103,15 @@ WHERE sparks.project_id = ?
       AND aliases.namespace = 'spark'
       AND aliases.entity_kind = 'spark'
       AND aliases.entity_id = sparks.id
-  )
-ORDER BY sparks.id
-LIMIT 2
-`, m.projectID, message, emptyToNil(sourceID))
+  )`
+	args := []any{m.projectID, message, emptyToNil(sourceID)}
+	if written := m.writtenSparks[sparkIdentityKey(message, sourceID)]; len(written) > 0 {
+		fragment, bound := parameterizedNotInFragment("sparks.id", written)
+		query += "\n  AND " + fragment
+		args = append(args, bound...)
+	}
+	query += "\nORDER BY sparks.id\nLIMIT 2\n"
+	rows, err := m.tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return "", fmt.Errorf("resolve spark for SPARK-%s: %w", slug, err)
 	}
