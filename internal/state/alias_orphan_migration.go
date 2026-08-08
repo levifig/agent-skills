@@ -1621,6 +1621,27 @@ func deleteDanglingAliasTx(ctx context.Context, tx *sql.Tx, projectID string, al
 	return nil
 }
 
+// entityReferenceSweep is one polymorphic (entity_kind, entity_id) reference site.
+type entityReferenceSweep struct {
+	table string
+	where string
+	args  []any
+}
+
+// polymorphicEntityReferenceSweeps returns the six polymorphic tables that can
+// cite an entity by (entity_kind, entity_id). where clauses are suitable for
+// both captureAndDeleteTx and captureAndDeleteJournalDuplicateTx.
+func polymorphicEntityReferenceSweeps(projectID, kind, entityID string) []entityReferenceSweep {
+	return []entityReferenceSweep{
+		{"events", `WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, kind, entityID}},
+		{"entity_tags", `WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, kind, entityID}},
+		{"bundle_members", `WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, kind, entityID}},
+		{"backend_mappings", `WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, kind, entityID}},
+		{"exports", `WHERE project_id = ? AND source_entity_kind = ? AND source_entity_id = ?`, []any{projectID, kind, entityID}},
+		{"relationships", `WHERE project_id = ? AND ((from_entity_kind = ? AND from_entity_id = ?) OR (to_entity_kind = ? AND to_entity_id = ?))`, []any{projectID, kind, entityID, kind, entityID}},
+	}
+}
+
 func retireEntityWithResidueTx(ctx context.Context, tx *sql.Tx, projectID string, table aliasOrphanEntityTable, classify AliasOrphanRowClassify, manifest *AliasOrphanRollbackManifest, order *int) error {
 	entityID := classify.EntityID
 	// Capture and delete artifact bodies (FTS included via delete helper after capture).
@@ -1633,37 +1654,16 @@ SELECT * FROM artifact_bodies WHERE project_id = ? AND entity_kind = ? AND entit
 		return err
 	}
 
-	polymorphic := []struct {
-		table string
-		query string
-		args  []any
-	}{
-		{"events", `SELECT * FROM events WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, table.kind, entityID}},
-		{"entity_tags", `SELECT * FROM entity_tags WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, table.kind, entityID}},
-		{"bundle_members", `SELECT * FROM bundle_members WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, table.kind, entityID}},
-		{"backend_mappings", `SELECT * FROM backend_mappings WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, table.kind, entityID}},
-		{"exports", `SELECT * FROM exports WHERE project_id = ? AND source_entity_kind = ? AND source_entity_id = ?`, []any{projectID, table.kind, entityID}},
-		{"relationships", `SELECT * FROM relationships WHERE project_id = ? AND ((from_entity_kind = ? AND from_entity_id = ?) OR (to_entity_kind = ? AND to_entity_id = ?))`, []any{projectID, table.kind, entityID, table.kind, entityID}},
-	}
-	for _, op := range polymorphic {
-		if err := captureRowsTx(ctx, tx, op.table, op.query, op.args, manifest, order, nil); err != nil {
+	sweeps := polymorphicEntityReferenceSweeps(projectID, table.kind, entityID)
+	for _, op := range sweeps {
+		quoted := quoteSQLiteIdentifier(op.table)
+		if err := captureRowsTx(ctx, tx, op.table, fmt.Sprintf(`SELECT * FROM %s %s`, quoted, op.where), op.args, manifest, order, nil); err != nil {
 			return err
 		}
 	}
-	deleteOps := []struct {
-		table string
-		query string
-		args  []any
-	}{
-		{"events", `DELETE FROM events WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, table.kind, entityID}},
-		{"entity_tags", `DELETE FROM entity_tags WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, table.kind, entityID}},
-		{"bundle_members", `DELETE FROM bundle_members WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, table.kind, entityID}},
-		{"backend_mappings", `DELETE FROM backend_mappings WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, table.kind, entityID}},
-		{"exports", `DELETE FROM exports WHERE project_id = ? AND source_entity_kind = ? AND source_entity_id = ?`, []any{projectID, table.kind, entityID}},
-		{"relationships", `DELETE FROM relationships WHERE project_id = ? AND ((from_entity_kind = ? AND from_entity_id = ?) OR (to_entity_kind = ? AND to_entity_id = ?))`, []any{projectID, table.kind, entityID, table.kind, entityID}},
-	}
-	for _, op := range deleteOps {
-		if _, err := execCountTx(ctx, tx, op.query, op.args...); err != nil {
+	for _, op := range sweeps {
+		quoted := quoteSQLiteIdentifier(op.table)
+		if _, err := execCountTx(ctx, tx, fmt.Sprintf(`DELETE FROM %s %s`, quoted, op.where), op.args...); err != nil {
 			return fmt.Errorf("delete %s rows for %s %s: %w", op.table, table.kind, entityID, err)
 		}
 	}
@@ -1997,19 +1997,25 @@ func rollbackAliasOrphanMigrationManifest(ctx context.Context, store *Store, man
 }
 
 func restoreArtifactSearchForRowTx(ctx context.Context, tx *sql.Tx, row AliasOrphanDeletedRow) error {
-	projectID := rowValueString(row, "project_id")
-	entityKind := rowValueString(row, "entity_kind")
-	entityID := rowValueString(row, "entity_id")
-	bodyKind := rowValueString(row, "body_kind")
-	content := rowValueString(row, "content")
+	return restoreArtifactSearchTx(ctx, tx,
+		rowValueString(row, "project_id"),
+		rowValueString(row, "entity_kind"),
+		rowValueString(row, "entity_id"),
+		rowValueString(row, "body_kind"),
+		rowValueString(row, "content"),
+	)
+}
+
+func restoreArtifactSearchTx(ctx context.Context, tx *sql.Tx, projectID, entityKind, entityID, bodyKind, content string) error {
 	if projectID == "" || entityKind == "" || entityID == "" {
 		return nil
 	}
-	rowID, err := artifactBodyRowID(ctx, tx, projectID, entityKind, entityID, firstNonEmpty(bodyKind, ArtifactBodyKindMarkdown))
+	kind := firstNonEmpty(bodyKind, ArtifactBodyKindMarkdown)
+	rowID, err := artifactBodyRowID(ctx, tx, projectID, entityKind, entityID, kind)
 	if err != nil {
 		return err
 	}
-	return upsertArtifactSearchTx(ctx, tx, artifactSearchRow{}, false, rowID, projectID, entityKind, entityID, firstNonEmpty(bodyKind, ArtifactBodyKindMarkdown), content)
+	return upsertArtifactSearchTx(ctx, tx, artifactSearchRow{}, false, rowID, projectID, entityKind, entityID, kind, content)
 }
 
 func insertDeletedRowTx(ctx context.Context, tx *sql.Tx, row AliasOrphanDeletedRow) error {

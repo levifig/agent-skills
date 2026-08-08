@@ -22,16 +22,28 @@ import (
 //   - journal_search.journal_entry_id  (0006_journal_search.sql; rebuilt in 0010_journal_first.sql)
 //     FTS5 derived index; not a foreign key. rowid mirrors journal_entries.rowid at insert time.
 //   - journal_origins.journal_entry_id (0011_journal_origins_and_deferrals.sql) — PRIMARY KEY, deliberately not an FK
-//   - journal_deferrals.journal_entry_id (0011) — NOT NULL UNIQUE, deliberately not an FK
+//   - journal_deferrals.journal_entry_id (0011) — NOT NULL UNIQUE, deliberately not an FK;
+//     repointed to the June-24 twin when free, otherwise deleted
 //   - intent_operations.journal_entry_id (0012_intents_and_explorations.sql) — optional projection ref;
-//     CHECK ties projection_version=1 to non-NULL journal_entry_id + spark_id
-//   - journal_conversation_handles.journal_entry_id (0012) — NOT NULL, UNIQUE (journal_entry_id, handle_id), not an FK
+//     CHECK ties projection_version=1 to non-NULL journal_entry_id + spark_id; repoint-or-delete
+//   - journal_conversation_handles.journal_entry_id (0012) — NOT NULL, UNIQUE (journal_entry_id, handle_id),
+//     not an FK; repoint-or-delete
+//   - Polymorphic (entity_kind, entity_id) sites that may cite kind journal_entry. These are
+//     captured into the rollback manifest and deleted — never repointed at the surviving twin
+//     (same residue policy as alias-orphans). Covered by polymorphicEntityReferenceSweeps plus
+//     artifact_bodies/aliases:
+//       events, entity_tags, bundle_members, backend_mappings,
+//       exports (source_entity_kind / source_entity_id),
+//       relationships (from_* or to_*),
+//       artifact_bodies (+ artifact_search FTS mirror cleaned via deleteArtifactBodiesForEntityTx),
+//       aliases (alias-orphan dead-alias walk only covers seven non-journal entity tables)
 //
 // FTS strategy: targeted DELETE FROM journal_search WHERE journal_entry_id = ? inside the same
 // apply transaction as the journal_entries deletion. A full RepairJournalSearch rebuild would work
 // but is heavier and spans a second ceremony; targeted deletes keep apply/rollback symmetric —
 // rollback restores the journal_entries row then rebuilds its FTS row via insertJournalSearchTx
-// (the live write path), avoiding FTS rowid drift after re-insert.
+// (the live write path), avoiding FTS rowid drift after re-insert. Restored artifact_bodies rows
+// rebuild artifact_search the same way via restoreArtifactSearchTx.
 //
 // Window constants (june13OriginalImportWindow*, june24ReimportWindow*) and inTimestampWindow
 // are shared with the alias-orphans migration — do not redefine them here.
@@ -719,6 +731,24 @@ func retireJournalDuplicateTx(ctx context.Context, tx *sql.Tx, projectID string,
 		return err
 	}
 
+	const journalEntityKind = "journal_entry"
+	if err := captureJournalDuplicateRowsTx(ctx, tx, "artifact_bodies", `
+SELECT * FROM artifact_bodies WHERE project_id = ? AND entity_kind = ? AND entity_id = ?
+`, []any{projectID, journalEntityKind, entryID}, manifest, order, nil); err != nil {
+		return err
+	}
+	if _, _, err := deleteArtifactBodiesForEntityTx(ctx, tx, projectID, journalEntityKind, entryID); err != nil {
+		return err
+	}
+	for _, op := range polymorphicEntityReferenceSweeps(projectID, journalEntityKind, entryID) {
+		if err := captureAndDeleteJournalDuplicateTx(ctx, tx, op.table, op.where, op.args, manifest, order); err != nil {
+			return err
+		}
+	}
+	if err := captureAndDeleteJournalDuplicateTx(ctx, tx, "aliases", `WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, journalEntityKind, entryID}, manifest, order); err != nil {
+		return err
+	}
+
 	if err := captureAndDeleteJournalDuplicateTx(ctx, tx, "journal_entries", `WHERE project_id = ? AND id = ?`, []any{projectID, entryID}, manifest, order); err != nil {
 		return err
 	}
@@ -943,6 +973,17 @@ func rollbackJournalDuplicateMigrationManifest(ctx context.Context, store *Store
 		result.RowsRestored++
 		if row.Table == "journal_entries" {
 			if err := restoreJournalSearchForDeletedRowTx(ctx, tx, row); err != nil {
+				return err
+			}
+		}
+		if row.Table == "artifact_bodies" {
+			if err := restoreArtifactSearchTx(ctx, tx,
+				journalDuplicateRowValueString(row, "project_id"),
+				journalDuplicateRowValueString(row, "entity_kind"),
+				journalDuplicateRowValueString(row, "entity_id"),
+				journalDuplicateRowValueString(row, "body_kind"),
+				journalDuplicateRowValueString(row, "content"),
+			); err != nil {
 				return err
 			}
 		}

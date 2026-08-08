@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -223,6 +224,165 @@ func TestJournalDuplicateUnmatchedRetireRefused(t *testing.T) {
 	}
 }
 
+func TestJournalDuplicatePolymorphicResidueSweep(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID := seedJournalDuplicateFixtureBase(t)
+
+	const (
+		june13ID = "je-poly-june13"
+		june24ID = "je-poly-june24"
+		bodyText = "journal poly residue body needlexyz"
+	)
+	seedJournalDuplicateEntry(t, stateHome, root, projectID, june13ID, "decision", "auth", "chose poly rotation", "2026-06-13T01:39:42Z")
+	seedJournalDuplicateEntry(t, stateHome, root, projectID, june24ID, "decision", "auth", "chose poly rotation", "2026-06-24T13:03:15Z")
+
+	now := "2026-06-13T10:00:00Z"
+	// Both relationship directions against the June-13 row.
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
+VALUES (?, ?, 'journal_entry', ?, 'spark', 'spark-poly-target', 'promoted_to', 'from-j13', ?, ?)
+`, "rel-from-j13", projectID, june13ID, now, now)
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
+VALUES (?, ?, 'spark', 'spark-poly-source', 'journal_entry', ?, 'sourced_from', 'to-j13', ?, ?)
+`, "rel-to-j13", projectID, june13ID, now, now)
+	// Twin residue that must survive the sweep.
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
+VALUES (?, ?, 'journal_entry', ?, 'spark', 'spark-poly-twin', 'promoted_to', 'from-j24', ?, ?)
+`, "rel-from-j24", projectID, june24ID, now, now)
+
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO tags (id, project_id, name, created_at, updated_at) VALUES (?, ?, 'journal-poly-tag', ?, ?)
+`, "tag-journal-poly", projectID, now, now)
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO entity_tags (id, project_id, tag_id, entity_kind, entity_id, created_at, updated_at)
+VALUES (?, ?, ?, 'journal_entry', ?, ?, ?)
+`, "etag-journal-poly", projectID, "tag-journal-poly", june13ID, now, now)
+
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
+VALUES (?, ?, 'journal_entry', ?, 'noted', NULL, NULL, 'j13 event', ?, ?)
+`, "event-j13", projectID, june13ID, now, now)
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
+VALUES (?, ?, 'journal_entry', ?, 'noted', NULL, NULL, 'j24 event', ?, ?)
+`, "event-j24", projectID, june24ID, now, now)
+
+	store := openTestStore(t, root, stateHome)
+	if _, err := store.UpsertArtifactBody(ctx, projectID, "journal_entry", june13ID, ArtifactBodyKindMarkdown, bodyText, ""); err != nil {
+		store.Close()
+		t.Fatalf("UpsertArtifactBody for june13: %v", err)
+	}
+	store.Close()
+
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
+VALUES (?, ?, 'journal_entry', ?, 'journal_entry', 'poly-j13-alias', ?, ?)
+`, "alias-j13", projectID, june13ID, now, now)
+
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO bundles (id, project_id, slug, title, created_at, updated_at)
+VALUES (?, ?, 'journal-poly-bundle', 'Journal poly bundle', ?, ?)
+`, "bundle-journal-poly", projectID, now, now)
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO bundle_members (id, project_id, bundle_id, entity_kind, entity_id, created_at, updated_at)
+VALUES (?, ?, ?, 'journal_entry', ?, ?, ?)
+`, "bm-journal-poly", projectID, "bundle-journal-poly", june13ID, now, now)
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO backend_mappings (id, project_id, backend, entity_kind, entity_id, external_kind, external_id, sync_status, created_at, updated_at)
+VALUES (?, ?, 'linear', 'journal_entry', ?, 'issue', 'EXT-J13', 'synced', ?, ?)
+`, "bmap-journal-poly", projectID, june13ID, now, now)
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO exports (id, project_id, export_kind, format, path, source_entity_kind, source_entity_id, generated_at, created_at, updated_at)
+VALUES (?, ?, 'render', 'markdown', 'out-j13.md', 'journal_entry', ?, ?, ?, ?)
+`, "export-j13", projectID, june13ID, now, now, now)
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO exports (id, project_id, export_kind, format, path, source_entity_kind, source_entity_id, generated_at, created_at, updated_at)
+VALUES (?, ?, 'render', 'markdown', 'out-j24.md', 'journal_entry', ?, ?, ?, ?)
+`, "export-j24", projectID, june24ID, now, now, now)
+
+	beforeJ13 := snapshotJournalPolymorphicResidue(t, stateHome, root, projectID, june13ID)
+	if len(beforeJ13) == 0 {
+		t.Fatal("expected polymorphic residue on June-13 row before apply")
+	}
+	beforeJ24 := snapshotJournalPolymorphicResidue(t, stateHome, root, projectID, june24ID)
+	if len(beforeJ24) == 0 {
+		t.Fatal("expected twin residue on June-24 row before apply")
+	}
+
+	applied, err := ApplyJournalDuplicateMigration(ctx, root, PathResolver{StateHome: stateHome}, JournalDuplicateApplyOptions{})
+	if err != nil {
+		t.Fatalf("ApplyJournalDuplicateMigration() error = %v", err)
+	}
+	if applied.Totals.EntriesRetired != 1 {
+		t.Fatalf("entries_retired = %d, want 1", applied.Totals.EntriesRetired)
+	}
+	assertJournalSearchParityReady(t, stateHome, root)
+
+	if got := countJournalPolymorphicResidue(t, stateHome, root, projectID, june13ID); got != 0 {
+		t.Fatalf("polymorphic residue citing retired id after apply = %d, want 0", got)
+	}
+	afterJ24 := snapshotJournalPolymorphicResidue(t, stateHome, root, projectID, june24ID)
+	if !equalRowSnapshots(beforeJ24, afterJ24) {
+		t.Fatalf("twin polymorphic residue changed after apply\nbefore=%v\nafter=%v", beforeJ24, afterJ24)
+	}
+
+	manifest, err := readJournalDuplicateRollbackManifest(applied.RollbackManifestPath)
+	if err != nil {
+		t.Fatalf("read rollback manifest: %v", err)
+	}
+	for id, row := range beforeJ13 {
+		found := false
+		for _, deleted := range manifest.DeletedRows {
+			if deleted.Table != row.table {
+				continue
+			}
+			if journalDuplicateRowValueString(deleted, "id") == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("manifest missing deleted_rows entry for %s id=%s", row.table, id)
+		}
+	}
+
+	// FTS body gone with the entity.
+	if n := artifactSearchMatchCount(t, stateHome, root, "needlexyz"); n != 0 {
+		t.Fatalf("artifact_search hits after apply = %d, want 0", n)
+	}
+
+	secondApply, err := ApplyJournalDuplicateMigration(ctx, root, PathResolver{StateHome: stateHome}, JournalDuplicateApplyOptions{})
+	if err != nil {
+		t.Fatalf("second apply error = %v", err)
+	}
+	if secondApply.Totals.EntriesRetired != 0 {
+		t.Fatalf("second apply entries_retired = %d, want 0", secondApply.Totals.EntriesRetired)
+	}
+
+	rolled, err := RollbackJournalDuplicateMigration(ctx, root, PathResolver{StateHome: stateHome}, applied.RollbackManifestPath)
+	if err != nil {
+		t.Fatalf("RollbackJournalDuplicateMigration() error = %v", err)
+	}
+	if !rolled.Applied {
+		t.Fatalf("rollback result = %#v, want applied", rolled)
+	}
+	assertJournalSearchParityReady(t, stateHome, root)
+
+	afterRollbackJ13 := snapshotJournalPolymorphicResidue(t, stateHome, root, projectID, june13ID)
+	if !equalRowSnapshots(beforeJ13, afterRollbackJ13) {
+		t.Fatalf("June-13 polymorphic residue not restored byte-identically\nbefore=%v\nafter=%v", beforeJ13, afterRollbackJ13)
+	}
+	afterRollbackJ24 := snapshotJournalPolymorphicResidue(t, stateHome, root, projectID, june24ID)
+	if !equalRowSnapshots(beforeJ24, afterRollbackJ24) {
+		t.Fatalf("June-24 twin residue changed after rollback\nbefore=%v\nafter=%v", beforeJ24, afterRollbackJ24)
+	}
+	if n := artifactSearchMatchCount(t, stateHome, root, "needlexyz"); n != 1 {
+		t.Fatalf("artifact_search hits after rollback = %d, want 1", n)
+	}
+}
+
 // --- fixture helpers ---
 
 func seedJournalDuplicateFixtureBase(t *testing.T) (project.Root, string, string) {
@@ -343,4 +503,101 @@ func assertJournalSearchParityReady(t *testing.T, stateHome string, root project
 	if !parity.Ready {
 		t.Fatalf("journal search parity not ready: %#v", parity)
 	}
+}
+
+type journalPolyRowSnap struct {
+	table string
+	cols  map[string]string
+}
+
+func snapshotJournalPolymorphicResidue(t *testing.T, stateHome string, root project.Root, projectID, entryID string) map[string]journalPolyRowSnap {
+	t.Helper()
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	out := map[string]journalPolyRowSnap{}
+	queries := []struct {
+		table string
+		sql   string
+		args  []any
+	}{
+		{"relationships", `SELECT * FROM relationships WHERE project_id = ? AND ((from_entity_kind = 'journal_entry' AND from_entity_id = ?) OR (to_entity_kind = 'journal_entry' AND to_entity_id = ?))`, []any{projectID, entryID, entryID}},
+		{"entity_tags", `SELECT * FROM entity_tags WHERE project_id = ? AND entity_kind = 'journal_entry' AND entity_id = ?`, []any{projectID, entryID}},
+		{"events", `SELECT * FROM events WHERE project_id = ? AND entity_kind = 'journal_entry' AND entity_id = ?`, []any{projectID, entryID}},
+		{"bundle_members", `SELECT * FROM bundle_members WHERE project_id = ? AND entity_kind = 'journal_entry' AND entity_id = ?`, []any{projectID, entryID}},
+		{"backend_mappings", `SELECT * FROM backend_mappings WHERE project_id = ? AND entity_kind = 'journal_entry' AND entity_id = ?`, []any{projectID, entryID}},
+		{"exports", `SELECT * FROM exports WHERE project_id = ? AND source_entity_kind = 'journal_entry' AND source_entity_id = ?`, []any{projectID, entryID}},
+		{"artifact_bodies", `SELECT * FROM artifact_bodies WHERE project_id = ? AND entity_kind = 'journal_entry' AND entity_id = ?`, []any{projectID, entryID}},
+		{"aliases", `SELECT * FROM aliases WHERE project_id = ? AND entity_kind = 'journal_entry' AND entity_id = ?`, []any{projectID, entryID}},
+	}
+	for _, q := range queries {
+		rows, err := store.db.Query(q.sql, q.args...)
+		if err != nil {
+			t.Fatalf("query %s: %v", q.table, err)
+		}
+		scanned, err := scanRows(rows)
+		rows.Close()
+		if err != nil {
+			t.Fatalf("scan %s: %v", q.table, err)
+		}
+		for _, row := range scanned {
+			cols := map[string]string{}
+			id := ""
+			for col, val := range row {
+				s := ""
+				if val != nil {
+					switch v := val.(type) {
+					case string:
+						s = v
+					case []byte:
+						s = string(v)
+					default:
+						s = fmt.Sprint(v)
+					}
+				}
+				cols[col] = s
+				if col == "id" {
+					id = s
+				}
+			}
+			if id == "" {
+				t.Fatalf("%s row missing id: %#v", q.table, row)
+			}
+			out[id] = journalPolyRowSnap{table: q.table, cols: cols}
+		}
+	}
+	return out
+}
+
+func countJournalPolymorphicResidue(t *testing.T, stateHome string, root project.Root, projectID, entryID string) int {
+	t.Helper()
+	return len(snapshotJournalPolymorphicResidue(t, stateHome, root, projectID, entryID))
+}
+
+func equalRowSnapshots(a, b map[string]journalPolyRowSnap) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for id, left := range a {
+		right, ok := b[id]
+		if !ok || left.table != right.table || len(left.cols) != len(right.cols) {
+			return false
+		}
+		for col, val := range left.cols {
+			if right.cols[col] != val {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func artifactSearchMatchCount(t *testing.T, stateHome string, root project.Root, term string) int {
+	t.Helper()
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	var n int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM artifact_search WHERE artifact_search MATCH ?`, term).Scan(&n); err != nil {
+		t.Fatalf("artifact_search MATCH %q: %v", term, err)
+	}
+	return n
 }
