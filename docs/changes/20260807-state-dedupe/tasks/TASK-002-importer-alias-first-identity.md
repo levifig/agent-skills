@@ -32,11 +32,11 @@ export LOAF_DB="$(mktemp -d)/loaf.sqlite"
 
 ## Steps
 
-- [ ] Add an alias-first lookup on the import path: resolve `(project_id, namespace, alias)` to an existing entity ID of the imported kind before falling back to `stableMigrationID` for genuinely new entities
-- [ ] Ensure the alias upsert can no longer re-point an alias away from a live entity row as a side effect of import (with alias-first resolution the `entity_id` it writes is the resolved one; assert this in tests rather than trusting it)
-- [ ] Apply the same resolution to `sources` rows so source doubling cannot recur
-- [ ] Regression test (`TestImportAliasFirst*`): import a markdown tree under one project ID, rewrite `project_id` columns exactly as `rekeyLegacyProjectTx` does, re-import — assert zero new entity rows, zero new source rows, zero alias-orphans, and stable alias→entity mappings
-- [ ] Idempotency test: re-import with no changes is byte-stable (no row churn, `updated_at` semantics preserved as today)
+- [x] Add an alias-first lookup on the import path: resolve `(project_id, namespace, alias)` to an existing entity ID of the imported kind before falling back to `stableMigrationID` for genuinely new entities
+- [x] Ensure the alias upsert can no longer re-point an alias away from a live entity row as a side effect of import (with alias-first resolution the `entity_id` it writes is the resolved one; assert this in tests rather than trusting it)
+- [x] Apply the same resolution to `sources` rows so source doubling cannot recur
+- [x] Regression test (`TestImportAliasFirst*`): import a markdown tree under one project ID, rewrite `project_id` columns exactly as `rekeyLegacyProjectTx` does, re-import — assert zero new entity rows, zero new source rows, zero alias-orphans, and stable alias→entity mappings
+- [x] Idempotency test: re-import with no changes is byte-stable (no row churn, `updated_at` semantics preserved as today)
 
 ## Verification
 
