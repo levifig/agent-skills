@@ -76,6 +76,11 @@ type markdownImporter struct {
 	// onto the row the first line just minted and one of the two intake items
 	// disappears.
 	writtenSparks map[string][]string
+	// writtenJournalEntries holds journal entry IDs this import pass already
+	// wrote, keyed by the (type, scope, message) identity tuple. Repeated
+	// identical journal lines bind to successive existing rows rather than the
+	// first match twice.
+	writtenJournalEntries map[string][]string
 	// report accumulates in-transaction provenance/status outcomes.
 	// Shared pointer so value-receiver methods can mutate the same report.
 	report *ImportReport
@@ -163,15 +168,16 @@ func (s *Store) importMarkdown(ctx context.Context, root project.Root) (ImportRe
 	defer tx.Rollback()
 
 	importer := markdownImporter{
-		tx:            tx,
-		root:          root,
-		projectID:     projectID,
-		now:           time.Now().UTC().Format(time.RFC3339),
-		taskIndex:     loadTaskIndex(root.Path()),
-		specIndex:     loadSpecIndex(root.Path()),
-		sparkAliases:  map[string]string{},
-		writtenSparks: map[string][]string{},
-		report:        &report,
+		tx:                    tx,
+		root:                  root,
+		projectID:             projectID,
+		now:                   time.Now().UTC().Format(time.RFC3339),
+		taskIndex:             loadTaskIndex(root.Path()),
+		specIndex:             loadSpecIndex(root.Path()),
+		sparkAliases:          map[string]string{},
+		writtenSparks:         map[string][]string{},
+		writtenJournalEntries: map[string][]string{},
+		report:                &report,
 	}
 	if err := importer.importAll(ctx); err != nil {
 		return emptyImportReport(), err
@@ -558,7 +564,11 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 		if entryType == "session" {
 			continue
 		}
-		entryID := stableMigrationID("journal", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
+		derivedEntryID := stableMigrationID("journal", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
+		entryID, err := m.resolveImportedJournalID(ctx, entryType, scope, message, derivedEntryID)
+		if err != nil {
+			return err
+		}
 		imported, err := m.upsertJournalEntry(ctx, entryID, entryType, scope, message, observedBranch, observedWorktree, harnessSessionID)
 		if err != nil {
 			return err
@@ -566,9 +576,14 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 		if !imported {
 			continue
 		}
+		journalKey := journalIdentityKey(entryType, scope, message)
+		m.writtenJournalEntries[journalKey] = append(m.writtenJournalEntries[journalKey], entryID)
 		if entryType == "spark" {
 			derivedSparkID := stableMigrationID("spark", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
 			slug := sparkSlugFromMessage(message)
+			if slug == "" {
+				slug = sparkSlugFallback(message)
+			}
 			sparkID, err := m.resolveImportedSparkID(ctx, slug, message, sourceID, derivedSparkID)
 			if err != nil {
 				return err
@@ -578,16 +593,14 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 			}
 			key := sparkIdentityKey(message, sourceID)
 			m.writtenSparks[key] = append(m.writtenSparks[key], sparkID)
-			if slug != "" {
-				alias, err := m.freeSparkAlias(ctx, sparkID, "SPARK-"+slug)
-				if err != nil {
-					return err
-				}
-				if err := m.upsertAlias(ctx, "spark", sparkID, "spark", alias); err != nil {
-					return err
-				}
-				m.sparkAliases[slug] = sparkID
+			alias, err := m.freeSparkAlias(ctx, sparkID, "SPARK-"+slug)
+			if err != nil {
+				return err
 			}
+			if err := m.upsertAlias(ctx, "spark", sparkID, "spark", alias); err != nil {
+				return err
+			}
+			m.sparkAliases[slug] = sparkID
 			if err := m.deleteImportedRelationships(ctx, "spark", sparkID); err != nil {
 				return err
 			}
@@ -1076,6 +1089,50 @@ func sparkIdentityKey(message string, sourceID string) string {
 	return message + "\x00" + sourceID
 }
 
+// journalIdentityKey is the tuple journal identity resolution matches on.
+// created_at is the import instant and cannot participate.
+func journalIdentityKey(entryType string, scope string, message string) string {
+	return entryType + "\x00" + scope + "\x00" + message
+}
+
+// resolveImportedJournalID reuses a markdown-import journal row only when that
+// row is the same natural entry: same type, scope, and message, with a
+// journal_origins row recording source_event = markdown_import. Native
+// loaf journal log rows are never hijacked. Rows already consumed earlier in
+// this pass are excluded so repeated identical lines bind to successive
+// existing rows; when none remain the derived ID is used for a new row.
+func (m markdownImporter) resolveImportedJournalID(ctx context.Context, entryType string, scope string, message string, derivedID string) (string, error) {
+	query := `
+SELECT j.id
+FROM journal_entries AS j
+WHERE j.project_id = ?
+  AND j.entry_type = ?
+  AND j.scope IS ?
+  AND j.message = ?
+  AND EXISTS (
+    SELECT 1 FROM journal_origins AS o
+    WHERE o.project_id = j.project_id
+      AND o.journal_entry_id = j.id
+      AND o.source_event = 'markdown_import'
+  )`
+	args := []any{m.projectID, entryType, emptyToNil(scope), message}
+	if written := m.writtenJournalEntries[journalIdentityKey(entryType, scope, message)]; len(written) > 0 {
+		fragment, bound := parameterizedNotInFragment("j.id", written)
+		query += "\n  AND " + fragment
+		args = append(args, bound...)
+	}
+	query += "\nORDER BY j.id\nLIMIT 1\n"
+	var id string
+	err := m.tx.QueryRowContext(ctx, query, args...).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return derivedID, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve journal entry for %s(%s): %w", entryType, scope, err)
+	}
+	return id, nil
+}
+
 // resolveImportedSparkID reuses an alias-reachable spark only when that row is
 // unmistakably this same journal line: same source file, same text, exactly one
 // candidate, and not a row this same import pass already wrote. A spark alias is
@@ -1085,8 +1142,16 @@ func sparkIdentityKey(message string, sourceID string) string {
 // so a spark that had to take a disambiguated alias is still found after a
 // rekey. Rows written earlier in this pass are excluded because a file may
 // repeat a spark line verbatim: those are two intake items, and matching the
-// second onto the first would silently drop one. A rekey re-import is unaffected
-// — the rows it has to find were written by an earlier run, not this one.
+// second onto the first would silently drop one.
+//
+// Convergence trade: a single distinct spark line reuses its row across a rekey
+// re-import. A verbatim-duplicated line is different — the first import mints
+// two rows (and two aliases); after a rekey the source_id salt no longer matches
+// either, uniqueness is no longer one candidate, and the re-import mints two
+// more. Further re-imports then stabilize at four alias-reachable rows and do
+// not reintroduce alias-orphan damage. Accepting that one-time fork is the
+// trade for keeping the resolver's "exactly one candidate" gate, which is what
+// prevents unrelated sparks that share a first word from collapsing into one.
 func (m markdownImporter) resolveImportedSparkID(ctx context.Context, slug string, message string, sourceID string, derivedID string) (string, error) {
 	if slug == "" {
 		return derivedID, nil
@@ -1467,6 +1532,14 @@ func sparkSlugFromMessage(message string) string {
 		prefix = fields[0]
 	}
 	return normalizeSparkSlug(prefix)
+}
+
+// sparkSlugFallback derives a non-empty slug from message content alone so a
+// punctuation-only spark still receives an alias. Project ID and source ID must
+// not participate: both shift across a rekey and would re-fork identity.
+func sparkSlugFallback(message string) string {
+	sum := sha256.Sum256([]byte(message))
+	return "spark-" + hex.EncodeToString(sum[:4])
 }
 
 func normalizeSparkSlug(value string) string {

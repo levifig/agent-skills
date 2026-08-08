@@ -644,6 +644,136 @@ branch: feature/sparks
 	}
 }
 
+// Journal entry IDs must not re-derive from the live project ID after a rekey:
+// resolve by natural identity and reuse the existing row.
+func TestImportAliasFirstJournalSurvivesRekeyReimport(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	writeAgentsFile(t, root.Path(), "sessions/20260528-journal.md", `---
+branch: feature/journal
+---
+[2026-05-28 10:00] decision(scope): chose X because Y
+[2026-05-28 10:05] discover(scope): learned Z from the field
+[2026-05-28 10:10] decision(scope): chose X because Y
+`)
+
+	first, err := ApplyMarkdownMigration(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("first ApplyMarkdownMigration() error = %v", err)
+	}
+	store := openStoreAt(t, first.DatabasePath)
+	defer store.Close()
+
+	beforeJournal := countTableWhere(t, store, `SELECT COUNT(*) FROM journal_entries WHERE project_id = ?`, first.ProjectID)
+	if beforeJournal != 3 {
+		t.Fatalf("journal rows after first import = %d, want 3", beforeJournal)
+	}
+	beforeIDs := journalIDSet(t, store, first.ProjectID)
+
+	newProjectID := "proj_journalrekey_000000001"
+	rekeyProjectLikeLegacy(t, store, first.ProjectID, newProjectID, root.Path())
+
+	if _, err := ApplyMarkdownMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("second ApplyMarkdownMigration() error = %v", err)
+	}
+	afterJournal := countTableWhere(t, store, `SELECT COUNT(*) FROM journal_entries WHERE project_id = ?`, newProjectID)
+	if afterJournal != beforeJournal {
+		t.Fatalf("journal rows after rekey re-import = %d, want %d (zero new rows)", afterJournal, beforeJournal)
+	}
+	if afterIDs := journalIDSet(t, store, newProjectID); !stringSetsEqual(beforeIDs, afterIDs) {
+		t.Fatalf("journal IDs changed across rekey re-import\nbefore=%v\nafter=%v", sortedKeys(beforeIDs), sortedKeys(afterIDs))
+	}
+
+	// Idempotent third pass still adds nothing.
+	if _, err := ApplyMarkdownMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("third ApplyMarkdownMigration() error = %v", err)
+	}
+	if got := countTableWhere(t, store, `SELECT COUNT(*) FROM journal_entries WHERE project_id = ?`, newProjectID); got != beforeJournal {
+		t.Fatalf("journal rows after third import = %d, want %d", got, beforeJournal)
+	}
+}
+
+// A punctuation-only spark still receives an alias; rekey re-import must not
+// mint a twin.
+func TestImportAliasFirstPunctuationOnlySparkGetsAlias(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	writeAgentsFile(t, root.Path(), "sessions/20260528-punct.md", `---
+branch: feature/sparks
+---
+[2026-05-28 10:00] spark(scope): !!!
+`)
+
+	first, err := ApplyMarkdownMigration(ctx, root, resolver)
+	if err != nil {
+		t.Fatalf("first ApplyMarkdownMigration() error = %v", err)
+	}
+	store := openStoreAt(t, first.DatabasePath)
+	defer store.Close()
+
+	if got := sparkRowCount(t, store, first.ProjectID); got != 1 {
+		t.Fatalf("spark rows = %d, want 1", got)
+	}
+	if orphans := countAliasOrphans(t, store, first.ProjectID); orphans != 0 {
+		t.Fatalf("alias orphans after first import = %d, want 0", orphans)
+	}
+	aliases := aliasEntityMap(t, store, first.ProjectID)
+	if len(aliases) == 0 {
+		t.Fatal("expected punctuation-only spark to hold an alias")
+	}
+	beforeIDs := entityIDSet(t, store, first.ProjectID)
+
+	newProjectID := "proj_punctspark_00000000001"
+	rekeyProjectLikeLegacy(t, store, first.ProjectID, newProjectID, root.Path())
+
+	if _, err := ApplyMarkdownMigration(ctx, root, resolver); err != nil {
+		t.Fatalf("second ApplyMarkdownMigration() error = %v", err)
+	}
+	if got := sparkRowCount(t, store, newProjectID); got != 1 {
+		t.Fatalf("spark rows after rekey re-import = %d, want 1", got)
+	}
+	if orphans := countAliasOrphans(t, store, newProjectID); orphans != 0 {
+		t.Fatalf("alias orphans after rekey re-import = %d, want 0", orphans)
+	}
+	if afterIDs := entityIDSet(t, store, newProjectID); !stringSetsEqual(beforeIDs, afterIDs) {
+		t.Fatalf("entity IDs changed across rekey re-import\nbefore=%v\nafter=%v", sortedKeys(beforeIDs), sortedKeys(afterIDs))
+	}
+	parity, err := InspectAliasParity(ctx, store)
+	if err != nil {
+		t.Fatalf("InspectAliasParity() error = %v", err)
+	}
+	if !parity.Ready {
+		t.Fatalf("parity after punctuation-only spark rekey re-import = %#v, want Ready", parity)
+	}
+}
+
+func journalIDSet(t *testing.T, store *Store, projectID string) map[string]struct{} {
+	t.Helper()
+	rows, err := store.db.QueryContext(context.Background(), `
+SELECT id FROM journal_entries WHERE project_id = ? ORDER BY id
+`, projectID)
+	if err != nil {
+		t.Fatalf("query journal ids: %v", err)
+	}
+	defer rows.Close()
+	out := map[string]struct{}{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scan journal id: %v", err)
+		}
+		out[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate journal ids: %v", err)
+	}
+	return out
+}
+
 func sparkRowCount(t *testing.T, store *Store, projectID string) int {
 	t.Helper()
 	var count int
