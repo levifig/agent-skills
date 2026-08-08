@@ -1,0 +1,122 @@
+{
+  "schema_version": 2,
+  "change": "state-dedupe",
+  "verified_commit": "6ddf6955f76e6c884f662de27c7dad4f8ef61029",
+  "verified_root_tree": "41d18a130dff6ce20fa898c6319c2178a1476c1a",
+  "verified_at": "2026-08-08T17:14:18Z",
+  "criteria_digest": "9947e96459453f0a5ee2f965cf50f0b7ef770444f928562a5a93a0b4889c0ebb",
+  "scope_digest": "daa9ae959f606117120745b8fc745ed852d12da5b7a6fd92363ea9450fda7627",
+  "scope_sections": {
+    ".agents": "0cdcb499203f22e1faebbef89e211e4b6d4b253bc5486866ed28a50e15c2dd9e",
+    ".claude": "8dc123c00b953695edd9ccc4bb966e986bcea05607d9a125e71038a4c2ebb6be",
+    ".github": "1620d60edd726d78c03e1810a690c54669d4dbca40699b4489125696f1b28525",
+    ".gitignore": "4ec1c977b3002200cfe2c9a652cbbe1cb31e934d12a7c0029b1dd6cdc668099a",
+    ".serena": "749668b92acde130ae6a4514f59b9e08bf7095c8bdd47b6b2e5929b0729ba91f",
+    "AGENTS.md": "96a27c8deab6683f3c9ae669520ed0ed8cd2f22bc71231af8e00e205a7ea71e6",
+    "README.md": "32cecbbf375e1b689ac4702acc72a81f5ad89be495f87680524b1fcd76f5089b",
+    "cli": "cccb406db757aa65127b9657fde0c8a20c722c9ec9e3ae16269d1c0b3c21208a",
+    "cmd": "3d4f455f2eea30cecbef4ea78280e6b86b5b48033074369f476a1805d513d217",
+    "config": "ed88cb91f75fb35580ffe31433b1664efc91f31253abba6a27a645ddb009ae09",
+    "content": "869587ab6ca70cb7620dfe09ada7a87a8155898b8473aa17ddd32e510ab73828",
+    "docs": "76761c5b5837976dcd09eac5b6a8f0e11c7a427b099cd5f7819b45a5c3004616",
+    "go.mod": "b9247690761e43ce92335c553e1f916132580b2a1e7f434c7d99742e56fb8b21",
+    "go.sum": "44a5d68a99a05f3d9aff3321f4b5645d0870cc1afd36e183fbc08c07d8550d6b",
+    "internal": "093982eb7c220d000b84b8eb643661d4b9e339a06d114163f5283bf6e2f163fb",
+    "package-lock.json": "9a3e1b4d99a42b2fefa998dd5c753c1f00ee12a43d1a477b674fe04e6c779f01"
+  },
+  "exclusions": [
+    "docs/changes/*/receipts/**",
+    "docs/changes/*/reports/**",
+    "package.json",
+    ".claude-plugin/marketplace.json",
+    "CHANGELOG.md",
+    "dist/**",
+    "plugins/**",
+    "bin/**"
+  ],
+  "digest_spec": "v1",
+  "tool_version": "0.2.20",
+  "toolchain": {
+    "go": "1.26.5",
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "worktree_clean": true,
+  "results": [
+    {
+      "id": "V1",
+      "command": "go test ./internal/state -run 'AliasOrphan' -count=1",
+      "exit_code": 0,
+      "output_digest": "2122ff1d37bacc90a6d12d69f6b5f5cd489a1847178ccb88f0fc235cf4bf9ecf",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V2",
+      "command": "go test ./internal/state -run 'ImportAliasFirst' -count=1",
+      "exit_code": 0,
+      "output_digest": "dd20755679aae0932bd08b0e021af93de71664e98863028daa0494039fdf38de",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V3",
+      "command": "go test ./... -run 'AliasParity' -count=1",
+      "exit_code": 0,
+      "output_digest": "a335b01a88a66b65b082ade0e3316d32654ca8061b0e0b1997dbadc44e9a1387",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V4",
+      "command": "go test ./...",
+      "exit_code": 0,
+      "output_digest": "7dc2ec7798490cf23a1ac804d88ea016a6d0e33b634aac25a9add70aebdd404f",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "V5",
+      "command": "go test ./internal/state -run 'JournalDuplicate' -count=1",
+      "exit_code": 0,
+      "output_digest": "a1354c32343fe5b522525480d236d77e092537dfa6b98828459c1d7f0f3b2dd9",
+      "ok": true,
+      "expect": "exit 0.",
+      "expect_checks": [
+        {
+          "kind": "exit",
+          "value": "0",
+          "ok": true
+        }
+      ]
+    }
+  ]
+}
