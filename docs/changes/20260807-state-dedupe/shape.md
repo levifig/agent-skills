@@ -19,7 +19,8 @@ If alias-orphans are classified and retired by an audited migration, the importe
 **In**
 
 - An alias-orphan repair migration (`loaf state migrate alias-orphans`) with the full preview → backup → manifest → apply → verify → rollback ceremony, covering all seven aliased entity tables (tasks, specs, reports, ideas, sparks, brainstorms, shaping drafts — the seventh added in review, because the housekeeping scanner counts it and the importer aliases it), orphaned `sources` rows, dangling alias rows, and the reference-table sweep (events, entity_tags, bundle_members, backend_mappings, exports, relationships, artifact bodies/FTS) for every retired row.
-- Importer identity fix: markdown import resolves `(project_id, namespace, alias)` against the aliases table first and reuses the existing entity ID; derivation only mints IDs for genuinely new entities.
+- A journal-duplicates repair migration (`loaf state migrate journal-duplicates`) on the same triad, retiring the ~1,020 June-13 journal rows whose `(entry_type, scope, message)` twins were re-minted at the June-24 instant — journal rows carry no aliases, so this rides natural-key window classification instead of alias reachability (expansion by operator direction; see Decision 7).
+- Importer identity fix: markdown import resolves `(project_id, namespace, alias)` against the aliases table first and reuses the existing entity ID; derivation only mints IDs for genuinely new entities. Journal entries, which have no aliases, resolve by natural identity (`entry_type`, scope, message) before deriving; sparks whose message normalizes to an empty slug receive a deterministic content-hash alias so no row is born orphaned.
 - `loaf state doctor` gains an alias-parity diagnostic: per-project, per-table raw counts vs alias-reachable counts, plus dangling-alias detection.
 - Explicit disposition of the broken-evidence report row: archive as moot with an event recording why (evidence unrecoverable; SPEC-047 already shipped the simplification this report guarded against deepening).
 - The production repair ceremony, including the never-run `loaf state migrate lifecycle-statuses --apply` sequenced after the dedupe.
@@ -46,13 +47,17 @@ $ loaf state migrate alias-orphans            # preview (default), all projects
     tasks:   66 orphans — 63 retire (twin proven), 3 unproven (operator disposition required)
     specs:   12 orphans — 12 retire
     reports:  3 orphans —  3 retire
-    ideas/sparks/brainstorms: 51/56/3 orphans — classification per row
-    sources: N orphan-referenced rows to retire; aliases: 1 dangling to delete
+    ideas: 51 retire (derivation); sparks: 46 retire + 10 unproven (June-24-born collision victims — realias, not retire); brainstorms: 3 retire
+    sources: N orphan-referenced rows to retire; aliases: 1 dead to delete
   dispositions: report:7644bb23… → archive-as-moot (evidence unrecoverable)
 
-$ loaf state migrate alias-orphans --apply    # backup first, manifest written, verify after
+$ loaf state migrate alias-orphans --retire … --realias … # dispositions rehearse in preview too
+$ loaf state migrate alias-orphans --apply --retire … --realias …   # backup first, manifest written, verify after
 
-$ loaf state doctor                           # alias-parity section green: raw == reachable, 0 dangling
+$ loaf state migrate journal-duplicates            # preview: ~1,020 June-13/June-24 twin pairs
+$ loaf state migrate journal-duplicates --apply    # same backup/manifest/verify ceremony
+
+$ loaf state doctor                           # alias-parity section green: raw == reachable, 0 dead aliases
 $ loaf housekeeping                           # scanner counts now equal list counts
 $ loaf task list --status done --json         # returns every done task that exists
 
@@ -77,6 +82,8 @@ Provenance: operator interview during shaping (2026-08-07, four structured quest
 4. **The lifecycle-statuses migration runs as part of the ceremony**, after dedupe so no effort is spent normalizing rows about to be retired. Zero new code; closes the vocabulary half of the housekeeping finding.
 5. **Canonical rows are the alias-holders** (confirmed from the brief with a correction: status vocabulary is *not* a discriminator — both copies carry raw vocab because lifecycle normalization never ran). The orphans retire; the twins survive.
 6. **The migration sweeps every project in the global database, not just this one.** All 27 projects were rekeyed by migration 3; any of them with pre-rekey markdown imports carries the same damage. Preview reports per project before any apply, so the blast radius is visible first. (Shaper's decomposition call — flagged for review rather than interviewed.)
+7. **The ~1,020 duplicated journal rows fold into this Change as TASK-005** (operator direction, 2026-08-08): the June-24 fork also re-minted journal entries, invisible to the alias-orphan lens because journal rows carry no aliases. Repair work of this kind takes a plan, not a shaping ceremony — the packet carries the plan; a separate `journal-duplicates` migration rides the same triad and runs in the same TASK-004 ceremony. Forecloses both leaving the duplicates permanently and bolting journal classification onto the alias-orphans migration.
+8. **Two review-proven calibrations bind the proofs** (round-4 confirmation, reproduced on a production copy): retirement classification iterates to a fixed point, because content-identity and source proofs are orphan-count-sensitive and a retirement can unlock a proof mid-run; and the derivation proof must never gain a body-fingerprint guard — all 132 production derivation-proven pairs have mismatched fingerprints (June-13 originals and June-24 re-imports genuinely differ in content), so title + recency is the calibrated design, recorded as a load-bearing code comment.
 
 ## Planning Contract
 
@@ -103,16 +110,21 @@ The doctor diagnostic is read-only: for each project and entity table, compare r
 
 The migration is re-runnable: a second preview after apply classifies zero orphans; a second apply is a no-op. Rides Recovery Tiers (ARCHITECTURE.md): mandatory backup, isolated preview, manifest rollback, post-apply verification. All tests isolate via temp DBs (`t.Setenv`/`LOAF_DB`); only the ceremony (TASK-004) touches the production database, deliberately.
 
+### Journal duplicates
+
+`loaf state migrate journal-duplicates` (TASK-005) repairs the unaliased half of the same event: pairs are identical `(entry_type, scope, message)` triples with one row in the June-13 import window and one in the June-24 reimport window (the same named window constants as the alias-orphans cluster gates); the June-24 row survives, ambiguous multi-candidate matches classify unproven and are refused without an explicit `--retire`. The full plan lives in the TASK-005 packet.
+
 ### Sequencing
 
-TASK-001 (migration) → TASK-002 (importer) and TASK-003 (doctor) are independent of each other and of TASK-001; TASK-004 (ceremony) is blocked by all three — it runs the shipped code against the production database and uses the doctor check as its verification surface.
+TASK-001 (migration) → TASK-002 (importer), TASK-003 (doctor), and TASK-005 (journal duplicates) are independent of each other; TASK-004 (ceremony) is blocked by all four — it runs the shipped code against the production database and uses the doctor check as its verification surface.
 
 ## Implementation Units
 
 - **TASK-001 — Alias-orphan repair migration.** `loaf state migrate alias-orphans` preview/apply/rollback with classification, twin proofs, reference-table sweep, named dispositions, manifest, and tests.
 - **TASK-002 — Importer alias-first identity resolution.** Markdown import resolves aliases before deriving IDs; simulated-rekey regression test.
 - **TASK-003 — Doctor alias-parity diagnostic.** Read-only per-project, per-table parity section in `loaf state doctor`, with tests.
-- **TASK-004 — Production repair ceremony.** Backup, preview, dispositions, apply, doctor verification, lifecycle-statuses run, count-agreement receipts, journal entries.
+- **TASK-004 — Production repair ceremony.** Backup, rehearsed preview with dispositions, alias-orphans apply, journal-duplicates apply, doctor verification, lifecycle-statuses run, count-agreement receipts, journal entries.
+- **TASK-005 — Journal-duplicates repair migration.** `loaf state migrate journal-duplicates` on the same triad: window-gated natural-key pairing, June-13-copy retirement with reference sweep and FTS parity, refuse-by-default ambiguity handling, and tests.
 
 ## Verification Contract
 
@@ -120,6 +132,7 @@ TASK-001 (migration) → TASK-002 (importer) and TASK-003 (doctor) are independe
 - **V2.** Importer resolves identity through aliases; simulated rekey + re-import creates zero new rows. Command: `go test ./internal/state -run 'ImportAliasFirst' -count=1`. Expect: exit 0.
 - **V3.** Doctor reports alias parity and dangling aliases. Command: `go test ./... -run 'AliasParity' -count=1`. Expect: exit 0.
 - **V4.** The whole suite stays green. Command: `go test ./...`. Expect: exit 0.
+- **V5.** Journal-duplicates pairing, refusal, apply/rollback, and FTS-parity tests pass. Command: `go test ./internal/state -run 'JournalDuplicate' -count=1`. Expect: exit 0.
 
 <!-- Human review (H-tier): review material, never gate input. -->
 
@@ -129,9 +142,10 @@ TASK-001 (migration) → TASK-002 (importer) and TASK-003 (doctor) are independe
 
 ## Definition of Done
 
-- V1–V4 green in CI.
+- V1–V5 green in CI.
 - On the production database: for every project and every entity table, raw row counts equal alias-reachable counts, and zero dead aliases remain (doctor parity green).
 - Housekeeping scanner counts equal canonical list counts — the brief's acceptance signal.
+- Zero `(entry_type, scope, message)` journal twins remain across the June-13/June-24 import windows.
 - The broken-evidence report is archived with recorded rationale.
 - Backup and rollback manifests retained per Recovery Tiers; ceremony receipts journaled.
 
@@ -148,3 +162,4 @@ TASK-001 (migration) → TASK-002 (importer) and TASK-003 (doctor) are independe
 - [KU] Do the other 26 projects carry alias-orphans, and does each have a recomputable legacy ID (`sha256(current_path)`)? → TASK-001 preview reports per project; ceremony reads it before any apply.
 - [KU] What are the three task orphans without title twins? → TASK-001 preview classifies them as unproven; operator dispositions in TASK-004, manifest-recorded.
 - [KU] Which out-of-vocabulary free-text statuses can the lifecycle-statuses migration not map? → surfaced by its preview in TASK-004; handling recorded in ceremony receipts; any needed set-status verb routes to TASK-408, not this Change.
+- [KU] How many of the ~1,020 journal twin pairs are ambiguous (multi-candidate) and need explicit `--retire` dispositions? → TASK-005 preview against a production copy; ceremony reads it before apply.

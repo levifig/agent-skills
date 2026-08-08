@@ -6,6 +6,7 @@ blocked-by:
   - TASK-001
   - TASK-002
   - TASK-003
+  - TASK-005
 ---
 
 # TASK-004 — Production repair ceremony
@@ -36,9 +37,11 @@ npm run build   # ceremony runs the binary built from this branch — no LOAF_DB
 
 - [ ] `loaf state backup` and record the backup ID (Recovery Tier: local rollback)
 - [ ] `loaf state migrate alias-orphans` (preview): read per-project classification for all projects; record counts
-- [ ] Disposition the unproven rows (expected: the 3 task orphans without title twins) explicitly via `--retire` / `--realias` flags — each recorded in the manifest
-- [ ] `loaf state migrate alias-orphans --apply`; record the manifest path
-- [ ] `loaf state doctor`: alias-parity section green — raw == reachable for every project and table, zero dangling aliases
+- [ ] Disposition the unproven rows explicitly — expected: the 3 task orphans without title twins (`--retire` or `--realias` per row) and the 10 June-24-born spark collision victims, which hold real distinct content and get `--realias`, never `--retire`
+- [ ] Rehearse the exact apply invocation as a preview first: `loaf state migrate alias-orphans --retire … --realias …` (dispositions are accepted in preview and reflected in its totals) — the rehearsed and applied invocations must be identical
+- [ ] `loaf state migrate alias-orphans --apply --retire … --realias …`; record the manifest path; first run must exit 0 with post-apply verification passing and a truthful non-zero `orphaned_sources` figure
+- [ ] `loaf state migrate journal-duplicates` (preview): read pair counts and ambiguous matches; disposition ambiguities via `--retire`; then `--apply`; record the manifest path
+- [ ] `loaf state doctor`: alias-parity section green — raw == reachable for every project and table, zero dead aliases
 - [ ] Confirm the broken-evidence report is archived with its moot-rationale event
 - [ ] `loaf state migrate lifecycle-statuses` preview, then `--apply`; record OOV statuses it could not map, if any
 - [ ] Demonstrate count agreement: `loaf housekeeping` totals equal list-command counts for all six tables; `loaf task list --status done --json` returns exactly the done rows that exist
