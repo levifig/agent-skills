@@ -65,6 +65,121 @@ func TestAliasOrphanContentIdentityComparesBodies(t *testing.T) {
 	}
 }
 
+// Recomputation proves the orphan was minted for this alias, not that the row
+// now holding the alias is its duplicate. A reused alias number recomputes to
+// exactly the same ID, so a distinct artifact would be deleted on ID match alone.
+func TestAliasOrphanDerivationRefusesAReusedAlias(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
+	legacyID := hex.EncodeToString(sha256Sum(path))
+	alias := "TASK-042"
+	reuser := "task:reusedaliasholder00001"
+	orphanID := stableMigrationID("task", legacyID, alias)
+	seedTask(t, stateHome, root, projectID, reuser, "Refactor the database layer", "todo", "2027-02-01T00:00:00Z", true, alias)
+	seedTask(t, stateHome, root, projectID, orphanID, "Add login screen", "todo", "2026-06-13T10:00:00Z", false, "")
+
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
+	}
+	got := aliasOrphanClassification(t, preview, orphanID)
+	if got.Proof != aliasOrphanProofUnproven || got.Disposition != "" {
+		t.Fatalf("classification = %#v, want unproven with no disposition", got)
+	}
+
+	if _, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{}); err != nil {
+		t.Fatalf("ApplyAliasOrphanMigration() error = %v", err)
+	}
+	if !entityExists(t, stateHome, root, "tasks", orphanID) {
+		t.Fatal("the alias-reuse victim was retired against an unrelated row")
+	}
+}
+
+// An orphan that is newer than the row it would retire into is not the pre-rekey
+// original this migration repairs.
+func TestAliasOrphanDerivationRefusesAnOrphanNewerThanItsHolder(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
+	legacyID := hex.EncodeToString(sha256Sum(path))
+	alias := "TASK-043"
+	holderID := stableMigrationID("task", projectID, alias)
+	orphanID := stableMigrationID("task", legacyID, alias)
+	seedTask(t, stateHome, root, projectID, holderID, "Same Title", "todo", "2026-06-24T13:03:00Z", true, alias)
+	seedTask(t, stateHome, root, projectID, orphanID, "Same Title", "todo", "2026-07-01T10:00:00Z", false, "")
+
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
+	}
+	if got := aliasOrphanClassification(t, preview, orphanID); got.Proof != aliasOrphanProofUnproven {
+		t.Fatalf("classification = %#v, want unproven", got)
+	}
+}
+
+// Retiring an orphan deletes the relationship edges that were keeping a
+// forward-declared alias alive. A sweep that runs before the retirement cannot
+// see the alias its own run just killed, and post-apply verification then fails
+// on a repair that actually succeeded.
+func TestAliasOrphanCollectsTheAliasesItsOwnRetirementsKill(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
+	legacyID := hex.EncodeToString(sha256Sum(path))
+	alias := "TASK-901"
+	twinID := stableMigrationID("task", projectID, alias)
+	orphanID := stableMigrationID("task", legacyID, alias)
+	seedTask(t, stateHome, root, projectID, twinID, "Forward Referencing Task", "todo", "2026-06-24T13:03:00Z", true, alias)
+	seedTask(t, stateHome, root, projectID, orphanID, "Forward Referencing Task", "todo", "2026-06-13T10:00:00Z", false, "")
+
+	// TASK-900 is forward-declared: the importer registered the alias for a
+	// referenced-but-unimported artifact, so the row is missing while the
+	// orphan's depends_on edge still names it. It is a live reference at
+	// classification time and wreckage the moment the orphan retires.
+	forwardID := "task:forwarddeclared0000001"
+	forwardAliasID := stableMigrationID("alias", projectID, "task", "TASK-900")
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
+VALUES (?, ?, 'task', ?, 'task', 'TASK-900', ?, ?)
+`, forwardAliasID, projectID, forwardID, "2026-06-13T10:00:00Z", "2026-06-13T10:00:00Z")
+	mustExecOpen(t, stateHome, root, `
+INSERT INTO relationships (id, project_id, from_entity_kind, from_entity_id, to_entity_kind, to_entity_id, relationship_type, reason, created_at, updated_at)
+VALUES (?, ?, 'task', ?, 'task', ?, 'depends_on', 'fixture', ?, ?)
+`, "relationship:forward0000001", projectID, orphanID, forwardID, "2026-06-13T10:00:00Z", "2026-06-13T10:00:00Z")
+
+	// The preview simulates the whole repair, so the go/no-go number already
+	// counts the alias the retirement will strand.
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
+	}
+	if preview.Totals.DanglingAliases != 1 {
+		t.Fatalf("preview dangling aliases = %d, want 1", preview.Totals.DanglingAliases)
+	}
+	if !entityExists(t, stateHome, root, "aliases", forwardAliasID) {
+		t.Fatal("preview simulation leaked onto the live database")
+	}
+
+	// One apply, one green verification: the error path this used to take names
+	// the rollback manifest, inviting the operator to undo a correct repair.
+	applied, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
+	if err != nil {
+		t.Fatalf("ApplyAliasOrphanMigration() error = %v", err)
+	}
+	if applied.Totals.AliasesDeleted != 1 {
+		t.Fatalf("aliases deleted = %d, want 1", applied.Totals.AliasesDeleted)
+	}
+	if entityExists(t, stateHome, root, "aliases", forwardAliasID) {
+		t.Fatal("the alias this run's own retirement killed survived it")
+	}
+
+	// Rollback still restores it: the sweep runs before the manifest is written.
+	if _, err := RollbackAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, applied.RollbackManifestPath); err != nil {
+		t.Fatalf("RollbackAliasOrphanMigration() error = %v", err)
+	}
+	if !entityExists(t, stateHome, root, "aliases", forwardAliasID) {
+		t.Fatal("rollback did not restore the collected alias")
+	}
+}
+
 // A project that moved after the damaging import still has a recomputable
 // legacy ID — from project_paths, not only from its current path.
 func TestAliasOrphanDerivationUsesHistoricalProjectPaths(t *testing.T) {

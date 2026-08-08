@@ -317,31 +317,66 @@ func PreviewAliasOrphanMigration(ctx context.Context, root project.Root, resolve
 	if err := applyAliasOrphanMigrationManifest(ctx, copyStore, &manifest, nil); err != nil {
 		return AliasOrphanMigrationResult{}, fmt.Errorf("simulate alias-orphan migration: %w", err)
 	}
-	applyAliasOrphanSourceProjection(&result, manifest)
+	applyAliasOrphanSimulationProjection(&result, manifest)
 	result.CopyRun = true
 	return result, nil
 }
 
-// applyAliasOrphanSourceProjection folds the simulated run's source deletions
-// back into the plan, per table and in total.
-func applyAliasOrphanSourceProjection(result *AliasOrphanMigrationResult, manifest AliasOrphanRollbackManifest) {
-	byTable := map[string]int{}
+// applyAliasOrphanSimulationProjection folds the simulated run's collateral back
+// into the plan, per table and in total: the source rows the retire set strands,
+// and the aliases the retirements themselves kill. Neither is visible to
+// classification — both only exist once the repair has run — so the preview
+// reads them off the simulation instead, and the operator sees the same blast
+// radius apply will produce.
+func applyAliasOrphanSimulationProjection(result *AliasOrphanMigrationResult, manifest AliasOrphanRollbackManifest) {
+	sourcesByTable := map[string]int{}
+	aliasesByTable := map[string][]string{}
 	for _, row := range manifest.DeletedRows {
-		if row.Table != "sources" {
-			continue
-		}
 		projectID := rowValueString(row, "project_id")
-		byTable[projectID+"\x00"+row.Meta["entity_kind"]]++
+		switch row.Table {
+		case "sources":
+			sourcesByTable[projectID+"\x00"+row.Meta["entity_kind"]]++
+		case "aliases":
+			key := projectID + "\x00" + rowValueString(row, "entity_kind")
+			aliasesByTable[key] = append(aliasesByTable[key], rowValueString(row, "id"))
+		}
 	}
 	result.Totals.OrphanedSources = manifest.Counts.OrphanedSources
 	result.Totals.SourcesDeleted = manifest.Counts.SourcesDeleted
+	result.Totals.DanglingAliases = 0
+	result.Dispositions = nil
 	for i := range result.Projects {
 		project := &result.Projects[i]
+		project.Counts.DanglingAliases = 0
 		for j := range project.Tables {
 			table := &project.Tables[j]
-			table.OrphanedSources = byTable[project.ProjectID+"\x00"+table.Kind]
+			key := project.ProjectID + "\x00" + table.Kind
+			table.OrphanedSources = sourcesByTable[key]
 			project.Counts.OrphanedSources += table.OrphanedSources
+
+			known := map[string]struct{}{}
+			for _, aliasID := range table.DanglingAliasIDs {
+				known[aliasID] = struct{}{}
+			}
+			for _, aliasID := range aliasesByTable[key] {
+				if _, seen := known[aliasID]; seen {
+					continue
+				}
+				known[aliasID] = struct{}{}
+				table.DanglingAliasIDs = append(table.DanglingAliasIDs, aliasID)
+				project.Dispositions = append(project.Dispositions, AliasOrphanDisposition{
+					ProjectID: project.ProjectID,
+					Kind:      table.Kind,
+					EntityID:  aliasID,
+					Action:    aliasOrphanDispositionDeleteDangle,
+				})
+			}
+			sort.Strings(table.DanglingAliasIDs)
+			table.DanglingAliases = len(table.DanglingAliasIDs)
+			project.Counts.DanglingAliases += table.DanglingAliases
 		}
+		result.Totals.DanglingAliases += project.Counts.DanglingAliases
+		result.Dispositions = append(result.Dispositions, project.Dispositions...)
 	}
 }
 
@@ -853,11 +888,7 @@ func classifyAliasOrphansForTable(ctx context.Context, q aliasOrphanQuerier, pro
 	// derivedIDs maps a legacy-salt recomputation of an alias holder's ID onto
 	// the holder it proves. This is the only recomputation in the codebase and
 	// it runs against historical salts, never to resolve a live entity.
-	type derivedTwin struct {
-		holder aliasOrphanRow
-		salt   aliasOrphanLegacySalt
-	}
-	derivedIDs := map[string]derivedTwin{}
+	derivedIDs := map[string]aliasOrphanDerivedTwin{}
 	for _, h := range holders {
 		holdersByTitle[h.title] = append(holdersByTitle[h.title], h)
 		for _, salt := range salts {
@@ -868,7 +899,7 @@ func classifyAliasOrphansForTable(ctx context.Context, q aliasOrphanQuerier, pro
 			if _, taken := derivedIDs[derived]; taken {
 				continue
 			}
-			derivedIDs[derived] = derivedTwin{holder: h, salt: salt}
+			derivedIDs[derived] = aliasOrphanDerivedTwin{holder: h, salt: salt}
 		}
 	}
 	orphanTitleCounts := map[string]int{}
@@ -888,7 +919,7 @@ func classifyAliasOrphansForTable(ctx context.Context, q aliasOrphanQuerier, pro
 			Title:     orphan.title,
 			Proof:     aliasOrphanProofUnproven,
 		}
-		if twin, ok := derivedIDs[orphan.entityID]; ok {
+		if twin, ok := aliasOrphanDerivationTwin(orphan, derivedIDs); ok {
 			classify.Proof = aliasOrphanProofDerivation
 			classify.TwinID = twin.holder.entityID
 			classify.TwinAlias = twin.holder.alias
@@ -932,26 +963,36 @@ func classifyAliasOrphansForTable(ctx context.Context, q aliasOrphanQuerier, pro
 		summary.Classifications = append(summary.Classifications, classify)
 	}
 
-	danglingRows, err := q.QueryContext(ctx, fmt.Sprintf(aliasOrphanDanglingAliasQuery, quoteSQLiteIdentifier(table.table)), projectID, table.kind, table.namespace)
+	dangling, err := readDeadAliasIDs(ctx, q, projectID, table)
 	if err != nil {
-		return summary, fmt.Errorf("scan %s dangling aliases: %w", table.table, err)
+		return summary, err
 	}
-	for danglingRows.Next() {
-		var aliasID string
-		if err := danglingRows.Scan(&aliasID); err != nil {
-			danglingRows.Close()
-			return summary, fmt.Errorf("scan %s dangling alias: %w", table.table, err)
-		}
-		summary.DanglingAliasIDs = append(summary.DanglingAliasIDs, aliasID)
-	}
-	if err := danglingRows.Err(); err != nil {
-		danglingRows.Close()
-		return summary, fmt.Errorf("scan %s dangling aliases: %w", table.table, err)
-	}
-	danglingRows.Close()
+	summary.DanglingAliasIDs = dangling
 	summary.DanglingAliases = len(summary.DanglingAliasIDs)
 
 	return summary, nil
+}
+
+// readDeadAliasIDs lists the dead aliases of one entity table: no entity row and
+// nothing left in the project naming the entity.
+func readDeadAliasIDs(ctx context.Context, q aliasOrphanQuerier, projectID string, table aliasOrphanEntityTable) ([]string, error) {
+	rows, err := q.QueryContext(ctx, fmt.Sprintf(aliasOrphanDanglingAliasQuery, quoteSQLiteIdentifier(table.table)), projectID, table.kind, table.namespace)
+	if err != nil {
+		return nil, fmt.Errorf("scan %s dangling aliases: %w", table.table, err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var aliasID string
+		if err := rows.Scan(&aliasID); err != nil {
+			return nil, fmt.Errorf("scan %s dangling alias: %w", table.table, err)
+		}
+		ids = append(ids, aliasID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan %s dangling aliases: %w", table.table, err)
+	}
+	return ids, nil
 }
 
 // readAliasOrphanRows returns either the alias-orphaned rows of a table or the
@@ -1003,6 +1044,40 @@ ORDER BY e.id
 		return nil, fmt.Errorf("scan %s rows: %w", table.table, err)
 	}
 	return out, nil
+}
+
+// aliasOrphanDerivedTwin binds a legacy-salt recomputation to the alias holder
+// it proves, and the salt that produced the match.
+type aliasOrphanDerivedTwin struct {
+	holder aliasOrphanRow
+	salt   aliasOrphanLegacySalt
+}
+
+// aliasOrphanDerivationTwin accepts the salt recomputation as a twin proof only
+// when the two rows are the same artifact, not merely the same alias.
+//
+// Recomputation proves the orphan was minted under a legacy salt *for this
+// alias* — it says nothing about whether the row now holding that alias is the
+// orphan's duplicate. Alias numbers get reused: delete TASK-042 and the next
+// task file to claim the number recomputes to exactly the orphan's ID, and ID
+// match alone would then retire a row that is nobody's duplicate. Two guards
+// close that, both from data already in hand: the rows must agree on their
+// title, and the orphan must predate the row it would retire into — the damage
+// this migration repairs always leaves the pre-rekey original as the older of
+// the pair. A reuse victim fails one or both and becomes an operator decision
+// instead of a silent deletion.
+func aliasOrphanDerivationTwin(orphan aliasOrphanRow, derivedIDs map[string]aliasOrphanDerivedTwin) (aliasOrphanDerivedTwin, bool) {
+	twin, ok := derivedIDs[orphan.entityID]
+	if !ok {
+		return aliasOrphanDerivedTwin{}, false
+	}
+	if orphan.title != twin.holder.title {
+		return aliasOrphanDerivedTwin{}, false
+	}
+	if orphan.createdAt == "" || orphan.createdAt >= twin.holder.createdAt {
+		return aliasOrphanDerivedTwin{}, false
+	}
+	return twin, true
 }
 
 // aliasOrphanSourceKey identifies a row by the content and file that produced
@@ -1245,6 +1320,13 @@ func applyAliasOrphanMigrationManifest(ctx context.Context, store *Store, manife
 		}
 	}
 
+	// Dead aliases go first so a --realias target freed by this same run is
+	// available, and so realias never has to distinguish a live claim from a
+	// dead one.
+	if err := collectDeadAliasesTx(ctx, tx, projects, manifest, &order); err != nil {
+		return err
+	}
+
 	for _, project := range projects {
 		salts, err := aliasOrphanLegacySalts(ctx, tx, project)
 		if err != nil {
@@ -1270,16 +1352,6 @@ func applyAliasOrphanMigrationManifest(ctx context.Context, store *Store, manife
 				return err
 			}
 
-			// Dangling aliases go first so a --realias target freed by this
-			// same run is available, and so realias never has to distinguish a
-			// live claim from a dead one.
-			for _, aliasID := range summary.DanglingAliasIDs {
-				if err := deleteDanglingAliasTx(ctx, tx, project.ID, aliasID, manifest, &order); err != nil {
-					return err
-				}
-				manifest.Counts.AliasesDeleted++
-			}
-
 			for _, c := range summary.Classifications {
 				switch c.Disposition {
 				case aliasOrphanDispositionRetire:
@@ -1297,6 +1369,17 @@ func applyAliasOrphanMigrationManifest(ctx context.Context, store *Store, manife
 				}
 			}
 		}
+	}
+
+	// Retiring an orphan deletes the relationship edges that were keeping a
+	// forward-declared alias alive, so an alias this run itself kills is
+	// invisible to any sweep that ran before the retirement — including a later
+	// table's, since the table order is fixed. Collect once more after every
+	// retirement, across every project and table. Deleting an alias cannot kill
+	// another one, so this second pass is the fixed point and post-apply
+	// verification is guaranteed clean on a correct run.
+	if err := collectDeadAliasesTx(ctx, tx, projects, manifest, &order); err != nil {
+		return err
 	}
 
 	if beforeCommit != nil {
@@ -1382,6 +1465,33 @@ ON CONFLICT(project_id, namespace, alias) DO UPDATE SET
 		Namespace:  table.namespace,
 		Alias:      alias,
 	})
+	return nil
+}
+
+// collectDeadAliasesTx deletes every dead alias in the database, across all
+// projects and all entity tables, recording each one in the manifest.
+func collectDeadAliasesTx(ctx context.Context, tx *sql.Tx, projects []ProjectIdentity, manifest *AliasOrphanRollbackManifest, order *int) error {
+	for _, project := range projects {
+		for _, table := range aliasOrphanEntityTables {
+			exists, err := sqliteTableExistsQ(ctx, tx, table.table)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				continue
+			}
+			aliasIDs, err := readDeadAliasIDs(ctx, tx, project.ID, table)
+			if err != nil {
+				return err
+			}
+			for _, aliasID := range aliasIDs {
+				if err := deleteDanglingAliasTx(ctx, tx, project.ID, aliasID, manifest, order); err != nil {
+					return err
+				}
+				manifest.Counts.AliasesDeleted++
+			}
+		}
+	}
 	return nil
 }
 
