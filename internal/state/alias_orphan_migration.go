@@ -41,8 +41,9 @@ const (
 	aliasOrphanArchiveMootEventType = "status_normalized"
 	aliasOrphanArchiveMootNote      = "evidence unrecoverable; archived as moot — SPEC-047 shipped the simplification this report guarded against deepening"
 
-	// june24EventClusterPrefix matches the 2026-06-24 re-import event cluster
-	// used as a content-identity title-match gate.
+	// june24EventClusterPrefix matches the 2026-06-24 re-import event cluster.
+	// Content identity requires the surviving alias holder to be a member of
+	// that cluster — the orphan is the older original, never the re-import.
 	june24EventClusterPrefix = "2026-06-24"
 )
 
@@ -75,6 +76,8 @@ type AliasOrphanProjectSummary struct {
 	ProjectName        string                    `json:"project_name,omitempty"`
 	ProjectCurrentPath string                    `json:"project_current_path,omitempty"`
 	LegacyProjectID    string                    `json:"legacy_project_id,omitempty"`
+	LegacyProjectIDs   []string                  `json:"legacy_project_ids,omitempty"`
+	LegacyPaths        []string                  `json:"legacy_paths,omitempty"`
 	Tables             []AliasOrphanTableSummary `json:"tables"`
 	Counts             AliasOrphanCounts         `json:"counts"`
 	Dispositions       []AliasOrphanDisposition  `json:"dispositions,omitempty"`
@@ -112,27 +115,33 @@ type AliasOrphanCounts struct {
 
 // AliasOrphanRowClassify is one orphan entity's classification.
 type AliasOrphanRowClassify struct {
-	ProjectID   string `json:"project_id"`
-	Kind        string `json:"kind"`
-	Table       string `json:"table"`
-	EntityID    string `json:"entity_id"`
-	Title       string `json:"title,omitempty"`
-	Proof       string `json:"proof"`
-	TwinID      string `json:"twin_id,omitempty"`
-	TwinAlias   string `json:"twin_alias,omitempty"`
-	Disposition string `json:"disposition,omitempty"`
+	ProjectID       string `json:"project_id"`
+	Kind            string `json:"kind"`
+	Table           string `json:"table"`
+	EntityID        string `json:"entity_id"`
+	Title           string `json:"title,omitempty"`
+	Proof           string `json:"proof"`
+	TwinID          string `json:"twin_id,omitempty"`
+	TwinAlias       string `json:"twin_alias,omitempty"`
+	LegacyProjectID string `json:"legacy_project_id,omitempty"`
+	LegacyPath      string `json:"legacy_path,omitempty"`
+	Disposition     string `json:"disposition,omitempty"`
 }
 
 // AliasOrphanDisposition is a planned action against a specific row.
 type AliasOrphanDisposition struct {
-	ProjectID string `json:"project_id"`
-	Kind      string `json:"kind,omitempty"`
-	EntityID  string `json:"entity_id"`
-	Action    string `json:"action"`
-	Alias     string `json:"alias,omitempty"`
-	Proof     string `json:"proof,omitempty"`
-	Note      string `json:"note,omitempty"`
-	Flag      string `json:"flag,omitempty"`
+	ProjectID       string `json:"project_id"`
+	Kind            string `json:"kind,omitempty"`
+	EntityID        string `json:"entity_id"`
+	Action          string `json:"action"`
+	Alias           string `json:"alias,omitempty"`
+	Proof           string `json:"proof,omitempty"`
+	TwinID          string `json:"twin_id,omitempty"`
+	TwinAlias       string `json:"twin_alias,omitempty"`
+	LegacyProjectID string `json:"legacy_project_id,omitempty"`
+	LegacyPath      string `json:"legacy_path,omitempty"`
+	Note            string `json:"note,omitempty"`
+	Flag            string `json:"flag,omitempty"`
 }
 
 // AliasOrphanApplyOptions carries explicit per-row operator dispositions for apply.
@@ -151,6 +160,7 @@ type AliasOrphanRollbackManifest struct {
 	DatabasePath         string                    `json:"database_path"`
 	OperatorFlags        []string                  `json:"operator_flags,omitempty"`
 	OperatorDispositions []AliasOrphanDisposition  `json:"operator_dispositions,omitempty"`
+	Retirements          []AliasOrphanDisposition  `json:"retirements,omitempty"`
 	DeletedRows          []AliasOrphanDeletedRow   `json:"deleted_rows"`
 	StatusChanges        []AliasOrphanStatusChange `json:"status_changes,omitempty"`
 	AliasInserts         []AliasOrphanAliasInsert  `json:"alias_inserts,omitempty"`
@@ -170,14 +180,15 @@ type AliasOrphanDeletedRow struct {
 
 // AliasOrphanStatusChange records a status rewrite for rollback.
 type AliasOrphanStatusChange struct {
-	ProjectID      string `json:"project_id"`
-	Table          string `json:"table"`
-	Kind           string `json:"kind"`
-	EntityID       string `json:"entity_id"`
-	PreviousStatus string `json:"previous_status"`
-	NewStatus      string `json:"new_status"`
-	EventID        string `json:"event_id"`
-	EventNote      string `json:"event_note"`
+	ProjectID         string `json:"project_id"`
+	Table             string `json:"table"`
+	Kind              string `json:"kind"`
+	EntityID          string `json:"entity_id"`
+	PreviousStatus    string `json:"previous_status"`
+	PreviousUpdatedAt string `json:"previous_updated_at,omitempty"`
+	NewStatus         string `json:"new_status"`
+	EventID           string `json:"event_id"`
+	EventNote         string `json:"event_note"`
 }
 
 // AliasOrphanAliasInsert records an alias created by --realias for rollback.
@@ -190,13 +201,17 @@ type AliasOrphanAliasInsert struct {
 	Alias      string `json:"alias"`
 }
 
-// AliasOrphanUnlink records a FK null for rollback restore.
+// AliasOrphanUnlink records a reference rewrite for rollback restore. NewID is
+// empty when the column was nulled and carries the twin's ID when the reference
+// was repointed at the surviving row.
 type AliasOrphanUnlink struct {
 	Table      string `json:"table"`
 	ProjectID  string `json:"project_id"`
 	Column     string `json:"column"`
+	KeyColumn  string `json:"key_column,omitempty"`
 	RowID      string `json:"row_id"`
 	PreviousID string `json:"previous_id"`
+	NewID      string `json:"new_id,omitempty"`
 }
 
 type aliasOrphanEntityTable struct {
@@ -243,12 +258,42 @@ func PreviewAliasOrphanMigration(ctx context.Context, root project.Root, resolve
 	}
 	defer copyStore.Close()
 
-	result, _, err := planAliasOrphanMigration(ctx, copyStore, aliasOrphanMigrationBaseResult(status, AliasOrphanMigrationActionDryRun), AliasOrphanApplyOptions{})
+	result, manifest, err := planAliasOrphanMigration(ctx, copyStore, aliasOrphanMigrationBaseResult(status, AliasOrphanMigrationActionDryRun), AliasOrphanApplyOptions{})
 	if err != nil {
 		return AliasOrphanMigrationResult{}, err
 	}
+	// The copy is disposable, so the repair runs against it for real. That is
+	// the only way the preview can report the source rows the retire set will
+	// strand — the blast radius the go/no-go decision reads.
+	if err := applyAliasOrphanMigrationManifest(ctx, copyStore, &manifest, nil); err != nil {
+		return AliasOrphanMigrationResult{}, fmt.Errorf("simulate alias-orphan migration: %w", err)
+	}
+	applyAliasOrphanSourceProjection(&result, manifest)
 	result.CopyRun = true
 	return result, nil
+}
+
+// applyAliasOrphanSourceProjection folds the simulated run's source deletions
+// back into the plan, per table and in total.
+func applyAliasOrphanSourceProjection(result *AliasOrphanMigrationResult, manifest AliasOrphanRollbackManifest) {
+	byTable := map[string]int{}
+	for _, row := range manifest.DeletedRows {
+		if row.Table != "sources" {
+			continue
+		}
+		projectID := rowValueString(row, "project_id")
+		byTable[projectID+"\x00"+row.Meta["entity_kind"]]++
+	}
+	result.Totals.OrphanedSources = manifest.Counts.OrphanedSources
+	result.Totals.SourcesDeleted = manifest.Counts.SourcesDeleted
+	for i := range result.Projects {
+		project := &result.Projects[i]
+		for j := range project.Tables {
+			table := &project.Tables[j]
+			table.OrphanedSources = byTable[project.ProjectID+"\x00"+table.Kind]
+			project.Counts.OrphanedSources += table.OrphanedSources
+		}
+	}
 }
 
 // ApplyAliasOrphanMigration backs up, writes a rollback manifest, and repairs alias-orphans.
@@ -271,22 +316,36 @@ func ApplyAliasOrphanMigration(ctx context.Context, root project.Root, resolver 
 	if err != nil {
 		return AliasOrphanMigrationResult{}, err
 	}
+	// A disposition that names nothing is a typo, and silently applying the rest
+	// would leave the operator believing a row was handled.
+	if len(result.Warnings) > 0 {
+		return AliasOrphanMigrationResult{}, fmt.Errorf("alias-orphan dispositions matched no rows: %s", strings.Join(result.Warnings, "; "))
+	}
 	result.BackupPath = backup.BackupPath
 	result.Applied = true
 	result.OperatorFlags = append([]string{}, options.Flags...)
 
-	// Apply first so the rollback manifest captures every deleted row snapshot.
-	if err := applyAliasOrphanMigrationManifest(ctx, store, &manifest); err != nil {
+	// The row snapshots are captured inside the transaction and the rollback
+	// manifest is written to disk before COMMIT, so no deletion is ever visible
+	// without its restore record: backup → manifest → apply.
+	manifestPath := ""
+	if err := applyAliasOrphanMigrationManifest(ctx, store, &manifest, func(final AliasOrphanRollbackManifest) error {
+		if !aliasOrphanManifestHasWork(final) {
+			return nil
+		}
+		path, err := writeAliasOrphanRollbackManifest(final, filepath.Dir(backup.BackupPath), time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		manifestPath = path
+		return nil
+	}); err != nil {
+		if manifestPath != "" {
+			os.Remove(manifestPath)
+		}
 		return AliasOrphanMigrationResult{}, err
 	}
-
-	if aliasOrphanManifestHasWork(manifest) {
-		manifestPath, err := writeAliasOrphanRollbackManifest(manifest, filepath.Dir(backup.BackupPath), time.Now().UTC())
-		if err != nil {
-			return AliasOrphanMigrationResult{}, err
-		}
-		result.RollbackManifestPath = manifestPath
-	}
+	result.RollbackManifestPath = manifestPath
 
 	verify, _, err := planAliasOrphanMigration(ctx, store, aliasOrphanMigrationBaseResult(status, AliasOrphanMigrationActionApply), AliasOrphanApplyOptions{})
 	if err != nil {
@@ -381,34 +440,20 @@ func planAliasOrphanMigration(ctx context.Context, store *Store, result AliasOrp
 		},
 	}
 
-	retireSet := map[string]string{}
-	for _, id := range options.Retire {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		flag := "--retire " + id
-		retireSet[id] = flag
+	retireSet, realiasSet := aliasOrphanOperatorSets(options)
+	for _, id := range sortedKeys(retireSet) {
 		manifest.OperatorDispositions = append(manifest.OperatorDispositions, AliasOrphanDisposition{
 			EntityID: id,
 			Action:   aliasOrphanDispositionRetire,
-			Flag:     flag,
+			Flag:     "--retire " + id,
 		})
 	}
-	realiasSet := map[string]string{}
-	for id, alias := range options.Realias {
-		id = strings.TrimSpace(id)
-		alias = strings.TrimSpace(alias)
-		if id == "" || alias == "" {
-			continue
-		}
-		flag := "--realias " + id + "=" + alias
-		realiasSet[id] = alias
+	for _, id := range sortedKeys(realiasSet) {
 		manifest.OperatorDispositions = append(manifest.OperatorDispositions, AliasOrphanDisposition{
 			EntityID: id,
 			Action:   aliasOrphanDispositionRealias,
-			Alias:    alias,
-			Flag:     flag,
+			Alias:    realiasSet[id],
+			Flag:     "--realias " + id + "=" + realiasSet[id],
 		})
 	}
 
@@ -417,8 +462,13 @@ func planAliasOrphanMigration(ctx context.Context, store *Store, result AliasOrp
 		return result, manifest, err
 	}
 
+	matched := map[string]struct{}{}
 	for _, project := range projects.Projects {
-		summary, err := classifyAliasOrphansForProject(ctx, store, project, retireSet, realiasSet)
+		salts, err := aliasOrphanLegacySalts(ctx, store.db, project)
+		if err != nil {
+			return result, manifest, err
+		}
+		summary, err := classifyAliasOrphansForProject(ctx, store.db, project, salts, retireSet, realiasSet)
 		if err != nil {
 			return result, manifest, err
 		}
@@ -430,18 +480,86 @@ func planAliasOrphanMigration(ctx context.Context, store *Store, result AliasOrp
 		result.Totals.NamedDispositions += summary.Counts.NamedDispositions
 		result.Totals.OperatorRetire += summary.Counts.OperatorRetire
 		result.Totals.OperatorRealias += summary.Counts.OperatorRealias
-		for _, d := range summary.Dispositions {
-			result.Dispositions = append(result.Dispositions, d)
+		result.Dispositions = append(result.Dispositions, summary.Dispositions...)
+		for _, table := range summary.Tables {
+			for _, c := range table.Classifications {
+				matched[c.EntityID] = struct{}{}
+			}
 		}
 	}
+	result.Warnings = append(result.Warnings, aliasOrphanUnmatchedDispositionWarnings(retireSet, realiasSet, matched)...)
 
-	if err := populateAliasOrphanManifestFromPlan(ctx, store, &manifest, result, retireSet, realiasSet); err != nil {
-		return result, manifest, err
+	manifest.Counts = AliasOrphanCounts{
+		Orphans:           result.Totals.Orphans,
+		Retire:            result.Totals.Retire,
+		Unproven:          result.Totals.Unproven,
+		DanglingAliases:   result.Totals.DanglingAliases,
+		NamedDispositions: result.Totals.NamedDispositions,
+		OperatorRetire:    result.Totals.OperatorRetire,
+		OperatorRealias:   result.Totals.OperatorRealias,
 	}
 	return result, manifest, nil
 }
 
-func classifyAliasOrphansForProject(ctx context.Context, store *Store, project ProjectIdentity, retireSet map[string]string, realiasSet map[string]string) (AliasOrphanProjectSummary, error) {
+func aliasOrphanOperatorSets(options AliasOrphanApplyOptions) (map[string]struct{}, map[string]string) {
+	retireSet := map[string]struct{}{}
+	for _, id := range options.Retire {
+		if id = strings.TrimSpace(id); id != "" {
+			retireSet[id] = struct{}{}
+		}
+	}
+	realiasSet := map[string]string{}
+	for id, alias := range options.Realias {
+		id = strings.TrimSpace(id)
+		alias = strings.TrimSpace(alias)
+		if id != "" && alias != "" {
+			realiasSet[id] = alias
+		}
+	}
+	return retireSet, realiasSet
+}
+
+// aliasOrphanUnmatchedDispositionWarnings names every operator flag that no
+// classified orphan answered, so a typo is reported instead of ignored.
+func aliasOrphanUnmatchedDispositionWarnings(retireSet map[string]struct{}, realiasSet map[string]string, matched map[string]struct{}) []string {
+	var warnings []string
+	for _, id := range sortedKeys(retireSet) {
+		if _, ok := matched[id]; !ok {
+			warnings = append(warnings, fmt.Sprintf("--retire %s matched no alias-orphan row", id))
+		}
+	}
+	for _, id := range sortedKeys(realiasSet) {
+		if _, ok := matched[id]; !ok {
+			warnings = append(warnings, fmt.Sprintf("--realias %s=%s matched no alias-orphan row", id, realiasSet[id]))
+		}
+	}
+	return warnings
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// aliasOrphanQuerier is satisfied by both *sql.DB and *sql.Tx so classification
+// runs from exactly one implementation on the preview and apply paths.
+type aliasOrphanQuerier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// aliasOrphanLegacySalt is one historical project ID the entity IDs of this
+// project may have been derived under, with the path that produced it.
+type aliasOrphanLegacySalt struct {
+	projectID string
+	path      string
+}
+
+func classifyAliasOrphansForProject(ctx context.Context, q aliasOrphanQuerier, project ProjectIdentity, salts []aliasOrphanLegacySalt, retireSet map[string]struct{}, realiasSet map[string]string) (AliasOrphanProjectSummary, error) {
 	summary := AliasOrphanProjectSummary{
 		ProjectID:          project.ID,
 		ProjectName:        project.FriendlyName,
@@ -449,19 +567,26 @@ func classifyAliasOrphansForProject(ctx context.Context, store *Store, project P
 		Tables:             []AliasOrphanTableSummary{},
 		Dispositions:       []AliasOrphanDisposition{},
 	}
-	if project.CurrentPath != "" {
-		summary.LegacyProjectID = legacyProjectIDFromPath(project.CurrentPath)
+	for _, salt := range salts {
+		summary.LegacyProjectIDs = append(summary.LegacyProjectIDs, salt.projectID)
+		summary.LegacyPaths = append(summary.LegacyPaths, salt.path)
+		if salt.path == project.CurrentPath {
+			summary.LegacyProjectID = salt.projectID
+		}
+	}
+	if summary.LegacyProjectID == "" && len(salts) > 0 {
+		summary.LegacyProjectID = salts[0].projectID
 	}
 
 	for _, table := range aliasOrphanEntityTables {
-		exists, err := sqliteTableExists(ctx, store.db, table.table)
+		exists, err := sqliteTableExistsQ(ctx, q, table.table)
 		if err != nil {
 			return summary, err
 		}
 		if !exists {
 			continue
 		}
-		tableSummary, err := classifyAliasOrphansForTable(ctx, store, project.ID, summary.LegacyProjectID, table, retireSet, realiasSet)
+		tableSummary, err := classifyAliasOrphansForTable(ctx, q, project.ID, salts, table, retireSet, realiasSet)
 		if err != nil {
 			return summary, err
 		}
@@ -471,26 +596,15 @@ func classifyAliasOrphansForProject(ctx context.Context, store *Store, project P
 		summary.Counts.Unproven += tableSummary.Unproven
 		summary.Counts.DanglingAliases += tableSummary.DanglingAliases
 		for _, c := range tableSummary.Classifications {
-			if c.Disposition == aliasOrphanDispositionRetire && (c.Proof == aliasOrphanProofDerivation || c.Proof == aliasOrphanProofContentIdentity) {
-				summary.Dispositions = append(summary.Dispositions, AliasOrphanDisposition{
-					ProjectID: project.ID,
-					Kind:      c.Kind,
-					EntityID:  c.EntityID,
-					Action:    aliasOrphanDispositionRetire,
-					Proof:     c.Proof,
-					Note:      c.TwinAlias,
-				})
-			} else if c.Disposition == aliasOrphanDispositionRetire && c.Proof == aliasOrphanProofUnproven {
+			switch {
+			case c.Disposition == aliasOrphanDispositionRetire && c.Proof != aliasOrphanProofUnproven:
+				summary.Dispositions = append(summary.Dispositions, aliasOrphanRetireDisposition(c))
+			case c.Disposition == aliasOrphanDispositionRetire:
 				summary.Counts.OperatorRetire++
-				summary.Dispositions = append(summary.Dispositions, AliasOrphanDisposition{
-					ProjectID: project.ID,
-					Kind:      c.Kind,
-					EntityID:  c.EntityID,
-					Action:    aliasOrphanDispositionRetire,
-					Proof:     c.Proof,
-					Flag:      retireSet[c.EntityID],
-				})
-			} else if c.Disposition == aliasOrphanDispositionRealias {
+				d := aliasOrphanRetireDisposition(c)
+				d.Flag = "--retire " + c.EntityID
+				summary.Dispositions = append(summary.Dispositions, d)
+			case c.Disposition == aliasOrphanDispositionRealias:
 				summary.Counts.OperatorRealias++
 				summary.Dispositions = append(summary.Dispositions, AliasOrphanDisposition{
 					ProjectID: project.ID,
@@ -513,7 +627,7 @@ func classifyAliasOrphansForProject(ctx context.Context, store *Store, project P
 		}
 	}
 
-	named, err := classifyBrokenEvidenceReport(ctx, store, project.ID)
+	named, err := classifyBrokenEvidenceReport(ctx, q, project.ID)
 	if err != nil {
 		return summary, err
 	}
@@ -524,90 +638,73 @@ func classifyAliasOrphansForProject(ctx context.Context, store *Store, project P
 	return summary, nil
 }
 
-func classifyAliasOrphansForTable(ctx context.Context, store *Store, projectID string, legacyProjectID string, table aliasOrphanEntityTable, retireSet map[string]string, realiasSet map[string]string) (AliasOrphanTableSummary, error) {
+func aliasOrphanRetireDisposition(c AliasOrphanRowClassify) AliasOrphanDisposition {
+	return AliasOrphanDisposition{
+		ProjectID:       c.ProjectID,
+		Kind:            c.Kind,
+		EntityID:        c.EntityID,
+		Action:          aliasOrphanDispositionRetire,
+		Proof:           c.Proof,
+		TwinID:          c.TwinID,
+		TwinAlias:       c.TwinAlias,
+		LegacyProjectID: c.LegacyProjectID,
+		LegacyPath:      c.LegacyPath,
+		Note:            c.TwinAlias,
+	}
+}
+
+// aliasOrphanRow is an entity row on either side of a twin proof.
+type aliasOrphanRow struct {
+	entityID   string
+	alias      string
+	title      string
+	createdAt  string
+	sourceID   string
+	sourcePath string
+}
+
+func classifyAliasOrphansForTable(ctx context.Context, q aliasOrphanQuerier, projectID string, salts []aliasOrphanLegacySalt, table aliasOrphanEntityTable, retireSet map[string]struct{}, realiasSet map[string]string) (AliasOrphanTableSummary, error) {
 	summary := AliasOrphanTableSummary{
 		Kind:            table.kind,
 		Table:           table.table,
 		Classifications: []AliasOrphanRowClassify{},
 	}
 
-	type entityRow struct {
-		id        string
-		title     string
-		createdAt string
-	}
-	orphanQuery := fmt.Sprintf(`
-SELECT e.id, e.%s, e.created_at
-FROM %s AS e
-WHERE e.project_id = ?
-  AND NOT EXISTS (
-    SELECT 1 FROM aliases AS a
-    WHERE a.project_id = e.project_id
-      AND a.entity_kind = ?
-      AND a.entity_id = e.id
-      AND a.namespace = ?
-  )
-ORDER BY e.id
-`, quoteSQLiteIdentifier(table.titleColumn), quoteSQLiteIdentifier(table.table))
-
-	rows, err := store.db.QueryContext(ctx, orphanQuery, projectID, table.kind, table.namespace)
+	orphans, err := readAliasOrphanRows(ctx, q, projectID, table, false)
 	if err != nil {
-		return summary, fmt.Errorf("scan %s orphans: %w", table.table, err)
+		return summary, err
 	}
-	var orphans []entityRow
-	for rows.Next() {
-		var row entityRow
-		if err := rows.Scan(&row.id, &row.title, &row.createdAt); err != nil {
-			rows.Close()
-			return summary, fmt.Errorf("scan %s orphan row: %w", table.table, err)
-		}
-		orphans = append(orphans, row)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return summary, fmt.Errorf("scan %s orphans: %w", table.table, err)
-	}
-	rows.Close()
-
-	type aliasHolder struct {
-		entityID  string
-		alias     string
-		title     string
-		createdAt string
-	}
-	aliasRows, err := store.db.QueryContext(ctx, fmt.Sprintf(`
-SELECT a.entity_id, a.alias, e.%s, e.created_at
-FROM aliases AS a
-JOIN %s AS e ON e.project_id = a.project_id AND e.id = a.entity_id
-WHERE a.project_id = ? AND a.entity_kind = ? AND a.namespace = ?
-ORDER BY a.alias
-`, quoteSQLiteIdentifier(table.titleColumn), quoteSQLiteIdentifier(table.table)), projectID, table.kind, table.namespace)
+	holders, err := readAliasOrphanRows(ctx, q, projectID, table, true)
 	if err != nil {
-		return summary, fmt.Errorf("scan %s alias holders: %w", table.table, err)
+		return summary, err
 	}
-	holdersByID := map[string]aliasHolder{}
-	holdersByTitle := map[string][]aliasHolder{}
-	derivedOrphanIDs := map[string]aliasHolder{}
-	for aliasRows.Next() {
-		var h aliasHolder
-		if err := aliasRows.Scan(&h.entityID, &h.alias, &h.title, &h.createdAt); err != nil {
-			aliasRows.Close()
-			return summary, fmt.Errorf("scan %s alias holder: %w", table.table, err)
-		}
-		holdersByID[h.entityID] = h
+
+	holdersByTitle := map[string][]aliasOrphanRow{}
+	// derivedIDs maps a legacy-salt recomputation of an alias holder's ID onto
+	// the holder it proves. This is the only recomputation in the codebase and
+	// it runs against historical salts, never to resolve a live entity.
+	type derivedTwin struct {
+		holder aliasOrphanRow
+		salt   aliasOrphanLegacySalt
+	}
+	derivedIDs := map[string]derivedTwin{}
+	for _, h := range holders {
 		holdersByTitle[h.title] = append(holdersByTitle[h.title], h)
-		if legacyProjectID != "" {
-			derived := stableMigrationID(table.kind, legacyProjectID, h.alias)
-			if derived != h.entityID {
-				derivedOrphanIDs[derived] = h
+		for _, salt := range salts {
+			derived := stableMigrationID(table.kind, salt.projectID, h.alias)
+			if derived == h.entityID {
+				continue
 			}
+			if _, taken := derivedIDs[derived]; taken {
+				continue
+			}
+			derivedIDs[derived] = derivedTwin{holder: h, salt: salt}
 		}
 	}
-	if err := aliasRows.Err(); err != nil {
-		aliasRows.Close()
-		return summary, fmt.Errorf("scan %s alias holders: %w", table.table, err)
+	orphanTitleCounts := map[string]int{}
+	for _, orphan := range orphans {
+		orphanTitleCounts[orphan.title]++
 	}
-	aliasRows.Close()
 
 	summary.Orphans = len(orphans)
 	for _, orphan := range orphans {
@@ -615,36 +712,48 @@ ORDER BY a.alias
 			ProjectID: projectID,
 			Kind:      table.kind,
 			Table:     table.table,
-			EntityID:  orphan.id,
+			EntityID:  orphan.entityID,
 			Title:     orphan.title,
 			Proof:     aliasOrphanProofUnproven,
 		}
-		if twin, ok := derivedOrphanIDs[orphan.id]; ok {
+		if twin, ok := derivedIDs[orphan.entityID]; ok {
+			classify.Proof = aliasOrphanProofDerivation
+			classify.TwinID = twin.holder.entityID
+			classify.TwinAlias = twin.holder.alias
+			classify.LegacyProjectID = twin.salt.projectID
+			classify.LegacyPath = twin.salt.path
+		} else if twin, salt, ok := aliasOrphanSourceSaltTwin(orphan, holders, salts); ok {
 			classify.Proof = aliasOrphanProofDerivation
 			classify.TwinID = twin.entityID
 			classify.TwinAlias = twin.alias
-			classify.Disposition = aliasOrphanDispositionRetire
-			summary.Retire++
-		} else if holders := holdersByTitle[orphan.title]; len(holders) == 1 && inJune24EventCluster(orphan.createdAt, holders[0].createdAt) {
-			twin := holders[0]
-			classify.Proof = aliasOrphanProofContentIdentity
-			classify.TwinID = twin.entityID
-			classify.TwinAlias = twin.alias
-			classify.Disposition = aliasOrphanDispositionRetire
-			summary.Retire++
-		} else if _, ok := realiasSet[orphan.id]; ok {
-			classify.Disposition = aliasOrphanDispositionRealias
-			summary.Unproven++
-		} else if _, ok := retireSet[orphan.id]; ok {
-			classify.Disposition = aliasOrphanDispositionRetire
+			classify.LegacyProjectID = salt.projectID
+			classify.LegacyPath = salt.path
+		} else {
+			twin, ok, err := aliasOrphanContentIdentityTwin(ctx, q, projectID, table, orphan, holdersByTitle, orphanTitleCounts)
+			if err != nil {
+				return summary, err
+			}
+			if ok {
+				classify.Proof = aliasOrphanProofContentIdentity
+				classify.TwinID = twin.entityID
+				classify.TwinAlias = twin.alias
+			}
+		}
+		if classify.Proof == aliasOrphanProofUnproven {
+			if _, ok := realiasSet[orphan.entityID]; ok {
+				classify.Disposition = aliasOrphanDispositionRealias
+			} else if _, ok := retireSet[orphan.entityID]; ok {
+				classify.Disposition = aliasOrphanDispositionRetire
+			}
 			summary.Unproven++
 		} else {
-			summary.Unproven++
+			classify.Disposition = aliasOrphanDispositionRetire
+			summary.Retire++
 		}
 		summary.Classifications = append(summary.Classifications, classify)
 	}
 
-	danglingRows, err := store.db.QueryContext(ctx, fmt.Sprintf(`
+	danglingRows, err := q.QueryContext(ctx, fmt.Sprintf(`
 SELECT a.id
 FROM aliases AS a
 WHERE a.project_id = ?
@@ -677,9 +786,162 @@ ORDER BY a.id
 	return summary, nil
 }
 
-func classifyBrokenEvidenceReport(ctx context.Context, store *Store, projectID string) (*AliasOrphanDisposition, error) {
+// readAliasOrphanRows returns either the alias-orphaned rows of a table or the
+// rows that hold an alias, with their source path attached.
+func readAliasOrphanRows(ctx context.Context, q aliasOrphanQuerier, projectID string, table aliasOrphanEntityTable, aliasHolders bool) ([]aliasOrphanRow, error) {
+	title := quoteSQLiteIdentifier(table.titleColumn)
+	entity := quoteSQLiteIdentifier(table.table)
+	source := quoteSQLiteIdentifier(table.sourceColumn)
+	var query string
+	if aliasHolders {
+		query = fmt.Sprintf(`
+SELECT a.entity_id, a.alias, e.%s, e.created_at, COALESCE(e.%s, ''), COALESCE(s.path, '')
+FROM aliases AS a
+JOIN %s AS e ON e.project_id = a.project_id AND e.id = a.entity_id
+LEFT JOIN sources AS s ON s.project_id = e.project_id AND s.id = e.%s
+WHERE a.project_id = ? AND a.entity_kind = ? AND a.namespace = ?
+ORDER BY a.alias
+`, title, source, entity, source)
+	} else {
+		query = fmt.Sprintf(`
+SELECT e.id, '', e.%s, e.created_at, COALESCE(e.%s, ''), COALESCE(s.path, '')
+FROM %s AS e
+LEFT JOIN sources AS s ON s.project_id = e.project_id AND s.id = e.%s
+WHERE e.project_id = ?
+  AND NOT EXISTS (
+    SELECT 1 FROM aliases AS a
+    WHERE a.project_id = e.project_id
+      AND a.entity_kind = ?
+      AND a.entity_id = e.id
+      AND a.namespace = ?
+  )
+ORDER BY e.id
+`, title, source, entity, source)
+	}
+	rows, err := q.QueryContext(ctx, query, projectID, table.kind, table.namespace)
+	if err != nil {
+		return nil, fmt.Errorf("scan %s rows: %w", table.table, err)
+	}
+	defer rows.Close()
+	var out []aliasOrphanRow
+	for rows.Next() {
+		var row aliasOrphanRow
+		if err := rows.Scan(&row.entityID, &row.alias, &row.title, &row.createdAt, &row.sourceID, &row.sourcePath); err != nil {
+			return nil, fmt.Errorf("scan %s row: %w", table.table, err)
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan %s rows: %w", table.table, err)
+	}
+	return out, nil
+}
+
+// aliasOrphanSourceSaltTwin proves twin-ship for rows whose IDs were never
+// derived from an alias — sparks are minted from (path, line) — by recomputing
+// the row's own source ID under each historical salt. A match proves the orphan
+// was minted before the rekey; the surviving twin is then the unique alias
+// holder that carries the same content from the same source path.
+func aliasOrphanSourceSaltTwin(orphan aliasOrphanRow, holders []aliasOrphanRow, salts []aliasOrphanLegacySalt) (aliasOrphanRow, aliasOrphanLegacySalt, bool) {
+	if orphan.sourceID == "" || orphan.sourcePath == "" || strings.TrimSpace(orphan.title) == "" {
+		return aliasOrphanRow{}, aliasOrphanLegacySalt{}, false
+	}
+	var matched aliasOrphanLegacySalt
+	found := false
+	for _, salt := range salts {
+		if stableMigrationID("source", salt.projectID, orphan.sourcePath) == orphan.sourceID {
+			matched = salt
+			found = true
+			break
+		}
+	}
+	if !found {
+		return aliasOrphanRow{}, aliasOrphanLegacySalt{}, false
+	}
+	var twin aliasOrphanRow
+	matches := 0
+	for _, h := range holders {
+		if h.title != orphan.title || h.sourcePath != orphan.sourcePath {
+			continue
+		}
+		twin = h
+		matches++
+	}
+	if matches != 1 {
+		return aliasOrphanRow{}, aliasOrphanLegacySalt{}, false
+	}
+	return twin, matched, true
+}
+
+// aliasOrphanContentIdentityTwin is the distinctly-labeled fallback proof. It
+// requires the surviving alias holder to be a member of the 2026-06-24
+// re-import cluster, the orphan to predate it, exactly one candidate on each
+// side, a non-empty title, and identical stored bodies. Anything short of that
+// stays unproven.
+func aliasOrphanContentIdentityTwin(ctx context.Context, q aliasOrphanQuerier, projectID string, table aliasOrphanEntityTable, orphan aliasOrphanRow, holdersByTitle map[string][]aliasOrphanRow, orphanTitleCounts map[string]int) (aliasOrphanRow, bool, error) {
+	if strings.TrimSpace(orphan.title) == "" {
+		return aliasOrphanRow{}, false, nil
+	}
+	if orphanTitleCounts[orphan.title] != 1 {
+		return aliasOrphanRow{}, false, nil
+	}
+	holders := holdersByTitle[orphan.title]
+	if len(holders) != 1 {
+		return aliasOrphanRow{}, false, nil
+	}
+	twin := holders[0]
+	if !isJune24Reimport(twin.createdAt) {
+		return aliasOrphanRow{}, false, nil
+	}
+	if orphan.createdAt == "" || orphan.createdAt >= twin.createdAt {
+		return aliasOrphanRow{}, false, nil
+	}
+	orphanBodies, err := aliasOrphanBodyFingerprint(ctx, q, projectID, table.kind, orphan.entityID)
+	if err != nil {
+		return aliasOrphanRow{}, false, err
+	}
+	twinBodies, err := aliasOrphanBodyFingerprint(ctx, q, projectID, table.kind, twin.entityID)
+	if err != nil {
+		return aliasOrphanRow{}, false, err
+	}
+	if orphanBodies != twinBodies {
+		return aliasOrphanRow{}, false, nil
+	}
+	return twin, true, nil
+}
+
+// aliasOrphanBodyFingerprint canonicalizes an entity's stored bodies as
+// body_kind=content_hash pairs so two rows can be compared for content
+// identity. An entity with no bodies fingerprints as the empty string.
+func aliasOrphanBodyFingerprint(ctx context.Context, q aliasOrphanQuerier, projectID string, kind string, entityID string) (string, error) {
+	rows, err := q.QueryContext(ctx, `
+SELECT body_kind, COALESCE(content_hash, '')
+FROM artifact_bodies
+WHERE project_id = ? AND entity_kind = ? AND entity_id = ?
+ORDER BY body_kind
+`, projectID, kind, entityID)
+	if err != nil {
+		return "", fmt.Errorf("read %s body fingerprint: %w", kind, err)
+	}
+	defer rows.Close()
+	var parts []string
+	for rows.Next() {
+		var bodyKind, hash string
+		if err := rows.Scan(&bodyKind, &hash); err != nil {
+			return "", fmt.Errorf("scan %s body fingerprint: %w", kind, err)
+		}
+		parts = append(parts, bodyKind+"="+hash)
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("read %s body fingerprint: %w", kind, err)
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "\n"), nil
+}
+
+func classifyBrokenEvidenceReport(ctx context.Context, q aliasOrphanQuerier, projectID string) (*AliasOrphanDisposition, error) {
 	var status string
-	err := store.db.QueryRowContext(ctx, `
+	err := q.QueryRowContext(ctx, `
 SELECT status FROM reports WHERE project_id = ? AND id = ?
 `, projectID, brokenEvidenceReportID).Scan(&status)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -700,38 +962,61 @@ SELECT status FROM reports WHERE project_id = ? AND id = ?
 	}, nil
 }
 
-func inJune24EventCluster(timestamps ...string) bool {
-	for _, ts := range timestamps {
-		if strings.HasPrefix(ts, june24EventClusterPrefix) {
-			return true
+func isJune24Reimport(timestamp string) bool {
+	return strings.HasPrefix(timestamp, june24EventClusterPrefix)
+}
+
+// aliasOrphanLegacySalts returns every historical project ID this project's
+// rows could have been derived under: the current path plus every path the
+// project has ever been recorded at.
+func aliasOrphanLegacySalts(ctx context.Context, q aliasOrphanQuerier, project ProjectIdentity) ([]aliasOrphanLegacySalt, error) {
+	paths := []string{}
+	seen := map[string]struct{}{}
+	add := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+	add(project.CurrentPath)
+
+	exists, err := sqliteTableExistsQ(ctx, q, "project_paths")
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		rows, err := q.QueryContext(ctx, `SELECT path FROM project_paths WHERE project_id = ? ORDER BY is_current DESC, path`, project.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list historical project paths: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var path string
+			if err := rows.Scan(&path); err != nil {
+				return nil, fmt.Errorf("scan historical project path: %w", err)
+			}
+			add(path)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("list historical project paths: %w", err)
 		}
 	}
-	return false
+
+	salts := make([]aliasOrphanLegacySalt, 0, len(paths))
+	for _, path := range paths {
+		salts = append(salts, aliasOrphanLegacySalt{projectID: legacyProjectIDFromPath(path), path: path})
+	}
+	return salts, nil
 }
 
 func legacyProjectIDFromPath(path string) string {
 	sum := sha256.Sum256([]byte(path))
 	return hex.EncodeToString(sum[:])
-}
-
-func populateAliasOrphanManifestFromPlan(ctx context.Context, store *Store, manifest *AliasOrphanRollbackManifest, plan AliasOrphanMigrationResult, retireSet map[string]string, realiasSet map[string]string) error {
-	// Manifest is filled at apply time with full row snapshots. Planning only
-	// records operator dispositions and high-level counts; apply re-reads rows
-	// under the transaction so the snapshot matches the rows actually deleted.
-	_ = ctx
-	_ = store
-	_ = retireSet
-	_ = realiasSet
-	manifest.Counts = AliasOrphanCounts{
-		Orphans:           plan.Totals.Orphans,
-		Retire:            plan.Totals.Retire,
-		Unproven:          plan.Totals.Unproven,
-		DanglingAliases:   plan.Totals.DanglingAliases,
-		NamedDispositions: plan.Totals.NamedDispositions,
-		OperatorRetire:    plan.Totals.OperatorRetire,
-		OperatorRealias:   plan.Totals.OperatorRealias,
-	}
-	return nil
 }
 
 func aliasOrphanManifestHasWork(manifest AliasOrphanRollbackManifest) bool {
@@ -746,7 +1031,11 @@ func aliasOrphanManifestHasWork(manifest AliasOrphanRollbackManifest) bool {
 		manifest.Counts.AliasesInserted > 0
 }
 
-func applyAliasOrphanMigrationManifest(ctx context.Context, store *Store, manifest *AliasOrphanRollbackManifest) error {
+// applyAliasOrphanMigrationManifest performs the repair in one transaction.
+// beforeCommit runs with the fully-populated manifest still inside the
+// transaction, so the rollback record is durable on disk before any deletion
+// becomes visible; a failure there aborts the repair.
+func applyAliasOrphanMigrationManifest(ctx context.Context, store *Store, manifest *AliasOrphanRollbackManifest, beforeCommit func(AliasOrphanRollbackManifest) error) error {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin alias-orphan migration: %w", err)
@@ -778,9 +1067,9 @@ func applyAliasOrphanMigrationManifest(ctx context.Context, store *Store, manife
 	}
 
 	for _, project := range projects {
-		legacyID := ""
-		if project.CurrentPath != "" {
-			legacyID = legacyProjectIDFromPath(project.CurrentPath)
+		salts, err := aliasOrphanLegacySalts(ctx, tx, project)
+		if err != nil {
+			return err
 		}
 
 		// Named disposition: archive broken-evidence report as moot.
@@ -789,7 +1078,7 @@ func applyAliasOrphanMigrationManifest(ctx context.Context, store *Store, manife
 		}
 
 		for _, table := range aliasOrphanEntityTables {
-			exists, err := sqliteTableExistsTx(ctx, tx, table.table)
+			exists, err := sqliteTableExistsQ(ctx, tx, table.table)
 			if err != nil {
 				return err
 			}
@@ -797,17 +1086,28 @@ func applyAliasOrphanMigrationManifest(ctx context.Context, store *Store, manife
 				continue
 			}
 
-			summary, err := classifyAliasOrphansForTableTx(ctx, tx, project.ID, legacyID, table, retireSet, realiasSet)
+			summary, err := classifyAliasOrphansForTable(ctx, tx, project.ID, salts, table, retireSet, realiasSet)
 			if err != nil {
 				return err
+			}
+
+			// Dangling aliases go first so a --realias target freed by this
+			// same run is available, and so realias never has to distinguish a
+			// live claim from a dead one.
+			for _, aliasID := range summary.DanglingAliasIDs {
+				if err := deleteDanglingAliasTx(ctx, tx, project.ID, aliasID, manifest, &order); err != nil {
+					return err
+				}
+				manifest.Counts.AliasesDeleted++
 			}
 
 			for _, c := range summary.Classifications {
 				switch c.Disposition {
 				case aliasOrphanDispositionRetire:
-					if err := retireEntityWithResidueTx(ctx, tx, project.ID, table, c.EntityID, now, manifest, &order); err != nil {
+					if err := retireEntityWithResidueTx(ctx, tx, project.ID, table, c, manifest, &order); err != nil {
 						return err
 					}
+					manifest.Retirements = append(manifest.Retirements, aliasOrphanRetireDisposition(c))
 					manifest.Counts.EntitiesRetired++
 				case aliasOrphanDispositionRealias:
 					alias := realiasSet[c.EntityID]
@@ -817,13 +1117,12 @@ func applyAliasOrphanMigrationManifest(ctx context.Context, store *Store, manife
 					manifest.Counts.AliasesInserted++
 				}
 			}
+		}
+	}
 
-			for _, aliasID := range summary.DanglingAliasIDs {
-				if err := deleteDanglingAliasTx(ctx, tx, project.ID, aliasID, manifest, &order); err != nil {
-					return err
-				}
-				manifest.Counts.AliasesDeleted++
-			}
+	if beforeCommit != nil {
+		if err := beforeCommit(*manifest); err != nil {
+			return err
 		}
 	}
 
@@ -834,8 +1133,8 @@ func applyAliasOrphanMigrationManifest(ctx context.Context, store *Store, manife
 }
 
 func applyBrokenEvidenceArchiveTx(ctx context.Context, tx *sql.Tx, projectID string, now string, manifest *AliasOrphanRollbackManifest) error {
-	var previous string
-	err := tx.QueryRowContext(ctx, `SELECT status FROM reports WHERE project_id = ? AND id = ?`, projectID, brokenEvidenceReportID).Scan(&previous)
+	var previous, previousUpdatedAt string
+	err := tx.QueryRowContext(ctx, `SELECT status, COALESCE(updated_at, '') FROM reports WHERE project_id = ? AND id = ?`, projectID, brokenEvidenceReportID).Scan(&previous, &previousUpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -856,20 +1155,35 @@ VALUES (?, ?, 'report', ?, ?, ?, ?, ?, ?, ?)
 		return fmt.Errorf("record broken-evidence archive event: %w", err)
 	}
 	manifest.StatusChanges = append(manifest.StatusChanges, AliasOrphanStatusChange{
-		ProjectID:      projectID,
-		Table:          "reports",
-		Kind:           "report",
-		EntityID:       brokenEvidenceReportID,
-		PreviousStatus: previous,
-		NewStatus:      LifecycleStatusArchived,
-		EventID:        eventID,
-		EventNote:      aliasOrphanArchiveMootNote,
+		ProjectID:         projectID,
+		Table:             "reports",
+		Kind:              "report",
+		EntityID:          brokenEvidenceReportID,
+		PreviousStatus:    previous,
+		PreviousUpdatedAt: previousUpdatedAt,
+		NewStatus:         LifecycleStatusArchived,
+		EventID:           eventID,
+		EventNote:         aliasOrphanArchiveMootNote,
 	})
 	manifest.Counts.StatusesChanged++
 	return nil
 }
 
 func realiasEntityTx(ctx context.Context, tx *sql.Tx, projectID string, table aliasOrphanEntityTable, entityID string, alias string, now string, manifest *AliasOrphanRollbackManifest) error {
+	// Re-pointing a claimed alias at a different row is the exact mechanic that
+	// created this damage class. Refuse it: the incumbent keeps its identity and
+	// the operator picks a free alias.
+	var incumbent string
+	err := tx.QueryRowContext(ctx, `
+SELECT entity_id FROM aliases WHERE project_id = ? AND namespace = ? AND alias = ?
+`, projectID, table.namespace, alias).Scan(&incumbent)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("read alias %s:%s: %w", table.namespace, alias, err)
+	}
+	if err == nil && incumbent != entityID {
+		return fmt.Errorf("realias %s: alias %s:%s already names %s; pick an unclaimed alias or retire the incumbent first", entityID, table.namespace, alias, incumbent)
+	}
+
 	aliasID := stableMigrationID("alias", projectID, table.namespace, alias)
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
@@ -902,8 +1216,8 @@ func deleteDanglingAliasTx(ctx context.Context, tx *sql.Tx, projectID string, al
 	return nil
 }
 
-func retireEntityWithResidueTx(ctx context.Context, tx *sql.Tx, projectID string, table aliasOrphanEntityTable, entityID string, now string, manifest *AliasOrphanRollbackManifest, order *int) error {
-	_ = now
+func retireEntityWithResidueTx(ctx context.Context, tx *sql.Tx, projectID string, table aliasOrphanEntityTable, classify AliasOrphanRowClassify, manifest *AliasOrphanRollbackManifest, order *int) error {
+	entityID := classify.EntityID
 	// Capture and delete artifact bodies (FTS included via delete helper after capture).
 	if err := captureRowsTx(ctx, tx, "artifact_bodies", `
 SELECT * FROM artifact_bodies WHERE project_id = ? AND entity_kind = ? AND entity_id = ?
@@ -949,6 +1263,10 @@ SELECT * FROM artifact_bodies WHERE project_id = ? AND entity_kind = ? AND entit
 		}
 	}
 
+	if err := retireKindSpecificResidueTx(ctx, tx, projectID, table.kind, entityID, classify.TwinID, manifest, order); err != nil {
+		return err
+	}
+
 	if err := unlinkReferencesToEntityTx(ctx, tx, projectID, table.kind, entityID, manifest); err != nil {
 		return err
 	}
@@ -990,7 +1308,7 @@ SELECT * FROM artifact_bodies WHERE project_id = ? AND entity_kind = ? AND entit
 		if referenced {
 			continue
 		}
-		if err := captureRowsTx(ctx, tx, "sources", `SELECT * FROM sources WHERE project_id = ? AND id = ?`, []any{projectID, sid}, manifest, order, nil); err != nil {
+		if err := captureRowsTx(ctx, tx, "sources", `SELECT * FROM sources WHERE project_id = ? AND id = ?`, []any{projectID, sid}, manifest, order, map[string]string{"entity_kind": table.kind, "entity_id": entityID}); err != nil {
 			return err
 		}
 		count, err := execCountTx(ctx, tx, `DELETE FROM sources WHERE project_id = ? AND id = ?`, projectID, sid)
@@ -1003,30 +1321,147 @@ SELECT * FROM artifact_bodies WHERE project_id = ? AND entity_kind = ? AND entit
 	return nil
 }
 
+// retireKindSpecificResidueTx clears the references no polymorphic
+// (entity_kind, entity_id) sweep can reach: child rows bound by a NOT NULL
+// foreign key, and NOT NULL soft references that carry no constraint at all.
+// Both would otherwise abort the whole migration at COMMIT or leave the row
+// dangling with nothing to detect it.
+func retireKindSpecificResidueTx(ctx context.Context, tx *sql.Tx, projectID string, kind string, entityID string, twinID string, manifest *AliasOrphanRollbackManifest, order *int) error {
+	switch kind {
+	case "report":
+		// verdicts hang off findings, findings hang off the report; both FKs
+		// are NOT NULL, so the subtree retires with its root.
+		if err := captureAndDeleteTx(ctx, tx, "verdicts", `
+WHERE project_id = ? AND finding_id IN (SELECT id FROM findings WHERE project_id = ? AND report_id = ?)
+`, []any{projectID, projectID, entityID}, manifest, order); err != nil {
+			return err
+		}
+		return captureAndDeleteTx(ctx, tx, "findings", `WHERE project_id = ? AND report_id = ?`, []any{projectID, entityID}, manifest, order)
+	case "spark":
+		// spark_id is NOT NULL in both tables and carries no foreign key, so a
+		// retirement leaves silent dangling provenance. Repoint at the proven
+		// twin where possible; delete the row only when there is nowhere to go.
+		for _, ref := range []aliasOrphanSoftRef{
+			{table: "journal_deferrals", column: "spark_id", keyColumn: "operation_key", unique: true},
+			{table: "intent_operations", column: "spark_id", keyColumn: "operation_key"},
+		} {
+			if err := repointOrDeleteSoftRefTx(ctx, tx, projectID, ref, entityID, twinID, manifest, order); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// aliasOrphanSoftRef is a NOT NULL reference to an entity that the schema does
+// not enforce. unique marks columns whose value cannot be shared, so a repoint
+// has to yield when the twin already holds one.
+type aliasOrphanSoftRef struct {
+	table     string
+	column    string
+	keyColumn string
+	unique    bool
+}
+
+func repointOrDeleteSoftRefTx(ctx context.Context, tx *sql.Tx, projectID string, ref aliasOrphanSoftRef, entityID string, twinID string, manifest *AliasOrphanRollbackManifest, order *int) error {
+	exists, err := sqliteTableExistsQ(ctx, tx, ref.table)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	quotedTable := quoteSQLiteIdentifier(ref.table)
+	quotedColumn := quoteSQLiteIdentifier(ref.column)
+	quotedKey := quoteSQLiteIdentifier(ref.keyColumn)
+
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE project_id = ? AND %s = ? ORDER BY %s`, quotedKey, quotedTable, quotedColumn, quotedKey), projectID, entityID)
+	if err != nil {
+		return fmt.Errorf("list %s.%s references: %w", ref.table, ref.column, err)
+	}
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan %s.%s reference: %w", ref.table, ref.column, err)
+		}
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("list %s.%s references: %w", ref.table, ref.column, err)
+	}
+	rows.Close()
+
+	for _, key := range keys {
+		repoint := twinID != ""
+		if repoint && ref.unique {
+			var taken int
+			if err := tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM %s WHERE %s = ?)`, quotedTable, quotedColumn), twinID).Scan(&taken); err != nil {
+				return fmt.Errorf("check %s.%s availability: %w", ref.table, ref.column, err)
+			}
+			repoint = taken == 0
+		}
+		if repoint {
+			if _, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s = ? WHERE project_id = ? AND %s = ?`, quotedTable, quotedColumn, quotedKey), twinID, projectID, key); err != nil {
+				return fmt.Errorf("repoint %s.%s: %w", ref.table, ref.column, err)
+			}
+			manifest.Unlinks = append(manifest.Unlinks, AliasOrphanUnlink{
+				Table:      ref.table,
+				ProjectID:  projectID,
+				Column:     ref.column,
+				KeyColumn:  ref.keyColumn,
+				RowID:      key,
+				PreviousID: entityID,
+				NewID:      twinID,
+			})
+			continue
+		}
+		if err := captureAndDeleteTx(ctx, tx, ref.table, fmt.Sprintf(`WHERE project_id = ? AND %s = ?`, quotedKey), []any{projectID, key}, manifest, order); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// captureAndDeleteTx snapshots every row a predicate selects into the rollback
+// manifest and then deletes it.
+func captureAndDeleteTx(ctx context.Context, tx *sql.Tx, table string, where string, args []any, manifest *AliasOrphanRollbackManifest, order *int) error {
+	quoted := quoteSQLiteIdentifier(table)
+	if err := captureRowsTx(ctx, tx, table, fmt.Sprintf(`SELECT * FROM %s %s`, quoted, where), args, manifest, order, nil); err != nil {
+		return err
+	}
+	if _, err := execCountTx(ctx, tx, fmt.Sprintf(`DELETE FROM %s %s`, quoted, where), args...); err != nil {
+		return fmt.Errorf("delete %s rows: %w", table, err)
+	}
+	return nil
+}
+
 func unlinkReferencesToEntityTx(ctx context.Context, tx *sql.Tx, projectID string, kind string, entityID string, manifest *AliasOrphanRollbackManifest) error {
 	type unlinkSpec struct {
 		table  string
 		column string
 	}
-	var specs []unlinkSpec
+	var unlinkSpecs []unlinkSpec
 	switch kind {
 	case "spec":
-		specs = []unlinkSpec{
+		unlinkSpecs = []unlinkSpec{
 			{"tasks", "spec_id"},
 			{"journal_entries", "spec_id"},
 			{"plans", "spec_id"},
 			{"councils", "spec_id"},
 		}
 	case "task":
-		specs = []unlinkSpec{
+		unlinkSpecs = []unlinkSpec{
 			{"journal_entries", "task_id"},
 			{"handoffs", "task_id"},
 		}
 	default:
 		return nil
 	}
-	for _, spec := range specs {
-		exists, err := sqliteTableExistsTx(ctx, tx, spec.table)
+	for _, spec := range unlinkSpecs {
+		exists, err := sqliteTableExistsQ(ctx, tx, spec.table)
 		if err != nil {
 			return err
 		}
@@ -1056,6 +1491,7 @@ func unlinkReferencesToEntityTx(ctx context.Context, tx *sql.Tx, projectID strin
 				Table:      spec.table,
 				ProjectID:  projectID,
 				Column:     spec.column,
+				KeyColumn:  "id",
 				RowID:      id,
 				PreviousID: entityID,
 			})
@@ -1091,6 +1527,12 @@ func rollbackAliasOrphanMigrationManifest(ctx context.Context, store *Store, man
 	for _, change := range manifest.StatusChanges {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM events WHERE project_id = ? AND id = ?`, change.ProjectID, change.EventID); err != nil {
 			return fmt.Errorf("rollback status event %s: %w", change.EventID, err)
+		}
+		if change.PreviousUpdatedAt != "" {
+			if _, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET status = ?, updated_at = ? WHERE project_id = ? AND id = ?`, quoteSQLiteIdentifier(change.Table)), change.PreviousStatus, change.PreviousUpdatedAt, change.ProjectID, change.EntityID); err != nil {
+				return fmt.Errorf("rollback status for %s %s: %w", change.Kind, change.EntityID, err)
+			}
+			continue
 		}
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET status = ? WHERE project_id = ? AND id = ?`, quoteSQLiteIdentifier(change.Table)), change.PreviousStatus, change.ProjectID, change.EntityID); err != nil {
 			return fmt.Errorf("rollback status for %s %s: %w", change.Kind, change.EntityID, err)
@@ -1128,9 +1570,10 @@ func rollbackAliasOrphanMigrationManifest(ctx context.Context, store *Store, man
 		result.RowsRestored++
 	}
 
-	// Restore unlinked FKs.
+	// Restore nulled and repointed references.
 	for _, unlink := range manifest.Unlinks {
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s = ? WHERE project_id = ? AND id = ?`, quoteSQLiteIdentifier(unlink.Table), quoteSQLiteIdentifier(unlink.Column)), unlink.PreviousID, unlink.ProjectID, unlink.RowID); err != nil {
+		keyColumn := firstNonEmpty(unlink.KeyColumn, "id")
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s = ? WHERE project_id = ? AND %s = ?`, quoteSQLiteIdentifier(unlink.Table), quoteSQLiteIdentifier(unlink.Column), quoteSQLiteIdentifier(keyColumn)), unlink.PreviousID, unlink.ProjectID, unlink.RowID); err != nil {
 			return fmt.Errorf("restore unlink %s.%s: %w", unlink.Table, unlink.Column, err)
 		}
 	}
@@ -1251,158 +1694,6 @@ func rowValueString(row AliasOrphanDeletedRow, column string) string {
 	return ""
 }
 
-// Transaction-scoped classification helpers (mirror the non-tx classifiers).
-
-func classifyAliasOrphansForTableTx(ctx context.Context, tx *sql.Tx, projectID string, legacyProjectID string, table aliasOrphanEntityTable, retireSet map[string]struct{}, realiasSet map[string]string) (AliasOrphanTableSummary, error) {
-	// Reuse the DB-level classifier by wrapping is awkward; duplicate the SQL
-	// against *sql.Tx for transactional consistency at apply time.
-	summary := AliasOrphanTableSummary{
-		Kind:            table.kind,
-		Table:           table.table,
-		Classifications: []AliasOrphanRowClassify{},
-	}
-	type entityRow struct {
-		id        string
-		title     string
-		createdAt string
-	}
-	orphanQuery := fmt.Sprintf(`
-SELECT e.id, e.%s, e.created_at
-FROM %s AS e
-WHERE e.project_id = ?
-  AND NOT EXISTS (
-    SELECT 1 FROM aliases AS a
-    WHERE a.project_id = e.project_id
-      AND a.entity_kind = ?
-      AND a.entity_id = e.id
-      AND a.namespace = ?
-  )
-ORDER BY e.id
-`, quoteSQLiteIdentifier(table.titleColumn), quoteSQLiteIdentifier(table.table))
-	rows, err := tx.QueryContext(ctx, orphanQuery, projectID, table.kind, table.namespace)
-	if err != nil {
-		return summary, fmt.Errorf("scan %s orphans: %w", table.table, err)
-	}
-	var orphans []entityRow
-	for rows.Next() {
-		var row entityRow
-		if err := rows.Scan(&row.id, &row.title, &row.createdAt); err != nil {
-			rows.Close()
-			return summary, err
-		}
-		orphans = append(orphans, row)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return summary, err
-	}
-	rows.Close()
-
-	type aliasHolder struct {
-		entityID  string
-		alias     string
-		title     string
-		createdAt string
-	}
-	aliasRows, err := tx.QueryContext(ctx, fmt.Sprintf(`
-SELECT a.entity_id, a.alias, e.%s, e.created_at
-FROM aliases AS a
-JOIN %s AS e ON e.project_id = a.project_id AND e.id = a.entity_id
-WHERE a.project_id = ? AND a.entity_kind = ? AND a.namespace = ?
-ORDER BY a.alias
-`, quoteSQLiteIdentifier(table.titleColumn), quoteSQLiteIdentifier(table.table)), projectID, table.kind, table.namespace)
-	if err != nil {
-		return summary, err
-	}
-	holdersByTitle := map[string][]aliasHolder{}
-	derivedOrphanIDs := map[string]aliasHolder{}
-	for aliasRows.Next() {
-		var h aliasHolder
-		if err := aliasRows.Scan(&h.entityID, &h.alias, &h.title, &h.createdAt); err != nil {
-			aliasRows.Close()
-			return summary, err
-		}
-		holdersByTitle[h.title] = append(holdersByTitle[h.title], h)
-		if legacyProjectID != "" {
-			derived := stableMigrationID(table.kind, legacyProjectID, h.alias)
-			if derived != h.entityID {
-				derivedOrphanIDs[derived] = h
-			}
-		}
-	}
-	if err := aliasRows.Err(); err != nil {
-		aliasRows.Close()
-		return summary, err
-	}
-	aliasRows.Close()
-
-	summary.Orphans = len(orphans)
-	for _, orphan := range orphans {
-		classify := AliasOrphanRowClassify{
-			ProjectID: projectID,
-			Kind:      table.kind,
-			Table:     table.table,
-			EntityID:  orphan.id,
-			Title:     orphan.title,
-			Proof:     aliasOrphanProofUnproven,
-		}
-		if twin, ok := derivedOrphanIDs[orphan.id]; ok {
-			classify.Proof = aliasOrphanProofDerivation
-			classify.TwinID = twin.entityID
-			classify.TwinAlias = twin.alias
-			classify.Disposition = aliasOrphanDispositionRetire
-			summary.Retire++
-		} else if holders := holdersByTitle[orphan.title]; len(holders) == 1 && inJune24EventCluster(orphan.createdAt, holders[0].createdAt) {
-			twin := holders[0]
-			classify.Proof = aliasOrphanProofContentIdentity
-			classify.TwinID = twin.entityID
-			classify.TwinAlias = twin.alias
-			classify.Disposition = aliasOrphanDispositionRetire
-			summary.Retire++
-		} else if _, ok := realiasSet[orphan.id]; ok {
-			classify.Disposition = aliasOrphanDispositionRealias
-			summary.Unproven++
-		} else if _, ok := retireSet[orphan.id]; ok {
-			classify.Disposition = aliasOrphanDispositionRetire
-			summary.Unproven++
-		} else {
-			summary.Unproven++
-		}
-		summary.Classifications = append(summary.Classifications, classify)
-	}
-
-	danglingRows, err := tx.QueryContext(ctx, fmt.Sprintf(`
-SELECT a.id
-FROM aliases AS a
-WHERE a.project_id = ?
-  AND a.entity_kind = ?
-  AND a.namespace = ?
-  AND NOT EXISTS (
-    SELECT 1 FROM %s AS e
-    WHERE e.project_id = a.project_id AND e.id = a.entity_id
-  )
-ORDER BY a.id
-`, quoteSQLiteIdentifier(table.table)), projectID, table.kind, table.namespace)
-	if err != nil {
-		return summary, err
-	}
-	for danglingRows.Next() {
-		var aliasID string
-		if err := danglingRows.Scan(&aliasID); err != nil {
-			danglingRows.Close()
-			return summary, err
-		}
-		summary.DanglingAliasIDs = append(summary.DanglingAliasIDs, aliasID)
-	}
-	if err := danglingRows.Err(); err != nil {
-		danglingRows.Close()
-		return summary, err
-	}
-	danglingRows.Close()
-	summary.DanglingAliases = len(summary.DanglingAliasIDs)
-	return summary, nil
-}
-
 func listProjectsTx(ctx context.Context, tx *sql.Tx, databasePath string) ([]ProjectIdentity, error) {
 	rows, err := tx.QueryContext(ctx, `
 SELECT
@@ -1434,9 +1725,9 @@ ORDER BY lower(COALESCE(NULLIF(projects.friendly_name, ''), projects.id)), proje
 	return projects, nil
 }
 
-func sqliteTableExistsTx(ctx context.Context, tx *sql.Tx, table string) (bool, error) {
+func sqliteTableExistsQ(ctx context.Context, q aliasOrphanQuerier, table string) (bool, error) {
 	var name string
-	err := tx.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&name)
+	err := q.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&name)
 	if err == nil {
 		return true, nil
 	}
