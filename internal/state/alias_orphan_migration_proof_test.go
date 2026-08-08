@@ -20,7 +20,7 @@ func TestAliasOrphanContentIdentityRequiresTheHolderToBeTheReimport(t *testing.T
 	unrelated := "task:unrelatedlive0000000001"
 	seedTask(t, stateHome, root, projectID, unrelated, "Untitled", "todo", "2026-06-24T13:03:00Z", false, "")
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -30,6 +30,41 @@ func TestAliasOrphanContentIdentityRequiresTheHolderToBeTheReimport(t *testing.T
 	}
 	if preview.Totals.Retire != 0 {
 		t.Fatalf("preview retire = %d, want 0", preview.Totals.Retire)
+	}
+}
+
+// Two bodyless rows match on empty fingerprints only when the orphan sits in
+// the June-13 original-import window; later same-day bodyless rows stay unproven.
+func TestAliasOrphanContentIdentityBodylessRequiresOriginalImportWindow(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID, _ := seedAliasOrphanFixtureBase(t)
+
+	twinID := "task:bodylesstwin0000000001"
+	outsideWindow := "task:bodylesslate0000000001"
+	seedTask(t, stateHome, root, projectID, twinID, "Bodyless Title", "todo", "2026-06-24T13:03:37Z", true, "TASK-BODYLESS")
+	seedTask(t, stateHome, root, projectID, outsideWindow, "Bodyless Title", "todo", "2026-06-13T14:28:00Z", false, "")
+
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
+	if err != nil {
+		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
+	}
+	if got := aliasOrphanClassification(t, preview, outsideWindow); got.Proof != aliasOrphanProofUnproven {
+		t.Fatalf("outside June-13 window classification = %#v, want unproven", got)
+	}
+
+	inWindow := "task:bodylessorig0000000001"
+	seedTask(t, stateHome, root, projectID, inWindow, "Bodyless Title", "todo", "2026-06-13T01:39:42Z", false, "")
+	// Two orphans with the same title make orphan-side uniqueness fail; retire
+	// the late one from the fixture by removing it before the in-window proof.
+	mustExecOpen(t, stateHome, root, `DELETE FROM tasks WHERE project_id = ? AND id = ?`, projectID, outsideWindow)
+
+	agreed, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
+	if err != nil {
+		t.Fatalf("second PreviewAliasOrphanMigration() error = %v", err)
+	}
+	got := aliasOrphanClassification(t, agreed, inWindow)
+	if got.Proof != aliasOrphanProofContentIdentity || got.TwinID != twinID {
+		t.Fatalf("in-window bodyless classification = %#v, want content-identity against %s", got, twinID)
 	}
 }
 
@@ -46,7 +81,7 @@ func TestAliasOrphanContentIdentityComparesBodies(t *testing.T) {
 	seedArtifactBody(t, stateHome, root, projectID, "spec", twinID, "twin body", "hash-twin")
 	seedArtifactBody(t, stateHome, root, projectID, "spec", orphanID, "orphan body", "hash-orphan")
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -55,7 +90,7 @@ func TestAliasOrphanContentIdentityComparesBodies(t *testing.T) {
 	}
 
 	mustExecOpen(t, stateHome, root, `UPDATE artifact_bodies SET content = 'twin body', content_hash = 'hash-twin' WHERE project_id = ? AND entity_id = ?`, projectID, orphanID)
-	agreed, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	agreed, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("second PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -78,7 +113,7 @@ func TestAliasOrphanDerivationRefusesAReusedAlias(t *testing.T) {
 	seedTask(t, stateHome, root, projectID, reuser, "Refactor the database layer", "todo", "2027-02-01T00:00:00Z", true, alias)
 	seedTask(t, stateHome, root, projectID, orphanID, "Add login screen", "todo", "2026-06-13T10:00:00Z", false, "")
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -107,7 +142,7 @@ func TestAliasOrphanDerivationRefusesAnOrphanNewerThanItsHolder(t *testing.T) {
 	seedTask(t, stateHome, root, projectID, holderID, "Same Title", "todo", "2026-06-24T13:03:00Z", true, alias)
 	seedTask(t, stateHome, root, projectID, orphanID, "Same Title", "todo", "2026-07-01T10:00:00Z", false, "")
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -147,7 +182,7 @@ VALUES (?, ?, 'task', ?, 'task', ?, 'depends_on', 'fixture', ?, ?)
 
 	// The preview simulates the whole repair, so the go/no-go number already
 	// counts the alias the retirement will strand.
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -199,7 +234,7 @@ VALUES (?, ?, ?, 0, ?, ?, ?, ?)
 	seedTask(t, stateHome, root, projectID, twinID, "Moved Project Task", "todo", "2026-06-24T13:03:00Z", true, alias)
 	seedTask(t, stateHome, root, projectID, orphanID, "Moved Project Task", "todo", "2026-06-13T10:00:00Z", false, "")
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -231,13 +266,58 @@ func TestAliasOrphanSparkEarnsSourceDerivationProof(t *testing.T) {
 	seedSpark(t, stateHome, root, projectID, twinID, "dedupe the state tables one day", currentSourceID, "2026-06-24T13:03:00Z", "SPARK-dedupe")
 	seedSpark(t, stateHome, root, projectID, orphanID, "dedupe the state tables one day", legacySourceID, "2026-06-13T10:00:00Z", "")
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
 	got := aliasOrphanClassification(t, preview, orphanID)
 	if got.Proof != aliasOrphanProofSourceDerivation || got.TwinID != twinID {
 		t.Fatalf("spark classification = %#v, want source-derivation against %s", got, twinID)
+	}
+}
+
+// Source-salt proof shares the June-24 holder window and orphan-predates-twin
+// ordering gates with the other auto-retiring proofs.
+func TestAliasOrphanSourceSaltRequiresReimportHolderAndOrdering(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
+	legacyID := hex.EncodeToString(sha256Sum(path))
+	relPath := ".agents/sessions/20260613-salt-gates.md"
+
+	legacySourceID := stableMigrationID("source", legacyID, relPath)
+	currentSourceID := stableMigrationID("source", projectID, relPath)
+	seedSource(t, stateHome, root, projectID, legacySourceID, relPath)
+	seedSource(t, stateHome, root, projectID, currentSourceID, relPath)
+
+	text := "gate the source salt proof"
+	// Holder outside the re-import window.
+	lateHolder := stableMigrationID("spark", projectID, relPath, "12")
+	orphanID := stableMigrationID("spark", legacyID, relPath, "12")
+	seedSpark(t, stateHome, root, projectID, lateHolder, text, currentSourceID, "2026-06-24T18:02:00Z", "SPARK-gate")
+	seedSpark(t, stateHome, root, projectID, orphanID, text, legacySourceID, "2026-06-13T10:00:00Z", "")
+
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
+	if err != nil {
+		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
+	}
+	if got := aliasOrphanClassification(t, preview, orphanID); got.Proof != aliasOrphanProofUnproven {
+		t.Fatalf("late holder classification = %#v, want unproven", got)
+	}
+
+	// Newer orphan against an in-window holder is also unproven.
+	mustExecOpen(t, stateHome, root, `DELETE FROM sparks WHERE project_id = ? AND id IN (?, ?)`, projectID, lateHolder, orphanID)
+	mustExecOpen(t, stateHome, root, `DELETE FROM aliases WHERE project_id = ? AND entity_id = ?`, projectID, lateHolder)
+	inWindowHolder := stableMigrationID("spark", projectID, relPath, "20")
+	newerOrphan := stableMigrationID("spark", legacyID, relPath, "20")
+	seedSpark(t, stateHome, root, projectID, inWindowHolder, text, currentSourceID, "2026-06-24T13:03:37Z", "SPARK-gate")
+	seedSpark(t, stateHome, root, projectID, newerOrphan, text, legacySourceID, "2026-07-01T10:00:00Z", "")
+
+	ordered, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
+	if err != nil {
+		t.Fatalf("second PreviewAliasOrphanMigration() error = %v", err)
+	}
+	if got := aliasOrphanClassification(t, ordered, newerOrphan); got.Proof != aliasOrphanProofUnproven {
+		t.Fatalf("newer orphan classification = %#v, want unproven", got)
 	}
 }
 
@@ -262,7 +342,7 @@ func TestAliasOrphanSourceSaltRefusesManyOrphansToOneHolder(t *testing.T) {
 	seedSpark(t, stateHome, root, projectID, firstOrphan, text, legacySourceID, "2026-06-13T10:00:00Z", "")
 	seedSpark(t, stateHome, root, projectID, secondOrphan, text, legacySourceID, "2026-06-13T10:05:00Z", "")
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -412,7 +492,7 @@ func TestAliasOrphanApplyRejectsDispositionsThatMatchNothing(t *testing.T) {
 	root, stateHome, projectID, _ := seedAliasOrphanFixtureBase(t)
 	seedTask(t, stateHome, root, projectID, "task:realorphan0000000001", "Real Orphan", "todo", "2026-05-01T00:00:00Z", false, "")
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -512,8 +592,60 @@ func TestAliasOrphanSecondApplyWithTheSameDispositionsIsANoOp(t *testing.T) {
 	}
 }
 
+// Classification iterates to a fixed point inside the shared classifier: a
+// second orphan that only becomes unique after its title-twin retires is
+// retire-class in one plan, so a single bare apply passes post-apply
+// verification and a second preview reports zero retire-class rows.
+func TestAliasOrphanClassificationReachesFixedPoint(t *testing.T) {
+	ctx := context.Background()
+	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
+	legacyID := hex.EncodeToString(sha256Sum(path))
+	alias := "TASK-777"
+
+	holder := stableMigrationID("task", projectID, alias)
+	provenOrphan := stableMigrationID("task", legacyID, alias)
+	secondOrphan := "task:secondorphan000000001"
+
+	seedTask(t, stateHome, root, projectID, holder, "Shared Title", "todo", "2026-06-24T13:03:00Z", true, alias)
+	seedTask(t, stateHome, root, projectID, provenOrphan, "Shared Title", "todo", "2026-06-13T10:00:00Z", false, "")
+	// Bodyless content-identity needs the original-import window once uniqueness unlocks.
+	seedTask(t, stateHome, root, projectID, secondOrphan, "Shared Title", "todo", "2026-06-13T01:39:42Z", false, "")
+
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
+	if err != nil {
+		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
+	}
+	if got := aliasOrphanClassification(t, preview, provenOrphan); got.Proof != aliasOrphanProofDerivation || got.Disposition != aliasOrphanDispositionRetire {
+		t.Fatalf("derivation orphan = %#v, want derivation/retire", got)
+	}
+	if got := aliasOrphanClassification(t, preview, secondOrphan); got.Proof != aliasOrphanProofContentIdentity || got.Disposition != aliasOrphanDispositionRetire {
+		t.Fatalf("unlocked orphan = %#v, want content-identity/retire after fixed point", got)
+	}
+	if preview.Totals.Retire < 2 {
+		t.Fatalf("preview retire = %d, want both orphans retire-class", preview.Totals.Retire)
+	}
+
+	if _, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{}); err != nil {
+		t.Fatalf("ApplyAliasOrphanMigration() error = %v", err)
+	}
+	if entityExists(t, stateHome, root, "tasks", provenOrphan) || entityExists(t, stateHome, root, "tasks", secondOrphan) {
+		t.Fatal("both orphans should be retired by a single apply")
+	}
+	if !entityExists(t, stateHome, root, "tasks", holder) {
+		t.Fatal("holder was retired")
+	}
+
+	after, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
+	if err != nil {
+		t.Fatalf("second PreviewAliasOrphanMigration() error = %v", err)
+	}
+	if after.Totals.Retire != 0 {
+		t.Fatalf("second preview retire = %d, want 0", after.Totals.Retire)
+	}
+}
+
 // Preview reports the source rows the retire set will strand — the ceremony's
-// go/no-go reads that number before any apply.
+// go/no-go reads that number before any apply. Apply surfaces the same total.
 func TestAliasOrphanPreviewReportsOrphanedSources(t *testing.T) {
 	ctx := context.Background()
 	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
@@ -526,7 +658,7 @@ func TestAliasOrphanPreviewReportsOrphanedSources(t *testing.T) {
 	seedSpec(t, stateHome, root, projectID, orphanID, "Sourced Spec", "active", "2026-06-13T10:00:00Z", false, "")
 	seedSpecResidue(t, stateHome, root, projectID, orphanID)
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -549,6 +681,14 @@ func TestAliasOrphanPreviewReportsOrphanedSources(t *testing.T) {
 	}
 	if !entityExists(t, stateHome, root, "sources", stableMigrationID("source", projectID, "specs/"+orphanID+".md")) {
 		t.Fatal("preview simulation deleted a live source row")
+	}
+
+	applied, err := ApplyAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
+	if err != nil {
+		t.Fatalf("ApplyAliasOrphanMigration() error = %v", err)
+	}
+	if applied.Totals.OrphanedSources != 1 {
+		t.Fatalf("apply orphaned sources = %d, want 1", applied.Totals.OrphanedSources)
 	}
 }
 
@@ -597,7 +737,7 @@ func TestAliasOrphanCoversShapingDrafts(t *testing.T) {
 		t.Fatalf("shaping_drafts parity = %#v, want raw=2 reachable=1 orphan=1", drafts)
 	}
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}

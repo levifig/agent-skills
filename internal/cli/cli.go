@@ -3444,7 +3444,7 @@ func (r Runner) runAliasOrphanMigration(args []string, out io.Writer, runtime st
 	case options.apply:
 		result, err = state.ApplyAliasOrphanMigration(context.Background(), projectRoot, resolver, options.applyOptions)
 	default:
-		result, err = state.PreviewAliasOrphanMigration(context.Background(), projectRoot, resolver)
+		result, err = state.PreviewAliasOrphanMigration(context.Background(), projectRoot, resolver, options.applyOptions)
 	}
 	if err != nil {
 		if options.jsonOutput {
@@ -3803,7 +3803,7 @@ func writeAliasOrphanMigrationHuman(out io.Writer, displayCommand string, result
 	case state.AliasOrphanMigrationActionApply:
 		fmt.Fprintf(out, "%s --apply\n", displayCommand)
 	case state.AliasOrphanMigrationActionRollback:
-		fmt.Fprintf(out, "%s --rollback\n", displayCommand)
+		fmt.Fprintf(out, "%s --rollback %s\n", displayCommand, result.RollbackManifestPath)
 	default:
 		fmt.Fprintf(out, "%s --dry-run\n", displayCommand)
 	}
@@ -13668,6 +13668,7 @@ func parseLifecycleStatusMigrationArgs(args []string, command string) (lifecycle
 func parseAliasOrphanMigrationArgs(args []string, command string) (aliasOrphanMigrationOptions, error) {
 	var options aliasOrphanMigrationOptions
 	options.applyOptions.Realias = map[string]string{}
+	retireSeen := map[string]struct{}{}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
@@ -13692,15 +13693,19 @@ func parseAliasOrphanMigrationArgs(args []string, command string) (aliasOrphanMi
 			if entityID == "" {
 				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s --retire requires a non-empty entity id", command)
 			}
-			options.applyOptions.Retire = append(options.applyOptions.Retire, entityID)
-			options.applyOptions.Flags = append(options.applyOptions.Flags, "--retire "+entityID)
+			if err := recordAliasOrphanRetire(&options, retireSeen, entityID, command); err != nil {
+				return aliasOrphanMigrationOptions{}, err
+			}
+			options.applyOptions.Flags = append(options.applyOptions.Flags, arg, args[i])
 		case strings.HasPrefix(arg, "--retire="):
 			entityID := strings.TrimSpace(strings.TrimPrefix(arg, "--retire="))
 			if entityID == "" {
 				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s --retire requires a non-empty entity id", command)
 			}
-			options.applyOptions.Retire = append(options.applyOptions.Retire, entityID)
-			options.applyOptions.Flags = append(options.applyOptions.Flags, "--retire "+entityID)
+			if err := recordAliasOrphanRetire(&options, retireSeen, entityID, command); err != nil {
+				return aliasOrphanMigrationOptions{}, err
+			}
+			options.applyOptions.Flags = append(options.applyOptions.Flags, arg)
 		case arg == "--realias":
 			if i+1 >= len(args) {
 				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s requires --realias <entity-id>=<alias>", command)
@@ -13710,15 +13715,19 @@ func parseAliasOrphanMigrationArgs(args []string, command string) (aliasOrphanMi
 			if err != nil {
 				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s: %w", command, err)
 			}
-			options.applyOptions.Realias[entityID] = alias
-			options.applyOptions.Flags = append(options.applyOptions.Flags, "--realias "+entityID+"="+alias)
+			if err := recordAliasOrphanRealias(&options, retireSeen, entityID, alias, command); err != nil {
+				return aliasOrphanMigrationOptions{}, err
+			}
+			options.applyOptions.Flags = append(options.applyOptions.Flags, arg, args[i])
 		case strings.HasPrefix(arg, "--realias="):
 			entityID, alias, err := parseAliasOrphanRealiasValue(strings.TrimPrefix(arg, "--realias="))
 			if err != nil {
 				return aliasOrphanMigrationOptions{}, fmt.Errorf("%s: %w", command, err)
 			}
-			options.applyOptions.Realias[entityID] = alias
-			options.applyOptions.Flags = append(options.applyOptions.Flags, "--realias "+entityID+"="+alias)
+			if err := recordAliasOrphanRealias(&options, retireSeen, entityID, alias, command); err != nil {
+				return aliasOrphanMigrationOptions{}, err
+			}
+			options.applyOptions.Flags = append(options.applyOptions.Flags, arg)
 		default:
 			return aliasOrphanMigrationOptions{}, fmt.Errorf("unknown option %q", arg)
 		}
@@ -13732,10 +13741,33 @@ func parseAliasOrphanMigrationArgs(args []string, command string) (aliasOrphanMi
 	if options.rollbackPath != "" && (len(options.applyOptions.Retire) > 0 || len(options.applyOptions.Realias) > 0) {
 		return aliasOrphanMigrationOptions{}, fmt.Errorf("%s cannot combine --rollback with --retire or --realias", command)
 	}
-	if !options.apply && (len(options.applyOptions.Retire) > 0 || len(options.applyOptions.Realias) > 0) {
-		return aliasOrphanMigrationOptions{}, fmt.Errorf("%s requires --apply with --retire or --realias", command)
-	}
 	return options, nil
+}
+
+func recordAliasOrphanRetire(options *aliasOrphanMigrationOptions, retireSeen map[string]struct{}, entityID, command string) error {
+	if existing, ok := options.applyOptions.Realias[entityID]; ok {
+		return fmt.Errorf("%s: conflicting dispositions for %s: --retire and --realias %s=%s", command, entityID, entityID, existing)
+	}
+	if _, ok := retireSeen[entityID]; ok {
+		return nil
+	}
+	retireSeen[entityID] = struct{}{}
+	options.applyOptions.Retire = append(options.applyOptions.Retire, entityID)
+	return nil
+}
+
+func recordAliasOrphanRealias(options *aliasOrphanMigrationOptions, retireSeen map[string]struct{}, entityID, alias, command string) error {
+	if _, ok := retireSeen[entityID]; ok {
+		return fmt.Errorf("%s: conflicting dispositions for %s: --retire and --realias %s=%s", command, entityID, entityID, alias)
+	}
+	if existing, ok := options.applyOptions.Realias[entityID]; ok {
+		if existing == alias {
+			return nil
+		}
+		return fmt.Errorf("%s: conflicting --realias for %s: %s and %s", command, entityID, existing, alias)
+	}
+	options.applyOptions.Realias[entityID] = alias
+	return nil
 }
 
 func parseAliasOrphanRealiasValue(value string) (string, string, error) {

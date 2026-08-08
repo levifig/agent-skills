@@ -28,12 +28,12 @@ func TestAliasOrphanClassificationProofs(t *testing.T) {
 
 	contentOrphanID := "task:contentidentity0000001"
 	seedTask(t, stateHome, root, projectID, "task:content-twin00000000001", "Content Identity Twin", "todo", "2026-06-24T13:03:00Z", true, "TASK-CONTENT")
-	seedTask(t, stateHome, root, projectID, contentOrphanID, "Content Identity Twin", "todo", "2026-06-13T11:00:00Z", false, "")
+	seedTask(t, stateHome, root, projectID, contentOrphanID, "Content Identity Twin", "todo", "2026-06-13T01:39:42Z", false, "")
 
 	unprovenID := "task:unproven00000000000001"
 	seedTask(t, stateHome, root, projectID, unprovenID, "Unproven Orphan Title", "todo", "2026-06-13T12:00:00Z", false, "")
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -139,7 +139,7 @@ VALUES (?, ?, 'report', ?, 'report', 'transitional-surfaces-do-not-deepen', ?, ?
 	}
 
 	// Idempotency: second preview classifies zero retire/dangling; second apply no-ops.
-	secondPreview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	secondPreview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("second PreviewAliasOrphanMigration() error = %v", err)
 	}
@@ -186,7 +186,7 @@ func TestAliasOrphanOperatorDispositions(t *testing.T) {
 	seedTask(t, stateHome, root, projectID, realiasID, "Operator Realias Me", "todo", "2026-05-01T00:00:00Z", false, "")
 
 	// Without disposition, unproven remain.
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("preview error = %v", err)
 	}
@@ -216,7 +216,7 @@ func TestAliasOrphanOperatorDispositions(t *testing.T) {
 	}
 
 	// After dispositions, no unproven remain for these IDs.
-	after, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	after, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("post-disposition preview error = %v", err)
 	}
@@ -241,7 +241,7 @@ func TestAliasOrphanPreviewIsolatesAllProjects(t *testing.T) {
 	seedTask(t, stateHome, root, projectID, twinID, "Multi Project Task", "todo", "2026-06-24T13:03:00Z", true, alias)
 	seedTask(t, stateHome, root, projectID, orphanID, "Multi Project Task", "todo", "2026-06-13T10:00:00Z", false, "")
 
-	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome})
+	preview, err := PreviewAliasOrphanMigration(ctx, root, PathResolver{StateHome: stateHome}, AliasOrphanApplyOptions{})
 	if err != nil {
 		t.Fatalf("preview error = %v", err)
 	}

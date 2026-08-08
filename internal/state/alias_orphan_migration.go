@@ -46,10 +46,15 @@ const (
 	aliasOrphanArchiveMootEventType = "status_normalized"
 	aliasOrphanArchiveMootNote      = "evidence unrecoverable; archived as moot — SPEC-047 shipped the simplification this report guarded against deepening"
 
-	// june24EventClusterPrefix matches the 2026-06-24 re-import event cluster.
-	// Content identity requires the surviving alias holder to be a member of
-	// that cluster — the orphan is the older original, never the re-import.
-	june24EventClusterPrefix = "2026-06-24"
+	// The 2026-06-24 re-import wrote its rows in one tight instant cluster; rows created later that
+	// same day are real work, not re-import twins, so membership is a window and not a date prefix.
+	june24ReimportWindowStart = "2026-06-24T13:03:00Z"
+	june24ReimportWindowEnd   = "2026-06-24T13:04:00Z"
+
+	// The 2026-06-13 original import wrote at one instant; bodyless content-identity twins use this
+	// window so two empty fingerprints are not treated as equal evidence outside the import event.
+	june13OriginalImportWindowStart = "2026-06-13T01:39:00Z"
+	june13OriginalImportWindowEnd   = "2026-06-13T01:46:00Z"
 )
 
 // AliasOrphanMigrationResult is the preview/apply/rollback outcome for the
@@ -281,7 +286,9 @@ func aliasOrphanTableForKind(kind string) (aliasOrphanEntityTable, bool) {
 }
 
 // PreviewAliasOrphanMigration classifies alias-orphans against a temporary copy.
-func PreviewAliasOrphanMigration(ctx context.Context, root project.Root, resolver PathResolver) (AliasOrphanMigrationResult, error) {
+// Options may include operator --retire / --realias dispositions so the ceremony
+// invocation can be rehearsed before --apply.
+func PreviewAliasOrphanMigration(ctx context.Context, root project.Root, resolver PathResolver, options AliasOrphanApplyOptions) (AliasOrphanMigrationResult, error) {
 	status, err := requireAliasOrphanMigrationStatus(root, resolver)
 	if err != nil {
 		return AliasOrphanMigrationResult{}, err
@@ -307,10 +314,11 @@ func PreviewAliasOrphanMigration(ctx context.Context, root project.Root, resolve
 	}
 	defer copyStore.Close()
 
-	result, manifest, err := planAliasOrphanMigration(ctx, copyStore, aliasOrphanMigrationBaseResult(status, AliasOrphanMigrationActionDryRun), AliasOrphanApplyOptions{}, aliasOrphanExecutedDispositions{})
+	result, manifest, err := planAliasOrphanMigration(ctx, copyStore, aliasOrphanMigrationBaseResult(status, AliasOrphanMigrationActionDryRun), options, aliasOrphanExecutedDispositions{})
 	if err != nil {
 		return AliasOrphanMigrationResult{}, err
 	}
+	result.OperatorFlags = append([]string{}, options.Flags...)
 	// The copy is disposable, so the repair runs against it for real. That is
 	// the only way the preview can report the source rows the retire set will
 	// strand — the blast radius the go/no-go decision reads.
@@ -440,6 +448,7 @@ func ApplyAliasOrphanMigration(ctx context.Context, root project.Root, resolver 
 	result.Totals.EntitiesRetired = manifest.Counts.EntitiesRetired
 	result.Totals.AliasesDeleted = manifest.Counts.AliasesDeleted
 	result.Totals.SourcesDeleted = manifest.Counts.SourcesDeleted
+	result.Totals.OrphanedSources = manifest.Counts.OrphanedSources
 	result.Totals.StatusesChanged = manifest.Counts.StatusesChanged
 	result.Totals.AliasesInserted = manifest.Counts.AliasesInserted
 
@@ -902,65 +911,66 @@ func classifyAliasOrphansForTable(ctx context.Context, q aliasOrphanQuerier, pro
 			derivedIDs[derived] = aliasOrphanDerivedTwin{holder: h, salt: salt}
 		}
 	}
-	orphanTitleCounts := map[string]int{}
-	orphanSourceKeyCounts := map[string]int{}
-	for _, orphan := range orphans {
-		orphanTitleCounts[orphan.title]++
-		orphanSourceKeyCounts[aliasOrphanSourceKey(orphan)]++
-	}
 
-	summary.Orphans = len(orphans)
-	for _, orphan := range orphans {
-		classify := AliasOrphanRowClassify{
-			ProjectID: projectID,
-			Kind:      table.kind,
-			Table:     table.table,
-			EntityID:  orphan.entityID,
-			Title:     orphan.title,
-			Proof:     aliasOrphanProofUnproven,
+	// Uniqueness for content-identity and source-derivation is computed over the
+	// orphans not yet retiring. Retiring one row can unlock another, so the
+	// classification iterates to a fixed point: each pass may promote more rows
+	// into the retiring set, then counts recompute over the smaller pool.
+	// Operator --retire seeds that set immediately; --realias never does, so a
+	// row named for preservation cannot free a competitor's uniqueness.
+	retiringForCounts := map[string]struct{}{}
+	for id := range retireSet {
+		retiringForCounts[id] = struct{}{}
+	}
+	frozen := map[string]AliasOrphanRowClassify{}
+
+	for {
+		orphanTitleCounts := map[string]int{}
+		orphanSourceKeyCounts := map[string]int{}
+		for _, orphan := range orphans {
+			if _, retiring := retiringForCounts[orphan.entityID]; retiring {
+				continue
+			}
+			orphanTitleCounts[orphan.title]++
+			orphanSourceKeyCounts[aliasOrphanSourceKey(orphan)]++
 		}
-		if twin, ok := aliasOrphanDerivationTwin(orphan, derivedIDs); ok {
-			classify.Proof = aliasOrphanProofDerivation
-			classify.TwinID = twin.holder.entityID
-			classify.TwinAlias = twin.holder.alias
-			classify.LegacyProjectID = twin.salt.projectID
-			classify.LegacyPath = twin.salt.path
-		} else if twin, salt, ok := aliasOrphanSourceSaltTwin(orphan, holders, salts, orphanSourceKeyCounts); ok {
-			classify.Proof = aliasOrphanProofSourceDerivation
-			classify.TwinID = twin.entityID
-			classify.TwinAlias = twin.alias
-			classify.LegacyProjectID = salt.projectID
-			classify.LegacyPath = salt.path
-		} else {
-			twin, ok, err := aliasOrphanContentIdentityTwin(ctx, q, projectID, table, orphan, holdersByTitle, orphanTitleCounts)
+
+		promoted := 0
+		pass := map[string]AliasOrphanRowClassify{}
+		for _, orphan := range orphans {
+			if existing, ok := frozen[orphan.entityID]; ok {
+				pass[orphan.entityID] = existing
+				continue
+			}
+			classify, err := classifyOneAliasOrphan(ctx, q, projectID, table, orphan, holders, holdersByTitle, derivedIDs, salts, orphanTitleCounts, orphanSourceKeyCounts, retireSet, realiasSet)
 			if err != nil {
 				return summary, err
 			}
-			if ok {
-				classify.Proof = aliasOrphanProofContentIdentity
-				classify.TwinID = twin.entityID
-				classify.TwinAlias = twin.alias
+			pass[orphan.entityID] = classify
+			if classify.Disposition != aliasOrphanDispositionRetire {
+				continue
 			}
+			// --realias outranks automatic retire; disposition would not be retire.
+			if _, already := retiringForCounts[orphan.entityID]; !already {
+				promoted++
+			}
+			frozen[orphan.entityID] = classify
+			retiringForCounts[orphan.entityID] = struct{}{}
 		}
-		// An explicit operator disposition outranks the automatic one. A proof
-		// that the row has a twin is not a licence to delete a row the operator
-		// named for preservation.
-		_, retireRequested := retireSet[orphan.entityID]
-		switch {
-		case realiasSet[orphan.entityID] != "":
-			classify.Disposition = aliasOrphanDispositionRealias
-		case retireRequested:
-			classify.Disposition = aliasOrphanDispositionRetire
-		case classify.Proof != aliasOrphanProofUnproven:
-			classify.Disposition = aliasOrphanDispositionRetire
+		if promoted == 0 {
+			summary.Orphans = len(orphans)
+			for _, orphan := range orphans {
+				classify := pass[orphan.entityID]
+				if classify.Proof == aliasOrphanProofUnproven {
+					summary.Unproven++
+				}
+				if classify.Disposition == aliasOrphanDispositionRetire {
+					summary.Retire++
+				}
+				summary.Classifications = append(summary.Classifications, classify)
+			}
+			break
 		}
-		if classify.Proof == aliasOrphanProofUnproven {
-			summary.Unproven++
-		}
-		if classify.Disposition == aliasOrphanDispositionRetire {
-			summary.Retire++
-		}
-		summary.Classifications = append(summary.Classifications, classify)
 	}
 
 	dangling, err := readDeadAliasIDs(ctx, q, projectID, table)
@@ -971,6 +981,67 @@ func classifyAliasOrphansForTable(ctx context.Context, q aliasOrphanQuerier, pro
 	summary.DanglingAliases = len(summary.DanglingAliasIDs)
 
 	return summary, nil
+}
+
+func classifyOneAliasOrphan(
+	ctx context.Context,
+	q aliasOrphanQuerier,
+	projectID string,
+	table aliasOrphanEntityTable,
+	orphan aliasOrphanRow,
+	holders []aliasOrphanRow,
+	holdersByTitle map[string][]aliasOrphanRow,
+	derivedIDs map[string]aliasOrphanDerivedTwin,
+	salts []aliasOrphanLegacySalt,
+	orphanTitleCounts map[string]int,
+	orphanSourceKeyCounts map[string]int,
+	retireSet map[string]struct{},
+	realiasSet map[string]string,
+) (AliasOrphanRowClassify, error) {
+	classify := AliasOrphanRowClassify{
+		ProjectID: projectID,
+		Kind:      table.kind,
+		Table:     table.table,
+		EntityID:  orphan.entityID,
+		Title:     orphan.title,
+		Proof:     aliasOrphanProofUnproven,
+	}
+	if twin, ok := aliasOrphanDerivationTwin(orphan, derivedIDs); ok {
+		classify.Proof = aliasOrphanProofDerivation
+		classify.TwinID = twin.holder.entityID
+		classify.TwinAlias = twin.holder.alias
+		classify.LegacyProjectID = twin.salt.projectID
+		classify.LegacyPath = twin.salt.path
+	} else if twin, salt, ok := aliasOrphanSourceSaltTwin(orphan, holders, salts, orphanSourceKeyCounts); ok {
+		classify.Proof = aliasOrphanProofSourceDerivation
+		classify.TwinID = twin.entityID
+		classify.TwinAlias = twin.alias
+		classify.LegacyProjectID = salt.projectID
+		classify.LegacyPath = salt.path
+	} else {
+		twin, ok, err := aliasOrphanContentIdentityTwin(ctx, q, projectID, table, orphan, holdersByTitle, orphanTitleCounts)
+		if err != nil {
+			return classify, err
+		}
+		if ok {
+			classify.Proof = aliasOrphanProofContentIdentity
+			classify.TwinID = twin.entityID
+			classify.TwinAlias = twin.alias
+		}
+	}
+	// An explicit operator disposition outranks the automatic one. A proof
+	// that the row has a twin is not a licence to delete a row the operator
+	// named for preservation.
+	_, retireRequested := retireSet[orphan.entityID]
+	switch {
+	case realiasSet[orphan.entityID] != "":
+		classify.Disposition = aliasOrphanDispositionRealias
+	case retireRequested:
+		classify.Disposition = aliasOrphanDispositionRetire
+	case classify.Proof != aliasOrphanProofUnproven:
+		classify.Disposition = aliasOrphanDispositionRetire
+	}
+	return classify, nil
 }
 
 // readDeadAliasIDs lists the dead aliases of one entity table: no entity row and
@@ -1066,6 +1137,12 @@ type aliasOrphanDerivedTwin struct {
 // this migration repairs always leaves the pre-rekey original as the older of
 // the pair. A reuse victim fails one or both and becomes an operator decision
 // instead of a silent deletion.
+//
+// Do not add body-fingerprint equality to this proof. The calibrated production
+// case has derivation-proven pairs whose stored bodies genuinely differ: the
+// artifacts changed between the June-13 originals and the June-24 re-imports.
+// Title equality plus orphan-predates-twin is the guard; a content check would
+// refuse every one of those pairs and break the repair.
 func aliasOrphanDerivationTwin(orphan aliasOrphanRow, derivedIDs map[string]aliasOrphanDerivedTwin) (aliasOrphanDerivedTwin, bool) {
 	twin, ok := derivedIDs[orphan.entityID]
 	if !ok {
@@ -1092,7 +1169,9 @@ func aliasOrphanSourceKey(row aliasOrphanRow) string {
 // was minted before the rekey; the surviving twin is then the unique alias
 // holder that carries the same content from the same source path. Uniqueness is
 // required on both sides: many orphans collapsing onto one holder is a merge,
-// not a twin proof, and stays unproven.
+// not a twin proof, and stays unproven. The holder must also sit in the June-24
+// re-import window and the orphan must predate it — the same gates the other
+// auto-retiring proofs apply.
 func aliasOrphanSourceSaltTwin(orphan aliasOrphanRow, holders []aliasOrphanRow, salts []aliasOrphanLegacySalt, orphanSourceKeyCounts map[string]int) (aliasOrphanRow, aliasOrphanLegacySalt, bool) {
 	if orphan.sourceID == "" || orphan.sourcePath == "" || strings.TrimSpace(orphan.title) == "" {
 		return aliasOrphanRow{}, aliasOrphanLegacySalt{}, false
@@ -1124,14 +1203,21 @@ func aliasOrphanSourceSaltTwin(orphan aliasOrphanRow, holders []aliasOrphanRow, 
 	if matches != 1 {
 		return aliasOrphanRow{}, aliasOrphanLegacySalt{}, false
 	}
+	if !inTimestampWindow(twin.createdAt, june24ReimportWindowStart, june24ReimportWindowEnd) {
+		return aliasOrphanRow{}, aliasOrphanLegacySalt{}, false
+	}
+	if orphan.createdAt == "" || orphan.createdAt >= twin.createdAt {
+		return aliasOrphanRow{}, aliasOrphanLegacySalt{}, false
+	}
 	return twin, matched, true
 }
 
 // aliasOrphanContentIdentityTwin is the distinctly-labeled fallback proof. It
 // requires the surviving alias holder to be a member of the 2026-06-24
-// re-import cluster, the orphan to predate it, exactly one candidate on each
-// side, a non-empty title, and identical stored bodies. Anything short of that
-// stays unproven.
+// re-import window, the orphan to predate it, exactly one candidate on each
+// side, a non-empty title, and matching body evidence. Bodyless pairs need the
+// orphan in the June-13 original-import window; bodyful pairs need equal
+// fingerprints. Anything short of that stays unproven.
 func aliasOrphanContentIdentityTwin(ctx context.Context, q aliasOrphanQuerier, projectID string, table aliasOrphanEntityTable, orphan aliasOrphanRow, holdersByTitle map[string][]aliasOrphanRow, orphanTitleCounts map[string]int) (aliasOrphanRow, bool, error) {
 	if strings.TrimSpace(orphan.title) == "" {
 		return aliasOrphanRow{}, false, nil
@@ -1144,7 +1230,7 @@ func aliasOrphanContentIdentityTwin(ctx context.Context, q aliasOrphanQuerier, p
 		return aliasOrphanRow{}, false, nil
 	}
 	twin := holders[0]
-	if !isJune24Reimport(twin.createdAt) {
+	if !inTimestampWindow(twin.createdAt, june24ReimportWindowStart, june24ReimportWindowEnd) {
 		return aliasOrphanRow{}, false, nil
 	}
 	if orphan.createdAt == "" || orphan.createdAt >= twin.createdAt {
@@ -1158,7 +1244,18 @@ func aliasOrphanContentIdentityTwin(ctx context.Context, q aliasOrphanQuerier, p
 	if err != nil {
 		return aliasOrphanRow{}, false, err
 	}
-	if orphanBodies != twinBodies {
+	orphanBodyless := orphanBodies == ""
+	twinBodyless := twinBodies == ""
+	switch {
+	case orphanBodyless && twinBodyless:
+		if !inTimestampWindow(orphan.createdAt, june13OriginalImportWindowStart, june13OriginalImportWindowEnd) {
+			return aliasOrphanRow{}, false, nil
+		}
+	case !orphanBodyless && !twinBodyless:
+		if orphanBodies != twinBodies {
+			return aliasOrphanRow{}, false, nil
+		}
+	default:
 		return aliasOrphanRow{}, false, nil
 	}
 	return twin, true, nil
@@ -1216,8 +1313,22 @@ SELECT status FROM reports WHERE project_id = ? AND id = ?
 	}, nil
 }
 
-func isJune24Reimport(timestamp string) bool {
-	return strings.HasPrefix(timestamp, june24EventClusterPrefix)
+// inTimestampWindow reports whether timestamp is in the half-open interval
+// [start, end). Values that fail RFC3339 parse are not in the window.
+func inTimestampWindow(timestamp, start, end string) bool {
+	ts, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		return false
+	}
+	startAt, err := time.Parse(time.RFC3339, start)
+	if err != nil {
+		return false
+	}
+	endAt, err := time.Parse(time.RFC3339, end)
+	if err != nil {
+		return false
+	}
+	return !ts.Before(startAt) && ts.Before(endAt)
 }
 
 // aliasOrphanLegacySalts returns every historical project ID this project's
@@ -1410,11 +1521,16 @@ func applyBrokenEvidenceArchiveTx(ctx context.Context, tx *sql.Tx, projectID str
 		return fmt.Errorf("archive broken-evidence report: %w", err)
 	}
 	eventID := stableMigrationID("event", projectID, "report", brokenEvidenceReportID, aliasOrphanArchiveMootEventType, previous, LifecycleStatusArchived, "moot")
-	if _, err := tx.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 INSERT OR IGNORE INTO events (id, project_id, entity_kind, entity_id, event_type, from_status, to_status, note, created_at, updated_at)
 VALUES (?, ?, 'report', ?, ?, ?, ?, ?, ?, ?)
-`, eventID, projectID, brokenEvidenceReportID, aliasOrphanArchiveMootEventType, previous, LifecycleStatusArchived, aliasOrphanArchiveMootNote, now, now); err != nil {
+`, eventID, projectID, brokenEvidenceReportID, aliasOrphanArchiveMootEventType, previous, LifecycleStatusArchived, aliasOrphanArchiveMootNote, now, now)
+	if err != nil {
 		return fmt.Errorf("record broken-evidence archive event: %w", err)
+	}
+	recordedEventID := ""
+	if rows, rowsErr := result.RowsAffected(); rowsErr == nil && rows > 0 {
+		recordedEventID = eventID
 	}
 	manifest.StatusChanges = append(manifest.StatusChanges, AliasOrphanStatusChange{
 		ProjectID:         projectID,
@@ -1424,7 +1540,7 @@ VALUES (?, ?, 'report', ?, ?, ?, ?, ?, ?, ?)
 		PreviousStatus:    previous,
 		PreviousUpdatedAt: previousUpdatedAt,
 		NewStatus:         LifecycleStatusArchived,
-		EventID:           eventID,
+		EventID:           recordedEventID,
 		EventNote:         aliasOrphanArchiveMootNote,
 	})
 	manifest.Counts.StatusesChanged++
@@ -1619,7 +1735,12 @@ func retireKindSpecificResidueTx(ctx context.Context, tx *sql.Tx, projectID stri
 	switch kind {
 	case "report":
 		// verdicts hang off findings, findings hang off the report; both FKs
-		// are NOT NULL, so the subtree retires with its root.
+		// are NOT NULL, so the subtree retires with its root. Finding/verdict
+		// aliases, relationship edges, events, and entity_tags are not covered
+		// by the report-endpoint polymorphic sweep and must go with them.
+		if err := retireReportSubtreeResidueTx(ctx, tx, projectID, entityID, manifest, order); err != nil {
+			return err
+		}
 		if err := captureAndDeleteTx(ctx, tx, "verdicts", `
 WHERE project_id = ? AND finding_id IN (SELECT id FROM findings WHERE project_id = ? AND report_id = ?)
 `, []any{projectID, projectID, entityID}, manifest, order); err != nil {
@@ -1812,10 +1933,12 @@ func rollbackAliasOrphanMigrationManifest(ctx context.Context, store *Store, man
 		}
 	}
 
-	// Undo status changes: delete archive events and restore previous status.
+	// Undo status changes: delete archive events this run inserted and restore previous status.
 	for _, change := range manifest.StatusChanges {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM events WHERE project_id = ? AND id = ?`, change.ProjectID, change.EventID); err != nil {
-			return fmt.Errorf("rollback status event %s: %w", change.EventID, err)
+		if change.EventID != "" {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM events WHERE project_id = ? AND id = ?`, change.ProjectID, change.EventID); err != nil {
+				return fmt.Errorf("rollback status event %s: %w", change.EventID, err)
+			}
 		}
 		if change.PreviousUpdatedAt != "" {
 			if _, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET status = ?, updated_at = ? WHERE project_id = ? AND id = ?`, quoteSQLiteIdentifier(change.Table)), change.PreviousStatus, change.PreviousUpdatedAt, change.ProjectID, change.EntityID); err != nil {
@@ -2046,12 +2169,128 @@ func writeAliasOrphanRollbackManifest(manifest AliasOrphanRollbackManifest, dir 
 			return "", fmt.Errorf("encode alias-orphan rollback manifest: %w", err)
 		}
 		payload = append(payload, '\n')
-		if err := os.WriteFile(path, payload, 0o600); err != nil {
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			if errors.Is(err, os.ErrExist) {
+				continue
+			}
+			return "", fmt.Errorf("create alias-orphan rollback manifest: %w", err)
+		}
+		if _, err := file.Write(payload); err != nil {
+			_ = file.Close()
+			_ = os.Remove(path)
 			return "", fmt.Errorf("write alias-orphan rollback manifest: %w", err)
+		}
+		if err := file.Sync(); err != nil {
+			_ = file.Close()
+			_ = os.Remove(path)
+			return "", fmt.Errorf("sync alias-orphan rollback manifest: %w", err)
+		}
+		if err := file.Close(); err != nil {
+			_ = os.Remove(path)
+			return "", fmt.Errorf("close alias-orphan rollback manifest: %w", err)
+		}
+		if err := syncDirectory(dir); err != nil {
+			_ = os.Remove(path)
+			return "", fmt.Errorf("sync alias-orphan rollback manifest directory: %w", err)
 		}
 		return path, nil
 	}
 	return "", fmt.Errorf("create alias-orphan rollback manifest: exhausted timestamp suffixes")
+}
+
+func syncDirectory(path string) error {
+	directory, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	if err := directory.Sync(); err != nil {
+		_ = directory.Close()
+		return err
+	}
+	return directory.Close()
+}
+
+// retireReportSubtreeResidueTx captures and deletes aliases, relationships,
+// events, and entity_tags that belong to findings and verdicts under a report
+// being retired. The report-endpoint polymorphic sweep does not reach these
+// rows because findings are not in aliasOrphanEntityTables.
+func retireReportSubtreeResidueTx(ctx context.Context, tx *sql.Tx, projectID string, reportID string, manifest *AliasOrphanRollbackManifest, order *int) error {
+	findingIDs, err := listIDsTx(ctx, tx, `SELECT id FROM findings WHERE project_id = ? AND report_id = ? ORDER BY id`, projectID, reportID)
+	if err != nil {
+		return fmt.Errorf("list findings for report %s: %w", reportID, err)
+	}
+	if len(findingIDs) == 0 {
+		return nil
+	}
+	verdictIDs, err := listIDsTx(ctx, tx, `
+SELECT id FROM verdicts
+WHERE project_id = ? AND finding_id IN (SELECT id FROM findings WHERE project_id = ? AND report_id = ?)
+ORDER BY id
+`, projectID, projectID, reportID)
+	if err != nil {
+		return fmt.Errorf("list verdicts for report %s: %w", reportID, err)
+	}
+
+	for _, findingID := range findingIDs {
+		if err := captureAndDeleteTx(ctx, tx, "aliases", `
+WHERE project_id = ? AND entity_kind = 'finding' AND entity_id = ?
+`, []any{projectID, findingID}, manifest, order); err != nil {
+			return err
+		}
+		if err := captureAndDeleteEntityRefsTx(ctx, tx, projectID, "finding", findingID, manifest, order); err != nil {
+			return err
+		}
+	}
+	for _, verdictID := range verdictIDs {
+		if err := captureAndDeleteTx(ctx, tx, "aliases", `
+WHERE project_id = ? AND entity_kind = 'verdict' AND entity_id = ?
+`, []any{projectID, verdictID}, manifest, order); err != nil {
+			return err
+		}
+		if err := captureAndDeleteEntityRefsTx(ctx, tx, projectID, "verdict", verdictID, manifest, order); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func captureAndDeleteEntityRefsTx(ctx context.Context, tx *sql.Tx, projectID string, kind string, entityID string, manifest *AliasOrphanRollbackManifest, order *int) error {
+	ops := []struct {
+		table string
+		where string
+		args  []any
+	}{
+		{"events", `WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, kind, entityID}},
+		{"entity_tags", `WHERE project_id = ? AND entity_kind = ? AND entity_id = ?`, []any{projectID, kind, entityID}},
+		{"relationships", `WHERE project_id = ? AND ((from_entity_kind = ? AND from_entity_id = ?) OR (to_entity_kind = ? AND to_entity_id = ?))`, []any{projectID, kind, entityID, kind, entityID}},
+	}
+	for _, op := range ops {
+		if err := captureAndDeleteTx(ctx, tx, op.table, op.where, op.args, manifest, order); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func listIDsTx(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 func readAliasOrphanRollbackManifest(path string) (AliasOrphanRollbackManifest, error) {
