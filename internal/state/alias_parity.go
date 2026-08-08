@@ -2,12 +2,18 @@ package state
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 )
 
 // AliasParityDivergenceCode is the stable diagnostic code when raw entity
 // counts diverge from alias-reachable counts, or dangling aliases exist.
 const AliasParityDivergenceCode = "alias-parity-diverged"
+
+// AliasParityMultiAliasCode is the stable diagnostic code when an entity holds
+// more than one alias. Multi-alias is countable and warning-only; it does not
+// gate Ready and names no repair command.
+const AliasParityMultiAliasCode = "alias-multi-alias"
 
 // AliasParityClearCode is the info-severity receipt when every project/table is at parity.
 const AliasParityClearCode = "alias-parity-clear"
@@ -33,6 +39,11 @@ type AliasParityTable struct {
 	OrphanDelta         int    `json:"orphan_delta"`
 	MultiAlias          int    `json:"multi_alias"`
 	DanglingAliases     int    `json:"dangling_aliases"`
+	// Inconsistent is true when the table's counts fail the internal identity
+	// check (orphan_delta != raw_count - aliased_entities). Counted as
+	// divergence rather than an inspect error so Mode stays ready.
+	Inconsistent  bool   `json:"inconsistent,omitempty"`
+	Inconsistency string `json:"inconsistency,omitempty"`
 }
 
 // AliasParity is the read-only doctor report for entity/alias identity parity.
@@ -47,6 +58,7 @@ type AliasParity struct {
 	MultiAlias          int                `json:"multi_alias"`
 	DanglingAliases     int                `json:"dangling_aliases"`
 	Ready               bool               `json:"ready"`
+	Inconsistencies     []string           `json:"inconsistencies,omitempty"`
 }
 
 // InspectAliasParity compares raw entity row counts to alias-joined counts and
@@ -79,10 +91,15 @@ func InspectAliasParity(ctx context.Context, store *Store) (AliasParity, error) 
 			parity.OrphanDelta += row.OrphanDelta
 			parity.MultiAlias += row.MultiAlias
 			parity.DanglingAliases += row.DanglingAliases
+			if row.Inconsistent && row.Inconsistency != "" {
+				parity.Inconsistencies = append(parity.Inconsistencies, row.Inconsistency)
+			}
 		}
 	}
 	parity.TablesChecked = len(parity.Tables)
-	if parity.OrphanDelta > 0 || parity.MultiAlias > 0 || parity.DanglingAliases > 0 {
+	// Multi-alias is warning-only and does not gate Ready; only orphan/dangling
+	// damage and internal count inconsistency do.
+	if parity.OrphanDelta > 0 || parity.DanglingAliases > 0 || len(parity.Inconsistencies) > 0 {
 		parity.Ready = false
 	}
 	return parity, nil
@@ -118,14 +135,20 @@ func inspectAliasParityTable(ctx context.Context, store *Store, projectID string
 	}
 	quotedTable := quoteSQLiteIdentifier(table.table)
 
-	if err := store.db.QueryRowContext(ctx, fmt.Sprintf(
+	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return result, fmt.Errorf("begin alias parity snapshot for %s: %w", table.table, err)
+	}
+	defer tx.Rollback()
+
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf(
 		`SELECT COUNT(*) FROM %s WHERE project_id = ?`, quotedTable,
 	), projectID).Scan(&result.RawCount); err != nil {
 		return result, fmt.Errorf("count raw %s rows: %w", table.table, err)
 	}
 
 	// One row per alias — the exact cardinality `loaf <kind> list` returns.
-	if err := store.db.QueryRowContext(ctx, fmt.Sprintf(`
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf(`
 SELECT COUNT(*)
 FROM aliases AS a
 JOIN %s AS e ON e.project_id = a.project_id AND e.id = a.entity_id
@@ -134,7 +157,7 @@ WHERE a.project_id = ? AND a.entity_kind = ? AND a.namespace = ?
 		return result, fmt.Errorf("count alias-reachable %s rows: %w", table.table, err)
 	}
 
-	if err := store.db.QueryRowContext(ctx, fmt.Sprintf(`
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf(`
 SELECT COUNT(*)
 FROM %s AS e
 WHERE e.project_id = ?
@@ -149,7 +172,7 @@ WHERE e.project_id = ?
 		return result, fmt.Errorf("count aliased %s entities: %w", table.table, err)
 	}
 
-	if err := store.db.QueryRowContext(ctx, fmt.Sprintf(`
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf(`
 SELECT COUNT(*)
 FROM %s AS e
 WHERE e.project_id = ?
@@ -167,7 +190,7 @@ WHERE e.project_id = ?
 	// Dead aliases only — a forward reference the importer registered for an
 	// artifact that has no row yet is not divergence. See
 	// aliasOrphanDeadAliasPredicate: detector and repair share one definition.
-	if err := store.db.QueryRowContext(ctx, fmt.Sprintf(`
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf(`
 SELECT COUNT(*)
 FROM aliases AS a
 WHERE a.project_id = ?
@@ -176,9 +199,14 @@ WHERE a.project_id = ?
 		return result, fmt.Errorf("count dangling %s aliases: %w", table.table, err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return result, fmt.Errorf("commit alias parity snapshot for %s: %w", table.table, err)
+	}
+
 	result.MultiAlias = result.AliasReachableCount - result.AliasedEntities
 	if result.OrphanDelta != result.RawCount-result.AliasedEntities {
-		return result, fmt.Errorf(
+		result.Inconsistent = true
+		result.Inconsistency = fmt.Sprintf(
 			"alias parity internal inconsistency for %s project %s: orphan_delta=%d raw=%d aliased=%d",
 			table.table, projectID, result.OrphanDelta, result.RawCount, result.AliasedEntities,
 		)
@@ -186,13 +214,87 @@ WHERE a.project_id = ?
 	return result, nil
 }
 
-func aliasParityDiagnostic(parity AliasParity) Diagnostic {
-	if parity.Ready {
-		return aliasParityClearDiagnostic(parity)
+func aliasParityDiagnostics(parity AliasParity) []Diagnostic {
+	var out []Diagnostic
+	if !parity.Ready {
+		out = append(out, aliasParityDivergenceDiagnostic(parity))
+	} else if parity.MultiAlias == 0 {
+		out = append(out, aliasParityClearDiagnostic(parity))
 	}
+	if parity.MultiAlias > 0 {
+		out = append(out, aliasParityMultiAliasDiagnostic(parity))
+	}
+	return out
+}
+
+func aliasParityDivergenceDiagnostic(parity AliasParity) Diagnostic {
 	divergent := make([]map[string]any, 0)
 	for _, table := range parity.Tables {
-		if table.OrphanDelta == 0 && table.MultiAlias == 0 && table.DanglingAliases == 0 {
+		if table.OrphanDelta == 0 && table.DanglingAliases == 0 && !table.Inconsistent {
+			continue
+		}
+		row := map[string]any{
+			"project_id":            table.ProjectID,
+			"kind":                  table.Kind,
+			"table":                 table.Table,
+			"namespace":             table.Namespace,
+			"raw_count":             table.RawCount,
+			"alias_reachable_count": table.AliasReachableCount,
+			"aliased_entities":      table.AliasedEntities,
+			"orphan_delta":          table.OrphanDelta,
+			"multi_alias":           table.MultiAlias,
+			"dangling_aliases":      table.DanglingAliases,
+		}
+		if table.Inconsistent {
+			row["inconsistent"] = true
+			row["inconsistency"] = table.Inconsistency
+		}
+		divergent = append(divergent, row)
+	}
+	message := fmt.Sprintf(
+		"alias parity diverged (orphan_delta=%d, multi_alias=%d, dangling_aliases=%d); run: %s",
+		parity.OrphanDelta,
+		parity.MultiAlias,
+		parity.DanglingAliases,
+		AliasParityRepairCommand,
+	)
+	if len(parity.Inconsistencies) > 0 {
+		message = fmt.Sprintf(
+			"alias parity diverged (orphan_delta=%d, multi_alias=%d, dangling_aliases=%d, inconsistencies=%d); run: %s",
+			parity.OrphanDelta,
+			parity.MultiAlias,
+			parity.DanglingAliases,
+			len(parity.Inconsistencies),
+			AliasParityRepairCommand,
+		)
+	}
+	details := map[string]any{
+		"raw_count":             parity.RawCount,
+		"alias_reachable_count": parity.AliasReachableCount,
+		"aliased_entities":      parity.AliasedEntities,
+		"orphan_delta":          parity.OrphanDelta,
+		"multi_alias":           parity.MultiAlias,
+		"dangling_aliases":      parity.DanglingAliases,
+		"tables":                divergent,
+		"preview_command":       AliasParityRepairCommand,
+	}
+	if len(parity.Inconsistencies) > 0 {
+		details["inconsistencies"] = parity.Inconsistencies
+	}
+	return Diagnostic{
+		Severity: "error",
+		Code:     AliasParityDivergenceCode,
+		Category: RepairCategoryAliasIdentity,
+		Policy:   DiagnosticPolicyInvalidLocalData,
+		Message:  message,
+		Details:  details,
+	}
+}
+
+func aliasParityMultiAliasDiagnostic(parity AliasParity) Diagnostic {
+	divergent := make([]map[string]any, 0)
+	for _, table := range parity.Tables {
+		if table.MultiAlias == 0 {
 			continue
 		}
 		divergent = append(divergent, map[string]any{
@@ -209,16 +311,12 @@ func aliasParityDiagnostic(parity AliasParity) Diagnostic {
 		})
 	}
 	return Diagnostic{
-		Severity: "error",
-		Code:     AliasParityDivergenceCode,
+		Severity: "warn",
+		Code:     AliasParityMultiAliasCode,
 		Category: RepairCategoryAliasIdentity,
-		Policy:   DiagnosticPolicyInvalidLocalData,
 		Message: fmt.Sprintf(
-			"alias parity diverged (orphan_delta=%d, multi_alias=%d, dangling_aliases=%d); run: %s",
-			parity.OrphanDelta,
+			"alias multi-alias present (multi_alias=%d); entities hold more than one alias; no automated repair",
 			parity.MultiAlias,
-			parity.DanglingAliases,
-			AliasParityRepairCommand,
 		),
 		Details: map[string]any{
 			"raw_count":             parity.RawCount,
@@ -228,7 +326,6 @@ func aliasParityDiagnostic(parity AliasParity) Diagnostic {
 			"multi_alias":           parity.MultiAlias,
 			"dangling_aliases":      parity.DanglingAliases,
 			"tables":                divergent,
-			"preview_command":       AliasParityRepairCommand,
 		},
 	}
 }

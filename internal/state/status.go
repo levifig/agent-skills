@@ -578,9 +578,10 @@ func inspectOperationalInvariants(ctx context.Context, store *Store, options Ins
 		if err != nil {
 			return nil, false, err
 		}
-		// Always emit a diagnostic: info all-clear when Ready, error when diverged.
-		// Mode stays ready either way — identity damage is detectable, not invalidating.
-		diagnostics = append(diagnostics, aliasParityDiagnostic(aliasParity))
+		// Always emit a diagnostic: info all-clear when Ready (and no multi-alias),
+		// error when orphan/dangling diverged, warn for multi-alias. Mode stays
+		// ready either way — identity damage is detectable, not invalidating.
+		diagnostics = append(diagnostics, aliasParityDiagnostics(aliasParity)...)
 	}
 
 	journalProvenance, err := InspectJournalProvenanceIntegrity(ctx, store)

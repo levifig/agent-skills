@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/levifig/loaf/internal/project"
 )
 
 func TestStateDoctorAliasParityCleanFixture(t *testing.T) {
@@ -102,8 +104,33 @@ VALUES (?, ?, 'task', 'task:multialias00000000001', 'task', 'TASK-TWO', ?, ?)
 	if tasks.AliasReachableCount != 2 || tasks.RawCount != 1 || tasks.MultiAlias != 1 {
 		t.Fatalf("tasks parity = %#v, want raw=1 reachable=2 multi_alias=1", tasks)
 	}
-	if parity.Ready {
-		t.Fatalf("parity = %#v, want Ready=false while the scanner and list disagree", parity)
+	// Multi-alias is warning-only; Ready stays true with no orphan/dangling damage.
+	if !parity.Ready {
+		t.Fatalf("parity = %#v, want Ready=true while multi-alias is warning-only", parity)
+	}
+
+	resolver := PathResolver{StateHome: stateHome}
+	status, err := InspectWithOptions(root, resolver, InspectOptions{AliasParity: true})
+	if err != nil {
+		t.Fatalf("InspectWithOptions() error = %v", err)
+	}
+	if status.Mode != ModeSQLiteReady {
+		t.Fatalf("Mode = %q, want %q; diagnostics = %#v", status.Mode, ModeSQLiteReady, status.Diagnostics)
+	}
+	assertNoDiagnostic(t, status.Diagnostics, AliasParityDivergenceCode)
+	assertNoDiagnostic(t, status.Diagnostics, AliasParityClearCode)
+	diagnostic := findDiagnostic(t, status.Diagnostics, AliasParityMultiAliasCode)
+	if diagnostic.Severity != "warn" || diagnostic.Category != RepairCategoryAliasIdentity {
+		t.Fatalf("multi-alias diagnostic = %#v, want warn/%s", diagnostic, RepairCategoryAliasIdentity)
+	}
+	if diagnostic.Details["multi_alias"] != 1 {
+		t.Fatalf("multi_alias detail = %#v, want 1", diagnostic.Details["multi_alias"])
+	}
+	// No repair action for multi-alias.
+	for _, action := range RepairPlanForStatus(Status{DatabasePath: status.DatabasePath, Diagnostics: status.Diagnostics}) {
+		if action.DiagnosticCode == AliasParityMultiAliasCode {
+			t.Fatalf("unexpected repair action for multi-alias: %#v", action)
+		}
 	}
 }
 
@@ -207,20 +234,48 @@ VALUES (?, ?, 'task', 'task:missing0000000000001', 'task', 'TASK-MISSING', ?, ?)
 }
 
 func TestStateDoctorAliasParityDiagnosticPerformsNoWrites(t *testing.T) {
-	root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
-	resolver := PathResolver{StateHome: stateHome}
-	legacyID := hex.EncodeToString(sha256Sum(path))
-	alias := "TASK-NOWRITE"
-	twinID := stableMigrationID("task", projectID, alias)
-	orphanID := stableMigrationID("task", legacyID, alias)
+	t.Run("orphan and dangling", func(t *testing.T) {
+		root, stateHome, projectID, path := seedAliasOrphanFixtureBase(t)
+		resolver := PathResolver{StateHome: stateHome}
+		legacyID := hex.EncodeToString(sha256Sum(path))
+		alias := "TASK-NOWRITE"
+		twinID := stableMigrationID("task", projectID, alias)
+		orphanID := stableMigrationID("task", legacyID, alias)
 
-	seedTask(t, stateHome, root, projectID, twinID, "No Write Twin", "todo", "2026-06-24T13:03:00Z", true, alias)
-	seedTask(t, stateHome, root, projectID, orphanID, "No Write Twin", "todo", "2026-06-13T10:00:00Z", false, "")
-	mustExecOpen(t, stateHome, root, `
+		seedTask(t, stateHome, root, projectID, twinID, "No Write Twin", "todo", "2026-06-24T13:03:00Z", true, alias)
+		seedTask(t, stateHome, root, projectID, orphanID, "No Write Twin", "todo", "2026-06-13T10:00:00Z", false, "")
+		mustExecOpen(t, stateHome, root, `
 INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
 VALUES (?, ?, 'task', 'task:missing-nowrite000001', 'task', 'TASK-DANGLING-NW', ?, ?)
 `, "alias:dangling-nowrite000001", projectID, "2026-06-24T13:03:00Z", "2026-06-24T13:03:00Z")
 
+		assertAliasParityDiagnosticNoWrites(t, root, stateHome, resolver, AliasParityDivergenceCode)
+		if !entityExists(t, stateHome, root, "tasks", orphanID) {
+			t.Fatal("orphan row missing after InspectWithOptions")
+		}
+		if !entityExists(t, stateHome, root, "aliases", "alias:dangling-nowrite000001") {
+			t.Fatal("dangling alias missing after InspectWithOptions")
+		}
+	})
+
+	t.Run("multi-alias", func(t *testing.T) {
+		root, stateHome, projectID, _ := seedAliasOrphanFixtureBase(t)
+		resolver := PathResolver{StateHome: stateHome}
+		seedTask(t, stateHome, root, projectID, "task:multialias00000000001", "Two Aliases", "todo", "2026-06-24T13:03:00Z", true, "TASK-ONE")
+		mustExecOpen(t, stateHome, root, `
+INSERT INTO aliases (id, project_id, entity_kind, entity_id, namespace, alias, created_at, updated_at)
+VALUES (?, ?, 'task', 'task:multialias00000000001', 'task', 'TASK-TWO', ?, ?)
+`, "alias:multialias0000000001", projectID, "2026-06-24T13:03:00Z", "2026-06-24T13:03:00Z")
+
+		assertAliasParityDiagnosticNoWrites(t, root, stateHome, resolver, AliasParityMultiAliasCode)
+		if !entityExists(t, stateHome, root, "aliases", "alias:multialias0000000001") {
+			t.Fatal("second alias missing after InspectWithOptions")
+		}
+	})
+}
+
+func assertAliasParityDiagnosticNoWrites(t *testing.T, root project.Root, stateHome string, resolver PathResolver, wantCode string) {
+	t.Helper()
 	dbPath, err := resolver.DatabasePath(root)
 	if err != nil {
 		t.Fatalf("DatabasePath() error = %v", err)
@@ -246,7 +301,7 @@ VALUES (?, ?, 'task', 'task:missing-nowrite000001', 'task', 'TASK-DANGLING-NW', 
 	if err != nil {
 		t.Fatalf("InspectWithOptions() error = %v", err)
 	}
-	assertDiagnostic(t, status.Diagnostics, AliasParityDivergenceCode)
+	assertDiagnostic(t, status.Diagnostics, wantCode)
 
 	// Ensure any read-only connection is fully closed before re-hashing.
 	removeSQLiteSidecars(t, dbPath)
@@ -257,12 +312,6 @@ VALUES (?, ?, 'task', 'task:missing-nowrite000001', 'task', 'TASK-DANGLING-NW', 
 	afterHash := sha256.Sum256(after)
 	if !bytes.Equal(beforeHash[:], afterHash[:]) {
 		t.Fatalf("InspectWithOptions mutated database bytes: before=%x after=%x", beforeHash, afterHash)
-	}
-	if !entityExists(t, stateHome, root, "tasks", orphanID) {
-		t.Fatal("orphan row missing after InspectWithOptions")
-	}
-	if !entityExists(t, stateHome, root, "aliases", "alias:dangling-nowrite000001") {
-		t.Fatal("dangling alias missing after InspectWithOptions")
 	}
 }
 
