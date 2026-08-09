@@ -608,6 +608,31 @@ erDiagram
     text note
     text created_at
   }
+  hook_enablements {
+    text id PK
+    text target
+    text event
+    text hook_id
+    text enablement
+    text absorbed_at
+    text created_at
+    text updated_at
+  }
+  hook_absorption_markers {
+    text id PK
+    text target UK
+    text absorbed_from_version
+    text absorbed_at
+    text created_at
+  }
+  hook_trusted_paths {
+    text id PK
+    text target
+    text path
+    integer is_current
+    text created_at
+    text updated_at
+  }
   projects ||--o{ intents : scopes
   projects ||--o{ intent_snapshots : scopes
   projects ||--o{ intent_deferrals : scopes

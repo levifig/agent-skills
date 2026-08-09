@@ -43,6 +43,9 @@ var journalOriginsAndDeferralsSQL string
 //go:embed migrations/0012_intents_and_explorations.sql
 var intentsAndExplorationsSQL string
 
+//go:embed migrations/0013_hook_enablement.sql
+var hookEnablementSQL string
+
 const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -115,6 +118,11 @@ func SchemaMigrations() []SchemaMigration {
 			Version: 12,
 			Name:    "intents_and_explorations",
 			SQL:     normalizeMigrationSQL(intentsAndExplorationsSQL),
+		},
+		{
+			Version: 13,
+			Name:    "hook_enablement",
+			SQL:     normalizeMigrationSQL(hookEnablementSQL),
 		},
 	}
 }

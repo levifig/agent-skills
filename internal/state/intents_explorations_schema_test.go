@@ -332,9 +332,9 @@ VALUES ('membership:cross', ?, 'expl:a', 'conv:b', '2026-07-19T00:00:00Z')
 // from the Change Verification Contract: the new tables must never grow a
 // mutable status column or a current-session/current-exploration pointer.
 func TestIntentExplorationSchemaHasNoLifecycleState(t *testing.T) {
-	migration := SchemaMigrations()[len(SchemaMigrations())-1]
-	if migration.Name != "intents_and_explorations" {
-		t.Fatalf("last migration = %q, want intents_and_explorations", migration.Name)
+	migration, ok := schemaMigrationByName("intents_and_explorations")
+	if !ok {
+		t.Fatal("intents_and_explorations migration not found")
 	}
 	for _, table := range []string{
 		"intents", "intent_snapshots", "intent_deferrals", "intent_dispositions",
