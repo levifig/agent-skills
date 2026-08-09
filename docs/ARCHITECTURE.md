@@ -56,6 +56,10 @@ Skills call `loaf`, hooks enforce through `loaf`, and users see one command surf
 
 Loaf stores operational state in one global SQLite database at `$XDG_DATA_HOME/loaf/loaf.sqlite`, partitioned by project ID. New project IDs are generated and stored in SQLite; they are not derived from checkout path or friendly name. The `projects` row carries the friendly display name and current path, while `project_paths` records path mappings so a checkout can move without changing identity. Legacy path-hash IDs remain only as an adoption key for migrated pre-stable-identity data.
 
+Entity identity follows the same discipline one level down (ADR-028). Derived entity IDs are mint-once opaque keys: computed at first creation, never recomputed for resolution. The aliases table — with the schema's only content-meaningful unique constraint, `UNIQUE (project_id, namespace, alias)` — is the identity registry, and the markdown importer resolves through it before deriving an ID for anything. Unaliased kinds resolve by natural key: journal entries by (entry type, scope, message) for markdown-origin rows, sources by project and path. Sparks whose message normalizes to an empty slug receive a deterministic content-hash alias so no row is born unreachable.
+
+The standing invariant is alias parity: for every project and every aliased entity table, raw row counts equal alias-reachable counts, with zero dead aliases. `loaf state doctor` checks it on demand (read-only, error severity without invalidating the database, naming `loaf state migrate alias-orphans` as the repair). The June-24 identity fork — a project rekey silently invalidating every derived ID, repaired by the state-dedupe Change — is the incident this invariant exists to catch on day one instead of week six.
+
 ### Recovery Tiers and Restore Safety
 
 Recovery has three named tiers: `local_rollback` snapshots remain in the same data home for local corruption rollback, project-scoped replay is the ordinary rollback mechanism for later migrations, and `external_disaster_copy` is an operator-selected non-temporary external destination for a point-in-time copy. An explicit destination is resolved through symlinks and rejected when it is absolute-but-volatile; the path check does not prove that the destination is physically remote or durable, so `device_loss_protected` remains false. Backup and verification results include SQLite validity, journal retrieval readiness, search parity, project evidence, checksum, and the latest canonical journal watermark.
@@ -63,6 +67,19 @@ Recovery has three named tiers: `local_rollback` snapshots remain in the same da
 `loaf state backup restore <backup> --to <absolute-empty-database-path>` is an isolated disposable rehearsal. It creates an exact copy at an empty target, verifies integrity, foreign keys, schema, projects, canonical journal rows, derived search parity, and the watermark, and leaves the live database untouched. There is no automated live activation, no universal mutation lease honored by every writer, and no claim that a concurrent restore is safe.
 
 Live activation is therefore a quiesced operator procedure: stop or terminate every harness, Loaf process, background writer, and process that might retain an open database connection; verify the backup and isolated rehearsal; retain a preserve-current backup; while quiesced move the old main database and any matching `-wal` and `-shm` sidecars together into durable quarantine; install the verified copy with mode `0600`; start current Loaf; run `loaf state doctor`, `loaf state status`, and a known journal retrieval check; and, on failure, quiesce again and activate the preserve-current copy. Sidecars from different database files must never be mixed.
+
+### Repair Migrations
+
+Data surgery on the live database rides one sanctioned pattern, proven across three instances (`lifecycle-statuses`, `alias-orphans`, `journal-duplicates`): preview on a temporary copy → mandatory backup → fsynced JSON rollback manifest (file and parent directory, before COMMIT) → apply in one transaction → post-apply verification → `--rollback <manifest>` restoring every deleted row. Registered under `loaf state migrate`; a second apply is provably a no-op.
+
+Four rules the third instance made explicit:
+
+- **Classification iterates to a fixed point** inside the shared classifier, because proof predicates can be sensitive to what the run itself retires. Preview and apply must report the same result set; a repair that reports failure on a correct first apply is a defect (reproduced on a production copy during review, pre-merge).
+- **Unproven rows refuse by default.** The migration never guesses; explicit per-row operator dispositions (`--retire`, `--realias`) are accepted in preview so the exact apply invocation is rehearsable, recorded verbatim in the manifest, and conflicting dispositions are a parse error.
+- **Reference residue is swept from one shared enumeration.** The polymorphic entity-reference tables (events, relationships, entity_tags, bundle_members, backend_mappings, exports, artifact_bodies with its FTS mirror, aliases) are enumerated once and consumed by every retirement path, so repairs cannot drift from the schema or from each other.
+- **FTS mirrors are derived data.** Rollback re-derives index state from restored content rows rather than restoring captured index bytes, and delete paths tolerate a desynced mirror instead of aborting (an unindexed FTS5 external-content delete raises SQLITE_CORRUPT — the tolerance probe exists because a pre-existing desync once made a repair unrunnable).
+
+The operational gate is rehearsal on a disposable production copy: `LOAF_DB` and `XDG_DATA_HOME` redirected to a sandbox, first apply must exit 0, second must no-op, and the acceptance queries must hold before the same invocation touches the real database. The state-dedupe ceremony (2026-08-09, receipts in the Change folder) ran exactly as rehearsed, including catching a generated-flags bug in preview that never reached apply.
 
 ### Targets
 
