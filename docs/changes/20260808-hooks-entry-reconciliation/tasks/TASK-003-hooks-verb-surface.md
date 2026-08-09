@@ -33,9 +33,9 @@ loaf journal log "skill(implement): TASK-003 — loaf hooks list/enable/disable"
 
 ## Steps
 
-- [ ] `list`: every catalog hook for installed targets with event, effective enablement, projected-in-file state, and absorption provenance when present; tombstoned (retired) records are not listed.
-- [ ] `enable`/`disable` run entirely inside the per-target lock, in Decision 10's order: acquire lock → read state → upsert the record → run the full TASK-002 reconcile → publish the file → release. Report every action taken — one entry on a converged target, plus any other drift the reconcile converged.
-- [ ] Tests: round-trip enable/disable on a converged target edits exactly one entry; on a target with seeded drift the output names every action; list agrees with file state and records; `absorbed_at` survives toggles; unknown hook-id and uninstalled target fail with actionable errors.
+- [x] `list`: every catalog hook for installed targets with event, effective enablement, projected-in-file state, and absorption provenance when present; tombstoned (retired) records are not listed.
+- [x] `enable`/`disable` run entirely inside the per-target lock, in Decision 10's order: acquire lock → read state → upsert the record → run the full TASK-002 reconcile → publish the file → release. Report every action taken — one entry on a converged target, plus any other drift the reconcile converged.
+- [x] Tests: round-trip enable/disable on a converged target edits exactly one entry; on a target with seeded drift the output names every action; list agrees with file state and records; `absorbed_at` survives toggles; unknown hook-id and uninstalled target fail with actionable errors.
 
 ## Verification
 

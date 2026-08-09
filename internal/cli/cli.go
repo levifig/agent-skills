@@ -280,6 +280,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runUpgrade(args[1:], out, runtime.RootPath())
 	case "config":
 		dispatchErr = r.runConfig(args[1:], out, runtime.RootPath())
+	case "hooks":
+		dispatchErr = r.runHooks(args[1:], out, runtime.RootPath())
 	case "migrate":
 		dispatchErr = r.runMigrate(args[1:], out, runtime)
 	case "release":
@@ -401,6 +403,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  install       Install Loaf into agent tools")
 	fmt.Fprintln(out, "  upgrade       Refresh installed harnesses and Loaf project surfaces")
 	fmt.Fprintln(out, "  config        Validate and refresh project Loaf config")
+	fmt.Fprintln(out, "  hooks         Inspect and set Loaf hook enablement per target")
 	fmt.Fprintln(out, "  setup         Initialize, build, and install")
 	fmt.Fprintln(out, "  state         Manage native SQLite state")
 	fmt.Fprintln(out, "  project       Manage project identity")

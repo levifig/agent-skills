@@ -84,6 +84,15 @@ func agentHelpCommands() []agentHelpCommand {
 			},
 		},
 		{
+			Name:        "hooks",
+			Description: "Inspect and set which Loaf hooks project into an installed harness's hooks file; enablement is user-scoped per target and the file is its projection",
+			Subcommands: []agentHelpSubcommand{
+				{Name: "list", Description: "Show every hook this version ships per installed target with its event, enablement, whether the live file carries it, and absorption provenance; retired ids and entries Loaf does not own are never listed", Options: []agentHelpOption{{Flags: "--target <target>", Description: "Restrict the listing to one installed target (cursor, codex)"}}},
+				{Name: "enable", Description: "Record a hook as enabled for one target, reconcile that target's hooks file, and report every action the reconcile took", Options: []agentHelpOption{{Flags: "<hook-id>", Description: "Hook id from the target's built catalog"}, {Flags: "--target <target>", Description: "Target whose hooks file to reconcile (cursor, codex); required"}}},
+				{Name: "disable", Description: "Record a hook as disabled for one target, reconcile that target's hooks file, and report every action the reconcile took", Options: []agentHelpOption{{Flags: "<hook-id>", Description: "Hook id from the target's built catalog"}, {Flags: "--target <target>", Description: "Target whose hooks file to reconcile (cursor, codex); required"}}},
+			},
+		},
+		{
 			Name:        "setup",
 			Description: "One-step bootstrap: init + build + install",
 		},
