@@ -305,7 +305,7 @@ func classifyJournalFirstSchema10TargetWithPolicy(databasePath string, allowJour
 	if !integrityValid {
 		return false, nil
 	}
-	if _, operationalValid, err := inspectOperationalInvariants(ctx, store); err != nil {
+	if _, operationalValid, err := inspectOperationalInvariants(ctx, store, InspectOptions{}); err != nil {
 		return false, fmt.Errorf("classify schema-10 operational invariants: %w", err)
 	} else if !operationalValid {
 		return false, nil

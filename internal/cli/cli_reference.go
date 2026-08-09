@@ -221,6 +221,21 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--rollback <manifest>", Description: "Restore statuses from a lifecycle-statuses rollback manifest"},
 					{Flags: "--json", Description: "Output migration contract, project context, counts, backup, and rollback fields as JSON"},
 				}},
+				{Name: "migrate alias-orphans", Description: "Retire alias-orphaned entity rows across every project with a backup and rollback manifest", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Preview classification on a temporary database copy (default)"},
+					{Flags: "--apply", Description: "Apply the repair after creating a backup"},
+					{Flags: "--rollback <manifest>", Description: "Restore deleted rows from an alias-orphans rollback manifest"},
+					{Flags: "--retire <entity-id>", Description: "Force-retire an unproven orphan (repeatable)"},
+					{Flags: "--realias <entity-id>=<alias>", Description: "Attach an alias to an unproven orphan (repeatable)"},
+					{Flags: "--json", Description: "Output migration contract, per-project classification, counts, backup, and rollback fields as JSON"},
+				}},
+				{Name: "migrate journal-duplicates", Description: "Retire June-13/June-24 journal natural-key twins across every project with a backup and rollback manifest", Options: []cliReferenceOption{
+					{Flags: "--dry-run", Description: "Preview classification on a temporary database copy (default)"},
+					{Flags: "--apply", Description: "Apply the repair after creating a backup"},
+					{Flags: "--rollback <manifest>", Description: "Restore deleted rows from a journal-duplicates rollback manifest"},
+					{Flags: "--retire <entry-id>", Description: "Force-retire an unproven multi-candidate journal row (repeatable)"},
+					{Flags: "--json", Description: "Output migration contract, per-project classification, counts, backup, and rollback fields as JSON"},
+				}},
 				{Name: "migrate journal-first", Description: "Transform the global database to the journal-first model: purge lifecycle noise, drop the session entity, rekey journal search; destructive by consent", Options: []cliReferenceOption{
 					{Flags: "--dry-run", Description: "Preview counts against a temporary database copy without mutation or backup"},
 					{Flags: "--apply", Description: "Take a mandatory backup, then apply the migration to the live database"},

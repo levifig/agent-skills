@@ -221,6 +221,19 @@ VALUES (?, ?, ?, ?, ?, ?)
 }
 
 func deleteArtifactSearchTx(ctx context.Context, tx *sql.Tx, row artifactSearchRow) error {
+	probe := artifactSearchIndexProbe(row.BodyKind)
+	var exists int
+	if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS(
+  SELECT 1 FROM artifact_search
+  WHERE artifact_search MATCH ? AND rowid = ?
+)
+`, probe, row.RowID).Scan(&exists); err != nil {
+		return fmt.Errorf("probe artifact search row %d: %w", row.RowID, err)
+	}
+	if exists == 0 {
+		return nil
+	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO artifact_search(artifact_search, rowid, project_id, entity_kind, entity_id, body_kind, content)
 VALUES ('delete', ?, ?, ?, ?, ?, ?)
@@ -228,6 +241,12 @@ VALUES ('delete', ?, ?, ?, ?, ?, ?)
 		return fmt.Errorf("delete artifact search row %d: %w", row.RowID, err)
 	}
 	return nil
+}
+
+func artifactSearchIndexProbe(bodyKind string) string {
+	kind := firstNonEmpty(strings.TrimSpace(bodyKind), ArtifactBodyKindMarkdown)
+	escaped := strings.ReplaceAll(kind, `"`, `""`)
+	return `body_kind:"` + escaped + `"`
 }
 
 func scanArtifactBody(row interface {
