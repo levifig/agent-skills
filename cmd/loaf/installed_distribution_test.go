@@ -163,7 +163,50 @@ func writeInstalledDistributionFixture(t *testing.T, repo string, version string
 	writeFixtureFile(t, filepath.Join(root, "config", "hooks.yaml"), "hooks:\n  pre-tool:\n    - id: check-secrets\n")
 	writeFixtureFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Current Foundations\n")
 	writeFixtureFile(t, filepath.Join(root, "dist", "cursor", "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf journal log --from-hook","matcher":"Bash","loaf-managed":true}]}}`)
+	writeFixtureHookDistribution(t, filepath.Join(root, "dist", "cursor"), version)
 	return root
+}
+
+// writeFixtureHookDistribution adds the two files a current build emits beside
+// a Cursor distribution: the adapter manifest the installer reads, and the hook
+// catalog reconciliation resolves entry identity through. A distribution
+// carrying neither is stale, and upgrade refuses it rather than falling back to
+// the whole-file merge it replaced.
+func writeFixtureHookDistribution(t *testing.T, dist string, version string) {
+	t.Helper()
+	writeFixtureFile(t, filepath.Join(dist, ".loaf-target-manifest.json"), `{
+  "version": 1,
+  "target": "cursor",
+  "package_version": "`+version+`",
+  "capability_contract_version": 3,
+  "adapters": ["cursor-test-adapter-v1"],
+  "artifacts": [
+    {
+      "id": "managed-instructions",
+      "kind": "instruction",
+      "destination": "project-instructions",
+      "sha256": "`+strings.Repeat("0", 64)+`"
+    }
+  ]
+}
+`)
+	writeFixtureFile(t, filepath.Join(dist, ".loaf-hook-catalog.json"), `{
+  "version": 1,
+  "target": "cursor",
+  "package_version": "`+version+`",
+  "entries": [
+    {
+      "event": "beforeShellExecution",
+      "hook_id": "validate-commit",
+      "type": "command",
+      "template": {"command": "loaf check --hook validate-commit", "matcher": "Bash", "loaf-managed": true},
+      "signatures": [["loaf", "check", "--hook", "validate-commit"]],
+      "stems": [["--hook", "validate-commit"]]
+    }
+  ],
+  "cohorts": []
+}
+`)
 }
 
 // writeStaleCheckoutFixture lays out an older Loaf source checkout: package

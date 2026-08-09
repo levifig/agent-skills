@@ -106,6 +106,18 @@ type targetInstallOptions struct {
 	AmpSkillsDir        string
 	AmpPluginsDir       string
 	TargetAdapterOps    *targetAdapterInstallOperations
+	// HookState resolves the user-scoped state hook reconciliation reads and
+	// writes. Only Cursor and Codex reach it, and only when they actually
+	// reconcile, so a target that keeps no shared hooks file never opens it.
+	HookState hookStateResolver
+	// HookActions receives the per-entry actions a reconcile took, so the
+	// command that ran it can say what changed. Nil discards them.
+	HookActions func([]hookAction)
+	// HookOps injects failures at the reconciler's two ordering windows from
+	// outside the target installer, which is the only vantage point that can
+	// exercise the window after the adapter manifest is replaced and before
+	// the file is projected. Nil in production.
+	HookOps *hookReconcileOperations
 	// SkipSkillsSync leaves the shared skills store alone. Multi-target
 	// install/upgrade sets it after syncCanonicalManagedSkills has already
 	// performed the one write per destination for the run.
@@ -360,6 +372,14 @@ func rewriteOpenCodeCommandSkillLinks(content string, skill string, commandsDir 
 }
 
 func installCursorTarget(options targetInstallOptions) error {
+	// Building the reconciler is what proves the distribution is current, so it
+	// happens before anything on this machine changes. A stale build output
+	// that was refused only after the commands directory had been removed would
+	// have already taken something away from the operator.
+	reconciler, err := newHookReconciler(options)
+	if err != nil {
+		return err
+	}
 	skillsDest := installSkillsDestination(options)
 	if !options.SkipSkillsSync {
 		if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
@@ -372,12 +392,11 @@ func installCursorTarget(options targetInstallOptions) error {
 	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "agents"), filepath.Join(options.ConfigDir, "agents")); err != nil {
 		return err
 	}
-	hasAdapterManifest := fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile))
-	if hasAdapterManifest {
-		if err := syncTargetAdapterManifest(options); err != nil {
-			return err
-		}
-	} else if err := mergeHookFiles(filepath.Join(options.ConfigDir, "hooks.json"), filepath.Join(options.DistDir, "hooks.json")); err != nil {
+	if err := beginHookReconcile(reconciler); err != nil {
+		return err
+	}
+	defer releaseHookReconcile(reconciler)
+	if err := syncTargetAdapterManifest(options); err != nil {
 		return err
 	}
 	if options.Upgrade {
@@ -387,12 +406,10 @@ func installCursorTarget(options targetInstallOptions) error {
 			}
 		}
 	}
-	if !hasAdapterManifest {
-		if err := mergeTargetDirIfExists(filepath.Join(options.DistDir, "hooks"), filepath.Join(options.ConfigDir, "hooks")); err != nil {
-			return err
-		}
-	}
 	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "templates"), filepath.Join(options.ConfigDir, "templates")); err != nil {
+		return err
+	}
+	if err := completeHookReconcile(options, reconciler); err != nil {
 		return err
 	}
 	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {
@@ -402,6 +419,12 @@ func installCursorTarget(options targetInstallOptions) error {
 }
 
 func installCodexTarget(options targetInstallOptions) error {
+	// Same ordering as Cursor: prove the distribution is current before the
+	// shared skills store — the first surface this touches — is written.
+	reconciler, err := newHookReconciler(options)
+	if err != nil {
+		return err
+	}
 	homeDir := installHomeDir(options)
 	codexHome := options.CodexHome
 	if codexHome == "" {
@@ -413,14 +436,17 @@ func installCodexTarget(options targetInstallOptions) error {
 			return err
 		}
 	}
-	if fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile)) {
-		if err := syncTargetAdapterManifest(options); err != nil {
-			return err
-		}
-	} else if err := mergeCodexHookFiles(filepath.Join(codexHome, "hooks.json"), filepath.Join(options.DistDir, ".codex", "hooks.json"), options.ProjectRoot, options.CodexRuleOperations); err != nil {
+	if err := beginHookReconcile(reconciler); err != nil {
+		return err
+	}
+	defer releaseHookReconcile(reconciler)
+	if err := syncTargetAdapterManifest(options); err != nil {
 		return err
 	}
 	if err := installCodexJournalRuleWithOperations(options, codexHome, options.CodexRuleOperations); err != nil {
+		return err
+	}
+	if err := completeHookReconcile(options, reconciler); err != nil {
 		return err
 	}
 	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {

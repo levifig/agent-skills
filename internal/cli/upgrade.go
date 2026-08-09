@@ -231,6 +231,8 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 	var failed []string
 	defaults := defaultInstallConfigDirs()
 	toolByKey := installToolsByKey(tools)
+	hookState, releaseHookState := r.hookStateForApply(projectRoot)
+	defer releaseHookState()
 	var upgradeOptions []targetInstallOptions
 	for _, target := range targets {
 		distDir := filepath.Join(distRoot, target)
@@ -253,6 +255,7 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 			CodexHome:      os.Getenv("CODEX_HOME"),
 			ProjectRoot:    projectRoot,
 			SkipSkillsSync: true,
+			HookState:      hookState,
 		})
 	}
 	skillsErr := syncCanonicalManagedSkills(upgradeOptions)
@@ -275,6 +278,8 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 			fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillConflicts)
 			skillsErrReported = true
 		}
+		var hookActions []hookAction
+		opts.HookActions = func(actions []hookAction) { hookActions = append(hookActions, actions...) }
 		err := installTargetDistribution(opts)
 		if err != nil {
 			fmt.Fprintf(out, "  %s %s - %v\n", ansiRed("✗"), installDisplayName(opts.Target), err)
@@ -282,6 +287,7 @@ func (r Runner) upgradeInstalledTargets(out io.Writer, options upgradeOptions, t
 			continue
 		}
 		fmt.Fprintf(out, "  %s %s refreshed at %s (v%s)\n", ansiGreen("✓"), installDisplayName(opts.Target), ansiGray(opts.ConfigDir), version)
+		writeHookActionLines(out, hookActions)
 	}
 	fmt.Fprintln(out)
 	if skillConflicts != nil {

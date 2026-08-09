@@ -139,7 +139,7 @@ func TestFixConfigTargetHooksRetainsProjectRootFromNestedWorkingDirectory(t *tes
 
 	target := detectedInstallTool{key: "codex", configDir: configDir}
 	var captured targetInstallOptions
-	status := fixConfigTargetHooksWithInstaller(resolvedRoot.Path(), loafRoot, target, configTargetStatus{Status: "stale"}, func(options targetInstallOptions) error {
+	status := fixConfigTargetHooksWithInstaller(resolvedRoot.Path(), loafRoot, target, configTargetStatus{Status: "stale"}, nil, func(options targetInstallOptions) error {
 		captured = options
 		return nil
 	})
@@ -167,6 +167,9 @@ func TestRunnerConfigCheckFixFromNestedDirectoryRefusesProjectRootExecutable(t *
 	}
 	writeInstallFile(t, filepath.Join(projectRoot, ".agents", "loaf.json"), `{"version":"1.0.0","initialized":"2026-07-13T00:00:00Z","knowledge":{"local":["docs/knowledge","docs/decisions"],"staleness_threshold_days":30,"imports":[]},"integrations":{"linear":{"enabled":false},"serena":{"enabled":false}}}`+"\n")
 	writeInstallFile(t, filepath.Join(projectRoot, "dist", "codex", ".codex", "hooks.json"), `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook","commandWindows":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"}]}]}}`+"\n")
+	// The shipped Codex identity, placeholder and all: the refusal under test is
+	// what happens when reconciliation tries to render it.
+	installTestHookDistribution(t, projectRoot, "codex", testCodexHookCatalogSource())
 	writeInstallFile(t, filepath.Join(home, ".codex", loafInstallMarkerFile), "old\n")
 	writeInstallFile(t, filepath.Join(home, ".codex", "hooks.json"), `{"hooks":{}}`+"\n")
 	fakeLoaf := filepath.Join(projectRoot, "bin", "loaf")

@@ -74,11 +74,22 @@ func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 		filepath.Join(root, "plugins", "loaf", ".claude-plugin", "plugin.json"),
 		filepath.Join(root, "dist", "opencode", "plugins", "hooks.ts"),
 		filepath.Join(root, "dist", "cursor", "hooks.json"),
+		filepath.Join(root, "dist", "cursor", hookCatalogFile),
 		filepath.Join(root, "dist", "codex", ".codex", "hooks.json"),
+		filepath.Join(root, "dist", "codex", hookCatalogFile),
 		filepath.Join(root, "dist", "amp", ".amp", "plugins", "loaf.ts"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("Stat(%s) error = %v", path, err)
+		}
+	}
+	// The hook catalog is emitted only for the targets whose hook files
+	// reconcile per entry. OpenCode and Amp ship plugins, and Claude Code's
+	// hooks live in the plugin bundle; none of them are in this scope.
+	for _, target := range []string{"claude-code", "opencode", "amp"} {
+		path := filepath.Join(nativeBuildTargetOutputDir(root, target), hookCatalogFile)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("Stat(%s) = %v, want no hook catalog for %s", path, err, target)
 		}
 	}
 	for target, adapter := range map[string]string{
@@ -209,6 +220,13 @@ func TestRunnerBuildTargetCodexRunsNativeTarget(t *testing.T) {
 	}
 	if strings.Contains(hooksJSON, "workflow-pre-merge") || strings.Contains(hooksJSON, "detect-linear-magic") {
 		t.Fatalf("hooks.json = %q, want only SessionStart context hook", hooksJSON)
+	}
+	catalog, err := readHookCatalog(filepath.Join(root, "dist", "codex"))
+	if err != nil {
+		t.Fatalf("readHookCatalog(codex) error = %v", err)
+	}
+	if len(catalog.Entries) != 1 || catalog.Entries[0].Event != "SessionStart" || catalog.Entries[0].HookID != "session-start-loaf" {
+		t.Fatalf("codex hook catalog = %#v, want the SessionStart identity", catalog.Entries)
 	}
 }
 
@@ -367,6 +385,20 @@ func TestRunnerBuildTargetCursorRunsNativeTarget(t *testing.T) {
 		if !strings.Contains(hooksJSON, want) {
 			t.Fatalf("cursor hooks.json = %q, want %q", hooksJSON, want)
 		}
+	}
+	catalog, err := readHookCatalog(filepath.Join(root, "dist", "cursor"))
+	if err != nil {
+		t.Fatalf("readHookCatalog(cursor) error = %v", err)
+	}
+	generated := 0
+	for _, entries := range testHookEventEntries(t, []byte(hooksJSON)) {
+		generated += len(entries)
+	}
+	if len(catalog.Entries) != generated {
+		t.Fatalf("cursor hook catalog has %d entries, want one per generated hooks.json entry (%d)", len(catalog.Entries), generated)
+	}
+	if _, ok := catalog.cohortHookIDs("0.2.20"); !ok {
+		t.Fatal("cursor hook catalog carries no 0.2.20 absorption cohort")
 	}
 }
 

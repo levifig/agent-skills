@@ -303,9 +303,10 @@ func TestMergeHookFilesPreservesUserHooksOnValidFile(t *testing.T) {
 	}
 }
 
-// A no-manifest Cursor distribution must not promise a hooks.json update that
-// apply will refuse: dry-run carries the conflict, apply fails, file stays put.
-func TestPlanLegacyHookNoManifestRefusesTruncatedHooksJSON(t *testing.T) {
+// A no-manifest Cursor distribution has no path left to promise: its entries
+// are reconciled from a catalog that build output does not carry, so dry-run
+// carries the staleness conflict, apply fails, and the file stays put.
+func TestPlanLegacyHookNoManifestRefusesAStaleCursorDistribution(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
 	// Source hooks so the apply path reaches mergeHookFiles rather than no-op.
@@ -336,8 +337,8 @@ func TestPlanLegacyHookNoManifestRefusesTruncatedHooksJSON(t *testing.T) {
 	if hooksDecision.Action != planActionConflict {
 		t.Fatalf("hook-legacy action = %q, want conflict (not update)", hooksDecision.Action)
 	}
-	if !strings.Contains(hooksDecision.Detail, "preserving it as written") {
-		t.Fatalf("hook-legacy detail = %q, want the refusal that apply will raise", hooksDecision.Detail)
+	if !strings.Contains(hooksDecision.Detail, "stale") || !strings.Contains(hooksDecision.Detail, "loaf build") {
+		t.Fatalf("hook-legacy detail = %q, want the staleness refusal that apply will raise", hooksDecision.Detail)
 	}
 	if !strings.Contains(hooksDecision.Destination, "hooks.json") {
 		t.Fatalf("hook-legacy destination = %q, want the hooks.json path", hooksDecision.Destination)

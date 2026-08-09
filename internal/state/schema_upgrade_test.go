@@ -565,3 +565,67 @@ func TestSchema11DatabasesClassifyAndUpgradeToCurrent(t *testing.T) {
 		})
 	}
 }
+
+// IsUninitialized is the read-only half of BootstrapIfEmpty's precondition, so
+// the two have to agree on every shape: a database Bootstrap would fill reads
+// as uninitialized, and one it would refuse to fill does not.
+func TestIsUninitializedAgreesWithBootstrapPrecondition(t *testing.T) {
+	ctx := context.Background()
+	for _, testCase := range []struct {
+		name string
+		seed func(t *testing.T, path string)
+		want bool
+	}{
+		{name: "fresh file", seed: func(t *testing.T, path string) {}, want: true},
+		{name: "migrated", seed: func(t *testing.T, path string) {
+			store, err := OpenStore(path)
+			if err != nil {
+				t.Fatalf("OpenStore() error = %v", err)
+			}
+			defer store.Close()
+			if err := store.ApplyMigrations(ctx); err != nil {
+				t.Fatalf("ApplyMigrations() error = %v", err)
+			}
+		}, want: false},
+		{name: "somebody else's tables", seed: func(t *testing.T, path string) {
+			db, err := sql.Open(sqliteDriverName, "file:"+filepath.ToSlash(path))
+			if err != nil {
+				t.Fatalf("sql.Open() error = %v", err)
+			}
+			defer db.Close()
+			if _, err := db.Exec(`CREATE TABLE notes (id INTEGER PRIMARY KEY)`); err != nil {
+				t.Fatalf("create foreign table error = %v", err)
+			}
+		}, want: false},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "loaf.sqlite")
+			testCase.seed(t, path)
+
+			store, err := OpenStore(path)
+			if err != nil {
+				t.Fatalf("OpenStore() error = %v", err)
+			}
+			defer store.Close()
+
+			uninitialized, err := store.IsUninitialized(ctx)
+			if err != nil {
+				t.Fatalf("IsUninitialized() error = %v", err)
+			}
+			if uninitialized != testCase.want {
+				t.Fatalf("IsUninitialized() = %v, want %v", uninitialized, testCase.want)
+			}
+
+			// Bootstrap answers the same question by writing; it must reach the
+			// same verdict, or the plan and apply paths disagree about which
+			// databases are safe to treat as empty.
+			bootstrapped, err := store.BootstrapIfEmpty(ctx)
+			if err != nil {
+				t.Fatalf("BootstrapIfEmpty() error = %v", err)
+			}
+			if bootstrapped != testCase.want {
+				t.Fatalf("BootstrapIfEmpty() = %v, want it to agree with IsUninitialized() = %v", bootstrapped, testCase.want)
+			}
+		})
+	}
+}

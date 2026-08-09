@@ -13,7 +13,7 @@ import (
 func TestRunnerInstallExplicitCursorTargetRunsNatively(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
-	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf journal log --from-hook","matcher":"Bash","loaf-managed":true}]}}`)
+	installTestHookDistribution(t, root, "cursor")
 
 	var stdout bytes.Buffer
 	err := Runner{
@@ -52,8 +52,8 @@ func TestRunnerInstallUsesAgentsHomeSkillDestinations(t *testing.T) {
 		t.Run(target, func(t *testing.T) {
 			root, home := setupInstallCommandFixture(t)
 			writeInstallFile(t, filepath.Join(root, "dist", target, "skills", "foundations", "SKILL.md"), "# Foundations\n")
-			if target == "codex" {
-				writeInstallFile(t, filepath.Join(root, "dist", target, ".codex", "hooks.json"), `{"version":1,"hooks":{}}`)
+			if target == "cursor" || target == "codex" {
+				installTestHookDistribution(t, root, target)
 			}
 
 			var stdout bytes.Buffer
@@ -82,6 +82,7 @@ func TestRunnerInstallSharedSkillsPreservesForeignEntries(t *testing.T) {
 	sharedSkills := filepath.Join(home, ".agents", "skills")
 	writeInstallFile(t, filepath.Join(sharedSkills, "foreign-skill", "SKILL.md"), "# Mine\n")
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 
 	var stdout bytes.Buffer
 	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--to", "cursor", "--yes"})
@@ -108,6 +109,7 @@ func TestRunnerInstallSharedSkillsPreservesForeignEntries(t *testing.T) {
 func TestRunnerInstallRecordKeepsRelocatedTargetDetectable(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 
 	var stdout bytes.Buffer
 	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--to", "cursor", "--yes"})
@@ -127,7 +129,7 @@ func TestRunnerInstallCodexUsesCodeXHomeNatively(t *testing.T) {
 	codexHome := filepath.Join(home, "custom-codex")
 	t.Setenv("CODEX_HOME", codexHome)
 	writeInstallFile(t, filepath.Join(root, "dist", "codex", "skills", "go-development", "SKILL.md"), "# Go\n")
-	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), `{"hooks":{}}`)
+	installTestHookDistribution(t, root, "codex")
 
 	var stdout bytes.Buffer
 	err := Runner{Stdout: &stdout, WorkingDir: root, Executable: distributionFixtureExecutable(root)}.Run([]string{"install", "--to", "codex", "--yes"})
@@ -136,9 +138,11 @@ func TestRunnerInstallCodexUsesCodeXHomeNatively(t *testing.T) {
 	}
 	assertInstallFile(t, filepath.Join(codexHome, loafInstallMarkerFile), "9.8.7-test.1\n")
 	assertInstallFile(t, filepath.Join(home, ".agents", "skills", "go-development", "SKILL.md"), "# Go\n")
+	// CODEX_HOME is where the reconciler converges too, not just where the
+	// marker lands: the entry it projects has to reach the same relocated root.
 	hooks := readInstallHooks(t, filepath.Join(codexHome, "hooks.json"))
-	if hooks.Version != 0 || len(hooks.Hooks) != 0 {
-		t.Fatalf("codex hooks = %#v, want current empty Codex schema", hooks)
+	if len(hooks.Hooks["SessionStart"]) != 1 {
+		t.Fatalf("codex hooks = %#v, want the SessionStart entry projected under CODEX_HOME", hooks)
 	}
 }
 
@@ -147,7 +151,7 @@ func TestRunnerInstallCodexBasicCommandsFailsWhenCapabilityCannotBeInstalled(t *
 	codexHome := filepath.Join(home, "custom-codex")
 	t.Setenv("CODEX_HOME", codexHome)
 	writeInstallFile(t, filepath.Join(root, "dist", "codex", "skills", "go-development", "SKILL.md"), "# Go\n")
-	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "hooks.json"), `{"version":1,"hooks":{}}`)
+	installTestHookDistribution(t, root, "codex")
 	writeInstallFile(t, filepath.Join(root, "dist", "codex", ".codex", "rules", "loaf.rules.tmpl"), "# Loaf Codex policy\n{{LOAF_BASIC_RULES}}\n")
 
 	var stdout bytes.Buffer
@@ -170,6 +174,7 @@ func TestRunnerInstallOffersBinarySelfInstall(t *testing.T) {
 	}
 	writeInstallFile(t, filepath.Join(root, "bin", "native", "darwin-arm64", "loaf"), "native\n")
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	mkdirAll(t, filepath.Join(home, ".cursor"))
 
 	var stdout bytes.Buffer
@@ -193,6 +198,7 @@ func TestRunnerInstallOffersBinarySelfInstall(t *testing.T) {
 func TestRunnerInstallInteractiveSelectionRunsNatively(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	mkdirAll(t, filepath.Join(home, ".cursor"))
 
 	var stdout bytes.Buffer
@@ -217,6 +223,7 @@ func TestRunnerInstallInteractiveSelectionRunsNatively(t *testing.T) {
 func TestRunnerInstallInteractiveNoTargetsStillUpdatesClaudeProjectFile(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	mkdirAll(t, filepath.Join(home, ".cursor"))
 	writeInstallFile(t, filepath.Join(root, "bin", "claude"), "#!/bin/sh\nexit 0\n")
 	if err := os.Chmod(filepath.Join(root, "bin", "claude"), 0o755); err != nil {
@@ -251,6 +258,7 @@ func TestRunnerInstallMcpRecommendationWritesCursorProjectConfig(t *testing.T) {
 		t.Fatalf("Chmod(fake loaf) error = %v", err)
 	}
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	writeInstallFile(t, filepath.Join(root, ".cursor", "mcp.json"), `{"mcpServers":{"existing":{"command":"keep","args":[]}},"theme":"dark"}`+"\n")
 	mkdirAll(t, filepath.Join(home, ".cursor"))
 
@@ -311,6 +319,7 @@ EOS
 		t.Fatalf("Chmod(fake uv) error = %v", err)
 	}
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	mkdirAll(t, filepath.Join(home, ".cursor"))
 
 	var stdout bytes.Buffer
@@ -394,6 +403,7 @@ func TestRunnerInstallFromLinkedWorktreeWritesMainLoafConfig(t *testing.T) {
 	mkdirAll(t, filepath.Join(home, ".cursor"))
 	writeInstallFile(t, filepath.Join(main, "package.json"), `{"name":"loaf","version":"9.8.7-test.1"}`+"\n")
 	writeInstallFile(t, filepath.Join(main, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, main, "cursor")
 	gitCLI(t, main, "add", "package.json", "dist/cursor/skills/foundations/SKILL.md")
 	gitCLI(t, main, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "add install fixture")
 	linked := addCLILinkedWorktree(t, main, "install-config")

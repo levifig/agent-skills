@@ -123,13 +123,17 @@ func TestInstallTargetAdapterManifestPreservesForeignConvergesAndRejectsTamperin
 	assertInstallFile(t, foreign, "export const company = true;\n")
 }
 
-func TestInstallTargetAdapterManifestOwnsCursorProjectionAndSupportFiles(t *testing.T) {
+// Cursor's support files stay whole-file artifacts while its entries converge
+// one at a time: the user's entry is untouched, Loaf's own entry is brought to
+// the shipped shape wherever it drifted, and no divergence refuses the file.
+func TestInstallTargetAdapterManifestReconcilesCursorEntriesAndOwnsSupportFiles(t *testing.T) {
 	root := realpath(t, t.TempDir())
 	home := filepath.Join(root, "home")
 	dist := filepath.Join(root, "dist", "cursor")
 	config := filepath.Join(root, "cursor")
+	desired := map[string]any{"command": "loaf task refresh", "matcher": "Edit|Write", loafHookMarker: true}
 	generatedHooks := `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf task refresh","matcher":"Edit|Write","loaf-managed":true}]}}`
-	existingHooks := `{"version":1,"hooks":{"PostToolUse":[{"command":"user hook"},{"command":"old loaf hook","matcher":"Edit|Write","loaf-managed":true}]}}`
+	existingHooks := `{"version":1,"hooks":{"PostToolUse":[{"command":"user hook"},{"command":"loaf task refresh","matcher":"Bash","loaf-managed":true}]}}`
 	writeInstallFile(t, filepath.Join(dist, "hooks.json"), generatedHooks)
 	writeInstallFile(t, filepath.Join(dist, "hooks", "post-tool", "managed.sh"), "#!/bin/sh\necho managed\n")
 	writeInstallFile(t, filepath.Join(config, "hooks.json"), existingHooks)
@@ -142,24 +146,34 @@ func TestInstallTargetAdapterManifestOwnsCursorProjectionAndSupportFiles(t *test
 		{"id": "hook-file:hooks/post-tool/managed.sh", "kind": "hook-file", "source_path": "hooks/post-tool/managed.sh", "destination": "hooks/post-tool/managed.sh", "sha256": sha256Hex("#!/bin/sh\necho managed\n")},
 		{"id": "hook-projection:hooks.json", "kind": "hook-projection", "source_path": "hooks.json", "destination": "hooks.json", "sha256": hookDigest},
 	})
-	options := targetInstallOptions{Target: "cursor", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home}
+	installTestHookCatalog(t, dist, "cursor", []hookCatalogSource{{
+		event: "PostToolUse", hookID: "generate-task-board", typeName: "command", command: "loaf task refresh", template: desired,
+	}})
+	options := targetInstallOptions{Target: "cursor", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home, HookState: installTestHookState(t)}
 	if err := installTargetDistribution(options); err != nil {
 		t.Fatalf("Cursor adapter install error = %v", err)
 	}
 	hooks := readInstallHooks(t, filepath.Join(config, "hooks.json"))
-	if len(hooks.Hooks["PostToolUse"]) != 2 || hooks.Hooks["PostToolUse"][0]["command"] != "user hook" || hooks.Hooks["PostToolUse"][1]["command"] != "loaf task refresh" {
-		t.Fatalf("Cursor hooks = %#v, want user hook plus current Loaf projection", hooks.Hooks)
+	if len(hooks.Hooks["PostToolUse"]) != 2 || hooks.Hooks["PostToolUse"][0]["command"] != "user hook" {
+		t.Fatalf("Cursor hooks = %#v, want the user entry preserved in place", hooks.Hooks)
+	}
+	if hooks.Hooks["PostToolUse"][1]["matcher"] != "Edit|Write" {
+		t.Fatalf("Cursor Loaf entry = %#v, want the drifted entry converged", hooks.Hooks["PostToolUse"][1])
 	}
 	assertInstallFile(t, filepath.Join(config, "hooks", "company.sh"), "#!/bin/sh\necho company\n")
 
-	hooks.Hooks["PostToolUse"][1]["command"] = "locally changed loaf hook"
+	hooks.Hooks["PostToolUse"][1]["command"] = "loaf task refresh --advisory"
 	body, err := json.Marshal(hooks)
 	if err != nil {
 		t.Fatal(err)
 	}
 	writeInstallFile(t, filepath.Join(config, "hooks.json"), string(body))
-	if err := installTargetDistribution(options); err == nil || !strings.Contains(err.Error(), "modified") {
-		t.Fatalf("tampered Cursor projection error = %v, want conflict", err)
+	if err := installTargetDistribution(options); err != nil {
+		t.Fatalf("weakened Cursor entry install error = %v, want convergence rather than a refusal", err)
+	}
+	hooks = readInstallHooks(t, filepath.Join(config, "hooks.json"))
+	if hooks.Hooks["PostToolUse"][1]["command"] != "loaf task refresh" {
+		t.Fatalf("Cursor Loaf entry = %#v, want the weakened entry converged back", hooks.Hooks["PostToolUse"][1])
 	}
 }
 
@@ -180,7 +194,21 @@ func TestInstallTargetAdapterManifestCanonicalizesCodexExecutable(t *testing.T) 
 	writeTestTargetAdapterManifest(t, dist, "codex", []map[string]string{{
 		"id": "hook-projection:.codex/hooks.json", "kind": "hook-projection", "source_path": ".codex/hooks.json", "destination": "hooks.json", "sha256": digest,
 	}})
-	options := targetInstallOptions{Target: "codex", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home, CodexHome: codexHome, CodexRuleOperations: operations, ProjectRoot: root}
+	installTestHookCatalog(t, dist, "codex", []hookCatalogSource{{
+		event:    "SessionStart",
+		hookID:   "session-start-loaf",
+		typeName: "command",
+		command:  codexJournalExecutablePlaceholder + codexJournalHookCommandSuffix,
+		template: map[string]any{
+			"matcher": codexJournalHookMatcher,
+			"hooks": []any{map[string]any{
+				"type":           "command",
+				"command":        codexJournalExecutablePlaceholder + codexJournalHookCommandSuffix,
+				"commandWindows": codexJournalExecutablePlaceholder + codexJournalHookCommandSuffix,
+			}},
+		},
+	}})
+	options := targetInstallOptions{Target: "codex", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home, CodexHome: codexHome, CodexRuleOperations: operations, ProjectRoot: root, HookState: installTestHookState(t)}
 	if err := installTargetDistribution(options); err != nil {
 		t.Fatalf("Codex adapter install error = %v", err)
 	}
@@ -371,7 +399,11 @@ func TestInstallTargetAdapterManifestBindsConcreteArtifactModes(t *testing.T) {
 			{"id": "hook-file:managed", "kind": "hook-file", "source_path": "hooks/post-tool/managed.sh", "destination": "hooks/post-tool/managed.sh", "sha256": sha256Hex("#!/bin/sh\necho managed\n")},
 			{"id": "hook-projection:hooks.json", "kind": "hook-projection", "source_path": "hooks.json", "destination": "hooks.json", "sha256": hookDigest},
 		})
-		options := targetInstallOptions{Target: "cursor", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home")}
+		installTestHookCatalog(t, dist, "cursor", []hookCatalogSource{{
+			event: "PostToolUse", hookID: "generate-task-board", typeName: "command", command: "loaf task refresh",
+			template: map[string]any{"command": "loaf task refresh", "matcher": "Edit|Write", loafHookMarker: true},
+		}})
+		options := targetInstallOptions{Target: "cursor", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: filepath.Join(root, "home"), HookState: installTestHookState(t)}
 		if err := installTargetDistribution(options); err != nil {
 			t.Fatal(err)
 		}
@@ -900,20 +932,26 @@ func TestManagedSkillPublicationAndRetirementRestorePostPreflightMismatch(t *tes
 	assertInstallFile(t, filepath.Join(dest, "SKILL.md"), "changed-after-preflight\n")
 }
 
-func TestInstallTargetCursorMergesHooksAndRemovesObsoleteHooksOnUpgrade(t *testing.T) {
+func TestInstallTargetCursorSyncsContentAndRemovesObsoleteHooksOnUpgrade(t *testing.T) {
 	root := realpath(t, t.TempDir())
 	home := filepath.Join(root, "home")
 	dist := filepath.Join(root, "dist", "cursor")
 	config := filepath.Join(root, ".cursor")
 	checkHook := "loaf check --hook check-" + "se" + "crets"
+	desired := map[string]any{"command": checkHook, "matcher": "Edit|Write|Bash", loafHookMarker: true}
 	writeInstallFile(t, filepath.Join(dist, "skills", "foundations", "SKILL.md"), "# Foundations\n")
 	writeInstallFile(t, filepath.Join(dist, "agents", "reviewer.md"), "# Reviewer\n")
 	writeInstallFile(t, filepath.Join(dist, "templates", "session.md"), "session\n")
 	writeInstallFile(t, filepath.Join(dist, "hooks", "post-tool", "check.sh"), "#!/bin/sh\n")
-	writeInstallFile(t, filepath.Join(dist, "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"`+checkHook+`","matcher":"Edit|Write|Bash","loaf-managed":true}]}}`)
 	writeInstallFile(t, filepath.Join(config, "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"user hook"},{"command":"`+checkHook+`","matcher":"Edit|Write|Bash","loaf-managed":true}],"PreToolUse":[{"prompt":"STOP. Before running gh pr merge anything"}]}}`)
 	writeInstallFile(t, filepath.Join(config, "commands", "stale.md"), "stale\n")
 	writeInstallFile(t, filepath.Join(config, "hooks", "session", "session-start.sh"), "obsolete\n")
+	writeTestTargetAdapterManifest(t, dist, "cursor", []map[string]string{
+		{"id": "hook-file:hooks/post-tool/check.sh", "kind": "hook-file", "source_path": "hooks/post-tool/check.sh", "destination": "hooks/post-tool/check.sh", "sha256": sha256Hex("#!/bin/sh\n")},
+	})
+	installTestHookCatalog(t, dist, "cursor", []hookCatalogSource{{
+		event: "PostToolUse", hookID: "check-" + "sec" + "rets", typeName: "command", command: checkHook, template: desired,
+	}})
 
 	err := installTargetDistribution(targetInstallOptions{
 		Target:    "cursor",
@@ -922,6 +960,7 @@ func TestInstallTargetCursorMergesHooksAndRemovesObsoleteHooksOnUpgrade(t *testi
 		Upgrade:   true,
 		Version:   "9.8.7-test.1",
 		HomeDir:   home,
+		HookState: installTestHookState(t),
 	})
 	if err != nil {
 		t.Fatalf("install cursor error = %v", err)
@@ -939,13 +978,15 @@ func TestInstallTargetCursorMergesHooksAndRemovesObsoleteHooksOnUpgrade(t *testi
 	hooks := readInstallHooks(t, filepath.Join(config, "hooks.json"))
 	postTool := hooks.Hooks["PostToolUse"]
 	if len(postTool) != 2 {
-		t.Fatalf("PostToolUse hooks = %#v, want user hook plus new loaf hook", postTool)
+		t.Fatalf("PostToolUse hooks = %#v, want user hook plus the converged Loaf entry", postTool)
 	}
 	if postTool[0]["command"] != "user hook" || postTool[1]["command"] != checkHook {
-		t.Fatalf("PostToolUse hooks = %#v, want user hook preserved and loaf hook replaced", postTool)
+		t.Fatalf("PostToolUse hooks = %#v, want the user entry preserved in place", postTool)
 	}
-	if _, ok := hooks.Hooks["PreToolUse"]; ok {
-		t.Fatalf("PreToolUse hooks = %#v, want legacy prompt removed", hooks.Hooks["PreToolUse"])
+	// The legacy prompt entry pairs to no identity this version ships, so it is
+	// removed; the section the file declared stays declared.
+	if preTool, ok := hooks.Hooks["PreToolUse"]; !ok || len(preTool) != 0 {
+		t.Fatalf("PreToolUse hooks = %#v, want the retired legacy prompt removed from a preserved section", hooks.Hooks["PreToolUse"])
 	}
 	assertInstallFile(t, filepath.Join(config, loafInstallMarkerFile), "9.8.7-test.1\n")
 }
@@ -957,11 +998,23 @@ func TestInstallTargetCodexUsesCodexHomeForHooksAndSharedSkillsHome(t *testing.T
 	dist := filepath.Join(root, "dist", "codex")
 	config := filepath.Join(root, "reported-config")
 	operations := codexInstallTestOperations(t, root)
+	generated := `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"}]}]}}`
 	writeInstallFile(t, filepath.Join(dist, "skills", "go-development", "SKILL.md"), "# Go\n")
-	writeInstallFile(t, filepath.Join(dist, ".codex", "hooks.json"), `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"}]}]}}`)
+	writeInstallFile(t, filepath.Join(dist, ".codex", "hooks.json"), generated)
 	writeInstallFile(t, filepath.Join(codexHome, "hooks.json"), `{"version":1,"description":"user hooks","hooks":{"SessionStart":[{"matcher":"startup","hooks":[{"type":"command","command":"user codex hook"}]}],"Stop":[],"PostToolUse":[{"command":"loaf journal log --from-hook","matcher":"Bash","if":"Bash(git commit:*)"}]}}`)
+	codexDigest, err := targetHookProjectionDigest("codex", []byte(generated), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestTargetAdapterManifest(t, dist, "codex", []map[string]string{{
+		"id": "hook-projection:.codex/hooks.json", "kind": "hook-projection", "source_path": ".codex/hooks.json", "destination": "hooks.json", "sha256": codexDigest,
+	}})
+	installTestHookCatalog(t, dist, "codex", []hookCatalogSource{testCodexHookCatalogSource()})
+	// This host has already migrated: the subject here is where the file lives
+	// and what gets rendered into it, not what absorption decides.
+	hookState := installTestHookStateAfterMigration(t, "codex")
 
-	err := installTargetDistribution(targetInstallOptions{
+	err = installTargetDistribution(targetInstallOptions{
 		Target:              "codex",
 		DistDir:             dist,
 		ConfigDir:           config,
@@ -969,14 +1022,17 @@ func TestInstallTargetCodexUsesCodexHomeForHooksAndSharedSkillsHome(t *testing.T
 		HomeDir:             home,
 		CodexHome:           codexHome,
 		CodexRuleOperations: operations,
+		HookState:           hookState,
 	})
 	if err != nil {
 		t.Fatalf("install codex error = %v", err)
 	}
 	assertInstallFile(t, filepath.Join(home, ".agents", "skills", "go-development", "SKILL.md"), "# Go\n")
 	hooks := readInstallHooks(t, filepath.Join(codexHome, "hooks.json"))
-	if hooks.Version != 0 {
-		t.Fatalf("codex hooks version = %d, want omitted current schema", hooks.Version)
+	// Unknown top-level fields are the operator's, including the legacy version
+	// marker an older Loaf used to strip.
+	if hooks.Version != 1 {
+		t.Fatalf("codex hooks version = %d, want the file's own top-level field preserved", hooks.Version)
 	}
 	if hooks.Description != "user hooks" {
 		t.Fatalf("codex hooks description = %q, want preserved user description", hooks.Description)
@@ -996,8 +1052,8 @@ func TestInstallTargetCodexUsesCodexHomeForHooksAndSharedSkillsHome(t *testing.T
 	if stop, ok := hooks.Hooks["Stop"]; !ok || len(stop) != 0 {
 		t.Fatalf("codex hooks = %#v, want explicitly empty Stop event preserved", hooks.Hooks)
 	}
-	if _, ok := hooks.Hooks["PostToolUse"]; ok {
-		t.Fatalf("codex hooks = %#v, want legacy flat Loaf hook retired", hooks.Hooks)
+	if postTool, ok := hooks.Hooks["PostToolUse"]; !ok || len(postTool) != 0 {
+		t.Fatalf("codex hooks = %#v, want the legacy flat Loaf hook retired", hooks.Hooks)
 	}
 	if err := installTargetDistribution(targetInstallOptions{
 		Target:              "codex",
@@ -1007,6 +1063,7 @@ func TestInstallTargetCodexUsesCodexHomeForHooksAndSharedSkillsHome(t *testing.T
 		HomeDir:             home,
 		CodexHome:           codexHome,
 		CodexRuleOperations: operations,
+		HookState:           hookState,
 	}); err != nil {
 		t.Fatalf("second install codex error = %v", err)
 	}
@@ -1047,6 +1104,7 @@ func TestInstallTargetCodexRendersRealGeneratedHookPath(t *testing.T) {
 		CodexHome:           codexHome,
 		CodexRuleOperations: operations,
 		ProjectRoot:         root,
+		HookState:           installTestHookState(t),
 	}); err != nil {
 		t.Fatalf("install generated Codex hooks error = %v", err)
 	}
@@ -1070,18 +1128,18 @@ func TestInstallTargetCodexRendersRealGeneratedHookPath(t *testing.T) {
 	}
 }
 
-func TestInstallTargetCodexPreservesPromptAndAgentHandlers(t *testing.T) {
+// The whole-file merge no longer runs on any install path; these are its own
+// semantics, asserted against the helper until the task that deletes it lands.
+func TestMergeCodexHookFilesPreservesPromptAndAgentHandlers(t *testing.T) {
 	root := realpath(t, t.TempDir())
-	home := filepath.Join(root, "home")
 	codexHome := filepath.Join(root, "codex-home")
 	dist := filepath.Join(root, "dist", "codex")
-	config := filepath.Join(root, "reported-config")
 	operations := codexInstallTestOperations(t, root)
 	writeInstallFile(t, filepath.Join(dist, ".codex", "hooks.json"), `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"}]}]}}`)
 	writeInstallFile(t, filepath.Join(codexHome, "hooks.json"), `{"hooks":{"SessionStart":[{}, {"matcher":null}, {"matcher":"resume","hooks":[{"type":"prompt"}]},{"matcher":"clear","hooks":[{"type":"agent"}]},{"matcher":"compact","hooks":[{"type":"command","command":"user hook","command_windows":"powershell user hook","timeout":0,"async":true,"statusMessage":"checking"}]}]}}`)
 
-	if err := installTargetDistribution(targetInstallOptions{Target: "codex", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home, CodexHome: codexHome, CodexRuleOperations: operations}); err != nil {
-		t.Fatalf("install codex error = %v", err)
+	if err := mergeCodexHookFilesForOS(filepath.Join(codexHome, "hooks.json"), filepath.Join(dist, ".codex", "hooks.json"), root, operations, "darwin"); err != nil {
+		t.Fatalf("mergeCodexHookFiles error = %v", err)
 	}
 	hooks := readInstallHooks(t, filepath.Join(codexHome, "hooks.json"))
 	groups := hooks.Hooks["SessionStart"]
@@ -1162,7 +1220,7 @@ func TestCodexHookUint64RejectsLossyFloatValues(t *testing.T) {
 	}
 }
 
-func TestInstallTargetCodexRejectsMalformedOrUnsupportedHooks(t *testing.T) {
+func TestMergeCodexHookFilesRejectsMalformedOrUnsupportedHooks(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		body string
@@ -1193,50 +1251,40 @@ func TestInstallTargetCodexRejectsMalformedOrUnsupportedHooks(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := realpath(t, t.TempDir())
-			home := filepath.Join(root, "home")
 			codexHome := filepath.Join(root, "codex-home")
 			dist := filepath.Join(root, "dist", "codex")
-			config := filepath.Join(root, "reported-config")
 			operations := codexInstallTestOperations(t, root)
 			writeInstallFile(t, filepath.Join(dist, ".codex", "hooks.json"), `{"hooks":{}}`)
 			writeInstallFile(t, filepath.Join(codexHome, "hooks.json"), tc.body)
 
-			err := installTargetDistribution(targetInstallOptions{
-				Target:              "codex",
-				DistDir:             dist,
-				ConfigDir:           config,
-				Version:             "9.8.7-test.1",
-				HomeDir:             home,
-				CodexHome:           codexHome,
-				CodexRuleOperations: operations,
-			})
+			err := mergeCodexHookFilesForOS(filepath.Join(codexHome, "hooks.json"), filepath.Join(dist, ".codex", "hooks.json"), root, operations, "darwin")
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("install codex error = %v, want %q", err, tc.want)
+				t.Fatalf("mergeCodexHookFiles error = %v, want %q", err, tc.want)
 			}
 			assertInstallFile(t, filepath.Join(codexHome, "hooks.json"), tc.body)
 		})
 	}
 }
 
-func TestInstallTargetCodexRejectsModifiedOwnedGroupAndPlaceholderLeak(t *testing.T) {
+func TestMergeCodexHookFilesRejectsModifiedOwnedGroupAndPlaceholderLeak(t *testing.T) {
 	root := realpath(t, t.TempDir())
-	home := filepath.Join(root, "home")
 	codexHome := filepath.Join(root, "codex-home")
 	dist := filepath.Join(root, "dist", "codex")
-	config := filepath.Join(root, "reported-config")
 	operations := codexInstallTestOperations(t, root)
+	destination := filepath.Join(codexHome, "hooks.json")
+	source := filepath.Join(dist, ".codex", "hooks.json")
 	generated := `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"}]}]}}`
-	writeInstallFile(t, filepath.Join(dist, ".codex", "hooks.json"), generated)
-	writeInstallFile(t, filepath.Join(codexHome, "hooks.json"), `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"'/usr/local/bin/loaf' journal context --from-hook --codex-hook"},{"type":"command","command":"user hook"}]}]}}`)
-	err := installTargetDistribution(targetInstallOptions{Target: "codex", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home, CodexHome: codexHome, CodexRuleOperations: operations})
+	writeInstallFile(t, source, generated)
+	writeInstallFile(t, destination, `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"'/usr/local/bin/loaf' journal context --from-hook --codex-hook"},{"type":"command","command":"user hook"}]}]}}`)
+	err := mergeCodexHookFilesForOS(destination, source, root, operations, "darwin")
 	if err == nil || !strings.Contains(err.Error(), "modified Loaf SessionStart matcher group") {
 		t.Fatalf("modified owned group error = %v, want ownership conflict", err)
 	}
-	assertInstallFile(t, filepath.Join(codexHome, "hooks.json"), `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"'/usr/local/bin/loaf' journal context --from-hook --codex-hook"},{"type":"command","command":"user hook"}]}]}}`)
+	assertInstallFile(t, destination, `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"'/usr/local/bin/loaf' journal context --from-hook --codex-hook"},{"type":"command","command":"user hook"}]}]}}`)
 
-	writeInstallFile(t, filepath.Join(codexHome, "hooks.json"), `{"hooks":{}}`)
-	writeInstallFile(t, filepath.Join(dist, ".codex", "hooks.json"), `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook","statusMessage":"{{LOAF_EXECUTABLE}}"}]}]}}`)
-	err = installTargetDistribution(targetInstallOptions{Target: "codex", DistDir: dist, ConfigDir: config, Version: "9.8.7-test.1", HomeDir: home, CodexHome: codexHome, CodexRuleOperations: operations})
+	writeInstallFile(t, destination, `{"hooks":{}}`)
+	writeInstallFile(t, source, `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook","statusMessage":"{{LOAF_EXECUTABLE}}"}]}]}}`)
+	err = mergeCodexHookFilesForOS(destination, source, root, operations, "darwin")
 	if err == nil || !strings.Contains(err.Error(), "placeholder remains") {
 		t.Fatalf("placeholder leak error = %v, want strict rejection", err)
 	}

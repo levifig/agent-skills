@@ -461,7 +461,7 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 	states := map[string]targetAdapterSnapshot{}
 	desiredDestinations := map[string]bool{}
 	for _, artifact := range installed.Artifacts {
-		if artifact.Kind == "instruction" {
+		if skipTargetAdapterArtifact(options, artifact) {
 			continue
 		}
 		path, err := targetAdapterDestination(options, artifact)
@@ -492,7 +492,7 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 		}
 	}
 	for _, artifact := range desired.Artifacts {
-		if artifact.Kind == "instruction" {
+		if skipTargetAdapterArtifact(options, artifact) {
 			continue
 		}
 		if err := verifyTargetAdapterSource(options, artifact); err != nil {
@@ -554,7 +554,7 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 		return rollbackTargetAdapterMutations(cause, mutated, options.TargetAdapterOps)
 	}
 	for _, artifact := range installed.Artifacts {
-		if artifact.Kind == "instruction" {
+		if skipTargetAdapterArtifact(options, artifact) {
 			continue
 		}
 		if _, keep := desiredByID[artifact.ID]; keep {
@@ -590,7 +590,7 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 		}
 	}
 	for _, artifact := range desired.Artifacts {
-		if artifact.Kind == "instruction" {
+		if skipTargetAdapterArtifact(options, artifact) {
 			continue
 		}
 		if options.TargetAdapterOps != nil && options.TargetAdapterOps.beforeArtifact != nil {
@@ -630,6 +630,19 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 		return fail(writeErr)
 	}
 	return nil
+}
+
+// skipTargetAdapterArtifact names the artifacts the whole-file machinery does
+// not handle. Managed instructions live inside a project file rather than at a
+// destination of their own, and a hook projection on a target that reconciles
+// per entry belongs to the reconciler — reading, publishing, removing, or
+// judging one here would restore the file-level verdict entry-level
+// reconciliation exists to remove.
+func skipTargetAdapterArtifact(options targetInstallOptions, artifact targetAdapterArtifact) bool {
+	if artifact.Kind == "instruction" {
+		return true
+	}
+	return artifact.Kind == "hook-projection" && targetReconcilesHookEntries(options)
 }
 
 func ensureTargetAdapterSnapshotUnchanged(path string, expected targetAdapterSnapshot) error {

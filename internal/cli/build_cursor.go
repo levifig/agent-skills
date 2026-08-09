@@ -105,7 +105,11 @@ func buildNativeCursorTarget(root string) error {
 	if err := copyNativeCursorHooks(filepath.Join(srcDir, "hooks"), filepath.Join(dist, "hooks")); err != nil {
 		return err
 	}
-	return generateNativeCursorHooksJSON(filepath.Join(root, "config", "hooks.yaml"), dist)
+	hooksPath := filepath.Join(root, "config", "hooks.yaml")
+	if err := generateNativeCursorHooksJSON(hooksPath, dist); err != nil {
+		return err
+	}
+	return generateNativeCursorHookCatalog(hooksPath, dist, version)
 }
 
 func copyNativeBuildAgents(srcDir string, destDir string, targetName string, version string, defaults []nativeBuildYAMLFieldValue, sidecarRequired bool) error {
@@ -403,39 +407,84 @@ func copyNativeBuildFile(src string, dest string) error {
 	return os.WriteFile(dest, body, info.Mode().Perm())
 }
 
-func generateNativeCursorHooksJSON(hooksPath string, dist string) error {
+// nativeCursorHookProjection is one desired Cursor entry with the identity it
+// carries. The hooks file and the hook catalog are both generated from this one
+// list so an entry's shape and its recorded identity can never drift apart.
+type nativeCursorHookProjection struct {
+	event  string
+	hookID string
+	hook   nativeBuildHook
+	entry  nativeCursorHookJSON
+}
+
+func nativeCursorHookProjections(hooksPath string) ([]nativeCursorHookProjection, error) {
 	hooks, err := readNativeBuildHooks(hooksPath)
+	if err != nil {
+		return nil, err
+	}
+	var projections []nativeCursorHookProjection
+	for _, hook := range hooks {
+		switch hook.section {
+		case "pre-tool":
+			projections = append(projections, nativeCursorHookProjection{
+				event:  "preToolUse",
+				hookID: hook.id,
+				hook:   hook,
+				entry:  nativeCursorHookEntry(hook, 60000, true),
+			})
+		case "post-tool":
+			projections = append(projections, nativeCursorHookProjection{
+				event:  "postToolUse",
+				hookID: hook.id,
+				hook:   hook,
+				entry:  nativeCursorHookEntry(hook, 30000, true),
+			})
+		case "session":
+			if nativeCursorJournalContextHookOmitted(hook.id) {
+				continue
+			}
+			event := nativeCursorSessionEvent(hook.event)
+			if event == "" {
+				continue
+			}
+			entry := nativeCursorHookEntry(hook, 60000, false)
+			if event == "sessionStart" && hook.id == "session-start-loaf" {
+				entry.Command = "loaf journal context --from-hook --cursor-hook"
+			}
+			projections = append(projections, nativeCursorHookProjection{
+				event:  event,
+				hookID: hook.id,
+				hook:   hook,
+				entry:  entry,
+			})
+		}
+	}
+	return projections, nil
+}
+
+func generateNativeCursorHooksJSON(hooksPath string, dist string) error {
+	projections, err := nativeCursorHookProjections(hooksPath)
 	if err != nil {
 		return err
 	}
 	var payload nativeCursorHooksJSON
 	payload.Version = 1
-	for _, hook := range hooks {
-		switch hook.section {
-		case "pre-tool":
-			payload.Hooks.PreToolUse = append(payload.Hooks.PreToolUse, nativeCursorHookEntry(hook, 60000, true))
-		case "post-tool":
-			payload.Hooks.PostToolUse = append(payload.Hooks.PostToolUse, nativeCursorHookEntry(hook, 30000, true))
-		case "session":
-			if nativeCursorJournalContextHookOmitted(hook.id) {
-				continue
-			}
-			entry := nativeCursorHookEntry(hook, 60000, false)
-			switch nativeCursorSessionEvent(hook.event) {
-			case "sessionStart":
-				if hook.id == "session-start-loaf" {
-					entry.Command = "loaf journal context --from-hook --cursor-hook"
-				}
-				payload.Hooks.SessionStart = append(payload.Hooks.SessionStart, entry)
-			case "sessionEnd":
-				payload.Hooks.SessionEnd = append(payload.Hooks.SessionEnd, entry)
-			case "beforeSubmitPrompt":
-				payload.Hooks.BeforeSubmitPrompt = append(payload.Hooks.BeforeSubmitPrompt, entry)
-			case "stop":
-				payload.Hooks.Stop = append(payload.Hooks.Stop, entry)
-			case "preCompact":
-				payload.Hooks.PreCompact = append(payload.Hooks.PreCompact, entry)
-			}
+	for _, projection := range projections {
+		switch projection.event {
+		case "preToolUse":
+			payload.Hooks.PreToolUse = append(payload.Hooks.PreToolUse, projection.entry)
+		case "postToolUse":
+			payload.Hooks.PostToolUse = append(payload.Hooks.PostToolUse, projection.entry)
+		case "sessionStart":
+			payload.Hooks.SessionStart = append(payload.Hooks.SessionStart, projection.entry)
+		case "sessionEnd":
+			payload.Hooks.SessionEnd = append(payload.Hooks.SessionEnd, projection.entry)
+		case "beforeSubmitPrompt":
+			payload.Hooks.BeforeSubmitPrompt = append(payload.Hooks.BeforeSubmitPrompt, projection.entry)
+		case "stop":
+			payload.Hooks.Stop = append(payload.Hooks.Stop, projection.entry)
+		case "preCompact":
+			payload.Hooks.PreCompact = append(payload.Hooks.PreCompact, projection.entry)
 		}
 	}
 	body, err := json.MarshalIndent(payload, "", "  ")
@@ -443,6 +492,33 @@ func generateNativeCursorHooksJSON(hooksPath string, dist string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dist, "hooks.json"), body, 0o644)
+}
+
+func generateNativeCursorHookCatalog(hooksPath string, dist string, version string) error {
+	projections, err := nativeCursorHookProjections(hooksPath)
+	if err != nil {
+		return err
+	}
+	sources := make([]hookCatalogSource, 0, len(projections))
+	for _, projection := range projections {
+		typeName := "command"
+		if projection.entry.Prompt != "" {
+			typeName = "prompt"
+		}
+		sources = append(sources, hookCatalogSource{
+			event:    projection.event,
+			hookID:   projection.hookID,
+			typeName: typeName,
+			command:  projection.entry.Command,
+			prompt:   projection.entry.Prompt,
+			template: projection.entry,
+		})
+	}
+	catalog, err := newHookCatalog("cursor", version, sources)
+	if err != nil {
+		return err
+	}
+	return writeHookCatalog(dist, catalog)
 }
 
 // Cursor's installed sessionStart hook is the only retained journal

@@ -371,6 +371,7 @@ func TestDestructiveMigrationPreservesMarkerPresentForeignAgent(t *testing.T) {
 	agentHome := filepath.Join(home, ".cursor", "agents")
 	retiredAgent := filepath.Join(agentHome, "old-agent.md")
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 	writeInstallFile(t, retiredAgent, "# User-authored agent\n")
 	writeInstallDeprecationManifest(t, root, `{

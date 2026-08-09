@@ -75,6 +75,7 @@ func TestRunnerSetupDeploysProjectSurfacesItJustScaffolded(t *testing.T) {
 		t.Fatalf("MkdirAll(.cursor) error = %v", err)
 	}
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	target := filepath.Join(root, "fixture-project")
 
 	var stdout bytes.Buffer

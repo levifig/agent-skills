@@ -22,6 +22,11 @@ type configCheckOptions struct {
 	fix        bool
 	jsonOutput bool
 	help       bool
+	// hookState reaches the enablement records for targets whose hook entries
+	// are reconciled. `--fix` drives the shared installer, and that installer
+	// converges those entries against the records rather than overwriting the
+	// file, so the resolver has to travel with the request.
+	hookState hookStateResolver
 }
 
 type configCheckResult struct {
@@ -79,6 +84,9 @@ func (r Runner) runConfig(args []string, out io.Writer, runtimeRoot string) erro
 		if err != nil {
 			return err
 		}
+		hookState, releaseHookState := r.hookStateForApply(projectRoot.Path())
+		defer releaseHookState()
+		options.hookState = hookState
 		result := runConfigCheck(projectRoot.Path(), loafRoot, options)
 		if options.jsonOutput {
 			if err := writeJSON(out, result); err != nil {
@@ -140,7 +148,7 @@ func runConfigCheck(projectRoot string, loafRoot string, options configCheckOpti
 	for _, target := range targets {
 		status := checkConfigTargetHooks(loafRoot, target)
 		if len(status.MissingHooks) > 0 && options.fix {
-			status = fixConfigTargetHooks(projectRoot, loafRoot, target, status)
+			status = fixConfigTargetHooks(projectRoot, loafRoot, target, status, options.hookState)
 		}
 		if status.Status == "updated" {
 			result.Fixed = true
@@ -436,11 +444,11 @@ func checkConfigTargetHooks(loafRoot string, target detectedInstallTool) configT
 	return status
 }
 
-func fixConfigTargetHooks(projectRoot string, loafRoot string, target detectedInstallTool, previous configTargetStatus) configTargetStatus {
-	return fixConfigTargetHooksWithInstaller(projectRoot, loafRoot, target, previous, installTargetDistribution)
+func fixConfigTargetHooks(projectRoot string, loafRoot string, target detectedInstallTool, previous configTargetStatus, hookState hookStateResolver) configTargetStatus {
+	return fixConfigTargetHooksWithInstaller(projectRoot, loafRoot, target, previous, hookState, installTargetDistribution)
 }
 
-func fixConfigTargetHooksWithInstaller(projectRoot string, loafRoot string, target detectedInstallTool, previous configTargetStatus, installer func(targetInstallOptions) error) configTargetStatus {
+func fixConfigTargetHooksWithInstaller(projectRoot string, loafRoot string, target detectedInstallTool, previous configTargetStatus, hookState hookStateResolver, installer func(targetInstallOptions) error) configTargetStatus {
 	distDir := filepath.Join(loafRoot, "dist", target.key)
 	if !dirExistsForInstall(distDir) {
 		previous.Status = "error"
@@ -456,6 +464,7 @@ func fixConfigTargetHooksWithInstaller(projectRoot string, loafRoot string, targ
 		HomeDir:     installHome(),
 		CodexHome:   os.Getenv("CODEX_HOME"),
 		ProjectRoot: projectRoot,
+		HookState:   hookState,
 	}); err != nil {
 		previous.Status = "error"
 		previous.Error = err.Error()

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -160,6 +161,11 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 
 	toolByKey := installToolsByKey(tools)
 	defaults := defaultInstallConfigDirs()
+	// A plan reads hook enablement and never creates it: a dry run that brought
+	// a state database into existence would be a write, and the plan promises
+	// none.
+	hookState, releaseHookState := r.hookStateForPlan(projectRoot)
+	defer releaseHookState()
 	buildNeeded := false
 	var plannedOptions []targetInstallOptions
 	for _, target := range selectedTargets {
@@ -190,6 +196,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 			HomeDir:            installHome(),
 			CodexHome:          os.Getenv("CODEX_HOME"),
 			ProjectRoot:        projectRoot,
+			HookState:          hookState,
 		}
 		plannedOptions = append(plannedOptions, installOpts)
 		decisions, err := planTargetDistribution(installOpts)
@@ -488,8 +495,23 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 	var decisions []artifactPlanDecision
 	desiredDestinations := map[string]bool{}
 
+	// Hook entries are planned per identity by the reconciler, from the same
+	// computation apply runs. It reads state and the live file and writes
+	// nothing.
+	reconciler, err := newHookReconciler(options)
+	if err != nil {
+		return nil, err
+	}
+	if reconciler != nil {
+		actions, err := reconciler.plan(context.Background())
+		if err != nil {
+			return nil, err
+		}
+		decisions = append(decisions, hookActionPlanDecisions(reconciler, actions)...)
+	}
+
 	for _, artifact := range desired.Artifacts {
-		if artifact.Kind == "instruction" {
+		if skipTargetAdapterArtifact(options, artifact) {
 			continue
 		}
 		if err := verifyTargetAdapterSource(options, artifact); err != nil {
@@ -568,7 +590,7 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 
 	// Retire installed artifacts the desired manifest no longer ships.
 	for _, artifact := range installed.Artifacts {
-		if artifact.Kind == "instruction" {
+		if skipTargetAdapterArtifact(options, artifact) {
 			continue
 		}
 		if _, keep := desiredByID[artifact.ID]; keep {
@@ -770,6 +792,19 @@ func planCodexGuidanceFile(guidanceDest string, ownedGuidance bool, ownedGuidanc
 // destinations that mergeHookFiles / mergeCodexHookFiles would rather than
 // promise an update apply will decline.
 func planLegacyHookArtifacts(options targetInstallOptions) ([]artifactPlanDecision, error) {
+	// A target whose entries are reconciled has no legacy path left to promise:
+	// apply refuses a build output that predates the catalog, so the plan says
+	// the same thing rather than describing a refresh that will not happen.
+	if targetReconcilesHookEntries(options) {
+		_, err := newHookReconciler(options)
+		return []artifactPlanDecision{{
+			ID:          "hooks",
+			Kind:        "hook-legacy",
+			Destination: targetHookFilePath(options),
+			Action:      planActionConflict,
+			Detail:      err.Error(),
+		}}, nil
+	}
 	decision := artifactPlanDecision{
 		ID:          "hooks",
 		Kind:        "hook-legacy",
@@ -1152,7 +1187,8 @@ func installPlanHasChanges(plan installDryRunPlan) bool {
 		}
 		for _, artifact := range target.Artifacts {
 			switch artifact.Action {
-			case planActionCreate, planActionUpdate, planActionRetire, planActionConflict:
+			case planActionCreate, planActionUpdate, planActionRetire, planActionConflict,
+				hookActionAdd, hookActionRemove, hookActionAbsorb:
 				return true
 			}
 		}
@@ -1326,16 +1362,25 @@ func installMcpPlanNotices(entries []mcpPlanEntry) []string {
 
 func planActionGlyph(action string) string {
 	switch action {
-	case planActionCreate, planActionUpdate, "created", "appended", "updated", "relinked", "replaced-file", "migrated":
+	case planActionCreate, planActionUpdate, hookActionAdd, "created", "appended", "updated", "relinked", "replaced-file", "migrated":
 		return ansiGreen("+")
-	case planActionRetire, "remove", "relocate":
+	case planActionRetire, hookActionRemove, "relocate":
 		return ansiYellow("-")
 	case planActionConflict, "error":
 		return ansiRed("✗")
-	case planActionPreserve, "skipped", "already-correct", planActionNone, "absent", "skip-unmarked":
+	case planActionPreserve, hookActionAbsorb, "skipped", "already-correct", planActionNone, "absent", "skip-unmarked":
 		return ansiGray("○")
 	default:
 		return ansiGray("•")
+	}
+}
+
+// writeHookActionLines reports what a reconcile did, nested under the target it
+// ran for. A converged target prints nothing, which is the point: the quiet
+// upgrade is the normal one.
+func writeHookActionLines(out io.Writer, actions []hookAction) {
+	for _, action := range actions {
+		fmt.Fprintf(out, "    %s %s %s%s\n", planActionGlyph(action.action), action.action, action.id(), planDetailSuffix(action.detail))
 	}
 }
 

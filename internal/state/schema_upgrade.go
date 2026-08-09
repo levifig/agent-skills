@@ -145,6 +145,41 @@ func classifySchemaUpgradeTargetWithPolicy(path string, version int, allowJourna
 	return false, nil
 }
 
+// IsUninitialized reports whether this database has never held any schema at
+// all: no applied migrations and no user tables of any kind. It asks exactly
+// the question BootstrapIfEmpty answers before it writes, and answers it
+// without writing, so a read-only caller can tell a database that is merely
+// new from one it cannot read as Loaf's.
+//
+// The distinction matters because both spellings fail an ordinary schema read
+// with the same "no such table" error. A new database means there is nothing
+// recorded yet; a readable database carrying somebody else's tables means the
+// caller is looking at the wrong file, and treating that as "nothing recorded"
+// would report every default as though it had been chosen.
+func (s *Store) IsUninitialized(ctx context.Context) (bool, error) {
+	if s == nil || s.db == nil {
+		return false, fmt.Errorf("inspect state database: store is nil")
+	}
+	var ledgerTables int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'`).Scan(&ledgerTables); err != nil {
+		return false, fmt.Errorf("inspect state schema ledger: %w", err)
+	}
+	if ledgerTables > 0 {
+		var applied int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&applied); err != nil {
+			return false, fmt.Errorf("inspect state migrations: %w", err)
+		}
+		if applied > 0 {
+			return false, nil
+		}
+	}
+	var userTables int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT IN ('schema_migrations', 'sqlite_sequence')`).Scan(&userTables); err != nil {
+		return false, fmt.Errorf("inspect state tables: %w", err)
+	}
+	return userTables == 0, nil
+}
+
 // BootstrapIfEmpty applies the complete canonical schema only when the
 // serialized database owner proves that no user schema exists yet. Existing
 // databases are never mutated by this method.
