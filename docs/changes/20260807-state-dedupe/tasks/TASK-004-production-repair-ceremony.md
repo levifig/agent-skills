@@ -35,17 +35,17 @@ npm run build   # ceremony runs the binary built from this branch — no LOAF_DB
 
 ## Steps
 
-- [ ] `loaf state backup` and record the backup ID (Recovery Tier: local rollback)
-- [ ] `loaf state migrate alias-orphans` (preview): read per-project classification for all projects; record counts
-- [ ] Disposition the unproven rows explicitly — expected: 23 rows (rehearsed on a production copy during review). 3 task orphans without title twins (`--retire` or `--realias` per row), and 20 sparks forming 10 both-orphan message pairs: one copy per import instant, neither holding an alias, no surviving twin to bind to. Each pair takes one `--realias` (the member that lives on) and one `--retire`; which member survives is ceremony judgment — the June-24-survives convention from entity twins is the sensible default
-- [ ] Rehearse the exact apply invocation as a preview first: `loaf state migrate alias-orphans --retire … --realias …` (dispositions are accepted in preview and reflected in its totals) — the rehearsed and applied invocations must be identical
-- [ ] `loaf state migrate alias-orphans --apply --retire … --realias …`; record the manifest path; first run must exit 0 with post-apply verification passing and a truthful non-zero `orphaned_sources` figure
-- [ ] `loaf state migrate journal-duplicates` (preview): read pair counts and ambiguous matches; disposition ambiguities via `--retire`; then `--apply`; record the manifest path
-- [ ] `loaf state doctor`: alias-parity section green — raw == reachable for every project and table, zero dead aliases
-- [ ] Confirm the broken-evidence report is archived with its moot-rationale event
-- [ ] `loaf state migrate lifecycle-statuses` preview, then `--apply`; record OOV statuses it could not map, if any
-- [ ] Demonstrate count agreement: `loaf housekeeping` totals equal list-command counts for all seven aliased tables; `loaf task list --status done --json` returns exactly the done rows that exist
-- [ ] Journal the ceremony: `decision(state)` with counts and dispositions; `discover(state)` for anything the preview revealed about other projects
+- [x] `loaf state backup` and record the backup ID (Recovery Tier: local rollback)
+- [x] `loaf state migrate alias-orphans` (preview): read per-project classification for all projects; record counts
+- [x] Disposition the unproven rows explicitly — expected: 23 rows (rehearsed on a production copy during review). 3 task orphans without title twins (`--retire` or `--realias` per row), and 20 sparks forming 10 both-orphan message pairs: one copy per import instant, neither holding an alias, no surviving twin to bind to. Each pair takes one `--realias` (the member that lives on) and one `--retire`; which member survives is ceremony judgment — the June-24-survives convention from entity twins is the sensible default
+- [x] Rehearse the exact apply invocation as a preview first: `loaf state migrate alias-orphans --retire … --realias …` (dispositions are accepted in preview and reflected in its totals) — the rehearsed and applied invocations must be identical
+- [x] `loaf state migrate alias-orphans --apply --retire … --realias …`; record the manifest path; first run must exit 0 with post-apply verification passing and a truthful non-zero `orphaned_sources` figure
+- [x] `loaf state migrate journal-duplicates` (preview): read pair counts and ambiguous matches; disposition ambiguities via `--retire`; then `--apply`; record the manifest path
+- [x] `loaf state doctor`: alias-parity section green — raw == reachable for every project and table, zero dead aliases
+- [x] Confirm the broken-evidence report is archived with its moot-rationale event
+- [x] `loaf state migrate lifecycle-statuses` preview, then `--apply`; record OOV statuses it could not map, if any
+- [x] Demonstrate count agreement: `loaf housekeeping` totals equal list-command counts for all seven aliased tables; `loaf task list --status done --json` returns exactly the done rows that exist
+- [x] Journal the ceremony: `decision(state)` with counts and dispositions; `discover(state)` for anything the preview revealed about other projects
 
 ## Verification
 
