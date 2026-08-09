@@ -70,6 +70,17 @@ type markdownImporter struct {
 	taskIndex    map[string]taskIndexEntry
 	specIndex    map[string]specIndexEntry
 	sparkAliases map[string]string
+	// writtenSparks holds the spark IDs this import pass already wrote, keyed by
+	// the (text, source) pair identity resolution matches on. A journal file may
+	// carry the same spark line twice; without this, the second line resolves
+	// onto the row the first line just minted and one of the two intake items
+	// disappears.
+	writtenSparks map[string][]string
+	// writtenJournalEntries holds journal entry IDs this import pass already
+	// wrote, keyed by the (type, scope, message) identity tuple. Repeated
+	// identical journal lines bind to successive existing rows rather than the
+	// first match twice.
+	writtenJournalEntries map[string][]string
 	// report accumulates in-transaction provenance/status outcomes.
 	// Shared pointer so value-receiver methods can mutate the same report.
 	report *ImportReport
@@ -157,14 +168,16 @@ func (s *Store) importMarkdown(ctx context.Context, root project.Root) (ImportRe
 	defer tx.Rollback()
 
 	importer := markdownImporter{
-		tx:           tx,
-		root:         root,
-		projectID:    projectID,
-		now:          time.Now().UTC().Format(time.RFC3339),
-		taskIndex:    loadTaskIndex(root.Path()),
-		specIndex:    loadSpecIndex(root.Path()),
-		sparkAliases: map[string]string{},
-		report:       &report,
+		tx:                    tx,
+		root:                  root,
+		projectID:             projectID,
+		now:                   time.Now().UTC().Format(time.RFC3339),
+		taskIndex:             loadTaskIndex(root.Path()),
+		specIndex:             loadSpecIndex(root.Path()),
+		sparkAliases:          map[string]string{},
+		writtenSparks:         map[string][]string{},
+		writtenJournalEntries: map[string][]string{},
+		report:                &report,
 	}
 	if err := importer.importAll(ctx); err != nil {
 		return emptyImportReport(), err
@@ -226,7 +239,10 @@ func (m markdownImporter) importSpecs(ctx context.Context, agentsPath string) er
 			return err
 		}
 		alias := firstNonEmpty(artifact.Frontmatter["id"], specAliasFromPath(path), artifact.Stem)
-		id := stableMigrationID("spec", m.projectID, alias)
+		id, err := m.resolveImportedEntityID(ctx, "spec", "spec", alias, stableMigrationID("spec", m.projectID, alias))
+		if err != nil {
+			return err
+		}
 		meta := m.specIndex[alias]
 		sourceID, err := m.upsertSource(ctx, artifact, "markdown")
 		if err != nil {
@@ -279,15 +295,20 @@ func (m markdownImporter) importTasks(ctx context.Context, agentsPath string) er
 
 		specAlias := firstNonEmpty(meta.Spec, artifact.Frontmatter["spec"])
 		var specID any
+		var resolvedSpecID string
 		if specAlias != "" {
-			resolvedSpecID, err := m.ensureSpecPlaceholder(ctx, specAlias)
+			var err error
+			resolvedSpecID, err = m.ensureSpecPlaceholder(ctx, specAlias)
 			if err != nil {
 				return err
 			}
 			specID = resolvedSpecID
 		}
 
-		id := stableMigrationID("task", m.projectID, alias)
+		id, err := m.resolveImportedEntityID(ctx, "task", "task", alias, stableMigrationID("task", m.projectID, alias))
+		if err != nil {
+			return err
+		}
 		title := firstNonEmpty(meta.Title, artifact.Frontmatter["title"], artifact.Heading, alias)
 		status, writeStatus, err := m.resolveImportStatus(
 			ctx, "tasks", LifecycleEntityTask, id,
@@ -311,13 +332,15 @@ func (m markdownImporter) importTasks(ctx context.Context, agentsPath string) er
 			return err
 		}
 		if specAlias != "" {
-			toID := stableMigrationID("spec", m.projectID, specAlias)
-			if err := m.upsertRelationship(ctx, "task", id, "spec", toID, "implements", "imported from task metadata"); err != nil {
+			if err := m.upsertRelationship(ctx, "task", id, "spec", resolvedSpecID, "implements", "imported from task metadata"); err != nil {
 				return err
 			}
 		}
 		for _, dependency := range taskDependencies(meta, artifact.Frontmatter["depends_on"]) {
-			toID := stableMigrationID("task", m.projectID, dependency)
+			toID, err := m.resolveImportedEntityID(ctx, "task", "task", dependency, stableMigrationID("task", m.projectID, dependency))
+			if err != nil {
+				return err
+			}
 			if err := m.upsertAlias(ctx, "task", toID, "task", dependency); err != nil {
 				return err
 			}
@@ -347,7 +370,10 @@ func (m markdownImporter) importSimpleMarkdown(ctx context.Context, agentsPath s
 			return err
 		}
 		alias := firstNonEmpty(artifact.Frontmatter["id"], artifact.Stem)
-		id := stableMigrationID(kind, m.projectID, alias)
+		id, err := m.resolveImportedEntityID(ctx, kind, kind, alias, stableMigrationID(kind, m.projectID, alias))
+		if err != nil {
+			return err
+		}
 		sourceID, err := m.upsertSource(ctx, artifact, "markdown")
 		if err != nil {
 			return err
@@ -392,7 +418,10 @@ func (m markdownImporter) importShapingDrafts(ctx context.Context, agentsPath st
 			continue
 		}
 		alias := firstNonEmpty(artifact.Frontmatter["id"], artifact.Stem)
-		id := stableMigrationID("shaping_draft", m.projectID, alias)
+		id, err := m.resolveImportedEntityID(ctx, "shaping_draft", "shaping_draft", alias, stableMigrationID("shaping_draft", m.projectID, alias))
+		if err != nil {
+			return err
+		}
 		sourceID, err := m.upsertSource(ctx, artifact, "markdown")
 		if err != nil {
 			return err
@@ -473,7 +502,10 @@ func (m markdownImporter) importReports(ctx context.Context, agentsPath string) 
 			return err
 		}
 		alias := firstNonEmpty(artifact.Frontmatter["id"], artifact.Stem)
-		id := stableMigrationID("report", m.projectID, alias)
+		id, err := m.resolveImportedEntityID(ctx, "report", "report", alias, stableMigrationID("report", m.projectID, alias))
+		if err != nil {
+			return err
+		}
 		sourceID, err := m.upsertSource(ctx, artifact, "markdown")
 		if err != nil {
 			return err
@@ -532,7 +564,11 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 		if entryType == "session" {
 			continue
 		}
-		entryID := stableMigrationID("journal", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
+		derivedEntryID := stableMigrationID("journal", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
+		entryID, err := m.resolveImportedJournalID(ctx, entryType, scope, message, derivedEntryID)
+		if err != nil {
+			return err
+		}
 		imported, err := m.upsertJournalEntry(ctx, entryID, entryType, scope, message, observedBranch, observedWorktree, harnessSessionID)
 		if err != nil {
 			return err
@@ -540,23 +576,37 @@ func (m markdownImporter) importSessionJournal(ctx context.Context, artifact sou
 		if !imported {
 			continue
 		}
+		journalKey := journalIdentityKey(entryType, scope, message)
+		m.writtenJournalEntries[journalKey] = append(m.writtenJournalEntries[journalKey], entryID)
 		if entryType == "spark" {
-			sparkID := stableMigrationID("spark", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
+			derivedSparkID := stableMigrationID("spark", m.projectID, artifact.RelPath, fmt.Sprint(lineNumber+1))
+			slug := sparkSlugFromMessage(message)
+			if slug == "" {
+				slug = sparkSlugFallback(message)
+			}
+			sparkID, err := m.resolveImportedSparkID(ctx, slug, message, sourceID, derivedSparkID)
+			if err != nil {
+				return err
+			}
 			if err := m.upsertSpark(ctx, sparkID, scope, message, sourceID); err != nil {
 				return err
 			}
-			slug := sparkSlugFromMessage(message)
-			if slug != "" {
-				alias := "SPARK-" + slug
-				if err := m.upsertAlias(ctx, "spark", sparkID, "spark", alias); err != nil {
-					return err
-				}
-				m.sparkAliases[slug] = sparkID
+			key := sparkIdentityKey(message, sourceID)
+			m.writtenSparks[key] = append(m.writtenSparks[key], sparkID)
+			alias, err := m.freeSparkAlias(ctx, sparkID, "SPARK-"+slug)
+			if err != nil {
+				return err
 			}
+			if err := m.upsertAlias(ctx, "spark", sparkID, "spark", alias); err != nil {
+				return err
+			}
+			m.sparkAliases[slug] = sparkID
 			if err := m.deleteImportedRelationships(ctx, "spark", sparkID); err != nil {
 				return err
 			}
-			if target, ok := m.capturedIdeaTarget(message); ok {
+			if target, ok, err := m.capturedIdeaTarget(ctx, message); err != nil {
+				return err
+			} else if ok {
 				if err := m.upsertAlias(ctx, target.kind, target.id, target.kind, target.alias); err != nil {
 					return err
 				}
@@ -583,7 +633,10 @@ type relationshipTarget struct {
 func (m markdownImporter) importArtifactRelationships(ctx context.Context, fromKind string, fromID string, artifact sourceArtifact) error {
 	for _, field := range relationshipFrontmatterFields() {
 		for _, value := range splitFrontmatterList(artifact.Frontmatter[field]) {
-			target, ok := m.resolveRelationshipTarget(value)
+			target, ok, err := m.resolveRelationshipTarget(ctx, value)
+			if err != nil {
+				return err
+			}
 			if !ok {
 				continue
 			}
@@ -612,7 +665,10 @@ func (m markdownImporter) importSparkResolution(ctx context.Context, message str
 	targetText := strings.TrimSpace(rest)
 	targetText = strings.TrimPrefix(targetText, "promoted to ")
 	targetText = strings.TrimPrefix(targetText, "resolved by ")
-	target, ok := m.resolveRelationshipTarget(targetText)
+	target, ok, err := m.resolveRelationshipTarget(ctx, targetText)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		return nil
 	}
@@ -626,23 +682,31 @@ func (m markdownImporter) importSparkResolution(ctx context.Context, message str
 	return m.upsertRelationship(ctx, "spark", sparkID, target.kind, target.id, relationshipType, "imported from resolve(spark) journal entry")
 }
 
-func (m markdownImporter) resolveRelationshipTarget(value string) (relationshipTarget, bool) {
+func (m markdownImporter) resolveRelationshipTarget(ctx context.Context, value string) (relationshipTarget, bool, error) {
 	if alias, ok := m.resolveDraftRelationshipTarget(value); ok {
+		id, err := m.resolveImportedEntityID(ctx, "shaping_draft", "shaping_draft", alias, stableMigrationID("shaping_draft", m.projectID, alias))
+		if err != nil {
+			return relationshipTarget{}, false, err
+		}
 		return relationshipTarget{
 			kind:  "shaping_draft",
-			id:    stableMigrationID("shaping_draft", m.projectID, alias),
+			id:    id,
 			alias: alias,
-		}, true
+		}, true, nil
 	}
 	alias, kind, ok := relationshipAliasAndKind(value)
 	if !ok {
-		return relationshipTarget{}, false
+		return relationshipTarget{}, false, nil
+	}
+	id, err := m.resolveImportedEntityID(ctx, kind, kind, alias, stableMigrationID(kind, m.projectID, alias))
+	if err != nil {
+		return relationshipTarget{}, false, err
 	}
 	return relationshipTarget{
 		kind:  kind,
-		id:    stableMigrationID(kind, m.projectID, alias),
+		id:    id,
 		alias: alias,
-	}, true
+	}, true, nil
 }
 
 func (m markdownImporter) resolveDraftRelationshipTarget(value string) (string, bool) {
@@ -663,8 +727,11 @@ func (m markdownImporter) resolveDraftRelationshipTarget(value string) (string, 
 }
 
 func (m markdownImporter) ensureSpecPlaceholder(ctx context.Context, alias string) (string, error) {
-	id := stableMigrationID("spec", m.projectID, alias)
-	_, err := m.tx.ExecContext(ctx, `
+	id, err := m.resolveImportedEntityID(ctx, "spec", "spec", alias, stableMigrationID("spec", m.projectID, alias))
+	if err != nil {
+		return "", err
+	}
+	_, err = m.tx.ExecContext(ctx, `
 INSERT INTO specs (id, project_id, title, status, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO NOTHING
@@ -679,8 +746,11 @@ ON CONFLICT(id) DO NOTHING
 }
 
 func (m markdownImporter) upsertSource(ctx context.Context, artifact sourceArtifact, sourceKind string) (string, error) {
-	id := stableMigrationID("source", m.projectID, artifact.RelPath)
-	_, err := m.tx.ExecContext(ctx, `
+	id, err := m.resolveSourceID(ctx, artifact.RelPath)
+	if err != nil {
+		return "", err
+	}
+	_, err = m.tx.ExecContext(ctx, `
 INSERT INTO sources (id, project_id, source_kind, path, hash, imported_at, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
@@ -978,6 +1048,226 @@ ON CONFLICT(project_id, namespace, alias) DO UPDATE SET
 	return nil
 }
 
+func (m markdownImporter) entityRowExists(ctx context.Context, entityKind string, entityID string) (bool, error) {
+	table := registeredEntityTable(entityKind)
+	if table == "" {
+		return false, nil
+	}
+	var found int
+	query := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM %s WHERE project_id = ? AND id = ?)`, quoteSQLiteIdentifier(table))
+	if err := m.tx.QueryRowContext(ctx, query, m.projectID, entityID).Scan(&found); err != nil {
+		return false, fmt.Errorf("look for %s row %s: %w", entityKind, entityID, err)
+	}
+	return found == 1, nil
+}
+
+func (m markdownImporter) resolveImportedEntityID(ctx context.Context, entityKind string, namespace string, alias string, derivedID string) (string, error) {
+	if strings.TrimSpace(alias) == "" {
+		return derivedID, nil
+	}
+	var entityID, kind string
+	err := m.tx.QueryRowContext(ctx, `
+SELECT entity_id, entity_kind
+FROM aliases
+WHERE project_id = ? AND namespace = ? AND alias = ?
+`, m.projectID, namespace, alias).Scan(&entityID, &kind)
+	if errors.Is(err, sql.ErrNoRows) {
+		return derivedID, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve %s alias %s: %w", entityKind, alias, err)
+	}
+	if kind != entityKind {
+		return derivedID, nil
+	}
+	return entityID, nil
+}
+
+// sparkIdentityKey is the pair spark identity resolution matches on: the exact
+// text of the journal line and the file it came from.
+func sparkIdentityKey(message string, sourceID string) string {
+	return message + "\x00" + sourceID
+}
+
+// journalIdentityKey is the tuple journal identity resolution matches on.
+// created_at is the import instant and cannot participate.
+func journalIdentityKey(entryType string, scope string, message string) string {
+	return entryType + "\x00" + scope + "\x00" + message
+}
+
+// resolveImportedJournalID reuses a markdown-import journal row only when that
+// row is the same natural entry: same type, scope, and message, with a
+// journal_origins row recording source_event = markdown_import. Native
+// loaf journal log rows are never hijacked. Rows already consumed earlier in
+// this pass are excluded so repeated identical lines bind to successive
+// existing rows; when none remain the derived ID is used for a new row.
+func (m markdownImporter) resolveImportedJournalID(ctx context.Context, entryType string, scope string, message string, derivedID string) (string, error) {
+	query := `
+SELECT j.id
+FROM journal_entries AS j
+WHERE j.project_id = ?
+  AND j.entry_type = ?
+  AND j.scope IS ?
+  AND j.message = ?
+  AND EXISTS (
+    SELECT 1 FROM journal_origins AS o
+    WHERE o.project_id = j.project_id
+      AND o.journal_entry_id = j.id
+      AND o.source_event = 'markdown_import'
+  )`
+	args := []any{m.projectID, entryType, emptyToNil(scope), message}
+	if written := m.writtenJournalEntries[journalIdentityKey(entryType, scope, message)]; len(written) > 0 {
+		fragment, bound := parameterizedNotInFragment("j.id", written)
+		query += "\n  AND " + fragment
+		args = append(args, bound...)
+	}
+	query += "\nORDER BY j.id\nLIMIT 1\n"
+	var id string
+	err := m.tx.QueryRowContext(ctx, query, args...).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return derivedID, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve journal entry for %s(%s): %w", entryType, scope, err)
+	}
+	return id, nil
+}
+
+// resolveImportedSparkID reuses an alias-reachable spark only when that row is
+// unmistakably this same journal line: same source file, same text, exactly one
+// candidate, and not a row this same import pass already wrote. A spark alias is
+// the message's first word, so two unrelated sparks routinely share one —
+// resolving on the alias alone would make the second import overwrite the first
+// spark's text — and identity is looked up by content rather than by the alias
+// so a spark that had to take a disambiguated alias is still found after a
+// rekey. Rows written earlier in this pass are excluded because a file may
+// repeat a spark line verbatim: those are two intake items, and matching the
+// second onto the first would silently drop one.
+//
+// Convergence trade: a single distinct spark line reuses its row across a rekey
+// re-import. A verbatim-duplicated line is different — the first import mints
+// two rows (and two aliases); after a rekey the source_id salt no longer matches
+// either, uniqueness is no longer one candidate, and the re-import mints two
+// more. Further re-imports then stabilize at four alias-reachable rows and do
+// not reintroduce alias-orphan damage. Accepting that one-time fork is the
+// trade for keeping the resolver's "exactly one candidate" gate, which is what
+// prevents unrelated sparks that share a first word from collapsing into one.
+func (m markdownImporter) resolveImportedSparkID(ctx context.Context, slug string, message string, sourceID string, derivedID string) (string, error) {
+	if slug == "" {
+		return derivedID, nil
+	}
+	query := `
+SELECT sparks.id
+FROM sparks
+WHERE sparks.project_id = ?
+  AND sparks.text = ?
+  AND sparks.source_id IS ?
+  AND EXISTS (
+    SELECT 1 FROM aliases
+    WHERE aliases.project_id = sparks.project_id
+      AND aliases.namespace = 'spark'
+      AND aliases.entity_kind = 'spark'
+      AND aliases.entity_id = sparks.id
+  )`
+	args := []any{m.projectID, message, emptyToNil(sourceID)}
+	if written := m.writtenSparks[sparkIdentityKey(message, sourceID)]; len(written) > 0 {
+		fragment, bound := parameterizedNotInFragment("sparks.id", written)
+		query += "\n  AND " + fragment
+		args = append(args, bound...)
+	}
+	query += "\nORDER BY sparks.id\nLIMIT 2\n"
+	rows, err := m.tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return "", fmt.Errorf("resolve spark for SPARK-%s: %w", slug, err)
+	}
+	defer rows.Close()
+	var candidates []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return "", fmt.Errorf("scan spark candidate for SPARK-%s: %w", slug, err)
+		}
+		candidates = append(candidates, id)
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("resolve spark for SPARK-%s: %w", slug, err)
+	}
+	if len(candidates) != 1 {
+		return derivedID, nil
+	}
+	return candidates[0], nil
+}
+
+// freeSparkAlias returns the alias this spark may claim without evicting
+// another. Re-pointing a claimed alias is the mechanic that forked identity in
+// the first place, and a spark alias is only the message's first word, so
+// collisions between unrelated sparks are routine rather than exceptional: the
+// later spark takes a numbered alias instead of stealing the base one. An alias
+// this spark already holds, and one whose entity row is gone, are both free.
+func (m markdownImporter) freeSparkAlias(ctx context.Context, sparkID string, base string) (string, error) {
+	for attempt := 1; attempt <= 64; attempt++ {
+		candidate := base
+		if attempt > 1 {
+			candidate = fmt.Sprintf("%s-%d", base, attempt)
+		}
+		free, err := m.sparkAliasIsFree(ctx, sparkID, candidate)
+		if err != nil {
+			return "", err
+		}
+		if free {
+			return candidate, nil
+		}
+	}
+	candidate := base + "-" + strings.TrimPrefix(sparkID, "spark:")[:8]
+	free, err := m.sparkAliasIsFree(ctx, sparkID, candidate)
+	if err != nil {
+		return "", err
+	}
+	if !free {
+		return "", fmt.Errorf("no free spark alias for %s under %s", sparkID, base)
+	}
+	return candidate, nil
+}
+
+func (m markdownImporter) sparkAliasIsFree(ctx context.Context, sparkID string, alias string) (bool, error) {
+	var holder string
+	err := m.tx.QueryRowContext(ctx, `
+SELECT entity_id FROM aliases WHERE project_id = ? AND namespace = 'spark' AND alias = ?
+`, m.projectID, alias).Scan(&holder)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read spark alias %s: %w", alias, err)
+	}
+	if holder == sparkID {
+		return true, nil
+	}
+	// An alias whose spark no longer exists is dangling, not claimed.
+	exists, err := m.entityRowExists(ctx, "spark", holder)
+	if err != nil {
+		return false, err
+	}
+	return !exists, nil
+}
+
+func (m markdownImporter) resolveSourceID(ctx context.Context, relPath string) (string, error) {
+	var id string
+	err := m.tx.QueryRowContext(ctx, `
+SELECT id FROM sources
+WHERE project_id = ? AND path = ?
+ORDER BY created_at, id
+LIMIT 1
+`, m.projectID, relPath).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return stableMigrationID("source", m.projectID, relPath), nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve source %s: %w", relPath, err)
+	}
+	return id, nil
+}
+
 type sourceArtifact struct {
 	Path        string
 	RelPath     string
@@ -1244,6 +1534,14 @@ func sparkSlugFromMessage(message string) string {
 	return normalizeSparkSlug(prefix)
 }
 
+// sparkSlugFallback derives a non-empty slug from message content alone so a
+// punctuation-only spark still receives an alias. Project ID and source ID must
+// not participate: both shift across a rekey and would re-fork identity.
+func sparkSlugFallback(message string) string {
+	sum := sha256.Sum256([]byte(message))
+	return "spark-" + hex.EncodeToString(sum[:4])
+}
+
 func normalizeSparkSlug(value string) string {
 	value = strings.TrimSpace(strings.TrimPrefix(value, "SPARK-"))
 	value = strings.Trim(value, `"'`)
@@ -1253,16 +1551,19 @@ func normalizeSparkSlug(value string) string {
 	return strings.Trim(value, "-_")
 }
 
-func (m markdownImporter) capturedIdeaTarget(message string) (relationshipTarget, bool) {
+func (m markdownImporter) capturedIdeaTarget(ctx context.Context, message string) (relationshipTarget, bool, error) {
 	_, targetText, ok := strings.Cut(message, " captured to ")
 	if !ok {
-		return relationshipTarget{}, false
+		return relationshipTarget{}, false, nil
 	}
-	target, ok := m.resolveRelationshipTarget(targetText)
+	target, ok, err := m.resolveRelationshipTarget(ctx, targetText)
+	if err != nil {
+		return relationshipTarget{}, false, err
+	}
 	if !ok || target.kind != "idea" {
-		return relationshipTarget{}, false
+		return relationshipTarget{}, false, nil
 	}
-	return target, true
+	return target, true, nil
 }
 
 func leadingIDFromPath(path string, pattern string) string {

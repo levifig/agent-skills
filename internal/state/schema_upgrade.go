@@ -78,7 +78,7 @@ func requireCurrentSchemaForDerivedRepair(ctx context.Context, s *Store) error {
 	if _, err := s.ValidateCurrentSchema(ctx); err != nil {
 		return fmt.Errorf("state database is invalid: %w", err)
 	}
-	if _, valid, err := inspectOperationalInvariants(ctx, s); err != nil {
+	if _, valid, err := inspectOperationalInvariants(ctx, s, InspectOptions{}); err != nil {
 		return fmt.Errorf("state database is invalid: inspect operational invariants: %w", err)
 	} else if !valid {
 		return fmt.Errorf("state database is invalid: operational invariants failed")
@@ -110,7 +110,7 @@ func (s *Store) RequireCurrentSchema(ctx context.Context) error {
 	if _, err := s.ValidateCurrentSchema(ctx); err != nil {
 		return fmt.Errorf("state database is invalid: %w", err)
 	}
-	if _, valid, err := inspectOperationalInvariants(ctx, s); err != nil {
+	if _, valid, err := inspectOperationalInvariants(ctx, s, InspectOptions{}); err != nil {
 		return fmt.Errorf("state database is invalid: inspect operational invariants: %w", err)
 	} else if !valid {
 		return fmt.Errorf("state database is invalid: operational invariants failed")
@@ -382,7 +382,7 @@ func classifySchemaUpgradeSourceWithPolicy(ctx context.Context, path string, roo
 			return schemaUpgradeSource{}, fmt.Errorf("state database is invalid; schema upgrade requires clean behind-schema state")
 		}
 	}
-	if _, valid, err := inspectOperationalInvariants(ctx, store); err != nil {
+	if _, valid, err := inspectOperationalInvariants(ctx, store, InspectOptions{}); err != nil {
 		return schemaUpgradeSource{}, fmt.Errorf("classify schema upgrade operational invariants: %w", err)
 	} else if !valid {
 		return schemaUpgradeSource{}, fmt.Errorf("state database is invalid: operational invariants failed")

@@ -871,7 +871,7 @@ func verifyStorageHomeSource(ctx context.Context, store *Store) error {
 		return fmt.Errorf("legacy state SQLite integrity checks failed")
 	}
 	if version >= 9 {
-		if _, valid, err := inspectOperationalInvariants(ctx, store); err != nil {
+		if _, valid, err := inspectOperationalInvariants(ctx, store, InspectOptions{}); err != nil {
 			return err
 		} else if !valid {
 			return fmt.Errorf("legacy state operational invariants failed")
@@ -1106,7 +1106,7 @@ func verifyStorageHomeDestination(ctx context.Context, root project.Root, databa
 	} else if !valid {
 		return ProjectIdentity{}, fmt.Errorf("SQLite integrity checks failed")
 	}
-	if _, valid, err := inspectOperationalInvariants(ctx, store); err != nil {
+	if _, valid, err := inspectOperationalInvariants(ctx, store, InspectOptions{}); err != nil {
 		return ProjectIdentity{}, err
 	} else if !valid {
 		return ProjectIdentity{}, fmt.Errorf("operational invariants failed")
