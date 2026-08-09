@@ -44,7 +44,7 @@ npm run build   # ceremony runs the binary built from this branch — no LOAF_DB
 - [ ] `loaf state doctor`: alias-parity section green — raw == reachable for every project and table, zero dead aliases
 - [ ] Confirm the broken-evidence report is archived with its moot-rationale event
 - [ ] `loaf state migrate lifecycle-statuses` preview, then `--apply`; record OOV statuses it could not map, if any
-- [ ] Demonstrate count agreement: `loaf housekeeping` totals equal list-command counts for all six tables; `loaf task list --status done --json` returns exactly the done rows that exist
+- [ ] Demonstrate count agreement: `loaf housekeeping` totals equal list-command counts for all seven aliased tables; `loaf task list --status done --json` returns exactly the done rows that exist
 - [ ] Journal the ceremony: `decision(state)` with counts and dispositions; `discover(state)` for anything the preview revealed about other projects
 
 ## Verification

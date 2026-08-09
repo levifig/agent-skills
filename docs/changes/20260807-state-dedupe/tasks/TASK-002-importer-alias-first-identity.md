@@ -42,3 +42,12 @@ export LOAF_DB="$(mktemp -d)/loaf.sqlite"
 
 - `go test ./internal/state -run 'ImportAliasFirst' -count=1` exits 0
 - `go test ./...` exits 0
+
+## Delivered variances
+
+Recorded post-review for provenance — the shipped resolution is alias-first for generic entities, with these kind-specific mechanisms the original packet did not enumerate:
+
+- Sparks resolve by exact text and source with an exactly-one-candidate rule; colliding sparks receive numbered aliases instead of stealing; a spark whose message normalizes to an empty slug gets a deterministic content-hash alias. A rekey re-import of a verbatim-duplicated spark line duplicates those rows (documented at the resolveImportedSparkID comment) — alias-safe, never orphaning.
+- Journal entries (unaliased) resolve by natural identity, applied to markdown-origin rows.
+- Sources resolve by `(project_id, path)`.
+- `shaping_draft` resolution shipped alongside the seven aliased kinds though this packet's scope named six.

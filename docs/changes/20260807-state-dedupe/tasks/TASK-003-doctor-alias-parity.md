@@ -10,7 +10,7 @@ blocks:
 
 ## Objective
 
-`loaf state doctor` reports alias parity: for every project and each of the six entity tables, raw row counts vs alias-reachable counts, plus dangling-alias counts — so a future identity fork is detected the day it happens instead of discovered by accident at housekeeping.
+`loaf state doctor` reports alias parity: for every project and each of the seven aliased entity tables, raw row counts vs alias-reachable counts, plus dangling-alias counts — so a future identity fork is detected the day it happens instead of discovered by accident at housekeeping.
 
 ## Scope boundaries
 

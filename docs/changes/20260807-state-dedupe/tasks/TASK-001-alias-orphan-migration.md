@@ -10,7 +10,7 @@ blocks:
 
 ## Objective
 
-`loaf state migrate alias-orphans` exists with the full preview → backup → manifest → apply → verify → rollback ceremony: it classifies alias-orphaned entity rows across all six entity tables in every project, retires proven duplicates with their reference-table residue, deletes dangling aliases, refuses unproven rows without explicit disposition, and executes named per-row dispositions (the broken-evidence report archives as moot).
+`loaf state migrate alias-orphans` exists with the full preview → backup → manifest → apply → verify → rollback ceremony: it classifies alias-orphaned entity rows across all seven aliased entity tables in every project, retires proven duplicates with their reference-table residue, deletes dangling aliases, refuses unproven rows without explicit disposition, and executes named per-row dispositions (the broken-evidence report archives as moot).
 
 ## Scope boundaries
 
