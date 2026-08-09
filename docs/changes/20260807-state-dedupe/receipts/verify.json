@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
   "change": "state-dedupe",
-  "verified_commit": "6ddf6955f76e6c884f662de27c7dad4f8ef61029",
-  "verified_root_tree": "41d18a130dff6ce20fa898c6319c2178a1476c1a",
-  "verified_at": "2026-08-08T17:14:18Z",
+  "verified_commit": "2f4a9e5680fbf14933ec3f6e24d1a3e38c82bff4",
+  "verified_root_tree": "2883589a39c16f1cc4cd19c182944dcaf21247d0",
+  "verified_at": "2026-08-09T01:40:34Z",
   "criteria_digest": "9947e96459453f0a5ee2f965cf50f0b7ef770444f928562a5a93a0b4889c0ebb",
-  "scope_digest": "daa9ae959f606117120745b8fc745ed852d12da5b7a6fd92363ea9450fda7627",
+  "scope_digest": "f69f338b54e4fe1109009a45bd844845f9739da2336394255c8e8f49aaa61daa",
   "scope_sections": {
     ".agents": "0cdcb499203f22e1faebbef89e211e4b6d4b253bc5486866ed28a50e15c2dd9e",
     ".claude": "8dc123c00b953695edd9ccc4bb966e986bcea05607d9a125e71038a4c2ebb6be",
@@ -18,7 +18,7 @@
     "cmd": "3d4f455f2eea30cecbef4ea78280e6b86b5b48033074369f476a1805d513d217",
     "config": "ed88cb91f75fb35580ffe31433b1664efc91f31253abba6a27a645ddb009ae09",
     "content": "869587ab6ca70cb7620dfe09ada7a87a8155898b8473aa17ddd32e510ab73828",
-    "docs": "76761c5b5837976dcd09eac5b6a8f0e11c7a427b099cd5f7819b45a5c3004616",
+    "docs": "c9f38d5ed12702698ddd94f14d5a84e9746fff71895f1fc6aeafc8184bb0851d",
     "go.mod": "b9247690761e43ce92335c553e1f916132580b2a1e7f434c7d99742e56fb8b21",
     "go.sum": "44a5d68a99a05f3d9aff3321f4b5645d0870cc1afd36e183fbc08c07d8550d6b",
     "internal": "093982eb7c220d000b84b8eb643661d4b9e339a06d114163f5283bf6e2f163fb",
@@ -47,7 +47,7 @@
       "id": "V1",
       "command": "go test ./internal/state -run 'AliasOrphan' -count=1",
       "exit_code": 0,
-      "output_digest": "2122ff1d37bacc90a6d12d69f6b5f5cd489a1847178ccb88f0fc235cf4bf9ecf",
+      "output_digest": "7440b3f39d37c66c45ccfe537c30b2416ce08190ec2a806d056f380c4ef7350e",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
@@ -62,7 +62,7 @@
       "id": "V2",
       "command": "go test ./internal/state -run 'ImportAliasFirst' -count=1",
       "exit_code": 0,
-      "output_digest": "dd20755679aae0932bd08b0e021af93de71664e98863028daa0494039fdf38de",
+      "output_digest": "e845c5b2606eb00052422cb37dae96c5123333538541ce34d42492e543b7efaa",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
@@ -77,7 +77,7 @@
       "id": "V3",
       "command": "go test ./... -run 'AliasParity' -count=1",
       "exit_code": 0,
-      "output_digest": "a335b01a88a66b65b082ade0e3316d32654ca8061b0e0b1997dbadc44e9a1387",
+      "output_digest": "1b3e6a16b7b8079aa560fb2c833280990e9a5dae2e13cd17c51e14ade000802d",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
@@ -92,7 +92,7 @@
       "id": "V4",
       "command": "go test ./...",
       "exit_code": 0,
-      "output_digest": "7dc2ec7798490cf23a1ac804d88ea016a6d0e33b634aac25a9add70aebdd404f",
+      "output_digest": "41852648a8b4ea3df781fcb34395bfebf21796b861376e9175b73463ac53833c",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
@@ -107,7 +107,7 @@
       "id": "V5",
       "command": "go test ./internal/state -run 'JournalDuplicate' -count=1",
       "exit_code": 0,
-      "output_digest": "a1354c32343fe5b522525480d236d77e092537dfa6b98828459c1d7f0f3b2dd9",
+      "output_digest": "2c8c42a2d80f0c91ed00a3a451c2e1848fabc97650639bdd4ce5e24040685fe5",
       "ok": true,
       "expect": "exit 0.",
       "expect_checks": [
