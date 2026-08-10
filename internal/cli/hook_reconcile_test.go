@@ -409,6 +409,95 @@ func TestHookReconcileMigrationMatrix(t *testing.T) {
 		}
 	})
 
+	// The canary is alpha.19: its Codex manifest still says so because the drift
+	// refusal this Change removes is what stopped the manifest from being
+	// rewritten, and that release is 0.2.19 under the old spelling — the same
+	// generation 0.2.20 shipped. Reading it as an unknown version is what made
+	// the first dry-run offer to re-add the hook the operator deleted.
+	//
+	// Every enumerated release is exercised, and the list below is written out
+	// rather than read from hookCatalogPreResetVersions on purpose: a test that
+	// iterated the production slice would lose a case exactly when a literal
+	// went missing from it, which is the regression this is here to catch.
+	t.Run("a manifest naming a pre-reset release absorbs its cohort", func(t *testing.T) {
+		enumerated := []string{
+			"2.0.0-alpha.14",
+			"2.0.0-alpha.15",
+			"2.0.0-alpha.16",
+			"2.0.0-alpha.17",
+			"2.0.0-alpha.18",
+			"2.0.0-alpha.19",
+		}
+		// Drift in the other direction — a version added to the catalog with no
+		// case here — would otherwise go unexercised.
+		if len(enumerated) != len(hookCatalogPreResetVersions) {
+			t.Fatalf("catalog enumerates %d pre-reset releases, this table covers %d; they have to move together", len(hookCatalogPreResetVersions), len(enumerated))
+		}
+		for _, version := range enumerated {
+			t.Run(version, func(t *testing.T) {
+				fixture := newCodexHookFixture(t)
+				fixture.writeHooks(t, string(testHookFixture(t, "codex-hooks-live.json")))
+				fixture.writeInstalledManifest(t, version)
+
+				if cohort := hookAbsorptionCohort(fixture.catalog(t), version, true); len(cohort) == 0 {
+					t.Fatalf("cohort for %s is empty, want the enumerated generation", version)
+				}
+
+				actions := fixture.apply(t)
+
+				if !testHookHasAction(actions, hookActionAbsorb, "session-start-loaf") {
+					t.Fatalf("actions = %s, want the deleted hook absorbed from the pre-reset cohort", describeHookActions(actions))
+				}
+				if testHookHasAction(actions, hookActionAdd, "session-start-loaf") {
+					t.Fatalf("actions = %s, want no re-add of the hook the operator deleted", describeHookActions(actions))
+				}
+				row, found, err := fixture.store.GetHookEnablement(t.Context(), "codex", "SessionStart", "session-start-loaf")
+				if err != nil || !found || row.Enablement != state.HookEnablementDisabled {
+					t.Fatalf("record = %#v, %v, %v, want the disable intent recorded", row, found, err)
+				}
+				marker, marked, err := fixture.store.GetHookAbsorptionMarker(t.Context(), "codex")
+				if err != nil || !marked || marker.AbsorbedFromVersion != version {
+					t.Fatalf("marker = %#v, %v, %v, want %s recorded as provenance", marker, marked, err, version)
+				}
+			})
+		}
+	})
+
+	// The enumeration stops where the evidence does. alpha.13 shipped 16 Cursor
+	// entries, so a hook it never had is not something its operator deleted.
+	t.Run("a pre-reset release below the enumerated floor absorbs nothing", func(t *testing.T) {
+		fixture := newCodexHookFixture(t)
+		fixture.writeHooks(t, string(testHookFixture(t, "codex-hooks-live.json")))
+		fixture.writeInstalledManifest(t, "2.0.0-alpha.13")
+
+		actions := fixture.apply(t)
+
+		if testHookHasAnyAction(actions, hookActionAbsorb) {
+			t.Fatalf("actions = %s, want no absorption below the enumerated floor", describeHookActions(actions))
+		}
+		if !testHookHasAction(actions, hookActionAdd, "session-start-loaf") {
+			t.Fatalf("actions = %s, want the hook projected as enabled instead", describeHookActions(actions))
+		}
+	})
+
+	// The family is an enumeration, not a loosening: a version nobody recorded
+	// still absorbs nothing, whichever spelling it uses.
+	t.Run("an unenumerated future version still absorbs nothing", func(t *testing.T) {
+		for _, version := range []string{"0.2.25", "2.0.0-alpha.20", "2.0.0-dev.49", "2.0.0-pre.20260614235428"} {
+			t.Run(version, func(t *testing.T) {
+				fixture := newCodexHookFixture(t)
+				fixture.writeHooks(t, string(testHookFixture(t, "codex-hooks-live.json")))
+				fixture.writeInstalledManifest(t, version)
+
+				actions := fixture.apply(t)
+
+				if testHookHasAnyAction(actions, hookActionAbsorb) {
+					t.Fatalf("actions = %s, want no absorption for an unenumerated version", describeHookActions(actions))
+				}
+			})
+		}
+	})
+
 	t.Run("only the prior cohort absorbs", func(t *testing.T) {
 		fixture := newCursorHookFixture(t)
 		// One hook the prior version shipped and one introduced after it, both

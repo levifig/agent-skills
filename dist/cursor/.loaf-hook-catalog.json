@@ -451,6 +451,138 @@
   ],
   "cohorts": [
     {
+      "version": "2.0.0-alpha.14",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.15",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.16",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.17",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.18",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.19",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
       "version": "0.2.20",
       "hook_ids": [
         "artifact-body-write",

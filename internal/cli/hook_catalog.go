@@ -55,36 +55,75 @@ type hookCatalogCohort struct {
 	HookIDs []string `json:"hook_ids"`
 }
 
-// hookCatalogFrozenCohorts record what each released version actually shipped.
-// 0.2.20 is the generation this migration absorbs: 17 Cursor entries and one
-// Codex entry, pinned by test against captured 0.2.20 build output.
+// hookCatalogGenerationHookIDs is what the generation this migration absorbs
+// actually shipped: 17 Cursor entries and one Codex entry.
+var hookCatalogGenerationHookIDs = map[string][]string{
+	"cursor": {
+		"artifact-body-write",
+		"artifact-names",
+		"check-" + "sec" + "rets",
+		"detect-linear-magic",
+		"ephemeral-provenance",
+		"generate-task-board",
+		"github-account",
+		"kb-staleness-nudge",
+		"render-drift",
+		"security-audit",
+		"session-start-loaf",
+		"validate-commit",
+		"validate-push",
+		"workflow-post-merge",
+		"workflow-pre-merge",
+		"workflow-pre-pr",
+		"workflow-pre-push",
+	},
+	"codex": {"session-start-loaf"},
+}
+
+// hookCatalogPreResetVersions are the releases that shipped that same
+// generation under the version line retired at 0.2.20, when `2.0.0-alpha.N`
+// was renumbered to `0.2.N`. An installed manifest written by one of them is
+// still on disk — the drift refusal this Change removes is exactly what stopped
+// those manifests from being rewritten — so absorption has to recognize the old
+// spelling or read a known install as an unknown one.
+//
+// The list is an enumeration, not a pattern: every entry was checked against
+// the `dist/cursor/hooks.json` and `dist/codex/.codex/hooks.json` committed at
+// that release, and each carries precisely the cohorts above. It stops at
+// alpha.14 because alpha.13 and earlier shipped 16 Cursor entries — the
+// `artifact-names` hook arrives at alpha.14 — and a cohort that claimed a hook
+// those installs never had would record it disabled on the strength of an
+// absence that means nothing. Everything outside this list keeps the
+// unknown-version rule and absorbs nothing.
+//
+// Closed by construction: the prerelease scheme is retired, so no future
+// release can enter the family.
+var hookCatalogPreResetVersions = []string{
+	"2.0.0-alpha.14",
+	"2.0.0-alpha.15",
+	"2.0.0-alpha.16",
+	"2.0.0-alpha.17",
+	"2.0.0-alpha.18",
+	"2.0.0-alpha.19",
+}
+
+// hookCatalogFrozenCohorts record what each released version actually shipped,
+// pinned by test against captured build output. The current spelling is last
+// because the no-manifest fallback reads the final record as the generation
+// immediately preceding entry-level reconciliation.
 var hookCatalogFrozenCohorts = map[string][]hookCatalogCohort{
-	"cursor": {{
-		Version: "0.2.20",
-		HookIDs: []string{
-			"artifact-body-write",
-			"artifact-names",
-			"check-" + "sec" + "rets",
-			"detect-linear-magic",
-			"ephemeral-provenance",
-			"generate-task-board",
-			"github-account",
-			"kb-staleness-nudge",
-			"render-drift",
-			"security-audit",
-			"session-start-loaf",
-			"validate-commit",
-			"validate-push",
-			"workflow-post-merge",
-			"workflow-pre-merge",
-			"workflow-pre-pr",
-			"workflow-pre-push",
-		},
-	}},
-	"codex": {{
-		Version: "0.2.20",
-		HookIDs: []string{"session-start-loaf"},
-	}},
+	"cursor": hookCatalogGenerationCohorts("cursor"),
+	"codex":  hookCatalogGenerationCohorts("codex"),
+}
+
+func hookCatalogGenerationCohorts(target string) []hookCatalogCohort {
+	hookIDs := hookCatalogGenerationHookIDs[target]
+	versions := append(append([]string{}, hookCatalogPreResetVersions...), "0.2.20")
+	cohorts := make([]hookCatalogCohort, 0, len(versions))
+	for _, version := range versions {
+		cohorts = append(cohorts, hookCatalogCohort{Version: version, HookIDs: hookIDs})
+	}
+	return cohorts
 }
 
 // hookCatalogHistoricalCommands are command shapes earlier releases shipped for

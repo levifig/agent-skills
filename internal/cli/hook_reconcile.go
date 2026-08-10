@@ -825,7 +825,10 @@ func (r *hookReconciler) absorptionVersion(priorInstall bool) string {
 // hookAbsorptionCohort bounds absorption to the hook ids one released version
 // actually shipped, in the three cases that can arise:
 //
-//   - a manifest naming a version this catalog enumerates: that cohort;
+//   - a manifest naming a version this catalog enumerates: that cohort. The
+//     enumeration spans both spellings of the same releases, because the
+//     version line was renumbered and manifests written before the reset still
+//     name the retired one;
 //   - no manifest at all: the last frozen cohort, the generation predating
 //     entry-level reconciliation, which is the only thing a pre-manifest
 //     install could have been;

@@ -48,6 +48,42 @@
   ],
   "cohorts": [
     {
+      "version": "2.0.0-alpha.14",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.15",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.16",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.17",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.18",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.19",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
       "version": "0.2.20",
       "hook_ids": [
         "session-start-loaf"
