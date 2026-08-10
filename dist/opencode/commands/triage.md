@@ -9,7 +9,7 @@ description: >-
   show or journal directly), capturing new ideas (use idea), problem discovery
   (use pitch), or bounding one chosen direction (use shape).
 user-invocable: true
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Triage

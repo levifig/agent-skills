@@ -8,7 +8,7 @@ description: >-
   (use release).
 user-invocable: true
 argument-hint: '[PR number or URL]'
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Ship

@@ -9,7 +9,7 @@ description: >-
   (use infrastructure-management).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep, Bash(psql:*, sqlite3:*, mysql:*)'
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Database Skill

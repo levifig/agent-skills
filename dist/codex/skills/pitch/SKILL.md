@@ -10,7 +10,7 @@ description: >-
   tasks, or PRs. Not for solution shaping (use shape), queue processing (use
   triage), quick capture (use idea), or open-ended divergent inquiry (use
   explore as an agent technique when pitch reveals the direction is undecided).
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Pitch
