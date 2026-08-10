@@ -34,12 +34,12 @@ loaf journal log "skill(implement): TASK-005 — canary acceptance evidence"
 
 ## Steps
 
-- [ ] Snapshot both live files; run the built `loaf upgrade`; capture output.
-- [ ] Run `research/compare_hook_files.py` on each before/after pair and assert its reported differences name only expected Loaf entries (per the upgrade output and `loaf hooks list`); no drift-refusal text; Codex `session-start-loaf` absorbed as disabled (record present with `absorbed_at`, entry still absent, absorption marker durable); every non-Loaf entry value-identical and order-stable — the Codex herdr entry and all 33 Cursor foreign entries (32 legacy-generation plus one herdr).
-- [ ] Re-run upgrade; assert no actions reported and no second absorption.
-- [ ] Verb round-trip on Codex: `enable` restores exactly the `session-start-loaf` entry, `disable` removes exactly it; herdr untouched throughout; `absorbed_at` unchanged by the toggles.
-- [ ] `loaf config check`: disabled Codex hook reports healthy-absent (H4).
-- [ ] Store snapshots, diffs, and outputs under `research/` (named for what they are); log `finding(hooks)` journal entries for the evidence.
+- [x] Snapshot both live files; run the built `loaf upgrade`; capture output.
+- [x] Run `research/compare_hook_files.py` on each before/after pair and assert its reported differences name only expected Loaf entries (per the upgrade output and `loaf hooks list`); no drift-refusal text; Codex `session-start-loaf` absorbed as disabled (record present with `absorbed_at`, entry still absent, absorption marker durable); every non-Loaf entry value-identical and order-stable — the Codex herdr entry and all 33 Cursor foreign entries (32 legacy-generation plus one herdr).
+- [x] Re-run upgrade; assert no actions reported and no second absorption.
+- [x] Verb round-trip on Codex: `enable` restores exactly the `session-start-loaf` entry, `disable` removes exactly it; herdr untouched throughout; `absorbed_at` unchanged by the toggles.
+- [x] `loaf config check`: disabled Codex hook reports healthy-absent (H4).
+- [x] Store snapshots, diffs, and outputs under `research/` (named for what they are); log `finding(hooks)` journal entries for the evidence.
 
 ## Verification
 

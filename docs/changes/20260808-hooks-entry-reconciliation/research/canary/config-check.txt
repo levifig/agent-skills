@@ -1,0 +1,10 @@
+
+[1mloaf config check[0m
+
+  [32m✓[0m .agents/loaf.json valid
+  [32m✓[0m Amp hooks current
+  [32m✓[0m Codex hooks current
+  [32m✓[0m Cursor hooks current
+  [32m✓[0m OpenCode hooks current
+  [32m✓[0m Config is valid and current.
+
