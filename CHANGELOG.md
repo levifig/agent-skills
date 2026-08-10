@@ -6,7 +6,21 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Added
+
+- `loaf state migrate alias-orphans` retires entity rows orphaned from the alias registry — the damage left when a project rekey invalidated every derived ID and a later import re-minted the tree. Classification proves twin-ship (legacy-salt derivation, or window-gated content identity) and iterates to a fixed point; unproven rows refuse by default and take explicit `--retire`/`--realias` dispositions that rehearse in preview; apply takes a backup first and writes an fsynced rollback manifest that restores every deleted row ([#159](https://github.com/levifig/loaf/pull/159)).
+- `loaf state migrate journal-duplicates` is the sibling repair for journal entries, which carry no aliases: identical `(type, scope, message)` twins across the two import windows retire their older copy, ambiguous groups refuse, and the reference sweep shares one polymorphic-table enumeration with alias-orphans so the two repairs cannot drift ([#159](https://github.com/levifig/loaf/pull/159)).
+- `loaf state doctor` now checks alias parity: for every project and aliased entity table, raw row counts must equal alias-reachable counts with zero dead aliases. Divergence reports as an error diagnostic naming the repair command — identity damage is detectable the day it happens instead of discoverable by accident at housekeeping ([#159](https://github.com/levifig/loaf/pull/159), ADR-028).
+- `loaf hooks list`, `loaf hooks enable`, and `loaf hooks disable` operate individual hooks from the installed catalog. Enablement lives in the global database, user-scoped and host-local — absence means enabled, disable records tombstone rather than delete — and every verb reprojects the target's hook file through the full reconciler under a per-target lock ([#161](https://github.com/levifig/loaf/pull/161)).
+
+### Changed
+
+- Codex and Cursor hook files are no longer whole-file managed artifacts guarded by a digest. Install and upgrade now converge Loaf-owned entries per hook point — adding missing ones, updating changed ones, removing retired ones, and absorbing an operator-deleted entry once as a disabled record — while every non-Loaf entry survives value-identical and order-stable. Drift refusals are gone as a class, including the refusal on user-modified `hooks.json` files frozen since the pre-reset releases; integrity violations still fail closed and preserve the file ([#161](https://github.com/levifig/loaf/pull/161)).
+- Markdown import resolves identity through the alias registry before deriving an ID — existing entities, sources, and journal rows are reused instead of re-minted, colliding sparks receive numbered aliases, and a spark whose message normalizes to an empty slug gets a content-hash alias so no row is born unreachable. Derived IDs are now mint-once opaque keys (ADR-028); for healthy databases a re-import is byte-stable ([#159](https://github.com/levifig/loaf/pull/159)).
+
+### Fixed
+
+- A project rekey followed by a markdown re-import could silently fork the identity space — every artifact re-inserted as an invisible twin, aliases re-pointed to the copies, and the list surfaces disagreeing with the housekeeping scanner about how much work exists. The importer fix removes the cause; the migrations repair existing damage; doctor parity detects any recurrence ([#159](https://github.com/levifig/loaf/pull/159)).
 
 ## [0.2.20] - 2026-08-07
 
