@@ -172,7 +172,7 @@ func (r Runner) runHooksToggle(args []string, out io.Writer, runtimeRoot string,
 	if err != nil {
 		return err
 	}
-	reconciler, err := hooksReconcilerFor(surface)
+	reconciler, err := hooksReconcilerFor(surface.options)
 	if err != nil {
 		return err
 	}
@@ -355,16 +355,16 @@ func reconciledHookTargets() []string {
 // hooksReconcilerFor builds the target's reconciler, naming the two ways an
 // installed distribution can fail to carry one before the reconciler's own
 // staleness message has to.
-func hooksReconcilerFor(surface hooksTargetSurface) (*hookReconciler, error) {
-	if !dirExistsForInstall(surface.options.DistDir) {
-		return nil, fmt.Errorf("no build output found for %s at %s; run `loaf build` or reinstall Loaf", installDisplayName(surface.target), surface.options.DistDir)
+func hooksReconcilerFor(options targetInstallOptions) (*hookReconciler, error) {
+	if !dirExistsForInstall(options.DistDir) {
+		return nil, fmt.Errorf("no build output found for %s at %s; run `loaf build` or reinstall Loaf", installDisplayName(options.Target), options.DistDir)
 	}
-	reconciler, err := newHookReconciler(surface.options)
+	reconciler, err := newHookReconciler(options)
 	if err != nil {
 		return nil, err
 	}
 	if reconciler == nil {
-		return nil, fmt.Errorf("%s keeps no hooks file Loaf reconciles per entry", installDisplayName(surface.target))
+		return nil, fmt.Errorf("%s keeps no hooks file Loaf reconciles per entry", installDisplayName(options.Target))
 	}
 	return reconciler, nil
 }
@@ -392,7 +392,7 @@ type hookListing struct {
 // tombstoned row — an enablement record for a hook id this version retired —
 // out of the listing while leaving it in the database where Decision 5 wants it.
 func readHookListing(ctx context.Context, surface hooksTargetSurface) ([]hookListingRow, error) {
-	reconciler, err := hooksReconcilerFor(surface)
+	reconciler, err := hooksReconcilerFor(surface.options)
 	if err != nil {
 		return nil, err
 	}

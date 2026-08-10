@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -71,8 +72,10 @@ type hookReconciler struct {
 	// of a manifest licenses falling back to the full frozen one.
 	priorManifest bool
 	priorVersion  string
-	// priorProjection records that the installed manifest carried a
-	// hook-projection row — the manifest-side half of prior-install detection.
+	// priorProjection records that the installed manifest still carried the
+	// retired whole-file hooks row — the manifest-side half of prior-install
+	// detection. Reading it is all that row is still good for; the manifest
+	// writer drops it, and it is never the absorption gate, which is the marker.
 	priorProjection bool
 	managedPaths    []string
 	homeDir         string
@@ -165,7 +168,7 @@ func newHookReconciler(options targetInstallOptions) (*hookReconciler, error) {
 		version:         options.Version,
 		priorManifest:   hasInstalled,
 		priorVersion:    installed.PackageVersion,
-		priorProjection: manifestCarriesHookProjection(installed),
+		priorProjection: installed.carriedObsoleteHookRow,
 		managedPaths:    managed,
 		homeDir:         installHomeDir(options),
 		goos:            runtime.GOOS,
@@ -230,15 +233,6 @@ func readInstalledHookManifest(options targetInstallOptions) (targetAdapterManif
 	return manifest, true, nil
 }
 
-func manifestCarriesHookProjection(manifest targetAdapterManifest) bool {
-	for _, artifact := range manifest.Artifacts {
-		if artifact.Kind == "hook-projection" {
-			return true
-		}
-	}
-	return false
-}
-
 // openState reaches the enablement authority. A caller that supplied no
 // resolver gets an error rather than an empty view: projecting defaults because
 // the records could not be read is exactly how a disabled hook comes back.
@@ -266,6 +260,122 @@ func (r *hookReconciler) plan(ctx context.Context) ([]hookAction, error) {
 		return nil, err
 	}
 	return projection.actions, nil
+}
+
+// The five states `loaf config check` reports one catalog identity in. Two of
+// them are healthy and three name work; none of them is about an entry Loaf
+// does not own, which is why no sixth state exists for foreign content.
+const (
+	hookStateDisabledAbsent  = "disabled-and-correctly-absent"
+	hookStateEnabledInSync   = "enabled-and-in-sync"
+	hookStateEnabledStale    = "enabled-but-stale"
+	hookStateEnabledMissing  = "enabled-and-missing"
+	hookStateDisabledPresent = "disabled-but-present"
+)
+
+// hookDiagnosis is one identity's state: what the records say crossed with what
+// the file carries.
+type hookDiagnosis struct {
+	Event  string `json:"event"`
+	HookID string `json:"hook_id"`
+	State  string `json:"state"`
+}
+
+// healthy reports whether this identity needs nothing. The file agreeing with
+// the records is the whole of the condition — an identity is never unhealthy
+// for what sits beside it in the file.
+func (d hookDiagnosis) healthy() bool {
+	return d.State == hookStateDisabledAbsent || d.State == hookStateEnabledInSync
+}
+
+// remedy names what would converge this identity, in the two words the contract
+// uses: an absent or drifted entry needs a reconcile, and one the records say
+// should not be there needs the file reprojected.
+func (d hookDiagnosis) remedy() string {
+	switch d.State {
+	case hookStateEnabledStale, hookStateEnabledMissing:
+		return "reconcile"
+	case hookStateDisabledPresent:
+		return "reprojection"
+	default:
+		return ""
+	}
+}
+
+// diagnose reads the records and the live file and crosses them, without
+// writing anything: no lock, no records, no file. It deliberately does not
+// consult what an absorption would decide — that is a write this has not made,
+// and reporting an identity as already disabled because a migration intends to
+// disable it would be describing the future. A pre-migration host therefore
+// reads enabled-and-missing, `--fix` runs the reconcile that absorbs it, and
+// the recheck reads disabled-and-correctly-absent.
+func (r *hookReconciler) diagnose(ctx context.Context) ([]hookDiagnosis, error) {
+	store, err := r.openState()
+	if err != nil {
+		return nil, err
+	}
+	records, err := loadHookRecords(ctx, store, r.target)
+	if err != nil {
+		return nil, err
+	}
+	file, err := readHookFile(r.path)
+	if err != nil {
+		return nil, err
+	}
+	recognition := r.recognition(records)
+	paired := map[string]hookEntryPairing{}
+	for _, event := range r.reconciledEvents(file) {
+		entries, err := file.eventEntries(event)
+		if err != nil {
+			return nil, err
+		}
+		outcome, err := pairHookEventEntries(recognition, event, entries)
+		if err != nil {
+			return nil, err
+		}
+		for _, pairing := range outcome.paired {
+			paired[hookRecordKey(event, pairing.hookID)] = pairing
+		}
+	}
+	diagnoses := make([]hookDiagnosis, 0, len(r.catalog.Entries))
+	for _, entry := range r.catalog.Entries {
+		pairing, present := paired[hookRecordKey(entry.Event, entry.HookID)]
+		state, err := r.diagnoseEntry(entry, file, pairing, present, records.enabled(entry.Event, entry.HookID))
+		if err != nil {
+			return nil, err
+		}
+		diagnoses = append(diagnoses, hookDiagnosis{Event: entry.Event, HookID: entry.HookID, State: state})
+	}
+	sort.Slice(diagnoses, func(i, j int) bool {
+		if diagnoses[i].Event != diagnoses[j].Event {
+			return diagnoses[i].Event < diagnoses[j].Event
+		}
+		return diagnoses[i].HookID < diagnoses[j].HookID
+	})
+	return diagnoses, nil
+}
+
+func (r *hookReconciler) diagnoseEntry(entry hookCatalogEntry, file hookFile, pairing hookEntryPairing, present bool, enabled bool) (string, error) {
+	switch {
+	case !enabled && !present:
+		return hookStateDisabledAbsent, nil
+	case !enabled:
+		return hookStateDisabledPresent, nil
+	case !present:
+		return hookStateEnabledMissing, nil
+	}
+	desired, err := r.desiredEntry(entry)
+	if err != nil {
+		return "", err
+	}
+	same, err := hookEntriesEqual(file.entries[entry.Event][pairing.index], desired)
+	if err != nil {
+		return "", err
+	}
+	if same {
+		return hookStateEnabledInSync, nil
+	}
+	return hookStateEnabledStale, nil
 }
 
 // apply converges the target in one call: the record half, then the file half.

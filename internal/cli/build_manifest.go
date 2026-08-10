@@ -17,6 +17,15 @@ const (
 	targetInstallManifestFile = ".loaf-managed-target.json"
 )
 
+// obsoleteHookProjectionKind is the artifact kind releases up to and including
+// 0.2.20 gave a target's shared hooks file. Entry-level reconciliation retired
+// it: that file is not an artifact Loaf owns, so no digest of it means anything
+// and no divergence from one can refuse anything. Nothing writes the kind any
+// more, and the name survives in exactly one place — the reader below, which
+// tolerates the rows an older release left in an installed manifest and drops
+// them so the next write is rid of them.
+const obsoleteHookProjectionKind = "hook-projection"
+
 type targetAdapterManifest struct {
 	Version                   int                     `json:"version"`
 	Target                    string                  `json:"target"`
@@ -24,6 +33,12 @@ type targetAdapterManifest struct {
 	CapabilityContractVersion int                     `json:"capability_contract_version"`
 	Adapters                  []string                `json:"adapters"`
 	Artifacts                 []targetAdapterArtifact `json:"artifacts"`
+
+	// carriedObsoleteHookRow records that the manifest as read from disk still
+	// held one of the retired rows. It is deliberately unexported and unmarshal-
+	// only: prior-install detection is the single thing that still cares, and it
+	// asks a question about the past that must not survive into what is written.
+	carriedObsoleteHookRow bool
 }
 
 type targetAdapterArtifact struct {
@@ -104,6 +119,12 @@ func targetCapabilityAdapters(contract TargetCapabilityEvidenceContract, target 
 }
 
 func collectTargetAdapterArtifacts(target string, outputDir string) ([]targetAdapterArtifact, error) {
+	// A target's shared hooks file is absent from every one of these lists.
+	// Cursor's `hooks.json` and Codex's `.codex/hooks.json` are converged one
+	// entry at a time against the built catalog, so there is nothing here for a
+	// whole-file artifact to own, publish, remove, or hold a digest of. Claude
+	// Code's hooks live inside the plugin bundle Loaf writes outright, which is
+	// why they stay ordinary hook files.
 	var paths []string
 	switch target {
 	case "claude-code":
@@ -111,9 +132,9 @@ func collectTargetAdapterArtifacts(target string, outputDir string) ([]targetAda
 	case "opencode":
 		paths = []string{"plugins"}
 	case "cursor":
-		paths = []string{"hooks.json", "hooks"}
+		paths = []string{"hooks"}
 	case "codex":
-		paths = []string{".codex/hooks.json"}
+		paths = nil
 	case "amp":
 		paths = []string{".amp/plugins/loaf.ts"}
 	default:
@@ -195,132 +216,21 @@ func appendTargetAdapterArtifact(artifacts *[]targetAdapterArtifact, seen map[st
 		if sourcePath == "plugins/hooks.ts" {
 			kind = "plugin"
 		}
-	case "cursor":
-		if sourcePath == "hooks.json" {
-			kind = "hook-projection"
-		}
-	case "codex":
-		kind = "hook-projection"
-		destination = "hooks.json"
-	case "claude-code":
-		if sourcePath == "hooks/hooks.json" {
-			kind = "hook-projection"
-		}
 	}
-	digest := sha256Bytes(body)
-	var mode *uint32
-	if kind == "hook-projection" {
-		digest, err = targetHookProjectionDigest(target, body, false)
-		if err != nil {
-			return fmt.Errorf("hash %s hook projection: %w", target, err)
-		}
-	} else {
-		info, err := os.Lstat(filepath.Join(outputDir, filepath.FromSlash(sourcePath)))
-		if err != nil {
-			return err
-		}
-		value := uint32(info.Mode().Perm())
-		mode = &value
+	info, err := os.Lstat(filepath.Join(outputDir, filepath.FromSlash(sourcePath)))
+	if err != nil {
+		return err
 	}
+	mode := uint32(info.Mode().Perm())
 	*artifacts = append(*artifacts, targetAdapterArtifact{
 		ID:          kind + ":" + sourcePath,
 		Kind:        kind,
 		SourcePath:  sourcePath,
 		Destination: destination,
-		SHA256:      digest,
-		Mode:        mode,
+		SHA256:      sha256Bytes(body),
+		Mode:        &mode,
 	})
 	return nil
-}
-
-func targetHookProjectionDigest(target string, body []byte, installed bool) (string, error) {
-	switch target {
-	case "cursor":
-		var hooks codexHooksFile
-		if err := json.Unmarshal(body, &hooks); err != nil {
-			return "", err
-		}
-		projection := codexHooksFile{Version: 1, Hooks: map[string][]map[string]any{}}
-		for event, entries := range hooks.Hooks {
-			for _, entry := range entries {
-				if isLoafInstallHook(entry) {
-					projection.Hooks[event] = append(projection.Hooks[event], entry)
-				}
-			}
-		}
-		canonical, err := json.Marshal(projection)
-		if err != nil {
-			return "", err
-		}
-		return sha256Bytes(canonical), nil
-	case "codex":
-		hooks, err := decodeCodexHooksBodyStrict(body)
-		if err != nil {
-			return "", err
-		}
-		projection := codexHooksRawFile{Hooks: map[string][]json.RawMessage{}}
-		for event, entries := range hooks.Hooks {
-			for _, rawEntry := range entries {
-				entry, err := decodeCodexHookObject(rawEntry)
-				if err != nil {
-					return "", err
-				}
-				if installed {
-					owned, conflict := codexHookOwnership(entry)
-					if conflict {
-						return "", fmt.Errorf("modified Loaf matcher group")
-					}
-					if !owned {
-						continue
-					}
-					handlers := entry["hooks"].([]any)
-					handler := handlers[0].(map[string]any)
-					handler["command"] = codexJournalExecutablePlaceholder + codexJournalHookCommandSuffix
-					handler["commandWindows"] = codexJournalExecutablePlaceholder + codexJournalHookCommandSuffix
-				} else if !bytes.Contains(rawEntry, []byte(codexJournalExecutablePlaceholder)) {
-					continue
-				}
-				canonical, err := json.Marshal(entry)
-				if err != nil {
-					return "", err
-				}
-				projection.Hooks[event] = append(projection.Hooks[event], canonical)
-			}
-		}
-		canonical, err := json.Marshal(projection)
-		if err != nil {
-			return "", err
-		}
-		return sha256Bytes(canonical), nil
-	default:
-		return sha256Bytes(body), nil
-	}
-}
-
-func decodeCodexHooksBodyStrict(body []byte) (codexHooksRawFile, error) {
-	tempDir, err := os.MkdirTemp("", "loaf-hooks-decode-*")
-	if err != nil {
-		return codexHooksRawFile{}, err
-	}
-	path := filepath.Join(tempDir, "hooks.json")
-	if err := os.WriteFile(path, body, 0o600); err != nil {
-		if cleanupErr := os.RemoveAll(tempDir); cleanupErr != nil {
-			return codexHooksRawFile{}, fmt.Errorf("%w; clean up Codex hooks decode directory %s: %v", err, tempDir, cleanupErr)
-		}
-		return codexHooksRawFile{}, err
-	}
-	hooks, decodeErr := loadCodexHooksRawFileStrict(path)
-	cleanupErr := os.RemoveAll(tempDir)
-	if decodeErr != nil {
-		if cleanupErr != nil {
-			return codexHooksRawFile{}, fmt.Errorf("%w; clean up Codex hooks decode directory %s: %v", decodeErr, tempDir, cleanupErr)
-		}
-		return codexHooksRawFile{}, decodeErr
-	}
-	if cleanupErr != nil {
-		return codexHooksRawFile{}, fmt.Errorf("clean up Codex hooks decode directory %s: %w", tempDir, cleanupErr)
-	}
-	return hooks, nil
 }
 
 func readTargetAdapterManifest(path string) (targetAdapterManifest, error) {
@@ -331,10 +241,17 @@ func readTargetAdapterManifest(path string) (targetAdapterManifest, error) {
 	if !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 {
 		return targetAdapterManifest{}, fmt.Errorf("target adapter manifest %s must be a regular file", path)
 	}
-	body, err := readRegularFile(path, projectFileReadLimit)
+	raw, err := readRegularFile(path, projectFileReadLimit)
 	if err != nil {
 		return targetAdapterManifest{}, err
 	}
+	// The retired rows come out before any strict rule is applied, because every
+	// strict rule applies to the whole document: the duplicate-key walk descends
+	// into each row, and DisallowUnknownFields judges each row's fields. A row
+	// this version has no semantics for must not be able to fail a read — that
+	// failure would abort the very upgrade that was about to absorb and drop it,
+	// which is the file-level refusal this Change removed wearing a new hat.
+	body, carriedObsoleteHookRow := stripObsoleteHookProjectionRows(raw)
 	if err := validateJSONNoDuplicateKeys(body); err != nil {
 		return targetAdapterManifest{}, fmt.Errorf("read target adapter manifest: %w", err)
 	}
@@ -347,10 +264,191 @@ func readTargetAdapterManifest(path string) (targetAdapterManifest, error) {
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return targetAdapterManifest{}, fmt.Errorf("read target adapter manifest: trailing JSON values")
 	}
+	manifest.carriedObsoleteHookRow = carriedObsoleteHookRow
 	if err := validateTargetAdapterManifest(manifest); err != nil {
 		return targetAdapterManifest{}, err
 	}
 	return manifest, nil
+}
+
+// stripObsoleteHookProjectionRows removes the retired rows from the manifest
+// bytes, and is the only code that ever looks at one. It looks at exactly one
+// field — `kind` — so an unknown field a later release added, a field whose type
+// changed, and a duplicate key inside the row are all invisible rather than
+// fatal.
+//
+// Strictness for every live row is untouched. Kept rows are written back as the
+// bytes they were read as, top-level keys keep their order and their repeats,
+// and the strict pass then runs over the result, so a duplicate key or unknown
+// field anywhere Loaf still has semantics for fails exactly as before. A
+// document with nothing to drop is returned unchanged, byte for byte, and one
+// this cannot parse is handed back for the strict pass to report.
+func stripObsoleteHookProjectionRows(body []byte) ([]byte, bool) {
+	fields, ok := decodeJSONObjectFields(body)
+	if !ok {
+		return body, false
+	}
+	dropped := false
+	for index, field := range fields {
+		if field.name != "artifacts" {
+			continue
+		}
+		var rows []json.RawMessage
+		if err := json.Unmarshal(field.value, &rows); err != nil {
+			continue
+		}
+		kept := make([]json.RawMessage, 0, len(rows))
+		obsolete := false
+		for _, row := range rows {
+			if isObsoleteHookProjectionRow(row) {
+				obsolete = true
+				continue
+			}
+			kept = append(kept, row)
+		}
+		if !obsolete {
+			continue
+		}
+		encoded, err := json.Marshal(kept)
+		if err != nil {
+			return body, false
+		}
+		fields[index].value = encoded
+		dropped = true
+	}
+	if !dropped {
+		return body, false
+	}
+	rebuilt, err := encodeJSONObjectFields(fields)
+	if err != nil {
+		return body, false
+	}
+	return rebuilt, true
+}
+
+// isObsoleteHookProjectionRow reads the one field that identifies a row, and
+// requires that field to be unambiguous: exactly one `kind`, holding a JSON
+// string. A row with no `kind`, with several, or with a non-string one is not
+// identified — it stays where it is and the strict pass judges it.
+//
+// The repeated case is the one worth spelling out. Deciding by last-wins on
+// `{"kind":"hook-file","kind":"hook-projection"}` would do two wrong things at
+// once: launder a duplicate-key defect past the walk that exists to catch it,
+// and discard a row whose first `kind` says it is live. Leaving it in place
+// makes the duplicate fail the duplicate-key walk, which is what should happen.
+//
+// Repeats in any other field are a different question. There the row's identity
+// is not in doubt, so it drops whole and whatever else it carried goes with it.
+func isObsoleteHookProjectionRow(row json.RawMessage) bool {
+	fields, ok := decodeJSONObjectFields(row)
+	if !ok {
+		return false
+	}
+	var kind json.RawMessage
+	declared := 0
+	for _, field := range fields {
+		if field.name != "kind" {
+			continue
+		}
+		declared++
+		kind = field.value
+	}
+	if declared != 1 {
+		return false
+	}
+	var value string
+	if err := json.Unmarshal(kind, &value); err != nil {
+		return false
+	}
+	return value == obsoleteHookProjectionKind
+}
+
+// jsonObjectField is one written key-value pair. Repeats are pairs too: this
+// decodes for a rewrite that the duplicate-key walk still has to be able to
+// reject, so collapsing them would launder a defect past it.
+type jsonObjectField struct {
+	name  string
+	value json.RawMessage
+}
+
+func decodeJSONObjectFields(body []byte) ([]jsonObjectField, bool) {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	token, err := decoder.Token()
+	if err != nil {
+		return nil, false
+	}
+	if delimiter, ok := token.(json.Delim); !ok || delimiter != '{' {
+		return nil, false
+	}
+	var fields []jsonObjectField
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			return nil, false
+		}
+		name, ok := key.(string)
+		if !ok {
+			return nil, false
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return nil, false
+		}
+		fields = append(fields, jsonObjectField{name: name, value: value})
+	}
+	if _, err := decoder.Token(); err != nil {
+		return nil, false
+	}
+	// Everything after the closing brace must be whitespace JSON itself allows.
+	// decoder.More() answers a different question — it looks for the start of
+	// another value — so a stray closing delimiter walks straight past it, and a
+	// document rebuilt without that delimiter would reach the strict pass
+	// already repaired. Anything else trailing means this cannot strip the
+	// document, and the original bytes go to the strict pass to be refused.
+	if !isJSONWhitespace(body[decoder.InputOffset():]) {
+		return nil, false
+	}
+	return fields, true
+}
+
+// isJSONWhitespace reports whether every byte is one JSON's grammar permits
+// between tokens. The set is exactly four, and it is narrower than the one
+// strings.TrimSpace trims: Unicode calls a vertical tab, a form feed, and a
+// non-breaking space whitespace, while JSON calls all three a syntax error. A
+// document ending in one of those is invalid and the strict pass says so — but
+// only if it sees the bytes that were written, which it would not if this
+// treated the suffix as harmless and the rebuild quietly erased it.
+func isJSONWhitespace(remainder []byte) bool {
+	for _, character := range remainder {
+		switch character {
+		case ' ', '\t', '\n', '\r':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func encodeJSONObjectFields(fields []jsonObjectField) ([]byte, error) {
+	var out bytes.Buffer
+	out.WriteByte('{')
+	for index, field := range fields {
+		if index > 0 {
+			out.WriteByte(',')
+		}
+		name, err := json.Marshal(field.name)
+		if err != nil {
+			return nil, err
+		}
+		out.Write(name)
+		out.WriteByte(':')
+		if err := json.Compact(&out, field.value); err != nil {
+			return nil, err
+		}
+	}
+	out.WriteByte('}')
+	return out.Bytes(), nil
 }
 
 func validateTargetAdapterManifest(manifest targetAdapterManifest) error {
@@ -383,7 +481,7 @@ func validateTargetAdapterManifest(manifest targetAdapterManifest) error {
 			return fmt.Errorf("invalid or duplicate target adapter artifact id %q", artifact.ID)
 		}
 		seenIDs[artifact.ID] = true
-		if artifact.Kind != "instruction" && artifact.Kind != "hook-projection" && artifact.Kind != "hook-file" && artifact.Kind != "plugin" {
+		if artifact.Kind != "instruction" && artifact.Kind != "hook-file" && artifact.Kind != "plugin" {
 			return fmt.Errorf("invalid target adapter artifact kind %q", artifact.Kind)
 		}
 		if artifact.Kind == "instruction" {
@@ -399,12 +497,12 @@ func validateTargetAdapterManifest(manifest targetAdapterManifest) error {
 			}
 			seenDestinations[artifact.Destination] = true
 		}
-		if artifact.Kind == "hook-file" || artifact.Kind == "plugin" {
-			if artifact.Mode == nil || *artifact.Mode > 0o777 {
-				return fmt.Errorf("invalid or missing target adapter artifact mode for %q", artifact.ID)
+		if artifact.Kind == "instruction" {
+			if artifact.Mode != nil {
+				return fmt.Errorf("target adapter artifact kind %q must not declare a mode", artifact.Kind)
 			}
-		} else if artifact.Mode != nil {
-			return fmt.Errorf("target adapter artifact kind %q must not declare a mode", artifact.Kind)
+		} else if artifact.Mode == nil || *artifact.Mode > 0o777 {
+			return fmt.Errorf("invalid or missing target adapter artifact mode for %q", artifact.ID)
 		}
 		if !isHexString(artifact.SHA256) || len(artifact.SHA256) != 64 || strings.ToLower(artifact.SHA256) != artifact.SHA256 {
 			return fmt.Errorf("invalid target adapter artifact digest for %q", artifact.ID)
@@ -461,7 +559,7 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 	states := map[string]targetAdapterSnapshot{}
 	desiredDestinations := map[string]bool{}
 	for _, artifact := range installed.Artifacts {
-		if skipTargetAdapterArtifact(options, artifact) {
+		if skipTargetAdapterArtifact(artifact) {
 			continue
 		}
 		path, err := targetAdapterDestination(options, artifact)
@@ -476,23 +574,17 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 		if !snapshot.exists {
 			continue
 		}
-		matchesInstalled, err := targetAdapterSnapshotMatchesArtifact(options.Target, artifact, snapshot)
-		if err != nil {
-			return fmt.Errorf("inspect managed target artifact %q: %w", artifact.ID, err)
-		}
+		matchesInstalled := targetAdapterSnapshotMatchesArtifact(artifact, snapshot)
 		matchesDesired := false
 		if current, ok := desiredByID[artifact.ID]; ok {
-			matchesDesired, err = targetAdapterSnapshotMatchesArtifact(options.Target, current, snapshot)
-			if err != nil {
-				return fmt.Errorf("inspect desired target artifact %q: %w", artifact.ID, err)
-			}
+			matchesDesired = targetAdapterSnapshotMatchesArtifact(current, snapshot)
 		}
 		if !matchesInstalled && !matchesDesired {
 			return fmt.Errorf("managed target artifact %q was modified; refusing to overwrite or remove", artifact.ID)
 		}
 	}
 	for _, artifact := range desired.Artifacts {
-		if skipTargetAdapterArtifact(options, artifact) {
+		if skipTargetAdapterArtifact(artifact) {
 			continue
 		}
 		if err := verifyTargetAdapterSource(options, artifact); err != nil {
@@ -513,14 +605,7 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 		if _, owned := installedByID[artifact.ID]; owned || !states[path].exists {
 			continue
 		}
-		matchesDesired, err := targetAdapterSnapshotMatchesArtifact(options.Target, artifact, states[path])
-		if err != nil {
-			return fmt.Errorf("inspect target artifact migration %q: %w", artifact.ID, err)
-		}
-		if matchesDesired || targetAdapterLegacyOwnership(options.Target, artifact, states[path].body) {
-			continue
-		}
-		if artifact.Kind == "hook-projection" && targetHookProjectionIsEmpty(options.Target, states[path].body) {
+		if targetAdapterSnapshotMatchesArtifact(artifact, states[path]) || targetAdapterLegacyOwnership(options.Target, artifact, states[path].body) {
 			continue
 		}
 		return fmt.Errorf("target artifact destination %q exists and is not managed by Loaf", artifact.Destination)
@@ -554,7 +639,7 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 		return rollbackTargetAdapterMutations(cause, mutated, options.TargetAdapterOps)
 	}
 	for _, artifact := range installed.Artifacts {
-		if skipTargetAdapterArtifact(options, artifact) {
+		if skipTargetAdapterArtifact(artifact) {
 			continue
 		}
 		if _, keep := desiredByID[artifact.ID]; keep {
@@ -590,7 +675,7 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 		}
 	}
 	for _, artifact := range desired.Artifacts {
-		if skipTargetAdapterArtifact(options, artifact) {
+		if skipTargetAdapterArtifact(artifact) {
 			continue
 		}
 		if options.TargetAdapterOps != nil && options.TargetAdapterOps.beforeArtifact != nil {
@@ -632,17 +717,13 @@ func syncTargetAdapterManifest(options targetInstallOptions) error {
 	return nil
 }
 
-// skipTargetAdapterArtifact names the artifacts the whole-file machinery does
-// not handle. Managed instructions live inside a project file rather than at a
-// destination of their own, and a hook projection on a target that reconciles
-// per entry belongs to the reconciler — reading, publishing, removing, or
-// judging one here would restore the file-level verdict entry-level
-// reconciliation exists to remove.
-func skipTargetAdapterArtifact(options targetInstallOptions, artifact targetAdapterArtifact) bool {
-	if artifact.Kind == "instruction" {
-		return true
-	}
-	return artifact.Kind == "hook-projection" && targetReconcilesHookEntries(options)
+// skipTargetAdapterArtifact names the one artifact the whole-file machinery
+// does not handle: managed instructions live inside a project file rather than
+// at a destination of their own. A target's shared hooks file is not on this
+// list because it is not on any manifest — the reconciler owns it, and a
+// whole-file row for it is exactly the file-level verdict this replaces.
+func skipTargetAdapterArtifact(artifact targetAdapterArtifact) bool {
+	return artifact.Kind == "instruction"
 }
 
 func ensureTargetAdapterSnapshotUnchanged(path string, expected targetAdapterSnapshot) error {
@@ -777,14 +858,7 @@ func verifyTargetAdapterSource(options targetInstallOptions, artifact targetAdap
 	if err != nil {
 		return err
 	}
-	digest := sha256Bytes(body)
-	if artifact.Kind == "hook-projection" {
-		digest, err = targetHookProjectionDigest(options.Target, body, false)
-		if err != nil {
-			return err
-		}
-	}
-	if digest != artifact.SHA256 {
+	if digest := sha256Bytes(body); digest != artifact.SHA256 {
 		return fmt.Errorf("target adapter source %q does not match its manifest digest", artifact.SourcePath)
 	}
 	if artifact.Mode != nil && uint32(info.Mode().Perm()) != *artifact.Mode {
@@ -825,49 +899,17 @@ func restoreTargetAdapterSnapshot(snapshot targetAdapterSnapshot) error {
 	return writeFileAtomically(snapshot.path, snapshot.body, snapshot.mode)
 }
 
-func targetAdapterInstalledDigest(target string, artifact targetAdapterArtifact, body []byte) (string, error) {
-	if artifact.Kind == "hook-projection" {
-		return targetHookProjectionDigest(target, body, true)
+func targetAdapterSnapshotMatchesArtifact(artifact targetAdapterArtifact, snapshot targetAdapterSnapshot) bool {
+	if !snapshot.exists || sha256Bytes(snapshot.body) != artifact.SHA256 {
+		return false
 	}
-	return sha256Bytes(body), nil
-}
-
-func targetAdapterSnapshotMatchesArtifact(target string, artifact targetAdapterArtifact, snapshot targetAdapterSnapshot) (bool, error) {
-	if !snapshot.exists {
-		return false, nil
+	if artifact.Kind == "instruction" {
+		return artifact.Mode == nil
 	}
-	digest, err := targetAdapterInstalledDigest(target, artifact, snapshot.body)
-	if err != nil {
-		return false, err
-	}
-	if digest != artifact.SHA256 {
-		return false, nil
-	}
-	if artifact.Kind == "hook-file" || artifact.Kind == "plugin" {
-		return artifact.Mode != nil && uint32(snapshot.mode.Perm()) == *artifact.Mode, nil
-	}
-	return artifact.Mode == nil, nil
+	return artifact.Mode != nil && uint32(snapshot.mode.Perm()) == *artifact.Mode
 }
 
 func targetAdapterLegacyOwnership(target string, artifact targetAdapterArtifact, body []byte) bool {
-	if artifact.Kind == "hook-projection" {
-		switch target {
-		case "cursor":
-			var hooks codexHooksFile
-			if json.Unmarshal(body, &hooks) != nil {
-				return false
-			}
-			for _, entries := range hooks.Hooks {
-				for _, entry := range entries {
-					if isLoafInstallHook(entry) {
-						return true
-					}
-				}
-			}
-		case "codex":
-			return !targetHookProjectionIsEmpty(target, body)
-		}
-	}
 	if artifact.Kind == "plugin" {
 		text := string(body)
 		return strings.Contains(text, "Auto-generated by loaf build system") &&
@@ -877,81 +919,27 @@ func targetAdapterLegacyOwnership(target string, artifact targetAdapterArtifact,
 	return false
 }
 
-func targetHookProjectionIsEmpty(target string, body []byte) bool {
-	switch target {
-	case "cursor":
-		var hooks codexHooksFile
-		if json.Unmarshal(body, &hooks) != nil {
-			return false
-		}
-		for _, entries := range hooks.Hooks {
-			for _, entry := range entries {
-				if isLoafInstallHook(entry) {
-					return false
-				}
-			}
-		}
-		return true
-	case "codex":
-		hooks, err := decodeCodexHooksBodyStrict(body)
-		if err != nil {
-			return false
-		}
-		for _, entries := range hooks.Hooks {
-			for _, rawEntry := range entries {
-				entry, err := decodeCodexHookObject(rawEntry)
-				if err != nil {
-					return false
-				}
-				owned, conflict := codexHookOwnership(entry)
-				if owned || conflict {
-					return false
-				}
-			}
-		}
-		return true
-	default:
-		return false
-	}
-}
-
 func publishTargetAdapterArtifact(options targetInstallOptions, artifact targetAdapterArtifact) error {
 	source := filepath.Join(options.DistDir, filepath.FromSlash(artifact.SourcePath))
 	destination, err := targetAdapterDestination(options, artifact)
 	if err != nil {
 		return err
 	}
-	if artifact.Kind == "hook-projection" {
-		switch options.Target {
-		case "cursor":
-			err = mergeHookFiles(destination, source)
-		case "codex":
-			err = mergeCodexHookFiles(destination, source, options.ProjectRoot, options.CodexRuleOperations)
-		default:
-			err = fmt.Errorf("target %q does not support hook projection installation", options.Target)
-		}
-	} else {
-		body, readErr := os.ReadFile(source)
-		if readErr != nil {
-			return readErr
-		}
-		if artifact.Mode == nil {
-			return fmt.Errorf("target adapter artifact %q has no bound mode", artifact.ID)
-		}
-		err = writeFileAtomically(destination, body, fs.FileMode(*artifact.Mode))
-	}
+	body, err := os.ReadFile(source)
 	if err != nil {
+		return err
+	}
+	if artifact.Mode == nil {
+		return fmt.Errorf("target adapter artifact %q has no bound mode", artifact.ID)
+	}
+	if err := writeFileAtomically(destination, body, fs.FileMode(*artifact.Mode)); err != nil {
 		return fmt.Errorf("publish target adapter artifact %q: %w", artifact.ID, err)
 	}
 	snapshot, err := readTargetAdapterSnapshot(destination)
 	if err != nil {
 		return err
 	}
-	matches, err := targetAdapterSnapshotMatchesArtifact(options.Target, artifact, snapshot)
-	if err != nil {
-		return err
-	}
-	if !matches {
+	if !targetAdapterSnapshotMatchesArtifact(artifact, snapshot) {
 		return fmt.Errorf("published target adapter artifact %q failed content or mode verification", artifact.ID)
 	}
 	return nil
@@ -962,71 +950,8 @@ func removeTargetAdapterArtifact(options targetInstallOptions, artifact targetAd
 	if err != nil {
 		return err
 	}
-	if artifact.Kind != "hook-projection" {
-		if err := os.Remove(destination); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		return nil
-	}
-	snapshot, err := readTargetAdapterSnapshot(destination)
-	if err != nil {
+	if err := os.Remove(destination); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if !snapshot.exists {
-		return nil
-	}
-	switch options.Target {
-	case "cursor":
-		hooks, err := loadCodexHooksFile(destination)
-		if err != nil {
-			return err
-		}
-		for event, entries := range hooks.Hooks {
-			kept := entries[:0]
-			for _, entry := range entries {
-				if !isLoafInstallHook(entry) {
-					kept = append(kept, entry)
-				}
-			}
-			if len(kept) == 0 {
-				delete(hooks.Hooks, event)
-			} else {
-				hooks.Hooks[event] = kept
-			}
-		}
-		body, err := json.MarshalIndent(hooks, "", "  ")
-		if err != nil {
-			return err
-		}
-		return writeFileAtomically(destination, append(body, '\n'), snapshot.mode)
-	case "codex":
-		hooks, err := loadCodexHooksRawFileStrict(destination)
-		if err != nil {
-			return err
-		}
-		for event, entries := range hooks.Hooks {
-			kept := entries[:0]
-			for _, rawEntry := range entries {
-				entry, err := decodeCodexHookObject(rawEntry)
-				if err != nil {
-					return err
-				}
-				owned, conflict := codexHookOwnership(entry)
-				if conflict {
-					return fmt.Errorf("modified Loaf matcher group")
-				}
-				if !owned {
-					kept = append(kept, rawEntry)
-				}
-			}
-			hooks.Hooks[event] = kept
-		}
-		body, err := json.MarshalIndent(hooks, "", "  ")
-		if err != nil {
-			return err
-		}
-		return writeFileAtomically(destination, append(body, '\n'), snapshot.mode)
-	default:
-		return fmt.Errorf("target %q does not support hook projection removal", options.Target)
-	}
+	return nil
 }

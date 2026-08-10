@@ -32,11 +32,11 @@ loaf journal log "skill(implement): TASK-004 — retire hook-projection kind, re
 
 ## Steps
 
-- [ ] Delete the drift-refusal and digest helpers and their branches; no code path may compute a hooks-file digest or emit a drift conflict. Integrity preconditions (malformed JSON, unsupported shape, symlink, I/O, concurrent modification) remain and keep their tests.
-- [ ] Manifest reader: obsolete `hook-projection` rows are ignored on read and absent after the next write; row removal is sequenced after the absorption marker is durable (crash between them is covered by an injected-failure test).
-- [ ] Plan surface: hook-file work reports the reconciler's per-entry actions; drift-conflict wording for hook files removed from fixtures and snapshots.
-- [ ] `config check`: five states — disabled-and-correctly-absent (healthy), enabled-and-in-sync (healthy), enabled-but-stale (present but differing from the catalog template; needs reconcile), enabled-and-missing (needs reconcile), disabled-but-present (needs reprojection); foreign/unknown never reported; `--fix` converges through the reconciler, no private refresh path.
-- [ ] Update dist/build parity tests for the catalog and removed digest fields.
+- [x] Delete the drift-refusal and digest helpers and their branches; no code path may compute a hooks-file digest or emit a drift conflict. Integrity preconditions (malformed JSON, unsupported shape, symlink, I/O, concurrent modification) remain and keep their tests.
+- [x] Manifest reader: obsolete `hook-projection` rows are ignored on read and absent after the next write; row removal is sequenced after the absorption marker is durable (crash between them is covered by an injected-failure test).
+- [x] Plan surface: hook-file work reports the reconciler's per-entry actions; drift-conflict wording for hook files removed from fixtures and snapshots.
+- [x] `config check`: five states — disabled-and-correctly-absent (healthy), enabled-and-in-sync (healthy), enabled-but-stale (present but differing from the catalog template; needs reconcile), enabled-and-missing (needs reconcile), disabled-but-present (needs reprojection); foreign/unknown never reported; `--fix` converges through the reconciler, no private refresh path.
+- [x] Update dist/build parity tests for the catalog and removed digest fields.
 
 ## Verification
 

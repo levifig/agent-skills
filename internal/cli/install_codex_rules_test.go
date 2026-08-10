@@ -208,19 +208,19 @@ func TestInstallCodexJournalRuleRendersSymlinkedEntrypointAcrossSurfaces(t *test
 	if !strings.Contains(string(guidance), journalContextShellQuote(entrypoint)+" journal log --execpolicy-safe") || strings.Contains(string(guidance), "cellar-1.0") {
 		t.Fatalf("rendered guidance = %q, want entrypoint command without canonicalized segment", guidance)
 	}
-	hooksDest := filepath.Join(fixture.codexHome, "hooks.json")
-	loafHooks := filepath.Join(fixture.dist, ".codex", "hooks.json")
-	writeInstallFile(t, loafHooks, `{"hooks":{"SessionStart":[{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"}]}]}}`)
-	writeInstallFile(t, hooksDest, `{"hooks":{}}`)
-	if err := mergeCodexHookFilesForOS(hooksDest, loafHooks, filepath.Join(fixture.root, "project"), operations, "darwin"); err != nil {
-		t.Fatalf("merge hooks with symlinked entrypoint: %v", err)
-	}
-	hooks, err := os.ReadFile(hooksDest)
+	// The third surface: the hook entry reconciliation would project. It renders
+	// from the same trusted resolution, so the entrypoint survives here too.
+	executable, err := trustedCodexJournalExecutable(filepath.Join(fixture.root, "project"), operations)
 	if err != nil {
-		t.Fatalf("read rendered hooks: %v", err)
+		t.Fatalf("trusted executable error = %v", err)
 	}
-	if !strings.Contains(string(hooks), journalContextShellQuote(entrypoint)+codexJournalHookCommandSuffix) || strings.Contains(string(hooks), "cellar-1.0") {
-		t.Fatalf("rendered hooks = %q, want entrypoint command without canonicalized segment", hooks)
+	template := json.RawMessage(`{"matcher":"startup|resume|clear|compact","hooks":[{"type":"command","command":"{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"}]}`)
+	entry, err := renderCodexHookExecutableForOS(template, executable, "darwin")
+	if err != nil {
+		t.Fatalf("render hook entry with symlinked entrypoint: %v", err)
+	}
+	if !strings.Contains(string(entry), journalContextShellQuote(entrypoint)+codexJournalHookCommandSuffix) || strings.Contains(string(entry), "cellar-1.0") {
+		t.Fatalf("rendered hook entry = %q, want entrypoint command without canonicalized segment", entry)
 	}
 }
 

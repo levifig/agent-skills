@@ -109,15 +109,33 @@ func TestRunnerBuildRunsContentBuilderNatively(t *testing.T) {
 			t.Fatalf("%s manifest adapters = %#v, want %q", target, manifest["adapters"], adapter)
 		}
 		artifacts, ok := manifest["artifacts"].([]any)
-		if !ok || len(artifacts) < 2 {
-			t.Fatalf("%s manifest artifacts = %#v, want instruction plus adapter artifacts", target, manifest["artifacts"])
+		// Codex's only surface is the shared hooks file, which is reconciled per
+		// entry and therefore on no manifest at all — so its manifest is the
+		// managed instruction and nothing else.
+		wantArtifacts := 2
+		if target == "codex" {
+			wantArtifacts = 1
+		}
+		if !ok || len(artifacts) < wantArtifacts {
+			t.Fatalf("%s manifest artifacts = %#v, want at least %d", target, manifest["artifacts"], wantArtifacts)
 		}
 		var instruction map[string]any
 		for _, rawArtifact := range artifacts {
 			artifact := rawArtifact.(map[string]any)
 			if artifact["id"] == "managed-instructions" {
 				instruction = artifact
-				break
+			}
+			// No manifest names a target's shared hooks file, under the retired
+			// kind or any other: a whole-file row for it is the file-level verdict
+			// entry-level reconciliation replaced.
+			if kind, _ := artifact["kind"].(string); kind == obsoleteHookProjectionKind {
+				t.Fatalf("%s manifest artifact = %#v, want the retired hook-projection kind gone", target, artifact)
+			}
+			switch artifact["destination"] {
+			case "hooks.json", "hooks/hooks.json":
+				if target != "claude-code" {
+					t.Fatalf("%s manifest artifact = %#v, want the reconciled hooks file off the manifest", target, artifact)
+				}
 			}
 		}
 		if instruction == nil {

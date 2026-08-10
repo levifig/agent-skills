@@ -106,12 +106,216 @@ func TestReadTargetAdapterManifestRequiresConcreteModesAndForbidsProjectionModes
 		"missing concrete mode": strings.Replace(valid, `,"mode":493`, "", 1),
 		"mode out of range":     strings.Replace(valid, `"mode":493`, `"mode":512`, 1),
 		"instruction mode":      strings.Replace(valid, `"destination":"project-instructions"`, `"destination":"project-instructions","mode":420`, 1),
-		"projection mode":       strings.Replace(valid, `"kind":"plugin"`, `"kind":"hook-projection"`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			writeInstallFile(t, path, body)
 			if _, err := readTargetAdapterManifest(path); err == nil {
 				t.Fatalf("readTargetAdapterManifest(%s) error = nil", name)
+			}
+		})
+	}
+}
+
+// The retired whole-file hooks row: an installed manifest an older release
+// wrote still reads, the row is gone from what was read, and the write that
+// follows carries no trace of it. Nothing about the row is validated on the way
+// past — a kind this version has no semantics for must not get a second chance
+// to matter.
+func TestReadTargetAdapterManifestDropsTheRetiredHookProjectionRow(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	legacy := `{"version":1,"target":"cursor","package_version":"0.2.20","capability_contract_version":3,"adapters":["cursor-session-start-v1"],"artifacts":[` +
+		`{"id":"hook-file:hooks/x.sh","kind":"hook-file","source_path":"hooks/x.sh","destination":"hooks/x.sh","sha256":"` + digest + `","mode":493},` +
+		`{"id":"hook-projection:hooks.json","kind":"hook-projection","source_path":"hooks.json","destination":"hooks.json","sha256":"` + digest + `"},` +
+		`{"id":"managed-instructions","kind":"instruction","destination":"project-instructions","sha256":"` + digest + `"}]}`
+	dir := realpath(t, t.TempDir())
+	path := filepath.Join(dir, "manifest.json")
+	writeInstallFile(t, path, legacy)
+
+	manifest, err := readTargetAdapterManifest(path)
+	if err != nil {
+		t.Fatalf("readTargetAdapterManifest(legacy) error = %v", err)
+	}
+	if !manifest.carriedObsoleteHookRow {
+		t.Fatal("carriedObsoleteHookRow = false; prior-install detection reads that row and nothing else does")
+	}
+	for _, artifact := range manifest.Artifacts {
+		if artifact.Kind == obsoleteHookProjectionKind {
+			t.Fatalf("artifacts = %#v, want the retired row dropped on read", manifest.Artifacts)
+		}
+	}
+	if len(manifest.Artifacts) != 2 {
+		t.Fatalf("artifacts = %#v, want the surviving hook-file and instruction rows", manifest.Artifacts)
+	}
+
+	rewritten := filepath.Join(dir, "rewritten.json")
+	if err := writeTargetAdapterManifest(rewritten, manifest); err != nil {
+		t.Fatalf("writeTargetAdapterManifest error = %v", err)
+	}
+	if body := string(readFileBytes(t, rewritten)); strings.Contains(body, obsoleteHookProjectionKind) {
+		t.Fatalf("rewritten manifest = %s, want the retired row absent after the next write", body)
+	}
+
+	// Nothing writes the kind any more, so a manifest that names it is only ever
+	// something to drop — never something to publish back.
+	fresh := filepath.Join(dir, "fresh.json")
+	if err := writeTargetAdapterManifest(fresh, targetAdapterManifest{
+		Version: 1, Target: "cursor", PackageVersion: "9.9.9", CapabilityContractVersion: 3,
+		Adapters:  []string{"cursor-session-start-v1"},
+		Artifacts: []targetAdapterArtifact{{ID: "hook-projection:hooks.json", Kind: obsoleteHookProjectionKind, SourcePath: "hooks.json", Destination: "hooks.json", SHA256: digest}},
+	}); err == nil {
+		t.Fatal("writeTargetAdapterManifest accepted the retired kind")
+	}
+}
+
+// Tolerance has to survive the row being wrong, not merely being retired. The
+// strict rules apply to the whole document, so a retired row carrying a field a
+// later release added, a field whose type changed, or a repeated key would
+// abort the read — and aborting the read aborts the upgrade that was about to
+// absorb and drop it. Each defect is then moved into a live row to prove
+// strictness was narrowed to the retired kind and nowhere else.
+func TestReadTargetAdapterManifestToleratesDefectsInsideTheRetiredHookRow(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	manifest := func(hookRow string, liveRow string) string {
+		return `{"version":1,"target":"cursor","package_version":"0.2.20","capability_contract_version":3,` +
+			`"adapters":["cursor-session-start-v1"],"artifacts":[` + hookRow + `,` + liveRow + `,` +
+			`{"id":"managed-instructions","kind":"instruction","destination":"project-instructions","sha256":"` + digest + `"}]}`
+	}
+	liveRow := `{"id":"hook-file:hooks/x.sh","kind":"hook-file","source_path":"hooks/x.sh","destination":"hooks/x.sh","sha256":"` + digest + `","mode":493}`
+	for name, defect := range map[string]struct{ hook, live string }{
+		"unknown field": {
+			hook: `{"id":"hook-projection:hooks.json","kind":"hook-projection","source_path":"hooks.json","destination":"hooks.json","sha256":"` + digest + `","projection_generation":7}`,
+			live: `{"id":"hook-file:hooks/x.sh","kind":"hook-file","source_path":"hooks/x.sh","destination":"hooks/x.sh","sha256":"` + digest + `","mode":493,"projection_generation":7}`,
+		},
+		"wrong-typed field": {
+			hook: `{"id":"hook-projection:hooks.json","kind":"hook-projection","source_path":"hooks.json","destination":"hooks.json","sha256":12345}`,
+			live: `{"id":"hook-file:hooks/x.sh","kind":"hook-file","source_path":"hooks/x.sh","destination":"hooks/x.sh","sha256":12345,"mode":493}`,
+		},
+		"duplicate key inside the row": {
+			hook: `{"id":"hook-projection:hooks.json","kind":"hook-projection","source_path":"hooks.json","destination":"hooks.json","sha256":"` + digest + `","sha256":"` + digest + `"}`,
+			live: `{"id":"hook-file:hooks/x.sh","kind":"hook-file","source_path":"hooks/x.sh","destination":"hooks/x.sh","sha256":"` + digest + `","sha256":"` + digest + `","mode":493}`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := realpath(t, t.TempDir())
+			path := filepath.Join(dir, "manifest.json")
+			writeInstallFile(t, path, manifest(defect.hook, liveRow))
+
+			read, err := readTargetAdapterManifest(path)
+			if err != nil {
+				t.Fatalf("readTargetAdapterManifest(%s in the retired row) error = %v, want it read tolerantly", name, err)
+			}
+			if !read.carriedObsoleteHookRow {
+				t.Fatal("carriedObsoleteHookRow = false; prior-install detection must still see the row that was dropped")
+			}
+			if len(read.Artifacts) != 2 {
+				t.Fatalf("artifacts = %#v, want the retired row dropped and both live rows kept", read.Artifacts)
+			}
+			rewritten := filepath.Join(dir, "rewritten.json")
+			if err := writeTargetAdapterManifest(rewritten, read); err != nil {
+				t.Fatalf("writeTargetAdapterManifest error = %v", err)
+			}
+			if body := string(readFileBytes(t, rewritten)); strings.Contains(body, obsoleteHookProjectionKind) {
+				t.Fatalf("rewritten manifest = %s, want the retired row absent after the next write", body)
+			}
+
+			// The same defect in a row this version does have semantics for is
+			// still a refusal: tolerance is scoped to the retired kind.
+			strict := filepath.Join(dir, "strict.json")
+			writeInstallFile(t, strict, manifest(defect.hook, defect.live))
+			if _, err := readTargetAdapterManifest(strict); err == nil {
+				t.Fatalf("readTargetAdapterManifest(%s in a live row) error = nil, want the live row still judged strictly", name)
+			}
+		})
+	}
+}
+
+// Two documents that would let a defect through the strip rather than be caught
+// by it. Both are refusals, and in both the strip has to leave the bytes exactly
+// as it found them — a repair applied on the way past is how a document reaches
+// the strict pass already made to look valid.
+func TestStripObsoleteHookProjectionRowsRefusesToIdentifyAmbiguousDocuments(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	live := `{"id":"hook-file:hooks/x.sh","kind":"hook-file","source_path":"hooks/x.sh","destination":"hooks/x.sh","sha256":"` + digest + `","mode":493}`
+	instruction := `{"id":"managed-instructions","kind":"instruction","destination":"project-instructions","sha256":"` + digest + `"}`
+	manifest := func(rows string, trailing string) string {
+		return `{"version":1,"target":"cursor","package_version":"0.2.20","capability_contract_version":3,` +
+			`"adapters":["cursor-session-start-v1"],"artifacts":[` + rows + `]}` + trailing
+	}
+	// A row claiming both kinds: last-wins identification would drop it, which
+	// launders the duplicate key and discards a row whose first kind is live.
+	duplicateKind := `{"id":"hook-projection:hooks.json","kind":"hook-file","kind":"hook-projection","source_path":"hooks.json","destination":"hooks.json","sha256":"` + digest + `","mode":493}`
+	// A retired row that would strip cleanly, behind a stray closing delimiter
+	// that a rebuild would silently drop.
+	retired := `{"id":"hook-projection:hooks.json","kind":"hook-projection","source_path":"hooks.json","destination":"hooks.json","sha256":"` + digest + `"}`
+
+	for name, testCase := range map[string]struct{ body, wantError string }{
+		"duplicate kind field":  {body: manifest(duplicateKind+","+instruction, ""), wantError: `duplicate object key "kind"`},
+		"trailing delimiter":    {body: manifest(retired+","+live+","+instruction, "}"), wantError: "trailing JSON values"},
+		"trailing array delim":  {body: manifest(retired+","+live+","+instruction, "]"), wantError: "trailing JSON values"},
+		"trailing second value": {body: manifest(retired+","+live+","+instruction, "{}"), wantError: "trailing JSON values"},
+		// Bytes Unicode calls whitespace and JSON calls a syntax error. Each is
+		// invalid trailing content the strict pass rejects, so the strip must not
+		// erase it on the way past.
+		"trailing vertical tab":       {body: manifest(retired+","+live+","+instruction, "\v"), wantError: "trailing JSON values"},
+		"trailing form feed":          {body: manifest(retired+","+live+","+instruction, "\f"), wantError: "trailing JSON values"},
+		"trailing non-breaking space": {body: manifest(retired+","+live+","+instruction, " "), wantError: "trailing JSON values"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stripped, dropped := stripObsoleteHookProjectionRows([]byte(testCase.body))
+			if dropped {
+				t.Fatalf("stripObsoleteHookProjectionRows reported a drop for %s; an unidentifiable document must be handed back whole", name)
+			}
+			if string(stripped) != testCase.body {
+				t.Fatalf("stripped = %s, want the original bytes untouched so the strict pass sees what was written", stripped)
+			}
+
+			path := filepath.Join(realpath(t, t.TempDir()), "manifest.json")
+			writeInstallFile(t, path, testCase.body)
+			_, err := readTargetAdapterManifest(path)
+			if err == nil {
+				t.Fatalf("readTargetAdapterManifest(%s) error = nil, want the strict refusal", name)
+			}
+			if !strings.Contains(err.Error(), testCase.wantError) {
+				t.Fatalf("readTargetAdapterManifest(%s) error = %v, want it to name %q", name, err, testCase.wantError)
+			}
+		})
+	}
+
+	// The distinction the rule turns on: a repeat in a field that is not the
+	// identity leaves the identity unambiguous, so that row still drops.
+	repeatedDigest := `{"id":"hook-projection:hooks.json","kind":"hook-projection","source_path":"hooks.json","destination":"hooks.json","sha256":"` + digest + `","sha256":"` + digest + `"}`
+	stripped, dropped := stripObsoleteHookProjectionRows([]byte(manifest(repeatedDigest+","+live+","+instruction, "")))
+	if !dropped || strings.Contains(string(stripped), obsoleteHookProjectionKind) {
+		t.Fatalf("stripObsoleteHookProjectionRows(repeated non-identity field) = %s, %v, want the row still dropped", stripped, dropped)
+	}
+
+	// And the four bytes JSON does allow after the document, which is how every
+	// manifest anyone actually wrote ends. Narrowing the character class must
+	// not cost the common case its strip.
+	for name, trailing := range map[string]string{
+		"newline":          "\n",
+		"carriage return":  "\r\n",
+		"spaces and tabs":  " \t ",
+		"nothing at all":   "",
+		"blank final line": "\n\n",
+	} {
+		t.Run("trailing "+name+" still strips", func(t *testing.T) {
+			body := manifest(retired+","+live+","+instruction, trailing)
+			stripped, dropped := stripObsoleteHookProjectionRows([]byte(body))
+			if !dropped {
+				t.Fatalf("stripObsoleteHookProjectionRows(%q) reported no drop; valid trailing whitespace must not block the strip", trailing)
+			}
+			if strings.Contains(string(stripped), obsoleteHookProjectionKind) {
+				t.Fatalf("stripped = %s, want the retired row gone", stripped)
+			}
+			path := filepath.Join(realpath(t, t.TempDir()), "manifest.json")
+			writeInstallFile(t, path, body)
+			read, err := readTargetAdapterManifest(path)
+			if err != nil {
+				t.Fatalf("readTargetAdapterManifest error = %v, want the ordinary document read", err)
+			}
+			if !read.carriedObsoleteHookRow || len(read.Artifacts) != 2 {
+				t.Fatalf("read = %#v, want the row seen, dropped, and both live rows kept", read)
 			}
 		})
 	}

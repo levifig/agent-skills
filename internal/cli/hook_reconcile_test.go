@@ -130,6 +130,41 @@ func TestHookReconcilePreservesTheCodexDocumentAroundAnAbsorption(t *testing.T) 
 	}
 }
 
+// Codex handler shapes Loaf has no model of at all. The whole-file merge used
+// to parse these against its own schema and refuse the ones it could not
+// classify; reconciliation carries them as the raw values they are, so a prompt
+// handler, an agent handler, a command handler with current-schema fields Loaf
+// never writes, and the degenerate groups all survive value-identical and in
+// position — through a reconcile that does write, so the guarantee is about
+// what was republished rather than about a file nobody touched.
+func TestHookReconcilePreservesForeignCodexHandlerShapes(t *testing.T) {
+	fixture := newCodexHookFixture(t)
+	live := `{"description":"canary hooks","hooks":{"SessionStart":[` +
+		`{},` +
+		`{"matcher":null},` +
+		`{"matcher":"resume","hooks":[{"type":"prompt"}]},` +
+		`{"matcher":"clear","hooks":[{"type":"agent"}]},` +
+		`{"matcher":"compact","hooks":[{"type":"command","command":"user hook","command_windows":"powershell user hook","timeout":0,"async":true,"statusMessage":"checking"}]}` +
+		`],"Stop":[]}}`
+	fixture.writeHooks(t, live)
+	before := testHookDocumentSnapshot(t, []byte(live), fixture.recognition(t))
+
+	actions := fixture.apply(t)
+
+	if !testHookHasAnyAction(actions, hookActionAdd) {
+		t.Fatalf("actions = %s, want the reconcile to have written the file", describeHookActions(actions))
+	}
+	after := testHookDocumentSnapshot(t, []byte(fixture.readHooks(t)), fixture.recognition(t))
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("a foreign handler shape did not survive the reconcile:\nbefore %#v\nafter  %#v", before, after)
+	}
+	for _, shape := range []string{`"type":"prompt"`, `"type":"agent"`, `"command_windows":"powershell user hook"`, `"statusMessage":"checking"`} {
+		if !strings.Contains(strings.ReplaceAll(fixture.readHooks(t), " ", ""), strings.ReplaceAll(shape, " ", "")) {
+			t.Fatalf("hooks file lost %s:\n%s", shape, fixture.readHooks(t))
+		}
+	}
+}
+
 // The goldens above prove the post-verify comparison stays silent when nothing
 // moved, which is only half of what it is for. These are the mutations it has
 // to name — and the middle two are the reason it compares values in order
@@ -632,6 +667,39 @@ func TestHookReconcileProjectsWindowsCommandParity(t *testing.T) {
 	if len(actions) != 0 {
 		t.Fatalf("actions = %s, want the Windows projection recognized as converged", describeHookActions(actions))
 	}
+
+	// Loaf moves. The entry written against the old path is still recognized —
+	// the recorded trusted path says so — and converges to the new one in place
+	// rather than being orphaned beside a second group.
+	rotated := `C:\Program Files\loaf\loaf.exe`
+	moved := windows()
+	moved.resolveExecutable = func() (string, error) { return rotated, nil }
+	actions, err = moved.apply(t.Context())
+	if err != nil {
+		t.Fatalf("rotated apply error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].action != hookActionUpdate {
+		t.Fatalf("actions = %s, want the moved executable converged in place", describeHookActions(actions))
+	}
+	file, err = readHookFile(fixture.hooks)
+	if err != nil {
+		t.Fatalf("readHookFile error = %v", err)
+	}
+	entries, err = file.eventEntries("SessionStart")
+	if err != nil {
+		t.Fatalf("eventEntries error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %#v, want the rotation to converge one entry rather than add another", entries)
+	}
+	handler = entries[0]["hooks"].([]any)[0].(map[string]any)
+	want, err = codexWindowsJournalContextCommand(rotated)
+	if err != nil {
+		t.Fatalf("codexWindowsJournalContextCommand error = %v", err)
+	}
+	if handler["command"] != want || handler["commandWindows"] != want {
+		t.Fatalf("handler = %#v, want both command fields rotated to %q", handler, want)
+	}
 }
 
 // The race the shape names: an upgrade that reads enabled must not write the
@@ -1120,6 +1188,150 @@ func TestInstallTargetKeepsAbsorptionRecordsWhenTheAdapterSyncFails(t *testing.T
 	fixture.assertHooksUnchanged(t, live)
 }
 
+// The retired whole-file hooks row an older release left in the installed
+// manifest is dropped by the next manifest write — and that write is sequenced
+// after the absorption marker is durable, never used as the gate for it. The
+// gap between the two is a real crash window, so it is injected here: what the
+// crashed run leaves behind must be readable by the retry as exactly the same
+// prior install, and the absorption must not happen twice.
+func TestInstallTargetDropsTheObsoleteHookRowAfterTheMarkerIsDurable(t *testing.T) {
+	fixture := newCodexHookFixture(t)
+	live := string(testHookFixture(t, "codex-hooks-live.json"))
+	fixture.writeHooks(t, live)
+	fixture.writeInstalledManifest(t, testHookPriorVersion)
+	manifestPath := filepath.Join(fixture.config, targetInstallManifestFile)
+	if !strings.Contains(string(readFileBytes(t, manifestPath)), obsoleteHookProjectionKind) {
+		t.Fatal("the prior release's manifest carries no obsolete hooks row; this test has no subject")
+	}
+
+	failing := fixture.options
+	failing.TargetAdapterOps = &targetAdapterInstallOperations{beforePublish: func() error { return errHookCrashInjection }}
+	if err := installTargetDistribution(failing); !errors.Is(err, errHookCrashInjection) {
+		t.Fatalf("install error = %v, want the injected failure between the marker and the manifest write", err)
+	}
+
+	if _, marked, err := fixture.store.GetHookAbsorptionMarker(t.Context(), "codex"); err != nil || !marked {
+		t.Fatalf("marker = %v, %v, want it durable before the manifest write ran", marked, err)
+	}
+	row, found, err := fixture.store.GetHookEnablement(t.Context(), "codex", "SessionStart", "session-start-loaf")
+	if err != nil || !found || row.Enablement != state.HookEnablementDisabled || row.AbsorbedAt == nil {
+		t.Fatalf("record = %#v, %v, %v, want the absorption committed before the crash", row, found, err)
+	}
+	absorbedAt := *row.AbsorbedAt
+	if !strings.Contains(string(readFileBytes(t, manifestPath)), obsoleteHookProjectionKind) {
+		t.Fatal("the crashed run dropped the obsolete row; only a completed manifest write may drop it")
+	}
+
+	if err := installTargetDistribution(fixture.options); err != nil {
+		t.Fatalf("retry install error = %v", err)
+	}
+
+	if body := string(readFileBytes(t, manifestPath)); strings.Contains(body, obsoleteHookProjectionKind) {
+		t.Fatalf("installed manifest = %s, want the obsolete row absent after the next write", body)
+	}
+	rows, err := fixture.store.ListHookEnablements(t.Context(), "codex")
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("enablement rows = %#v, %v, want exactly the one record the first run absorbed", rows, err)
+	}
+	if rows[0].AbsorbedAt == nil || *rows[0].AbsorbedAt != absorbedAt {
+		t.Fatalf("absorbed_at = %v, want the provenance from the first run (%q) rather than a second absorption", rows[0].AbsorbedAt, absorbedAt)
+	}
+	fixture.assertHooksUnchanged(t, live)
+}
+
+// The tolerance the reader promises, stated where it actually matters: an
+// upgrade that meets a retired row it cannot make sense of still absorbs. Each
+// defect here is one a later release could plausibly have left behind, and
+// under the strict rules every one of them would abort the read — and with it
+// the migration — before a single record was written.
+func TestInstallTargetAbsorbsThroughADefectiveObsoleteHookRow(t *testing.T) {
+	for name, injectDefect := range map[string]func(string) string{
+		"unknown field": func(body string) string {
+			return strings.Replace(body, `"kind": "hook-projection",`, `"kind": "hook-projection",
+      "projection_generation": 7,`, 1)
+		},
+		"wrong-typed field": func(body string) string {
+			return strings.Replace(body, `"kind": "hook-projection",`, `"kind": "hook-projection",
+      "mode": "0644",`, 1)
+		},
+		"duplicate key inside the row": func(body string) string {
+			return strings.Replace(body, `"kind": "hook-projection",`, `"kind": "hook-projection",
+      "destination": "hooks.json",`, 1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture := newCodexHookFixture(t)
+			live := string(testHookFixture(t, "codex-hooks-live.json"))
+			fixture.writeHooks(t, live)
+			manifestPath := filepath.Join(fixture.config, targetInstallManifestFile)
+			defective := injectDefect(testHookTargetManifestBody(t, "codex", testHookPriorVersion, ""))
+			if !strings.Contains(defective, obsoleteHookProjectionKind) {
+				t.Fatal("the defect injection lost the retired row; this test has no subject")
+			}
+			writeInstallFile(t, manifestPath, defective)
+
+			if err := installTargetDistribution(fixture.options); err != nil {
+				t.Fatalf("install error = %v, want the defective retired row read tolerantly", err)
+			}
+
+			// Absorbed: the row was still readable as evidence of a prior install,
+			// so the hook the operator deleted is recorded rather than re-added.
+			row, found, err := fixture.store.GetHookEnablement(t.Context(), "codex", "SessionStart", "session-start-loaf")
+			if err != nil || !found || row.Enablement != state.HookEnablementDisabled || row.AbsorbedAt == nil {
+				t.Fatalf("record = %#v, %v, %v, want the absorption the retired row is evidence for", row, found, err)
+			}
+			if _, marked, err := fixture.store.GetHookAbsorptionMarker(t.Context(), "codex"); err != nil || !marked {
+				t.Fatalf("marker = %v, %v, want the migration window closed", marked, err)
+			}
+			// Dropped: whatever the row carried is gone from the next write.
+			if body := string(readFileBytes(t, manifestPath)); strings.Contains(body, obsoleteHookProjectionKind) {
+				t.Fatalf("installed manifest = %s, want the defective row absent after the next write", body)
+			}
+			fixture.assertHooksUnchanged(t, live)
+		})
+	}
+}
+
+// Tolerance stops where identification does. A manifest whose retired row
+// cannot be told apart from a live one, or whose bytes carry something the
+// stripper would have to repair on the way past, is refused outright — and
+// refused before anything is recorded, because absorbing on the strength of a
+// row Loaf could not identify is exactly the guess Decision 7 forbids.
+func TestInstallTargetRefusesAManifestWhoseRetiredRowCannotBeIdentified(t *testing.T) {
+	for name, corrupt := range map[string]func(string) string{
+		"duplicate kind field": func(body string) string {
+			return strings.Replace(body, `"kind": "hook-projection",`, `"kind": "hook-file",
+      "kind": "hook-projection",`, 1)
+		},
+		"trailing delimiter": func(body string) string {
+			return strings.TrimRight(body, "\n") + "}\n"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture := newCodexHookFixture(t)
+			live := string(testHookFixture(t, "codex-hooks-live.json"))
+			fixture.writeHooks(t, live)
+			manifestPath := filepath.Join(fixture.config, targetInstallManifestFile)
+			corrupted := corrupt(testHookTargetManifestBody(t, "codex", testHookPriorVersion, ""))
+			writeInstallFile(t, manifestPath, corrupted)
+
+			if err := installTargetDistribution(fixture.options); err == nil {
+				t.Fatalf("install error = nil, want the unidentifiable manifest refused")
+			}
+
+			rows, err := fixture.store.ListHookEnablements(t.Context(), "codex")
+			if err != nil || len(rows) != 0 {
+				t.Fatalf("enablement rows = %#v, %v, want nothing absorbed from a manifest Loaf could not read", rows, err)
+			}
+			if _, marked, err := fixture.store.GetHookAbsorptionMarker(t.Context(), "codex"); err != nil || marked {
+				t.Fatalf("marker = %v, %v, want the migration window still open", marked, err)
+			}
+			assertInstallFile(t, manifestPath, corrupted)
+			fixture.assertHooksUnchanged(t, live)
+		})
+	}
+}
+
 // The other half of install's ordering, and the window the reconciler-level
 // tests cannot reach: the records are durable, the adapter sync has already
 // replaced the prior release's manifest, and the run dies before the file is
@@ -1300,8 +1512,8 @@ func TestHookReconcilePlanNeverConflictsOverTheHooksFile(t *testing.T) {
 		if decision.Action == planActionConflict {
 			t.Fatalf("plan decision = %#v, want no file-level conflict for a diverged hooks file", decision)
 		}
-		if decision.Kind == "hook-projection" {
-			t.Fatalf("plan decision = %#v, want hook projections planned per entry", decision)
+		if decision.Kind == obsoleteHookProjectionKind {
+			t.Fatalf("plan decision = %#v, want the hooks file planned per entry", decision)
 		}
 	}
 	if !testHookDecisionsContain(decisions, hookActionUpdate, "hook:sessionStart/session-start-loaf") {
@@ -1473,8 +1685,9 @@ func (f hookFixture) decodeHooks(t *testing.T) map[string]any {
 }
 
 // writeInstalledManifest stands in for what a previous release left behind: a
-// manifest naming the version it shipped and the hook projection it owned, plus
-// the recorded hook-file destinations recognition matches against.
+// manifest naming the version it shipped, the retired whole-file hooks row that
+// release wrote, and the recorded hook-file destinations recognition matches
+// against.
 func (f hookFixture) writeInstalledManifest(t *testing.T, version string) {
 	t.Helper()
 	writeTestHookTargetManifest(t, filepath.Join(f.config, targetInstallManifestFile), f.options.Target, version)
