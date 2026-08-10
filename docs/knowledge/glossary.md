@@ -2,7 +2,7 @@
 type: glossary
 topics:
   - glossary
-last_reviewed: '2026-07-30'
+last_reviewed: 2026-08-10
 ---
 ## Canonical Terms
 
@@ -90,6 +90,10 @@ The display states computed from artifacts and history — captured → shaped �
 
 _Avoid_: workflow status, lifecycle stage, pitched-state machinery
 
+### Arc
+
+A release cohort viewed as narrative: the linked Changes that complete together into one X release. Synonym of Release Cohort (ADR-022: the cohort is the arc); a standalone unpinned Change is an arc of one.
+
 ## Candidates
 
 
@@ -97,3 +101,4 @@ _Avoid_: workflow status, lifecycle stage, pitched-state machinery
 
 
 ## Flagged ambiguities
+
