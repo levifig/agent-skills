@@ -5,7 +5,7 @@ description: >-
   verification. Use when reviewing code for security, managing secrets,
   performing threat analysis, or running compliance audits. Not for debugging
   (use debugging) or general code review (use foundations).
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Security & Compliance

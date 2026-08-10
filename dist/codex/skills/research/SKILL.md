@@ -6,7 +6,7 @@ description: >-
   Produces state assessments, research findings with ranked options, or vision
   change proposals. Not for problem discovery that should author a brief (use
   pitch), multi-agent coordination (use orchestration), or implementation.
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Research

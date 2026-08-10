@@ -7,7 +7,7 @@ description: >-
   change proposals. Not for problem discovery that should author a brief (use
   pitch), multi-agent coordination (use orchestration), or implementation.
 subtask: false
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Research

@@ -8,7 +8,7 @@ description: >-
   tracking an Intent or handing to pitch. Not for problem discovery (use pitch),
   processing the intake queue (use triage), shaping (use shape), or agent-side
   divergent inquiry when direction is undecided (use explore as a technique).
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Idea

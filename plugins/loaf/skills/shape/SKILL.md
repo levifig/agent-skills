@@ -16,7 +16,7 @@ description: >-
   entry intent routes to pitch).
 user-invocable: true
 argument-hint: '[messy input to shape into a Change]'
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Shape

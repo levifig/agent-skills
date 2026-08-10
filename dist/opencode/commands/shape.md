@@ -14,7 +14,7 @@ description: >-
   open-ended divergent thinking (agent technique: explore / brainstorm — user
   entry intent routes to pitch).
 subtask: false
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Shape

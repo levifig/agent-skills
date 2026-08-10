@@ -8,7 +8,7 @@ description: >-
   reflect).
 user-invocable: true
 argument-hint: '[topic]'
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Strategy

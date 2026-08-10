@@ -9,7 +9,7 @@ description: >-
   research, or review.
 user-invocable: true
 argument-hint: '[TASK-XXX | SPEC-XXX | TASK-XXX..YYY | TASK-XXX,YYY | description]'
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Implement
