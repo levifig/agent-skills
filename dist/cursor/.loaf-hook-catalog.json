@@ -1,0 +1,608 @@
+{
+  "version": 1,
+  "target": "cursor",
+  "package_version": "0.2.20",
+  "entries": [
+    {
+      "event": "preToolUse",
+      "hook_id": "artifact-body-write",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Edit|Write|Bash",
+        "failClosed": true,
+        "command": "loaf check --hook artifact-body-write"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "check",
+          "--hook",
+          "artifact-body-write"
+        ]
+      ],
+      "stems": [
+        [
+          "--hook",
+          "artifact-body-write"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "check-secrets",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Edit|Write|Bash",
+        "failClosed": true,
+        "command": "loaf check --hook check-secrets"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "check",
+          "--hook",
+          "check-secrets"
+        ]
+      ],
+      "stems": [
+        [
+          "--hook",
+          "check-secrets"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "security-audit",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 600,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook security-audit"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "check",
+          "--hook",
+          "security-audit"
+        ]
+      ],
+      "stems": [
+        [
+          "--hook",
+          "security-audit"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "render-drift",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook render-drift",
+        "if": "Bash(git push:*)"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "check",
+          "--hook",
+          "render-drift"
+        ]
+      ],
+      "stems": [
+        [
+          "--hook",
+          "render-drift"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "ephemeral-provenance",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook ephemeral-provenance",
+        "if": "Bash(git push:*)"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "check",
+          "--hook",
+          "ephemeral-provenance"
+        ]
+      ],
+      "stems": [
+        [
+          "--hook",
+          "ephemeral-provenance"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "artifact-names",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook artifact-names",
+        "if": "Bash(git commit:*)"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "check",
+          "--hook",
+          "artifact-names"
+        ]
+      ],
+      "stems": [
+        [
+          "--hook",
+          "artifact-names"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "github-account",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 10,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook github-account"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "check",
+          "--hook",
+          "github-account"
+        ]
+      ],
+      "stems": [
+        [
+          "--hook",
+          "github-account"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "validate-push",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 60,
+        "matcher": "Bash",
+        "command": "loaf check --hook validate-push --advisory",
+        "if": "Bash(git push:*)"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "check",
+          "--hook",
+          "validate-push",
+          "--advisory"
+        ]
+      ],
+      "stems": [
+        [
+          "--hook",
+          "validate-push"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "workflow-pre-pr",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "loaf check --hook workflow-pre-pr --advisory",
+        "if": "Bash(gh pr create:*)"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "check",
+          "--hook",
+          "workflow-pre-pr",
+          "--advisory"
+        ]
+      ],
+      "stems": [
+        [
+          "--hook",
+          "workflow-pre-pr"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "workflow-pre-merge",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-merge.md\"",
+        "if": "Bash(gh pr merge:*)"
+      },
+      "signatures": [
+        [
+          "cat",
+          "$HOME/.cursor/hooks/instructions/pre-merge.md"
+        ]
+      ],
+      "stems": [
+        [
+          "$HOME/.cursor/hooks/instructions/pre-merge.md"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "workflow-pre-push",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-push.md\"",
+        "if": "Bash(git push:*)"
+      },
+      "signatures": [
+        [
+          "cat",
+          "$HOME/.cursor/hooks/instructions/pre-push.md"
+        ]
+      ],
+      "stems": [
+        [
+          "$HOME/.cursor/hooks/instructions/pre-push.md"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "validate-commit",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook validate-commit",
+        "if": "Bash(git commit:*)"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "check",
+          "--hook",
+          "validate-commit"
+        ]
+      ],
+      "stems": [
+        [
+          "--hook",
+          "validate-commit"
+        ]
+      ]
+    },
+    {
+      "event": "preToolUse",
+      "hook_id": "detect-linear-magic",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "command": "loaf journal log --detect-linear",
+        "if": "Bash(git commit:*)"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "journal",
+          "log",
+          "--detect-linear"
+        ]
+      ],
+      "stems": [
+        [
+          "journal",
+          "log",
+          "--detect-linear"
+        ]
+      ]
+    },
+    {
+      "event": "postToolUse",
+      "hook_id": "generate-task-board",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Edit|Write",
+        "command": "loaf task refresh"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "task",
+          "refresh"
+        ]
+      ],
+      "stems": [
+        [
+          "task",
+          "refresh"
+        ]
+      ]
+    },
+    {
+      "event": "postToolUse",
+      "hook_id": "kb-staleness-nudge",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Edit|Write",
+        "command": "bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh"
+      },
+      "signatures": [
+        [
+          "bash",
+          "$HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh"
+        ]
+      ],
+      "stems": [
+        [
+          "$HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh"
+        ]
+      ]
+    },
+    {
+      "event": "postToolUse",
+      "hook_id": "workflow-post-merge",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "cat \"$HOME/.cursor/hooks/instructions/post-merge.md\"",
+        "if": "Bash(gh pr merge:*)"
+      },
+      "signatures": [
+        [
+          "cat",
+          "$HOME/.cursor/hooks/instructions/post-merge.md"
+        ]
+      ],
+      "stems": [
+        [
+          "$HOME/.cursor/hooks/instructions/post-merge.md"
+        ]
+      ]
+    },
+    {
+      "event": "sessionStart",
+      "hook_id": "session-start-loaf",
+      "type": "command",
+      "template": {
+        "loaf-managed": true,
+        "timeout": 60,
+        "command": "loaf journal context --from-hook --cursor-hook"
+      },
+      "signatures": [
+        [
+          "loaf",
+          "journal",
+          "context",
+          "--from-hook",
+          "--cursor-hook"
+        ],
+        [
+          "loaf",
+          "journal",
+          "context"
+        ],
+        [
+          "loaf",
+          "journal",
+          "context",
+          "--from-hook"
+        ]
+      ],
+      "stems": [
+        [
+          "journal",
+          "context",
+          "--from-hook"
+        ]
+      ]
+    }
+  ],
+  "cohorts": [
+    {
+      "version": "2.0.0-alpha.14",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.15",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.16",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.17",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.18",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.19",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    },
+    {
+      "version": "0.2.20",
+      "hook_ids": [
+        "artifact-body-write",
+        "artifact-names",
+        "check-secrets",
+        "detect-linear-magic",
+        "ephemeral-provenance",
+        "generate-task-board",
+        "github-account",
+        "kb-staleness-nudge",
+        "render-drift",
+        "security-audit",
+        "session-start-loaf",
+        "validate-commit",
+        "validate-push",
+        "workflow-post-merge",
+        "workflow-pre-merge",
+        "workflow-pre-pr",
+        "workflow-pre-push"
+      ]
+    }
+  ]
+}

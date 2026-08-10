@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -160,6 +161,11 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 
 	toolByKey := installToolsByKey(tools)
 	defaults := defaultInstallConfigDirs()
+	// A plan reads hook enablement and never creates it: a dry run that brought
+	// a state database into existence would be a write, and the plan promises
+	// none.
+	hookState, releaseHookState := r.hookStateForPlan(projectRoot)
+	defer releaseHookState()
 	buildNeeded := false
 	var plannedOptions []targetInstallOptions
 	for _, target := range selectedTargets {
@@ -190,6 +196,7 @@ func (r Runner) buildInstallDryRunPlan(options installOptions, loafRoot string, 
 			HomeDir:            installHome(),
 			CodexHome:          os.Getenv("CODEX_HOME"),
 			ProjectRoot:        projectRoot,
+			HookState:          hookState,
 		}
 		plannedOptions = append(plannedOptions, installOpts)
 		decisions, err := planTargetDistribution(installOpts)
@@ -488,8 +495,23 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 	var decisions []artifactPlanDecision
 	desiredDestinations := map[string]bool{}
 
+	// Hook entries are planned per identity by the reconciler, from the same
+	// computation apply runs. It reads state and the live file and writes
+	// nothing.
+	reconciler, err := newHookReconciler(options)
+	if err != nil {
+		return nil, err
+	}
+	if reconciler != nil {
+		actions, err := reconciler.plan(context.Background())
+		if err != nil {
+			return nil, err
+		}
+		decisions = append(decisions, hookActionPlanDecisions(reconciler, actions)...)
+	}
+
 	for _, artifact := range desired.Artifacts {
-		if artifact.Kind == "instruction" {
+		if skipTargetAdapterArtifact(artifact) {
 			continue
 		}
 		if err := verifyTargetAdapterSource(options, artifact); err != nil {
@@ -511,32 +533,9 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 			decisions = append(decisions, decision)
 			continue
 		}
-		// A destination the apply path cannot parse as the artifact kind must
-		// never be promised as a merge: report the refusal and leave the rest
-		// of the plan free to continue.
-		if artifact.Kind == "hook-projection" {
-			if refuse, detail := planHookProjectionRefusal(options.Target, path, snapshot.body); refuse {
-				decision.Action = planActionConflict
-				decision.Detail = detail
-				decisions = append(decisions, decision)
-				continue
-			}
-		}
-		matchesDesired, err := targetAdapterSnapshotMatchesArtifact(options.Target, artifact, snapshot)
-		if err != nil {
-			decision.Action = planActionConflict
-			decision.Detail = err.Error()
-			decisions = append(decisions, decision)
-			continue
-		}
+		matchesDesired := targetAdapterSnapshotMatchesArtifact(artifact, snapshot)
 		if owned {
-			matchesInstalled, err := targetAdapterSnapshotMatchesArtifact(options.Target, installedByID[artifact.ID], snapshot)
-			if err != nil {
-				decision.Action = planActionConflict
-				decision.Detail = err.Error()
-				decisions = append(decisions, decision)
-				continue
-			}
+			matchesInstalled := targetAdapterSnapshotMatchesArtifact(installedByID[artifact.ID], snapshot)
 			switch {
 			case !matchesInstalled && !matchesDesired:
 				decision.Action = planActionConflict
@@ -556,9 +555,6 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 		case targetAdapterLegacyOwnership(options.Target, artifact, snapshot.body):
 			decision.Action = planActionUpdate
 			decision.Detail = "adopting legacy Loaf-owned content"
-		case artifact.Kind == "hook-projection" && targetHookProjectionIsEmpty(options.Target, snapshot.body):
-			decision.Action = planActionUpdate
-			decision.Detail = "merging managed hooks into user-owned projection"
 		default:
 			decision.Action = planActionConflict
 			decision.Detail = "destination exists and is not managed by Loaf"
@@ -568,7 +564,7 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 
 	// Retire installed artifacts the desired manifest no longer ships.
 	for _, artifact := range installed.Artifacts {
-		if artifact.Kind == "instruction" {
+		if skipTargetAdapterArtifact(artifact) {
 			continue
 		}
 		if _, keep := desiredByID[artifact.ID]; keep {
@@ -589,11 +585,7 @@ func planTargetAdapterArtifacts(options targetInstallOptions) ([]artifactPlanDec
 			continue
 		}
 		decision := artifactPlanDecision{ID: artifact.ID, Kind: artifact.Kind, Destination: artifact.Destination, Action: planActionRetire}
-		matchesInstalled, err := targetAdapterSnapshotMatchesArtifact(options.Target, artifact, snapshot)
-		if err != nil {
-			return nil, fmt.Errorf("inspect retired target artifact %q: %w", artifact.ID, err)
-		}
-		if !matchesInstalled && artifact.Kind != "hook-projection" {
+		if !targetAdapterSnapshotMatchesArtifact(artifact, snapshot) {
 			decision.Action = planActionConflict
 			decision.Detail = "managed target artifact was modified; refusing to remove"
 		}
@@ -765,78 +757,30 @@ func planCodexGuidanceFile(guidanceDest string, ownedGuidance bool, ownedGuidanc
 	return decision, nil
 }
 
-// planLegacyHookArtifacts reports the no-manifest hook refresh. For cursor and
-// codex the apply path merges into hooks.json, so the plan must refuse the same
-// destinations that mergeHookFiles / mergeCodexHookFiles would rather than
-// promise an update apply will decline.
+// planLegacyHookArtifacts reports the no-manifest hook refresh for the targets
+// that still have one: a distribution predating the target adapter manifest
+// refreshes plugins wholesale on apply.
 func planLegacyHookArtifacts(options targetInstallOptions) ([]artifactPlanDecision, error) {
-	decision := artifactPlanDecision{
+	// A target whose entries are reconciled has no legacy path left to promise:
+	// apply refuses a build output that predates the catalog, so the plan says
+	// the same thing rather than describing a refresh that will not happen.
+	if targetReconcilesHookEntries(options) {
+		_, err := newHookReconciler(options)
+		return []artifactPlanDecision{{
+			ID:          "hooks",
+			Kind:        "hook-legacy",
+			Destination: targetHookFilePath(options),
+			Action:      planActionConflict,
+			Detail:      err.Error(),
+		}}, nil
+	}
+	return []artifactPlanDecision{{
 		ID:          "hooks",
 		Kind:        "hook-legacy",
 		Destination: options.ConfigDir,
 		Action:      planActionUpdate,
 		Detail:      "legacy build output without a target adapter manifest; hooks/plugins refreshed on apply",
-	}
-	path, refusalTarget := legacyHookMergePath(options)
-	if path == "" {
-		return []artifactPlanDecision{decision}, nil
-	}
-	decision.Destination = path
-	body, err := readRegularFile(path, projectFileReadLimit)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []artifactPlanDecision{decision}, nil
-		}
-		decision.Action = planActionConflict
-		decision.Detail = fmt.Sprintf("%s could not be inspected (%v) — preserving it as written", path, err)
-		return []artifactPlanDecision{decision}, nil
-	}
-	if refuse, detail := planHookProjectionRefusal(refusalTarget, path, body); refuse {
-		decision.Action = planActionConflict
-		decision.Detail = detail
-		return []artifactPlanDecision{decision}, nil
-	}
-	return []artifactPlanDecision{decision}, nil
-}
-
-// legacyHookMergePath returns the hooks.json path the no-manifest apply path
-// merges into for cursor and codex, plus the planHookProjectionRefusal target
-// key. Other targets do not merge a legacy hooks.json here.
-func legacyHookMergePath(options targetInstallOptions) (path string, refusalTarget string) {
-	switch options.Target {
-	case "cursor":
-		return filepath.Join(options.ConfigDir, "hooks.json"), "cursor"
-	case "codex":
-		codexHome := options.CodexHome
-		if codexHome == "" {
-			codexHome = filepath.Join(installHomeDir(options), ".codex")
-		}
-		return filepath.Join(codexHome, "hooks.json"), "codex"
-	default:
-		return "", ""
-	}
-}
-
-// planHookProjectionRefusal reports whether a hook-projection destination is
-// present but not a JSON object the apply merge would accept. The plan must
-// refuse rather than promise a merge that would serialize Loaf-only content
-// over the bytes it could not parse.
-func planHookProjectionRefusal(target string, path string, body []byte) (bool, string) {
-	switch target {
-	case "cursor":
-		var topLevel map[string]json.RawMessage
-		if err := json.Unmarshal(body, &topLevel); err != nil {
-			return true, fmt.Sprintf("%s does not parse as a JSON object (%v) — preserving it as written", path, err)
-		}
-		if topLevel == nil {
-			return true, fmt.Sprintf("%s does not parse as a JSON object (top-level value is null, not an object) — preserving it as written", path)
-		}
-	case "codex":
-		if _, err := decodeCodexHooksBodyStrict(body); err != nil {
-			return true, fmt.Sprintf("%s could not be parsed as Codex hooks (%v) — preserving it as written", path, err)
-		}
-	}
-	return false, ""
+	}}, nil
 }
 
 // planInstallDeprecations reuses applyInstallDeprecationCleanup with
@@ -1152,7 +1096,8 @@ func installPlanHasChanges(plan installDryRunPlan) bool {
 		}
 		for _, artifact := range target.Artifacts {
 			switch artifact.Action {
-			case planActionCreate, planActionUpdate, planActionRetire, planActionConflict:
+			case planActionCreate, planActionUpdate, planActionRetire, planActionConflict,
+				hookActionAdd, hookActionRemove, hookActionAbsorb:
 				return true
 			}
 		}
@@ -1326,16 +1271,25 @@ func installMcpPlanNotices(entries []mcpPlanEntry) []string {
 
 func planActionGlyph(action string) string {
 	switch action {
-	case planActionCreate, planActionUpdate, "created", "appended", "updated", "relinked", "replaced-file", "migrated":
+	case planActionCreate, planActionUpdate, hookActionAdd, "created", "appended", "updated", "relinked", "replaced-file", "migrated":
 		return ansiGreen("+")
-	case planActionRetire, "remove", "relocate":
+	case planActionRetire, hookActionRemove, "relocate":
 		return ansiYellow("-")
 	case planActionConflict, "error":
 		return ansiRed("✗")
-	case planActionPreserve, "skipped", "already-correct", planActionNone, "absent", "skip-unmarked":
+	case planActionPreserve, hookActionAbsorb, "skipped", "already-correct", planActionNone, "absent", "skip-unmarked":
 		return ansiGray("○")
 	default:
 		return ansiGray("•")
+	}
+}
+
+// writeHookActionLines reports what a reconcile did, nested under the target it
+// ran for. A converged target prints nothing, which is the point: the quiet
+// upgrade is the normal one.
+func writeHookActionLines(out io.Writer, actions []hookAction) {
+	for _, action := range actions {
+		fmt.Fprintf(out, "    %s %s %s%s\n", planActionGlyph(action.action), action.action, action.id(), planDetailSuffix(action.detail))
 	}
 }
 

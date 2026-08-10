@@ -8,6 +8,14 @@
   ],
   "artifacts": [
     {
+      "id": "hook-file:hooks/hooks.json",
+      "kind": "hook-file",
+      "source_path": "hooks/hooks.json",
+      "destination": "hooks/hooks.json",
+      "sha256": "564917493bfa795fee8a067e235e13eec5f992e098cb94540d2202cc6fe3cad4",
+      "mode": 420
+    },
+    {
       "id": "hook-file:hooks/instructions/post-merge.md",
       "kind": "hook-file",
       "source_path": "hooks/instructions/post-merge.md",
@@ -70,13 +78,6 @@
       "destination": "hooks/validate-sql-safety.sh",
       "sha256": "f3dc96bb160540e08bfa75e6c604087222c003a7abf8d9fd77800997375fd681",
       "mode": 493
-    },
-    {
-      "id": "hook-projection:hooks/hooks.json",
-      "kind": "hook-projection",
-      "source_path": "hooks/hooks.json",
-      "destination": "hooks/hooks.json",
-      "sha256": "564917493bfa795fee8a067e235e13eec5f992e098cb94540d2202cc6fe3cad4"
     },
     {
       "id": "managed-instructions",

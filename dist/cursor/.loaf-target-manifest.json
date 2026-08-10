@@ -56,13 +56,6 @@
       "mode": 493
     },
     {
-      "id": "hook-projection:hooks.json",
-      "kind": "hook-projection",
-      "source_path": "hooks.json",
-      "destination": "hooks.json",
-      "sha256": "ee62210b456405c5760a2de17676a42c09e130a27c576a1967180053b9c1047b"
-    },
-    {
       "id": "managed-instructions",
       "kind": "instruction",
       "destination": "project-instructions",

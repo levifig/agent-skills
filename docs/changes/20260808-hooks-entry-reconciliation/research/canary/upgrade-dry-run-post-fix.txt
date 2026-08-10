@@ -1,0 +1,89 @@
+
+[1mloaf upgrade --dry-run[0m
+  [90mPlan only — no files, manifests, config, or state will change.[0m
+
+  [1mSkills[0m
+    [90m○[0m preserve skill:architecture
+    [90m○[0m preserve skill:bootstrap
+    [90m○[0m preserve skill:brainstorm
+    [90m○[0m preserve skill:breakdown
+    [90m○[0m preserve skill:council
+    [90m○[0m preserve skill:database-design
+    [90m○[0m preserve skill:debugging
+    [90m○[0m preserve skill:documentation-standards
+    [90m○[0m preserve skill:explore
+    [90m○[0m preserve skill:foundations
+    [90m○[0m preserve skill:git-workflow
+    [90m○[0m preserve skill:go-development
+    [90m○[0m preserve skill:handoff
+    [90m○[0m preserve skill:housekeeping
+    [90m○[0m preserve skill:idea
+    [90m○[0m preserve skill:implement
+    [90m○[0m preserve skill:infrastructure-management
+    [90m○[0m preserve skill:interface-design
+    [90m○[0m preserve skill:knowledge-base
+    [32m+[0m update skill:loaf-reference
+    [90m○[0m preserve skill:orchestration
+    [90m○[0m preserve skill:pitch
+    [90m○[0m preserve skill:power-systems-modeling
+    [90m○[0m preserve skill:python-development
+    [90m○[0m preserve skill:refactor-deepen
+    [90m○[0m preserve skill:reflect
+    [90m○[0m preserve skill:release
+    [90m○[0m preserve skill:research
+    [90m○[0m preserve skill:ruby-development
+    [90m○[0m preserve skill:security-compliance
+    [90m○[0m preserve skill:shape
+    [90m○[0m preserve skill:ship
+    [90m○[0m preserve skill:strategy
+    [90m○[0m preserve skill:triage
+    [90m○[0m preserve skill:typescript-development
+    [90m○[0m preserve skill:wrap
+
+  [1mAmp[0m [90m/Users/levifig/.config/amp[0m
+    [90m○[0m preserve plugin:.amp/plugins/loaf.ts
+
+  [1mCodex[0m [90m/Users/levifig/.config/codex[0m
+    [90m○[0m preserve codex-rule:AGENTS.md
+    [90m○[0m preserve codex-rule:loaf.rules
+    [90m○[0m absorb hook:SessionStart/session-start-loaf [90m— absent before this upgrade; recorded as disabled[0m
+
+  [1mCursor[0m [90m/Users/levifig/.cursor[0m
+    [90m○[0m preserve hook-file:hooks/instructions/post-merge.md
+    [90m○[0m preserve hook-file:hooks/instructions/pre-merge.md
+    [90m○[0m preserve hook-file:hooks/instructions/pre-pr-checklist.md
+    [90m○[0m preserve hook-file:hooks/instructions/pre-pr-format.md
+    [90m○[0m preserve hook-file:hooks/instructions/pre-push.md
+    [90m○[0m preserve hook-file:hooks/post-tool/kb-staleness-nudge.sh
+
+  [1mOpenCode[0m [90m/Users/levifig/.config/opencode[0m
+    [90m○[0m preserve hook-file:plugins/hooks/instructions/post-merge.md
+    [90m○[0m preserve hook-file:plugins/hooks/instructions/pre-merge.md
+    [90m○[0m preserve hook-file:plugins/hooks/instructions/pre-pr-checklist.md
+    [90m○[0m preserve hook-file:plugins/hooks/instructions/pre-pr-format.md
+    [90m○[0m preserve hook-file:plugins/hooks/instructions/pre-push.md
+    [90m○[0m preserve hook-file:plugins/hooks/post-tool/kb-staleness-nudge.sh
+    [90m○[0m preserve hook-file:plugins/hooks/pre-tool/foundations-check-secrets.sh
+    [90m○[0m preserve hook-file:plugins/hooks/pre-tool/foundations-validate-push.sh
+    [90m○[0m preserve hook-file:plugins/hooks/pre-tool/orchestration-detect-linear-magic.py
+    [90m○[0m preserve hook-file:plugins/hooks/pre-tool/orchestration-validate-commit.py
+    [90m○[0m preserve hook-file:plugins/hooks/subagent/validate-infra-safety.sh
+    [90m○[0m preserve hook-file:plugins/hooks/subagent/validate-sql-safety.sh
+    [90m○[0m preserve plugin:plugins/hooks.ts
+
+  [1mDeprecations[0m
+    [90m•[0m externalized skill thermo-nuclear-code-quality-review at [90m/Users/levifig/.agents/skills/thermo-nuclear-code-quality-review[0m
+
+  [1mProject files[0m
+    [90m○[0m already-correct ./AGENTS.md [90m— Canonical ./AGENTS.md already exists[0m
+    [90m○[0m already-correct .claude/CLAUDE.md [90m— .claude/CLAUDE.md already points to ../AGENTS.md[0m
+    [90m○[0m skipped .claude/CLAUDE.md [90m— Loaf framework section already current (v0.2.20)[0m
+    [90m○[0m skipped AGENTS.md [90m— shared canonical project file already planned[0m
+    [90m○[0m skipped AGENTS.md [90m— shared canonical project file already planned[0m
+    [90m○[0m skipped AGENTS.md [90m— shared canonical project file already planned[0m
+    [90m○[0m skipped AGENTS.md [90m— shared canonical project file already planned[0m
+    [90m○[0m already-correct .agents/loaf.json [90m— MCP recommendations already recorded[0m
+
+  [1mApply with[0m
+    [90m$[0m [97mloaf upgrade[0m
+

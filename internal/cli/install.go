@@ -133,6 +133,8 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 	var codexBasicCommandsErr error
 	defaults := defaultInstallConfigDirs()
 	toolByKey := installToolsByKey(tools)
+	hookState, releaseHookState := r.hookStateForApply(projectRoot.Path())
+	defer releaseHookState()
 	var installOptions []targetInstallOptions
 	for _, target := range selectedTargets {
 		distDir := filepath.Join(distRoot, target)
@@ -157,6 +159,7 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 			CodexHome:          os.Getenv("CODEX_HOME"),
 			ProjectRoot:        projectRoot.Path(),
 			SkipSkillsSync:     true,
+			HookState:          hookState,
 		})
 	}
 	skillsErr := syncCanonicalManagedSkills(installOptions)
@@ -183,6 +186,8 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 			fmt.Fprintf(out, "  %s skills - %v\n", ansiRed("✗"), skillConflicts)
 			skillsErrReported = true
 		}
+		var hookActions []hookAction
+		opts.HookActions = func(actions []hookAction) { hookActions = append(hookActions, actions...) }
 		err := installTargetDistribution(opts)
 		if err != nil {
 			fmt.Fprintf(out, "  %s %s - %v\n", ansiRed("✗"), installDisplayName(opts.Target), err)
@@ -192,6 +197,7 @@ func (r Runner) runInstallWithOptions(options installOptions, out io.Writer, run
 			continue
 		}
 		fmt.Fprintf(out, "  %s %s installed to %s\n", ansiGreen("✓"), installDisplayName(opts.Target), ansiGray(opts.ConfigDir))
+		writeHookActionLines(out, hookActions)
 		if opts.Target == "codex" {
 			if options.codexBasicCommands {
 				fmt.Fprintf(out, "  %s Codex basic command policy explicitly enabled (Loaf-owned exact-prefix rules)\n", ansiGreen("✓"))

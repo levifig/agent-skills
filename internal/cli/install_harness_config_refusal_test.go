@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// Harness MCP configs and legacy Codex hooks.json share the loaf.json contract:
+// Harness MCP configs and the shared hooks file share the loaf.json contract:
 // absent → empty document; present-but-unusable → refuse, preserve, report.
 
 func TestMergeHarnessConfigsRefuseMalformedJSON(t *testing.T) {
@@ -72,70 +72,20 @@ func TestMergeHarnessConfigsRefuseMalformedJSON(t *testing.T) {
 	}
 }
 
-func TestMergeHookFilesRefusesMalformedLegacyHooks(t *testing.T) {
-	for _, testCase := range []struct {
-		name string
-		body string
-	}{
-		{name: "truncated object", body: `{"hooks":`},
-		{name: "json array", body: "[]\n"},
-		{name: "json null", body: "null\n"},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			dir := t.TempDir()
-			dest := filepath.Join(dir, "hooks.json")
-			loaf := filepath.Join(dir, "loaf-hooks.json")
-			writeInstallFile(t, dest, testCase.body)
-			writeInstallFile(t, loaf, `{"version":1,"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"true","loaf-managed":true}]}]}}`+"\n")
-
-			err := mergeHookFiles(dest, loaf)
-			if err == nil {
-				t.Fatal("mergeHookFiles error = nil, want a parse refusal")
-			}
-			if !strings.Contains(err.Error(), "parse Codex hooks file") || !strings.Contains(err.Error(), "preserving it as written") {
-				t.Fatalf("mergeHookFiles error = %q, want a parse refusal that preserves the file", err)
-			}
-			if got := string(readFileBytes(t, dest)); got != testCase.body {
-				t.Fatalf("hooks.json = %q, want it preserved byte-for-byte as %q", got, testCase.body)
-			}
-		})
-	}
-}
-
-func TestLoadCodexHooksFileRefusesNonObject(t *testing.T) {
+func TestReadHookFileRefusesNonObject(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "hooks.json")
 	writeInstallFile(t, path, "[]\n")
 
-	_, err := loadCodexHooksFile(path)
+	_, err := readHookFile(path)
 	if err == nil {
-		t.Fatal("loadCodexHooksFile error = nil, want a parse refusal")
+		t.Fatal("readHookFile error = nil, want a parse refusal")
 	}
-	if !strings.Contains(err.Error(), "parse Codex hooks file") {
-		t.Fatalf("loadCodexHooksFile error = %q, want parse refusal", err)
+	if !strings.Contains(err.Error(), "parse hooks file") || !strings.Contains(err.Error(), "preserving it as written") {
+		t.Fatalf("readHookFile error = %q, want a parse refusal that preserves the file", err)
 	}
 	if got := string(readFileBytes(t, path)); got != "[]\n" {
-		t.Fatalf("hooks.json changed to %q; a refused load must not rewrite the file", got)
-	}
-}
-
-func TestPlanHookProjectionRefusesMalformedDestination(t *testing.T) {
-	for _, body := range []string{`{"hooks":`, "[]\n", "null\n"} {
-		t.Run(body, func(t *testing.T) {
-			refuse, detail := planHookProjectionRefusal("cursor", "/tmp/hooks.json", []byte(body))
-			if !refuse {
-				t.Fatal("planHookProjectionRefusal = false, want a refusal")
-			}
-			if !strings.Contains(detail, "does not parse as a JSON object") || !strings.Contains(detail, "preserving it as written") {
-				t.Fatalf("detail = %q, want the parse refusal", detail)
-			}
-		})
-	}
-
-	// A valid object is not a refusal — the rest of the planner decides.
-	refuse, detail := planHookProjectionRefusal("cursor", "/tmp/hooks.json", []byte(`{"version":1,"hooks":{}}`+"\n"))
-	if refuse {
-		t.Fatalf("planHookProjectionRefusal(valid) refused: %s", detail)
+		t.Fatalf("hooks.json changed to %q; a refused read must not rewrite the file", got)
 	}
 }
 
@@ -284,32 +234,12 @@ func TestMergeHarnessConfigAcceptsValidObject(t *testing.T) {
 	}
 }
 
-func TestMergeHookFilesPreservesUserHooksOnValidFile(t *testing.T) {
-	dir := t.TempDir()
-	dest := filepath.Join(dir, "hooks.json")
-	loaf := filepath.Join(dir, "loaf-hooks.json")
-	writeInstallFile(t, dest, `{"version":1,"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo user"}]}]}}`+"\n")
-	writeInstallFile(t, loaf, `{"version":1,"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo loaf","loaf-managed":true}]}]}}`+"\n")
-
-	if err := mergeHookFiles(dest, loaf); err != nil {
-		t.Fatalf("mergeHookFiles(valid) error = %v", err)
-	}
-	body := string(readFileBytes(t, dest))
-	if !strings.Contains(body, "echo user") {
-		t.Fatalf("merged hooks lost user content: %s", body)
-	}
-	if !strings.Contains(body, "echo loaf") {
-		t.Fatalf("merged hooks missing Loaf content: %s", body)
-	}
-}
-
-// A no-manifest Cursor distribution must not promise a hooks.json update that
-// apply will refuse: dry-run carries the conflict, apply fails, file stays put.
-func TestPlanLegacyHookNoManifestRefusesTruncatedHooksJSON(t *testing.T) {
+// A no-manifest Cursor distribution has no path left to promise: its entries
+// are reconciled from a catalog that build output does not carry, so dry-run
+// carries the staleness conflict, apply fails, and the file stays put.
+func TestPlanLegacyHookNoManifestRefusesAStaleCursorDistribution(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
-	// Source hooks so the apply path reaches mergeHookFiles rather than no-op.
-	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "hooks.json"), `{"version":1,"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"true","loaf-managed":true}]}]}}`+"\n")
 	// No .loaf-target-manifest.json — the legacy/no-manifest branch.
 	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 	malformed := `{"hooks":`
@@ -336,8 +266,8 @@ func TestPlanLegacyHookNoManifestRefusesTruncatedHooksJSON(t *testing.T) {
 	if hooksDecision.Action != planActionConflict {
 		t.Fatalf("hook-legacy action = %q, want conflict (not update)", hooksDecision.Action)
 	}
-	if !strings.Contains(hooksDecision.Detail, "preserving it as written") {
-		t.Fatalf("hook-legacy detail = %q, want the refusal that apply will raise", hooksDecision.Detail)
+	if !strings.Contains(hooksDecision.Detail, "stale") || !strings.Contains(hooksDecision.Detail, "loaf build") {
+		t.Fatalf("hook-legacy detail = %q, want the staleness refusal that apply will raise", hooksDecision.Detail)
 	}
 	if !strings.Contains(hooksDecision.Destination, "hooks.json") {
 		t.Fatalf("hook-legacy destination = %q, want the hooks.json path", hooksDecision.Destination)

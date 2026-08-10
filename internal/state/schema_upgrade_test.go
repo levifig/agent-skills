@@ -46,8 +46,9 @@ func TestSchemaUpgradeSchema9PreviewAndApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PreviewSchemaUpgrade() error = %v", err)
 	}
-	if preview.CurrentVersion != 9 || len(preview.PendingVersions) != 2 || preview.PendingVersions[0] != 11 || preview.PendingVersions[1] != 12 || preview.BackupPath != "" {
-		t.Fatalf("preview = %#v, want schema9 pending [11 12] without backup", preview)
+	wantPending := pendingSchemaMigrationVersions(9)
+	if preview.CurrentVersion != 9 || !sameIntSlice(preview.PendingVersions, wantPending) || preview.BackupPath != "" {
+		t.Fatalf("preview = %#v, want schema9 pending %v without backup", preview, wantPending)
 	}
 	result, err := ApplySchemaUpgrade(ctx, root, resolver)
 	if err != nil {
@@ -125,8 +126,9 @@ func TestSchemaUpgradeFailureSeamsPreserveVerifiedBackupAndRollback(t *testing.T
 				t.Fatalf("apply failure result=%#v err=%v, want error and verified backup", result, err)
 			}
 			backup, verifyErr := classifySchemaUpgradeSource(ctx, result.BackupPath, root)
-			if verifyErr != nil || backup.Fingerprint.Version != 9 || len(backup.Pending) != 2 || backup.Pending[0] != 11 || backup.Pending[1] != 12 {
-				t.Fatalf("backup source classification=%#v err=%v, want verified schema9 source", backup, verifyErr)
+			wantPending := pendingSchemaMigrationVersions(9)
+			if verifyErr != nil || backup.Fingerprint.Version != 9 || !sameIntSlice(backup.Pending, wantPending) {
+				t.Fatalf("backup source classification=%#v err=%v, want verified schema9 source pending %v", backup, verifyErr, wantPending)
 			}
 			after := schemaVersionAndMigrationCount(t, databasePath)
 			if before != after || after != "9/9" {
@@ -178,8 +180,10 @@ func TestSchemaUpgradeSchema10BackupPreservesPreOriginShape(t *testing.T) {
 	if exists, err := sqliteTableExists(ctx, backup.db, "journal_origins"); err != nil || exists {
 		t.Fatalf("schema10 backup journal_origins exists=%t err=%v, want absent", exists, err)
 	}
-	if got := schemaVersionAndMigrationCount(t, databasePath); got != "12/12" {
-		t.Fatalf("live schema after schema10 upgrade = %s, want 12/12", got)
+	// schema-10 seed includes the journal-first row plus every auto-applied migration.
+	want := fmt.Sprintf("%d/%d", CurrentSchemaVersion(), len(SchemaMigrations())+1)
+	if got := schemaVersionAndMigrationCount(t, databasePath); got != want {
+		t.Fatalf("live schema after schema10 upgrade = %s, want %s", got, want)
 	}
 }
 
@@ -267,9 +271,10 @@ func TestSchema10OrdinaryWritesRequireUpgradeWithoutMutation(t *testing.T) {
 			root, resolver, databasePath := seedSchema10UpgradeTarget(t)
 			before := schema10MutableCounts(t, databasePath)
 			err := tc.run(root, resolver)
+			wantPending := pendingSchemaMigrationVersions(journalFirstMigrationVersion)
 			var required *SchemaUpgradeRequiredError
-			if !errors.As(err, &required) || required.Code != SchemaUpgradeRequiredCode || len(required.PendingVersions) != 2 || required.PendingVersions[0] != 11 || required.PendingVersions[1] != 12 {
-				t.Fatalf("%s error=%v required=%#v, want schema-upgrade-required pending [11 12]", tc.name, err, required)
+			if !errors.As(err, &required) || required.Code != SchemaUpgradeRequiredCode || !sameIntSlice(required.PendingVersions, wantPending) {
+				t.Fatalf("%s error=%v required=%#v, want schema-upgrade-required pending %v", tc.name, err, required, wantPending)
 			}
 			after := schema10MutableCounts(t, databasePath)
 			if before != after {
@@ -527,18 +532,19 @@ func TestSchema11DatabasesClassifyAndUpgradeToCurrent(t *testing.T) {
 
 			// Ordinary writes return the typed upgrade requirement, never a
 			// bare invalid-database error.
+			wantPending := pendingSchemaMigrationVersions(11)
 			_, err := LogJournal(ctx, root, resolver, JournalLogOptions{Entry: "decision(test): blocked"})
 			var required *SchemaUpgradeRequiredError
-			if !errors.As(err, &required) || len(required.PendingVersions) != 1 || required.PendingVersions[0] != 12 {
-				t.Fatalf("journal log error = %v, want schema-upgrade-required pending [12]", err)
+			if !errors.As(err, &required) || !sameIntSlice(required.PendingVersions, wantPending) {
+				t.Fatalf("journal log error = %v, want schema-upgrade-required pending %v", err, wantPending)
 			}
 
 			preview, err := PreviewSchemaUpgrade(ctx, root, resolver)
 			if err != nil {
 				t.Fatalf("PreviewSchemaUpgrade() error = %v", err)
 			}
-			if preview.CurrentVersion != 11 || len(preview.PendingVersions) != 1 || preview.PendingVersions[0] != 12 {
-				t.Fatalf("preview = %#v, want schema 11 pending [12]", preview)
+			if preview.CurrentVersion != 11 || !sameIntSlice(preview.PendingVersions, wantPending) {
+				t.Fatalf("preview = %#v, want schema 11 pending %v", preview, wantPending)
 			}
 
 			result, err := ApplySchemaUpgrade(ctx, root, resolver)
@@ -555,6 +561,70 @@ func TestSchema11DatabasesClassifyAndUpgradeToCurrent(t *testing.T) {
 			defer store.Close()
 			if err := store.RequireCurrentSchema(ctx); err != nil {
 				t.Fatalf("RequireCurrentSchema(after upgrade) error = %v", err)
+			}
+		})
+	}
+}
+
+// IsUninitialized is the read-only half of BootstrapIfEmpty's precondition, so
+// the two have to agree on every shape: a database Bootstrap would fill reads
+// as uninitialized, and one it would refuse to fill does not.
+func TestIsUninitializedAgreesWithBootstrapPrecondition(t *testing.T) {
+	ctx := context.Background()
+	for _, testCase := range []struct {
+		name string
+		seed func(t *testing.T, path string)
+		want bool
+	}{
+		{name: "fresh file", seed: func(t *testing.T, path string) {}, want: true},
+		{name: "migrated", seed: func(t *testing.T, path string) {
+			store, err := OpenStore(path)
+			if err != nil {
+				t.Fatalf("OpenStore() error = %v", err)
+			}
+			defer store.Close()
+			if err := store.ApplyMigrations(ctx); err != nil {
+				t.Fatalf("ApplyMigrations() error = %v", err)
+			}
+		}, want: false},
+		{name: "somebody else's tables", seed: func(t *testing.T, path string) {
+			db, err := sql.Open(sqliteDriverName, "file:"+filepath.ToSlash(path))
+			if err != nil {
+				t.Fatalf("sql.Open() error = %v", err)
+			}
+			defer db.Close()
+			if _, err := db.Exec(`CREATE TABLE notes (id INTEGER PRIMARY KEY)`); err != nil {
+				t.Fatalf("create foreign table error = %v", err)
+			}
+		}, want: false},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "loaf.sqlite")
+			testCase.seed(t, path)
+
+			store, err := OpenStore(path)
+			if err != nil {
+				t.Fatalf("OpenStore() error = %v", err)
+			}
+			defer store.Close()
+
+			uninitialized, err := store.IsUninitialized(ctx)
+			if err != nil {
+				t.Fatalf("IsUninitialized() error = %v", err)
+			}
+			if uninitialized != testCase.want {
+				t.Fatalf("IsUninitialized() = %v, want %v", uninitialized, testCase.want)
+			}
+
+			// Bootstrap answers the same question by writing; it must reach the
+			// same verdict, or the plan and apply paths disagree about which
+			// databases are safe to treat as empty.
+			bootstrapped, err := store.BootstrapIfEmpty(ctx)
+			if err != nil {
+				t.Fatalf("BootstrapIfEmpty() error = %v", err)
+			}
+			if bootstrapped != testCase.want {
+				t.Fatalf("BootstrapIfEmpty() = %v, want it to agree with IsUninitialized() = %v", bootstrapped, testCase.want)
 			}
 		})
 	}

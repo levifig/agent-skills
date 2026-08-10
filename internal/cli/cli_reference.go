@@ -84,6 +84,23 @@ func cliReferenceCommands() []cliReferenceCommand {
 			},
 		},
 		{
+			Name:        "hooks",
+			Description: "Inspect and set which Loaf hooks project into an installed harness's hooks file",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "list", Description: "Show every hook this version ships per installed target with its event, enablement, whether the live file carries it, and absorption provenance; retired ids and entries Loaf does not own are never listed", Options: []cliReferenceOption{
+					{Flags: "--target <target>", Description: "Restrict the listing to one installed target (cursor, codex)"},
+				}},
+				{Name: "enable", Description: "Record a hook as enabled for one target, reconcile that target's hooks file, and report every action the reconcile took", Options: []cliReferenceOption{
+					{Flags: "<hook-id>", Description: "Hook id from the target's built catalog, as loaf hooks list reports it"},
+					{Flags: "--target <target>", Description: "Target whose hooks file to reconcile (cursor, codex); required, because enablement is recorded per target"},
+				}},
+				{Name: "disable", Description: "Record a hook as disabled for one target, reconcile that target's hooks file, and report every action the reconcile took", Options: []cliReferenceOption{
+					{Flags: "<hook-id>", Description: "Hook id from the target's built catalog, as loaf hooks list reports it"},
+					{Flags: "--target <target>", Description: "Target whose hooks file to reconcile (cursor, codex); required, because enablement is recorded per target"},
+				}},
+			},
+		},
+		{
 			Name:        "init",
 			Description: "Initialize a project with Loaf structure",
 			Options: []cliReferenceOption{

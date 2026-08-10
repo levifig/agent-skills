@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "target": "codex",
+  "package_version": "0.2.20",
+  "entries": [
+    {
+      "event": "SessionStart",
+      "hook_id": "session-start-loaf",
+      "type": "command",
+      "template": {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook",
+            "commandWindows": "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook"
+          }
+        ]
+      },
+      "signatures": [
+        [
+          "{{LOAF_EXECUTABLE}}",
+          "journal",
+          "context",
+          "--from-hook",
+          "--codex-hook"
+        ],
+        [
+          "loaf",
+          "journal",
+          "context"
+        ],
+        [
+          "loaf",
+          "journal",
+          "context",
+          "--from-hook"
+        ]
+      ],
+      "stems": [
+        [
+          "journal",
+          "context",
+          "--from-hook"
+        ]
+      ]
+    }
+  ],
+  "cohorts": [
+    {
+      "version": "2.0.0-alpha.14",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.15",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.16",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.17",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.18",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
+      "version": "2.0.0-alpha.19",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    },
+    {
+      "version": "0.2.20",
+      "hook_ids": [
+        "session-start-loaf"
+      ]
+    }
+  ]
+}

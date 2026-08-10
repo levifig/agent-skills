@@ -1,0 +1,146 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "command": "bash '/Users/levifig/.config/codex/herdr-agent-state.sh' blocked",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -r '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -x '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ]; then /bin/sh '/Users/levifig/.orca/agent-hooks/codex-hook.sh'; else { command -p cat 2\u003e/dev/null || cat; } \u003e/dev/null 2\u003e\u00261 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -r '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -x '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ]; then /bin/sh '/Users/levifig/.orca/agent-hooks/codex-hook.sh'; else { command -p cat 2\u003e/dev/null || cat; } \u003e/dev/null 2\u003e\u00261 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "bash '/Users/levifig/.config/codex/herdr-agent-state.sh' working",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -r '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -x '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ]; then /bin/sh '/Users/levifig/.orca/agent-hooks/codex-hook.sh'; else { command -p cat 2\u003e/dev/null || cat; } \u003e/dev/null 2\u003e\u00261 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "bash '/Users/levifig/.config/codex/herdr-agent-state.sh' idle",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -r '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -x '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ]; then /bin/sh '/Users/levifig/.orca/agent-hooks/codex-hook.sh'; else { command -p cat 2\u003e/dev/null || cat; } \u003e/dev/null 2\u003e\u00261 || :; fi",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "'/opt/homebrew/bin/loaf' journal context --from-hook --codex-hook",
+            "type": "command"
+          }
+        ],
+        "matcher": "startup|resume|clear|compact"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "bash '/Users/levifig/.config/codex/herdr-agent-state.sh' idle",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -r '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -x '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ]; then /bin/sh '/Users/levifig/.orca/agent-hooks/codex-hook.sh'; else { command -p cat 2\u003e/dev/null || cat; } \u003e/dev/null 2\u003e\u00261 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -r '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -x '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ]; then /bin/sh '/Users/levifig/.orca/agent-hooks/codex-hook.sh'; else { command -p cat 2\u003e/dev/null || cat; } \u003e/dev/null 2\u003e\u00261 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -r '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -x '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ]; then /bin/sh '/Users/levifig/.orca/agent-hooks/codex-hook.sh'; else { command -p cat 2\u003e/dev/null || cat; } \u003e/dev/null 2\u003e\u00261 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "bash '/Users/levifig/.config/codex/herdr-agent-state.sh' working",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -r '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ] \u0026\u0026 [ -x '/Users/levifig/.orca/agent-hooks/codex-hook.sh' ]; then /bin/sh '/Users/levifig/.orca/agent-hooks/codex-hook.sh'; else { command -p cat 2\u003e/dev/null || cat; } \u003e/dev/null 2\u003e\u00261 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

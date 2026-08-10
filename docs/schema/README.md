@@ -14,6 +14,8 @@ Files:
 - `0008_docs_index.sql`: exact mirror of `internal/state/migrations/0008_docs_index.sql`
 - `0009_spec_branch_and_source.sql`: exact mirror of `internal/state/migrations/0009_spec_branch_and_source.sql`
 - `0011_journal_origins_and_deferrals.sql`: exact mirror of `internal/state/migrations/0011_journal_origins_and_deferrals.sql`
+- `0012_intents_and_explorations.sql`: exact mirror of `internal/state/migrations/0012_intents_and_explorations.sql`
+- `0013_hook_enablement.sql`: exact mirror of `internal/state/migrations/0013_hook_enablement.sql`
 - `operational-state.dbml`: editable relational model for design review
 - `operational-state.mmd`: Mermaid ER diagram for quick visual inspection
 

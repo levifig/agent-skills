@@ -1,0 +1,19 @@
+
+[1mloaf upgrade[0m
+
+  [90mUpgrading:[0m opencode, cursor, codex, amp
+  [90m•[0m install deprecation cleanup
+    [90m-[0m externalized skill thermo-nuclear-code-quality-review at [90m/Users/levifig/.agents/skills/thermo-nuclear-code-quality-review[0m — externalized by SPEC-053 taxonomy decision; install as a vendor skill instead of a Loaf core skill (since v2.0.0-pre.20260614235428, window one-release) [signoff: report-spec-053-taxonomy-signoff] source: https://github.com/cursor/plugins/tree/main/cursor-team-kit/skills/thermo-nuclear-code-quality-review
+  [32m✓[0m OpenCode refreshed at [90m/Users/levifig/.config/opencode[0m (v0.2.20)
+  [32m✓[0m Cursor refreshed at [90m/Users/levifig/.cursor[0m (v0.2.20)
+  [32m✓[0m Codex refreshed at [90m/Users/levifig/.config/codex[0m (v0.2.20)
+    [90m○[0m absorb hook:SessionStart/session-start-loaf [90m— absent before this upgrade; recorded as disabled[0m
+  [32m✓[0m Amp refreshed at [90m/Users/levifig/.config/amp[0m (v0.2.20)
+
+  [32m✓[0m Loaf project detected — [90mproject record proj_7afeb3fc23aa2422d27c9cbc60d31b1b in the state database[0m
+  [90m○[0m Amp Loaf framework section already current (v0.2.20)
+  [90m○[0m Claude Code Loaf framework section already current (v0.2.20)
+  [90m○[0m Codex Loaf framework section already current (v0.2.20)
+  [90m○[0m Cursor Loaf framework section already current (v0.2.20)
+  [90m○[0m OpenCode Loaf framework section already current (v0.2.20)
+

@@ -442,6 +442,7 @@ func setupUpgradeFixture(t *testing.T) (string, string) {
 func installUpgradeFixtureTarget(t *testing.T, root string, home string, target string) {
 	t.Helper()
 	writeInstallFile(t, filepath.Join(root, "dist", target, "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, target)
 	runInstallFixture(t, root, "install", "--to", target, "--yes")
 	writeInstallFile(t, filepath.Join(root, "dist", target, "skills", "foundations", "SKILL.md"), "# Foundations v2\n")
 	// install scaffolds project files; the upgrade matrix judges what upgrade

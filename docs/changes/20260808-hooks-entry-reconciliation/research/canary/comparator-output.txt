@@ -1,0 +1,5 @@
+=== codex before/after ===
+identical (value-level, order-stable)
+
+=== cursor before/after ===
+identical (value-level, order-stable)

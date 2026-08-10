@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Edit|Write|Bash",
+        "failClosed": true,
+        "command": "loaf check --hook artifact-body-write"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Edit|Write|Bash",
+        "failClosed": true,
+        "command": "loaf check --hook check-secrets"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 600,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook security-audit"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook render-drift",
+        "if": "Bash(git push:*)"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook ephemeral-provenance",
+        "if": "Bash(git push:*)"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook artifact-names",
+        "if": "Bash(git commit:*)"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 10,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook github-account"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 60,
+        "matcher": "Bash",
+        "command": "loaf check --hook validate-push --advisory",
+        "if": "Bash(git push:*)"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "loaf check --hook workflow-pre-pr --advisory",
+        "if": "Bash(gh pr create:*)"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-merge.md\"",
+        "if": "Bash(gh pr merge:*)"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-push.md\"",
+        "if": "Bash(git push:*)"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "failClosed": true,
+        "command": "loaf check --hook validate-commit",
+        "if": "Bash(git commit:*)"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Bash",
+        "command": "loaf journal log --detect-linear",
+        "if": "Bash(git commit:*)"
+      }
+    ],
+    "postToolUse": [
+      {
+        "loaf-managed": true,
+        "timeout": 30,
+        "matcher": "Edit|Write",
+        "command": "loaf task refresh"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Edit|Write",
+        "command": "bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh"
+      },
+      {
+        "loaf-managed": true,
+        "timeout": 5,
+        "matcher": "Bash",
+        "command": "cat \"$HOME/.cursor/hooks/instructions/post-merge.md\"",
+        "if": "Bash(gh pr merge:*)"
+      }
+    ],
+    "sessionStart": [
+      {
+        "loaf-managed": true,
+        "timeout": 60,
+        "command": "loaf journal context --from-hook --cursor-hook"
+      }
+    ]
+  }
+}

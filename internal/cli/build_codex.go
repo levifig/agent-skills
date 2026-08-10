@@ -144,6 +144,9 @@ func buildNativeCodexTarget(root string) error {
 	if err := generateNativeCodexHooksJSON(root, dist); err != nil {
 		return err
 	}
+	if err := generateNativeCodexHookCatalog(dist, version); err != nil {
+		return err
+	}
 	return copyNativeCodexRules(root, dist)
 }
 
@@ -563,21 +566,43 @@ func nativeBuildPackageVersion(root string) (string, error) {
 	return pkg.Version, nil
 }
 
-func generateNativeCodexHooksJSON(root string, dist string) error {
-	_ = root
-	// Codex 0.144.1 uses matcher groups with nested command handlers. Keep the
-	// executable command placeholder; install renders it to a trusted absolute
-	// Loaf binary once the path is known and can be pinned.
-	payload := nativeCodexHooksJSON{Hooks: nativeCodexHookTypes{
-		SessionStart: []nativeCodexMatcherGroupJSON{{
-			Matcher: "startup|resume|clear|compact",
+// nativeCodexHookProjection is one desired Codex matcher group with the
+// identity it carries. The hooks file and the hook catalog are generated from
+// the same list so shape and identity cannot drift apart.
+type nativeCodexHookProjection struct {
+	event  string
+	hookID string
+	group  nativeCodexMatcherGroupJSON
+}
+
+// nativeCodexHookProjections describes what Codex 0.144.1 accepts: matcher
+// groups with nested command handlers. The executable stays a placeholder here;
+// install renders it to a trusted absolute Loaf binary once the path is known
+// and can be pinned. Windows parity is concrete rather than asserted — the
+// template carries command and commandWindows with identical values.
+func nativeCodexHookProjections() []nativeCodexHookProjection {
+	return []nativeCodexHookProjection{{
+		event:  "SessionStart",
+		hookID: "session-start-loaf",
+		group: nativeCodexMatcherGroupJSON{
+			Matcher: codexJournalHookMatcher,
 			Hooks: []nativeCodexCommandHookJSON{{
 				Type:           "command",
-				Command:        "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook",
-				CommandWindows: "{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook",
+				Command:        codexJournalExecutablePlaceholder + codexJournalHookCommandSuffix,
+				CommandWindows: codexJournalExecutablePlaceholder + codexJournalHookCommandSuffix,
 			}},
-		}},
+		},
 	}}
+}
+
+func generateNativeCodexHooksJSON(root string, dist string) error {
+	_ = root
+	var payload nativeCodexHooksJSON
+	for _, projection := range nativeCodexHookProjections() {
+		if projection.event == "SessionStart" {
+			payload.Hooks.SessionStart = append(payload.Hooks.SessionStart, projection.group)
+		}
+	}
 	body, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return err
@@ -588,6 +613,25 @@ func generateNativeCodexHooksJSON(root string, dist string) error {
 	}
 	body = append(body, '\n')
 	return os.WriteFile(filepath.Join(codexDir, "hooks.json"), body, 0o644)
+}
+
+func generateNativeCodexHookCatalog(dist string, version string) error {
+	projections := nativeCodexHookProjections()
+	sources := make([]hookCatalogSource, 0, len(projections))
+	for _, projection := range projections {
+		sources = append(sources, hookCatalogSource{
+			event:    projection.event,
+			hookID:   projection.hookID,
+			typeName: "command",
+			command:  projection.group.Hooks[0].Command,
+			template: projection.group,
+		})
+	}
+	catalog, err := newHookCatalog("codex", version, sources)
+	if err != nil {
+		return err
+	}
+	return writeHookCatalog(dist, catalog)
 }
 
 func parseNativeBuildSimpleYAMLScalars(content string) map[string]string {

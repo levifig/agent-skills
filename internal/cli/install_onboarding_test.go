@@ -98,6 +98,7 @@ func TestRunnerInstallOutsideALoafProjectAsksBeforeDeploying(t *testing.T) {
 func TestRunnerInstallInsideALoafProjectOnboardsTheHarnessOnly(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	writeInstallFile(t, filepath.Join(root, ".agents", "loaf.json"), "{\"integrations\":{}}\n")
 	writeInstallFile(t, filepath.Join(root, "AGENTS.md"), "# Project Instructions\n")
 
@@ -174,6 +175,15 @@ func TestRunnerConfigCheckFixStillRefreshesTargetsThroughTheSharedInstaller(t *t
 	}, "\n")+"\n")
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "hooks.json"), `{"version":1,"hooks":{"PostToolUse":[{"command":"loaf check --hook check-secrets","matcher":"Bash","loaf-managed":true}]}}`+"\n")
+	// The distribution hooks.json is what `config check` diagnoses against; the
+	// catalog is what the reconciler restores from, so the two name one hook.
+	installTestHookDistribution(t, root, "cursor", hookCatalogSource{
+		event:    "PostToolUse",
+		hookID:   "check-secrets",
+		typeName: "command",
+		command:  "loaf check --hook check-secrets",
+		template: map[string]any{"command": "loaf check --hook check-secrets", "matcher": "Bash", "loaf-managed": true},
+	})
 	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 	writeInstallFile(t, filepath.Join(home, ".cursor", "hooks.json"), `{"version":1,"hooks":{}}`+"\n")
 
@@ -218,6 +228,7 @@ func setupInstallOnboardingFixture(t *testing.T) (string, string) {
 	t.Helper()
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	writeInstallFile(t, filepath.Join(root, "bin", "loaf"), "#!/bin/sh\nexit 0\n")
 	if err := os.Chmod(filepath.Join(root, "bin", "loaf"), 0o755); err != nil {
 		t.Fatalf("Chmod(fake loaf) error = %v", err)

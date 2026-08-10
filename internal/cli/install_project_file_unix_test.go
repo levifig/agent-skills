@@ -369,30 +369,40 @@ func TestCodexUserConfigReadersRefuseAFifo(t *testing.T) {
 	mkfifoForTest(t, hooks)
 
 	type refusal struct {
-		name string
-		run  func() error
+		name    string
+		run     func() error
+		refused func(error) bool
 	}
 	for _, subject := range []refusal{
-		{"guidance", func() error {
-			_, _, err := readOptionalInstallFile(guidance, "Codex journal guidance")
-			return err
-		}},
-		{"hooks", func() error {
-			_, err := loadCodexHooksRawFileStrict(hooks)
-			return err
-		}},
-		{"legacy hooks", func() error {
-			_, err := loadCodexHooksFile(hooks)
-			return err
-		}},
+		{
+			name: "guidance",
+			run: func() error {
+				_, _, err := readOptionalInstallFile(guidance, "Codex journal guidance")
+				return err
+			},
+			refused: func(err error) bool { return errors.Is(err, errNotRegularFile) },
+		},
+		{
+			name: "hooks",
+			run: func() error {
+				_, err := readHookFile(hooks)
+				return err
+			},
+			// The reconciler's reader refuses before it reads: a FIFO is not a
+			// regular file, so the refusal names the destination rather than
+			// wrapping a read error it never reached.
+			refused: func(err error) bool {
+				return err != nil && strings.Contains(err.Error(), "not a regular file")
+			},
+		},
 	} {
 		t.Run(subject.name, func(t *testing.T) {
 			done := make(chan error, 1)
 			go func() { done <- subject.run() }()
 			select {
 			case err := <-done:
-				if !errors.Is(err, errNotRegularFile) {
-					t.Fatalf("%s reader error = %v, want errNotRegularFile", subject.name, err)
+				if !subject.refused(err) {
+					t.Fatalf("%s reader error = %v, want a non-regular-file refusal", subject.name, err)
 				}
 			case <-time.After(5 * time.Second):
 				t.Fatalf("%s reader blocked on a FIFO", subject.name)

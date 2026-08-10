@@ -21,7 +21,6 @@ import (
 
 const (
 	loafInstallMarkerFile = ".loaf-version"
-	loafHookMarker        = "loaf-managed"
 	loafSkillManifestFile = ".loaf-managed-skills.json"
 )
 
@@ -48,19 +47,6 @@ var legacyLoafHookSignatures = map[string]bool{
 	"command:loaf session start|matcher:|if:":                                   true,
 	"command:loaf session end|matcher:|if:":                                     true,
 	"command:bash $HOME/.cursor/hooks/session/compact.sh|matcher:|if:":          true,
-}
-
-var codexHookEvents = map[string]bool{
-	"SessionStart":      true,
-	"SubagentStart":     true,
-	"PreToolUse":        true,
-	"PermissionRequest": true,
-	"PostToolUse":       true,
-	"PreCompact":        true,
-	"PostCompact":       true,
-	"UserPromptSubmit":  true,
-	"SubagentStop":      true,
-	"Stop":              true,
 }
 
 var legacyLoafCommands = map[string]bool{
@@ -106,22 +92,22 @@ type targetInstallOptions struct {
 	AmpSkillsDir        string
 	AmpPluginsDir       string
 	TargetAdapterOps    *targetAdapterInstallOperations
+	// HookState resolves the user-scoped state hook reconciliation reads and
+	// writes. Only Cursor and Codex reach it, and only when they actually
+	// reconcile, so a target that keeps no shared hooks file never opens it.
+	HookState hookStateResolver
+	// HookActions receives the per-entry actions a reconcile took, so the
+	// command that ran it can say what changed. Nil discards them.
+	HookActions func([]hookAction)
+	// HookOps injects failures at the reconciler's two ordering windows from
+	// outside the target installer, which is the only vantage point that can
+	// exercise the window after the adapter manifest is replaced and before
+	// the file is projected. Nil in production.
+	HookOps *hookReconcileOperations
 	// SkipSkillsSync leaves the shared skills store alone. Multi-target
 	// install/upgrade sets it after syncCanonicalManagedSkills has already
 	// performed the one write per destination for the run.
 	SkipSkillsSync bool
-}
-
-type codexHooksFile struct {
-	Version     int                         `json:"version,omitempty"`
-	Description string                      `json:"description,omitempty"`
-	Hooks       map[string][]map[string]any `json:"hooks"`
-}
-
-type codexHooksRawFile struct {
-	Description json.RawMessage              `json:"description,omitempty"`
-	Version     json.RawMessage              `json:"-"`
-	Hooks       map[string][]json.RawMessage `json:"hooks"`
 }
 
 type installTargetRecord struct {
@@ -360,6 +346,14 @@ func rewriteOpenCodeCommandSkillLinks(content string, skill string, commandsDir 
 }
 
 func installCursorTarget(options targetInstallOptions) error {
+	// Building the reconciler is what proves the distribution is current, so it
+	// happens before anything on this machine changes. A stale build output
+	// that was refused only after the commands directory had been removed would
+	// have already taken something away from the operator.
+	reconciler, err := newHookReconciler(options)
+	if err != nil {
+		return err
+	}
 	skillsDest := installSkillsDestination(options)
 	if !options.SkipSkillsSync {
 		if err := syncManagedSkillsDirIfExists(filepath.Join(options.DistDir, "skills"), skillsDest); err != nil {
@@ -372,12 +366,11 @@ func installCursorTarget(options targetInstallOptions) error {
 	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "agents"), filepath.Join(options.ConfigDir, "agents")); err != nil {
 		return err
 	}
-	hasAdapterManifest := fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile))
-	if hasAdapterManifest {
-		if err := syncTargetAdapterManifest(options); err != nil {
-			return err
-		}
-	} else if err := mergeHookFiles(filepath.Join(options.ConfigDir, "hooks.json"), filepath.Join(options.DistDir, "hooks.json")); err != nil {
+	if err := beginHookReconcile(reconciler); err != nil {
+		return err
+	}
+	defer releaseHookReconcile(reconciler)
+	if err := syncTargetAdapterManifest(options); err != nil {
 		return err
 	}
 	if options.Upgrade {
@@ -387,12 +380,10 @@ func installCursorTarget(options targetInstallOptions) error {
 			}
 		}
 	}
-	if !hasAdapterManifest {
-		if err := mergeTargetDirIfExists(filepath.Join(options.DistDir, "hooks"), filepath.Join(options.ConfigDir, "hooks")); err != nil {
-			return err
-		}
-	}
 	if err := syncTargetDirIfExists(filepath.Join(options.DistDir, "templates"), filepath.Join(options.ConfigDir, "templates")); err != nil {
+		return err
+	}
+	if err := completeHookReconcile(options, reconciler); err != nil {
 		return err
 	}
 	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {
@@ -402,6 +393,12 @@ func installCursorTarget(options targetInstallOptions) error {
 }
 
 func installCodexTarget(options targetInstallOptions) error {
+	// Same ordering as Cursor: prove the distribution is current before the
+	// shared skills store — the first surface this touches — is written.
+	reconciler, err := newHookReconciler(options)
+	if err != nil {
+		return err
+	}
 	homeDir := installHomeDir(options)
 	codexHome := options.CodexHome
 	if codexHome == "" {
@@ -413,14 +410,17 @@ func installCodexTarget(options targetInstallOptions) error {
 			return err
 		}
 	}
-	if fileExistsForInstall(filepath.Join(options.DistDir, targetBuildManifestFile)) {
-		if err := syncTargetAdapterManifest(options); err != nil {
-			return err
-		}
-	} else if err := mergeCodexHookFiles(filepath.Join(codexHome, "hooks.json"), filepath.Join(options.DistDir, ".codex", "hooks.json"), options.ProjectRoot, options.CodexRuleOperations); err != nil {
+	if err := beginHookReconcile(reconciler); err != nil {
+		return err
+	}
+	defer releaseHookReconcile(reconciler)
+	if err := syncTargetAdapterManifest(options); err != nil {
 		return err
 	}
 	if err := installCodexJournalRuleWithOperations(options, codexHome, options.CodexRuleOperations); err != nil {
+		return err
+	}
+	if err := completeHookReconcile(options, reconciler); err != nil {
 		return err
 	}
 	if err := writeInstallMarker(options.ConfigDir, options.Version); err != nil {
@@ -1559,154 +1559,6 @@ func installRecordPath(homeDir string, target string) string {
 	return filepath.Join(homeDir, ".agents", "loaf", "install-targets", target+".json")
 }
 
-func mergeHookFiles(destPath string, loafPath string) error {
-	if !fileExistsForInstall(loafPath) {
-		return nil
-	}
-	existing, err := loadCodexHooksFile(destPath)
-	if err != nil {
-		return err
-	}
-	loafHooks, err := loadCodexHooksFile(loafPath)
-	if err != nil {
-		return err
-	}
-	merged := codexHooksFile{Version: 1, Hooks: map[string][]map[string]any{}}
-	seen := map[string]bool{}
-	for hookType := range existing.Hooks {
-		seen[hookType] = true
-	}
-	for hookType := range loafHooks.Hooks {
-		seen[hookType] = true
-	}
-	for hookType := range seen {
-		var hooks []map[string]any
-		for _, hook := range existing.Hooks[hookType] {
-			if !isLoafInstallHook(hook) {
-				hooks = append(hooks, hook)
-			}
-		}
-		hooks = append(hooks, loafHooks.Hooks[hookType]...)
-		if len(hooks) > 0 {
-			merged.Hooks[hookType] = hooks
-		}
-	}
-	if len(merged.Hooks) == 0 {
-		merged.Hooks = nil
-	}
-	body, err := json.MarshalIndent(merged, "", "  ")
-	if err != nil {
-		return err
-	}
-	body = append(body, '\n')
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(destPath, body, 0o644)
-}
-
-// mergeCodexHookFiles writes the current Codex hooks schema. Existing valid
-// user groups survive; recognized legacy Loaf groups are retired, while
-// malformed or unowned content is refused. The distributed adapter carries a
-// placeholder that is rendered to the trusted absolute executable at install.
-func mergeCodexHookFiles(destPath string, loafPath string, projectRoot string, operations *codexRuleInstallOperations) error {
-	return mergeCodexHookFilesForOS(destPath, loafPath, projectRoot, operations, runtime.GOOS)
-}
-
-func mergeCodexHookFilesForOS(destPath string, loafPath string, projectRoot string, operations *codexRuleInstallOperations, goos string) error {
-	return mergeCodexHookFilesForOSWithExecutable(destPath, loafPath, projectRoot, operations, goos, "")
-}
-
-func mergeCodexHookFilesForOSWithExecutable(destPath string, loafPath string, projectRoot string, operations *codexRuleInstallOperations, goos string, executableOverride string) error {
-	if !fileExistsForInstall(loafPath) {
-		return nil
-	}
-	loafHooks, err := loadCodexHooksRawFileStrict(loafPath)
-	if err != nil {
-		return err
-	}
-	loafExecutable := executableOverride
-	for hookType, hooks := range loafHooks.Hooks {
-		for index, rawHook := range hooks {
-			if !bytes.Contains(rawHook, []byte(codexJournalExecutablePlaceholder)) && !bytes.Contains(rawHook, []byte(codexJournalHookCommandTemplate)) {
-				continue
-			}
-			if loafExecutable == "" {
-				loafExecutable, err = trustedCodexJournalExecutable(projectRoot, operations)
-				if err != nil {
-					return err
-				}
-			}
-			rendered, renderErr := renderCodexHookExecutableForOS(rawHook, loafExecutable, goos)
-			if renderErr != nil {
-				return fmt.Errorf("render Codex Loaf hook %s[%d]: %w", hookType, index, renderErr)
-			}
-			if bytes.Contains(rendered, []byte(codexJournalExecutablePlaceholder)) || bytes.Contains(rendered, []byte(codexJournalHookCommandTemplate)) {
-				return fmt.Errorf("render Codex Loaf hook %s[%d]: executable placeholder remains", hookType, index)
-			}
-			loafHooks.Hooks[hookType][index] = rendered
-		}
-	}
-	existing, err := loadCodexHooksRawFileStrict(destPath)
-	if err != nil {
-		return err
-	}
-	merged := codexHooksRawFile{Description: existing.Description, Hooks: map[string][]json.RawMessage{}}
-	retiredLegacy := false
-	for hookType, hooks := range existing.Hooks {
-		if len(hooks) == 0 {
-			merged.Hooks[hookType] = []json.RawMessage{}
-			continue
-		}
-		for _, rawHook := range hooks {
-			hook, err := decodeCodexHookObject(rawHook)
-			if err != nil {
-				return fmt.Errorf("parse Codex hooks matcher group in %s: %w", destPath, err)
-			}
-			if owned, conflict := codexHookOwnershipForOS(hook, goos); conflict {
-				return fmt.Errorf("Codex hooks file %s contains a modified Loaf SessionStart matcher group in %s; refusing to retire or duplicate it", destPath, hookType)
-			} else if owned {
-				retiredLegacy = true
-				continue
-			}
-			if !isValidCodexMatcherGroup(hook) {
-				if isLoafInstallHookForOS(hook, goos) {
-					retiredLegacy = true
-					continue
-				}
-				return fmt.Errorf("Codex hooks file %s contains an unsupported matcher entry in %s; preserve it manually or remove it before installing Loaf", destPath, hookType)
-			}
-			// Preserve each valid user matcher group as a whole. Any modified
-			// recognizable Loaf group was rejected above rather than edited.
-			merged.Hooks[hookType] = append(merged.Hooks[hookType], rawHook)
-		}
-	}
-	for hookType, hooks := range loafHooks.Hooks {
-		for _, rawHook := range hooks {
-			hook, err := decodeCodexHookObject(rawHook)
-			if err != nil {
-				return fmt.Errorf("parse generated Codex hooks matcher group in %s: %w", loafPath, err)
-			}
-			if !isValidCodexMatcherGroup(hook) {
-				return fmt.Errorf("generated Codex hooks file %s contains an unsupported matcher entry in %s", loafPath, hookType)
-			}
-			merged.Hooks[hookType] = append(merged.Hooks[hookType], rawHook)
-		}
-	}
-	if len(existing.Version) > 0 && !retiredLegacy {
-		return fmt.Errorf("Codex hooks file %s contains legacy version metadata without a recognized Loaf hook to retire; refusing to rewrite user/current content", destPath)
-	}
-	body, err := json.MarshalIndent(merged, "", "  ")
-	if err != nil {
-		return err
-	}
-	body = append(body, '\n')
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(destPath, body, 0o644)
-}
-
 func renderCodexHookExecutable(rawHook json.RawMessage, executable string) (json.RawMessage, error) {
 	return renderCodexHookExecutableForOS(rawHook, executable, runtime.GOOS)
 }
@@ -1760,103 +1612,6 @@ func renderCodexHookExecutableForOS(rawHook json.RawMessage, executable string, 
 		return nil, errors.New("Loaf Codex matcher group contains an unexpected matcher")
 	}
 	return json.Marshal(hook)
-}
-
-func loadCodexHooksRawFileStrict(path string) (codexHooksRawFile, error) {
-	if !fileExistsForInstall(path) {
-		return codexHooksRawFile{Hooks: map[string][]json.RawMessage{}}, nil
-	}
-	body, err := readRegularFile(path, projectFileReadLimit)
-	if err != nil {
-		return codexHooksRawFile{}, refuseProjectFileRead(err)
-	}
-	var topLevel map[string]json.RawMessage
-	if err := json.Unmarshal(body, &topLevel); err != nil {
-		return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: %w", path, err)
-	}
-	if topLevel == nil {
-		return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: top-level value must be an object", path)
-	}
-	for key := range topLevel {
-		if key != "version" && key != "description" && key != "hooks" {
-			return codexHooksRawFile{}, fmt.Errorf("Codex hooks file %s contains unsupported top-level field %q", path, key)
-		}
-	}
-	version := topLevel["version"]
-	if len(version) > 0 {
-		var value float64
-		if strings.HasPrefix(strings.TrimSpace(string(version)), "\"") || json.Unmarshal(version, &value) != nil || value != 1 {
-			return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: legacy version must be numeric 1", path)
-		}
-	}
-	var hooks map[string][]json.RawMessage
-	if raw, ok := topLevel["hooks"]; ok {
-		if strings.TrimSpace(string(raw)) == "null" {
-			return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: hooks must be an object", path)
-		}
-		var rawHooks map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &rawHooks); err != nil {
-			return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: %w", path, err)
-		}
-		hooks = make(map[string][]json.RawMessage, len(rawHooks))
-		for event, rawEvent := range rawHooks {
-			if strings.TrimSpace(string(rawEvent)) == "null" {
-				return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: event %q must be an array", path, event)
-			}
-			var eventHooks []json.RawMessage
-			if err := json.Unmarshal(rawEvent, &eventHooks); err != nil {
-				return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: event %q must be an array", path, event)
-			}
-			if eventHooks == nil {
-				eventHooks = []json.RawMessage{}
-			}
-			hooks[event] = eventHooks
-		}
-	}
-	if hooks == nil {
-		hooks = map[string][]json.RawMessage{}
-	}
-	for event := range hooks {
-		if !codexHookEvents[event] {
-			return codexHooksRawFile{}, fmt.Errorf("Codex hooks file %s contains unsupported hook event %q", path, event)
-		}
-	}
-	description := topLevel["description"]
-	if len(description) > 0 && strings.TrimSpace(string(description)) != "null" {
-		var value string
-		if err := json.Unmarshal(description, &value); err != nil {
-			return codexHooksRawFile{}, fmt.Errorf("parse Codex hooks file %s: description must be a string", path)
-		}
-	}
-	return codexHooksRawFile{Description: description, Version: version, Hooks: hooks}, nil
-}
-
-func loadCodexHooksFile(path string) (codexHooksFile, error) {
-	if !fileExistsForInstall(path) {
-		return codexHooksFile{Hooks: map[string][]map[string]any{}}, nil
-	}
-	body, err := readRegularFile(path, projectFileReadLimit)
-	if err != nil {
-		return codexHooksFile{}, refuseProjectFileRead(err)
-	}
-	// Decode as a top-level object first so a JSON array, null, or truncated
-	// payload is a refusal rather than an empty document the merge would write
-	// back as Loaf-only content.
-	var topLevel map[string]json.RawMessage
-	if err := json.Unmarshal(body, &topLevel); err != nil {
-		return codexHooksFile{}, fmt.Errorf("parse Codex hooks file %s: %w — preserving it as written", path, err)
-	}
-	if topLevel == nil {
-		return codexHooksFile{}, fmt.Errorf("parse Codex hooks file %s: top-level value must be an object — preserving it as written", path)
-	}
-	var hooks codexHooksFile
-	if err := json.Unmarshal(body, &hooks); err != nil {
-		return codexHooksFile{}, fmt.Errorf("parse Codex hooks file %s: %w — preserving it as written", path, err)
-	}
-	if hooks.Hooks == nil {
-		hooks.Hooks = map[string][]map[string]any{}
-	}
-	return hooks, nil
 }
 
 func isValidCodexMatcherGroup(hook map[string]any) bool {
@@ -2024,49 +1779,10 @@ func isASCIIWindowsDriveLetter(value byte) bool {
 	return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z')
 }
 
-func isLoafInstallHook(hook map[string]any) bool {
-	return isLoafInstallHookForOS(hook, runtime.GOOS)
-}
-
-func isLoafInstallHookForOS(hook map[string]any, goos string) bool {
-	if marker, ok := hook[loafHookMarker].(bool); ok && marker {
-		return true
-	}
-	if signature := installHookSignature(hook); signature != "" && legacyLoafHookSignatures[signature] {
-		return true
-	}
-	if command, ok := hook["command"].(string); ok && legacyLoafCommands[command] {
-		return true
-	}
-	if prompt, ok := hook["prompt"].(string); ok {
-		for _, prefix := range legacyLoafPromptPrefixes {
-			if strings.HasPrefix(prompt, prefix) {
-				return true
-			}
-		}
-	}
-	if isLoafCodexMatcherGroupForOS(hook, goos) {
-		return true
-	}
-	return false
-}
-
-func isLoafCodexMatcherGroup(hook map[string]any) bool {
-	return isLoafCodexMatcherGroupForOS(hook, runtime.GOOS)
-}
-
-func isLoafCodexMatcherGroupForOS(hook map[string]any, goos string) bool {
-	owned, conflict := codexHookOwnershipForOS(hook, goos)
-	return owned && !conflict
-}
-
-// codexHookOwnership recognizes only the exact Loaf one-handler shape. A
-// recognizable suffix in a modified group is an ownership conflict, not a
-// reason to delete a whole user group.
-func codexHookOwnership(hook map[string]any) (owned bool, conflict bool) {
-	return codexHookOwnershipForOS(hook, runtime.GOOS)
-}
-
+// codexHookOwnershipForOS recognizes only the exact Loaf one-handler shape. A
+// recognizable command inside a group carrying anything else reports a conflict
+// rather than ownership, which is what keeps recognition from claiming — and a
+// reconcile from rewriting — a user group Loaf's command was pasted into.
 func codexHookOwnershipForOS(hook map[string]any, goos string) (owned bool, conflict bool) {
 	matcher, _ := hook["matcher"].(string)
 	handlers, ok := hook["hooks"].([]any)
