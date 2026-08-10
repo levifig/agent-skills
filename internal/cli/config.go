@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +23,14 @@ type configCheckOptions struct {
 	fix        bool
 	jsonOutput bool
 	help       bool
+	// hookState reaches the enablement records for targets whose hook entries
+	// are reconciled. Diagnosis crosses those records with the live file, and
+	// `--fix` drives the shared installer, which converges the entries against
+	// them rather than overwriting the file — so the resolver has to travel with
+	// the request. Which resolver it is matters: a plain check gets the
+	// read-only one, because a diagnosis that created a database would be a
+	// write, and this command promises none without `--fix`.
+	hookState hookStateResolver
 }
 
 type configCheckResult struct {
@@ -43,13 +52,52 @@ type configFileStatus struct {
 	Errors   []string `json:"errors,omitempty"`
 }
 
+// configTargetStatus is one installed harness's hook health. Targets whose
+// entries are reconciled report Hooks — one state per catalog identity — and
+// the rest report MissingHooks, the whole-file question their plugin surfaces
+// still ask. Neither list ever mentions an entry Loaf does not own.
 type configTargetStatus struct {
-	Target       string   `json:"target"`
-	ConfigDir    string   `json:"config_dir"`
-	HookPath     string   `json:"hook_path,omitempty"`
-	Status       string   `json:"status"`
-	MissingHooks []string `json:"missing_hooks,omitempty"`
-	Error        string   `json:"error,omitempty"`
+	Target       string          `json:"target"`
+	ConfigDir    string          `json:"config_dir"`
+	HookPath     string          `json:"hook_path,omitempty"`
+	Status       string          `json:"status"`
+	MissingHooks []string        `json:"missing_hooks,omitempty"`
+	Hooks        []hookDiagnosis `json:"hooks,omitempty"`
+	Error        string          `json:"error,omitempty"`
+}
+
+func (s configTargetStatus) healthy() bool {
+	if s.Error != "" || len(s.MissingHooks) > 0 {
+		return false
+	}
+	for _, hook := range s.Hooks {
+		if !hook.healthy() {
+			return false
+		}
+	}
+	return true
+}
+
+// remedyPhrases names what this target needs, one phrase per distinct remedy so
+// a reconcile and a reprojection are not blurred into a single "stale". A
+// healthy target has none.
+func (s configTargetStatus) remedyPhrases() []string {
+	if len(s.MissingHooks) > 0 {
+		return []string{"hooks missing: " + strings.Join(s.MissingHooks, ", ")}
+	}
+	var phrases []string
+	for _, remedy := range []string{"reconcile", "reprojection"} {
+		var named []string
+		for _, hook := range s.Hooks {
+			if hook.remedy() == remedy {
+				named = append(named, fmt.Sprintf("%s (%s)", hook.HookID, strings.ReplaceAll(hook.State, "-", " ")))
+			}
+		}
+		if len(named) > 0 {
+			phrases = append(phrases, "hooks need "+remedy+": "+strings.Join(named, ", "))
+		}
+	}
+	return phrases
 }
 
 func (r Runner) runConfig(args []string, out io.Writer, runtimeRoot string) error {
@@ -79,6 +127,13 @@ func (r Runner) runConfig(args []string, out io.Writer, runtimeRoot string) erro
 		if err != nil {
 			return err
 		}
+		resolveHookState := r.hookStateForPlan
+		if options.fix {
+			resolveHookState = r.hookStateForApply
+		}
+		hookState, releaseHookState := resolveHookState(projectRoot.Path())
+		defer releaseHookState()
+		options.hookState = hookState
 		result := runConfigCheck(projectRoot.Path(), loafRoot, options)
 		if options.jsonOutput {
 			if err := writeJSON(out, result); err != nil {
@@ -136,22 +191,21 @@ func runConfigCheck(projectRoot string, loafRoot string, options configCheckOpti
 		result.Fixed = true
 	}
 
-	targets := installedConfigTargets()
-	for _, target := range targets {
-		status := checkConfigTargetHooks(loafRoot, target)
-		if len(status.MissingHooks) > 0 && options.fix {
-			status = fixConfigTargetHooks(projectRoot, loafRoot, target, status)
+	for _, target := range installedConfigTargets() {
+		status := checkConfigTargetHooks(projectRoot, loafRoot, target, options.hookState)
+		if !status.healthy() && options.fix {
+			status = fixConfigTargetHooks(projectRoot, loafRoot, target, status, options.hookState)
 		}
 		if status.Status == "updated" {
 			result.Fixed = true
 		}
-		if status.Error != "" || len(status.MissingHooks) > 0 {
+		if !status.healthy() {
 			result.OK = false
-			if status.Error != "" {
-				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", target.key, status.Error))
-			} else {
-				result.Errors = append(result.Errors, fmt.Sprintf("%s: missing managed hook(s): %s", target.key, strings.Join(status.MissingHooks, ", ")))
+			detail := status.Error
+			if detail == "" {
+				detail = strings.Join(status.remedyPhrases(), "; ")
 			}
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", target.key, detail))
 		}
 		result.Targets = append(result.Targets, status)
 	}
@@ -409,7 +463,14 @@ func readConfigInstallRecord(target string) (installTargetRecord, bool) {
 	return record, true
 }
 
-func checkConfigTargetHooks(loafRoot string, target detectedInstallTool) configTargetStatus {
+// checkConfigTargetHooks reports one installed harness's hook health. A target
+// whose entries are reconciled is diagnosed per identity against the records and
+// the live file; the plugin targets keep the whole-file question, which is the
+// right one for a file Loaf writes outright.
+func checkConfigTargetHooks(projectRoot string, loafRoot string, target detectedInstallTool, hookState hookStateResolver) configTargetStatus {
+	if targetKeepsReconciledHookFile(target.key) {
+		return diagnoseConfigTargetHooks(projectRoot, loafRoot, target, hookState)
+	}
 	status := configTargetStatus{
 		Target:    target.key,
 		ConfigDir: target.configDir,
@@ -436,44 +497,80 @@ func checkConfigTargetHooks(loafRoot string, target detectedInstallTool) configT
 	return status
 }
 
-func fixConfigTargetHooks(projectRoot string, loafRoot string, target detectedInstallTool, previous configTargetStatus) configTargetStatus {
-	return fixConfigTargetHooksWithInstaller(projectRoot, loafRoot, target, previous, installTargetDistribution)
+// diagnoseConfigTargetHooks is the enablement-aware half. It runs the
+// reconciler's own read — same catalog, same recognition, same pairing — so the
+// verdict here and the actions an upgrade would take cannot disagree, and a
+// hook the operator disabled reads healthy rather than missing.
+func diagnoseConfigTargetHooks(projectRoot string, loafRoot string, target detectedInstallTool, hookState hookStateResolver) configTargetStatus {
+	options := configTargetInstallOptions(projectRoot, loafRoot, target, hookState, false)
+	status := configTargetStatus{
+		Target:    target.key,
+		ConfigDir: target.configDir,
+		HookPath:  targetHookFilePath(options),
+		Status:    "ok",
+	}
+	reconciler, err := hooksReconcilerFor(options)
+	if err == nil {
+		status.Hooks, err = reconciler.diagnose(context.Background())
+	}
+	if err != nil {
+		status.Status = "error"
+		status.Error = err.Error()
+		return status
+	}
+	if !status.healthy() {
+		status.Status = "stale"
+	}
+	return status
 }
 
-func fixConfigTargetHooksWithInstaller(projectRoot string, loafRoot string, target detectedInstallTool, previous configTargetStatus, installer func(targetInstallOptions) error) configTargetStatus {
-	distDir := filepath.Join(loafRoot, "dist", target.key)
-	if !dirExistsForInstall(distDir) {
+func fixConfigTargetHooks(projectRoot string, loafRoot string, target detectedInstallTool, previous configTargetStatus, hookState hookStateResolver) configTargetStatus {
+	return fixConfigTargetHooksWithInstaller(projectRoot, loafRoot, target, previous, hookState, installTargetDistribution)
+}
+
+// fixConfigTargetHooksWithInstaller converges through the shared installer and
+// nothing else. For a reconciled target that installer is the reconciler, so
+// `--fix` adds a hook the operator never disabled, removes one they did, and
+// converges a drifted entry — by the same path an upgrade takes, with no
+// private refresh of its own.
+func fixConfigTargetHooksWithInstaller(projectRoot string, loafRoot string, target detectedInstallTool, previous configTargetStatus, hookState hookStateResolver, installer func(targetInstallOptions) error) configTargetStatus {
+	options := configTargetInstallOptions(projectRoot, loafRoot, target, hookState, true)
+	if !dirExistsForInstall(options.DistDir) {
 		previous.Status = "error"
 		previous.Error = fmt.Sprintf("no build output found for %s; run `loaf build` or reinstall Loaf", target.key)
 		return previous
 	}
-	if err := installer(targetInstallOptions{
-		Target:      target.key,
-		DistDir:     distDir,
-		ConfigDir:   target.configDir,
-		Upgrade:     true,
-		Version:     packageVersion(loafRoot),
-		HomeDir:     installHome(),
-		CodexHome:   os.Getenv("CODEX_HOME"),
-		ProjectRoot: projectRoot,
-	}); err != nil {
+	if err := installer(options); err != nil {
 		previous.Status = "error"
 		previous.Error = err.Error()
 		return previous
 	}
-	updated := checkConfigTargetHooks(loafRoot, target)
-	if len(updated.MissingHooks) == 0 && updated.Error == "" {
+	updated := checkConfigTargetHooks(projectRoot, loafRoot, target, hookState)
+	if updated.healthy() {
 		updated.Status = "updated"
 	}
 	return updated
 }
 
+// configTargetInstallOptions is how this command addresses one installed
+// harness. Diagnosis and `--fix` build it the same way so the target read is
+// the target written.
+func configTargetInstallOptions(projectRoot string, loafRoot string, target detectedInstallTool, hookState hookStateResolver, upgrade bool) targetInstallOptions {
+	return targetInstallOptions{
+		Target:      target.key,
+		DistDir:     filepath.Join(loafRoot, "dist", target.key),
+		ConfigDir:   target.configDir,
+		Upgrade:     upgrade,
+		Version:     packageVersion(loafRoot),
+		HomeDir:     installHome(),
+		CodexHome:   os.Getenv("CODEX_HOME"),
+		ProjectRoot: projectRoot,
+		HookState:   hookState,
+	}
+}
+
 func configDistributionHookPath(loafRoot string, target string) string {
 	switch target {
-	case "cursor":
-		return filepath.Join(loafRoot, "dist", "cursor", "hooks.json")
-	case "codex":
-		return filepath.Join(loafRoot, "dist", "codex", ".codex", "hooks.json")
 	case "opencode":
 		return filepath.Join(loafRoot, "dist", "opencode", "plugins", "hooks.ts")
 	case "amp":
@@ -485,8 +582,6 @@ func configDistributionHookPath(loafRoot string, target string) string {
 
 func configTargetHookPath(target string, configDir string) string {
 	switch target {
-	case "cursor", "codex":
-		return filepath.Join(configDir, "hooks.json")
 	case "opencode":
 		return filepath.Join(configDir, "plugins", "hooks.ts")
 	case "amp":
@@ -510,9 +605,6 @@ func configHookIDsFromFile(path string) ([]string, error) {
 		if len(match) == 2 {
 			seen[match[1]] = true
 		}
-	}
-	if strings.Contains(string(body), codexJournalHookCommandSuffix) {
-		seen["codex-session-start"] = true
 	}
 	var ids []string
 	for id := range seen {
@@ -593,7 +685,9 @@ func writeConfigTargetStatusText(out io.Writer, status configTargetStatus) {
 	case "updated":
 		fmt.Fprintf(out, "  %s %s hooks refreshed\n", ansiGreen("✓"), installDisplayName(status.Target))
 	case "stale":
-		fmt.Fprintf(out, "  %s %s hooks missing: %s\n", ansiYellow("!"), installDisplayName(status.Target), strings.Join(status.MissingHooks, ", "))
+		for _, phrase := range status.remedyPhrases() {
+			fmt.Fprintf(out, "  %s %s %s\n", ansiYellow("!"), installDisplayName(status.Target), phrase)
+		}
 	case "error":
 		fmt.Fprintf(out, "  %s %s hooks: %s\n", ansiRed("x"), installDisplayName(status.Target), status.Error)
 	}

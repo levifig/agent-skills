@@ -1,0 +1,27 @@
+=== enable ===
+
+  [32m✓[0m enabled — entry restored to ~/.config/codex/hooks.json
+
+
+--- diff after enable (vs after-absorption state):
+11a12,20
+>             },
+>             {
+>                 "hooks": [
+>                     {
+>                         "command": "'/opt/homebrew/bin/loaf' journal context --from-hook --codex-hook",
+>                         "type": "command"
+>                     }
+>                 ],
+>                 "matcher": "startup|resume|clear|compact"
+
+=== disable ===
+
+  [32m✓[0m disabled — entry removed from ~/.config/codex/hooks.json
+
+
+--- file back to absorbed state?
+identical (value-level, order-stable)
+
+=== absorbed_at survived toggles? ===
+    session-start-loaf  SessionStart  disabled  absent   [90m(absorbed 2026-08-10)[0m

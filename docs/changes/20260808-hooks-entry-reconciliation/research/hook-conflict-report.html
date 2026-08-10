@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hooks Reconciliation — Live Conflict Report</title>
+<style>
+:root {
+  --bg: #FAFAF8; --surface: #FFFFFF; --ink: #23211C; --muted: #6F6B60;
+  --line: #E4E1D8; --accent: #B4690E;
+  --sync: #2E7D4F; --sync-bg: #E6F2EA;
+  --del: #B03A48; --del-bg: #F7E8EA;
+  --legacy: #9A6A00; --legacy-bg: #F5EDDB;
+  --foreign: #4A5E8A; --foreign-bg: #E9EDF5;
+  --code-bg: #F2F0EA;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1B1917; --surface: #232019; --ink: #EDEAE4; --muted: #A29D90;
+    --line: #38342C; --accent: #E09A3E;
+    --sync: #7CC79A; --sync-bg: #24352B;
+    --del: #E08B96; --del-bg: #3D272B;
+    --legacy: #D9B25F; --legacy-bg: #383021;
+    --foreign: #9FB2D9; --foreign-bg: #272E3D;
+    --code-bg: #26231D;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1B1917; --surface: #232019; --ink: #EDEAE4; --muted: #A29D90;
+  --line: #38342C; --accent: #E09A3E;
+  --sync: #7CC79A; --sync-bg: #24352B;
+  --del: #E08B96; --del-bg: #3D272B;
+  --legacy: #D9B25F; --legacy-bg: #383021;
+  --foreign: #9FB2D9; --foreign-bg: #272E3D;
+  --code-bg: #26231D;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main { max-width: 880px; margin: 0 auto; padding: 40px 24px 80px; }
+code, .code, .rid, .rid-cell { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.eyebrow {
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--accent); font-weight: 650; margin: 40px 0 4px;
+}
+h1 { font-size: 26px; line-height: 1.25; margin: 4px 0 8px; text-wrap: balance; }
+h2 { font-size: 19px; margin: 8px 0 12px; text-wrap: balance; }
+.h2-tight { margin-top: 36px; }
+h3 { font-size: 14px; margin: 28px 0 8px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+h3 .count { color: var(--accent); margin-left: 6px; }
+.meta { color: var(--muted); font-size: 13.5px; margin: 0 0 16px; }
+.meta code { font-size: 12.5px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 8px; }
+.chip {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.chip-sync { background: var(--sync-bg); color: var(--sync); }
+.chip-deleted { background: var(--del-bg); color: var(--del); }
+.chip-legacy { background: var(--legacy-bg); color: var(--legacy); }
+.chip-foreign { background: var(--foreign-bg); color: var(--foreign); }
+.chip-plain { background: var(--code-bg); color: var(--muted); }
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: 16px 20px; margin: 16px 0;
+}
+.card header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.rid { font-weight: 700; font-size: 14px; color: var(--accent); }
+.rid-cell { font-weight: 700; color: var(--accent); white-space: nowrap; }
+.ev { color: var(--muted); font-size: 12.5px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.label {
+  font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); margin: 14px 0 4px; font-weight: 650;
+}
+.code {
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 12px 14px; font-size: 12.5px; line-height: 1.5; overflow-x: auto; margin: 6px 0;
+}
+.ruling { font-size: 13.5px; color: var(--muted); }
+.ruling strong { color: var(--ink); }
+.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th {
+  text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tbody tr:last-child td { border-bottom: none; }
+td code { font-size: 12px; }
+.num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+.dup { color: var(--del); font-size: 12.5px; font-weight: 600; }
+.dup code { font-weight: 400; }
+.nodup { color: var(--muted); }
+details { margin: 14px 0; }
+summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13.5px; }
+summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.insync { list-style: none; padding: 10px 0 0 4px; margin: 0; }
+.insync li { padding: 3px 0; font-size: 13px; }
+section + section { border-top: 1px solid var(--line); margin-top: 44px; }
+a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Loaf · Change 20260808-hooks-entry-reconciliation</p>
+  <h1>Live hook-entry conflict report</h1>
+  <p class="meta">Every entry in <code>~/.codex/hooks.json</code> and <code>~/.cursor/hooks.json</code> on this
+     machine, classified against the 0.2.20 dist (<code>main@4edd80d6</code>) with the same ownership predicates
+     <code>loaf upgrade</code> uses. Rule on items by ID — <code>X1</code>, <code>F1</code>, <code>L01</code>…</p>
+  
+<div class="chips">
+  <span class="chip chip-sync">17 in-sync</span>
+  <span class="chip chip-deleted">1 deleted</span>
+  <span class="chip chip-legacy">32 legacy-suspect</span>
+  <span class="chip chip-foreign">2 third-party</span>
+  <span class="chip chip-plain">0 modified</span>
+</div>
+  <p class="meta">No <em>modified</em> Loaf entry exists anywhere today — the mutation-semantics question
+     stays a policy call, not a live conflict.</p>
+  
+<section>
+  <p class="eyebrow">Codex · ~/.codex/hooks.json</p>
+  <h2>Two entries, two rulings</h2>
+  
+<article class="card" id="X1">
+  <header><span class="rid">X1</span><span class="chip chip-deleted">deleted</span>
+    <span class="ev">SessionStart</span></header>
+  <p>The Loaf journal-context entry is absent from the live file — removed 2026-08-02, journaled as
+     deliberate disable-intent (<code>journal:dcf9875d</code>). This is the entry whose absence makes
+     every <code>loaf upgrade</code> refuse the whole file today.</p>
+  <p class="label">Entry Loaf would ship (0.2.20 dist)</p>
+  <pre class="code">{
+  &quot;matcher&quot;: &quot;startup|resume|clear|compact&quot;,
+  &quot;hooks&quot;: [
+    {
+      &quot;type&quot;: &quot;command&quot;,
+      &quot;command&quot;: &quot;{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook&quot;,
+      &quot;commandWindows&quot;: &quot;{{LOAF_EXECUTABLE}} journal context --from-hook --codex-hook&quot;
+    }
+  ]
+}</pre>
+  <p class="ruling">Proposed ruling: <strong>absorb as disabled</strong> — record hook-enablement
+     state <em>disabled</em>, never re-add without an explicit <code>loaf hooks enable</code>.</p>
+</article>
+<article class="card" id="X2">
+  <header><span class="rid">X2</span><span class="chip chip-foreign">foreign</span>
+    <span class="ev">SessionStart</span></header>
+  <p>Third-party entry (herdr, script dated 2026-08-07). Under the entry model this is untouchable
+     by construction — reconciliation never counts it against Loaf's digest again.</p>
+  <pre class="code">{
+  &quot;hooks&quot;: [
+    {
+      &quot;command&quot;: &quot;bash &#x27;/Users/levifig/.config/codex/herdr-agent-state.sh&#x27; session&quot;,
+      &quot;timeout&quot;: 10,
+      &quot;type&quot;: &quot;command&quot;
+    }
+  ]
+}</pre>
+  <p class="ruling">Proposed ruling: <strong>keep</strong> — operator-owned, invisible to Loaf.</p>
+</article>
+</section>
+<section>
+  <p class="eyebrow">Cursor · ~/.cursor/hooks.json</p>
+  <h2>Shipped entries are pristine; a 2026-03-25 generation rides along</h2>
+  <p>All <strong>17</strong> Loaf-shipped entries match 0.2.20 byte-for-byte — no deleted, no modified.
+     The remaining 33 are unclaimed: one is genuinely third-party, and <strong>32</strong> form a single
+     installation event (scripts dated 2026-03-25, one 2026-04-07) whose names map one-to-one onto Loaf
+     skill families. The current legacy-recognition maps do not claim them, so today Loaf treats them as
+     foreign and they run in every Cursor session. Five functionally duplicate a shipped
+     <code>loaf check</code> entry — double enforcement on every matching tool call.</p>
+  <details><summary>The 17 in-sync entries (no action needed)</summary><ul class="insync"><li><span class="ev">postToolUse</span> <code>loaf task refresh</code></li><li><span class="ev">postToolUse</span> <code>bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh</code></li><li><span class="ev">postToolUse</span> <code>cat &quot;$HOME/.cursor/hooks/instructions/post-merge.md&quot;</code></li><li><span class="ev">preToolUse</span> <code>loaf check --hook artifact-body-write</code></li><li><span class="ev">preToolUse</span> <code>loaf check --hook check-secrets</code></li><li><span class="ev">preToolUse</span> <code>loaf check --hook security-audit</code></li><li><span class="ev">preToolUse</span> <code>loaf check --hook render-drift</code></li><li><span class="ev">preToolUse</span> <code>loaf check --hook ephemeral-provenance</code></li><li><span class="ev">preToolUse</span> <code>loaf check --hook artifact-names</code></li><li><span class="ev">preToolUse</span> <code>loaf check --hook github-account</code></li><li><span class="ev">preToolUse</span> <code>loaf check --hook validate-push --advisory</code></li><li><span class="ev">preToolUse</span> <code>loaf check --hook workflow-pre-pr --advisory</code></li><li><span class="ev">preToolUse</span> <code>cat &quot;$HOME/.cursor/hooks/instructions/pre-merge.md&quot;</code></li><li><span class="ev">preToolUse</span> <code>cat &quot;$HOME/.cursor/hooks/instructions/pre-push.md&quot;</code></li><li><span class="ev">preToolUse</span> <code>loaf check --hook validate-commit</code></li><li><span class="ev">preToolUse</span> <code>loaf journal log --detect-linear</code></li><li><span class="ev">sessionStart</span> <code>loaf journal context --from-hook --cursor-hook</code></li></ul></details>
+  
+<article class="card" id="F1">
+  <header><span class="rid">F1</span><span class="chip chip-foreign">foreign</span>
+    <span class="ev">sessionStart</span></header>
+  <pre class="code">{
+  &quot;command&quot;: &quot;bash &#x27;/Users/levifig/.cursor/herdr-agent-state.sh&#x27; session&quot;
+}</pre>
+  <p class="ruling">Proposed ruling: <strong>keep</strong> — third-party (herdr), untouchable by construction.</p>
+</article>
+  <h2 class="h2-tight">The legacy generation, by family</h2>
+  <p class="ruling">Proposed rulings per row: <strong>retire</strong> (claim as legacy Loaf; reconciliation
+     removes entry and script) · <strong>keep</strong> (operator-owned; becomes foreign-by-construction,
+     never touched) · <strong>disable</strong> (claim, but record disabled instead of removing).</p>
+  
+<h3>foundations <span class="count">7</span></h3>
+<div class="scroll"><table>
+  <thead><tr><th>ID</th><th>Event</th><th>Command</th><th>Matcher</th><th>Overlap with shipped entry</th><th>Script date</th></tr></thead>
+  <tbody>
+<tr id="L01">
+  <td class="rid-cell">L01</td>
+  <td class="ev">postToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/post-tool/foundations-changelog-reminder.sh</code></td>
+  <td class="ev">Bash</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L02">
+  <td class="rid-cell">L02</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/foundations-check-secrets.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="dup">duplicates <code>loaf check --hook check-secrets</code></span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L03">
+  <td class="rid-cell">L03</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/foundations-format-check.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L04">
+  <td class="rid-cell">L04</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/foundations-security-audit.sh</code></td>
+  <td class="ev">Bash</td>
+  <td><span class="dup">duplicates <code>loaf check --hook security-audit</code></span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L05">
+  <td class="rid-cell">L05</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/foundations-tdd-advisory.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L06">
+  <td class="rid-cell">L06</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/foundations-validate-changelog.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L07">
+  <td class="rid-cell">L07</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/foundations-validate-push.sh</code></td>
+  <td class="ev">Bash</td>
+  <td><span class="dup">duplicates <code>loaf check --hook validate-push --advisory</code></span></td>
+  <td class="num">2026-03-25</td>
+</tr></tbody>
+</table></div>
+<h3>orchestration <span class="count">3</span></h3>
+<div class="scroll"><table>
+  <thead><tr><th>ID</th><th>Event</th><th>Command</th><th>Matcher</th><th>Overlap with shipped entry</th><th>Script date</th></tr></thead>
+  <tbody>
+<tr id="L08">
+  <td class="rid-cell">L08</td>
+  <td class="ev">postToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/post-tool/orchestration-generate-task-board.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-04-07</td>
+</tr>
+<tr id="L09">
+  <td class="rid-cell">L09</td>
+  <td class="ev">preToolUse</td>
+  <td><code>python3 $HOME/.cursor/hooks/pre-tool/orchestration-detect-linear-magic.py</code></td>
+  <td class="ev">Bash</td>
+  <td><span class="dup">duplicates <code>loaf journal log --detect-linear</code></span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L10">
+  <td class="rid-cell">L10</td>
+  <td class="ev">preToolUse</td>
+  <td><code>python3 $HOME/.cursor/hooks/pre-tool/orchestration-validate-commit.py</code></td>
+  <td class="ev">Bash</td>
+  <td><span class="dup">duplicates <code>loaf check --hook validate-commit</code></span></td>
+  <td class="num">2026-03-25</td>
+</tr></tbody>
+</table></div>
+<h3>python <span class="count">7</span></h3>
+<div class="scroll"><table>
+  <thead><tr><th>ID</th><th>Event</th><th>Command</th><th>Matcher</th><th>Overlap with shipped entry</th><th>Script date</th></tr></thead>
+  <tbody>
+<tr id="L11">
+  <td class="rid-cell">L11</td>
+  <td class="ev">postToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/post-tool/python-ruff-check.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L12">
+  <td class="rid-cell">L12</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/python-bandit-scan.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L13">
+  <td class="rid-cell">L13</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/python-pytest-execution.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L14">
+  <td class="rid-cell">L14</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/python-pytest-validation.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L15">
+  <td class="rid-cell">L15</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/python-ruff-lint.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L16">
+  <td class="rid-cell">L16</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/python-type-check-progressive.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L17">
+  <td class="rid-cell">L17</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/python-type-check.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr></tbody>
+</table></div>
+<h3>rails <span class="count">5</span></h3>
+<div class="scroll"><table>
+  <thead><tr><th>ID</th><th>Event</th><th>Command</th><th>Matcher</th><th>Overlap with shipped entry</th><th>Script date</th></tr></thead>
+  <tbody>
+<tr id="L18">
+  <td class="rid-cell">L18</td>
+  <td class="ev">postToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/post-tool/rails-rubocop-check.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L19">
+  <td class="rid-cell">L19</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/rails-brakeman-scan.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L20">
+  <td class="rid-cell">L20</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/rails-migration-safety-deep.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L21">
+  <td class="rid-cell">L21</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/rails-migration-safety.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L22">
+  <td class="rid-cell">L22</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/rails-test-execution.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr></tbody>
+</table></div>
+<h3>typescript <span class="count">3</span></h3>
+<div class="scroll"><table>
+  <thead><tr><th>ID</th><th>Event</th><th>Command</th><th>Matcher</th><th>Overlap with shipped entry</th><th>Script date</th></tr></thead>
+  <tbody>
+<tr id="L23">
+  <td class="rid-cell">L23</td>
+  <td class="ev">postToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/post-tool/typescript-eslint-check.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L24">
+  <td class="rid-cell">L24</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/typescript-bundle-analysis.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L25">
+  <td class="rid-cell">L25</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/typescript-tsc-check.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr></tbody>
+</table></div>
+<h3>infra <span class="count">4</span></h3>
+<div class="scroll"><table>
+  <thead><tr><th>ID</th><th>Event</th><th>Command</th><th>Matcher</th><th>Overlap with shipped entry</th><th>Script date</th></tr></thead>
+  <tbody>
+<tr id="L26">
+  <td class="rid-cell">L26</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/infra-dockerfile-lint.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L27">
+  <td class="rid-cell">L27</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/infra-k8s-dry-run-server.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L28">
+  <td class="rid-cell">L28</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/infra-terraform-plan-cost.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L29">
+  <td class="rid-cell">L29</td>
+  <td class="ev">preToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/pre-tool/infra-validate-k8s.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr></tbody>
+</table></div>
+<h3>design <span class="count">3</span></h3>
+<div class="scroll"><table>
+  <thead><tr><th>ID</th><th>Event</th><th>Command</th><th>Matcher</th><th>Overlap with shipped entry</th><th>Script date</th></tr></thead>
+  <tbody>
+<tr id="L30">
+  <td class="rid-cell">L30</td>
+  <td class="ev">postToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/post-tool/design-a11y-audit.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L31">
+  <td class="rid-cell">L31</td>
+  <td class="ev">postToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/post-tool/design-a11y-validation.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr>
+<tr id="L32">
+  <td class="rid-cell">L32</td>
+  <td class="ev">postToolUse</td>
+  <td><code>bash $HOME/.cursor/hooks/post-tool/design-token-check.sh</code></td>
+  <td class="ev">Edit|Write</td>
+  <td><span class="nodup">—</span></td>
+  <td class="num">2026-03-25</td>
+</tr></tbody>
+</table></div>
+</section>
+</main>
+</body>
+</html>

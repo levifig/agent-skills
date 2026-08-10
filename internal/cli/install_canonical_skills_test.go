@@ -51,8 +51,8 @@ func TestSingleCanonicalWrite(t *testing.T) {
 				body = opencodeBody
 			}
 			writeInstallFile(t, filepath.Join(root, "dist", target, "skills", "foundations", "SKILL.md"), body)
-			if target == "codex" {
-				writeInstallFile(t, filepath.Join(root, "dist", target, ".codex", "hooks.json"), `{"hooks":{}}`+"\n")
+			if target == "cursor" || target == "codex" {
+				installTestHookDistribution(t, root, target)
 			}
 			mkdirAll(t, defaultInstallConfigDirsForHome(home)[target])
 		}
@@ -70,8 +70,8 @@ func TestSingleCanonicalWrite(t *testing.T) {
 		// Install without orchestration so the later foreign directory is unowned.
 		for _, target := range targets {
 			writeInstallFile(t, filepath.Join(root, "dist", target, "skills", "foundations", "SKILL.md"), sharedBody)
-			if target == "codex" {
-				writeInstallFile(t, filepath.Join(root, "dist", target, ".codex", "hooks.json"), `{"hooks":{}}`+"\n")
+			if target == "cursor" || target == "codex" {
+				installTestHookDistribution(t, root, target)
 			}
 			// Seed adapter artifacts so upgrade has something concrete to refresh.
 			if target == "opencode" {
@@ -196,6 +196,7 @@ func TestSingleCanonicalWrite(t *testing.T) {
 					Version:        "9.8.7-test.1",
 					HomeDir:        home,
 					SkipSkillsSync: true,
+					HookState:      installTestHookState(t),
 				})
 			}
 			if err := syncCanonicalManagedSkills(opts); err != nil {
@@ -287,8 +288,8 @@ func TestSingleCanonicalWrite(t *testing.T) {
 				body = tampered
 			}
 			writeInstallFile(t, filepath.Join(root, "dist", target, "skills", "foundations", "SKILL.md"), body)
-			if target == "codex" {
-				writeInstallFile(t, filepath.Join(root, "dist", target, ".codex", "hooks.json"), `{"hooks":{}}`+"\n")
+			if target == "cursor" || target == "codex" {
+				installTestHookDistribution(t, root, target)
 			}
 			mkdirAll(t, defaultInstallConfigDirsForHome(home)[target])
 		}
@@ -512,8 +513,8 @@ func seedCanonicalSkillsFixture(t *testing.T, root, home string, targets []strin
 	t.Helper()
 	for _, target := range targets {
 		writeInstallFile(t, filepath.Join(root, "dist", target, "skills", "foundations", "SKILL.md"), body)
-		if target == "codex" {
-			writeInstallFile(t, filepath.Join(root, "dist", target, ".codex", "hooks.json"), `{"hooks":{}}`+"\n")
+		if target == "cursor" || target == "codex" {
+			installTestHookDistribution(t, root, target)
 		}
 		// Ensure --to all detects every target without relying on host CLIs.
 		mkdirAll(t, defaultInstallConfigDirsForHome(home)[target])

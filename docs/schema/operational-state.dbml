@@ -749,3 +749,42 @@ Table source_availability_observations {
     (subject_kind, subject_id, observed_at)
   }
 }
+
+// User-scoped hook enablement (migration 0013). No project_id: records are
+// host-local. Absence of a hook_enablements row means enabled.
+Table hook_enablements {
+  id text [pk, not null]
+  target text [not null]
+  event text [not null]
+  hook_id text [not null]
+  enablement text [not null]
+  absorbed_at text
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (target, event, hook_id) [unique]
+    (target)
+  }
+}
+
+Table hook_absorption_markers {
+  id text [pk, not null]
+  target text [not null, unique]
+  absorbed_from_version text [not null]
+  absorbed_at text [not null]
+  created_at text [not null]
+}
+
+Table hook_trusted_paths {
+  id text [pk, not null]
+  target text [not null]
+  path text [not null]
+  is_current integer [not null]
+  created_at text [not null]
+  updated_at text [not null]
+  indexes {
+    (target, path) [unique]
+    (target) [unique, note: 'where is_current = 1']
+    (target)
+  }
+}

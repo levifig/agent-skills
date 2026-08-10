@@ -18,6 +18,7 @@ import (
 func TestRunnerUpgradeOnlyRefreshesDetectedLoafTargets(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	mkdirAll(t, filepath.Join(home, ".config", "opencode"))
 	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 
@@ -38,6 +39,7 @@ func TestRunnerUpgradeOnlyRefreshesDetectedLoafTargets(t *testing.T) {
 func TestRunnerUpgradeMigratesLegacyProjectInstructionLayout(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 	writeInstallFile(t, filepath.Join(root, "bin", "claude"), "#!/bin/sh\nexit 0\n")
 	if err := os.Chmod(filepath.Join(root, "bin", "claude"), 0o755); err != nil {
@@ -317,6 +319,7 @@ func TestRunnerUpgradeCleansRetiredAgentFromManifest(t *testing.T) {
 	// something to sync; without it the run ends in a target failure this test
 	// is not about.
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 	writeInstallFile(t, retiredAgent, "# Old Agent\n")
 	writeInstallDeprecationManifest(t, root, `{

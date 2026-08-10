@@ -407,7 +407,10 @@ func TestCheckpointOperationKeyRetryReturnsFirstWrite(t *testing.T) {
 func TestExplorationSchemaStoresNoTranscriptBodies(t *testing.T) {
 	// The provenance tables store locators, hashes, and bounded ranges — no
 	// column can hold transcript/prompt/tool/provider payload bodies.
-	migration := SchemaMigrations()[len(SchemaMigrations())-1]
+	migration, ok := schemaMigrationByName("intents_and_explorations")
+	if !ok {
+		t.Fatal("intents_and_explorations migration not found")
+	}
 	for _, table := range []string{"logical_conversations", "conversation_handles", "conversation_log_refs", "source_availability_observations"} {
 		body := tableBody(t, migration.SQL, table)
 		for _, forbidden := range []string{"transcript", "prompt", "payload", "content TEXT", "body TEXT", "message TEXT"} {

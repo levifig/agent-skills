@@ -1,0 +1,63 @@
+=== state status (pre-migrate) ===
+loaf state status
+project root: /Users/levifig/Code/levifig/projects/loaf
+legacy project key: 2c26b55e8918933726849a1957f40b06ea54d6066ead3f2e9723e92a3d94db66
+scope: global database
+database: /Users/levifig/.local/share/loaf/loaf.sqlite
+database exists: true
+mode: invalid
+schema version: 12
+
+=== state backup ===
+loaf: state database is invalid; run `loaf state doctor`
+
+=== state migrate ===
+Usage: loaf state migrate <source> [options]
+
+Run state migrations.
+
+Sources:
+  markdown            Import .agents Markdown artifacts into SQLite
+  storage-home        Copy legacy per-project state into the global XDG data-home database
+  schema              Preview or apply pending SQLite schema upgrades
+  lifecycle-statuses  Normalize legacy lifecycle statuses in SQLite
+  journal-first       Transform the global database to the journal-first model
+  deferrals           Convert historical journal deferrals into canonical deferred Intents
+
+Options:
+  -h, --help    Show help
+=== migrate schema (preview) ===
+loaf: loaf state migrate schema requires --dry-run or --apply
+=== migrate schema --dry-run ===
+loaf state migrate schema --dry-run
+scope: global database, schema migration
+database: /Users/levifig/.local/share/loaf/loaf.sqlite
+current schema version: 12
+required schema version: 13
+pending versions: [13]
+action: dry-run
+applied: false
+verified: false
+backup verified: false
+final schema version: 12
+next: rerun with --apply to create a verified backup and apply pending schema upgrades
+
+=== migrate schema --apply ===
+loaf state migrate schema --apply
+scope: global database, schema migration
+database: /Users/levifig/.local/share/loaf/loaf.sqlite
+current schema version: 13
+required schema version: 13
+pending versions: [13]
+action: apply
+applied: true
+verified: true
+backup verified: true
+backup: /Users/levifig/.local/share/loaf/backups/loaf-20260810-014435-860505000.sqlite
+final schema version: 13
+
+=== state status (post-migrate) ===
+database: /Users/levifig/.local/share/loaf/loaf.sqlite
+database exists: true
+mode: sqlite-ready
+schema version: 13

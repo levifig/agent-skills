@@ -59,16 +59,29 @@ var requiredInitialTables = []string{
 	"exploration_conversations",
 	"journal_conversation_handles",
 	"source_availability_observations",
+	"hook_enablements",
+	"hook_absorption_markers",
+	"hook_trusted_paths",
 	"schema_migrations",
+}
+
+// userScopedTables are host-local tables without project_id. They are excluded
+// from the project-scoped foreign-key guardrail.
+var userScopedTables = map[string]bool{
+	"hook_enablements":        true,
+	"hook_absorption_markers": true,
+	"hook_trusted_paths":      true,
+	"schema_migrations":       true,
+	"projects":                true,
 }
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 11 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 11", len(migrations))
+	if len(migrations) != 12 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 12", len(migrations))
 	}
 
-	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12}
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13}
 	for i, migration := range migrations {
 		if migration.Version != wantVersions[i] {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
@@ -103,6 +116,12 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[9].Name != "journal_origins_and_deferrals" {
 		t.Fatalf("migration[9].Name = %q, want journal_origins_and_deferrals", migrations[9].Name)
+	}
+	if migrations[10].Name != "intents_and_explorations" {
+		t.Fatalf("migration[10].Name = %q, want intents_and_explorations", migrations[10].Name)
+	}
+	if migrations[11].Name != "hook_enablement" {
+		t.Fatalf("migration[11].Name = %q, want hook_enablement", migrations[11].Name)
 	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
@@ -154,6 +173,7 @@ func TestOperationalTablesHaveStableIDsAndTimestamps(t *testing.T) {
 		"exploration_conversations":        true,
 		"journal_conversation_handles":     true,
 		"source_availability_observations": true,
+		"hook_absorption_markers":          true,
 	}
 	sql := currentSchemaSQL()
 	for _, table := range requiredInitialTables {
@@ -216,13 +236,27 @@ func TestJournalOriginTablesDoNotForeignKeyOptionalRows(t *testing.T) {
 func TestProjectScopedTablesUseForeignKeys(t *testing.T) {
 	sql := currentSchemaSQL()
 	for _, table := range requiredInitialTables {
-		if table == "projects" || table == "schema_migrations" {
+		if userScopedTables[table] {
 			continue
 		}
 		body := tableBody(t, sql, table)
 		if !strings.Contains(body, "FOREIGN KEY (project_id) REFERENCES projects(id)") {
 			t.Fatalf("%s does not constrain project_id to projects(id)", table)
 		}
+	}
+}
+
+func TestUserScopedHookTablesHaveNoProjectID(t *testing.T) {
+	sql := currentSchemaSQL()
+	for _, table := range []string{"hook_enablements", "hook_absorption_markers", "hook_trusted_paths"} {
+		body := tableBody(t, sql, table)
+		if strings.Contains(body, "project_id") {
+			t.Fatalf("%s must be user-scoped without project_id:\n%s", table, body)
+		}
+	}
+	enablement := tableBody(t, sql, "hook_enablements")
+	if !strings.Contains(enablement, "UNIQUE (target, event, hook_id)") {
+		t.Fatalf("hook_enablements missing UNIQUE(target, event, hook_id):\n%s", enablement)
 	}
 }
 
@@ -314,6 +348,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	sqlDoc = readRepoFile(t, "docs", "schema", "0012_intents_and_explorations.sql")
 	if sqlDoc != SchemaMigrations()[10].SQL {
 		t.Fatal("docs/schema/0012_intents_and_explorations.sql must match embedded migration 0012 exactly")
+	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0013_hook_enablement.sql")
+	if sqlDoc != SchemaMigrations()[11].SQL {
+		t.Fatal("docs/schema/0013_hook_enablement.sql must match embedded migration 0013 exactly")
 	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")
@@ -576,6 +614,27 @@ func currentSchemaSQL() string {
 		parts = append(parts, migration.SQL)
 	}
 	return strings.Join(parts, "\n")
+}
+
+func schemaMigrationByName(name string) (SchemaMigration, bool) {
+	for _, migration := range SchemaMigrations() {
+		if migration.Name == name {
+			return migration, true
+		}
+	}
+	return SchemaMigration{}, false
+}
+
+func sameIntSlice(got, want []int) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func tableBody(t *testing.T, sql string, table string) string {

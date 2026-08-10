@@ -1,0 +1,293 @@
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/python-ruff-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/typescript-eslint-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/rails-rubocop-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/design-a11y-validation.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/design-token-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/design-a11y-audit.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/foundations-changelog-reminder.sh",
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/orchestration-generate-task-board.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "loaf task refresh",
+        "loaf-managed": true,
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/post-tool/kb-staleness-nudge.sh",
+        "loaf-managed": true,
+        "matcher": "Edit|Write",
+        "timeout": 5
+      },
+      {
+        "command": "cat \"$HOME/.cursor/hooks/instructions/post-merge.md\"",
+        "if": "Bash(gh pr merge:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 5
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-check-secrets.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-validate-changelog.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-format-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-security-audit.sh",
+        "matcher": "Bash",
+        "timeout": 600
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-tdd-advisory.sh",
+        "matcher": "Edit|Write",
+        "timeout": 5
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/foundations-validate-push.sh",
+        "matcher": "Bash",
+        "timeout": 60
+      },
+      {
+        "command": "python3 $HOME/.cursor/hooks/pre-tool/orchestration-validate-commit.py",
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      {
+        "command": "python3 $HOME/.cursor/hooks/pre-tool/orchestration-detect-linear-magic.py",
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-type-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-pytest-validation.sh",
+        "matcher": "Edit|Write",
+        "timeout": 120
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-type-check-progressive.sh",
+        "matcher": "Edit|Write",
+        "timeout": 120
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-ruff-lint.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-pytest-execution.sh",
+        "matcher": "Edit|Write",
+        "timeout": 480
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/python-bandit-scan.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/typescript-tsc-check.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/typescript-bundle-analysis.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-migration-safety.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-migration-safety-deep.sh",
+        "matcher": "Edit|Write",
+        "timeout": 300
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-test-execution.sh",
+        "matcher": "Edit|Write",
+        "timeout": 480
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/rails-brakeman-scan.sh",
+        "matcher": "Edit|Write",
+        "timeout": 120
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-validate-k8s.sh",
+        "matcher": "Edit|Write",
+        "timeout": 60
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-dockerfile-lint.sh",
+        "matcher": "Edit|Write",
+        "timeout": 30
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-k8s-dry-run-server.sh",
+        "matcher": "Edit|Write",
+        "timeout": 120
+      },
+      {
+        "command": "bash $HOME/.cursor/hooks/pre-tool/infra-terraform-plan-cost.sh",
+        "matcher": "Edit|Write",
+        "timeout": 300
+      },
+      {
+        "command": "loaf check --hook artifact-body-write",
+        "failClosed": true,
+        "loaf-managed": true,
+        "matcher": "Edit|Write|Bash",
+        "timeout": 30
+      },
+      {
+        "command": "loaf check --hook check-secrets",
+        "failClosed": true,
+        "loaf-managed": true,
+        "matcher": "Edit|Write|Bash",
+        "timeout": 30
+      },
+      {
+        "command": "loaf check --hook security-audit",
+        "failClosed": true,
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 600
+      },
+      {
+        "command": "loaf check --hook render-drift",
+        "failClosed": true,
+        "if": "Bash(git push:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      {
+        "command": "loaf check --hook ephemeral-provenance",
+        "failClosed": true,
+        "if": "Bash(git push:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      {
+        "command": "loaf check --hook artifact-names",
+        "failClosed": true,
+        "if": "Bash(git commit:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      {
+        "command": "loaf check --hook github-account",
+        "failClosed": true,
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 10
+      },
+      {
+        "command": "loaf check --hook validate-push --advisory",
+        "if": "Bash(git push:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 60
+      },
+      {
+        "command": "loaf check --hook workflow-pre-pr --advisory",
+        "if": "Bash(gh pr create:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 5
+      },
+      {
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-merge.md\"",
+        "if": "Bash(gh pr merge:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 5
+      },
+      {
+        "command": "cat \"$HOME/.cursor/hooks/instructions/pre-push.md\"",
+        "if": "Bash(git push:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 5
+      },
+      {
+        "command": "loaf check --hook validate-commit",
+        "failClosed": true,
+        "if": "Bash(git commit:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 30
+      },
+      {
+        "command": "loaf journal log --detect-linear",
+        "if": "Bash(git commit:*)",
+        "loaf-managed": true,
+        "matcher": "Bash",
+        "timeout": 30
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "bash '/Users/canary/.cursor/herdr-agent-state.sh' session"
+      },
+      {
+        "command": "loaf journal context --from-hook --cursor-hook",
+        "loaf-managed": true,
+        "timeout": 60
+      }
+    ]
+  }
+}

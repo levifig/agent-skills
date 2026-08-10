@@ -21,6 +21,7 @@ func TestRunnerUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
 	t.Run("installed-target-stale-modified-foreign", func(t *testing.T) {
 		root, home := setupInstallCommandFixture(t)
 		writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+		installTestHookDistribution(t, root, "cursor")
 		writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "go-development", "SKILL.md"), "# Go v1\n")
 		writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 		runInstallFixture(t, root, "install", "--to", "cursor", "--yes")
@@ -110,6 +111,7 @@ func TestRunnerUpgradeDryRunNonMutatingAcrossSurfaces(t *testing.T) {
 func TestRunnerUpgradeDryRunJSONIsDeterministic(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
+	installTestHookDistribution(t, root, "cursor")
 	writeInstallFile(t, filepath.Join(root, "dist", "opencode", "skills", "foundations", "SKILL.md"), "# Foundations\n")
 	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 	mkdirAll(t, filepath.Join(home, ".config", "opencode"))
@@ -141,6 +143,7 @@ func TestRunnerUpgradeDryRunSkillPlanMatchesApply(t *testing.T) {
 	writeInstallFile(t, filepath.Join(distSkills, "foundations", "SKILL.md"), "# Foundations\n")
 	writeInstallFile(t, filepath.Join(distSkills, "go-development", "SKILL.md"), "# Go v1\n")
 	writeInstallFile(t, filepath.Join(distSkills, "legacy-skill", "SKILL.md"), "# Legacy\n")
+	installTestHookDistribution(t, root, "cursor")
 	writeInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "old\n")
 	runInstallFixture(t, root, "install", "--to", "cursor", "--yes")
 
