@@ -9,9 +9,9 @@ description: >-
   patterns or implementation evidence (use shape for SPECs), guiding principles
   (update ARCHITECTURE.md or VISION.md), workflow conventions (document in the
   owning skill), or local choices changeable in a single PR (log a
-  `decision(scope)` entry to the project journal instead). The ADR log is
-  append-only — when circumstances change, write a new ADR that supersedes the
-  old one.
+  `decision(scope)` entry to the project journal instead). ADRs are living
+  records — when a decision evolves, revise the record in place with a dated
+  revision note; supersession is reserved for topic splits and recategorization.
 version: 0.2.21
 ---
 
@@ -23,7 +23,7 @@ version: 0.2.21
 - Quick Reference
 - Topics
 
-Guides decision-making for **architecturally significant** choices through structured interviews, options analysis, and Architecture Decision Records. ADRs are **rare yet binding** — they record the rationale for choices that shape the system's structure, quality attributes, dependencies, interfaces, or construction techniques, and that the team agrees to honor until explicitly superseded. Most technical decisions do not warrant an ADR; the skill routes those to their proper destination (project journal, SPEC, ARCHITECTURE.md, or owning skill) and stops.
+Guides decision-making for **architecturally significant** choices through structured interviews, options analysis, and Architecture Decision Records. ADRs are **rare yet binding** — they record the rationale for choices that shape the system's structure, quality attributes, dependencies, interfaces, or construction techniques, and that the team agrees to honor until explicitly revised or retired. Most technical decisions do not warrant an ADR; the skill routes those to their proper destination (project journal, SPEC, ARCHITECTURE.md, or owning skill) and stops.
 
 Stabilizes canonical vocabulary in `docs/knowledge/glossary.md` when load-bearing terms surface mid-interview — additive to ADR creation, never a gate on it.
 
@@ -43,7 +43,7 @@ ADRs are reserved for **architecturally significant** decisions — those affect
 
 The bar is a **disjunction**: either canonical-domain effect, or difficulty of reversal, satisfies it (Microsoft Well-Architected). The Triage Gate below operationalizes the bar more strictly — `(Q1 OR Q2) AND Q3` — to keep ADRs rare and binding.
 
-The bar is constant. **The number of decisions clearing it scales with project maturity.** Projects still exploring their foundational shape clear the bar rarely — usually only foundational shape commitments (language/runtime/standard adoption, primary architectural shape). Mature projects clear it more often as cost-of-change rises across the codebase. **When in doubt while the project is still exploring its foundations, prefer SPEC over ADR** — SPECs evolve, ADRs supersede. In exploratory projects, foundational commitments typically pass via Q2's "Later" prong — the future-cost is the reason to record the rationale while it's fresh, not the current-cost.
+The bar is constant. **The number of decisions clearing it scales with project maturity.** Projects still exploring their foundational shape clear the bar rarely — usually only foundational shape commitments (language/runtime/standard adoption, primary architectural shape). Mature projects clear it more often as cost-of-change rises across the codebase. **When in doubt while the project is still exploring its foundations, prefer SPEC over ADR** — SPECs evolve freely; ADR revisions are dated, deliberate acts. In exploratory projects, foundational commitments typically pass via Q2's "Later" prong — the future-cost is the reason to record the rationale while it's fresh, not the current-cost.
 
 **An ADR captures a choice.** At least one credible alternative was considered and rejected. Without alternatives, you have a principle, vision, or aspiration — record those in `ARCHITECTURE.md` or `VISION.md` instead. The presence of an "Alternatives Considered" section in the ADR template is structural, not optional.
 
@@ -72,7 +72,7 @@ Q1 and Q2 form a disjunction (matches Microsoft's bar — either canonical-domai
 ### Skip ADR When
 
 - Decision is a convention or naming preference — no measurable effect on architecture (fails the architectural-significance test)
-- Decision is a stance, principle, philosophy, or vision — even if alternatives are named, the choice is being made on philosophical or operational grounds rather than architectural ones (specific quality attributes, dependencies, interfaces, or construction techniques). Record in `ARCHITECTURE.md` or `VISION.md` (strategic), where principles can evolve via reflect. ADRs are immutable post-acceptance and reserved for architectural choices.
+- Decision is a stance, principle, philosophy, or vision — even if alternatives are named, the choice is being made on philosophical or operational grounds rather than architectural ones (specific quality attributes, dependencies, interfaces, or construction techniques). Record in `ARCHITECTURE.md` or `VISION.md` (strategic), where principles can evolve via reflect. ADRs are dated, deliberate records reserved for architectural choices.
 - Decision is workflow lore belonging to a specific skill — document in that skill, not in `docs/decisions/`
 - Decision is exploration of alternatives without a chosen direction — that's a SPEC via shape; the ADR comes after if the chosen direction is architecturally significant
 - Decision can be changed in a single PR with no downstream coordination — log a `decision(scope)` entry to the project journal and a code comment if needed
@@ -80,14 +80,15 @@ Q1 and Q2 form a disjunction (matches Microsoft's bar — either canonical-domai
 
 ### Lifecycle
 
-ADRs are **append-only post-acceptance**. The original `Decision`, `Context`, `Rationale`, and `Consequences` sections are immutable — don't rewrite history.
+ADRs are **living records** — each one carries the *current* decision on its topic, revised in place under the same ID. Git history is the archive; the working tree carries only current truth. Evolving a decision does not require a new record: rewriting an existing ADR destroys nothing, because every prior state is one `git log` away, and it keeps every existing citation of the ID truthful.
 
 Five statuses: `Proposed` | `Accepted` | `Rejected` | `Deprecated` | `Superseded`.
 
-What's permitted post-acceptance:
-- **Status transitions:** `Accepted → Deprecated`, `Accepted → Superseded`, `Proposed → Rejected`, `Proposed → Accepted`
-- **Frontmatter additions** per the schema below (transition dates, supersession linkage)
-- **Append-only `## Deprecated`, `## Rejected`, or `## Superseded` sections** capturing the lifecycle change
+**Revising a record** (the default evolution path):
+- Rewrite the record in place — same ID, same file. Update the title if the decision's shape changed.
+- Date the change: set `revised:` in frontmatter and append one line to a `## Revisions` section (chronological, one line per material change).
+- Accrete alternatives: the framing being replaced and any newly rejected paths join `## Alternatives Considered` — this is the "we already weighed that" memory that stops re-litigation.
+- Cosmetic edits (typos, broken links) don't bump `revised:`.
 
 **Frontmatter schema:**
 
@@ -97,6 +98,7 @@ id: ADR-NNN
 title: "..."
 status: Proposed | Accepted | Rejected | Deprecated | Superseded
 date: YYYY-MM-DD            # creation / proposal
+revised: YYYY-MM-DD         # optional — latest material revision (mirrors ## Revisions)
 accepted_date: YYYY-MM-DD   # optional — only if differs from `date`
 rejected_date: YYYY-MM-DD   # required iff status is Rejected
 deprecated_date: YYYY-MM-DD # required iff status is Deprecated
@@ -105,21 +107,17 @@ superseded_by: ADR-NNN      # required iff status is Superseded
 ---
 ```
 
-Frontmatter encodes the structured *what* and *when* of a status transition. Context for *why* and *where-it-went* belongs in the body section (`## Deprecated` / `## Rejected`). Don't duplicate `reason` or `migrated_to` as frontmatter fields — they're prose.
+Frontmatter encodes the structured *what* and *when*. Context for *why* belongs in the body (`## Revisions` / `## Deprecated` / `## Rejected`). Don't duplicate `reason` or `migrated_to` as frontmatter fields — they're prose.
 
-**Body-section requirements by status:**
+**Supersession and deprecation are reserved for structural changes, not evolution:**
 
-- `## Deprecated` is **required** when status is `Deprecated`. Explains why and points to the new home (if migrated).
-- `## Rejected` is **required** when status is `Rejected`. Explains why the proposal was rejected and what was chosen instead (if anything).
-- `## Superseded` is **optional** when status is `Superseded`. The `superseded_by:` linkage carries the structural relationship; the new ADR carries the rationale. Add a body section only if the supersession had specific reasons worth preserving on the old record.
+- **Supersede** when a topic genuinely splits (one record becomes two) or a new record absorbs another's domain — set `supersedes:` on the new record and `superseded_by:` on the old one; both stay in `docs/decisions/`. `## Superseded` on the old record is optional; the linkage carries the structural relationship.
+- **Deprecate** when a record is recategorized — the underlying choice still holds, but the artifact-classification was wrong (it was actually a principle, convention, or workflow lore). The **required** `## Deprecated` section explains why and points to the new home. Nothing was replaced; only the classification changed.
+- **Reject** a `Proposed` record the team explicitly decided against. The **required** `## Rejected` section explains why and what was chosen instead (if anything). A `Rejected` ADR is a record of "we weighed this and chose against it" — useful when the same idea resurfaces. Keep them.
 
-A `Rejected` ADR is a record of "the team weighed this option and explicitly chose against it" — useful when the same idea resurfaces. Keep them.
+Revision is healthy. The bar for *writing* an ADR is high; once written, the bar for *quietly diverging from* it is just as high — divergence means a dated revision (or a supersession on topic split), never drift the record doesn't reflect.
 
-When the team's answer to a decision changes, write a **new ADR that supersedes the old one** — set `supersedes: ADR-NNN` on the new one and `superseded_by: ADR-MMM` on the old one. Both stay in `docs/decisions/`. The old one preserves the historical "_was_ the decision, _no longer_ the decision" record (Nygard).
-
-When a record is **recategorized** (the underlying choice still holds, but the artifact-classification was wrong — e.g., it was actually a principle, convention, or workflow lore), mark it `Deprecated` and explain the migration target in the `## Deprecated` body section. The original record is preserved; the active source is the migrated content. This is distinct from supersession: nothing's been *replaced*; only the *classification* changed.
-
-Supersession is healthy. The bar for *writing* an ADR is high; once written, the bar for *quietly diverging from* it is also high (write a superseding ADR instead).
+**When a record changes, sweep its surfaces.** A revision that changes what the decision binds — code paths, docs, skills — names the affected surfaces and the realignment work in its Consequences. (A mechanical `covers:`-style drift check is future work; until it exists, the sweep is authored.)
 
 **Always**
 - Run the Triage Gate before grilling. If the gate fails — `(Q1 OR Q2) AND Q3` is not satisfied — route to the destination in the table and stop.
@@ -134,12 +132,12 @@ Supersession is healthy. The bar for *writing* an ADR is high; once written, the
 
 **Never**
 - Make architectural decisions without user input
-- Contradict existing decisions without explicitly superseding them
+- Contradict an existing record without revising it — divergence means a dated revision (or supersession on topic split), never quiet drift
 - Proceed past the Triage Gate when it fails — i.e., when neither Q1 nor Q2 affirms, or when Q3 fails. ADRs require `(Q1 OR Q2) AND Q3`.
 - Create ADRs without user approval, even when the user requests one — if the decision fails the Triage Gate, propose the correct destination and decline the ADR
-- Use the word "irreversible" — software decisions can always be reversed via supersession; the operative criterion is "difficult to reverse"
+- Use the word "irreversible" — software decisions can always be reversed via revision or supersession; the operative criterion is "difficult to reverse"
 - ADR-ify aesthetic preferences, naming conventions, workflow lore, or guiding principles — those have other homes (see Skip ADR When)
-- Rewrite accepted ADRs' Decision/Context/Rationale/Consequences sections — those are immutable. Status transitions, frontmatter additions, and append-only Deprecated/Rejected/Superseded sections are how lifecycle is recorded
+- Revise a record without dating it — every material change sets `revised:` and appends a `## Revisions` line; git history is the archive, the revision note is the reader's signal
 - Block ADR creation on glossary state — glossary mutations are additive and opt-in
 - Call `loaf kb glossary propose` (reserved for upstream ambiguity-resolving skills)
 
@@ -149,7 +147,7 @@ After work completes, verify:
 - Triage Gate ran before any grilling; gate passed `(Q1 OR Q2) AND Q3` before proceeding
 - Decision passes the bar: architecturally significant (canonical domains) OR difficult to reverse (cost of divergence)
 - ADR captures rationale, not exploration (exploration belongs in a SPEC)
-- If the decision supersedes a prior ADR, the new ADR has `supersedes:` and the old one has `superseded_by:`
+- If the decision evolved an existing record, the revision is dated (`revised:` frontmatter + `## Revisions` entry) and the replaced framing joined Alternatives Considered; genuine supersession carries `supersedes:`/`superseded_by:` linkage
 - ADR created using template at [templates/adr.md](templates/adr.md)
 - ARCHITECTURE.md updated with new constraints and ADR reference
 - ADR number assigned sequentially (ls docs/decisions/ADR-*.md for next number)

@@ -6,6 +6,12 @@ that affects the system's structure, key quality attributes,
 dependencies, interfaces, or construction techniques — and that is
 difficult to reverse in the project's current state.
 
+ADRs are living records: each carries the CURRENT decision on its
+topic, revised in place under the same ID. Date every material change
+(`revised:` frontmatter + a `## Revisions` line), accrete replaced
+framings into Alternatives Considered, and let git history archive
+prior text.
+
 If the decision is a development pattern, exploration, or implementation
 direction, use a SPEC via the shape workflow instead.
 If it's a guiding principle or operating philosophy, update ARCHITECTURE.md
@@ -18,6 +24,8 @@ Run the architecture skill's Triage Gate if unsure.
 A `Rejected` or `Deprecated` ADR REQUIRES a `## Rejected` or `## Deprecated`
 body section explaining the transition. A `Superseded` ADR may include a
 `## Superseded` section but the linkage in `superseded_by:` is sufficient.
+Supersession is for topic splits and domain absorption, not evolution —
+evolution is a dated in-place revision.
 -->
 
 # ADR Template
@@ -30,6 +38,7 @@ id: ADR-001
 title: "PostgreSQL as Primary Database"
 status: Accepted  # Proposed | Accepted | Rejected | Deprecated | Superseded
 date: 2026-01-23
+# revised:         # optional — latest material revision (mirrors ## Revisions)
 # accepted_date:   # optional — only if differs from `date`
 # rejected_date:   # required iff status is Rejected
 # deprecated_date: # required iff status is Deprecated
@@ -41,11 +50,11 @@ superseded_by: null  # required iff status is Superseded
 
 ## Context
 
-[Why this decision was needed. What problem we faced.]
+[Why this decision was needed. What problem we faced. Accretes as the decision evolves.]
 
 ## Decision
 
-[What we decided. Be specific and unambiguous.]
+[The current decision. Be specific and unambiguous.]
 
 ## Consequences
 
@@ -63,8 +72,13 @@ superseded_by: null  # required iff status is Superseded
 ## Alternatives Considered
 
 ### [Alternative 1]
-[Why it was rejected]
+[Why it was rejected — including framings this record used to hold]
 
 ### [Alternative 2]
 [Why it was rejected]
+
+## Revisions
+
+- YYYY-MM-DD — Initial record.
+- YYYY-MM-DD — [One line per material change; prior text in git history.]
 ```
