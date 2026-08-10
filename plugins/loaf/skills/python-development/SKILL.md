@@ -8,7 +8,7 @@ description: >-
   infrastructure-management), or frontend code (use typescript-development).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Python Development

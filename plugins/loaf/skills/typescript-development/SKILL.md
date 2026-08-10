@@ -7,7 +7,7 @@ description: >-
   database schema (use database-design), or Python (use python-development).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 0.2.20
+version: 0.2.21
 ---
 
 # TypeScript Development

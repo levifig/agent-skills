@@ -12,7 +12,7 @@ description: >-
   `decision(scope)` entry to the project journal instead). The ADR log is
   append-only — when circumstances change, write a new ADR that supersedes the
   old one.
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Architecture

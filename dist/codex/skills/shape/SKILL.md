@@ -14,7 +14,7 @@ description: >-
   idea), problem discovery that should author a brief first (use pitch), or
   open-ended divergent thinking (agent technique: explore / brainstorm — user
   entry intent routes to pitch).
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Shape

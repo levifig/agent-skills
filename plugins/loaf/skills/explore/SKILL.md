@@ -14,7 +14,7 @@ description: >-
   discovery (use pitch), or quick capture (use idea).
 user-invocable: false
 argument-hint: '[topic or exploration ref]'
-version: 0.2.20
+version: 0.2.21
 ---
 
 # Explore

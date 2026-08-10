@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+- _No unreleased changes yet._
+
+## [0.2.21] - 2026-08-10
+
 ### Added
 
 - `loaf state migrate alias-orphans` retires entity rows orphaned from the alias registry — the damage left when a project rekey invalidated every derived ID and a later import re-minted the tree. Classification proves twin-ship (legacy-salt derivation, or window-gated content identity) and iterates to a fixed point; unproven rows refuse by default and take explicit `--retire`/`--realias` dispositions that rehearse in preview; apply takes a backup first and writes an fsynced rollback manifest that restores every deleted row ([#159](https://github.com/levifig/loaf/pull/159)).
