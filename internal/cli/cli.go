@@ -340,6 +340,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runReport(args[1:], out, runtime)
 	case "spec":
 		dispatchErr = r.runSpec(args[1:], out, runtime)
+	case "issue":
+		dispatchErr = r.runIssue(args[1:], out, runtime)
 	case "journal":
 		dispatchErr = r.runJournal(args[1:], out, runtime)
 	case "task":
@@ -420,6 +422,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  intake        Read the local intake projection")
 	fmt.Fprintln(out, "  task          Manage tasks")
 	fmt.Fprintln(out, "  spec          Manage specs")
+	fmt.Fprintln(out, "  issue         Manage issues")
 	fmt.Fprintln(out, "  report        Manage reports")
 	fmt.Fprintln(out, "  plan          Manage plans")
 	fmt.Fprintln(out, "  handoff       Manage handoffs")
@@ -4410,6 +4413,8 @@ func writeTaskHelp(out io.Writer) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Manage project tasks in native SQLite state or markdown compatibility mode.")
 	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Superseded by loaf issue for new work.")
+	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Subcommands:")
 	fmt.Fprintln(out, "  create   Create a task")
 	fmt.Fprintln(out, "  list     List tasks")
@@ -7808,6 +7813,8 @@ func writeSpecHelp(out io.Writer) {
 	fmt.Fprintln(out, "Usage: loaf spec <subcommand> [options]")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Manage project specs in native SQLite state or markdown compatibility mode.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Superseded by loaf issue for new work.")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Subcommands:")
 	fmt.Fprintln(out, "  new      Create a spec in SQLite state")

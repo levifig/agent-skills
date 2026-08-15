@@ -137,6 +137,183 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	return nil
 }
 
+// AddIssueCriterion appends one criterion to an issue.
+func AddIssueCriterion(ctx context.Context, root project.Root, resolver PathResolver, ref string, input IssueCriterionInput) (Issue, error) {
+	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
+	if err != nil {
+		return Issue{}, err
+	}
+	defer store.Close()
+	return store.AddIssueCriterion(ctx, root, ref, input)
+}
+
+// AddIssueCriterion appends one criterion on an open store.
+func (s *Store) AddIssueCriterion(ctx context.Context, root project.Root, ref string, input IssueCriterionInput) (Issue, error) {
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return Issue{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "begin", Err: err}
+	}
+	defer tx.Rollback()
+
+	issueID, _, err := resolveIssueRefTx(ctx, tx, projectID, ref)
+	if err != nil {
+		return Issue{}, err
+	}
+	var max sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT MAX(position) FROM issue_criteria WHERE project_id = ? AND issue_id = ?`, projectID, issueID).Scan(&max); err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "max position", Err: err}
+	}
+	input.Position = 1
+	if max.Valid {
+		input.Position = int(max.Int64) + 1
+	}
+	normalized, err := normalizeIssueCriteria([]IssueCriterionInput{input})
+	if err != nil {
+		return Issue{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if err := insertIssueCriterionTx(ctx, tx, projectID, issueID, normalized[0], now); err != nil {
+		return Issue{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE issues SET updated_at = ? WHERE project_id = ? AND id = ?`, now, projectID, issueID); err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "touch issue", Err: err}
+	}
+	detail, err := loadIssueTx(ctx, tx, projectID, issueID)
+	if err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "read result", Err: err}
+	}
+	if err := tx.Commit(); err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "commit", Err: err}
+	}
+	return detail, nil
+}
+
+// RemoveIssueCriterion deletes the criterion at position and compact-renumbers.
+func RemoveIssueCriterion(ctx context.Context, root project.Root, resolver PathResolver, ref string, position int) (Issue, error) {
+	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
+	if err != nil {
+		return Issue{}, err
+	}
+	defer store.Close()
+	return store.RemoveIssueCriterion(ctx, root, ref, position)
+}
+
+// RemoveIssueCriterion deletes one criterion on an open store.
+func (s *Store) RemoveIssueCriterion(ctx context.Context, root project.Root, ref string, position int) (Issue, error) {
+	if position < 1 {
+		return Issue{}, &IssueValidationError{Field: "position", Err: fmt.Errorf("must be >= 1")}
+	}
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return Issue{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "begin", Err: err}
+	}
+	defer tx.Rollback()
+
+	issueID, _, err := resolveIssueRefTx(ctx, tx, projectID, ref)
+	if err != nil {
+		return Issue{}, err
+	}
+	current, err := loadIssueCriteriaTx(ctx, tx, projectID, issueID)
+	if err != nil {
+		return Issue{}, err
+	}
+	remaining := make([]IssueCriterionInput, 0, len(current))
+	found := false
+	for _, criterion := range current {
+		if criterion.Position == position {
+			found = true
+			continue
+		}
+		remaining = append(remaining, IssueCriterionInput{
+			Text:    criterion.Text,
+			Command: criterion.Command,
+			Expect:  criterion.Expect,
+			Tier:    criterion.Tier,
+		})
+	}
+	if !found {
+		return Issue{}, &IssueValidationError{Field: "position", Err: fmt.Errorf("criterion position %d not found", position)}
+	}
+	normalized, err := normalizeIssueCriteria(remaining)
+	if err != nil {
+		return Issue{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if err := replaceIssueCriteriaTx(ctx, tx, projectID, issueID, normalized, now); err != nil {
+		return Issue{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE issues SET updated_at = ? WHERE project_id = ? AND id = ?`, now, projectID, issueID); err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "touch issue", Err: err}
+	}
+	detail, err := loadIssueTx(ctx, tx, projectID, issueID)
+	if err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "read result", Err: err}
+	}
+	if err := tx.Commit(); err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "commit", Err: err}
+	}
+	return detail, nil
+}
+
+// PromoteIssueCriterion creates a child delivery issue from the criterion at
+// position. The parent criterion stays in place.
+func PromoteIssueCriterion(ctx context.Context, root project.Root, resolver PathResolver, ref string, position int) (Issue, error) {
+	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
+	if err != nil {
+		return Issue{}, err
+	}
+	defer store.Close()
+	return store.PromoteIssueCriterion(ctx, root, ref, position)
+}
+
+// PromoteIssueCriterion creates a child issue on an open store.
+func (s *Store) PromoteIssueCriterion(ctx context.Context, root project.Root, ref string, position int) (Issue, error) {
+	if position < 1 {
+		return Issue{}, &IssueValidationError{Field: "position", Err: fmt.Errorf("must be >= 1")}
+	}
+	parent, err := s.GetIssue(ctx, root, ref)
+	if err != nil {
+		return Issue{}, err
+	}
+	var criterion *IssueCriterion
+	for i := range parent.Criteria {
+		if parent.Criteria[i].Position == position {
+			criterion = &parent.Criteria[i]
+			break
+		}
+	}
+	if criterion == nil {
+		return Issue{}, &IssueValidationError{Field: "position", Err: fmt.Errorf("criterion position %d not found", position)}
+	}
+	return s.CreateIssue(ctx, root, IssueCreateOptions{
+		Title:  criterion.Text,
+		Kind:   IssueKindDelivery,
+		Parent: parent.ID,
+	})
+}
+
+func insertIssueCriterionTx(ctx context.Context, tx *sql.Tx, projectID, issueID string, criterion IssueCriterionInput, now string) error {
+	id, err := newOpaqueStateID("icr")
+	if err != nil {
+		return &IssueTransactionError{Stage: "criterion id", Err: err}
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO issue_criteria (id, project_id, issue_id, position, text, command, expect, tier, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, id, projectID, issueID, criterion.Position, criterion.Text, emptyToNil(criterion.Command), emptyToNil(criterion.Expect), criterion.Tier, now, now); err != nil {
+		return &IssueTransactionError{Stage: "criterion", Err: err}
+	}
+	return nil
+}
+
 func loadIssueCriteriaTx(ctx context.Context, tx *sql.Tx, projectID, issueID string) ([]IssueCriterion, error) {
 	rows, err := tx.QueryContext(ctx, `
 SELECT id, position, text, COALESCE(command, ''), COALESCE(expect, ''), tier

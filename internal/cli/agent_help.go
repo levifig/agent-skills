@@ -204,6 +204,25 @@ func agentHelpCommands() []agentHelpCommand {
 			},
 		},
 		{
+			Name:        "issue",
+			Description: "Manage issues in native SQLite state",
+			Subcommands: []agentHelpSubcommand{
+				{Name: "new", Description: "Create an issue", Options: []agentHelpOption{{Flags: "--body <text>", Description: "Inline issue body, or '-' to read from stdin"}, {Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"}, {Flags: "--message <text>", Description: "Use inline Markdown body text"}, {Flags: "--kind <kind>", Description: "Issue kind: delivery or decision"}, {Flags: "--parent <ref>", Description: "Parent issue ref"}, {Flags: "--fog <text>", Description: "Questions not yet sharp enough to be issues"}, {Flags: "--json", Description: "Output the created issue, global database scope, and project identity as JSON"}}},
+				{Name: "show", Description: "Show one issue", Options: []agentHelpOption{{Flags: "--json", Description: "Output issue details, parent, children, bucket, global database scope, and project identity as JSON"}}},
+				{Name: "list", Description: "List project issues", Options: []agentHelpOption{{Flags: "--status <status>", Description: "Filter by status"}, {Flags: "--kind <kind>", Description: "Filter by kind"}, {Flags: "--archived", Description: "Include archived issues"}, {Flags: "--json", Description: "Output issues, global database scope, and project identity as JSON"}}},
+				{Name: "tree", Description: "Print a recursive issue tree", Options: []agentHelpOption{{Flags: "--archived", Description: "Include archived issues"}, {Flags: "--json", Description: "Output the tree, global database scope, and project identity as JSON"}}},
+				{Name: "frontier", Description: "List unblocked pick-up-next issues", Options: []agentHelpOption{{Flags: "--json", Description: "Output frontier issues, global database scope, and project identity as JSON"}}},
+				{Name: "edit", Description: "Replace an issue body through the shared body-edit path", Options: []agentHelpOption{{Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"}, {Flags: "--body -", Description: "Read Markdown body from stdin"}, {Flags: "--message <text>", Description: "Use inline Markdown body text"}, {Flags: "--json", Description: "Output the edited issue, global database scope, and project identity as JSON"}}},
+				{Name: "status", Description: "Set an issue status", Options: []agentHelpOption{{Flags: "--duplicate-of <ref>", Description: "Surviving issue required when status is duplicate"}, {Flags: "--json", Description: "Output the updated issue, global database scope, and project identity as JSON"}}},
+				{Name: "dod", Description: "Manage definition-of-done criteria"},
+				{Name: "promote", Description: "Promote a criterion into a child issue", Options: []agentHelpOption{{Flags: "--json", Description: "Output the new child issue, global database scope, and project identity as JSON"}}},
+				{Name: "bucket", Description: "Set an advisory Now/Next/Later label", Options: []agentHelpOption{{Flags: "--json", Description: "Output the issue and bucket, global database scope, and project identity as JSON"}}},
+				{Name: "link", Description: "Create or remove an issue relationship", Options: []agentHelpOption{{Flags: "--json", Description: "Output the relationship mutation, global database scope, and project identity as JSON"}}},
+				{Name: "render", Description: "Emit a paste-ready PR body", Options: []agentHelpOption{{Flags: "--json", Description: "Output the markdown, issue, global database scope, and project identity as JSON"}}},
+				{Name: "export", Description: "Export issues, identity, criteria, and relationships as JSON", Options: []agentHelpOption{{Flags: "--json", Description: "Output the export snapshot"}}},
+			},
+		},
+		{
 			Name:        "report",
 			Description: "Manage durable reports",
 			Subcommands: []agentHelpSubcommand{

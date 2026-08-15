@@ -24,9 +24,17 @@ const (
 	IssueStatusDuplicate = "duplicate"
 
 	IssueRelationshipRelatesTo = "relates_to"
+	IssueRelationshipBlocks    = "blocks"
+	IssueRelationshipBlockedBy = "blocked_by"
 
-	issueEntityKind = "issue"
-	issueNamespace  = "issue"
+	IssueBucketNow   = "now"
+	IssueBucketNext  = "next"
+	IssueBucketLater = "later"
+	IssueBucketNone  = "none"
+
+	issueEntityKind      = "issue"
+	issueNamespace       = "issue"
+	issueBucketTagPrefix = "bucket:"
 )
 
 // IssueValidationError identifies malformed issue input.

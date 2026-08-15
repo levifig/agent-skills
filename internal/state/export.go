@@ -17,6 +17,7 @@ const (
 	ExportKindReleaseReadiness = "release-readiness"
 	ExportKindSpec             = "spec"
 	ExportKindTriage           = "triage"
+	ExportKindIssue            = "issue"
 	ExportFormatJSON           = "json"
 	ExportFormatMarkdown       = "markdown"
 	ExportAudienceLocal        = "internal"
@@ -172,6 +173,9 @@ var exportAllTables = []exportTable{
 	{Name: "exploration_conversations", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "journal_conversation_handles", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "source_availability_observations", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "issues", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "issue_criteria", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "issue_identity", OrderBy: "id", FilterColumn: "project_id"},
 }
 
 // ExportAllJSON returns a repository-non-mutating internal snapshot of SQLite state.

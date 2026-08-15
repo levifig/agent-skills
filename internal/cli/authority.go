@@ -134,6 +134,13 @@ var basicCommandAuthorityPrefixes = []commandAuthorityPrefix{
 	{tokens: []string{"spec", "render"}},
 	{tokens: []string{"spec", "show"}},
 	{tokens: []string{"spec", "status"}},
+	{tokens: []string{"issue", "dod", "list"}},
+	{tokens: []string{"issue", "export"}},
+	{tokens: []string{"issue", "frontier"}},
+	{tokens: []string{"issue", "list"}},
+	{tokens: []string{"issue", "render"}},
+	{tokens: []string{"issue", "show"}},
+	{tokens: []string{"issue", "tree"}},
 	{tokens: []string{"version"}},
 }
 

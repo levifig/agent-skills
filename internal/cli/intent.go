@@ -44,7 +44,7 @@ func (r Runner) runIntent(args []string, out io.Writer, runtime state.Runtime) e
 }
 
 func writeIntentHelp(out io.Writer) {
-	writeCommandGroupHelp(out, "loaf intent <subcommand> [options]", "Manage tracked Intent in native SQLite state. Disposition is derived from append-only facts; there is no mutable lifecycle status.", []subcommandHelpItem{
+	writeCommandGroupHelp(out, "loaf intent <subcommand> [options]", "Manage tracked Intent in native SQLite state. Disposition is derived from append-only facts; there is no mutable lifecycle status. Superseded by loaf issue for new work.", []subcommandHelpItem{
 		{Name: "create", Summary: "Create a tracked or deferred Intent"},
 		{Name: "defer", Summary: "Defer an existing Intent with an immutable payload"},
 		{Name: "resume", Summary: "Append a tracked disposition superseding the current deferral"},
