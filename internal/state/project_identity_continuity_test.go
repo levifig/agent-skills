@@ -301,6 +301,24 @@ VALUES ('idea-legacy-continuity', ?, 'Legacy Idea', 'open', ?, ?)
 `, legacyID, now, now); err != nil {
 		t.Fatalf("insert legacy idea error = %v", err)
 	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO issues (id, project_id, kind, title, body, status, created_at, updated_at)
+VALUES ('issue-legacy-continuity', ?, 'delivery', 'Legacy Issue', '', 'triage', ?, ?)
+`, legacyID, now, now); err != nil {
+		t.Fatalf("insert legacy issue error = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO issue_criteria (id, project_id, issue_id, position, text, tier, created_at, updated_at)
+VALUES ('crit-legacy-continuity', ?, 'issue-legacy-continuity', 1, 'Still true after rekey', 'H', ?, ?)
+`, legacyID, now, now); err != nil {
+		t.Fatalf("insert legacy issue criteria error = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO issue_identity (id, project_id, authority, prefix, next_number, created_at, updated_at)
+VALUES ('iid-legacy-continuity', ?, 'local', 'LOAF', 2, ?, ?)
+`, legacyID, now, now); err != nil {
+		t.Fatalf("insert legacy issue identity error = %v", err)
+	}
 	identity, err := store.EnsureProject(ctx, root)
 	if err != nil {
 		t.Fatalf("EnsureProject() error = %v", err)
@@ -314,6 +332,22 @@ VALUES ('idea-legacy-continuity', ?, 'Legacy Idea', 'open', ?, ?)
 	}
 	if ideaProjectID != identity.ID {
 		t.Fatalf("idea project_id = %q, want %q", ideaProjectID, identity.ID)
+	}
+	for _, probe := range []struct {
+		table string
+		id    string
+	}{
+		{"issues", "issue-legacy-continuity"},
+		{"issue_criteria", "crit-legacy-continuity"},
+		{"issue_identity", "iid-legacy-continuity"},
+	} {
+		var issueProjectID string
+		if err := store.db.QueryRowContext(ctx, `SELECT project_id FROM `+probe.table+` WHERE id = ?`, probe.id).Scan(&issueProjectID); err != nil {
+			t.Fatalf("read rekeyed %s error = %v", probe.table, err)
+		}
+		if issueProjectID != identity.ID {
+			t.Fatalf("%s project_id = %q, want %q", probe.table, issueProjectID, identity.ID)
+		}
 	}
 	var currentPath string
 	if err := store.db.QueryRowContext(ctx, `SELECT current_path FROM projects WHERE id = ?`, identity.ID).Scan(&currentPath); err != nil {
