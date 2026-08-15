@@ -1,14 +1,15 @@
 # Critique Gate
 
-The last shaping step, before `loaf change check` and the PR offer. An agent won't know to interrogate its own scope, boundary placement, or smuggled-in status words unless something makes it stop and ask. Instantiated from the shape-first pilot's own Critique Gate, generalized for any Change rather than that pilot's specific CLI-surface question.
+The last shaping step, before `loaf issue check` and any review offer. An agent won't know to interrogate its own scope, boundary placement, or smuggled-in progress words unless something makes it stop and ask.
 
 Run through these before finalizing:
 
-- **Is scope still bounded?** Has the draft crept beyond what the Problem and Hypothesis justify? Could this Change be smaller and still deliver the Hypothesis?
+- **Is scope still bounded?** Has the draft crept beyond what the problem statement justifies? Could this issue be smaller and still be verifiable in one fresh context window?
 - **Does every new command, state, or lifecycle verb name its ceremony?** If a command or state can't name the ceremony that exercises it, cut it — don't build it now and hope a use appears.
-- **Is a status field creeping back in under another name?** `readiness`, `phase`, `stage`, or anything else that reintroduces a declared progress flag `loaf change check` doesn't already ban by pattern.
+- **Is a second progress flag creeping into the body?** `readiness`, `phase`, `stage`, or anything else that reintroduces a declared progress flag. Status lives on the issue row (`loaf issue status`). Shaped, covered, and ready are derived by `loaf issue check`. `loaf issue bucket` is a label only and is never read as a constraint.
 - **Is the CLI/skill boundary drawn correctly?** Is the skill doing deterministic work that belongs in the CLI, or is the CLI claiming judgment that belongs in the skill?
-- **Which Verification Contract criteria are genuinely executable gates, and which are human review dressed up as automatable?** A criterion that can't disagree with the implementation isn't a gate.
-- **Are the Rabbit Holes and No-Gos sections doing real work?** Or are they restating the Scope's Out list in different words?
+- **Which criteria are genuinely executable gates, and which are human review dressed up as automatable?** A V-tier criterion needs `--command` (and `--expect` when exit 0 is not enough). A criterion that can't disagree with the implementation isn't a gate — make it H, or rewrite it against an independent source of truth.
+- **Is the out-of-scope statement doing real work?** Rabbit holes and no-gos belong there as named exclusions. Restating the problem in different words is not an out-of-scope statement.
+- **Did fog graduate, or evaporate?** Every named unknown is parked in create-time `fog`, held in the session register, sitting as a decision child (or sibling) with a sharp question, filed as a new backlog issue (a different problem), or written into the body as a decided answer. Silent deletion is the failure.
 
-Answers that change the document go back into it — the Decisions log, the Planning Contract, or the relevant Product Contract section — before moving to `loaf change check`. An answer spoken but not written doesn't count.
+Answers that change the issue go back into it — `loaf issue edit` for the body, `loaf issue dod add` / `remove` for criteria, `loaf issue promote` or `loaf issue new` for children — before moving to `loaf issue check`. An answer spoken but not written doesn't count.

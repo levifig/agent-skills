@@ -43,7 +43,7 @@ Task(
     - src/services/
 
     Write report to: .agents/reports/YYYYMMDD-HHMMSS-security-audit.md
-    Reference: TASK-123, SPEC-045 if relevant
+    Reference: LOAF-123 if relevant
     """,
     run_in_background=True
 )

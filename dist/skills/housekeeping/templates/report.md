@@ -8,7 +8,7 @@ title: "Report: [Topic]"
 type: research | audit | analysis | council
 created: YYYY-MM-DDTHH:MM:SSZ
 status: draft | done | archived
-source: SPEC-XXX | TASK-XXX | ad-hoc
+source: LOAF-42 | ad-hoc
 finalized_at: YYYY-MM-DDTHH:MM:SSZ    # Set when status → done
 archived_at: YYYY-MM-DDTHH:MM:SSZ     # Set when status → archived
 archived_by: orchestrator

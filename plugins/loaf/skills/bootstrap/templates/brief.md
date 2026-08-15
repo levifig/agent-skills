@@ -39,7 +39,7 @@ archived: true          # Always true -- BRIEF is a historical snapshot, not a w
 
 ## Sequencing and Relationships
 
-[How the initial arc hangs together — which concepts belong as early changes, what depends on what, release cohort stated as prose. No machine relation fields; narrative order only.]
+[How the initial arc hangs together — which problems become early backlog issues, what depends on what, sequencing stated as prose. No machine relation fields; narrative order only.]
 
 ## Sources and Research Links
 

@@ -117,7 +117,7 @@ When streams complete:
 
 | Command | Parallel Opportunity |
 |---------|---------------------|
-| breakdown | Identify parallelizable tasks during decomposition |
+| shape | Identify parallelizable child issues during decomposition |
 | implement | Single task, usually sequential |
 | implement | Runs dependency-aware orchestration, including parallel-safe tasks |
 

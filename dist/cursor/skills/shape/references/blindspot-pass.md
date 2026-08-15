@@ -12,7 +12,7 @@ Ask the user whether to run it; skip when they're the domain expert. Do not auto
 
 ## Prompt Shape
 
-Ask, against the specific territory named by the Change:
+Ask, against the specific territory named by the issue:
 
 > What would I not know to ask here — codebase history, domain conventions, prior art, potholes?
 
@@ -28,6 +28,8 @@ A `[UU]` that gets named through this pass becomes:
 - a `[UK]` (you'd recognize the right answer on sight — build a reaction artifact)
 
 and re-routes through the quadrant table in the main skill body.
+
+Park what is still unsharp in the issue's `fog` field at create (`--fog`). After create, keep unsharp entries in the session register — edit cannot mutate `fog`. When an entry sharpens, graduate it to a `--kind decision` child or sibling. Do not drop a named unknown on the floor.
 
 ## Stopping
 

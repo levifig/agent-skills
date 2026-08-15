@@ -63,7 +63,7 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf config` | Validate and refresh project Loaf config | check |
 | `loaf hooks` | Inspect and set which Loaf hooks project into an installed harness's hooks file | list, enable, disable |
 | `loaf init` | Initialize a project with Loaf structure | — |
-| `loaf release` | Create a new release with changelog, version bump, and tag | — |
+| `loaf release` | Create a new release with changelog, version bump, and tag | suggest, cut |
 | `loaf search` | Search SQLite artifact bodies, journal entries, and indexed docs | — |
 | `loaf docs` | Manage docs/ indexing | index |
 | `loaf change` | Shape-first Change artifacts: git-canonical work context under docs/changes/ | init, check, list |
@@ -72,8 +72,9 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf journal` | Record and read the project-scoped journal (the durable record across all conversations) | log, recent, search, show, context, export, defer |
 | `loaf project` | Manage durable project identity | list, show, identity, rename, move, delete |
 | `loaf migrate` | Run native migration workflows | markdown, storage-home, schema, lifecycle-statuses, journal-first, worktree-storage |
-| `loaf task` | Manage project tasks | list, show, status, create, update, archive, refresh, sync |
-| `loaf spec` | Manage project specs | new, edit, list, show, status, render, finalize, archive, delete |
+| `loaf task` | Manage project tasks; superseded by loaf issue for new work | list, show, status, create, update, archive, refresh, sync |
+| `loaf spec` | Manage project specs; superseded by loaf issue for new work | new, edit, list, show, status, render, finalize, archive, delete |
+| `loaf issue` | Manage issues in native SQLite state | new, show, list, tree, frontier, start, stop, edit, status, dod, dod add, dod list, dod remove, dod claim, dod unclaim, promote, check, verify, bucket, link, render, export, pull, push, reconcile |
 | `loaf report` | Manage durable reports (research, audits, investigations) | list, show, render, generate, create, edit, finalize, archive |
 | `loaf finding` | Manage report findings and verdicts in native SQLite state | list, show, create, verdict, import-json |
 | `loaf run` | Manage provenance runs for generated findings and reports | list, show, create, complete |
@@ -87,7 +88,7 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf trace` | Trace relationships for one state entity | — |
 | `loaf brainstorm` | Manage brainstorms in native SQLite state | capture, list, show, promote, archive |
 | `loaf idea` | Manage ideas in native SQLite state | list, show, capture, promote, resolve, archive |
-| `loaf intent` | Manage tracked Intent in native SQLite state; disposition is derived from append-only facts | create, defer, resume, resolve, show, list |
+| `loaf intent` | Manage tracked Intent in native SQLite state; disposition is derived from append-only facts; superseded by loaf issue for new work | create, defer, resume, resolve, show, list |
 | `loaf intake` | Read the deterministic local intake projection; triage judgment stays with humans and Skills | list |
 | `loaf exploration` | Manage relational Exploration continuity: immutable portable checkpoints, no lifecycle status, no current pointer | create, checkpoint, list, context, conversation |
 | `loaf conversation` | Manage logical conversations and machine-local provenance handles; handles never imply portable context | create, show, list, handle, observe |

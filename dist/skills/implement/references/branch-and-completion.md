@@ -224,8 +224,8 @@ When a task-coupled unit of work completes:
 ### Spec Completion Check
 
 ```bash
-# Local-tasks mode: any open tasks for this spec?
-loaf task list --spec SPEC-001 --status open --json
+# Local mode: any open issues still on the frontier?
+loaf issue list --status todo --json
 
 # Linear-native mode: query the Linear parent's sub-issues
 # (via get_issue + list_issues with parent filter)

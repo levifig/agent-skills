@@ -182,10 +182,10 @@ published release notes read as user-facing prose, not an internal worklog.
 
 Internal terms that have no meaning outside the team's working context:
 
-- Spec IDs and task IDs (`SPEC-024`, `TASK-042`)
+- Internal work-unit numbering that is not the issue ID (issue IDs like `LOAF-42` belong in commits — release attribution reads them)
 - Session, sprint, or branch references
 - Internal terminology from skills/docs that isn't part of the user's mental model — e.g. `Q1`/`Q2`/`Q3` question numbers from a Triage Gate, internal gate-logic notation like `(Q1 OR Q2) AND Q3`, hook IDs that aren't user-facing
-- "How the work got done" framing — interview steps, breakdown steps, review gates
+- "How the work got done" framing — interview steps, decomposition steps, review gates
 
 ### Keep
 

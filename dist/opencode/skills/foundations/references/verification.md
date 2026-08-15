@@ -123,7 +123,7 @@ npm run lint    # Check: No errors or warnings
 | Command | Verification Point |
 |---------|-------------------|
 | implement | Before marking session complete |
-| breakdown | Each task has verification criteria |
+| shape | Each issue has verification criteria (V-tier DoD) |
 | shape | Test conditions define verification |
 | reflect | Note verification gaps discovered |
 

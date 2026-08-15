@@ -23,7 +23,7 @@ Detailed reference for running specs, task ranges, or task lists with dependency
 
 For `SPEC-XXX`, `TASK-XXX..YYY`, and `TASK-XXX,YYY,ZZZ`:
 
-1. Resolve selected tasks and validate each task file exists.
+1. Resolve the selected refs and validate each issue exists.
 2. Extract `depends_on` from each task and build a dependency graph.
 3. Group tasks into dependency-ready rounds:
    - First round: tasks with no unresolved dependencies

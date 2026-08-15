@@ -30,7 +30,7 @@ First-contact project setup: detect state, interview the builder, populate proje
 - Guardrails
 - Related Skills
 
-Series-prep lives under Finalization (phase between Knowledge Base Scaffolding and Next Steps).
+Series-prep lives under Finalization (phase between Knowledge Base Scaffolding and Next Steps): the initial arc becomes backlog issues, not folders.
 
 **Input:** $ARGUMENTS
 
@@ -43,8 +43,8 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 - **Always interview** -- even with a rich brief, confirm understanding through structured questions — one at a time, with a recommendation, using your harness's structured question tool if it has one
 - **Pitched BRIEF is discovery-already-done** -- when `docs/BRIEF.md` has `source: pitch`, do not re-excavate the problem space; quote-back and gap-fill only for operating-document population
 - **BRIEF is input, not output** -- the BRIEF is raw intake. Extract every useful fact into VISION/STRATEGY/ARCHITECTURE/AGENTS during bootstrap.
-- **BRIEF is archeological after bootstrap** -- once extraction completes (including series-prep reading scoped concepts from it), the BRIEF is a frozen historical snapshot. No skill, agent, command, or template should reference `docs/BRIEF.md` post-bootstrap. Operating documents and minted change briefs must stand on their own.
-- **Series-prep never auto-shapes and never creates branches** -- every mint is user-confirmed; no priority, date, or dependency fields; concepts without a coarse `target_release` stay BRIEF lines, sparks, or Intents
+- **BRIEF is archeological after bootstrap** -- once extraction completes (including series-prep reading scoped concepts from it), the BRIEF is a frozen historical snapshot. No skill, agent, command, or template should reference `docs/BRIEF.md` post-bootstrap. Operating documents and minted issue bodies must stand on their own.
+- **Series-prep never auto-shapes and never creates branches** -- every mint is user-confirmed; no priority, date, or dependency fields; buckets are labels, never bindings; concepts that fail granularity stay BRIEF lines or sparks
 - **Suggest, don't execute** -- recommend next skills at the end, never auto-run them
 - **Log first** -- log invocation before interviewing: `loaf journal log "skill(bootstrap): <project or intake>"`
 - **Log outcome** -- log bootstrap completion to the project journal: `loaf journal log "decision(bootstrap): project bootstrapped, mode detected"`
@@ -56,7 +56,7 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 - All expected operating documents (`docs/VISION.md`, `AGENTS.md` at minimum) exist and contain populated content
 - Useful BRIEF content has been extracted into operating documents (no future reader should need to open the BRIEF)
 - When `source: pitch`, the interview was gap-only (no re-excavation of already-specific problem sections)
-- When series-prep ran: each minted folder has `change.json` with stamped `target_release`, a standalone problem-space `brief.md`, zero-violation captured state via explicit-path `loaf change check <folder> --json`, and its own docs-only commit (never a batch); no branches created for the series; no auto-shape
+- When series-prep ran: each minted row is a backlog issue (`loaf issue new "<title>" --body "<problem narrative>" --status backlog`) with a standalone problem-space body; an advisory bucket (`loaf issue bucket <ref> now|next|later`) may be set — buckets are labels, never bindings; `loaf issue check <ref>` only when a capture is shaped enough to check, otherwise nothing (a backlog issue with a problem body needs no ceremony); no folders, no docs-only commits; no branches created for the series; no auto-shape
 - Root `AGENTS.md` is a real file; on Claude Code, the compatibility symlink `.claude/CLAUDE.md -> ../AGENTS.md` exists (see Finalization)
 - Key decisions and interview outcomes were logged with `loaf journal log` and are readable with `loaf journal recent`
 
@@ -237,7 +237,7 @@ Pitch owned the problem-space grill. Bootstrap does not re-excavate. The pitch�
 
 1. **Acknowledge the pitch** — name that `docs/BRIEF.md` carries `source: pitch` and that problem discovery is already done.
 2. **Summarize what pitch captured** — short section-by-section gist (problem, who, alternatives, value, constraints, sequencing, open questions). The builder should hear continuity with the pitch closing ceremony, not a cold restart.
-3. **State what bootstrap will do now** — interview only on gaps for operating-document population (VISION, STRATEGY, ARCHITECTURE, AGENTS), then series-prep the initial arc of captured changes. Do not re-grill the problem space.
+3. **State what bootstrap will do now** — interview only on gaps for operating-document population (VISION, STRATEGY, ARCHITECTURE, AGENTS), then series-prep the initial arc as backlog issues. Do not re-grill the problem space.
 
 Then continue:
 
@@ -424,58 +424,62 @@ The journal should capture:
 Use [templates/journal.md](templates/journal.md) only as the rendered entry
 format reference; do not hand-author journal markdown as the source of truth.
 
-### 4. Series-Prep (initial arc as captured changes)
+### 4. Series-Prep (initial arc as backlog issues)
 
-After operating documents are populated (and Knowledge Base Scaffolding above has run), close bootstrap by minting the BRIEF's initial arc as **captured promise carriers** — brief-only change folders bound to a coarse `target_release`, each landed as its own docs-only commit. Series-prep is not roadmap planning: no milestone entities, no dates, no priorities, no dependency fields. Sequencing is prose in each brief; cohort membership is the shared `target_release`.
+After operating documents are populated (and Knowledge Base Scaffolding above has run), close bootstrap by minting the BRIEF's initial arc as **backlog issues** — SQLite rows with a problem-space body and an optional advisory bucket label (`loaf issue bucket <ref> now|next|later`). Buckets are labels, never bindings. Series-prep is not roadmap planning: no milestone entities, no dates, no priorities, no dependency fields. Sequencing is prose in each issue body. No folders, no docs-only commits per capture — rows, not files.
 
 **When to run**
 
 - Always offer series-prep when a project BRIEF exists and names more than one scoped concept (typical after a pitched BRIEF; also after a rich non-pitch brief).
-- If the BRIEF is a single atomic concept with no series, say so and skip to Next Steps — one future shape or a single capture later is enough.
-- Series-prep **reads** the BRIEF during this phase only. After bootstrap ends, nothing references `docs/BRIEF.md` again; minted change briefs and operating docs stand alone.
+- If the BRIEF is a single atomic concept with no series, say so and skip to Next Steps — one future shape or a single issue later is enough.
+- Series-prep **reads** the BRIEF during this phase only. After bootstrap ends, nothing references `docs/BRIEF.md` again; minted issue bodies and operating docs stand alone.
 
 **Procedure**
 
 1. **Enumerate concepts** with the builder from the BRIEF's scoped problem space (Sequencing and Relationships, Open Questions, and distinct problem threads in Problem Statement). List candidates as recommendation-first options using your harness's structured question tool if it has one.
-2. **Apply granularity** per [references/interview-guide.md](references/interview-guide.md) (Series-Prep Granularity): a concept earns its own captured change when it is independently shippable **and** its problem can be **stated precisely now** (the mint-time specifiability test — not answered now, stated now) without the others; otherwise it stays a BRIEF line, becomes a spark, or an Intent — never a half-minted folder.
+2. **Apply granularity** per [references/interview-guide.md](references/interview-guide.md) (Series-Prep Granularity): a concept earns its own backlog issue when it is independently shippable **and** its problem can be **stated precisely now** (the mint-time specifiability test — not answered now, stated now) without the others; otherwise it stays a BRIEF line or becomes a spark — never a half-minted row.
 3. **Per confirmed concept (one at a time — never batch):**
-   1. Confirm mint with the builder (slug, coarse `target_release`, one-line problem restatement). If the builder will not bind even a coarse target, do not mint — park as spark/Intent/BRIEF line.
-   2. Propose a **local slug** that names the concept, never another work unit (`spec-042`, task ids, change folder names). Confirm the slug.
-   3. Run capture init:
+   1. Confirm mint with the builder (title, optional advisory bucket, one-line problem restatement). Buckets are labels, never bindings — a missing bucket does not block mint. If the concept fails granularity, do not mint — park as spark or BRIEF line.
+   2. Propose a **working title** that names the concept, never another work unit (issue aliases, task ids). Confirm the title.
+   3. **Seed a problem-space-only narrative** from the BRIEF's content for that concept (Problem Statement, Who Has It, Current Alternatives, Value Proposition, Constraints, Sequencing and Relationships as prose order relative to the arc, Sources if any, Open Questions). Do not copy solution design. The seeded body must stand alone as intent for later shape — cold-read without the project BRIEF or this session.
+   4. Mint the backlog issue:
 
       ```bash
-      loaf change init <slug> --brief
+      loaf issue new "<title>" --body "<problem narrative>" --status backlog
       ```
 
-      Creates `docs/changes/YYYYMMDD-<slug>/` with `change.json` + `brief.md` only.
-   4. **Seed `brief.md` problem-space-only** from the BRIEF's content for that concept (Problem Statement, Who Has It, Current Alternatives, Value Proposition, Constraints, Sequencing and Relationships as prose order relative to the arc, Sources if any, Open Questions). Do not copy solution design. The seeded brief must stand alone as intent for later shape — cold-read without the project BRIEF or this session.
-   5. **Stamp `target_release`** on that folder's `change.json` with the builder's coarse binding (canonical `MAJOR.MINOR.PATCH`, no `v`, no prerelease). Series-prep mints only targeted captures (promise-carrier path).
-   6. **Pre-landing guard** (required before every commit):
+      Creates a SQLite row, not a folder. Use `--body -` or `--body-file <path>` when the narrative is long (see `loaf issue new --help`).
+   5. **Optionally set an advisory bucket** (a label, never a binding):
 
       ```bash
-      loaf change check <folder> --json
+      loaf issue bucket <ref> now|next|later
+      ```
+   6. **Validate** only when the capture is shaped enough to check:
+
+      ```bash
+      loaf issue check <ref>
       ```
 
-      Must report zero violations and captured state. Then **read `<folder>/change.json` directly** and confirm the stamped `target_release` matches what the builder bound. Bare `loaf change check` resolves by branch and can miss a capture elsewhere — always pass the explicit folder path.
-   7. **Land as its own docs-only commit on the default branch** (one commit per capture, never a batch). Example subject: `docs(change): capture <slug> brief`. Bootstrap prepares the commit; never push; never open a PR.
+      A backlog issue with a problem body is capture-only and needs no ceremony — skip the check. Do not add criteria or an out-of-scope statement during series-prep (that is shape).
+   7. **Do not land a docs-only commit.** The row is the artifact. Never push; never open a PR; never create a branch.
 4. **Guards (hard):**
    - Every mint is user-confirmed — never auto-mint the whole list
-   - Never auto-run shape and never create slug branches during series-prep
-   - No priority, date, estimate, or dependency fields on captures
-   - No batching multiple captures into one commit
-   - Concepts without a coarse target stay BRIEF lines, sparks, or Intents
+   - Never auto-run shape and never create branches during series-prep
+   - No priority, date, estimate, or dependency fields on issues
+   - No folders, no docs-only commits per capture — rows, not files
+   - Concepts that fail granularity stay BRIEF lines or sparks; buckets are labels, never bindings
 
 **After the series**
 
-Log the arc: `loaf journal log "decision(bootstrap): series-prep minted <n> captures for <cohort or targets>"`. Hand off by naming the first capture folder for shape when the builder is ready.
+Log the arc: `loaf journal log "decision(bootstrap): series-prep minted <n> backlog issues"`. Hand off by naming the first issue ref for shape when the builder is ready.
 
 ### 5. Next Steps
 
 Suggest relevant next steps based on what was learned:
 
-- shape -- on a series-prep capture (or any ready concept) to promote the folder and bound implementation
+- shape -- on a series-prep backlog issue (or any ready concept) to bound implementation
 - pitch -- if a new concept still needs problem discovery (not for re-grilling the BRIEF)
-- idea -- if specific feature ideas emerged during the interview and should not become captures yet
+- idea -- if specific feature ideas emerged during the interview and should not become issues yet
 - research -- if there are open questions that need investigation
 - `loaf doctor` -- to verify the setup is healthy
 
@@ -502,18 +506,18 @@ When the interactive interview path is unavailable, bootstrap the operating docu
 2. **Always interview** -- even with a rich brief, confirm understanding; when `source: pitch`, gap-fill only
 3. **Never overwrite** -- existing documents require explicit confirmation
 4. **Draft, then review** -- present documents section-by-section
-5. **Extract, don't preserve** -- pull every useful fact from the BRIEF into operating docs (and series-prep seeds change briefs from it once). The BRIEF is archeological after bootstrap; nothing should reference it again.
+5. **Extract, don't preserve** -- pull every useful fact from the BRIEF into operating docs (and series-prep seeds issue bodies from it once). The BRIEF is archeological after bootstrap; nothing should reference it again.
 6. **Record the session** -- decisions and rationale are preserved
 7. **Suggest, don't execute** -- recommend next skills, don't auto-run them; series-prep never auto-shapes or creates branches
 8. **Interview structured** -- one question at a time, with a recommendation, using your harness's structured question tool if it has one
-9. **Series-prep is not roadmap planning** -- coarse `target_release` + prose sequencing only; no dates, priorities, or dependency fields
+9. **Series-prep is not roadmap planning** -- advisory bucket labels (never bindings) + prose sequencing only; no dates, priorities, or dependency fields
 
 ---
 
 ## Related Skills
 
-- **pitch** -- Authors a project-scale `docs/BRIEF.md` with `source: pitch` (or a change-scale brief); bootstrap consumes the pitched BRIEF with gap-only interview and series-prep
-- **shape** -- Bound a captured change into a contract (promotes brief-only folders; often follows series-prep)
+- **pitch** -- Authors a project-scale `docs/BRIEF.md` with `source: pitch` (or an issue-scale problem narrative); bootstrap consumes the pitched BRIEF with gap-only interview and series-prep
+- **shape** -- Bound a backlog issue into a contract (often follows series-prep)
 - **explore** -- Agent technique when a concept that emerges during bootstrap is still undecided (not a user front door; prefer pitch for human problem discovery)
 - **research** -- Investigate topics and open questions
 - **idea** -- Quick-capture feature ideas that emerge during bootstrap
