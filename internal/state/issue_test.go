@@ -23,6 +23,25 @@ func issueTestFixture(t *testing.T) (project.Root, *Store) {
 	return root, store
 }
 
+func TestLookupIssueIdentityDoesNotMaterializeDefault(t *testing.T) {
+	root, store := issueTestFixture(t)
+	ctx := context.Background()
+	identity, ok, err := store.LookupIssueIdentity(ctx, root)
+	if err != nil {
+		t.Fatalf("LookupIssueIdentity() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("LookupIssueIdentity() = %#v, want missing", identity)
+	}
+	var count int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM issue_identity`).Scan(&count); err != nil {
+		t.Fatalf("count identity: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("identity rows = %d, want 0", count)
+	}
+}
+
 func TestIssueCreateMintsLocalAliasFromPrefix(t *testing.T) {
 	root, store := issueTestFixture(t)
 	ctx := context.Background()

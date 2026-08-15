@@ -357,7 +357,7 @@ func TestExportAllTablesIncludesIssueFoundation(t *testing.T) {
 	for _, table := range exportAllTables {
 		found[table.Name] = true
 	}
-	for _, name := range []string{"issues", "issue_criteria", "issue_criterion_claims", "issue_identity"} {
+	for _, name := range []string{"issues", "issue_criteria", "issue_criterion_claims", "issue_identity", "releases", "release_members"} {
 		if !found[name] {
 			t.Fatalf("exportAllTables missing %s", name)
 		}

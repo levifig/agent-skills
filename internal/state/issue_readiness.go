@@ -190,8 +190,12 @@ func orphanCriterionRemedy(text, parentRef string) string {
 	return "loaf issue new --parent " + posixSingleQuote(parentRef) + " --status backlog -- " + posixSingleQuote(text)
 }
 
-// posixSingleQuote wraps s in POSIX single quotes. Embedded single quotes
+// PosixSingleQuote wraps s in POSIX single quotes. Embedded single quotes
 // become '\” so the result is a single shell word with no expansion.
-func posixSingleQuote(s string) string {
+func PosixSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func posixSingleQuote(s string) string {
+	return PosixSingleQuote(s)
 }

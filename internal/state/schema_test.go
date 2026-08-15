@@ -66,18 +66,22 @@ var requiredInitialTables = []string{
 	"issue_criteria",
 	"issue_identity",
 	"issue_criterion_claims",
+	"releases",
+	"release_members",
 	"schema_migrations",
 }
 
-// issueFoundationTables are introduced by migrations 0014 and 0015. Their SQL
-// mirrors live in docs/schema/0014_issues_and_identity.sql and
-// docs/schema/0015_issue_criterion_claims.sql; the dbml/mmd diagrams are not
-// updated in this foundation change.
+// issueFoundationTables are introduced by migrations 0014, 0015, and 0016.
+// Their SQL mirrors live in docs/schema/0014_issues_and_identity.sql,
+// docs/schema/0015_issue_criterion_claims.sql, and docs/schema/0016_releases.sql;
+// the dbml/mmd diagrams are not updated in this foundation change.
 var issueFoundationTables = map[string]bool{
 	"issues":                 true,
 	"issue_criteria":         true,
 	"issue_identity":         true,
 	"issue_criterion_claims": true,
+	"releases":               true,
+	"release_members":        true,
 }
 
 // userScopedTables are host-local tables without project_id. They are excluded
@@ -92,11 +96,11 @@ var userScopedTables = map[string]bool{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 14 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 14", len(migrations))
+	if len(migrations) != 15 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 15", len(migrations))
 	}
 
-	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15}
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16}
 	for i, migration := range migrations {
 		if migration.Version != wantVersions[i] {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
@@ -143,6 +147,9 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[13].Name != "issue_criterion_claims" {
 		t.Fatalf("migration[13].Name = %q, want issue_criterion_claims", migrations[13].Name)
+	}
+	if migrations[14].Name != "releases" {
+		t.Fatalf("migration[14].Name = %q, want releases", migrations[14].Name)
 	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
@@ -198,7 +205,7 @@ func TestOperationalTablesHaveStableIDsAndTimestamps(t *testing.T) {
 	}
 	sql := currentSchemaSQL()
 	for _, table := range requiredInitialTables {
-		if table == "schema_migrations" || table == "journal_origins" || table == "journal_deferrals" || table == "intent_operations" {
+		if table == "schema_migrations" || table == "journal_origins" || table == "journal_deferrals" || table == "intent_operations" || table == "release_members" {
 			continue
 		}
 		body := tableBody(t, sql, table)
@@ -381,6 +388,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	sqlDoc = readRepoFile(t, "docs", "schema", "0015_issue_criterion_claims.sql")
 	if sqlDoc != SchemaMigrations()[13].SQL {
 		t.Fatal("docs/schema/0015_issue_criterion_claims.sql must match embedded migration 0015 exactly")
+	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0016_releases.sql")
+	if sqlDoc != SchemaMigrations()[14].SQL {
+		t.Fatal("docs/schema/0016_releases.sql must match embedded migration 0016 exactly")
 	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")

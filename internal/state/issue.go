@@ -616,6 +616,50 @@ ORDER BY i.created_at, i.id
 	return result, nil
 }
 
+// ListLatestIssueDoneAt returns the created_at of each issue's latest
+// status_changed event to done. Issues never marked done are omitted.
+func ListLatestIssueDoneAt(ctx context.Context, root project.Root, resolver PathResolver) (map[string]string, error) {
+	store, err := openProjectStoreReadExisting(ctx, root, resolver)
+	if err != nil {
+		return nil, err
+	}
+	defer store.Close()
+	return store.ListLatestIssueDoneAt(ctx, root)
+}
+
+// ListLatestIssueDoneAt returns latest done-event timestamps from an open store.
+func (s *Store) ListLatestIssueDoneAt(ctx context.Context, root project.Root) (map[string]string, error) {
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT entity_id, created_at
+FROM events
+WHERE project_id = ? AND entity_kind = ? AND event_type = 'status_changed' AND to_status = ?
+ORDER BY created_at DESC, rowid DESC
+`, projectID, issueEntityKind, IssueStatusDone)
+	if err != nil {
+		return nil, fmt.Errorf("list latest issue done events: %w", err)
+	}
+	defer rows.Close()
+	latest := map[string]string{}
+	for rows.Next() {
+		var issueID, createdAt string
+		if err := rows.Scan(&issueID, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan latest issue done event: %w", err)
+		}
+		if _, exists := latest[issueID]; exists {
+			continue
+		}
+		latest[issueID] = createdAt
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate latest issue done events: %w", err)
+	}
+	return latest, nil
+}
+
 func insertIssueStatusEventTx(ctx context.Context, tx *sql.Tx, projectID, issueID, fromStatus, toStatus, note, now string) (string, error) {
 	eventID, err := newOpaqueStateID("evt")
 	if err != nil {

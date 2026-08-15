@@ -31,6 +31,8 @@ var projectScopedMergeTables = []string{
 	"issue_criteria",
 	"issue_criterion_claims",
 	"issue_identity",
+	"releases",
+	"release_members",
 	"ideas",
 	"sparks",
 	"brainstorms",

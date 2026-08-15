@@ -61,6 +61,8 @@ var projectScopedDeleteTables = []string{
 	"issue_criteria",
 	"issues",
 	"issue_identity",
+	"release_members",
+	"releases",
 	"tasks",
 	"specs",
 	"ideas",

@@ -81,6 +81,54 @@ func normalizeIssueBucket(value string) (string, error) {
 	}
 }
 
+// ListIssueBuckets returns the advisory bucket label for every tagged issue.
+// Missing keys mean the issue has no bucket. This is a read of labels only.
+func ListIssueBuckets(ctx context.Context, root project.Root, resolver PathResolver) (map[string]string, error) {
+	store, err := openProjectStoreReadExisting(ctx, root, resolver)
+	if err != nil {
+		return nil, err
+	}
+	defer store.Close()
+	return store.ListIssueBuckets(ctx, root)
+}
+
+// ListIssueBuckets returns advisory buckets from an open store.
+func (s *Store) ListIssueBuckets(ctx context.Context, root project.Root) (map[string]string, error) {
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT entity_tags.entity_id, tags.name
+FROM entity_tags
+JOIN tags
+  ON tags.project_id = entity_tags.project_id
+ AND tags.id = entity_tags.tag_id
+WHERE entity_tags.project_id = ?
+  AND entity_tags.entity_kind = ?
+  AND tags.name IN (?, ?, ?)
+ORDER BY entity_tags.entity_id, tags.name
+`, projectID, issueEntityKind, issueBucketTags[0], issueBucketTags[1], issueBucketTags[2])
+	if err != nil {
+		return nil, fmt.Errorf("list issue buckets: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var issueID, name string
+		if err := rows.Scan(&issueID, &name); err != nil {
+			return nil, fmt.Errorf("scan issue bucket: %w", err)
+		}
+		if _, exists := out[issueID]; !exists {
+			out[issueID] = strings.TrimPrefix(name, issueBucketTagPrefix)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate issue buckets: %w", err)
+	}
+	return out, nil
+}
+
 func loadIssueBucketTx(ctx context.Context, tx *sql.Tx, projectID, issueID string) (string, error) {
 	var name sql.NullString
 	err := tx.QueryRowContext(ctx, `

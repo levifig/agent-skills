@@ -37,6 +37,39 @@ type IssueIdentityOptions struct {
 	Prefix    string
 }
 
+// LookupIssueIdentity returns the stored identity row without inserting a
+// default. ok is false when the project has no identity row yet.
+func LookupIssueIdentity(ctx context.Context, root project.Root, resolver PathResolver) (IssueIdentity, bool, error) {
+	store, err := openProjectStoreReadExisting(ctx, root, resolver)
+	if err != nil {
+		return IssueIdentity{}, false, err
+	}
+	defer store.Close()
+	return store.LookupIssueIdentity(ctx, root)
+}
+
+// LookupIssueIdentity returns the stored identity row on an open store
+// without inserting a default.
+func (s *Store) LookupIssueIdentity(ctx context.Context, root project.Root) (IssueIdentity, bool, error) {
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return IssueIdentity{}, false, err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return IssueIdentity{}, false, &IssueTransactionError{Stage: "begin", Err: err}
+	}
+	defer tx.Rollback()
+	identity, err := loadIssueIdentityTx(ctx, tx, projectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return IssueIdentity{}, false, nil
+	}
+	if err != nil {
+		return IssueIdentity{}, false, err
+	}
+	return identity, true, nil
+}
+
 // GetIssueIdentity returns the project's authority row, materializing the
 // local/LOAF default when none has been written yet.
 func GetIssueIdentity(ctx context.Context, root project.Root, resolver PathResolver) (IssueIdentity, error) {

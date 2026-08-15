@@ -8,6 +8,14 @@ import (
 )
 
 func (r Runner) runRelease(args []string, out io.Writer, runtimeRoot string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "suggest":
+			return r.runReleaseSuggest(args[1:], out, runtimeRoot)
+		case "cut":
+			return r.runReleaseCut(args[1:], out, runtimeRoot)
+		}
+	}
 	options, err := parseReleaseArgs(args)
 	if err != nil {
 		return err
@@ -120,5 +128,9 @@ func writeReleaseHelp(out io.Writer) {
 		"  --post-merge           Finalize release after squash-merge",
 		"  -y, --yes              Skip confirmation prompt",
 		"  -h, --help             Show help",
+		"",
+		"Retroactive track (does not run the legacy gate path):",
+		"  loaf release suggest   Report landed work since the last tag",
+		"  loaf release cut       Record a release from landed work",
 	}, "\n"))
 }

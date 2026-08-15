@@ -177,6 +177,8 @@ var exportAllTables = []exportTable{
 	{Name: "issue_criteria", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "issue_criterion_claims", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "issue_identity", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "releases", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "release_members", OrderBy: "id", FilterColumn: "project_id"},
 }
 
 // ExportAllJSON returns a repository-non-mutating internal snapshot of SQLite state.
