@@ -110,6 +110,20 @@ func cliReferenceCommands() []cliReferenceCommand {
 		{
 			Name:        "release",
 			Description: "Create a new release with changelog, version bump, and tag",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "suggest", Description: "Report landed work since the last version tag. Writes nothing.", Options: []cliReferenceOption{
+					{Flags: "--base <ref>", Description: "Use commits since <ref> instead of last tag"},
+					{Flags: "--json", Description: "Output the suggestion as JSON"},
+				}},
+				{Name: "cut", Description: "Cut a retroactive release from landed work. Records members as facts.", Options: []cliReferenceOption{
+					{Flags: "--base <ref>", Description: "Use commits since <ref> instead of last tag"},
+					{Flags: "--bump <type>", Description: "Override the suggested bump"},
+					{Flags: "--includes <version|tag>", Description: "Reference a prior release (repeatable)"},
+					{Flags: "--no-tag", Description: "Skip git tag creation (tag v<version> must already exist)"},
+					{Flags: "--no-gh", Description: "Skip GitHub release draft"},
+					{Flags: "--dry-run", Description: "Print the plan and write nothing"},
+				}},
+			},
 			Options: []cliReferenceOption{
 				{Flags: "--dry-run", Description: "Preview release without making changes"},
 				{Flags: "--bump <type>", Description: "Skip interactive bump choice (prerelease, release, major, minor, patch); only explicit prerelease advances an existing prerelease during a lineage freeze; --post-merge may finalize that prepared prerelease"},
@@ -324,7 +338,6 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--boundary <text>", Description: "What remains outside this packet"},
 					{Flags: "--trigger <text>", Description: "What should cause revisit"},
 					{Flags: "--operation-id <id>", Description: "Stable retry/idempotency key"},
-					{Flags: "--change <slug|path>", Description: "Optional retained Change local evidence"},
 					{Flags: "--json", Description: "Output the state result as JSON"},
 				}},
 			},
@@ -403,7 +416,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 		},
 		{
 			Name:        "task",
-			Description: "Manage project tasks",
+			Description: "Manage project tasks; superseded by loaf issue for new work",
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "list", Description: "Show task board grouped by status", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output tasks, diagnostics, global database scope, and project identity as JSON"},
@@ -444,7 +457,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 		},
 		{
 			Name:        "spec",
-			Description: "Manage project specs",
+			Description: "Manage project specs; superseded by loaf issue for new work",
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "new", Description: "Create a spec in SQLite state", Options: []cliReferenceOption{
 					{Flags: "--title <title>", Description: "Spec title (defaults to a title derived from the slug)"},
@@ -474,6 +487,110 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "<spec>", Description: "Spec ref to delete"},
 					{Flags: "--yes", Description: "Confirm the destructive delete (required)"},
 					{Flags: "--json", Description: "Output removed-row counts, global database scope, and project identity as JSON"},
+				}},
+			},
+		},
+		{
+			Name:        "issue",
+			Description: "Manage issues in native SQLite state",
+			Subcommands: []cliReferenceSubcommand{
+				{Name: "new", Description: "Create an issue", Options: []cliReferenceOption{
+					{Flags: "--body <text>", Description: "Inline issue body, or '-' to read from stdin"},
+					{Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"},
+					{Flags: "--message <text>", Description: "Use inline Markdown body text"},
+					{Flags: "--kind <kind>", Description: "Issue kind: delivery or decision"},
+					{Flags: "--parent <ref>", Description: "Parent issue ref"},
+					{Flags: "--fog <text>", Description: "Questions not yet sharp enough to be issues"},
+					{Flags: "--status <status>", Description: "Write status after create: " + strings.Join(state.IssueWriteStatuses(), ", ") + "; still records the initial triage event"},
+					{Flags: "--json", Description: "Output the created issue, global database scope, and project identity as JSON"},
+				}},
+				{Name: "show", Description: "Show one issue", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output issue details, parent, children, bucket, global database scope, and project identity as JSON"},
+				}},
+				{Name: "list", Description: "List project issues", Options: []cliReferenceOption{
+					{Flags: "--status <status>", Description: "Filter by status"},
+					{Flags: "--kind <kind>", Description: "Filter by kind"},
+					{Flags: "--archived", Description: "Include archived issues"},
+					{Flags: "--started", Description: "List issues with a recorded started worktree"},
+					{Flags: "--json", Description: "Output issues, global database scope, and project identity as JSON"},
+				}},
+				{Name: "tree", Description: "Print a recursive issue tree", Options: []cliReferenceOption{
+					{Flags: "--archived", Description: "Include archived issues"},
+					{Flags: "--json", Description: "Output the tree, global database scope, and project identity as JSON"},
+				}},
+				{Name: "frontier", Description: "List unblocked pick-up-next issues", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output frontier issues, global database scope, and project identity as JSON"},
+				}},
+				{Name: "start", Description: "Create a branch and worktree for an issue", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the started issue, branch, worktree, base, global database scope, and project identity as JSON"},
+				}},
+				{Name: "stop", Description: "Remove an issue worktree and clear the started workspace", Options: []cliReferenceOption{
+					{Flags: "--force", Description: "Remove a dirty worktree"},
+					{Flags: "--json", Description: "Output the stopped issue, branch, worktree, already-gone flag, global database scope, and project identity as JSON"},
+				}},
+				{Name: "edit", Description: "Replace an issue body through the shared body-edit path", Options: []cliReferenceOption{
+					{Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"},
+					{Flags: "--body -", Description: "Read Markdown body from stdin"},
+					{Flags: "--message <text>", Description: "Use inline Markdown body text"},
+					{Flags: "--json", Description: "Output the edited issue, global database scope, and project identity as JSON"},
+				}},
+				{Name: "status", Description: "Set an issue status", Options: []cliReferenceOption{
+					{Flags: "--duplicate-of <ref>", Description: "Surviving issue required when status is duplicate"},
+					{Flags: "--json", Description: "Output the updated issue, global database scope, and project identity as JSON"},
+				}},
+				{Name: "dod", Description: "Manage definition-of-done criteria"},
+				{Name: "dod add", Description: "Add a criterion", Options: []cliReferenceOption{
+					{Flags: "--command <cmd>", Description: "Verification command (implies tier V)"},
+					{Flags: "--expect <expect>", Description: "Verification expect grammar (exit N, contains <text>)"},
+					{Flags: "--tier <V|H>", Description: "Override criterion tier: V or H"},
+					{Flags: "--serves <parent-position>", Description: "Parent criterion position this child criterion claims"},
+					{Flags: "--json", Description: "Output the updated issue, global database scope, and project identity as JSON"},
+				}},
+				{Name: "dod list", Description: "List criteria", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the issue and criteria, global database scope, and project identity as JSON"},
+				}},
+				{Name: "dod remove", Description: "Remove a criterion by position", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the updated issue, global database scope, and project identity as JSON"},
+				}},
+				{Name: "dod claim", Description: "Claim a child criterion against a parent criterion", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the updated child issue, global database scope, and project identity as JSON"},
+				}},
+				{Name: "dod unclaim", Description: "Remove a child-to-parent criterion claim", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the updated child issue, global database scope, and project identity as JSON"},
+				}},
+				{Name: "promote", Description: "Promote a criterion into a child issue", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the new child issue, global database scope, and project identity as JSON"},
+				}},
+				{Name: "check", Description: "Derive readiness from the issue row", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output issue, kind, shaped, covered, ready, failures, orphans, publication, global database scope, and project identity as JSON"},
+					{Flags: "--human <reason>", Description: "Publish ready-for-human instead of ready-for-agent, with this reason"},
+				}},
+				{Name: "verify", Description: "Run V-tier criteria from the repository root", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output per-criterion results, issue, ok, global database scope, and project identity as JSON"},
+				}},
+				{Name: "bucket", Description: "Set an advisory Now/Next/Later label", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the issue and bucket, global database scope, and project identity as JSON"},
+				}},
+				{Name: "link", Description: "Create or remove an issue relationship", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the relationship mutation, global database scope, and project identity as JSON"},
+				}},
+				{Name: "render", Description: "Emit a paste-ready PR body", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the markdown, issue, global database scope, and project identity as JSON"},
+				}},
+				{Name: "export", Description: "Export issues, identity, criteria, claims, and relationships as JSON", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the export snapshot"},
+				}},
+				{Name: "pull", Description: "Adopt an existing Linear issue", Options: []cliReferenceOption{
+					{Flags: "--tree", Description: "Also adopt the sub-issue tree with parent edges intact"},
+					{Flags: "--json", Description: "Output the adopted issue and tree as JSON"},
+				}},
+				{Name: "push", Description: "Write the local render and status to Linear", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the push result as JSON"},
+				}},
+				{Name: "reconcile", Description: "Compare local and Linear and surface conflicts", Options: []cliReferenceOption{
+					{Flags: "--take-local", Description: "Write the local status to Linear"},
+					{Flags: "--take-tracker", Description: "Write the Linear status to local through the events path"},
+					{Flags: "--json", Description: "Output the reconcile result as JSON"},
 				}},
 			},
 		},
@@ -709,7 +826,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 		},
 		{
 			Name:        "intent",
-			Description: "Manage tracked Intent in native SQLite state; disposition is derived from append-only facts",
+			Description: "Manage tracked Intent in native SQLite state; disposition is derived from append-only facts; superseded by loaf issue for new work",
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "create", Description: "Create a tracked or deferred Intent in one transaction", Options: []cliReferenceOption{
 					{Flags: "--title <title>", Description: "Bounded single-line title"},

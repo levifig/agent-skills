@@ -10,11 +10,6 @@ import (
 	"strings"
 )
 
-// releaseCapabilityEvidenceRunners is static remediation copy: all three
-// receipt runners share the --client/--expected-version/--receipt shape. The
-// list is never parsed out of the loader error.
-const releaseCapabilityEvidenceRunners = "cli/scripts/smoke-claude-code-startup.mjs, cli/scripts/smoke-codex-startup.mjs, or cli/scripts/smoke-opencode-request-context.mjs, each with --client <cli> --expected-version <installed> --receipt <path>"
-
 // releasePreparedArtifactGlobs are tracked outputs the release artifact
 // commands rewrite. Reuses the same component-anchored glob grammar as
 // ReleaseMetadataAllowlist / evidencePathExcluded — not a broader allowlist.
@@ -23,81 +18,6 @@ var releasePreparedArtifactGlobs = []string{
 	"plugins/**",
 	"bin/**",
 	".claude-plugin/**",
-}
-
-// checkReleaseCapabilityEvidence validates the capability evidence registry
-// against the tree at root. Absent evidence exempts the project (present is
-// false); any other failure — unreadable, invalid, irregular, or stale
-// receipts — must refuse the release. There is deliberately no override.
-//
-// Presence walks every path component from the repository root with Lstat:
-// intermediate components must be real directories (not symlinks), and the leaf
-// must be a regular file. A symlinked component is present-but-unusable, never
-// absent — so a dangling or external symlink cannot silently disarm the gate.
-func checkReleaseCapabilityEvidence(root string) (present bool, err error) {
-	path, probeErr := probeCapabilityEvidenceRegistryPath(root)
-	if probeErr != nil {
-		return true, probeErr
-	}
-	if path == "" {
-		return false, nil
-	}
-	if _, loadErr := LoadTargetCapabilityEvidence(path); loadErr != nil {
-		return true, loadErr
-	}
-	return true, nil
-}
-
-// probeCapabilityEvidenceRegistryPath component-walks root → registry. Returns
-// ("", nil) when any component is missing (absent), a non-empty path when the
-// leaf is a regular file, and an error when a component is present but unusable
-// (symlink, non-directory intermediate, non-regular leaf).
-func probeCapabilityEvidenceRegistryPath(root string) (string, error) {
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return "", fmt.Errorf("inspect capability evidence %s: resolve root: %w", TargetCapabilityEvidenceRecordPath, err)
-	}
-	relative := filepath.FromSlash(TargetCapabilityEvidenceRecordPath)
-	current := absRoot
-	components := strings.Split(filepath.Clean(relative), string(filepath.Separator))
-	for index, component := range components {
-		if component == "" || component == "." {
-			continue
-		}
-		current = filepath.Join(current, component)
-		info, statErr := os.Lstat(current)
-		if statErr != nil {
-			if os.IsNotExist(statErr) {
-				return "", nil
-			}
-			return "", fmt.Errorf("inspect capability evidence %s: %w", TargetCapabilityEvidenceRecordPath, statErr)
-		}
-		isLast := index == len(components)-1
-		if info.Mode()&os.ModeSymlink != 0 {
-			if isLast {
-				return "", fmt.Errorf("capability evidence %s is present but not a regular file (symlinks and other irregular files are unusable)", TargetCapabilityEvidenceRecordPath)
-			}
-			return "", fmt.Errorf("capability evidence %s is present but unusable: path component %q is a symlink", TargetCapabilityEvidenceRecordPath, filepath.ToSlash(strings.TrimPrefix(current, absRoot+string(filepath.Separator))))
-		}
-		if isLast {
-			if !info.Mode().IsRegular() {
-				return "", fmt.Errorf("capability evidence %s is present but not a regular file (symlinks and other irregular files are unusable)", TargetCapabilityEvidenceRecordPath)
-			}
-			return current, nil
-		}
-		if !info.IsDir() {
-			return "", fmt.Errorf("capability evidence %s is present but unusable: path component %q is not a directory", TargetCapabilityEvidenceRecordPath, filepath.ToSlash(strings.TrimPrefix(current, absRoot+string(filepath.Separator))))
-		}
-	}
-	return "", nil
-}
-
-func releaseApplyCapabilityEvidenceRefusal(err error) error {
-	return fmt.Errorf("Refusing to commit release artifacts: capability evidence is invalid or stale against the rebuilt tree: %v; re-record with the matching runner (%s) after the artifact rebuild (the prepared tree stays in place — version files remain at the candidate so runners can hash candidate-versioned artifacts; CHANGELOG.md is restored to HEAD), then rerun the release — the rerun accepts the release-prepared worktree", err, releaseCapabilityEvidenceRunners)
-}
-
-func releasePostMergeCapabilityEvidenceAbortMessage(err error) string {
-	return fmt.Sprintf("capability evidence is invalid or stale on the merged tree: %v — re-record against the merged tree, land the receipts as a single evidence-only commit on the base branch, and rerun loaf release --post-merge", err)
 }
 
 // releasePathMatchesPreparedArtifact reports whether path is under the tracked

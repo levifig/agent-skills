@@ -195,9 +195,6 @@ func deriveChangeGraph(nodes []changeNode) changeGraph {
 			g.addFinding(lineage, fmt.Sprintf("lineage %q has multiple roots: %s", lineage, strings.Join(roots, ", ")))
 		} else if len(roots) == 1 {
 			root := lineageBySlug[roots[0]]
-			if root.ReleaseAfter == "" {
-				g.addGap(lineage, fmt.Sprintf("lineage %q root %q must declare release-after", lineage, root.Slug))
-			}
 			for _, node := range lineageNodes {
 				if node.Slug != root.Slug && node.ReleaseAfter != "" {
 					g.addFinding(lineage, fmt.Sprintf("Change %q declares release-after; lineage %q root %q must own the declaration", node.Slug, lineage, root.Slug))
@@ -233,9 +230,7 @@ func deriveChangeGraph(nodes []changeNode) changeGraph {
 			g.addFinding(lineage, fmt.Sprintf("lineage %q has conflicting release-after terminals: %s", lineage, strings.Join(terminalNames, ", ")))
 		} else if len(terminalNames) == 1 {
 			terminal, ok := lineageBySlug[terminalNames[0]]
-			if !ok {
-				g.addGap(lineage, fmt.Sprintf("release-after terminal %q is not materialized", terminalNames[0]))
-			} else if len(children[terminal.Slug]) != 0 {
+			if ok && len(children[terminal.Slug]) != 0 {
 				g.addFinding(lineage, fmt.Sprintf("release-after %q is not the lineage terminal", terminal.Slug))
 			}
 		}
@@ -287,11 +282,6 @@ func applyLineageValidation(report changeCheckReport, nodes []changeNode, target
 	if requireExecutable {
 		report.Gaps = append(report.Gaps, committedPredecessorGaps(rootPath, target)...)
 	}
-	for _, gap := range lineageGaps {
-		if strings.HasPrefix(gap, "release-after terminal ") {
-			report.Warnings = append(report.Warnings, gap)
-		}
-	}
 	report.Violations = sortedUnique(report.Violations)
 	report.Warnings = sortedUnique(report.Warnings)
 	report.Gaps = sortedUnique(report.Gaps)
@@ -335,35 +325,6 @@ func committedPredecessorGaps(rootPath string, target changeNode) []string {
 	return gaps
 }
 
-func releaseLineagePreflight(rootPath string) error {
-	return releaseLineagePreflightWithOutputAndOptions(rootPath, commandOutput, false)
-}
-
-func releaseLineagePreflightWithOutput(rootPath string, outputCommand changeGitOutput) error {
-	return releaseLineagePreflightWithOutputAndOptions(rootPath, outputCommand, false)
-}
-
-func releaseLineagePreflightWithOptions(rootPath string, allowPrerelease bool) error {
-	return releaseLineagePreflightWithOutputAndOptions(rootPath, commandOutput, allowPrerelease)
-}
-
-func releaseLineagePreflightWithOutputAndOptions(rootPath string, outputCommand changeGitOutput, allowPrerelease bool) error {
-	_ = allowPrerelease
-	configOverrides, err := releaseConfigVersionFiles(rootPath)
-	if err != nil {
-		return fmt.Errorf("release blocked: %w", err)
-	}
-	versionFiles, err := detectReleaseVersionFiles(rootPath, configOverrides)
-	if err != nil {
-		return fmt.Errorf("release blocked: %w", err)
-	}
-	candidate := "0.0.0-dev"
-	if len(versionFiles) > 0 {
-		candidate = versionFiles[0].CurrentVersion
-	}
-	return releaseCohortPreflightWithOutput(rootPath, candidate, outputCommand, nil)
-}
-
 func removeChangeGraphGap(gaps []string, ignored string) []string {
 	filtered := make([]string, 0, len(gaps))
 	for _, gap := range gaps {
@@ -372,21 +333,6 @@ func removeChangeGraphGap(gaps []string, ignored string) []string {
 		}
 	}
 	return filtered
-}
-
-func requireCompleteChangeHistory(rootPath string, outputCommand changeGitOutput) error {
-	output, err := outputCommand(rootPath, "git", "rev-parse", "--is-shallow-repository")
-	if err != nil {
-		return fmt.Errorf("inspect repository history depth: %w", err)
-	}
-	switch strings.TrimSpace(output) {
-	case "false":
-		return nil
-	case "true":
-		return fmt.Errorf("repository is shallow; fetch complete history with `git fetch --unshallow` before releasing")
-	default:
-		return fmt.Errorf("inspect repository history depth: unexpected git response %q", strings.TrimSpace(output))
-	}
 }
 
 func deletedLineageChangesWithOutput(rootPath string, outputCommand changeGitOutput) ([]string, error) {
@@ -739,11 +685,5 @@ func sortedKeys[V any](values map[string]V) []string {
 }
 
 func executionRelevantLineageGaps(gaps []string) []string {
-	var relevant []string
-	for _, gap := range gaps {
-		if !strings.HasPrefix(gap, "release-after terminal ") {
-			relevant = append(relevant, gap)
-		}
-	}
-	return sortedUnique(relevant)
+	return sortedUnique(gaps)
 }

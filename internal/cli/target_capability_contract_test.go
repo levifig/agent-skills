@@ -2,8 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -319,11 +317,7 @@ func TestTargetCapabilityEvidenceRejectsRuntimeModesHiddenInBypassPhrases(t *tes
 }
 
 func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T) {
-	configPath := testTargetCapabilityEvidencePath(t)
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := testRepositoryRoot(t)
 	for name, source := range map[string]string{
 		"absolute":  filepath.Join(t.TempDir(), "evidence.md"),
 		"traversal": "../outside.md",
@@ -332,27 +326,13 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 		"anchor":    "docs/changes/20260710-journal-reliability-foundation/research/target-capability-survey.md#survey",
 	} {
 		t.Run(name, func(t *testing.T) {
-			var contract TargetCapabilityEvidenceContract
-			if err := json.Unmarshal(data, &contract); err != nil {
-				t.Fatal(err)
-			}
-			contract.Records[1].Completion.Evidence.Source = source
-			path := filepath.Join(filepath.Dir(configPath), ".capability-source-test-"+strings.ReplaceAll(name, " ", "-")+".json")
-			encoded, err := json.Marshal(contract)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(path, encoded, 0o600); err != nil {
-				t.Fatal(err)
-			}
-			defer os.Remove(path)
-			_, err = LoadTargetCapabilityEvidence(path)
+			err := validateEvidenceSourceFile(root, source)
 			if name == "anchor" {
 				if err != nil {
-					t.Fatalf("LoadTargetCapabilityEvidence() error = %v, want anchor accepted", err)
+					t.Fatalf("validateEvidenceSourceFile() error = %v, want anchor accepted", err)
 				}
 			} else if err == nil {
-				t.Fatalf("LoadTargetCapabilityEvidence() error = nil, want source rejection for %q", source)
+				t.Fatalf("validateEvidenceSourceFile() error = nil, want source rejection for %q", source)
 			}
 		})
 	}
@@ -362,7 +342,7 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 			t.Fatal(err)
 		}
 		relativeLink := filepath.Join("internal", "cli", ".capability-source-symlink")
-		link := filepath.Join(filepath.Dir(filepath.Dir(configPath)), relativeLink)
+		link := filepath.Join(root, relativeLink)
 		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -370,22 +350,8 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 			t.Fatal(err)
 		}
 		defer os.Remove(link)
-		var contract TargetCapabilityEvidenceContract
-		if err := json.Unmarshal(data, &contract); err != nil {
-			t.Fatal(err)
-		}
-		contract.Records[1].Completion.Evidence.Source = filepath.ToSlash(relativeLink)
-		path := filepath.Join(filepath.Dir(configPath), ".capability-source-test-symlink.json")
-		encoded, err := json.Marshal(contract)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, encoded, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		defer os.Remove(path)
-		if _, err := LoadTargetCapabilityEvidence(path); err == nil {
-			t.Fatal("LoadTargetCapabilityEvidence() = nil, want symlink source rejection")
+		if err := validateEvidenceSourceFile(root, filepath.ToSlash(relativeLink)); err == nil {
+			t.Fatal("validateEvidenceSourceFile() = nil, want symlink source rejection")
 		}
 	})
 	t.Run("intermediate-symlink-escape", func(t *testing.T) {
@@ -395,443 +361,13 @@ func TestTargetCapabilityEvidenceLoadRequiresRetainedRegularSources(t *testing.T
 			t.Fatal(err)
 		}
 		relativeLink := "internal/.capability-source-linkdir"
-		link := filepath.Join(filepath.Dir(filepath.Dir(configPath)), filepath.FromSlash(relativeLink))
+		link := filepath.Join(root, filepath.FromSlash(relativeLink))
 		if err := os.Symlink(outsideDir, link); err != nil {
 			t.Fatal(err)
 		}
 		defer os.Remove(link)
-		var contract TargetCapabilityEvidenceContract
-		if err := json.Unmarshal(data, &contract); err != nil {
-			t.Fatal(err)
-		}
-		contract.Records[1].Completion.Evidence.Source = filepath.ToSlash(filepath.Join(relativeLink, "evidence.md"))
-		path := filepath.Join(filepath.Dir(configPath), ".capability-source-test-intermediate-symlink.json")
-		encoded, err := json.Marshal(contract)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, encoded, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		defer os.Remove(path)
-		if _, err := LoadTargetCapabilityEvidence(path); err == nil {
-			t.Fatal("LoadTargetCapabilityEvidence() = nil, want intermediate symlink source rejection")
-		}
-	})
-}
-
-func TestInstalledSmokeEvidenceRejectsUnknownVersionsAndHashDrift(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t))), "docs/changes/20260808-hooks-entry-reconciliation/research/claude-code-2.1.226-plugin-startup-smoke.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, mutate := range map[string]func(map[string]any){
-		"unknown-field":   func(raw map[string]any) { raw["unknown"] = true },
-		"unknown-version": func(raw map[string]any) { raw["evidence_version"] = 3 },
-		"hash-drift": func(raw map[string]any) {
-			raw["candidate_artifacts"].(map[string]any)["hooks_sha256"] = strings.Repeat("0", 64)
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			root := t.TempDir()
-			var raw map[string]any
-			if err := json.Unmarshal(data, &raw); err != nil {
-				t.Fatal(err)
-			}
-			mutate(raw)
-			receipt := filepath.Join(root, "receipt.json")
-			encoded, err := json.Marshal(raw)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(receipt, encoded, 0o600); err != nil {
-				t.Fatal(err)
-			}
-			artifacts := raw["candidate_artifacts"].(map[string]any)
-			for _, artifact := range []string{"hooks_path", "native_binary_path"} {
-				path := filepath.Join(root, filepath.FromSlash(artifacts[artifact].(string)))
-				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				originalRoot := filepath.Dir(filepath.Dir(testTargetCapabilityEvidencePath(t)))
-				original := filepath.Join(originalRoot, filepath.FromSlash(artifacts[artifact].(string)))
-				content, err := os.ReadFile(original)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, content, 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			contract := loadTestTargetCapabilityEvidence(t)
-			record := contract.Records[0]
-			mode := record.Context.Modes[0]
-			mode.Evidence.Source = "receipt.json"
-			if err := validateInstalledSmokeEvidence(root, record, mode); err == nil {
-				t.Fatalf("validateInstalledSmokeEvidence() = nil, want %s rejection", name)
-			}
-		})
-	}
-}
-
-func TestOpenCodeInstalledSmokeEvidenceAcceptsFixture(t *testing.T) {
-	record := openCodeTestRecord(t)
-	mode := modeEvidenceByName(record.Context.Modes)["request"]
-	if err := validateOpenCodeInstalledSmokeEvidence(testRepositoryRoot(t), record, mode); err != nil {
-		t.Fatalf("validateOpenCodeInstalledSmokeEvidence() error = %v, want positive fixture accepted", err)
-	}
-}
-
-func TestOpenCodeInstalledSmokeEvidenceRejectsFalseBooleansIdentityInvocationHashAndCleanup(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260808-hooks-entry-reconciliation/research/opencode-1.18.13-isolated-request-smoke.json")
-	data, err := os.ReadFile(receiptPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mutations := map[string]func(map[string]any){
-		"model-visible":       func(raw map[string]any) { raw["model_visible_marker_observed"] = false },
-		"assistant-match":     func(raw map[string]any) { raw["assistant_marker_match"] = false },
-		"plugin-loaded":       func(raw map[string]any) { raw["plugin_loaded"] = false },
-		"root-session-lookup": func(raw map[string]any) { raw["root_session_lookup_proven"] = false },
-		"no-auth":             func(raw map[string]any) { raw["no_auth_supplied"] = false },
-		"identity":            func(raw map[string]any) { raw["target"] = "wrong-target" },
-		"invocation": func(raw map[string]any) {
-			invocation := raw["invocation"].(map[string]any)
-			invocation["command"] = "wrong-command"
-		},
-		"hash": func(raw map[string]any) {
-			raw["candidate_artifacts"].(map[string]any)["hooks_sha256"] = strings.Repeat("0", 64)
-		},
-		"cleanup": func(raw map[string]any) { raw["cleanup_succeeded"] = false },
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			var raw map[string]any
-			if err := json.Unmarshal(data, &raw); err != nil {
-				t.Fatal(err)
-			}
-			mutate(raw)
-			root := t.TempDir()
-			receipt := filepath.Join(root, "receipt.json")
-			encoded, err := json.Marshal(raw)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(receipt, encoded, 0o600); err != nil {
-				t.Fatal(err)
-			}
-			artifacts := raw["candidate_artifacts"].(map[string]any)
-			for _, artifact := range []string{"hooks_path", "native_binary_path"} {
-				path := filepath.Join(root, filepath.FromSlash(artifacts[artifact].(string)))
-				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				original := filepath.Join(testRepositoryRoot(t), filepath.FromSlash(artifacts[artifact].(string)))
-				content, err := os.ReadFile(original)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, content, 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			record := openCodeTestRecord(t)
-			mode := modeEvidenceByName(record.Context.Modes)["request"]
-			mode.Evidence.Source = "receipt.json"
-			if err := validateOpenCodeInstalledSmokeEvidence(root, record, mode); err == nil {
-				t.Fatalf("validateOpenCodeInstalledSmokeEvidence() = nil, want %s rejection", name)
-			}
-		})
-	}
-}
-
-func TestClaudeInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260808-hooks-entry-reconciliation/research/claude-code-2.1.226-plugin-startup-smoke.json")
-	raw := readSmokeReceiptRaw(t, receiptPath)
-	artifacts := raw["candidate_artifacts"].(map[string]any)
-	sourceNativePath := artifacts["native_binary_path"].(string)
-	artifacts["native_binary_path"] = "plugins/loaf/bin/native/linux-amd64/loaf"
-	content, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), filepath.FromSlash(sourceNativePath)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	digest := sha256.Sum256(content)
-	artifacts["native_binary_sha256"] = hex.EncodeToString(digest[:])
-	root := t.TempDir()
-	writeSmokeReceiptFixture(t, root, raw, sourceNativePath, content)
-	record := capabilityTestRecord(t, "claude-code", "cli")
-	mode := modeEvidenceByName(record.Context.Modes)["startup"]
-	mode.Evidence.Source = "receipt.json"
-	if err := validateInstalledSmokeEvidence(root, record, mode); err == nil || !strings.Contains(err.Error(), "native binary path") {
-		t.Fatalf("validateInstalledSmokeEvidence() error = %v, want platform-specific native binary path rejection", err)
-	}
-}
-
-func TestCodexInstalledSmokeEvidenceRejectsPlatformSwappedNativeBinaryPath(t *testing.T) {
-	receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260808-hooks-entry-reconciliation/research/codex-0.147.0-isolated-startup-smoke.json")
-	raw := readSmokeReceiptRaw(t, receiptPath)
-	artifacts := raw["candidate_artifacts"].(map[string]any)
-	sourceNativePath := artifacts["native_binary_path"].(string)
-	artifacts["native_binary_path"] = "bin/native/linux-amd64/loaf"
-	content, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), filepath.FromSlash(sourceNativePath)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	digest := sha256.Sum256(content)
-	artifacts["native_binary_sha256"] = hex.EncodeToString(digest[:])
-	root := t.TempDir()
-	writeSmokeReceiptFixture(t, root, raw, sourceNativePath, content)
-	record := capabilityTestRecord(t, "codex", "cli")
-	mode := modeEvidenceByName(record.Context.Modes)["startup"]
-	mode.Evidence.Source = "receipt.json"
-	if err := validateCodexInstalledSmokeEvidence(root, record, mode); err == nil || !strings.Contains(err.Error(), "native binary path") {
-		t.Fatalf("validateCodexInstalledSmokeEvidence() error = %v, want platform-specific native binary path rejection", err)
-	}
-}
-
-func TestCodexInstalledSmokeInvocationAcceptsOnlyASanctionedModelSelection(t *testing.T) {
-	prompt := "Return exactly the unique marker supplied by SessionStart context, and nothing else."
-	sanctioned := []string{"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "--json", "-C", "<disposable-repo>", prompt}
-	withModel := []string{"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m", "gpt-5.3-codex-spark", "--json", "-C", "<disposable-repo>", prompt}
-	for name, args := range map[string][]string{"no-model": sanctioned, "model": withModel} {
-		t.Run(name, func(t *testing.T) {
-			if err := validateCodexInstalledSmokeInvocation(TargetCapabilitySmokeInvocation{Command: "codex", CWD: "<disposable-repo>", Args: args}); err != nil {
-				t.Fatalf("validateCodexInstalledSmokeInvocation() error = %v, want accepted", err)
-			}
-		})
-	}
-	rejected := map[string][]string{
-		"blank-model":       {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m", "  ", "--json", "-C", "<disposable-repo>", prompt},
-		"dangling-model":    {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m"},
-		"weakened-sandbox":  {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "danger-full-access", "-m", "gpt-5.3-codex-spark", "--json", "-C", "<disposable-repo>", prompt},
-		"smuggled-flag":     {"exec", "--ephemeral", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "-m", "gpt-5.3-codex-spark", "--yolo", "--json", "-C", "<disposable-repo>", prompt},
-		"model-out-of-slot": {"exec", "--ephemeral", "-m", "gpt-5.3-codex-spark", "--ignore-rules", "--dangerously-bypass-hook-trust", "--sandbox", "read-only", "--json", "-C", "<disposable-repo>", prompt},
-	}
-	for name, args := range rejected {
-		t.Run(name, func(t *testing.T) {
-			if err := validateCodexInstalledSmokeInvocation(TargetCapabilitySmokeInvocation{Command: "codex", CWD: "<disposable-repo>", Args: args}); err == nil {
-				t.Fatalf("validateCodexInstalledSmokeInvocation() = nil, want %s rejection", name)
-			}
-		})
-	}
-}
-
-func TestInstalledSmokeEvidenceRejectsCrossTargetNativeBinaryPaths(t *testing.T) {
-	tests := []struct {
-		name       string
-		target     string
-		receipt    string
-		modeName   string
-		wrongPath  string
-		validateFn func(string, TargetCapabilityRecord, ModeEvidence) error
-	}{
-		{
-			name:       "claude-receives-codex-path",
-			target:     "claude-code",
-			receipt:    "claude-code-2.1.226-plugin-startup-smoke.json",
-			modeName:   "startup",
-			wrongPath:  "bin/native/darwin-arm64/loaf",
-			validateFn: validateInstalledSmokeEvidence,
-		},
-		{
-			name:       "codex-receives-claude-path",
-			target:     "codex",
-			receipt:    "codex-0.147.0-isolated-startup-smoke.json",
-			modeName:   "startup",
-			wrongPath:  "plugins/loaf/bin/native/darwin-arm64/loaf",
-			validateFn: validateCodexInstalledSmokeEvidence,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260808-hooks-entry-reconciliation/research", tt.receipt)
-			raw := readSmokeReceiptRaw(t, receiptPath)
-			artifacts := raw["candidate_artifacts"].(map[string]any)
-			sourceNativePath := artifacts["native_binary_path"].(string)
-			artifacts["native_binary_path"] = tt.wrongPath
-			content, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), filepath.FromSlash(sourceNativePath)))
-			if err != nil {
-				t.Fatal(err)
-			}
-			digest := sha256.Sum256(content)
-			artifacts["native_binary_sha256"] = hex.EncodeToString(digest[:])
-			root := t.TempDir()
-			writeSmokeReceiptFixture(t, root, raw, sourceNativePath, content)
-			record := capabilityTestRecord(t, tt.target, "cli")
-			mode := modeEvidenceByName(record.Context.Modes)[tt.modeName]
-			mode.Evidence.Source = "receipt.json"
-			if err := tt.validateFn(root, record, mode); err == nil || !strings.Contains(err.Error(), "native binary path") {
-				t.Fatalf("validation error = %v, want cross-target native binary path rejection", err)
-			}
-		})
-	}
-}
-
-func TestInstalledSmokeEvidenceRejectsSymlinkedCandidateArtifacts(t *testing.T) {
-	// Candidate artifact hashing must refuse symlink leaves and intermediate
-	// symlink directories even when target bytes match the receipt digest —
-	// otherwise the gate authenticates target content and git add -A commits
-	// the symlink itself.
-	tests := []struct {
-		name       string
-		target     string
-		receipt    string
-		modeName   string
-		validateFn func(string, TargetCapabilityRecord, ModeEvidence) error
-	}{
-		{
-			name:       "claude-code-hooks-leaf-symlink",
-			target:     "claude-code",
-			receipt:    "claude-code-2.1.226-plugin-startup-smoke.json",
-			modeName:   "startup",
-			validateFn: validateInstalledSmokeEvidence,
-		},
-		{
-			name:       "codex-hooks-leaf-symlink",
-			target:     "codex",
-			receipt:    "codex-0.147.0-isolated-startup-smoke.json",
-			modeName:   "startup",
-			validateFn: validateCodexInstalledSmokeEvidence,
-		},
-		{
-			name:       "opencode-hooks-leaf-symlink",
-			target:     "opencode",
-			receipt:    "opencode-1.18.13-isolated-request-smoke.json",
-			modeName:   "request",
-			validateFn: validateOpenCodeInstalledSmokeEvidence,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260808-hooks-entry-reconciliation/research", tt.receipt)
-			raw := readSmokeReceiptRaw(t, receiptPath)
-			artifacts := raw["candidate_artifacts"].(map[string]any)
-			hooksRel := artifacts["hooks_path"].(string)
-			nativeRel := artifacts["native_binary_path"].(string)
-
-			root := t.TempDir()
-			// Write native binary as a real file with matching hash.
-			nativeSrc := filepath.Join(testRepositoryRoot(t), filepath.FromSlash(nativeRel))
-			nativeContent, err := os.ReadFile(nativeSrc)
-			if err != nil {
-				t.Fatal(err)
-			}
-			nativeDst := filepath.Join(root, filepath.FromSlash(nativeRel))
-			if err := os.MkdirAll(filepath.Dir(nativeDst), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(nativeDst, nativeContent, 0o644); err != nil {
-				t.Fatal(err)
-			}
-
-			// Leaf: candidate hooks path is a symlink to an external file whose
-			// bytes match the receipt hash (would pass ReadFile-based hashing).
-			hooksSrc := filepath.Join(testRepositoryRoot(t), filepath.FromSlash(hooksRel))
-			hooksContent, err := os.ReadFile(hooksSrc)
-			if err != nil {
-				t.Fatal(err)
-			}
-			outside := filepath.Join(t.TempDir(), "hooks-payload")
-			if err := os.WriteFile(outside, hooksContent, 0o644); err != nil {
-				t.Fatal(err)
-			}
-			hooksDst := filepath.Join(root, filepath.FromSlash(hooksRel))
-			if err := os.MkdirAll(filepath.Dir(hooksDst), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Symlink(outside, hooksDst); err != nil {
-				t.Fatal(err)
-			}
-
-			encoded, err := json.Marshal(raw)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(root, "receipt.json"), encoded, 0o600); err != nil {
-				t.Fatal(err)
-			}
-
-			record := capabilityTestRecord(t, tt.target, "cli")
-			mode := modeEvidenceByName(record.Context.Modes)[tt.modeName]
-			mode.Evidence.Source = "receipt.json"
-			err = tt.validateFn(root, record, mode)
-			if err == nil {
-				t.Fatalf("validate() = nil, want leaf symlink rejection naming %q", hooksRel)
-			}
-			if !strings.Contains(err.Error(), hooksRel) {
-				t.Fatalf("validate() error = %v, want path %q named", err, hooksRel)
-			}
-			if !strings.Contains(err.Error(), "not a regular file") {
-				t.Fatalf("validate() error = %v, want regular-file refusal", err)
-			}
-		})
-	}
-
-	t.Run("opencode-intermediate-dir-symlink", func(t *testing.T) {
-		receiptPath := filepath.Join(testRepositoryRoot(t), "docs/changes/20260808-hooks-entry-reconciliation/research/opencode-1.18.13-isolated-request-smoke.json")
-		raw := readSmokeReceiptRaw(t, receiptPath)
-		artifacts := raw["candidate_artifacts"].(map[string]any)
-		hooksRel := artifacts["hooks_path"].(string)
-		nativeRel := artifacts["native_binary_path"].(string)
-
-		root := t.TempDir()
-		// Real native binary under root.
-		nativeContent, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), filepath.FromSlash(nativeRel)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		nativeDst := filepath.Join(root, filepath.FromSlash(nativeRel))
-		if err := os.MkdirAll(filepath.Dir(nativeDst), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(nativeDst, nativeContent, 0o644); err != nil {
-			t.Fatal(err)
-		}
-
-		// Intermediate: dist/opencode is a symlink to an external tree that holds
-		// hooks.ts with matching bytes.
-		hooksContent, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), filepath.FromSlash(hooksRel)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		outsideRoot := t.TempDir()
-		// hooks path is dist/opencode/plugins/hooks.ts — place payload under
-		// outsideRoot/plugins/hooks.ts and symlink root/dist/opencode -> outsideRoot.
-		outsideHooks := filepath.Join(outsideRoot, "plugins", "hooks.ts")
-		if err := os.MkdirAll(filepath.Dir(outsideHooks), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(outsideHooks, hooksContent, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		link := filepath.Join(root, "dist", "opencode")
-		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Symlink(outsideRoot, link); err != nil {
-			t.Fatal(err)
-		}
-
-		encoded, err := json.Marshal(raw)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(root, "receipt.json"), encoded, 0o600); err != nil {
-			t.Fatal(err)
-		}
-
-		record := capabilityTestRecord(t, "opencode", "cli")
-		mode := modeEvidenceByName(record.Context.Modes)["request"]
-		mode.Evidence.Source = "receipt.json"
-		err = validateOpenCodeInstalledSmokeEvidence(root, record, mode)
-		if err == nil {
-			t.Fatal("validateOpenCodeInstalledSmokeEvidence() = nil, want intermediate symlink rejection")
-		}
-		if !strings.Contains(err.Error(), hooksRel) {
-			t.Fatalf("validate() error = %v, want path %q named", err, hooksRel)
-		}
-		if !strings.Contains(err.Error(), "symlink component") {
-			t.Fatalf("validate() error = %v, want symlink-component refusal", err)
+		if err := validateEvidenceSourceFile(root, filepath.ToSlash(filepath.Join(relativeLink, "evidence.md"))); err == nil {
+			t.Fatal("validateEvidenceSourceFile() = nil, want intermediate symlink source rejection")
 		}
 	})
 }
@@ -863,7 +399,11 @@ func TestTargetCapabilityEvidenceIsRecordOnly(t *testing.T) {
 
 func loadTestTargetCapabilityEvidence(t *testing.T) TargetCapabilityEvidenceContract {
 	t.Helper()
-	contract, err := LoadTargetCapabilityEvidence(testTargetCapabilityEvidencePath(t))
+	data, err := os.ReadFile(testTargetCapabilityEvidencePath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract, err := DecodeTargetCapabilityEvidence(data)
 	if err != nil {
 		t.Fatal(err)
 	}

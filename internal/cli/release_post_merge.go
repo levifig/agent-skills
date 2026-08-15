@@ -164,10 +164,6 @@ func checkReleasePostMergeGuardrails(root string, snapshot releaseSnapshot, runn
 		return releasePostMergeAbort(8, taggedAbort)
 	}
 
-	if _, evidenceErr := checkReleaseCapabilityEvidence(root); evidenceErr != nil {
-		return releasePostMergeAbort(9, releasePostMergeCapabilityEvidenceAbortMessage(evidenceErr))
-	}
-
 	featureBranch := ""
 	if prNumber != "" {
 		featureBranch = lookupReleasePostMergeFeatureBranch(root, runner, prNumber)

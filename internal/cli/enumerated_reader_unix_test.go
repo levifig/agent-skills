@@ -3,7 +3,6 @@
 package cli
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -183,52 +182,6 @@ func TestFilesHaveSameContentRefusesFifo(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("filesHaveSameContent blocked on a FIFO")
-	}
-}
-
-func TestReadValidatedChangeRefusesFifo(t *testing.T) {
-	root := initEnumeratedGitRepo(t)
-	folder := filepath.Join(root, "docs", "changes", "20260731-fifo-change")
-	mkdirAll(t, folder)
-	changePath := filepath.Join(folder, "change.md")
-	mkfifoForTest(t, changePath)
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := readValidatedChange(root, changePath, changePath, "docs/changes/20260731-fifo-change/change.md", changeOriginOps{})
-		done <- err
-	}()
-
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("readValidatedChange accepted a FIFO")
-		}
-		if !errors.Is(err, errNotRegularFile) && !strings.Contains(err.Error(), "not a regular file") {
-			t.Fatalf("error = %v, want errNotRegularFile", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("readValidatedChange blocked on a FIFO")
-	}
-}
-
-func TestReadValidatedChangeBoundsRead(t *testing.T) {
-	root := initEnumeratedGitRepo(t)
-	folder := filepath.Join(root, "docs", "changes", "20260731-bound-change")
-	mkdirAll(t, folder)
-	changePath := filepath.Join(folder, "change.md")
-	body := "---\nslug: bound-change\n---\n# Change\n\nSmall enough.\n"
-	writeInstallFile(t, changePath, body)
-	runEnumeratedGit(t, root, "add", ".")
-	runEnumeratedGit(t, root, "-c", "commit.gpgsign=false", "commit", "-m", "add change")
-
-	// Use the slug selector so revalidation walks the same path production does.
-	content, err := readValidatedChange(root, "bound-change", changePath, "docs/changes/20260731-bound-change/change.md", changeOriginOps{})
-	if err != nil {
-		t.Fatalf("readValidatedChange(valid) error = %v", err)
-	}
-	if !bytes.Equal(content, []byte(body)) {
-		t.Fatalf("content = %q, want %q", content, body)
 	}
 }
 

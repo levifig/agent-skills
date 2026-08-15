@@ -14190,12 +14190,6 @@ func writeJSONCommandError(out io.Writer, command string, err error) error {
 		output.BackupPath = recoveryErr.BackupPath
 		output.RestorePath = recoveryErr.RestorePath
 	}
-	var changeOriginErr *ChangeOriginError
-	if errors.As(err, &changeOriginErr) {
-		output.Code = changeOriginErr.Code
-		output.Ref = changeOriginErr.Ref
-		output.Path = changeOriginErr.Path
-	}
 	var journalDeferValidationErr *state.JournalDeferValidationError
 	if errors.As(err, &journalDeferValidationErr) {
 		output.Code = "journal-defer-validation"

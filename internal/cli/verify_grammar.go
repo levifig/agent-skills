@@ -14,14 +14,20 @@ import (
 // exactly what verify enforced before the grammar existed. Every other clause is
 // unenforceable: it lands in Advisory, is warned about, and never affects ok.
 //
-// This file is the shared home owned by the issue surface. change verify
-// delegates here so the grammar survives the later deletion of change_verify.go.
+// This file is the shared home owned by the issue surface.
 type changeExpectation struct {
 	ExitCode     int
 	exitSeen     bool
 	ExitConflict string // non-empty when a second exit atom contradicts the first
 	Contains     []string
 	Advisory     []string
+}
+
+// changeVerifyExpectCheck is one enforced Expect atom and its outcome.
+type changeVerifyExpectCheck struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+	OK    bool   `json:"ok"`
 }
 
 func parseChangeExpectation(expect string) changeExpectation {

@@ -110,6 +110,82 @@ func commitAllChangeTest(t *testing.T, repo, message string) {
 	gitCLI(t, repo, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "commit", "-m", message)
 }
 
+func writeReleaseVersionFiles(t *testing.T, repo, version string) {
+	t.Helper()
+	pkg := "{\n  \"name\": \"demo\",\n  \"version\": \"" + version + "\"\n}\n"
+	if err := os.WriteFile(filepath.Join(repo, "package.json"), []byte(pkg), 0o644); err != nil {
+		t.Fatalf("WriteFile package.json: %v", err)
+	}
+}
+
+func seedCohortGateRepo(t *testing.T, version string) string {
+	t.Helper()
+	repo := initCLIGitRepo(t)
+	writeReleaseVersionFiles(t, repo, version)
+	return repo
+}
+
+func writeNewLayoutChange(t *testing.T, repo, folder, slug, target string, shapeBody string) string {
+	t.Helper()
+	dir := filepath.Join(repo, "docs", "changes", folder)
+	if err := os.MkdirAll(filepath.Join(dir, "tasks"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	meta := "{\n  \"change\": \"" + slug + "\",\n  \"created\": \"2026-07-27\",\n  \"branch\": \"" + slug + "\""
+	if target != "" {
+		meta += ",\n  \"target_release\": \"" + target + "\""
+	}
+	meta += "\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "change.json"), []byte(meta), 0o644); err != nil {
+		t.Fatalf("WriteFile change.json: %v", err)
+	}
+	if shapeBody == "" {
+		shapeBody = authoredShapeBody()
+	}
+	if err := os.WriteFile(filepath.Join(dir, "shape.md"), []byte(shapeBody), 0o644); err != nil {
+		t.Fatalf("WriteFile shape.md: %v", err)
+	}
+	return dir
+}
+
+func authoredShapeBody() string {
+	sections := append(productSections(),
+		"## Planning Contract\n\n### Approach\n\nHow.",
+		"## Implementation Units\n\n- U1 — do the thing.",
+		"## Verification Contract\n\n- **V1.** Smoke.\n  - Command: `true`\n  - Expect: exit 0",
+		"## Definition of Done\n\n- Gates pass.",
+	)
+	var b strings.Builder
+	b.WriteString("# Demo\n\n")
+	for _, s := range sections {
+		b.WriteString(s)
+		b.WriteString("\n\n")
+	}
+	return b.String()
+}
+
+func flipExecuteChange(t *testing.T, repo, dir, slug string) {
+	t.Helper()
+	task := filepath.Join(dir, "tasks", "TASK-001-work.md")
+	if err := os.MkdirAll(filepath.Dir(task), 0o755); err != nil {
+		t.Fatalf("MkdirAll tasks: %v", err)
+	}
+	unchecked := "---\nchange: " + slug + "\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [ ] Do it\n"
+	if err := os.WriteFile(task, []byte(unchecked), 0o644); err != nil {
+		t.Fatalf("WriteFile task: %v", err)
+	}
+	commitAllChangeTest(t, repo, "docs: shape "+slug)
+
+	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile main.go: %v", err)
+	}
+	checked := "---\nchange: " + slug + "\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [x] Do it\n"
+	if err := os.WriteFile(task, []byte(checked), 0o644); err != nil {
+		t.Fatalf("WriteFile flip: %v", err)
+	}
+	commitAllChangeTest(t, repo, "feat: execute "+slug)
+}
+
 func TestChangeLineageValidation(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -350,10 +426,10 @@ func TestChangeCheckRequiresCommittedPredecessorButNotCompletion(t *testing.T) {
 
 func TestChangeCheckRequiresCommittedPredecessorGraphToBeExecutable(t *testing.T) {
 	repo := initCLIGitRepo(t)
-	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", ""))
-	commitAllChangeTest(t, repo, "docs: add root without release terminal")
+	root := writeChangeFolder(t, repo, "20260710-root", changeDoc(lineageFrontmatter("root", "2026-07-10", "root", "line", "", ""), productSections()...))
+	commitAllChangeTest(t, repo, "docs: add structurally incomplete root")
 
-	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(executableLineageDoc("root", "line", "", "child")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "change.md"), []byte(executableLineageDoc("root", "line", "", "")), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	child := writeChangeFolder(t, repo, "20260710-child", executableLineageDoc("child", "line", "root", ""))
@@ -382,29 +458,6 @@ func TestChangeCheckBareReportsMissingPredecessorAsExecutionGap(t *testing.T) {
 	required, err := runChangeCheckJSON(t, repo, child, "--require-executable")
 	if err == nil || required.Passed || required.Executable || !findingsContain(required.Gaps, "predecessor \"missing\" is not materialized") {
 		t.Fatalf("required check err = %v out = %+v", err, required)
-	}
-}
-
-func TestChangeCheckParkedTerminalInIsolationNeedsRootReleaseDeclaration(t *testing.T) {
-	repo := initCLIGitRepo(t)
-	parked := writeChangeFolder(t, repo, "20260710-spec-conversion-and-guidance-sweep", executableLineageDoc("spec-conversion-and-guidance-sweep", "change-model-hard-cut", "", ""))
-	want := "root \"spec-conversion-and-guidance-sweep\" must declare release-after"
-	bare, err := runChangeCheckJSON(t, repo, parked)
-	if err != nil || !bare.Passed || bare.Executable || !findingsContain(bare.Gaps, want) {
-		t.Fatalf("parked bare check err = %v out = %+v", err, bare)
-	}
-	required, err := runChangeCheckJSON(t, repo, parked, "--require-executable")
-	if err == nil || required.Passed || required.Executable || !findingsContain(required.Gaps, want) {
-		t.Fatalf("parked required check err = %v out = %+v", err, required)
-	}
-}
-
-func TestChangeCheckRootRemainsExecutableWithUnmaterializedReleaseAfter(t *testing.T) {
-	repo := initCLIGitRepo(t)
-	root := writeChangeFolder(t, repo, "20260710-root", executableLineageDoc("root", "line", "", "terminal"))
-	out, err := runChangeCheckJSON(t, repo, root, "--require-executable")
-	if err != nil || !out.Executable || findingsContain(out.Gaps, "release-after terminal") {
-		t.Fatalf("root structural check err = %v out = %+v", err, out)
 	}
 }
 
@@ -574,67 +627,6 @@ func TestChangeListJSONIsRelativeAndByteDeterministicAfterBranchRenameAndDelete(
 	}
 	if len(decoded.Nodes) != 1 || decoded.Nodes[0].Folder != "docs/changes/20260710-root" || strings.Contains(first, repo) {
 		t.Fatalf("decoded = %+v output = %s", decoded, first)
-	}
-}
-
-func TestChangeExecutableWordingParityAcrossEveryCommandSurface(t *testing.T) {
-	var native, agent bytes.Buffer
-	writeChangeCheckHelp(&native)
-	if err := writeAgentHelpJSON(&agent); err != nil {
-		t.Fatal(err)
-	}
-	nativeSnippets := []string{
-		"Validate a Change and report derived structural executability, not implementation completion.",
-		"--require-executable  Exit non-zero unless the Change is structurally executable (CI gate for non-draft PRs)",
-	}
-	for _, snippet := range nativeSnippets {
-		if !strings.Contains(native.String(), snippet) {
-			t.Fatalf("native change check help = %q, want exact snippet %q", native.String(), snippet)
-		}
-	}
-	const agentSnippet = "Exit non-zero unless the Change is structurally executable; this does not prove implementation completion"
-	if !strings.Contains(agent.String(), agentSnippet) {
-		t.Fatalf("agent help = %q, want exact change check snippet %q", agent.String(), agentSnippet)
-	}
-	referenceJSON, err := json.Marshal(cliReferenceCommands())
-	if err != nil {
-		t.Fatal(err)
-	}
-	const referenceSnippet = "Exit non-zero unless the Change is structurally executable; this does not prove implementation completion (CI gate for non-draft PRs)"
-	if !strings.Contains(string(referenceJSON), referenceSnippet) {
-		t.Fatalf("CLI reference metadata = %s, want exact change check snippet %q", referenceJSON, referenceSnippet)
-	}
-
-	root := filepath.Join("..", "..")
-	const shapeSnippet = "**implement** — Starts execution once a Change is structurally executable; this does not prove implementation completion"
-	const boundarySnippet = "`--require-executable` turns structural executability into a gate (exit code 1 if not structurally executable); it does not prove implementation completion."
-	const prSnippet = "<!-- Draft = still shaping. Ready for review = structurally executable, not proof of implementation completion. -->"
-	const routingSnippet = "| Validate a Change is structurally executable, not implementation-complete | `loaf change check --require-executable` |"
-	skillRoots := []string{
-		"content/skills",
-		"plugins/loaf/skills",
-		"dist/amp/skills",
-		"dist/codex/skills",
-		"dist/cursor/skills",
-		"dist/opencode/skills",
-		"dist/skills",
-	}
-	expected := map[string]string{}
-	for _, skillRoot := range skillRoots {
-		expected[filepath.Join(skillRoot, "shape", "SKILL.md")] = shapeSnippet
-		expected[filepath.Join(skillRoot, "shape", "references", "cli-boundary.md")] = boundarySnippet
-		expected[filepath.Join(skillRoot, "shape", "templates", "pr.md")] = prSnippet
-		expected[filepath.Join(skillRoot, "loaf-reference", "references", "command-routing.md")] = routingSnippet
-	}
-	expected[filepath.Join("dist", "opencode", "commands", "shape.md")] = shapeSnippet
-	for path, snippet := range expected {
-		body, err := os.ReadFile(filepath.Join(root, path))
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-		if !strings.Contains(string(body), snippet) {
-			t.Fatalf("%s wording drifted; want exact snippet %q", path, snippet)
-		}
 	}
 }
 
@@ -1762,43 +1754,6 @@ func TestChangeInitRejectsBadSlug(t *testing.T) {
 			err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo}.Run(args)
 			if err == nil {
 				t.Fatalf("err = nil, want rejection for slug %q", slug)
-			}
-		})
-	}
-}
-
-// --- Embedded-template drift gate ------------------------------------------
-
-func TestChangeTemplateMatchesCanonicalContent(t *testing.T) {
-	canonical, err := os.ReadFile(filepath.Join("..", "..", "content", "skills", "shape", "templates", "change.md"))
-	if err != nil {
-		t.Fatalf("ReadFile(canonical change template) error = %v", err)
-	}
-	if changeTemplate != string(canonical) {
-		t.Fatalf("embedded change_template.md drifted from content/skills/shape/templates/change.md; re-copy the canonical file")
-	}
-}
-
-func TestChangeScaffoldTemplatesMatchCanonical(t *testing.T) {
-	cases := []struct {
-		name     string
-		embedded string
-		rel      string
-	}{
-		{"shape", changeShapeTemplate, "shape.md"},
-		{"brief", changeBriefTemplate, "brief.md"},
-		{"plan", changePlanTemplate, "plan.md"},
-		{"design", changeDesignTemplate, "design.md"},
-		{"task", changeTaskTemplate, "task.md"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			canonical, err := os.ReadFile(filepath.Join("..", "..", "content", "skills", "shape", "templates", tc.rel))
-			if err != nil {
-				t.Fatalf("ReadFile(%s) error = %v", tc.rel, err)
-			}
-			if tc.embedded != string(canonical) {
-				t.Fatalf("embedded change_%s_template.md drifted from content/skills/shape/templates/%s", tc.name, tc.rel)
 			}
 		})
 	}

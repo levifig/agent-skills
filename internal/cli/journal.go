@@ -96,13 +96,12 @@ func writeJournalShowHelp(out io.Writer) {
 }
 
 func writeJournalDeferHelp(out io.Writer) {
-	writeUsageHelp(out, `loaf journal defer "<intent>" --why "..." --boundary "..." --trigger "..." --operation-id "..." [--change <slug|path>] [--json]`, "Capture one self-sufficient deferred intent as a reciprocal decision and open spark pair; stable operation IDs make first writes idempotent and reworded retries visible.",
+	writeUsageHelp(out, `loaf journal defer "<intent>" --why "..." --boundary "..." --trigger "..." --operation-id "..." [--json]`, "Capture one self-sufficient deferred intent as a reciprocal decision and open spark pair; stable operation IDs make first writes idempotent and reworded retries visible.",
 		"<intent>              One-line intent to revisit",
 		"--why                 Why this intent was deferred",
 		"--boundary            What remains outside this packet",
 		"--trigger             What should cause revisit",
 		"--operation-id        Stable retry/idempotency key",
-		"--change              Optional retained Change slug or canonical path for local evidence",
 		"--json                Output the state result as JSON")
 }
 
@@ -650,7 +649,6 @@ type journalDeferOptions struct {
 	boundary    string
 	trigger     string
 	operationID string
-	change      string
 	jsonOutput  bool
 }
 
@@ -667,7 +665,7 @@ func parseJournalDeferArgs(args []string) (journalDeferOptions, error) {
 		case "--json":
 			seen[arg] = true
 			options.jsonOutput = true
-		case "--why", "--boundary", "--trigger", "--operation-id", "--change":
+		case "--why", "--boundary", "--trigger", "--operation-id":
 			if seen[arg] {
 				return journalDeferOptions{}, &state.JournalDeferValidationError{Field: strings.TrimPrefix(arg, "--"), Err: fmt.Errorf("flag may be specified only once")}
 			}
@@ -675,9 +673,6 @@ func parseJournalDeferArgs(args []string) (journalDeferOptions, error) {
 			value, err := consumeFlagValue(args, &i, arg)
 			if err != nil {
 				return journalDeferOptions{}, &state.JournalDeferValidationError{Field: strings.TrimPrefix(arg, "--"), Err: err}
-			}
-			if arg == "--change" && strings.TrimSpace(value) == "" {
-				return journalDeferOptions{}, &state.JournalDeferValidationError{Field: "change", Err: fmt.Errorf("must be nonblank")}
 			}
 			switch arg {
 			case "--why":
@@ -688,8 +683,6 @@ func parseJournalDeferArgs(args []string) (journalDeferOptions, error) {
 				options.trigger = value
 			case "--operation-id":
 				options.operationID = value
-			case "--change":
-				options.change = value
 			}
 		default:
 			if strings.HasPrefix(arg, "-") {
@@ -730,15 +723,6 @@ func (r Runner) runJournalDefer(args []string, out io.Writer, runtime state.Runt
 		return err
 	}
 	origin := ResolveManualJournalOrigin(runtime.RootPath(), "journal.defer")
-	if options.change != "" {
-		origin, err = ResolveChangeOrigin(runtime.RootPath(), options.change)
-		if err != nil {
-			if options.jsonOutput {
-				return writeJSONCommandError(out, "journal defer", err)
-			}
-			return err
-		}
-	}
 	result, err := state.DeferJournal(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.JournalDeferOptions{
 		Intent:      options.intent,
 		Why:         options.why,

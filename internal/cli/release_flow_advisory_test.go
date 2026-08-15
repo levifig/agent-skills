@@ -146,10 +146,8 @@ func TestReleaseFlowAdvisory(t *testing.T) {
 		}
 	})
 
-	t.Run("prints once when preflight blocks on the default branch", func(t *testing.T) {
-		// Incomplete stable cohort blocks before apply analysis; the advisory
-		// must still print exactly once from the runRelease entry path.
-		repo := seedReleaseApplyRepo(t, "feat: preflight still names the door")
+	t.Run("prints once on the default branch even with an incomplete cohort member", func(t *testing.T) {
+		repo := seedReleaseApplyRepo(t, "feat: advisory still names the door")
 		dir := writeNewLayoutChange(t, repo, "20260727-preflight-advisory", "preflight-advisory", "1.1.0", "")
 		task := filepath.Join(dir, "tasks", "TASK-001-work.md")
 		unchecked := "---\nchange: preflight-advisory\nid: TASK-001\ntitle: Work\n---\n\n# Work\n\n## Steps\n\n- [ ] Do it\n"
@@ -161,23 +159,18 @@ func TestReleaseFlowAdvisory(t *testing.T) {
 		err := Runner{
 			Stdout:     &stdout,
 			Stderr:     &bytes.Buffer{},
+			Stdin:      strings.NewReader("n\n"),
 			WorkingDir: repo,
-		}.Run([]string{"release", "--bump", "minor", "--yes", "--no-tag", "--no-gh"})
-		if err == nil {
-			t.Fatalf("release error = nil, want cohort preflight block")
-		}
-		if !strings.Contains(err.Error(), "targets 1.1.0 but is not executed") {
-			t.Fatalf("error = %v, want incomplete cohort preflight block", err)
+		}.Run([]string{"release", "--bump", "minor", "--no-tag", "--no-gh"})
+		if err != nil {
+			t.Fatalf("release error = %v\n%s", err, stdout.String())
 		}
 		output := stdout.String()
 		if !strings.Contains(output, releaseFlowAdvisoryProbe) {
-			t.Fatalf("stdout = %q, want flow advisory before preflight failure", output)
+			t.Fatalf("stdout = %q, want flow advisory", output)
 		}
 		if count := strings.Count(output, releaseFlowAdvisoryProbe); count != 1 {
 			t.Fatalf("stdout advisory count = %d, want exactly once\n%s", count, output)
-		}
-		if strings.Contains(output, "Analyzing") {
-			t.Fatalf("stdout = %q, preflight block must not reach apply analysis", output)
 		}
 	})
 }

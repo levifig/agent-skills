@@ -1,8 +1,9 @@
 ---
 id: ADR-022
 title: "Change anatomy — role-named narrative, task-file state, and release cohorts via target_release"
-status: Accepted
+status: Deprecated
 date: 2026-07-28
+deprecated_date: 2026-08-15
 supersedes: null
 superseded_by: null
 amended_by:
@@ -10,6 +11,8 @@ amended_by:
 ---
 
 # ADR-022: Change anatomy and release cohorts
+
+2026-08-15: retired with the release gate — releases are retroactive; verification authority is ship.
 
 ## Context
 

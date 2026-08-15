@@ -200,7 +200,6 @@ func (r Runner) runChange(args []string, out io.Writer, runtime state.Runtime) e
 		"report": writeChangeReportHelp,
 		"tasks":  writeChangeTasksHelp,
 		"show":   writeChangeShowHelp,
-		"verify": writeChangeVerifyHelp,
 	}) {
 		return nil
 	}
@@ -217,8 +216,6 @@ func (r Runner) runChange(args []string, out io.Writer, runtime state.Runtime) e
 		return r.runChangeTasks(args[1:], out, runtime.RootPath())
 	case "show":
 		return r.runChangeShow(args[1:], out, runtime.RootPath())
-	case "verify":
-		return r.runChangeVerify(args[1:], out, runtime.RootPath())
 	default:
 		return unknownSubcommandError("change", args[0])
 	}
@@ -233,7 +230,6 @@ func writeChangeHelp(out io.Writer) {
 			{Name: "list", Summary: "List Changes as units/cohort projection"},
 			{Name: "tasks", Summary: "Project the stable-ID task index as JSON"},
 			{Name: "show", Summary: "Show layout, target, state, and derived PR set"},
-			{Name: "verify", Summary: "Run executable criteria and write a cohort receipt"},
 			{Name: "report", Summary: "Stamp authored HTML reports under reports/"},
 		})
 }

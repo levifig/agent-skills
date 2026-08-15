@@ -501,19 +501,6 @@ func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.W
 	if residual := releaseNonEvidenceChangePaths(root, changePaths); len(residual) != 0 {
 		return fmt.Errorf("Refusing to commit release artifacts: artifact generation modified docs/changes; reconcile and commit separately before release: %s", strings.Join(residual, ", "))
 	}
-	evidencePresent, evidenceErr := checkReleaseCapabilityEvidence(root)
-	if evidenceErr != nil {
-		// Self-reset only what this run wrote that must not survive: the
-		// changelog insertion. Version files stay at the candidate for re-record
-		// hashing; generated outputs stay rebuilt.
-		if restoreErr := releaseRestoreChangelogFromHEAD(root); restoreErr != nil {
-			return fmt.Errorf("%w (also failed to restore CHANGELOG.md: %v)", releaseApplyCapabilityEvidenceRefusal(evidenceErr), restoreErr)
-		}
-		return releaseApplyCapabilityEvidenceRefusal(evidenceErr)
-	}
-	if evidencePresent {
-		fmt.Fprintf(out, "    %s Capability evidence validated against the rebuilt tree\n", ansiGreen("✓"))
-	}
 
 	if err := releaseCommandRun(root, "git", "add", "-A"); err != nil {
 		return fmt.Errorf("Failed to stage release artifacts: %w", err)

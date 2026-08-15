@@ -13363,7 +13363,7 @@ func TestRunnerGenerateCLIReferenceIndexesEditSubcommands(t *testing.T) {
 	}
 	content := string(data)
 	for _, want := range []string{
-		"| `loaf spec` | Manage project specs | new, edit, list, show, status, render, finalize, archive, delete |",
+		"| `loaf spec` | Manage project specs; superseded by loaf issue for new work | new, edit, list, show, status, render, finalize, archive, delete |",
 		"| `loaf report` | Manage durable reports (research, audits, investigations) | list, show, render, generate, create, edit, finalize, archive |",
 	} {
 		if !strings.Contains(content, want) {

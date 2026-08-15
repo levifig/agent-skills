@@ -1,8 +1,9 @@
 ---
 id: ADR-027
 title: "Content-bound release evidence — receipts vouch where history shape cannot"
-status: Accepted
+status: Deprecated
 date: 2026-08-07
+deprecated_date: 2026-08-15
 supersedes: null
 superseded_by: null
 related:
@@ -13,6 +14,8 @@ related:
 ---
 
 # ADR-027: Content-bound release evidence
+
+2026-08-15: retired with the release gate — releases are retroactive; verification authority is ship.
 
 ## Context
 

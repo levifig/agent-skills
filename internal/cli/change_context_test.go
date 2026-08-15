@@ -54,8 +54,8 @@ func TestJournalContextDiscoversActiveChangesFromNestedDirectory(t *testing.T) {
 	if !reflect.DeepEqual(fromNested, fromRoot) {
 		t.Fatalf("nested active Changes = %#v, want root result %#v", fromNested, fromRoot)
 	}
-	if got := fromNested.Items[0].ActiveReasons; !reflect.DeepEqual(got, []string{"working_tree_change", "lineage_unresolved"}) {
-		t.Fatalf("nested active reasons = %#v, want dirty and unresolved evidence", got)
+	if got := fromNested.Items[0].ActiveReasons; !reflect.DeepEqual(got, []string{"working_tree_change"}) {
+		t.Fatalf("nested active reasons = %#v, want dirty working-tree evidence", got)
 	}
 }
 
