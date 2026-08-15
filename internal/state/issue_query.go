@@ -127,6 +127,7 @@ type IssueExportSnapshot struct {
 	Identity           *IssueExportIdentity      `json:"identity,omitempty"`
 	Issues             []Issue                   `json:"issues"`
 	Criteria           []IssueCriterionExport    `json:"criteria"`
+	Claims             []IssueCriterionClaim     `json:"claims"`
 	Relationships      []IssueRelationshipExport `json:"relationships"`
 }
 
@@ -345,7 +346,8 @@ ORDER BY i.created_at, i.id
 }
 
 // ExportIssues returns a project-scoped JSON backup of issues, criteria,
-// issue-touching relationships, and the stored issue identity when one exists.
+// criterion claims, issue-touching relationships, and the stored issue
+// identity when one exists.
 func ExportIssues(ctx context.Context, root project.Root, resolver PathResolver) (IssueExportSnapshot, error) {
 	store, err := openProjectStoreReadExisting(ctx, root, resolver)
 	if err != nil {
@@ -371,6 +373,10 @@ func (s *Store) ExportIssues(ctx context.Context, root project.Root) (IssueExpor
 	if err != nil {
 		return IssueExportSnapshot{}, err
 	}
+	claims, err := exportIssueCriterionClaimsTx(ctx, tx, listed.ProjectID)
+	if err != nil {
+		return IssueExportSnapshot{}, err
+	}
 	relationships, err := exportIssueRelationshipsTx(ctx, tx, listed.ProjectID)
 	if err != nil {
 		return IssueExportSnapshot{}, err
@@ -391,6 +397,7 @@ func (s *Store) ExportIssues(ctx context.Context, root project.Root) (IssueExpor
 		Identity:           identity,
 		Issues:             listed.Issues,
 		Criteria:           criteria,
+		Claims:             claims,
 		Relationships:      relationships,
 	}, nil
 }
@@ -634,6 +641,31 @@ FROM issue_identity WHERE project_id = ?
 		return nil, fmt.Errorf("load stored issue identity: %w", err)
 	}
 	return &identity, nil
+}
+
+func exportIssueCriterionClaimsTx(ctx context.Context, tx *sql.Tx, projectID string) ([]IssueCriterionClaim, error) {
+	rows, err := tx.QueryContext(ctx, `
+SELECT id, child_criterion_id, parent_criterion_id
+FROM issue_criterion_claims
+WHERE project_id = ?
+ORDER BY id
+`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("export issue criterion claims: %w", err)
+	}
+	defer rows.Close()
+	claims := []IssueCriterionClaim{}
+	for rows.Next() {
+		var claim IssueCriterionClaim
+		if err := rows.Scan(&claim.ID, &claim.ChildCriterionID, &claim.ParentCriterionID); err != nil {
+			return nil, fmt.Errorf("scan exported issue criterion claim: %w", err)
+		}
+		claims = append(claims, claim)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate exported issue criterion claims: %w", err)
+	}
+	return claims, nil
 }
 
 func exportIssueCriteriaTx(ctx context.Context, tx *sql.Tx, projectID string) ([]IssueCriterionExport, error) {

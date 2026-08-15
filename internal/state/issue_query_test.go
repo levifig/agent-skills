@@ -224,6 +224,9 @@ func TestAddRemoveAndPromoteIssueCriterion(t *testing.T) {
 	if child.Title != "Human check" || child.Kind != IssueKindDelivery || child.ParentID != issue.ID {
 		t.Fatalf("child = %#v, want delivery child of parent", child)
 	}
+	if len(child.Criteria) != 1 || child.Criteria[0].Text != "Human check" || child.Criteria[0].Position != 1 {
+		t.Fatalf("child criteria = %#v, want copied parent criterion as first criterion", child.Criteria)
+	}
 	still, err := store.GetIssue(ctx, root, issue.Alias)
 	if err != nil {
 		t.Fatalf("GetIssue(parent) error = %v", err)
@@ -291,6 +294,10 @@ func TestExportIssuesIncludesRowsCriteriaAndRelationships(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue() error = %v", err)
 	}
+	child, err := store.PromoteIssueCriterion(ctx, root, first.Alias, 1)
+	if err != nil {
+		t.Fatalf("PromoteIssueCriterion() error = %v", err)
+	}
 	second, err := store.CreateIssue(ctx, root, IssueCreateOptions{Title: "Related"})
 	if err != nil {
 		t.Fatalf("CreateIssue(second) error = %v", err)
@@ -310,11 +317,14 @@ func TestExportIssuesIncludesRowsCriteriaAndRelationships(t *testing.T) {
 	if snapshot.ExportKind != ExportKindIssue || snapshot.Format != ExportFormatJSON {
 		t.Fatalf("snapshot header = %#v", snapshot)
 	}
-	if len(snapshot.Issues) != 2 {
-		t.Fatalf("issues = %#v, want 2", snapshot.Issues)
+	if len(snapshot.Issues) != 3 {
+		t.Fatalf("issues = %#v, want 3", snapshot.Issues)
 	}
-	if len(snapshot.Criteria) != 1 || snapshot.Criteria[0].IssueID != first.ID {
-		t.Fatalf("criteria = %#v", snapshot.Criteria)
+	if len(snapshot.Criteria) != 2 {
+		t.Fatalf("criteria = %#v, want parent + promoted child", snapshot.Criteria)
+	}
+	if len(snapshot.Claims) != 1 || snapshot.Claims[0].ParentCriterionID != first.Criteria[0].ID || snapshot.Claims[0].ChildCriterionID != child.Criteria[0].ID {
+		t.Fatalf("claims = %#v, want the promote claim", snapshot.Claims)
 	}
 	if len(snapshot.Relationships) != 1 || snapshot.Relationships[0].RelationshipType != IssueRelationshipRelatesTo {
 		t.Fatalf("relationships = %#v, want relates_to", snapshot.Relationships)
@@ -322,8 +332,8 @@ func TestExportIssuesIncludesRowsCriteriaAndRelationships(t *testing.T) {
 	if snapshot.Identity == nil {
 		t.Fatal("identity = nil, want stored authority after minting local aliases")
 	}
-	if snapshot.Identity.Authority != IssueAuthorityLocal || snapshot.Identity.Prefix != DefaultIssuePrefix || snapshot.Identity.NextNumber != 3 {
-		t.Fatalf("identity = %#v, want local %s next_number=3", snapshot.Identity, DefaultIssuePrefix)
+	if snapshot.Identity.Authority != IssueAuthorityLocal || snapshot.Identity.Prefix != DefaultIssuePrefix || snapshot.Identity.NextNumber != 4 {
+		t.Fatalf("identity = %#v, want local %s next_number=4", snapshot.Identity, DefaultIssuePrefix)
 	}
 }
 
@@ -337,7 +347,7 @@ func TestExportIssuesOmitsIdentityWhenNoRow(t *testing.T) {
 	if snapshot.Identity != nil {
 		t.Fatalf("identity = %#v, want omitted when no issue_identity row exists", snapshot.Identity)
 	}
-	if len(snapshot.Issues) != 0 || len(snapshot.Criteria) != 0 || len(snapshot.Relationships) != 0 {
+	if len(snapshot.Issues) != 0 || len(snapshot.Criteria) != 0 || len(snapshot.Claims) != 0 || len(snapshot.Relationships) != 0 {
 		t.Fatalf("empty project export = %#v, want no rows", snapshot)
 	}
 }
@@ -347,7 +357,7 @@ func TestExportAllTablesIncludesIssueFoundation(t *testing.T) {
 	for _, table := range exportAllTables {
 		found[table.Name] = true
 	}
-	for _, name := range []string{"issues", "issue_criteria", "issue_identity"} {
+	for _, name := range []string{"issues", "issue_criteria", "issue_criterion_claims", "issue_identity"} {
 		if !found[name] {
 			t.Fatalf("exportAllTables missing %s", name)
 		}

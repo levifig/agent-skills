@@ -18,11 +18,12 @@ const (
 // IssueCriterionInput is one definition-of-done line to store.
 // Command and Expect use the loaf change verify grammar (exit N, contains <text>).
 type IssueCriterionInput struct {
-	Text     string
-	Command  string
-	Expect   string
-	Tier     string
-	Position int
+	Text                 string
+	Command              string
+	Expect               string
+	Tier                 string
+	Position             int
+	ServesParentPosition int
 }
 
 // IssueCriterion is one stored definition-of-done line.
@@ -108,30 +109,59 @@ func normalizeIssueCriteria(inputs []IssueCriterionInput) ([]IssueCriterionInput
 			return nil, &IssueValidationError{Field: "criteria.position", Err: fmt.Errorf("item %d must be >= 1", i+1)}
 		}
 		out = append(out, IssueCriterionInput{
-			Text:     text,
-			Command:  strings.TrimSpace(input.Command),
-			Expect:   strings.TrimSpace(input.Expect),
-			Tier:     tier,
-			Position: position,
+			Text:                 text,
+			Command:              strings.TrimSpace(input.Command),
+			Expect:               strings.TrimSpace(input.Expect),
+			Tier:                 tier,
+			Position:             position,
+			ServesParentPosition: input.ServesParentPosition,
 		})
 	}
 	return out, nil
 }
 
 func replaceIssueCriteriaTx(ctx context.Context, tx *sql.Tx, projectID, issueID string, criteria []IssueCriterionInput, now string) error {
-	if _, err := tx.ExecContext(ctx, `DELETE FROM issue_criteria WHERE project_id = ? AND issue_id = ?`, projectID, issueID); err != nil {
-		return &IssueTransactionError{Stage: "clear criteria", Err: err}
+	existing, err := loadIssueCriteriaTx(ctx, tx, projectID, issueID)
+	if err != nil {
+		return err
 	}
-	for _, criterion := range criteria {
-		id, err := newOpaqueStateID("icr")
-		if err != nil {
-			return &IssueTransactionError{Stage: "criterion id", Err: err}
-		}
+	// Pair existing rows (already ascending by position) to incoming criteria
+	// by slice order. Survivors and deletions are selected by row ID so a
+	// legal gap (positions 1 and 3) cannot collide with UNIQUE(issue_id, position)
+	// or delete a just-updated row. Written positions compact to 1..N.
+	overlap := len(criteria)
+	if overlap > len(existing) {
+		overlap = len(existing)
+	}
+	for i := 0; i < overlap; i++ {
+		criterion := criteria[i]
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO issue_criteria (id, project_id, issue_id, position, text, command, expect, tier, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`, id, projectID, issueID, criterion.Position, criterion.Text, emptyToNil(criterion.Command), emptyToNil(criterion.Expect), criterion.Tier, now, now); err != nil {
-			return &IssueTransactionError{Stage: "criterion", Err: err}
+UPDATE issue_criteria
+SET text = ?, command = ?, expect = ?, tier = ?, position = ?, updated_at = ?
+WHERE project_id = ? AND id = ?
+`, criterion.Text, emptyToNil(criterion.Command), emptyToNil(criterion.Expect), criterion.Tier, i+1, now, projectID, existing[i].ID); err != nil {
+			return &IssueTransactionError{Stage: "update criterion", Err: err}
+		}
+		if err := recordCriterionServesTx(ctx, tx, projectID, issueID, existing[i].ID, criterion.ServesParentPosition, now); err != nil {
+			return err
+		}
+	}
+	for i := overlap; i < len(existing); i++ {
+		if _, err := tx.ExecContext(ctx, `
+DELETE FROM issue_criteria WHERE project_id = ? AND id = ?
+`, projectID, existing[i].ID); err != nil {
+			return &IssueTransactionError{Stage: "trim criteria", Err: err}
+		}
+	}
+	for i := overlap; i < len(criteria); i++ {
+		input := criteria[i]
+		input.Position = i + 1
+		criterionID, err := insertIssueCriterionTx(ctx, tx, projectID, issueID, input, now)
+		if err != nil {
+			return err
+		}
+		if err := recordCriterionServesTx(ctx, tx, projectID, issueID, criterionID, input.ServesParentPosition, now); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -176,7 +206,11 @@ func (s *Store) AddIssueCriterion(ctx context.Context, root project.Root, ref st
 		return Issue{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if err := insertIssueCriterionTx(ctx, tx, projectID, issueID, normalized[0], now); err != nil {
+	criterionID, err := insertIssueCriterionTx(ctx, tx, projectID, issueID, normalized[0], now)
+	if err != nil {
+		return Issue{}, err
+	}
+	if err := recordCriterionServesTx(ctx, tx, projectID, issueID, criterionID, normalized[0].ServesParentPosition, now); err != nil {
 		return Issue{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE issues SET updated_at = ? WHERE project_id = ? AND id = ?`, now, projectID, issueID); err != nil {
@@ -225,30 +259,35 @@ func (s *Store) RemoveIssueCriterion(ctx context.Context, root project.Root, ref
 	if err != nil {
 		return Issue{}, err
 	}
-	remaining := make([]IssueCriterionInput, 0, len(current))
-	found := false
+	remaining := make([]IssueCriterion, 0, len(current))
+	removedID := ""
 	for _, criterion := range current {
 		if criterion.Position == position {
-			found = true
+			removedID = criterion.ID
 			continue
 		}
-		remaining = append(remaining, IssueCriterionInput{
-			Text:    criterion.Text,
-			Command: criterion.Command,
-			Expect:  criterion.Expect,
-			Tier:    criterion.Tier,
-		})
+		remaining = append(remaining, criterion)
 	}
-	if !found {
+	if removedID == "" {
 		return Issue{}, &IssueValidationError{Field: "position", Err: fmt.Errorf("criterion position %d not found", position)}
 	}
-	normalized, err := normalizeIssueCriteria(remaining)
-	if err != nil {
-		return Issue{}, err
-	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if err := replaceIssueCriteriaTx(ctx, tx, projectID, issueID, normalized, now); err != nil {
-		return Issue{}, err
+	if _, err := tx.ExecContext(ctx, `DELETE FROM issue_criteria WHERE project_id = ? AND id = ?`, projectID, removedID); err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "delete criterion", Err: err}
+	}
+	// Compact in place so remaining criterion IDs — and their claims — survive.
+	// Remaining rows are in ascending position; each move fills the hole just
+	// freed, so UNIQUE (issue_id, position) never collides.
+	for i, criterion := range remaining {
+		want := i + 1
+		if criterion.Position == want {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+UPDATE issue_criteria SET position = ?, updated_at = ? WHERE project_id = ? AND id = ?
+`, want, now, projectID, criterion.ID); err != nil {
+			return Issue{}, &IssueTransactionError{Stage: "compact position", Err: err}
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE issues SET updated_at = ? WHERE project_id = ? AND id = ?`, now, projectID, issueID); err != nil {
 		return Issue{}, &IssueTransactionError{Stage: "touch issue", Err: err}
@@ -274,44 +313,129 @@ func PromoteIssueCriterion(ctx context.Context, root project.Root, resolver Path
 	return store.PromoteIssueCriterion(ctx, root, ref, position)
 }
 
-// PromoteIssueCriterion creates a child issue on an open store.
+// PromoteIssueCriterion creates a child issue on an open store. The promoted
+// criterion is copied as the child's first criterion and a claim is recorded
+// from that child criterion to the parent criterion, so coverage is satisfied
+// by construction.
 func (s *Store) PromoteIssueCriterion(ctx context.Context, root project.Root, ref string, position int) (Issue, error) {
 	if position < 1 {
 		return Issue{}, &IssueValidationError{Field: "position", Err: fmt.Errorf("must be >= 1")}
 	}
-	parent, err := s.GetIssue(ctx, root, ref)
+	projectID, err := s.projectID(ctx, root)
 	if err != nil {
 		return Issue{}, err
 	}
-	var criterion *IssueCriterion
-	for i := range parent.Criteria {
-		if parent.Criteria[i].Position == position {
-			criterion = &parent.Criteria[i]
-			break
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "begin", Err: err}
+	}
+	defer tx.Rollback()
+
+	parentID, _, err := resolveIssueRefTx(ctx, tx, projectID, ref)
+	if err != nil {
+		return Issue{}, err
+	}
+	parent, err := loadIssueTx(ctx, tx, projectID, parentID)
+	if err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "read parent", Err: err}
+	}
+	criterion, err := criterionAtPosition(parent.Criteria, position, "position")
+	if err != nil {
+		return Issue{}, err
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	issueID, err := newOpaqueStateID("issue")
+	if err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "id", Err: err}
+	}
+	if err := rejectIssueParentCycle(ctx, tx, projectID, issueID, parent.ID); err != nil {
+		return Issue{}, err
+	}
+	alias, err := mintLocalIssueAliasTx(ctx, tx, projectID, now)
+	if err != nil {
+		return Issue{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO issues (id, project_id, parent_id, kind, title, body, fog, status, archived_at, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?)
+`, issueID, projectID, parent.ID, IssueKindDelivery, criterion.Text, "", IssueStatusTriage, now, now); err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "issue", Err: err}
+	}
+	if alias != "" {
+		if err := insertAlias(ctx, tx, projectID, issueEntityKind, issueID, issueNamespace, alias, now); err != nil {
+			return Issue{}, &IssueTransactionError{Stage: "alias", Err: err}
 		}
 	}
-	if criterion == nil {
-		return Issue{}, &IssueValidationError{Field: "position", Err: fmt.Errorf("criterion position %d not found", position)}
+	copied := IssueCriterionInput{
+		Text:     criterion.Text,
+		Command:  criterion.Command,
+		Expect:   criterion.Expect,
+		Tier:     criterion.Tier,
+		Position: 1,
 	}
-	return s.CreateIssue(ctx, root, IssueCreateOptions{
-		Title:  criterion.Text,
-		Kind:   IssueKindDelivery,
-		Parent: parent.ID,
-	})
+	normalized, err := normalizeIssueCriteria([]IssueCriterionInput{copied})
+	if err != nil {
+		return Issue{}, err
+	}
+	childCriterionID, err := insertIssueCriterionTx(ctx, tx, projectID, issueID, normalized[0], now)
+	if err != nil {
+		return Issue{}, err
+	}
+	if err := insertIssueCriterionClaimTx(ctx, tx, projectID, childCriterionID, criterion.ID, now); err != nil {
+		return Issue{}, err
+	}
+	if _, err := insertIssueStatusEventTx(ctx, tx, projectID, issueID, "", IssueStatusTriage, "recorded by issue promote", now); err != nil {
+		return Issue{}, err
+	}
+	detail, err := loadIssueTx(ctx, tx, projectID, issueID)
+	if err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "read result", Err: err}
+	}
+	if err := tx.Commit(); err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "commit", Err: err}
+	}
+	return detail, nil
 }
 
-func insertIssueCriterionTx(ctx context.Context, tx *sql.Tx, projectID, issueID string, criterion IssueCriterionInput, now string) error {
+func recordCriterionServesTx(ctx context.Context, tx *sql.Tx, projectID, issueID, criterionID string, parentPosition int, now string) error {
+	if parentPosition <= 0 {
+		return nil
+	}
+	return claimNewCriterionAgainstParentTx(ctx, tx, projectID, issueID, criterionID, parentPosition, now)
+}
+
+func claimNewCriterionAgainstParentTx(ctx context.Context, tx *sql.Tx, projectID, childIssueID, childCriterionID string, parentPosition int, now string) error {
+	child, err := loadIssueTx(ctx, tx, projectID, childIssueID)
+	if err != nil {
+		return &IssueTransactionError{Stage: "read child", Err: err}
+	}
+	if child.ParentID == "" {
+		return &IssueValidationError{Field: "serves", Err: fmt.Errorf("issue %s has no parent", firstNonEmpty(child.Alias, child.ID))}
+	}
+	parent, err := loadIssueTx(ctx, tx, projectID, child.ParentID)
+	if err != nil {
+		return &IssueTransactionError{Stage: "read parent", Err: err}
+	}
+	parentCriterion, err := criterionAtPosition(parent.Criteria, parentPosition, "serves")
+	if err != nil {
+		return err
+	}
+	return insertIssueCriterionClaimTx(ctx, tx, projectID, childCriterionID, parentCriterion.ID, now)
+}
+
+func insertIssueCriterionTx(ctx context.Context, tx *sql.Tx, projectID, issueID string, criterion IssueCriterionInput, now string) (string, error) {
 	id, err := newOpaqueStateID("icr")
 	if err != nil {
-		return &IssueTransactionError{Stage: "criterion id", Err: err}
+		return "", &IssueTransactionError{Stage: "criterion id", Err: err}
 	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO issue_criteria (id, project_id, issue_id, position, text, command, expect, tier, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, id, projectID, issueID, criterion.Position, criterion.Text, emptyToNil(criterion.Command), emptyToNil(criterion.Expect), criterion.Tier, now, now); err != nil {
-		return &IssueTransactionError{Stage: "criterion", Err: err}
+		return "", &IssueTransactionError{Stage: "criterion", Err: err}
 	}
-	return nil
+	return id, nil
 }
 
 func loadIssueCriteriaTx(ctx context.Context, tx *sql.Tx, projectID, issueID string) ([]IssueCriterion, error) {

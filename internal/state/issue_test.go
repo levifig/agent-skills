@@ -493,6 +493,62 @@ VALUES ('ident-bad', ?, 'jira', 'LOAF', 1, ?, ?)
 	}
 }
 
+func TestIssueCriterionClaimFKRejectsCrossProject(t *testing.T) {
+	ctx := context.Background()
+	stateHome := t.TempDir()
+	resolver := PathResolver{StateHome: stateHome}
+	rootA := projectRoot(t)
+	rootB := projectRoot(t)
+	if _, err := Initialize(ctx, rootA, resolver); err != nil {
+		t.Fatalf("Initialize(A) error = %v", err)
+	}
+	if _, err := Initialize(ctx, rootB, resolver); err != nil {
+		t.Fatalf("Initialize(B) error = %v", err)
+	}
+	path, err := resolver.DatabasePath(rootA)
+	if err != nil {
+		t.Fatalf("DatabasePath() error = %v", err)
+	}
+	store, err := OpenStore(path)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	parentA, err := store.CreateIssue(ctx, rootA, IssueCreateOptions{
+		Title:    "A parent",
+		Criteria: []IssueCriterionInput{{Text: "A criterion"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue(A parent) error = %v", err)
+	}
+	childA, err := store.CreateIssue(ctx, rootA, IssueCreateOptions{
+		Title:    "A child",
+		Parent:   parentA.ID,
+		Criteria: []IssueCriterionInput{{Text: "A child criterion"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue(A child) error = %v", err)
+	}
+	parentB, err := store.CreateIssue(ctx, rootB, IssueCreateOptions{
+		Title:    "B parent",
+		Criteria: []IssueCriterionInput{{Text: "B criterion"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue(B parent) error = %v", err)
+	}
+
+	projectA := projectIDForTest(t, store, rootA)
+	now := "2026-08-15T00:00:00Z"
+	err = execSchemaSQL(t, store, `
+INSERT INTO issue_criterion_claims (id, project_id, child_criterion_id, parent_criterion_id, created_at, updated_at)
+VALUES ('claim-xproj', ?, ?, ?, ?, ?)
+`, projectA, childA.Criteria[0].ID, parentB.Criteria[0].ID, now, now)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "foreign key") {
+		t.Fatalf("cross-project claim error = %v, want FOREIGN KEY", err)
+	}
+}
+
 func TestIssueAliasResolutionIsNamespaceScoped(t *testing.T) {
 	root, store := issueTestFixture(t)
 	ctx := context.Background()

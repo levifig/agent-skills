@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -292,7 +294,7 @@ func TestRunnerIssueListDodPromoteBucketExportAndHelp(t *testing.T) {
 	if err := json.Unmarshal([]byte(exportOut), &snapshot); err != nil {
 		t.Fatalf("export JSON error = %v", err)
 	}
-	if snapshot.ExportKind != state.ExportKindIssue || len(snapshot.Issues) < 2 || len(snapshot.Criteria) < 2 {
+	if snapshot.ExportKind != state.ExportKindIssue || len(snapshot.Issues) < 2 || len(snapshot.Criteria) < 2 || len(snapshot.Claims) < 1 {
 		t.Fatalf("export snapshot = %#v", snapshot)
 	}
 
@@ -302,6 +304,66 @@ func TestRunnerIssueListDodPromoteBucketExportAndHelp(t *testing.T) {
 	}
 	if !strings.Contains(helpOut, "loaf issue <subcommand>") {
 		t.Fatalf("issue help = %q", helpOut)
+	}
+}
+
+func TestRunnerIssueNewStatusWritesTriageThenRequested(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	out, err := runIssue(t, workingDir, stateHome, "new", "Backlogged", "--status", "backlog", "--json")
+	if err != nil {
+		t.Fatalf("issue new --status backlog error = %v", err)
+	}
+	created := decodeIssueResult(t, out)
+	if created.Issue.Status != state.IssueStatusBacklog {
+		t.Fatalf("created status = %q, want backlog", created.Issue.Status)
+	}
+
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	snapshot, err := state.ExportAllJSON(context.Background(), root, state.PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("ExportAllJSON() error = %v", err)
+	}
+	type statusEvent struct {
+		created string
+		label   string
+	}
+	var events []statusEvent
+	for _, row := range snapshot.Tables["events"] {
+		if row["entity_kind"] != "issue" || row["entity_id"] != created.Issue.ID {
+			continue
+		}
+		from := ""
+		if row["from_status"] != nil {
+			from = fmt.Sprint(row["from_status"])
+		}
+		events = append(events, statusEvent{
+			created: fmt.Sprint(row["created_at"]),
+			label:   from + "->" + fmt.Sprint(row["to_status"]),
+		})
+	}
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].created != events[j].created {
+			return events[i].created < events[j].created
+		}
+		return events[i].label < events[j].label
+	})
+	transitions := make([]string, len(events))
+	for i, event := range events {
+		transitions[i] = event.label
+	}
+	if len(transitions) != 2 || transitions[0] != "->triage" || transitions[1] != "triage->backlog" {
+		t.Fatalf("events = %#v, want empty->triage then triage->backlog", transitions)
+	}
+}
+
+func TestRunnerIssueNewRejectsRemovalStatus(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	_, err := runIssue(t, workingDir, stateHome, "new", "Nope", "--status", "cancelled")
+	if err == nil || !strings.Contains(err.Error(), "issue new --status must be one of") {
+		t.Fatalf("issue new --status cancelled error = %v, want write-status validation", err)
 	}
 }
 

@@ -169,6 +169,14 @@ func validIssueWriteStatus(status string) bool {
 	return false
 }
 
+// IssueWriteStatuses returns the statuses CreateIssue/UpdateIssue may write
+// (triage, backlog, todo, active, done). Removal statuses are not included.
+func IssueWriteStatuses() []string {
+	out := make([]string, len(issueWriteStatuses))
+	copy(out, issueWriteStatuses)
+	return out
+}
+
 func validIssueKind(kind string) bool {
 	return kind == IssueKindDelivery || kind == IssueKindDecision
 }

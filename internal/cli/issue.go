@@ -13,6 +13,7 @@ import (
 
 type issueNewOptions struct {
 	jsonOutput bool
+	status     string
 	create     state.IssueCreateOptions
 	body       bodyInputOptions
 }
@@ -64,6 +65,8 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		"status":   writeIssueStatusHelp,
 		"dod":      writeIssueDodHelp,
 		"promote":  writeIssuePromoteHelp,
+		"check":    writeIssueCheckHelp,
+		"verify":   writeIssueVerifyHelp,
 		"bucket":   writeIssueBucketHelp,
 		"link":     writeIssueLinkHelp,
 		"render":   writeIssueRenderHelp,
@@ -72,9 +75,11 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		return nil
 	}
 	if args[0] == "dod" && writeNestedHelp(out, args[1:], map[string]func(io.Writer){
-		"add":    writeIssueDodAddHelp,
-		"list":   writeIssueDodListHelp,
-		"remove": writeIssueDodRemoveHelp,
+		"add":     writeIssueDodAddHelp,
+		"list":    writeIssueDodListHelp,
+		"remove":  writeIssueDodRemoveHelp,
+		"claim":   writeIssueDodClaimHelp,
+		"unclaim": writeIssueDodUnclaimHelp,
 	}) {
 		return nil
 	}
@@ -97,6 +102,10 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		return r.runIssueDod(args[1:], out, runtime)
 	case "promote":
 		return r.runIssuePromote(args[1:], out, runtime)
+	case "check":
+		return r.runIssueCheck(args[1:], out, runtime)
+	case "verify":
+		return r.runIssueVerify(args[1:], out, runtime)
 	case "bucket":
 		return r.runIssueBucket(args[1:], out, runtime)
 	case "link":
@@ -121,21 +130,24 @@ func writeIssueHelp(out io.Writer) {
 		{Name: "status", Summary: "Set an issue status"},
 		{Name: "dod", Summary: "Manage definition-of-done criteria"},
 		{Name: "promote", Summary: "Promote a criterion into a child issue"},
+		{Name: "check", Summary: "Derive readiness from the issue row"},
+		{Name: "verify", Summary: "Run V-tier criteria from the repository root"},
 		{Name: "bucket", Summary: "Set an advisory Now/Next/Later label"},
 		{Name: "link", Summary: "Create or remove an issue relationship"},
 		{Name: "render", Summary: "Emit a paste-ready PR body"},
-		{Name: "export", Summary: "Export issues, identity, criteria, and relationships as JSON"},
+		{Name: "export", Summary: "Export issues, identity, criteria, claims, and relationships as JSON"},
 	})
 }
 
 func writeIssueNewHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf issue new <title> [--body <text>|--body -|--body-file <path>|--message <text>] [--kind delivery|decision] [--parent <ref>] [--fog <text>] [--json]", "Create an issue in SQLite state.",
+	writeUsageHelp(out, "loaf issue new <title> [--body <text>|--body -|--body-file <path>|--message <text>] [--kind delivery|decision] [--parent <ref>] [--fog <text>] [--status <status>] [--json]", "Create an issue in SQLite state.",
 		"--body        Inline issue body, or '-' to read from stdin",
 		"--body-file   Read the issue body from a UTF-8 file",
 		"--message     Inline issue body; lower precedence than --body-file and --body -",
 		"--kind        Issue kind: delivery (default) or decision",
 		"--parent      Parent issue ref",
 		"--fog         Questions not yet sharp enough to be issues",
+		"--status      Write status after create: "+strings.Join(state.IssueWriteStatuses(), ", ")+"; still records the initial triage event",
 		"--json        Output the created issue, global database scope, and project identity as JSON")
 }
 
@@ -181,15 +193,28 @@ func writeIssueDodHelp(out io.Writer) {
 		{Name: "add", Summary: "Add a criterion"},
 		{Name: "list", Summary: "List criteria"},
 		{Name: "remove", Summary: "Remove a criterion by position"},
+		{Name: "claim", Summary: "Claim a child criterion against a parent criterion"},
+		{Name: "unclaim", Summary: "Remove a child-to-parent criterion claim"},
 	})
 }
 
 func writeIssueDodAddHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf issue dod add <ref> <text> [--command <cmd>] [--expect <expect>] [--tier V|H] [--json]", "Add a definition-of-done criterion. V tier is used when --command is present, otherwise H, unless --tier overrides.",
+	writeUsageHelp(out, "loaf issue dod add <ref> <text> [--command <cmd>] [--expect <expect>] [--tier V|H] [--serves <parent-position>] [--json]", "Add a definition-of-done criterion. V tier is used when --command is present, otherwise H, unless --tier overrides.",
 		"--command    Verification command (implies tier V)",
 		"--expect     Verification expect grammar (exit N, contains <text>)",
 		"--tier       Override criterion tier: V or H",
+		"--serves     Parent criterion position this child criterion claims",
 		"--json       Output the updated issue, global database scope, and project identity as JSON")
+}
+
+func writeIssueDodClaimHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf issue dod claim <child> <child-position> <parent-position> [--json]", "Record that the child's criterion at child-position serves the parent's criterion at parent-position.",
+		"--json       Output the updated child issue, global database scope, and project identity as JSON")
+}
+
+func writeIssueDodUnclaimHelp(out io.Writer) {
+	writeUsageHelp(out, "loaf issue dod unclaim <child> <child-position> <parent-position> [--json]", "Remove the claim from the child's criterion to the parent's criterion.",
+		"--json       Output the updated child issue, global database scope, and project identity as JSON")
 }
 
 func writeIssueDodListHelp(out io.Writer) {
@@ -221,7 +246,7 @@ func writeIssueRenderHelp(out io.Writer) {
 }
 
 func writeIssueExportHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf issue export [--json]", "Export the project's issues, identity, criteria, and issue relationships as JSON.",
+	writeUsageHelp(out, "loaf issue export [--json]", "Export the project's issues, identity, criteria, claims, and issue relationships as JSON.",
 		"--json       Output the export snapshot (default)")
 }
 
@@ -262,6 +287,16 @@ func (r Runner) runIssueNew(args []string, out io.Writer, runtime state.Runtime)
 	created, err := state.CreateIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.create)
 	if err != nil {
 		return err
+	}
+	if options.status != "" && options.status != state.IssueStatusTriage {
+		created, err = state.UpdateIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.IssueUpdateOptions{
+			Ref:       created.ID,
+			Status:    options.status,
+			SetStatus: true,
+		})
+		if err != nil {
+			return err
+		}
 	}
 	result, err := state.ShowIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, created.ID)
 	if err != nil {
@@ -443,6 +478,10 @@ func (r Runner) runIssueDod(args []string, out io.Writer, runtime state.Runtime)
 		return r.runIssueDodList(args[1:], out, runtime)
 	case "remove":
 		return r.runIssueDodRemove(args[1:], out, runtime)
+	case "claim":
+		return r.runIssueDodClaim(args[1:], out, runtime)
+	case "unclaim":
+		return r.runIssueDodUnclaim(args[1:], out, runtime)
 	default:
 		return unknownSubcommandError("issue dod", args[0])
 	}
@@ -514,6 +553,56 @@ func (r Runner) runIssueDodRemove(args []string, out io.Writer, runtime state.Ru
 		return writeJSON(out, result)
 	}
 	fmt.Fprintf(out, "removed criterion %d from %s\n", position, issueDisplayRef(result.Issue))
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	return nil
+}
+
+func (r Runner) runIssueDodClaim(args []string, out io.Writer, runtime state.Runtime) error {
+	ref, childPosition, parentPosition, jsonOutput, err := parseIssueDodClaimArgs("issue dod claim", args)
+	if err != nil {
+		return err
+	}
+	projectRoot, err := r.requireIssueSQLiteState("issue dod claim", runtime)
+	if err != nil {
+		return err
+	}
+	updated, err := state.ClaimIssueCriterion(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref, childPosition, parentPosition)
+	if err != nil {
+		return err
+	}
+	result, err := state.ShowIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, updated.ID)
+	if err != nil {
+		return err
+	}
+	if jsonOutput {
+		return writeJSON(out, result)
+	}
+	fmt.Fprintf(out, "claimed criterion %d on %s as serving parent criterion %d\n", childPosition, issueDisplayRef(result.Issue), parentPosition)
+	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
+	return nil
+}
+
+func (r Runner) runIssueDodUnclaim(args []string, out io.Writer, runtime state.Runtime) error {
+	ref, childPosition, parentPosition, jsonOutput, err := parseIssueDodClaimArgs("issue dod unclaim", args)
+	if err != nil {
+		return err
+	}
+	projectRoot, err := r.requireIssueSQLiteState("issue dod unclaim", runtime)
+	if err != nil {
+		return err
+	}
+	updated, err := state.UnclaimIssueCriterion(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref, childPosition, parentPosition)
+	if err != nil {
+		return err
+	}
+	result, err := state.ShowIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, updated.ID)
+	if err != nil {
+		return err
+	}
+	if jsonOutput {
+		return writeJSON(out, result)
+	}
+	fmt.Fprintf(out, "unclaimed criterion %d on %s from parent criterion %d\n", childPosition, issueDisplayRef(result.Issue), parentPosition)
 	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 	return nil
 }
@@ -650,8 +739,15 @@ func (r Runner) runIssueExport(args []string, out io.Writer, runtime state.Runti
 func parseIssueNewArgs(args []string) (issueNewOptions, error) {
 	var options issueNewOptions
 	var positional []string
+	endOfOptions := false
 	for i := 0; i < len(args); i++ {
+		if endOfOptions {
+			positional = append(positional, args[i])
+			continue
+		}
 		switch args[i] {
+		case "--":
+			endOfOptions = true
 		case "--json":
 			options.jsonOutput = true
 		case "--kind":
@@ -672,6 +768,23 @@ func parseIssueNewArgs(args []string) (issueNewOptions, error) {
 				return issueNewOptions{}, err
 			}
 			options.create.Fog = value
+		case "--status":
+			value, err := consumeFlagValue(args, &i, "--status")
+			if err != nil {
+				return issueNewOptions{}, err
+			}
+			status := strings.TrimSpace(value)
+			valid := false
+			for _, candidate := range state.IssueWriteStatuses() {
+				if status == candidate {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return issueNewOptions{}, fmt.Errorf("issue new --status must be one of %s", strings.Join(state.IssueWriteStatuses(), ", "))
+			}
+			options.status = status
 		case "--body":
 			value, err := consumeFlagValue(args, &i, "--body")
 			if err != nil {
@@ -840,6 +953,16 @@ func parseIssueDodAddArgs(args []string) (issueDodAddOptions, error) {
 				return issueDodAddOptions{}, err
 			}
 			options.input.Tier = value
+		case "--serves":
+			value, err := consumeFlagValue(args, &i, "--serves")
+			if err != nil {
+				return issueDodAddOptions{}, err
+			}
+			position, err := strconv.Atoi(value)
+			if err != nil || position < 1 {
+				return issueDodAddOptions{}, fmt.Errorf("issue dod add --serves must be a positive integer")
+			}
+			options.input.ServesParentPosition = position
 		default:
 			if strings.HasPrefix(args[i], "-") {
 				return issueDodAddOptions{}, fmt.Errorf("unknown option %q", args[i])
@@ -877,6 +1000,34 @@ func parseIssueRefPositionArgs(command string, args []string) (string, int, bool
 		return "", 0, false, fmt.Errorf("%s position must be a positive integer", command)
 	}
 	return positional[0], position, jsonOutput, nil
+}
+
+func parseIssueDodClaimArgs(command string, args []string) (string, int, int, bool, error) {
+	var positional []string
+	jsonOutput := false
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonOutput = true
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return "", 0, 0, false, fmt.Errorf("unknown option %q", arg)
+			}
+			positional = append(positional, arg)
+		}
+	}
+	if len(positional) != 3 {
+		return "", 0, 0, false, fmt.Errorf("%s requires a child ref, child position, and parent position", command)
+	}
+	childPosition, err := strconv.Atoi(positional[1])
+	if err != nil || childPosition < 1 {
+		return "", 0, 0, false, fmt.Errorf("%s child position must be a positive integer", command)
+	}
+	parentPosition, err := strconv.Atoi(positional[2])
+	if err != nil || parentPosition < 1 {
+		return "", 0, 0, false, fmt.Errorf("%s parent position must be a positive integer", command)
+	}
+	return positional[0], childPosition, parentPosition, jsonOutput, nil
 }
 
 func parseIssueBucketArgs(args []string) (string, string, bool, error) {

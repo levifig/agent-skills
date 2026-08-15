@@ -27,6 +27,7 @@ func TestCommandAuthorityForUsesExplicitBasicLeafPrefixes(t *testing.T) {
 		{"issue", "render", "LOAF-1"},
 		{"issue", "export"},
 		{"issue", "dod", "list", "LOAF-1"},
+		{"issue", "check", "LOAF-1"},
 		{"kb", "glossary", "list", "--all"},
 		{"check", "--hook", "check-secrets"},
 		{"trace", "task:TASK-001"},

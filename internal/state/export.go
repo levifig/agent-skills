@@ -175,6 +175,7 @@ var exportAllTables = []exportTable{
 	{Name: "source_availability_observations", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "issues", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "issue_criteria", OrderBy: "id", FilterColumn: "project_id"},
+	{Name: "issue_criterion_claims", OrderBy: "id", FilterColumn: "project_id"},
 	{Name: "issue_identity", OrderBy: "id", FilterColumn: "project_id"},
 }
 
