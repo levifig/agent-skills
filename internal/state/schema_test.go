@@ -75,6 +75,8 @@ var requiredInitialTables = []string{
 // Their SQL mirrors live in docs/schema/0014_issues_and_identity.sql,
 // docs/schema/0015_issue_criterion_claims.sql, and docs/schema/0016_releases.sql;
 // the dbml/mmd diagrams are not updated in this foundation change.
+// Migration 0017 adds started_branch/started_worktree on issues (ALTER TABLE)
+// and introduces no new tables.
 var issueFoundationTables = map[string]bool{
 	"issues":                 true,
 	"issue_criteria":         true,
@@ -96,11 +98,11 @@ var userScopedTables = map[string]bool{
 
 func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	migrations := SchemaMigrations()
-	if len(migrations) != 15 {
-		t.Fatalf("len(SchemaMigrations()) = %d, want 15", len(migrations))
+	if len(migrations) != 16 {
+		t.Fatalf("len(SchemaMigrations()) = %d, want 16", len(migrations))
 	}
 
-	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16}
+	wantVersions := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17}
 	for i, migration := range migrations {
 		if migration.Version != wantVersions[i] {
 			t.Fatalf("migration[%d].Version = %d, want %d", i, migration.Version, wantVersions[i])
@@ -150,6 +152,9 @@ func TestSchemaMigrationsAreOrderedAndChecksummed(t *testing.T) {
 	}
 	if migrations[14].Name != "releases" {
 		t.Fatalf("migration[14].Name = %q, want releases", migrations[14].Name)
+	}
+	if migrations[15].Name != "issue_started_workspace" {
+		t.Fatalf("migration[15].Name = %q, want issue_started_workspace", migrations[15].Name)
 	}
 	for _, migration := range migrations {
 		if strings.TrimSpace(migration.SQL) == "" {
@@ -392,6 +397,10 @@ func TestSchemaDocumentationMirrorsExecutableMigration(t *testing.T) {
 	sqlDoc = readRepoFile(t, "docs", "schema", "0016_releases.sql")
 	if sqlDoc != SchemaMigrations()[14].SQL {
 		t.Fatal("docs/schema/0016_releases.sql must match embedded migration 0016 exactly")
+	}
+	sqlDoc = readRepoFile(t, "docs", "schema", "0017_issue_started_workspace.sql")
+	if sqlDoc != SchemaMigrations()[15].SQL {
+		t.Fatal("docs/schema/0017_issue_started_workspace.sql must match embedded migration 0017 exactly")
 	}
 
 	dbmlDoc := readRepoFile(t, "docs", "schema", "operational-state.dbml")

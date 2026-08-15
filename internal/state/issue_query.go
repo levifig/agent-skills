@@ -15,6 +15,7 @@ type IssueListOptions struct {
 	Status   string
 	Kind     string
 	Archived bool
+	Started  bool
 }
 
 // IssueSummary is a compact issue row used in trees, children, and frontier.
@@ -440,7 +441,10 @@ WHERE project_id = ?`
   AND kind = ?`
 		args = append(args, kind)
 	}
-	if !options.Archived {
+	if options.Started {
+		query += `
+  AND started_worktree IS NOT NULL AND trim(started_worktree) != ''`
+	} else if !options.Archived {
 		query += `
   AND archived_at IS NULL`
 	}

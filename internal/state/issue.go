@@ -69,18 +69,21 @@ func (e *IssueTransactionError) Unwrap() error { return e.Err }
 
 // Issue is the derived read model for one issue.
 type Issue struct {
-	ID         string           `json:"id"`
-	Alias      string           `json:"alias,omitempty"`
-	ParentID   string           `json:"parent_id,omitempty"`
-	Kind       string           `json:"kind"`
-	Title      string           `json:"title"`
-	Body       string           `json:"body"`
-	Fog        string           `json:"fog,omitempty"`
-	Status     string           `json:"status"`
-	ArchivedAt string           `json:"archived_at,omitempty"`
-	Criteria   []IssueCriterion `json:"criteria,omitempty"`
-	CreatedAt  string           `json:"created_at"`
-	UpdatedAt  string           `json:"updated_at"`
+	ID              string           `json:"id"`
+	Alias           string           `json:"alias,omitempty"`
+	ParentID        string           `json:"parent_id,omitempty"`
+	Kind            string           `json:"kind"`
+	Title           string           `json:"title"`
+	Body            string           `json:"body"`
+	Fog             string           `json:"fog,omitempty"`
+	Status          string           `json:"status"`
+	ArchivedAt      string           `json:"archived_at,omitempty"`
+	StartedBranch   string           `json:"started_branch,omitempty"`
+	StartedWorktree string           `json:"started_worktree,omitempty"`
+	WorktreeMissing bool             `json:"worktree_missing,omitempty"`
+	Criteria        []IssueCriterion `json:"criteria,omitempty"`
+	CreatedAt       string           `json:"created_at"`
+	UpdatedAt       string           `json:"updated_at"`
 }
 
 // IssueCreateOptions describes a new issue.
@@ -95,20 +98,25 @@ type IssueCreateOptions struct {
 
 // IssueUpdateOptions describes a partial issue mutation. Title, body, fog,
 // and kind remain writable at every status — including cancelled and duplicate.
+// StartedBranch and StartedWorktree are workspace facts written together
+// through the same transaction as a status move when start records them.
 type IssueUpdateOptions struct {
-	Ref       string
-	Title     string
-	SetTitle  bool
-	Body      string
-	SetBody   bool
-	Fog       string
-	SetFog    bool
-	Kind      string
-	SetKind   bool
-	Parent    string
-	SetParent bool
-	Status    string
-	SetStatus bool
+	Ref             string
+	Title           string
+	SetTitle        bool
+	Body            string
+	SetBody         bool
+	Fog             string
+	SetFog          bool
+	Kind            string
+	SetKind         bool
+	Parent          string
+	SetParent       bool
+	Status          string
+	SetStatus       bool
+	StartedBranch   string
+	StartedWorktree string
+	SetStarted      bool
 }
 
 // IssueRemoveOptions cancels or marks an issue duplicate and archives it.
@@ -298,7 +306,7 @@ func UpdateIssue(ctx context.Context, root project.Root, resolver PathResolver, 
 
 // UpdateIssue mutates an issue in a serializable transaction on an open store.
 func (s *Store) UpdateIssue(ctx context.Context, root project.Root, options IssueUpdateOptions) (Issue, error) {
-	if !options.SetTitle && !options.SetBody && !options.SetFog && !options.SetKind && !options.SetParent && !options.SetStatus {
+	if !options.SetTitle && !options.SetBody && !options.SetFog && !options.SetKind && !options.SetParent && !options.SetStatus && !options.SetStarted {
 		return Issue{}, &IssueValidationError{Field: "update", Err: fmt.Errorf("requires at least one field")}
 	}
 	if options.SetTitle {
@@ -321,6 +329,13 @@ func (s *Store) UpdateIssue(ctx context.Context, root project.Root, options Issu
 				return Issue{}, &IssueValidationError{Field: "status", Err: fmt.Errorf("%s is a removal status; use RemoveIssue", status)}
 			}
 			return Issue{}, &IssueValidationError{Field: "status", Err: fmt.Errorf("must be one of triage, backlog, todo, active, done")}
+		}
+	}
+	if options.SetStarted {
+		startedBranch := strings.TrimSpace(options.StartedBranch)
+		startedWorktree := strings.TrimSpace(options.StartedWorktree)
+		if (startedBranch == "") != (startedWorktree == "") {
+			return Issue{}, &IssueValidationError{Field: "started", Err: fmt.Errorf("started_branch and started_worktree must be set or cleared together")}
 		}
 	}
 
@@ -376,13 +391,30 @@ func (s *Store) UpdateIssue(ctx context.Context, root project.Root, options Issu
 	if options.SetStatus {
 		status = strings.TrimSpace(options.Status)
 	}
+	startedBranch := current.StartedBranch
+	startedWorktree := current.StartedWorktree
+	if options.SetStarted {
+		startedBranch = strings.TrimSpace(options.StartedBranch)
+		startedWorktree = strings.TrimSpace(options.StartedWorktree)
+		if startedBranch != "" || startedWorktree != "" {
+			if current.ArchivedAt != "" {
+				return Issue{}, &IssueValidationError{Field: "started", Err: fmt.Errorf("archived issues cannot be started")}
+			}
+			if issueStartRefusedStatus(current.Status) {
+				return Issue{}, &IssueValidationError{Field: "started", Err: fmt.Errorf("%s issues cannot be started", current.Status)}
+			}
+			if issueIsStarted(current) {
+				return Issue{}, &IssueValidationError{Field: "started", Err: fmt.Errorf("issue is already started")}
+			}
+		}
+	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if _, err := tx.ExecContext(ctx, `
 UPDATE issues
-SET parent_id = ?, kind = ?, title = ?, body = ?, fog = ?, status = ?, updated_at = ?
+SET parent_id = ?, kind = ?, title = ?, body = ?, fog = ?, status = ?, started_branch = ?, started_worktree = ?, updated_at = ?
 WHERE project_id = ? AND id = ?
-`, emptyToNil(parentID), kind, title, body, emptyToNil(fog), status, now, projectID, issueID); err != nil {
+`, emptyToNil(parentID), kind, title, body, emptyToNil(fog), status, emptyToNil(startedBranch), emptyToNil(startedWorktree), now, projectID, issueID); err != nil {
 		return Issue{}, &IssueTransactionError{Stage: "update", Err: err}
 	}
 	if options.SetStatus && status != current.Status {
@@ -743,14 +775,14 @@ WHERE project_id = ? AND namespace = ? AND alias = ?
 
 func loadIssueTx(ctx context.Context, tx *sql.Tx, projectID, issueID string) (Issue, error) {
 	var issue Issue
-	var parentID, fog, archivedAt, alias sql.NullString
+	var parentID, fog, archivedAt, alias, startedBranch, startedWorktree sql.NullString
 	err := tx.QueryRowContext(ctx, `
-SELECT i.id, i.parent_id, i.kind, i.title, i.body, i.fog, i.status, i.archived_at, i.created_at, i.updated_at,
+SELECT i.id, i.parent_id, i.kind, i.title, i.body, i.fog, i.status, i.archived_at, i.started_branch, i.started_worktree, i.created_at, i.updated_at,
   (SELECT a.alias FROM aliases a WHERE a.project_id = i.project_id AND a.entity_kind = ? AND a.entity_id = i.id ORDER BY a.namespace, a.alias LIMIT 1)
 FROM issues AS i
 WHERE i.project_id = ? AND i.id = ?
 `, issueEntityKind, projectID, issueID).Scan(
-		&issue.ID, &parentID, &issue.Kind, &issue.Title, &issue.Body, &fog, &issue.Status, &archivedAt, &issue.CreatedAt, &issue.UpdatedAt, &alias,
+		&issue.ID, &parentID, &issue.Kind, &issue.Title, &issue.Body, &fog, &issue.Status, &archivedAt, &startedBranch, &startedWorktree, &issue.CreatedAt, &issue.UpdatedAt, &alias,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Issue{}, fmt.Errorf("issue %s not found", issueID)
@@ -761,6 +793,8 @@ WHERE i.project_id = ? AND i.id = ?
 	issue.ParentID = parentID.String
 	issue.Fog = fog.String
 	issue.ArchivedAt = archivedAt.String
+	issue.StartedBranch = startedBranch.String
+	issue.StartedWorktree = startedWorktree.String
 	issue.Alias = alias.String
 	criteria, err := loadIssueCriteriaTx(ctx, tx, projectID, issueID)
 	if err != nil {
@@ -768,4 +802,66 @@ WHERE i.project_id = ? AND i.id = ?
 	}
 	issue.Criteria = criteria
 	return issue, nil
+}
+
+func issueIsStarted(issue Issue) bool {
+	return strings.TrimSpace(issue.StartedBranch) != "" || strings.TrimSpace(issue.StartedWorktree) != ""
+}
+
+func issueStartRefusedStatus(status string) bool {
+	switch status {
+	case IssueStatusDone, IssueStatusCancelled, IssueStatusDuplicate:
+		return true
+	default:
+		return false
+	}
+}
+
+// NearestStartedAncestor walks parent_id and returns the nearest ancestor
+// that itself has a recorded started workspace.
+func NearestStartedAncestor(ctx context.Context, root project.Root, resolver PathResolver, ref string) (Issue, bool, error) {
+	store, err := openProjectStoreReadExisting(ctx, root, resolver)
+	if err != nil {
+		return Issue{}, false, err
+	}
+	defer store.Close()
+	return store.NearestStartedAncestor(ctx, root, ref)
+}
+
+// NearestStartedAncestor walks parent_id from an open store.
+func (s *Store) NearestStartedAncestor(ctx context.Context, root project.Root, ref string) (Issue, bool, error) {
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return Issue{}, false, err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return Issue{}, false, fmt.Errorf("begin nearest started ancestor: %w", err)
+	}
+	defer tx.Rollback()
+	issueID, _, err := resolveIssueRefTx(ctx, tx, projectID, ref)
+	if err != nil {
+		return Issue{}, false, err
+	}
+	issue, err := loadIssueTx(ctx, tx, projectID, issueID)
+	if err != nil {
+		return Issue{}, false, err
+	}
+	visited := map[string]bool{}
+	current := issue.ParentID
+	for current != "" {
+		if visited[current] {
+			return Issue{}, false, fmt.Errorf("parent cycle detected in stored issue data at %s", current)
+		}
+		visited[current] = true
+		parent, err := loadIssueTx(ctx, tx, projectID, current)
+		if err != nil {
+			return Issue{}, false, err
+		}
+		if issueIsStarted(parent) {
+			return parent, true, nil
+		}
+		current = parent.ParentID
+	}
+	return Issue{}, false, nil
 }

@@ -61,6 +61,8 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		"list":     writeIssueListHelp,
 		"tree":     writeIssueTreeHelp,
 		"frontier": writeIssueFrontierHelp,
+		"start":    writeIssueStartHelp,
+		"stop":     writeIssueStopHelp,
 		"edit":     writeIssueEditHelp,
 		"status":   writeIssueStatusHelp,
 		"dod":      writeIssueDodHelp,
@@ -94,6 +96,10 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		return r.runIssueTree(args[1:], out, runtime)
 	case "frontier":
 		return r.runIssueFrontier(args[1:], out, runtime)
+	case "start":
+		return r.runIssueStart(args[1:], out, runtime)
+	case "stop":
+		return r.runIssueStop(args[1:], out, runtime)
 	case "edit":
 		return r.runIssueEdit(args[1:], out, runtime)
 	case "status":
@@ -126,6 +132,8 @@ func writeIssueHelp(out io.Writer) {
 		{Name: "list", Summary: "List project issues"},
 		{Name: "tree", Summary: "Print a recursive issue tree"},
 		{Name: "frontier", Summary: "List unblocked pick-up-next issues"},
+		{Name: "start", Summary: "Create a branch and worktree for an issue"},
+		{Name: "stop", Summary: "Remove an issue worktree and clear the started workspace"},
 		{Name: "edit", Summary: "Replace an issue body"},
 		{Name: "status", Summary: "Set an issue status"},
 		{Name: "dod", Summary: "Manage definition-of-done criteria"},
@@ -156,10 +164,11 @@ func writeIssueShowHelp(out io.Writer) {
 }
 
 func writeIssueListHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf issue list [--status <status>] [--kind delivery|decision] [--archived] [--json]", "List project issues. Archived issues are hidden by default.",
+	writeUsageHelp(out, "loaf issue list [--status <status>] [--kind delivery|decision] [--archived] [--started] [--json]", "List project issues. Archived issues are hidden by default.",
 		"--status     Filter by status: triage, backlog, todo, active, done, cancelled, duplicate",
 		"--kind       Filter by kind: delivery or decision",
 		"--archived   Include archived issues",
+		"--started    List issues with a recorded started worktree",
 		"--json       Output issues, global database scope, and project identity as JSON")
 }
 
@@ -342,8 +351,15 @@ func (r Runner) runIssueList(args []string, out io.Writer, runtime state.Runtime
 	if err != nil {
 		return err
 	}
+	if options.filters.Started {
+		markStartedWorktreeLiveness(result.Issues)
+	}
 	if options.jsonOutput {
 		return writeJSON(out, result)
+	}
+	if options.filters.Started {
+		writeIssueStartedList(out, result)
+		return nil
 	}
 	writeIssueList(out, result)
 	return nil
@@ -831,6 +847,8 @@ func parseIssueListArgs(args []string) (issueListOptions, error) {
 			options.jsonOutput = true
 		case "--archived":
 			options.filters.Archived = true
+		case "--started":
+			options.filters.Started = true
 		case "--status":
 			value, err := consumeFlagValue(args, &i, "--status")
 			if err != nil {
@@ -1105,6 +1123,12 @@ func writeIssueShow(out io.Writer, result state.IssueResult) {
 	fmt.Fprintf(out, "title: %s\n", issue.Title)
 	fmt.Fprintf(out, "kind: %s\n", issue.Kind)
 	fmt.Fprintf(out, "status: %s\n", issue.Status)
+	if issue.StartedBranch != "" {
+		fmt.Fprintf(out, "started_branch: %s\n", issue.StartedBranch)
+	}
+	if issue.StartedWorktree != "" {
+		fmt.Fprintf(out, "started_worktree: %s\n", issue.StartedWorktree)
+	}
 	if result.Parent != nil {
 		fmt.Fprintf(out, "parent: %s\n", firstNonEmpty(result.Parent.Alias, result.Parent.ID))
 	} else {

@@ -537,8 +537,8 @@ func TestBackupVerifiesMigratedJournalFirstDatabase(t *testing.T) {
 }
 
 func TestJournalFirstMigrationExcludedFromAutoApply(t *testing.T) {
-	if CurrentSchemaVersion() != 16 {
-		t.Fatalf("CurrentSchemaVersion() = %d, want 16 (migration 10 must not auto-apply on store open)", CurrentSchemaVersion())
+	if CurrentSchemaVersion() != 17 {
+		t.Fatalf("CurrentSchemaVersion() = %d, want 17 (migration 10 must not auto-apply on store open)", CurrentSchemaVersion())
 	}
 	for _, m := range SchemaMigrations() {
 		if m.Version == journalFirstMigrationVersion {

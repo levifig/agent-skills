@@ -64,6 +64,8 @@ func TestCommandAuthorityForDefaultsToOperatorForParentsAndUnsafeLeaves(t *testi
 		{"issue", "new", "title", "--body", "body"},
 		{"issue", "edit", "LOAF-1", "--message", "body"},
 		{"issue", "status", "LOAF-1", "cancelled"},
+		{"issue", "start", "LOAF-1"},
+		{"issue", "stop", "LOAF-1"},
 		{"spec", "delete", "SPEC-001", "--yes"},
 		{"kb", "review", "docs/knowledge/example.md"},
 		{"kb", "glossary", "upsert", "term"},
