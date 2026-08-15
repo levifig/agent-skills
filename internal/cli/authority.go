@@ -107,9 +107,9 @@ var basicCommandAuthorityPrefixes = []commandAuthorityPrefix{
 
 	// Explicitly approved readers and diagnostics. `state doctor` is omitted
 	// because --fix mutates state; the whole leaf therefore stays operator.
-	// Body/file-consuming creation/import leaves and path-taking `change check`
-	// are also omitted so a prefix rule cannot authorize caller-selected input
-	// outside the centrally reviewed command contracts.
+	// Body/file-consuming creation/import leaves are omitted so a prefix rule
+	// cannot authorize caller-selected input outside the centrally reviewed
+	// command contracts.
 	{tokens: []string{"docs", "index"}},
 	{tokens: []string{"state", "backup", "verify"}},
 	{tokens: []string{"state", "export", "all"}},
@@ -121,7 +121,6 @@ var basicCommandAuthorityPrefixes = []commandAuthorityPrefix{
 	{tokens: []string{"project", "identity"}},
 	{tokens: []string{"project", "list"}},
 	{tokens: []string{"project", "show"}},
-	{tokens: []string{"change", "list"}},
 	{tokens: []string{"kb", "check"}},
 	{tokens: []string{"kb", "glossary", "check"}},
 	{tokens: []string{"kb", "glossary", "list"}},
@@ -129,11 +128,6 @@ var basicCommandAuthorityPrefixes = []commandAuthorityPrefix{
 	{tokens: []string{"kb", "validate"}},
 	{tokens: []string{"check"}},
 	{tokens: []string{"housekeeping"}},
-	{tokens: []string{"spec", "archive"}},
-	{tokens: []string{"spec", "list"}},
-	{tokens: []string{"spec", "render"}},
-	{tokens: []string{"spec", "show"}},
-	{tokens: []string{"spec", "status"}},
 	{tokens: []string{"issue", "check"}},
 	{tokens: []string{"issue", "dod", "list"}},
 	{tokens: []string{"issue", "export"}},

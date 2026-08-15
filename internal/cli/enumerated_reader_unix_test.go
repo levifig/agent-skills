@@ -78,45 +78,6 @@ func TestEphemeralProvenanceSkipsFifoSpecWithoutBlocking(t *testing.T) {
 		t.Fatal("runNativeEphemeralProvenance blocked on a FIFO")
 	}
 }
-
-func TestChangeTaskListingSkipsFifoWithoutBlocking(t *testing.T) {
-	root := t.TempDir()
-	folder := filepath.Join(root, "docs", "changes", "20260731-test-change")
-	tasksDir := filepath.Join(folder, "tasks")
-	mkdirAll(t, tasksDir)
-	writeInstallFile(t, filepath.Join(tasksDir, "TASK-001-real.md"), "---\nid: TASK-001\n---\n# Real\n")
-	mkfifoForTest(t, filepath.Join(tasksDir, "TASK-fifo.md"))
-
-	type listResult struct {
-		names    []string
-		findings []string
-	}
-	done := make(chan listResult, 1)
-	go func() {
-		names, _, findings := listChangeTaskFileContents(root, folder, "docs/changes/20260731-test-change", changeTaskContentWorkingTree, nil)
-		done <- listResult{names: names, findings: findings}
-	}()
-
-	select {
-	case result := <-done:
-		if len(result.names) != 1 || result.names[0] != "TASK-001-real.md" {
-			t.Fatalf("names = %#v, want only the real task", result.names)
-		}
-		found := false
-		for _, finding := range result.findings {
-			if strings.Contains(finding, "TASK-fifo.md") && strings.Contains(finding, "not a regular file") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("findings = %#v, want a skip notice for the FIFO", result.findings)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("listChangeTaskFileContents blocked on a FIFO")
-	}
-}
-
 func TestReleaseIncompleteTasksSkipsFifoWithoutBlocking(t *testing.T) {
 	root := t.TempDir()
 	tasksDir := filepath.Join(root, ".agents", "tasks")

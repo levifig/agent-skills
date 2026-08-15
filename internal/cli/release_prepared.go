@@ -27,6 +27,57 @@ func releasePathMatchesPreparedArtifact(path string) bool {
 	return evidencePathExcluded(path, releasePreparedArtifactGlobs)
 }
 
+func evidencePathExcluded(path string, exclusions []string) bool {
+	for _, pattern := range exclusions {
+		if matchEvidenceGlob(path, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchEvidenceGlob matches a git tree path against a component-anchored glob.
+// Matching is byte-exact and case-sensitive; * is one segment; trailing ** is
+// zero-or-more remaining segments.
+func matchEvidenceGlob(path, pattern string) bool {
+	return matchEvidenceParts(splitPathSegments(path), splitPathSegments(pattern))
+}
+
+func splitPathSegments(path string) []string {
+	if path == "" {
+		return nil
+	}
+	return strings.Split(path, "/")
+}
+
+func matchEvidenceParts(pathParts, patternParts []string) bool {
+	pi, pti := 0, 0
+	for pti < len(patternParts) {
+		pat := patternParts[pti]
+		if pat == "**" {
+			if pti == len(patternParts)-1 {
+				return true
+			}
+			rest := patternParts[pti+1:]
+			for skip := 0; skip <= len(pathParts)-pi; skip++ {
+				if matchEvidenceParts(pathParts[pi+skip:], rest) {
+					return true
+				}
+			}
+			return false
+		}
+		if pi >= len(pathParts) {
+			return false
+		}
+		if pat != "*" && pat != pathParts[pi] {
+			return false
+		}
+		pi++
+		pti++
+	}
+	return pi == len(pathParts)
+}
+
 // releaseGitShowPath returns the blob at rev:relPath (slash-separated) without
 // trimming the body. Missing paths return an error.
 func releaseGitShowPath(root, rev, relPath string) ([]byte, error) {

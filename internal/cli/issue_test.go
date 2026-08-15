@@ -409,7 +409,6 @@ func TestRunnerLegacyHelpRedirectsToIssue(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	for _, args := range [][]string{
 		{"task", "--help"},
-		{"spec", "--help"},
 		{"intent", "--help"},
 	} {
 		var stdout bytes.Buffer

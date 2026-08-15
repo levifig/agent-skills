@@ -146,15 +146,6 @@ func agentHelpCommands() []agentHelpCommand {
 			},
 		},
 		{
-			Name:        "change",
-			Description: "Manage shape-first Change artifacts under docs/changes/",
-			Subcommands: []agentHelpSubcommand{
-				{Name: "init", Description: "Scaffold a new Change folder, or promote a capture-only folder in place; fully-materialized folders still reject as duplicates", Options: []agentHelpOption{{Flags: "<slug>", Description: "Change slug: lowercase letters, digits, and single hyphens"}, {Flags: "--brief", Description: "Capture mode: change.json + brief.md only; refuses when the slug already exists"}}},
-				{Name: "check", Description: "Validate a Change and report derived executability", Options: []agentHelpOption{{Flags: "[folder]", Description: "Change folder path; an explicit path wins, otherwise resolves from the current branch"}, {Flags: "--require-executable", Description: "Exit non-zero unless the Change is structurally executable; this does not prove implementation completion"}, {Flags: "--json", Description: "Output folder, passed, state, executable, findings, warnings, and gaps as JSON"}}},
-				{Name: "list", Description: "List a retained lineage after merge or branch deletion", Options: []agentHelpOption{{Flags: "--lineage <key>", Description: "Required lineage key"}, {Flags: "--json", Description: "Output derived nodes, gaps, and optional journal enrichment"}}},
-			},
-		},
-		{
 			Name:        "migrate",
 			Description: "Run migration workflows",
 			Subcommands: []agentHelpSubcommand{
@@ -191,16 +182,6 @@ func agentHelpCommands() []agentHelpCommand {
 				{Name: "archive", Description: "Archive completed tasks", Options: []agentHelpOption{{Flags: "--spec <id>", Description: "Archive done tasks for a spec"}, {Flags: "--json", Description: "Output archive result, archived tasks, global database scope, and project identity as JSON"}}},
 				{Name: "refresh", Description: "Rebuild the Markdown task index from task/spec files", Options: []agentHelpOption{{Flags: "--json", Description: "Output compatibility mode, action, reason, and counts as JSON"}}},
 				{Name: "sync", Description: "Sync the Markdown task index and task files", Options: []agentHelpOption{{Flags: "--import", Description: "Import orphan markdown files"}, {Flags: "--push", Description: "Push index metadata into markdown frontmatter"}, {Flags: "--json", Description: "Output compatibility mode, action, reason, and counts as JSON"}}},
-			},
-		},
-		{
-			Name:        "spec",
-			Description: "Manage project specs",
-			Subcommands: []agentHelpSubcommand{
-				{Name: "list", Description: "Show specs with status and task counts", Options: []agentHelpOption{{Flags: "--json", Description: "Output specs, diagnostics, task counts, global database scope, and project identity as JSON"}}},
-				{Name: "show", Description: "Show spec details", Options: []agentHelpOption{{Flags: "--json", Description: "Output spec details, task counts, relationships, global database scope, and project identity as JSON"}}},
-				{Name: "edit", Description: "Replace a spec's SQLite body; run spec finalize to update the tracked render", Options: []agentHelpOption{{Flags: "--body-file <path>", Description: "Read Markdown body from a UTF-8 file"}, {Flags: "--body -", Description: "Read Markdown body from stdin"}, {Flags: "--message <text>", Description: "Use inline Markdown body text"}, {Flags: "--force", Description: "Proceed when the legacy source file diverges from the SQLite body"}, {Flags: "--json", Description: "Output the edited spec, imported flag, content hash, event, global database scope, and project identity as JSON"}}},
-				{Name: "archive", Description: "Archive a completed spec", Options: []agentHelpOption{{Flags: "--json", Description: "Output archive result, archived specs, global database scope, and project identity as JSON"}}},
 			},
 		},
 		{

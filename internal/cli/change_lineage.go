@@ -268,354 +268,29 @@ func changeLineageHasCycle(nodes map[string]changeNode) bool {
 	return false
 }
 
-func applyLineageValidation(report changeCheckReport, nodes []changeNode, targetPath, rootPath string, requireExecutable bool) changeCheckReport {
-	graph := deriveChangeGraph(nodes)
-	target, ok := graph.nodeByPath(targetPath)
-	if !ok {
-		report.Violations = append(report.Violations, fmt.Sprintf("checked Change %s is absent from the derived graph", targetPath))
-		return report
-	}
-	report.Violations = append(report.Violations, graph.findingsForChange(target)...)
-	lineageGaps := graph.gapsForLineage(target.Lineage)
-	executionGaps := executionRelevantLineageGaps(lineageGaps)
-	report.Gaps = append(report.Gaps, executionGaps...)
-	if requireExecutable {
-		report.Gaps = append(report.Gaps, committedPredecessorGaps(rootPath, target)...)
-	}
-	report.Violations = sortedUnique(report.Violations)
-	report.Warnings = sortedUnique(report.Warnings)
-	report.Gaps = sortedUnique(report.Gaps)
-	report.Executable = report.Executable && len(report.Violations) == 0 && len(report.Gaps) == 0
-	return report
-}
-
-func committedPredecessorGaps(rootPath string, target changeNode) []string {
-	if target.Predecessor == "" {
-		return nil
-	}
-	nodes, err := loadChangeNodesAtHEAD(rootPath)
-	if err != nil {
-		return []string{fmt.Sprintf("cannot inspect committed HEAD Change graph: %v", err)}
-	}
-	graph := deriveChangeGraph(nodes)
-	bySlug := map[string]changeNode{}
-	for _, node := range nodes {
-		bySlug[node.Slug] = node
-	}
-	var gaps []string
-	seen := map[string]bool{}
-	for slug := target.Predecessor; slug != ""; {
-		if seen[slug] {
-			break
-		}
-		seen[slug] = true
-		node, ok := bySlug[slug]
-		if !ok || node.Lineage != target.Lineage {
-			gaps = append(gaps, fmt.Sprintf("predecessor %q is not committed and retained in HEAD", slug))
-			break
-		}
-		doc := evaluateChangeDocAtPath(node.Content, filepath.Base(node.Folder), "", node.ChangeFile)
-		lineageGaps := executionRelevantLineageGaps(graph.gapsForLineage(node.Lineage))
-		if len(doc.Violations) != 0 || !doc.Executable || len(graph.findingsForLineage(node.Lineage)) != 0 || len(lineageGaps) != 0 {
-			gaps = append(gaps, fmt.Sprintf("committed predecessor %q is not structurally executable", slug))
-		}
-		slug = node.Predecessor
-	}
-	sort.Strings(gaps)
-	return gaps
-}
-
-func removeChangeGraphGap(gaps []string, ignored string) []string {
-	filtered := make([]string, 0, len(gaps))
-	for _, gap := range gaps {
-		if gap != ignored {
-			filtered = append(filtered, gap)
-		}
-	}
-	return filtered
-}
-
-func deletedLineageChangesWithOutput(rootPath string, outputCommand changeGitOutput) ([]string, error) {
-	output, err := outputCommand(rootPath, "git", "rev-list", "--full-history", "--topo-order", "HEAD", "--", "docs/changes")
-	if err != nil {
-		return nil, fmt.Errorf("enumerate Change history: %w", err)
-	}
-	var deleted []string
-	for _, commit := range strings.Fields(output) {
-		parentsOutput, err := outputCommand(rootPath, "git", "rev-list", "--parents", "-n", "1", commit)
-		if err != nil {
-			return nil, fmt.Errorf("read parents for %s: %w", shortChangeCommit(commit), err)
-		}
-		ancestry := strings.Fields(parentsOutput)
-		if len(ancestry) == 0 || ancestry[0] != commit {
-			return nil, fmt.Errorf("read parents for %s: unexpected git response %q", shortChangeCommit(commit), strings.TrimSpace(parentsOutput))
-		}
-		for _, parent := range ancestry[1:] {
-			diffOutput, err := outputCommand(rootPath, "git", "diff-tree", "--no-commit-id", "--name-status", "--no-renames", "-r", parent, commit, "--", "docs/changes")
-			if err != nil {
-				return nil, fmt.Errorf("compare %s with parent %s: %w", shortChangeCommit(commit), shortChangeCommit(parent), err)
-			}
-			type folderDiff struct {
-				deletedMD   bool
-				deletedJSON bool
-				addedJSON   bool
-				mdPath      string
-				jsonPath    string
-			}
-			byFolder := map[string]*folderDiff{}
-			for _, line := range strings.Split(diffOutput, "\n") {
-				status, path, ok := strings.Cut(strings.TrimSpace(line), "\t")
-				path = filepath.ToSlash(strings.TrimSpace(path))
-				if !ok || path == "" {
-					continue
-				}
-				base := filepath.Base(path)
-				if base != changeMachineFileLegacy && base != changeMachineFileJSON {
-					continue
-				}
-				folder := filepath.ToSlash(filepath.Dir(path))
-				entry := byFolder[folder]
-				if entry == nil {
-					entry = &folderDiff{}
-					byFolder[folder] = entry
-				}
-				switch {
-				case strings.HasPrefix(status, "D") && base == changeMachineFileLegacy:
-					entry.deletedMD = true
-					entry.mdPath = path
-				case strings.HasPrefix(status, "D") && base == changeMachineFileJSON:
-					entry.deletedJSON = true
-					entry.jsonPath = path
-				case strings.HasPrefix(status, "A") && base == changeMachineFileJSON:
-					entry.addedJSON = true
-					entry.jsonPath = path
-				}
-			}
-			for folder, entry := range byFolder {
-				// Sanctioned atomic conversion: retire change.md and add change.json
-				// in the same commit. That is replacement, not retention loss.
-				if entry.deletedMD && entry.addedJSON && !entry.deletedJSON {
-					continue
-				}
-				if entry.deletedMD {
-					retained, err := changePathHadRetentionSignalInHistory(rootPath, parent, entry.mdPath, outputCommand)
-					if err != nil {
-						return nil, err
-					}
-					if retained {
-						deleted = append(deleted, entry.mdPath)
-					}
-				}
-				if entry.deletedJSON {
-					jsonPath := entry.jsonPath
-					if jsonPath == "" {
-						jsonPath = filepath.ToSlash(filepath.Join(folder, changeMachineFileJSON))
-					}
-					retained, err := changePathHadRetentionSignalInHistory(rootPath, parent, jsonPath, outputCommand)
-					if err != nil {
-						return nil, err
-					}
-					if retained {
-						deleted = append(deleted, jsonPath)
-					}
-				}
-			}
-		}
-	}
-	return sortedUnique(deleted), nil
-}
-
-func changePathHadLineageInHistory(rootPath string, ref string, path string, outputCommand changeGitOutput) (bool, error) {
-	return changePathHadRetentionSignalInHistory(rootPath, ref, path, outputCommand)
-}
-
-func changePathHadRetentionSignalInHistory(rootPath string, ref string, path string, outputCommand changeGitOutput) (bool, error) {
-	output, err := outputCommand(rootPath, "git", "rev-list", "--full-history", "--topo-order", ref, "--", path)
-	if err != nil {
-		return false, fmt.Errorf("enumerate %s history from %s: %w", path, shortChangeCommit(ref), err)
-	}
-	commits := strings.Fields(output)
-	if len(commits) == 0 {
-		return false, fmt.Errorf("enumerate %s history from %s: no commits found for deleted path", path, shortChangeCommit(ref))
-	}
-	for _, commit := range commits {
-		treePath, err := outputCommand(rootPath, "git", "ls-tree", "--name-only", commit, "--", path)
-		if err != nil {
-			return false, fmt.Errorf("inspect %s at %s: %w", path, shortChangeCommit(commit), err)
-		}
-		treePath = filepath.ToSlash(strings.TrimSpace(treePath))
-		if treePath == "" {
-			continue
-		}
-		if treePath != path {
-			return false, fmt.Errorf("inspect %s at %s: unexpected git path %q", path, shortChangeCommit(commit), treePath)
-		}
-		content, err := outputCommand(rootPath, "git", "show", commit+":"+path)
-		if err != nil {
-			return false, fmt.Errorf("read %s at %s: %w", path, shortChangeCommit(commit), err)
-		}
-		if strings.HasSuffix(path, "/"+changeMachineFileJSON) {
-			if changeJSONDeclaresTarget(content) {
-				return true, nil
-			}
-			continue
-		}
-		parsed := parseChangeFrontmatter(content)
-		if hasNonEmptyChangeField(parsed.Fields, "lineage") || hasNonEmptyChangeField(parsed.Fields, "release-after") || hasNonEmptyChangeField(parsed.Fields, "target_release") {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func changeJSONDeclaresTarget(content string) bool {
-	meta := parseChangeJSON(content)
-	if meta.TargetRelease != "" {
-		return true
-	}
-	// Malformed historical versions that still named the field count as a
-	// retention signal so delete/re-add cannot launder a declared target away.
-	trimmed := strings.TrimSpace(content)
-	return strings.Contains(trimmed, `"target_release"`)
-}
-
-type dependencyMetadataVersion struct {
-	Commit       string
-	Lineage      string
-	ReleaseAfter string
-	Problems     []string
-	Duplicate    []string
-}
-
-func dependencyMetadataHistoryFindings(rootPath string, nodes []changeNode, outputCommand changeGitOutput) ([]string, error) {
-	var findings []string
-	for _, node := range nodes {
-		// Lineage/release-after freeze still keys on the markdown surface. New
-		// layout nodes without a historical change.md simply have no frozen
-		// dependency metadata; target_release mutability is handled separately.
-		historyPath := filepath.ToSlash(filepath.Join(node.Folder, changeMachineFileLegacy))
-		if node.Layout == changeLayoutLegacy {
-			historyPath = node.ChangeFile
-		}
-		commitsOutput, err := outputCommand(rootPath, "git", "rev-list", "--full-history", "--topo-order", "--reverse", "HEAD", "--", historyPath)
-		if err != nil {
-			return nil, fmt.Errorf("read %s history: %w", historyPath, err)
-		}
-		commits := strings.Fields(commitsOutput)
-		if len(commits) == 0 {
-			continue
-		}
-		versions := make([]dependencyMetadataVersion, 0, len(commits))
-		hasDependencyMetadata := false
-		for _, commit := range commits {
-			content, ok, err := readCommittedOptional(rootPath, commit, historyPath, outputCommand)
-			if err != nil {
-				return nil, err
-			}
-			if !ok {
-				continue
-			}
-			parsed := parseChangeFrontmatter(content)
-			version := dependencyMetadataVersion{
-				Commit:       commit,
-				Lineage:      changeFieldValue(parsed.Fields, "lineage"),
-				ReleaseAfter: changeFieldValue(parsed.Fields, "release-after"),
-				Problems:     changeFrontmatterInspectionProblems(parsed),
-			}
-			if countChangeFields(parsed.Fields, "lineage") > 1 {
-				version.Duplicate = append(version.Duplicate, "lineage")
-			}
-			if countChangeFields(parsed.Fields, "release-after") > 1 {
-				version.Duplicate = append(version.Duplicate, "release-after")
-			}
-			if version.Lineage != "" || version.ReleaseAfter != "" {
-				hasDependencyMetadata = true
-			}
-			versions = append(versions, version)
-		}
-		if !hasDependencyMetadata {
-			continue
-		}
-		for _, version := range versions {
-			if len(version.Problems) != 0 {
-				return nil, fmt.Errorf("parse %s at %s: %s", historyPath, shortChangeCommit(version.Commit), strings.Join(version.Problems, "; "))
-			}
-			if len(version.Duplicate) != 0 {
-				return nil, fmt.Errorf("parse %s at %s: duplicate %s field", historyPath, shortChangeCommit(version.Commit), strings.Join(version.Duplicate, " and "))
-			}
-		}
-		findings = append(findings, immutableDependencyFieldFindings(historyPath, "lineage", versions, func(version dependencyMetadataVersion) string { return version.Lineage })...)
-		findings = append(findings, immutableDependencyFieldFindings(historyPath, "release-after", versions, func(version dependencyMetadataVersion) string { return version.ReleaseAfter })...)
-	}
-	return sortedUnique(findings), nil
-}
-
-func immutableDependencyFieldFindings(path string, field string, versions []dependencyMetadataVersion, valueOf func(dependencyMetadataVersion) string) []string {
-	frozenValue := ""
-	frozenCommit := ""
-	var findings []string
-	for _, version := range versions {
-		value := valueOf(version)
-		if frozenValue == "" {
-			if value != "" {
-				frozenValue = value
-				frozenCommit = version.Commit
-			}
-			continue
-		}
-		if value != frozenValue {
-			findings = append(findings, fmt.Sprintf("%s changed %s from %q (set at %s) to %q at %s", path, field, frozenValue, shortChangeCommit(frozenCommit), value, shortChangeCommit(version.Commit)))
-		}
-	}
-	return findings
-}
-
-func changeFrontmatterInspectionProblems(parsed changeFrontmatterParse) []string {
-	var problems []string
-	if !parsed.AtByteOne {
-		problems = append(problems, "frontmatter must open at byte one")
-	}
-	problems = append(problems, parsed.Findings...)
-	return sortedUnique(problems)
-}
-
-func shortChangeCommit(commit string) string {
-	if len(commit) > 12 {
-		return commit[:12]
-	}
-	return commit
-}
-
-func (g changeGraph) nodeByPath(path string) (changeNode, bool) {
-	path = filepath.ToSlash(path)
-	folder := changeFolderRelFromMachinePath(path)
-	for _, node := range g.Nodes {
-		if node.ChangeFile == path || node.Folder == path || node.Folder == folder || node.ContractFile == path {
-			return node, true
-		}
-	}
-	return changeNode{}, false
-}
-
 func (g changeGraph) findingsForLineage(lineage string) []string {
 	findings := append([]string{}, g.GlobalFindings...)
 	findings = append(findings, g.findingsByLineage[lineage]...)
 	findings = append(findings, g.localFindingsByLineage[lineage]...)
 	return sortedUnique(findings)
 }
+
 func (g changeGraph) findingsForChange(node changeNode) []string {
 	if node.Lineage != "" {
 		return g.findingsForLineage(node.Lineage)
 	}
 	return sortedUnique(append(append([]string{}, g.GlobalFindings...), g.localFindingsByChange[node.ChangeFile]...))
 }
+
 func (g changeGraph) gapsForLineage(lineage string) []string {
 	return sortedUnique(g.gapsByLineage[lineage])
 }
+
 func (g *changeGraph) addFinding(lineage, finding string) {
 	g.Findings = append(g.Findings, finding)
 	g.findingsByLineage[lineage] = append(g.findingsByLineage[lineage], finding)
 }
+
 func (g *changeGraph) addLocalFinding(node changeNode, finding string) {
 	g.Findings = append(g.Findings, finding)
 	g.localFindingsByChange[node.ChangeFile] = append(g.localFindingsByChange[node.ChangeFile], finding)
@@ -623,14 +298,17 @@ func (g *changeGraph) addLocalFinding(node changeNode, finding string) {
 		g.localFindingsByLineage[node.Lineage] = append(g.localFindingsByLineage[node.Lineage], finding)
 	}
 }
+
 func (g *changeGraph) addGlobalFinding(finding string) {
 	g.Findings = append(g.Findings, finding)
 	g.GlobalFindings = append(g.GlobalFindings, finding)
 }
+
 func (g *changeGraph) addGap(lineage, gap string) {
 	g.Gaps = append(g.Gaps, gap)
 	g.gapsByLineage[lineage] = append(g.gapsByLineage[lineage], gap)
 }
+
 func (g *changeGraph) sort() {
 	g.Findings = sortedUnique(g.Findings)
 	g.Gaps = sortedUnique(g.Gaps)
@@ -638,23 +316,6 @@ func (g *changeGraph) sort() {
 	sort.Slice(g.Nodes, func(i, j int) bool { return g.Nodes[i].ChangeFile < g.Nodes[j].ChangeFile })
 }
 
-func countChangeFields(fields []changeFrontmatterField, key string) int {
-	count := 0
-	for _, field := range fields {
-		if strings.EqualFold(field.Key, key) {
-			count++
-		}
-	}
-	return count
-}
-func hasNonEmptyChangeField(fields []changeFrontmatterField, key string) bool {
-	for _, field := range fields {
-		if strings.EqualFold(field.Key, key) && field.Value != "" {
-			return true
-		}
-	}
-	return false
-}
 func joinChangePaths(nodes []changeNode) string {
 	paths := make([]string, 0, len(nodes))
 	for _, node := range nodes {
@@ -663,6 +324,7 @@ func joinChangePaths(nodes []changeNode) string {
 	sort.Strings(paths)
 	return strings.Join(paths, ", ")
 }
+
 func sortedUnique(values []string) []string {
 	seen := map[string]bool{}
 	out := []string{}
@@ -675,6 +337,7 @@ func sortedUnique(values []string) []string {
 	sort.Strings(out)
 	return out
 }
+
 func sortedKeys[V any](values map[string]V) []string {
 	keys := make([]string, 0, len(values))
 	for key := range values {
@@ -682,8 +345,4 @@ func sortedKeys[V any](values map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-func executionRelevantLineageGaps(gaps []string) []string {
-	return sortedUnique(gaps)
 }

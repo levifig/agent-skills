@@ -338,6 +338,9 @@ func runNativeRenderDrift(context checkHookContext, cwd string) checkResult {
 
 func renderDriftRemediation(kind string, path string) string {
 	ref := firstNonEmpty(artifactBodyRefFromPath(path), "<ref>")
+	if kind == "spec" {
+		return fmt.Sprintf("do not write .agents/specs/*.md; use `loaf state export spec %s --format markdown`", ref)
+	}
 	return fmt.Sprintf("Edit via `loaf %s edit %s --body-file <path>`, then run `loaf %s finalize %s`.", kind, ref, kind, ref)
 }
 
@@ -346,6 +349,9 @@ func renderDriftRemediation(kind string, path string) string {
 // safe prescription is regenerating the render from the SQLite body.
 func renderDriftInvalidRenderRemediation(kind string, path string) string {
 	ref := firstNonEmpty(artifactBodyRefFromPath(path), "<ref>")
+	if kind == "spec" {
+		return fmt.Sprintf("Committed render is invalid; use `loaf state export spec %s --format markdown`.", ref)
+	}
 	return fmt.Sprintf("Committed render is invalid; run `loaf %s finalize %s` to rewrite it from the SQLite body.", kind, ref)
 }
 
@@ -431,7 +437,7 @@ func ephemeralUntrackCommand(paths []string) string {
 }
 
 func specEditRemediationCommand(ref string) string {
-	return fmt.Sprintf("Fix %s: `loaf spec edit %s --body-file <path>` then `loaf spec finalize %s`.", ref, ref, ref)
+	return fmt.Sprintf("Fix %s: do not write .agents/specs/*.md; use `loaf state export spec %s --format markdown`.", ref, ref)
 }
 
 func trackedEphemeralMarkdownPaths(root string) ([]string, error) {
@@ -653,9 +659,9 @@ func artifactBodyWriteCommand(kind string, path string, root string) string {
 		return "loaf report create <slug> --body-file <path>"
 	case "spec":
 		if artifactBodySpecRefRE.MatchString(ref) {
-			return "loaf spec edit " + ref + " --body-file <path>"
+			return "loaf state export spec " + ref + " --format markdown"
 		}
-		return "loaf spec new <slug> --title <title> --body-file <path>"
+		return "loaf state export spec --format markdown"
 	case "task":
 		return "loaf task update " + firstNonEmpty(ref, "<ref>") + " --status <status>"
 	default:

@@ -159,25 +159,6 @@ func cliReferenceCommands() []cliReferenceCommand {
 			},
 		},
 		{
-			Name:        "change",
-			Description: "Shape-first Change artifacts: git-canonical work context under docs/changes/",
-			Subcommands: []cliReferenceSubcommand{
-				{Name: "init", Description: "Scaffold a new Change folder, or promote a capture-only folder in place; fully-materialized folders still reject as duplicates", Options: []cliReferenceOption{
-					{Flags: "<slug>", Description: "Change slug: lowercase letters, digits, and single hyphens"},
-					{Flags: "--brief", Description: "Capture mode: change.json + brief.md only; refuses when the slug already exists"},
-				}},
-				{Name: "check", Description: "Validate a Change and report derived executability", Options: []cliReferenceOption{
-					{Flags: "[folder]", Description: "Change folder path; an explicit path wins, otherwise resolves from the current branch"},
-					{Flags: "--require-executable", Description: "Exit non-zero unless the Change is structurally executable; this does not prove implementation completion (CI gate for non-draft PRs)"},
-					{Flags: "--json", Description: "Output folder, passed, state, executable, findings, warnings, and gaps as JSON"},
-				}},
-				{Name: "list", Description: "List a retained lineage after merge or branch deletion", Options: []cliReferenceOption{
-					{Flags: "--lineage <key>", Description: "Required lineage key"},
-					{Flags: "--json", Description: "Output derived nodes, gaps, and optional journal enrichment"},
-				}},
-			},
-		},
-		{
 			Name:        "render",
 			Description: "Maintain committed durable Markdown renders",
 			Subcommands: []cliReferenceSubcommand{
@@ -452,41 +433,6 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--import", Description: "Import orphan .md files not in the index"},
 					{Flags: "--push", Description: "Push compatibility index metadata into .md frontmatter"},
 					{Flags: "--json", Description: "Output compatibility summary as JSON"},
-				}},
-			},
-		},
-		{
-			Name:        "spec",
-			Description: "Manage project specs; superseded by loaf issue for new work",
-			Subcommands: []cliReferenceSubcommand{
-				{Name: "new", Description: "Create a spec in SQLite state", Options: []cliReferenceOption{
-					{Flags: "--title <title>", Description: "Spec title (defaults to a title derived from the slug)"},
-					{Flags: "--id <SPEC-NNN>", Description: "Explicit spec id; auto-allocated when omitted"},
-					{Flags: "--source <source>", Description: "Provenance label recorded on the spec and creation event (default: ad-hoc)"},
-					{Flags: "--branch <name>", Description: "Implementation branch recorded on the spec for breakdown/implement handoff"},
-					{Flags: "--related <SPEC-A,SPEC-B>", Description: "Comma-separated spec refs to link as related"},
-					{Flags: "--body-file <path>", Description: "Read the spec body from a file"},
-					{Flags: "--body -", Description: "Read the spec body from stdin"},
-					{Flags: "--message <text>", Description: "Use the given text as the spec body"},
-					{Flags: "--json", Description: "Output the created spec, global database scope, and project identity as JSON"},
-				}},
-				{Name: "edit", Description: "Replace a spec's SQLite body; run spec finalize to update the tracked render", Options: []cliReferenceOption{
-					{Flags: "--body-file <path>", Description: "Read the spec body from a file"},
-					{Flags: "--body -", Description: "Read the spec body from stdin"},
-					{Flags: "--message <text>", Description: "Use the given text as the spec body"},
-					{Flags: "--force", Description: "Proceed when the legacy source file diverges from the SQLite body"},
-					{Flags: "--json", Description: "Output the edited spec, imported flag, content hash, event, global database scope, and project identity as JSON"},
-				}},
-				{Name: "list", Description: "Show specs with status and task counts", Options: []cliReferenceOption{{Flags: "--json", Description: "Output specs, diagnostics, task counts, global database scope, and project identity as JSON"}}},
-				{Name: "show", Description: "Show spec details", Options: []cliReferenceOption{{Flags: "--json", Description: "Output spec details, branch, source, resolved related specs, task counts, relationships, global database scope, and project identity as JSON"}}},
-				{Name: "status", Description: "Set a spec's lifecycle status (draft, todo, in_progress, done, archived)", Options: []cliReferenceOption{{Flags: "--json", Description: "Output spec status transition, event, global database scope, and project identity as JSON"}}},
-				{Name: "render", Description: "Render deterministic spec Markdown to the XDG cache", Options: []cliReferenceOption{{Flags: "--json", Description: "Output render path, content hash, contract, global database scope, and project identity as JSON"}}},
-				{Name: "finalize", Description: "Write deterministic spec Markdown to its tracked git location", Options: []cliReferenceOption{{Flags: "--json", Description: "Output render path, content hash, contract, global database scope, and project identity as JSON"}}},
-				{Name: "archive", Description: "Archive a completed spec", Options: []cliReferenceOption{{Flags: "--json", Description: "Output archive result, archived specs, global database scope, and project identity as JSON"}}},
-				{Name: "delete", Description: "Permanently delete a spec and every dependent row (aliases, bodies, search index, events, sources); leaves the on-disk render in place", Options: []cliReferenceOption{
-					{Flags: "<spec>", Description: "Spec ref to delete"},
-					{Flags: "--yes", Description: "Confirm the destructive delete (required)"},
-					{Flags: "--json", Description: "Output removed-row counts, global database scope, and project identity as JSON"},
 				}},
 			},
 		},
@@ -1051,7 +997,7 @@ The Loaf operating manual for agents: how to discover commands, diagnose project
 		"## Operating Rules",
 		"",
 		"- Get exact, current syntax live: `loaf --help` lists every command, `loaf <command> --help` details one. This index is a map, not the contract.",
-		"- Prefer `--json` surfaces when diagnosing: `loaf config check --json`, `loaf state doctor --json`, `loaf change check --json`. Parse the structured output instead of scraping human-readable text.",
+		"- Prefer `--json` surfaces when diagnosing: `loaf config check --json`, `loaf state doctor --json`. Parse the structured output instead of scraping human-readable text.",
 		"- Run the deterministic CLI command before hand-editing anything it manages; the command owns its files.",
 		"- Use `--fix` only for safe, mechanical repairs, and review what it changed.",
 		"- Ask the user for project-owned choices — GitHub account, tracker or integration election, which harnesses to install — never guess them.",
