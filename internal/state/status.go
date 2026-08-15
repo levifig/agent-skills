@@ -933,6 +933,21 @@ func inspectBackendMappingInvariants(ctx context.Context, store *Store) ([]Diagn
 	intentKindList := ""
 	intentOrphanKindList := ""
 	intentEntityCTE := ""
+	workKindList := ""
+	workOrphanKindList := ""
+	workEntityCTE := ""
+	for _, kind := range [][2]string{{"issue", "issues"}, {"release", "releases"}} {
+		var count int
+		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, kind[1]).Scan(&count); err != nil {
+			return nil, false, fmt.Errorf("inspect %s table presence: %w", kind[1], err)
+		}
+		if count == 0 {
+			continue
+		}
+		workKindList += ",\n  '" + kind[0] + "'"
+		workOrphanKindList += ",\n    '" + kind[0] + "'"
+		workEntityCTE += "\n  UNION ALL SELECT '" + kind[0] + "', project_id, id FROM " + kind[1]
+	}
 	if intentTablesPresent {
 		// One kind→table source builds every conditional clause so the three
 		// scan sites cannot drift apart.
@@ -1059,7 +1074,7 @@ WHERE entity_kind NOT IN (
   'bundle_member',
   'source',
   'hook_event',
-  'export'`+intentKindList+`
+  'export'`+workKindList+intentKindList+`
 )
 GROUP BY entity_kind
 ORDER BY entity_kind
@@ -1149,7 +1164,7 @@ WITH local_entities(entity_kind, project_id, entity_id) AS (
   UNION ALL SELECT 'bundle_member', project_id, id FROM bundle_members
   UNION ALL SELECT 'source', project_id, id FROM sources
   UNION ALL SELECT 'hook_event', project_id, id FROM hook_events
-  UNION ALL SELECT 'export', project_id, id FROM exports`+intentEntityCTE+`
+  UNION ALL SELECT 'export', project_id, id FROM exports`+workEntityCTE+intentEntityCTE+`
 )
 SELECT backend_mappings.id, backend_mappings.backend, backend_mappings.entity_kind, backend_mappings.entity_id, backend_mappings.external_kind, backend_mappings.external_id
 FROM backend_mappings
@@ -1181,7 +1196,7 @@ WHERE local_entities.entity_id IS NULL
     'bundle_member',
     'source',
     'hook_event',
-    'export'`+intentOrphanKindList+`
+    'export'`+workOrphanKindList+intentOrphanKindList+`
   )
 ORDER BY backend_mappings.id
 `)

@@ -56,23 +56,26 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		return nil
 	}
 	if writeNestedHelp(out, args, map[string]func(io.Writer){
-		"new":      writeIssueNewHelp,
-		"show":     writeIssueShowHelp,
-		"list":     writeIssueListHelp,
-		"tree":     writeIssueTreeHelp,
-		"frontier": writeIssueFrontierHelp,
-		"start":    writeIssueStartHelp,
-		"stop":     writeIssueStopHelp,
-		"edit":     writeIssueEditHelp,
-		"status":   writeIssueStatusHelp,
-		"dod":      writeIssueDodHelp,
-		"promote":  writeIssuePromoteHelp,
-		"check":    writeIssueCheckHelp,
-		"verify":   writeIssueVerifyHelp,
-		"bucket":   writeIssueBucketHelp,
-		"link":     writeIssueLinkHelp,
-		"render":   writeIssueRenderHelp,
-		"export":   writeIssueExportHelp,
+		"new":       writeIssueNewHelp,
+		"show":      writeIssueShowHelp,
+		"list":      writeIssueListHelp,
+		"tree":      writeIssueTreeHelp,
+		"frontier":  writeIssueFrontierHelp,
+		"start":     writeIssueStartHelp,
+		"stop":      writeIssueStopHelp,
+		"edit":      writeIssueEditHelp,
+		"status":    writeIssueStatusHelp,
+		"dod":       writeIssueDodHelp,
+		"promote":   writeIssuePromoteHelp,
+		"check":     writeIssueCheckHelp,
+		"verify":    writeIssueVerifyHelp,
+		"bucket":    writeIssueBucketHelp,
+		"link":      writeIssueLinkHelp,
+		"render":    writeIssueRenderHelp,
+		"export":    writeIssueExportHelp,
+		"pull":      writeIssuePullHelp,
+		"push":      writeIssuePushHelp,
+		"reconcile": writeIssueReconcileHelp,
 	}) {
 		return nil
 	}
@@ -120,6 +123,12 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		return r.runIssueRender(args[1:], out, runtime)
 	case "export":
 		return r.runIssueExport(args[1:], out, runtime)
+	case "pull":
+		return r.runIssuePull(args[1:], out, runtime)
+	case "push":
+		return r.runIssuePush(args[1:], out, runtime)
+	case "reconcile":
+		return r.runIssueReconcile(args[1:], out, runtime)
 	default:
 		return unknownSubcommandError("issue", args[0])
 	}
@@ -144,6 +153,9 @@ func writeIssueHelp(out io.Writer) {
 		{Name: "link", Summary: "Create or remove an issue relationship"},
 		{Name: "render", Summary: "Emit a paste-ready PR body"},
 		{Name: "export", Summary: "Export issues, identity, criteria, claims, and relationships as JSON"},
+		{Name: "pull", Summary: "Adopt an existing Linear issue"},
+		{Name: "push", Summary: "Write the local render and status to Linear"},
+		{Name: "reconcile", Summary: "Compare local and Linear and surface conflicts"},
 	})
 }
 
@@ -293,21 +305,51 @@ func (r Runner) runIssueNew(args []string, out io.Writer, runtime state.Runtime)
 	if ok {
 		options.create.Body = body
 	}
-	created, err := state.CreateIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.create)
+	resolver := state.PathResolver{StateHome: r.StateHome}
+	identity, ok, err := state.LookupIssueIdentity(context.Background(), projectRoot, resolver)
 	if err != nil {
 		return err
 	}
+	if ok && identity.Authority == state.IssueAuthorityLinear {
+		client, err := state.LinearClientFromEnv()
+		if err != nil {
+			return &state.LinearMintError{Err: err}
+		}
+		minted, err := state.MintLinearIssue(context.Background(), projectRoot, resolver, client, options.create)
+		if err != nil {
+			return err
+		}
+		options.create.Alias = minted.Identifier
+		created, err := state.CreateIssue(context.Background(), projectRoot, resolver, options.create)
+		if err != nil {
+			return &state.LinearOrphanError{Identifier: minted.Identifier, URL: minted.URL, Err: err}
+		}
+		if err := state.BindLinearIssue(context.Background(), projectRoot, resolver, created.ID, minted.Identifier, minted.URL); err != nil {
+			return &state.LinearOrphanError{Identifier: minted.Identifier, URL: minted.URL, Err: err}
+		}
+		return r.finishIssueNew(out, projectRoot, resolver, created.ID, options)
+	}
+	created, err := state.CreateIssue(context.Background(), projectRoot, resolver, options.create)
+	if err != nil {
+		return err
+	}
+	return r.finishIssueNew(out, projectRoot, resolver, created.ID, options)
+}
+
+func (r Runner) finishIssueNew(out io.Writer, projectRoot project.Root, resolver state.PathResolver, issueID string, options issueNewOptions) error {
+	createdID := issueID
 	if options.status != "" && options.status != state.IssueStatusTriage {
-		created, err = state.UpdateIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.IssueUpdateOptions{
-			Ref:       created.ID,
+		updated, err := state.UpdateIssue(context.Background(), projectRoot, resolver, state.IssueUpdateOptions{
+			Ref:       createdID,
 			Status:    options.status,
 			SetStatus: true,
 		})
 		if err != nil {
 			return err
 		}
+		createdID = updated.ID
 	}
-	result, err := state.ShowIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, created.ID)
+	result, err := state.ShowIssue(context.Background(), projectRoot, resolver, createdID)
 	if err != nil {
 		return err
 	}
@@ -1248,37 +1290,7 @@ func writeIssueDodList(out io.Writer, result state.IssueResult) {
 }
 
 func renderIssueMarkdown(result state.IssueResult) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n", result.Issue.Title)
-	if strings.TrimSpace(result.Issue.Body) != "" {
-		fmt.Fprintln(&b)
-		b.WriteString(result.Issue.Body)
-		if !strings.HasSuffix(result.Issue.Body, "\n") {
-			fmt.Fprintln(&b)
-		}
-	}
-	if len(result.Issue.Criteria) > 0 {
-		fmt.Fprintln(&b)
-		fmt.Fprintln(&b, "## Definition of Done")
-		fmt.Fprintln(&b)
-		checked := result.Issue.Status == state.IssueStatusDone
-		for _, criterion := range result.Issue.Criteria {
-			mark := " "
-			if checked {
-				mark = "x"
-			}
-			fmt.Fprintf(&b, "- [%s] %s\n", mark, criterion.Text)
-		}
-	}
-	if len(result.Children) > 0 {
-		fmt.Fprintln(&b)
-		fmt.Fprintln(&b, "## Children")
-		fmt.Fprintln(&b)
-		for _, child := range result.Children {
-			fmt.Fprintf(&b, "- %s: %s\n", firstNonEmpty(child.Alias, child.ID), child.Title)
-		}
-	}
-	return b.String()
+	return state.RenderIssueMarkdown(result)
 }
 
 func issueDisplayRef(issue state.Issue) string {

@@ -355,7 +355,7 @@ func TestRunnerIssueCheckPublishesThroughReadinessSeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRoot() error = %v", err)
 	}
-	if _, err := state.SetIssueIdentity(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.IssueIdentityOptions{Authority: state.IssueAuthorityLinear}); err != nil {
+	if _, err := state.SetIssueIdentity(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.IssueIdentityOptions{Authority: state.IssueAuthorityGitHub}); err != nil {
 		t.Fatalf("SetIssueIdentity() error = %v", err)
 	}
 	if _, err := runIssue(t, workingDir, stateHome, "new", "Should we publish readiness?", "--kind", "decision"); err != nil {

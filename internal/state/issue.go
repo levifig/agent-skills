@@ -94,6 +94,10 @@ type IssueCreateOptions struct {
 	Kind     string
 	Parent   string
 	Criteria []IssueCriterionInput
+	// Alias, when set, is stored as the issue alias without advancing
+	// issue_identity.next_number. Linear mint and pull use this so the
+	// tracker key becomes the alias and the local counter stays untouched.
+	Alias string
 }
 
 // IssueUpdateOptions describes a partial issue mutation. Title, body, fog,
@@ -261,9 +265,13 @@ func (s *Store) CreateIssue(ctx context.Context, root project.Root, options Issu
 		}
 	}
 
-	alias, err := mintLocalIssueAliasTx(ctx, tx, projectID, now)
-	if err != nil {
-		return Issue{}, err
+	alias := strings.TrimSpace(options.Alias)
+	if alias == "" {
+		var mintErr error
+		alias, mintErr = mintLocalIssueAliasTx(ctx, tx, projectID, now)
+		if mintErr != nil {
+			return Issue{}, mintErr
+		}
 	}
 
 	if _, err := tx.ExecContext(ctx, `

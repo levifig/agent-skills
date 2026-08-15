@@ -115,6 +115,28 @@ func TestIssueCreateTrackerAuthorityMintsNoAlias(t *testing.T) {
 	}
 }
 
+func TestIssueCreateProvidedAliasDoesNotAdvanceCounter(t *testing.T) {
+	root, store := issueTestFixture(t)
+	ctx := context.Background()
+	if _, err := store.SetIssueIdentity(ctx, root, IssueIdentityOptions{Authority: IssueAuthorityLinear}); err != nil {
+		t.Fatalf("SetIssueIdentity() error = %v", err)
+	}
+	issue, err := store.CreateIssue(ctx, root, IssueCreateOptions{Title: "Delegated", Alias: "ENG-88"})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if issue.Alias != "ENG-88" {
+		t.Fatalf("alias = %q, want ENG-88", issue.Alias)
+	}
+	after, err := store.GetIssueIdentity(ctx, root)
+	if err != nil {
+		t.Fatalf("GetIssueIdentity() error = %v", err)
+	}
+	if after.NextNumber != 1 {
+		t.Fatalf("next_number = %d, want 1", after.NextNumber)
+	}
+}
+
 func TestIssueHardDeleteDoesNotReissueNumber(t *testing.T) {
 	root, store := issueTestFixture(t)
 	ctx := context.Background()

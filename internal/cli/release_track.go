@@ -240,6 +240,8 @@ func (r Runner) runReleaseCut(args []string, out io.Writer, runtimeRoot string) 
 	}
 	fmt.Fprintf(out, "Recorded release %s at %s (%d member(s))\n", recorded.Tag, recorded.TaggedCommit, len(recorded.Members))
 
+	r.pushLinearReleaseOnCut(out, projectRoot, resolver, recorded)
+
 	if options.noGh {
 		fmt.Fprintln(out, "GitHub release skipped (--no-gh)")
 		return nil
@@ -259,6 +261,55 @@ func (r Runner) runReleaseCut(args []string, out io.Writer, runtimeRoot string) 
 	}
 	fmt.Fprintln(out, "Created GitHub release draft")
 	return nil
+}
+
+func (r Runner) pushLinearReleaseOnCut(out io.Writer, projectRoot project.Root, resolver state.PathResolver, recorded state.Release) {
+	identity, ok, err := state.LookupIssueIdentity(context.Background(), projectRoot, resolver)
+	if err != nil {
+		r.warnLinearReleasePublication(out, recorded, err.Error(), nil)
+		return
+	}
+	if !ok || identity.Authority != state.IssueAuthorityLinear {
+		return
+	}
+	client, err := state.LinearClientFromEnv()
+	if err != nil {
+		r.warnLinearReleasePublication(out, recorded, err.Error(), nil)
+		return
+	}
+	result, err := state.PushLinearRelease(context.Background(), projectRoot, resolver, client, recorded)
+	if err != nil {
+		r.warnLinearReleasePublication(out, recorded, err.Error(), result.Unmapped)
+		return
+	}
+	if result.Skipped != "" {
+		if result.Skipped == state.LinearReleaseUnsupportedSkip {
+			return
+		}
+		r.warnLinearReleasePublication(out, recorded, result.Skipped, result.Unmapped)
+		return
+	}
+	if result.Supported && result.Release.ID != "" {
+		fmt.Fprintf(out, "Recorded Linear release %s (%d issue(s))\n", result.Release.Name, len(result.Release.IssueKeys))
+	}
+	if len(result.Unmapped) > 0 {
+		r.warnLinearReleasePublication(out, recorded, "", result.Unmapped)
+	}
+}
+
+func (r Runner) warnLinearReleasePublication(out io.Writer, recorded state.Release, reason string, unmapped []string) {
+	warnOut := r.Stderr
+	if warnOut == nil {
+		warnOut = out
+	}
+	switch {
+	case strings.TrimSpace(reason) != "" && len(unmapped) > 0:
+		fmt.Fprintf(warnOut, "warning: recorded release %s at %s but Linear publication failed: %s (unmapped members: %s)\n", recorded.Tag, recorded.TaggedCommit, reason, strings.Join(unmapped, ", "))
+	case strings.TrimSpace(reason) != "":
+		fmt.Fprintf(warnOut, "warning: recorded release %s at %s but Linear publication failed: %s\n", recorded.Tag, recorded.TaggedCommit, reason)
+	case len(unmapped) > 0:
+		fmt.Fprintf(warnOut, "warning: recorded release %s at %s but Linear publication omitted unmapped members: %s\n", recorded.Tag, recorded.TaggedCommit, strings.Join(unmapped, ", "))
+	}
 }
 
 func (r Runner) warnReleaseTrackGitHubFailure(out io.Writer, recorded state.Release, notes string, err error) error {

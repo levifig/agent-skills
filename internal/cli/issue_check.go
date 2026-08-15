@@ -74,9 +74,12 @@ func (r Runner) runIssueCheck(args []string, out io.Writer, runtime state.Runtim
 		}
 		if trackerAuthority(identity.Authority) {
 			publication := ReadinessPublication{
-				IssueID:  readiness.Issue.ID,
-				IssueRef: issueDisplayRef(readiness.Issue),
-				Label:    readinessLabelAgent,
+				IssueID:     readiness.Issue.ID,
+				IssueRef:    issueDisplayRef(readiness.Issue),
+				Label:       readinessLabelAgent,
+				Authority:   identity.Authority,
+				ProjectPath: projectRoot.Path(),
+				StateHome:   r.StateHome,
 			}
 			if options.human != "" {
 				publication.Label = readinessLabelHuman

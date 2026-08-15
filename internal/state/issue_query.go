@@ -28,6 +28,41 @@ type IssueSummary struct {
 	Status string `json:"status"`
 }
 
+// RenderIssueMarkdown is the shaping body loaf push writes to Linear.
+func RenderIssueMarkdown(result IssueResult) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n", result.Issue.Title)
+	if strings.TrimSpace(result.Issue.Body) != "" {
+		fmt.Fprintln(&b)
+		b.WriteString(result.Issue.Body)
+		if !strings.HasSuffix(result.Issue.Body, "\n") {
+			fmt.Fprintln(&b)
+		}
+	}
+	if len(result.Issue.Criteria) > 0 {
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, "## Definition of Done")
+		fmt.Fprintln(&b)
+		checked := result.Issue.Status == IssueStatusDone
+		for _, criterion := range result.Issue.Criteria {
+			mark := " "
+			if checked {
+				mark = "x"
+			}
+			fmt.Fprintf(&b, "- [%s] %s\n", mark, criterion.Text)
+		}
+	}
+	if len(result.Children) > 0 {
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, "## Children")
+		fmt.Fprintln(&b)
+		for _, child := range result.Children {
+			fmt.Fprintf(&b, "- %s: %s\n", firstNonEmpty(child.Alias, child.ID), child.Title)
+		}
+	}
+	return b.String()
+}
+
 // IssueResult is one issue plus project identity for CLI mutation/show JSON.
 type IssueResult struct {
 	ContractVersion    int            `json:"contract_version,omitempty"`
