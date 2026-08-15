@@ -21,7 +21,7 @@ const API_URL = "https://api.anthropic.com/v1/messages";
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 const DEFAULT_MODEL = "claude-opus-4-6";
 const MAX_DESC_CHARS = 250;
-const EXPECTED_SKILL_COUNT = 36;
+const EXPECTED_SKILL_COUNT = 35;
 
 const PRICING = {
   "claude-opus-4-6": { input: 15, output: 75 },
@@ -59,11 +59,6 @@ const TEST_CASES = {
     "Explore several approaches before we choose one",
     "Resume the workflow exploration where we left off",
     "Start an exploration of the caching options and checkpoint it",
-  ],
-  breakdown: [
-    "Break this spec into implementation tasks",
-    "Create tasks for SPEC-015",
-    "Decompose this plan into atomic work items",
   ],
   "loaf-reference": [
     "Which loaf command shows the recent project journal?",
@@ -193,9 +188,11 @@ const TEST_CASES = {
     "Perform a threat analysis on the auth flow",
   ],
   shape: [
-    "Shape this idea into a Change",
+    "Shape this idea into an issue",
     "Write a bounded proposal for the auth feature",
     "Turn this rough concept into an implementable proposal",
+    "Break this issue into child issues",
+    "Decompose this plan into atomic work items",
   ],
   ship: [
     "Ready to merge this PR",
