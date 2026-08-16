@@ -981,3 +981,47 @@ func TestReleaseCutCommitFailureRestoresCleanTree(t *testing.T) {
 		t.Fatalf("failed cut tags = %q", tags)
 	}
 }
+
+func TestReleaseCutCommitFailureRemovesCreatedChangelog(t *testing.T) {
+	repo, stateHome := releaseTrackFixture(t)
+	gitCLI(t, repo, "rm", "CHANGELOG.md")
+	gitCLI(t, repo, "commit", "-m", "chore: drop changelog")
+
+	if _, err := runIssue(t, repo, stateHome, "new", "Ship auth"); err != nil {
+		t.Fatalf("issue new error = %v", err)
+	}
+	writeFile(t, filepath.Join(repo, "auth.txt"), "auth\n")
+	gitCLI(t, repo, "add", "auth.txt")
+	gitCLI(t, repo, "commit", "-m", "feat: add auth LOAF-1")
+
+	hook := filepath.Join(repo, ".git", "hooks", "pre-commit")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write pre-commit hook: %v", err)
+	}
+
+	beforeHEAD := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD")
+	if _, err := os.Stat(filepath.Join(repo, "CHANGELOG.md")); !os.IsNotExist(err) {
+		t.Fatalf("fixture should have no CHANGELOG.md at HEAD: %v", err)
+	}
+
+	out, err := runReleaseTrack(t, repo, stateHome, "cut", "--no-gh")
+	if err == nil {
+		t.Fatalf("cut succeeded, want commit failure\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "Failed to commit release") {
+		t.Fatalf("error = %v, want commit failure", err)
+	}
+	status := gitOutputReleaseTest(t, repo, "status", "--porcelain")
+	if status != "" {
+		t.Fatalf("worktree dirty after failed cut:\n%s", status)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "CHANGELOG.md")); !os.IsNotExist(err) {
+		t.Fatalf("created CHANGELOG.md left behind after failed cut: %v", err)
+	}
+	if got := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD"); got != beforeHEAD {
+		t.Fatalf("failed cut moved HEAD from %s to %s", beforeHEAD, got)
+	}
+	if tags := gitOutputReleaseTest(t, repo, "tag", "--list"); tags != "v1.0.0" {
+		t.Fatalf("failed cut tags = %q", tags)
+	}
+}

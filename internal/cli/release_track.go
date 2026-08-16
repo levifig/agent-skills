@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -343,8 +344,24 @@ func releaseTrackRestorePaths(root string, paths []string) {
 	if len(paths) == 0 {
 		return
 	}
-	args := append([]string{"restore", "--source=HEAD", "--staged", "--worktree", "--"}, paths...)
+	var restore []string
+	for _, path := range paths {
+		if releaseTrackPathExistsAtHEAD(root, path) {
+			restore = append(restore, path)
+			continue
+		}
+		_ = releaseCommandRun(root, "git", "rm", "-f", "--ignore-unmatch", "--", path)
+		_ = os.Remove(filepath.Join(root, path))
+	}
+	if len(restore) == 0 {
+		return
+	}
+	args := append([]string{"restore", "--source=HEAD", "--staged", "--worktree", "--"}, restore...)
 	_ = releaseCommandRun(root, "git", args...)
+}
+
+func releaseTrackPathExistsAtHEAD(root, path string) bool {
+	return releaseCommandRun(root, "git", "cat-file", "-e", "HEAD:"+filepath.ToSlash(path)) == nil
 }
 
 func (r Runner) pushLinearReleaseOnCut(out io.Writer, projectRoot project.Root, resolver state.PathResolver, recorded state.Release) {

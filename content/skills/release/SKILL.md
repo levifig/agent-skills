@@ -110,7 +110,7 @@ Both commands need initialized SQLite state (`loaf state init`, or `loaf state m
 4. Apply the version to detected version files (they must exist and agree)
 5. Prepend drafted notes into `CHANGELOG.md` (after `[Unreleased]`, ahead of prior versions; creates the file if missing)
 6. Commit `chore: release vX.Y.Z`
-7. Unless `--no-tag`: create signed tag `vX.Y.Z` (`git tag -s`)
+7. Unless `--no-tag`: create annotated tag `vX.Y.Z` (`git tag -a`). Signing follows git config (`tag.gpgSign`); cut never passes `-s` or `--no-sign`
 8. Record the release row, issue members, and `--includes` members as facts
 9. Unless `--no-gh`: `gh release create <tag> --draft --title <tag> --notes <notes>` (adds `--prerelease` when the version is a prerelease). Switches to the configured GitHub account first. On `gh` missing, account failure, or create failure: print `warning:` plus a POSIX-quoted `retry:` command; do not fail the cut
 

@@ -34,7 +34,7 @@ The spawning agent provides:
 - Specific task to execute
 - Files or scope to analyze
 - Output location (`.agents/reports/YYYYMMDD-HHMMSS-<name>.md`)
-- Task/spec reference when available
+- Issue reference when available
 
 ## Execution Process
 
@@ -44,7 +44,7 @@ Extract from prompt:
 - What to do (audit, analyze, review)
 - Scope (files, directories)
 - Output location
-- Task ID or spec ID when provided
+- Issue ID when provided
 
 ### 2. Execute Work
 
@@ -66,7 +66,7 @@ report:
   status: unprocessed
   created: "2026-01-23T14:30:00Z"
   background_agent_id: "bg-YYYYMMDD-HHMMSS-description"
-  task_reference: "task or spec reference when provided"
+  issue_reference: "issue reference when provided"
 ---
 
 # Report Title
