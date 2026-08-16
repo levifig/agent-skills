@@ -22,28 +22,22 @@ Loaf is an opinionated agentic framework that gives AI coding assistants structu
 
 Loaf keeps intent, implementation, and learning connected:
 
+```mermaid
+flowchart LR
+    idea["/idea · spark<br/><i>capture — offline-safe, no ID</i>"] --> triage["/triage"]
+    pitch["/pitch<br/><i>problem discovery</i>"] --> shape
+    triage -- promote --> shape["/shape<br/><b>the Issue</b>: body · DoD · out-of-scope"]
+    shape -- "criterion earns its own DoD<br/>loaf issue promote" --> shape
+    shape -- "sharp question" --> decision["decision issue"]
+    decision -- answered --> shape
+    shape -- ready --> build["/implement<br/>loaf issue start: worktree · branch · PR"]
+    build --> ship["/ship<br/><b>the sole quality gate</b>"]
+    ship -- merge --> main[("main")]
+    main -. "reads landed since last tag" .-> release["/release<br/>suggest → cut"]
+    release -- "tag · notes · members as fact" --> main
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    PITCH AND SHAPE                          │
-│                                                             │
-│     /pitch → brief → /shape → Issue (or /bootstrap)         │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                     IMPLEMENT AND SHIP                      │
-│                                                             │
-│                 /implement → review → /ship                 │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                 RELEASE AND PRESERVE                        │
-│                                                             │
-│     /release · journal · /reflect · optional /wrap          │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+
+Everything left of ship plans **forward** and can be re-planned freely — issues are recursive (`loaf issue tree`), questions too foggy to act on stay as prose until they sharpen into decision issues, and Now/Next/Later are advisory buckets. The release track only ever reads **backward**: a release is cut from what actually landed, so it can never contain unimplemented work. The journal records every step; `/reflect` and an optional `/wrap` preserve what the work taught.
 
 ### Pitch and Shape
 
