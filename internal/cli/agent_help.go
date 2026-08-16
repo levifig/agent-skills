@@ -269,19 +269,20 @@ func agentHelpCommands() []agentHelpCommand {
 		{Name: "doctor", Description: "Diagnose project alignment", Options: []agentHelpOption{{Flags: "--fix", Description: "Offer safe repairs with y/N confirmation"}, {Flags: "--force", Description: "With --fix, accept every repair without prompting"}, {Flags: "--verbose", Description: "Show details"}, {Flags: "--json", Description: "Output the identical check set as read-only JSON; never prompts or repairs"}}},
 		{
 			Name:        "release",
-			Description: "Create a new release with changelog, version bump, and tag",
-			Options: []agentHelpOption{
-				{Flags: "--dry-run", Description: "Preview release without making changes"},
-				{Flags: "--bump <type>", Description: "Skip interactive bump choice"},
-				{Flags: "--base <ref>", Description: "Use commits since ref"},
-				{Flags: "--no-tag", Description: "Skip git tag creation"},
-				{Flags: "--tag", Description: "Force git tag creation"},
-				{Flags: "--no-gh", Description: "Skip GitHub release draft"},
-				{Flags: "--gh", Description: "Force GitHub release draft"},
-				{Flags: "--version-file <path>", Description: "Override version file path"},
-				{Flags: "--pre-merge", Description: "Prepare release artifacts before squash-merge"},
-				{Flags: "--post-merge", Description: "Finalize release after squash-merge"},
-				{Flags: "-y, --yes", Description: "Skip confirmation prompt"},
+			Description: "Cut a retroactive release from already-landed work",
+			Subcommands: []agentHelpSubcommand{
+				{Name: "suggest", Description: "Report landed work since the last version tag. Writes nothing.", Options: []agentHelpOption{
+					{Flags: "--base <ref>", Description: "Use commits since <ref> instead of last tag"},
+					{Flags: "--json", Description: "Output the suggestion as JSON"},
+				}},
+				{Name: "cut", Description: "Cut a retroactive release from landed work. Records members as facts.", Options: []agentHelpOption{
+					{Flags: "--base <ref>", Description: "Use commits since <ref> instead of last tag"},
+					{Flags: "--bump <type>", Description: "Override the suggested bump"},
+					{Flags: "--includes <version|tag>", Description: "Reference a prior release (repeatable)"},
+					{Flags: "--no-tag", Description: "Skip git tag creation (tag v<version> must already exist)"},
+					{Flags: "--no-gh", Description: "Skip GitHub release draft"},
+					{Flags: "--dry-run", Description: "Print the plan and write nothing"},
+				}},
 			},
 		},
 		{Name: "version", Description: "Show version and content counts"},

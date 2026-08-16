@@ -64,7 +64,7 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf config` | Validate and refresh project Loaf config | check |
 | `loaf hooks` | Inspect and set which Loaf hooks project into an installed harness's hooks file | list, enable, disable |
 | `loaf init` | Initialize a project with Loaf structure | — |
-| `loaf release` | Create a new release with changelog, version bump, and tag | suggest, cut |
+| `loaf release` | Cut a retroactive release from already-landed work | suggest, cut |
 | `loaf search` | Search SQLite artifact bodies, journal entries, and indexed docs | — |
 | `loaf docs` | Manage docs/ indexing | index |
 | `loaf render` | Maintain committed durable Markdown renders | sweep |

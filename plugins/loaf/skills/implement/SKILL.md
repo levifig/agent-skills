@@ -9,7 +9,7 @@ description: >-
   agent spawn plans and progress tracking. Not for shaping or decomposition (use
   shape), research, or review.
 user-invocable: true
-argument-hint: '[TASK-XXX | SPEC-XXX | TASK-XXX..YYY | TASK-XXX,YYY | description]'
+argument-hint: '[LOAF-42 | next | description]'
 version: 0.2.21
 ---
 

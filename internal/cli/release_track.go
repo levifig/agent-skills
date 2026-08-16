@@ -148,9 +148,6 @@ func (r Runner) runReleaseCut(args []string, out io.Writer, runtimeRoot string) 
 		included = append(included, release)
 	}
 
-	if err := state.ProbeWritable(context.Background(), projectRoot, resolver); err != nil {
-		return fmt.Errorf("release database is not writable: %w", err)
-	}
 	if tagName, commit, version, ok := findUnrecordedReleaseCommit(runtimeRoot, projectRoot, resolver); ok {
 		suggestion.SuggestedVersion = version
 		if options.dryRun {
@@ -346,7 +343,7 @@ func releaseTrackRestorePaths(root string, paths []string) {
 	if len(paths) == 0 {
 		return
 	}
-	args := append([]string{"checkout", "--"}, paths...)
+	args := append([]string{"restore", "--source=HEAD", "--staged", "--worktree", "--"}, paths...)
 	_ = releaseCommandRun(root, "git", args...)
 }
 
@@ -911,7 +908,11 @@ func releaseTrackCurrentVersion(root, baseRef string) (string, error) {
 		}
 		return tag, nil
 	}
-	if version, err := releaseTrackCommittedVersion(root, baseRef); err != nil {
+	ref := strings.TrimSpace(baseRef)
+	if ref == "" {
+		ref = "HEAD"
+	}
+	if version, err := releaseTrackCommittedVersion(root, ref); err != nil {
 		return "", err
 	} else if version != "" {
 		return version, nil

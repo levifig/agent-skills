@@ -880,3 +880,104 @@ func TestReleaseLegacyFlagPathStillDispatches(t *testing.T) {
 		t.Fatalf("release help missing suggest/cut:\n%s", output)
 	}
 }
+
+func releaseTrackUntaggedFixture(t *testing.T) (repo, stateHome string) {
+	t.Helper()
+	repo = seedReleaseTaggedRepo(t)
+	gitCLI(t, repo, "tag", "-d", "v1.0.0")
+	stateHome = t.TempDir()
+	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: repo, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
+		t.Fatalf("state init error = %v", err)
+	}
+	return repo, stateHome
+}
+
+func TestReleaseSuggestAndCutUseCommittedVersionWhenNoTag(t *testing.T) {
+	repo, stateHome := releaseTrackUntaggedFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Ship auth"); err != nil {
+		t.Fatalf("issue new error = %v", err)
+	}
+	writeFile(t, filepath.Join(repo, "auth.txt"), "auth\n")
+	gitCLI(t, repo, "add", "auth.txt")
+	gitCLI(t, repo, "commit", "-m", "feat: add auth LOAF-1")
+
+	out, err := runReleaseTrack(t, repo, stateHome, "suggest")
+	if err != nil {
+		t.Fatalf("release suggest error = %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "Suggested bump: minor → 1.1.0") {
+		t.Fatalf("suggest = %q, want 1.1.0 from committed package.json 1.0.0", out)
+	}
+
+	cutOut, err := runReleaseTrack(t, repo, stateHome, "cut", "--no-gh")
+	if err != nil {
+		t.Fatalf("release cut error = %v\n%s", err, cutOut)
+	}
+	if !strings.Contains(cutOut, "Recorded release v1.1.0") {
+		t.Fatalf("cut output = %q", cutOut)
+	}
+	pkg, err := os.ReadFile(filepath.Join(repo, "package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(pkg), `"version": "1.1.0"`) {
+		t.Fatalf("package.json = %s", pkg)
+	}
+	if tags := gitOutputReleaseTest(t, repo, "tag", "--list"); !strings.Contains(tags, "v1.1.0") {
+		t.Fatalf("tags = %q, want v1.1.0", tags)
+	}
+}
+
+func TestReleaseCutCommitFailureRestoresCleanTree(t *testing.T) {
+	repo, stateHome := releaseTrackFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Ship auth"); err != nil {
+		t.Fatalf("issue new error = %v", err)
+	}
+	writeFile(t, filepath.Join(repo, "auth.txt"), "auth\n")
+	gitCLI(t, repo, "add", "auth.txt")
+	gitCLI(t, repo, "commit", "-m", "feat: add auth LOAF-1")
+
+	hook := filepath.Join(repo, ".git", "hooks", "pre-commit")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write pre-commit hook: %v", err)
+	}
+
+	beforePkg, err := os.ReadFile(filepath.Join(repo, "package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeLog, err := os.ReadFile(filepath.Join(repo, "CHANGELOG.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeHEAD := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD")
+
+	out, err := runReleaseTrack(t, repo, stateHome, "cut", "--no-gh")
+	if err == nil {
+		t.Fatalf("cut succeeded, want commit failure\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "Failed to commit release") {
+		t.Fatalf("error = %v, want commit failure", err)
+	}
+	status := gitOutputReleaseTest(t, repo, "status", "--porcelain")
+	if status != "" {
+		t.Fatalf("worktree dirty after failed cut:\n%s", status)
+	}
+	afterPkg, err := os.ReadFile(filepath.Join(repo, "package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterLog, err := os.ReadFile(filepath.Join(repo, "CHANGELOG.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(beforePkg, afterPkg) || !bytes.Equal(beforeLog, afterLog) {
+		t.Fatal("failed cut left version or changelog changes in the worktree")
+	}
+	if got := gitOutputReleaseTest(t, repo, "rev-parse", "HEAD"); got != beforeHEAD {
+		t.Fatalf("failed cut moved HEAD from %s to %s", beforeHEAD, got)
+	}
+	if tags := gitOutputReleaseTest(t, repo, "tag", "--list"); tags != "v1.0.0" {
+		t.Fatalf("failed cut tags = %q", tags)
+	}
+}

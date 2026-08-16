@@ -109,7 +109,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 		},
 		{
 			Name:        "release",
-			Description: "Create a new release with changelog, version bump, and tag",
+			Description: "Cut a retroactive release from already-landed work",
 			Subcommands: []cliReferenceSubcommand{
 				{Name: "suggest", Description: "Report landed work since the last version tag. Writes nothing.", Options: []cliReferenceOption{
 					{Flags: "--base <ref>", Description: "Use commits since <ref> instead of last tag"},
@@ -123,19 +123,6 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--no-gh", Description: "Skip GitHub release draft"},
 					{Flags: "--dry-run", Description: "Print the plan and write nothing"},
 				}},
-			},
-			Options: []cliReferenceOption{
-				{Flags: "--dry-run", Description: "Preview release without making changes"},
-				{Flags: "--bump <type>", Description: "Skip interactive bump choice (prerelease, release, major, minor, patch); only explicit prerelease advances an existing prerelease during a lineage freeze; --post-merge may finalize that prepared prerelease"},
-				{Flags: "--base <ref>", Description: "Use commits since <ref> instead of last tag (e.g. main)"},
-				{Flags: "--tag", Description: "Force git tag creation (overrides --pre-merge default)"},
-				{Flags: "--no-tag", Description: "Skip git tag creation"},
-				{Flags: "--gh", Description: "Force GitHub release draft (overrides --pre-merge default)"},
-				{Flags: "--no-gh", Description: "Skip GitHub release draft"},
-				{Flags: "--pre-merge", Description: "Shortcut for --no-tag --no-gh --base <auto-detected>"},
-				{Flags: "--post-merge", Description: "Finalize release after squash-merge"},
-				{Flags: "--version-file <path>", Description: "Override version file path (repeatable). Replaces configured version files and root auto-detection."},
-				{Flags: "-y, --yes", Description: "Skip confirmation prompt"},
 			},
 		},
 		{
