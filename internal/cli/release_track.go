@@ -245,7 +245,7 @@ func (r Runner) runReleaseCut(args []string, out io.Writer, runtimeRoot string) 
 	fmt.Fprintln(out, "Committed release artifacts")
 
 	if !options.noTag {
-		if err := releaseCommandRun(runtimeRoot, "git", "tag", "-s", tagName, "-m", "Release "+suggestion.SuggestedVersion); err != nil {
+		if err := releaseCommandRun(runtimeRoot, "git", "tag", "-a", tagName, "-m", "Release "+suggestion.SuggestedVersion); err != nil {
 			return fmt.Errorf("committed release artifacts but failed to create tag %s: %w; delete the release commit or create the tag, then re-run loaf release cut --no-tag", tagName, err)
 		}
 		fmt.Fprintf(out, "Created tag %s\n", tagName)
