@@ -9,7 +9,7 @@ import (
 func TestCommandAuthorityForUsesExplicitBasicLeafPrefixes(t *testing.T) {
 	for _, args := range [][]string{
 		{"journal", "log", "--execpolicy-safe", "decision(scope): message"},
-		{"task", "create", "--title", "task"},
+		{"task", "list"},
 		{"docs", "index", "--rebuild"},
 		{"state", "backup", "verify", "/tmp/backup.sqlite"},
 		{"state", "export", "all", "--format", "json"},
@@ -42,6 +42,10 @@ func TestCommandAuthorityForDefaultsToOperatorForParentsAndUnsafeLeaves(t *testi
 		{"journal"},
 		{"journal", "log", "decision(scope): message"},
 		{"task", "unknown"},
+		{"task", "create", "--title", "task"},
+		{"task", "update", "TASK-001", "--status", "done"},
+		{"task", "archive", "TASK-001"},
+		{"intent", "create", "--title", "intent", "--body", "body"},
 		{"state", "doctor"}, // --fix means the whole leaf is operator.
 		{"state", "init"},
 		{"state", "repair", "journal-search"},

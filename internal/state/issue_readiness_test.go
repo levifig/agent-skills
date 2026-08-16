@@ -23,10 +23,10 @@ func TestPromoteRecordsClaimAndCoveragePasses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue() error = %v", err)
 	}
-	if _, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 1); err != nil {
+	if _, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 1, ""); err != nil {
 		t.Fatalf("Promote(1) error = %v", err)
 	}
-	if _, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 2); err != nil {
+	if _, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 2, ""); err != nil {
 		t.Fatalf("Promote(2) error = %v", err)
 	}
 
@@ -68,7 +68,7 @@ func TestUncoveredParentCriterionFailsReadiness(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue() error = %v", err)
 	}
-	if _, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 1); err != nil {
+	if _, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 1, ""); err != nil {
 		t.Fatalf("Promote(1) error = %v", err)
 	}
 
@@ -104,7 +104,7 @@ func TestOrphanChildCriterionIsReportedWithRemedy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue() error = %v", err)
 	}
-	child, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 1)
+	child, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 1, "")
 	if err != nil {
 		t.Fatalf("Promote() error = %v", err)
 	}
@@ -317,7 +317,7 @@ func TestReplaceIssueCriteriaPreservesClaimIDsAndDropsTail(t *testing.T) {
 	}
 	ids := []string{parent.Criteria[0].ID, parent.Criteria[1].ID, parent.Criteria[2].ID}
 	for i := 1; i <= 3; i++ {
-		if _, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, i); err != nil {
+		if _, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, i, ""); err != nil {
 			t.Fatalf("Promote(%d) error = %v", i, err)
 		}
 	}
@@ -395,7 +395,7 @@ func TestReplaceIssueCriteriaOnChildPreservesClaims(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue(parent) error = %v", err)
 	}
-	child, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 1)
+	child, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 1, "")
 	if err != nil {
 		t.Fatalf("Promote() error = %v", err)
 	}
@@ -657,7 +657,7 @@ func TestRemoveCriterionPreservesRemainingClaimIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue() error = %v", err)
 	}
-	if _, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 2); err != nil {
+	if _, err := store.PromoteIssueCriterion(ctx, root, parent.Alias, 2, ""); err != nil {
 		t.Fatalf("Promote(2) error = %v", err)
 	}
 	keptID := ""

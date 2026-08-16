@@ -159,16 +159,27 @@ func (r Runner) runIssueStop(args []string, out io.Writer, runtime state.Runtime
 		return fmt.Errorf("issue %s is not started", issueDisplayRef(issue))
 	}
 
-	alreadyGone, err := removeIssueWorktree(projectRoot.Path(), issue.StartedWorktree, options.force)
-	if err != nil {
-		return err
-	}
+	savedBranch := issue.StartedBranch
+	savedWorktree := issue.StartedWorktree
 
 	cleared, err := state.UpdateIssue(context.Background(), projectRoot, resolver, state.IssueUpdateOptions{
 		Ref:        issue.ID,
 		SetStarted: true,
 	})
 	if err != nil {
+		return err
+	}
+
+	alreadyGone, err := removeIssueWorktreeFn(projectRoot.Path(), savedWorktree, options.force)
+	if err != nil {
+		if _, restoreErr := state.UpdateIssue(context.Background(), projectRoot, resolver, state.IssueUpdateOptions{
+			Ref:             issue.ID,
+			StartedBranch:   savedBranch,
+			StartedWorktree: savedWorktree,
+			SetStarted:      true,
+		}); restoreErr != nil {
+			return fmt.Errorf("remove worktree: %w (also failed to restore started fields: %v)", err, restoreErr)
+		}
 		return err
 	}
 
@@ -428,6 +439,8 @@ func wrapIssueStartUpdateError(updateErr, cleanupErr error, worktree, branch str
 	}
 	return fmt.Errorf("%w (also failed to clean up leftover worktree %s branch %s: %v)", updateErr, worktree, branch, cleanupErr)
 }
+
+var removeIssueWorktreeFn = removeIssueWorktree
 
 func removeIssueWorktree(repoRoot, worktree string, force bool) (alreadyGone bool, err error) {
 	if strings.TrimSpace(worktree) == "" {

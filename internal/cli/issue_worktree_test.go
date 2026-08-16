@@ -281,6 +281,43 @@ func TestRunnerIssueStopRefusesDirtyWithoutForce(t *testing.T) {
 	}
 }
 
+func TestRunnerIssueStopRestoresStartedFieldsIfWorktreeRemovalFails(t *testing.T) {
+	repo, stateHome := issueGitFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Restore"); err != nil {
+		t.Fatalf("issue new error = %v", err)
+	}
+	startedOut, err := runIssue(t, repo, stateHome, "start", "LOAF-1", "--json")
+	if err != nil {
+		t.Fatalf("issue start error = %v", err)
+	}
+	started := decodeIssueStart(t, startedOut)
+
+	orig := removeIssueWorktreeFn
+	removeIssueWorktreeFn = func(repoRoot, worktree string, force bool) (bool, error) {
+		return false, errors.New("injected worktree remove failure")
+	}
+	t.Cleanup(func() { removeIssueWorktreeFn = orig })
+
+	_, err = runIssue(t, repo, stateHome, "stop", "LOAF-1")
+	if err == nil || !strings.Contains(err.Error(), "injected worktree remove failure") {
+		t.Fatalf("stop error = %v, want injected failure", err)
+	}
+	if _, statErr := os.Stat(started.Worktree); statErr != nil {
+		t.Fatalf("worktree was removed after failed stop: %v", statErr)
+	}
+	root, err := project.ResolveRoot(repo)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	issue, err := state.GetIssue(context.Background(), root, state.PathResolver{StateHome: stateHome}, "LOAF-1")
+	if err != nil {
+		t.Fatalf("GetIssue() error = %v", err)
+	}
+	if issue.StartedBranch != started.Branch || issue.StartedWorktree != started.Worktree {
+		t.Fatalf("started fields after failed stop = %q / %q, want %q / %q", issue.StartedBranch, issue.StartedWorktree, started.Branch, started.Worktree)
+	}
+}
+
 func TestRunnerIssueStopCleansMissingWorktree(t *testing.T) {
 	repo, stateHome := issueGitFixture(t)
 	if _, err := runIssue(t, repo, stateHome, "new", "Gone"); err != nil {

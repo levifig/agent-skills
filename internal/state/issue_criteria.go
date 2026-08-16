@@ -304,20 +304,26 @@ UPDATE issue_criteria SET position = ?, updated_at = ? WHERE project_id = ? AND 
 
 // PromoteIssueCriterion creates a child delivery issue from the criterion at
 // position. The parent criterion stays in place.
-func PromoteIssueCriterion(ctx context.Context, root project.Root, resolver PathResolver, ref string, position int) (Issue, error) {
+func PromoteIssueCriterion(ctx context.Context, root project.Root, resolver PathResolver, ref string, position int, alias ...string) (Issue, error) {
 	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
 	if err != nil {
 		return Issue{}, err
 	}
 	defer store.Close()
-	return store.PromoteIssueCriterion(ctx, root, ref, position)
+	provided := ""
+	if len(alias) > 0 {
+		provided = alias[0]
+	}
+	return store.PromoteIssueCriterion(ctx, root, ref, position, provided)
 }
 
 // PromoteIssueCriterion creates a child issue on an open store. The promoted
 // criterion is copied as the child's first criterion and a claim is recorded
 // from that child criterion to the parent criterion, so coverage is satisfied
-// by construction.
-func (s *Store) PromoteIssueCriterion(ctx context.Context, root project.Root, ref string, position int) (Issue, error) {
+// by construction. A nonempty alias is stored as-is and does not advance the
+// local identity counter.
+func (s *Store) PromoteIssueCriterion(ctx context.Context, root project.Root, ref string, position int, providedAlias string) (Issue, error) {
+	providedAlias = strings.TrimSpace(providedAlias)
 	if position < 1 {
 		return Issue{}, &IssueValidationError{Field: "position", Err: fmt.Errorf("must be >= 1")}
 	}
@@ -352,9 +358,13 @@ func (s *Store) PromoteIssueCriterion(ctx context.Context, root project.Root, re
 	if err := rejectIssueParentCycle(ctx, tx, projectID, issueID, parent.ID); err != nil {
 		return Issue{}, err
 	}
-	alias, err := mintLocalIssueAliasTx(ctx, tx, projectID, now)
-	if err != nil {
-		return Issue{}, err
+	alias := providedAlias
+	if alias == "" {
+		var mintErr error
+		alias, mintErr = mintLocalIssueAliasTx(ctx, tx, projectID, now)
+		if mintErr != nil {
+			return Issue{}, mintErr
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO issues (id, project_id, parent_id, kind, title, body, fog, status, archived_at, created_at, updated_at)

@@ -412,11 +412,11 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  migrate       Run migration workflows")
 	fmt.Fprintln(out, "  render        Maintain durable markdown renders")
 	fmt.Fprintln(out, "  journal       Record and read the project journal")
-	fmt.Fprintln(out, "  intent        Manage tracked Intent")
+	fmt.Fprintln(out, "  intent        Show tracked Intent (writes frozen; use issue)")
 	fmt.Fprintln(out, "  exploration   Manage Exploration continuity")
 	fmt.Fprintln(out, "  conversation  Manage conversation provenance")
 	fmt.Fprintln(out, "  intake        Read the local intake projection")
-	fmt.Fprintln(out, "  task          Manage tasks")
+	fmt.Fprintln(out, "  task          Show tasks (writes frozen; use issue)")
 	fmt.Fprintln(out, "  issue         Manage issues")
 	fmt.Fprintln(out, "  report        Manage reports")
 	fmt.Fprintln(out, "  plan          Manage plans")
@@ -425,7 +425,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  kb            Manage knowledge base")
 	fmt.Fprintln(out, "  check         Run hook checks")
 	fmt.Fprintln(out, "  doctor        Diagnose project alignment")
-	fmt.Fprintln(out, "  release       Create a release")
+	fmt.Fprintln(out, "  release       Cut a retroactive release (suggest, cut)")
 	fmt.Fprintln(out, "  version       Show version and content counts")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
@@ -4381,18 +4381,14 @@ func (r Runner) runTask(args []string, out io.Writer, runtime state.Runtime) err
 		return nil
 	}
 	switch args[0] {
-	case "create":
-		return r.runTaskCreate(args[1:], out, runtime)
+	case "create", "update", "archive":
+		return frozenWorkModelError("loaf task")
 	case "list":
 		return r.runTaskList(args[1:], out, runtime)
 	case "show":
 		return r.runTaskShow(args[1:], out, runtime)
 	case "status":
 		return r.runTaskStatus(args[1:], out, runtime)
-	case "update":
-		return r.runTaskUpdate(args[1:], out, runtime)
-	case "archive":
-		return r.runTaskArchive(args[1:], out, runtime)
 	case "refresh":
 		return r.runTaskRefresh(args[1:], out, runtime)
 	case "sync":
@@ -4406,6 +4402,8 @@ func writeTaskHelp(out io.Writer) {
 	fmt.Fprintln(out, "Usage: loaf task <subcommand> [options]")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Manage project tasks in native SQLite state or markdown compatibility mode.")
+	fmt.Fprintln(out)
+	writeFrozenWorkModelNote(out, "loaf task", "create, update, archive")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Superseded by loaf issue for new work.")
 	fmt.Fprintln(out)
@@ -4424,7 +4422,7 @@ func writeTaskHelp(out io.Writer) {
 }
 
 func writeTaskCreateHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task create --title <title> [options]", "Create a task.", "--title      Task title", "--spec       Associated spec", "--priority   Task priority: "+validTaskPriorityText(), "--depends-on Comma-separated task refs", "--json       Output created task, event, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task create --title <title> [options]", "Deprecated: loaf task create is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--title      Task title", "--spec       Associated spec", "--priority   Task priority: "+validTaskPriorityText(), "--depends-on Comma-separated task refs", "--json       Output created task, event, global database scope, and project identity as JSON")
 }
 
 func writeTaskListHelp(out io.Writer) {
@@ -4440,11 +4438,11 @@ func writeTaskStatusHelp(out io.Writer) {
 }
 
 func writeTaskUpdateHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task update <task> [options]", "Update task metadata.", "--status     New task status: "+validTaskStatusText(), "--priority   New task priority: "+validTaskPriorityText(), "--spec       Associated spec", "--depends-on Comma-separated task refs or none", "--json       Output updated task, event, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task update <task> [options]", "Deprecated: loaf task update is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--status     New task status: "+validTaskStatusText(), "--priority   New task priority: "+validTaskPriorityText(), "--spec       Associated spec", "--depends-on Comma-separated task refs or none", "--json       Output updated task, event, global database scope, and project identity as JSON")
 }
 
 func writeTaskArchiveHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task archive (<task...>|--spec <spec>) [--json]", "Archive done tasks.", "--spec       Archive done tasks for one spec", "--json       Output archive result, archived tasks, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task archive (<task...>|--spec <spec>) [--json]", "Deprecated: loaf task archive is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--spec       Archive done tasks for one spec", "--json       Output archive result, archived tasks, global database scope, and project identity as JSON")
 }
 
 func writeTaskRefreshHelp(out io.Writer) {

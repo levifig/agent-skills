@@ -351,6 +351,45 @@ func TestRunnerIssueCheckAttachesConfiguredTeamLabel(t *testing.T) {
 	}
 }
 
+func TestRunnerIssuePromoteMintsLinearChildAndLeavesCounter(t *testing.T) {
+	workingDir, stateHome, fake := linearIssueCLIFixture(t)
+	if _, err := runIssue(t, workingDir, stateHome, "new", "Parent"); err != nil {
+		t.Fatalf("issue new parent error = %v", err)
+	}
+	if _, err := runIssue(t, workingDir, stateHome, "dod", "add", "ENG-1", "First slice"); err != nil {
+		t.Fatalf("dod add error = %v", err)
+	}
+	out, err := runIssue(t, workingDir, stateHome, "promote", "ENG-1", "1", "--json")
+	if err != nil {
+		t.Fatalf("issue promote error = %v\n%s", err, out)
+	}
+	child := decodeIssueResult(t, out)
+	if child.Issue.Alias != "ENG-2" {
+		t.Fatalf("promoted alias = %q, want ENG-2", child.Issue.Alias)
+	}
+	if _, ok := fake.Issue("ENG-2"); !ok {
+		t.Fatal("Linear issue ENG-2 was not created")
+	}
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	identity, err := state.GetIssueIdentity(context.Background(), root, state.PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("GetIssueIdentity() error = %v", err)
+	}
+	if identity.NextNumber != 1 {
+		t.Fatalf("next_number = %d, want 1", identity.NextNumber)
+	}
+	shown, err := state.ShowIssue(context.Background(), root, state.PathResolver{StateHome: stateHome}, child.Issue.ID)
+	if err != nil {
+		t.Fatalf("ShowIssue() error = %v", err)
+	}
+	if shown.Issue.ParentID == "" {
+		t.Fatal("promoted child has empty parent")
+	}
+}
+
 func TestRunnerIssueLocalAuthorityDoesNotCallLinear(t *testing.T) {
 	workingDir, stateHome := issueCLIFixture(t)
 	hits := 0

@@ -148,11 +148,41 @@ func (r Runner) runReleaseCut(args []string, out io.Writer, runtimeRoot string) 
 		included = append(included, release)
 	}
 
+	if err := state.ProbeWritable(context.Background(), projectRoot, resolver); err != nil {
+		return fmt.Errorf("release database is not writable: %w", err)
+	}
+	if tagName, commit, version, ok := findUnrecordedReleaseCommit(runtimeRoot, projectRoot, resolver); ok {
+		suggestion.SuggestedVersion = version
+		if options.dryRun {
+			fmt.Fprintf(out, "--dry-run: would record existing tag %s at %s; nothing written.\n", tagName, commit)
+			return nil
+		}
+		return r.completeReleaseCutRecord(out, projectRoot, resolver, suggestion, included, tagName, commit, options)
+	}
+
 	tagName := "v" + suggestion.SuggestedVersion
+
+	existingTagCommit, tagExists := releaseTrackLookupTag(runtimeRoot, tagName)
+	existingRelease, releaseExists := releaseTrackLookupRecorded(projectRoot, resolver, tagName)
+
+	if releaseExists && tagExists && existingRelease.TaggedCommit == existingTagCommit {
+		fmt.Fprintf(out, "Release %s already recorded at %s; nothing to cut.\n", existingRelease.Tag, existingRelease.TaggedCommit)
+		return r.finishReleaseCut(out, projectRoot, resolver, existingRelease, suggestion, options)
+	}
+	if releaseExists && !tagExists {
+		return fmt.Errorf("release %s is recorded at %s but tag %s is missing; restore the tag or delete the row before cutting", existingRelease.Version, existingRelease.TaggedCommit, tagName)
+	}
+	if tagExists && releaseExists && existingRelease.TaggedCommit != existingTagCommit {
+		return fmt.Errorf("tag %s points at %s but release row records %s", tagName, existingTagCommit, existingRelease.TaggedCommit)
+	}
+
 	if options.noTag {
-		if _, err := releaseTrackTagCommit(runtimeRoot, tagName); err != nil {
+		if !tagExists {
 			return fmt.Errorf("cut --no-tag requires tag %s to already exist; create it first or omit --no-tag", tagName)
 		}
+	} else if tagExists && !releaseExists {
+		// Resume after a partial cut: do not rewrite files or retag.
+		return r.completeReleaseCutRecord(out, projectRoot, resolver, suggestion, included, tagName, existingTagCommit, options)
 	}
 
 	if options.dryRun {
@@ -187,28 +217,36 @@ func (r Runner) runReleaseCut(args []string, out io.Writer, runtimeRoot string) 
 	if err != nil {
 		return fmt.Errorf("Failed to update version files: %w", err)
 	}
+
+	written := make([]string, 0, len(updates)+1)
 	for _, update := range updates {
 		if err := os.WriteFile(update.path, []byte(update.content), 0o644); err != nil {
+			releaseTrackRestorePaths(runtimeRoot, written)
 			return fmt.Errorf("Failed to update %s: %w", update.relativePath, err)
 		}
+		written = append(written, update.relativePath)
 		fmt.Fprintf(out, "Updated %s (%s → %s)\n", update.relativePath, update.oldVersion, suggestion.SuggestedVersion)
 	}
 	if err := writeReleaseChangelog(runtimeRoot, suggestion.Notes); err != nil {
+		releaseTrackRestorePaths(runtimeRoot, written)
 		return fmt.Errorf("Failed to update CHANGELOG.md: %w", err)
 	}
+	written = append(written, "CHANGELOG.md")
 	fmt.Fprintln(out, "Updated CHANGELOG.md")
 
 	if err := releaseCommandRun(runtimeRoot, "git", "add", "-A"); err != nil {
+		releaseTrackRestorePaths(runtimeRoot, written)
 		return fmt.Errorf("Failed to stage release artifacts: %w", err)
 	}
 	if err := releaseCommandRun(runtimeRoot, "git", "commit", "-m", "chore: release "+tagName); err != nil {
+		releaseTrackRestorePaths(runtimeRoot, written)
 		return fmt.Errorf("Failed to commit release: %w", err)
 	}
 	fmt.Fprintln(out, "Committed release artifacts")
 
 	if !options.noTag {
 		if err := releaseCommandRun(runtimeRoot, "git", "tag", "-s", tagName, "-m", "Release "+suggestion.SuggestedVersion); err != nil {
-			return fmt.Errorf("Failed to create tag: %w", err)
+			return fmt.Errorf("committed release artifacts but failed to create tag %s: %w; delete the release commit or create the tag, then re-run loaf release cut --no-tag", tagName, err)
 		}
 		fmt.Fprintf(out, "Created tag %s\n", tagName)
 	} else {
@@ -217,8 +255,12 @@ func (r Runner) runReleaseCut(args []string, out io.Writer, runtimeRoot string) 
 
 	taggedCommit, err := releaseTrackTagCommit(runtimeRoot, tagName)
 	if err != nil {
-		return err
+		return fmt.Errorf("committed release artifacts but tag %s is missing: %w; create the tag, then re-run loaf release cut --no-tag", tagName, err)
 	}
+	return r.completeReleaseCutRecord(out, projectRoot, resolver, suggestion, included, tagName, taggedCommit, options)
+}
+
+func (r Runner) completeReleaseCutRecord(out io.Writer, projectRoot project.Root, resolver state.PathResolver, suggestion releaseTrackSuggestion, included []state.Release, tagName, taggedCommit string, options releaseTrackOptions) error {
 	issueIDs := make([]string, 0, len(suggestion.Landed))
 	for _, landed := range suggestion.Landed {
 		issueIDs = append(issueIDs, landed.ID)
@@ -227,7 +269,7 @@ func (r Runner) runReleaseCut(args []string, out io.Writer, runtimeRoot string) 
 	for _, release := range included {
 		includedIDs = append(includedIDs, release.ID)
 	}
-	recorded, err := state.RecordRelease(context.Background(), projectRoot, resolver, state.RecordReleaseOptions{
+	recorded, err := recordReleaseFn(context.Background(), projectRoot, resolver, state.RecordReleaseOptions{
 		Version:      suggestion.SuggestedVersion,
 		Tag:          tagName,
 		TaggedCommit: taggedCommit,
@@ -236,10 +278,13 @@ func (r Runner) runReleaseCut(args []string, out io.Writer, runtimeRoot string) 
 		IncludedIDs:  includedIDs,
 	})
 	if err != nil {
-		return fmt.Errorf("record release: %w", err)
+		return fmt.Errorf("created tag %s at %s but failed to record the release: %w; re-run loaf release cut --no-tag to complete the record", tagName, taggedCommit, err)
 	}
 	fmt.Fprintf(out, "Recorded release %s at %s (%d member(s))\n", recorded.Tag, recorded.TaggedCommit, len(recorded.Members))
+	return r.finishReleaseCut(out, projectRoot, resolver, recorded, suggestion, options)
+}
 
+func (r Runner) finishReleaseCut(out io.Writer, projectRoot project.Root, resolver state.PathResolver, recorded state.Release, suggestion releaseTrackSuggestion, options releaseTrackOptions) error {
 	r.pushLinearReleaseOnCut(out, projectRoot, resolver, recorded)
 
 	if options.noGh {
@@ -249,18 +294,60 @@ func (r Runner) runReleaseCut(args []string, out io.Writer, runtimeRoot string) 
 	if !releaseGhAvailable() {
 		return r.warnReleaseTrackGitHubFailure(out, recorded, suggestion.Notes, fmt.Errorf("gh not found"))
 	}
-	ghArgs := []string{"release", "create", tagName, "--draft", "--title", tagName, "--notes", suggestion.Notes}
-	if releaseVersionIsPrerelease(suggestion.SuggestedVersion) {
+	ghArgs := []string{"release", "create", recorded.Tag, "--draft", "--title", recorded.Tag, "--notes", suggestion.Notes}
+	if releaseVersionIsPrerelease(recorded.Version) {
 		ghArgs = append(ghArgs, "--prerelease")
 	}
-	if err := verifyConfiguredGitHubAccount(runtimeRoot, out); err != nil {
+	if err := verifyConfiguredGitHubAccount(projectRoot.Path(), out); err != nil {
 		return r.warnReleaseTrackGitHubFailure(out, recorded, suggestion.Notes, err)
 	}
-	if err := releaseCommandRun(runtimeRoot, "gh", ghArgs...); err != nil {
+	if err := releaseCommandRun(projectRoot.Path(), "gh", ghArgs...); err != nil {
 		return r.warnReleaseTrackGitHubFailure(out, recorded, suggestion.Notes, err)
 	}
 	fmt.Fprintln(out, "Created GitHub release draft")
 	return nil
+}
+
+var recordReleaseFn = state.RecordRelease
+
+func findUnrecordedReleaseCommit(root string, projectRoot project.Root, resolver state.PathResolver) (tagName, commit, version string, ok bool) {
+	subject := strings.TrimSpace(releaseCommandOutput(root, "git", "log", "-1", "--pretty=%s"))
+	if !strings.HasPrefix(subject, "chore: release v") {
+		return "", "", "", false
+	}
+	tagName = strings.TrimPrefix(subject, "chore: release ")
+	commit, err := releaseTrackTagCommit(root, tagName)
+	if err != nil {
+		return "", "", "", false
+	}
+	if _, exists := releaseTrackLookupRecorded(projectRoot, resolver, tagName); exists {
+		return "", "", "", false
+	}
+	return tagName, commit, strings.TrimPrefix(tagName, "v"), true
+}
+
+func releaseTrackLookupTag(root, tagName string) (string, bool) {
+	commit, err := releaseTrackTagCommit(root, tagName)
+	if err != nil {
+		return "", false
+	}
+	return commit, true
+}
+
+func releaseTrackLookupRecorded(projectRoot project.Root, resolver state.PathResolver, ref string) (state.Release, bool) {
+	recorded, err := state.GetRelease(context.Background(), projectRoot, resolver, ref)
+	if err != nil {
+		return state.Release{}, false
+	}
+	return recorded, true
+}
+
+func releaseTrackRestorePaths(root string, paths []string) {
+	if len(paths) == 0 {
+		return
+	}
+	args := append([]string{"checkout", "--"}, paths...)
+	_ = releaseCommandRun(root, "git", args...)
 }
 
 func (r Runner) pushLinearReleaseOnCut(out io.Writer, projectRoot project.Root, resolver state.PathResolver, recorded state.Release) {
@@ -805,6 +892,9 @@ func deriveReleaseTrackBump(commits []releaseTrackCommit, byID map[string]state.
 }
 
 func releaseTrackCurrentVersion(root, baseRef string) (string, error) {
+	if err := rejectDirtyReleaseVersionFiles(root); err != nil {
+		return "", err
+	}
 	files, err := detectReleaseVersionFiles(root, nil)
 	if err != nil {
 		return "", err
@@ -813,15 +903,93 @@ func releaseTrackCurrentVersion(root, baseRef string) (string, error) {
 		if err := rejectDisagreeingReleaseVersionFiles(files); err != nil {
 			return "", err
 		}
-		if files[0].CurrentVersion != "" {
-			return files[0].CurrentVersion, nil
-		}
 	}
 	tag := strings.TrimPrefix(baseRef, "v")
 	if _, ok := parseReleaseSemver(tag); ok {
+		if err := rejectVersionFilesDisagreeingWithBaseline(files, tag); err != nil {
+			return "", err
+		}
 		return tag, nil
 	}
+	if version, err := releaseTrackCommittedVersion(root, baseRef); err != nil {
+		return "", err
+	} else if version != "" {
+		return version, nil
+	}
 	return "", nil
+}
+
+func rejectVersionFilesDisagreeingWithBaseline(files []releaseVersionFile, baseline string) error {
+	if strings.TrimSpace(baseline) == "" {
+		return nil
+	}
+	var parts []string
+	disagree := false
+	for _, file := range files {
+		if file.CurrentVersion == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", file.RelativePath, file.CurrentVersion))
+		if file.CurrentVersion != baseline {
+			disagree = true
+		}
+	}
+	if !disagree {
+		return nil
+	}
+	return fmt.Errorf("version files disagree with baseline %s: %s", baseline, strings.Join(parts, ", "))
+}
+
+func rejectDirtyReleaseVersionFiles(root string) error {
+	files, err := detectReleaseVersionFiles(root, nil)
+	if err != nil {
+		return err
+	}
+	var dirty []string
+	for _, file := range files {
+		status := releaseCommandOutput(root, "git", "status", "--porcelain", "--", file.RelativePath)
+		if strings.TrimSpace(status) != "" {
+			dirty = append(dirty, file.RelativePath)
+		}
+	}
+	if len(dirty) == 0 {
+		return nil
+	}
+	return fmt.Errorf("version file %s has uncommitted modifications; commit or revert it before suggesting a release", strings.Join(dirty, ", "))
+}
+
+func releaseTrackCommittedVersion(root, ref string) (string, error) {
+	if strings.TrimSpace(ref) == "" {
+		return "", nil
+	}
+	files, err := detectReleaseVersionFiles(root, nil)
+	if err != nil {
+		return "", err
+	}
+	if len(files) == 0 {
+		return "", nil
+	}
+	var loaded []releaseVersionFile
+	for _, file := range files {
+		body := releaseCommandOutput(root, "git", "show", ref+":"+file.RelativePath)
+		if strings.TrimSpace(body) == "" {
+			continue
+		}
+		version, _, err := parseReleaseVersion(file.RelativePath, []byte(body+"\n"))
+		if err != nil || version == "" {
+			continue
+		}
+		copy := file
+		copy.CurrentVersion = version
+		loaded = append(loaded, copy)
+	}
+	if len(loaded) == 0 {
+		return "", nil
+	}
+	if err := rejectDisagreeingReleaseVersionFiles(loaded); err != nil {
+		return "", err
+	}
+	return loaded[0].CurrentVersion, nil
 }
 
 func rejectDisagreeingReleaseVersionFiles(files []releaseVersionFile) error {

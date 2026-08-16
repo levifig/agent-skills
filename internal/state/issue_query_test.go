@@ -217,7 +217,7 @@ func TestAddRemoveAndPromoteIssueCriterion(t *testing.T) {
 		t.Fatalf("verified = %#v, want V tier on second", verified.Criteria)
 	}
 
-	child, err := store.PromoteIssueCriterion(ctx, root, issue.Alias, 1)
+	child, err := store.PromoteIssueCriterion(ctx, root, issue.Alias, 1, "")
 	if err != nil {
 		t.Fatalf("PromoteIssueCriterion() error = %v", err)
 	}
@@ -294,7 +294,7 @@ func TestExportIssuesIncludesRowsCriteriaAndRelationships(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue() error = %v", err)
 	}
-	child, err := store.PromoteIssueCriterion(ctx, root, first.Alias, 1)
+	child, err := store.PromoteIssueCriterion(ctx, root, first.Alias, 1, "")
 	if err != nil {
 		t.Fatalf("PromoteIssueCriterion() error = %v", err)
 	}

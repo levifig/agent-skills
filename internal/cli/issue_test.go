@@ -415,7 +415,7 @@ func TestRunnerLegacyHelpRedirectsToIssue(t *testing.T) {
 		if err := (Runner{Stdout: &stdout, WorkingDir: workingDir}).Run(args); err != nil {
 			t.Fatalf("Run(%v) error = %v", args, err)
 		}
-		if !strings.Contains(stdout.String(), "Superseded by loaf issue for new work.") {
+		if !strings.Contains(stdout.String(), "loaf issue for new work") {
 			t.Fatalf("%v help missing redirect:\n%s", args, stdout.String())
 		}
 	}

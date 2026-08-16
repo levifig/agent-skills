@@ -106,6 +106,24 @@ func openProjectStoreMutateExisting(ctx context.Context, root project.Root, reso
 	return openProjectStore(ctx, root, resolver, projectStoreMutateExisting)
 }
 
+// ProbeWritable opens the project store for write and rolls back a transaction.
+// Cut uses this to fail closed before mutating git.
+func ProbeWritable(ctx context.Context, root project.Root, resolver PathResolver) error {
+	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("database is not writable: %w", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		return fmt.Errorf("database is not writable: %w", err)
+	}
+	return nil
+}
+
 // openInitializedStore is retained for non-journal callers while they migrate
 // to explicit store intents. It now mutates only existing schema state and
 // never registers or refreshes a project identity.

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -658,27 +659,24 @@ func TestWarnReleaseTrackGitHubFailureQuotesRetryNotes(t *testing.T) {
 
 func TestReleaseCutNoTagIgnoresBranchNamedLikeTag(t *testing.T) {
 	repo, stateHome := releaseTrackFixture(t)
-	writeFile(t, filepath.Join(repo, "package.json"), "{\n  \"name\": \"release-fixture\",\n  \"version\": \"9.9.8\",\n  \"scripts\": {\n    \"build\": \"echo build\"\n  }\n}\n")
-	gitCLI(t, repo, "add", "package.json")
-	gitCLI(t, repo, "commit", "-m", "chore: bump fixture to 9.9.8")
 	if _, err := runIssue(t, repo, stateHome, "new", "Ship"); err != nil {
 		t.Fatalf("issue new error = %v", err)
 	}
 	writeFile(t, filepath.Join(repo, "ship.txt"), "ship\n")
 	gitCLI(t, repo, "add", "ship.txt")
 	gitCLI(t, repo, "commit", "-m", "fix: ship LOAF-1")
-	gitCLI(t, repo, "branch", "v9.9.9")
+	gitCLI(t, repo, "branch", "v1.0.1")
 
-	if got := gitOutputReleaseTest(t, repo, "rev-parse", "v9.9.9^{commit}"); got == "" {
-		t.Fatal("branch v9.9.9 must resolve via unqualified rev-parse")
+	if got := gitOutputReleaseTest(t, repo, "rev-parse", "v1.0.1^{commit}"); got == "" {
+		t.Fatal("branch v1.0.1 must resolve via unqualified rev-parse")
 	}
-	if out, err := exec.Command("git", "-C", repo, "rev-parse", "refs/tags/v9.9.9^{commit}").CombinedOutput(); err == nil {
-		t.Fatalf("tag refs/tags/v9.9.9 unexpectedly exists:\n%s", out)
+	if out, err := exec.Command("git", "-C", repo, "rev-parse", "refs/tags/v1.0.1^{commit}").CombinedOutput(); err == nil {
+		t.Fatalf("tag refs/tags/v1.0.1 unexpectedly exists:\n%s", out)
 	}
 
 	out, err := runReleaseTrack(t, repo, stateHome, "cut", "--no-tag", "--no-gh")
-	if err == nil || !strings.Contains(err.Error(), "v9.9.9") || !strings.Contains(err.Error(), "--no-tag") {
-		t.Fatalf("error = %v, want missing tag v9.9.9\n%s", err, out)
+	if err == nil || !strings.Contains(err.Error(), "v1.0.1") || !strings.Contains(err.Error(), "--no-tag") {
+		t.Fatalf("error = %v, want missing tag v1.0.1\n%s", err, out)
 	}
 }
 
@@ -801,6 +799,76 @@ func gitCommitDated(t *testing.T, repo, date, message string) {
 	}
 }
 
+func TestReleaseSuggestUsesTagBaselineNotWorkingTreeVersion(t *testing.T) {
+	repo, stateHome := releaseTrackFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Ship"); err != nil {
+		t.Fatalf("issue new error = %v", err)
+	}
+	writeFile(t, filepath.Join(repo, "ship.txt"), "ship\n")
+	gitCLI(t, repo, "add", "ship.txt")
+	gitCLI(t, repo, "commit", "-m", "feat: ship LOAF-1")
+
+	out, err := runReleaseTrack(t, repo, stateHome, "suggest")
+	if err != nil {
+		t.Fatalf("release suggest error = %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "1.1.0") {
+		t.Fatalf("suggest = %q, want bump from tag baseline 1.0.0 → 1.1.0", out)
+	}
+}
+
+func TestReleaseSuggestRefusesDirtyVersionFiles(t *testing.T) {
+	repo, stateHome := releaseTrackFixture(t)
+	writeFile(t, filepath.Join(repo, "package.json"), "{\n  \"name\": \"release-fixture\",\n  \"version\": \"9.9.9\",\n  \"scripts\": {\n    \"build\": \"echo build\"\n  }\n}\n")
+
+	out, err := runReleaseTrack(t, repo, stateHome, "suggest")
+	if err == nil {
+		t.Fatalf("suggest succeeded, want dirty version-file refusal\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "package.json") || !strings.Contains(err.Error(), "uncommitted") {
+		t.Fatalf("error = %v, want dirty package.json refusal", err)
+	}
+}
+
+func TestReleaseCutResumesRecordWhenTagExistsWithoutRow(t *testing.T) {
+	repo, stateHome := releaseTrackFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Ship auth"); err != nil {
+		t.Fatalf("issue new error = %v", err)
+	}
+	writeFile(t, filepath.Join(repo, "auth.txt"), "auth\n")
+	gitCLI(t, repo, "add", "auth.txt")
+	gitCLI(t, repo, "commit", "-m", "feat: add auth LOAF-1")
+
+	orig := recordReleaseFn
+	t.Cleanup(func() { recordReleaseFn = orig })
+	recordReleaseFn = func(ctx context.Context, root project.Root, resolver state.PathResolver, options state.RecordReleaseOptions) (state.Release, error) {
+		return state.Release{}, fmt.Errorf("injected record failure")
+	}
+	out, err := runReleaseTrack(t, repo, stateHome, "cut", "--no-gh")
+	recordReleaseFn = orig
+	if err == nil || !strings.Contains(err.Error(), "injected record failure") {
+		t.Fatalf("cut error = %v\n%s, want injected record failure", err, out)
+	}
+	if tags := gitOutputReleaseTest(t, repo, "tag", "--list"); !strings.Contains(tags, "v1.1.0") {
+		t.Fatalf("tags after failed record = %q, want v1.1.0", tags)
+	}
+
+	retry, err := runReleaseTrack(t, repo, stateHome, "cut", "--no-gh")
+	if err != nil {
+		t.Fatalf("cut retry error = %v\n%s", err, retry)
+	}
+	if !strings.Contains(retry, "Recorded release v1.1.0") && !strings.Contains(retry, "already recorded") {
+		t.Fatalf("retry output = %q, want record completed", retry)
+	}
+	root, err := project.ResolveRoot(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.GetRelease(t.Context(), root, state.PathResolver{StateHome: stateHome}, "v1.1.0"); err != nil {
+		t.Fatalf("GetRelease after retry: %v", err)
+	}
+}
+
 func TestReleaseLegacyFlagPathStillDispatches(t *testing.T) {
 	var stdout bytes.Buffer
 	err := Runner{Stdout: &stdout, WorkingDir: t.TempDir()}.Run([]string{"release", "--help"})
@@ -808,7 +876,7 @@ func TestReleaseLegacyFlagPathStillDispatches(t *testing.T) {
 		t.Fatalf("release --help error = %v", err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, "Usage: loaf release [options]") || !strings.Contains(output, "--pre-merge") {
-		t.Fatalf("legacy help broken:\n%s", output)
+	if !strings.Contains(output, "Usage: loaf release <subcommand>") || !strings.Contains(output, "suggest") || !strings.Contains(output, "cut") {
+		t.Fatalf("release help missing suggest/cut:\n%s", output)
 	}
 }

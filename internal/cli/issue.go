@@ -306,34 +306,66 @@ func (r Runner) runIssueNew(args []string, out io.Writer, runtime state.Runtime)
 		options.create.Body = body
 	}
 	resolver := state.PathResolver{StateHome: r.StateHome}
-	identity, ok, err := state.LookupIssueIdentity(context.Background(), projectRoot, resolver)
-	if err != nil {
-		return err
-	}
-	if ok && identity.Authority == state.IssueAuthorityLinear {
-		client, err := state.LinearClientFromEnv()
-		if err != nil {
-			return &state.LinearMintError{Err: err}
-		}
-		minted, err := state.MintLinearIssue(context.Background(), projectRoot, resolver, client, options.create)
-		if err != nil {
-			return err
-		}
-		options.create.Alias = minted.Identifier
-		created, err := state.CreateIssue(context.Background(), projectRoot, resolver, options.create)
-		if err != nil {
-			return &state.LinearOrphanError{Identifier: minted.Identifier, URL: minted.URL, Err: err}
-		}
-		if err := state.BindLinearIssue(context.Background(), projectRoot, resolver, created.ID, minted.Identifier, minted.URL); err != nil {
-			return &state.LinearOrphanError{Identifier: minted.Identifier, URL: minted.URL, Err: err}
-		}
-		return r.finishIssueNew(out, projectRoot, resolver, created.ID, options)
-	}
-	created, err := state.CreateIssue(context.Background(), projectRoot, resolver, options.create)
+	created, err := r.createIssueWithIdentity(projectRoot, resolver, options.create)
 	if err != nil {
 		return err
 	}
 	return r.finishIssueNew(out, projectRoot, resolver, created.ID, options)
+}
+
+type mintedLinearIssue struct {
+	Identifier string
+	URL        string
+}
+
+func (r Runner) mintIssueIdentity(projectRoot project.Root, resolver state.PathResolver, create state.IssueCreateOptions) (alias string, minted *mintedLinearIssue, err error) {
+	identity, ok, err := state.LookupIssueIdentity(context.Background(), projectRoot, resolver)
+	if err != nil {
+		return "", nil, err
+	}
+	if !ok || identity.Authority != state.IssueAuthorityLinear {
+		return "", nil, nil
+	}
+	client, err := state.LinearClientFromEnv()
+	if err != nil {
+		return "", nil, &state.LinearMintError{Err: err}
+	}
+	issue, err := state.MintLinearIssue(context.Background(), projectRoot, resolver, client, create)
+	if err != nil {
+		return "", nil, err
+	}
+	return issue.Identifier, &mintedLinearIssue{Identifier: issue.Identifier, URL: issue.URL}, nil
+}
+
+func (r Runner) bindMintedLinearIssue(projectRoot project.Root, resolver state.PathResolver, issueID string, minted *mintedLinearIssue) error {
+	if minted == nil {
+		return nil
+	}
+	if err := state.BindLinearIssue(context.Background(), projectRoot, resolver, issueID, minted.Identifier, minted.URL); err != nil {
+		return &state.LinearOrphanError{Identifier: minted.Identifier, URL: minted.URL, Err: err}
+	}
+	return nil
+}
+
+func (r Runner) createIssueWithIdentity(projectRoot project.Root, resolver state.PathResolver, create state.IssueCreateOptions) (state.Issue, error) {
+	alias, minted, err := r.mintIssueIdentity(projectRoot, resolver, create)
+	if err != nil {
+		return state.Issue{}, err
+	}
+	if alias != "" {
+		create.Alias = alias
+	}
+	created, err := state.CreateIssue(context.Background(), projectRoot, resolver, create)
+	if err != nil {
+		if minted != nil {
+			return state.Issue{}, &state.LinearOrphanError{Identifier: minted.Identifier, URL: minted.URL, Err: err}
+		}
+		return state.Issue{}, err
+	}
+	if err := r.bindMintedLinearIssue(projectRoot, resolver, created.ID, minted); err != nil {
+		return state.Issue{}, err
+	}
+	return created, nil
 }
 
 func (r Runner) finishIssueNew(out io.Writer, projectRoot project.Root, resolver state.PathResolver, issueID string, options issueNewOptions) error {
@@ -674,8 +706,36 @@ func (r Runner) runIssuePromote(args []string, out io.Writer, runtime state.Runt
 	if err != nil {
 		return err
 	}
-	child, err := state.PromoteIssueCriterion(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref, position)
+	resolver := state.PathResolver{StateHome: r.StateHome}
+	parent, err := state.GetIssue(context.Background(), projectRoot, resolver, ref)
 	if err != nil {
+		return err
+	}
+	var criterion *state.IssueCriterion
+	for i := range parent.Criteria {
+		if parent.Criteria[i].Position == position {
+			criterion = &parent.Criteria[i]
+			break
+		}
+	}
+	if criterion == nil {
+		return fmt.Errorf("issue %s has no criterion at position %d", issueDisplayRef(parent), position)
+	}
+	alias, minted, err := r.mintIssueIdentity(projectRoot, resolver, state.IssueCreateOptions{
+		Title:  criterion.Text,
+		Parent: firstNonEmpty(parent.Alias, parent.ID),
+	})
+	if err != nil {
+		return err
+	}
+	child, err := state.PromoteIssueCriterion(context.Background(), projectRoot, resolver, ref, position, alias)
+	if err != nil {
+		if minted != nil {
+			return &state.LinearOrphanError{Identifier: minted.Identifier, URL: minted.URL, Err: err}
+		}
+		return err
+	}
+	if err := r.bindMintedLinearIssue(projectRoot, resolver, child.ID, minted); err != nil {
 		return err
 	}
 	result, err := state.ShowIssue(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, child.ID)

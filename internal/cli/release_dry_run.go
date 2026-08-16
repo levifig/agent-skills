@@ -1,50 +1,16 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
-
-type releaseOptions struct {
-	dryRun      bool
-	help        bool
-	bump        string
-	base        string
-	tagSet      bool
-	tag         bool
-	ghSet       bool
-	gh          bool
-	yes         bool
-	preMerge    bool
-	postMerge   bool
-	versionFile []string
-	// snapshot is set once by runRelease after the shared derivation; dry-run,
-	// apply, and post-merge consume it instead of re-deriving any field.
-	snapshot releaseSnapshot
-}
-
-// releaseSnapshot is the immutable release plan resolved once per invocation:
-// version-file paths and current version at resolve time, the effective bump,
-// the candidate every consumer must honor, and the commit range that produced them.
-type releaseSnapshot struct {
-	VersionFiles   []releaseVersionFile
-	CurrentVersion string
-	Bump           string
-	Candidate      string
-	BaseRef        string
-	Commits        []releaseCommit
-}
 
 type releaseVersionFile struct {
 	Path           string
@@ -62,21 +28,16 @@ type releaseCommit struct {
 	Raw      string
 }
 
-type releaseArtifactCommand struct {
-	Label string
-	Cwd   string
-}
-
-type releaseIncompleteTask struct {
-	filename string
-	status   string
-}
-
 type releaseVersionUpdate struct {
 	path         string
 	relativePath string
 	oldVersion   string
 	content      string
+}
+
+type releaseIncompleteTask struct {
+	filename string
+	status   string
 }
 
 var releaseConventionalCommitRE = regexp.MustCompile(`^(\w+)(\(.+?\))?(!)?:\s*(.+)$`)
@@ -90,626 +51,6 @@ var releaseValidBumps = map[string]bool{
 	"patch":      true,
 	"prerelease": true,
 	"release":    true,
-}
-
-func parseReleaseArgs(args []string) (releaseOptions, error) {
-	var options releaseOptions
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "--help" || arg == "-h" || arg == "help":
-			options.help = true
-		case arg == "--dry-run":
-			options.dryRun = true
-		case arg == "--bump":
-			value, err := consumeFlagValue(args, &i, "--bump")
-			if err != nil {
-				return releaseOptions{}, err
-			}
-			options.bump = value
-		case strings.HasPrefix(arg, "--bump="):
-			options.bump = strings.TrimPrefix(arg, "--bump=")
-			if options.bump == "" {
-				return releaseOptions{}, fmt.Errorf("--bump requires a value")
-			}
-		case arg == "--base":
-			value, err := consumeFlagValue(args, &i, "--base")
-			if err != nil {
-				return releaseOptions{}, err
-			}
-			options.base = value
-		case strings.HasPrefix(arg, "--base="):
-			options.base = strings.TrimPrefix(arg, "--base=")
-			if options.base == "" {
-				return releaseOptions{}, fmt.Errorf("--base requires a value")
-			}
-		case arg == "--no-tag":
-			options.tagSet = true
-			options.tag = false
-		case arg == "--tag":
-			options.tagSet = true
-			options.tag = true
-		case arg == "--no-gh":
-			options.ghSet = true
-			options.gh = false
-		case arg == "--gh":
-			options.ghSet = true
-			options.gh = true
-		case arg == "--version-file":
-			value, err := consumeFlagValue(args, &i, "--version-file")
-			if err != nil {
-				return releaseOptions{}, err
-			}
-			options.versionFile = append(options.versionFile, normalizeReleasePath(value))
-		case strings.HasPrefix(arg, "--version-file="):
-			value := strings.TrimPrefix(arg, "--version-file=")
-			if value == "" {
-				return releaseOptions{}, fmt.Errorf("--version-file requires a value")
-			}
-			options.versionFile = append(options.versionFile, normalizeReleasePath(value))
-		case arg == "--pre-merge":
-			options.preMerge = true
-		case arg == "--post-merge":
-			options.postMerge = true
-		case arg == "--yes" || arg == "-y":
-			options.yes = true
-		default:
-			return releaseOptions{}, fmt.Errorf("unknown release option %q", arg)
-		}
-	}
-	if options.bump != "" && !releaseValidBumps[options.bump] {
-		return releaseOptions{}, fmt.Errorf("Invalid bump type %q. Must be one of: major, minor, patch, prerelease, release", options.bump)
-	}
-	if options.postMerge {
-		var incompatible []string
-		if options.bump != "" {
-			incompatible = append(incompatible, "--bump")
-		}
-		if options.dryRun {
-			incompatible = append(incompatible, "--dry-run")
-		}
-		if options.tagSet {
-			if options.tag {
-				incompatible = append(incompatible, "--tag")
-			} else {
-				incompatible = append(incompatible, "--no-tag")
-			}
-		}
-		if options.ghSet {
-			if options.gh {
-				incompatible = append(incompatible, "--gh")
-			} else {
-				incompatible = append(incompatible, "--no-gh")
-			}
-		}
-		if options.base != "" {
-			incompatible = append(incompatible, "--base")
-		}
-		if len(options.versionFile) > 0 {
-			incompatible = append(incompatible, "--version-file")
-		}
-		if options.yes {
-			incompatible = append(incompatible, "--yes")
-		}
-		if options.preMerge {
-			incompatible = append(incompatible, "--pre-merge")
-		}
-		if len(incompatible) > 0 {
-			return releaseOptions{}, fmt.Errorf("--post-merge is incompatible with %s", strings.Join(incompatible, ", "))
-		}
-	}
-	return options, nil
-}
-
-func runReleaseDryRun(root string, options releaseOptions, out io.Writer, errOut io.Writer) error {
-	fmt.Fprintf(out, "\n%s\n\n", ansiBold("loaf release"))
-	if !releaseIsGitRepo(root) {
-		return fmt.Errorf("Not a git repository")
-	}
-	for _, declared := range options.versionFile {
-		if !pathExistsNative(filepath.Join(root, declared)) {
-			return fmt.Errorf("version file %s not found", declared)
-		}
-	}
-	if options.preMerge {
-		if options.tagSet && options.tag {
-			fmt.Fprintf(errOut, "  %s --tag overrides --pre-merge default (no tag); proceeding with tag enabled\n", ansiYellow("warning:"))
-		} else {
-			options.tagSet = true
-			options.tag = false
-		}
-		if options.ghSet && options.gh {
-			fmt.Fprintf(errOut, "  %s --gh overrides --pre-merge default (no gh release); proceeding with GitHub release enabled\n", ansiYellow("warning:"))
-		} else {
-			options.ghSet = true
-			options.gh = false
-		}
-		if options.base == "" {
-			base, source, err := detectReleaseBase(root)
-			if err != nil {
-				return err
-			}
-			options.base = base
-			fmt.Fprintf(out, "  %s %s %s\n", ansiCyan("Auto-detected base:"), ansiBold(base), ansiGray("(via "+source+")"))
-		}
-	}
-
-	fmt.Fprintf(out, "  %s...\n\n", ansiCyan("Analyzing"))
-	baseRef := options.snapshot.BaseRef
-	commits := options.snapshot.Commits
-	if options.base != "" {
-		if baseRef == options.base {
-			fmt.Fprintf(out, "  Base ref: %s (via --base flag)\n", ansiBold(options.base))
-		} else {
-			fmt.Fprintf(out, "  Base ref: %s (resolved to %s via --base flag)\n", ansiBold(options.base), ansiBold(baseRef))
-		}
-	} else if baseRef != "" {
-		fmt.Fprintf(out, "  Last tag: %s\n", ansiBold(baseRef))
-	} else {
-		fmt.Fprintf(out, "  Last tag: %s\n", ansiGray("(none)"))
-	}
-	if options.base != "" {
-		fmt.Fprintf(out, "  Commits since base: %s\n\n", ansiBold(strconv.Itoa(len(commits))))
-	} else {
-		fmt.Fprintf(out, "  Commits since tag: %s\n\n", ansiBold(strconv.Itoa(len(commits))))
-	}
-	if len(commits) == 0 {
-		fmt.Fprintf(out, "  %s\n\n", ansiGray("No unreleased changes found."))
-		return nil
-	}
-	for _, commit := range commits {
-		if commit.Section == "" {
-			fmt.Fprintf(out, "  %s  %s\n", ansiGray(fmt.Sprintf("%s (%s)", commit.Raw, commit.Hash)), ansiGray("[filtered]"))
-		} else {
-			fmt.Fprintf(out, "  %s\n", ansiGreen(fmt.Sprintf("%s (%s)", commit.Raw, commit.Hash)))
-		}
-	}
-	if len(commits) > 0 {
-		fmt.Fprintln(out)
-	}
-
-	versionFiles := options.snapshot.VersionFiles
-	if len(versionFiles) == 0 {
-		return fmt.Errorf("No version files found")
-	}
-
-	currentVersion := options.snapshot.CurrentVersion
-	// Threaded from runRelease: the preview names the gated candidate, never a
-	// freshly re-derived one that could diverge after a commit lands mid-run.
-	newVersion := options.snapshot.Candidate
-	bump := options.snapshot.Bump
-	if newVersion == "" {
-		return fmt.Errorf("Could not compute new version from %q: candidate was not resolved before dry-run", currentVersion)
-	}
-	if options.bump != "" {
-		fmt.Fprintf(out, "  Bump type: %s (via --bump flag)\n\n", ansiBold(bump))
-	}
-
-	changelog := releaseChangelogSection(root, newVersion, time.Now().UTC().Format("2006-01-02"), commits)
-	fmt.Fprintf(out, "  %s\n\n", ansiBold("Generated changelog:"))
-	for _, line := range strings.Split(changelog, "\n") {
-		fmt.Fprintf(out, "  %s\n", line)
-	}
-	fmt.Fprintln(out)
-	fmt.Fprintf(out, "  %s\n\n", ansiGray("(Set $EDITOR to edit before confirming)"))
-
-	fmt.Fprintf(out, "  %s\n", ansiBold("Version files:"))
-	for _, file := range versionFiles {
-		fmt.Fprintf(out, "    • %s (%s → %s)\n", file.RelativePath, file.CurrentVersion, newVersion)
-	}
-	fmt.Fprintln(out)
-
-	incompleteTasks := scanReleaseIncompleteTasks(root)
-	if len(incompleteTasks) > 0 {
-		fmt.Fprintf(out, "  %s %d\n", ansiBold("Incomplete tasks:"), len(incompleteTasks))
-		for _, task := range incompleteTasks {
-			fmt.Fprintf(out, "    %s %s (status: %s)\n", ansiYellow("⚠"), task.filename, task.status)
-		}
-		fmt.Fprintln(out)
-	}
-
-	fmt.Fprintf(out, "  Suggested bump: %s (%s)\n", ansiBold(bump), releaseBumpReason(bump))
-	fmt.Fprintf(out, "  New version: %s\n\n", ansiBold(newVersion))
-
-	skipTag, skipGh := normalizeReleaseSkipFlags(options)
-	tagName := "v" + newVersion
-	artifactCommands := releaseArtifactCommandsFor(root, versionFiles)
-	fmt.Fprintf(out, "  %s\n", ansiBold("Actions:"))
-	actionNum := 1
-	fmt.Fprintf(out, "    %d. Update version in %d file(s)\n", actionNum, len(versionFiles))
-	actionNum++
-	fmt.Fprintf(out, "    %d. Update CHANGELOG.md\n", actionNum)
-	actionNum++
-	for _, command := range artifactCommands {
-		fmt.Fprintf(out, "    %d. Run %s\n", actionNum, displayReleaseArtifactCommand(root, command))
-		actionNum++
-	}
-	fmt.Fprintf(out, "    %d. Commit release artifacts\n", actionNum)
-	actionNum++
-	if skipTag {
-		fmt.Fprintf(out, "    %s\n", ansiGray(fmt.Sprintf("%d. Create git tag %s (--no-tag — skipped)", actionNum, tagName)))
-	} else {
-		fmt.Fprintf(out, "    %d. Create git tag %s\n", actionNum, tagName)
-	}
-	actionNum++
-	if skipGh {
-		fmt.Fprintf(out, "    %s\n", ansiGray(fmt.Sprintf("%d. Create GitHub release draft (--no-gh — skipped)", actionNum)))
-	} else if releaseGhAvailable() {
-		fmt.Fprintf(out, "    %d. Create GitHub release draft (gh available)\n", actionNum)
-	} else {
-		fmt.Fprintf(out, "    %s\n", ansiGray(fmt.Sprintf("%d. Create GitHub release draft (gh not available — skipped)", actionNum)))
-	}
-	fmt.Fprintln(out)
-	fmt.Fprintf(out, "  %s No changes made.\n\n", ansiCyan("--dry-run:"))
-	return nil
-}
-
-func runReleaseApply(root string, options releaseOptions, in io.Reader, out io.Writer, errOut io.Writer) error {
-	fmt.Fprintf(out, "\n%s\n\n", ansiBold("loaf release"))
-	if !releaseIsGitRepo(root) {
-		return fmt.Errorf("Not a git repository")
-	}
-	// Flow advisory is emitted once from runRelease, before snapshot/preflight.
-	if err := requireReleaseCleanWorktree(root, options); err != nil {
-		return err
-	}
-	for _, declared := range options.versionFile {
-		if !pathExistsNative(filepath.Join(root, declared)) {
-			return fmt.Errorf("version file %s not found", declared)
-		}
-	}
-	if options.preMerge {
-		if options.tagSet && options.tag {
-			fmt.Fprintf(errOut, "  %s --tag overrides --pre-merge default (no tag); proceeding with tag enabled\n", ansiYellow("warning:"))
-		} else {
-			options.tagSet = true
-			options.tag = false
-		}
-		if options.ghSet && options.gh {
-			fmt.Fprintf(errOut, "  %s --gh overrides --pre-merge default (no gh release); proceeding with GitHub release enabled\n", ansiYellow("warning:"))
-		} else {
-			options.ghSet = true
-			options.gh = false
-		}
-		if options.base == "" {
-			base, source, err := detectReleaseBase(root)
-			if err != nil {
-				return err
-			}
-			options.base = base
-			fmt.Fprintf(out, "  %s %s %s\n", ansiCyan("Auto-detected base:"), ansiBold(base), ansiGray("(via "+source+")"))
-		}
-	}
-
-	fmt.Fprintf(out, "  %s...\n\n", ansiCyan("Analyzing"))
-	baseRef := options.snapshot.BaseRef
-	commits := options.snapshot.Commits
-	if options.base != "" {
-		if baseRef == options.base {
-			fmt.Fprintf(out, "  Base ref: %s (via --base flag)\n", ansiBold(options.base))
-		} else {
-			fmt.Fprintf(out, "  Base ref: %s (resolved to %s via --base flag)\n", ansiBold(options.base), ansiBold(baseRef))
-		}
-	} else if baseRef != "" {
-		fmt.Fprintf(out, "  Last tag: %s\n", ansiBold(baseRef))
-	} else {
-		fmt.Fprintf(out, "  Last tag: %s\n", ansiGray("(none)"))
-	}
-	if options.base != "" {
-		fmt.Fprintf(out, "  Commits since base: %s\n\n", ansiBold(strconv.Itoa(len(commits))))
-	} else {
-		fmt.Fprintf(out, "  Commits since tag: %s\n\n", ansiBold(strconv.Itoa(len(commits))))
-	}
-	if len(commits) == 0 {
-		fmt.Fprintf(out, "  %s\n\n", ansiGray("No unreleased changes found."))
-		return nil
-	}
-	for _, commit := range commits {
-		if commit.Section == "" {
-			fmt.Fprintf(out, "  %s  %s\n", ansiGray(fmt.Sprintf("%s (%s)", commit.Raw, commit.Hash)), ansiGray("[filtered]"))
-		} else {
-			fmt.Fprintf(out, "  %s\n", ansiGreen(fmt.Sprintf("%s (%s)", commit.Raw, commit.Hash)))
-		}
-	}
-	fmt.Fprintln(out)
-
-	versionFiles := options.snapshot.VersionFiles
-	if len(versionFiles) == 0 {
-		return fmt.Errorf("No version files found")
-	}
-
-	currentVersion := options.snapshot.CurrentVersion
-	// Threaded from runRelease: the executor cuts the gated candidate, never a
-	// freshly re-derived one that could diverge after a commit lands mid-run.
-	newVersion := options.snapshot.Candidate
-	bump := options.snapshot.Bump
-	if newVersion == "" {
-		return fmt.Errorf("Could not compute new version from %q: candidate was not resolved before apply", currentVersion)
-	}
-	if options.bump != "" {
-		fmt.Fprintf(out, "  Bump type: %s (via --bump flag)\n\n", ansiBold(bump))
-	}
-
-	changelog := releaseChangelogSection(root, newVersion, time.Now().UTC().Format("2006-01-02"), commits)
-	fmt.Fprintf(out, "  %s\n\n", ansiBold("Generated changelog:"))
-	for _, line := range strings.Split(changelog, "\n") {
-		fmt.Fprintf(out, "  %s\n", line)
-	}
-	fmt.Fprintln(out)
-
-	fmt.Fprintf(out, "  %s\n", ansiBold("Version files:"))
-	for _, file := range versionFiles {
-		fmt.Fprintf(out, "    • %s (%s → %s)\n", file.RelativePath, file.CurrentVersion, newVersion)
-	}
-	fmt.Fprintln(out)
-
-	skipTag, skipGh := normalizeReleaseSkipFlags(options)
-	tagName := "v" + newVersion
-	artifactCommands := releaseArtifactCommandsFor(root, versionFiles)
-	fmt.Fprintf(out, "  Suggested bump: %s (%s)\n", ansiBold(bump), releaseBumpReason(bump))
-	fmt.Fprintf(out, "  New version: %s\n\n", ansiBold(newVersion))
-	if !options.yes {
-		confirmed, err := confirmRelease(in, out, tagName)
-		if err != nil {
-			return err
-		}
-		if !confirmed {
-			fmt.Fprintf(out, "\n  %s\n\n", ansiGray("Release cancelled."))
-			return nil
-		}
-		fmt.Fprintln(out)
-	}
-	if err := requireReleaseCleanWorktree(root, options); err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "  %s\n", ansiBold("Executing:"))
-
-	if err := assertReleaseSnapshotStillCurrent(root, options.snapshot); err != nil {
-		return err
-	}
-
-	updates, err := prepareReleaseVersionUpdates(root, versionFiles, newVersion)
-	if err != nil {
-		return fmt.Errorf("Failed to update version files: %w", err)
-	}
-	for _, update := range updates {
-		if err := os.WriteFile(update.path, []byte(update.content), 0o644); err != nil {
-			return fmt.Errorf("Failed to update %s: %w", update.relativePath, err)
-		}
-		fmt.Fprintf(out, "    %s Updated %s (%s → %s)\n", ansiGreen("✓"), update.relativePath, update.oldVersion, newVersion)
-	}
-
-	if err := writeReleaseChangelog(root, changelog); err != nil {
-		return fmt.Errorf("Failed to update CHANGELOG.md: %w", err)
-	}
-	fmt.Fprintf(out, "    %s Updated CHANGELOG.md\n", ansiGreen("✓"))
-
-	for _, command := range artifactCommands {
-		if err := runReleaseArtifactCommand(root, command, out, errOut); err != nil {
-			return fmt.Errorf("Release artifact command failed: %w", err)
-		}
-	}
-	if paths := unignoredReleaseVirtualEnvStatusPaths(root); len(paths) > 0 {
-		return fmt.Errorf("Refusing to commit release artifacts: unignored virtual environment path detected: %s", strings.Join(paths, ", "))
-	}
-	changePaths, err := releaseUnignoredStatusPaths(root, "docs/changes")
-	if err != nil {
-		return fmt.Errorf("Refusing to commit release artifacts: cannot inspect generated Change paths: %w", err)
-	}
-	// Evidence re-record dirt under docs/changes is intentional on resume; only
-	// non-evidence Change-path mutations refuse here.
-	if residual := releaseNonEvidenceChangePaths(root, changePaths); len(residual) != 0 {
-		return fmt.Errorf("Refusing to commit release artifacts: artifact generation modified docs/changes; reconcile and commit separately before release: %s", strings.Join(residual, ", "))
-	}
-
-	if err := releaseCommandRun(root, "git", "add", "-A"); err != nil {
-		return fmt.Errorf("Failed to stage release artifacts: %w", err)
-	}
-	if err := releaseCommandRun(root, "git", "commit", "-m", "chore: release "+tagName); err != nil {
-		return fmt.Errorf("Failed to commit release: %w", err)
-	}
-	fmt.Fprintf(out, "    %s Committed release artifacts\n", ansiGreen("✓"))
-
-	if skipTag {
-		fmt.Fprintf(out, "    %s Git tag skipped (--no-tag)\n", ansiGray("-"))
-	} else {
-		if err := releaseCommandRun(root, "git", "tag", "-s", tagName, "-m", "Release "+newVersion); err != nil {
-			return fmt.Errorf("Failed to create tag: %w", err)
-		}
-		fmt.Fprintf(out, "    %s Created tag %s\n", ansiGreen("✓"), tagName)
-	}
-
-	if skipGh {
-		fmt.Fprintf(out, "    %s GitHub release skipped (--no-gh)\n", ansiGray("-"))
-	} else if releaseGhAvailable() {
-		if err := verifyConfiguredGitHubAccount(root, out); err != nil {
-			return fmt.Errorf("Refusing to create GitHub release with the wrong account: %w", err)
-		}
-		ghArgs := []string{"release", "create", tagName, "--draft", "--title", "v" + newVersion, "--notes", changelog}
-		if releaseVersionIsPrerelease(newVersion) {
-			ghArgs = append(ghArgs, "--prerelease")
-		}
-		if err := releaseCommandRun(root, "gh", ghArgs...); err != nil {
-			return fmt.Errorf("Failed to create GitHub release: %w", err)
-		}
-		fmt.Fprintf(out, "    %s Created GitHub release draft\n", ansiGreen("✓"))
-	} else {
-		fmt.Fprintf(out, "    %s GitHub release skipped (gh not available)\n", ansiGray("-"))
-	}
-
-	fmt.Fprintln(out)
-	fmt.Fprintf(out, "  %s Release %s complete\n\n", ansiGreen("✓"), ansiBold(tagName))
-	return nil
-}
-
-// releaseStatusEntry is one unignored porcelain path with whether it is
-// untracked (??), a tracked deletion, or a typechange (T). Tracked dirt,
-// deletions, typechanges, and untracked dirt are classified differently on the
-// prepared-tree resume path.
-type releaseStatusEntry struct {
-	path       string
-	untracked  bool
-	deleted    bool
-	typechange bool
-}
-
-func releaseUnignoredStatusPaths(root string, pathspec ...string) ([]string, error) {
-	entries, err := releaseUnignoredStatusEntries(root, pathspec...)
-	if err != nil {
-		return nil, err
-	}
-	paths := make([]string, 0, len(entries))
-	seen := map[string]bool{}
-	for _, entry := range entries {
-		if seen[entry.path] {
-			continue
-		}
-		seen[entry.path] = true
-		paths = append(paths, entry.path)
-	}
-	sort.Strings(paths)
-	return paths, nil
-}
-
-func releaseUnignoredStatusEntries(root string, pathspec ...string) ([]releaseStatusEntry, error) {
-	args := []string{"status", "--porcelain=v1", "--untracked-files=all", "-z"}
-	if len(pathspec) != 0 {
-		args = append(args, "--")
-		args = append(args, pathspec...)
-	}
-	cmd := exec.Command("git", args...)
-	cmd.Dir = root
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
-	}
-	raw := strings.Split(string(output), "\x00")
-	var entries []releaseStatusEntry
-	seen := map[string]bool{}
-	add := func(path string, untracked, deleted, typechange bool) {
-		path = filepath.ToSlash(path)
-		if path == "" || seen[path] {
-			return
-		}
-		seen[path] = true
-		entries = append(entries, releaseStatusEntry{
-			path:       path,
-			untracked:  untracked,
-			deleted:    deleted,
-			typechange: typechange,
-		})
-	}
-	for index := 0; index < len(raw); index++ {
-		entry := raw[index]
-		if entry == "" {
-			continue
-		}
-		if len(entry) < 4 || entry[2] != ' ' {
-			return nil, fmt.Errorf("parse git status entry %q", entry)
-		}
-		untracked := entry[0] == '?' && entry[1] == '?'
-		deleted := !untracked && (entry[0] == 'D' || entry[1] == 'D')
-		typechange := !untracked && (entry[0] == 'T' || entry[1] == 'T')
-		add(entry[3:], untracked, deleted, typechange)
-		if entry[0] == 'R' || entry[0] == 'C' || entry[1] == 'R' || entry[1] == 'C' {
-			index++
-			if index >= len(raw) || raw[index] == "" {
-				return nil, fmt.Errorf("parse renamed git status entry %q", entry)
-			}
-			// Rename/copy retires the origin path — treat as a deletion for
-			// classification (prepare never renames).
-			add(raw[index], false, true, false)
-		}
-	}
-	return entries, nil
-}
-
-// requireReleaseCleanWorktree enforces verify-then-restore resume admission:
-//
-//   - deleted tracked files → classic refusal (prepare never deletes)
-//   - dirty CHANGELOG.md → classic refusal (operator curation is sacred)
-//   - dirty version files → admitted only when the path is a regular file whose
-//     mode matches HEAD and whose bytes equal the candidate rendering derived
-//     from HEAD content + candidate; porcelain typechange (T), symlinks, and
-//     mode flips refuse by name
-//   - dirty tracked generated outputs → restore from HEAD (build-owned)
-//   - registry / referenced evidence sources (HEAD ∪ worktree allowlist) → admit
-//   - untracked under generated roots → refuse by name
-//   - untracked / tracked paths outside the above → classic refusal
-//
-// Nothing outside generated outputs is git-checkout'd by classification alone.
-func requireReleaseCleanWorktree(root string, options releaseOptions) error {
-	entries, err := releaseUnignoredStatusEntries(root)
-	if err != nil {
-		return fmt.Errorf("Refusing to prepare release: cannot inspect worktree cleanliness: %w", err)
-	}
-	if len(entries) == 0 {
-		return nil
-	}
-	dirtyPaths := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		dirtyPaths = append(dirtyPaths, entry.path)
-	}
-
-	versionPaths := releaseVersionPathSet(root, options)
-	evidenceAllow := releaseCapabilityEvidenceAllowlist(root)
-	candidate := releaseResolveCandidateForClassification(root, options)
-
-	var untrackedArtifacts []string
-	var refused []string
-	for _, entry := range entries {
-		path := filepath.ToSlash(entry.path)
-
-		if entry.deleted {
-			return releaseClassicCleanWorktreeRefusal(dirtyPaths)
-		}
-
-		if entry.untracked {
-			if evidenceAllow[path] {
-				continue
-			}
-			if releasePathMatchesPreparedArtifact(path) {
-				untrackedArtifacts = append(untrackedArtifacts, path)
-				continue
-			}
-			refused = append(refused, path)
-			continue
-		}
-
-		// Tracked modifications:
-		if path == "CHANGELOG.md" {
-			// Never admit or restore dirty changelog via classification.
-			return releaseClassicCleanWorktreeRefusal(dirtyPaths)
-		}
-		if versionPaths[path] {
-			// Typechange (regular↔symlink/etc.) is never candidate-admissible.
-			if entry.typechange {
-				return releaseClassicCleanWorktreeRefusal(dirtyPaths)
-			}
-			if releaseVersionFileMatchesCandidate(root, path, candidate) {
-				continue
-			}
-			return releaseClassicCleanWorktreeRefusal(dirtyPaths)
-		}
-		if releasePathMatchesPreparedArtifact(path) {
-			// Restored below; admitted as build-owned dirt.
-			continue
-		}
-		if evidenceAllow[path] {
-			continue
-		}
-		refused = append(refused, path)
-	}
-	if len(untrackedArtifacts) > 0 {
-		return fmt.Errorf("Refusing to prepare release: untracked file under generated-output tree would be swept into the release commit: %s", strings.Join(untrackedArtifacts, ", "))
-	}
-	if len(refused) > 0 {
-		return releaseClassicCleanWorktreeRefusal(dirtyPaths)
-	}
-	if err := releaseRestoreGeneratedFromHEAD(root, entries); err != nil {
-		return err
-	}
-	return nil
 }
 
 func releaseIsGitRepo(root string) bool {
@@ -735,39 +76,6 @@ func validateReleaseBaseRef(root string, ref string) (string, error) {
 		quoted = append(quoted, fmt.Sprintf("%q", candidate))
 	}
 	return "", fmt.Errorf("Base ref %q does not exist or is not reachable. Tried %s. If this is a remote branch, run: git fetch origin %s", ref, strings.Join(quoted, " and "), ref)
-}
-
-func releaseCommitsSince(root string, base string) []releaseCommit {
-	format := "%h%x00%s%x00%B%x00"
-	args := []string{"log", "--format=" + format}
-	if base != "" {
-		args = []string{"log", base + "..HEAD", "--format=" + format}
-	}
-	output := releaseCommandOutput(root, "git", args...)
-	if strings.TrimSpace(output) == "" {
-		return nil
-	}
-	var commits []releaseCommit
-	for _, chunk := range strings.Split(output, "\x00\n") {
-		if strings.TrimSpace(chunk) == "" {
-			continue
-		}
-		parts := strings.Split(chunk, "\x00")
-		if len(parts) < 2 {
-			continue
-		}
-		hash := strings.TrimSpace(parts[0])
-		subject := strings.TrimSpace(parts[1])
-		body := ""
-		if len(parts) > 2 {
-			body = strings.TrimSpace(parts[2])
-		}
-		if hash == "" || subject == "" {
-			continue
-		}
-		commits = append(commits, parseReleaseCommit(hash, subject, body))
-	}
-	return commits
 }
 
 func parseReleaseCommit(hash string, subject string, body string) releaseCommit {
@@ -802,20 +110,6 @@ func releaseSectionForType(commitType string, breaking bool) string {
 	default:
 		return "Other"
 	}
-}
-
-func suggestReleaseBump(commits []releaseCommit) string {
-	for _, commit := range commits {
-		if commit.Breaking {
-			return "major"
-		}
-	}
-	for _, commit := range commits {
-		if commit.Section == "Added" {
-			return "minor"
-		}
-	}
-	return "patch"
 }
 
 func detectReleaseVersionFiles(root string, overrides []string) ([]releaseVersionFile, error) {
@@ -930,28 +224,6 @@ func readReleaseTomlVersion(content string, section string) string {
 	return ""
 }
 
-func releaseConfigVersionFiles(root string) ([]string, error) {
-	body, err := os.ReadFile(filepath.Join(root, ".agents", "loaf.json"))
-	if err != nil {
-		return nil, nil
-	}
-	var config struct {
-		Release struct {
-			VersionFiles []string `json:"versionFiles"`
-		} `json:"release"`
-	}
-	if err := json.Unmarshal(body, &config); err != nil {
-		return nil, nil
-	}
-	var values []string
-	for _, value := range config.Release.VersionFiles {
-		if normalized := normalizeReleasePath(value); normalized != "" {
-			values = append(values, normalized)
-		}
-	}
-	return values, nil
-}
-
 func bumpReleaseVersion(current string, bump string) string {
 	version, ok := parseReleaseSemver(current)
 	if !ok {
@@ -1029,106 +301,6 @@ func parseReleaseSemver(value string) (releaseSemver, bool) {
 	return releaseSemver{major: major, minor: minor, patch: patch, prerelease: prerelease}, true
 }
 
-func releaseChangelogSection(root string, version string, date string, commits []releaseCommit) string {
-	body, err := readRegularFile(filepath.Join(root, "CHANGELOG.md"), projectFileReadLimit)
-	if err == nil {
-		if curated := extractReleaseUnreleasedBody(string(body)); curated != "" {
-			return fmt.Sprintf("## [%s] - %s\n\n%s", version, date, curated)
-		}
-	}
-	grouped := map[string][]releaseCommit{}
-	for _, commit := range commits {
-		if commit.Section == "" {
-			continue
-		}
-		grouped[commit.Section] = append(grouped[commit.Section], commit)
-	}
-	lines := []string{fmt.Sprintf("## [%s] - %s", version, date)}
-	for _, section := range []string{"Breaking Changes", "Added", "Changed", "Fixed", "Other"} {
-		commits := grouped[section]
-		if len(commits) == 0 {
-			continue
-		}
-		lines = append(lines, "", "### "+section)
-		for _, commit := range commits {
-			lines = append(lines, fmt.Sprintf("- %s (%s)", capitalizeReleaseMessage(commit.Message), commit.Hash))
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-func extractReleaseUnreleasedBody(content string) string {
-	lines := strings.Split(content, "\n")
-	start := -1
-	for i, line := range lines {
-		if releaseUnreleasedHeadingRE.MatchString(strings.TrimSpace(line)) {
-			start = i + 1
-			break
-		}
-	}
-	if start == -1 {
-		return ""
-	}
-	end := len(lines)
-	for i := start; i < len(lines); i++ {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## [") {
-			end = i
-			break
-		}
-	}
-	var filtered []string
-	for _, line := range lines[start:end] {
-		if releaseUnreleasedStubRE.MatchString(line) {
-			continue
-		}
-		filtered = append(filtered, line)
-	}
-	for len(filtered) > 0 && strings.TrimSpace(filtered[0]) == "" {
-		filtered = filtered[1:]
-	}
-	for len(filtered) > 0 && strings.TrimSpace(filtered[len(filtered)-1]) == "" {
-		filtered = filtered[:len(filtered)-1]
-	}
-	for _, line := range filtered {
-		if strings.TrimSpace(line) != "" {
-			return strings.Join(filtered, "\n")
-		}
-	}
-	return ""
-}
-
-func releaseArtifactCommandsFor(root string, versionFiles []releaseVersionFile) []releaseArtifactCommand {
-	var commands []releaseArtifactCommand
-	seen := map[string]bool{}
-	add := func(label string, cwd string) {
-		key := cwd + "\x00" + label
-		if seen[key] {
-			return
-		}
-		seen[key] = true
-		commands = append(commands, releaseArtifactCommand{Label: label, Cwd: cwd})
-	}
-	for _, file := range versionFiles {
-		dir := filepath.Dir(file.Path)
-		if filepath.Base(file.RelativePath) == "pyproject.toml" && pathExistsNative(filepath.Join(dir, "uv.lock")) {
-			add("uv sync", dir)
-		}
-	}
-	for _, file := range versionFiles {
-		dir := filepath.Dir(file.Path)
-		if filepath.Base(file.RelativePath) == "package.json" && releasePackageHasBuildScript(file.Path) {
-			add("npm run build", dir)
-		}
-	}
-	if releasePackageHasBuildScript(filepath.Join(root, "package.json")) {
-		add("npm run build", root)
-	}
-	if len(commands) == 0 {
-		add("loaf build", root)
-	}
-	return commands
-}
-
 func scanReleaseIncompleteTasks(root string) []releaseIncompleteTask {
 	tasksDir := filepath.Join(root, ".agents", "tasks")
 	entries, err := os.ReadDir(tasksDir)
@@ -1165,22 +337,34 @@ func scanReleaseIncompleteTasks(root string) []releaseIncompleteTask {
 	return incomplete
 }
 
-func confirmRelease(in io.Reader, out io.Writer, tagName string) (bool, error) {
-	if !readerIsTerminal(in) {
-		if in == nil {
-			return false, nil
-		}
-		if _, ok := in.(*os.File); ok {
-			return false, nil
-		}
+func releaseGitShowPath(root, rev, relPath string) ([]byte, error) {
+	spec := rev + ":" + filepath.ToSlash(relPath)
+	cmd := exec.Command("git", "show", spec)
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
 	}
-	reader := bufio.NewReader(in)
-	fmt.Fprintf(out, "  Proceed with release %s? [y/N] ", ansiBold(tagName))
-	answer, err := reader.ReadString('\n')
-	if err != nil && len(answer) == 0 {
-		return false, err
+	return out, nil
+}
+
+func releaseRenderVersionContent(relPath string, headBody []byte, currentVersion, format, candidate string) (string, error) {
+	switch format {
+	case "json":
+		re := regexp.MustCompile(`"version"(\s*:\s*)"` + regexp.QuoteMeta(currentVersion) + `"`)
+		if !re.Match(headBody) {
+			return "", fmt.Errorf("version file %s does not contain version %s", relPath, currentVersion)
+		}
+		return re.ReplaceAllString(string(headBody), `"version"$1"`+candidate+`"`), nil
+	case "toml-regex":
+		section := releaseTomlSectionForPath(relPath)
+		if section == "" {
+			return "", fmt.Errorf("version file %s: no toml section", relPath)
+		}
+		return replaceReleaseTomlVersion(string(headBody), section, candidate), nil
+	default:
+		return "", fmt.Errorf("version file %s: unsupported format %s", relPath, format)
 	}
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y"), nil
 }
 
 func prepareReleaseVersionUpdates(root string, files []releaseVersionFile, newVersion string) ([]releaseVersionUpdate, error) {
@@ -1217,20 +401,6 @@ func prepareReleaseVersionUpdates(root string, files []releaseVersionFile, newVe
 
 // releaseNonEvidenceChangePaths filters docs/changes dirt down to paths that
 // are not capability-evidence receipts/sources (which re-record on resume).
-func releaseNonEvidenceChangePaths(root string, changePaths []string) []string {
-	if len(changePaths) == 0 {
-		return nil
-	}
-	var residual []string
-	for _, path := range changePaths {
-		if releaseIsEvidenceOnlyPath(root, path) {
-			continue
-		}
-		residual = append(residual, path)
-	}
-	return residual
-}
-
 func releaseTomlSectionForPath(relativePath string) string {
 	base := filepath.Base(filepath.FromSlash(relativePath))
 	switch base {
@@ -1329,113 +499,6 @@ func createReleaseChangelog(releaseSection string) string {
 	}, "\n")
 }
 
-func runReleaseArtifactCommand(root string, command releaseArtifactCommand, out io.Writer, errOut io.Writer) error {
-	executable, args, err := releaseArtifactInvocation(root, command)
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(executable, args...)
-	cmd.Dir = command.Cwd
-	cmd.Stdout = out
-	cmd.Stderr = errOut
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	suffix := ""
-	if rel, err := filepath.Rel(root, command.Cwd); err == nil && rel != "." {
-		suffix = " in " + filepath.ToSlash(rel)
-	}
-	fmt.Fprintf(out, "    %s Ran %s%s\n", ansiGreen("✓"), command.Label, suffix)
-	return nil
-}
-
-func releaseArtifactInvocation(root string, command releaseArtifactCommand) (string, []string, error) {
-	switch command.Label {
-	case "uv sync":
-		path, err := exec.LookPath("uv")
-		return path, []string{"sync"}, err
-	case "npm run build":
-		path, err := exec.LookPath("npm")
-		return path, []string{"run", "build"}, err
-	case "loaf build":
-		executable, err := os.Executable()
-		if err != nil {
-			return "", nil, err
-		}
-		return executable, []string{"build"}, nil
-	default:
-		return "", nil, fmt.Errorf("unknown release artifact command %q in %s", command.Label, root)
-	}
-}
-
-func unignoredReleaseVirtualEnvStatusPaths(root string) []string {
-	output := releaseCommandOutput(root, "git", "status", "--porcelain", "--untracked-files=all", "-z")
-	if output == "" {
-		return nil
-	}
-	paths := map[string]bool{}
-	for _, entry := range strings.Split(output, "\x00") {
-		if entry == "" {
-			continue
-		}
-		path := entry
-		if len(entry) > 3 && entry[2] == ' ' {
-			path = entry[3:]
-		}
-		normalized := filepath.ToSlash(path)
-		if strings.Contains("/"+normalized+"/", "/.venv/") {
-			paths[normalized] = true
-		}
-	}
-	var values []string
-	for path := range paths {
-		values = append(values, path)
-	}
-	sort.Strings(values)
-	return values
-}
-
-func releasePackageHasBuildScript(path string) bool {
-	body, err := readRegularFile(path, projectFileReadLimit)
-	if err != nil {
-		return false
-	}
-	var parsed struct {
-		Scripts map[string]string `json:"scripts"`
-	}
-	return json.Unmarshal(body, &parsed) == nil && parsed.Scripts["build"] != ""
-}
-
-func displayReleaseArtifactCommand(root string, command releaseArtifactCommand) string {
-	rel, err := filepath.Rel(root, command.Cwd)
-	if err != nil || rel == "." {
-		return command.Label
-	}
-	return fmt.Sprintf("%s (%s)", command.Label, filepath.ToSlash(rel))
-}
-
-func normalizeReleaseSkipFlags(options releaseOptions) (bool, bool) {
-	skipTag := options.tagSet && !options.tag
-	skipGh := (options.ghSet && !options.gh) || skipTag
-	return skipTag, skipGh
-}
-
-func detectReleaseBase(root string) (string, string, error) {
-	if current := releaseCommandOutput(root, "git", "symbolic-ref", "--short", "HEAD"); current == "" {
-		return "", "", fmt.Errorf("--pre-merge requires a named branch (detached HEAD detected). Pass --base <ref> explicitly")
-	}
-	if config := releaseCommandOutput(root, "git", "config", "--get", "loaf.release.base"); config != "" {
-		return config, "config", nil
-	}
-	if defaultBranch := releaseCommandOutput(root, "gh", "repo", "view", "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"); defaultBranch != "" {
-		return defaultBranch, "default", nil
-	}
-	if symRef := releaseCommandOutput(root, "git", "symbolic-ref", "refs/remotes/origin/HEAD"); strings.HasPrefix(symRef, "refs/remotes/origin/") {
-		return strings.TrimPrefix(symRef, "refs/remotes/origin/"), "default", nil
-	}
-	return "", "", fmt.Errorf("Could not auto-detect base branch. Pass --base <ref> explicitly, or set git config loaf.release.base <ref>")
-}
-
 func releaseGhAvailable() bool {
 	_, err := exec.LookPath("gh")
 	return err == nil
@@ -1471,23 +534,6 @@ func releaseCommandOutput(root string, name string, args ...string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(output))
-}
-
-func releaseBumpReason(bump string) string {
-	switch bump {
-	case "major":
-		return "breaking changes detected"
-	case "minor":
-		return "new features detected"
-	case "patch":
-		return "bug fixes only"
-	case "prerelease":
-		return "prerelease version"
-	case "release":
-		return "stable release"
-	default:
-		return "selected bump"
-	}
 }
 
 func capitalizeReleaseMessage(value string) string {
