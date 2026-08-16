@@ -20,7 +20,7 @@ script surface:
 
 - The source currently has 10 orchestration scripts out of 22 skill-local
   scripts overall.
-- Several scripts overlap existing `loaf journal`, `loaf task`, `loaf check`,
+- Several scripts overlap existing `loaf journal`, `loaf issue`, `loaf check`,
   and Linear-aware behavior.
 - Shell/Python helpers are harder to discover than `loaf <noun> <verb>` and
   are not consistently covered by CLI tests.

@@ -93,7 +93,7 @@ Always check project context first. Rate findings: **High** (official/verified),
 **Trigger:** Empty input, "project state", "catch me up"
 
 1. Read project documents: VISION.md, STRATEGY.md, ARCHITECTURE.md
-2. Check ideas with `loaf idea list --json` and specs with `loaf spec list --json`
+2. Check ideas with `loaf idea list --json` and issues with `loaf issue list --json` (or `loaf issue export` for the full graph)
 3. Review recent journal activity with `loaf journal recent --json` and `loaf journal context`
 4. Check recent commits: `git log --oneline -20`
 5. Synthesize following [state-assessment template](templates/state-assessment.md)
@@ -143,4 +143,4 @@ User-facing entry for a new concept is pitch (problem-discovery brief). Do not t
 
 ## Artifact Naming
 
-Name every artifact you create for what it is, never for the work unit that produced it: the containing directory or Change already records that provenance. Put the source in a front-matter field, not the filename. Versions and timestamps are identity and stay. See the `foundations` skill for the full rule; `loaf check --hook artifact-names` enforces it at commit.
+Name every artifact you create for what it is, never for the work unit that produced it: the containing directory or the issue already records that provenance. Put the source in a front-matter field, not the filename. Versions and timestamps are identity and stay. See the `foundations` skill for the full rule; `loaf check --hook artifact-names` enforces it at commit.

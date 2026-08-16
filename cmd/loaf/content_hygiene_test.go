@@ -176,7 +176,6 @@ func TestOrchestrationDuplicateAuthorityReferencesRetired(t *testing.T) {
 	for _, owner := range []string{
 		"../council/SKILL.md",
 		"../shape/SKILL.md",
-		"../breakdown/SKILL.md",
 	} {
 		if !strings.Contains(orchestration, owner) {
 			t.Fatalf("orchestration router missing owning skill link %q", owner)

@@ -7,8 +7,7 @@ Guidelines for writing Linear issue updates, comments, and commit messages with 
 - Configuration
 - MCP Server Naming
 - Multi-Workspace Guidance
-- Linear-Native Mode (Parent + Sub-Issues)
-- The `spec` Label Convention
+- Identity Adapter
 - Progress Update Format
 - Issue Description Format
 - Status Conventions
@@ -97,96 +96,44 @@ Match the `linear.mcp_server_name` in each project's `.agents/loaf.json` to
 the name used in that project's `.mcp.json`. That way the Loaf skills invoke
 the right workspace automatically.
 
-## Linear-Native Mode (Parent + Sub-Issues)
+## Identity Adapter
 
-In Linear-native mode (`integrations.linear.enabled: true`), each spec
-produces one parent **rollup issue** and N sub-issues under it.
+When `issue_identity.authority = linear`, Linear owns identity, title, status,
+and assignment. Loaf owns shaping state: body, definition-of-done criteria,
+claims, and the started worktree. The Loaf issue is the work unit. Linear MCP
+is an overlay — never drive Loaf status from MCP tools.
 
-```
-Agent framework alignment                ← parent, label: `change`
-├── Split reviewer profile into reviewer/auditor  ← sub-issue, label: type/refactor
-├── Harden MCP fallback path               ← sub-issue, label: type/feature
-└── Migrate legacy task references         ← sub-issue, label: type/refactor
-```
+`loaf issue new` delegates identity: Linear mints the identifier, and that
+key becomes the local alias. The local counter is not advanced. If Linear is
+offline, refuse — capture via `loaf spark` or `loaf idea`. Do not mint a
+local alias as a fallback.
 
-### Parent issue — what it is and isn't
+If Linear created an issue but the local bind failed, adopt it:
 
-The parent issue is a **dashboard anchor**, not a re-hosting of the spec.
-
-- **Is:** a short summary (1–3 paragraphs) of the problem and solution
-  direction + a link to the canonical spec file in the repo.
-- **Is not:** a copy of the spec's Scope / Rabbit Holes / Open Questions /
-  Risks sections. Those live in the local spec file and evolve there.
-
-### Sample parent description
-
-```markdown
-## Summary
-Align Loaf's agent profiles with the three-role model (implementer, reviewer, 
-researcher). Consolidate historical profile variants and add tool-boundary 
-tests so profiles can't drift without a test failing.
-
-## Context
-See the canonical change file in the repository for full text, council
-references, rabbit holes, and strategic tensions.
-
-## Progress
-Sub-issues track execution.
+```text
+loaf issue pull <linear-key>
+loaf issue pull <linear-key> --tree
 ```
 
-### Sub-issues
+`--tree` also adopts the sub-issue tree with parent edges intact.
 
-- Each sub-issue has `parentId` set to the parent issue ID.
-- Cross-task dependencies use Linear's `blockedBy` field referencing sibling
-  sub-issue IDs.
-- Sub-issue labels describe the task itself (type, team, area), not the
-  parent — don't label sub-issues with `spec`.
-- Starting a sub-issue promotes the parent rollup from `backlog`/`unstarted`
-  to the team's `started`/In Progress state. Parent promotion is a state
-  invariant of the start operation, not a separate manual reminder.
-- Do not silently reopen protected parents. If the parent is `completed`,
-  `canceled`, or archived, stop and ask for an explicit override before
-  starting the child.
+### Commands
 
-### Spec file remains canonical
+```text
+loaf issue pull <linear-key> [--tree] [--json]
+loaf issue push <ref> [--json]
+loaf issue reconcile [<ref>] [--take-local|--take-tracker] [--json]
+```
 
-Even with the parent in Linear, the local spec file is the source of truth
-for:
+| Command | Writes? | What it does |
+|---------|---------|----------------|
+| `loaf issue pull` | Yes | Adopt an existing Linear issue as a local row. The Linear key becomes the alias |
+| `loaf issue push` | Yes | Write `loaf issue render` as the Linear description. Status is written only when the local status event is newer than the tracker. Never renames the Linear issue |
+| `loaf issue reconcile` | Yes with a take flag | Compare local and Linear. Title drift updates the local title (tracker wins). Status drift is reported; `--take-local` or `--take-tracker` resolves it. Description drift is reported only |
 
-- Problem statement and solution direction
-- Scope / in-scope / out-of-scope / rabbit holes / no-gos
-- Risks and open questions
-- Council references and strategic tensions
-
-When the spec evolves, edit the file and let git track it. The parent
-issue's summary is a frozen entry point; only refresh it if the summary
-itself (not the rabbit holes or risks) changes meaningfully.
-
-## The `spec` Label Convention
-
-Every spec-parent rollup issue carries a Linear label named `spec`. This lets
-anyone in Linear filter for "all spec roots" across projects without having to
-know which issues happen to be parents.
-
-| Field | Value |
-|-------|-------|
-| Name | `spec` |
-| Color | `#5e6ad2` (suggested; implementer may adjust) |
-| Description | `Parent rollup issue representing a design spec tracked in the repo at .agents/specs/` |
-| Scope | Workspace-scoped preferred; fall back to team-scoped if the MCP requires it |
-
-### Who creates it
-
-breakdown creates the `spec` label on first Linear-native breakdown in a
-workspace that doesn't already have it. Subsequent breakdowns reuse the
-existing label. Log whether the label was created this run or already
-existed — this matters for first-time setup.
-
-### Sub-issues never carry `spec`
-
-`spec` applies only to parents. A sub-issue describing a task uses its own
-labels (type groups like `feature`/`bug`/`refactor`, team labels, area
-labels) — never `spec`. This keeps the "filter for spec roots" query clean.
+Do not create records with `loaf task` or `loaf spec`. Parent/child structure
+is `loaf issue promote` (or `loaf issue new --parent`), not a `spec`-labeled
+Linear rollup.
 
 ## Progress Update Format
 
@@ -222,18 +169,9 @@ None currently.
 
 ## Issue Description Format
 
-```markdown
-## Summary
-Brief description of the work and its purpose.
+The Linear description is `loaf issue push` output — `loaf issue render`, not a hand-authored summary. Do not paste a competing description over the render.
 
-## Acceptance Criteria
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Criterion 3
-
-## Notes
-Any relevant context (keep brief).
-```
+Comments (not the description) still follow the progress-update format above.
 
 **Rules:**
 - Concise and actionable
@@ -242,6 +180,8 @@ Any relevant context (keep brief).
 - No mentions of agents, councils, or sessions
 
 ## Status Conventions
+
+Loaf status is `loaf issue status`. Linear status is the tracker's. Resolve drift with `loaf issue reconcile` (`--take-local` or `--take-tracker`). Do not flip Loaf status from Linear MCP tools.
 
 | State | When to Use |
 |-------|-------------|
@@ -340,6 +280,8 @@ Teams are suggested contextually based on task description.
 Use `scripts/suggest-team.py "task desc"` to get suggestions.
 
 ## When to Create Issues
+
+Create through `loaf issue new` so identity can be delegated. Do not create in Linear MCP and then forget to `loaf issue pull`.
 
 | Action | Create Issue? |
 |--------|---------------|
