@@ -11,7 +11,7 @@ title: "[Idea Title]"
 captured: YYYY-MM-DDTHH:MM:SSZ
 status: raw
 tags: []
-related: []            # Optional: spec IDs, idea filenames, or other references
+related: []            # Optional: issue aliases, idea filenames, or other references
 origin:                # Optional: draft filename this spark came from (e.g. drafts/YYYYMMDD-brainstorm-slug.md)
 ---
 
@@ -31,5 +31,5 @@ origin:                # Optional: draft filename this spark came from (e.g. dra
 
 ---
 
-*Captured via idea -- shape with shape when ready*
+*Captured via idea — triage later (backlog issue, pitch, or shape)*
 ```

@@ -3,7 +3,7 @@ id: ADR-026
 title: "Major-zero versioning — arc-boundary releases, liberal X epochs, and timestamp dev identity"
 status: Accepted
 date: 2026-08-06
-revised: 2026-08-10
+revised: 2026-08-15
 supersedes: null
 superseded_by: null
 related:
@@ -13,6 +13,8 @@ related:
 ---
 
 # ADR-026: Major-zero versioning
+
+2026-08-15: bump semantics restate as `loaf release suggest` evidence.
 
 ## Context
 

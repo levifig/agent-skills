@@ -42,9 +42,9 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 - Outcome-focused, self-contained, no local file references
 - Magic words in commit body, not subject
 
-**If `integrations.linear.enabled` is `true` in `.agents/loaf.json`:** use Linear MCP workflows and [references/linear.md](references/linear.md) for issue updates and status.
+**If `integrations.linear.enabled` is `true` in `.agents/loaf.json`:** Linear is an identity adapter — `loaf issue pull` / `push` / `reconcile`, not a second work unit. See [references/linear.md](references/linear.md). Linear MCP is an overlay; Loaf issues remain the work unit and Linear never drives Loaf status.
 
-**Otherwise:** coordinate with the project journal and `loaf task` / file-based tracking only; do not assume Linear MCP tools are available.
+**Otherwise:** coordinate with the project journal and `loaf issue` only; do not assume Linear MCP tools or identity delegation are available.
 
 ### Planning (Shape Up)
 - Complexity-based sizing (small / medium / large)
@@ -71,15 +71,15 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 | Pre-compaction | On an exact target mode with supported compaction delivery, hooks may nudge a journal flush and emit the digest afterward; otherwise flush manually and run `loaf journal context` after compaction |
 | Durable artifact handling | Delegate `.agents/`-scoped report/spec/handoff/knowledge tending to `librarian` |
 | Low-priority work | Spawn background-runner (see Background Agents) |
-| New feature workflow | Research -> Architecture -> Shape -> Breakdown -> Implement |
+| New feature workflow | Pitch -> Shape -> Implement -> Ship -> Release |
 
 ## Topics
 
 | Topic | Reference | Use When |
 |-------|-----------|----------|
-| Shaping Specs | [../shape/SKILL.md](../shape/SKILL.md) | Creating specs, shaping work, defining test conditions |
-| Breaking Work Into Tasks | [../breakdown/SKILL.md](../breakdown/SKILL.md) | Turning shaped specs into implementation tasks |
-| Local Tasks | [references/local-tasks.md](references/local-tasks.md) | Managing tasks locally or with Linear backend |
+| Shaping Issues | [../shape/SKILL.md](../shape/SKILL.md) | Preparing issues: body, definition of done, out of scope |
+| Decomposition | [../shape/SKILL.md](../shape/SKILL.md) | Promoting a criterion that earns its own DoD (`loaf issue promote`) |
+| Working Issues | [references/local-tasks.md](references/local-tasks.md) | Frontier, started worktrees, status, definition of done |
 | Agent Delegation | [references/delegation.md](references/delegation.md) | Choosing agents, spawning subagents, decision trees |
 | Parallel Agents | [references/parallel-agents.md](references/parallel-agents.md) | Dispatching independent work concurrently |
 | Subagent Development | [references/subagent-development.md](references/subagent-development.md) | Delegating to specialized agents |
@@ -96,7 +96,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 
 The orchestrator:
 1. Creates issues and logs the orchestration intent for tracking
-2. Breaks down work into delegable tasks
+2. Picks from `loaf issue frontier` and starts one worktree per issue
 3. Spawns specialized agents for implementation
 4. Coordinates outcomes and updates external systems
 5. Never implements code, tests, or documentation directly
@@ -126,16 +126,16 @@ This skill uses paths from `.agents/loaf.json`:
 | Councils | `.agents/councils/` | `.agents/councils/archive/` | `YYYYMMDD-HHMMSS-topic.md` |
 | Handoffs | `.agents/handoffs/` | delete after deprecated | Created by handoff |
 | Reports | `.agents/reports/` | N/A | `YYYYMMDD-HHMMSS-subject.md` |
-| Tasks | SQLite (`loaf task show/list`) | N/A | Per task manager conventions |
+| Issues | SQLite (`loaf issue show/list`) | `cancelled` / `duplicate` via `loaf issue status` | Alias or opaque id |
 
 **Rule:** Agents write artifacts to disk, orchestrator reasons over artifacts, users retrieve from disk.
 
 ## Workflow by Lifecycle
 
 ### BEFORE (Planning)
-- Create/check external issue (Linear, GitHub)
+- Shape prepares issues; implement works the frontier. Decomposition is `loaf issue promote` inside shape.
 - Log the orchestration intent with `loaf journal log`
-- Break down into tasks, identify agents, get user approval
+- `loaf issue check <ref>` must report shaped (delivery) or ready (decision); identify agents; get user approval
 
 ### DURING (Execution)
 - Spawn specialized agents (never implement directly)
@@ -144,6 +144,6 @@ This skill uses paths from `.agents/loaf.json`:
 
 ### AFTER (Completion)
 - Code review + QA testing
-- Update external issue to Done
+- Land via ship: `loaf issue status <ref> done`, then `loaf issue stop <ref>`
 - Ensure knowledge captured in permanent locations
 - Write an optional `wrap` journal entry if the conversation holds synthesis worth saving

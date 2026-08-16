@@ -8,7 +8,7 @@
 - Linear Status Management
 - Handoff Readiness
 - Timestamps for User Context
-- Task Completion
+- Issue Completion
 
 Detailed reference for branch setup, Linear routing, and completion during implementation.
 
@@ -18,28 +18,18 @@ Detailed reference for branch setup, Linear routing, and completion during imple
 
 ### Getting Branch Name
 
-1. **If Linear issue exists**: Use the `branchName` field from `get_issue` response
-   - Linear auto-generates branch names like `username/plt-123-issue-title`
-   - These are pre-formatted and consistent with team conventions
+`loaf issue start <ref>` is the claim. It creates `issue/<alias-or-id>` in lowercase (`issue/loaf-42`, id suffix when that name is claimed), a sibling worktree, and moves status to `active`.
 
-2. **If no Linear issue**: Create branch name from the work description
-   - Format: `feature/<description>` or `fix/<description>`
-   - Use kebab-case, keep it concise
+Do not `git checkout -b` as a substitute for start. Check `loaf issue list --started` first. Never send two agents into the same worktree. Do not run `loaf issue stop` from inside that worktree.
 
 ### Branch Workflow
 
 ```bash
-# 1. Check current branch status
-git status
-
-# 2. Create and checkout the branch (use Linear's branchName if available)
-git checkout -b <branch-name>
-
-# 3. Confirm branch creation
-git branch --show-current
+loaf issue list --started
+loaf issue start <ref>
 ```
 
-**Important:** All implementation agents will work on this branch. The branch should be ready for PR when work completes. Journal entries are tagged with the observed branch automatically, so continuity stays branch-scoped.
+Work only in `started_worktree`. The branch should be ready for PR when work completes. Journal entries are tagged with the observed branch automatically.
 
 ---
 
@@ -53,7 +43,7 @@ When creating Linear issues, suggest the appropriate team:
    > "This task seems best suited for the **Security** team (matched: 'auth', 'vulnerability').
    > Security hasn't been used in this project yet. Add this team?"
 4. **If user confirms**, add team to `known_teams` in config
-5. **Create issue** with suggested team
+5. **Create via `loaf issue new`** so identity can be delegated; do not create in Linear MCP and forget `loaf issue pull`
 
 ### Team Suggestion Example
 
@@ -75,7 +65,7 @@ Use Linear MCP's `list_teams` (if configured) to get all workspace teams for val
 
 ## Diagram Consideration
 
-For multi-file or multi-service changes, consider adding architecture diagrams to the linked spec, report, ADR, or implementation notes.
+For multi-file or multi-service changes, consider adding architecture diagrams to the issue, a report, ADR, or implementation notes.
 
 ### When to Create Diagrams
 
@@ -94,7 +84,7 @@ Ask yourself:
 2. Is there a data flow that needs to be understood?
 3. Would a visual help communicate the approach?
 
-If yes to any, capture the diagram in a durable artifact such as a spec, report, ADR, or implementation note, and log the reference with `loaf journal log`.
+If yes to any, capture the diagram in a durable artifact such as a report, ADR, or implementation note, and log the reference with `loaf journal log`.
 
 ### Diagram Template
 
@@ -146,36 +136,23 @@ For complex tasks, explore before implementing:
 
 ## Linear Status Management
 
-**Keep Linear status synchronized with actual work state:**
+**Keep Loaf status synchronized with actual work state.** Linear is an overlay (`loaf issue pull` / `push` / `reconcile`); never drive Loaf status from Linear MCP tools.
 
-| Work State | Linear Status (sub-issue) |
-|------------|---------------------------|
-| Work begun | In Progress |
-| Blocked/waiting for user | In Progress (add blocker comment) |
-| Work completed | Done (or In Review if PR pending) |
+| Work State | Loaf status |
+|------------|-------------|
+| Work begun | `active` via `loaf issue start` |
+| Blocked/waiting | Stay `active`; log `block(scope)` and leave a Linear comment if the overlay is on |
+| Work landed | `done` via `loaf issue status <ref> done` (usually ship), then `loaf issue stop <ref>` |
 
-### Parent rollup auto-close
+### Parent vs children
 
-In Linear-native mode, the **parent** rollup issue (labeled `spec`) is not
-moved manually during sub-issue work. It flips to Done automatically when
-the last sub-issue flips to Done, and only then. Procedure:
+Parents with children are not the implementation target. Dispatch leaf delivery children on `loaf issue frontier`. A parent is not marked `done` because a child landed.
 
-1. After moving a sub-issue to a `completed`-type state, call
-   `list_issues` with `parent: <parent-id>`.
-2. If every sub-issue is in a `completed`-type state, move the parent to
-   `completed` via `update_issue`.
-3. If any sub-issue is still in an open state (including `blocked`), the
-   parent stays where it is — the spec is not done.
+`loaf issue link A blocks B` is the sequencing edge. An issue with an open predecessor does not appear on the frontier. Do not start a blocked successor.
 
-Never set the parent to In Progress manually — a parent in Linear-native
-mode reflects a rollup of its sub-issues, not its own work.
+### Blocked-by pre-flight
 
-### BlockedBy pre-flight
-
-Before moving a sub-issue to In Progress, confirm every issue in its
-`blockedBy` field is in a `completed`-type state. If not, refuse to start
-and report the blockers. This is a hard gate in Linear-native mode —
-never implement through open `blockedBy`.
+Before `loaf issue start`, confirm the ref is on `loaf issue frontier`. If it is blocked, refuse and report the predecessors. Never implement through an open `blocks` edge.
 
 ---
 
@@ -184,7 +161,7 @@ never implement through open `blockedBy`.
 **The journal must ALWAYS be handoff-ready.** After every significant action:
 
 1. Log what just happened with `loaf journal log`
-2. Reference task/spec/report/commit IDs rather than duplicating long prose
+2. Reference issue/report/commit IDs rather than duplicating long prose
 3. Log completed agent work with outcomes
 4. Ensure anyone could pick up the work immediately from `loaf journal recent`
 
@@ -205,32 +182,18 @@ Generate with: `date -u +"%Y-%m-%d %H:%M UTC"`
 
 ---
 
-## Task Completion
+## Issue Completion
 
-When a task-coupled unit of work completes:
+When an issue-coupled unit of work completes:
 
-1. **Update task status** (local file or Linear sub-issue)
-2. **Check spec progress:**
-   - Local-tasks mode: list all tasks for the spec; if all done → mark
-     spec `complete`, else spec stays `implementing`
-   - Linear-native mode: query the parent rollup's sub-issues via
-     `list_issues` with `parent: <parent-id>`; if all are `completed`-type,
-     close the parent and mark the local spec `complete`, else both stay
-     in flight
-3. **Write a `wrap` journal entry** if the conversation holds synthesis worth
-   saving (next steps, abandoned paths); skip it otherwise — nothing is
-   "closed," a conversation that ends without a wrap leaves a valid journal
-
-### Spec Completion Check
+1. **Open or update the PR** with body `loaf issue render <ref>` — no manual editing
+2. **Land via ship** — review definition of done, `loaf issue verify <ref>`, squash merge, then `loaf issue status <ref> done` and `loaf issue stop <ref>`
+3. **Write a `wrap` journal entry** if the conversation holds synthesis worth saving (next steps, abandoned paths); skip it otherwise — nothing is "closed," a conversation that ends without a wrap leaves a valid journal
 
 ```bash
-# Local-tasks mode: any open tasks for this spec?
-loaf task list --spec SPEC-001 --status open --json
-
-# Linear-native mode: query the Linear parent's sub-issues
-# (via get_issue + list_issues with parent filter)
-# The parent itself only flips to Done when every sub-issue is Done.
+loaf issue show <ref>
+loaf issue tree <ref>
+loaf issue list --started
 ```
 
-Never mark the local spec `complete` while its Linear parent still has
-open sub-issues — the two sources of truth should agree on "done."
+Do not mark a parent `done` while delivery children are still open. Do not flip Loaf status from Linear MCP tools; use `loaf issue reconcile` if the overlay has drifted.

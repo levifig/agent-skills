@@ -168,11 +168,11 @@ hooks:
       matcher: "Bash"
       if: "Bash(gh pr merge:*)"
       timeout: 5000
-      description: Inject housekeeping checklist after a gh pr merge hook; command matching does not prove success
+      description: Inject issue-done, worktree-stop, and journal housekeeping after a gh pr merge hook; command matching does not prove success
 
   session:
     # SessionStart — emit the layered continuity digest (latest project wrap +
-    # recent branch entries + open tasks). --from-hook preserves the subagent
+    # recent branch entries + open issues). --from-hook preserves the subagent
     # silent-exit guard: no start marker is ever written. The session entity is
     # dead; the digest is a deterministic read-time query, never persisted.
     # The command below is the neutral declaration: each target's builder

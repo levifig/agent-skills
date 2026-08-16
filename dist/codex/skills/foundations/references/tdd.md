@@ -54,6 +54,6 @@ If the failing test points to a non-obvious root cause, or if your first fix att
 | Phase | TDD Role |
 |-------|----------|
 | shape | Test conditions become TDD test cases |
-| breakdown | Each task should have clear test targets |
+| shape | Each promoted issue should have clear test targets in its DoD |
 | implement | Follow TDD cycle for each task |
 | reflect | Note TDD friction points for improvement |

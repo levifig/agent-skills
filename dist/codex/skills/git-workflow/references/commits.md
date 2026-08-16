@@ -110,13 +110,14 @@ Closes BACK-123
 ## Branch Naming
 
 ```
+issue/<alias-or-id>
 <type>/<description>
-<type>/TASK-123-description
 ```
 
 ### Types
 
-- `feat/` - New features (e.g., `feat/spec-010-task-management-cli`)
+- `issue/` - Started from `loaf issue start` (`issue/loaf-42`)
+- `feat/` - New features (e.g., `feat/thermal-rating-cli`)
 - `fix/` - Bug fixes
 - `hotfix/` - Critical production fixes
 - `release/` - Release preparation
@@ -126,7 +127,7 @@ Closes BACK-123
 
 - Lowercase with hyphens (kebab-case)
 - Short but descriptive (max 50 chars)
-- Include spec or task slug when applicable (e.g., `feat/spec-010-task-management-cli`)
+- Prefer the started worktree branch from `loaf issue start` when implementing an issue
 
 ## Pull Request Format
 
@@ -140,26 +141,10 @@ feat: add thermal rating calculation
 
 ### Description
 
-Focus on **review context** — what changed, why, and how to test. Do not include squash merge commit text in the PR body.
+The PR body is `loaf issue render <ref>` output — paste-ready, no manual editing. Definition-of-done criteria in the render are the review checklist. Do not include squash merge commit text in the PR body.
 
-```markdown
-## Summary
-
-Brief description of what this PR adds/changes and why.
-
-- Bullet points covering key changes
-- Focus on what a reviewer needs to know
-
-## Test plan
-
-- [ ] Unit tests added/updated
-- [ ] Integration tests pass
-- [ ] Manual testing performed
-
-## Related Issues
-
-Closes BACK-123
-Refs BACK-124
+```
+gh pr create --title "type: summary" --body "$(loaf issue render <ref>)"
 ```
 
 ### Merge Strategy
@@ -182,10 +167,10 @@ published release notes read as user-facing prose, not an internal worklog.
 
 Internal terms that have no meaning outside the team's working context:
 
-- Spec IDs and task IDs (`SPEC-024`, `TASK-042`)
+- Internal work-unit numbering that is not the issue ID (issue IDs like `LOAF-42` belong in commits — release attribution reads them)
 - Session, sprint, or branch references
 - Internal terminology from skills/docs that isn't part of the user's mental model — e.g. `Q1`/`Q2`/`Q3` question numbers from a Triage Gate, internal gate-logic notation like `(Q1 OR Q2) AND Q3`, hook IDs that aren't user-facing
-- "How the work got done" framing — interview steps, breakdown steps, review gates
+- "How the work got done" framing — interview steps, decomposition steps, review gates
 
 ### Keep
 
@@ -204,7 +189,7 @@ Internal terms that have no meaning outside the team's working context:
 
 ### Auto-generated Entries
 
-When `loaf release` auto-generates the `[Unreleased]` section from commit history, those entries inherit any internal terms present in the commit messages. Treat the generated output as a draft: rewrite it under the curated path before bumping. The release skill preserves curated content when it's already in `[Unreleased]` — curate first, bump second.
+`loaf release suggest` drafts notes from landed issues; `loaf release cut` prepends them into `CHANGELOG.md`. Treat drafted notes as a draft: rewrite internal terms before cutting. Curate `[Unreleased]` as PRs land so the later cut reads as user-facing prose.
 
 Before approving a release bump, compare `[Unreleased]` against the actual release range and remove scaffolding language introduced by specs, reviews, tasks, or session triage. If an entry only explains why the work was discovered or how the work was organized, it does not belong in the changelog.
 
@@ -228,14 +213,15 @@ Before approving a release bump, compare `[Unreleased]` against the actual relea
 - Add agent attribution
 - Mix unrelated changes
 - Commit secrets or sensitive data
-- Put SPEC or TASK IDs in commit subject (use human-readable names)
+- Put work-unit IDs in the commit subject (use human-readable names). Issue aliases belong in the body so `loaf release suggest` can attribute the commit.
 
 ### ID References
 
 - **IDs belong in footer, not subject line**
-  - Bad: `feat: implement SPEC-002 invisible sessions`
-  - Good: `feat: implement invisible sessions and task board`
+  - Bad: `feat: implement LOAF-42 invisible sessions`
+  - Good: `feat: implement invisible sessions`
 - Use descriptive names that are understandable without looking up IDs
+- Issue aliases (`LOAF-42`) go in the body so release attribution can find them
 - Linear issue IDs go in footer only (e.g., `Closes BACK-123`)
 
 ## Semantic Versioning
@@ -277,6 +263,6 @@ BREAKING CHANGE: Description of breaking change.
 
 **Convention:**
 - Use standard SemVer pre-release identifiers (`alpha`, `beta`, or `rc`) when publishing pre-release versions.
-- `loaf release` handles all bump types: `prerelease`, `release`, `major`, `minor`, `patch`
+- `loaf release cut --bump` handles all bump types: `prerelease`, `release`, `major`, `minor`, `patch`
 
 **Not required** — projects using simple `MAJOR.MINOR.PATCH` versioning can ignore pre-release suffixes entirely. This convention is for projects publishing staged pre-releases before stable releases.

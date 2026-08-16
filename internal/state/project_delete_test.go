@@ -83,6 +83,49 @@ spec: SPEC-001
 	assertNoIntegrityViolations(t, store)
 }
 
+func TestDeleteProjectRemovesIssueTables(t *testing.T) {
+	ctx := context.Background()
+	root := projectRoot(t)
+	resolver := PathResolver{StateHome: t.TempDir()}
+	if _, err := Initialize(ctx, root, resolver); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store := openTestStore(t, root, resolver.StateHome)
+	defer store.Close()
+
+	issue, err := store.CreateIssue(ctx, root, IssueCreateOptions{
+		Title: "Delete with criteria",
+		Criteria: []IssueCriterionInput{
+			{Text: "Must vanish with the project", Tier: IssueCriterionTierH},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if issue.Alias == "" {
+		t.Fatal("CreateIssue() alias is empty, want minted local alias")
+	}
+	projectID := projectIDForTest(t, store, root)
+	for _, table := range []string{"issues", "issue_criteria", "issue_identity"} {
+		if got := countRows(t, store, `SELECT COUNT(*) FROM `+table+` WHERE project_id = ?`, projectID); got == 0 {
+			t.Fatalf("precondition: %s has 0 rows for project, want >0", table)
+		}
+	}
+
+	if _, err := store.DeleteProject(ctx, projectID); err != nil {
+		t.Fatalf("DeleteProject() error = %v", err)
+	}
+	for _, table := range []string{"issues", "issue_criteria", "issue_identity"} {
+		if got := countRows(t, store, `SELECT COUNT(*) FROM `+table+` WHERE project_id = ?`, projectID); got != 0 {
+			t.Fatalf("after delete, %s has %d rows for project, want 0", table, got)
+		}
+	}
+	if got := countRows(t, store, `SELECT COUNT(*) FROM projects WHERE id = ?`, projectID); got != 0 {
+		t.Fatalf("projects row still present (%d), want 0", got)
+	}
+	assertNoIntegrityViolations(t, store)
+}
+
 func TestDeleteProjectUnknownRef(t *testing.T) {
 	ctx := context.Background()
 	root := projectRoot(t)

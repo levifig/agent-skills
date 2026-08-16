@@ -132,7 +132,7 @@
             "type": "command",
             "command": "cat \"${CLAUDE_PLUGIN_ROOT}/hooks/instructions/post-merge.md\"",
             "if": "Bash(gh pr merge:*)",
-            "description": "Inject housekeeping checklist after a gh pr merge hook; command matching does not prove success",
+            "description": "Inject issue-done, worktree-stop, and journal housekeeping after a gh pr merge hook; command matching does not prove success",
             "timeout": 5
           }
         ]

@@ -3,11 +3,12 @@ name: idea
 description: >-
   Captures ideas into structured nuggets for later evaluation. Use when the user
   says "I have an idea" or "note this down." Also activate when a specific
-  actionable concept crystallizes during conversation. Ideas and sparks are
-  capture primitives routed through triage, which chooses dispositions such as
-  tracking an Intent or handing to pitch. Not for problem discovery (use pitch),
-  processing the intake queue (use triage), shaping (use shape), or agent-side
-  divergent inquiry when direction is undecided (use explore as a technique).
+  actionable concept crystallizes during conversation. Ideas and sparks stay
+  capture primitives routed through triage, which files worth-keeping items as
+  backlog issues or hands them to pitch or shape. Not for problem discovery (use
+  pitch), processing the intake queue (use triage), shaping a bounded issue (use
+  shape), or agent-side divergent inquiry when direction is undecided (use
+  explore as a technique).
 ---
 
 # Idea
@@ -24,7 +25,6 @@ Capture ideas quickly with minimal friction.
 - Quick Reference
 - Purpose
 - Process
-- Idea Lifecycle
 - Guardrails
 - Related Skills
 
@@ -34,7 +34,7 @@ Capture ideas quickly with minimal friction.
 - 2-3 questions maximum -- don't turn capture into an interview
 - Infer metadata automatically -- don't ask for tags, title, or links
 - One idea per captured row/artifact -- keep them atomic
-- No shaping or pitching here -- problem discovery is pitch; bounding is shape
+- No shaping, pitching, or filing issues here -- problem discovery is pitch; bounding is shape; dispositions are triage
 - Capture through `loaf idea capture --title ...` when SQLite state is
   initialized; log notable context with `loaf journal log`
 
@@ -56,7 +56,7 @@ Capture ideas quickly with minimal friction.
 
 ## Purpose
 
-Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal is **speed of capture**, not thoroughness. An idea is retained material, nothing more: tracking it as an Intent, handing it to pitch for problem discovery, handing it to shape when already well-understood, or archiving it are triage dispositions chosen later by the user.
+Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal is **speed of capture**, not thoroughness. An idea is retained material, nothing more: filing it as a backlog issue, handing it to pitch for problem discovery, handing it to shape when already well-understood, or archiving it are triage dispositions chosen later by the user.
 
 ---
 
@@ -80,7 +80,7 @@ Ideas are raw nuggets — unprocessed, unshaped, but worth remembering. The goal
 
 ## Related Skills
 
-- **triage** — process the intake queue and choose dispositions (including hand to pitch or shape)
+- **triage** — process the intake queue and choose dispositions (file as backlog issue, hand to pitch, or hand to shape)
 - **pitch** — problem-discovery ceremony when a captured idea needs a brief before shaping
-- **shape** — develop a well-understood direction into a bounded Change
+- **shape** — develop a well-understood direction into a bounded issue
 - **explore** — agent technique when direction is genuinely undecided (not a user front door)

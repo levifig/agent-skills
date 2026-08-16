@@ -1,12 +1,12 @@
 ---
 name: housekeeping
 description: >-
-  Reviews and maintains agent artifacts in .agents/ — specs, plans, drafts,
-  handoffs, councils, and reports. Use when the user asks "housekeeping," "clean
-  up," or "tidy up .agents/." Provides hygiene recommendations, archives
-  completed work, and ensures extracted knowledge is preserved. Not for
-  strategic reflection (use reflect) or knowledge management (use
-  knowledge-base).
+  Reviews and maintains agent artifacts in .agents/ plus issue hygiene —
+  reports, handoffs, councils, archived issues, and stale started worktrees. Use
+  when the user asks "housekeeping," "clean up," or "tidy up .agents/." Provides
+  hygiene recommendations, archives completed work, and ensures extracted
+  knowledge is preserved. Not for strategic reflection (use reflect) or
+  knowledge management (use knowledge-base).
 ---
 
 # Housekeeping
@@ -16,40 +16,43 @@ description: >-
 - Verification
 - Quick Reference
 - Mode-Aware Checks
-- Process
-- Guardrails
-- Related Skills
+- Suggests Next
+- Topics
+- Artifact Naming
 
-Systematic review and archival of all `.agents/` artifacts with Linear-aware checks.
+Systematic review of `.agents/` artifacts and issue workspaces.
 
 ## Critical Rules
 
 **Always**
 - Log invocation as the first action: `loaf journal log "skill(housekeeping): <scope or trigger>"`
 - Review EVERY file individually — never sample or average
-- Check Linear issue status before archiving linked specs
+- Check Loaf issue status (and Linear overlay, if enabled) before archiving linked artifacts
 - Extract lessons learned and decisions before archiving
-- Use CLI (`loaf housekeeping`, `loaf task archive`, `loaf spec archive`) — never raw `mv`
+- Use CLI (`loaf housekeeping`, `loaf report archive`, `loaf issue status` / `loaf issue stop`) — never raw `mv`
 - Treat `.agents/handoffs/` as first-class but disposable: keep active/final handoffs, delete only after confirmed deprecated status
-- Check report `status` is `processed` before archiving reports (see [templates/report.md](templates/report.md))
-- In SQLite-backed projects, verify lifecycle changes through `loaf task list --json`, `loaf spec list --json`, and `loaf report list --json`; use `loaf task sync` only for Markdown compatibility repair
+- Check report `status` is `done` (or `final`) before archiving reports (see [templates/report.md](templates/report.md))
+- In SQLite-backed projects, verify lifecycle through `loaf issue list --json`, `loaf issue list --started`, `loaf issue list --archived`, and `loaf report list --json`
 - When delegated subagents are available, use the `librarian` profile for
-  `.agents/`-scoped durable artifact tending: report/spec/handoff hygiene,
+  `.agents/`-scoped durable artifact tending: report/handoff hygiene,
   staleness notes, and lifecycle-safe cleanup recommendations.
   Housekeeping still owns user confirmation and final archive decisions.
-- Log outcome to the project journal: `loaf journal log "decision(housekeeping): archived N specs, M reports"`
+- Log outcome to the project journal: `loaf journal log "decision(housekeeping): archived N reports; stopped M stale worktrees"`
 
 **Never**
 - Auto-archive without user confirmation for each artifact
 - Skip spark extraction before deleting brainstorm drafts
 - Leave `archived_at` or `archived_by` fields empty in archived files
+- Run `loaf issue stop` from inside the started worktree
+- Dispatch cleanup agents into a live started worktree another agent occupies
 
 ## Verification
 
 After work completes, verify:
-- Tasks archived via `loaf task archive`
-- Specs archived via `loaf spec archive`
-- SQLite-backed task/spec/report state reflects lifecycle changes when initialized
+- Reports archived via `loaf report archive` after processing
+- Archived issues reviewed via `loaf issue list --archived` (`cancelled` / `duplicate` archive through `loaf issue status`)
+- Stale started worktrees reviewed via `loaf issue list --started` (a `(missing)` marker means the recorded path is gone)
+- SQLite-backed report/issue state reflects lifecycle changes when initialized
 - Drafts checked for unprocessed sparks before deletion
 - Handoffs deleted only after explicit deprecation is confirmed
 - Summary table presented showing all actions taken
@@ -61,10 +64,17 @@ After work completes, verify:
 ```bash
 loaf housekeeping --dry-run          # Preview recommendations
 loaf housekeeping                    # Run artifact scanner
-loaf task archive TASK-XXX           # Archive single task
-loaf spec archive SPEC-XXX           # Archive single spec
-loaf task sync                       # Compatibility diagnostic in SQLite-backed projects
+loaf issue list --started            # Started worktrees (alias, title, branch, path)
+loaf issue list --archived           # cancelled / duplicate rows
+loaf issue stop <ref>                # Remove worktree; keeps branch; does not change status
+loaf issue status <ref> cancelled    # Archive an abandoned issue
+loaf issue status <ref> duplicate --duplicate-of <surviving>
+loaf report archive <report>         # Archive a processed report
 ```
+
+`loaf housekeeping` still prints leftover `specs` / `tasks` sections when those
+SQLite tables have rows — compatibility scan only. Do not create new records
+there. The `loaf task` / `loaf spec` CLI is legacy.
 
 The project journal is append-only and never archived — it is not a housekeeping
 target. It is the canonical record housekeeping reads when extracting decisions
@@ -74,18 +84,11 @@ before archiving other artifacts.
 
 | Artifact | Active Location | Archive | Action |
 |----------|-----------------|---------|--------|
-| Tasks (local mode only) | SQLite state | SQLite archived status | `loaf task archive` |
-| Specs | SQLite state + `.agents/specs/` authored prose | `archive/` | `loaf spec archive` |
+| Issues | SQLite (`loaf issue list`) | `cancelled` / `duplicate` via `loaf issue status` | Confirm, then status; `done` is ship, not housekeeping |
+| Started worktrees | `loaf issue list --started` | `loaf issue stop <ref>` | Stop stale or `(missing)` trees after confirmation |
 | Drafts / brainstorms | SQLite state | SQLite resolved/archived status | User decision (spark extraction first) |
 | Handoffs | `.agents/handoffs/` | delete | Delete after status is confirmed `deprecated` |
 | Reports | SQLite state + generated/authored report Markdown | `archive/` | `loaf report archive` after processing |
-
-**Linear-native mode** (when `integrations.linear.enabled` is `true` in
-`.agents/loaf.json`): local `TASK-NNN.md` files do not exist for new specs —
-Linear issues are the task record. The "Tasks" row above is inert unless the
-project has pre-Linear local tasks lingering (see [Mode-Aware Checks](#mode-aware-checks)).
-Specs still archive locally — they are the canonical deliberation artifact in
-every mode.
 
 ## Cross-Branch Reconciliation
 
@@ -96,35 +99,30 @@ or `.agents/TASKS.json`, keep the deletion from the cutover branch and rerun
 
 ## Mode-Aware Checks
 
-When `integrations.linear.enabled` is `true` in `.agents/loaf.json`, apply
-these additional checks:
+### Started worktrees
 
-### Spec / Linear parent reconciliation
+For each row from `loaf issue list --started`:
 
-For each spec file (active and archive) with a `linear_parent:` frontmatter key:
+1. If `(missing)`, flag as **stale started workspace** — the row still records a path that is gone. Offer `loaf issue stop <ref>` after confirmation. Stop does not mark the issue `done`.
+2. If the path exists but the issue is `done` / `cancelled` / `duplicate`, flag as **worktree outlived the issue** — same offer.
+3. If the path exists and status is `active`, leave it unless the user asks to stop.
 
-1. Call `get_issue` with the issue identifier. If it 404s or returns
-   archived/deleted, flag as **orphaned linear_parent** — the local spec
-   references a Linear issue that no longer exists.
-2. If the spec's local status is `done` (or legacy `complete`) or `archived`,
-   verify the Linear parent issue is in a `completed`-type state. If not
-   (e.g., still "In Progress"), flag as **status mismatch** — "Spec marked
-   complete locally but Linear parent ENG-198 is still 'In Progress'."
-3. If the spec's local status is `in_progress` and the Linear parent is
-   already `completed`, flag the inverse — spec likely needs to be moved to
-   `done` and archived.
+Treat these as **warnings**, not auto-fixes.
 
-Treat all three as **warnings**, not auto-fixes. The user decides resolution.
+### Linear overlay
 
-### Pre-Linear local task detection
+When `integrations.linear.enabled` is `true` in `.agents/loaf.json`, the tracker
+adapter is not shipped. If a report or journal entry names a Linear id next to
+a Loaf alias, you may `get_issue` and flag an obvious mismatch (Linear Done vs
+Loaf still `active`, or the reverse). Warnings only. Do not drive Loaf status
+from Linear.
 
-If Linear is enabled but local task records exist in SQLite,
-surface them with context: "Pre-Linear local tasks detected. These aren't
-auto-migrated. Either continue using them, run a manual migration, or
-archive if superseded by Linear issues."
+### Leftover board rows
 
-Do NOT auto-migrate. Migration is user-initiated and out of scope for
-housekeeping.
+If `loaf housekeeping --dry-run` still reports `tasks` or `specs` cleanup
+candidates, surface them: "Legacy board rows are still in SQLite. They are not
+the work unit. Archive only if the user confirms they are superseded by Loaf
+issues." Do NOT auto-migrate.
 
 ## Suggests Next
 
@@ -135,9 +133,9 @@ After housekeeping, suggest reflect if the session produced key decisions or lea
 | Topic | Reference | Use When |
 |-------|-----------|----------|
 | Report Template | [templates/report.md](templates/report.md) | Creating cleanup reports |
-| Linear Integration | `orchestration/references/linear.md` | Checking external issue status |
+| Linear Integration | `orchestration/references/linear.md` | Checking external tracker overlay |
 | Journal Continuity | `orchestration/references/journal.md` | Understanding the project journal model |
 
 ## Artifact Naming
 
-Name every artifact you create for what it is, never for the work unit that produced it: the containing directory or Change already records that provenance. Put the source in a front-matter field, not the filename. Versions and timestamps are identity and stay. See the `foundations` skill for the full rule; `loaf check --hook artifact-names` enforces it at commit.
+Name every artifact you create for what it is, never for the work unit that produced it: the containing directory or the issue already records that provenance. Put the source in a front-matter field (`source: LOAF-42`), not the filename. Versions and timestamps are identity and stay. See the `foundations` skill for the full rule; `loaf check --hook artifact-names` enforces it at commit.

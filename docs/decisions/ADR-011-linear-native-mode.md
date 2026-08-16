@@ -1,7 +1,8 @@
 ---
 id: ADR-011
 title: Linear-Native Mode — Deliberation vs Execution Split
-status: Accepted
+status: Superseded
+superseded_by: Linear identity adapter (loaf issue mint/pull/push/reconcile)
 date: 2026-04-22
 ---
 
@@ -64,6 +65,10 @@ ADR-010 established the consolidation pattern at the overlay-file layer (`.agent
 - `orchestration/references/linear.md` gains `spec` label convention, parent-vs-child structure, `mcp_server_name` config, and project-scoped vs user-scoped `.mcp.json` guidance for multi-workspace setups.
 - SPEC-023 (backend abstraction) narrows: most of the work becomes extracting Linear-specific calls into a `tracker` CLI subcommand and adding a second backend (GitHub Issues would be next), not rewriting skills.
 - No migration shim. Projects that toggle Linear on mid-flight keep existing local tasks; only new breakdowns go Linear-native. Migration is user-initiated.
+
+## Revision
+
+2026-08-15 — Superseded by the Linear identity adapter (`loaf issue` mint, pull, push, reconcile). Issue identity is now `issue_identity.authority = linear` with the tracker owning identity, title, status, and assignment; Loaf owns shaping state (body, DoD criteria, claims, worktree). The `integrations.linear.enabled` skill-mode split remains historical inventory, not the execution contract.
 
 ## Shipped
 

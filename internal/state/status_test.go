@@ -930,6 +930,53 @@ VALUES ('backend-mapping-linear-project', ?, 'linear', 'project', ?, 'project', 
 	assertNoDiagnostic(t, status.Diagnostics, "backend-mapping-entity-missing")
 }
 
+func TestInspectAcceptsIssueAndReleaseBackendMappings(t *testing.T) {
+	root := projectRoot(t)
+	stateHome := t.TempDir()
+	if _, err := Initialize(context.Background(), root, PathResolver{StateHome: stateHome}); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	store := openTestStore(t, root, stateHome)
+	defer store.Close()
+	ctx := context.Background()
+
+	issue, err := store.CreateIssue(ctx, root, IssueCreateOptions{Title: "Mapped issue", Alias: "ENG-1"})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	release, err := store.RecordRelease(ctx, root, RecordReleaseOptions{
+		Version:      "1.0.0",
+		Tag:          "v1.0.0",
+		TaggedCommit: "abc123",
+		IssueIDs:     []string{issue.ID},
+	})
+	if err != nil {
+		t.Fatalf("RecordRelease() error = %v", err)
+	}
+	if err := store.BindLinearIssue(ctx, root, issue.ID, "ENG-1", "https://linear.app/loaf/issue/ENG-1"); err != nil {
+		t.Fatalf("BindLinearIssue() error = %v", err)
+	}
+	if err := store.upsertBackendMapping(ctx, root, backendMapping{
+		EntityKind:   "release",
+		EntityID:     release.ID,
+		ExternalKind: linearExternalKindRelease,
+		ExternalID:   "rel_1",
+		SyncStatus:   linearSyncLinked,
+	}); err != nil {
+		t.Fatalf("upsert release mapping error = %v", err)
+	}
+
+	status, err := Inspect(root, PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if status.Mode != ModeSQLiteReady {
+		t.Fatalf("Mode = %q, want %q for issue/release backend mappings", status.Mode, ModeSQLiteReady)
+	}
+	assertNoDiagnostic(t, status.Diagnostics, "backend-mapping-entity-kind-unknown")
+	assertNoDiagnostic(t, status.Diagnostics, "backend-mapping-entity-missing")
+}
+
 func TestInspectAcceptsNewArtifactEntityBackendMappings(t *testing.T) {
 	root := projectRoot(t)
 	stateHome := t.TempDir()

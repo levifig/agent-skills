@@ -79,13 +79,13 @@ Councils stay **local**. Even when the workspace uses Linear-native mode,
 council files live in `.agents/councils/` — they are deliberation artifacts,
 not executable work, and belong with specs in git.
 
-When a council resolves a spec's open questions:
+When a council resolves an issue's open questions:
 
-- Include the spec ID in council frontmatter (e.g., `spec: SPEC-024`). This
+- Include the issue ID in council frontmatter (e.g., `issue: LOAF-42`). This
   is already the common pattern.
-- If the spec's `linear_parent` has been populated by breakdown, also
-  include `linear_parent: ENG-198` in council frontmatter so a reader on
-  Linear can trace back to the deliberation.
+- If the issue is tracked in Linear (tracker authority), also include the
+  tracker key (e.g., `linear_parent: ENG-198`) in council frontmatter so a
+  reader on Linear can trace back to the deliberation.
 - Do not post council content to the Linear parent issue. A brief one-line
   reference ("Resolved via council 2026-04-21 — see .agents/councils/…") in
   a sub-issue comment is sufficient if the council drove a specific task

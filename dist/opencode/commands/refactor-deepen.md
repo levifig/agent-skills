@@ -172,7 +172,7 @@ skill terminates by writing a PLAN file using [templates/plan.md](templates/plan
 > Plan saved to `.agents/plans/<filename>.md`. Workflow handoff is pending
 > the SPEC/PLAN/TASKS artifact taxonomy spec — for now, decide manually.
 
-Do **not** recommend breakdown or implement as the next step. The
+Do **not** recommend implement as the next step. The
 handoff design is downstream of a deferred taxonomy spec.
 
 ### Codex Review (Opt-In, Plugin-Gated)

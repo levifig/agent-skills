@@ -136,7 +136,7 @@ After the wrap-up report, suggest housekeeping if it wasn't run this session and
 
 ## Report Format
 
-Use backtick formatting for code identifiers, file paths, spec/task IDs, version numbers, status values, and CLI commands. Use uppercase for spec and task IDs (`SPEC-029`, not `spec-029`).
+Use backtick formatting for code identifiers, file paths, issue IDs, version numbers, status values, and CLI commands. Use uppercase for issue IDs (`LOAF-29`, not `loaf-29`).
 
 ```markdown
 ## Session Wrap-Up

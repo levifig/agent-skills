@@ -1,19 +1,15 @@
 ---
 name: shape
 description: >-
-  Shapes messy input into a bounded, reviewable Change under
-  docs/changes/YYYYMMDD-slug/ (change.json + shape.md + tasks/), validated by
-  loaf change check. Runs a fog-routed narrowing protocol — gather context,
-  optional blindspot pass, grilling, reaction artifacts — seeds task-file
-  vertical slices, runs a critique gate, and offers an opt-in draft PR. Use when
-  the user asks "shape this," "turn this into a Change," or an idea has enough
-  constraints to bound. Produces role-named narrative (shape.md required;
-  brief/plan/design optional) plus task packets — never a numbered spec.
-  Teaches the problem-boundary test (same problem → another task; different
-  problem → Intent) and vertical-slice discipline. Not for quick capture (use
-  idea), problem discovery that should author a brief first (use pitch), or
-  open-ended divergent thinking (agent technique: explore / brainstorm — user
-  entry intent routes to pitch).
+  Shapes messy input into a bounded issue — problem body, definition-of-done
+  criteria, out-of-scope statement, and children when a criterion earns its own
+  DoD — validated by loaf issue check. Use when the user asks "shape this,"
+  "turn this into an issue," or a diagnosed fix needs a row. Produces a shaped
+  issue — never a folder or a plan document. Teaches fog graduation (park,
+  then a decision child) and one-criterion sizing (one fresh context window,
+  verifiable alone). Not for quick capture (use idea), problem discovery that
+  should author a brief first (use pitch), or open-ended divergent thinking
+  (agent technique: explore / brainstorm — user entry routes to pitch).
 user-invocable: true
 argument-hint: '[messy input to shape into a Change]'
 version: 0.2.21
@@ -21,7 +17,7 @@ version: 0.2.21
 
 # Shape
 
-Turn messy input into a bounded, reviewable Change.
+Prepare a bounded, reviewable issue.
 
 ## Contents
 - Critical Rules
@@ -37,29 +33,30 @@ Turn messy input into a bounded, reviewable Change.
 
 ## Critical Rules
 
-1. **Log invocation first** — `loaf journal log "skill(shape): <input being shaped>"` before doing anything else.
-2. **Produces a Change, never a spec** — `change.json` + `shape.md` (+ optional `brief.md`/`plan.md`/`design.md`) and `tasks/TASK-NNN-slug.md`. No sequentially-numbered spec file, no status-like fields anywhere.
+1. **Log invocation first** — `loaf journal log "skill(shape): shaping <topic> into LOAF-42"` before doing anything else. If no issue exists yet, log `skill(shape): shaping <topic>` and add the alias in the outcome entry.
+2. **Produces an issue, never a folder** — the deliverable is the issue row: problem in the body, definition of done as `loaf issue dod` criteria, an explicit out-of-scope statement in the body, children via `loaf issue promote` when a criterion earns its own DoD. No plan document is committed. The PR body, if a PR is opened, is `loaf issue render` output.
 3. **The fog register routes, you don't guess** — every named unknown carries a quadrant tag that dispatches it to exactly one technique (see Quick Reference). Technique-by-vibes is the failure mode this replaces.
-4. **Blindspot pass precedes grilling, offered not imposed** — run it when the territory is unfamiliar; skip it when the shaper is the domain expert. Never impose it as a mandatory step.
-5. **Grill one question at a time, with a recommendation** — using your harness's structured question tool if it has one (otherwise one inline question per message — same semantics). Never a form to fill in one pass. Order by architectural impact: questions whose answer would change the architecture go first, cosmetic questions last.
-6. **Techniques return fog entries, not decisions** — blindspot passes, grilling, and reaction artifacts hand back named unknowns and evidence for the human to adjudicate. Reconnaissance, not orders.
-7. **Own the decomposition** — decide Implementation Unit boundaries and granularity autonomously (absorbed from the retired breakdown step); ask only when two orderings carry genuinely different trade-offs.
-8. **Order units by likelihood-of-change** — data models, interfaces, and user-facing flows lead; mechanical work collapses at the bottom, so review attention lands on what's most likely to need changing.
-9. **Surface misalignment, never silently adjust** — when the idea conflicts with strategic docs, prior Changes, or the journal, tell the user and let them decide. Don't quietly reshape their idea.
-10. **Critique before finalizing** — run the Critique Gate as the last shaping step, before `loaf change check` and the PR offer.
-11. **Get approval before `loaf change init`** — don't scaffold the folder without explicit confirmation of scope.
-12. **Log the outcome** — `loaf journal log "decision(shape): <slug> shaped — N units, N open fog entries"`.
+4. **Fog graduates instead of evaporating** — a question not yet sharp enough is parked in the issue's `fog` field (`loaf issue new --fog`). When it sharpens it becomes a `--kind decision` child, which is ready when it poses a sharp question (a `?` in the title or body). No plan required.
+5. **Blindspot pass precedes grilling, offered not imposed** — run it when the territory is unfamiliar; skip it when the shaper is the domain expert. Never impose it as a mandatory step.
+6. **Grill one question at a time, with a recommendation** — using your harness's structured question tool if it has one (otherwise one inline question per message — same semantics). Never a form to fill in one pass. Order by architectural impact: questions whose answer would change the architecture go first, cosmetic questions last.
+7. **Techniques return fog entries, not decisions** — blindspot passes, grilling, and reaction artifacts hand back named unknowns and evidence for the human to adjudicate. Reconnaissance, not orders.
+8. **Decomposition is the tail** — a parent gets children only when its DoD needs more than one coherent slice. A criterion becomes a child the moment it earns its own DoD, via `loaf issue promote`. Own those boundaries autonomously; ask only when two orderings carry genuinely different trade-offs.
+9. **One sizing criterion** — a slice is right-sized when it fits one fresh context window and is verifiable alone. Expand–contract is the named exception for wide mechanical refactors. See [references/decomposition.md](references/decomposition.md).
+10. **Surface misalignment, never silently adjust** — when the idea conflicts with strategic docs, prior issues, or the journal, tell the user and let them decide. Don't quietly reshape their idea.
+11. **Critique before finalizing** — run the Critique Gate as the last shaping step, before `loaf issue check`.
+12. **A diagnosed one-line fix is two commands** — `loaf issue new` with a body that states the problem and `Out of scope: …`, then one `loaf issue dod add`. No problem-space ceremony. Confirm scope with the user before `loaf issue new` on anything larger.
+13. **Log the outcome** — `loaf journal log "decision(shape): LOAF-42 shaped — N children, N open fog entries"`.
 
 ---
 
 ## Verification
 
-- `docs/changes/YYYYMMDD-slug/` has `change.json` + `shape.md` with Product Contract sections non-empty; task packets seeded under `tasks/` when decomposition is known
-- Every Open Questions entry carries a quadrant tag (`[KU]`, `[UK]`, or `[UU]`) and a route
-- `loaf change check` reports zero violations (no legacy deprecation on new layout); executability gaps were read, not ignored
-- Problem-boundary test applied: discovered different problems become Intents, not TASK-007
-- The Critique Gate ran, and its answers changed the documents where they applied
-- No status-like fields in `change.json` or task frontmatter
+- The issue body states the problem and contains an explicit out-of-scope statement (`out of scope`, case-insensitive — that substring is what `loaf issue check` reads)
+- At least one definition-of-done criterion exists; V-tier criteria carry `--command` (and `--expect` when the check is more than exit 0); H-tier otherwise
+- Every open unknown is either parked in create-time `fog`, held in the session register until it sharpens, graduated to a `--kind decision` child (or sibling) with a sharp question, or written into the body as a decided answer
+- `loaf issue check <ref>` reports the issue shaped (delivery) or ready (decision). When children exist, coverage failures were fixed and containment orphans were filed as sibling backlog issues using the printed remedy
+- Problem-boundary test applied: a discovered different problem becomes a new backlog issue, not another criterion on this one
+- The Critique Gate ran, and its answers changed the issue where they applied
 
 ---
 
@@ -67,34 +64,46 @@ Turn messy input into a bounded, reviewable Change.
 
 ### Fog register format
 
-Open Questions entries take one of three forms:
+Open unknowns take one of three forms. Keep the register in the session. Park what is still unsharp in `--fog` at create; after create, unsharp entries stay in the session register (edit cannot mutate `fog`). Graduate what is sharp to a decision child or sibling, and write decided answers into the body.
 
 ```text
-- [KU] <the unknown> → <route: grilling | research spike | owner section>
-- [UK] <the recognize-it-when-seen criterion> → reaction artifact in research/
+- [KU] <the unknown> → <route: grilling | research spike | owner>
+- [UK] <the recognize-it-when-seen criterion> → reaction artifact
 - [UU] <the suspected blind area> → blindspot pass over <territory>
 ```
 
-An entry resolves by becoming a Decision, a Planning Contract subsection, or a named follow-up — visible in the diff, never silently deleted. A `[UU]` that gets named becomes a `[KU]` or `[UK]` and re-routes through the table below.
+An entry resolves by becoming a decision child, a body paragraph, a criterion, or remaining parked in `fog` — visible on `loaf issue show`, never silently deleted. A `[UU]` that gets named becomes a `[KU]` or `[UK]` and re-routes through the table below.
 
 ### Quadrant routing
 
 | Tag | Meaning | Routes to |
 |-----|---------|-----------|
 | `[KU]` known unknown | A question you can state precisely | [Grilling](references/grilling.md) (architecture-changing answers first) or a research spike |
-| `[UK]` unknown known | You'd recognize the right answer if you saw it, but can't state it yet | [Reaction artifact](references/reaction-artifact.md) — a variant or mock in `research/`, react and pick |
+| `[UK]` unknown known | You'd recognize the right answer if you saw it, but can't state it yet | [Reaction artifact](references/reaction-artifact.md) — a variant or mock, react and pick |
 | `[UU]` suspected blind spot | Unfamiliar territory; you don't yet know what you don't know | [Blindspot pass](references/blindspot-pass.md) |
 
-No route names a skill invocation. Research re-interviews an already-scoped question and writes to `.agents/reports/`; brainstorm forces a strategic frame onto a Change-local question and sends resolutions to intake. Shape runs all three techniques itself, in-session, and writes evidence into the Change's own `research/` — never `.agents/reports/`.
+No route names a skill invocation. Research re-interviews an already-scoped question; brainstorm forces a strategic frame onto an issue-local question and sends resolutions to intake. Shape runs all three techniques itself, in-session, and writes the captured answer onto the issue — never into `.agents/reports/`.
 
 ### Defined terms
 
-- **Rabbit holes** — tempting expansions of scope that would consume disproportionate effort for marginal value; name them so nobody wanders in unknowingly.
-- **No-gos** — approaches explicitly forbidden for this Change, stated so they aren't silently reconsidered mid-implementation.
+- **Rabbit holes** — tempting expansions of scope that would consume disproportionate effort for marginal value; name them in the out-of-scope statement so nobody wanders in unknowingly.
+- **No-gos** — approaches explicitly forbidden for this issue, stated so they aren't silently reconsidered mid-implementation.
 
 ### Source inputs recognized
 
-Step 1 reads whatever `$ARGUMENTS` names, or asks. Recognized sources: a change `brief.md` (from pitch or capture), a journal entry (cite by ID), a spark, an idea, a brainstorm document, a Linear issue, a PR conversation, a prior Change, or plain conversation with no artifact behind it yet.
+Step 1 reads whatever `$ARGUMENTS` names, or asks. Recognized sources: a brief from pitch, a journal entry (cite by ID), a spark, an idea, a brainstorm document, a Linear issue, a PR conversation, a prior issue, or plain conversation with no artifact behind it yet.
+
+### One-line entry
+
+A diagnosed fix that already has a problem and a done-check:
+
+```bash
+loaf issue new "Fix missing --json in list help" --body "issue list --help omits --json. Out of scope: rewriting other help pages."
+loaf issue dod add LOAF-42 "issue list help names --json" --command "loaf issue list --help" --expect "contains \`--json\`"
+loaf issue check LOAF-42
+```
+
+Two writes, then the readiness verdict. No grilling, no children, no files.
 
 ---
 
@@ -102,53 +111,86 @@ Step 1 reads whatever `$ARGUMENTS` names, or asks. Recognized sources: a change 
 
 ### Step 1: Gather Context
 
-Parse `$ARGUMENTS` against the source inputs above. When the input names a Change folder that already has `brief.md` (or you find one for this work), treat the brief as primary: restate the problem from it, confirm with the user rather than re-discovering, and keep later grilling on solution-space (how, boundaries, verification) — pitch already framed the problem. When no brief exists, run full narrowing as today; pitch is the recommended front door for raw concepts, never a gate. Read the journal (`loaf journal recent` / `search`) for related history, and check for a prior Change touching the same area. When VISION.md, STRATEGY.md, and ARCHITECTURE.md exist, read them for strategic fit. Most consumer projects don't have them yet — when absent, shape against the journal, recent Changes, and the conversation instead, and say so in the Change's Source Inputs.
+Parse `$ARGUMENTS` against the source inputs above. When a brief from pitch already frames the problem, restate it, confirm with the user rather than re-discovering, and keep later grilling on solution-space (how, boundaries, verification). When no brief exists, run full narrowing; pitch is the recommended front door for raw concepts, never a gate. Read the journal (`loaf journal recent` / `search`) for related history, and check for a prior issue touching the same area (`loaf issue list`, `loaf issue tree`). When VISION.md, STRATEGY.md, and ARCHITECTURE.md exist, read them for strategic fit. Most consumer projects don't have them yet — when absent, shape against the journal, recent issues, and the conversation instead, and say so in the issue body.
 
 ### Step 2: Evaluate Strategic Fit
 
-When strategic docs exist, check: does this advance the vision, serve the target personas, fit technical constraints, avoid conflicting with in-flight Changes? On misalignment, **surface it to the user — never silently adjust the idea**. The user decides whether to proceed, narrow scope, or defer to reflect after this ships.
+When strategic docs exist, check: does this advance the vision, serve the target personas, fit technical constraints, avoid conflicting with in-flight issues? On misalignment, **surface it to the user — never silently adjust the idea**. The user decides whether to proceed, narrow scope, or file the conflicting concern as its own backlog issue.
 
-### Step 3: Name the Change and Initialize
+### Step 3: Name the Issue and Write the Row
 
-Once the shape of the work is nameable, confirm scope with the user, then:
+Once the work is nameable, confirm scope with the user (skip this confirmation on the one-line path), then create the row. Prefer creating after the first narrowing pass so `--fog` can carry remaining unsharp questions — the CLI writes `fog` only at create.
 
 ```bash
-loaf change init <slug>
+loaf issue new "Rotate auth tokens on a sliding window" \
+  --body "Sessions never expire while the tab stays open, so a stolen cookie is valid indefinitely.
+
+Out of scope: migrating existing sessions; third-party IdP support." \
+  --fog "[KU] sliding-window length → grill; [UU] existing session-store conventions → blindspot pass"
 ```
 
-On a fresh slug this scaffolds `change.json` + `shape.md` + seeded `tasks/` from the embedded templates (see `templates/shape.md`, `templates/task.md`). On a capture-only folder that already has `change.json` + `brief.md` (from pitch or `init --brief`), the same command promotes in place — preserving brief and metadata verbatim while materializing `shape.md` and `tasks/` — never hand-copy templates into the folder; rely on that promotion path. Use `loaf change init <slug> --brief` only for capture-before-shape (emits `change.json` + `brief.md`). It does not switch branches — `git switch -c <slug>` yourself. Fill `shape.md` Product Contract sections as understanding solidifies; seed `tasks/TASK-NNN-slug.md` as vertical slices (a task is a commit, not a PR). Optional `plan.md`/`design.md` accrete when the how needs prose. See [references/cli-boundary.md](references/cli-boundary.md).
+Default kind is `delivery`; default status is `triage`. `--status` accepts `triage`, `backlog`, `todo`, `active`, or `done`. Use `--body -` or `--body-file <path>` for a longer body; `loaf issue edit <ref>` later **replaces** the body, it does not patch it.
+
+A delivery issue is shaped when the body is nonempty (the problem), at least one criterion exists, and the body contains an explicit out-of-scope statement. Fill those as understanding solidifies — create can carry the first body; criteria come next.
+
+A discovered different problem is a new backlog issue, not a child of this one:
+
+```bash
+loaf issue new --status backlog "Rewrite the session store"
+```
 
 ### Step 4: Narrow the Unknowns
 
-Offer the blindspot pass when the territory is unfamiliar (a new domain, an unfamiliar subsystem, a first collaboration) — skip it when the shaper is the expert. Its fog entries, and any others surfaced in interview, route by quadrant (Quick Reference above). Loop: grill `[KU]` entries, react to `[UK]` entries, run blindspot reconnaissance on `[UU]` entries until each gets a name and re-routes. Stop grilling when no unrouted `[KU]` entries remain or answers stop changing the contract. Entries still open at the end of the session are fine — each names its owner (a section, a spike, a follow-up).
+Offer the blindspot pass when the territory is unfamiliar (a new domain, an unfamiliar subsystem, a first collaboration) — skip it when the shaper is the expert. Its fog entries, and any others surfaced in interview, route by quadrant (Quick Reference above). Loop: grill `[KU]` entries, react to `[UK]` entries, run blindspot reconnaissance on `[UU]` entries until each gets a name and re-routes. Stop grilling when no unrouted `[KU]` entries remain or answers stop changing the issue.
 
-### Step 5: Decompose into Implementation Units
-
-Absorbed from the retired breakdown step — see [references/decomposition.md](references/decomposition.md) for the Right Size Test and per-unit verification discipline, including the V-tier `Command:` / `Expect:` forms `loaf change verify` parses (commands run from the repository root; H-tier is never gate input). Order units by likelihood-of-change; state real sequencing constraints in prose, never by list order alone.
-
-### Step 6: Fill the Planning Contract
-
-Write the free-form `###` subsections the work actually needs (approach, placement, risks, sequencing) inside the Planning Contract container. Its subsection names are yours; the container itself, plus Implementation Units, Verification Contract, and Definition of Done, is what `loaf change check` looks for. Durable Outputs stays forward-looking here — name what a final spec, ADR, or knowledge doc will need to capture, but don't write it now. Durable artifacts get created after implementation proves what's true, not during shaping.
-
-### Step 7: Run the Critique Gate
-
-Before finalizing, challenge the draft — see [references/critique-gate.md](references/critique-gate.md). Is scope still bounded, does every new command or state name its ceremony, is a status field creeping back in under another name, is the CLI/skill boundary drawn correctly, and could this be smaller and still deliver the Hypothesis?
-
-### Step 8: Validate
+When a parked question sharpens, graduate it — after the parent's DoD is written (Step 5). Attaching **any** child, including a decision, turns coverage on.
 
 ```bash
-loaf change check
+loaf issue new --kind decision --parent LOAF-42 "Should tokens live in httpOnly cookies?"
 ```
 
-Read violations (always block — fix them) separately from the executability report (derived, informational unless `--require-executable` is passed — that flag is implement's preflight and CI's non-draft gate, not shape's business). See [references/cli-boundary.md](references/cli-boundary.md).
+A decision issue is ready when the title or body contains `?`. It needs no criteria and no out-of-scope statement. A decision child does not claim a parent criterion, so promote (or otherwise claim) the parent's DoD before adding children, or keep the decision as a sibling (`loaf issue new --kind decision --status backlog`, no `--parent`) if the parent stays a leaf. Unsharp questions discovered after create stay in the session register until they graduate — there is no `--fog` on edit. See [references/decomposition.md](references/decomposition.md).
 
-### Step 9: Offer the Draft PR
+### Step 5: Write Definition of Done (decomposition tail)
 
-Offer to push the branch and open a draft PR, using [the PR template](templates/pr.md) — opt-in, never automatic. `loaf change check` (with no `--require-executable`) plus `gh pr list` is the cross-branch index either way.
+Add criteria as the interrogation produces observable done-checks. V-tier when a command can disagree with the implementation; H-tier when only a human can tell.
 
-### Step 10: Log the Outcome
+```bash
+loaf issue dod add LOAF-42 "Sliding-window expiry is covered by tests" --command "go test ./internal/auth/..." --expect "exit 0"
+loaf issue dod add LOAF-42 "Stolen-cookie writeup is reviewable" --tier H
+```
 
-`loaf journal log "decision(shape): <slug> shaped — N units, N open fog entries"`.
+`--command` implies V unless `--tier` overrides. `--expect` uses the verify grammar (`exit <N>`, `` contains `text` ``, joined by ` and `). Commands run from the repository root. See [references/cli-boundary.md](references/cli-boundary.md) and [references/decomposition.md](references/decomposition.md).
+
+A parent gets children only when its DoD needs more than one coherent slice. The moment a criterion earns its own DoD, promote it — the parent criterion stays, the child starts with a copy, and the claim is recorded so coverage holds for that position:
+
+```bash
+loaf issue promote LOAF-42 1
+```
+
+Then shape the child the same way (body, out-of-scope, its own criteria). Order children by likelihood-of-change when presenting them; state real sequencing with `loaf issue link <from> blocks <to>`, never by tree order alone.
+
+### Step 6: Run the Critique Gate
+
+Before finalizing, challenge the draft — see [references/critique-gate.md](references/critique-gate.md). Is scope still bounded, does every new command or state name its ceremony, is a second progress flag creeping into the body, is the CLI/skill boundary drawn correctly, and could this be smaller and still be verifiable in one fresh context window?
+
+### Step 7: Validate
+
+```bash
+loaf issue check LOAF-42
+```
+
+A delivery issue that passes prints `issue LOAF-42 is shaped`; a decision issue prints `issue LOAF-42 is ready`. Failures always block (missing body, missing criterion, missing out-of-scope, no sharp question, uncovered parent criterion). Containment orphans are reported, not failed: each line includes a ready-to-paste remedy that files the orphan as a sibling backlog issue — run that command, do not invent a different disposition.
+
+`loaf issue verify <ref>` runs V-tier commands from the repository root and writes nothing. That is implement's preflight, not shape's gate. See [references/cli-boundary.md](references/cli-boundary.md).
+
+### Step 8: Offer the Review Surface
+
+The issue lives in SQLite. There is no folder to commit and nothing plan-shaped to land. Offer `loaf issue show <ref>` and `loaf issue tree <ref>` as the review surface. If a PR is being opened for the work, its body is `loaf issue render <ref>` — paste-ready, no manual editing. Opt-in, never automatic.
+
+### Step 9: Log the Outcome
+
+`loaf journal log "decision(shape): LOAF-42 shaped — N children, N open fog entries"`.
 
 ---
 
@@ -156,8 +198,8 @@ Offer to push the branch and open a draft PR, using [the PR template](templates/
 
 - **pitch** — Problem-discovery ceremony that authors a brief; preferred front door when the problem is not yet framed
 - **idea** — Quick capture; feeds into pitch or shape once a concept has enough weight
-- **brainstorm** — Agent technique for divergent thinking (route user entry intent to pitch)
-- **implement** — Starts execution once a Change is structurally executable; this does not prove implementation completion
+- **brainstorm** — Agent technique for divergent thinking (route user entry to pitch)
+- **implement** — Starts execution once `loaf issue check` reports the issue shaped; this does not prove implementation completion
 - **reflect** — Updates strategic docs after the shipped work proves what changed
 
 ## Topics
@@ -167,10 +209,10 @@ Offer to push the branch and open a draft PR, using [the PR template](templates/
 | Blindspot pass | [references/blindspot-pass.md](references/blindspot-pass.md) | Deciding whether to offer reconnaissance, and how to prompt it |
 | Grilling | [references/grilling.md](references/grilling.md) | Running the one-question-at-a-time interview for `[KU]` entries |
 | Reaction artifacts | [references/reaction-artifact.md](references/reaction-artifact.md) | Resolving `[UK]` entries with a variant, mock, or prototype |
-| Decomposition | [references/decomposition.md](references/decomposition.md) | Sizing and ordering Implementation Units |
-| CLI boundary | [references/cli-boundary.md](references/cli-boundary.md) | Reading `loaf change init`/`check`/`verify` output, or explaining `--require-executable` |
+| Decomposition | [references/decomposition.md](references/decomposition.md) | Sizing slices, promoting criteria, reading coverage and containment |
+| CLI boundary | [references/cli-boundary.md](references/cli-boundary.md) | Reading `loaf issue` output, authoring `--command`/`--expect`, or explaining `loaf issue check` |
 | Critique Gate | [references/critique-gate.md](references/critique-gate.md) | Self-challenging scope and boundaries before finalizing |
 
 ## Artifact Naming
 
-Name every artifact you create for what it is, never for the work unit that produced it: the containing directory or Change already records that provenance. Put the source in a front-matter field, not the filename. Versions and timestamps are identity and stay. See the `foundations` skill for the full rule; `loaf check --hook artifact-names` enforces it at commit.
+Shape's deliverable is the issue row. If a reaction artifact or spike note lands on disk, name it for what it is, never for the issue that produced it. Put the source in a front-matter field, not the filename. Versions and timestamps are identity and stay. See the `foundations` skill for the full rule; `loaf check --hook artifact-names` enforces it at commit.

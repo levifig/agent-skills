@@ -211,7 +211,7 @@ After subagent completes:
 
 | Command | Subagent Role |
 |---------|---------------|
-| breakdown | Tasks become subagent assignments |
+| shape | Promoted child issues become subagent assignments |
 | implement | May dispatch subagents for specialized work |
 | implement | Automatically coordinates single-task and multi-task subagent work |
 

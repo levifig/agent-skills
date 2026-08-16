@@ -28,8 +28,8 @@ write a new file rather than updating an existing one.
 | `title` | Yes | One-line description of the deepening, not the candidate name |
 | `created` | Yes | ISO 8601 UTC, e.g. `2026-05-02T01:30:00Z` (must match the filename timestamp) |
 | `status` | Yes | `drafting` on first write; this template does not define additional lifecycle states |
-| `spec` | Yes | `SPEC-NNN` if the plan is scoped under a spec; `null` otherwise (do not omit the key) |
-| `related` | No | List of related artifact IDs (`ADR-*`, `SPEC-*`, idea filenames, other plan filenames) |
+| `issue` | Yes | `LOAF-NNN` if the plan is scoped under an issue; `null` otherwise (do not omit the key) |
+| `related` | No | List of related artifact IDs (`ADR-*`, `LOAF-*`, idea filenames, other plan filenames) |
 
 PLAN files do **not** carry an `id` frontmatter field. The filename is the
 identity, mirroring councils and ideas.
@@ -131,7 +131,7 @@ Filename: `.agents/plans/20260502-013000-deepen-journal-append.md`
 title: "Deepen journal append into a self-managing module"
 created: "2026-05-02T01:30:00Z"
 status: drafting
-spec: SPEC-034
+issue: LOAF-34
 related:
   - 20260501-231922-plan-lifecycle-cli-doctor-housekeeping
 ---

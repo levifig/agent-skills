@@ -611,6 +611,9 @@ func rekeyLegacyProjectTx(ctx context.Context, tx *sql.Tx, legacyID string, curr
 	if storedFriendly.Valid && strings.TrimSpace(storedFriendly.String) != "" {
 		friendlyName = storedFriendly.String
 	}
+	if _, err := tx.ExecContext(ctx, `PRAGMA defer_foreign_keys = ON`); err != nil {
+		return "", fmt.Errorf("defer foreign keys: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO projects (id, identity_hash, friendly_name, current_path, last_seen_at, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)

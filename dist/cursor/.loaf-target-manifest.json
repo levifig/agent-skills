@@ -12,7 +12,7 @@
       "kind": "hook-file",
       "source_path": "hooks/instructions/post-merge.md",
       "destination": "hooks/instructions/post-merge.md",
-      "sha256": "f728a0a9a004ea1ea76b70ca3292996c798baa2838633806e2fb4250118203b6",
+      "sha256": "4f712c30a821a1b5d971f9fd8bf17dfc8888634b6bb8f307339f9e5a47c05551",
       "mode": 420
     },
     {
@@ -28,7 +28,7 @@
       "kind": "hook-file",
       "source_path": "hooks/instructions/pre-pr-checklist.md",
       "destination": "hooks/instructions/pre-pr-checklist.md",
-      "sha256": "234b5e37846adf226ae501ac65a62139fed61c42dc62bbf9c78fc8b885debbad",
+      "sha256": "64a647e40d2d7f52224a60b978012265f80414c8eb2c893e61a97faa74375dd3",
       "mode": 420
     },
     {
@@ -59,7 +59,7 @@
       "id": "managed-instructions",
       "kind": "instruction",
       "destination": "project-instructions",
-      "sha256": "ac6debb93fcd1b2d7806681c446f3b7d9691a43a872831a969c82a7470b0b30d"
+      "sha256": "21e91a6226ead7de1ef1d3d61c4e2060dc9763e8485192f6efc0060a09bbe66e"
     }
   ]
 }

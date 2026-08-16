@@ -654,15 +654,15 @@ func TestRunnerCheckEphemeralProvenanceEmitsSpecEditRemediation(t *testing.T) {
 	}
 	joined := strings.Join(output.Errors, "\n")
 	for _, want := range []string{
-		"loaf spec edit SPEC-001 --body-file <path>",
-		"loaf spec finalize SPEC-001",
+		"do not write .agents/specs/*.md",
+		"loaf state export spec SPEC-001",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("output = %#v, want errors containing %q", output, want)
 		}
 	}
-	if strings.Contains(joined, "loaf spec archive") {
-		t.Fatalf("output = %#v, want no archive suggestion (archive cannot clear the gate)", output)
+	if strings.Contains(joined, "loaf spec ") {
+		t.Fatalf("output = %#v, want no retired loaf spec command", output)
 	}
 }
 
@@ -769,8 +769,8 @@ func TestRunnerCheckRenderDriftBlocksHandEditedRender(t *testing.T) {
 	for _, want := range []string{
 		".agents/specs/SPEC-001-render.md",
 		"not byte-identical",
-		"loaf spec edit SPEC-001 --body-file <path>",
-		"loaf spec finalize SPEC-001",
+		"do not write .agents/specs/*.md",
+		"loaf state export spec SPEC-001",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("render-drift output = %#v, want %q", output, want)
@@ -802,17 +802,15 @@ func TestRunnerCheckRenderDriftInvalidRenderPrescribesFinalize(t *testing.T) {
 	for _, want := range []string{
 		".agents/specs/SPEC-001-render.md",
 		"Committed render is invalid",
-		"loaf spec finalize SPEC-001",
+		"loaf state export spec SPEC-001",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("render-drift output = %#v, want %q", output, want)
 		}
 	}
-	// Editing a malformed render round-trips it into the body as prose, so the
-	// remediation must never route through spec edit --body-file.
-	for _, reject := range []string{"loaf spec edit", "--body-file"} {
+	for _, reject := range []string{"loaf spec edit", "loaf spec finalize", "--body-file"} {
 		if strings.Contains(joined, reject) {
-			t.Fatalf("render-drift output = %#v, want no %q for invalid renders", output, reject)
+			t.Fatalf("render-drift output = %#v, want no %q for invalid spec renders", output, reject)
 		}
 	}
 }
@@ -1019,8 +1017,8 @@ func TestArtifactBodyWriteCommandEmitsConcreteVerbs(t *testing.T) {
 		{kind: "report", path: ".agents/reports/report-audit.md", want: "loaf report edit report-audit --body-file <path>"},
 		{kind: "report", path: existingReport, want: "loaf report edit 20260512-122202-research-spec-track-convention-surface --body-file <path>"},
 		{kind: "report", path: ".agents/reports/2026-07-01-audit.md", want: "loaf report create <slug> --body-file <path>"},
-		{kind: "spec", path: ".agents/specs/SPEC-055-x.md", want: "loaf spec edit SPEC-055 --body-file <path>"},
-		{kind: "spec", path: ".agents/specs/new-idea.md", want: "loaf spec new <slug> --title <title> --body-file <path>"},
+		{kind: "spec", path: ".agents/specs/SPEC-055-x.md", want: "loaf state export spec SPEC-055 --format markdown"},
+		{kind: "spec", path: ".agents/specs/new-idea.md", want: "loaf state export spec --format markdown"},
 		{kind: "task", path: ".agents/tasks/TASK-042-example.md", want: "loaf task update TASK-042 --status <status>"},
 	}
 	covered := map[string]bool{}
@@ -1186,8 +1184,8 @@ func TestEphemeralProvenanceSkipsLoafCommandsInWedgedRepo(t *testing.T) {
 	gitCLI(t, repo, "add", ".agents/tasks/TASK-001-example.md", ".agents/specs/SPEC-001-example.md")
 
 	for _, command := range []string{
-		"loaf spec edit SPEC-001 --body-file .agents/specs/SPEC-001-example.md",
-		"loaf spec finalize SPEC-001",
+		"loaf state export spec SPEC-001 --format markdown",
+		"loaf task update TASK-001 --status todo",
 	} {
 		for _, hook := range []string{"ephemeral-provenance", "artifact-body-write"} {
 			var stdout bytes.Buffer

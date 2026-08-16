@@ -48,7 +48,7 @@ Standards for ADRs, API docs, changelogs, and diagrams.
   - Internal spec/task IDs
   - Verbatim commit or PR-title dumps
 - **Good examples:**
-  - "Add `loaf release --post-merge` guardrails for tagged GitHub releases"
+  - "Add `loaf release suggest` and `loaf release cut` for retroactive releases"
   - "Fix journal context routing when hook payloads are empty"
   - "Document worktree-aware `.agents/` storage for linked checkouts"
 - **Version protection:**
