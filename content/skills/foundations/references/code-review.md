@@ -86,5 +86,5 @@ Project code review conventions and workflow.
 | Command | Code Review Role |
 |---------|-----------------|
 | implement | Self-review before marking complete |
-| breakdown | Review task scope and approach |
+| shape | Review issue scope and DoD before implementation |
 | reflect | Note review feedback patterns |

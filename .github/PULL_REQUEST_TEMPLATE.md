@@ -1,25 +1,21 @@
-<!-- Draft = still shaping. Ready for review = implementation-ready. -->
+<!-- Replace this template with `loaf issue render <ref>` output. Do not hand-edit the render. Draft = still shaping. Ready for review = `loaf issue check <ref>` reports shaped (delivery) or ready (decision). -->
 
-## Change
+## Issue
 
-<!-- Link the Change folder this PR advances: docs/changes/YYYYMMDD-slug/ The Change artifact lives in this PR's diff — the draft PR is its shaping surface. During coexistence, legacy PRs implementing a numbered spec link the .agents/specs/ path here instead. Delete this section for PRs tied to neither. -->
+<!-- Bound issue ref (e.g. LOAF-42). One PR, one issue. -->
 
-## What & Why
+## Definition of done
 
-<!-- What this PR does and the problem it solves. For a shaping (draft) PR, summarize the direction; for an implementation PR, summarize the delta. -->
-
-## Review focus
-
-<!-- Where reviewer attention pays off: decisions to challenge, boundaries to verify, criteria to confirm. -->
+<!-- The issue's criteria are the review checklist (`loaf issue show <ref>` / `loaf issue dod list <ref>`). H-tier: read the diff. V-tier: `loaf issue verify <ref>` (writes nothing). Do not tick boxes here — landing is `loaf issue status <ref> done`. -->
 
 ## Verification
 
-<!-- What proves this works: gates run (`loaf change check`, `loaf check`), tests, commands a reviewer should re-run locally. On a draft, state what remains open instead. -->
+<!-- `loaf issue check <ref>`, `loaf issue verify <ref>`, plus project checks (`loaf check`, tests). On a draft, state what remains open instead. -->
 
 ## Migration / breaking changes
 
-<!-- If this PR changes user-facing behavior, document the migration step. Otherwise: "None." -->
+<!-- If this PR changes user-facing behavior, document the migration. Otherwise: "None." -->
 
-## Deferred
+## Out of scope
 
-<!-- Intentionally out of scope, and where it went (follow-up Change, open question, issue). Delete if nothing was deferred. -->
+<!-- From the issue body, or follow-up issue refs. Delete if empty. -->

@@ -50,13 +50,10 @@ No scope prefixes. No SPEC/TASK IDs in the title.
 
 ### 3. PR body
 
-```markdown
-## Summary
-- Key changes (2-4 bullets)
+The body is `loaf issue render <ref>` output. No project headers, no hand-edited summary. Checkboxes stay unchecked until `loaf issue status <ref> done`.
 
-## Test plan
-- [ ] Tests added/updated
-- [ ] Manual testing performed
+```
+gh pr create --title "type: summary" --body "$(loaf issue render <ref>)"
 ```
 
 ### 4. Merge strategy

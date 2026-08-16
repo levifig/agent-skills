@@ -1,3 +1,0 @@
-# Claude Code skill configuration
-user-invocable: true
-argument-hint: "[spec-file or topic]"

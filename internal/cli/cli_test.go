@@ -149,99 +149,6 @@ status: complete
 		}
 	}
 }
-
-func TestRunnerSpecRenderWritesScratchFileToXDGCache(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	cacheHome := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", cacheHome)
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-render.md", `---
-id: SPEC-001
-title: Render Spec
-status: implementing
----
-# Render Spec
-
-Spec body.
-`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var jsonOut bytes.Buffer
-	err := Runner{
-		Stdout:     &jsonOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "render", "SPEC-001", "--json"})
-	if err != nil {
-		t.Fatalf("spec render --json error = %v", err)
-	}
-	var result state.DurableRenderResult
-	if err := json.Unmarshal(jsonOut.Bytes(), &result); err != nil {
-		t.Fatalf("json.Unmarshal(%q) error = %v", jsonOut.String(), err)
-	}
-	if result.Kind != "spec" || result.Ref != "SPEC-001" || result.Contract != state.DurableRenderContract {
-		t.Fatalf("result = %#v, want spec durable render metadata", result)
-	}
-	if !strings.HasPrefix(result.Path, filepath.Join(cacheHome, "loaf", "renders")+string(filepath.Separator)) {
-		t.Fatalf("Path = %q, want XDG cache under %q", result.Path, cacheHome)
-	}
-	if strings.Contains(result.Path, workingDir) {
-		t.Fatalf("Path = %q, want out-of-tree render", result.Path)
-	}
-	content, err := os.ReadFile(result.Path)
-	if err != nil {
-		t.Fatalf("read render path error = %v", err)
-	}
-	text := string(content)
-	if !strings.Contains(text, "# Render Spec") || !strings.Contains(text, "<!-- loaf:render kind=spec contract=durable-doc-v1 -->") {
-		t.Fatalf("render content = %q, want body and stamp", text)
-	}
-}
-
-func TestRunnerSpecFinalizeWritesTrackedRender(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-finalize.md", `---
-id: SPEC-001
-title: Finalize Spec
-status: implementing
----
-# Finalize Spec
-
-Spec body.
-`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var jsonOut bytes.Buffer
-	err := Runner{
-		Stdout:     &jsonOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "finalize", "SPEC-001", "--json"})
-	if err != nil {
-		t.Fatalf("spec finalize --json error = %v", err)
-	}
-	var result state.DurableFinalizeResult
-	if err := json.Unmarshal(jsonOut.Bytes(), &result); err != nil {
-		t.Fatalf("json.Unmarshal(%q) error = %v", jsonOut.String(), err)
-	}
-	if result.Kind != "spec" || result.Ref != "SPEC-001" || result.RelativePath != ".agents/specs/SPEC-001-finalize.md" {
-		t.Fatalf("result = %#v, want tracked spec finalize path", result)
-	}
-	content, err := os.ReadFile(filepath.Join(workingDir, filepath.FromSlash(result.RelativePath)))
-	if err != nil {
-		t.Fatalf("read finalized spec error = %v", err)
-	}
-	text := string(content)
-	if !strings.Contains(text, "# Finalize Spec") || !strings.Contains(text, "<!-- loaf:render kind=spec contract=durable-doc-v1 -->") {
-		t.Fatalf("finalized spec = %q, want body and render stamp", text)
-	}
-}
-
 func TestRunnerRenderSweepScansCommittedRendersWithoutDatabase(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-sweep.md", `---
@@ -2917,7 +2824,7 @@ func TestRunnerTaskStatusErrorsNameValidStatuses(t *testing.T) {
 		want string
 	}{
 		{name: "task list", args: []string{"task", "list", "--status", "open"}, want: `invalid status "open" (valid: in_progress, blocked, todo, review, done, archived)`},
-		{name: "task update", args: []string{"task", "update", "TASK-001", "--status", "archived"}, want: `invalid status "archived" (valid: in_progress, blocked, todo, review, done)`},
+		{name: "task update", args: []string{"task", "update", "TASK-001", "--status", "archived"}, want: "frozen pending migration"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2972,8 +2879,8 @@ func TestRunnerTaskPriorityErrorsNameValidPriorities(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "task create", args: []string{"task", "create", "--title", "Bad", "--priority", "P9"}, want: `invalid priority "P9" (valid: P0, P1, P2, P3)`},
-		{name: "task update", args: []string{"task", "update", "TASK-001", "--priority", "P9"}, want: `invalid priority "P9" (valid: P0, P1, P2, P3)`},
+		{name: "task create", args: []string{"task", "create", "--title", "Bad", "--priority", "P9"}, want: "frozen pending migration"},
+		{name: "task update", args: []string{"task", "update", "TASK-001", "--priority", "P9"}, want: "frozen pending migration"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3009,19 +2916,19 @@ func TestRunnerTaskJSONValidationErrorsAreMachineReadable(t *testing.T) {
 			name:    "create invalid priority",
 			args:    []string{"task", "create", "--title", "Bad", "--priority", "P9", "--json"},
 			command: "task create",
-			want:    `invalid priority "P9"`,
+			want:    "frozen pending migration",
 		},
 		{
 			name:    "update invalid status",
 			args:    []string{"task", "update", "TASK-001", "--status", "archived", "--json"},
-			command: "task update",
-			want:    `invalid status "archived"`,
+			command: "task update TASK-001",
+			want:    "frozen pending migration",
 		},
 		{
 			name:    "update invalid priority",
 			args:    []string{"task", "update", "TASK-001", "--priority", "P9", "--json"},
-			command: "task update",
-			want:    `invalid priority "P9"`,
+			command: "task update TASK-001",
+			want:    "frozen pending migration",
 		},
 	}
 
@@ -6235,7 +6142,6 @@ func TestRunnerHybridCommandHelpAndUnknownSubcommandsAreNative(t *testing.T) {
 		wantSubcommand string
 	}{
 		{command: "task", wantHelp: "Usage: loaf task <subcommand>", wantSubcommand: "create"},
-		{command: "spec", wantHelp: "Usage: loaf spec <subcommand>", wantSubcommand: "list"},
 		{command: "report", wantHelp: "Usage: loaf report <subcommand>", wantSubcommand: "generate"},
 	}
 
@@ -6629,9 +6535,18 @@ status: open
 	}
 
 	run("state", "migrate", "markdown", "--apply")
-	run("task", "create", "--title", "Matrix Task", "--spec", "SPEC-001", "--json")
-	run("task", "update", "TASK-001", "--status", "in_progress", "--json")
-	run("task", "archive", "TASK-002", "--json")
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "create", "--title", "Matrix Task", "--spec", "SPEC-001", "--json")
+	ctx := context.Background()
+	resolver := state.PathResolver{StateHome: stateHome}
+	if _, err := state.CreateTask(ctx, root, resolver, state.TaskCreateOptions{Title: "Matrix Task", Spec: "SPEC-001"}); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if _, err := state.UpdateTaskStatus(ctx, root, resolver, "TASK-001", "in_progress"); err != nil {
+		t.Fatalf("UpdateTaskStatus() error = %v", err)
+	}
+	if _, err := state.ArchiveTasks(ctx, root, resolver, state.TaskArchiveOptions{Refs: []string{"TASK-002"}}); err != nil {
+		t.Fatalf("ArchiveTasks() error = %v", err)
+	}
 	run("idea", "capture", "--title", "Matrix Idea", "--json")
 	run("idea", "promote", "20260528-source-idea", "--to-spec", "SPEC-001", "--json")
 	run("idea", "resolve", "20260528-source-idea", "--by", "SPEC-001", "--json")
@@ -6640,7 +6555,9 @@ status: open
 	run("spark", "resolve", "SPARK-matrix", "--by", "20260528-target-idea", "--reason", "matrix resolved", "--json")
 	run("brainstorm", "promote", "20260528-brainstorm-matrix", "--to-idea", "20260528-target-idea", "--json")
 	run("brainstorm", "archive", "20260528-brainstorm-matrix", "--reason", "matrix archived", "--json")
-	run("spec", "archive", "SPEC-002", "--json")
+	if _, err := state.ArchiveSpecs(context.Background(), root, state.PathResolver{StateHome: stateHome}, []string{"SPEC-002"}); err != nil {
+		t.Fatalf("ArchiveSpecs(SPEC-002) error = %v", err)
+	}
 	run("journal", "log", "--json", "--harness-session-id", "matrix-harness", "decision(sqlite): matrix write")
 	run("tag", "add", "SPEC-001", "matrix", "--json")
 	run("tag", "remove", "SPEC-001", "matrix", "--json")
@@ -8179,39 +8096,19 @@ func TestRunnerTaskCreateUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("state migrate markdown --apply error = %v", err)
 	}
 
-	var createOut bytes.Buffer
-	err := Runner{
-		Stdout:     &createOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "create", "--title", "Created Task", "--spec", "SPEC-001", "--priority", "P1", "--depends-on", "TASK-001", "--json"})
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "create", "--title", "Created Task", "--spec", "SPEC-001", "--priority", "P1", "--depends-on", "TASK-001", "--json")
+	root, err := project.ResolveRoot(workingDir)
 	if err != nil {
-		t.Fatalf("task create --json error = %v", err)
+		t.Fatalf("ResolveRoot() error = %v", err)
 	}
-	created := decodeTaskCreateResult(t, createOut.Bytes())
-	if created.Task.Alias != "TASK-002" || created.Task.Title != "Created Task" || created.Task.Status != "todo" || created.Priority != "P1" || created.Spec == nil || created.Spec.Alias != "SPEC-001" || created.EventID == "" {
-		t.Fatalf("created = %#v, want TASK-002 under SPEC-001", created)
+	created, err := state.CreateTask(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskCreateOptions{
+		Title: "Created Task", Spec: "SPEC-001", Priority: "P1", DependsOn: []string{"TASK-001"},
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
 	}
-	if created.ContractVersion != state.StateJSONContractVersion {
-		t.Fatalf("created ContractVersion = %d, want %d", created.ContractVersion, state.StateJSONContractVersion)
-	}
-	if created.DatabaseScope != "global" {
-		t.Fatalf("created DatabaseScope = %q, want global", created.DatabaseScope)
-	}
-	if created.DatabasePath == "" {
-		t.Fatal("created DatabasePath is empty")
-	}
-	if created.ProjectID == "" {
-		t.Fatal("created ProjectID is empty")
-	}
-	if created.ProjectName != filepath.Base(workingDir) {
-		t.Fatalf("created ProjectName = %q, want %q", created.ProjectName, filepath.Base(workingDir))
-	}
-	if created.ProjectCurrentPath != workingDir {
-		t.Fatalf("created ProjectCurrentPath = %q, want %q", created.ProjectCurrentPath, workingDir)
-	}
-	if len(created.Depends) != 1 || created.Depends[0].Alias != "TASK-001" {
-		t.Fatalf("created.Depends = %#v, want TASK-001", created.Depends)
+	if created.Task.Alias != "TASK-002" {
+		t.Fatalf("seeded alias = %q, want TASK-002", created.Task.Alias)
 	}
 
 	var showOut bytes.Buffer
@@ -8253,20 +8150,17 @@ func TestRunnerTaskCreateHumanUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("state init error = %v", err)
 	}
 
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "create", "--title", "Human Task"})
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "create", "--title", "Human Task")
+	root, err := project.ResolveRoot(workingDir)
 	if err != nil {
-		t.Fatalf("task create human error = %v", err)
+		t.Fatalf("ResolveRoot() error = %v", err)
 	}
-	output := stdout.String()
-	for _, want := range []string{"created task TASK-001: Human Task", "scope: global database", "database:", "project:", "project name:", "project path:", "status: todo", "priority: P2", "event:"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("output = %q, want %q", output, want)
-		}
+	listed, err := state.ListTasks(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskListOptions{})
+	if err != nil {
+		t.Fatalf("ListTasks() error = %v", err)
+	}
+	if len(listed.Tasks) != 0 {
+		t.Fatalf("tasks after frozen create = %#v, want none written", listed.Tasks)
 	}
 }
 
@@ -8277,22 +8171,7 @@ func TestRunnerTaskCreateJSONOmitsEmptySpecWhenInitialized(t *testing.T) {
 		t.Fatalf("state init error = %v", err)
 	}
 
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "create", "--title", "No Spec Task", "--json"})
-	if err != nil {
-		t.Fatalf("task create --json error = %v", err)
-	}
-	created := decodeTaskCreateResult(t, stdout.Bytes())
-	if created.Spec != nil {
-		t.Fatalf("created.Spec = %#v, want nil", created.Spec)
-	}
-	if bytes.Contains(stdout.Bytes(), []byte(`"spec"`)) {
-		t.Fatalf("output = %s, want spec omitted", stdout.String())
-	}
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "create", "--title", "No Spec Task", "--json")
 }
 
 func TestRunnerTaskShowJSONUsesSQLiteStateWhenInitialized(t *testing.T) {
@@ -8546,107 +8425,13 @@ func TestRunnerTaskCreateUsesMarkdownIndexWhenMarkdownOnly(t *testing.T) {
   },
   "custom_root": "preserve me"
 }`)
-	var createOut bytes.Buffer
-	err := Runner{
-		Stdout:     &createOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "create", "--title", "Created Task!", "--spec", "SPEC-001", "--priority", "P1", "--depends-on", "TASK-001", "--json"})
-	if err != nil {
-		t.Fatalf("task create markdown --json error = %v", err)
-	}
-	created := decodeTaskCreateResult(t, createOut.Bytes())
-	if created.Task.Alias != "TASK-002" || created.Task.Title != "Created Task!" || created.Task.Status != "todo" || created.Priority != "P1" || created.Spec == nil || created.Spec.Alias != "SPEC-001" {
-		t.Fatalf("created = %#v, want TASK-002 under SPEC-001", created)
-	}
-	if len(created.Depends) != 1 || created.Depends[0].Alias != "TASK-001" {
-		t.Fatalf("created.Depends = %#v, want TASK-001", created.Depends)
-	}
-	if created.ContractVersion != state.StateJSONContractVersion {
-		t.Fatalf("created ContractVersion = %d, want %d", created.ContractVersion, state.StateJSONContractVersion)
-	}
-	if created.DatabaseScope != "" || created.DatabasePath != "" || created.ProjectID != "" || created.ProjectName != "" || created.ProjectCurrentPath != "" {
-		t.Fatalf("created database context = %#v, want empty for markdown fallback", created)
-	}
-
-	var index map[string]any
-	rawIndex, err := os.ReadFile(filepath.Join(workingDir, ".agents", "TASKS.json"))
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "create", "--title", "Created Task!", "--spec", "SPEC-001", "--priority", "P1", "--depends-on", "TASK-001", "--json")
+	before, err := os.ReadFile(filepath.Join(workingDir, ".agents", "TASKS.json"))
 	if err != nil {
 		t.Fatalf("ReadFile(TASKS.json) error = %v", err)
 	}
-	if err := json.Unmarshal(rawIndex, &index); err != nil {
-		t.Fatalf("Unmarshal(TASKS.json) error = %v", err)
-	}
-	if index["custom_root"] != "preserve me" {
-		t.Fatalf("index custom_root = %#v, want preserved", index["custom_root"])
-	}
-	if int(index["next_id"].(float64)) != 3 {
-		t.Fatalf("next_id = %#v, want 3", index["next_id"])
-	}
-	tasks := index["tasks"].(map[string]any)
-	task := tasks["TASK-002"].(map[string]any)
-	if task["title"] != "Created Task!" || task["slug"] != "created-task" || task["status"] != "todo" || task["priority"] != "P1" || task["spec"] != "SPEC-001" || task["file"] != "TASK-002-created-task.md" {
-		t.Fatalf("TASK-002 index = %#v, want created metadata", task)
-	}
-	deps := task["depends_on"].([]any)
-	if len(deps) != 1 || deps[0] != "TASK-001" {
-		t.Fatalf("depends_on = %#v, want TASK-001", deps)
-	}
-	existing := tasks["TASK-001"].(map[string]any)
-	files := existing["files"].([]any)
-	if len(files) != 1 || files[0] != "keep.go" {
-		t.Fatalf("existing task = %#v, want unknown fields preserved", existing)
-	}
-	spec := index["specs"].(map[string]any)["SPEC-001"].(map[string]any)
-	if spec["requirement"] != "preserve spec field" {
-		t.Fatalf("spec = %#v, want unknown spec fields preserved", spec)
-	}
-
-	taskFile := filepath.Join(workingDir, ".agents", "tasks", "TASK-002-created-task.md")
-	body, err := os.ReadFile(taskFile)
-	if err != nil {
-		t.Fatalf("ReadFile(created task) error = %v", err)
-	}
-	frontmatter, ok := parseKnowledgeFrontmatter(body)
-	if !ok {
-		t.Fatal("created task frontmatter missing")
-	}
-	if firstFieldValue(frontmatter["id"]) != "TASK-002" || firstFieldValue(frontmatter["title"]) != "Created Task!" || firstFieldValue(frontmatter["spec"]) != "SPEC-001" || !frontmatter["depends_on"].Array || strings.Join(frontmatter["depends_on"].Values, ",") != "TASK-001" {
-		t.Fatalf("frontmatter = %#v, want created task metadata", frontmatter)
-	}
-	content := markdownContentWithoutFrontmatter(string(body))
-	if !strings.Contains(content, "# TASK-002: Created Task!") || !strings.Contains(content, "## Acceptance Criteria") || !strings.Contains(content, "## Verification") {
-		t.Fatalf("content = %q, want task scaffold body", content)
-	}
-
-	var humanOut bytes.Buffer
-	err = Runner{
-		Stdout:     &humanOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "create", "--title", "Human Task"})
-	if err != nil {
-		t.Fatalf("task create markdown human error = %v", err)
-	}
-	if !strings.Contains(humanOut.String(), "created task TASK-003: Human Task") || !strings.Contains(humanOut.String(), "priority: P2") {
-		t.Fatalf("human output = %q, want created task summary", humanOut.String())
-	}
-
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "create", "--title", "Bad", "--spec", "SPEC-999"})
-	if err == nil || !strings.Contains(err.Error(), "Spec \"SPEC-999\" not found in index") {
-		t.Fatalf("missing spec error = %v, want index validation", err)
-	}
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "create", "--title", "Bad", "--depends-on", "TASK-999"})
-	if err == nil || !strings.Contains(err.Error(), "Dependency \"TASK-999\" not found in index") {
-		t.Fatalf("missing dependency error = %v, want index validation", err)
+	if !bytes.Contains(before, []byte(`"next_id": 2`)) {
+		t.Fatalf("TASKS.json changed after frozen create:\n%s", before)
 	}
 	assertNoStateDatabase(t, workingDir, stateHome)
 }
@@ -8779,17 +8564,7 @@ func TestRunnerTaskCreateReportsValidationAndInvalidSQLiteState(t *testing.T) {
 		t.Fatalf("state init error = %v", err)
 	}
 
-	err := Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "create", "--title", "Bad", "--priority", "PX"})
-	if err == nil {
-		t.Fatal("task create invalid priority error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "invalid priority") {
-		t.Fatalf("error = %v, want invalid priority", err)
-	}
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "create", "--title", "Bad", "--priority", "PX")
 
 	if _, err := parseTaskCreateArgs([]string{"--title", "--json"}); err == nil || !strings.Contains(err.Error(), "--title requires a value") {
 		t.Fatalf("parseTaskCreateArgs flag value error = %v, want --title requires a value", err)
@@ -8810,17 +8585,7 @@ func TestRunnerTaskCreateReportsValidationAndInvalidSQLiteState(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "create", "--title", "Created"})
-	if err == nil {
-		t.Fatal("task create invalid state error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
-	}
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "create", "--title", "Created")
 }
 
 func TestRunnerTaskShowReportsInvalidSQLiteStateAndMissingTargets(t *testing.T) {
@@ -8893,36 +8658,13 @@ func TestRunnerTaskUpdateStatusUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("state migrate markdown --apply error = %v", err)
 	}
 
-	var updateOut bytes.Buffer
-	err := Runner{
-		Stdout:     &updateOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--status", "in_progress", "--json"})
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "update", "TASK-001", "--status", "in_progress", "--json")
+	root, err := project.ResolveRoot(workingDir)
 	if err != nil {
-		t.Fatalf("task update --status error = %v", err)
+		t.Fatalf("ResolveRoot() error = %v", err)
 	}
-	updated := decodeTaskStatusUpdateResult(t, updateOut.Bytes())
-	if updated.Task.Alias != "TASK-001" || updated.Previous != "todo" || updated.Status != "in_progress" || updated.EventID == "" {
-		t.Fatalf("updated = %#v, want TASK-001 todo -> in_progress", updated)
-	}
-	if updated.ContractVersion != state.StateJSONContractVersion {
-		t.Fatalf("updated ContractVersion = %d, want %d", updated.ContractVersion, state.StateJSONContractVersion)
-	}
-	if updated.DatabaseScope != "global" {
-		t.Fatalf("updated DatabaseScope = %q, want global", updated.DatabaseScope)
-	}
-	if updated.DatabasePath == "" {
-		t.Fatal("updated DatabasePath is empty")
-	}
-	if updated.ProjectID == "" {
-		t.Fatal("updated ProjectID is empty")
-	}
-	if updated.ProjectName != filepath.Base(workingDir) {
-		t.Fatalf("updated ProjectName = %q, want %q", updated.ProjectName, filepath.Base(workingDir))
-	}
-	if updated.ProjectCurrentPath != workingDir {
-		t.Fatalf("updated ProjectCurrentPath = %q, want %q", updated.ProjectCurrentPath, workingDir)
+	if _, err := state.UpdateTaskStatus(context.Background(), root, state.PathResolver{StateHome: stateHome}, "TASK-001", "in_progress"); err != nil {
+		t.Fatalf("UpdateTaskStatus() error = %v", err)
 	}
 
 	var listOut bytes.Buffer
@@ -8969,21 +8711,15 @@ func TestRunnerTaskUpdateMetadataUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("state migrate markdown --apply error = %v", err)
 	}
 
-	var updateOut bytes.Buffer
-	err := Runner{
-		Stdout:     &updateOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--priority", "P0", "--spec", "SPEC-002", "--depends-on", "TASK-002", "--json"})
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "update", "TASK-001", "--priority", "P0", "--spec", "SPEC-002", "--depends-on", "TASK-002", "--json")
+	root, err := project.ResolveRoot(workingDir)
 	if err != nil {
-		t.Fatalf("task update metadata error = %v", err)
+		t.Fatalf("ResolveRoot() error = %v", err)
 	}
-	updated := decodeTaskStatusUpdateResult(t, updateOut.Bytes())
-	if updated.Priority != "P0" || updated.Spec == nil || updated.Spec.Alias != "SPEC-002" {
-		t.Fatalf("updated = %#v, want priority/spec update", updated)
-	}
-	if len(updated.Depends) != 1 || updated.Depends[0].Alias != "TASK-002" {
-		t.Fatalf("updated.Depends = %#v, want TASK-002", updated.Depends)
+	if _, err := state.UpdateTask(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskUpdateOptions{
+		Ref: "TASK-001", Priority: "P0", SetPriority: true, Spec: "SPEC-002", SetSpec: true, DependsOn: []string{"TASK-002"}, SetDependsOn: true,
+	}); err != nil {
+		t.Fatalf("UpdateTask() error = %v", err)
 	}
 
 	var showOut bytes.Buffer
@@ -9017,18 +8753,11 @@ func TestRunnerTaskUpdateMetadataUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("trace relationships = %#v, want spec and dependency relationships", trace.Relationships)
 	}
 
-	var clearOut bytes.Buffer
-	err = Runner{
-		Stdout:     &clearOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--spec", "none", "--depends-on", "none"})
-	if err != nil {
-		t.Fatalf("task update clear metadata error = %v", err)
-	}
-	output := clearOut.String()
-	if !strings.Contains(output, "updated task TASK-001") || !strings.Contains(output, "priority: P0") {
-		t.Fatalf("output = %q, want human update summary", output)
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "update", "TASK-001", "--spec", "none", "--depends-on", "none")
+	if _, err := state.UpdateTask(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskUpdateOptions{
+		Ref: "TASK-001", Spec: "none", SetSpec: true, DependsOn: []string{"none"}, SetDependsOn: true,
+	}); err != nil {
+		t.Fatalf("UpdateTask(clear) error = %v", err)
 	}
 	showOut.Reset()
 	err = Runner{
@@ -9093,114 +8822,13 @@ Preserve this body.
   "custom_root": "preserve me"
 }`)
 
-	var updateOut bytes.Buffer
-	err := Runner{
-		Stdout:     &updateOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--status", "done", "--priority", "P0", "--spec", "SPEC-002", "--depends-on", "TASK-003", "--json"})
-	if err != nil {
-		t.Fatalf("task update markdown --json error = %v", err)
-	}
-	updated := decodeTaskStatusUpdateResult(t, updateOut.Bytes())
-	if updated.Task.Alias != "TASK-001" || updated.Previous != "todo" || updated.Status != "done" || updated.Priority != "P0" || updated.Spec == nil || updated.Spec.Alias != "SPEC-002" {
-		t.Fatalf("updated = %#v, want markdown metadata update", updated)
-	}
-	if len(updated.Depends) != 1 || updated.Depends[0].Alias != "TASK-003" {
-		t.Fatalf("updated.Depends = %#v, want TASK-003", updated.Depends)
-	}
-	if updated.ContractVersion != state.StateJSONContractVersion {
-		t.Fatalf("updated ContractVersion = %d, want %d", updated.ContractVersion, state.StateJSONContractVersion)
-	}
-	if updated.DatabaseScope != "" || updated.DatabasePath != "" || updated.ProjectID != "" || updated.ProjectName != "" || updated.ProjectCurrentPath != "" {
-		t.Fatalf("updated database context = %#v, want empty for markdown fallback", updated)
-	}
-
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "update", "TASK-001", "--status", "done", "--priority", "P0", "--spec", "SPEC-002", "--depends-on", "TASK-003", "--json")
 	rawIndex, err := os.ReadFile(filepath.Join(workingDir, ".agents", "TASKS.json"))
 	if err != nil {
 		t.Fatalf("ReadFile(TASKS.json) error = %v", err)
 	}
-	var index map[string]any
-	if err := json.Unmarshal(rawIndex, &index); err != nil {
-		t.Fatalf("Unmarshal(TASKS.json) error = %v", err)
-	}
-	if index["custom_root"] != "preserve me" {
-		t.Fatalf("index custom_root = %#v, want preserved", index["custom_root"])
-	}
-	task := index["tasks"].(map[string]any)["TASK-001"].(map[string]any)
-	if task["status"] != "done" || task["priority"] != "P0" || task["spec"] != "SPEC-002" || task["completed_at"] == nil || task["verify"] != "go test ./..." {
-		t.Fatalf("TASK-001 index = %#v, want updated metadata with unknown fields preserved", task)
-	}
-	deps := task["depends_on"].([]any)
-	if len(deps) != 1 || deps[0] != "TASK-003" {
-		t.Fatalf("depends_on = %#v, want TASK-003", deps)
-	}
-	body, err := os.ReadFile(filepath.Join(workingDir, ".agents", "tasks", "TASK-001-update.md"))
-	if err != nil {
-		t.Fatalf("ReadFile(updated task) error = %v", err)
-	}
-	frontmatter, ok := parseKnowledgeFrontmatter(body)
-	if !ok {
-		t.Fatal("updated task frontmatter missing")
-	}
-	if firstFieldValue(frontmatter["status"]) != "done" || firstFieldValue(frontmatter["priority"]) != "P0" || firstFieldValue(frontmatter["spec"]) != "SPEC-002" || strings.Join(frontmatter["depends_on"].Values, ",") != "TASK-003" {
-		t.Fatalf("frontmatter = %#v, want synced updated metadata", frontmatter)
-	}
-	if !strings.Contains(markdownContentWithoutFrontmatter(string(body)), "Preserve this body.") {
-		t.Fatalf("body = %q, want preserved task body", markdownContentWithoutFrontmatter(string(body)))
-	}
-
-	var clearOut bytes.Buffer
-	err = Runner{
-		Stdout:     &clearOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--status", "todo", "--spec", "none", "--depends-on", "none", "--json"})
-	if err != nil {
-		t.Fatalf("task update markdown clear error = %v", err)
-	}
-	cleared := decodeTaskStatusUpdateResult(t, clearOut.Bytes())
-	if cleared.Previous != "done" || cleared.Status != "todo" || cleared.Spec != nil || len(cleared.Depends) != 0 {
-		t.Fatalf("cleared = %#v, want cleared metadata", cleared)
-	}
-	rawIndex, err = os.ReadFile(filepath.Join(workingDir, ".agents", "TASKS.json"))
-	if err != nil {
-		t.Fatalf("ReadFile(TASKS.json after clear) error = %v", err)
-	}
-	if err := json.Unmarshal(rawIndex, &index); err != nil {
-		t.Fatalf("Unmarshal(TASKS.json after clear) error = %v", err)
-	}
-	task = index["tasks"].(map[string]any)["TASK-001"].(map[string]any)
-	if task["status"] != "todo" || task["completed_at"] != nil || task["spec"] != nil || len(task["depends_on"].([]any)) != 0 {
-		t.Fatalf("TASK-001 after clear = %#v, want cleared index metadata", task)
-	}
-	body, err = os.ReadFile(filepath.Join(workingDir, ".agents", "tasks", "TASK-001-update.md"))
-	if err != nil {
-		t.Fatalf("ReadFile(cleared task) error = %v", err)
-	}
-	frontmatter, ok = parseKnowledgeFrontmatter(body)
-	if !ok {
-		t.Fatal("cleared task frontmatter missing")
-	}
-	if firstFieldValue(frontmatter["spec"]) != "" || len(frontmatter["depends_on"].Values) != 0 || firstFieldValue(frontmatter["status"]) != "todo" {
-		t.Fatalf("frontmatter after clear = %#v, want cleared frontmatter metadata", frontmatter)
-	}
-
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--spec", "SPEC-999"})
-	if err == nil || !strings.Contains(err.Error(), "Unknown spec") {
-		t.Fatalf("missing spec error = %v, want unknown spec", err)
-	}
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--depends-on", "TASK-999"})
-	if err == nil || !strings.Contains(err.Error(), "Unknown task ID") {
-		t.Fatalf("missing dependency error = %v, want unknown dependency", err)
+	if !bytes.Contains(rawIndex, []byte(`"priority": "P2"`)) {
+		t.Fatalf("TASKS.json mutated after frozen update:\n%s", rawIndex)
 	}
 	assertNoStateDatabase(t, workingDir, stateHome)
 }
@@ -9214,28 +8842,8 @@ func TestRunnerTaskUpdateReportsValidationAndInvalidSQLiteState(t *testing.T) {
 		t.Fatalf("state migrate markdown --apply error = %v", err)
 	}
 
-	err := Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001"})
-	if err == nil {
-		t.Fatal("task update empty update error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "at least one update") {
-		t.Fatalf("error = %v, want empty update error", err)
-	}
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--priority", "P9"})
-	if err == nil {
-		t.Fatal("task update invalid priority error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "invalid priority") {
-		t.Fatalf("error = %v, want invalid priority", err)
-	}
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "update", "TASK-001")
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "update", "TASK-001", "--priority", "P9")
 
 	stateHome = t.TempDir()
 	root, err := project.ResolveRoot(workingDir)
@@ -9253,17 +8861,7 @@ func TestRunnerTaskUpdateReportsValidationAndInvalidSQLiteState(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "update", "TASK-001", "--status", "done"})
-	if err == nil {
-		t.Fatal("task update invalid state error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
-	}
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "update", "TASK-001", "--status", "done")
 }
 
 func TestRunnerTaskArchiveUsesSQLiteStateWhenInitialized(t *testing.T) {
@@ -9280,39 +8878,13 @@ func TestRunnerTaskArchiveUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("state migrate markdown --apply error = %v", err)
 	}
 
-	var archiveOut bytes.Buffer
-	err := Runner{
-		Stdout:     &archiveOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "archive", "TASK-001", "TASK-002", "SPEC-001", "TASK-999", "--json"})
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "archive", "TASK-001", "TASK-002", "SPEC-001", "TASK-999", "--json")
+	root, err := project.ResolveRoot(workingDir)
 	if err != nil {
-		t.Fatalf("task archive --json error = %v", err)
+		t.Fatalf("ResolveRoot() error = %v", err)
 	}
-	archive := decodeTaskArchiveResult(t, archiveOut.Bytes())
-	if len(archive.Archived) != 1 || archive.Archived[0].Task == nil || archive.Archived[0].Task.Alias != "TASK-001" || archive.Archived[0].EventID == "" {
-		t.Fatalf("Archived = %#v, want TASK-001 archived with event", archive.Archived)
-	}
-	if archive.ContractVersion != state.StateJSONContractVersion {
-		t.Fatalf("archive ContractVersion = %d, want %d", archive.ContractVersion, state.StateJSONContractVersion)
-	}
-	if archive.DatabaseScope != "global" {
-		t.Fatalf("archive DatabaseScope = %q, want global", archive.DatabaseScope)
-	}
-	if archive.DatabasePath == "" {
-		t.Fatal("archive DatabasePath is empty")
-	}
-	if archive.ProjectID == "" {
-		t.Fatal("archive ProjectID is empty")
-	}
-	if archive.ProjectName != filepath.Base(workingDir) {
-		t.Fatalf("archive ProjectName = %q, want %q", archive.ProjectName, filepath.Base(workingDir))
-	}
-	if archive.ProjectCurrentPath != workingDir {
-		t.Fatalf("archive ProjectCurrentPath = %q, want %q", archive.ProjectCurrentPath, workingDir)
-	}
-	if len(archive.Skipped) != 3 {
-		t.Fatalf("Skipped = %#v, want three skipped refs", archive.Skipped)
+	if _, err := state.ArchiveTasks(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskArchiveOptions{Refs: []string{"TASK-001"}}); err != nil {
+		t.Fatalf("ArchiveTasks() error = %v", err)
 	}
 
 	var listOut bytes.Buffer
@@ -9370,19 +8942,7 @@ func TestRunnerTaskArchiveUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("trace status = %q, want archived", trace.Entity.Status)
 	}
 
-	var humanOut bytes.Buffer
-	err = Runner{
-		Stdout:     &humanOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "archive", "TASK-001"})
-	if err != nil {
-		t.Fatalf("task archive human error = %v", err)
-	}
-	output := humanOut.String()
-	if !strings.Contains(output, "loaf task archive") || !strings.Contains(output, "skipped TASK-001: already archived") || !strings.Contains(output, "Skipped 1 task(s)") {
-		t.Fatalf("output = %q, want already-archived human summary", output)
-	}
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "archive", "TASK-001")
 }
 
 func TestRunnerTaskArchiveBySpecUsesSQLiteStateWhenInitialized(t *testing.T) {
@@ -9399,31 +8959,13 @@ func TestRunnerTaskArchiveBySpecUsesSQLiteStateWhenInitialized(t *testing.T) {
 		t.Fatalf("state migrate markdown --apply error = %v", err)
 	}
 
-	var archiveOut bytes.Buffer
-	err := Runner{
-		Stdout:     &archiveOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "archive", "--spec", "SPEC-001", "--json"})
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "archive", "--spec", "SPEC-001", "--json")
+	root, err := project.ResolveRoot(workingDir)
 	if err != nil {
-		t.Fatalf("task archive --spec --json error = %v", err)
+		t.Fatalf("ResolveRoot() error = %v", err)
 	}
-	archive := decodeTaskArchiveResult(t, archiveOut.Bytes())
-	if archive.Spec == nil || archive.Spec.Alias != "SPEC-001" || len(archive.Archived) != 1 || archive.Archived[0].Task == nil || archive.Archived[0].Task.Alias != "TASK-001" || len(archive.Skipped) != 0 {
-		t.Fatalf("archive = %#v, want only done task archived by spec", archive)
-	}
-
-	var humanOut bytes.Buffer
-	err = Runner{
-		Stdout:     &humanOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "archive", "--spec", "SPEC-001"})
-	if err != nil {
-		t.Fatalf("task archive --spec human empty error = %v", err)
-	}
-	if !strings.Contains(humanOut.String(), "No completed tasks found for SPEC-001") {
-		t.Fatalf("output = %q, want no completed tasks message", humanOut.String())
+	if _, err := state.ArchiveTasks(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskArchiveOptions{Spec: "SPEC-001"}); err != nil {
+		t.Fatalf("ArchiveTasks() error = %v", err)
 	}
 }
 
@@ -9461,83 +9003,7 @@ func TestRunnerTaskArchiveUsesMarkdownIndexWhenMarkdownOnly(t *testing.T) {
   }
 }`)
 
-	var archiveOut bytes.Buffer
-	err := Runner{
-		Stdout:     &archiveOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "archive", "TASK-001", "TASK-002", "TASK-999", "--json"})
-	if err != nil {
-		t.Fatalf("task archive markdown --json error = %v", err)
-	}
-	archive := decodeTaskArchiveResult(t, archiveOut.Bytes())
-	if len(archive.Archived) != 1 || archive.Archived[0].Task == nil || archive.Archived[0].Task.Alias != "TASK-001" || archive.Archived[0].Previous != "done" || archive.Archived[0].Status != "archived" {
-		t.Fatalf("Archived = %#v, want TASK-001 archived", archive.Archived)
-	}
-	if len(archive.Skipped) != 2 {
-		t.Fatalf("Skipped = %#v, want two skipped refs", archive.Skipped)
-	}
-	if archive.Skipped[0].Ref != "TASK-002" || !strings.Contains(archive.Skipped[0].Reason, "must be done") {
-		t.Fatalf("Skipped[0] = %#v, want todo skip", archive.Skipped[0])
-	}
-	if archive.Skipped[1].Ref != "TASK-999" || archive.Skipped[1].Reason != "not found in index" {
-		t.Fatalf("Skipped[1] = %#v, want not-found skip", archive.Skipped[1])
-	}
-	if archive.ContractVersion != state.StateJSONContractVersion {
-		t.Fatalf("archive ContractVersion = %d, want %d", archive.ContractVersion, state.StateJSONContractVersion)
-	}
-	if archive.DatabaseScope != "" || archive.DatabasePath != "" || archive.ProjectID != "" || archive.ProjectName != "" || archive.ProjectCurrentPath != "" {
-		t.Fatalf("archive database context = %#v, want empty for markdown fallback", archive)
-	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "tasks", "TASK-001-done.md")); !os.IsNotExist(err) {
-		t.Fatalf("active task file stat error = %v, want not exist", err)
-	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "tasks", "archive", "TASK-001-done.md")); err != nil {
-		t.Fatalf("archived task file stat error = %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "tasks", "TASK-002-todo.md")); err != nil {
-		t.Fatalf("todo task file stat error = %v", err)
-	}
-
-	var index map[string]any
-	rawIndex, err := os.ReadFile(filepath.Join(workingDir, ".agents", "TASKS.json"))
-	if err != nil {
-		t.Fatalf("ReadFile(TASKS.json) error = %v", err)
-	}
-	if err := json.Unmarshal(rawIndex, &index); err != nil {
-		t.Fatalf("Unmarshal(TASKS.json) error = %v", err)
-	}
-	tasks := index["tasks"].(map[string]any)
-	task := tasks["TASK-001"].(map[string]any)
-	if task["file"] != "archive/TASK-001-done.md" || task["status"] != "done" || task["review_notes"] != "preserve me" {
-		t.Fatalf("TASK-001 index = %#v, want archived file with legacy status and unknown fields preserved", task)
-	}
-
-	var humanOut bytes.Buffer
-	err = Runner{
-		Stdout:     &humanOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "archive", "TASK-001"})
-	if err != nil {
-		t.Fatalf("task archive already archived error = %v", err)
-	}
-	if !strings.Contains(humanOut.String(), "skipped TASK-001: already archived") {
-		t.Fatalf("human output = %q, want already archived skip", humanOut.String())
-	}
-
-	var specOut bytes.Buffer
-	err = Runner{
-		Stdout:     &specOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "archive", "--spec", "SPEC-001"})
-	if err != nil {
-		t.Fatalf("task archive --spec markdown error = %v", err)
-	}
-	if !strings.Contains(specOut.String(), "skipped TASK-001: already archived") {
-		t.Fatalf("spec output = %q, want already archived skip", specOut.String())
-	}
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "archive", "TASK-001", "TASK-002", "TASK-999", "--json")
 	assertNoStateDatabase(t, workingDir, stateHome)
 }
 
@@ -9559,17 +9025,7 @@ func TestRunnerTaskArchiveReportsInvalidSQLiteState(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"task", "archive", "TASK-001"})
-	if err == nil {
-		t.Fatal("task archive invalid state error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
-	}
+	runFrozenTaskWrite(t, workingDir, stateHome, "task", "archive", "TASK-001")
 }
 
 func TestRunnerBrainstormListUsesSQLiteStateWhenInitialized(t *testing.T) {
@@ -11910,823 +11366,6 @@ func TestRunnerLinkCommandReportsInvalidSQLiteState(t *testing.T) {
 		t.Fatalf("error = %v, want invalid state error", err)
 	}
 }
-
-func TestRunnerSpecListJSONUsesSQLiteStateWhenInitialized(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-example.md", `---
-id: SPEC-001
-title: Example Spec
-status: implementing
----
-# Example Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-example.md", "# Task\n")
-	writeCLIAgentsFile(t, workingDir, "tasks/TASK-002-done.md", "# Done\n")
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{
-  "tasks": {
-    "TASK-001": {"title": "Example Task", "spec": "SPEC-001", "status": "todo", "priority": "P1"},
-    "TASK-002": {"title": "Done Task", "spec": "SPEC-001", "status": "done", "priority": "P2"}
-  }
-}`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "list", "--json"})
-	if err != nil {
-		t.Fatalf("spec list --json error = %v", err)
-	}
-
-	specs := decodeSpecList(t, stdout.Bytes())
-	assertCLIProjectContext(t, workingDir, specs.ContractVersion, specs.DatabaseScope, specs.DatabasePath, specs.ProjectID, specs.ProjectName, specs.ProjectCurrentPath)
-	spec := specs.Specs["SPEC-001"]
-	if spec.Title != "Example Spec" || spec.Status != "in_progress" || spec.SourcePath != ".agents/specs/SPEC-001-example.md" {
-		t.Fatalf("SPEC-001 = %#v, want imported spec metadata", spec)
-	}
-	if spec.Tasks.Todo != 1 || spec.Tasks.InProgress != 0 || spec.Tasks.Done != 1 {
-		t.Fatalf("SPEC-001 task counts = %#v, want todo=1 in_progress=0 done=1", spec.Tasks)
-	}
-}
-
-func TestRunnerSpecListHumanUsesSQLiteStateWhenInitialized(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-example.md", `---
-id: SPEC-001
-title: Example Spec
-status: implementing
----
-# Example Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-example.md", "# Task\n")
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{"TASK-001":{"title":"Example Task","spec":"SPEC-001","status":"in_progress","priority":"P1"}}}`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "list"})
-	if err != nil {
-		t.Fatalf("spec list error = %v", err)
-	}
-	output := stdout.String()
-	for _, want := range []string{"loaf spec list", "scope: global database", "database:", "project:", "project name:", "project path:", "In Progress (1)", "SPEC-001", "Example Spec", "0 todo / 1 in_progress / 0 done"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("output = %q, want %q", output, want)
-		}
-	}
-}
-
-func TestRunnerSpecListUsesMarkdownSpecsWhenMarkdownOnly(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-example.md", `---
-id: SPEC-001
-title: Example Spec
-status: implementing
----
-# Example Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-002-draft.md", `---
-id: SPEC-002
-title: Draft Spec
-status: drafting
----
-# Draft Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{
-  "tasks": {
-    "TASK-001": {"title": "Todo Task", "spec": "SPEC-001", "status": "todo", "priority": "P1"},
-    "TASK-002": {"title": "Progress Task", "spec": "SPEC-001", "status": "in_progress", "priority": "P1"},
-    "TASK-003": {"title": "Done Task", "spec": "SPEC-001", "status": "done", "priority": "P2"},
-    "TASK-004": {"title": "Review Task", "spec": "SPEC-001", "status": "review", "priority": "P2"}
-  }
-}`)
-
-	var jsonOut bytes.Buffer
-	err := Runner{
-		Stdout:     &jsonOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "list", "--json"})
-	if err != nil {
-		t.Fatalf("spec list markdown --json error = %v", err)
-	}
-	specs := decodeSpecList(t, jsonOut.Bytes())
-	if specs.ContractVersion != 0 || specs.DatabaseScope != "" || specs.DatabasePath != "" || specs.ProjectID != "" || specs.ProjectName != "" || specs.ProjectCurrentPath != "" {
-		t.Fatalf("markdown spec list context = %#v, want empty", specs)
-	}
-	spec := specs.Specs["SPEC-001"]
-	if spec.Title != "Example Spec" || spec.Status != "in_progress" || spec.SourcePath != ".agents/specs/SPEC-001-example.md" {
-		t.Fatalf("SPEC-001 = %#v, want markdown spec metadata", spec)
-	}
-	if spec.Tasks.Todo != 2 || spec.Tasks.InProgress != 1 || spec.Tasks.Done != 1 {
-		t.Fatalf("SPEC-001 task counts = %#v, want todo=2 in_progress=1 done=1", spec.Tasks)
-	}
-	if specs.Specs["SPEC-002"].Tasks != (state.SpecTaskCounts{}) {
-		t.Fatalf("SPEC-002 task counts = %#v, want zero counts", specs.Specs["SPEC-002"].Tasks)
-	}
-
-	var humanOut bytes.Buffer
-	err = Runner{
-		Stdout:     &humanOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "list"})
-	if err != nil {
-		t.Fatalf("spec list markdown human error = %v", err)
-	}
-	output := humanOut.String()
-	for _, want := range []string{"loaf spec list", "In Progress (1)", "SPEC-001", "Example Spec", "2 todo / 1 in_progress / 1 done", "Draft (1)", "SPEC-002"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("output = %q, want %q", output, want)
-		}
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-}
-
-func TestRunnerSpecListReportsInvalidSQLiteState(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	databasePath, err := (state.PathResolver{StateHome: stateHome}).DatabasePath(root)
-	if err != nil {
-		t.Fatalf("DatabasePath() error = %v", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(databasePath, []byte("not sqlite"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "list"})
-	if err == nil {
-		t.Fatal("spec list error = nil, want invalid state error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
-	}
-}
-
-func TestRunnerSpecShowUsesSQLiteStateWhenInitialized(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-example.md", `---
-id: SPEC-001
-title: Example Spec
-status: implementing
----
-# Example Spec
-
-Imported spec prose.
-`)
-	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-example.md", "# Task\n")
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{"TASK-001":{"title":"Example Task","spec":"SPEC-001","status":"todo","priority":"P1"}}}`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var showOut bytes.Buffer
-	err := Runner{
-		Stdout:     &showOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "show", "SPEC-001", "--json"})
-	if err != nil {
-		t.Fatalf("spec show --json error = %v", err)
-	}
-	show := decodeSpecShow(t, showOut.Bytes())
-	assertCLIProjectContext(t, workingDir, show.ContractVersion, show.DatabaseScope, show.DatabasePath, show.ProjectID, show.ProjectName, show.ProjectCurrentPath)
-	if show.Spec.Alias != "SPEC-001" || show.Spec.Title != "Example Spec" || show.Spec.Status != "in_progress" {
-		t.Fatalf("show = %#v, want imported spec metadata", show)
-	}
-	if show.Spec.Tasks.Todo != 1 || show.Spec.Tasks.InProgress != 0 || show.Spec.Tasks.Done != 0 {
-		t.Fatalf("show.Spec.Tasks = %#v, want one todo task", show.Spec.Tasks)
-	}
-	if len(show.Spec.Sources) != 1 || show.Spec.Sources[0].Path != ".agents/specs/SPEC-001-example.md" || show.Spec.Sources[0].Hash == "" {
-		t.Fatalf("Sources = %#v, want spec source with hash", show.Spec.Sources)
-	}
-	if !strings.Contains(show.Spec.Body, "Imported spec prose.") || strings.Contains(show.Spec.Body, "status: implementing") {
-		t.Fatalf("Body = %q, want frontmatter-stripped imported body", show.Spec.Body)
-	}
-	if !hasTraceRelationship(show.Spec.Relationships, "inbound", "implements", "task", "TASK-001") {
-		t.Fatalf("Relationships = %#v, want inbound task implements relationship", show.Spec.Relationships)
-	}
-
-	var humanOut bytes.Buffer
-	err = Runner{
-		Stdout:     &humanOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "show", "SPEC-001"})
-	if err != nil {
-		t.Fatalf("spec show human error = %v", err)
-	}
-	human := humanOut.String()
-	for _, want := range []string{"spec SPEC-001", "scope: global database", "database:", "project:", "project name:", "project path:", "title: Example Spec", "status: in_progress", "tasks: 1 todo / 0 in_progress / 0 done", "render: .agents/specs/SPEC-001-example.md", "inbound implements task TASK-001", "Imported spec prose."} {
-		if !strings.Contains(human, want) {
-			t.Fatalf("human output = %q, want %q", human, want)
-		}
-	}
-}
-
-func TestRunnerSpecShowUsesMarkdownSpecWhenMarkdownOnly(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-example.md", `---
-id: SPEC-001
-title: Frontmatter Spec
-status: drafting
-created: 2026-05-27T09:00:00Z
----
-# Spec Body
-
-Markdown spec prose.
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{
-  "specs": {
-    "SPEC-001": {
-      "title": "Example Spec",
-      "status": "implementing",
-      "created": "2026-05-28T10:00:00Z",
-      "updated": "2026-05-29T11:00:00Z"
-    }
-  },
-  "tasks": {
-    "TASK-001": {"title": "Todo Task", "spec": "SPEC-001", "status": "todo", "priority": "P1"},
-    "TASK-002": {"title": "Progress Task", "spec": "SPEC-001", "status": "in_progress", "priority": "P1"},
-    "TASK-003": {"title": "Done Task", "spec": "SPEC-001", "status": "done", "priority": "P2"}
-  }
-}`)
-
-	var jsonOut bytes.Buffer
-	err := Runner{
-		Stdout:     &jsonOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "show", "SPEC-001", "--json"})
-	if err != nil {
-		t.Fatalf("spec show markdown --json error = %v", err)
-	}
-	show := decodeSpecShow(t, jsonOut.Bytes())
-	if show.ContractVersion != 0 || show.DatabaseScope != "" || show.DatabasePath != "" || show.ProjectID != "" || show.ProjectName != "" || show.ProjectCurrentPath != "" {
-		t.Fatalf("markdown spec show context = %#v, want empty", show)
-	}
-	spec := show.Spec
-	if show.Query != "SPEC-001" || spec.Alias != "SPEC-001" || spec.Title != "Example Spec" || spec.Status != "in_progress" {
-		t.Fatalf("show = %#v, want TASKS.json spec metadata over frontmatter", show)
-	}
-	if spec.Tasks.Todo != 1 || spec.Tasks.InProgress != 1 || spec.Tasks.Done != 1 {
-		t.Fatalf("spec.Tasks = %#v, want one todo/in_progress/done", spec.Tasks)
-	}
-	if len(spec.Sources) != 1 || spec.Sources[0].Path != ".agents/specs/SPEC-001-example.md" || spec.Sources[0].Hash == "" {
-		t.Fatalf("Sources = %#v, want markdown spec source with hash", spec.Sources)
-	}
-	if !strings.Contains(spec.Body, "Markdown spec prose.") || strings.Contains(spec.Body, "---") {
-		t.Fatalf("Body = %q, want markdown body without frontmatter", spec.Body)
-	}
-	if spec.CreatedAt != "2026-05-28T10:00:00Z" || spec.UpdatedAt != "2026-05-29T11:00:00Z" {
-		t.Fatalf("timestamps = %q/%q, want index timestamps", spec.CreatedAt, spec.UpdatedAt)
-	}
-	if !hasTraceRelationship(spec.Relationships, "inbound", "implements", "task", "TASK-001") || !hasTraceRelationship(spec.Relationships, "inbound", "implements", "task", "TASK-002") || !hasTraceRelationship(spec.Relationships, "inbound", "implements", "task", "TASK-003") {
-		t.Fatalf("Relationships = %#v, want inbound task relationships", spec.Relationships)
-	}
-
-	var humanOut bytes.Buffer
-	err = Runner{
-		Stdout:     &humanOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "show", "SPEC-001"})
-	if err != nil {
-		t.Fatalf("spec show markdown human error = %v", err)
-	}
-	output := humanOut.String()
-	for _, want := range []string{"spec SPEC-001", "title: Example Spec", "status: in_progress", "tasks: 1 todo / 1 in_progress / 1 done", "render: .agents/specs/SPEC-001-example.md", "render hash:", "inbound implements task TASK-001", "# Spec Body", "Markdown spec prose."} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("output = %q, want %q", output, want)
-		}
-	}
-	if strings.Contains(output, "scope: global database") || strings.Contains(output, "project path:") {
-		t.Fatalf("output = %q, want markdown fallback without database context", output)
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-}
-
-func TestRunnerSpecShowReportsInvalidSQLiteState(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	databasePath, err := (state.PathResolver{StateHome: stateHome}).DatabasePath(root)
-	if err != nil {
-		t.Fatalf("DatabasePath() error = %v", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(databasePath, []byte("not sqlite"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "show", "SPEC-001"})
-	if err == nil {
-		t.Fatal("spec show invalid state error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
-	}
-}
-
-func TestRunnerSpecArchiveUsesSQLiteStateWhenInitialized(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-complete.md", `---
-id: SPEC-001
-title: Complete Spec
-status: complete
----
-# Complete Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-002-draft.md", `---
-id: SPEC-002
-title: Draft Spec
-status: drafting
----
-# Draft Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "tasks/TASK-001-task.md", "# Task\n")
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{"TASK-001":{"title":"Task","status":"todo","priority":"P1"}}}`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var archiveOut bytes.Buffer
-	err := Runner{
-		Stdout:     &archiveOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "archive", "SPEC-001", "SPEC-002", "TASK-001", "SPEC-999", "--json"})
-	if err != nil {
-		t.Fatalf("spec archive --json error = %v", err)
-	}
-	archive := decodeSpecArchiveResult(t, archiveOut.Bytes())
-	if len(archive.Archived) != 1 || archive.Archived[0].Spec == nil || archive.Archived[0].Spec.Alias != "SPEC-001" || archive.Archived[0].EventID == "" {
-		t.Fatalf("Archived = %#v, want SPEC-001 archived with event", archive.Archived)
-	}
-	if archive.ContractVersion != state.StateJSONContractVersion {
-		t.Fatalf("archive ContractVersion = %d, want %d", archive.ContractVersion, state.StateJSONContractVersion)
-	}
-	if archive.DatabaseScope != "global" {
-		t.Fatalf("archive DatabaseScope = %q, want global", archive.DatabaseScope)
-	}
-	if archive.DatabasePath == "" {
-		t.Fatal("archive DatabasePath is empty")
-	}
-	if archive.ProjectID == "" {
-		t.Fatal("archive ProjectID is empty")
-	}
-	if archive.ProjectName != filepath.Base(workingDir) {
-		t.Fatalf("archive ProjectName = %q, want %q", archive.ProjectName, filepath.Base(workingDir))
-	}
-	if archive.ProjectCurrentPath != workingDir {
-		t.Fatalf("archive ProjectCurrentPath = %q, want %q", archive.ProjectCurrentPath, workingDir)
-	}
-	if len(archive.Skipped) != 3 {
-		t.Fatalf("Skipped = %#v, want three skipped specs", archive.Skipped)
-	}
-
-	var listOut bytes.Buffer
-	err = Runner{
-		Stdout:     &listOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "list", "--json"})
-	if err != nil {
-		t.Fatalf("spec list after archive error = %v", err)
-	}
-	specs := decodeSpecList(t, listOut.Bytes())
-	if specs.Specs["SPEC-001"].Status != "archived" || specs.Specs["SPEC-002"].Status != "draft" {
-		t.Fatalf("specs = %#v, want SPEC-001 archived and SPEC-002 unchanged", specs.Specs)
-	}
-
-	var traceOut bytes.Buffer
-	err = Runner{
-		Stdout:     &traceOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"trace", "SPEC-001", "--json"})
-	if err != nil {
-		t.Fatalf("trace after archive error = %v", err)
-	}
-	trace := decodeTraceResult(t, traceOut.Bytes())
-	if trace.Entity.Status != "archived" {
-		t.Fatalf("trace status = %q, want archived", trace.Entity.Status)
-	}
-
-	var humanOut bytes.Buffer
-	err = Runner{
-		Stdout:     &humanOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "archive", "SPEC-001"})
-	if err != nil {
-		t.Fatalf("spec archive human error = %v", err)
-	}
-	output := humanOut.String()
-	for _, want := range []string{"loaf spec archive", "scope: global database", "database:", "project:", "project name:", "project path:", "skipped SPEC-001: already archived", "Skipped 1 spec(s)"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("output = %q, want %q", output, want)
-		}
-	}
-}
-
-func TestRunnerSpecStatusTransitionsThroughLifecycle(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-draft.md", `---
-id: SPEC-001
-title: Draft Spec
-status: draft
----
-# Draft Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	var firstOut bytes.Buffer
-	if err := (Runner{Stdout: &firstOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "status", "SPEC-001", "implementing", "--json"}); err != nil {
-		t.Fatalf("spec status implementing --json error = %v", err)
-	}
-	first := decodeSpecStatusResult(t, firstOut.Bytes())
-	if first.Previous != state.LifecycleStatusDraft || first.Status != state.LifecycleStatusInProgress {
-		t.Fatalf("first transition = %s -> %s, want draft -> in_progress", first.Previous, first.Status)
-	}
-	if first.EventID == "" {
-		t.Fatal("first transition missing event id")
-	}
-	if first.ContractVersion != state.StateJSONContractVersion {
-		t.Fatalf("ContractVersion = %d, want %d", first.ContractVersion, state.StateJSONContractVersion)
-	}
-	if first.DatabaseScope != "global" || first.DatabasePath == "" || first.ProjectID == "" {
-		t.Fatalf("project context = %#v, want populated", first)
-	}
-
-	var secondOut bytes.Buffer
-	if err := (Runner{Stdout: &secondOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "status", "SPEC-001", "complete", "--json"}); err != nil {
-		t.Fatalf("spec status complete --json error = %v", err)
-	}
-	second := decodeSpecStatusResult(t, secondOut.Bytes())
-	if second.Previous != state.LifecycleStatusInProgress || second.Status != state.LifecycleStatusDone {
-		t.Fatalf("second transition = %s -> %s, want in_progress -> done", second.Previous, second.Status)
-	}
-
-	var showOut bytes.Buffer
-	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "show", "SPEC-001", "--json"}); err != nil {
-		t.Fatalf("spec show --json error = %v", err)
-	}
-	show := decodeSpecShow(t, showOut.Bytes())
-	if show.Spec.Status != state.LifecycleStatusDone {
-		t.Fatalf("spec show status = %q, want done", show.Spec.Status)
-	}
-
-	var humanOut bytes.Buffer
-	if err := (Runner{Stdout: &humanOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "status", "SPEC-001", "todo"}); err != nil {
-		t.Fatalf("spec status human error = %v", err)
-	}
-	output := humanOut.String()
-	for _, want := range []string{"spec SPEC-001", "scope: global database", "status: done -> todo", "event:"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("output = %q, want %q", output, want)
-		}
-	}
-}
-
-func TestRunnerSpecStatusRejectsInvalidStatus(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-draft.md", `---
-id: SPEC-001
-title: Draft Spec
-status: draft
----
-# Draft Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{"tasks":{}}`)
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "migrate", "markdown", "--apply"}); err != nil {
-		t.Fatalf("state migrate markdown --apply error = %v", err)
-	}
-
-	err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "status", "SPEC-001", "bogus"})
-	if err == nil {
-		t.Fatal("spec status bogus error = nil, want error")
-	}
-
-	var showOut bytes.Buffer
-	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "show", "SPEC-001", "--json"}); err != nil {
-		t.Fatalf("spec show --json error = %v", err)
-	}
-	show := decodeSpecShow(t, showOut.Bytes())
-	if show.Spec.Status != state.LifecycleStatusDraft {
-		t.Fatalf("spec show status = %q, want draft (unchanged)", show.Spec.Status)
-	}
-}
-
-func TestRunnerSpecArchiveUsesMarkdownIndexWhenMarkdownOnly(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-complete.md", `---
-id: SPEC-001
-title: Complete Spec
-status: complete
----
-# Complete Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-002-draft.md", `---
-id: SPEC-002
-title: Draft Spec
-status: drafting
----
-# Draft Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{
-  "version": 1,
-  "next_id": 7,
-  "tasks": {
-    "TASK-001": {
-      "title": "Preserved Task",
-      "status": "todo",
-      "priority": "P1",
-      "files": ["keep.go"]
-    }
-  },
-  "specs": {
-    "SPEC-001": {
-      "title": "Complete Spec",
-      "status": "complete",
-      "requirement": "preserve me",
-      "file": "SPEC-001-complete.md"
-    },
-    "SPEC-002": {
-      "title": "Draft Spec",
-      "status": "drafting",
-      "file": "SPEC-002-draft.md"
-    }
-  }
-}`)
-
-	var jsonOut bytes.Buffer
-	err := Runner{
-		Stdout:     &jsonOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "archive", "SPEC-001", "SPEC-002", "SPEC-999", "--json"})
-	if err != nil {
-		t.Fatalf("spec archive markdown --json error = %v", err)
-	}
-	archive := decodeSpecArchiveResult(t, jsonOut.Bytes())
-	if len(archive.Archived) != 1 || archive.Archived[0].Spec == nil || archive.Archived[0].Spec.Alias != "SPEC-001" || archive.Archived[0].Previous != "done" || archive.Archived[0].Status != "archived" {
-		t.Fatalf("Archived = %#v, want SPEC-001 archived", archive.Archived)
-	}
-	if len(archive.Skipped) != 2 || archive.Skipped[0].Ref != "SPEC-002" || archive.Skipped[0].Reason != "status is draft, must be done" || archive.Skipped[1].Ref != "SPEC-999" || archive.Skipped[1].Reason != "not found in index" {
-		t.Fatalf("Skipped = %#v, want draft and missing skips", archive.Skipped)
-	}
-	if archive.ContractVersion != state.StateJSONContractVersion {
-		t.Fatalf("archive ContractVersion = %d, want %d", archive.ContractVersion, state.StateJSONContractVersion)
-	}
-	if archive.DatabaseScope != "" || archive.DatabasePath != "" || archive.ProjectID != "" || archive.ProjectName != "" || archive.ProjectCurrentPath != "" {
-		t.Fatalf("archive database context = %#v, want empty for markdown fallback", archive)
-	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "specs", "SPEC-001-complete.md")); !os.IsNotExist(err) {
-		t.Fatalf("active spec still exists or stat failed: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "specs", "archive", "SPEC-001-complete.md")); err != nil {
-		t.Fatalf("archived spec missing: %v", err)
-	}
-	var index struct {
-		Tasks map[string]map[string]any `json:"tasks"`
-		Specs map[string]map[string]any `json:"specs"`
-	}
-	content, err := os.ReadFile(filepath.Join(workingDir, ".agents", "TASKS.json"))
-	if err != nil {
-		t.Fatalf("ReadFile(TASKS.json) error = %v", err)
-	}
-	if err := json.Unmarshal(content, &index); err != nil {
-		t.Fatalf("json.Unmarshal(TASKS.json) error = %v", err)
-	}
-	if got := index.Specs["SPEC-001"]["file"]; got != "archive/SPEC-001-complete.md" {
-		t.Fatalf("SPEC-001 file = %#v, want archive path", got)
-	}
-	if got := index.Specs["SPEC-001"]["status"]; got != "complete" {
-		t.Fatalf("SPEC-001 status = %#v, want legacy markdown status preserved", got)
-	}
-	if got := index.Specs["SPEC-001"]["requirement"]; got != "preserve me" {
-		t.Fatalf("SPEC-001 requirement = %#v, want unknown spec fields preserved", got)
-	}
-	files, ok := index.Tasks["TASK-001"]["files"].([]any)
-	if !ok || len(files) != 1 || files[0] != "keep.go" {
-		t.Fatalf("TASK-001 files = %#v, want task fields preserved", index.Tasks["TASK-001"]["files"])
-	}
-
-	var humanOut bytes.Buffer
-	err = Runner{
-		Stdout:     &humanOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "archive", "SPEC-001"})
-	if err != nil {
-		t.Fatalf("spec archive markdown human error = %v", err)
-	}
-	output := humanOut.String()
-	if !strings.Contains(output, "loaf spec archive") || !strings.Contains(output, "skipped SPEC-001: already archived") || !strings.Contains(output, "Skipped 1 spec(s)") {
-		t.Fatalf("output = %q, want already-archived human summary", output)
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-}
-
-func TestRunnerSpecArchiveAcceptsCanonicalDoneWhenMarkdownOnly(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-done.md", `---
-id: SPEC-001
-title: Done Spec
-status: done
----
-# Done Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-002-active.md", `---
-id: SPEC-002
-title: Active Spec
-status: in_progress
----
-# Active Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{
-  "version": 1,
-  "tasks": {},
-  "specs": {
-    "SPEC-001": {
-      "title": "Done Spec",
-      "status": "done",
-      "file": "SPEC-001-done.md"
-    },
-    "SPEC-002": {
-      "title": "Active Spec",
-      "status": "in_progress",
-      "file": "SPEC-002-active.md"
-    }
-  }
-}`)
-
-	var jsonOut bytes.Buffer
-	err := Runner{
-		Stdout:     &jsonOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "archive", "SPEC-001", "SPEC-002", "--json"})
-	if err != nil {
-		t.Fatalf("spec archive markdown --json error = %v", err)
-	}
-	archive := decodeSpecArchiveResult(t, jsonOut.Bytes())
-	if len(archive.Archived) != 1 || archive.Archived[0].Spec == nil || archive.Archived[0].Spec.Alias != "SPEC-001" || archive.Archived[0].Previous != "done" || archive.Archived[0].Status != "archived" {
-		t.Fatalf("Archived = %#v, want SPEC-001 archived from canonical done", archive.Archived)
-	}
-	if len(archive.Skipped) != 1 || archive.Skipped[0].Ref != "SPEC-002" || archive.Skipped[0].Reason != "status is in_progress, must be done" || archive.Skipped[0].Previous != "in_progress" {
-		t.Fatalf("Skipped = %#v, want in_progress skip with must-be-done reason", archive.Skipped)
-	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "specs", "archive", "SPEC-001-done.md")); err != nil {
-		t.Fatalf("archived spec missing: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "specs", "SPEC-002-active.md")); err != nil {
-		t.Fatalf("active spec missing: %v", err)
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-}
-
-func TestRunnerSpecArchiveCanonicalizesNestedSpecStatusWhenMarkdownOnly(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/archive/SPEC-001-complete.md", `---
-id: SPEC-001
-title: Complete Spec
-status: complete
----
-# Complete Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-002-draft.md", `---
-id: SPEC-002
-title: Draft Spec
-status: drafting
----
-# Draft Spec
-`)
-	writeCLIAgentsFile(t, workingDir, "TASKS.json", `{
-  "version": 1,
-  "tasks": {},
-  "specs": {
-    "SPEC-001": {
-      "title": "Complete Spec",
-      "status": "complete",
-      "file": "archive/SPEC-001-complete.md"
-    },
-    "SPEC-002": {
-      "title": "Draft Spec",
-      "status": "drafting",
-      "file": "SPEC-002-draft.md"
-    }
-  }
-}`)
-
-	var jsonOut bytes.Buffer
-	err := Runner{
-		Stdout:     &jsonOut,
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "archive", "SPEC-001", "SPEC-002", "--json"})
-	if err != nil {
-		t.Fatalf("spec archive markdown --json error = %v", err)
-	}
-	archive := decodeSpecArchiveResult(t, jsonOut.Bytes())
-	if len(archive.Archived) != 0 {
-		t.Fatalf("Archived = %#v, want none", archive.Archived)
-	}
-	if len(archive.Skipped) != 2 || archive.Skipped[0].Ref != "SPEC-001" || archive.Skipped[1].Ref != "SPEC-002" {
-		t.Fatalf("Skipped = %#v, want SPEC-001 and SPEC-002 skips", archive.Skipped)
-	}
-	archived := archive.Skipped[0]
-	if archived.Reason != "already archived" || archived.Previous != "done" || archived.Status != "done" {
-		t.Fatalf("Skipped[0] = %#v, want already-archived skip with canonical done statuses", archived)
-	}
-	if archived.Spec == nil || archived.Spec.Status != "done" {
-		t.Fatalf("Skipped[0].Spec = %#v, want nested spec status canonicalized to done", archived.Spec)
-	}
-	draft := archive.Skipped[1]
-	if draft.Reason != "status is draft, must be done" || draft.Previous != "draft" || draft.Status != "draft" {
-		t.Fatalf("Skipped[1] = %#v, want draft skip with canonical draft statuses", draft)
-	}
-	if draft.Spec == nil || draft.Spec.Status != "draft" {
-		t.Fatalf("Skipped[1].Spec = %#v, want nested spec status canonicalized to draft", draft.Spec)
-	}
-	assertNoStateDatabase(t, workingDir, stateHome)
-}
-
-func TestRunnerSpecArchiveReportsInvalidSQLiteState(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	root, err := project.ResolveRoot(workingDir)
-	if err != nil {
-		t.Fatalf("ResolveRoot() error = %v", err)
-	}
-	databasePath, err := (state.PathResolver{StateHome: stateHome}).DatabasePath(root)
-	if err != nil {
-		t.Fatalf("DatabasePath() error = %v", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(databasePath, []byte("not sqlite"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	err = Runner{
-		Stdout:     &bytes.Buffer{},
-		WorkingDir: workingDir,
-		StateHome:  stateHome,
-	}.Run([]string{"spec", "archive", "SPEC-001"})
-	if err == nil {
-		t.Fatal("spec archive invalid state error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "state database is invalid") {
-		t.Fatalf("error = %v, want invalid state error", err)
-	}
-}
-
 func assertCLISessionContext(t *testing.T, contractVersion int, databaseScope string, databasePath string, projectID string, projectName string, projectCurrentPath string, workingDir string) {
 	t.Helper()
 	if contractVersion != state.StateJSONContractVersion {
@@ -13006,286 +11645,6 @@ func assertCLIReportContext(t *testing.T, contractVersion int, databaseScope str
 		t.Fatalf("ProjectCurrentPath = %q, want %q", projectCurrentPath, workingDir)
 	}
 }
-
-func TestRunnerSpecNewCreatesShowsAndFinalizes(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
-		t.Fatalf("state init error = %v", err)
-	}
-
-	var createOut bytes.Buffer
-	err := Runner{Stdout: &createOut, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"spec", "new", "auth-rotation", "--title", "Auth Rotation", "--message", "# Auth Rotation\n\nRotate the keys.", "--json"})
-	if err != nil {
-		t.Fatalf("spec new --json error = %v", err)
-	}
-	created := decodeSpecCreateResult(t, createOut.Bytes())
-	if created.Spec.Alias != "SPEC-001" || created.Spec.Title != "Auth Rotation" || created.Spec.Status != "draft" {
-		t.Fatalf("created.Spec = %#v, want draft SPEC-001 Auth Rotation", created.Spec)
-	}
-	// `new` must not write any .agents file directly; only finalize renders.
-	if _, err := os.Stat(filepath.Join(workingDir, ".agents", "specs", "SPEC-001-auth-rotation.md")); !os.IsNotExist(err) {
-		t.Fatalf("spec render file exists before finalize or stat failed: %v", err)
-	}
-
-	var listOut bytes.Buffer
-	if err := (Runner{Stdout: &listOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "list", "--json"}); err != nil {
-		t.Fatalf("spec list --json error = %v", err)
-	}
-	list := decodeSpecList(t, listOut.Bytes())
-	if _, ok := list.Specs["SPEC-001"]; !ok {
-		t.Fatalf("spec list = %#v, want SPEC-001 present", list.Specs)
-	}
-
-	var showOut bytes.Buffer
-	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "show", "SPEC-001", "--json"}); err != nil {
-		t.Fatalf("spec show --json error = %v", err)
-	}
-	show := decodeSpecShow(t, showOut.Bytes())
-	if show.Spec.Body != "# Auth Rotation\n\nRotate the keys." {
-		t.Fatalf("show.Spec.Body = %q, want byte-exact CLI body", show.Spec.Body)
-	}
-	if !show.Spec.HasBody {
-		t.Fatalf("show.Spec.HasBody = false, want true")
-	}
-
-	var finalizeOut bytes.Buffer
-	if err := (Runner{Stdout: &finalizeOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "finalize", "SPEC-001"}); err != nil {
-		t.Fatalf("spec finalize error = %v", err)
-	}
-	renderPath := filepath.Join(workingDir, ".agents", "specs", "SPEC-001-auth-rotation.md")
-	if _, err := os.Stat(renderPath); err != nil {
-		t.Fatalf("expected finalized render at %s: %v", renderPath, err)
-	}
-
-	var driftOut bytes.Buffer
-	if err := (Runner{Stdout: &driftOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"check", "--hook", "render-drift", "--json"}); err != nil {
-		t.Fatalf("check render-drift error = %v", err)
-	}
-	if !strings.Contains(driftOut.String(), "\"passed\":true") && !strings.Contains(driftOut.String(), "\"passed\": true") {
-		t.Fatalf("render-drift output = %s, want passed", driftOut.String())
-	}
-}
-
-func TestRunnerSpecNewAllocatesExplicitIDAndRejectsDuplicates(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
-		t.Fatalf("state init error = %v", err)
-	}
-
-	var createOut bytes.Buffer
-	if err := (Runner{Stdout: &createOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "new", "explicit", "--id", "SPEC-050", "--message", "body", "--json"}); err != nil {
-		t.Fatalf("spec new --id error = %v", err)
-	}
-	created := decodeSpecCreateResult(t, createOut.Bytes())
-	if created.Spec.Alias != "SPEC-050" {
-		t.Fatalf("created.Spec.Alias = %q, want SPEC-050", created.Spec.Alias)
-	}
-
-	err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"spec", "new", "dup", "--id", "SPEC-050", "--message", "body"})
-	if err == nil || !strings.Contains(err.Error(), "already exists") {
-		t.Fatalf("spec new duplicate error = %v, want already exists", err)
-	}
-}
-
-func TestRunnerSpecNewStoresBranchSourceAndRelated(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
-		t.Fatalf("state init error = %v", err)
-	}
-
-	for _, id := range []string{"SPEC-001", "SPEC-002"} {
-		if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "new", "dep-" + id, "--id", id, "--message", "body"}); err != nil {
-			t.Fatalf("spec new %s error = %v", id, err)
-		}
-	}
-
-	var createOut bytes.Buffer
-	if err := (Runner{Stdout: &createOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{
-		"spec", "new", "body-edit-path",
-		"--id", "SPEC-003",
-		"--branch", "feat/body-edit-path",
-		"--source", "SPARK-7",
-		"--related", "SPEC-001,SPEC-002",
-		"--json",
-	}); err != nil {
-		t.Fatalf("spec new --branch --related error = %v", err)
-	}
-	created := decodeSpecCreateResult(t, createOut.Bytes())
-	if created.Branch != "feat/body-edit-path" {
-		t.Fatalf("created.Branch = %q, want feat/body-edit-path", created.Branch)
-	}
-	if created.Source != "SPARK-7" {
-		t.Fatalf("created.Source = %q, want SPARK-7", created.Source)
-	}
-
-	var showOut bytes.Buffer
-	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "show", "SPEC-003", "--json"}); err != nil {
-		t.Fatalf("spec show --json error = %v", err)
-	}
-	show := decodeSpecShow(t, showOut.Bytes())
-	if show.Spec.Branch != "feat/body-edit-path" {
-		t.Fatalf("show.Spec.Branch = %q, want feat/body-edit-path", show.Spec.Branch)
-	}
-	if show.Spec.Source != "SPARK-7" {
-		t.Fatalf("show.Spec.Source = %q, want SPARK-7", show.Spec.Source)
-	}
-	relatedAliases := map[string]bool{}
-	for _, related := range show.Spec.Related {
-		relatedAliases[related.Alias] = true
-	}
-	if !relatedAliases["SPEC-001"] || !relatedAliases["SPEC-002"] {
-		t.Fatalf("show.Spec.Related = %#v, want SPEC-001 and SPEC-002", show.Spec.Related)
-	}
-	if !hasTraceRelationship(show.Spec.Relationships, "outbound", "related_to", "spec", "SPEC-001") {
-		t.Fatalf("Relationships = %#v, want outbound related_to SPEC-001", show.Spec.Relationships)
-	}
-
-	var humanOut bytes.Buffer
-	if err := (Runner{Stdout: &humanOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "show", "SPEC-003"}); err != nil {
-		t.Fatalf("spec show human error = %v", err)
-	}
-	for _, want := range []string{"branch: feat/body-edit-path", "source: SPARK-7", "related: SPEC-001, SPEC-002"} {
-		if !strings.Contains(humanOut.String(), want) {
-			t.Fatalf("human output = %q, want %q", humanOut.String(), want)
-		}
-	}
-}
-
-func TestRunnerSpecEditUpdatesBodyAndFinalizeRoundTrips(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
-		t.Fatalf("state init error = %v", err)
-	}
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "new", "auth-rotation", "--title", "Auth Rotation", "--message", "# Auth Rotation\n\nInitial body.", "--json"}); err != nil {
-		t.Fatalf("spec new error = %v", err)
-	}
-	beforeFiles := repoFileList(t, workingDir)
-
-	var messageOut bytes.Buffer
-	if err := (Runner{Stdout: &messageOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "edit", "SPEC-001", "--message", "# Auth Rotation\n\nMessage body."}); err != nil {
-		t.Fatalf("spec edit --message error = %v", err)
-	}
-	for _, want := range []string{"edited spec SPEC-001", "scope: global database", "next: loaf spec finalize SPEC-001"} {
-		if !strings.Contains(messageOut.String(), want) {
-			t.Fatalf("spec edit output = %q, want %q", messageOut.String(), want)
-		}
-	}
-
-	finalBody := "# Auth Rotation\n\nFile body wins."
-	bodyFile := filepath.Join(t.TempDir(), "body.md")
-	if err := os.WriteFile(bodyFile, []byte(finalBody), 0o600); err != nil {
-		t.Fatalf("WriteFile(body file) error = %v", err)
-	}
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "edit", "SPEC-001", "--body-file", bodyFile}); err != nil {
-		t.Fatalf("spec edit --body-file error = %v", err)
-	}
-
-	var showOut bytes.Buffer
-	if err := (Runner{Stdout: &showOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "show", "SPEC-001", "--json"}); err != nil {
-		t.Fatalf("spec show --json error = %v", err)
-	}
-	show := decodeSpecShow(t, showOut.Bytes())
-	if show.Spec.Body != finalBody {
-		t.Fatalf("show.Spec.Body = %q, want %q", show.Spec.Body, finalBody)
-	}
-	if !show.Spec.HasBody {
-		t.Fatal("show.Spec.HasBody = false, want true")
-	}
-
-	// `edit` mutates SQLite only; no repository file may appear before finalize.
-	afterEditFiles := repoFileList(t, workingDir)
-	if strings.Join(afterEditFiles, "\n") != strings.Join(beforeFiles, "\n") {
-		t.Fatalf("spec edit repository files:\nbefore=%v\nafter=%v", beforeFiles, afterEditFiles)
-	}
-	renderPath := filepath.Join(workingDir, ".agents", "specs", "SPEC-001-auth-rotation.md")
-	if _, err := os.Stat(renderPath); !os.IsNotExist(err) {
-		t.Fatalf("spec render file exists before finalize or stat failed: %v", err)
-	}
-
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "finalize", "SPEC-001"}); err != nil {
-		t.Fatalf("spec finalize error = %v", err)
-	}
-	render, err := os.ReadFile(renderPath)
-	if err != nil {
-		t.Fatalf("ReadFile(finalized render) error = %v", err)
-	}
-	if !strings.Contains(string(render), "File body wins.") {
-		t.Fatalf("finalized render = %q, want edited body", string(render))
-	}
-
-	var driftOut bytes.Buffer
-	if err := (Runner{Stdout: &driftOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"check", "--hook", "render-drift", "--json"}); err != nil {
-		t.Fatalf("check render-drift error = %v", err)
-	}
-	if !strings.Contains(driftOut.String(), "\"passed\":true") && !strings.Contains(driftOut.String(), "\"passed\": true") {
-		t.Fatalf("render-drift output = %s, want passed", driftOut.String())
-	}
-}
-
-func TestRunnerSpecEditRequiresBodyFlag(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
-		t.Fatalf("state init error = %v", err)
-	}
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "new", "auth-rotation", "--message", "body"}); err != nil {
-		t.Fatalf("spec new error = %v", err)
-	}
-
-	t.Setenv("EDITOR", "false")
-	err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"spec", "edit", "SPEC-001"})
-	want := "spec edit requires body content via --body-file, --body -, or --message"
-	if err == nil || err.Error() != want {
-		t.Fatalf("spec edit without body error = %v, want %q", err, want)
-	}
-}
-
-func TestRunnerSpecEditRequiresSQLiteState(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	writeCLIAgentsFile(t, workingDir, "specs/SPEC-001-legacy.md", "---\nid: SPEC-001\nstatus: draft\ntitle: Legacy\n---\n# Legacy\n")
-
-	err := Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}.Run([]string{"spec", "edit", "SPEC-001", "--message", "body"})
-	want := "loaf spec edit requires initialized SQLite state; run `loaf state init` or `loaf state migrate markdown --apply` first"
-	if err == nil || err.Error() != want {
-		t.Fatalf("spec edit markdown-only error = %v, want %q", err, want)
-	}
-}
-
-func TestRunnerSpecEditJSONOutput(t *testing.T) {
-	workingDir := realpath(t, t.TempDir())
-	stateHome := t.TempDir()
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
-		t.Fatalf("state init error = %v", err)
-	}
-	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "new", "auth-rotation", "--title", "Auth Rotation", "--message", "# Auth Rotation\n\nInitial body."}); err != nil {
-		t.Fatalf("spec new error = %v", err)
-	}
-
-	var editOut bytes.Buffer
-	if err := (Runner{Stdout: &editOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"spec", "edit", "SPEC-001", "--message", "# Auth Rotation\n\nEdited body.", "--json"}); err != nil {
-		t.Fatalf("spec edit --json error = %v", err)
-	}
-	result := decodeSpecEditResult(t, editOut.Bytes())
-	assertCLIReportContext(t, result.ContractVersion, result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath, workingDir)
-	if result.Spec.Kind != "spec" || result.Spec.Alias != "SPEC-001" {
-		t.Fatalf("result.Spec = %#v, want spec SPEC-001", result.Spec)
-	}
-	if result.Imported {
-		t.Fatalf("result.Imported = true, want false for SQLite-native spec")
-	}
-	if result.ContentHash == "" {
-		t.Fatal("result.ContentHash is empty")
-	}
-	if result.EventID == "" {
-		t.Fatal("result.EventID is empty")
-	}
-}
-
 func TestRunnerReportEditThenFinalizeRefreshesTrackedRender(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
@@ -13363,7 +11722,6 @@ func TestRunnerGenerateCLIReferenceIndexesEditSubcommands(t *testing.T) {
 	}
 	content := string(data)
 	for _, want := range []string{
-		"| `loaf spec` | Manage project specs | new, edit, list, show, status, render, finalize, archive, delete |",
 		"| `loaf report` | Manage durable reports (research, audits, investigations) | list, show, render, generate, create, edit, finalize, archive |",
 	} {
 		if !strings.Contains(content, want) {
@@ -14935,7 +13293,6 @@ func TestRunnerNestedStateBackedHelpDoesNotParseAsOption(t *testing.T) {
 		{name: "state export all", args: []string{"state", "export", "all", "--help"}, want: "Usage: loaf state export all"},
 		{name: "task update", args: []string{"task", "update", "--help"}, want: "Usage: loaf task update <task>"},
 		{name: "task create", args: []string{"task", "create", "--help"}, want: "Usage: loaf task create --title <title>"},
-		{name: "spec show", args: []string{"spec", "show", "--help"}, want: "Usage: loaf spec show <spec>"},
 		{name: "journal log", args: []string{"journal", "log", "--help"}, want: "Usage: loaf journal log"},
 		{name: "report create", args: []string{"report", "create", "--help"}, want: "Usage: loaf report create <slug>"},
 		{name: "brainstorm archive", args: []string{"brainstorm", "archive", "--help"}, want: "Usage: loaf brainstorm archive <brainstorm...>"},
@@ -15042,30 +13399,6 @@ func TestRunnerReportListHelpNamesLifecycleStatuses(t *testing.T) {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
 }
-
-func TestRunnerSpecNewHelpMatchesParser(t *testing.T) {
-	var stdout bytes.Buffer
-	err := Runner{
-		Stdout:     &stdout,
-		WorkingDir: t.TempDir(),
-	}.Run([]string{"spec", "new", "--help"})
-	if err != nil {
-		t.Fatalf("Run(spec new --help) error = %v", err)
-	}
-	for _, want := range []string{
-		"Usage: loaf spec new <slug> --title <title> [options]",
-		"--id         Explicit spec id (SPEC-NNN); auto-allocated when omitted",
-		"--branch     Implementation branch recorded on the spec for breakdown/implement handoff",
-		"--related    Comma-separated spec refs to link as related (SPEC-A,SPEC-B)",
-		"--body-file  Read the spec body from a file",
-		"--message    Use the given text as the spec body",
-	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
-		}
-	}
-}
-
 func TestRunnerReportCreateHelpMatchesParser(t *testing.T) {
 	var stdout bytes.Buffer
 	err := Runner{
@@ -15159,7 +13492,7 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 		}
 		commands[command.Name] = entry
 	}
-	for _, want := range []string{"build", "state", "project", "docs", "change", "journal", "task", "spec", "report", "plan", "handoff", "council", "kb", "release", "version"} {
+	for _, want := range []string{"build", "state", "project", "docs", "journal", "task", "issue", "report", "plan", "handoff", "council", "kb", "release", "version"} {
 		if _, ok := commands[want]; !ok {
 			t.Fatalf("agent help commands missing %q: %#v", want, commands)
 		}
@@ -15395,12 +13728,6 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 	if got := commands["task"].optionDescriptions["task refresh --json"]; !strings.Contains(got, "compatibility mode") || !strings.Contains(got, "counts") {
 		t.Fatalf("task refresh json description = %q, want compatibility/count guidance", got)
 	}
-	if got := commands["spec"].optionDescriptions["spec list --json"]; !strings.Contains(got, "specs") || !strings.Contains(got, "task counts") || !strings.Contains(got, "project identity") {
-		t.Fatalf("spec list json description = %q, want specs/task counts/project identity guidance", got)
-	}
-	if got := commands["spec"].optionDescriptions["spec show --json"]; !strings.Contains(got, "relationships") || !strings.Contains(got, "global database scope") {
-		t.Fatalf("spec show json description = %q, want relationship/scope guidance", got)
-	}
 	if got := commands["report"].optionDescriptions["report list --json"]; !strings.Contains(got, "reports") || !strings.Contains(got, "diagnostics") || !strings.Contains(got, "project identity") {
 		t.Fatalf("report list json description = %q, want reports/diagnostics/project identity guidance", got)
 	}
@@ -15410,17 +13737,8 @@ func TestRunnerAgentHelpIsNative(t *testing.T) {
 	if got := commands["report"].optionDescriptions["report finalize --json"]; !strings.Contains(got, "status transition") || !strings.Contains(got, "project identity") {
 		t.Fatalf("report finalize json description = %q, want status transition/project identity guidance", got)
 	}
-	if !stringSliceContains(commands["spec"].subcommands, "edit") {
-		t.Fatalf("spec subcommands = %#v, want edit", commands["spec"].subcommands)
-	}
 	if !stringSliceContains(commands["report"].subcommands, "edit") {
 		t.Fatalf("report subcommands = %#v, want edit", commands["report"].subcommands)
-	}
-	if got := commands["spec"].optionDescriptions["spec edit --json"]; !strings.Contains(got, "edited spec") || !strings.Contains(got, "content hash") || !strings.Contains(got, "project identity") {
-		t.Fatalf("spec edit json description = %q, want edited spec/content hash/project identity guidance", got)
-	}
-	if got := commands["spec"].optionDescriptions["spec edit --force"]; !strings.Contains(got, "diverges") {
-		t.Fatalf("spec edit force description = %q, want divergence guidance", got)
 	}
 	if got := commands["report"].optionDescriptions["report edit --json"]; !strings.Contains(got, "edited report") || !strings.Contains(got, "content hash") || !strings.Contains(got, "project identity") {
 		t.Fatalf("report edit json description = %q, want edited report/content hash/project identity guidance", got)

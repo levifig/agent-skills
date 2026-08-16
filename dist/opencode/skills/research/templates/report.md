@@ -14,7 +14,7 @@ title: "Report: [Topic]"
 type: research | audit | analysis | council
 created: YYYY-MM-DDTHH:MM:SSZ
 status: draft | done | archived
-source: SPEC-XXX | TASK-XXX | ad-hoc
+source: LOAF-42 | ad-hoc
 tags: []
 ---
 

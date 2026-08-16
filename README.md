@@ -10,11 +10,11 @@ Loaf is an opinionated agentic framework that gives AI coding assistants structu
 
 **Project journal model** — A single SQLite-backed journal captures decisions and progress across every conversation, project-scoped and correlated by an opaque harness id. There is no session entity to open or close, so concurrent conversations across branches and worktrees stay conflict-free. Handoff artifacts live separately in `.agents/handoffs/`. Work survives context loss, compaction, and `/clear`.
 
-**Change-first workflow** — The Loaf Flow is pitch → shape → implement → ship → release. `/pitch` authors a problem-space brief; `/shape` bounds a Change under `docs/changes/YYYYMMDD-slug/` (promoting a capture in place when needed). `loaf change check` validates the contract before implementation, review, and shipping.
+**Issue workflow** — The Loaf Flow is pitch → shape → implement → ship → release. `/pitch` authors a problem-space narrative; `/shape` bounds an Issue in place (`loaf issue new`, body + DoD + out-of-scope; decompose with `loaf issue promote` only when a criterion earns its own DoD). `loaf issue check` validates readiness; work is built in a started worktree (`loaf issue start`). `/ship` is the sole quality gate (PR body is `loaf issue render`); `/release` cuts retroactively (`loaf release suggest` / `cut`).
 
 **Profile-based agents** — Functional profiles are defined by tool access, not job titles. A Smith with `python-development` skills becomes a backend engineer; the same Smith with `infrastructure-management` becomes a DevOps engineer. Skills determine what an agent knows; the profile determines what it can touch.
 
-**Conversation continuity** — Pick up exactly where you left off with full traceability. The project journal captures decisions and progress in SQLite; a derived, ephemeral digest (latest wrap + recent branch entries + open tasks) is emitted at conversation start. Explicit transfer packets live in `.agents/handoffs/` until housekeeping deletes them after deprecation.
+**Conversation continuity** — Pick up exactly where you left off with full traceability. The project journal captures decisions and progress in SQLite; a derived, ephemeral digest (latest wrap + recent branch entries + open issues) is emitted at conversation start. Explicit transfer packets live in `.agents/handoffs/` until housekeeping deletes them after deprecation.
 
 **Hooks as quality gates** — Two hook types: enforcement hooks (pre-commit secrets scanning, pre-push linting) block bad commits automatically; skill instruction hooks inject context at tool invocation time. Language-aware and automatic.
 
@@ -22,51 +22,44 @@ Loaf is an opinionated agentic framework that gives AI coding assistants structu
 
 Loaf keeps intent, implementation, and learning connected:
 
+```mermaid
+flowchart LR
+    idea["/idea · spark<br/><i>capture — offline-safe, no ID</i>"] --> triage["/triage"]
+    pitch["/pitch<br/><i>problem discovery</i>"] --> shape
+    triage -- promote --> shape["/shape<br/><b>the Issue</b>: body · DoD · out-of-scope"]
+    shape -- "criterion earns its own DoD<br/>loaf issue promote" --> shape
+    shape -- "sharp question" --> decision["decision issue"]
+    decision -- answered --> shape
+    shape -- ready --> build["/implement<br/>loaf issue start: worktree · branch · PR"]
+    build --> ship["/ship<br/><b>the sole quality gate</b>"]
+    ship -- merge --> main[("main")]
+    main -. "reads landed since last tag" .-> release["/release<br/>suggest → cut"]
+    release -- "tag · notes · members as fact" --> main
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    PITCH AND SHAPE                          │
-│                                                             │
-│     /pitch → brief → /shape → Change (or /bootstrap)        │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                     IMPLEMENT AND SHIP                      │
-│                                                             │
-│                 /implement → review → /ship                 │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                 RELEASE AND PRESERVE                        │
-│                                                             │
-│     /release · journal · /reflect · optional /wrap          │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+
+Everything left of ship plans **forward** and can be re-planned freely — issues are recursive (`loaf issue tree`), questions too foggy to act on stay as prose until they sharpen into decision issues, and Now/Next/Later are advisory buckets. The release track only ever reads **backward**: a release is cut from what actually landed, so it can never contain unimplemented work. The journal records every step; `/reflect` and an optional `/wrap` preserve what the work taught.
 
 ### Pitch and Shape
 
-Discover the problem, author a brief, then bound an implementable Change (or bootstrap a project from a pitched BRIEF).
+Discover the problem, author a brief, then bound an implementable Issue (or bootstrap a project from a pitched BRIEF).
 
 | Command | What It Does |
 |---------|--------------|
-| `/pitch` | Human problem-discovery: authors a change `brief.md` or project `docs/BRIEF.md` |
+| `/pitch` | Human problem-discovery: authors a problem narrative for shape, or project `docs/BRIEF.md` |
 | `/idea` | Quick capture of rough ideas for later triage / pitch / shape |
-| `/shape` | Create or promote `docs/changes/YYYYMMDD-slug/` into a bounded contract (`shape.md` + `tasks/`) |
-| `/bootstrap` | Populate operating docs; with `source: pitch`, gap-interview and series-prep captured changes |
+| `/shape` | Bound an issue in place (body, DoD criteria, out-of-scope); `loaf issue check` validates readiness |
+| `/bootstrap` | Populate operating docs; with `source: pitch`, gap-interview and file the initial issue arc |
 | `/strategy` | Discover and document strategic direction |
 
 ### Implement and Ship
 
-Implement a coherent Change through contained branches and pull requests, review the result, and land it deliberately.
+Implement a shaped issue through a started worktree and pull request, review the result, and land it through ship — the sole quality gate.
 
 | Command | What It Does |
 |---------|--------------|
-| `/breakdown` | Decompose existing spec or task records when that compatibility workflow is in use |
-| `/implement` | Execute a Change or compatible task/spec record with orchestrated agent delegation |
-| `/ship` | Review, verify, and land one PR |
-| `/release` | Publish a version from already-landed work |
+| `/implement` | Execute a shaped issue with orchestrated agent delegation |
+| `/ship` | Review, verify, and land one PR — the sole quality gate; PR body is `loaf issue render` |
+| `/release` | Cut a retroactive release from already-landed issues (`loaf release suggest` / `cut`) |
 
 ### Preserve Learning
 
@@ -76,7 +69,7 @@ Integrate outcomes into strategic knowledge.
 |---------|--------------|
 | `/housekeeping` | Review and archive or delete lifecycle-complete artifacts |
 | `/reflect` | Integrate learnings into strategic documents |
-| `/handoff` | Package context for another agent, branch, task, or future conversation |
+| `/handoff` | Package context for another agent, branch, issue, or future conversation |
 | `/wrap` | Optional checkpoint for synthesis that is not otherwise derivable from the journal |
 
 ### Supporting Commands
@@ -90,13 +83,11 @@ CLI commands that support the workflow:
 | `loaf config check` | Validate project config and installed Loaf-managed hooks |
 | `loaf check` | Run enforcement hooks manually |
 | `loaf project` | Manage durable project identity (show, rename, move) |
-| `loaf change` | Scaffold, validate, and inspect Change artifacts |
-| `loaf task` | Manage project tasks (list, show, update, archive) |
-| `loaf spec` | Manage existing spec records retained for compatibility |
+| `loaf issue` | Create, shape, start, and inspect issues |
 | `loaf kb` | Knowledge base management |
 | `loaf journal` | Project journal: log, recent, search, show, context, export |
 | `loaf housekeeping` | Review and archive agent artifacts |
-| `loaf release` | Publish a release: version bump, changelog, tag, and release artifacts |
+| `loaf release` | Cut a retroactive release: `suggest` the range, `cut` the version |
 
 ## Profiles
 
@@ -119,12 +110,11 @@ Skills you invoke directly to drive work forward.
 
 | Skill | Activates When |
 |-------|----------------|
-| `pitch` | Human problem-discovery; authors a brief at change or project scale |
-| `shape` | Shaping a brief or raw ask into a bounded Change |
-| `breakdown` | Decomposing existing compatible spec/task records |
-| `implement` | Implementing a Change or compatible task/spec record |
-| `ship` | Reviewing, verifying, and landing one PR |
-| `release` | Publishing a version from already-landed work |
+| `pitch` | Human problem-discovery; authors a problem narrative at issue scale or `docs/BRIEF.md` at project scale |
+| `shape` | Shaping a brief or raw ask into a bounded issue |
+| `implement` | Implementing a shaped issue |
+| `ship` | Reviewing, verifying, and landing one PR (the sole quality gate) |
+| `release` | Cutting a retroactive release from already-landed issues |
 | `research` | Investigating questions, comparing options |
 | `strategy` | Discovering or updating strategic direction |
 | `architecture` | Creating Architecture Decision Records |
@@ -133,7 +123,7 @@ Skills you invoke directly to drive work forward.
 | `reflect` | Integrating learnings into strategic docs |
 | `housekeeping` | Reviewing and archiving agent artifacts |
 | `handoff` | Creating disposable transfer packets in `.agents/handoffs/` |
-| `bootstrap` | Bootstrapping new or existing projects (series-prep after pitched BRIEF) |
+| `bootstrap` | Bootstrapping new or existing projects (initial issue arc after pitched BRIEF) |
 | `wrap` | Optional end-of-conversation checkpoint: shipped, pending, next |
 
 Explore and brainstorm are agent techniques (not user slash entry); agents reach for them when direction is undecided — human entry intent routes to `/pitch`.
@@ -217,7 +207,7 @@ Detects installed tools, lets you select targets, and installs pre-built distrib
 
 ### Upgrading Existing Projects
 
-Projects created with the older TypeScript runtime can keep using their existing `.agents/` Markdown files after installing the native Go runtime. If no SQLite database exists yet, Loaf runs supported task, spec, report, journal, and housekeeping commands in `markdown-only` compatibility mode.
+Projects created with the older TypeScript runtime can keep using their existing `.agents/` Markdown files after installing the native Go runtime. If no SQLite database exists yet, Loaf runs supported report, journal, and housekeeping commands in `markdown-only` compatibility mode.
 
 Use this sequence when you are ready to adopt SQLite-backed state:
 
@@ -228,7 +218,7 @@ loaf migrate markdown --apply
 loaf state status
 ```
 
-The dry run counts importable artifacts and skipped files without creating a database. The apply step imports `.agents/` Markdown into the XDG data-home SQLite database without rewriting the source Markdown files. Loaf uses one global SQLite file and partitions rows by stable project ID, so multiple projects share the same database path while project queries stay isolated. Project IDs are not bound to the checkout path or friendly name; use `loaf project rename <name>` for display names and `loaf project move --from <old-path>` after moving a checkout. Newer graph-oriented commands such as `loaf idea`, `loaf spark`, `loaf tag`, `loaf bundle`, and `loaf link` require initialized SQLite state; run `loaf state init` for a fresh project or `loaf migrate markdown --apply` for an existing Markdown project.
+The dry run counts importable artifacts and skipped files without creating a database. The apply step imports `.agents/` Markdown into the XDG data-home SQLite database without rewriting the source Markdown files. Loaf uses one global SQLite file and partitions rows by stable project ID, so multiple projects share the same database path while project queries stay isolated. Project IDs are not bound to the checkout path or friendly name; use `loaf project rename <name>` for display names and `loaf project move --from <old-path>` after moving a checkout. Newer graph-oriented commands such as `loaf issue`, `loaf idea`, `loaf spark`, `loaf tag`, `loaf bundle`, and `loaf link` require initialized SQLite state; run `loaf state init` for a fresh project or `loaf migrate markdown --apply` for an existing Markdown project.
 
 ### Recovery Tiers and Isolated Restore
 

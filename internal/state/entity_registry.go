@@ -49,6 +49,7 @@ var entityRegistry = []entityDescriptor{
 	{Kind: "exploration", Table: "explorations", InternalIDResolvable: true},
 	{Kind: "exploration_checkpoint", Table: "exploration_checkpoints", InternalIDResolvable: true},
 	{Kind: "logical_conversation", Table: "logical_conversations", InternalIDResolvable: true},
+	{Kind: "issue", Table: "issues", InternalIDResolvable: true, ResolutionTarget: true},
 }
 
 func entityDescriptorForKind(kind string) (entityDescriptor, bool) {

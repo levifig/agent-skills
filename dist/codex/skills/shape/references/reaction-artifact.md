@@ -8,11 +8,11 @@ Before building anything, state precisely what this artifact must let the user d
 
 ## Build the Smallest Thing That Lets the User React
 
-Construct the minimum artifact that resolves the named unknown — competing layouts, a comparison of approaches, a rendered mock. Write it into the Change's own `research/` folder, never `.agents/reports/`; this is shape's own technique, executed in-session, not a handoff to the research skill.
+Construct the minimum artifact that resolves the named unknown — competing layouts, a comparison of approaches, a rendered mock. Keep it in the session or in a throwaway file you will discard. This is shape's own technique, executed in-session, not a handoff to the research skill and not a committed plan document. Do not write it into `.agents/reports/`.
 
 ## Capture the Answer, Discard the Shell
 
-Once the user reacts and picks, write the decision — with rationale — back into the Change: the Decisions log, or the relevant Planning Contract subsection. The artifact itself is not the deliverable; the choice it produced is. Discard or archive the shell once the answer is captured. If a piece of logic proved out along the way is worth keeping (a validated approach, not just a throwaway shell), note that explicitly — but don't let scaffolding survive under the pretense that it's production code.
+Once the user reacts and picks, write the decision — with rationale — back onto the issue: the body via `loaf issue edit`, or a `--kind decision` child when the pick is itself a sharp question that still needs a later call. The artifact itself is not the deliverable; the choice it produced is. Discard the shell once the answer is captured. If a piece of logic proved out along the way is worth keeping (a validated approach, not just a throwaway shell), note that explicitly in the issue body — but don't let scaffolding survive under the pretense that it's production code.
 
 ## Never a Deliverable
 

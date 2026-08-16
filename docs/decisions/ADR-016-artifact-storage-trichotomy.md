@@ -6,9 +6,12 @@ date: 2026-06-24
 supersedes: null
 superseded_by: null
 amended_by: ADR-019
+revised: 2026-08-15
 ---
 
 # ADR-016: Artifact Storage Trichotomy — Nouns in SQLite, Verbs in Git, Markdown is a Render
+
+2026-08-15: revisited under the issue model.
 
 ## Context
 

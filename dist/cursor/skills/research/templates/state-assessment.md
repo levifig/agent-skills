@@ -24,7 +24,7 @@ tags: []
 
 - **Vision:** [Brief summary]
 - **Key personas:** [Who we're building for]
-- **Current focus:** [Active specs/work]
+- **Current focus:** [Active issues]
 
 ## Recent Progress
 
@@ -32,10 +32,10 @@ tags: []
 
 ## In Flight
 
-| Spec/Task | Status | Notes |
-|-----------|--------|-------|
-| SPEC-001 | implementing | [progress] |
-| SPEC-002 | approved | [next up] |
+| Issue | Status | Notes |
+|-------|--------|-------|
+| LOAF-1 | active | [progress] |
+| LOAF-2 | todo | [next up] |
 
 ## Ideas Pipeline
 

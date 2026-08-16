@@ -1,3 +1,3 @@
 # Claude Code skill configuration
 user-invocable: true
-argument-hint: "[SPEC-ID or topic]"
+argument-hint: "[issue ref or topic]"

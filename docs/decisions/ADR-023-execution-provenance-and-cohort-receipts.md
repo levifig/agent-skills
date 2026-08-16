@@ -1,13 +1,16 @@
 ---
 id: ADR-023
 title: "Execution provenance and cohort receipts — git as the witness, verify as the only runner"
-status: Accepted
+status: Deprecated
 date: 2026-07-28
+deprecated_date: 2026-08-15
 supersedes: null
 superseded_by: ADR-024  # freshness + receipt schema claims annotated below; see ADR-024
 ---
 
 # ADR-023: Execution provenance and cohort receipts
+
+2026-08-15: retired with the release gate — releases are retroactive; verification authority is ship.
 
 ## Context
 

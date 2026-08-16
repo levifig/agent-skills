@@ -1,8 +1,9 @@
 ---
 id: ADR-024
 title: "Receipt validity binds to a masked root-tree content digest"
-status: Accepted
+status: Deprecated
 date: 2026-07-29
+deprecated_date: 2026-08-15
 supersedes: null
 superseded_by: null
 related:
@@ -10,6 +11,8 @@ related:
 ---
 
 # ADR-024: Receipt validity binds to a masked root-tree content digest
+
+2026-08-15: retired with the release gate — releases are retroactive; verification authority is ship.
 
 ## Context
 

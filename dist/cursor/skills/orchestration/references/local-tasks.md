@@ -1,259 +1,173 @@
-# Local Task Management
+# Working Issues Locally
 
-Break specs into atomic tasks using SQLite-backed Loaf task records when Linear
-isn't available.
+Orchestration-facing reference for the Loaf issue CLI: pick-up-next, started
+worktrees, status, definition of done, and advisory labels. Issue commands
+require initialized SQLite state.
 
 ## Contents
 
-- Task Abstraction Layer
-- Local Task Records
-- Task Lifecycle
-- Creating Tasks from Specs
-- Cutover Reconciliation
-- Task ID Generation
-- Archiving Tasks
-- Journal Integration
-- Task Sizing
-- Priority Levels
-- Listing Tasks
-- Work Log Updates
-- Verification
-- Local vs Linear Comparison
+- Frontier
+- Started worktree
+- Status vocabulary
+- Relationships
+- Definition of done
+- Buckets
+- Command cheat sheet
+- LEGACY
 
-## Task Abstraction Layer
+## Frontier
 
-Tasks work identically whether backed by Linear or local SQLite state.
-
-### Configuration
-
-```yaml
-# .agents/loaf.yaml
-task_management:
-  backend: linear  # or "local"
-
-  linear:
-    team: ProjectName
-    default_labels: []
-
-  local:
-    archive_completed: true
+```text
+loaf issue frontier [--json]
 ```
 
-### Abstracted Operations
+Pick-up-next. Derived at read time, never stored. Lists non-archived issues in
+`triage`, `backlog`, or `todo` that are not blocked.
 
-| Operation | Linear | Local |
-|-----------|--------|-------|
-| Create task | Create issue | `loaf task create --spec SPEC-XXX --title "..." --priority P1` |
-| Fetch task | Get issue | `loaf task show TASK-XXX` or `loaf task show TASK-XXX --json` |
-| Update status | Update issue | `loaf task update TASK-XXX --status in_progress` |
-| List tasks | List issues | `loaf task list` (or `loaf task list --json` for machine parsing) |
-| Complete | Move to Done | `loaf task update TASK-XXX --status done` |
+| Qualifier | Meaning |
+|-----------|---------|
+| Open | Status is `triage`, `backlog`, or `todo` — not `active`, `done`, `cancelled`, or `duplicate` |
+| Unblocked | No open predecessor via `blocks` / `blocked_by`. A predecessor that is `done`, `cancelled`, or `duplicate` does not block |
+| Unclaimed | Not `active` and no started worktree. `loaf issue start` is the claim |
 
-## Local Task Records
+Archived rows are excluded. Kind is not filtered: a `--kind decision` question
+can appear; it is not delivery work. Buckets are not read. Prefer `--json`
+when diagnosing rather than scraping the human-readable text.
 
-SQLite is the operational source of truth for task metadata, status, priority,
-dependencies, dates, and relationships. Use `loaf task` CLI commands for all
-task mutations. `.agents/tasks/` and `.agents/TASKS.json` were removed by the
-SPEC-045 cutover and are rollback material only.
+## Started worktree
 
-**Create with:** `loaf task create --title "..." --spec SPEC-XXX`
-
-## Task Lifecycle
-
+```text
+loaf issue start <ref> [--json]
+loaf issue stop <ref> [--force] [--json]
+loaf issue list --started [--json]
 ```
-todo → in_progress → review → done
-  │        │           │        │
-  └────────┴───────────┴────────┘
-           can return to earlier states
+
+**Invariant:** one agent, one worktree. Check `loaf issue list --started`
+before dispatch. Never send two agents into the same path.
+
+`start` creates branch `issue/<alias-or-id>` in lowercase (`issue/loaf-42`,
+disambiguated with an id suffix when that name is already claimed), adds a
+sibling worktree, records `started_branch` / `started_worktree` on the row, and
+moves status to `active` through the events path. Base is the nearest started
+ancestor's branch, else the repository default branch. Start refuses an already
+started row, an archived row, and terminal statuses (`done`, `cancelled`,
+`duplicate`). Requires a git repository.
+
+`list --started` prints alias, title, `started_branch`, `started_worktree`, and
+`(missing)` when the recorded path is gone.
+
+`stop` removes the worktree and clears the started workspace on the row. It
+keeps the branch and does not change status. `--force` removes a dirty
+worktree. Do not run `stop` from inside the started worktree.
+
+## Status vocabulary
+
+Write statuses that update in place: `triage`, `backlog`, `todo`, `active`,
+`done`. `cancelled` and `duplicate` archive through the remove path
+(`loaf issue status <ref> duplicate --duplicate-of <surviving>`).
+
+```text
+loaf issue status <ref> <status> [--duplicate-of <ref>] [--json]
 ```
 
 | Status | Meaning |
 |--------|---------|
-| `todo` | Ready to work, not started |
-| `in_progress` | Actively being worked |
-| `review` | Implementation complete, needs verification |
-| `done` | Verified complete, ready for archive |
+| `triage` | Default at create. Shaped is derived (`loaf issue check`), not a status |
+| `backlog` | Filed, worth keeping |
+| `todo` | Explicitly ready to work |
+| `active` | Started. **Review is a display name for `active`** — there is no `review` write status |
+| `done` | Work landed |
+| `cancelled` | Archived; abandoned |
+| `duplicate` | Archived; `--duplicate-of` required |
 
-## Creating Tasks from Specs
+There is **no `blocked` status**. Blocked is a relationship. Title and body stay
+mutable at every status.
 
-### Input
-
-- Spec ID (e.g., `SPEC-001`)
-- Optional: priority override
-
-### Task Breakdown Rules
-
-1. **One concern per task** - Don't mix backend + tests + frontend
-2. **Clear done condition** - Observable, verifiable outcome
-3. **Verification command** - How to prove it works
-4. **File hints** - Which files will likely be modified
-
-### Example Breakdown
-
-```
-SPEC-001: User Authentication with OAuth
-        ↓
-TASK-001: OAuth Provider Integration
-  - Google OAuth client setup
-  - GitHub OAuth client setup
-  - Token exchange logic
-  verify: pytest tests/auth/test_oauth.py
-
-TASK-002: Session Management
-  - Session cookie handling
-  - Session storage (Redis/DB)
-  - Session expiry logic
-  verify: pytest tests/auth/test_session.py
-
-TASK-003: Login UI Components
-  - Login page layout
-  - Provider buttons
-  - Error states
-  verify: npm run test:e2e -- auth
+```text
+loaf issue list [--status <status>] [--kind delivery|decision] [--archived] [--started] [--json]
 ```
 
-## Cutover Reconciliation
+Archived rows are hidden unless `--archived`. `--status` accepts every value in
+the table above.
 
-If a stale branch reintroduces `.agents/tasks/`, `.agents/sessions/`, other
-ephemeral roots, or `.agents/TASKS.json`, keep the deletion side from the
-cutover branch and rerun `loaf check --hook ephemeral-provenance`. Use
-`loaf state restore-ephemerals <backup-id>` only for an intentional rollback,
-then re-import forward.
+## Relationships
 
-## Task ID Generation
-
-Format: `TASK-{number}-{slug}`
-
-Task IDs are auto-generated by `loaf task create`. In SQLite-backed projects,
-the allocation is recorded in state.
-
-## Archiving Tasks
-
-When a task is done:
-
-1. Mark complete via CLI: `loaf task update TASK-XXX --status done`
-2. Archive: `loaf task archive TASK-XXX`
-
-## Journal Integration
-
-When the implement workflow starts on `TASK-001`:
-
-1. Load task metadata via `loaf task show TASK-001` for context
-2. Read linked spec for full picture
-3. Log the task coupling as the first action:
-
-```bash
-loaf journal log "decision(implement): implementing TASK-001"
+```text
+loaf issue link <from> blocks|relates-to <to> [--json]
+loaf issue link <from> remove <type> <to> [--json]
 ```
 
-There is no session to create or couple to. Task progress is read through
-`loaf task show/list`; the surrounding decisions and blockers live in the
-project journal (`loaf journal recent`, `loaf journal search`).
+Stored types are `blocks` and `relates_to`. `loaf issue link A blocks B` means
+A blocks B: B is absent from the frontier until A is `done`, `cancelled`, or
+`duplicate`. `relates-to` is not a sequencing constraint.
 
-## Task Sizing
+Do not encode order in `loaf issue tree`. Parent/child is structure; `blocks`
+is the dependency. `loaf issue export [--json]` dumps relationships (and
+claims) when you need the graph.
 
-### Separation of Concerns
+## Definition of done
 
-**The primary principle for task breakdown is separation of concerns.**
+Criteria live on the issue row. `loaf issue show <ref>` prints each as
+`position. [V|H] text` with `command=` / `expect=` when present.
 
-| Rule | Guideline |
-|------|-----------|
-| **One agent type** | Task completable by ONE subagent (implementer, reviewer, researcher) |
-| **One concern** | Task touches one layer, one service, or one component |
-| **Context-appropriate** | Fits in model context with room for exploration |
-| **Not over-fragmented** | Don't split what naturally belongs together |
-
-### Right Size Test
-
-1. Can a single specialized agent complete this? → If no, split by agent type
-2. Does it touch multiple unrelated concerns? → If yes, split by concern
-3. Will the agent need too much context? → If yes, split into smaller coherent units
-4. Am I splitting just to have more tasks? → If yes, merge back
-
-### Agent Scope
-
-| Agent | Typical Task Scope |
-|-------|-------------------|
-| implementer (backend) | One service/module, its tests, its docs |
-| implementer (frontend) | One component/page, its tests, its styles |
-| implementer (database) | One migration, related schema changes |
-| implementer (testing) | Test suite for one feature/area |
-| implementer (infra) | One infrastructure concern (CI, deploy, config) |
-
-## Priority Levels
-
-| Priority | Meaning | Response |
-|----------|---------|----------|
-| P0 | Urgent/blocking | Drop everything |
-| P1 | High | Work next |
-| P2 | Normal | Scheduled work |
-| P3 | Low | When time permits |
-
-## Listing Tasks
-
-### All Active Tasks
-
-```bash
-loaf task list
+```text
+loaf issue dod add <ref> <text> [--command <cmd>] [--expect <expect>] [--tier V|H] [--serves <parent-position>] [--json]
+loaf issue dod list <ref> [--json]
+loaf issue dod remove <ref> <position> [--json]
+loaf issue dod claim <child> <child-position> <parent-position> [--json]
+loaf issue dod unclaim <child> <child-position> <parent-position> [--json]
+loaf issue promote <ref> <position> [--json]
+loaf issue check <ref> [--json] [--human <reason>]
+loaf issue verify <ref> [--json]
 ```
 
-### Tasks for a Spec
+| Tier | When | Who checks |
+|------|------|------------|
+| V | `--command` present, unless `--tier` overrides | `loaf issue verify <ref>` from the repository root. Honors `exit <N>` and `` contains `text` ``. Writes nothing. Non-zero on failure |
+| H | No `--command`, unless `--tier` overrides | Human or orchestrator. Verify skips H-tier; that skip is not a pass |
 
-```bash
-loaf spec list          # Show specs with task counts
-loaf task list --json   # Machine-parseable output, filter by spec
+Claims: a child criterion serves a parent criterion. `promote` copies the
+parent criterion onto a new delivery child and records the claim.
+`--serves` claims a newly added child criterion. `claim` / `unclaim` retarget
+an existing pair. Positions are 1-based.
+
+`check` is readiness (shape's gate): delivery is shaped with a nonempty body,
+at least one criterion, and an out-of-scope statement; decision is ready on a
+sharp `?`. Children add coverage (every parent criterion claimed — failure)
+and containment (every child criterion claims a parent — report). `verify` is
+implement's preflight and writes nothing — it does not set status and does not
+tick boxes.
+
+`loaf issue render <ref>` emits the paste-ready PR body: title, body,
+definition-of-done checkboxes (checked only when status is already `done`),
+and children. No manual editing.
+
+## Buckets
+
+```text
+loaf issue bucket <ref> now|next|later|none [--json]
 ```
 
-## Work Log Updates
+Advisory Now/Next/Later labels. Never read as a constraint. Frontier, start,
+and verify ignore them. `none` clears the label.
 
-As work progresses, append to the Work Log section:
+## Command cheat sheet
 
-```markdown
-## Work Log
-
-### 2026-01-23 14:30 UTC
-Started OAuth integration. Set up Google OAuth client credentials.
-
-### 2026-01-23 15:45 UTC
-Google OAuth working. Moving to GitHub integration.
-
-### 2026-01-23 17:00 UTC
-Both providers working. Tests pass. Moving to review.
+```text
+loaf issue new <title> [--body <text>|--body -|--body-file <path>|--message <text>]
+  [--kind delivery|decision] [--parent <ref>] [--fog <text>] [--status <status>] [--json]
+loaf issue show <ref> [--json]
+loaf issue tree [<ref>] [--archived] [--json]
+loaf issue edit <ref> [--body-file <path>|--body -|--message <text>] [--json]
+loaf issue export [--json]
 ```
 
-## Verification
+`new` default kind is `delivery`; default status is `triage`. `--status` on
+create still records the initial triage event, then writes the requested
+write-status. `--fog` exists only on create. `edit` replaces the body; there
+is no patch form.
 
-Before marking `done`:
+## LEGACY
 
-1. Run the `verify` command from frontmatter
-2. Check all acceptance criteria are checked
-3. Ensure no regressions in related tests
-
-```bash
-# Run task verification
-verify_cmd=$(grep '^verify:' TASK-001-*.md | cut -d: -f2-)
-eval "$verify_cmd"
-```
-
-## Local vs Linear Comparison
-
-| Feature | Local | Linear |
-|---------|-------|--------|
-| No external dependency | yes | no |
-| Rich UI | no | yes |
-| Team collaboration | git-based | native |
-| Notifications | none | email/slack |
-| Reporting | manual | built-in |
-| Offline work | yes | limited |
-
-**Use local when:**
-- Solo project
-- No Linear access
-- Offline development
-- Simple task tracking
-
-**Use Linear when:**
-- Team collaboration needed
-- Rich workflow automation
-- Integration with other tools
-- Reporting requirements
+`loaf task` and `loaf spec` remain readable against leftover SQLite rows. They
+mint nothing new. Do not create records there. Issues are the work unit.

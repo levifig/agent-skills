@@ -149,7 +149,7 @@ func (s *Store) resolveEntityByInternalID(ctx context.Context, projectID string,
 func (s *Store) entityDetails(ctx context.Context, projectID string, kind string, id string) (TraceEntity, error) {
 	entity := TraceEntity{Kind: kind, ID: id}
 	switch kind {
-	case "spec", "task", "idea", "brainstorm", "shaping_draft", "report", "plan", "handoff", "council":
+	case "spec", "task", "idea", "brainstorm", "shaping_draft", "report", "plan", "handoff", "council", "issue":
 		table := traceTable(kind)
 		var title, status sql.NullString
 		err := s.db.QueryRowContext(ctx, fmt.Sprintf(`SELECT title, status FROM %s WHERE project_id = ? AND id = ?`, table), projectID, id).Scan(&title, &status)

@@ -4,7 +4,7 @@ Guidelines for maintaining and extending Loaf - An Opinionated Agentic Framework
 
 See [README.md](README.md) for what Loaf is and how to install it.
 
-> **New work is Change-first.** The Loaf Flow is **pitch → shape → implement → ship → release** (at change scale and project scale). `/pitch` is the human front door: it grills the problem space and authors a brief (`brief.md` via `loaf change init <slug> --brief`, or project `docs/BRIEF.md`). `/shape` consumes that brief (or runs full narrowing when none exists), materializes `shape.md` + `tasks/` (promoting a capture-only folder in place via ordinary `loaf change init <slug>`), and owns solution-space. `loaf change check` validates structure and derived executability (see `loaf change --help`). Existing `SPEC-*` and task records remain supported compatibility surfaces under `loaf spec` and `loaf task` until deliberately converted — not the default for new work.
+> **New work is an Issue.** The Loaf Flow is **pitch → shape → implement → ship → release** (at issue scale and project scale). `/pitch` is the human front door: it grills the problem space and hands a problem narrative to shape, or authors project `docs/BRIEF.md`. `/shape` consumes that narrative (or runs full narrowing when none exists), mints the row with `loaf issue new`, and shapes it in place — problem body, definition-of-done criteria, and an explicit out-of-scope statement. `loaf issue check` validates readiness. Decomposition happens only when a criterion earns its own DoD (`loaf issue promote`). Work is built in a started worktree (`loaf issue start`). `/ship` is the sole quality gate: the PR body is `loaf issue render` output. Releases are retroactive (`loaf release suggest` / `loaf release cut`).
 
 ## Quick Start
 
@@ -26,7 +26,7 @@ internal/                       # CLI implementation (Go)
 │   ├── check.go                # loaf check
 │   ├── install.go              # loaf install
 │   └── journal.go              # loaf journal
-├── state/                      # SQLite-backed state (journal, specs, tasks, findings, ...)
+├── state/                      # SQLite-backed state (journal, issues, findings, ...)
 └── project/                    # Project identity and root resolution
 
 cli/                            # Node-side build tooling (not the CLI itself)
@@ -87,10 +87,10 @@ See [SOUL.md](../SOUL.md) for the Warden identity and fellowship conventions.
 User-invocable workflow skills must log their invocation to the project journal as their first action. Include context — arguments, intent, or what triggered the invocation:
 
 ```bash
-loaf journal log "skill(shape): shaping auth token rotation idea into spec"
+loaf journal log "skill(shape): shaping auth token rotation into LOAF-42"
 loaf journal log "skill(housekeeping): routine cleanup, no specific trigger"
 loaf journal log "skill(wrap): end-of-conversation checkpoint"
-loaf journal log "skill(implement): TASK-042 — journal-first hook rewrite"
+loaf journal log "skill(implement): LOAF-42 — journal-first hook rewrite"
 ```
 
 There is no start step and no "active session" to find — the current branch and an opaque `harness_session_id` are attached automatically. This creates an audit trail of which skills ran; `/wrap` reads recent entries to check whether housekeeping or other periodic skills were run.
@@ -101,7 +101,7 @@ The project journal is the canonical session model, and it is the only session-r
 
 **Wrap is an optional checkpoint, not a lifecycle transition.** Write a `wrap` entry only when a conversation holds synthesis worth saving — "tried X, abandoned because Y, next is Z" — the connective narrative that evaporates with the context window. Nothing is ever "unwrapped"; a conversation that ends without one leaves a perfectly valid journal.
 
-**Continuity is derived and ephemeral.** At conversation start the SessionStart hook runs `loaf journal context --from-hook` to emit a layered digest — the latest project wrap, recent branch entries, and open tasks — computed at read time and never persisted. Subagent invocations exit silently and write nothing.
+**Continuity is derived and ephemeral.** At conversation start the SessionStart hook runs `loaf journal context --from-hook` to emit a layered digest — the latest project wrap, recent branch entries, and open issues — computed at read time and never persisted. Subagent invocations exit silently and write nothing.
 
 ### Naming Conventions
 
@@ -121,7 +121,7 @@ Use domain-focused names in gerund or noun-phrase form:
 
 ### Artifact Names Never Cite Their Work Unit
 
-Artifacts are named for what they are, never for the work unit that produced them. Reference runs one way: a Change, spec, task, or issue points at its artifacts; an artifact never points back. The containing directory already supplies the provenance, so a work identity in the filename is both redundant and doomed — it has to be renamed to stay true, and the number outlives everyone's memory of what it meant.
+Artifacts are named for what they are, never for the work unit that produced them. Reference runs one way: an issue points at its artifacts; an artifact never points back. The containing directory already supplies the provenance, so a work identity in the filename is both redundant and doomed — it has to be renamed to stay true, and the number outlives everyone's memory of what it meant.
 
 | Instead of | Write |
 |------------|-------|
@@ -131,7 +131,7 @@ Artifacts are named for what they are, never for the work unit that produced the
 
 Record provenance in a front-matter field such as `source:` instead, where it is readable and updatable.
 
-These are identity rather than citation and stay as they are: a **version** (`claude-code-2.1.218-plugin-startup-smoke.json`), a **timestamp** (`20260620-214448-skills-audit.md`), and a numbered record inside the directory that owns it (`.agents/specs/SPEC-042-slug.md`, `docs/decisions/ADR-007-slug.md`).
+These are identity rather than citation and stay as they are: a **version** (`claude-code-2.1.218-plugin-startup-smoke.json`), a **timestamp** (`20260620-214448-skills-audit.md`), and a numbered record inside the directory that owns it (`docs/decisions/ADR-007-slug.md`).
 
 `loaf check --hook artifact-names` enforces this at commit. It judges tracked paths only, matches artifact directories by basename so relocating them needs no change, and grandfathers artifacts already marked `final` or `archived`.
 
@@ -182,7 +182,7 @@ Use action verbs for workflows, nouns for knowledge:
 
 | Pattern | Use For | Examples |
 |---------|---------|----------|
-| **Verb** (gerund) | Workflow skills | `implement`, `breakdown`, `research` |
+| **Verb** (gerund) | Workflow skills | `implement`, `shape`, `research` |
 | **Noun** (domain) | Knowledge skills | `typescript-development`, `database-design` |
 
 **Why:** Skills that DO things get verbs. Skills that ARE things get nouns. This makes the distinction between "use me to act" and "reference me to know" immediately clear.
@@ -221,7 +221,7 @@ description: >-
    - Good: "Covers...", "Establishes...", "Coordinates..."
    - Bad: "Use for...", "I can help...", "You can use this..."
 
-2. **Include user-intent phrases**:
+2. **Include user-intent phrases:**
    ```yaml
    description: >-
      Covers Python 3.12+ development... Use when building APIs,
@@ -249,7 +249,7 @@ description: >-
 
 ### Templates
 
-Artifact format templates (session renders, specs, ADRs, task files) live in `templates/` directories. SKILL.md references them with links instead of embedding inline.
+Artifact format templates (session renders, ADRs, journal entries) live in `templates/` directories. SKILL.md references them with links instead of embedding inline.
 
 **Skill-specific templates:** `content/skills/{name}/templates/` — templates unique to one skill.
 
@@ -423,7 +423,7 @@ There are no session statuses: nothing is `active`, `paused`, `stopped`, `done`,
 
 **Entry Format:**
 ```markdown
-[YYYY-MM-DD HH:MM] skill(implement): implementing TASK-042
+[YYYY-MM-DD HH:MM] skill(implement): implementing LOAF-42
 [YYYY-MM-DD HH:MM] decision(scope): chose X because Y
 [YYYY-MM-DD HH:MM] commit(abc1234): message
 [YYYY-MM-DD HH:MM] discover(scope): learned Z from file/path
@@ -602,7 +602,7 @@ Configure target-specific behavior and sidecars.
 - [Claude Code Skills Best Practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
 - [Claude Code Skills Documentation](https://code.claude.com/docs/en/skills)
 
-<!-- loaf:managed:start sha256=ac6debb93fcd1b2d7806681c446f3b7d9691a43a872831a969c82a7470b0b30d -->
+<!-- loaf:managed:start sha256=21e91a6226ead7de1ef1d3d61c4e2060dc9763e8485192f6efc0060a09bbe66e -->
 <!-- Maintained by loaf install/upgrade - do not edit manually -->
 ## Loaf Framework
 
@@ -611,12 +611,12 @@ Configure target-specific behavior and sidecars.
 - `discover(scope)`: Something learned
 - `block(scope)` / `unblock(scope)`: Blockers and resolutions
 - `spark(scope)`: Ideas to promote via `/idea`
-- `todo(scope)`: Action items to promote to tasks
+- `todo(scope)`: Action items to file as issues
 
 **CLI Commands:**
 - `loaf journal log/recent/search/context` - Project journal
 - `loaf check` - Run enforcement hooks
-- `loaf task/spec/kb` - Task and knowledge management
+- `loaf issue/kb` - Issue and knowledge management
 
 **Journal Discipline:**
 Before completing any response that includes edits, commits, or significant decisions, log journal entries using `loaf journal log "type(scope): description"`. Entry types: `decision`, `discover`, `wrap`. Do not defer journaling - log before responding.

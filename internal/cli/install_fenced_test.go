@@ -12,6 +12,15 @@ func TestGenerateFencedContentIsJournalFirst(t *testing.T) {
 	if strings.Contains(content, "loaf session") {
 		t.Fatalf("fenced content references deleted `loaf session` command:\n%s", content)
 	}
+	if strings.Contains(content, "loaf task/spec") || strings.Contains(content, "promote to tasks") {
+		t.Fatalf("fenced content still uses retired task/spec guidance:\n%s", content)
+	}
+	if !strings.Contains(content, "loaf issue/kb") {
+		t.Fatalf("fenced content missing `loaf issue/kb` command listing:\n%s", content)
+	}
+	if !strings.Contains(content, "Action items to file as issues") {
+		t.Fatalf("fenced content missing issue-model todo guidance:\n%s", content)
+	}
 	if !strings.Contains(content, "loaf journal log") {
 		t.Fatalf("fenced content missing `loaf journal log` guidance:\n%s", content)
 	}

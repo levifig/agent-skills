@@ -358,33 +358,32 @@ Expect 6-10 questions total, mostly in Excavation and Sharpening. Grounding is l
 
 ## Series-Prep Granularity
 
-Series-prep (bootstrap Finalization) turns the project BRIEF's scoped concepts into captured change folders. This section resolves when a concept earns a folder versus staying a BRIEF line, spark, or Intent. Full procedure: bootstrap SKILL.md Finalization → Series-Prep.
+Series-prep (bootstrap Finalization) turns the project BRIEF's scoped concepts into backlog issues. This section resolves when a concept earns a row versus staying a BRIEF line or spark. Full procedure: bootstrap SKILL.md Finalization → Series-Prep.
 
-### Earns its own captured change when both are true
+### Earns its own backlog issue when both are true
 
-1. **Independently shippable** — the concept could land as a meaningful release unit without waiting on the other scoped concepts to ship in the same commit or PR. Sharing a coarse `target_release` cohort is fine; hard entanglement is not.
-2. **Specifiability (mint test)** — a concept mints only if its problem can be **stated precisely now** (not answered now): a cold reader can name the friction, who has it, the current alternative, and the value for *this* concept alone, without needing sibling folders or inventing what was meant. Everything vaguer stays a BRIEF line, spark, or Intent — never pre-sliced into a fake capture.
+1. **Independently shippable** — the concept could land as a meaningful release unit without waiting on the other scoped concepts to ship in the same commit or PR. Sharing an advisory bucket is fine (buckets are labels, never bindings); hard entanglement is not.
+2. **Specifiability (mint test)** — a concept mints only if its problem can be **stated precisely now** (not answered now): a cold reader can name the friction, who has it, the current alternative, and the value for *this* concept alone, without needing sibling issues or inventing what was meant. Everything vaguer stays a BRIEF line or spark — never pre-sliced into a fake row.
 
-When both hold and the builder will bind a coarse `target_release`, mint: `loaf change init <slug> --brief`, seed problem-space-only, stamp the target, pre-landing check + `change.json` read-back, one docs-only commit on the default branch.
+When both hold, mint: `loaf issue new "<title>" --body "<problem narrative>" --status backlog`, seed problem-space-only, optionally `loaf issue bucket <ref> now|next|later` (buckets are labels, never bindings). Run `loaf issue check <ref>` only when the capture is shaped enough to check; a backlog issue with a problem body needs no ceremony. No folders, no docs-only commits — rows, not files.
 
-### Stays a BRIEF line, spark, or Intent when any is true
+### Stays a BRIEF line or spark when any is true
 
 - The concept only makes sense as a clause of a larger problem (it cannot be stated alone).
 - Its problem cannot yet be stated precisely — coarse intent only; minting would invent precision.
 - It is a solution-space detail, implementation task, or "nice-to-have" flavor — not a shippable problem boundary.
-- The builder will not bind even a coarse `target_release` (untargeted series members are not promise carriers on main; keep them as sparks/Intents or leave them as prose in the BRIEF until a target exists).
-- Splitting would create two folders that always ship as one unit — keep one folder and name the sub-concerns in Sequencing prose.
+- Splitting would create two issues that always ship as one unit — keep one issue and name the sub-concerns in Sequencing prose.
 
 ### Interview moves during series-prep
 
-- Recommend a decomposition first (list candidate folders + what stays in the BRIEF), then confirm each mint one at a time.
+- Recommend a decomposition first (list candidate issues + what stays in the BRIEF), then confirm each mint one at a time.
 - Challenge over-splitting: "Can this problem be stated precisely now without that one?" If no, merge candidates or leave as BRIEF lines.
-- Challenge under-splitting: "Is this independently shippable, or are we smuggling two products into one capture?"
-- Never invent priority ranks, dates, or machine dependency fields — sequencing is prose; cohort is `target_release`.
+- Challenge under-splitting: "Is this independently shippable, or are we smuggling two products into one issue?"
+- Never invent priority ranks, dates, or machine dependency fields — sequencing is prose; buckets are labels, never bindings.
 
 ### Standalone cold-read test (H3)
 
-Each minted brief must name its problem without reference to the bootstrap session or to `docs/BRIEF.md`. If a draft says "as discussed" or "per the project brief," rewrite until the problem stands alone.
+Each minted issue body must name its problem without reference to the bootstrap session or to `docs/BRIEF.md`. If a draft says "as discussed" or "per the project brief," rewrite until the problem stands alone.
 
 ---
 

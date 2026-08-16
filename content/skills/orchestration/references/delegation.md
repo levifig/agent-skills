@@ -131,8 +131,8 @@ Use when work is truly independent. Spawn multiple agents in the same turn when 
 
 1. **Be specific in prompts** - Include file paths, requirements, constraints
 2. **One concern per agent** - Don't ask a backend implementer to also write tests
-3. **Include context** - Task/spec IDs, issue ID, previous outcomes
-4. **Reference durable artifacts** - Task, spec, and report IDs; the subagent's journal entries are harness-id tagged automatically
+3. **Include context** - Issue refs (`LOAF-42` or opaque id), previous outcomes
+4. **Reference durable artifacts** - Issue aliases and report IDs; the subagent's journal entries are harness-id tagged automatically
 5. **Include skill hints** - Name the skills that should guide the agent's work
 
 ### Skill Hints
@@ -171,8 +171,7 @@ Files:
 - src/api/users.py
 - src/models/user.py
 
-Task: TASK-042
-Linear: BACK-123
+Issue: LOAF-42
 ```
 
 ## Anti-Patterns
@@ -183,7 +182,7 @@ Linear: BACK-123
 | Asking backend implementer for React | Spawn implementer with frontend skills |
 | Single agent for database + backend + tests | Sequential: implementer (database-design), implementer (language skill), implementer (foundations) |
 | Parallel spawns with hidden dependencies | Make dependencies explicit, spawn sequentially |
-| Spawning without context | Reference task/spec/report IDs in prompts |
+| Spawning without context | Reference issue aliases and report IDs in prompts |
 | Council for simple decisions | Single agent or orchestrator judgment |
 
 ## Agent Access Hierarchy

@@ -3,7 +3,6 @@
 package cli
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -79,45 +78,6 @@ func TestEphemeralProvenanceSkipsFifoSpecWithoutBlocking(t *testing.T) {
 		t.Fatal("runNativeEphemeralProvenance blocked on a FIFO")
 	}
 }
-
-func TestChangeTaskListingSkipsFifoWithoutBlocking(t *testing.T) {
-	root := t.TempDir()
-	folder := filepath.Join(root, "docs", "changes", "20260731-test-change")
-	tasksDir := filepath.Join(folder, "tasks")
-	mkdirAll(t, tasksDir)
-	writeInstallFile(t, filepath.Join(tasksDir, "TASK-001-real.md"), "---\nid: TASK-001\n---\n# Real\n")
-	mkfifoForTest(t, filepath.Join(tasksDir, "TASK-fifo.md"))
-
-	type listResult struct {
-		names    []string
-		findings []string
-	}
-	done := make(chan listResult, 1)
-	go func() {
-		names, _, findings := listChangeTaskFileContents(root, folder, "docs/changes/20260731-test-change", changeTaskContentWorkingTree, nil)
-		done <- listResult{names: names, findings: findings}
-	}()
-
-	select {
-	case result := <-done:
-		if len(result.names) != 1 || result.names[0] != "TASK-001-real.md" {
-			t.Fatalf("names = %#v, want only the real task", result.names)
-		}
-		found := false
-		for _, finding := range result.findings {
-			if strings.Contains(finding, "TASK-fifo.md") && strings.Contains(finding, "not a regular file") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("findings = %#v, want a skip notice for the FIFO", result.findings)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("listChangeTaskFileContents blocked on a FIFO")
-	}
-}
-
 func TestReleaseIncompleteTasksSkipsFifoWithoutBlocking(t *testing.T) {
 	root := t.TempDir()
 	tasksDir := filepath.Join(root, ".agents", "tasks")
@@ -183,52 +143,6 @@ func TestFilesHaveSameContentRefusesFifo(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("filesHaveSameContent blocked on a FIFO")
-	}
-}
-
-func TestReadValidatedChangeRefusesFifo(t *testing.T) {
-	root := initEnumeratedGitRepo(t)
-	folder := filepath.Join(root, "docs", "changes", "20260731-fifo-change")
-	mkdirAll(t, folder)
-	changePath := filepath.Join(folder, "change.md")
-	mkfifoForTest(t, changePath)
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := readValidatedChange(root, changePath, changePath, "docs/changes/20260731-fifo-change/change.md", changeOriginOps{})
-		done <- err
-	}()
-
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("readValidatedChange accepted a FIFO")
-		}
-		if !errors.Is(err, errNotRegularFile) && !strings.Contains(err.Error(), "not a regular file") {
-			t.Fatalf("error = %v, want errNotRegularFile", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("readValidatedChange blocked on a FIFO")
-	}
-}
-
-func TestReadValidatedChangeBoundsRead(t *testing.T) {
-	root := initEnumeratedGitRepo(t)
-	folder := filepath.Join(root, "docs", "changes", "20260731-bound-change")
-	mkdirAll(t, folder)
-	changePath := filepath.Join(folder, "change.md")
-	body := "---\nslug: bound-change\n---\n# Change\n\nSmall enough.\n"
-	writeInstallFile(t, changePath, body)
-	runEnumeratedGit(t, root, "add", ".")
-	runEnumeratedGit(t, root, "-c", "commit.gpgsign=false", "commit", "-m", "add change")
-
-	// Use the slug selector so revalidation walks the same path production does.
-	content, err := readValidatedChange(root, "bound-change", changePath, "docs/changes/20260731-bound-change/change.md", changeOriginOps{})
-	if err != nil {
-		t.Fatalf("readValidatedChange(valid) error = %v", err)
-	}
-	if !bytes.Equal(content, []byte(body)) {
-		t.Fatalf("content = %q, want %q", content, body)
 	}
 }
 

@@ -13,7 +13,7 @@ not create or edit journal markdown as the source of truth — use
 
 ## Entries
 
-[YYYY-MM-DD HH:MM] skill(implement): implementing TASK-042
+[YYYY-MM-DD HH:MM] skill(implement): implementing LOAF-42
 [YYYY-MM-DD HH:MM] decision(scope): description of decision
 [YYYY-MM-DD HH:MM] discover(scope): something learned
 [YYYY-MM-DD HH:MM] block(scope): what is blocked

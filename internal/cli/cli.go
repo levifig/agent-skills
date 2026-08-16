@@ -328,8 +328,6 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runTag(args[1:], out, runtime)
 	case "bundle":
 		dispatchErr = r.runBundle(args[1:], out, runtime)
-	case "change":
-		dispatchErr = r.runChange(args[1:], out, runtime)
 	case "check":
 		dispatchErr = r.runCheck(args[1:], out, runtime.RootPath())
 	case "doctor":
@@ -338,8 +336,8 @@ func (r Runner) Run(args []string) error {
 		dispatchErr = r.runLink(args[1:], out, runtime)
 	case "report":
 		dispatchErr = r.runReport(args[1:], out, runtime)
-	case "spec":
-		dispatchErr = r.runSpec(args[1:], out, runtime)
+	case "issue":
+		dispatchErr = r.runIssue(args[1:], out, runtime)
 	case "journal":
 		dispatchErr = r.runJournal(args[1:], out, runtime)
 	case "task":
@@ -414,21 +412,20 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  migrate       Run migration workflows")
 	fmt.Fprintln(out, "  render        Maintain durable markdown renders")
 	fmt.Fprintln(out, "  journal       Record and read the project journal")
-	fmt.Fprintln(out, "  intent        Manage tracked Intent")
+	fmt.Fprintln(out, "  intent        Show tracked Intent (writes frozen; use issue)")
 	fmt.Fprintln(out, "  exploration   Manage Exploration continuity")
 	fmt.Fprintln(out, "  conversation  Manage conversation provenance")
 	fmt.Fprintln(out, "  intake        Read the local intake projection")
-	fmt.Fprintln(out, "  task          Manage tasks")
-	fmt.Fprintln(out, "  spec          Manage specs")
+	fmt.Fprintln(out, "  task          Show tasks (writes frozen; use issue)")
+	fmt.Fprintln(out, "  issue         Manage issues")
 	fmt.Fprintln(out, "  report        Manage reports")
 	fmt.Fprintln(out, "  plan          Manage plans")
 	fmt.Fprintln(out, "  handoff       Manage handoffs")
 	fmt.Fprintln(out, "  council       Manage councils")
 	fmt.Fprintln(out, "  kb            Manage knowledge base")
-	fmt.Fprintln(out, "  change        Manage shape-first Change artifacts")
 	fmt.Fprintln(out, "  check         Run hook checks")
 	fmt.Fprintln(out, "  doctor        Diagnose project alignment")
-	fmt.Fprintln(out, "  release       Create a release")
+	fmt.Fprintln(out, "  release       Cut a retroactive release (suggest, cut)")
 	fmt.Fprintln(out, "  version       Show version and content counts")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
@@ -4384,18 +4381,14 @@ func (r Runner) runTask(args []string, out io.Writer, runtime state.Runtime) err
 		return nil
 	}
 	switch args[0] {
-	case "create":
-		return r.runTaskCreate(args[1:], out, runtime)
+	case "create", "update", "archive":
+		return frozenWorkModelError("loaf task")
 	case "list":
 		return r.runTaskList(args[1:], out, runtime)
 	case "show":
 		return r.runTaskShow(args[1:], out, runtime)
 	case "status":
 		return r.runTaskStatus(args[1:], out, runtime)
-	case "update":
-		return r.runTaskUpdate(args[1:], out, runtime)
-	case "archive":
-		return r.runTaskArchive(args[1:], out, runtime)
 	case "refresh":
 		return r.runTaskRefresh(args[1:], out, runtime)
 	case "sync":
@@ -4409,6 +4402,10 @@ func writeTaskHelp(out io.Writer) {
 	fmt.Fprintln(out, "Usage: loaf task <subcommand> [options]")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Manage project tasks in native SQLite state or markdown compatibility mode.")
+	fmt.Fprintln(out)
+	writeFrozenWorkModelNote(out, "loaf task", "create, update, archive")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Superseded by loaf issue for new work.")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Subcommands:")
 	fmt.Fprintln(out, "  create   Create a task")
@@ -4425,7 +4422,7 @@ func writeTaskHelp(out io.Writer) {
 }
 
 func writeTaskCreateHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task create --title <title> [options]", "Create a task.", "--title      Task title", "--spec       Associated spec", "--priority   Task priority: "+validTaskPriorityText(), "--depends-on Comma-separated task refs", "--json       Output created task, event, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task create --title <title> [options]", "Deprecated: loaf task create is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--title      Task title", "--spec       Associated spec", "--priority   Task priority: "+validTaskPriorityText(), "--depends-on Comma-separated task refs", "--json       Output created task, event, global database scope, and project identity as JSON")
 }
 
 func writeTaskListHelp(out io.Writer) {
@@ -4441,11 +4438,11 @@ func writeTaskStatusHelp(out io.Writer) {
 }
 
 func writeTaskUpdateHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task update <task> [options]", "Update task metadata.", "--status     New task status: "+validTaskStatusText(), "--priority   New task priority: "+validTaskPriorityText(), "--spec       Associated spec", "--depends-on Comma-separated task refs or none", "--json       Output updated task, event, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task update <task> [options]", "Deprecated: loaf task update is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--status     New task status: "+validTaskStatusText(), "--priority   New task priority: "+validTaskPriorityText(), "--spec       Associated spec", "--depends-on Comma-separated task refs or none", "--json       Output updated task, event, global database scope, and project identity as JSON")
 }
 
 func writeTaskArchiveHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task archive (<task...>|--spec <spec>) [--json]", "Archive done tasks.", "--spec       Archive done tasks for one spec", "--json       Output archive result, archived tasks, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task archive (<task...>|--spec <spec>) [--json]", "Deprecated: loaf task archive is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--spec       Archive done tasks for one spec", "--json       Output archive result, archived tasks, global database scope, and project identity as JSON")
 }
 
 func writeTaskRefreshHelp(out io.Writer) {
@@ -5316,7 +5313,7 @@ func markdownTaskUpdate(rootPath string, options state.TaskUpdateOptions) (state
 		} else {
 			specValue, ok := specs[options.Spec]
 			if !ok {
-				return state.TaskStatusUpdateResult{}, fmt.Errorf("Unknown spec %q. Use `loaf spec list` to see valid IDs.", options.Spec)
+				return state.TaskStatusUpdateResult{}, fmt.Errorf("Unknown spec %q.", options.Spec)
 			}
 			entry["spec"] = options.Spec
 			spec := state.TraceEntity{Kind: "spec", ID: options.Spec, Alias: options.Spec}
@@ -7762,531 +7759,6 @@ func writeLinkList(out io.Writer, result state.LinkListResult) {
 	fmt.Fprintf(out, "\n  %d link(s)\n\n", len(result.Relationships))
 }
 
-func (r Runner) runSpec(args []string, out io.Writer, runtime state.Runtime) error {
-	if len(args) == 0 || isHelpArg(args) {
-		writeSpecHelp(out)
-		return nil
-	}
-	if writeNestedHelp(out, args, map[string]func(io.Writer){
-		"new":      writeSpecNewHelp,
-		"edit":     writeSpecEditHelp,
-		"list":     writeSpecListHelp,
-		"show":     writeSpecShowHelp,
-		"status":   writeSpecStatusHelp,
-		"render":   writeSpecRenderHelp,
-		"finalize": writeSpecFinalizeHelp,
-		"archive":  writeSpecArchiveHelp,
-		"delete":   writeSpecDeleteHelp,
-	}) {
-		return nil
-	}
-	switch args[0] {
-	case "new":
-		return r.runSpecNew(args[1:], out, runtime)
-	case "edit":
-		return r.runSpecEdit(args[1:], out, runtime)
-	case "list":
-		return r.runSpecList(args[1:], out, runtime)
-	case "show":
-		return r.runSpecShow(args[1:], out, runtime)
-	case "status":
-		return r.runSpecStatus(args[1:], out, runtime)
-	case "render":
-		return r.runSpecRender(args[1:], out, runtime)
-	case "finalize":
-		return r.runSpecFinalize(args[1:], out, runtime)
-	case "archive":
-		return r.runSpecArchive(args[1:], out, runtime)
-	case "delete":
-		return r.runSpecDelete(args[1:], out, runtime)
-	default:
-		return unknownSubcommandError("spec", args[0])
-	}
-}
-
-func writeSpecHelp(out io.Writer) {
-	fmt.Fprintln(out, "Usage: loaf spec <subcommand> [options]")
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Manage project specs in native SQLite state or markdown compatibility mode.")
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Subcommands:")
-	fmt.Fprintln(out, "  new      Create a spec in SQLite state")
-	fmt.Fprintln(out, "  edit     Replace a spec's SQLite body")
-	fmt.Fprintln(out, "  list     List specs")
-	fmt.Fprintln(out, "  show     Show one spec")
-	fmt.Fprintln(out, "  status   Set a spec's lifecycle status")
-	fmt.Fprintln(out, "  render   Render a spec to the XDG cache")
-	fmt.Fprintln(out, "  finalize Write a deterministic spec render to git")
-	fmt.Fprintln(out, "  archive  Archive completed specs")
-	fmt.Fprintln(out, "  delete   Permanently delete a spec and its dependent rows")
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Options:")
-	fmt.Fprintln(out, "  -h, --help  Show help")
-}
-
-func writeSpecNewHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf spec new <slug> --title <title> [options]", "Create a spec in SQLite state.",
-		"--title      Spec title (defaults to a title derived from the slug)",
-		"--id         Explicit spec id (SPEC-NNN); auto-allocated when omitted",
-		"--source     Provenance label recorded on the spec and creation event (default: ad-hoc)",
-		"--branch     Implementation branch recorded on the spec for breakdown/implement handoff",
-		"--related    Comma-separated spec refs to link as related (SPEC-A,SPEC-B)",
-		"--body-file  Read the spec body from a file",
-		"--body -     Read the spec body from stdin",
-		"--message    Use the given text as the spec body",
-		"--json       Output the created spec, global database scope, and project identity as JSON")
-}
-
-func writeSpecEditHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf spec edit <spec> [options]", "Replace a spec's SQLite body; run loaf spec finalize to update the tracked render.",
-		"--body-file  Read the spec body from a file",
-		"--body -     Read the spec body from stdin",
-		"--message    Use the given text as the spec body",
-		"--force      Proceed when the legacy source file diverges from the SQLite body",
-		"--json       Output the edited spec, imported flag, content hash, event, global database scope, and project identity as JSON")
-}
-
-func writeSpecListHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf spec list [--json]", "List specs.", "--json       Output specs, diagnostics, task counts, global database scope, and project identity as JSON")
-}
-
-func writeSpecShowHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf spec show <spec> [--json]", "Show one spec.", "--json       Output spec details, task counts, relationships, global database scope, and project identity as JSON")
-}
-
-func writeSpecStatusHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf spec status <spec> <status> [--json]", "Set a spec's lifecycle status: "+validSpecStatusText()+".", "--json       Output spec status transition, event, global database scope, and project identity as JSON")
-}
-
-func validSpecStatusText() string {
-	return strings.Join(state.LifecycleStatusesForEntity(state.LifecycleEntitySpec), ", ")
-}
-
-func writeSpecRenderHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf spec render <spec> [--json]", "Render a deterministic spec Markdown file to the XDG cache.", "--json       Output render path, content hash, contract, global database scope, and project identity as JSON")
-}
-
-func writeSpecFinalizeHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf spec finalize <spec> [--json]", "Write a deterministic spec Markdown render to its tracked git location.", "--json       Output render path, content hash, contract, global database scope, and project identity as JSON")
-}
-
-func writeSpecArchiveHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf spec archive <spec...> [--json]", "Archive completed specs.", "--json       Output archive result, archived specs, global database scope, and project identity as JSON")
-}
-
-func writeSpecDeleteHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf spec delete <spec> [--yes] [--json]", "Permanently delete a spec and every dependent row (aliases, bodies, search index, events, sources). Destructive: requires --yes. The on-disk render file, if any, is left in place.", "--yes        Confirm the destructive delete", "--json       Output removed-row counts, global database scope, and project identity as JSON")
-}
-
-func (r Runner) runSpecList(args []string, out io.Writer, runtime state.Runtime) error {
-	jsonOutput, err := parseJSONOnly(args)
-	if err != nil {
-		return err
-	}
-	projectRoot, err := project.ResolveRoot(runtime.RootPath())
-	if err != nil {
-		return err
-	}
-	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
-	if err != nil {
-		return err
-	}
-	switch status.Mode {
-	case state.ModeMarkdownOnly:
-		specs, err := markdownSpecList(projectRoot.Path())
-		if err != nil {
-			return err
-		}
-		if jsonOutput {
-			return writeJSON(out, specs)
-		}
-		writeSpecList(out, specs)
-		return nil
-	case state.ModeInvalid:
-		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
-	}
-
-	specs, err := state.ListSpecs(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome})
-	if err != nil {
-		return err
-	}
-	specs.Diagnostics = stateListWarnings(status.Diagnostics)
-	if jsonOutput {
-		return writeJSON(out, specs)
-	}
-	writeSpecList(out, specs)
-	return nil
-}
-
-func (r Runner) runSpecNew(args []string, out io.Writer, runtime state.Runtime) error {
-	projectRoot, err := project.ResolveRoot(runtime.RootPath())
-	if err != nil {
-		return err
-	}
-	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
-	if err != nil {
-		return err
-	}
-	switch status.Mode {
-	case state.ModeMarkdownOnly:
-		return sqliteStateRequiredError("spec new")
-	case state.ModeInvalid:
-		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
-	}
-
-	options, err := parseSpecNewArgs(args)
-	if err != nil {
-		return err
-	}
-	body, ok, err := r.resolveBodyInput("spec new", options.body, false)
-	if err != nil {
-		return err
-	}
-	if ok {
-		options.create.Body = body
-		options.create.SetBody = true
-	}
-	result, err := state.CreateSpec(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, options.create)
-	if err != nil {
-		return err
-	}
-	if options.jsonOutput {
-		return writeJSON(out, result)
-	}
-	writeSpecCreate(out, result)
-	return nil
-}
-
-func (r Runner) runSpecEdit(args []string, out io.Writer, runtime state.Runtime) error {
-	projectRoot, err := project.ResolveRoot(runtime.RootPath())
-	if err != nil {
-		return err
-	}
-	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
-	if err != nil {
-		return err
-	}
-	switch status.Mode {
-	case state.ModeMarkdownOnly:
-		return sqliteStateRequiredError("spec edit")
-	case state.ModeInvalid:
-		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
-	}
-
-	options, err := parseSpecEditArgs(args)
-	if err != nil {
-		return err
-	}
-	body, ok, err := r.resolveBodyInput("spec edit", options.body, false)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("spec edit requires body content via --body-file, --body -, or --message")
-	}
-	result, err := state.EditSpecBody(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.SpecEditOptions{Ref: options.ref, Body: body, Force: options.force})
-	if err != nil {
-		return err
-	}
-	if options.jsonOutput {
-		return writeJSON(out, result)
-	}
-	writeSpecEdit(out, result)
-	return nil
-}
-
-func (r Runner) runSpecShow(args []string, out io.Writer, runtime state.Runtime) error {
-	ref, jsonOutput, err := parseSingleRefArgs("spec show", args)
-	if err != nil {
-		return err
-	}
-	projectRoot, err := project.ResolveRoot(runtime.RootPath())
-	if err != nil {
-		return err
-	}
-	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
-	if err != nil {
-		return err
-	}
-	switch status.Mode {
-	case state.ModeMarkdownOnly:
-		result, err := markdownSpecShow(projectRoot.Path(), ref)
-		if err != nil {
-			return err
-		}
-		if jsonOutput {
-			return writeJSON(out, result)
-		}
-		writeSpecShow(out, result)
-		return nil
-	case state.ModeInvalid:
-		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
-	}
-
-	result, err := state.ShowSpec(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
-	if err != nil {
-		return err
-	}
-	if jsonOutput {
-		return writeJSON(out, result)
-	}
-	writeSpecShow(out, result)
-	return nil
-}
-
-func (r Runner) runSpecStatus(args []string, out io.Writer, runtime state.Runtime) error {
-	jsonRequested := hasFlag(args, "--json")
-	ref, newStatus, jsonOutput, err := parseSpecStatusArgs(args)
-	if err != nil {
-		if jsonRequested {
-			return writeJSONCommandError(out, "spec status", err)
-		}
-		return err
-	}
-	projectRoot, err := project.ResolveRoot(runtime.RootPath())
-	if err != nil {
-		if jsonOutput {
-			return writeJSONCommandError(out, "spec status", err)
-		}
-		return err
-	}
-	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
-	if err != nil {
-		if jsonOutput {
-			return writeJSONCommandError(out, "spec status", err)
-		}
-		return err
-	}
-	switch status.Mode {
-	case state.ModeMarkdownOnly:
-		err := sqliteStateRequiredError("spec status")
-		if jsonOutput {
-			return writeJSONCommandError(out, "spec status", err)
-		}
-		return err
-	case state.ModeInvalid:
-		err := fmt.Errorf("state database is invalid; run `loaf state doctor`")
-		if jsonOutput {
-			return writeJSONCommandError(out, "spec status", err)
-		}
-		return err
-	}
-
-	result, err := state.SetSpecStatus(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref, newStatus)
-	if err != nil {
-		if jsonOutput {
-			return writeJSONCommandError(out, "spec status", err)
-		}
-		return err
-	}
-	if jsonOutput {
-		return writeJSON(out, result)
-	}
-	writeSpecStatus(out, result)
-	return nil
-}
-
-func parseSpecStatusArgs(args []string) (string, string, bool, error) {
-	var positional []string
-	jsonOutput := false
-	for _, arg := range args {
-		switch arg {
-		case "--json":
-			jsonOutput = true
-		default:
-			if strings.HasPrefix(arg, "-") {
-				return "", "", false, fmt.Errorf("unknown option %q", arg)
-			}
-			positional = append(positional, arg)
-		}
-	}
-	if len(positional) != 2 {
-		return "", "", false, fmt.Errorf("spec status requires a spec and a status")
-	}
-	return positional[0], positional[1], jsonOutput, nil
-}
-
-func (r Runner) runSpecRender(args []string, out io.Writer, runtime state.Runtime) error {
-	ref, jsonOutput, err := parseSingleRefArgs("spec render", args)
-	if err != nil {
-		return err
-	}
-	projectRoot, err := project.ResolveRoot(runtime.RootPath())
-	if err != nil {
-		return err
-	}
-	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
-	if err != nil {
-		return err
-	}
-	switch status.Mode {
-	case state.ModeMarkdownOnly:
-		return sqliteStateRequiredError("spec render")
-	case state.ModeInvalid:
-		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
-	}
-	result, err := state.RenderDurableArtifact(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.DurableRenderOptions{
-		Kind: "spec",
-		Ref:  ref,
-	})
-	if err != nil {
-		return err
-	}
-	if jsonOutput {
-		return writeJSON(out, result)
-	}
-	writeDurableRenderResult(out, result)
-	return nil
-}
-
-func (r Runner) runSpecFinalize(args []string, out io.Writer, runtime state.Runtime) error {
-	ref, jsonOutput, err := parseSingleRefArgs("spec finalize", args)
-	if err != nil {
-		return err
-	}
-	projectRoot, err := project.ResolveRoot(runtime.RootPath())
-	if err != nil {
-		return err
-	}
-	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
-	if err != nil {
-		return err
-	}
-	switch status.Mode {
-	case state.ModeMarkdownOnly:
-		return sqliteStateRequiredError("spec finalize")
-	case state.ModeInvalid:
-		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
-	}
-	result, err := state.FinalizeDurableArtifact(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, state.DurableFinalizeOptions{
-		Kind: "spec",
-		Ref:  ref,
-	})
-	if err != nil {
-		return err
-	}
-	if jsonOutput {
-		return writeJSON(out, result)
-	}
-	writeDurableFinalizeResult(out, result)
-	return nil
-}
-
-func (r Runner) runSpecArchive(args []string, out io.Writer, runtime state.Runtime) error {
-	projectRoot, err := project.ResolveRoot(runtime.RootPath())
-	if err != nil {
-		return err
-	}
-	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
-	if err != nil {
-		return err
-	}
-	switch status.Mode {
-	case state.ModeMarkdownOnly:
-		refs, jsonOutput, err := parseArchiveArgs("spec archive", args)
-		if err != nil {
-			return err
-		}
-		result, err := markdownSpecArchive(projectRoot.Path(), refs)
-		if err != nil {
-			return err
-		}
-		if jsonOutput {
-			return writeJSON(out, result)
-		}
-		writeSpecArchive(out, result)
-		return nil
-	case state.ModeInvalid:
-		return fmt.Errorf("state database is invalid; run `loaf state doctor`")
-	}
-
-	refs, jsonOutput, err := parseArchiveArgs("spec archive", args)
-	if err != nil {
-		return err
-	}
-	result, err := state.ArchiveSpecs(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, refs)
-	if err != nil {
-		return err
-	}
-	if jsonOutput {
-		return writeJSON(out, result)
-	}
-	writeSpecArchive(out, result)
-	return nil
-}
-
-func (r Runner) runSpecDelete(args []string, out io.Writer, runtime state.Runtime) error {
-	jsonRequested := hasFlag(args, "--json")
-	ref, confirm, jsonOutput, err := parseDeleteRefArgs("spec delete", args)
-	if err != nil {
-		if jsonRequested {
-			return writeJSONCommandError(out, "spec delete", err)
-		}
-		return err
-	}
-	if !confirm {
-		err := fmt.Errorf("confirmation-required: refusing to delete spec %q without --yes; this permanently removes the spec and every dependent row", ref)
-		if jsonOutput {
-			return writeJSONCommandError(out, "spec delete", err)
-		}
-		return err
-	}
-	projectRoot, err := project.ResolveRoot(runtime.RootPath())
-	if err != nil {
-		if jsonOutput {
-			return writeJSONCommandError(out, "spec delete", err)
-		}
-		return err
-	}
-	status, err := state.Inspect(projectRoot, state.PathResolver{StateHome: r.StateHome})
-	if err != nil {
-		if jsonOutput {
-			return writeJSONCommandError(out, "spec delete", err)
-		}
-		return err
-	}
-	switch status.Mode {
-	case state.ModeMarkdownOnly:
-		err := sqliteStateRequiredError("spec delete")
-		if jsonOutput {
-			return writeJSONCommandError(out, "spec delete", err)
-		}
-		return err
-	case state.ModeInvalid:
-		err := fmt.Errorf("state database is invalid; run `loaf state doctor`")
-		if jsonOutput {
-			return writeJSONCommandError(out, "spec delete", err)
-		}
-		return err
-	}
-	result, err := state.DeleteSpec(context.Background(), projectRoot, state.PathResolver{StateHome: r.StateHome}, ref)
-	if err != nil {
-		if jsonOutput {
-			return writeJSONCommandError(out, "spec delete", err)
-		}
-		return err
-	}
-	if jsonOutput {
-		return writeJSON(out, result)
-	}
-	writeSpecDelete(out, result)
-	return nil
-}
-
-func writeSpecDelete(out io.Writer, result state.SpecDeleteResult) {
-	ref := result.Ref
-	if result.Spec != nil {
-		ref = firstNonEmpty(result.Spec.Alias, result.Ref, result.Spec.ID)
-	}
-	fmt.Fprintf(out, "deleted spec %s\n", ref)
-	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
-	writeDeleteCounts(out, "removed", result.Removed)
-	writeDeleteCounts(out, "unlinked", result.Unlinked)
-	if result.RenderRetained {
-		fmt.Fprintf(out, "render left in place: %s\n", result.RenderPath)
-	}
-}
-
 func writeDeleteCounts(out io.Writer, label string, counts []state.DeleteCount) {
 	total := 0
 	for _, count := range counts {
@@ -8302,45 +7774,6 @@ func writeDeleteCounts(out io.Writer, label string, counts []state.DeleteCount) 
 		}
 		fmt.Fprintf(out, "  %-18s %d\n", count.Table, count.Rows)
 	}
-}
-
-func writeSpecList(out io.Writer, specs state.SpecList) {
-	fmt.Fprint(out, "\n  loaf spec list\n\n")
-	writeProjectMutationContext(out, "  ", specs.DatabaseScope, specs.DatabasePath, specs.ProjectID, specs.ProjectName, specs.ProjectCurrentPath)
-	writeStateDiagnostics(out, "  ", specs.Diagnostics)
-	if specListHasContext(specs) {
-		fmt.Fprintln(out)
-	}
-
-	if len(specs.Specs) == 0 {
-		fmt.Fprint(out, "  No specs found.\n\n")
-		return
-	}
-
-	for _, status := range specStatusDisplayOrder(specs) {
-		group := sortedSpecsByStatus(specs, status)
-		if len(group) == 0 {
-			continue
-		}
-		fmt.Fprintf(out, "  %s (%d)\n", specStatusLabel(status), len(group))
-		for _, entry := range group {
-			spec := specs.Specs[entry]
-			fmt.Fprintf(out, "    %-10s%s\n", entry, spec.Title)
-			fmt.Fprintf(out, "              Tasks: %d todo / %d in_progress / %d done\n", spec.Tasks.Todo, spec.Tasks.InProgress, spec.Tasks.Done)
-		}
-		fmt.Fprintln(out)
-	}
-
-	fmt.Fprintf(out, "  Total: %d specs\n\n", len(specs.Specs))
-}
-
-func specListHasContext(specs state.SpecList) bool {
-	return specs.DatabaseScope != "" ||
-		specs.DatabasePath != "" ||
-		specs.ProjectID != "" ||
-		specs.ProjectName != "" ||
-		specs.ProjectCurrentPath != "" ||
-		len(specs.Diagnostics) > 0
 }
 
 func markdownSpecList(rootPath string) (state.SpecList, error) {
@@ -8362,59 +7795,6 @@ func markdownSpecList(rootPath string) (state.SpecList, error) {
 		specs.Specs[alias] = item
 	}
 	return specs, nil
-}
-
-func markdownSpecShow(rootPath string, ref string) (state.SpecShow, error) {
-	agentsDir := filepath.Join(rootPath, ".agents")
-	files, err := filepath.Glob(filepath.Join(agentsDir, "specs", "*.md"))
-	if err != nil {
-		return state.SpecShow{}, fmt.Errorf("find markdown specs: %w", err)
-	}
-	sort.Strings(files)
-	specIndex := loadMarkdownSpecIndex(rootPath)
-	taskIndex := loadMarkdownTaskIndex(rootPath)
-	taskCounts := markdownSpecTaskCounts(rootPath)
-	for _, path := range files {
-		item, alias, err := readMarkdownSpec(rootPath, path, specIndex)
-		if err != nil {
-			return state.SpecShow{}, err
-		}
-		if alias != ref {
-			continue
-		}
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return state.SpecShow{}, fmt.Errorf("read markdown spec %s: %w", path, err)
-		}
-		frontmatter, _ := parseKnowledgeFrontmatter(body)
-		field := func(keys ...string) string {
-			for _, key := range keys {
-				if value := firstFieldValue(frontmatter[key]); value != "" {
-					return value
-				}
-			}
-			return ""
-		}
-		hash := sha256.Sum256(body)
-		meta := specIndex[alias]
-		return state.SpecShow{
-			Query: ref,
-			Spec: state.SpecDetail{
-				ID:            alias,
-				Alias:         alias,
-				Title:         item.Title,
-				Status:        item.Status,
-				Tasks:         taskCounts[alias],
-				Sources:       []state.TraceSource{{Path: item.SourcePath, Hash: hex.EncodeToString(hash[:])}},
-				Body:          strings.TrimSpace(markdownContentWithoutFrontmatter(string(body))),
-				HasBody:       strings.TrimSpace(markdownContentWithoutFrontmatter(string(body))) != "",
-				Relationships: markdownSpecRelationships(alias, taskIndex),
-				CreatedAt:     firstNonEmpty(meta.Created, field("created", "created_at")),
-				UpdatedAt:     firstNonEmpty(meta.Updated, field("updated", "updated_at"), meta.Created, field("created", "created_at")),
-			},
-		}, nil
-	}
-	return state.SpecShow{}, fmt.Errorf("spec %q not found in markdown specs", ref)
 }
 
 func readMarkdownSpec(rootPath string, path string, index map[string]markdownSpecIndexEntry) (state.SpecItem, string, error) {
@@ -8460,127 +7840,6 @@ func markdownSpecTaskCounts(rootPath string) map[string]state.SpecTaskCounts {
 		counts[task.Spec] = specCounts
 	}
 	return counts
-}
-
-func markdownSpecRelationships(alias string, tasks map[string]markdownTaskIndexEntry) []state.TraceRelationship {
-	taskAliases := make([]string, 0)
-	for taskAlias, task := range tasks {
-		if task.Spec == alias {
-			taskAliases = append(taskAliases, taskAlias)
-		}
-	}
-	sort.Strings(taskAliases)
-	relationships := make([]state.TraceRelationship, 0, len(taskAliases))
-	for _, taskAlias := range taskAliases {
-		task := tasks[taskAlias]
-		relationships = append(relationships, state.TraceRelationship{
-			Direction: "inbound",
-			Type:      "implements",
-			Entity: state.TraceEntity{
-				Kind:   "task",
-				ID:     taskAlias,
-				Alias:  taskAlias,
-				Title:  task.Title,
-				Status: task.Status,
-			},
-		})
-	}
-	return relationships
-}
-
-func markdownSpecArchive(rootPath string, refs []string) (state.SpecArchiveResult, error) {
-	if len(refs) == 0 {
-		return state.SpecArchiveResult{}, fmt.Errorf("spec archive requires at least one spec")
-	}
-	indexPath := filepath.Join(rootPath, ".agents", "TASKS.json")
-	content, err := os.ReadFile(indexPath)
-	if err != nil {
-		return state.SpecArchiveResult{}, fmt.Errorf("read TASKS.json: %w", err)
-	}
-	var index map[string]any
-	if err := json.Unmarshal(content, &index); err != nil {
-		return state.SpecArchiveResult{}, fmt.Errorf("parse TASKS.json: %w", err)
-	}
-	specsValue, ok := index["specs"]
-	if !ok {
-		specsValue = map[string]any{}
-		index["specs"] = specsValue
-	}
-	specs, ok := specsValue.(map[string]any)
-	if !ok {
-		return state.SpecArchiveResult{}, fmt.Errorf("TASKS.json specs must be an object")
-	}
-
-	result := state.SpecArchiveResult{ContractVersion: state.StateJSONContractVersion, Archived: []state.SpecArchiveItem{}, Skipped: []state.SpecArchiveItem{}}
-	changed := false
-	for _, ref := range refs {
-		entryValue, ok := specs[ref]
-		if !ok {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Ref: ref, Reason: "not found in index"})
-			continue
-		}
-		entry, ok := entryValue.(map[string]any)
-		if !ok {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Ref: ref, Reason: "index entry is not an object"})
-			continue
-		}
-		title := jsonObjectString(entry, "title")
-		status := jsonObjectString(entry, "status")
-		canonical := state.LifecycleStatusForDisplay(state.LifecycleEntitySpec, status)
-		spec := state.TraceEntity{Kind: "spec", ID: ref, Alias: ref, Title: title, Status: canonical}
-		if !state.LifecycleStatusMatches(state.LifecycleEntitySpec, status, state.LifecycleStatusDone) {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: canonical, Reason: fmt.Sprintf("status is %s, must be done", canonical)})
-			continue
-		}
-		file := jsonObjectString(entry, "file")
-		if strings.HasPrefix(file, "archive/") {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: canonical, Reason: "already archived"})
-			continue
-		}
-		if file == "" {
-			file = markdownSpecFileForAlias(rootPath, ref)
-		}
-		if file == "" {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: canonical, Reason: "file not found in index"})
-			continue
-		}
-		srcPath := filepath.Join(rootPath, ".agents", "specs", filepath.FromSlash(file))
-		if _, err := os.Stat(srcPath); os.IsNotExist(err) {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: canonical, Reason: fmt.Sprintf("file not found at %s", file)})
-			continue
-		} else if err != nil {
-			return state.SpecArchiveResult{}, fmt.Errorf("inspect markdown spec %s: %w", file, err)
-		}
-		archivedFile := filepath.ToSlash(filepath.Join("archive", filepath.FromSlash(file)))
-		destPath := filepath.Join(rootPath, ".agents", "specs", filepath.FromSlash(archivedFile))
-		if _, err := os.Stat(destPath); err == nil {
-			result.Skipped = append(result.Skipped, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: canonical, Reason: fmt.Sprintf("%s already exists", archivedFile)})
-			continue
-		} else if err != nil && !os.IsNotExist(err) {
-			return state.SpecArchiveResult{}, fmt.Errorf("inspect archived markdown spec %s: %w", archivedFile, err)
-		}
-		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-			return state.SpecArchiveResult{}, fmt.Errorf("create spec archive directory: %w", err)
-		}
-		if err := os.Rename(srcPath, destPath); err != nil {
-			return state.SpecArchiveResult{}, fmt.Errorf("archive markdown spec %s: %w", ref, err)
-		}
-		entry["file"] = archivedFile
-		changed = true
-		spec.Status = "archived"
-		result.Archived = append(result.Archived, state.SpecArchiveItem{Spec: &spec, Ref: ref, Previous: canonical, Status: "archived"})
-	}
-	if changed {
-		updated, err := json.MarshalIndent(index, "", "  ")
-		if err != nil {
-			return state.SpecArchiveResult{}, fmt.Errorf("encode TASKS.json: %w", err)
-		}
-		updated = append(updated, '\n')
-		if err := os.WriteFile(indexPath, updated, 0o600); err != nil {
-			return state.SpecArchiveResult{}, fmt.Errorf("write TASKS.json: %w", err)
-		}
-	}
-	return result, nil
 }
 
 func markdownTaskArchive(rootPath string, options state.TaskArchiveOptions) (state.TaskArchiveResult, error) {
@@ -8839,149 +8098,6 @@ func loadMarkdownSpecIndex(rootPath string) map[string]markdownSpecIndexEntry {
 		return index
 	}
 	return parsed.Specs
-}
-
-func writeSpecShow(out io.Writer, result state.SpecShow) {
-	spec := result.Spec
-	fmt.Fprintf(out, "spec %s\n", firstNonEmpty(spec.Alias, spec.ID))
-	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
-	fmt.Fprintf(out, "title: %s\n", spec.Title)
-	fmt.Fprintf(out, "status: %s\n", spec.Status)
-	if spec.Branch != "" {
-		fmt.Fprintf(out, "branch: %s\n", spec.Branch)
-	}
-	if spec.Source != "" {
-		fmt.Fprintf(out, "source: %s\n", spec.Source)
-	}
-	fmt.Fprintf(out, "tasks: %d todo / %d in_progress / %d done\n", spec.Tasks.Todo, spec.Tasks.InProgress, spec.Tasks.Done)
-	for _, source := range spec.Sources {
-		fmt.Fprintf(out, "render: %s\n", source.Path)
-		if source.Hash != "" {
-			fmt.Fprintf(out, "render hash: %s\n", source.Hash)
-		}
-	}
-	if len(spec.Related) > 0 {
-		labels := make([]string, 0, len(spec.Related))
-		for _, related := range spec.Related {
-			labels = append(labels, firstNonEmpty(related.Alias, related.ID))
-		}
-		fmt.Fprintf(out, "related: %s\n", strings.Join(labels, ", "))
-	}
-	if len(spec.Relationships) == 0 {
-		fmt.Fprintln(out, "relationships: none")
-	} else {
-		fmt.Fprintln(out, "relationships:")
-		for _, relationship := range spec.Relationships {
-			target := firstNonEmpty(relationship.Entity.Alias, relationship.Entity.ID)
-			fmt.Fprintf(out, "  - %s %s %s %s", relationship.Direction, relationship.Type, relationship.Entity.Kind, target)
-			if relationship.Reason != "" {
-				fmt.Fprintf(out, " (%s)", relationship.Reason)
-			}
-			fmt.Fprintln(out)
-		}
-	}
-	if spec.Body != "" {
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, spec.Body)
-	}
-}
-
-func writeSpecStatus(out io.Writer, result state.SpecStatusResult) {
-	spec := result.Ref
-	if result.Spec != nil {
-		spec = firstNonEmpty(result.Spec.Alias, result.Ref, result.Spec.ID)
-	}
-	fmt.Fprintf(out, "spec %s\n", spec)
-	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
-	if result.Previous != result.Status {
-		fmt.Fprintf(out, "status: %s -> %s\n", result.Previous, result.Status)
-	} else {
-		fmt.Fprintf(out, "status: %s\n", result.Status)
-	}
-	if result.EventID != "" {
-		fmt.Fprintf(out, "event: %s\n", result.EventID)
-	}
-}
-
-func writeSpecArchive(out io.Writer, result state.SpecArchiveResult) {
-	fmt.Fprint(out, "\n  loaf spec archive\n\n")
-	writeProjectMutationContext(out, "  ", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
-	for _, item := range result.Archived {
-		spec := item.Ref
-		title := ""
-		if item.Spec != nil {
-			spec = firstNonEmpty(item.Spec.Alias, item.Ref, item.Spec.ID)
-			title = item.Spec.Title
-		}
-		if title == "" {
-			fmt.Fprintf(out, "  archived %s\n", spec)
-		} else {
-			fmt.Fprintf(out, "  archived %s: %s\n", spec, title)
-		}
-	}
-	for _, item := range result.Skipped {
-		spec := item.Ref
-		if item.Spec != nil {
-			spec = firstNonEmpty(item.Spec.Alias, item.Ref, item.Spec.ID)
-		}
-		fmt.Fprintf(out, "  skipped %s: %s\n", spec, item.Reason)
-	}
-	fmt.Fprintln(out)
-	if len(result.Archived) > 0 {
-		fmt.Fprintf(out, "  Archived %d spec(s)\n", len(result.Archived))
-	}
-	if len(result.Skipped) > 0 {
-		fmt.Fprintf(out, "  Skipped %d spec(s)\n", len(result.Skipped))
-	}
-	fmt.Fprintln(out)
-}
-
-func persistMarkdownArchiveDecisionsToSpec(rootPath string, specID string, sessionBranch string, decisions []string) (string, error) {
-	specsDir := filepath.Join(rootPath, ".agents", "specs")
-	entries, err := os.ReadDir(specsDir)
-	if err != nil {
-		return "", fmt.Errorf("no specs directory found")
-	}
-	specPath := ""
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-			continue
-		}
-		if strings.Contains(entry.Name(), specID) {
-			specPath = filepath.Join(specsDir, entry.Name())
-			break
-		}
-	}
-	if specPath == "" {
-		return "", fmt.Errorf("spec %s not found", specID)
-	}
-	body, err := os.ReadFile(specPath)
-	if err != nil {
-		return "", err
-	}
-	date := time.Now().UTC().Format("2006-01-02")
-	var entry strings.Builder
-	entry.WriteString(fmt.Sprintf("- %s - Session %s archived: %d decision(s) extracted\n", date, sessionBranch, len(decisions)))
-	for _, decision := range decisions {
-		entry.WriteString("  ")
-		entry.WriteString(decision)
-		entry.WriteString("\n")
-	}
-	entry.WriteString("\n")
-	text := string(body)
-	if idx := strings.Index(text, "\n## Changelog\n"); idx >= 0 {
-		insertAt := idx + len("\n## Changelog\n")
-		text = text[:insertAt] + entry.String() + text[insertAt:]
-	} else {
-		if !strings.HasSuffix(text, "\n") {
-			text += "\n"
-		}
-		text += "\n## Changelog\n\n" + entry.String()
-	}
-	if err := os.WriteFile(specPath, []byte(text), 0o600); err != nil {
-		return "", err
-	}
-	return "Appended decisions to " + filepath.Base(specPath), nil
 }
 
 func extractMarkdownDecisionEntries(content string, limit int) []string {
@@ -10098,40 +9214,6 @@ func (r Runner) reportStateMode(runtime state.Runtime) (project.Root, string, er
 		return project.Root{}, "", err
 	}
 	return projectRoot, status.Mode, nil
-}
-
-func writeSpecCreate(out io.Writer, result state.SpecCreateResult) {
-	fmt.Fprintf(out, "created spec %s: %s\n", firstNonEmpty(result.Spec.Alias, result.Spec.ID), result.Spec.Title)
-	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
-	fmt.Fprintf(out, "status: %s\n", result.Spec.Status)
-	fmt.Fprintf(out, "source: %s\n", result.Source)
-	if result.Branch != "" {
-		fmt.Fprintf(out, "branch: %s\n", result.Branch)
-	}
-	if len(result.Related) > 0 {
-		labels := make([]string, 0, len(result.Related))
-		for _, related := range result.Related {
-			labels = append(labels, firstNonEmpty(related.Alias, related.ID))
-		}
-		fmt.Fprintf(out, "related: %s\n", strings.Join(labels, ", "))
-	}
-	if result.EventID != "" {
-		fmt.Fprintf(out, "event: %s\n", result.EventID)
-	}
-}
-
-func writeSpecEdit(out io.Writer, result state.SpecEditResult) {
-	ref := firstNonEmpty(result.Spec.Alias, result.Spec.ID)
-	fmt.Fprintf(out, "edited spec %s\n", ref)
-	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
-	if result.Imported {
-		fmt.Fprintln(out, "imported legacy source body")
-	}
-	fmt.Fprintf(out, "sha256: %s\n", result.ContentHash)
-	if result.EventID != "" {
-		fmt.Fprintf(out, "event: %s\n", result.EventID)
-	}
-	fmt.Fprintf(out, "next: loaf spec finalize %s\n", ref)
 }
 
 func writeReportCreate(out io.Writer, result state.ReportCreateResult) {
@@ -11768,19 +10850,6 @@ type reportCreateOptions struct {
 	body       bodyInputOptions
 }
 
-type specNewOptions struct {
-	jsonOutput bool
-	create     state.SpecCreateOptions
-	body       bodyInputOptions
-}
-
-type specEditOptions struct {
-	jsonOutput bool
-	ref        string
-	force      bool
-	body       bodyInputOptions
-}
-
 type reportEditOptions struct {
 	jsonOutput bool
 	ref        string
@@ -12923,92 +11992,6 @@ func parseReportListArgs(args []string) (reportListOptions, error) {
 	return options, nil
 }
 
-func parseSpecNewArgs(args []string) (specNewOptions, error) {
-	options := specNewOptions{create: state.SpecCreateOptions{Source: "ad-hoc"}}
-	var positional []string
-	for i := 0; i < len(args); i++ {
-		if ok, err := parseBodyInputFlag(args, &i, &options.body); ok || err != nil {
-			if err != nil {
-				return specNewOptions{}, err
-			}
-			continue
-		}
-		switch args[i] {
-		case "--json":
-			options.jsonOutput = true
-		case "--title":
-			value, err := consumeFlagValue(args, &i, "--title")
-			if err != nil {
-				return specNewOptions{}, err
-			}
-			options.create.Title = value
-		case "--id":
-			value, err := consumeFlagValue(args, &i, "--id")
-			if err != nil {
-				return specNewOptions{}, err
-			}
-			options.create.ID = value
-		case "--source":
-			value, err := consumeFlagValue(args, &i, "--source")
-			if err != nil {
-				return specNewOptions{}, err
-			}
-			options.create.Source = value
-		case "--branch":
-			value, err := consumeFlagValue(args, &i, "--branch")
-			if err != nil {
-				return specNewOptions{}, err
-			}
-			options.create.Branch = value
-		case "--related":
-			value, err := consumeFlagValue(args, &i, "--related")
-			if err != nil {
-				return specNewOptions{}, err
-			}
-			options.create.Related = append(options.create.Related, splitCommaList(value)...)
-		default:
-			if strings.HasPrefix(args[i], "-") {
-				return specNewOptions{}, fmt.Errorf("unknown option %q", args[i])
-			}
-			positional = append(positional, args[i])
-		}
-	}
-	if len(positional) != 1 {
-		return specNewOptions{}, fmt.Errorf("spec new requires exactly one slug")
-	}
-	options.create.Slug = positional[0]
-	return options, nil
-}
-
-func parseSpecEditArgs(args []string) (specEditOptions, error) {
-	var options specEditOptions
-	var positional []string
-	for i := 0; i < len(args); i++ {
-		if ok, err := parseBodyInputFlag(args, &i, &options.body); ok || err != nil {
-			if err != nil {
-				return specEditOptions{}, err
-			}
-			continue
-		}
-		switch args[i] {
-		case "--json":
-			options.jsonOutput = true
-		case "--force":
-			options.force = true
-		default:
-			if strings.HasPrefix(args[i], "-") {
-				return specEditOptions{}, fmt.Errorf("unknown option %q", args[i])
-			}
-			positional = append(positional, args[i])
-		}
-	}
-	if len(positional) != 1 {
-		return specEditOptions{}, fmt.Errorf("spec edit requires exactly one spec ref")
-	}
-	options.ref = positional[0]
-	return options, nil
-}
-
 func parseReportCreateArgs(args []string) (reportCreateOptions, error) {
 	options := reportCreateOptions{create: state.ReportCreateOptions{Kind: "research", Source: "ad-hoc"}}
 	var positional []string
@@ -13541,51 +12524,6 @@ func taskStatusLabel(status string) string {
 	case "done":
 		return "Done"
 	case "archived":
-		return "Archived"
-	default:
-		return status
-	}
-}
-
-func specStatusDisplayOrder(specs state.SpecList) []string {
-	statuses := state.SpecStatusOrder()
-	seen := map[string]bool{}
-	for _, status := range statuses {
-		seen[status] = true
-	}
-	var extra []string
-	for _, spec := range specs.Specs {
-		if !seen[spec.Status] {
-			seen[spec.Status] = true
-			extra = append(extra, spec.Status)
-		}
-	}
-	sort.Strings(extra)
-	return append(statuses, extra...)
-}
-
-func sortedSpecsByStatus(specs state.SpecList, status string) []string {
-	var ids []string
-	for id, spec := range specs.Specs {
-		if spec.Status == status {
-			ids = append(ids, id)
-		}
-	}
-	sort.Strings(ids)
-	return ids
-}
-
-func specStatusLabel(status string) string {
-	switch status {
-	case state.LifecycleStatusInProgress:
-		return "In Progress"
-	case state.LifecycleStatusTodo:
-		return "Todo"
-	case state.LifecycleStatusDraft:
-		return "Draft"
-	case state.LifecycleStatusDone:
-		return "Done"
-	case state.LifecycleStatusArchived:
 		return "Archived"
 	default:
 		return status
@@ -14182,12 +13120,6 @@ func writeJSONCommandError(out io.Writer, command string, err error) error {
 		output.Code = recoveryErr.Code
 		output.BackupPath = recoveryErr.BackupPath
 		output.RestorePath = recoveryErr.RestorePath
-	}
-	var changeOriginErr *ChangeOriginError
-	if errors.As(err, &changeOriginErr) {
-		output.Code = changeOriginErr.Code
-		output.Ref = changeOriginErr.Ref
-		output.Path = changeOriginErr.Path
 	}
 	var journalDeferValidationErr *state.JournalDeferValidationError
 	if errors.As(err, &journalDeferValidationErr) {

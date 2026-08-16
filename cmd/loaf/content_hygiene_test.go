@@ -176,7 +176,6 @@ func TestOrchestrationDuplicateAuthorityReferencesRetired(t *testing.T) {
 	for _, owner := range []string{
 		"../council/SKILL.md",
 		"../shape/SKILL.md",
-		"../breakdown/SKILL.md",
 	} {
 		if !strings.Contains(orchestration, owner) {
 			t.Fatalf("orchestration router missing owning skill link %q", owner)
@@ -219,9 +218,9 @@ func TestPlanningVocabularyConverged(t *testing.T) {
 				"spec-conversion-and-guidance-sweep",
 			},
 			required: []string{
-				"**New work is Change-first.**",
-				"Existing `SPEC-*` and task records remain supported compatibility surfaces",
-				"until deliberately converted — not the default for new work",
+				"**New work is an Issue.**",
+				"`loaf issue check` validates readiness",
+				"Releases are retroactive",
 			},
 		},
 		{
@@ -237,11 +236,11 @@ func TestPlanningVocabularyConverged(t *testing.T) {
 				"### Phase 3:",
 			},
 			required: []string{
-				"**Change-first workflow**",
+				"**Issue workflow**",
 				"## Workflow",
-				"### Pitch and Shape",
-				"### Implement and Ship",
-				"### Preserve Learning",
+				"`loaf issue new`",
+				"`loaf issue promote`",
+				"`loaf release suggest`",
 				"/pitch",
 			},
 		},
@@ -333,13 +332,13 @@ func TestPlanningVocabularyConverged(t *testing.T) {
 				"Shape new bounded work",
 				"Start implementing new bounded work",
 				"Continue an existing task or spec record",
-				"`loaf task` and `loaf spec` remain supported for existing records",
+				"`loaf task` and `loaf spec` remain readable for legacy records; new work is issues",
 			},
 		},
 		{
 			rel:       "content/skills/orchestration/references/context-management.md",
 			forbidden: []string{"transitional tasks", "Markdown-to-native transition"},
-			required:  []string{"`transitional-tasks`", "Open task-board records retained for compatibility.", "Changes, task-board records, reports, ADRs, and commits"},
+			required:  []string{"`transitional-tasks`", "Leftover board records retained for compatibility", "Issues, reports, ADRs, and commits"},
 		},
 		{
 			rel:       "content/skills/orchestration/references/parallel-agents.md",

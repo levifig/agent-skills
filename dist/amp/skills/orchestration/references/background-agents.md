@@ -43,7 +43,7 @@ Task(
     - src/services/
 
     Write report to: .agents/reports/YYYYMMDD-HHMMSS-security-audit.md
-    Reference: TASK-123, SPEC-045 if relevant
+    Reference: LOAF-123 if relevant
     """,
     run_in_background=True
 )
@@ -51,12 +51,12 @@ Task(
 
 ### Cursor
 
-Background agents are configured via the `is_background: true` YAML property. When spawning, specify the report destination and any task/spec IDs:
+Background agents are configured via the `is_background: true` YAML property. When spawning, specify the report destination and any issue refs:
 
 ```
 @background-runner Run security audit on backend codebase.
 Write report to .agents/reports/.
-Reference TASK-123 if relevant.
+Reference LOAF-123 if relevant.
 ```
 
 The background agent's journal entries are tagged with its own harness id automatically — there is no session alias to pass.
@@ -72,7 +72,7 @@ Track background work with durable references:
 1. Log the spawn with `loaf journal log "todo(background): started <id> for <task>"`.
 2. Ask the background agent to write a report under `.agents/reports/`.
 3. When complete, log `discover(background): <id> wrote <report>`.
-4. Process findings into tasks, specs, ADRs, or report verdicts as appropriate.
+4. Process findings into issues, ADRs, or report verdicts as appropriate.
 
 Use a stable ID such as `bg-YYYYMMDD-HHMMSS-description` in the prompt and journal entries.
 
@@ -85,7 +85,7 @@ Background agents write results to `.agents/reports/` with enough metadata to id
 1. Orchestrator identifies non-blocking security audit work.
 2. Orchestrator logs the background spawn to the journal.
 3. Background agent writes `.agents/reports/YYYYMMDD-HHMMSS-auth-security.md`.
-4. Orchestrator reviews the report, creates follow-up tasks, and logs the outcome.
+4. Orchestrator reviews the report, creates follow-up issues, and logs the outcome.
 5. Report state is finalized or archived through the report lifecycle.
 
 ## Anti-Patterns
@@ -94,7 +94,7 @@ Background agents write results to `.agents/reports/` with enough metadata to id
 |-------|------------|
 | Use for blocking work | Keep blocking work in foreground |
 | Spawn without tracking | Log the spawn and require a report path |
-| Ignore completed results | Process reports into tasks, findings, or decisions |
+| Ignore completed results | Process reports into issues, findings, or decisions |
 | Use for interactive tasks | Reserve for autonomous work |
 | Spawn many concurrent background agents | Limit concurrency to avoid resource contention |
 | Skip result location in prompt | Always specify where output belongs |

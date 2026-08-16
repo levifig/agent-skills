@@ -34,7 +34,7 @@ func TestRunnerGenerateCLIReferenceWritesSkillNatively(t *testing.T) {
 		"## Journal Context (contract v2)",
 		"`loaf --help`",
 		"`loaf <command> --help`",
-		"`loaf config check --json`, `loaf state doctor --json`, `loaf change check --json`",
+		"`loaf config check --json`, `loaf state doctor --json`",
 		"active-truth read model",
 		"`project-synthesis`",
 		"`scoped-checkpoint`",
@@ -58,7 +58,6 @@ func TestRunnerGenerateCLIReferenceWritesSkillNatively(t *testing.T) {
 		"| Command | Purpose | Subcommands |",
 		"| `loaf build` | Build skill distributions for agent harnesses | — |",
 		"| `loaf config` | Validate and refresh project Loaf config | check |",
-		"| `loaf change` | Shape-first Change artifacts: git-canonical work context under docs/changes/ | init, check, list |",
 		"| `loaf journal` | Record and read the project-scoped journal (the durable record across all conversations) | log, recent, search, show, context, export, defer |",
 		"| `loaf state` | Manage native SQLite state | path, status, init, doctor, repair legacy-project-database,",
 		"repair journal-search",
@@ -200,6 +199,84 @@ func TestJournalContextAgentHelpDescribesContractV2(t *testing.T) {
 				t.Fatalf("agent help --branch description = %q, want %q", option.Description, want)
 			}
 		}
+	}
+}
+
+func TestReleaseHelpMetadataUsesSuggestCutContract(t *testing.T) {
+	legacy := map[string]bool{
+		"--pre-merge":           true,
+		"--post-merge":          true,
+		"--tag":                 true,
+		"--gh":                  true,
+		"-y, --yes":             true,
+		"--yes":                 true,
+		"--version-file <path>": true,
+	}
+	var reference *cliReferenceCommand
+	for index := range cliReferenceCommands() {
+		if cliReferenceCommands()[index].Name == "release" {
+			cmd := cliReferenceCommands()[index]
+			reference = &cmd
+			break
+		}
+	}
+	if reference == nil {
+		t.Fatal("release missing from CLI reference")
+	}
+	if !strings.Contains(reference.Description, "suggest") && !strings.Contains(reference.Description, "already-landed") {
+		t.Fatalf("release description = %q, want suggest/cut contract", reference.Description)
+	}
+	if len(reference.Options) != 0 {
+		t.Fatalf("release parent options = %#v, want none (flags live on suggest/cut)", reference.Options)
+	}
+	foundSuggest, foundCut := false, false
+	for _, sub := range reference.Subcommands {
+		switch sub.Name {
+		case "suggest":
+			foundSuggest = true
+		case "cut":
+			foundCut = true
+		}
+		for _, option := range sub.Options {
+			if legacy[option.Flags] {
+				t.Fatalf("release %s still advertises %q", sub.Name, option.Flags)
+			}
+		}
+	}
+	if !foundSuggest || !foundCut {
+		t.Fatalf("release subcommands = %#v, want suggest and cut", reference.Subcommands)
+	}
+
+	var agent *agentHelpCommand
+	for index := range agentHelpCommands() {
+		if agentHelpCommands()[index].Name == "release" {
+			cmd := agentHelpCommands()[index]
+			agent = &cmd
+			break
+		}
+	}
+	if agent == nil {
+		t.Fatal("release missing from agent help")
+	}
+	if len(agent.Options) != 0 {
+		t.Fatalf("agent help release parent options = %#v, want none", agent.Options)
+	}
+	foundSuggest, foundCut = false, false
+	for _, sub := range agent.Subcommands {
+		switch sub.Name {
+		case "suggest":
+			foundSuggest = true
+		case "cut":
+			foundCut = true
+		}
+		for _, option := range sub.Options {
+			if legacy[option.Flags] {
+				t.Fatalf("agent help release %s still advertises %q", sub.Name, option.Flags)
+			}
+		}
+	}
+	if !foundSuggest || !foundCut {
+		t.Fatalf("agent help release subcommands = %#v, want suggest and cut", agent.Subcommands)
 	}
 }
 
