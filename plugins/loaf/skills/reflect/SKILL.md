@@ -7,7 +7,7 @@ description: >-
   experience. Not for pre-implementation strategy (use strategy) or ADRs (use
   architecture).
 user-invocable: true
-argument-hint: '[SPEC-ID or topic]'
+argument-hint: '[issue ref or topic]'
 version: 0.2.21
 ---
 
