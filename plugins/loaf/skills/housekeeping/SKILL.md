@@ -9,7 +9,7 @@ description: >-
   knowledge management (use knowledge-base).
 user-invocable: true
 argument-hint: '[sessions|specs|plans|drafts|handoffs]'
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Housekeeping

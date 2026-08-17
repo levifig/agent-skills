@@ -9,7 +9,7 @@ description: >-
   for reading a single known item (use loaf issue show, loaf spark show, loaf
   idea show, or journal directly), capturing new ideas (use idea), problem
   discovery (use pitch), or bounding one chosen direction (use shape).
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Triage

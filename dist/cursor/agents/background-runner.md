@@ -155,4 +155,4 @@ Background Agent ID: bg-20260123-143000-auth-security
 4. Log completion to the project journal if the `loaf` CLI is available
 
 ---
-version: 0.2.21
+version: 0.3.0

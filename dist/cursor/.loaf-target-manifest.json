@@ -1,7 +1,7 @@
 {
   "version": 1,
   "target": "cursor",
-  "package_version": "0.2.21",
+  "package_version": "0.3.0",
   "capability_contract_version": 3,
   "adapters": [
     "cursor-session-start-v1"

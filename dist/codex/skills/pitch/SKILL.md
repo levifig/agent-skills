@@ -10,7 +10,7 @@ description: >-
   idea), solution bounding (use shape), queue processing (use triage), or
   open-ended divergent inquiry (use explore as an agent technique when pitch
   reveals the direction is undecided).
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Pitch

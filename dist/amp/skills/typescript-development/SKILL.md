@@ -5,7 +5,7 @@ description: >-
   CSS, and Vitest testing. Use when writing TypeScript applications, React
   components, or Node.js services. Not for UI/UX design (use interface-design),
   database schema (use database-design), or Python (use python-development).
-version: 0.2.21
+version: 0.3.0
 ---
 
 # TypeScript Development

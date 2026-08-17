@@ -8,7 +8,7 @@ description: >-
   criteria as the completion contract. Logs to the project journal and produces
   agent spawn plans and progress tracking. Not for shaping or decomposition (use
   shape), research, or review.
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Implement

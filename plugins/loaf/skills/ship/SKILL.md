@@ -11,7 +11,7 @@ description: >-
   verification (use release).
 user-invocable: true
 argument-hint: '[PR number or URL]'
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Ship

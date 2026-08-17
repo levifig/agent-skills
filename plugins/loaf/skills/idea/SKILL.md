@@ -11,7 +11,7 @@ description: >-
   explore as a technique).
 user-invocable: true
 argument-hint: '[idea description]'
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Idea

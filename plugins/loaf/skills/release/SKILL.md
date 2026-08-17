@@ -8,7 +8,7 @@ description: >-
   facts. Not for reviewing or merging a PR (use ship).
 user-invocable: true
 argument-hint: '[version, base, or release intent]'
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Release
