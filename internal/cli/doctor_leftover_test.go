@@ -139,8 +139,8 @@ func TestRunnerDoctorPassesWhenHistoryIsFrozen(t *testing.T) {
 		t.Fatalf("doctor error = %v\n%s", err, stdout.String())
 	}
 	output := stripANSI(stdout.String())
-	if !strings.Contains(output, "history stays frozen until 0.5.0 (LOAF-47)") {
-		t.Fatalf("doctor output = %q, want frozen-history pass", output)
+	if !strings.Contains(output, "history stays frozen until 0.5.0 (LOAF-47) (1 row(s), 1 independently created issue(s))") {
+		t.Fatalf("doctor output = %q, want frozen-history pass with row count", output)
 	}
 	if strings.Contains(output, state.LeftoverAbsorbHistoryPreviewCommand) {
 		t.Fatalf("doctor output = %q, want no history absorb nag", output)

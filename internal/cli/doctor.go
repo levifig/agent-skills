@@ -473,9 +473,13 @@ func leftoverAbsorbDoctorResult(report state.LeftoverAbsorbReport) doctorResult 
 		}
 	}
 	if report.HistoryFrozen {
+		message := "No leftover open SQLite work; history stays frozen until 0.5.0 (LOAF-47)"
+		if report.FrozenHistory > 0 {
+			message = fmt.Sprintf("No leftover open SQLite work; history stays frozen until 0.5.0 (LOAF-47) (%d row(s), %d independently created issue(s))", report.FrozenHistory, report.IndependentIssues)
+		}
 		return doctorResult{
 			Status:  doctorPass,
-			Message: "No leftover open SQLite work; history stays frozen until 0.5.0 (LOAF-47)",
+			Message: message,
 		}
 	}
 	return doctorResult{Status: doctorPass, Message: "No leftover SQLite work"}
