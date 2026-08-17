@@ -19,7 +19,8 @@ import (
 func issueGitFixture(t *testing.T) (string, string) {
 	t.Helper()
 	parent := realpath(t, t.TempDir())
-	repo := filepath.Join(parent, "repo")
+	// Digit-leading dirname cannot form a valid issue prefix, so mint stays LOAF.
+	repo := filepath.Join(parent, "001")
 	if err := os.Mkdir(repo, 0o755); err != nil {
 		t.Fatalf("Mkdir(repo) error = %v", err)
 	}

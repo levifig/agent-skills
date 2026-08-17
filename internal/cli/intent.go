@@ -38,7 +38,7 @@ func (r Runner) runIntent(args []string, out io.Writer, runtime state.Runtime) e
 }
 
 func writeIntentHelp(out io.Writer) {
-	writeCommandGroupHelp(out, "loaf intent <subcommand> [options]", "Manage tracked Intent in native SQLite state. Disposition is derived from append-only facts; there is no mutable lifecycle status. Deprecated: write verbs (create, defer, resume, resolve) are frozen pending migration (LOAF-42). Use loaf issue for new work.", []subcommandHelpItem{
+	writeCommandGroupHelp(out, "loaf intent <subcommand> [options]", "Manage tracked Intent in native SQLite state. Disposition is derived from append-only facts; there is no mutable lifecycle status. Deprecated: write verbs (create, defer, resume, resolve) are frozen pending migration. Use loaf issue for new work. "+frozenWorkModelRetirementNote()+".", []subcommandHelpItem{
 		{Name: "create", Summary: "Create a tracked or deferred Intent"},
 		{Name: "defer", Summary: "Defer an existing Intent with an immutable payload"},
 		{Name: "resume", Summary: "Append a tracked disposition superseding the current deferral"},
@@ -49,7 +49,7 @@ func writeIntentHelp(out io.Writer) {
 }
 
 func writeIntentCreateHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf intent create --title <title> --body <body> [--disposition deferred --why <why> --boundary <boundary> --trigger <trigger> --operation-id <key>] [--from <source>]... [--reason <reason>] [--operation-id <key>] [--json]", "Deprecated: loaf intent create is frozen pending migration (LOAF-42). Use loaf issue for new work.",
+	writeUsageHelp(out, "loaf intent create --title <title> --body <body> [--disposition deferred --why <why> --boundary <boundary> --trigger <trigger> --operation-id <key>] [--from <source>]... [--reason <reason>] [--operation-id <key>] [--json]", frozenWorkModelVerbSummary("loaf intent create"),
 		"--title          Bounded single-line title",
 		"--body           Self-sufficient body",
 		"--disposition    tracked (default) or deferred",
@@ -63,7 +63,7 @@ func writeIntentCreateHelp(out io.Writer) {
 }
 
 func writeIntentDeferHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf intent defer <intent> --why <why> --boundary <boundary> --trigger <trigger> --operation-id <key> [--json]", "Deprecated: loaf intent defer is frozen pending migration (LOAF-42). Use loaf issue for new work.",
+	writeUsageHelp(out, "loaf intent defer <intent> --why <why> --boundary <boundary> --trigger <trigger> --operation-id <key> [--json]", frozenWorkModelVerbSummary("loaf intent defer"),
 		"--why            Why the direction matters",
 		"--boundary       What excluded it now",
 		"--trigger        When to revisit",
@@ -72,13 +72,13 @@ func writeIntentDeferHelp(out io.Writer) {
 }
 
 func writeIntentResumeHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf intent resume <intent> --reason <why now> [--json]", "Deprecated: loaf intent resume is frozen pending migration (LOAF-42). Use loaf issue for new work.",
+	writeUsageHelp(out, "loaf intent resume <intent> --reason <why now> [--json]", frozenWorkModelVerbSummary("loaf intent resume"),
 		"--reason     Why the Intent is tracked again",
 		"--json       Output the resumed Intent and project identity as JSON")
 }
 
 func writeIntentResolveHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf intent resolve <intent> --reason <outcome> [--json]", "Deprecated: loaf intent resolve is frozen pending migration (LOAF-42). Use loaf issue for new work.",
+	writeUsageHelp(out, "loaf intent resolve <intent> --reason <outcome> [--json]", frozenWorkModelVerbSummary("loaf intent resolve"),
 		"--reason     Resolution outcome",
 		"--json       Output the resolved Intent and project identity as JSON")
 }

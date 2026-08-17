@@ -164,7 +164,7 @@ func scaffoldInitDirs(root string) (scaffoldResult, error) {
 
 func scaffoldInitFiles(root string) (scaffoldResult, error) {
 	var result scaffoldResult
-	for _, file := range initScaffoldFiles() {
+	for _, file := range initScaffoldFiles(root) {
 		fullPath := filepath.Join(root, filepath.FromSlash(file.path))
 		if _, err := os.Lstat(fullPath); err == nil {
 			continue
@@ -189,7 +189,7 @@ type initScaffoldFile struct {
 	body func() string
 }
 
-func initScaffoldFiles() []initScaffoldFile {
+func initScaffoldFiles(root string) []initScaffoldFile {
 	return []initScaffoldFile{
 		{path: "AGENTS.md", body: func() string {
 			return `# Project Instructions
@@ -214,9 +214,10 @@ func initScaffoldFiles() []initScaffoldFile {
 `
 		}},
 		{path: ".agents/loaf.json", body: func() string {
-			body, _ := json.MarshalIndent(map[string]string{
+			body, _ := json.MarshalIndent(map[string]any{
 				"version":     "1.0.0",
 				"initialized": time.Now().UTC().Format(time.RFC3339),
+				"issue":       defaultIssueConfig(root),
 			}, "", "  ")
 			return string(body) + "\n"
 		}},

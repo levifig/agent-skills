@@ -12,8 +12,8 @@ func assertFrozenWorkModel(t *testing.T, err error, output string) {
 		t.Fatal("error = nil, want frozen work-model refusal")
 	}
 	msg := err.Error() + output
-	if !strings.Contains(msg, "frozen pending migration") || !strings.Contains(msg, "loaf issue") || !strings.Contains(msg, "LOAF-42") {
-		t.Fatalf("error = %v\n%s, want freeze redirect naming loaf issue and LOAF-42", err, output)
+	if !strings.Contains(msg, "frozen pending migration") || !strings.Contains(msg, "loaf issue") || !strings.Contains(msg, "LOAF-47") || !strings.Contains(msg, "0.5.0") {
+		t.Fatalf("error = %v\n%s, want freeze redirect naming loaf issue, 0.5.0, and LOAF-47", err, output)
 	}
 }
 
@@ -24,7 +24,7 @@ func runFrozenTaskWrite(t *testing.T, workingDir, stateHome string, args ...stri
 	assertFrozenWorkModel(t, err, stdout.String())
 }
 
-func TestFrozenTaskWriteVerbsRefuseAndReadsSucceed(t *testing.T) {
+func TestFrozenWorkModelTaskWriteVerbsRefuseAndReadsSucceed(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
 	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
@@ -42,7 +42,7 @@ func TestFrozenTaskWriteVerbsRefuseAndReadsSucceed(t *testing.T) {
 			t.Fatalf("%v error = nil, want freeze", args)
 		}
 		msg := err.Error() + stdout.String()
-		if !strings.Contains(msg, "frozen pending migration") || !strings.Contains(msg, "loaf issue") || !strings.Contains(msg, "LOAF-42") {
+		if !strings.Contains(msg, "frozen pending migration") || !strings.Contains(msg, "loaf issue") || !strings.Contains(msg, "LOAF-47") || !strings.Contains(msg, "0.5.0") {
 			t.Fatalf("%v error = %v\n%s, want freeze redirect", args, err, stdout.String())
 		}
 	}
@@ -69,7 +69,7 @@ func TestFrozenTaskWriteVerbsRefuseAndReadsSucceed(t *testing.T) {
 	}
 }
 
-func TestFrozenIntentWriteVerbsRefuseAndReadsSucceed(t *testing.T) {
+func TestFrozenWorkModelIntentWriteVerbsRefuseAndReadsSucceed(t *testing.T) {
 	workingDir := realpath(t, t.TempDir())
 	stateHome := t.TempDir()
 	if err := (Runner{Stdout: &bytes.Buffer{}, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"state", "init"}); err != nil {
@@ -88,7 +88,7 @@ func TestFrozenIntentWriteVerbsRefuseAndReadsSucceed(t *testing.T) {
 			t.Fatalf("%v error = nil, want freeze", args)
 		}
 		msg := err.Error() + stdout.String()
-		if !strings.Contains(msg, "frozen pending migration") || !strings.Contains(msg, "loaf issue") || !strings.Contains(msg, "LOAF-42") {
+		if !strings.Contains(msg, "frozen pending migration") || !strings.Contains(msg, "loaf issue") || !strings.Contains(msg, "LOAF-47") || !strings.Contains(msg, "0.5.0") {
 			t.Fatalf("%v error = %v\n%s, want freeze redirect", args, err, stdout.String())
 		}
 	}
@@ -108,12 +108,12 @@ func TestFrozenIntentWriteVerbsRefuseAndReadsSucceed(t *testing.T) {
 	}
 }
 
-func TestFrozenTaskAndIntentHelpStatesDeprecation(t *testing.T) {
+func TestFrozenWorkModelHelpStatesDeprecation(t *testing.T) {
 	var taskOut bytes.Buffer
 	if err := (Runner{Stdout: &taskOut}).Run([]string{"task", "--help"}); err != nil {
 		t.Fatalf("task --help error = %v", err)
 	}
-	if !strings.Contains(taskOut.String(), "frozen pending migration") || !strings.Contains(taskOut.String(), "LOAF-42") {
+	if !strings.Contains(taskOut.String(), "frozen pending migration") || !strings.Contains(taskOut.String(), "LOAF-47") || !strings.Contains(taskOut.String(), "0.5.0") {
 		t.Fatalf("task help missing deprecation:\n%s", taskOut.String())
 	}
 
@@ -121,7 +121,7 @@ func TestFrozenTaskAndIntentHelpStatesDeprecation(t *testing.T) {
 	if err := (Runner{Stdout: &intentOut}).Run([]string{"intent", "--help"}); err != nil {
 		t.Fatalf("intent --help error = %v", err)
 	}
-	if !strings.Contains(intentOut.String(), "frozen pending migration") || !strings.Contains(intentOut.String(), "LOAF-42") {
+	if !strings.Contains(intentOut.String(), "frozen pending migration") || !strings.Contains(intentOut.String(), "LOAF-47") || !strings.Contains(intentOut.String(), "0.5.0") {
 		t.Fatalf("intent help missing deprecation:\n%s", intentOut.String())
 	}
 }

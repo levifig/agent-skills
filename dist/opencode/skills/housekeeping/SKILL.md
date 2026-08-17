@@ -72,11 +72,18 @@ loaf issue stop <ref>                # Remove worktree; keeps branch; does not c
 loaf issue status <ref> cancelled    # Archive an abandoned issue
 loaf issue status <ref> duplicate --duplicate-of <surviving>
 loaf report archive <report>         # Archive a processed report
+loaf issue absorb --all --dry-run    # Preview leftover TASK/INTENT to issue
+loaf issue absorb --all --history --dry-run  # Include done/archived leftover rows
 ```
 
 `loaf housekeeping` still prints leftover `specs` / `tasks` sections when those
-SQLite tables have rows — compatibility scan only. Do not create new records
-there. The `loaf task` / `loaf spec` CLI is legacy.
+SQLite tables have rows. Preview leftover TASK/INTENT work with
+`loaf issue absorb --all --dry-run`. Add `--history` when done or archived
+leftover rows should move too. Persist with the same command without `--dry-run`.
+A single leftover row is `loaf issue absorb <ref>` (or `--dismiss` to archive
+without minting). Do not invent a bulk import. Change-local
+`docs/changes/**/tasks/` are never imported. Do not create new records on the
+leftover tables. The `loaf task` / `loaf spec` CLI is legacy.
 
 The project journal is append-only and never archived — it is not a housekeeping
 target. It is the canonical record housekeeping reads when extracting decisions
@@ -121,10 +128,16 @@ from Linear.
 
 ### Leftover board rows
 
-If `loaf housekeeping --dry-run` still reports `tasks` or `specs` cleanup
-candidates, surface them: "Legacy board rows are still in SQLite. They are not
-the work unit. Archive only if the user confirms they are superseded by Loaf
-issues." Do NOT auto-migrate.
+If `loaf housekeeping --dry-run` still reports `tasks` or leftover TASK/INTENT
+rows, or `loaf doctor` names leftover-absorb, migrate those rows — do not leave
+them as "readable, mint nothing."
+
+1. Preview: `loaf issue absorb --all --dry-run`
+2. For done/archived leftover rows: `loaf issue absorb --all --history --dry-run`
+3. Persist the previewed command without `--dry-run` after confirmation
+4. Change-local `docs/changes/**/tasks/` are never imported
+
+Do not invent a bulk import. Do not create new task or spec records.
 
 ## Suggests Next
 

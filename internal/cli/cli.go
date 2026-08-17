@@ -424,7 +424,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  council       Manage councils")
 	fmt.Fprintln(out, "  kb            Manage knowledge base")
 	fmt.Fprintln(out, "  check         Run hook checks")
-	fmt.Fprintln(out, "  doctor        Diagnose project alignment")
+	fmt.Fprintln(out, "  doctor        Diagnose project alignment, leftover SQLite work, and leaked issue prefixes")
 	fmt.Fprintln(out, "  release       Cut a retroactive release (suggest, cut)")
 	fmt.Fprintln(out, "  version       Show version and content counts")
 	fmt.Fprintln(out)
@@ -1613,7 +1613,7 @@ func writeStateHelp(out io.Writer) {
 	fmt.Fprintln(out, "  path          Print the resolved SQLite database path")
 	fmt.Fprintln(out, "  status        Show SQLite readiness and markdown compatibility status")
 	fmt.Fprintln(out, "  init          Initialize native SQLite state")
-	fmt.Fprintln(out, "  doctor        Diagnose SQLite state health")
+	fmt.Fprintln(out, "  doctor        Diagnose SQLite state health and leftover work")
 	fmt.Fprintln(out, "  repair        Repair guarded SQLite data drift")
 	fmt.Fprintln(out, "  migrate       Run state migrations")
 	fmt.Fprintln(out, "  backup        Create a SQLite database backup")
@@ -1661,7 +1661,7 @@ func writeStateStatusHelp(out io.Writer) {
 func writeStateDoctorHelp(out io.Writer) {
 	fmt.Fprintln(out, "Usage: loaf state doctor [--fix] [--dry-run] [--json]")
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Diagnose SQLite state health.")
+	fmt.Fprintln(out, "Diagnose SQLite state health, including leftover SQLite work and leaked issue prefixes.")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
 	fmt.Fprintln(out, "  --fix        Initialize missing SQLite state when safe")
@@ -2376,7 +2376,7 @@ func (r Runner) runStateDoctor(args []string, out io.Writer, runtime state.Runti
 		}
 		return err
 	}
-	status, err := r.inspectStateWithOptions(runtime, state.InspectOptions{AliasParity: true})
+	status, err := r.inspectStateWithOptions(runtime, state.InspectOptions{AliasParity: true, LeftoverAbsorb: true})
 	if err != nil {
 		if jsonOutput {
 			return writeJSONCommandError(out, "state doctor", err)
@@ -4422,7 +4422,7 @@ func writeTaskHelp(out io.Writer) {
 }
 
 func writeTaskCreateHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task create --title <title> [options]", "Deprecated: loaf task create is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--title      Task title", "--spec       Associated spec", "--priority   Task priority: "+validTaskPriorityText(), "--depends-on Comma-separated task refs", "--json       Output created task, event, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task create --title <title> [options]", frozenWorkModelVerbSummary("loaf task create"), "--title      Task title", "--spec       Associated spec", "--priority   Task priority: "+validTaskPriorityText(), "--depends-on Comma-separated task refs", "--json       Output created task, event, global database scope, and project identity as JSON")
 }
 
 func writeTaskListHelp(out io.Writer) {
@@ -4438,11 +4438,11 @@ func writeTaskStatusHelp(out io.Writer) {
 }
 
 func writeTaskUpdateHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task update <task> [options]", "Deprecated: loaf task update is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--status     New task status: "+validTaskStatusText(), "--priority   New task priority: "+validTaskPriorityText(), "--spec       Associated spec", "--depends-on Comma-separated task refs or none", "--json       Output updated task, event, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task update <task> [options]", frozenWorkModelVerbSummary("loaf task update"), "--status     New task status: "+validTaskStatusText(), "--priority   New task priority: "+validTaskPriorityText(), "--spec       Associated spec", "--depends-on Comma-separated task refs or none", "--json       Output updated task, event, global database scope, and project identity as JSON")
 }
 
 func writeTaskArchiveHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task archive (<task...>|--spec <spec>) [--json]", "Deprecated: loaf task archive is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--spec       Archive done tasks for one spec", "--json       Output archive result, archived tasks, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task archive (<task...>|--spec <spec>) [--json]", frozenWorkModelVerbSummary("loaf task archive"), "--spec       Archive done tasks for one spec", "--json       Output archive result, archived tasks, global database scope, and project identity as JSON")
 }
 
 func writeTaskRefreshHelp(out io.Writer) {
