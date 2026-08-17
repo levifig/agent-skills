@@ -41,7 +41,7 @@ You are the coordinator. Work units are issues.
 - Log `loaf journal log "skill(implement): LOAF-42 — <what>"` as the first action. Substitute the real alias (or opaque id) and a short intent.
 - **Pick-up-next is `loaf issue frontier`.** That view is open (`triage` / `backlog` / `todo`), unblocked, and unclaimed (not `active`, no started worktree). Derived at read time.
 - **The delegation brief is the issue row** — `loaf issue show <ref>` / `loaf issue render <ref>`: body, definition-of-done criteria, children. There is no other packet.
-- **One agent, one worktree.** `loaf issue start <ref>` creates the branch and worktree and moves status to `active`. Before dispatch, run `loaf issue list --started`. Never send two agents into the same worktree.
+- **One agent, one worktree.** `loaf issue start <ref>` walks to the shippable root and starts or joins that root workspace (`issue/<root-alias>`). Only the root records `started_branch` / `started_worktree`; a descendant becomes `active` without its own worktree. Before dispatch, run `loaf issue list --started`. Never send two agents into the same worktree.
 - **Definition of done is the completion contract.** `loaf issue verify <ref>` runs V-tier criteria from the repository root and writes nothing. H-tier is reviewed by a human or this orchestrator. Completion is the work landing plus `loaf issue status <ref> done`. Do not flip checkboxes. Provenance is the delivering commits and the PR whose body is `loaf issue render <ref>`.
 - Shape prepares issues. If `loaf issue check <ref>` does not report the delivery issue shaped (or the decision issue ready), stop and send the work to shape. Do not mint a new issue from this skill.
 
@@ -53,14 +53,14 @@ You are the coordinator. Work units are issues.
 - Run `loaf issue` read commands, `loaf issue start` / `stop`, `loaf issue status`, and open a PR whose body is `loaf issue render` output
 
 ### Orchestrator MUST Delegate (via agent spawn)
-**ALL code changes, documentation edits, and implementation work** to specialized agents. **No exceptions**, even for "trivial" 1-line fixes. Spawn each agent into that issue's started worktree.
+**ALL code changes, documentation edits, and implementation work** to specialized agents. **No exceptions**, even for "trivial" 1-line fixes. Spawn each agent into the shippable root's started worktree.
 
 ## Verification
 
 - The invocation is logged to the project journal before implementation work begins — no session start step, no "active session" precondition
 - All code changes delegated via your harness's agent-spawn mechanism -- no direct edits by orchestrator
 - The journal is continuously updated with spawns, progress, and decisions as work happens
-- Each in-flight issue has exactly one started worktree; `loaf issue list --started` was checked before every spawn
+- Each shippable root has exactly one started worktree; `loaf issue list --started` was checked before every spawn. Children of that root share it and run one agent at a time.
 - V-tier criteria pass `loaf issue verify <ref>` (writes nothing); H-tier criteria were reviewed by a human or this orchestrator
 - The PR body is `loaf issue render <ref>` with no manual editing; checkboxes stay unchecked until status is `done`
 - Completion is landing plus `loaf issue status <ref> done` (usually via ship)
@@ -129,7 +129,7 @@ If input looks like an issue ref but `loaf issue show` cannot resolve it:
 
 1. **Confirm the issue is implementable.** `loaf issue check <ref>` must report a delivery issue shaped (or, if the user explicitly asked to resolve a decision issue, that it is ready). Unshaped work goes to shape.
 2. **Honor the frontier.** An issue that is blocked does not appear on `loaf issue frontier`. `loaf issue link A blocks B` means A blocks B; B waits until A is `done`, `cancelled`, or `duplicate`. Do not start a blocked successor. Parent/child structure from `loaf issue tree` is not a sequencing edge — only `blocks` / `blocked_by` are. Use the tree to know who belongs in the batch; use the edges to order rounds.
-3. **Parents with children are not the implementation target.** Dispatch leaf delivery children that are on the frontier. A parent executes through claimed child criteria, not by starting the parent worktree.
+3. **The shippable root owns the branch.** Related slices toward one goal share the parent's workspace and the PR to main. Dispatch leaf delivery children that are on the frontier, but `loaf issue start` on a child starts or joins the root — do not mint a branch per child. A parent is not marked `done` because a child landed; it executes through claimed child criteria.
 4. **Inspect occupied worktrees:**
    ```bash
    loaf issue list --started
@@ -139,9 +139,9 @@ If input looks like an issue ref but `loaf issue show` cannot resolve it:
    ```bash
    loaf issue start <ref>
    ```
-   Creates branch `issue/<alias-or-id>` in lowercase (`issue/loaf-42`, id suffix when that name is claimed), a sibling worktree, and sets status to `active`. Base is the nearest started ancestor's branch, else the repository default branch. Start refuses archived rows and terminal statuses (`done`, `cancelled`, `duplicate`).
+   Walks `parent_id` to the shippable root and creates (or joins) branch `issue/<root-alias-or-id>` in lowercase (`issue/loaf-42`, id suffix when that name is claimed) plus a sibling worktree on the root only. The requested issue becomes `active`. Base is the repository default branch. Start refuses archived rows and terminal statuses (`done`, `cancelled`, `duplicate`) on the requested issue and on the root when the workspace still has to be created. `loaf issue stop` on a descendant that does not own a worktree names the root.
 6. **Hand the agent the brief** from `loaf issue show <ref>` (body, criteria, children) and, when opening a PR, `loaf issue render <ref>`. Tell the agent to work only in `started_worktree`.
-7. **Batch rounds.** When input is a parent or a set of refs, group unblocked delivery children into dependency-ready rounds from `blocked_by` edges and parent/child structure. Parallel only within a round, max 3, and only when each agent has its own worktree. See [batch-orchestration.md](references/batch-orchestration.md) for the round loop, `--dry-run` / `--parallel` / `--continue` / `--skip <ref>` / `--abort`, and blocked-state recovery.
+7. **Batch rounds.** When input is a parent or a set of refs, group unblocked delivery children into dependency-ready rounds from `blocked_by` edges and parent/child structure. Children of one root share that root's worktree, so they run sequentially. Parallel only within a round, max 3, and only when each agent has its own worktree (independent shippable roots). See [batch-orchestration.md](references/batch-orchestration.md) for the round loop, `--dry-run` / `--parallel` / `--continue` / `--skip <ref>` / `--abort`, and blocked-state recovery.
 
 ---
 

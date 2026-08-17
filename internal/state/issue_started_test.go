@@ -295,3 +295,61 @@ func TestNearestStartedAncestorRejectsStoredParentCycle(t *testing.T) {
 		t.Fatalf("NearestStartedAncestor() error = %v, want a stored issue id", err)
 	}
 }
+
+func TestIssueRootWalksParentChain(t *testing.T) {
+	root, store := issueTestFixture(t)
+	ctx := context.Background()
+
+	grand, err := store.CreateIssue(ctx, root, IssueCreateOptions{Title: "Grandparent"})
+	if err != nil {
+		t.Fatalf("CreateIssue(grand) error = %v", err)
+	}
+	parent, err := store.CreateIssue(ctx, root, IssueCreateOptions{Title: "Parent", Parent: grand.ID})
+	if err != nil {
+		t.Fatalf("CreateIssue(parent) error = %v", err)
+	}
+	child, err := store.CreateIssue(ctx, root, IssueCreateOptions{Title: "Child", Parent: parent.ID})
+	if err != nil {
+		t.Fatalf("CreateIssue(child) error = %v", err)
+	}
+
+	got, err := store.IssueRoot(ctx, root, child.ID)
+	if err != nil {
+		t.Fatalf("IssueRoot(child) error = %v", err)
+	}
+	if got.ID != grand.ID {
+		t.Fatalf("IssueRoot(child) = %s, want grandparent %s", got.ID, grand.ID)
+	}
+	got, err = store.IssueRoot(ctx, root, grand.ID)
+	if err != nil || got.ID != grand.ID {
+		t.Fatalf("IssueRoot(grand) = %#v err %v, want self", got, err)
+	}
+}
+
+func TestIssueRootRejectsStoredParentCycle(t *testing.T) {
+	root, store := issueTestFixture(t)
+	ctx := context.Background()
+
+	a, err := store.CreateIssue(ctx, root, IssueCreateOptions{Title: "A"})
+	if err != nil {
+		t.Fatalf("CreateIssue(A) error = %v", err)
+	}
+	b, err := store.CreateIssue(ctx, root, IssueCreateOptions{Title: "B"})
+	if err != nil {
+		t.Fatalf("CreateIssue(B) error = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE issues SET parent_id = ? WHERE id = ?`, b.ID, a.ID); err != nil {
+		t.Fatalf("set A.parent=B: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE issues SET parent_id = ? WHERE id = ?`, a.ID, b.ID); err != nil {
+		t.Fatalf("set B.parent=A: %v", err)
+	}
+
+	_, err = store.IssueRoot(ctx, root, a.ID)
+	if err == nil {
+		t.Fatal("IssueRoot() error = nil, want stored parent cycle")
+	}
+	if !strings.Contains(err.Error(), "parent cycle detected in stored issue data at ") {
+		t.Fatalf("IssueRoot() error = %v, want cycle message", err)
+	}
+}

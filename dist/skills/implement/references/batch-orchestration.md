@@ -28,11 +28,11 @@ For a parent ref (`loaf issue tree <ref>`) or a named set of refs:
 3. Group unblocked delivery children into dependency-ready rounds:
    - First round: issues with no unresolved predecessors
    - Each subsequent round: issues whose predecessors are `done`, `cancelled`, or `duplicate`
-4. If `--parallel` is set, allow parallel execution only within a dependency-ready round, max 3, and only when each agent has its own started worktree.
+4. If `--parallel` is set, allow parallel execution only within a dependency-ready round, max 3, and only when each agent has its own started worktree. Children of one root share the root worktree and cannot run in parallel.
 5. Present execution plan (issues, dependency-ready rounds, mode, total count) and ask for confirmation unless `--dry-run`.
 6. Track progress in the journal: log round boundaries and the current ref with `loaf journal log`. Status moves through `loaf issue start` (to `active`) and, after landing, `loaf issue status <ref> done`. The journal plus issue statuses are the durable record of where the batch is.
 
-Parents with children are not the implementation target. Dispatch leaf delivery children that are on `loaf issue frontier`.
+The shippable root owns the branch. Dispatch leaf delivery children that are on `loaf issue frontier`, and start or join the root workspace rather than minting a worktree per child.
 
 ## Option Handling (`--continue`, `--skip`, `--abort`)
 
@@ -49,7 +49,7 @@ When input resolves to multiple issues, run a dependency-ready round loop:
 1. Set orchestration mode (`sequential` by default, `parallel` only with `--parallel`).
 2. For each dependency-ready round:
    - Log the round start with `loaf journal log`
-   - For each issue: `loaf issue list --started`, then `loaf issue start <ref>` unless already started, spawn one agent into `started_worktree`, run `loaf issue verify <ref>` (V-tier; writes nothing)
+   - For each issue: `loaf issue list --started`, then `loaf issue start <ref>` (starts or joins the root workspace), spawn one agent into the root `started_worktree` only when that tree is free, run `loaf issue verify <ref>` (V-tier; writes nothing). Do not start a worktree per child.
 3. If any issue fails verification, stop immediately and log `block(orchestration): <ref> failed <reason>`.
 4. Consider a round complete only when all its issues have landed (`loaf issue status <ref> done` via ship) or were skipped.
 5. Continue until all rounds complete, then log a closing entry summarizing the batch.
