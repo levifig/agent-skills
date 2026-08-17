@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -628,5 +629,42 @@ func TestIssueAbsorbMintsLinearIdentityAndLeavesCounter(t *testing.T) {
 	}
 	if _, err := runIssue(t, workingDir, stateHome, "show", created.Task.Alias); err == nil {
 		t.Fatal("issue show TASK alias error = nil, want missing issue")
+	}
+}
+
+func TestIssueAbsorbReportsLinearOrphanWhenLocalAbsorbFails(t *testing.T) {
+	workingDir, stateHome, fake := linearIssueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	resolver := state.PathResolver{StateHome: stateHome}
+	if _, err := state.CreateIssue(context.Background(), root, resolver, state.IssueCreateOptions{Title: "Taken key", Alias: "ENG-1"}); err != nil {
+		t.Fatalf("CreateIssue(ENG-1) error = %v", err)
+	}
+	created, err := state.CreateTask(context.Background(), root, resolver, state.TaskCreateOptions{Title: "Orphan leftover"})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	out, err := runIssue(t, workingDir, stateHome, "absorb", created.Task.Alias)
+	if err == nil {
+		t.Fatalf("issue absorb error = nil, want Linear orphan\n%s", out)
+	}
+	var orphan *state.LinearOrphanError
+	if !errors.As(err, &orphan) {
+		t.Fatalf("error = %v (%T), want LinearOrphanError", err, err)
+	}
+	if orphan.Identifier != "ENG-1" {
+		t.Fatalf("Identifier = %q, want ENG-1", orphan.Identifier)
+	}
+	if orphan.URL == "" {
+		t.Fatal("URL is empty, want minted Linear URL")
+	}
+	if !strings.Contains(err.Error(), "ENG-1") || !strings.Contains(err.Error(), "loaf issue pull ENG-1") {
+		t.Fatalf("error = %v, want Linear key and pull recovery", err)
+	}
+	if _, ok := fake.Issue("ENG-1"); !ok {
+		t.Fatal("Linear issue ENG-1 was not created")
 	}
 }

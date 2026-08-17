@@ -229,8 +229,8 @@ func (s *Store) absorbSourceFromTask(ctx context.Context, root project.Root, pro
 		}
 	}
 	display := firstNonEmpty(detail.Alias, detail.ID)
-	if LifecycleStatusMatches(LifecycleEntityTask, detail.Status, LifecycleStatusArchived) {
-		return AbsorbSource{}, fmt.Errorf("issue absorb source %s is already archived", display)
+	if err := refuseNonOpenAbsorbTask(display, detail.Status); err != nil {
+		return AbsorbSource{}, err
 	}
 	return AbsorbSource{
 		Kind:       "task",
@@ -290,8 +290,8 @@ func archiveAbsorbTaskTx(ctx context.Context, tx *sql.Tx, projectID string, sour
 	if err != nil {
 		return fmt.Errorf("read task status: %w", err)
 	}
-	if LifecycleStatusMatches(LifecycleEntityTask, previous, LifecycleStatusArchived) {
-		return fmt.Errorf("issue absorb source %s is already archived", source.DisplayRef)
+	if err := refuseNonOpenAbsorbTask(source.DisplayRef, previous); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE tasks SET status = ?, updated_at = ? WHERE project_id = ? AND id = ?`, LifecycleStatusArchived, now, projectID, source.ID); err != nil {
 		return fmt.Errorf("archive absorbed task: %w", err)
@@ -339,6 +339,28 @@ func absorbArchiveNote(disposition string, issue *Issue) string {
 	}
 	target := firstNonEmpty(issue.Alias, issue.ID)
 	return fmt.Sprintf("%s%s (issue:%s)", intentAbsorbReasonPrefix, target, issue.ID)
+}
+
+func leftoverOpenTaskStatus(status string) bool {
+	for _, open := range []string{
+		LifecycleStatusTodo,
+		LifecycleStatusInProgress,
+		LifecycleStatusBlocked,
+		LifecycleStatusReview,
+	} {
+		if LifecycleStatusMatches(LifecycleEntityTask, status, open) {
+			return true
+		}
+	}
+	return false
+}
+
+func refuseNonOpenAbsorbTask(display, status string) error {
+	if leftoverOpenTaskStatus(status) {
+		return nil
+	}
+	shown := LifecycleStatusForDisplay(LifecycleEntityTask, status)
+	return fmt.Errorf("issue absorb source %s is not leftover open work (status: %s)", display, shown)
 }
 
 func intentAbsorbAlreadyTerminal(reason string) bool {

@@ -134,7 +134,10 @@ func TestIssueAbsorbDismissArchivesWithoutMinting(t *testing.T) {
 
 	plain, err := runIssue(t, workingDir, stateHome, "absorb", "--dismiss", "TASK-001")
 	if err == nil {
-		t.Fatalf("repeat dismiss error = nil\n%s, want already archived", plain)
+		t.Fatalf("repeat dismiss error = nil\n%s, want not leftover open work", plain)
+	}
+	if !strings.Contains(err.Error(), "not leftover open work") || !strings.Contains(err.Error(), "archived") {
+		t.Fatalf("repeat dismiss error = %v, want not leftover open work archived", err)
 	}
 }
 
@@ -205,8 +208,8 @@ func TestIssueAbsorbRefuseChangeLocalAlreadyAbsorbedUnknownAndUnregistered(t *te
 		t.Fatalf("first absorb error = %v", err)
 	}
 	_, err = runIssue(t, workingDir, stateHome, "absorb", open.Task.Alias)
-	if err == nil || !strings.Contains(err.Error(), "already archived") {
-		t.Fatalf("second absorb error = %v, want already archived", err)
+	if err == nil || !strings.Contains(err.Error(), "not leftover open work") || !strings.Contains(err.Error(), "archived") {
+		t.Fatalf("second absorb error = %v, want not leftover open work archived", err)
 	}
 
 	_, err = runIssue(t, workingDir, stateHome, "absorb", "TASK-999")
@@ -224,6 +227,80 @@ func TestIssueAbsorbRefuseChangeLocalAlreadyAbsorbedUnknownAndUnregistered(t *te
 	_, err = runIssue(t, other, stateHome, "absorb", "TASK-001")
 	if err == nil || !strings.Contains(err.Error(), "not registered") {
 		t.Fatalf("unregistered cwd error = %v, want unregistered project (no implicit project creation)", err)
+	}
+}
+
+func TestIssueAbsorbRefusesDoneAndArchivedTasks(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	resolver := state.PathResolver{StateHome: stateHome}
+
+	done, err := state.CreateTask(context.Background(), root, resolver, state.TaskCreateOptions{Title: "Done leftover"})
+	if err != nil {
+		t.Fatalf("CreateTask(done) error = %v", err)
+	}
+	if _, err := state.UpdateTaskStatus(context.Background(), root, resolver, done.Task.Alias, state.LifecycleStatusDone); err != nil {
+		t.Fatalf("UpdateTaskStatus(done) error = %v", err)
+	}
+	_, err = runIssue(t, workingDir, stateHome, "absorb", done.Task.Alias)
+	if err == nil || !strings.Contains(err.Error(), done.Task.Alias) || !strings.Contains(err.Error(), "not leftover open work") || !strings.Contains(err.Error(), "done") {
+		t.Fatalf("absorb done error = %v, want named leftover-open refusal", err)
+	}
+	_, err = runIssue(t, workingDir, stateHome, "absorb", "--dismiss", done.Task.Alias)
+	if err == nil || !strings.Contains(err.Error(), "not leftover open work") || !strings.Contains(err.Error(), "done") {
+		t.Fatalf("absorb --dismiss done error = %v, want named leftover-open refusal", err)
+	}
+
+	archived, err := state.CreateTask(context.Background(), root, resolver, state.TaskCreateOptions{Title: "Archived leftover"})
+	if err != nil {
+		t.Fatalf("CreateTask(archived) error = %v", err)
+	}
+	if _, err := state.UpdateTaskStatus(context.Background(), root, resolver, archived.Task.Alias, state.LifecycleStatusDone); err != nil {
+		t.Fatalf("UpdateTaskStatus(archived) error = %v", err)
+	}
+	if _, err := state.ArchiveTasks(context.Background(), root, resolver, state.TaskArchiveOptions{Refs: []string{archived.Task.Alias}}); err != nil {
+		t.Fatalf("ArchiveTasks() error = %v", err)
+	}
+	_, err = runIssue(t, workingDir, stateHome, "absorb", archived.Task.Alias)
+	if err == nil || !strings.Contains(err.Error(), "not leftover open work") || !strings.Contains(err.Error(), "archived") {
+		t.Fatalf("absorb archived error = %v, want named leftover-open refusal", err)
+	}
+}
+
+func TestIssueAbsorbJSONEscapesControlCharactersInTaskBody(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	created, err := state.CreateTask(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskCreateOptions{Title: "Control leftover"})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	store, err := state.OpenStore(created.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	body := "line one\nctrl\x01here"
+	if _, err := store.UpsertArtifactBody(context.Background(), created.ProjectID, "task", created.Task.ID, state.ArtifactBodyKindMarkdown, body, ""); err != nil {
+		store.Close()
+		t.Fatalf("UpsertArtifactBody() error = %v", err)
+	}
+	store.Close()
+
+	out, err := runIssue(t, workingDir, stateHome, "absorb", created.Task.Alias, "--json")
+	if err != nil {
+		t.Fatalf("issue absorb --json error = %v\n%s", err, out)
+	}
+	var parsed state.AbsorbResult
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("json.Unmarshal absorb output error = %v\n%s", err, out)
+	}
+	if !strings.Contains(parsed.Source.Body, "\x01") {
+		t.Fatalf("source body = %q, want preserved control character", parsed.Source.Body)
 	}
 }
 

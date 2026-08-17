@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/levifig/loaf/internal/project"
 )
 
 func TestIssueAbsorbMintsLocalIssueAndArchivesTask(t *testing.T) {
@@ -41,6 +43,27 @@ func TestIssueAbsorbMintsLocalIssueAndArchivesTask(t *testing.T) {
 	}
 	if shown.Task.Status != LifecycleStatusArchived {
 		t.Fatalf("task status = %q, want archived", shown.Task.Status)
+	}
+	store, err := OpenStore(result.DatabasePath)
+	if err != nil {
+		t.Fatalf("OpenStore() error = %v", err)
+	}
+	defer store.Close()
+	var fromStatus, toStatus, note string
+	if err := store.db.QueryRowContext(context.Background(), `
+SELECT from_status, to_status, note
+FROM events
+WHERE project_id = ? AND entity_kind = 'task' AND entity_id = ? AND event_type = 'status_changed' AND to_status = ?
+ORDER BY created_at DESC
+LIMIT 1
+`, result.ProjectID, created.Task.ID, LifecycleStatusArchived).Scan(&fromStatus, &toStatus, &note); err != nil {
+		t.Fatalf("read absorb event: %v", err)
+	}
+	if fromStatus != LifecycleStatusTodo || toStatus != LifecycleStatusArchived {
+		t.Fatalf("absorb event %s -> %s, want todo -> archived", fromStatus, toStatus)
+	}
+	if !strings.Contains(note, "absorbed into") || !strings.Contains(note, result.Issue.ID) {
+		t.Fatalf("absorb event note = %q, want absorbed-into and issue id", note)
 	}
 	if _, err := GetIssue(context.Background(), root, resolver, "TASK-001"); err == nil {
 		t.Fatal("GetIssue(TASK-001) error = nil, want missing issue (source alias must not be a live issue identity)")
@@ -157,8 +180,8 @@ func TestIssueAbsorbRefuseChangeLocalAlreadyGoneAndUnknown(t *testing.T) {
 	if _, err := Absorb(context.Background(), root, resolver, AbsorbOptions{Ref: open.Task.Alias}); err != nil {
 		t.Fatalf("first Absorb() error = %v", err)
 	}
-	if _, err := Absorb(context.Background(), root, resolver, AbsorbOptions{Ref: open.Task.Alias}); err == nil || !strings.Contains(err.Error(), "already archived") {
-		t.Fatalf("second Absorb() error = %v, want already archived", err)
+	if _, err := Absorb(context.Background(), root, resolver, AbsorbOptions{Ref: open.Task.Alias}); err == nil || !strings.Contains(err.Error(), "not leftover open work") || !strings.Contains(err.Error(), "archived") {
+		t.Fatalf("second Absorb() error = %v, want not leftover open work archived", err)
 	}
 
 	if _, err := Absorb(context.Background(), root, resolver, AbsorbOptions{Ref: "TASK-999"}); err == nil || !strings.Contains(err.Error(), "not found") {
@@ -187,6 +210,120 @@ func TestIssueAbsorbIsChangeLocalTaskPath(t *testing.T) {
 			t.Fatalf("IsChangeLocalTaskPath(%q) = true, want false", path)
 		}
 	}
+}
+
+func TestIssueAbsorbRefusesDoneAndArchivedTasksAndAcceptsOpen(t *testing.T) {
+	for _, status := range []string{
+		LifecycleStatusTodo,
+		LifecycleStatusInProgress,
+		LifecycleStatusBlocked,
+		LifecycleStatusReview,
+	} {
+		t.Run("absorb_"+status, func(t *testing.T) {
+			root, resolver := absorbInitialized(t)
+			created, err := CreateTask(context.Background(), root, resolver, TaskCreateOptions{Title: "Open leftover " + status})
+			if err != nil {
+				t.Fatalf("CreateTask() error = %v", err)
+			}
+			if status != LifecycleStatusTodo {
+				if _, err := UpdateTaskStatus(context.Background(), root, resolver, created.Task.Alias, status); err != nil {
+					t.Fatalf("UpdateTaskStatus(%s) error = %v", status, err)
+				}
+			}
+			result, err := Absorb(context.Background(), root, resolver, AbsorbOptions{Ref: created.Task.Alias})
+			if err != nil {
+				t.Fatalf("Absorb(%s) error = %v", status, err)
+			}
+			if result.Issue == nil {
+				t.Fatalf("Absorb(%s) issue = nil, want minted issue", status)
+			}
+			shown, err := ShowTask(context.Background(), root, resolver, created.Task.Alias)
+			if err != nil {
+				t.Fatalf("ShowTask() error = %v", err)
+			}
+			if shown.Task.Status != LifecycleStatusArchived {
+				t.Fatalf("status = %q, want archived", shown.Task.Status)
+			}
+		})
+	}
+
+	t.Run("refuse_done", func(t *testing.T) {
+		root, resolver := absorbInitialized(t)
+		created := createTaskWithStatus(t, root, resolver, "Done leftover", LifecycleStatusDone)
+		_, err := Absorb(context.Background(), root, resolver, AbsorbOptions{Ref: created.Task.Alias})
+		if err == nil || !strings.Contains(err.Error(), created.Task.Alias) || !strings.Contains(err.Error(), "not leftover open work") || !strings.Contains(err.Error(), "done") {
+			t.Fatalf("Absorb(done) error = %v, want named leftover-open refusal", err)
+		}
+	})
+
+	t.Run("refuse_done_dismiss", func(t *testing.T) {
+		root, resolver := absorbInitialized(t)
+		created := createTaskWithStatus(t, root, resolver, "Done dismiss", LifecycleStatusDone)
+		_, err := Absorb(context.Background(), root, resolver, AbsorbOptions{Ref: created.Task.Alias, Dismiss: true})
+		if err == nil || !strings.Contains(err.Error(), created.Task.Alias) || !strings.Contains(err.Error(), "not leftover open work") || !strings.Contains(err.Error(), "done") {
+			t.Fatalf("Absorb(--dismiss done) error = %v, want named leftover-open refusal", err)
+		}
+	})
+
+	t.Run("refuse_archived", func(t *testing.T) {
+		root, resolver := absorbInitialized(t)
+		created := createTaskWithStatus(t, root, resolver, "Archived leftover", LifecycleStatusDone)
+		if _, err := ArchiveTasks(context.Background(), root, resolver, TaskArchiveOptions{Refs: []string{created.Task.Alias}}); err != nil {
+			t.Fatalf("ArchiveTasks() error = %v", err)
+		}
+		_, err := Absorb(context.Background(), root, resolver, AbsorbOptions{Ref: created.Task.Alias})
+		if err == nil || !strings.Contains(err.Error(), created.Task.Alias) || !strings.Contains(err.Error(), "not leftover open work") || !strings.Contains(err.Error(), "archived") {
+			t.Fatalf("Absorb(archived) error = %v, want named leftover-open refusal", err)
+		}
+	})
+}
+
+func TestIssueAbsorbAcceptsOrdinarilyResolvedIntentOnce(t *testing.T) {
+	root, resolver := absorbInitialized(t)
+	created, err := CreateIntent(context.Background(), root, resolver, IntentCreateOptions{Title: "Already decided", Body: "Keep this."})
+	if err != nil {
+		t.Fatalf("CreateIntent() error = %v", err)
+	}
+	if _, err := ResolveIntent(context.Background(), root, resolver, IntentDispositionOptions{IntentRef: created.Intent.Alias, Reason: "shipped in a prior release"}); err != nil {
+		t.Fatalf("ResolveIntent() error = %v", err)
+	}
+
+	result, err := Absorb(context.Background(), root, resolver, AbsorbOptions{Ref: created.Intent.Alias})
+	if err != nil {
+		t.Fatalf("Absorb(ordinarily resolved) error = %v", err)
+	}
+	if result.Issue == nil {
+		t.Fatal("Absorb(ordinarily resolved) issue = nil, want minted issue")
+	}
+
+	_, err = Absorb(context.Background(), root, resolver, AbsorbOptions{Ref: created.Intent.Alias})
+	if err == nil || !strings.Contains(err.Error(), "already absorbed") {
+		t.Fatalf("second Absorb() error = %v, want already absorbed", err)
+	}
+}
+
+func absorbInitialized(t *testing.T) (project.Root, PathResolver) {
+	t.Helper()
+	root := projectRoot(t)
+	resolver := PathResolver{StateHome: t.TempDir()}
+	if _, err := Initialize(context.Background(), root, resolver); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	return root, resolver
+}
+
+func createTaskWithStatus(t *testing.T, root project.Root, resolver PathResolver, title, status string) TaskCreateResult {
+	t.Helper()
+	created, err := CreateTask(context.Background(), root, resolver, TaskCreateOptions{Title: title})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if status != LifecycleStatusTodo {
+		if _, err := UpdateTaskStatus(context.Background(), root, resolver, created.Task.Alias, status); err != nil {
+			t.Fatalf("UpdateTaskStatus(%s) error = %v", status, err)
+		}
+	}
+	return created
 }
 
 func attachTaskBodySource(t *testing.T, store *Store, projectID, taskID, sourcePath string) {
