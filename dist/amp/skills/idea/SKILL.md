@@ -9,7 +9,7 @@ description: >-
   pitch), processing the intake queue (use triage), shaping a bounded issue (use
   shape), or agent-side divergent inquiry when direction is undecided (use
   explore as a technique).
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Idea

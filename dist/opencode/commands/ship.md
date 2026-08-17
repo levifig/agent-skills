@@ -8,7 +8,7 @@ description: >-
   issue done and stops its worktree. Produces a reviewed, squash-merged PR and
   post-merge cleanup. Not for version bumps, tags, GitHub Releases, or install
   verification (use release).
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Ship

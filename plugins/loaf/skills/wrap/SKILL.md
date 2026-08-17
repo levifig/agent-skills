@@ -8,7 +8,7 @@ description: >-
   housekeeping) or capturing ideas (use idea). Produces a Session Wrap-Up
   summary and an optional wrap journal entry.
 user-invocable: true
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Wrap

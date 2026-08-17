@@ -6,7 +6,7 @@ description: >-
   following Rails patterns. Follows DHH/37signals conventions. Not for database
   schema design (use database-design) or frontend outside Hotwire (use
   typescript-development).
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Ruby Development

@@ -11,7 +11,7 @@ description: >-
   should author a brief first (use pitch), or open-ended divergent thinking
   (agent technique: explore / brainstorm — user entry routes to pitch).
 subtask: false
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Shape

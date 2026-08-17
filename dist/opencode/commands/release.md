@@ -5,7 +5,7 @@ description: >-
   says "cut a release," "publish a version," "release from main," or asks what
   landed since the last tag. Produces a recorded release row and members as
   facts. Not for reviewing or merging a PR (use ship).
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Release

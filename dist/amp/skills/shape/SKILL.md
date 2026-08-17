@@ -10,7 +10,7 @@ description: >-
   verifiable alone). Not for quick capture (use idea), problem discovery that
   should author a brief first (use pitch), or open-ended divergent thinking
   (agent technique: explore / brainstorm — user entry routes to pitch).
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Shape
