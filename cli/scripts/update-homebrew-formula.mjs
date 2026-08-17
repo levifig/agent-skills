@@ -27,6 +27,7 @@ function formula(versionValue, repoValue, values) {
   return `class Loaf < Formula
   desc "Opinionated agentic framework for AI coding assistants"
   homepage "https://github.com/${repoValue}"
+  version "${versionValue}"
   license "MIT"
 
   depends_on "git"
