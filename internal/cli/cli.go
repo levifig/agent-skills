@@ -4422,7 +4422,7 @@ func writeTaskHelp(out io.Writer) {
 }
 
 func writeTaskCreateHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task create --title <title> [options]", "Deprecated: loaf task create is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--title      Task title", "--spec       Associated spec", "--priority   Task priority: "+validTaskPriorityText(), "--depends-on Comma-separated task refs", "--json       Output created task, event, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task create --title <title> [options]", frozenWorkModelVerbSummary("loaf task create"), "--title      Task title", "--spec       Associated spec", "--priority   Task priority: "+validTaskPriorityText(), "--depends-on Comma-separated task refs", "--json       Output created task, event, global database scope, and project identity as JSON")
 }
 
 func writeTaskListHelp(out io.Writer) {
@@ -4438,11 +4438,11 @@ func writeTaskStatusHelp(out io.Writer) {
 }
 
 func writeTaskUpdateHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task update <task> [options]", "Deprecated: loaf task update is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--status     New task status: "+validTaskStatusText(), "--priority   New task priority: "+validTaskPriorityText(), "--spec       Associated spec", "--depends-on Comma-separated task refs or none", "--json       Output updated task, event, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task update <task> [options]", frozenWorkModelVerbSummary("loaf task update"), "--status     New task status: "+validTaskStatusText(), "--priority   New task priority: "+validTaskPriorityText(), "--spec       Associated spec", "--depends-on Comma-separated task refs or none", "--json       Output updated task, event, global database scope, and project identity as JSON")
 }
 
 func writeTaskArchiveHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf task archive (<task...>|--spec <spec>) [--json]", "Deprecated: loaf task archive is frozen pending migration (LOAF-42). Use loaf issue for new work.", "--spec       Archive done tasks for one spec", "--json       Output archive result, archived tasks, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf task archive (<task...>|--spec <spec>) [--json]", frozenWorkModelVerbSummary("loaf task archive"), "--spec       Archive done tasks for one spec", "--json       Output archive result, archived tasks, global database scope, and project identity as JSON")
 }
 
 func writeTaskRefreshHelp(out io.Writer) {

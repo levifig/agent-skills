@@ -225,18 +225,6 @@ func CreateIssue(ctx context.Context, root project.Root, resolver PathResolver, 
 
 // CreateIssue writes one issue in a serializable transaction on an open store.
 func (s *Store) CreateIssue(ctx context.Context, root project.Root, options IssueCreateOptions) (Issue, error) {
-	title, err := normalizeIssueTitle(options.Title)
-	if err != nil {
-		return Issue{}, err
-	}
-	kind, err := normalizeIssueKind(options.Kind)
-	if err != nil {
-		return Issue{}, err
-	}
-	criteria, err := normalizeIssueCriteria(options.Criteria)
-	if err != nil {
-		return Issue{}, err
-	}
 	projectID, err := s.projectID(ctx, root)
 	if err != nil {
 		return Issue{}, err
@@ -249,6 +237,29 @@ func (s *Store) CreateIssue(ctx context.Context, root project.Root, options Issu
 	defer tx.Rollback()
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	detail, err := createIssueTx(ctx, tx, projectID, options, now)
+	if err != nil {
+		return Issue{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "commit", Err: err}
+	}
+	return detail, nil
+}
+
+func createIssueTx(ctx context.Context, tx *sql.Tx, projectID string, options IssueCreateOptions, now string) (Issue, error) {
+	title, err := normalizeIssueTitle(options.Title)
+	if err != nil {
+		return Issue{}, err
+	}
+	kind, err := normalizeIssueKind(options.Kind)
+	if err != nil {
+		return Issue{}, err
+	}
+	criteria, err := normalizeIssueCriteria(options.Criteria)
+	if err != nil {
+		return Issue{}, err
+	}
 	issueID, err := newOpaqueStateID("issue")
 	if err != nil {
 		return Issue{}, &IssueTransactionError{Stage: "id", Err: err}
@@ -295,9 +306,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
 	detail, err := loadIssueTx(ctx, tx, projectID, issueID)
 	if err != nil {
 		return Issue{}, &IssueTransactionError{Stage: "read result", Err: err}
-	}
-	if err := tx.Commit(); err != nil {
-		return Issue{}, &IssueTransactionError{Stage: "commit", Err: err}
 	}
 	return detail, nil
 }

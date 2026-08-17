@@ -1,0 +1,257 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/levifig/loaf/internal/project"
+	"github.com/levifig/loaf/internal/state"
+)
+
+func decodeAbsorbResult(t *testing.T, data string) state.AbsorbResult {
+	t.Helper()
+	var result state.AbsorbResult
+	if err := json.Unmarshal([]byte(data), &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", data, err)
+	}
+	return result
+}
+
+func TestIssueAbsorbMintsIssueAndArchivesSource(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	created, err := state.CreateTask(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskCreateOptions{Title: "Leftover CLI work", Priority: "P2"})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	out, err := runIssue(t, workingDir, stateHome, "absorb", created.Task.Alias, "--json")
+	if err != nil {
+		t.Fatalf("issue absorb error = %v\n%s", err, out)
+	}
+	result := decodeAbsorbResult(t, out)
+	if result.Issue == nil || result.Issue.Alias != "LOAF-1" || result.Issue.Title != "Leftover CLI work" {
+		t.Fatalf("absorb result = %#v, want LOAF-1", result)
+	}
+	if !strings.Contains(result.Issue.Body, "Absorbed from TASK-001") || !strings.Contains(result.Issue.Body, "task:"+created.Task.ID) {
+		t.Fatalf("body = %q, want provenance", result.Issue.Body)
+	}
+
+	shown, err := runIssue(t, workingDir, stateHome, "show", "LOAF-1")
+	if err != nil {
+		t.Fatalf("issue show LOAF-1 error = %v", err)
+	}
+	if !strings.Contains(shown, "alias: LOAF-1") {
+		t.Fatalf("show = %q, want LOAF-1", shown)
+	}
+	if _, err := runIssue(t, workingDir, stateHome, "show", "TASK-001"); err == nil {
+		t.Fatal("issue show TASK-001 error = nil, want missing issue (source alias is not a live issue identity)")
+	}
+
+	var taskOut bytes.Buffer
+	if err := (Runner{Stdout: &taskOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"task", "show", "TASK-001", "--json"}); err != nil {
+		t.Fatalf("task show error = %v\n%s", err, taskOut.String())
+	}
+	if !strings.Contains(taskOut.String(), `"status": "archived"`) {
+		t.Fatalf("task show = %s, want archived", taskOut.String())
+	}
+
+	helpOut, err := runIssue(t, workingDir, stateHome, "--help")
+	if err != nil {
+		t.Fatalf("issue --help error = %v", err)
+	}
+	if !strings.Contains(helpOut, "absorb") {
+		t.Fatalf("issue help missing absorb:\n%s", helpOut)
+	}
+}
+
+func TestIssueAbsorbIntentMintsIssueAndArchivesSource(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	created, err := state.CreateIntent(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.IntentCreateOptions{Title: "Intent leftover", Body: "Body."})
+	if err != nil {
+		t.Fatalf("CreateIntent() error = %v", err)
+	}
+
+	out, err := runIssue(t, workingDir, stateHome, "absorb", created.Intent.Alias, "--json")
+	if err != nil {
+		t.Fatalf("issue absorb intent error = %v\n%s", err, out)
+	}
+	result := decodeAbsorbResult(t, out)
+	if result.Issue == nil || result.Issue.Alias != "LOAF-1" || result.Source.Kind != "intent" {
+		t.Fatalf("result = %#v, want intent absorbed into LOAF-1", result)
+	}
+	if _, err := runIssue(t, workingDir, stateHome, "show", created.Intent.Alias); err == nil {
+		t.Fatal("issue show INTENT alias error = nil, want missing issue")
+	}
+
+	var intentOut bytes.Buffer
+	if err := (Runner{Stdout: &intentOut, WorkingDir: workingDir, StateHome: stateHome}).Run([]string{"intent", "show", created.Intent.Alias, "--json"}); err != nil {
+		t.Fatalf("intent show error = %v\n%s", err, intentOut.String())
+	}
+	if !strings.Contains(intentOut.String(), `"disposition": "resolved"`) || !strings.Contains(intentOut.String(), "absorbed into LOAF-1") {
+		t.Fatalf("intent show = %s, want resolved absorbed disposition", intentOut.String())
+	}
+}
+
+func TestIssueAbsorbDismissArchivesWithoutMinting(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	if _, err := state.CreateTask(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskCreateOptions{Title: "Dismiss me"}); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	out, err := runIssue(t, workingDir, stateHome, "absorb", "TASK-001", "--dismiss", "--json")
+	if err != nil {
+		t.Fatalf("issue absorb --dismiss error = %v\n%s", err, out)
+	}
+	result := decodeAbsorbResult(t, out)
+	if !result.Dismiss || result.Issue != nil || result.Disposition != state.AbsorbDispositionSuperseded {
+		t.Fatalf("result = %#v, want dismissed without issue", result)
+	}
+
+	listOut, err := runIssue(t, workingDir, stateHome, "list")
+	if err != nil {
+		t.Fatalf("issue list error = %v", err)
+	}
+	if strings.Contains(listOut, "LOAF-") || strings.Contains(listOut, "Dismiss me") {
+		t.Fatalf("list = %q, want no minted issue", listOut)
+	}
+
+	plain, err := runIssue(t, workingDir, stateHome, "absorb", "--dismiss", "TASK-001")
+	if err == nil {
+		t.Fatalf("repeat dismiss error = nil\n%s, want already archived", plain)
+	}
+}
+
+func TestIssueAbsorbDismissIntentWithoutMinting(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	created, err := state.CreateIntent(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.IntentCreateOptions{Title: "Drop intent", Body: "Body."})
+	if err != nil {
+		t.Fatalf("CreateIntent() error = %v", err)
+	}
+
+	out, err := runIssue(t, workingDir, stateHome, "absorb", created.Intent.Alias, "--dismiss")
+	if err != nil {
+		t.Fatalf("issue absorb --dismiss intent error = %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "dismissed") || !strings.Contains(out, "superseded") {
+		t.Fatalf("output = %q, want dismissed as superseded", out)
+	}
+	listOut, err := runIssue(t, workingDir, stateHome, "list", "--json")
+	if err != nil {
+		t.Fatalf("issue list error = %v", err)
+	}
+	listed := decodeIssueList(t, listOut)
+	if len(listed.Issues) != 0 {
+		t.Fatalf("issues = %#v, want none", listed.Issues)
+	}
+}
+
+func decodeIssueList(t *testing.T, data string) state.IssueListResult {
+	t.Helper()
+	var result state.IssueListResult
+	if err := json.Unmarshal([]byte(data), &result); err != nil {
+		t.Fatalf("json.Unmarshal list error = %v", err)
+	}
+	return result
+}
+
+func TestIssueAbsorbRefuseChangeLocalAlreadyAbsorbedUnknownAndUnregistered(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+
+	_, err = runIssue(t, workingDir, stateHome, "absorb", "docs/changes/foo/tasks/TASK-001.md")
+	if err == nil || !strings.Contains(err.Error(), "change-local") {
+		t.Fatalf("path ref error = %v, want change-local refusal", err)
+	}
+
+	created, err := state.CreateTask(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskCreateOptions{Title: "Imported change task"})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	attachCLITaskSource(t, workingDir, stateHome, created.Task.ID, "docs/changes/example/tasks/TASK-001-example.md")
+	_, err = runIssue(t, workingDir, stateHome, "absorb", created.Task.Alias)
+	if err == nil || !strings.Contains(err.Error(), "change-local") {
+		t.Fatalf("source-path error = %v, want change-local refusal", err)
+	}
+
+	open, err := state.CreateTask(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskCreateOptions{Title: "Once"})
+	if err != nil {
+		t.Fatalf("CreateTask(open) error = %v", err)
+	}
+	if _, err := runIssue(t, workingDir, stateHome, "absorb", open.Task.Alias); err != nil {
+		t.Fatalf("first absorb error = %v", err)
+	}
+	_, err = runIssue(t, workingDir, stateHome, "absorb", open.Task.Alias)
+	if err == nil || !strings.Contains(err.Error(), "already archived") {
+		t.Fatalf("second absorb error = %v, want already archived", err)
+	}
+
+	_, err = runIssue(t, workingDir, stateHome, "absorb", "TASK-999")
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("unknown ref error = %v, want not found", err)
+	}
+
+	bare := realpath(t, t.TempDir())
+	_, err = runIssue(t, bare, t.TempDir(), "absorb", "TASK-001")
+	if err == nil || !strings.Contains(err.Error(), "requires initialized SQLite state") {
+		t.Fatalf("uninitialized error = %v, want sqlite required (no implicit project creation)", err)
+	}
+
+	other := realpath(t, t.TempDir())
+	_, err = runIssue(t, other, stateHome, "absorb", "TASK-001")
+	if err == nil || !strings.Contains(err.Error(), "not registered") {
+		t.Fatalf("unregistered cwd error = %v, want unregistered project (no implicit project creation)", err)
+	}
+}
+
+func attachCLITaskSource(t *testing.T, workingDir, stateHome, taskID, sourcePath string) {
+	t.Helper()
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	path, err := (state.PathResolver{StateHome: stateHome}).DatabasePath(root)
+	if err != nil {
+		t.Fatalf("DatabasePath() error = %v", err)
+	}
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+	var projectID string
+	if err := db.QueryRow(`SELECT project_id FROM tasks WHERE id = ?`, taskID).Scan(&projectID); err != nil {
+		t.Fatalf("read project_id: %v", err)
+	}
+	sourceID := "src-" + filepath.Base(taskID)
+	now := "2026-08-17T00:00:00Z"
+	if _, err := db.Exec(`INSERT INTO sources (id, project_id, source_kind, path, imported_at, created_at, updated_at) VALUES (?, ?, 'markdown', ?, ?, ?, ?)`, sourceID, projectID, sourcePath, now, now, now); err != nil {
+		t.Fatalf("insert source: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE tasks SET body_source_id = ? WHERE id = ?`, sourceID, taskID); err != nil {
+		t.Fatalf("set body_source_id: %v", err)
+	}
+}

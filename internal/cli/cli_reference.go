@@ -437,6 +437,10 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--status <status>", Description: "Write status after create: " + strings.Join(state.IssueWriteStatuses(), ", ") + "; still records the initial triage event"},
 					{Flags: "--json", Description: "Output the created issue, global database scope, and project identity as JSON"},
 				}},
+				{Name: "absorb", Description: "Mint an issue from a leftover task or intent, or dismiss the source", Options: []cliReferenceOption{
+					{Flags: "--dismiss", Description: "Archive the source as superseded without minting an issue"},
+					{Flags: "--json", Description: "Output the absorb result, global database scope, and project identity as JSON"},
+				}},
 				{Name: "show", Description: "Show one issue", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output issue details, parent, children, bucket, global database scope, and project identity as JSON"},
 				}},

@@ -596,3 +596,37 @@ func TestRunnerReleaseCutLocalAuthorityDoesNotCallLinear(t *testing.T) {
 		t.Fatalf("linear hits = %d, want 0 for local authority", hits)
 	}
 }
+
+func TestIssueAbsorbMintsLinearIdentityAndLeavesCounter(t *testing.T) {
+	workingDir, stateHome, _ := linearIssueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	created, err := state.CreateTask(context.Background(), root, state.PathResolver{StateHome: stateHome}, state.TaskCreateOptions{Title: "Tracker leftover"})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	out, err := runIssue(t, workingDir, stateHome, "absorb", created.Task.Alias, "--json")
+	if err != nil {
+		t.Fatalf("issue absorb error = %v\n%s", err, out)
+	}
+	result := decodeAbsorbResult(t, out)
+	if result.Issue == nil || result.Issue.Alias != "ENG-1" {
+		t.Fatalf("alias = %#v, want ENG-1", result.Issue)
+	}
+	identity, err := state.GetIssueIdentity(context.Background(), root, state.PathResolver{StateHome: stateHome})
+	if err != nil {
+		t.Fatalf("GetIssueIdentity() error = %v", err)
+	}
+	if identity.NextNumber != 1 {
+		t.Fatalf("next_number = %d, want 1", identity.NextNumber)
+	}
+	if strings.Contains(out, "LOAF-") {
+		t.Fatalf("minted a local alias:\n%s", out)
+	}
+	if _, err := runIssue(t, workingDir, stateHome, "show", created.Task.Alias); err == nil {
+		t.Fatal("issue show TASK alias error = nil, want missing issue")
+	}
+}

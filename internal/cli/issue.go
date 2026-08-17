@@ -57,6 +57,7 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 	}
 	if writeNestedHelp(out, args, map[string]func(io.Writer){
 		"new":       writeIssueNewHelp,
+		"absorb":    writeIssueAbsorbHelp,
 		"show":      writeIssueShowHelp,
 		"list":      writeIssueListHelp,
 		"tree":      writeIssueTreeHelp,
@@ -91,6 +92,8 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 	switch args[0] {
 	case "new":
 		return r.runIssueNew(args[1:], out, runtime)
+	case "absorb":
+		return r.runIssueAbsorb(args[1:], out, runtime)
 	case "show":
 		return r.runIssueShow(args[1:], out, runtime)
 	case "list":
@@ -137,6 +140,7 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 func writeIssueHelp(out io.Writer) {
 	writeCommandGroupHelp(out, "loaf issue <subcommand> [options]", "Manage issues in native SQLite state.", []subcommandHelpItem{
 		{Name: "new", Summary: "Create an issue"},
+		{Name: "absorb", Summary: "Mint an issue from a leftover task or intent, or dismiss the source"},
 		{Name: "show", Summary: "Show one issue"},
 		{Name: "list", Summary: "List project issues"},
 		{Name: "tree", Summary: "Print a recursive issue tree"},
