@@ -6,7 +6,9 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Added
+
+- `loaf issue absorb` turns a leftover open task or intent into a fresh issue, or dismisses it, without unfreezing the old write commands. The old alias stays provenance only. Freeze errors now name the 0.5.0 horizon ([#165](https://github.com/levifig/loaf/pull/165)).
 
 ## [0.3.0] - 2026-08-17
 
