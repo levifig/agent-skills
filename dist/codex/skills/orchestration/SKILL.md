@@ -5,7 +5,7 @@ description: >-
   integration, and council workflows. Use when delegating to agents or
   coordinating cross-cutting work across multiple agents. Not for single-task
   implementation (use direct tool delegation) or solo research (use research).
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Orchestration

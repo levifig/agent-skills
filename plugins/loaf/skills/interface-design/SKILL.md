@@ -8,7 +8,7 @@ description: >-
   skills).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep'
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Design Principles

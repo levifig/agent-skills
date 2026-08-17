@@ -7,7 +7,7 @@ description: >-
   end of a work session or when the user asks "wrap up." Not for archiving (use
   housekeeping) or capturing ideas (use idea). Produces a Session Wrap-Up
   summary and an optional wrap journal entry.
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Wrap

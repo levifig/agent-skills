@@ -7,7 +7,7 @@ description: >-
   (use debugging) or general code review (use foundations).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Security & Compliance

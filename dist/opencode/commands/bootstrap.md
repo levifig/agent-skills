@@ -6,7 +6,7 @@ description: >-
   populated project documents and setup recommendations. Not for shaping
   features (use shape), problem discovery for a new concept (use pitch), or
   quick idea capture (use idea).
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Bootstrap

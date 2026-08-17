@@ -6,7 +6,7 @@ description: >-
   setting up project standards. Covers naming, TDD, verification, and review
   workflows. Not for git workflow (use git-workflow), debugging (use debugging),
   or security audits (use security-compliance).
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Code Standards

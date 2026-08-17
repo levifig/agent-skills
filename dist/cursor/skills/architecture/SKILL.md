@@ -12,7 +12,7 @@ description: >-
   `decision(scope)` entry to the project journal instead). ADRs are living
   records — when a decision evolves, revise the record in place with a dated
   revision note; supersession is reserved for topic splits and recategorization.
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Architecture

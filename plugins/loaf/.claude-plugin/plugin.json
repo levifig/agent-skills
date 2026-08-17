@@ -1,6 +1,6 @@
 {
   "name": "loaf",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Loaf - An Opinionated Agentic Framework",
   "repository": "https://github.com/levifig/loaf",
   "license": "MIT"

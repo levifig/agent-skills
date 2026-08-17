@@ -6,7 +6,7 @@ description: >-
   personas, market landscape analysis, and problem space definitions. Not for
   architecture (use architecture) or post-implementation reflection (use
   reflect).
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Strategy

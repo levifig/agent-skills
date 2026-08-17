@@ -1,7 +1,7 @@
 {
   "version": 1,
   "target": "codex",
-  "package_version": "0.3.0",
+  "package_version": "0.3.1",
   "entries": [
     {
       "event": "SessionStart",

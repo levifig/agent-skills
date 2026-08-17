@@ -6,7 +6,7 @@ description: >-
   VISION.md, STRATEGY.md, and ARCHITECTURE.md based on implementation
   experience. Not for pre-implementation strategy (use strategy) or ADRs (use
   architecture).
-version: 0.3.0
+version: 0.3.1
 ---
 
 # Reflect
