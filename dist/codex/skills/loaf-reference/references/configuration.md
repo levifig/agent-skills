@@ -24,8 +24,14 @@ These are decisions, not defaults. The CLI cannot guess them — ask, then recor
 - **GitHub account** — `integrations.github.account`, the login the project's `gh`
   commands must run as. The `github-account` enforcement hook checks it against
   `gh auth status`; a mismatch tells the user to run `gh auth switch`.
+- **Issue identity** — `issue.authority` (`local`, `linear`, or `github`) and
+  `issue.prefix`. Prefix is the local alias token (`VCAM`) or, when authority is
+  `linear`, the Linear team key (`ENG`). `loaf init` and a newly created loaf.json
+  record a derived local prefix; `loaf issue identity --prefix` / `--authority`
+  is the setter. `--fix` never invents these on an existing file.
 - **Tracker / integration election** — `integrations.linear.enabled` and the other
-  `integrations.*` toggles.
+  `integrations.*` toggles. Linear execution identity is `issue.authority`, not
+  the historical skill-mode toggle.
 - **Which harnesses to install** — the targets passed to `loaf install --to <target>`
   (or `--to all`).
 - **Codex basic command policy** — `loaf install --to codex --codex-basic-commands` explicitly installs path-pinned managed command rules and a matching `CODEX_HOME/AGENTS.md` guidance block for the centrally classified basic Loaf leaves, including hardened journal logging and approved readers, outside the workspace sandbox. This is narrower than Full access or adding the global Loaf data directory as a writable root; unclassified and operator commands remain gated. Do not enable it implicitly.

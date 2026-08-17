@@ -98,10 +98,15 @@ the right workspace automatically.
 
 ## Identity Adapter
 
-When `issue_identity.authority = linear`, Linear owns identity, title, status,
-and assignment. Loaf owns shaping state: body, definition-of-done criteria,
-claims, and the started worktree. The Loaf issue is the work unit. Linear MCP
-is an overlay — never drive Loaf status from MCP tools.
+When `issue.authority` in `.agents/loaf.json` is `linear` (materialized as
+`issue_identity.authority = linear`), Linear owns identity, title, status,
+and assignment. `issue.prefix` is the Linear team key. Loaf owns shaping
+state: body, definition-of-done criteria, claims, and the started worktree.
+The Loaf issue is the work unit. Linear MCP is an overlay — never drive Loaf
+status from MCP tools.
+
+Record the election with `loaf issue identity --authority linear --prefix ENG`.
+Do not treat `integrations.linear.enabled` as the execution contract.
 
 `loaf issue new` delegates identity: Linear mints the identifier, and that
 key becomes the local alias. The local counter is not advanced. If Linear is
