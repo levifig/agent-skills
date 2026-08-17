@@ -74,7 +74,7 @@ Names and one-line purposes only. Run `loaf <command> --help` for options, argum
 | `loaf project` | Manage durable project identity | list, show, identity, rename, move, delete |
 | `loaf migrate` | Run native migration workflows | markdown, storage-home, schema, lifecycle-statuses, journal-first, worktree-storage |
 | `loaf task` | Manage project tasks; superseded by loaf issue for new work | list, show, status, create, update, archive, refresh, sync |
-| `loaf issue` | Manage issues in native SQLite state | new, show, list, tree, frontier, start, stop, edit, status, dod, dod add, dod list, dod remove, dod claim, dod unclaim, promote, check, verify, bucket, link, render, export, pull, push, reconcile |
+| `loaf issue` | Manage issues in native SQLite state | new, absorb, show, list, tree, frontier, start, stop, edit, status, dod, dod add, dod list, dod remove, dod claim, dod unclaim, promote, check, verify, bucket, link, render, export, pull, push, reconcile |
 | `loaf report` | Manage durable reports (research, audits, investigations) | list, show, render, generate, create, edit, finalize, archive |
 | `loaf finding` | Manage report findings and verdicts in native SQLite state | list, show, create, verdict, import-json |
 | `loaf run` | Manage provenance runs for generated findings and reports | list, show, create, complete |
