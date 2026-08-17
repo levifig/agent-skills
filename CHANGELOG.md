@@ -8,6 +8,17 @@ is a Loaf workflow staging section for curated entries before release.
 
 - _No unreleased changes yet._
 
+## [0.3.0] - 2026-08-17
+
+### LOAF-42 — Migrate legacy tasks and intents onto the Issue model, then retire both namespaces
+- Unify the Loaf work model on one recursive Issue entity (#164) (0032852a)
+
+### Unattributed
+- Capture the main-push-policy brief (1333443f)
+- Capture the linear-native-coordination brief with the model-informing mandate (5987614c)
+- Bring the strategy queue current with v0.2.21 and the revised ADR-026 (e9e2450b)
+- Revise ADR-026 with arc-boundary release semantics under a living-record ADR convention (8eac0210)
+
 ## [0.2.21] - 2026-08-10
 
 ### Added
