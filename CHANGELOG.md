@@ -10,8 +10,8 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [0.3.0] - 2026-08-17
 
-### LOAF-42 — Migrate legacy tasks and intents onto the Issue model, then retire both namespaces
-- Unify the Loaf work model on one recursive Issue entity (#164) (0032852a)
+### Unified Issue work model
+- Unify the Loaf work model on one recursive Issue entity (#164) (0032852a): Change, spec, task, and Intent collapse into Issue and Release. New `loaf issue` CLI with definition-of-done criteria, derived readiness, issue-bound worktrees, and Linear identity delegation. Releases become retroactive (`loaf release suggest` / `cut`). `loaf change` and `loaf spec` are retired; `loaf task` and `loaf intent` writes are frozen with deprecation redirects pending the LOAF-42 migration.
 
 ### Unattributed
 - Capture the main-push-policy brief (1333443f)
