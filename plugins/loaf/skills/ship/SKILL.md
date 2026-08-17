@@ -122,7 +122,7 @@ Issue commands require initialized SQLite state. Bind exactly one issue:
    ```bash
    loaf issue list --started
    ```
-   Columns are alias, title, `started_branch`, `started_worktree`. The started branch from `loaf issue start` is `issue/<alias-or-id>` in lowercase (`issue/loaf-42`), disambiguated with an id suffix when that name is already claimed.
+   Columns are alias, title, `started_branch`, `started_worktree`. Only the shippable root records a workspace. The started branch from `loaf issue start` is `issue/<root-alias-or-id>` in lowercase (`issue/loaf-42`), disambiguated with an id suffix when that name is already claimed. Bind the PR to that root, not to each child slice.
 3. Confirm with `loaf issue show <ref>` — `started_branch` / `started_worktree` should match this PR when the issue was started.
 
 If nothing binds, stop and ask for the issue ref. Do not invent a row during ship. If `loaf issue show` reports the issue archived (`cancelled` or `duplicate`), stop.

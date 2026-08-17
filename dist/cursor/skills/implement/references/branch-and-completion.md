@@ -18,7 +18,7 @@ Detailed reference for branch setup, Linear routing, and completion during imple
 
 ### Getting Branch Name
 
-`loaf issue start <ref>` is the claim. It creates `issue/<alias-or-id>` in lowercase (`issue/loaf-42`, id suffix when that name is claimed), a sibling worktree, and moves status to `active`.
+`loaf issue start <ref>` is the claim. It walks to the shippable root and creates or joins `issue/<root-alias-or-id>` in lowercase (`issue/loaf-42`, id suffix when that name is claimed) plus a sibling worktree on the root. The requested issue becomes `active`. Descendants do not get their own branch.
 
 Do not `git checkout -b` as a substitute for start. Check `loaf issue list --started` first. Never send two agents into the same worktree. Do not run `loaf issue stop` from inside that worktree.
 
@@ -146,7 +146,7 @@ For complex tasks, explore before implementing:
 
 ### Parent vs children
 
-Parents with children are not the implementation target. Dispatch leaf delivery children on `loaf issue frontier`. A parent is not marked `done` because a child landed.
+The shippable root owns the branch and the PR to main. Dispatch leaf delivery children on `loaf issue frontier`, but start or join the parent workspace — do not mint a branch per child. A parent is not marked `done` because a child landed.
 
 `loaf issue link A blocks B` is the sequencing edge. An issue with an open predecessor does not appear on the frontier. Do not start a blocked successor.
 

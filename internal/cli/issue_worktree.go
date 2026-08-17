@@ -21,6 +21,8 @@ type issueStartResult struct {
 	ProjectName        string      `json:"project_name"`
 	ProjectCurrentPath string      `json:"project_current_path"`
 	Issue              state.Issue `json:"issue"`
+	Requested          string      `json:"requested"`
+	Joined             bool        `json:"joined"`
 	Branch             string      `json:"branch"`
 	Worktree           string      `json:"worktree"`
 	Base               string      `json:"base"`
@@ -46,12 +48,12 @@ type issueStopOptions struct {
 }
 
 func writeIssueStartHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf issue start <ref> [--json]", "Create a branch and worktree for one issue and record them on the row. Moves status to active through the events path.",
-		"--json       Output the started issue, branch, worktree, base, global database scope, and project identity as JSON")
+	writeUsageHelp(out, "loaf issue start <ref> [--json]", "Start or join the shippable root's branch and worktree. Walks parent_id to the root; only the root records started_branch and started_worktree. A descendant becomes active without its own worktree.",
+		"--json       Output the root issue, requested ref, joined flag, branch, worktree, base, global database scope, and project identity as JSON")
 }
 
 func writeIssueStopHelp(out io.Writer) {
-	writeUsageHelp(out, "loaf issue stop <ref> [--force] [--json]", "Remove the issue worktree and clear the started workspace on the row. Keeps the branch. Does not change status.",
+	writeUsageHelp(out, "loaf issue stop <ref> [--force] [--json]", "Remove the issue worktree and clear the started workspace on the row. Keeps the branch. Does not change status. Descendants that do not own a worktree must stop the root.",
 		"--force      Remove a dirty worktree",
 		"--json       Output the stopped issue, branch, worktree, already-gone flag, global database scope, and project identity as JSON")
 }
@@ -71,23 +73,45 @@ func (r Runner) runIssueStart(args []string, out io.Writer, runtime state.Runtim
 	}
 
 	resolver := state.PathResolver{StateHome: r.StateHome}
-	issue, err := state.GetIssue(context.Background(), projectRoot, resolver, ref)
+	ctx := context.Background()
+	requested, err := state.GetIssue(ctx, projectRoot, resolver, ref)
 	if err != nil {
 		return err
 	}
-	if err := refuseIssueStart(issue); err != nil {
+	if err := refuseIssueStart(requested); err != nil {
+		return err
+	}
+	owner, err := state.IssueRoot(ctx, projectRoot, resolver, requested.ID)
+	if err != nil {
 		return err
 	}
 
-	base, err := resolveIssueStartBase(context.Background(), projectRoot, resolver, issue, repoRoot)
+	if requested.ID != owner.ID && issueIsStarted(owner) {
+		if err := activateIssue(ctx, projectRoot, resolver, requested); err != nil {
+			return err
+		}
+		base, err := resolveIssueStartBase(ctx, projectRoot, resolver, owner, repoRoot)
+		if err != nil {
+			return err
+		}
+		return writeIssueStartResult(out, projectRoot, resolver, owner.ID, requested, owner.StartedBranch, owner.StartedWorktree, base, true, jsonOutput)
+	}
+
+	if requested.ID != owner.ID {
+		if err := refuseIssueStart(owner); err != nil {
+			return err
+		}
+	}
+
+	base, err := resolveIssueStartBase(ctx, projectRoot, resolver, owner, repoRoot)
 	if err != nil {
 		return err
 	}
-	listed, err := state.ListIssues(context.Background(), projectRoot, resolver, state.IssueListOptions{Archived: true})
+	listed, err := state.ListIssues(ctx, projectRoot, resolver, state.IssueListOptions{Archived: true})
 	if err != nil {
 		return err
 	}
-	branch, err := resolveIssueStartBranch(issue, listed.Issues, repoRoot)
+	branch, err := resolveIssueStartBranch(owner, listed.Issues, repoRoot)
 	if err != nil {
 		return err
 	}
@@ -101,19 +125,36 @@ func (r Runner) runIssueStart(args []string, out io.Writer, runtime state.Runtim
 		return err
 	}
 
-	updated, err := state.UpdateIssue(context.Background(), projectRoot, resolver, state.IssueUpdateOptions{
-		Ref:             issue.ID,
+	if _, err := state.UpdateIssue(ctx, projectRoot, resolver, state.IssueUpdateOptions{
+		Ref:             owner.ID,
 		Status:          state.IssueStatusActive,
 		SetStatus:       true,
 		StartedBranch:   branch,
 		StartedWorktree: worktree,
 		SetStarted:      true,
-	})
-	if err != nil {
+	}); err != nil {
 		return wrapIssueStartUpdateError(err, rollbackIssueWorktree(repoRoot, worktree, branch, createdBranch), worktree, branch)
 	}
+	if requested.ID != owner.ID {
+		if err := activateIssue(ctx, projectRoot, resolver, requested); err != nil {
+			return err
+		}
+	}
 
-	shown, err := state.ShowIssue(context.Background(), projectRoot, resolver, updated.ID)
+	return writeIssueStartResult(out, projectRoot, resolver, owner.ID, requested, branch, worktree, base, false, jsonOutput)
+}
+
+func activateIssue(ctx context.Context, root project.Root, resolver state.PathResolver, issue state.Issue) error {
+	_, err := state.UpdateIssue(ctx, root, resolver, state.IssueUpdateOptions{
+		Ref:       issue.ID,
+		Status:    state.IssueStatusActive,
+		SetStatus: true,
+	})
+	return err
+}
+
+func writeIssueStartResult(out io.Writer, root project.Root, resolver state.PathResolver, ownerRef string, requested state.Issue, branch, worktree, base string, joined, jsonOutput bool) error {
+	shown, err := state.ShowIssue(context.Background(), root, resolver, ownerRef)
 	if err != nil {
 		return err
 	}
@@ -125,6 +166,8 @@ func (r Runner) runIssueStart(args []string, out io.Writer, runtime state.Runtim
 		ProjectName:        shown.ProjectName,
 		ProjectCurrentPath: shown.ProjectCurrentPath,
 		Issue:              shown.Issue,
+		Requested:          issueDisplayRef(requested),
+		Joined:             joined,
 		Branch:             branch,
 		Worktree:           worktree,
 		Base:               base,
@@ -132,7 +175,14 @@ func (r Runner) runIssueStart(args []string, out io.Writer, runtime state.Runtim
 	if jsonOutput {
 		return writeJSON(out, result)
 	}
-	fmt.Fprintf(out, "started issue %s\n", issueDisplayRef(result.Issue))
+	if joined {
+		fmt.Fprintf(out, "joined issue %s\n", issueDisplayRef(result.Issue))
+	} else {
+		fmt.Fprintf(out, "started issue %s\n", issueDisplayRef(result.Issue))
+	}
+	if requested.ID != result.Issue.ID {
+		fmt.Fprintf(out, "activated: %s\n", issueDisplayRef(requested))
+	}
 	writeProjectMutationContext(out, "", result.DatabaseScope, result.DatabasePath, result.ProjectID, result.ProjectName, result.ProjectCurrentPath)
 	fmt.Fprintf(out, "branch: %s\n", result.Branch)
 	fmt.Fprintf(out, "worktree: %s\n", result.Worktree)
@@ -156,6 +206,13 @@ func (r Runner) runIssueStop(args []string, out io.Writer, runtime state.Runtime
 		return err
 	}
 	if !issueIsStarted(issue) {
+		rootIssue, err := state.IssueRoot(context.Background(), projectRoot, resolver, issue.ID)
+		if err != nil {
+			return err
+		}
+		if issueIsStarted(rootIssue) && rootIssue.ID != issue.ID {
+			return fmt.Errorf("issue %s does not own a worktree; stop %s", issueDisplayRef(issue), issueDisplayRef(rootIssue))
+		}
 		return fmt.Errorf("issue %s is not started", issueDisplayRef(issue))
 	}
 
