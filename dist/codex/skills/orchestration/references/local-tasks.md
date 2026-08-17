@@ -169,5 +169,8 @@ is no patch form.
 
 ## LEGACY
 
-`loaf task` and `loaf spec` remain readable against leftover SQLite rows. They
-mint nothing new. Do not create records there. Issues are the work unit.
+Leftover TASK/INTENT rows move with `loaf issue absorb <ref>` or
+`loaf issue absorb --all [--history]`. `loaf task` and `loaf spec` remain
+readable against leftover SQLite rows. Writes stay frozen through 0.4.x.
+Namespaces delete in 0.5.0 (LOAF-47). Do not create records there. Issues are
+the work unit.

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/levifig/loaf/internal/project"
+	"github.com/levifig/loaf/internal/state"
 )
 
 const loafConfigSchemaVersion = "1.0.0"
@@ -227,7 +228,7 @@ func checkProjectLoafConfig(projectRoot string, fix bool, now time.Time) configF
 		if !fix {
 			return status
 		}
-		config := defaultLoafConfig(now)
+		config := defaultLoafConfig(now, projectRoot)
 		if err := writeLoafConfig(path, config); err != nil {
 			status.Status = "invalid"
 			status.Errors = []string{fmt.Sprintf("could not create .agents/loaf.json: %v", err)}
@@ -235,7 +236,7 @@ func checkProjectLoafConfig(projectRoot string, fix bool, now time.Time) configF
 		}
 		status.Status = "created"
 		status.Errors = nil
-		status.Updated = append(status.Updated, "version", "initialized", "knowledge", "integrations.linear.enabled", "integrations.serena.enabled")
+		status.Updated = append(status.Updated, "version", "initialized", "knowledge", "integrations.linear.enabled", "integrations.serena.enabled", "issue")
 		status.Warnings = append(status.Warnings, "integrations.github.account is not configured; github-account hook will pass through")
 		return status
 	}
@@ -276,7 +277,18 @@ func checkProjectLoafConfig(projectRoot string, fix bool, now time.Time) configF
 	return status
 }
 
-func defaultLoafConfig(now time.Time) map[string]any {
+func defaultIssueConfig(projectRoot string) map[string]any {
+	prefix := state.DeriveIssuePrefix("", projectRoot)
+	if prefix == "" {
+		prefix = state.DefaultIssuePrefix
+	}
+	return map[string]any{
+		"authority": state.IssueAuthorityLocal,
+		"prefix":    prefix,
+	}
+}
+
+func defaultLoafConfig(now time.Time, projectRoot string) map[string]any {
 	return map[string]any{
 		"version":     loafConfigSchemaVersion,
 		"initialized": now.Format(time.RFC3339),
@@ -285,6 +297,7 @@ func defaultLoafConfig(now time.Time) map[string]any {
 			"linear": map[string]any{"enabled": false},
 			"serena": map[string]any{"enabled": false},
 		},
+		"issue": defaultIssueConfig(projectRoot),
 	}
 }
 
@@ -333,6 +346,10 @@ func ensureLoafConfigDefaults(config map[string]any, now time.Time) ([]string, [
 		updated = append(updated, ensureIntegrationEnabledDefault(integrations, "serena", false, &errors)...)
 		warnings = append(warnings, validateGitHubIntegration(integrations, &errors)...)
 	}
+
+	issueWarnings, issueErrors := state.IssueProjectConfigFindings(config)
+	warnings = append(warnings, issueWarnings...)
+	errors = append(errors, issueErrors...)
 
 	return updated, warnings, errors
 }

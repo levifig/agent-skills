@@ -21,7 +21,8 @@ import (
 // Env fallbacks (no new table):
 //
 //	LINEAR_API_URL          injectable GraphQL endpoint (tests: httptest)
-//	LINEAR_TEAM_KEY         team key when no mapping row exists
+//	.agents/loaf.json issue.prefix when issue.authority is linear
+//	LINEAR_TEAM_KEY         team key when no mapping row or loaf.json prefix exists
 //	LINEAR_STATUS_<TYPE>    optional name override (TRIAGE, BACKLOG, TODO, ACTIVE, DONE, CANCELLED, DUPLICATE)
 //
 // The Linear bearer env var is required for network calls and is never stored.
@@ -239,6 +240,11 @@ WHERE project_id = ? AND backend = ? AND entity_kind = 'project' AND entity_id =
 	if err := rows.Err(); err != nil {
 		return LinearAdapterConfig{}, fmt.Errorf("iterate linear adapter config: %w", err)
 	}
+	if cfg.TeamKey == "" {
+		if issueCfg, err := LoadIssueProjectConfig(root.Path()); err == nil && issueCfg.Authority == IssueAuthorityLinear && issueCfg.Prefix != "" {
+			cfg.TeamKey = issueCfg.Prefix
+		}
+	}
 	if envTeam := strings.TrimSpace(os.Getenv(LinearEnvTeamKey)); envTeam != "" && cfg.TeamKey == "" {
 		cfg.TeamKey = envTeam
 	}
@@ -448,7 +454,7 @@ func MintLinearIssue(ctx context.Context, root project.Root, resolver PathResolv
 		return LinearIssue{}, &LinearMintError{Err: err}
 	}
 	if strings.TrimSpace(cfg.TeamKey) == "" {
-		return LinearIssue{}, &LinearMintError{Err: fmt.Errorf("linear team key is not configured; set %s or a backend_mappings row (backend=linear, external_kind=team)", LinearEnvTeamKey)}
+		return LinearIssue{}, &LinearMintError{Err: fmt.Errorf("linear team key is not configured; set issue.prefix in .agents/loaf.json, %s, or a backend_mappings row (backend=linear, external_kind=team)", LinearEnvTeamKey)}
 	}
 	team, err := client.TeamByKey(ctx, cfg.TeamKey)
 	if err != nil {

@@ -905,6 +905,10 @@ func TestRunnerInitScaffoldsProjectNatively(t *testing.T) {
 	var config struct {
 		Version     string `json:"version"`
 		Initialized string `json:"initialized"`
+		Issue       struct {
+			Authority string `json:"authority"`
+			Prefix    string `json:"prefix"`
+		} `json:"issue"`
 	}
 	body, err := os.ReadFile(filepath.Join(workingDir, ".agents", "loaf.json"))
 	if err != nil {
@@ -915,6 +919,9 @@ func TestRunnerInitScaffoldsProjectNatively(t *testing.T) {
 	}
 	if config.Version != "1.0.0" || config.Initialized == "" {
 		t.Fatalf("loaf.json = %#v, want version and initialized timestamp", config)
+	}
+	if config.Issue.Authority != "local" || config.Issue.Prefix == "" {
+		t.Fatalf("loaf.json issue = %#v, want local bootstrap prefix", config.Issue)
 	}
 	output := stdout.String()
 	for _, want := range []string{"loaf init", "Go (go.mod)", "go-development", "Project initialized"} {

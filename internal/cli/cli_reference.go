@@ -169,7 +169,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 				{Name: "init", Description: "Initialize an empty SQLite state database", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output initialized status, global database scope, and project identity as JSON"},
 				}},
-				{Name: "doctor", Description: "Diagnose SQLite state health", Options: []cliReferenceOption{
+				{Name: "doctor", Description: "Diagnose SQLite state health, including leftover SQLite work and leaked issue prefixes", Options: []cliReferenceOption{
 					{Flags: "--fix", Description: "Initialize missing SQLite state when safe"},
 					{Flags: "--dry-run", Description: "Show the repair plan without applying fixes"},
 					{Flags: "--json", Description: "Output diagnostics, repair plan, global database scope, and project identity as JSON"},
@@ -437,6 +437,13 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--status <status>", Description: "Write status after create: " + strings.Join(state.IssueWriteStatuses(), ", ") + "; still records the initial triage event"},
 					{Flags: "--json", Description: "Output the created issue, global database scope, and project identity as JSON"},
 				}},
+				{Name: "absorb", Description: "Mint an issue from leftover SQLite work, or dismiss the source", Options: []cliReferenceOption{
+					{Flags: "--all", Description: "Project every leftover row in scope for the current project"},
+					{Flags: "--history", Description: "Include done and archived tasks, and ordinarily resolved intents"},
+					{Flags: "--dry-run", Description: "Rehearse --all without writing"},
+					{Flags: "--dismiss", Description: "Archive the source as superseded without minting an issue"},
+					{Flags: "--json", Description: "Output the absorb result, global database scope, and project identity as JSON"},
+				}},
 				{Name: "show", Description: "Show one issue", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output issue details, parent, children, bucket, global database scope, and project identity as JSON"},
 				}},
@@ -466,6 +473,9 @@ func cliReferenceCommands() []cliReferenceCommand {
 					{Flags: "--body -", Description: "Read Markdown body from stdin"},
 					{Flags: "--message <text>", Description: "Use inline Markdown body text"},
 					{Flags: "--json", Description: "Output the edited issue, global database scope, and project identity as JSON"},
+				}},
+				{Name: "retitle", Description: "Replace an issue title", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the retitled issue, global database scope, and project identity as JSON"},
 				}},
 				{Name: "status", Description: "Set an issue status", Options: []cliReferenceOption{
 					{Flags: "--duplicate-of <ref>", Description: "Surviving issue required when status is duplicate"},
@@ -509,6 +519,14 @@ func cliReferenceCommands() []cliReferenceCommand {
 				}},
 				{Name: "render", Description: "Emit a paste-ready PR body", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output the markdown, issue, global database scope, and project identity as JSON"},
+				}},
+				{Name: "identity", Description: "Show, define, or align issue identity and persist it to .agents/loaf.json", Options: []cliReferenceOption{
+					{Flags: "--prefix <prefix>", Description: "Define the issue prefix or Linear team key and persist it to .agents/loaf.json"},
+					{Flags: "--authority <local|linear|github>", Description: "Set issue authority and persist it to .agents/loaf.json"},
+					{Flags: "--align", Description: "Rewrite a leaked LOAF prefix to the project slug"},
+					{Flags: "--all", Description: "With --align, rewrite every leaked project in the global database"},
+					{Flags: "--dry-run", Description: "Rehearse --prefix, --authority, or --align without writing"},
+					{Flags: "--json", Description: "Output identity or rewrite result as JSON"},
 				}},
 				{Name: "export", Description: "Export issues, identity, criteria, claims, and relationships as JSON", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output the export snapshot"},
@@ -948,7 +966,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 		},
 		{
 			Name:        "doctor",
-			Description: "Diagnose Loaf project alignment (symlinks, stale files, version drift)",
+			Description: "Diagnose Loaf project alignment (symlinks, stale files, leftover SQLite work, issue prefix and config)",
 			Options: []cliReferenceOption{
 				{Flags: "--fix", Description: "Offer each safe repair and prompt y/N before applying it"},
 				{Flags: "--force", Description: "With --fix, apply every offered repair without prompting"},
@@ -987,7 +1005,7 @@ The Loaf operating manual for agents: how to discover commands, diagnose project
 		"- Prefer `--json` surfaces when diagnosing: `loaf config check --json`, `loaf state doctor --json`. Parse the structured output instead of scraping human-readable text.",
 		"- Run the deterministic CLI command before hand-editing anything it manages; the command owns its files.",
 		"- Use `--fix` only for safe, mechanical repairs, and review what it changed.",
-		"- Ask the user for project-owned choices — GitHub account, tracker or integration election, which harnesses to install — never guess them.",
+		"- Ask the user for project-owned choices — GitHub account, issue identity (authority and prefix), tracker or integration election, which harnesses to install — never guess them.",
 		"- Never hand-edit Loaf-managed hook files; regenerate them through `loaf build` and `loaf install`.",
 		"- Re-run the relevant check after any change and confirm it passes.",
 		"- Log meaningful decisions to the journal: `loaf journal log \"decision(scope): ...\"`.",

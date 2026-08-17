@@ -30,6 +30,8 @@ const (
 	RepairCategoryCompatibilityExport    = "compatibility-export"
 	RepairCategoryJournalSearch          = "journal-search"
 	RepairCategoryAliasIdentity          = "alias-identity"
+	RepairCategoryLeftoverAbsorb         = "leftover-absorb"
+	RepairCategoryIssueIdentity          = "issue-identity"
 )
 
 const (
@@ -85,13 +87,17 @@ type Status struct {
 	RepairPlan           []RepairAction `json:"repair_plan"`
 }
 
-// InspectOptions selects diagnostics too expensive for the hot path. Every
-// entry here scans whole tables across every project in the global database, so
-// only surfaces that exist to diagnose — `loaf state doctor` — turn them on.
+// InspectOptions selects diagnostics too expensive for the hot path.
+// AliasParity scans whole tables across every project in the global database.
+// LeftoverAbsorb inventories leftover SQLite work for the current project.
+// Only surfaces that exist to diagnose — `loaf state doctor` — turn them on.
 type InspectOptions struct {
 	// AliasParity compares raw entity counts with alias-reachable counts and
 	// looks for dangling aliases, per project and per entity table.
 	AliasParity bool
+	// LeftoverAbsorb inventories leftover SQLite tasks and intents and names
+	// the absorb course of action. Off on `loaf state status`.
+	LeftoverAbsorb bool
 }
 
 // Inspect returns the current state-runtime status without creating files.
@@ -242,6 +248,43 @@ func InspectWithOptions(root project.Root, resolver PathResolver, options Inspec
 			})
 		} else {
 			status.Diagnostics = append(status.Diagnostics, linearDiagnostics...)
+		}
+		if status.ProjectID != "" {
+			prefixDiagnostics, prefixErr := inspectIssuePrefixLeak(context.Background(), store, status.ProjectID)
+			if prefixErr != nil {
+				status.Diagnostics = append(status.Diagnostics, Diagnostic{
+					Severity: "warn",
+					Code:     "issue-prefix-check-unreadable",
+					Category: RepairCategoryIssueIdentity,
+					Message:  prefixErr.Error(),
+				})
+			} else {
+				status.Diagnostics = append(status.Diagnostics, prefixDiagnostics...)
+			}
+			configDiagnostics, configErr := inspectIssuePrefixConfig(context.Background(), store, status.ProjectID)
+			if configErr != nil {
+				status.Diagnostics = append(status.Diagnostics, Diagnostic{
+					Severity: "warn",
+					Code:     IssueConfigUnreadableCode,
+					Category: RepairCategoryIssueIdentity,
+					Message:  configErr.Error(),
+				})
+			} else {
+				status.Diagnostics = append(status.Diagnostics, configDiagnostics...)
+			}
+		}
+		if options.LeftoverAbsorb && status.ProjectID != "" {
+			leftoverDiagnostics, leftoverErr := inspectLeftoverAbsorbWork(context.Background(), store, root)
+			if leftoverErr != nil {
+				status.Diagnostics = append(status.Diagnostics, Diagnostic{
+					Severity: "warn",
+					Code:     LeftoverAbsorbCheckUnreadableCode,
+					Category: RepairCategoryLeftoverAbsorb,
+					Message:  leftoverErr.Error(),
+				})
+			} else {
+				status.Diagnostics = append(status.Diagnostics, leftoverDiagnostics...)
+			}
 		}
 		exportDiagnostics, err := inspectStaleExports(context.Background(), store)
 		if err != nil {
@@ -424,6 +467,88 @@ func RepairPlanForStatus(status Status) []RepairAction {
 				Command:        "loaf state migrate markdown --dry-run",
 				Path:           status.ProjectRoot,
 				Safe:           true,
+			})
+		case IssuePrefixLeakCode:
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "align-issue-prefix",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryIssueIdentity,
+				Description:    "Preview rewriting leaked LOAF issue aliases to the project slug. This is not a mechanical doctor fix.",
+				Command:        IssuePrefixAlignCommand,
+				Path:           status.ProjectRoot,
+				Safe:           false,
+			})
+		case IssuePrefixConfigMissingCode:
+			command, _ := diagnostic.Details["apply_command"].(string)
+			if command == "" {
+				command = IssuePrefixPersistCommand("")
+			}
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "persist-issue-prefix",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryIssueIdentity,
+				Description:    "Persist the materialized issue prefix into .agents/loaf.json. This is not a mechanical doctor fix.",
+				Command:        command,
+				Path:           status.ProjectRoot,
+				Safe:           false,
+			})
+		case IssuePrefixConfigDriftCode:
+			command, _ := diagnostic.Details["preview_command"].(string)
+			if command == "" {
+				command = IssuePrefixPersistCommand("")
+			}
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "apply-issue-prefix-config",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryIssueIdentity,
+				Description:    "Preview applying the loaf.json issue prefix onto SQLite identity. This is not a mechanical doctor fix.",
+				Command:        command,
+				Path:           status.ProjectRoot,
+				Safe:           false,
+			})
+		case IssueAuthorityConfigDriftCode, IssueLinearAuthorityGapCode:
+			command, _ := diagnostic.Details["apply_command"].(string)
+			if command == "" {
+				command = IssueAuthorityCommand(IssueAuthorityLinear)
+			}
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "apply-issue-authority",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryIssueIdentity,
+				Description:    "Set issue authority from .agents/loaf.json. This is not a mechanical doctor fix.",
+				Command:        command,
+				Path:           status.ProjectRoot,
+				Safe:           false,
+			})
+		case IssueLinearPrefixMissingCode:
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "persist-linear-team-key",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryIssueIdentity,
+				Description:    "Record the Linear team key as issue.prefix. This is not a mechanical doctor fix.",
+				Command:        IssuePrefixPersistCommand(""),
+				Path:           status.ProjectRoot,
+				Safe:           false,
+			})
+		case LeftoverOpenWorkCode:
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "preview-leftover-absorb",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryLeftoverAbsorb,
+				Description:    "Preview projecting leftover open SQLite work into issues. Minting is not a mechanical doctor fix.",
+				Command:        LeftoverAbsorbPreviewCommand,
+				Path:           status.ProjectRoot,
+				Safe:           false,
+			})
+		case LeftoverHistoryWorkCode:
+			actions = appendRepairAction(actions, RepairAction{
+				Code:           "preview-leftover-absorb-history",
+				DiagnosticCode: diagnostic.Code,
+				Category:       RepairCategoryLeftoverAbsorb,
+				Description:    "Preview projecting leftover history SQLite work into issues. Minting is not a mechanical doctor fix.",
+				Command:        LeftoverAbsorbHistoryPreviewCommand,
+				Path:           status.ProjectRoot,
+				Safe:           false,
 			})
 		}
 	}
@@ -1503,4 +1628,94 @@ func classifyBehindSchemaTarget(databasePath string) (bool, error) {
 
 func errorsIsNoRows(err error) bool {
 	return errors.Is(err, sql.ErrNoRows)
+}
+
+func inspectLeftoverAbsorbWork(ctx context.Context, store *Store, root project.Root) ([]Diagnostic, error) {
+	report, err := store.leftoverAbsorbInventory(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	return leftoverAbsorbDiagnostics(report), nil
+}
+
+func leftoverAbsorbDiagnostics(report LeftoverAbsorbReport) []Diagnostic {
+	diagnostics := []Diagnostic{}
+	if n := report.OpenActionable(); n > 0 {
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "warn",
+			Code:     LeftoverOpenWorkCode,
+			Category: RepairCategoryLeftoverAbsorb,
+			Policy:   DiagnosticPolicyImportPending,
+			Message:  fmt.Sprintf("%d leftover open SQLite row(s) can be projected with `%s`", n, LeftoverAbsorbPreviewCommand),
+			Details: map[string]any{
+				"absorb":          report.OpenAbsorb,
+				"refuse":          report.OpenRefuse,
+				"preview_command": LeftoverAbsorbPreviewCommand,
+				"apply_command":   LeftoverAbsorbApplyCommand,
+			},
+		})
+	}
+	if report.HistoryFrozen {
+		if report.FrozenHistory > 0 {
+			diagnostics = append(diagnostics, Diagnostic{
+				Severity: "info",
+				Code:     LeftoverHistoryFrozenCode,
+				Category: RepairCategoryLeftoverAbsorb,
+				Message:  fmt.Sprintf("leftover history SQLite work stays frozen until 0.5.0 (LOAF-47) (%d row(s); %d independently created issue(s))", report.FrozenHistory, report.IndependentIssues),
+				Details: map[string]any{
+					"history_rows":       report.FrozenHistory,
+					"independent_issues": report.IndependentIssues,
+					"horizon":            "0.5.0 (LOAF-47)",
+				},
+			})
+		}
+		return diagnostics
+	}
+	if n := report.HistoryActionable(); n > 0 {
+		diagnostics = append(diagnostics, Diagnostic{
+			Severity: "warn",
+			Code:     LeftoverHistoryWorkCode,
+			Category: RepairCategoryLeftoverAbsorb,
+			Policy:   DiagnosticPolicyImportPending,
+			Message:  fmt.Sprintf("%d leftover history SQLite row(s) can be projected with `%s`", n, LeftoverAbsorbHistoryPreviewCommand),
+			Details: map[string]any{
+				"absorb":          report.HistoryAbsorb,
+				"refuse":          report.HistoryRefuse,
+				"preview_command": LeftoverAbsorbHistoryPreviewCommand,
+				"apply_command":   LeftoverAbsorbHistoryApplyCommand,
+			},
+		})
+	}
+	return diagnostics
+}
+
+func inspectIssuePrefixConfig(ctx context.Context, store *Store, projectID string) ([]Diagnostic, error) {
+	report, err := store.issuePrefixConfigReport(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return report.diagnostics(), nil
+}
+
+func inspectIssuePrefixLeak(ctx context.Context, store *Store, projectID string) ([]Diagnostic, error) {
+	from, to, leaked, err := store.issuePrefixLeak(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if !leaked {
+		return nil, nil
+	}
+	return []Diagnostic{{
+		Severity: "warn",
+		Code:     IssuePrefixLeakCode,
+		Category: RepairCategoryIssueIdentity,
+		Policy:   DiagnosticPolicyWarningDrift,
+		Message:  fmt.Sprintf("issue prefix %s does not match project slug %s; preview with `%s`", from, to, IssuePrefixAlignCommand),
+		Details: map[string]any{
+			"from_prefix":     from,
+			"to_prefix":       to,
+			"preview_command": IssuePrefixAlignCommand,
+			"apply_command":   "loaf issue identity --align",
+		},
+	}}, nil
 }
