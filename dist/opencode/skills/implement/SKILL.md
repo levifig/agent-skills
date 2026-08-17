@@ -9,7 +9,7 @@ description: >-
   agent spawn plans and progress tracking. Not for shaping or decomposition (use
   shape), research, or review.
 subtask: false
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Implement

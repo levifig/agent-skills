@@ -8,7 +8,7 @@ description: >-
   architecture).
 user-invocable: true
 argument-hint: '[issue ref or topic]'
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Reflect

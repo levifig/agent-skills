@@ -10,7 +10,7 @@ description: >-
   shape), research, or review.
 user-invocable: true
 argument-hint: '[LOAF-42 | next | description]'
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Implement

@@ -12,7 +12,7 @@ description: >-
   (agent technique: explore / brainstorm — user entry routes to pitch).
 user-invocable: true
 argument-hint: '[messy input to shape into a Change]'
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Shape

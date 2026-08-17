@@ -6,7 +6,7 @@ description: >-
   covers: field, and the review workflow. Not for retrieval or search (use QMD
   directly), architectural decisions (use ADRs), or agent instructions (use
   AGENTS.md).
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Knowledge Base

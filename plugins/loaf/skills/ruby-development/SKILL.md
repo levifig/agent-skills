@@ -8,7 +8,7 @@ description: >-
   typescript-development).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Bash, Glob, Grep'
-version: 0.2.21
+version: 0.3.0
 ---
 
 # Ruby Development
