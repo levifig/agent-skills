@@ -2,11 +2,16 @@ package cli
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/levifig/loaf/internal/project"
+	"github.com/levifig/loaf/internal/state"
 )
 
 type doctorStatus string
@@ -37,6 +42,7 @@ type doctorContext struct {
 	// the running loaf read it here; an empty value means provenance could
 	// not be resolved and those checks must skip rather than guess.
 	cliVersion string
+	stateHome  string
 }
 
 type doctorCheck struct {
@@ -111,7 +117,7 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 		cliVersion = packageVersion(distributionRoot)
 	}
 	if options.jsonOutput {
-		result := runDoctorChecksJSON(doctorContext{projectRoot: runtimeRoot, cliVersion: cliVersion}, cliVersion)
+		result := runDoctorChecksJSON(doctorContext{projectRoot: runtimeRoot, cliVersion: cliVersion, stateHome: r.StateHome}, cliVersion)
 		if err := writeJSON(out, result); err != nil {
 			return err
 		}
@@ -120,7 +126,7 @@ func (r Runner) runDoctor(args []string, out io.Writer, runtimeRoot string) erro
 		}
 		return nil
 	}
-	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot, cliVersion: cliVersion}, options, cliVersion, r.Stdin)
+	report := runDoctorChecks(out, doctorContext{projectRoot: runtimeRoot, cliVersion: cliVersion, stateHome: r.StateHome}, options, cliVersion, r.Stdin)
 	if report.Failures > 0 {
 		return ExitError{Code: 1}
 	}
@@ -192,7 +198,7 @@ func parseLoafDoctorArgs(args []string) (doctorOptions, error) {
 
 func writeDoctorHelp(out io.Writer) {
 	fmt.Fprint(out, "Usage: loaf doctor [--fix [--force]] [--verbose] [--json]\n\n")
-	fmt.Fprint(out, "Diagnose Loaf project alignment (symlinks, stale files, fenced content)\n\n")
+	fmt.Fprint(out, "Diagnose Loaf project alignment (symlinks, stale files, fenced content, leftover SQLite work, leaked issue prefixes)\n\n")
 	fmt.Fprint(out, "Options:\n")
 	fmt.Fprint(out, "  --fix       Offer each safe repair and prompt y/N before applying it\n")
 	fmt.Fprint(out, "  --force     With --fix, apply every offered repair without prompting\n")
@@ -303,6 +309,9 @@ func doctorChecks() []doctorCheck {
 		checkFencedContent(),
 		checkDuplicateFencedSections(),
 		checkHarnessContentDrift(),
+		checkLeftoverAbsorbWork(),
+		checkIssuePrefixLeak(),
+		checkIssuePrefixConfig(),
 	}
 }
 
@@ -341,6 +350,135 @@ func checkHarnessContentDrift() doctorCheck {
 			}
 		},
 	}
+}
+
+func checkLeftoverAbsorbWork() doctorCheck {
+	return doctorCheck{
+		Name:        "leftover-absorb",
+		Description: "Leftover SQLite work has a named absorb course of action",
+		Run: func(ctx doctorContext) doctorResult {
+			root, err := project.ResolveRoot(ctx.projectRoot)
+			if err != nil {
+				return doctorResult{Status: doctorSkip, Message: "Project root is not resolvable"}
+			}
+			report, err := state.ReportLeftoverAbsorb(context.Background(), root, state.PathResolver{StateHome: ctx.stateHome})
+			if state.LeftoverAbsorbUnavailable(err) {
+				return doctorResult{Status: doctorSkip, Message: leftoverAbsorbSkipMessage(err)}
+			}
+			if err != nil {
+				return doctorResult{
+					Status:  doctorWarn,
+					Message: "Could not inventory leftover SQLite work",
+					Detail:  err.Error(),
+				}
+			}
+			return leftoverAbsorbDoctorResult(report)
+		},
+	}
+}
+
+func checkIssuePrefixLeak() doctorCheck {
+	return doctorCheck{
+		Name:        "issue-prefix",
+		Description: "Local issue prefix matches the project slug",
+		Run: func(ctx doctorContext) doctorResult {
+			root, err := project.ResolveRoot(ctx.projectRoot)
+			if err != nil {
+				return doctorResult{Status: doctorSkip, Message: "Project root is not resolvable"}
+			}
+			from, to, leaked, err := state.IssuePrefixLeak(context.Background(), root, state.PathResolver{StateHome: ctx.stateHome})
+			if state.LeftoverAbsorbUnavailable(err) {
+				return doctorResult{Status: doctorSkip, Message: leftoverAbsorbSkipMessage(err)}
+			}
+			if err != nil {
+				return doctorResult{Status: doctorWarn, Message: "Could not inspect issue prefix", Detail: err.Error()}
+			}
+			if leaked {
+				return doctorResult{
+					Status:  doctorWarn,
+					Message: fmt.Sprintf("Issue prefix %s does not match project slug %s; preview with `%s`", from, to, state.IssuePrefixAlignCommand),
+					Detail:  fmt.Sprintf("Apply: loaf issue identity --align"),
+				}
+			}
+			return doctorResult{Status: doctorPass, Message: "No leaked LOAF issue prefix"}
+		},
+	}
+}
+
+func checkIssuePrefixConfig() doctorCheck {
+	return doctorCheck{
+		Name:        "issue-config",
+		Description: "Issue identity is recorded in .agents/loaf.json",
+		Run: func(ctx doctorContext) doctorResult {
+			root, err := project.ResolveRoot(ctx.projectRoot)
+			if err != nil {
+				return doctorResult{Status: doctorSkip, Message: "Project root is not resolvable"}
+			}
+			report, err := state.ReportIssuePrefixConfig(context.Background(), root, state.PathResolver{StateHome: ctx.stateHome})
+			if state.LeftoverAbsorbUnavailable(err) {
+				return doctorResult{Status: doctorSkip, Message: leftoverAbsorbSkipMessage(err)}
+			}
+			if err != nil {
+				return doctorResult{Status: doctorWarn, Message: "Could not inspect issue config", Detail: err.Error()}
+			}
+			message, detail := report.DoctorMessage()
+			if message != "" {
+				return doctorResult{Status: doctorWarn, Message: message, Detail: detail}
+			}
+			if report.HasIdentity {
+				return doctorResult{Status: doctorPass, Message: "Issue identity is recorded in .agents/loaf.json"}
+			}
+			return doctorResult{Status: doctorPass, Message: "No materialized issue identity"}
+		},
+	}
+}
+
+func leftoverAbsorbSkipMessage(err error) string {
+	var unregistered *state.UnregisteredProjectIdentityError
+	if errors.As(err, &unregistered) {
+		return "Project is not registered"
+	}
+	return "No initialized SQLite state"
+}
+
+func leftoverAbsorbDoctorResult(report state.LeftoverAbsorbReport) doctorResult {
+	open := report.OpenActionable()
+	history := report.HistoryActionable()
+	if open > 0 {
+		detail := []string{fmt.Sprintf("Preview: %s", state.LeftoverAbsorbPreviewCommand)}
+		if report.OpenRefuse > 0 {
+			detail = append(detail, fmt.Sprintf("%d row(s) are refused (including change-local task files)", report.OpenRefuse))
+		}
+		if history > 0 {
+			detail = append(detail, fmt.Sprintf("%d leftover history row(s): %s", history, state.LeftoverAbsorbHistoryPreviewCommand))
+		}
+		if report.HistoryFrozen && report.FrozenHistory > 0 {
+			detail = append(detail, fmt.Sprintf("History stays frozen until 0.5.0 (LOAF-47) (%d row(s), %d independently created issue(s))", report.FrozenHistory, report.IndependentIssues))
+		}
+		return doctorResult{
+			Status:  doctorWarn,
+			Message: fmt.Sprintf("%d leftover open SQLite row(s); preview with `%s`", open, state.LeftoverAbsorbPreviewCommand),
+			Detail:  strings.Join(detail, "\n"),
+		}
+	}
+	if history > 0 {
+		detail := []string{fmt.Sprintf("Preview: %s", state.LeftoverAbsorbHistoryPreviewCommand)}
+		if report.HistoryRefuse > 0 {
+			detail = append(detail, fmt.Sprintf("%d row(s) are refused (including change-local task files)", report.HistoryRefuse))
+		}
+		return doctorResult{
+			Status:  doctorWarn,
+			Message: fmt.Sprintf("%d leftover history SQLite row(s); preview with `%s`", history, state.LeftoverAbsorbHistoryPreviewCommand),
+			Detail:  strings.Join(detail, "\n"),
+		}
+	}
+	if report.HistoryFrozen {
+		return doctorResult{
+			Status:  doctorPass,
+			Message: "No leftover open SQLite work; history stays frozen until 0.5.0 (LOAF-47)",
+		}
+	}
+	return doctorResult{Status: doctorPass, Message: "No leftover SQLite work"}
 }
 
 func checkLegacyAgentsFile() doctorCheck {

@@ -18,6 +18,7 @@ const (
 
 	intentAbsorbReasonPrefix = "absorbed into "
 	intentSupersedeReason    = "superseded by loaf issue absorb --dismiss"
+	absorbProvenancePrefix   = "Absorbed from "
 )
 
 // AbsorbOptions describes loaf issue absorb.
@@ -28,20 +29,27 @@ type AbsorbOptions struct {
 	// issue_identity.next_number. Linear mint uses this so the tracker key
 	// becomes the alias. Ignored when Dismiss is true.
 	Alias string
+	// History allows done and archived leftover tasks. Single-ref absorb
+	// never sets this; the project-wide projector does when --history is on.
+	History bool
+	// IssueStatus, when set, is applied in the same transaction as mint.
+	// Empty or triage leaves the create default. Cancelled archives the issue.
+	IssueStatus string
 }
 
 // AbsorbSource is the leftover task or intent being absorbed or dismissed.
 type AbsorbSource struct {
-	Kind        string        `json:"kind"`
-	ID          string        `json:"id"`
-	Alias       string        `json:"alias,omitempty"`
-	Title       string        `json:"title"`
-	Status      string        `json:"status,omitempty"`
-	Priority    string        `json:"priority,omitempty"`
-	Disposition string        `json:"disposition,omitempty"`
-	Body        string        `json:"body,omitempty"`
-	Sources     []TraceSource `json:"sources,omitempty"`
-	DisplayRef  string        `json:"display_ref"`
+	Kind              string        `json:"kind"`
+	ID                string        `json:"id"`
+	Alias             string        `json:"alias,omitempty"`
+	Title             string        `json:"title"`
+	Status            string        `json:"status,omitempty"`
+	Priority          string        `json:"priority,omitempty"`
+	Disposition       string        `json:"disposition,omitempty"`
+	DispositionReason string        `json:"disposition_reason,omitempty"`
+	Body              string        `json:"body,omitempty"`
+	Sources           []TraceSource `json:"sources,omitempty"`
+	DisplayRef        string        `json:"display_ref"`
 }
 
 // AbsorbResult is the mutation envelope for loaf issue absorb.
@@ -81,7 +89,7 @@ func IsChangeLocalTaskPath(raw string) bool {
 func FormatAbsorbProvenance(source AbsorbSource) string {
 	display := firstNonEmpty(source.Alias, source.ID)
 	var b strings.Builder
-	fmt.Fprintf(&b, "Absorbed from %s (%s:%s).", display, source.Kind, source.ID)
+	fmt.Fprintf(&b, "%s%s (%s:%s).", absorbProvenancePrefix, display, source.Kind, source.ID)
 	if source.Title != "" {
 		fmt.Fprintf(&b, "\n\n- Title: %s", source.Title)
 	}
@@ -111,7 +119,7 @@ func LookupAbsorbSource(ctx context.Context, root project.Root, resolver PathRes
 	if err != nil {
 		return AbsorbSource{}, err
 	}
-	return store.lookupAbsorbSource(ctx, root, projectID, ref)
+	return store.lookupAbsorbSource(ctx, root, projectID, ref, false)
 }
 
 // Absorb mints (unless dismissed) an issue from a leftover task or intent and
@@ -135,8 +143,11 @@ func (s *Store) Absorb(ctx context.Context, root project.Root, options AbsorbOpt
 	if err != nil {
 		return AbsorbResult{}, err
 	}
-	source, err := s.lookupAbsorbSource(ctx, root, projectID, options.Ref)
+	source, err := s.lookupAbsorbSource(ctx, root, projectID, options.Ref, options.History)
 	if err != nil {
+		return AbsorbResult{}, err
+	}
+	if err := validateAbsorbIssueStatus(options.IssueStatus); err != nil {
 		return AbsorbResult{}, err
 	}
 
@@ -162,11 +173,15 @@ func (s *Store) Absorb(ctx context.Context, root project.Root, options AbsorbOpt
 		if err != nil {
 			return AbsorbResult{}, err
 		}
+		created, err = applyAbsorbIssueStatusTx(ctx, tx, projectID, created, options.IssueStatus, now)
+		if err != nil {
+			return AbsorbResult{}, err
+		}
 		issue = &created
 	}
 
 	note := absorbArchiveNote(disposition, issue)
-	if err := archiveAbsorbSourceTx(ctx, tx, projectID, source, note, now); err != nil {
+	if err := archiveAbsorbSourceTx(ctx, tx, projectID, source, note, now, options.History); err != nil {
 		return AbsorbResult{}, err
 	}
 
@@ -193,7 +208,7 @@ func (s *Store) Absorb(ctx context.Context, root project.Root, options AbsorbOpt
 	}, nil
 }
 
-func (s *Store) lookupAbsorbSource(ctx context.Context, root project.Root, projectID, ref string) (AbsorbSource, error) {
+func (s *Store) lookupAbsorbSource(ctx context.Context, root project.Root, projectID, ref string, history bool) (AbsorbSource, error) {
 	trimmed := strings.TrimSpace(ref)
 	if trimmed == "" {
 		return AbsorbSource{}, fmt.Errorf("issue absorb requires a task or intent ref")
@@ -210,7 +225,7 @@ func (s *Store) lookupAbsorbSource(ctx context.Context, root project.Root, proje
 	}
 	switch entity.Kind {
 	case "task":
-		return s.absorbSourceFromTask(ctx, root, projectID, entity)
+		return s.absorbSourceFromTask(ctx, root, projectID, entity, history)
 	case "intent":
 		return s.absorbSourceFromIntent(ctx, projectID, entity)
 	default:
@@ -218,20 +233,35 @@ func (s *Store) lookupAbsorbSource(ctx context.Context, root project.Root, proje
 	}
 }
 
-func (s *Store) absorbSourceFromTask(ctx context.Context, root project.Root, projectID string, entity TraceEntity) (AbsorbSource, error) {
+func (s *Store) absorbSourceFromTask(ctx context.Context, root project.Root, projectID string, entity TraceEntity, history bool) (AbsorbSource, error) {
+	source, err := s.loadAbsorbTaskSource(ctx, root, projectID, entity)
+	if err != nil {
+		return AbsorbSource{}, err
+	}
+	if absorbSourceIsChangeLocal(source) {
+		return AbsorbSource{}, fmt.Errorf("issue absorb refuses change-local task files under docs/changes/**/tasks/")
+	}
+	if err := refuseAbsorbTaskStatus(source.DisplayRef, source.Status, history); err != nil {
+		return AbsorbSource{}, err
+	}
+	if history {
+		note, err := s.latestTaskAbsorbNote(ctx, projectID, source.ID)
+		if err != nil {
+			return AbsorbSource{}, err
+		}
+		if intentAbsorbAlreadyTerminal(note) {
+			return AbsorbSource{}, fmt.Errorf("issue absorb source %s is already %s", source.DisplayRef, intentAbsorbDispositionLabel(note))
+		}
+	}
+	return source, nil
+}
+
+func (s *Store) loadAbsorbTaskSource(ctx context.Context, root project.Root, projectID string, entity TraceEntity) (AbsorbSource, error) {
 	detail, err := s.taskDetail(ctx, root, projectID, entity)
 	if err != nil {
 		return AbsorbSource{}, err
 	}
-	for _, source := range detail.Sources {
-		if IsChangeLocalTaskPath(source.Path) {
-			return AbsorbSource{}, fmt.Errorf("issue absorb refuses change-local task files under docs/changes/**/tasks/")
-		}
-	}
 	display := firstNonEmpty(detail.Alias, detail.ID)
-	if err := refuseNonOpenAbsorbTask(display, detail.Status); err != nil {
-		return AbsorbSource{}, err
-	}
 	return AbsorbSource{
 		Kind:       "task",
 		ID:         detail.ID,
@@ -246,34 +276,47 @@ func (s *Store) absorbSourceFromTask(ctx context.Context, root project.Root, pro
 }
 
 func (s *Store) absorbSourceFromIntent(ctx context.Context, projectID string, entity TraceEntity) (AbsorbSource, error) {
+	source, err := s.loadAbsorbIntentSource(ctx, projectID, entity.ID)
+	if err != nil {
+		return AbsorbSource{}, err
+	}
+	if intentAbsorbAlreadyTerminal(source.DispositionReason) {
+		return AbsorbSource{}, fmt.Errorf("issue absorb source %s is already %s", source.DisplayRef, intentAbsorbDispositionLabel(source.DispositionReason))
+	}
+	return source, nil
+}
+
+func (s *Store) loadAbsorbIntentSource(ctx context.Context, projectID, intentID string) (AbsorbSource, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return AbsorbSource{}, fmt.Errorf("begin intent absorb lookup: %w", err)
 	}
 	defer tx.Rollback()
-	detail, err := loadIntentDetailTx(ctx, tx, projectID, entity.ID)
+	return loadAbsorbIntentSourceTx(ctx, tx, projectID, intentID)
+}
+
+func loadAbsorbIntentSourceTx(ctx context.Context, tx *sql.Tx, projectID, intentID string) (AbsorbSource, error) {
+	detail, err := loadIntentDetailTx(ctx, tx, projectID, intentID)
 	if err != nil {
 		return AbsorbSource{}, err
 	}
 	display := firstNonEmpty(detail.Alias, detail.ID)
-	if intentAbsorbAlreadyTerminal(detail.DispositionReason) {
-		return AbsorbSource{}, fmt.Errorf("issue absorb source %s is already %s", display, intentAbsorbDispositionLabel(detail.DispositionReason))
-	}
 	return AbsorbSource{
-		Kind:        "intent",
-		ID:          detail.ID,
-		Alias:       detail.Alias,
-		Title:       detail.Title,
-		Disposition: detail.Disposition,
-		Body:        detail.Body,
-		DisplayRef:  display,
+		Kind:              "intent",
+		ID:                detail.ID,
+		Alias:             detail.Alias,
+		Title:             detail.Title,
+		Disposition:       detail.Disposition,
+		DispositionReason: detail.DispositionReason,
+		Body:              detail.Body,
+		DisplayRef:        display,
 	}, nil
 }
 
-func archiveAbsorbSourceTx(ctx context.Context, tx *sql.Tx, projectID string, source AbsorbSource, note, now string) error {
+func archiveAbsorbSourceTx(ctx context.Context, tx *sql.Tx, projectID string, source AbsorbSource, note, now string, history bool) error {
 	switch source.Kind {
 	case "task":
-		return archiveAbsorbTaskTx(ctx, tx, projectID, source, note, now)
+		return archiveAbsorbTaskTx(ctx, tx, projectID, source, note, now, history)
 	case "intent":
 		return archiveAbsorbIntentTx(ctx, tx, projectID, source, note, now)
 	default:
@@ -281,7 +324,7 @@ func archiveAbsorbSourceTx(ctx context.Context, tx *sql.Tx, projectID string, so
 	}
 }
 
-func archiveAbsorbTaskTx(ctx context.Context, tx *sql.Tx, projectID string, source AbsorbSource, note, now string) error {
+func archiveAbsorbTaskTx(ctx context.Context, tx *sql.Tx, projectID string, source AbsorbSource, note, now string, history bool) error {
 	var previous string
 	err := tx.QueryRowContext(ctx, `SELECT status FROM tasks WHERE project_id = ? AND id = ?`, projectID, source.ID).Scan(&previous)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -290,11 +333,20 @@ func archiveAbsorbTaskTx(ctx context.Context, tx *sql.Tx, projectID string, sour
 	if err != nil {
 		return fmt.Errorf("read task status: %w", err)
 	}
-	if err := refuseNonOpenAbsorbTask(source.DisplayRef, previous); err != nil {
+	if err := refuseAbsorbTaskStatus(source.DisplayRef, previous, history); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE tasks SET status = ?, updated_at = ? WHERE project_id = ? AND id = ?`, LifecycleStatusArchived, now, projectID, source.ID); err != nil {
-		return fmt.Errorf("archive absorbed task: %w", err)
+	existingNote, err := latestTaskAbsorbNoteTx(ctx, tx, projectID, source.ID)
+	if err != nil {
+		return err
+	}
+	if intentAbsorbAlreadyTerminal(existingNote) {
+		return fmt.Errorf("issue absorb source %s is already %s", source.DisplayRef, intentAbsorbDispositionLabel(existingNote))
+	}
+	if !LifecycleStatusMatches(LifecycleEntityTask, previous, LifecycleStatusArchived) {
+		if _, err := tx.ExecContext(ctx, `UPDATE tasks SET status = ?, updated_at = ? WHERE project_id = ? AND id = ?`, LifecycleStatusArchived, now, projectID, source.ID); err != nil {
+			return fmt.Errorf("archive absorbed task: %w", err)
+		}
 	}
 	eventID := stableMigrationID("event", projectID, "task", source.ID, "status", previous, LifecycleStatusArchived, note)
 	_, err = tx.ExecContext(ctx, `
@@ -355,12 +407,104 @@ func leftoverOpenTaskStatus(status string) bool {
 	return false
 }
 
-func refuseNonOpenAbsorbTask(display, status string) error {
+func leftoverHistoryTaskStatus(status string) bool {
+	return LifecycleStatusMatches(LifecycleEntityTask, status, LifecycleStatusDone) ||
+		LifecycleStatusMatches(LifecycleEntityTask, status, LifecycleStatusArchived)
+}
+
+func leftoverNonTerminalIntent(disposition string) bool {
+	return strings.TrimSpace(disposition) != "resolved"
+}
+
+func refuseAbsorbTaskStatus(display, status string, history bool) error {
 	if leftoverOpenTaskStatus(status) {
+		return nil
+	}
+	if history && leftoverHistoryTaskStatus(status) {
 		return nil
 	}
 	shown := LifecycleStatusForDisplay(LifecycleEntityTask, status)
 	return fmt.Errorf("issue absorb source %s is not leftover open work (status: %s)", display, shown)
+}
+
+func absorbSourceIsChangeLocal(source AbsorbSource) bool {
+	if IsChangeLocalTaskPath(source.DisplayRef) {
+		return true
+	}
+	for _, item := range source.Sources {
+		if IsChangeLocalTaskPath(item.Path) {
+			return true
+		}
+	}
+	return false
+}
+
+func validateAbsorbIssueStatus(status string) error {
+	switch strings.TrimSpace(status) {
+	case "", IssueStatusTriage, IssueStatusBacklog, IssueStatusTodo, IssueStatusDone, IssueStatusCancelled:
+		return nil
+	default:
+		return fmt.Errorf("issue absorb cannot mint status %s", strings.TrimSpace(status))
+	}
+}
+
+func applyAbsorbIssueStatusTx(ctx context.Context, tx *sql.Tx, projectID string, issue Issue, status, now string) (Issue, error) {
+	status = strings.TrimSpace(status)
+	if status == "" || status == IssueStatusTriage {
+		return issue, nil
+	}
+	if err := validateAbsorbIssueStatus(status); err != nil {
+		return Issue{}, err
+	}
+	if status == IssueStatusCancelled {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE issues SET status = ?, archived_at = ?, updated_at = ? WHERE project_id = ? AND id = ?
+`, status, now, now, projectID, issue.ID); err != nil {
+			return Issue{}, &IssueTransactionError{Stage: "absorb status", Err: err}
+		}
+	} else if _, err := tx.ExecContext(ctx, `
+UPDATE issues SET status = ?, updated_at = ? WHERE project_id = ? AND id = ?
+`, status, now, projectID, issue.ID); err != nil {
+		return Issue{}, &IssueTransactionError{Stage: "absorb status", Err: err}
+	}
+	if _, err := insertIssueStatusEventTx(ctx, tx, projectID, issue.ID, IssueStatusTriage, status, "recorded by issue absorb", now); err != nil {
+		return Issue{}, err
+	}
+	return loadIssueTx(ctx, tx, projectID, issue.ID)
+}
+
+func (s *Store) latestTaskAbsorbNote(ctx context.Context, projectID, taskID string) (string, error) {
+	var note sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+SELECT note FROM events
+WHERE project_id = ? AND entity_kind = 'task' AND entity_id = ? AND event_type = 'status_changed'
+ORDER BY created_at DESC, rowid DESC
+LIMIT 1
+`, projectID, taskID).Scan(&note)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read task absorb note: %w", err)
+	}
+	return note.String, nil
+}
+
+func latestTaskAbsorbNoteTx(ctx context.Context, tx *sql.Tx, projectID, taskID string) (string, error) {
+	var note sql.NullString
+	err := tx.QueryRowContext(ctx, `
+SELECT note FROM events
+WHERE project_id = ? AND entity_kind = 'task' AND entity_id = ? AND event_type = 'status_changed'
+ORDER BY created_at DESC, rowid DESC
+LIMIT 1
+`, projectID, taskID).Scan(&note)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read task absorb note: %w", err)
+	}
+	return note.String, nil
 }
 
 func intentAbsorbAlreadyTerminal(reason string) bool {

@@ -1,6 +1,10 @@
 {
   "version": "1.0.0",
   "initialized": "2026-07-06T22:22:46Z",
+  "issue": {
+    "authority": "local",
+    "prefix": "LOAF"
+  },
   "knowledge": {
     "local": [
       "docs/knowledge",

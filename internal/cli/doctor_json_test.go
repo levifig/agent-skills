@@ -14,6 +14,8 @@ import (
 
 func doctorFixtureProject(t *testing.T) string {
 	t.Helper()
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".agents"), 0o755); err != nil {
 		t.Fatalf("mkdir .agents: %v", err)
@@ -99,6 +101,15 @@ func TestDoctorJSONMatchesHumanChecksAndNeverMutates(t *testing.T) {
 	}
 	if !names["fenced-content"] {
 		t.Fatal("doctor JSON missing fenced-content check")
+	}
+	if !names["leftover-absorb"] {
+		t.Fatal("doctor JSON missing leftover-absorb check")
+	}
+	if !names["issue-prefix"] {
+		t.Fatal("doctor JSON missing issue-prefix check")
+	}
+	if !names["issue-config"] {
+		t.Fatal("doctor JSON missing issue-config check")
 	}
 	if names["fenced-version"] {
 		t.Fatal("doctor JSON still publishes retired fenced-version check")

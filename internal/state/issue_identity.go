@@ -17,7 +17,14 @@ const (
 	IssueAuthorityGitHub = "github"
 
 	DefaultIssueAuthority = IssueAuthorityLocal
-	DefaultIssuePrefix    = "LOAF"
+	// DefaultIssuePrefix is the fallback when a project slug cannot form a
+	// valid prefix. A project named "loaf" also derives LOAF. Other projects
+	// must not materialize this default.
+	DefaultIssuePrefix = "LOAF"
+
+	IssuePrefixLeakCode        = "issue-prefix-default-leak"
+	IssuePrefixAlignCommand    = "loaf issue identity --align --dry-run"
+	IssuePrefixAlignAllCommand = "loaf issue identity --align --all --dry-run"
 )
 
 // IssueIdentity is the per-project authority and local-number counter.
@@ -70,8 +77,8 @@ func (s *Store) LookupIssueIdentity(ctx context.Context, root project.Root) (Iss
 	return identity, true, nil
 }
 
-// GetIssueIdentity returns the project's authority row, materializing the
-// local/LOAF default when none has been written yet.
+// GetIssueIdentity returns the project's authority row, materializing a
+// local identity from the project slug when none has been written yet.
 func GetIssueIdentity(ctx context.Context, root project.Root, resolver PathResolver) (IssueIdentity, error) {
 	store, err := openProjectStoreMutateExisting(ctx, root, resolver)
 	if err != nil {
@@ -130,6 +137,13 @@ func (s *Store) SetIssueIdentity(ctx context.Context, root project.Root, options
 	defer tx.Rollback()
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if prefix == "" {
+		derived, deriveErr := derivedIssuePrefixTx(ctx, tx, projectID)
+		if deriveErr != nil {
+			return IssueIdentity{}, deriveErr
+		}
+		prefix = derived
+	}
 	_, err = loadIssueIdentityTx(ctx, tx, projectID)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -163,22 +177,45 @@ UPDATE issue_identity SET authority = ?, prefix = ?, updated_at = ? WHERE projec
 	return identity, nil
 }
 
+func normalizeIssueAuthorityValue(authority string) (string, error) {
+	authority = strings.ToLower(strings.TrimSpace(authority))
+	if authority == "" {
+		return "", &IssueValidationError{Field: "authority", Err: fmt.Errorf("must be local, linear, or github")}
+	}
+	if authority != IssueAuthorityLocal && authority != IssueAuthorityLinear && authority != IssueAuthorityGitHub {
+		return "", &IssueValidationError{Field: "authority", Err: fmt.Errorf("must be local, linear, or github")}
+	}
+	return authority, nil
+}
+
 func normalizeIssueIdentity(options IssueIdentityOptions) (string, string, error) {
 	authority := strings.TrimSpace(options.Authority)
 	if authority == "" {
 		authority = DefaultIssueAuthority
-	}
-	if authority != IssueAuthorityLocal && authority != IssueAuthorityLinear && authority != IssueAuthorityGitHub {
-		return "", "", &IssueValidationError{Field: "authority", Err: fmt.Errorf("must be local, linear, or github")}
+	} else {
+		normalized, err := normalizeIssueAuthorityValue(authority)
+		if err != nil {
+			return "", "", err
+		}
+		authority = normalized
 	}
 	prefix := strings.TrimSpace(options.Prefix)
-	if prefix == "" {
-		prefix = DefaultIssuePrefix
-	}
-	if err := validateIssuePrefix(prefix); err != nil {
-		return "", "", err
+	if prefix != "" {
+		normalized, err := normalizeStoredIssuePrefix(prefix)
+		if err != nil {
+			return "", "", err
+		}
+		prefix = normalized
 	}
 	return authority, prefix, nil
+}
+
+func normalizeStoredIssuePrefix(prefix string) (string, error) {
+	prefix = strings.ToUpper(strings.TrimSpace(prefix))
+	if err := validateIssuePrefix(prefix); err != nil {
+		return "", err
+	}
+	return prefix, nil
 }
 
 func validateIssuePrefix(prefix string) error {
@@ -217,10 +254,14 @@ func ensureIssueIdentityTx(ctx context.Context, tx *sql.Tx, projectID, now strin
 	if err != nil {
 		return IssueIdentity{}, &IssueTransactionError{Stage: "id", Err: err}
 	}
+	prefix, authority, err := resolveIssueIdentityDefaultsTx(ctx, tx, projectID)
+	if err != nil {
+		return IssueIdentity{}, err
+	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO issue_identity (id, project_id, authority, prefix, next_number, created_at, updated_at)
 VALUES (?, ?, ?, ?, 1, ?, ?)
-`, id, projectID, DefaultIssueAuthority, DefaultIssuePrefix, now, now); err != nil {
+`, id, projectID, authority, prefix, now, now); err != nil {
 		return IssueIdentity{}, &IssueTransactionError{Stage: "identity", Err: err}
 	}
 	return loadIssueIdentityTx(ctx, tx, projectID)

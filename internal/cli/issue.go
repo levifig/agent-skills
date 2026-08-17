@@ -65,6 +65,7 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		"start":     writeIssueStartHelp,
 		"stop":      writeIssueStopHelp,
 		"edit":      writeIssueEditHelp,
+		"retitle":   writeIssueRetitleHelp,
 		"status":    writeIssueStatusHelp,
 		"dod":       writeIssueDodHelp,
 		"promote":   writeIssuePromoteHelp,
@@ -73,6 +74,7 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		"bucket":    writeIssueBucketHelp,
 		"link":      writeIssueLinkHelp,
 		"render":    writeIssueRenderHelp,
+		"identity":  writeIssueIdentityHelp,
 		"export":    writeIssueExportHelp,
 		"pull":      writeIssuePullHelp,
 		"push":      writeIssuePushHelp,
@@ -108,6 +110,8 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		return r.runIssueStop(args[1:], out, runtime)
 	case "edit":
 		return r.runIssueEdit(args[1:], out, runtime)
+	case "retitle":
+		return r.runIssueRetitle(args[1:], out, runtime)
 	case "status":
 		return r.runIssueStatus(args[1:], out, runtime)
 	case "dod":
@@ -124,6 +128,8 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 		return r.runIssueLink(args[1:], out, runtime)
 	case "render":
 		return r.runIssueRender(args[1:], out, runtime)
+	case "identity":
+		return r.runIssueIdentity(args[1:], out, runtime)
 	case "export":
 		return r.runIssueExport(args[1:], out, runtime)
 	case "pull":
@@ -140,7 +146,7 @@ func (r Runner) runIssue(args []string, out io.Writer, runtime state.Runtime) er
 func writeIssueHelp(out io.Writer) {
 	writeCommandGroupHelp(out, "loaf issue <subcommand> [options]", "Manage issues in native SQLite state.", []subcommandHelpItem{
 		{Name: "new", Summary: "Create an issue"},
-		{Name: "absorb", Summary: "Mint an issue from a leftover task or intent, or dismiss the source"},
+		{Name: "absorb", Summary: "Mint an issue from leftover SQLite work, or dismiss the source"},
 		{Name: "show", Summary: "Show one issue"},
 		{Name: "list", Summary: "List project issues"},
 		{Name: "tree", Summary: "Print a recursive issue tree"},
@@ -148,6 +154,7 @@ func writeIssueHelp(out io.Writer) {
 		{Name: "start", Summary: "Create a branch and worktree for an issue"},
 		{Name: "stop", Summary: "Remove an issue worktree and clear the started workspace"},
 		{Name: "edit", Summary: "Replace an issue body"},
+		{Name: "retitle", Summary: "Replace an issue title"},
 		{Name: "status", Summary: "Set an issue status"},
 		{Name: "dod", Summary: "Manage definition-of-done criteria"},
 		{Name: "promote", Summary: "Promote a criterion into a child issue"},
@@ -156,6 +163,7 @@ func writeIssueHelp(out io.Writer) {
 		{Name: "bucket", Summary: "Set an advisory Now/Next/Later label"},
 		{Name: "link", Summary: "Create or remove an issue relationship"},
 		{Name: "render", Summary: "Emit a paste-ready PR body"},
+		{Name: "identity", Summary: "Show, define, or align the local issue prefix"},
 		{Name: "export", Summary: "Export issues, identity, criteria, claims, and relationships as JSON"},
 		{Name: "pull", Summary: "Adopt an existing Linear issue"},
 		{Name: "push", Summary: "Write the local render and status to Linear"},

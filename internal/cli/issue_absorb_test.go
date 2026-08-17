@@ -332,3 +332,144 @@ func attachCLITaskSource(t *testing.T, workingDir, stateHome, taskID, sourcePath
 		t.Fatalf("set body_source_id: %v", err)
 	}
 }
+
+func decodeAbsorbProjection(t *testing.T, data string) state.AbsorbProjectionResult {
+	t.Helper()
+	var result state.AbsorbProjectionResult
+	if err := json.Unmarshal([]byte(data), &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", data, err)
+	}
+	return result
+}
+
+func TestParseIssueAbsorbArgsAllAndHistory(t *testing.T) {
+	ok, err := parseIssueAbsorbArgs([]string{"--all", "--history", "--dry-run", "--json"})
+	if err != nil {
+		t.Fatalf("parseIssueAbsorbArgs() error = %v", err)
+	}
+	if !ok.all || !ok.history || !ok.dryRun || !ok.jsonOutput || ok.ref != "" {
+		t.Fatalf("options = %#v, want --all --history --dry-run --json", ok)
+	}
+	if _, err := parseIssueAbsorbArgs([]string{"--history"}); err == nil || !strings.Contains(err.Error(), "--history requires --all") {
+		t.Fatalf("parse --history error = %v, want requires --all", err)
+	}
+	if _, err := parseIssueAbsorbArgs([]string{"--dry-run"}); err == nil || !strings.Contains(err.Error(), "--dry-run requires --all") {
+		t.Fatalf("parse --dry-run error = %v, want requires --all", err)
+	}
+	if _, err := parseIssueAbsorbArgs([]string{"--all", "--dismiss", "--history"}); err == nil || !strings.Contains(err.Error(), "--dismiss cannot be combined with --history") {
+		t.Fatalf("parse --dismiss --history error = %v, want combination refusal", err)
+	}
+	if _, err := parseIssueAbsorbArgs([]string{"--all", "TASK-001"}); err == nil || !strings.Contains(err.Error(), "--all does not accept") {
+		t.Fatalf("parse --all TASK-001 error = %v, want ref refusal", err)
+	}
+	if _, err := parseIssueAbsorbArgs([]string{}); err == nil || !strings.Contains(err.Error(), "requires a task or intent ref, or --all") {
+		t.Fatalf("parse empty error = %v, want ref or --all", err)
+	}
+}
+
+func TestIssueAbsorbAllProjectsOpenLeftovers(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	resolver := state.PathResolver{StateHome: stateHome}
+	if _, err := state.CreateTask(context.Background(), root, resolver, state.TaskCreateOptions{Title: "Open leftover"}); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if _, err := state.CreateIntent(context.Background(), root, resolver, state.IntentCreateOptions{Title: "Tracked leftover", Body: "Body."}); err != nil {
+		t.Fatalf("CreateIntent() error = %v", err)
+	}
+	done, err := state.CreateTask(context.Background(), root, resolver, state.TaskCreateOptions{Title: "Done leftover"})
+	if err != nil {
+		t.Fatalf("CreateTask(done) error = %v", err)
+	}
+	if _, err := state.UpdateTaskStatus(context.Background(), root, resolver, done.Task.Alias, state.LifecycleStatusDone); err != nil {
+		t.Fatalf("UpdateTaskStatus(done) error = %v", err)
+	}
+
+	dry, err := runIssue(t, workingDir, stateHome, "absorb", "--all", "--dry-run", "--json")
+	if err != nil {
+		t.Fatalf("issue absorb --all --dry-run error = %v\n%s", err, dry)
+	}
+	dryPlan := decodeAbsorbProjection(t, dry)
+	if !dryPlan.DryRun || dryPlan.Absorbed != 2 {
+		t.Fatalf("dry-run = %#v, want 2 planned absorbs", dryPlan)
+	}
+
+	out, err := runIssue(t, workingDir, stateHome, "absorb", "--all", "--json")
+	if err != nil {
+		t.Fatalf("issue absorb --all error = %v\n%s", err, out)
+	}
+	result := decodeAbsorbProjection(t, out)
+	if result.DryRun || result.Absorbed != 2 {
+		t.Fatalf("absorb --all = %#v, want 2 absorbed", result)
+	}
+	if _, err := runIssue(t, workingDir, stateHome, "show", "TASK-001"); err == nil {
+		t.Fatal("issue show TASK-001 error = nil, want missing issue")
+	}
+	shown, err := runIssue(t, workingDir, stateHome, "show", "LOAF-1")
+	if err != nil {
+		t.Fatalf("issue show LOAF-1 error = %v", err)
+	}
+	if !strings.Contains(shown, "alias: LOAF-1") {
+		t.Fatalf("show = %q, want LOAF-1", shown)
+	}
+
+	helpOut, err := runIssue(t, workingDir, stateHome, "absorb", "--help")
+	if err != nil {
+		t.Fatalf("issue absorb --help error = %v", err)
+	}
+	for _, want := range []string{"--all", "--history", "--dry-run"} {
+		if !strings.Contains(helpOut, want) {
+			t.Fatalf("absorb help missing %s:\n%s", want, helpOut)
+		}
+	}
+}
+
+func TestIssueAbsorbAllHistoryRefusesIndependentIssues(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	resolver := state.PathResolver{StateHome: stateHome}
+	done, err := state.CreateTask(context.Background(), root, resolver, state.TaskCreateOptions{Title: "Done leftover"})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if _, err := state.UpdateTaskStatus(context.Background(), root, resolver, done.Task.Alias, state.LifecycleStatusDone); err != nil {
+		t.Fatalf("UpdateTaskStatus() error = %v", err)
+	}
+	if _, err := runIssue(t, workingDir, stateHome, "new", "Hand-made"); err != nil {
+		t.Fatalf("issue new error = %v", err)
+	}
+	_, err = runIssue(t, workingDir, stateHome, "absorb", "--all", "--history")
+	if err == nil || !strings.Contains(err.Error(), "not minted by absorb") {
+		t.Fatalf("absorb --all --history error = %v, want independent-issue refusal", err)
+	}
+}
+
+func TestIssueAbsorbAllHistoryMintsDoneWhenIssueTableEmpty(t *testing.T) {
+	workingDir, stateHome := issueCLIFixture(t)
+	root, err := project.ResolveRoot(workingDir)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	resolver := state.PathResolver{StateHome: stateHome}
+	done, err := state.CreateTask(context.Background(), root, resolver, state.TaskCreateOptions{Title: "Done leftover"})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if _, err := state.UpdateTaskStatus(context.Background(), root, resolver, done.Task.Alias, state.LifecycleStatusDone); err != nil {
+		t.Fatalf("UpdateTaskStatus() error = %v", err)
+	}
+	out, err := runIssue(t, workingDir, stateHome, "absorb", "--all", "--history", "--json")
+	if err != nil {
+		t.Fatalf("issue absorb --all --history error = %v\n%s", err, out)
+	}
+	result := decodeAbsorbProjection(t, out)
+	if result.Absorbed != 1 || result.Items[0].Issue == nil || result.Items[0].Issue.Status != state.IssueStatusDone {
+		t.Fatalf("result = %#v, want one done issue", result)
+	}
+}

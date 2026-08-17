@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,6 +55,10 @@ func TestRunnerConfigCheckFixCreatesProjectConfig(t *testing.T) {
 	integrations := config["integrations"].(map[string]any)
 	if integrations["linear"].(map[string]any)["enabled"] != false || integrations["serena"].(map[string]any)["enabled"] != false {
 		t.Fatalf("integrations = %#v, want safe disabled defaults", integrations)
+	}
+	issue := config["issue"].(map[string]any)
+	if issue["authority"] != "local" || strings.TrimSpace(fmt.Sprint(issue["prefix"])) == "" {
+		t.Fatalf("issue = %#v, want local bootstrap prefix", issue)
 	}
 }
 
@@ -415,4 +420,42 @@ func jsonStrings(t *testing.T, value any) []string {
 		result = append(result, value)
 	}
 	return result
+}
+
+func TestRunnerConfigCheckWarnsMissingIssuePrefixWithoutInventing(t *testing.T) {
+	root, _ := setupInstallCommandFixture(t)
+	writeInstallFile(t, filepath.Join(root, ".agents", "loaf.json"), strings.Join([]string{
+		`{`,
+		`  "version": "1.0.0",`,
+		`  "initialized": "2026-07-06T00:00:00Z",`,
+		`  "knowledge": {`,
+		`    "local": ["docs/knowledge", "docs/decisions"],`,
+		`    "staleness_threshold_days": 30,`,
+		`    "imports": []`,
+		`  },`,
+		`  "integrations": {`,
+		`    "linear": {"enabled": false},`,
+		`    "serena": {"enabled": false},`,
+		`    "github": {"account": "levifig"}`,
+		`  }`,
+		`}`,
+	}, "\n")+"\n")
+
+	before := runConfigCheckJSON(t, root, false)
+	if !before.OK {
+		t.Fatalf("before = %#v, want valid config with issue.prefix warning", before)
+	}
+	joined := strings.Join(before.Warnings, "\n")
+	if !strings.Contains(joined, "issue.prefix is not configured") {
+		t.Fatalf("warnings = %q, want missing issue.prefix", joined)
+	}
+
+	after := runConfigCheckJSON(t, root, true)
+	if !after.OK {
+		t.Fatalf("after = %#v, want --fix to leave project-owned issue.prefix unset", after)
+	}
+	config := readInstallCommandJSON(t, filepath.Join(root, ".agents", "loaf.json"))
+	if _, ok := config["issue"]; ok {
+		t.Fatalf("config = %#v, want --fix not to invent issue", config)
+	}
 }

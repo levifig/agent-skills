@@ -424,7 +424,7 @@ func writeRootHelp(out io.Writer) {
 	fmt.Fprintln(out, "  council       Manage councils")
 	fmt.Fprintln(out, "  kb            Manage knowledge base")
 	fmt.Fprintln(out, "  check         Run hook checks")
-	fmt.Fprintln(out, "  doctor        Diagnose project alignment")
+	fmt.Fprintln(out, "  doctor        Diagnose project alignment, leftover SQLite work, and leaked issue prefixes")
 	fmt.Fprintln(out, "  release       Cut a retroactive release (suggest, cut)")
 	fmt.Fprintln(out, "  version       Show version and content counts")
 	fmt.Fprintln(out)
@@ -1613,7 +1613,7 @@ func writeStateHelp(out io.Writer) {
 	fmt.Fprintln(out, "  path          Print the resolved SQLite database path")
 	fmt.Fprintln(out, "  status        Show SQLite readiness and markdown compatibility status")
 	fmt.Fprintln(out, "  init          Initialize native SQLite state")
-	fmt.Fprintln(out, "  doctor        Diagnose SQLite state health")
+	fmt.Fprintln(out, "  doctor        Diagnose SQLite state health and leftover work")
 	fmt.Fprintln(out, "  repair        Repair guarded SQLite data drift")
 	fmt.Fprintln(out, "  migrate       Run state migrations")
 	fmt.Fprintln(out, "  backup        Create a SQLite database backup")
@@ -1661,7 +1661,7 @@ func writeStateStatusHelp(out io.Writer) {
 func writeStateDoctorHelp(out io.Writer) {
 	fmt.Fprintln(out, "Usage: loaf state doctor [--fix] [--dry-run] [--json]")
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Diagnose SQLite state health.")
+	fmt.Fprintln(out, "Diagnose SQLite state health, including leftover SQLite work and leaked issue prefixes.")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
 	fmt.Fprintln(out, "  --fix        Initialize missing SQLite state when safe")
@@ -2376,7 +2376,7 @@ func (r Runner) runStateDoctor(args []string, out io.Writer, runtime state.Runti
 		}
 		return err
 	}
-	status, err := r.inspectStateWithOptions(runtime, state.InspectOptions{AliasParity: true})
+	status, err := r.inspectStateWithOptions(runtime, state.InspectOptions{AliasParity: true, LeftoverAbsorb: true})
 	if err != nil {
 		if jsonOutput {
 			return writeJSONCommandError(out, "state doctor", err)
