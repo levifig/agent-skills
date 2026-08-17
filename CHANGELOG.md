@@ -6,7 +6,9 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
-- _No unreleased changes yet._
+### Fixed
+
+- Homebrew formula generation pins an explicit `version` so older `brew` does not infer `64` from `darwin-arm64` in the asset URL.
 
 ## [0.3.1] - 2026-08-17
 

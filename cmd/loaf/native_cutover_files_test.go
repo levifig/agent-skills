@@ -306,10 +306,11 @@ func TestHomebrewFormulaUpdaterGeneratesAuditSafeURLs(t *testing.T) {
 		t.Fatalf("ReadFile(generated formula) error = %v", err)
 	}
 	formula := string(data)
-	for _, forbidden := range []string{`version "`, "#{version}"} {
-		if strings.Contains(formula, forbidden) {
-			t.Fatalf("generated formula contains %q:\n%s", forbidden, formula)
-		}
+	if !strings.Contains(formula, `version "0.2.4"`) {
+		t.Fatalf("generated formula missing explicit version:\n%s", formula)
+	}
+	if strings.Contains(formula, "#{version}") {
+		t.Fatalf("generated formula contains interpolated #{version}:\n%s", formula)
 	}
 	for _, want := range []string{
 		`url "https://github.com/levifig/loaf/releases/download/v0.2.4/loaf_0.2.4_darwin-arm64.tar.gz"`,
