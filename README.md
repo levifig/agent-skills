@@ -246,11 +246,9 @@ Activating a verified copy is a manual, quiesced operator procedure, not an auto
 
 ## Integrations
 
-*Claude Code only.*
+**MCP Servers:** Configure Linear directly in each harness and expose one account-specific server per project; the Linear and bootstrap skills record its name in `.agents/loaf.json` but do not install or authenticate it. **Optional:** Serena provides semantic editing for large codebases and can be configured through `loaf install`.
 
-**Recommended MCP Servers:** Linear (issue tracking). **Optional:** Serena (semantic editing for large codebases — most code intelligence is now built into Claude Code's native LSP). Not bundled — `loaf install` will detect and recommend missing MCPs.
-
-**LSP Servers:** gopls, pyright, typescript-language-server, solargraph
+**Claude Code LSP Servers:** gopls, pyright, typescript-language-server, solargraph
 
 ## Development
 

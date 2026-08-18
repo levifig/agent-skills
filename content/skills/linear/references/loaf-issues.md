@@ -26,12 +26,15 @@ Read `.agents/loaf.json` before coordinating a Linear-backed issue:
     "prefix": "ENG"
   },
   "integrations": {
-    "linear": { "enabled": true }
+    "linear": {
+      "enabled": true,
+      "mcp_server_name": "linear-work"
+    }
   }
 }
 ```
 
-`integrations.linear.enabled` records whether the project configured the integration. It does not elect the issue backend. `issue.authority` is the execution identity contract, and `issue.prefix` is the Linear team key when authority is `linear`.
+`integrations.linear.enabled` records whether the project uses the integration. `integrations.linear.mcp_server_name` records the exact Linear MCP server selected in the current harness; it does not install the server, authenticate it, or elect the issue backend. `issue.authority` is the execution identity contract, and `issue.prefix` is the Linear team key when authority is `linear`.
 
 When Linear is the authority:
 
@@ -48,7 +51,7 @@ Elect the backend explicitly:
 loaf issue identity --authority linear --prefix ENG
 ```
 
-Do not infer Linear authority from the presence of an MCP server or from `integrations.linear.enabled`.
+Do not infer Linear authority from the presence of an MCP server, `integrations.linear.enabled`, or `integrations.linear.mcp_server_name`.
 
 ## Adapter Prerequisite
 

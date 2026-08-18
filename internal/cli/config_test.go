@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/levifig/loaf/internal/project"
 )
@@ -59,6 +60,30 @@ func TestRunnerConfigCheckFixCreatesProjectConfig(t *testing.T) {
 	issue := config["issue"].(map[string]any)
 	if issue["authority"] != "local" || strings.TrimSpace(fmt.Sprint(issue["prefix"])) == "" {
 		t.Fatalf("issue = %#v, want local bootstrap prefix", issue)
+	}
+}
+
+func TestConfigCheckValidatesOptionalLinearMCPServerName(t *testing.T) {
+	now := time.Date(2026, time.August, 18, 0, 0, 0, 0, time.UTC)
+	body, err := json.Marshal(defaultLoafConfig(now, t.TempDir()))
+	if err != nil {
+		t.Fatalf("Marshal(default config) error = %v", err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(body, &config); err != nil {
+		t.Fatalf("Unmarshal(default config) error = %v", err)
+	}
+	linear := config["integrations"].(map[string]any)["linear"].(map[string]any)
+	linear["mcp_server_name"] = "linear-work"
+	_, _, validationErrors := ensureLoafConfigDefaults(config, now)
+	if len(validationErrors) != 0 {
+		t.Fatalf("valid MCP server name errors = %#v, want none", validationErrors)
+	}
+
+	linear["mcp_server_name"] = "  "
+	_, _, validationErrors = ensureLoafConfigDefaults(config, now)
+	if !strings.Contains(strings.Join(validationErrors, "\n"), "integrations.linear.mcp_server_name must be a nonempty string") {
+		t.Fatalf("blank MCP server name errors = %#v, want nonempty-string error", validationErrors)
 	}
 }
 

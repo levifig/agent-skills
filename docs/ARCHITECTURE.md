@@ -137,7 +137,7 @@ New bounded work is a Loaf issue, with authored shaping and implementation artif
 
 `issue.authority` in `.agents/loaf.json` elects the issue identity contract. `integrations.linear.enabled` records integration availability but does not select authority. Under local authority, Loaf mints the identifier. Under Linear authority, Linear mints the identifier and owns tracker title, workflow state, and assignment, while Loaf owns the shaping body, definition of done, claims, started worktree, and local event history.
 
-The current CLI adapter owns issue creation, adoption, pull, push, and reconciliation. Provider mappings, conflict resolution, and status translation are deterministic CLI/state responsibilities; revision/content hashes, outbox handling, and retries remain planned CLI/state concerns in the active coordination packet. A working MCP connection does not replace that adapter. A dedicated `linear` provider skill may select an already-configured Linear MCP for user-scoped reads, comments, assignments, and other collaboration that does not compete with Loaf-owned fields. It does not configure or authenticate the MCP, and general Loaf workflow skills route such provider work through it instead of duplicating Linear behavior.
+The current CLI adapter owns issue creation, adoption, pull, push, and reconciliation. Provider mappings, conflict resolution, and status translation are deterministic CLI/state responsibilities; revision/content hashes, outbox handling, and retries remain planned CLI/state concerns in the active coordination packet. A working MCP connection does not replace that adapter. A dedicated `linear` provider skill selects an already-configured Linear MCP for user-scoped reads, comments, assignments, and other collaboration that does not compete with Loaf-owned fields. When Linear is active, the Linear or bootstrap skill records the selected server name as `integrations.linear.mcp_server_name`; Loaf does not install, connect, or authenticate it. General Loaf workflow skills route provider work through the Linear skill instead of duplicating Linear behavior.
 
 ### Dependency and Completion Gates
 
@@ -375,7 +375,7 @@ Knowledge files are managed by `loaf kb` — staleness detection compares file m
 ~/.config/loaf/                 # User preferences
 ```
 
-Integration toggles in `loaf.json` gate runtime features (Linear magic-word detection, MCP recommendations) without rebuilding.
+Integration toggles in `loaf.json` gate runtime features such as Linear magic-word detection without rebuilding. `integrations.linear.mcp_server_name` records the project-selected Linear MCP without making Loaf responsible for its connection or credentials.
 
 ## Test Fixture Hygiene
 

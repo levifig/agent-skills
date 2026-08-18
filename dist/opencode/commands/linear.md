@@ -11,7 +11,7 @@ version: 0.3.1
 
 # Linear
 
-Use the Linear MCP already configured in the current harness. This skill owns Linear workspace selection and general-purpose Linear workflows; Loaf issue execution remains governed by `loaf issue`.
+Use the Linear MCP already configured in the current harness. In a Loaf project, record its server name in `.agents/loaf.json`; MCP installation and authentication remain external. This skill owns Linear workspace selection and general-purpose Linear workflows, while Loaf issue execution remains governed by `loaf issue`.
 
 ## Contents
 
@@ -27,7 +27,8 @@ Use the Linear MCP already configured in the current harness. This skill owns Li
 ## Critical Rules
 
 - Discover the Linear-capable MCP servers available in the current harness. Do not assume a server name, install a plugin, configure a server, or initiate authentication from this skill.
-- Select one server before operating. With one candidate, use it. With several, prefer an explicit user choice or project/workspace hint, then verify the workspace and team with a read. If the destination remains ambiguous, ask before any mutation.
+- In a Loaf project, read `integrations.linear.mcp_server_name` from `.agents/loaf.json`. When it names an available Linear MCP, use that server. When it is absent and exactly one Linear MCP is available, record the exact server name and set `integrations.linear.enabled` to `true`, preserving the rest of the file. With several candidates, ask which server belongs to the project before recording or operating. Never silently replace a different recorded name.
+- Select one server before operating. Verify the workspace and team with a read; a recorded or uniquely available server name does not prove the authenticated destination. If the recorded server is unavailable or the destination remains ambiguous, stop before any mutation and report the mismatch.
 - Read before writing. Resolve current workspace, team, project, cycle, workflow state, labels, users, and target records as the requested operation requires.
 - Batch related work by shared destination and intent. Explain the grouping before a bulk mutation, keep each batch bounded, and never fan mutations across workspaces implicitly.
 - Re-read changed records after mutation. Report successes, unchanged records, failures, gaps, and blockers; do not claim a write succeeded from the request alone.
@@ -37,6 +38,7 @@ Use the Linear MCP already configured in the current harness. This skill owns Li
 ## Verification
 
 - The selected server's workspace and relevant team or project were verified before mutation.
+- In a Loaf project with an active Linear MCP, `integrations.linear.mcp_server_name` matches the selected server; an existing different value was not replaced without user direction.
 - Every mutation was preceded by a read of the affected record or destination metadata.
 - Bulk work was grouped into explainable batches and did not cross an unconfirmed workspace boundary.
 - Changed records were re-read or otherwise confirmed by the selected MCP.
@@ -58,7 +60,7 @@ Use the Linear MCP already configured in the current harness. This skill owns Li
 ## Workflow
 
 1. **Scope the request.** Identify the intended workspace, team or project, records, time window, and whether the user wants analysis or mutation. Resolve priority, labels, cycle, assignee, and due date only when relevant.
-2. **Select the MCP.** Inspect the available Linear-capable servers. Use explicit context first; otherwise validate the likely server through a minimal workspace or team read. Stop before writes if multiple candidates remain plausible.
+2. **Select the MCP.** In a Loaf project, prefer the recorded `integrations.linear.mcp_server_name`. Otherwise inspect the available Linear-capable servers and record the sole candidate, or ask the user to choose among several. Validate the selected server through a minimal workspace or team read and stop before writes if the project destination remains unclear.
 3. **Read context.** Fetch destination metadata and existing records. Confirm identifiers and allowed workflow values rather than guessing names.
 4. **Plan batches.** Group related operations by workspace, team/project, and mutation type. Reuse the read results and state the grouping logic before a bulk change.
 5. **Execute.** Apply the smallest coherent batches. Continue independent items when one item fails, but do not cascade from an unresolved prerequisite.
@@ -78,7 +80,7 @@ Routine, fully specified writes do not need an extra confirmation. Ask before wr
 
 ## Loaf Projects
 
-Linear can be both a general collaboration surface and a Loaf issue backend. `integrations.linear.enabled` records project availability; `issue.authority` is the execution identity contract. When a Linear issue corresponds to a Loaf work unit, use `loaf issue pull`, `loaf issue push`, and `loaf issue reconcile` rather than parallel MCP edits to owned fields.
+Linear can be both a general collaboration surface and a Loaf issue backend. `integrations.linear.enabled` records project availability, `integrations.linear.mcp_server_name` identifies the MCP selected for this project, and `issue.authority` is the execution identity contract. The server name is routing metadata, not installation or authentication state. When a Linear issue corresponds to a Loaf work unit, use `loaf issue pull`, `loaf issue push`, and `loaf issue reconcile` rather than parallel MCP edits to owned fields.
 
 Read [Loaf Issue Coordination](references/loaf-issues.md) before creating, adopting, publishing, or reconciling a Loaf-backed Linear issue.
 

@@ -26,7 +26,7 @@ ADR-020 preserves that single-overlay result while making root `AGENTS.md` the c
 
 **The CLI is the correct protocol layer for Loaf-owned state.** Skills describe judgment and workflow, the CLI performs deterministic state and filesystem operations, and hooks enforce invariants. Loaf issue identity and state, provider mappings, retries, conflict resolution, and reconciliation remain CLI and state responsibilities regardless of which LLM or harness is running.
 
-General Loaf workflow skills do not improvise provider calls or duplicate provider-specific collaboration logic. They route user-scoped external collaboration through a dedicated provider skill, which may select an independently configured provider MCP, read before mutating, and report outcomes. That skill neither configures nor authenticates the MCP and does not replace the CLI boundary for Loaf-owned state.
+General Loaf workflow skills do not improvise provider calls or duplicate provider-specific collaboration logic. They route user-scoped external collaboration through a dedicated provider skill, which may select an independently configured provider MCP, record its server name as project routing metadata, read before mutating, and report outcomes. That skill neither connects, configures, nor authenticates the MCP and does not replace the CLI boundary for Loaf-owned state.
 
 **Diagnosis and repair must share the same state taxonomy.** Sharing repair helpers is not enough; the detection branches in a diagnostic tool must consult the same classification logic as the repair path, or they will drift apart.
 

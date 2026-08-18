@@ -44,6 +44,7 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 - **BRIEF is input, not output** -- the BRIEF is raw intake. Extract every useful fact into VISION/STRATEGY/ARCHITECTURE/AGENTS during bootstrap.
 - **BRIEF is archeological after bootstrap** -- once extraction completes (including series-prep reading scoped concepts from it), the BRIEF is a frozen historical snapshot. No skill, agent, command, or template should reference `docs/BRIEF.md` post-bootstrap. Operating documents and minted issue bodies must stand on their own.
 - **Series-prep never auto-shapes and never creates branches** -- every mint is user-confirmed; no priority, date, or dependency fields; buckets are labels, never bindings; concepts that fail granularity stay BRIEF lines or sparks
+- **Record, don't provision Linear** -- when the project exposes a Linear MCP, record its server name in `.agents/loaf.json`; never install, connect, or authenticate it
 - **Suggest, don't execute** -- recommend next skills at the end, never auto-run them
 - **Log first** -- log invocation before interviewing: `loaf journal log "skill(bootstrap): <project or intake>"`
 - **Log outcome** -- log bootstrap completion to the project journal: `loaf journal log "decision(bootstrap): project bootstrapped, mode detected"`
@@ -57,6 +58,7 @@ Series-prep lives under Finalization (phase between Knowledge Base Scaffolding a
 - When `source: pitch`, the interview was gap-only (no re-excavation of already-specific problem sections)
 - When series-prep ran: each minted row is a backlog issue (`loaf issue new "<title>" --body "<problem narrative>" --status backlog`) with a standalone problem-space body; an advisory bucket (`loaf issue bucket <ref> now|next|later`) may be set — buckets are labels, never bindings; `loaf issue check <ref>` only when a capture is shaped enough to check, otherwise nothing (a backlog issue with a problem body needs no ceremony); no folders, no docs-only commits; no branches created for the series; no auto-shape
 - Root `AGENTS.md` is a real file; on Claude Code, the compatibility symlink `.claude/CLAUDE.md -> ../AGENTS.md` exists (see Finalization)
+- When a Linear MCP was active, `.agents/loaf.json` records its exact server name under `integrations.linear.mcp_server_name`; bootstrap did not install or authenticate it
 - Key decisions and interview outcomes were logged with `loaf journal log` and are readable with `loaf journal recent`
 
 ---
@@ -404,6 +406,8 @@ If the symlink already exists and points at `../AGENTS.md`, skip silently. If it
 ### Other harnesses
 
 Do not create `.claude/CLAUDE.md`. Ensure root `AGENTS.md` exists and is populated; that is the file every harness reads.
+
+Before journal recording, when `.agents/loaf.json` exists, inspect the Linear-capable MCP servers exposed by the current harness. With exactly one, preserve an existing matching value or record its exact name as `integrations.linear.mcp_server_name` and set `integrations.linear.enabled` to `true`; with several, ask which belongs to the project; with none, leave the integration unchanged. Ask before replacing a different recorded name, preserve unrelated fields, and never install, connect, or authenticate the MCP.
 
 ### 3. Journal Recording
 
