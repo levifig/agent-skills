@@ -95,7 +95,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 
 The orchestrator:
 1. Creates issues and logs the orchestration intent for tracking
-2. Picks from `loaf issue frontier` and starts one worktree per issue
+2. Picks from `loaf issue frontier` and starts or joins the shippable root workspace
 3. Spawns specialized agents for implementation
 4. Coordinates outcomes and updates external systems
 5. Never implements code, tests, or documentation directly
