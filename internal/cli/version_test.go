@@ -6,15 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
-// devBuildFixtureTime is a fixed link time. Its Unix seconds are the patch a
-// dev build reports, so every expectation below is a literal version string
-// rather than a repeat of the arithmetic under test.
-var devBuildFixtureTime = time.Unix(1754593012, 0)
-
-const devBuildFixtureVersion = "9.8.1754593012"
+const (
+	devBuildFixtureCommit  = "abc1234"
+	devBuildFixtureVersion = "9.8.7-test.1+gabc1234"
+)
 
 func TestRunnerVersionUsesNativePackageMetadata(t *testing.T) {
 	root := writeVersionFixture(t)
@@ -167,18 +164,20 @@ func TestRunnerVersionCleanWithoutBuildInfo(t *testing.T) {
 	}
 }
 
-// TestIsDevVersionReadsTheTimestampMagnitudePatch pins the shared predicate to
-// the patch slot alone. Every surface that has to tell a dev build from a
-// release asks this one question, so what counts as a timestamp must not drift
-// into reading suffixes, labels, or the rest of the string.
-func TestIsDevVersionReadsTheTimestampMagnitudePatch(t *testing.T) {
+func TestIsDevVersionRecognizesCommitMetadataAndLegacyTimestamps(t *testing.T) {
 	for _, tc := range []struct {
 		version string
 		want    bool
 	}{
 		{version: "0.2.20"},
-		{version: "0.2.1754593012", want: true},
+		{version: "0.3+gabcdef0"},
 		{version: devBuildFixtureVersion, want: true},
+		{version: "0.2.20+build.9.gabc1234", want: true},
+		{version: "v0.2.20+gabcdef0", want: true},
+		{version: "0.2.20+gabc123"},
+		{version: "0.2.20+gABCDEFG"},
+		{version: "0.2.20+release.1"},
+		{version: "0.2.1754593012", want: true},
 		{version: "0.2.1000000000", want: true},
 		{version: "0.2.999999999"},
 		{version: "2.0.0-alpha.19"},
@@ -194,8 +193,8 @@ func TestIsDevVersionReadsTheTimestampMagnitudePatch(t *testing.T) {
 	}
 }
 
-func TestDevVersionMintsTheLinkTimeInThePatchSlot(t *testing.T) {
-	got := devVersion("9.8.7-test.1", devBuildFixtureTime)
+func TestDevVersionAppendsTheShortCommitAsBuildMetadata(t *testing.T) {
+	got := devVersion("9.8.7-test.1", "ABC1234def5678")
 	if got != devBuildFixtureVersion {
 		t.Fatalf("devVersion = %q, want %q", got, devBuildFixtureVersion)
 	}
@@ -204,57 +203,50 @@ func TestDevVersionMintsTheLinkTimeInThePatchSlot(t *testing.T) {
 	}
 }
 
-// TestDevVersionSortsAboveEveryReleaseInTheMinor is the reason the timestamp
-// sits in the patch slot rather than in a prerelease suffix: a machine running
-// its own build is ahead of what has shipped, and a prerelease would sort below
-// the latest release and nag that machine to upgrade forever.
-func TestDevVersionSortsAboveEveryReleaseInTheMinor(t *testing.T) {
-	dev, ok := parseUpgradeSemver(devVersion("0.2.20", devBuildFixtureTime))
+func TestDevVersionPreservesReleasePrecedence(t *testing.T) {
+	dev, ok := parseUpgradeSemver(devVersion("0.2.20", devBuildFixtureCommit))
 	if !ok {
 		t.Fatal("devVersion did not mint a parseable semver")
 	}
-	for _, release := range []string{"0.2.20", "0.2.21", "0.2.99"} {
-		t.Run(release, func(t *testing.T) {
-			parsed, ok := parseUpgradeSemver(release)
-			if !ok {
-				t.Fatalf("parseUpgradeSemver(%q) failed", release)
-			}
-			if compareUpgradeSemver(dev, parsed) <= 0 {
-				t.Fatalf("dev build does not sort above %q", release)
-			}
-		})
+	release, ok := parseUpgradeSemver("0.2.20")
+	if !ok {
+		t.Fatal("parseUpgradeSemver(release) failed")
+	}
+	if got := compareUpgradeSemver(dev, release); got != 0 {
+		t.Fatalf("dev build precedence = %d, want equality with its package version", got)
 	}
 }
 
-func TestDevVersionFallsBackWithoutAUsableBuildTime(t *testing.T) {
+func TestDevVersionFallsBackWithoutAUsableCommit(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		release   string
-		buildTime time.Time
-		want      string
+		name    string
+		release string
+		commit  string
+		want    string
 	}{
-		{name: "release_build", release: "0.2.20", want: "0.2.20"},
-		{name: "unset_clock", release: "0.2.20", buildTime: time.Unix(999_999_999, 0), want: "0.2.20"},
-		{name: "unparseable_release", release: "not-a-version", buildTime: devBuildFixtureTime, want: "not-a-version"},
-		{name: "unresolvable_distribution", release: packageVersionUnknown, buildTime: devBuildFixtureTime, want: packageVersionUnknown},
+		{name: "missing_commit", release: "0.2.20", want: "0.2.20"},
+		{name: "short_commit", release: "0.2.20", commit: "abc123", want: "0.2.20"},
+		{name: "non_hex_commit", release: "0.2.20", commit: "notasha", want: "0.2.20"},
+		{name: "unparseable_release", release: "not-a-version", commit: devBuildFixtureCommit, want: "not-a-version"},
+		{name: "unresolvable_distribution", release: packageVersionUnknown, commit: devBuildFixtureCommit, want: packageVersionUnknown},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := devVersion(tc.release, tc.buildTime); got != tc.want {
-				t.Fatalf("devVersion(%q, %v) = %q, want %q", tc.release, tc.buildTime, got, tc.want)
+			if got := devVersion(tc.release, tc.commit); got != tc.want {
+				t.Fatalf("devVersion(%q, %q) = %q, want %q", tc.release, tc.commit, got, tc.want)
 			}
 		})
 	}
 }
 
-func TestRunnerVersionReportsTheDevStampForDevBuilds(t *testing.T) {
+func TestRunnerVersionReportsTheDevCommitForDevBuilds(t *testing.T) {
 	root := markSourceCheckout(t, writeVersionFixture(t))
 	var stdout bytes.Buffer
 
 	err := Runner{
-		Stdout:       &stdout,
-		WorkingDir:   root,
-		Executable:   distributionFixtureExecutable(root),
-		DevBuildTime: devBuildFixtureTime,
+		Stdout:         &stdout,
+		WorkingDir:     root,
+		Executable:     distributionFixtureExecutable(root),
+		DevBuildCommit: devBuildFixtureCommit,
 	}.Run([]string{"version"})
 	if err != nil {
 		t.Fatalf("version error = %v", err)
@@ -265,8 +257,8 @@ func TestRunnerVersionReportsTheDevStampForDevBuilds(t *testing.T) {
 	if !strings.Contains(output, want) {
 		t.Fatalf("version output = %q, want to contain %q", output, want)
 	}
-	if strings.Contains(output, "9.8.7-test.1") {
-		t.Fatalf("version output = %q, want the dev identity instead of the release version", output)
+	if strings.Contains(output, "loaf\x1b[0m 9.8.7-test.1\n") {
+		t.Fatalf("version output = %q, want commit metadata on the dev version line", output)
 	}
 }
 
@@ -281,10 +273,10 @@ func TestRunnerVersionKeepsShippedDistributionsOnTheReleaseVersion(t *testing.T)
 	var stdout bytes.Buffer
 
 	err := Runner{
-		Stdout:       &stdout,
-		WorkingDir:   root,
-		Executable:   distributionFixtureExecutable(root),
-		DevBuildTime: devBuildFixtureTime,
+		Stdout:         &stdout,
+		WorkingDir:     root,
+		Executable:     distributionFixtureExecutable(root),
+		DevBuildCommit: devBuildFixtureCommit,
 	}.Run([]string{"version"})
 	if err != nil {
 		t.Fatalf("version error = %v", err)

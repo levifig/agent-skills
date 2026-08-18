@@ -95,6 +95,7 @@ func TestInstalledDistributionCheckoutOwnBinaryReportsCheckoutVersion(t *testing
 	nativeDir := filepath.Join(checkout, "bin", "native", "test-target")
 	copyFixtureBinary(t, sharedTestLoafBinary(t, repo), filepath.Join(nativeDir, "loaf"))
 	writeFixtureFile(t, filepath.Join(checkout, "bin", "package.json"), "{\n  \"type\": \"commonjs\"\n}\n")
+	writeFixtureFile(t, filepath.Join(checkout, "bin", ".loaf-dev-commit"), "abc1234\n")
 	elsewhere := realpath(t, t.TempDir())
 	env := isolatedInstallEnv(t)
 
@@ -106,13 +107,10 @@ func TestInstalledDistributionCheckoutOwnBinaryReportsCheckoutVersion(t *testing
 		t.Fatalf("checkout-owned loaf version error = %v\n%s", err, output)
 	}
 	// A checkout's own binary is a dev build by definition, so it reports the
-	// dev identity built from its owning checkout's major and minor rather than
-	// that checkout's release version.
-	if !strings.Contains(string(output), "loaf\x1b[0m 3.3.") || !strings.Contains(string(output), "(dev build)") {
+	// dev identity built from its owning checkout's package version and recorded
+	// commit rather than the package version alone.
+	if !strings.Contains(string(output), "loaf\x1b[0m 3.3.3-dev+gabc1234 (dev build)") {
 		t.Fatalf("version output = %q, want the owning checkout's dev identity", output)
-	}
-	if strings.Contains(string(output), "3.3.3-dev") {
-		t.Fatalf("version output = %q, want the dev identity instead of the checkout's release version", output)
 	}
 }
 

@@ -124,17 +124,17 @@ func TestHarnessContentDriftDoctorCountsEveryInstalledHarness(t *testing.T) {
 	}
 }
 
-// TestHarnessDriftBinaryVersionIgnoresTheDevStamp pins the split between the
+// TestHarnessDriftBinaryVersionIgnoresTheDevIdentity pins the split between the
 // two versions a dev build carries. `loaf --version` reports the build's own
-// timestamp identity; drift compares markers against the distribution's release
+// commit identity; drift compares markers against the distribution's release
 // version, because that is the content a dev binary installs and the number it
-// stamps into the marker. Comparing a marker against the build clock instead
+// stamps into the marker. Comparing a marker against the build commit instead
 // would report drift on every harness of every dev machine.
-func TestHarnessDriftBinaryVersionIgnoresTheDevStamp(t *testing.T) {
+func TestHarnessDriftBinaryVersionIgnoresTheDevIdentity(t *testing.T) {
 	distRoot := markSourceCheckout(t, harnessDriftDistribution(t, "0.2.20"))
-	runner := Runner{Executable: distributionFixtureExecutable(distRoot), DevBuildTime: devBuildFixtureTime}
+	runner := Runner{Executable: distributionFixtureExecutable(distRoot), DevBuildCommit: devBuildFixtureCommit}
 
-	if got := runner.reportedVersion(distRoot); got != "0.2.1754593012" {
+	if got := runner.reportedVersion(distRoot); got != "0.2.20+gabc1234" {
 		t.Fatalf("reportedVersion = %q, want the dev identity", got)
 	}
 	binaryVersion := harnessDriftBinaryVersion(runner)
@@ -147,8 +147,9 @@ func TestHarnessDriftBinaryVersionIgnoresTheDevStamp(t *testing.T) {
 }
 
 // TestHarnessDriftReadsDevMarkersAsContentDrift covers the other side: content
-// installed by a dev build carries a timestamp marker that outranks every
-// published version by construction, so it can never mean the binary is behind.
+// installed by an older dev build can carry a timestamp marker that outranks
+// every published version by construction, so it can never mean the binary is
+// behind. This compatibility rule stays until those markers age out.
 func TestHarnessDriftReadsDevMarkersAsContentDrift(t *testing.T) {
 	const devMarker = "0.2.1754593012"
 
