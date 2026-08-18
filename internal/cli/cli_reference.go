@@ -464,7 +464,7 @@ func cliReferenceCommands() []cliReferenceCommand {
 				{Name: "start", Description: "Start or join the shippable root workspace", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output the root issue, requested ref, joined flag, branch, worktree, base, global database scope, and project identity as JSON"},
 				}},
-				{Name: "stop", Description: "Remove an issue worktree and clear the started workspace", Options: []cliReferenceOption{
+				{Name: "stop", Description: "Remove a started worktree; descendants must stop the root", Options: []cliReferenceOption{
 					{Flags: "--force", Description: "Remove a dirty worktree"},
 					{Flags: "--json", Description: "Output the stopped issue, branch, worktree, already-gone flag, global database scope, and project identity as JSON"},
 				}},

@@ -87,6 +87,12 @@ func (r Runner) runIssueStart(args []string, out io.Writer, runtime state.Runtim
 	}
 
 	if requested.ID != owner.ID && issueIsStarted(owner) {
+		if err := refuseIssueStartLifecycle(owner); err != nil {
+			return err
+		}
+		if err := refuseMissingStartedWorktree(owner); err != nil {
+			return err
+		}
 		if err := activateIssue(ctx, projectRoot, resolver, requested); err != nil {
 			return err
 		}
@@ -210,7 +216,7 @@ func (r Runner) runIssueStop(args []string, out io.Writer, runtime state.Runtime
 		if err != nil {
 			return err
 		}
-		if issueIsStarted(rootIssue) && rootIssue.ID != issue.ID {
+		if rootIssue.ID != issue.ID {
 			return fmt.Errorf("issue %s does not own a worktree; stop %s", issueDisplayRef(issue), issueDisplayRef(rootIssue))
 		}
 		return fmt.Errorf("issue %s is not started", issueDisplayRef(issue))
@@ -298,11 +304,30 @@ func refuseIssueStart(issue state.Issue) error {
 	if issueIsStarted(issue) {
 		return fmt.Errorf("issue %s is already started at %s", issueDisplayRef(issue), firstNonEmpty(issue.StartedWorktree, issue.StartedBranch))
 	}
+	return refuseIssueStartLifecycle(issue)
+}
+
+func refuseIssueStartLifecycle(issue state.Issue) error {
 	if issue.ArchivedAt != "" {
 		return fmt.Errorf("issue %s is archived", issueDisplayRef(issue))
 	}
 	if issueStartRefusedStatus(issue.Status) {
 		return fmt.Errorf("issue %s is %s; start refuses terminal statuses", issueDisplayRef(issue), issue.Status)
+	}
+	return nil
+}
+
+func refuseMissingStartedWorktree(issue state.Issue) error {
+	path := strings.TrimSpace(issue.StartedWorktree)
+	ref := issueDisplayRef(issue)
+	if path == "" {
+		return fmt.Errorf("issue %s is started but has no worktree path; stop %s", ref, ref)
+	}
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("issue %s is started at %s but the worktree is missing; stop %s", ref, path, ref)
+		}
+		return fmt.Errorf("stat worktree %s: %w", path, err)
 	}
 	return nil
 }

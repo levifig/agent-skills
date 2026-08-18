@@ -232,6 +232,90 @@ func TestRunnerIssueStopChildWithoutWorkspace(t *testing.T) {
 	}
 }
 
+func TestRunnerIssueStartChildRefusesMissingRootWorktree(t *testing.T) {
+	repo, stateHome := issueGitFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Parent"); err != nil {
+		t.Fatalf("issue new parent error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "new", "Child", "--parent", "LOAF-1"); err != nil {
+		t.Fatalf("issue new child error = %v", err)
+	}
+	parentOut, err := runIssue(t, repo, stateHome, "start", "LOAF-1", "--json")
+	if err != nil {
+		t.Fatalf("issue start parent error = %v", err)
+	}
+	parent := decodeIssueStart(t, parentOut)
+	if err := os.RemoveAll(parent.Worktree); err != nil {
+		t.Fatalf("RemoveAll(%s) error = %v", parent.Worktree, err)
+	}
+
+	_, err = runIssue(t, repo, stateHome, "start", "LOAF-2")
+	if err == nil || !strings.Contains(err.Error(), "missing") || !strings.Contains(err.Error(), "stop LOAF-1") {
+		t.Fatalf("start child error = %v, want missing-root-worktree refusal", err)
+	}
+
+	root, err := project.ResolveRoot(repo)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	child, err := state.GetIssue(context.Background(), root, state.PathResolver{StateHome: stateHome}, "LOAF-2")
+	if err != nil {
+		t.Fatalf("GetIssue(child) error = %v", err)
+	}
+	if child.Status == state.IssueStatusActive {
+		t.Fatalf("child status = %q, want unchanged after refused join", child.Status)
+	}
+}
+
+func TestRunnerIssueStartChildRefusesTerminalStartedRoot(t *testing.T) {
+	repo, stateHome := issueGitFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Parent"); err != nil {
+		t.Fatalf("issue new parent error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "new", "Child", "--parent", "LOAF-1"); err != nil {
+		t.Fatalf("issue new child error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "start", "LOAF-1"); err != nil {
+		t.Fatalf("issue start parent error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "status", "LOAF-1", "done"); err != nil {
+		t.Fatalf("issue status done error = %v", err)
+	}
+
+	_, err := runIssue(t, repo, stateHome, "start", "LOAF-2")
+	if err == nil || !strings.Contains(err.Error(), "done") {
+		t.Fatalf("start child error = %v, want terminal root refusal", err)
+	}
+
+	root, err := project.ResolveRoot(repo)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	child, err := state.GetIssue(context.Background(), root, state.PathResolver{StateHome: stateHome}, "LOAF-2")
+	if err != nil {
+		t.Fatalf("GetIssue(child) error = %v", err)
+	}
+	if child.Status == state.IssueStatusActive {
+		t.Fatalf("child status = %q, want unchanged after refused join", child.Status)
+	}
+}
+
+func TestRunnerIssueStopChildNamesRootWhenRootNotStarted(t *testing.T) {
+	repo, stateHome := issueGitFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Parent"); err != nil {
+		t.Fatalf("issue new parent error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "new", "Child", "--parent", "LOAF-1"); err != nil {
+		t.Fatalf("issue new child error = %v", err)
+	}
+
+	_, err := runIssue(t, repo, stateHome, "stop", "LOAF-2")
+	if err == nil || !strings.Contains(err.Error(), "does not own a worktree") || !strings.Contains(err.Error(), "stop LOAF-1") {
+		t.Fatalf("stop child error = %v, want root-directed refusal", err)
+	}
+}
+
+
 func TestRunnerIssueListStartedShowsLiveAndStale(t *testing.T) {
 	repo, stateHome := issueGitFixture(t)
 	if _, err := runIssue(t, repo, stateHome, "new", "Live"); err != nil {

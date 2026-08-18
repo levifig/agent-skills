@@ -12,6 +12,7 @@ is a Loaf workflow staging section for curated entries before release.
 
 ### Fixed
 
+- `loaf issue start` on a child refuses if the root workspace is missing or the root is already `done` / archived, instead of joining a stale or closed workspace.
 - Homebrew formula generation pins an explicit `version` so older `brew` does not infer `64` from `darwin-arm64` in the asset URL.
 - CI workflows use Node 24 Actions (`actions/checkout@v7`, `actions/setup-node@v7`, `actions/setup-go@v7`) so runs stop warning about deprecated Node 20.
 
