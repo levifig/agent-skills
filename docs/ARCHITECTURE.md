@@ -50,7 +50,7 @@ loaf                     # Native Go command surface
 
 Historical decision records describe how the runtime moved, but the active `cli/` tree contains only JavaScript launcher, build, verification, smoke, and evaluation scripts. It does not contain TypeScript command source or tests.
 
-Skills call `loaf`, hooks enforce through `loaf`, and users see one command surface. ADR and SPEC identifiers cited in this document serve only as decision and work provenance.
+General workflow skills call `loaf` for Loaf-owned state and route user-scoped external collaboration through dedicated provider skills; hooks enforce through `loaf`, and users see one deterministic Loaf command surface. ADR and SPEC identifiers cited in this document serve only as decision and work provenance.
 
 ### Operational State Identity
 
@@ -131,31 +131,19 @@ Fresh installs pre-create an empty root canonical so the Claude symlink is never
 
 This extends the "CLI is the correct protocol layer" principle to filesystem convention enforcement: the CLI owns the on-disk overlay state, not the skills or the user. ADR-010 records the consolidation from per-harness writes to one canonical file.
 
-### Work Records and Optional Linear Tasks (ADR-011)
+### Work Records and Optional Linear Coordination
 
-New bounded work is git-canonical under `docs/changes/YYYYMMDD-slug/` — `change.json` + `shape.md` + `tasks/`, with legacy single-file `change.md` supported until the named removal boundary (ADR-022). Existing specs in `.agents/specs/` and task records remain supported compatibility surfaces. For compatible task workflows, `integrations.linear.enabled` in `.agents/loaf.json` selects the execution backend:
+New bounded work is a Loaf issue, with authored shaping and implementation artifacts kept beside the code and operational issue state stored in project-scoped SQLite. Existing specs and task records remain supported compatibility surfaces until their named removal boundaries.
 
-- **Local-tasks mode** (default): tasks, journal entries, ideas, sparks, brainstorms, and drafts live in the global SQLite database.
-- **Linear-native mode**: existing compatible specs remain git-canonical while tasks use Linear sub-issues under a parent rollup issue.
+`issue.authority` in `.agents/loaf.json` elects the issue identity contract. `integrations.linear.enabled` records integration availability but does not select authority. Under local authority, Loaf mints the identifier. Under Linear authority, Linear mints the identifier and owns tracker title, workflow state, and assignment, while Loaf owns the shaping body, definition of done, claims, started worktree, and local event history.
 
-The split reflects an architectural principle from ADR-010's consolidation pattern extended to the spec/task artifact model:
+The current CLI adapter owns issue creation, adoption, pull, push, and reconciliation. Provider mappings, conflict resolution, and status translation are deterministic CLI/state responsibilities; revision/content hashes, outbox handling, and retries remain planned CLI/state concerns in the active coordination packet. A working MCP connection does not replace that adapter. A dedicated `linear` provider skill selects an already-configured Linear MCP for user-scoped reads, comments, assignments, and other collaboration that does not compete with Loaf-owned fields. When Linear is active, the Linear or bootstrap skill records the selected server name as `integrations.linear.mcp_server_name`; Loaf does not install, connect, or authenticate it. General Loaf workflow skills route provider work through the Linear skill instead of duplicating Linear behavior.
 
-- **Deliberation artifacts belong with code.** Changes, existing specs, ADRs, and councils need git history, code-adjacent visibility, and independence from tracker availability.
-- **Execution artifacts belong in the tracker.** Tasks, blockers, comments, assignees. Need real-time state, dashboards, blocking graphs, notifications.
+### Dependency and Completion Gates
 
-In Linear-native mode, the parent Linear issue is a **canonical-elsewhere rollup**: a summary and link to the git-canonical artifact, not a re-host. The artifact exists in one place; the tracker is a thin execution surface.
+`loaf issue frontier` derives the unblocked, unclaimed pickup set from Loaf's issue relationships and local status events. Implement refuses a blocked successor and claims an issue through `loaf issue start`; parent/child structure does not imply completion or sequencing without an explicit relationship.
 
-Skills detect the mode and branch accordingly; the same skill content selects a different task backend without changing the git-canonical artifact.
-
-### Pre-Flight Dependency Gate
-
-`/implement`'s Linear-native routing enforces `blockedBy` as a **hard pre-flight gate**: before moving a sub-issue to `in_progress` or starting work, every issue in its `blockedBy` field must be in a `completed`-type state. If not, the skill refuses to start — no work begun, no issue moved.
-
-This is different from advisory dependency ordering: the dependency graph becomes a runtime invariant, not a suggestion. The orchestrator cannot implement through open blockers even by accident.
-
-Local task dependencies are stored in SQLite and remain advisory. Pre-flight gating requires a backend that can reliably query every blocker's current state; Linear provides that guarantee for its task workflow, while local tasks trade strict enforcement for simplicity.
-
-Parent-issue completion follows from the same contract: when the last sub-issue flips to `completed`, `/implement` auto-closes the parent. A parent with any open sub-issue, including `blocked`, stays open.
+Completion remains explicit: ship records `done` through `loaf issue status` after the work lands, then `loaf issue stop` removes the claim. Neither a Linear workflow state nor the completion of the last child silently closes a Loaf parent. Tracker state moves through `loaf issue push` or an explicit `loaf issue reconcile` resolution, not a generic MCP mutation.
 
 ### Agent Model: Functional Profiles
 
@@ -196,11 +184,11 @@ Principles that shape how Loaf is designed and operated. Unlike ADRs, these are 
 
 ### State Authority — Git Authors, SQLite Operates
 
-Authored durable artifacts — Changes, plans, research, specs, ADRs, knowledge, reports, code, and generated deliverables — live in Git and are edited in place. Operational, queryable state — the journal, Intent, Exploration, checkpoints, conversation provenance, relationships, deferrals, and derived indexes — lives in project-scoped SQLite. Neither store mirrors the other: SQLite never becomes a hidden Markdown repository, and Git never holds per-conversation operational facts. No tracker holds authority over either until a later coordination Change defines publication and reconciliation explicitly.
+Authored durable artifacts — Changes, plans, research, specs, ADRs, knowledge, reports, code, and generated deliverables — live in Git and are edited in place. Operational, queryable state — the journal, Intent, Exploration, checkpoints, conversation provenance, relationships, deferrals, and derived indexes — lives in project-scoped SQLite. Neither store mirrors the other: SQLite never becomes a hidden Markdown repository, and Git never holds per-conversation operational facts. An elected tracker may own explicitly bounded issue identity and workflow fields, but it never owns either durable store; publication and reconciliation remain explicit.
 
 The intent-exploration-foundation Change proved the operational side as append-only facts rather than mutable lifecycle state. An Intent's disposition (`tracked`, `deferred`, `resolved`) and an Exploration's latest portable checkpoint are derived from transactionally sequenced immutable records — the row with the greatest committed per-aggregate sequence wins, never a timestamp and never a status column. Compound writes are retry-safe through one canonical per-project operation-key mapping (`intent_operations`), which the transitional `journal defer` adapter and legacy conversion share with the native commands, so no entry point can mint a parallel canonical record. Machine-local conversation handles and log locators are optional provenance with observed availability; portable context is exclusively the checkpoint's four required fields, and their presence is reported honestly (`portable_context_present`) rather than inferred from handles.
 
-The judgment boundary follows from the storage boundary: humans and Skills interpret, classify, and choose operations; the CLI validates, proves, and performs them deterministically. Skills never branch on backend configuration, call providers directly, or maintain lifecycle flags; the CLI never decides whether input is a Spark, Idea, Intent, Exploration, or Change.
+The judgment boundary follows from the storage boundary: humans and Skills interpret, classify, and choose operations; the CLI validates, proves, and performs Loaf state transitions deterministically. General Loaf workflow skills do not branch on provider configuration, call providers directly, or maintain lifecycle flags. Dedicated provider skills may select an already-configured provider MCP for user-scoped external collaboration, but they neither configure nor authenticate it and never take ownership of Loaf issue identity/state, provider mappings, retries, conflict resolution, or reconciliation. The CLI never decides whether input is a Spark, Idea, Intent, Exploration, or Change.
 
 ### Authorship Model — Agents Create, Humans Curate
 
@@ -387,7 +375,7 @@ Knowledge files are managed by `loaf kb` — staleness detection compares file m
 ~/.config/loaf/                 # User preferences
 ```
 
-Integration toggles in `loaf.json` gate runtime features (Linear magic-word detection, MCP recommendations) without rebuilding.
+Integration toggles in `loaf.json` gate runtime features such as Linear magic-word detection without rebuilding. `integrations.linear.mcp_server_name` records the project-selected Linear MCP without making Loaf responsible for its connection or credentials.
 
 ## Test Fixture Hygiene
 

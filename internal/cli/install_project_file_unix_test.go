@@ -341,7 +341,7 @@ func TestMergeMcpConfigRefusesAFifo(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- mergeJSONMcpConfig(mcpPath, "mcpServers", "linear", []string{"npx", "-y", "mcp-remote"})
+		done <- mergeJSONMcpConfig(mcpPath, "mcpServers", "example", []string{"example-mcp", "serve"})
 	}()
 
 	select {

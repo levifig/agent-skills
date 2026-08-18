@@ -21,7 +21,7 @@ const API_URL = "https://api.anthropic.com/v1/messages";
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 const DEFAULT_MODEL = "claude-opus-4-6";
 const MAX_DESC_CHARS = 250;
-const EXPECTED_SKILL_COUNT = 35;
+const EXPECTED_SKILL_COUNT = 36;
 
 const PRICING = {
   "claude-opus-4-6": { input: 15, output: 75 },
@@ -136,6 +136,11 @@ const TEST_CASES = {
     "Create a knowledge file for this domain",
     "This knowledge file is stale, update it",
     "What are the knowledge management conventions?",
+  ],
+  linear: [
+    "Triage the high-priority bugs in our Linear workspace",
+    "Move these Linear issues into the next cycle and assign their owners",
+    "Audit this Linear project and summarize the remaining blockers",
   ],
   orchestration: [
     "Coordinate work across multiple agents",
@@ -263,6 +268,18 @@ const CONFLICT_PROBES = [
     choices: ["loaf-reference", "triage"],
     expected: "loaf-reference",
     prompt: "Bring this project's Loaf installation current after the upgrade",
+  },
+  {
+    group: "linear-orchestration",
+    choices: ["linear", "orchestration"],
+    expected: "linear",
+    prompt: "Review the current Linear cycle, assign the unowned issues, and report what changed",
+  },
+  {
+    group: "linear-orchestration",
+    choices: ["linear", "orchestration"],
+    expected: "orchestration",
+    prompt: "Coordinate three agents working on separate issues and keep their progress aligned",
   },
   {
     group: "strategy-reflect",

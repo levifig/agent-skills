@@ -42,8 +42,8 @@ func TestRunnerInstallExplicitCursorTargetRunsNatively(t *testing.T) {
 	}
 	config := readInstallCommandJSON(t, filepath.Join(root, ".agents", "loaf.json"))
 	integrations := config["integrations"].(map[string]any)
-	if integrations["linear"].(map[string]any)["enabled"] != false || integrations["serena"].(map[string]any)["enabled"] != false {
-		t.Fatalf("integrations = %#v, want non-interactive MCP defaults disabled", integrations)
+	if _, exists := integrations["linear"]; exists || integrations["serena"].(map[string]any)["enabled"] != false {
+		t.Fatalf("integrations = %#v, want only the Serena recommendation recorded as disabled", integrations)
 	}
 }
 
@@ -251,11 +251,15 @@ func TestRunnerInstallInteractiveNoTargetsStillUpdatesClaudeProjectFile(t *testi
 	}
 }
 
-func TestRunnerInstallMcpRecommendationWritesCursorProjectConfig(t *testing.T) {
+func TestRunnerInstallSerenaRecommendationWritesCursorProjectConfig(t *testing.T) {
 	root, home := setupInstallCommandFixture(t)
 	writeInstallFile(t, filepath.Join(root, "bin", "loaf"), "#!/bin/sh\nexit 0\n")
 	if err := os.Chmod(filepath.Join(root, "bin", "loaf"), 0o755); err != nil {
 		t.Fatalf("Chmod(fake loaf) error = %v", err)
+	}
+	writeInstallFile(t, filepath.Join(root, "bin", "serena"), "#!/bin/sh\nexit 0\n")
+	if err := os.Chmod(filepath.Join(root, "bin", "serena"), 0o755); err != nil {
+		t.Fatalf("Chmod(fake serena) error = %v", err)
 	}
 	writeInstallFile(t, filepath.Join(root, "dist", "cursor", "skills", "foundations", "SKILL.md"), "# Foundations\n")
 	installTestHookDistribution(t, root, "cursor")
@@ -265,7 +269,7 @@ func TestRunnerInstallMcpRecommendationWritesCursorProjectConfig(t *testing.T) {
 	var stdout bytes.Buffer
 	err := Runner{
 		Stdout:     &stdout,
-		Stdin:      strings.NewReader("p\nn\n"),
+		Stdin:      strings.NewReader("p\n"),
 		WorkingDir: root,
 		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"install", "--to", "cursor", "--yes"})
@@ -283,18 +287,18 @@ func TestRunnerInstallMcpRecommendationWritesCursorProjectConfig(t *testing.T) {
 	if _, ok := servers["existing"]; !ok {
 		t.Fatalf("mcp servers = %#v, want existing server preserved", servers)
 	}
-	linear := servers["linear"].(map[string]any)
-	if linear["command"] != "npx" {
-		t.Fatalf("linear server = %#v, want command npx", linear)
+	serena := servers["serena"].(map[string]any)
+	if serena["command"] != "serena" {
+		t.Fatalf("serena server = %#v, want command serena", serena)
 	}
-	args := linear["args"].([]any)
-	if len(args) != 3 || args[2] != "https://mcp.linear.app/mcp" {
-		t.Fatalf("linear args = %#v, want mcp-remote URL", args)
+	args := serena["args"].([]any)
+	if len(args) != 4 || args[1] != "--context" || args[2] != "ide" {
+		t.Fatalf("serena args = %#v, want Cursor Serena context", args)
 	}
 	config := readInstallCommandJSON(t, filepath.Join(root, ".agents", "loaf.json"))
 	integrations := config["integrations"].(map[string]any)
-	if integrations["linear"].(map[string]any)["enabled"] != true || integrations["serena"].(map[string]any)["enabled"] != false {
-		t.Fatalf("integrations = %#v, want linear enabled and serena disabled", integrations)
+	if _, exists := integrations["linear"]; exists || integrations["serena"].(map[string]any)["enabled"] != true {
+		t.Fatalf("integrations = %#v, want only Serena recorded", integrations)
 	}
 }
 
@@ -325,7 +329,7 @@ EOS
 	var stdout bytes.Buffer
 	err := Runner{
 		Stdout:     &stdout,
-		Stdin:      strings.NewReader("n\np\ny\n"),
+		Stdin:      strings.NewReader("p\ny\n"),
 		WorkingDir: root,
 		Executable: distributionFixtureExecutable(root),
 	}.Run([]string{"install", "--to", "cursor", "--yes"})
@@ -351,31 +355,31 @@ EOS
 	}
 	config := readInstallCommandJSON(t, filepath.Join(root, ".agents", "loaf.json"))
 	integrations := config["integrations"].(map[string]any)
-	if integrations["linear"].(map[string]any)["enabled"] != false || integrations["serena"].(map[string]any)["enabled"] != true {
-		t.Fatalf("integrations = %#v, want linear disabled and serena enabled", integrations)
+	if _, exists := integrations["linear"]; exists || integrations["serena"].(map[string]any)["enabled"] != true {
+		t.Fatalf("integrations = %#v, want only Serena recorded as enabled", integrations)
 	}
 }
 
 func TestInstallMcpConfigWritersHandleOpenCodeAndNestedAmp(t *testing.T) {
 	root := realpath(t, t.TempDir())
 	opencodePath := filepath.Join(root, "opencode.json")
-	if err := mergeOpenCodeMcpConfig(opencodePath, "linear", []string{"npx", "-y", "mcp-remote", "https://mcp.linear.app/mcp"}); err != nil {
+	if err := mergeOpenCodeMcpConfig(opencodePath, "example", []string{"example-mcp", "serve"}); err != nil {
 		t.Fatalf("mergeOpenCodeMcpConfig error = %v", err)
 	}
 	opencode := readInstallCommandJSON(t, opencodePath)
 	openServers := opencode["mcp"].(map[string]any)
-	openLinear := openServers["linear"].(map[string]any)
-	if openLinear["type"] != "local" || openLinear["enabled"] != true {
-		t.Fatalf("opencode linear = %#v, want local enabled server", openLinear)
+	openExample := openServers["example"].(map[string]any)
+	if openExample["type"] != "local" || openExample["enabled"] != true {
+		t.Fatalf("opencode example = %#v, want local enabled server", openExample)
 	}
-	command := openLinear["command"].([]any)
-	if len(command) != 4 || command[0] != "npx" {
+	command := openExample["command"].([]any)
+	if len(command) != 2 || command[0] != "example-mcp" {
 		t.Fatalf("opencode command = %#v, want command array", command)
 	}
 
 	ampPath := filepath.Join(root, ".amp", "settings.json")
 	writeInstallFile(t, ampPath, `{"amp":{"theme":"quiet"}}`+"\n")
-	if err := mergeJSONMcpConfig(ampPath, "amp.mcpServers", "linear", []string{"npx", "-y", "mcp-remote", "https://mcp.linear.app/mcp"}); err != nil {
+	if err := mergeJSONMcpConfig(ampPath, "amp.mcpServers", "example", []string{"example-mcp", "serve"}); err != nil {
 		t.Fatalf("mergeJSONMcpConfig(amp) error = %v", err)
 	}
 	amp := readInstallCommandJSON(t, ampPath)
@@ -384,8 +388,8 @@ func TestInstallMcpConfigWritersHandleOpenCodeAndNestedAmp(t *testing.T) {
 		t.Fatalf("amp section = %#v, want existing nested key preserved", ampSection)
 	}
 	ampServers := ampSection["mcpServers"].(map[string]any)
-	if ampServers["linear"].(map[string]any)["command"] != "npx" {
-		t.Fatalf("amp servers = %#v, want nested linear server", ampServers)
+	if ampServers["example"].(map[string]any)["command"] != "example-mcp" {
+		t.Fatalf("amp servers = %#v, want nested example server", ampServers)
 	}
 }
 
@@ -420,8 +424,8 @@ func TestRunnerInstallFromLinkedWorktreeWritesMainLoafConfig(t *testing.T) {
 
 	config := readInstallCommandJSON(t, filepath.Join(main, ".agents", "loaf.json"))
 	integrations := config["integrations"].(map[string]any)
-	if integrations["linear"].(map[string]any)["enabled"] != false || integrations["serena"].(map[string]any)["enabled"] != false {
-		t.Fatalf("integrations = %#v, want defaults recorded in main worktree", integrations)
+	if _, exists := integrations["linear"]; exists || integrations["serena"].(map[string]any)["enabled"] != false {
+		t.Fatalf("integrations = %#v, want only the Serena default recorded in main worktree", integrations)
 	}
 	if _, err := os.Stat(filepath.Join(linked, ".agents", "loaf.json")); !os.IsNotExist(err) {
 		t.Fatalf("linked loaf.json stat = %v, want no shadow config in linked worktree", err)

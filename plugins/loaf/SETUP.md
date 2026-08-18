@@ -43,18 +43,13 @@ gem install solargraph
 gem install solargraph-rails
 ```
 
-## Recommended MCP Servers
+## MCP Servers
 
 MCPs are not bundled with Loaf — users configure them independently.
-Run `loaf install` to see recommendations.
 
-### Linear (Recommended)
+### Linear
 
-Issue tracking integration. `loaf install` can register the standard remote; authentication (OAuth, API keys, env) is between you, Linear, and your tools — Loaf does not inject secrets.
-
-```bash
-claude mcp add linear -- npx -y mcp-remote https://mcp.linear.app/mcp
-```
+Configure and authenticate Linear directly in each harness. When multiple Linear accounts exist, give each server a stable distinct name and expose only the project-appropriate server. The Linear and bootstrap skills record that active name as `integrations.linear.mcp_server_name` in `.agents/loaf.json`; Loaf does not install, connect, or authenticate the server.
 
 ### Serena (Optional)
 
@@ -113,16 +108,4 @@ serena --version
 
 ### Linear authentication
 
-Configure auth in your environment or follow the browser OAuth flow when the MCP server starts (see Linear’s MCP docs). Loaf does not resolve `op://` references or manage API keys for you.
-
-OAuth flow on first use:
-
-1. A browser window will open
-2. Authorize the connection
-3. Return to Claude Code
-
-To switch OAuth accounts, clear cached MCP OAuth state and reconnect:
-
-```bash
-rm -rf ~/.mcp-auth
-```
+Authenticate through the harness that owns the MCP connection. Loaf records only the active server name and does not inspect, store, clear, or transfer OAuth credentials or API keys.

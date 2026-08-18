@@ -10,7 +10,7 @@
 - Timestamps for User Context
 - Issue Completion
 
-Detailed reference for branch setup, Linear routing, and completion during implementation.
+Detailed reference for branch setup and completion during implementation.
 
 ## Branch Management
 
@@ -35,31 +35,7 @@ Work only in `started_worktree`. The branch should be ready for PR when work com
 
 ## Team Routing
 
-When creating Linear issues, suggest the appropriate team:
-
-1. **Analyze task description** for keywords (see `linear-workflow` Skill)
-2. **Check known_teams** in `.agents/loaf.json`
-3. **If team is new to project**, ask user for confirmation:
-   > "This task seems best suited for the **Security** team (matched: 'auth', 'vulnerability').
-   > Security hasn't been used in this project yet. Add this team?"
-4. **If user confirms**, add team to `known_teams` in config
-5. **Create via `loaf issue new`** so identity can be delegated; do not create in Linear MCP and forget `loaf issue pull`
-
-### Team Suggestion Example
-
-```
-Task: "Fix authentication bypass vulnerability in API"
-         |
-Keywords matched: "authentication", "vulnerability", "API"
-         |
-Top suggestions:
-  1. Security (score: 2) -- "authentication", "vulnerability"
-  2. Backend (score: 1) -- "API"
-         |
-Suggest Security, confirm if new to project
-```
-
-Use Linear MCP's `list_teams` (if configured) to get all workspace teams for validation.
+Use the [Linear skill](../../linear/SKILL.md) when implementation work needs Linear workspace or team routing. It owns configured-MCP selection, team validation, and the boundary between general Linear mutations and Linear-backed Loaf issues.
 
 ---
 
@@ -136,7 +112,7 @@ For complex tasks, explore before implementing:
 
 ## Linear Status Management
 
-**Keep Loaf status synchronized with actual work state.** Linear is an overlay (`loaf issue pull` / `push` / `reconcile`); never drive Loaf status from Linear MCP tools.
+**Keep Loaf status synchronized with actual work state.** Follow [Loaf Issue Coordination](../../linear/references/loaf-issues.md) for the Linear adapter contract; never drive Loaf status from generic MCP mutations.
 
 | Work State | Loaf status |
 |------------|-------------|

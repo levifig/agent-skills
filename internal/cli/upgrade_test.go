@@ -75,8 +75,8 @@ func TestRunnerUpgradeInsideALoafProjectRefreshesProjectSurfaces(t *testing.T) {
 	}
 	config := readInstallCommandJSON(t, filepath.Join(root, ".agents", "loaf.json"))
 	integrations, ok := config["integrations"].(map[string]any)
-	if !ok || integrations["linear"] == nil || integrations["serena"] == nil {
-		t.Fatalf("integrations = %#v, want every shipped MCP recommendation recorded", config["integrations"])
+	if !ok || integrations["serena"] == nil || integrations["linear"] != nil {
+		t.Fatalf("integrations = %#v, want only the shipped Serena recommendation recorded", config["integrations"])
 	}
 }
 
@@ -187,8 +187,8 @@ func TestRunnerUpgradePreservesAnUnparseableProjectConfig(t *testing.T) {
 		}
 		config := readInstallCommandJSON(t, filepath.Join(root, ".agents", "loaf.json"))
 		integrations, ok := config["integrations"].(map[string]any)
-		if !ok || integrations["linear"] == nil {
-			t.Fatalf("integrations = %#v, want the recommendations recorded", config["integrations"])
+		if !ok || integrations["serena"] == nil || integrations["linear"] != nil {
+			t.Fatalf("integrations = %#v, want only the Serena recommendation recorded", config["integrations"])
 		}
 	})
 }
@@ -245,8 +245,8 @@ func TestRunnerUpgradeExitsNonZeroAfterATargetFailure(t *testing.T) {
 	assertInstallFile(t, filepath.Join(home, ".cursor", loafInstallMarkerFile), "9.8.7-test.1\n")
 	// The project part runs after the targets, so it must have completed too.
 	config := readInstallCommandJSON(t, filepath.Join(root, ".agents", "loaf.json"))
-	if integrations, ok := config["integrations"].(map[string]any); !ok || integrations["linear"] == nil {
-		t.Fatalf("integrations = %#v, want the project part completed despite the target failure", config["integrations"])
+	if integrations, ok := config["integrations"].(map[string]any); !ok || integrations["serena"] == nil || integrations["linear"] != nil {
+		t.Fatalf("integrations = %#v, want the project part to record only Serena despite the target failure", config["integrations"])
 	}
 }
 

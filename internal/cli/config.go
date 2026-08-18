@@ -344,6 +344,7 @@ func ensureLoafConfigDefaults(config map[string]any, now time.Time) ([]string, [
 	if integrations != nil {
 		updated = append(updated, ensureIntegrationEnabledDefault(integrations, "linear", false, &errors)...)
 		updated = append(updated, ensureIntegrationEnabledDefault(integrations, "serena", false, &errors)...)
+		validateIntegrationMCPServerName(integrations, "linear", &errors)
 		warnings = append(warnings, validateGitHubIntegration(integrations, &errors)...)
 	}
 
@@ -394,6 +395,21 @@ func ensureIntegrationEnabledDefault(integrations map[string]any, name string, e
 		*errors = append(*errors, fmt.Sprintf("integrations.%s.enabled must be a boolean", name))
 	}
 	return nil
+}
+
+func validateIntegrationMCPServerName(integrations map[string]any, name string, errors *[]string) {
+	section, ok := integrations[name].(map[string]any)
+	if !ok {
+		return
+	}
+	value, exists := section["mcp_server_name"]
+	if !exists {
+		return
+	}
+	serverName, ok := value.(string)
+	if !ok || strings.TrimSpace(serverName) == "" {
+		*errors = append(*errors, fmt.Sprintf("integrations.%s.mcp_server_name must be a nonempty string", name))
+	}
 }
 
 func validateGitHubIntegration(integrations map[string]any, errors *[]string) []string {

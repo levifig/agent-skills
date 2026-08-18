@@ -24,9 +24,9 @@ ADR-020 preserves that single-overlay result while making root `AGENTS.md` the c
 
 **Automation must fail within its evidence boundary.** Automatic completion remains disabled unless a target supplies trustworthy success evidence and a durable event identity. When a harness cannot distinguish the relevant traffic or lifecycle event reliably, an explicit fallback is preferable to a false guarantee.
 
-**The CLI is the correct protocol layer.** Skills should describe what to do. The CLI should execute it deterministically. Hooks should enforce invariants. This three-layer separation emerged from repeated attempts to let skills act on the world directly.
+**The CLI is the correct protocol layer for Loaf-owned state.** Skills describe judgment and workflow, the CLI performs deterministic state and filesystem operations, and hooks enforce invariants. Loaf issue identity and state, provider mappings, retries, conflict resolution, and reconciliation remain CLI and state responsibilities regardless of which LLM or harness is running.
 
-Every time a skill tried to call an external tool directly -- Linear MCP, raw git commands, file operations -- reliability dropped. The CLI absorbs that complexity and presents a stable interface to skills. For the team lead persona, this is critical: the CLI is the enforcement layer that makes agent behavior deterministic regardless of which LLM or harness is running.
+General Loaf workflow skills do not improvise provider calls or duplicate provider-specific collaboration logic. They route user-scoped external collaboration through a dedicated provider skill, which may select an independently configured provider MCP, record its server name as project routing metadata, read before mutating, and report outcomes. That skill neither connects, configures, nor authenticates the MCP and does not replace the CLI boundary for Loaf-owned state.
 
 **Diagnosis and repair must share the same state taxonomy.** Sharing repair helpers is not enough; the detection branches in a diagnostic tool must consult the same classification logic as the repair path, or they will drift apart.
 
