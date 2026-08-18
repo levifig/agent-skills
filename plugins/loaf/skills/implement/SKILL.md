@@ -50,7 +50,7 @@ You are the coordinator. Work units are issues.
 
 ### Orchestrator Can Do Directly
 - Log journal entries, read journal context, create council files
-- Use your harness's todo tracking surface; **if `integrations.linear.enabled` is `true` in `.agents/loaf.json`**, Linear MCP is an overlay only — Loaf issues remain the work unit and Linear never drives Loaf status
+- Use your harness's todo tracking surface; route Linear reads, comments, and mutations through the `linear` skill, which preserves the Loaf issue authority boundary
 - Read any file for context
 - Ask clarifying questions
 - Run `loaf issue` read commands, `loaf issue start` / `stop`, `loaf issue status`, and open a PR whose body is `loaf issue render` output
@@ -240,7 +240,7 @@ When multiple valid approaches exist: spawn council (5-7 agents, odd), present r
 2. Log each spawn with `loaf journal log "todo(agent): spawned <agent> for <ref>"`
 3. Keep journal entries handoff-ready
 4. After each agent completes: log outcome, spawn next
-5. If Linear overlay is enabled, you may comment there — Loaf status stays on `loaf issue`
+5. If Linear participates, follow the Linear skill for server selection and comments; Loaf status stays on `loaf issue`
 
 ### AFTER (Completion)
 1. Code review pass (spawn `reviewer` agent)
@@ -273,5 +273,6 @@ After the PR exists, suggest ship to land it. Suggest release only when the land
 ## Related Skills
 
 - **shape** — Issue preparation and decomposition
+- **linear** — Configured MCP selection, Linear workflows, and Loaf issue reconciliation boundaries
 - **orchestration/journal** — Project journal continuity model
 - **orchestration/local-tasks** — Frontier, started worktrees, status, definition of done

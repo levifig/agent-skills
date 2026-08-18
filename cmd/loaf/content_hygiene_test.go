@@ -305,7 +305,7 @@ func TestPlanningVocabularyConverged(t *testing.T) {
 			required: []string{
 				"### Native Stateful Runtime (ADR-014)",
 				"ADR and SPEC identifiers cited in this document serve only as decision and work provenance.",
-				"### Work Records and Optional Linear Tasks (ADR-011)",
+				"### Work Records and Optional Linear Coordination",
 				"## Change-First Execution Model",
 				"New bounded work uses a Change as its primary contract.",
 			},

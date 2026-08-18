@@ -29,9 +29,7 @@ These are decisions, not defaults. The CLI cannot guess them — ask, then recor
   `linear`, the Linear team key (`ENG`). `loaf init` and a newly created loaf.json
   record a derived local prefix; `loaf issue identity --prefix` / `--authority`
   is the setter. `--fix` never invents these on an existing file.
-- **Tracker / integration election** — `integrations.linear.enabled` and the other
-  `integrations.*` toggles. Linear execution identity is `issue.authority`, not
-  the historical skill-mode toggle.
+- **Tracker / integration election** — `integrations.linear.enabled` and the other `integrations.*` toggles. Linear execution identity is `issue.authority`, not the historical skill-mode toggle. When Linear is active, record the exact server exposed by the harness as `integrations.linear.mcp_server_name`. The Linear or bootstrap skill records this project-owned value; Loaf does not install or authenticate the MCP.
 - **Which harnesses to install** — the targets passed to `loaf install --to <target>`
   (or `--to all`).
 - **Codex basic command policy** — `loaf install --to codex --codex-basic-commands` explicitly installs path-pinned managed command rules and a matching `CODEX_HOME/AGENTS.md` guidance block for the centrally classified basic Loaf leaves, including hardened journal logging and approved readers, outside the workspace sandbox. This is narrower than Full access or adding the global Loaf data directory as a writable root; unclassified and operator commands remain gated. Do not enable it implicitly.

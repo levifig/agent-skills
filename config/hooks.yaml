@@ -132,8 +132,9 @@ hooks:
       failClosed: true
       description: Validate commit messages follow conventions
 
+    # Linear - Commit reference detection (ADVISORY)
     - id: detect-linear-magic
-      skill: orchestration
+      skill: linear
       type: command
       command: 'loaf journal log --detect-linear'
       matcher: "Bash"

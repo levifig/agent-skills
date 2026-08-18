@@ -42,12 +42,6 @@ type installMcpTargetStatus struct {
 
 var installMcpDefinitions = []installMcpDefinition{
 	{
-		id:          "linear",
-		displayName: "Linear",
-		tier:        "recommended",
-		defaultArgs: []string{"npx", "-y", "mcp-remote", "https://mcp.linear.app/mcp"},
-	},
-	{
 		id:          "serena",
 		displayName: "Serena",
 		tier:        "optional",
@@ -338,8 +332,6 @@ func installMcpFileConfigured(path string, mcpID string) (bool, string) {
 	}
 	text := strings.ToLower(string(body))
 	switch mcpID {
-	case "linear":
-		return strings.Contains(text, "mcp.linear.app") || strings.Contains(text, "linear"), ""
 	case "serena":
 		return strings.Contains(text, "serena") || strings.Contains(text, "serena start-mcp-server"), ""
 	default:

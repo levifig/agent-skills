@@ -53,19 +53,13 @@ func TestInstallMcpDetectionFindsProjectConfiguredTargets(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 
-	writeInstallFile(t, filepath.Join(root, ".cursor", "mcp.json"), `{"mcpServers":{"linear":{"command":"npx","args":["-y","mcp-remote","https://mcp.linear.app/mcp"]}}}`+"\n")
 	writeInstallFile(t, filepath.Join(root, "opencode.json"), `{"mcp":{"serena":{"type":"local","command":["uvx","serena","start-mcp-server"]}}}`+"\n")
-	writeInstallFile(t, filepath.Join(root, ".amp", "settings.json"), `{"amp":{"mcpServers":{"linear":{"command":"npx","args":["-y","mcp-remote","https://mcp.linear.app/mcp"]}}}}`+"\n")
-	writeInstallFile(t, filepath.Join(root, ".codex", "config.toml"), "[mcp_servers.linear]\ncommand = \"npx\"\nargs = [\"-y\", \"mcp-remote\", \"https://mcp.linear.app/mcp\"]\n")
 
 	for _, tc := range []struct {
 		target string
 		mcpID  string
 	}{
-		{target: "cursor", mcpID: "linear"},
 		{target: "opencode", mcpID: "serena"},
-		{target: "amp", mcpID: "linear"},
-		{target: "codex", mcpID: "linear"},
 	} {
 		t.Run(tc.target+"/"+tc.mcpID, func(t *testing.T) {
 			status := detectInstallMcpForTarget(root, tc.target, tc.mcpID)
@@ -93,8 +87,16 @@ func TestInstallMcpDoneForTargetsRequiresEveryRequestedTarget(t *testing.T) {
 	}
 }
 
+func TestInstallMcpDefinitionsDoNotProvisionLinear(t *testing.T) {
+	for _, definition := range installMcpDefinitions {
+		if definition.id == "linear" {
+			t.Fatalf("install MCP definitions include Linear; Linear connection setup belongs to the harness")
+		}
+	}
+}
+
 func TestInstallMcpSerenaUsesNativeTargetArgs(t *testing.T) {
-	serena := installMcpDefinitions[1]
+	serena := installMcpDefinitions[0]
 	if serena.id != "serena" {
 		t.Fatalf("definition = %#v, want serena definition", serena)
 	}

@@ -120,11 +120,7 @@ Treat these as **warnings**, not auto-fixes.
 
 ### Linear overlay
 
-When `integrations.linear.enabled` is `true` in `.agents/loaf.json`, the tracker
-adapter is not shipped. If a report or journal entry names a Linear id next to
-a Loaf alias, you may `get_issue` and flag an obvious mismatch (Linear Done vs
-Loaf still `active`, or the reverse). Warnings only. Do not drive Loaf status
-from Linear.
+When `integrations.linear.enabled` is `true` in `.agents/loaf.json`, follow the `linear` skill to select the configured MCP and read linked issues. Flag obvious tracker/Loaf mismatches as warnings only; resolve them through the documented Loaf issue reconciliation boundary, never by driving Loaf status from an MCP mutation.
 
 ### Leftover board rows
 
@@ -148,7 +144,7 @@ After housekeeping, suggest reflect if the session produced key decisions or lea
 | Topic | Reference | Use When |
 |-------|-----------|----------|
 | Report Template | [templates/report.md](templates/report.md) | Creating cleanup reports |
-| Linear Integration | `orchestration/references/linear.md` | Checking external tracker overlay |
+| Linear Workflows | `linear` skill | Selecting the configured MCP and checking the external tracker overlay |
 | Journal Continuity | `orchestration/references/journal.md` | Understanding the project journal model |
 
 ## Artifact Naming

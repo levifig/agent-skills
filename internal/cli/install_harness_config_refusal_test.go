@@ -33,21 +33,21 @@ func TestMergeHarnessConfigsRefuseMalformedJSON(t *testing.T) {
 					name: "cursor mcp.json",
 					path: filepath.Join(dir, ".cursor", "mcp.json"),
 					merge: func(path string) error {
-						return mergeJSONMcpConfig(path, "mcpServers", "linear", []string{"npx", "-y", "mcp-remote"})
+						return mergeJSONMcpConfig(path, "mcpServers", "example", []string{"example-mcp", "serve"})
 					},
 				},
 				{
 					name: "opencode.json",
 					path: filepath.Join(dir, "opencode.json"),
 					merge: func(path string) error {
-						return mergeOpenCodeMcpConfig(path, "linear", []string{"npx", "-y", "mcp-remote"})
+						return mergeOpenCodeMcpConfig(path, "example", []string{"example-mcp", "serve"})
 					},
 				},
 				{
 					name: "amp settings.json",
 					path: filepath.Join(dir, ".amp", "settings.json"),
 					merge: func(path string) error {
-						return mergeJSONMcpConfig(path, "amp.mcpServers", "linear", []string{"npx", "-y", "mcp-remote"})
+						return mergeJSONMcpConfig(path, "amp.mcpServers", "example", []string{"example-mcp", "serve"})
 					},
 				},
 			} {
@@ -218,7 +218,7 @@ func TestMergeHarnessConfigAcceptsValidObject(t *testing.T) {
 	path := filepath.Join(dir, "mcp.json")
 	writeInstallFile(t, path, `{"mcpServers":{"other":{"command":"echo"}}}`+"\n")
 
-	if err := mergeJSONMcpConfig(path, "mcpServers", "linear", []string{"npx", "-y", "mcp-remote"}); err != nil {
+	if err := mergeJSONMcpConfig(path, "mcpServers", "example", []string{"example-mcp", "serve"}); err != nil {
 		t.Fatalf("mergeJSONMcpConfig(valid) error = %v", err)
 	}
 	var data map[string]any
@@ -229,7 +229,7 @@ func TestMergeHarnessConfigAcceptsValidObject(t *testing.T) {
 	if _, ok := servers["other"]; !ok {
 		t.Fatalf("rewritten config lost user server: %#v", data)
 	}
-	if _, ok := servers["linear"]; !ok {
+	if _, ok := servers["example"]; !ok {
 		t.Fatalf("rewritten config missing Loaf server: %#v", data)
 	}
 }

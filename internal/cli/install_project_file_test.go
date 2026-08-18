@@ -122,7 +122,7 @@ func TestMergeMcpConfigRefusesAnOversizedConfig(t *testing.T) {
 	oversized := oversizedProjectFileBody()
 	writeInstallFile(t, mcpPath, oversized)
 
-	err := mergeJSONMcpConfig(mcpPath, "mcpServers", "linear", []string{"npx", "-y", "mcp-remote"})
+	err := mergeJSONMcpConfig(mcpPath, "mcpServers", "example", []string{"example-mcp", "serve"})
 
 	if !errors.Is(err, errFileTooLarge) {
 		t.Fatalf("mergeJSONMcpConfig(oversized) error = %v, want errFileTooLarge", err)

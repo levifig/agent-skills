@@ -35,7 +35,7 @@ Lands before `spec-conversion-and-guidance-sweep` executes (its shape.md Decisio
 
 ## Sources and Research Links
 
-- ADR-011 (the mode being replaced) and the Linear-native touchpoints inventoried during sweep shaping (orchestration/references/linear.md, implement's Linear sections, council's `linear_parent`).
+- ADR-011 (the mode being replaced) and the Linear-native touchpoints inventoried during sweep shaping (the Linear skill's Loaf issue coordination reference, implement's Linear sections, council's `linear_parent`).
 - The `linear-native-coordination` successor packet in `docs/changes/20260710-journal-reliability-foundation/change.md` (purpose, inherited decisions, no-gos) and journal decisions cited there (`journal:fa885c8d…`, `journal:c3c937f0…`, `journal:d655dbd5…`).
 - Sweep shaping interview 2026-08-11 (operator directive and sequencing decision).
 

@@ -124,6 +124,7 @@ Skills you invoke directly to drive work forward.
 | `housekeeping` | Reviewing and archiving agent artifacts |
 | `handoff` | Creating disposable transfer packets in `.agents/handoffs/` |
 | `bootstrap` | Bootstrapping new or existing projects (initial issue arc after pitched BRIEF) |
+| `linear` | Managing Linear issues, projects, cycles, and Loaf issue coordination through configured MCP servers |
 | `wrap` | Optional end-of-conversation checkpoint: shipped, pending, next |
 
 Explore and brainstorm are agent techniques (not user slash entry); agents reach for them when direction is undecided — human entry intent routes to `/pitch`.
@@ -134,7 +135,7 @@ Background skills that activate automatically during agent coordination and proj
 
 | Skill | Activates When |
 |-------|----------------|
-| `orchestration` | Journal continuity, delegating agents, Linear integration |
+| `orchestration` | Journal continuity, delegating agents, and council workflows |
 | `council` | Multi-perspective deliberation during complex decisions |
 | `knowledge-base` | Managing project knowledge files |
 | `loaf-reference` | Looking up which CLI command to use |
@@ -245,11 +246,9 @@ Activating a verified copy is a manual, quiesced operator procedure, not an auto
 
 ## Integrations
 
-*Claude Code only.*
+**MCP Servers:** Configure Linear directly in each harness and expose one account-specific server per project; the Linear and bootstrap skills record its name in `.agents/loaf.json` but do not install or authenticate it. **Optional:** Serena provides semantic editing for large codebases and can be configured through `loaf install`.
 
-**Recommended MCP Servers:** Linear (issue tracking). **Optional:** Serena (semantic editing for large codebases — most code intelligence is now built into Claude Code's native LSP). Not bundled — `loaf install` will detect and recommend missing MCPs.
-
-**LSP Servers:** gopls, pyright, typescript-language-server, solargraph
+**Claude Code LSP Servers:** gopls, pyright, typescript-language-server, solargraph
 
 ## Development
 
