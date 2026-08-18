@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	stdlibRuntime "runtime"
 	"strings"
-	"time"
 )
 
 type builtTarget struct {
@@ -62,52 +61,68 @@ func (r Runner) runVersion(out io.Writer) error {
 	return nil
 }
 
-// devVersionPatchFloor is the smallest patch number that can only be a Unix
-// timestamp. The patch slot counts releases within a minor and will never
-// approach a billion, so a patch at or above this floor identifies a dev build
-// and nothing else.
-const devVersionPatchFloor = 1_000_000_000
+// legacyDevVersionPatchFloor preserves recognition of the timestamp identities
+// minted before dev builds became commit-addressed. Installed harness markers
+// can outlive the binary that wrote them, so removing this rule would misread
+// existing dev content as a newer release.
+const legacyDevVersionPatchFloor = 1_000_000_000
 
-// isDevVersion is the shared dev-identity predicate. One rule — a patch of
-// timestamp magnitude — serves every surface that has to tell a dev build from
-// a release: the version report mints these, the drift classifier reads them
-// off install markers, and the release snapshot refuses to cut a ceremony for
-// one. There is no flag, suffix, or second source to keep in step.
+// isDevVersion recognizes the current +g<short-sha> convention and the legacy
+// timestamp-in-patch convention. Build metadata does not affect SemVer
+// precedence, but it remains an explicit and machine-readable channel marker.
 func isDevVersion(version string) bool {
 	parsed, ok := parseUpgradeSemver(version)
 	if !ok {
 		return false
 	}
-	return parsed.patch >= devVersionPatchFloor
+	if parsed.patch >= legacyDevVersionPatchFloor {
+		return true
+	}
+	value := normalizeUpgradeVersion(version)
+	_, build, found := strings.Cut(value, "+")
+	if !found {
+		return false
+	}
+	for _, identifier := range strings.Split(build, ".") {
+		if isDevCommitIdentifier(identifier) {
+			return true
+		}
+	}
+	return false
 }
 
-// devVersion mints a dev build's identity: the distribution's major and minor
-// with the moment the binary landed on this machine in the patch slot. A
-// timestamp patch is valid SemVer and sorts above every release in the minor,
-// which is the truth about a machine running its own build — a prerelease
-// suffix would sort below the latest release instead, and nag that machine to
-// "upgrade" forever.
-//
-// The stamp is not linked into the binary. The committed native binaries are
-// asserted byte-for-byte reproducible (cli/scripts/verify-go-artifacts.mjs), so
-// a build-varying ldflag would fail that assertion on every build; the
-// executable's own file timestamp carries it instead (see cmd/loaf/main.go).
-//
-// A clock that has not been set would mint a patch below the floor — a version
-// no surface could tell from a release — so that falls back to the release
-// version rather than claim to be a build it cannot name. So does a binary with
-// no resolvable distribution: its version is unknown, and dressing the unknown
-// sentinel in a timestamp would claim an identity it does not have.
-func devVersion(releaseVersion string, buildTime time.Time) string {
-	parsed, ok := parseUpgradeSemver(releaseVersion)
-	if !ok || buildTime.IsZero() || releaseVersion == packageVersionUnknown {
+func isDevCommitIdentifier(identifier string) bool {
+	if len(identifier) < 8 || len(identifier) > 41 || identifier[0] != 'g' {
+		return false
+	}
+	for _, char := range identifier[1:] {
+		if char < '0' || char > '9' {
+			if char < 'a' || char > 'f' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// devVersion appends the commit a local build recorded as SemVer build
+// metadata. This keeps the package version and its precedence intact while
+// making the exact source commit immediately comparable with git. The commit
+// stays outside the native binary so tracked binaries remain reproducible.
+func devVersion(releaseVersion string, commit string) string {
+	if _, ok := parseUpgradeSemver(releaseVersion); !ok || releaseVersion == packageVersionUnknown {
 		return releaseVersion
 	}
-	stamp := buildTime.Unix()
-	if stamp < devVersionPatchFloor {
+	commit = strings.ToLower(strings.TrimSpace(commit))
+	if !isDevCommitIdentifier("g" + commit) {
 		return releaseVersion
 	}
-	return fmt.Sprintf("%d.%d.%d", parsed.major, parsed.minor, stamp)
+	commit = commit[:7]
+	separator := "+"
+	if strings.Contains(releaseVersion, "+") {
+		separator = "."
+	}
+	return releaseVersion + separator + "g" + commit
 }
 
 // reportedVersion is the version this binary answers with: a release build
@@ -117,13 +132,15 @@ func devVersion(releaseVersion string, buildTime time.Time) string {
 // because content always carries the release version whichever binary deployed
 // it.
 func (r Runner) reportedVersion(root string) string {
-	return devVersion(packageVersion(root), r.devBuildStamp(root))
+	if !r.isDevBuild(root) {
+		return packageVersion(root)
+	}
+	return devVersion(packageVersion(root), r.DevBuildCommit)
 }
 
-// devBuildStamp is the dev-build signal, and it takes two facts rather than
-// one. Absent release metadata (cmd/loaf/main.go) says no release pipeline
-// built this binary; a resolved distribution that is the source checkout says
-// it is running out of the tree that did.
+// isDevBuild takes two facts rather than one. Absent release metadata says no
+// release pipeline built this binary; a resolved distribution that is the
+// source checkout says it is running out of the tree that did.
 //
 // Absence alone would be wrong, because this repository ships its own locally
 // built binaries: the Claude Code plugin marketplace serves the committed
@@ -131,11 +148,8 @@ func (r Runner) reportedVersion(root string) string {
 // github:levifig/loaf` builds one at install time. Both are releases carrying
 // no metadata, and reading that absence as proof would tell a user on 0.2.20
 // they were running a dev build.
-func (r Runner) devBuildStamp(root string) time.Time {
-	if !isSourceCheckout(root) {
-		return time.Time{}
-	}
-	return r.DevBuildTime
+func (r Runner) isDevBuild(root string) bool {
+	return isSourceCheckout(root) && strings.TrimSpace(r.BuildCommit) == "" && strings.TrimSpace(r.BuildDate) == ""
 }
 
 // isSourceCheckout reports whether a resolved distribution root is the Loaf
@@ -152,11 +166,10 @@ func isSourceCheckout(root string) bool {
 	return err == nil
 }
 
-// versionSuffix annotates the version line. A release build carries its commit
-// and date; a dev build says what it is, because a ten-digit patch only reads
-// as a timestamp once you know to read it as one.
+// versionSuffix annotates the version line. Release builds carry their commit
+// and date; source-checkout builds name their channel explicitly.
 func (r Runner) versionSuffix(root string) string {
-	if !r.devBuildStamp(root).IsZero() {
+	if r.isDevBuild(root) {
 		return " (dev build)"
 	}
 	return buildInfoSuffix(r.BuildCommit, r.BuildDate)

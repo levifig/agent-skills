@@ -8,6 +8,8 @@ node_modules/
 
 # CLI build output
 dist-cli/
+bin/.loaf-dev-commit
+bin/native/.staging/
 !plugins/loaf/dist-cli/
 !plugins/loaf/dist-cli/**
 

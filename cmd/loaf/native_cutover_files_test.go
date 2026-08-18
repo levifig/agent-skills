@@ -199,6 +199,18 @@ func TestNativeGoArtifactScriptsSupportExplicitReleaseTargets(t *testing.T) {
 	}
 }
 
+func TestDevBuildLinkProtectsOperatorOwnedPaths(t *testing.T) {
+	runNodeTestFile(t, "cli/scripts/dev-build-link.test.mjs")
+}
+
+func TestDevBuildProvenancePublication(t *testing.T) {
+	runNodeTestFile(t, "cli/scripts/build-go.test.mjs")
+}
+
+func TestReleaseTagClassification(t *testing.T) {
+	runNodeTestFile(t, "cli/scripts/classify-release-tag.test.mjs")
+}
+
 func TestNativeGoReleaseBuildUsesPublishTargetPolicy(t *testing.T) {
 	node := requireNode(t)
 	root := repoRoot(t)
@@ -263,6 +275,25 @@ func TestReleaseWorkflowVerifiesEvidenceBeforeStampedBuild(t *testing.T) {
 	}
 	if strings.Count(workflow, "LOAF_BUILD_COMMIT") != 1 || strings.Count(workflow, "LOAF_BUILD_DATE") != 1 {
 		t.Fatalf("release workflow must confine build metadata to the release build step")
+	}
+	if !strings.Contains(workflow, "cli/scripts/classify-release-tag.mjs") {
+		t.Fatalf("release workflow must classify tags with the tested SemVer-first script")
+	}
+	if strings.Contains(workflow, `g[0-9a-f]{7,40}`) || strings.Contains(workflow, ">= 1000000000") {
+		t.Fatalf("release workflow must not inline tag classification")
+	}
+}
+
+func runNodeTestFile(t *testing.T, rel string) {
+	t.Helper()
+	node := requireNode(t)
+	root := repoRoot(t)
+	cmd := exec.Command(node, "--test", rel)
+	cmd.Dir = root
+	cmd.Env = envWith("LOAF_DEV_LINK=")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s failed: %v\n%s", rel, err, output)
 	}
 }
 

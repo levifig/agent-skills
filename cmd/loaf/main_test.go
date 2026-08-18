@@ -35,48 +35,35 @@ func TestNewRunnerWiresBuildInfo(t *testing.T) {
 	if runner.BuildDate != "2026-06-27T12:00:00Z" {
 		t.Fatalf("runner.BuildDate = %q, want %q", runner.BuildDate, "2026-06-27T12:00:00Z")
 	}
-	if !runner.DevBuildTime.IsZero() {
-		t.Fatalf("runner.DevBuildTime = %v, want the zero time for a release build", runner.DevBuildTime)
+	if runner.DevBuildCommit != "" {
+		t.Fatalf("runner.DevBuildCommit = %q, want empty for a release build", runner.DevBuildCommit)
 	}
 }
 
-// TestDevBuildTimeSeparatesReleaseBuildsFromDevBuilds pins the switch every
-// version surface hangs off. Release metadata present means a release build,
-// which reports the distribution's version; its absence means a locally linked
-// binary, whose identity is when it was linked. The link-time variables are
-// assigned directly here because that is exactly what the linker does to them.
-func TestDevBuildTimeSeparatesReleaseBuildsFromDevBuilds(t *testing.T) {
+func TestDevBuildCommitReadsOnlyLocalNativeProvenance(t *testing.T) {
 	originalCommit, originalDate := buildCommit, buildDate
 	t.Cleanup(func() {
 		buildCommit, buildDate = originalCommit, originalDate
 	})
 
-	for _, tc := range []struct {
-		name   string
-		commit string
-		date   string
-	}{
-		{name: "commit_and_date", commit: "abc1234", date: "2026-06-27T12:00:00Z"},
-		{name: "commit_only", commit: "abc1234"},
-		{name: "date_only", date: "2026-06-27T12:00:00Z"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			buildCommit, buildDate = tc.commit, tc.date
-			if got := devBuildTime(); !got.IsZero() {
-				t.Fatalf("devBuildTime() = %v, want the zero time for a release build", got)
-			}
-		})
+	root := t.TempDir()
+	executable := filepath.Join(root, "bin", "native", "test-target", "loaf")
+	if err := os.MkdirAll(filepath.Dir(executable), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "bin", ".loaf-dev-commit"), []byte("abc1234\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if got := readDevBuildCommit(executable); got != "abc1234" {
+		t.Fatalf("readDevBuildCommit() = %q, want abc1234", got)
+	}
+	if got := readDevBuildCommit(filepath.Join(root, "bin", "loaf")); got != "" {
+		t.Fatalf("readDevBuildCommit(non-native path) = %q, want empty", got)
 	}
 
-	// This test binary was linked locally with no release metadata, so it is
-	// the dev build the carrier has to work for.
-	buildCommit, buildDate = "", ""
-	got := devBuildTime()
-	if got.IsZero() {
-		t.Fatal("devBuildTime() = zero time, want the executable's link time for a build with no release metadata")
-	}
-	if got.Unix() < 1_000_000_000 {
-		t.Fatalf("devBuildTime() = %v, want a link time of timestamp magnitude", got)
+	buildCommit, buildDate = "release1", ""
+	if got := devBuildCommit(); got != "" {
+		t.Fatalf("devBuildCommit() = %q, want empty for a release build", got)
 	}
 }
 

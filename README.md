@@ -260,6 +260,8 @@ npm install
 npm run build
 ```
 
+A successful development build records its source commit (`git rev-parse --short=7 HEAD`) and updates Loaf's user-local launcher pointer (`$XDG_DATA_HOME/loaf/current-dev-launcher`). `~/.local/bin/loaf` is created only when that name is absent, as a symlink to the pointer, so the last worktree built becomes the active CLI when the PATH name is free. Set `LOAF_DEV_LINK=0` to opt out; an existing real file, directory, or any other symlink is never overwritten. Activation is best-effort and never fails a successful native build. A failed multi-target rebuild leaves the previous successful `bin/native` binaries and provenance file in place.
+
 See [AGENTS.md](AGENTS.md) for development guidelines.
 
 ```bash
@@ -272,7 +274,7 @@ loaf install --to all  # Install to detected tools
 **Testing locally:**
 
 - Claude Code: `/plugin marketplace add /path/to/loaf`
-- Others: `loaf install --to all` (after `npm link`)
+- Others: `loaf install --to all` (after `npm run build`)
 
 ## License
 
