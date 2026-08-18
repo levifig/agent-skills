@@ -452,7 +452,7 @@ loaf journal context           # Emit the layered continuity digest
 
 ```bash
 npm install                    # Install dependencies
-npm run build:go               # Build native Go and link ~/.local/bin/loaf to this checkout
+npm run build:go               # Build native Go; claim ~/.local/bin/loaf via Loaf's launcher pointer when that name is absent
 npm run build                  # Build binary + CLI reference + all content targets, then verify
 npm run typecheck              # Compile check (go test ./... -run=^$)
 npm run test                   # Run Go tests (go test ./...)

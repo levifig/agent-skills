@@ -14,9 +14,10 @@
  * plugin marketplace (see internal/cli/version.go).
  *
  * A dev build reports `<package-version>+g<short-sha>`. build-go.mjs records the
- * SHA in an ignored provenance file beside bin/native rather than injecting it
- * here, so verify-go-artifacts.mjs can still reproduce the tracked binaries
- * byte for byte and shipped distributions do not inherit local provenance.
+ * SHA in an ignored provenance file beside bin/native only after every requested
+ * target compiles, rather than injecting it here, so verify-go-artifacts.mjs can
+ * still reproduce the tracked binaries byte for byte and shipped distributions
+ * do not inherit local provenance.
  */
 
 export function goLdflags(env = process.env) {

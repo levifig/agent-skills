@@ -170,6 +170,7 @@ func TestIsDevVersionRecognizesCommitMetadataAndLegacyTimestamps(t *testing.T) {
 		want    bool
 	}{
 		{version: "0.2.20"},
+		{version: "0.3+gabcdef0"},
 		{version: devBuildFixtureVersion, want: true},
 		{version: "0.2.20+build.9.gabc1234", want: true},
 		{version: "v0.2.20+gabcdef0", want: true},
