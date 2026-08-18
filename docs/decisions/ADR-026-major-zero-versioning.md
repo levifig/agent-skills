@@ -1,9 +1,9 @@
 ---
 id: ADR-026
-title: "Major-zero versioning — arc-boundary releases, liberal X epochs, and timestamp dev identity"
+title: "Major-zero versioning — arc-boundary releases, liberal X epochs, and commit-addressed dev identity"
 status: Accepted
 date: 2026-08-06
-revised: 2026-08-15
+revised: 2026-08-18
 supersedes: null
 superseded_by: null
 related:
@@ -15,6 +15,8 @@ related:
 # ADR-026: Major-zero versioning
 
 2026-08-15: bump semantics restate as `loaf release suggest` evidence.
+
+2026-08-18: dev identity changes from an executable-mtime timestamp to SemVer commit metadata.
 
 ## Context
 
@@ -38,19 +40,19 @@ The initial reset (2026-08-06) fixed the number but framed the minor as a "stabi
 
 **The bump suggestion derives from arc evidence.** `suggestReleaseBump` historically read commit types — any `feat` suggested minor, a breaking marker suggested major. Under this record it derives from the same evidence the cohort gate reads: a completed arc in the unreleased range suggests X, otherwise Y, capped at minor while major is 0. Until that realignment lands, cuts state the bump explicitly per this policy. The explicit override remains the valve for the documented edge: a hotfix cut while a standalone executed Change sits unreleased in range takes `--bump patch` deliberately, and the X-worthy work waits for its own cut.
 
-**A dev build's identity is `<major>.<minor>.<unix timestamp>`.** One predicate names it — a patch at or above `devVersionPatchFloor` (`1_000_000_000`, a magnitude the release count will never approach) is a dev build and nothing else (`isDevVersion`, `internal/cli/version.go`). A timestamp patch is valid SemVer and sorts *above* every release in the minor, which is the truth about a machine running its own build.
+**A dev build's identity is `<package-version>+g<short-sha>`.** For example, a local build of package version `0.3.1` from commit `5a784cde…` reports `0.3.1+g5a784cd (dev build)`. The commit is immediately comparable with `git rev-parse --short=7 HEAD`, and SemVer build metadata deliberately leaves release precedence unchanged.
 
-**The stamp is read, not linked.** The committed native binaries are asserted byte-for-byte reproducible (`cli/scripts/verify-go-artifacts.mjs`), so a build-varying `-X` ldflag would fail that assertion on every build. The executable's own modification time carries it instead, read at startup in `cmd/loaf/main.go` — an approximation of link time, since `git checkout`, an unpreserved copy, and tarball extraction all rewrite it. For a number whose only job is to say "this is not a release", when the binary arrived on this machine is close enough.
+**The commit is recorded beside the binary, not linked into it.** The committed native binaries are asserted byte-for-byte reproducible (`cli/scripts/verify-go-artifacts.mjs`), so a build-varying `-X` ldflag would fail that assertion on every build. `build-go.mjs` writes the current seven-character commit to the ignored provenance file `bin/.loaf-dev-commit` only after a successful local build; `cmd/loaf/main.go` reads that file for executables under `bin/native/<target>/`. The file is neither tracked nor packaged. If it is absent or invalid, the source-checkout build still says `(dev build)` but does not invent provenance.
 
 **Dev identity takes two facts, not one.** Absent release build metadata says no release pipeline built this binary; a resolved distribution root carrying `go.mod` beside the content says it is running out of the tree that did. Every shipped distribution — release archive, Homebrew keg, npm package, plugin payload — is content plus a prebuilt binary; only the checkout has the Go module. Absence alone would have told a user who installed `0.2.20` from the marketplace that they were running a dev build.
 
-**Dev identity lives at the binary level; tracked artifacts always carry the release version.** The version is stamped into 224 tracked files under `dist/`, `plugins/`, and `.claude-plugin/`, and CI's artifact-sync gate (ADR-012) rejects any drift, so a timestamp there would make every local `loaf build` dirty the tree. The old signal inverts cleanly: dev used to be the *absence* of build metadata, and is now the *presence* of a dev stamp on the version line.
+**Dev identity lives on the runtime version line; tracked artifacts always carry the release version.** The version is stamped into tracked files under `dist/`, `plugins/`, and `.claude-plugin/`, and CI's artifact-sync gate (ADR-012) rejects any drift, so a commit there would dirty the tree whenever HEAD changes. The ignored provenance file varies locally while tracked outputs remain deterministic.
 
-**One predicate, three readers.** The version report mints dev versions, the harness-drift classifier reads them off install markers, and the release snapshot refuses to cut a ceremony for one. There is no flag, suffix, or second source to keep in step.
+**One convention, three readers.** The version report mints `+g<short-sha>`, the harness-drift classifier recognizes it if one appears in an install marker, and the release workflow skips tags carrying it. The classifier and workflow continue recognizing the old timestamp-patch identity so existing markers and tags age out safely.
 
-**The guardrail is drawn at ceremony, not at visibility.** `guardReleaseCeremony` sits on `resolveReleaseSnapshot` (`internal/cli/change_release_gate.go`), the one derivation every release consumer reads, so dry-run, apply, and post-merge are closed by a single refusal. `.github/workflows/release.yml` mirrors it on the way in: a `resolve` job gates the release job, so pushing a timestamp tag skips the workflow cleanly instead of failing three steps later. Its bash predicate demands three numeric parts the way `parseUpgradeSemver` does — a malformed tag is not a dev build and must stay on the loud path — and its floor is pinned to the Go constant by `TestReleaseWorkflowSkipsAtTheDevVersionFloor`. Cheaper acts never pass through the snapshot and stay available: commits, lightweight tags, prerelease-marked uploads.
+**The guardrail is drawn at ceremony, not at visibility.** `.github/workflows/release.yml` gates the release job, so pushing a dev-identity tag skips packaging instead of failing downstream on a tag/version mismatch. Cheaper acts remain available: commits, lightweight tags, and prerelease-marked uploads.
 
-**Install markers carry the release version, and drift names both directions.** Install stamps `packageVersion`, never the dev stamp — comparing a marker against a build clock would report drift on every harness of every dev machine forever. A marker above the binary means either a newer binary stamped that content or the version line was renumbered underneath a binary that is current, so the advice names both remedies instead of assuming the binary is behind. A marker of timestamp magnitude outranks everything published by construction and is never read as evidence the binary is stale.
+**Install markers carry the release version, and drift names both directions.** Install stamps `packageVersion`, never the dev commit — comparing a marker against local build provenance would report drift on every harness of every dev machine forever. A marker above the binary means either a newer binary stamped that content or the version line was renumbered underneath a binary that is current, so the advice names both remedies instead of assuming the binary is behind. Legacy timestamp markers remain recognizable and are never read as evidence the binary is stale.
 
 **History renumbers in place; the changelog is the sole carrier.** `CHANGELOG.md` maps 1:1 onto the new scheme with entry content untouched. GitHub keeps exactly two tags — a lightweight `v0.1.0` era marker and `v0.2.20` — and one Release.
 
@@ -68,9 +70,11 @@ The initial reset (2026-08-06) fixed the number but framed the minor as a "stabi
 
 ## Consequences
 
-The version carries information again: X counts significant arcs, Y counts maintenance within them, and reading `0.7.3` says seven significant things have shipped with the third round of polish on the latest. Releases stop being merge echoes and become deliberate arc-boundary events — fewer, and each one meaning something. The two identities stay unmistakable on sight — `0.7.3` versus `0.2.1786022455` — and the machine running its own build sorts honestly above the latest release instead of being nagged to "upgrade" to something older than what it is running.
+The version carries information again: X counts significant arcs, Y counts maintenance within them, and reading `0.7.3` says seven significant things have shipped with the third round of polish on the latest. Releases stop being merge echoes and become deliberate arc-boundary events — fewer, and each one meaning something. Release and dev identities stay unmistakable on sight — `0.3.1` versus `0.3.1+g5a784cd` — without changing their SemVer precedence.
 
-Costs accepted. A Y release cut mid-arc ships arc code the number does not announce; the changelog carries the honesty, and the safety rests on the ship ceremony keeping every merged Change individually complete. Retargeting becomes recurring low-stakes maintenance instead of a rare event, which is what pin-late discipline exists to minimize. `suggestReleaseBump` disagrees with policy until its realignment lands, so the interim leans on explicit `--bump` — the one window where the trigger is not yet decision-free in the tooling. The dev stamp is an arrival time, not a link time, and a machine whose clock has never been set mints a patch below the floor and falls back to the release version rather than claim an identity it cannot name. Renumbered history exists only in `CHANGELOG.md`; no tag or artifact carries the new numbers for anything before `0.2.20`.
+Costs accepted. A Y release cut mid-arc ships arc code the number does not announce; the changelog carries the honesty, and the safety rests on the ship ceremony keeping every merged Change individually complete. Retargeting becomes recurring low-stakes maintenance instead of a rare event, which is what pin-late discipline exists to minimize. `suggestReleaseBump` disagrees with policy until its realignment lands, so the interim leans on explicit `--bump` — the one window where the trigger is not yet decision-free in the tooling. A dev commit names the checked-out HEAD at build time, not uncommitted working-tree changes, and a build outside a Git checkout falls back to the package version with the dev-channel suffix rather than claiming provenance it cannot resolve. Renumbered history exists only in `CHANGELOG.md`; no tag or artifact carries the new numbers for anything before `0.2.20`.
+
+The revision realigns the native version path (`cmd/loaf/main.go`, `internal/cli/version.go`), local and release build scripts, the release workflow guard, version and copied-distribution tests, and this architecture overview. Legacy timestamp recognition remains deliberately isolated to compatibility readers.
 
 The arc-boundary scheme debuts at the next significant batch: 0.2.21 was cut honestly under the initial patch-per-merge rules and is not renumbered. Under this record, that cut — two linked Changes completing together — would have been an X bump.
 
@@ -78,17 +82,17 @@ Provenance: `docs/changes/20260806-versioning-reset/` shape.md Decisions 1–12 
 
 ## Alternatives Considered
 
-### A `-dev.{timestamp}` prerelease suffix
+### A timestamp dev identity
 
-SemVer precedence sorts prereleases *below* the release they annotate, so a canary machine on its own build would be told forever that an update is available. The whole point of the dev identity is that the canary is ahead.
+The original scheme placed executable mtime in the patch slot. It was unique but not source-addressable: copying or checking out the same bytes changed their apparent identity, and recognizing whether the active binary matched HEAD still required inference. Commit metadata answers the actual dogfooding question directly.
 
 ### A fourth version part (`0.2.20.1786022455`)
 
 Not valid SemVer, and npm rejects it. The patch slot is the only place a monotonic build number fits inside the standard.
 
-### Injecting the stamp with `-ldflags -X`
+### Injecting the commit with `-ldflags -X`
 
-The committed native binaries must rebuild byte-for-byte identical for the reproducibility gate; a build-varying linker flag fails that assertion on every build. Reading the executable's own mtime keeps the bytes constant.
+The committed native binaries must rebuild byte-for-byte identical for the reproducibility gate; a build-varying linker flag fails that assertion whenever HEAD changes. An ignored provenance file supplies local identity without changing tracked bytes.
 
 ### Stamping dev versions into tracked build artifacts
 
@@ -108,7 +112,7 @@ Roughly fifty tags would be re-minted for numbers no artifact carries, on commit
 
 ### Drawing the guardrail at visibility
 
-Refusing to let a timestamp version reach GitHub at all would block cheap, useful acts — pushing a build tag, attaching a prerelease-marked upload. What must never happen is the ceremony: changelog entry, release build, packaged Release, Homebrew bump. The line is drawn there.
+Refusing to let a dev-identity version reach GitHub at all would block cheap, useful acts — pushing a build tag, attaching a prerelease-marked upload. What must never happen is the ceremony: changelog entry, release build, packaged Release, Homebrew bump. The line is drawn there.
 
 ### The minor as a rare stabilization epoch
 
@@ -134,3 +138,4 @@ The unexamined premise under the initial "releases become boring" framing. It ma
 
 - 2026-08-06 — Initial record: plain `0.X.X` reset with the minor as a rare stabilization epoch, timestamp dev identity, ceremony guardrail, renumbered history.
 - 2026-08-10 — Arc-boundary release semantics replace the stabilization-epoch framing: X bumps when a completed arc ships (arc = cohort, ADR-022), releases decouple from merges, pins are set late and retargeted as routine, and the bump suggestion realigns to arc evidence. First application of the living-record convention; prior text in git history.
+- 2026-08-18 — Commit-addressed SemVer build metadata replaces executable-mtime timestamp identity; an ignored local provenance file preserves tracked-binary reproducibility.

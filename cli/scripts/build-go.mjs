@@ -4,13 +4,14 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { goBuildArgs } from "./go-build-flags.mjs";
 
 const rootDir = process.cwd();
 const launcherSource = join(rootDir, "cli", "runtime", "loaf-launcher.cjs");
 const launcherOutput = join(rootDir, "bin", "loaf");
+const devCommitOutput = join(rootDir, "bin", ".loaf-dev-commit");
 
 const baseEnv = {
   ...process.env,
@@ -66,7 +67,24 @@ for (const target of targets) {
 }
 
 if (!dryRun) {
+  recordDevBuildCommit(baseEnv);
   console.log(`✓ Built Loaf launcher: ${launcherOutput}`);
+}
+
+function recordDevBuildCommit(buildEnv) {
+  const result = spawnSync("git", ["rev-parse", "--short=7", "HEAD"], {
+    cwd: rootDir,
+    env: buildEnv,
+    encoding: "utf8",
+  });
+  const commit = result.status === 0 ? result.stdout.trim().toLowerCase() : "";
+  if (!/^[0-9a-f]{7}$/.test(commit)) {
+    rmSync(devCommitOutput, { force: true });
+    console.warn("WARN: could not record the source commit for this dev build");
+    return;
+  }
+  writeFileSync(devCommitOutput, commit + "\n");
+  console.log(`✓ Recorded dev build commit: ${commit}`);
 }
 
 function readBuildTargets(goEnv) {

@@ -13,12 +13,10 @@
  * since the binaries this script commits also ship as releases through the
  * plugin marketplace (see internal/cli/version.go).
  *
- * A dev build reports `<major>.<minor>.<unix timestamp>`, and that stamp is
- * deliberately not injected here: the timestamp would differ between the build
- * and the rebuild verify-go-artifacts.mjs compares it against, breaking the
- * reproducibility assertion on every run. cmd/loaf/main.go reads the executable's
- * own modification time instead, which leaves these flags — and the binary —
- * deterministic.
+ * A dev build reports `<package-version>+g<short-sha>`. build-go.mjs records the
+ * SHA in an ignored provenance file beside bin/native rather than injecting it
+ * here, so verify-go-artifacts.mjs can still reproduce the tracked binaries
+ * byte for byte and shipped distributions do not inherit local provenance.
  */
 
 export function goLdflags(env = process.env) {

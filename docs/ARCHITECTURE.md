@@ -415,7 +415,7 @@ The native CLI version must report the package version consistently through the 
 
 Any value that must be identical across runtime modes should be injected at build time, not independently resolved by multiple runtime paths. Divergent version discovery creates false positives in every downstream comparison.
 
-One deliberate exception: a dev build's timestamp identity (`<major>.<minor>.<unix timestamp>`, ADR-026) is *not* build-time-injected, because a baked timestamp would break the byte-for-byte reproducibility that `verify:go-artifacts` asserts. It derives at runtime from two facts — absent release build metadata and a source checkout beside the distribution — with the executable's own mtime as the clock. Injecting it via ldflags would be the natural "fix"; it is the one that breaks the build contract.
+One deliberate exception: a dev build's commit identity (`<package-version>+g<short-sha>`, ADR-026) is *not* injected into the native binary, because build-varying bytes would break the reproducibility that `verify:go-artifacts` asserts. `build-go.mjs` writes the source commit to the ignored provenance file `bin/.loaf-dev-commit`; a binary running from a source checkout reads it at startup, while shipped distributions omit it and continue reporting their release version.
 
 ### Generated Runtime Plugin Artifacts Parsed From Emitted Output
 

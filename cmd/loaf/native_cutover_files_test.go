@@ -264,6 +264,11 @@ func TestReleaseWorkflowVerifiesEvidenceBeforeStampedBuild(t *testing.T) {
 	if strings.Count(workflow, "LOAF_BUILD_COMMIT") != 1 || strings.Count(workflow, "LOAF_BUILD_DATE") != 1 {
 		t.Fatalf("release workflow must confine build metadata to the release build step")
 	}
+	for _, want := range []string{`g[0-9a-f]{7,40}`, `>= 1000000000`, "carries a dev build identity"} {
+		if !strings.Contains(workflow, want) {
+			t.Fatalf("release workflow must recognize current and legacy dev identities; missing %q", want)
+		}
+	}
 }
 
 func TestHomebrewFormulaUpdaterGeneratesAuditSafeURLs(t *testing.T) {

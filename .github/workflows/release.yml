@@ -18,11 +18,9 @@ permissions:
   contents: write
 
 jobs:
-  # The ceremony guardrail, on the way in: a dev build stamps a Unix timestamp
-  # in the patch slot, and such a tag never packages a release. Pushing one is
-  # allowed — it just skips this workflow instead of failing it downstream. The
-  # floor below is devVersionPatchFloor from internal/cli/version.go, pinned to
-  # it by TestReleaseWorkflowSkipsAtTheDevVersionFloor.
+  # The ceremony guardrail, on the way in: a dev build adds g<short-sha> build
+  # metadata, and such a tag never packages a release. Legacy timestamp-patch
+  # identities remain recognized while old tags age out.
   resolve:
     runs-on: ubuntu-latest
     outputs:
@@ -44,16 +42,22 @@ jobs:
             echo "Release tag must start with v." >&2
             exit 1
           fi
-          core="${tag#v}"
+          version="${tag#v}"
+          build=""
+          if [[ "$version" == *+* ]]; then
+            build="${version#*+}"
+          fi
+          core="$version"
           core="${core%%-*}"
           core="${core%%+*}"
           dev=false
-          # Three numeric parts or nothing, mirroring parseUpgradeSemver. A
-          # malformed tag is not a dev build, so it must stay on the loud path
-          # and fail the version check below rather than skip out silently.
-          if [[ "$core" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] && (( ${BASH_REMATCH[3]} >= 1000000000 )); then
+          if [[ "$build" =~ (^|\.)g[0-9a-f]{7,40}($|\.) ]]; then
             dev=true
-            echo "Release ceremony guardrail: $tag carries a dev build identity (a Unix timestamp in the patch slot). Skipping the release."
+          elif [[ "$core" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] && (( ${BASH_REMATCH[3]} >= 1000000000 )); then
+            dev=true
+          fi
+          if [[ "$dev" == true ]]; then
+            echo "Release ceremony guardrail: $tag carries a dev build identity. Skipping the release."
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "ref=refs/tags/$tag" >> "$GITHUB_OUTPUT"
