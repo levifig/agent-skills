@@ -415,7 +415,7 @@ The native CLI version must report the package version consistently through the 
 
 Any value that must be identical across runtime modes should be injected at build time, not independently resolved by multiple runtime paths. Divergent version discovery creates false positives in every downstream comparison.
 
-One deliberate exception: a dev build's commit identity (`<package-version>+g<short-sha>`, ADR-026) is *not* injected into the native binary, because build-varying bytes would break the reproducibility that `verify:go-artifacts` asserts. `build-go.mjs` writes the source commit to the ignored provenance file `bin/.loaf-dev-commit`; a binary running from a source checkout reads it at startup, while shipped distributions omit it and continue reporting their release version.
+One deliberate exception: a dev build's commit identity (`<package-version>+g<short-sha>`, ADR-026) is *not* injected into the native binary, because build-varying bytes would break the reproducibility that `verify:go-artifacts` asserts. `build-go.mjs` writes the source commit to the ignored provenance file `bin/.loaf-dev-commit`; a binary running from a source checkout reads it at startup, while shipped distributions omit it and continue reporting their release version. After a successful non-release build with Git provenance, the same script atomically repoints `~/.local/bin/loaf` to that checkout's launcher, so the last successfully built worktree becomes the active dev CLI; `LOAF_DEV_LINK=0` disables this behavior, and a real file or symlink outside a verified Loaf package is never overwritten.
 
 ### Generated Runtime Plugin Artifacts Parsed From Emitted Output
 

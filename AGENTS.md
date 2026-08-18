@@ -452,11 +452,10 @@ loaf journal context           # Emit the layered continuity digest
 
 ```bash
 npm install                    # Install dependencies
-npm run build:go               # Build the native Go binary only (cli/scripts/build-go.mjs)
+npm run build:go               # Build native Go and link ~/.local/bin/loaf to this checkout
 npm run build                  # Build binary + CLI reference + all content targets, then verify
 npm run typecheck              # Compile check (go test ./... -run=^$)
 npm run test                   # Run Go tests (go test ./...)
-npm link                       # Make `loaf` available globally (symlinks bin/loaf onto PATH)
 ```
 
 ### Dev Isolation (avoid polluting the global DB)

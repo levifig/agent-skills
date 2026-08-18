@@ -44,6 +44,8 @@ The initial reset (2026-08-06) fixed the number but framed the minor as a "stabi
 
 **The commit is recorded beside the binary, not linked into it.** The committed native binaries are asserted byte-for-byte reproducible (`cli/scripts/verify-go-artifacts.mjs`), so a build-varying `-X` ldflag would fail that assertion on every build. `build-go.mjs` writes the current seven-character commit to the ignored provenance file `bin/.loaf-dev-commit` only after a successful local build; `cmd/loaf/main.go` reads that file for executables under `bin/native/<target>/`. The file is neither tracked nor packaged. If it is absent or invalid, the source-checkout build still says `(dev build)` but does not invent provenance.
 
+**The last successful dev build owns `~/.local/bin/loaf`.** After recording valid Git provenance, `build-go.mjs` atomically repoints that user-local symlink to the checkout's launcher. Release-metadata builds never claim it, `LOAF_DEV_LINK=0` is the explicit opt-out, and the build refuses to overwrite a real file or a symlink whose target is not inside a verified Loaf package. This makes the active CLI follow whichever worktree was most recently built without making the main checkout a privileged indirection point.
+
 **Dev identity takes two facts, not one.** Absent release build metadata says no release pipeline built this binary; a resolved distribution root carrying `go.mod` beside the content says it is running out of the tree that did. Every shipped distribution — release archive, Homebrew keg, npm package, plugin payload — is content plus a prebuilt binary; only the checkout has the Go module. Absence alone would have told a user who installed `0.2.20` from the marketplace that they were running a dev build.
 
 **Dev identity lives on the runtime version line; tracked artifacts always carry the release version.** The version is stamped into tracked files under `dist/`, `plugins/`, and `.claude-plugin/`, and CI's artifact-sync gate (ADR-012) rejects any drift, so a commit there would dirty the tree whenever HEAD changes. The ignored provenance file varies locally while tracked outputs remain deterministic.
@@ -74,7 +76,7 @@ The version carries information again: X counts significant arcs, Y counts maint
 
 Costs accepted. A Y release cut mid-arc ships arc code the number does not announce; the changelog carries the honesty, and the safety rests on the ship ceremony keeping every merged Change individually complete. Retargeting becomes recurring low-stakes maintenance instead of a rare event, which is what pin-late discipline exists to minimize. `suggestReleaseBump` disagrees with policy until its realignment lands, so the interim leans on explicit `--bump` — the one window where the trigger is not yet decision-free in the tooling. A dev commit names the checked-out HEAD at build time, not uncommitted working-tree changes, and a build outside a Git checkout falls back to the package version with the dev-channel suffix rather than claiming provenance it cannot resolve. Renumbered history exists only in `CHANGELOG.md`; no tag or artifact carries the new numbers for anything before `0.2.20`.
 
-The revision realigns the native version path (`cmd/loaf/main.go`, `internal/cli/version.go`), local and release build scripts, the release workflow guard, version and copied-distribution tests, and this architecture overview. Legacy timestamp recognition remains deliberately isolated to compatibility readers.
+The revision realigns the native version path (`cmd/loaf/main.go`, `internal/cli/version.go`), local and release build scripts, the user-local dev link, the release workflow guard, version and copied-distribution tests, and this architecture overview. Legacy timestamp recognition remains deliberately isolated to compatibility readers.
 
 The arc-boundary scheme debuts at the next significant batch: 0.2.21 was cut honestly under the initial patch-per-merge rules and is not renumbered. Under this record, that cut — two linked Changes completing together — would have been an X bump.
 
@@ -93,6 +95,10 @@ Not valid SemVer, and npm rejects it. The patch slot is the only place a monoton
 ### Injecting the commit with `-ldflags -X`
 
 The committed native binaries must rebuild byte-for-byte identical for the reproducibility gate; a build-varying linker flag fails that assertion whenever HEAD changes. An ignored provenance file supplies local identity without changing tracked bytes.
+
+### Keeping the user-local link pinned to the main checkout
+
+A stable main-checkout link is simple until development happens in a worktree: the binary most recently built and the binary on PATH diverge, which recreates the ambiguity commit-addressed versions were introduced to remove. Letting the last successful build own the link makes activation and identity one operation.
 
 ### Stamping dev versions into tracked build artifacts
 
@@ -139,3 +145,4 @@ The unexamined premise under the initial "releases become boring" framing. It ma
 - 2026-08-06 — Initial record: plain `0.X.X` reset with the minor as a rare stabilization epoch, timestamp dev identity, ceremony guardrail, renumbered history.
 - 2026-08-10 — Arc-boundary release semantics replace the stabilization-epoch framing: X bumps when a completed arc ships (arc = cohort, ADR-022), releases decouple from merges, pins are set late and retargeted as routine, and the bump suggestion realigns to arc evidence. First application of the living-record convention; prior text in git history.
 - 2026-08-18 — Commit-addressed SemVer build metadata replaces executable-mtime timestamp identity; an ignored local provenance file preserves tracked-binary reproducibility.
+- 2026-08-18 — Successful Git-backed dev builds atomically retarget the guarded user-local Loaf symlink, making the last built worktree active.

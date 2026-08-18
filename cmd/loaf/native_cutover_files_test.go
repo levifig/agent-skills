@@ -199,6 +199,18 @@ func TestNativeGoArtifactScriptsSupportExplicitReleaseTargets(t *testing.T) {
 	}
 }
 
+func TestDevBuildLinkProtectsOperatorOwnedPaths(t *testing.T) {
+	node := requireNode(t)
+	root := repoRoot(t)
+	cmd := exec.Command(node, "--test", "cli/scripts/dev-build-link.test.mjs")
+	cmd.Dir = root
+	cmd.Env = envWith()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("dev-build link tests failed: %v\n%s", err, output)
+	}
+}
+
 func TestNativeGoReleaseBuildUsesPublishTargetPolicy(t *testing.T) {
 	node := requireNode(t)
 	root := repoRoot(t)

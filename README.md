@@ -260,6 +260,8 @@ npm install
 npm run build
 ```
 
+A successful development build records its source commit and atomically links `~/.local/bin/loaf` to that checkout, so the last worktree built is the active CLI. Set `LOAF_DEV_LINK=0` to opt out; an existing real file or unrelated symlink is never overwritten.
+
 See [AGENTS.md](AGENTS.md) for development guidelines.
 
 ```bash
@@ -272,7 +274,7 @@ loaf install --to all  # Install to detected tools
 **Testing locally:**
 
 - Claude Code: `/plugin marketplace add /path/to/loaf`
-- Others: `loaf install --to all` (after `npm link`)
+- Others: `loaf install --to all` (after `npm run build`)
 
 ## License
 

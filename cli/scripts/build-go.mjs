@@ -6,6 +6,7 @@
 import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { refreshDevBuildLink } from "./dev-build-link.mjs";
 import { goBuildArgs } from "./go-build-flags.mjs";
 
 const rootDir = process.cwd();
@@ -67,7 +68,13 @@ for (const target of targets) {
 }
 
 if (!dryRun) {
-  recordDevBuildCommit(baseEnv);
+  const devCommit = recordDevBuildCommit(baseEnv);
+  if (devCommit && process.platform !== "win32" && !isReleaseBuild(baseEnv) && baseEnv.LOAF_DEV_LINK !== "0") {
+    const result = refreshDevBuildLink(launcherOutput);
+    if (result.status === "linked") {
+      console.log(`✓ Linked latest dev build: ${result.link} -> ${launcherOutput}`);
+    }
+  }
   console.log(`✓ Built Loaf launcher: ${launcherOutput}`);
 }
 
@@ -81,10 +88,15 @@ function recordDevBuildCommit(buildEnv) {
   if (!/^[0-9a-f]{7}$/.test(commit)) {
     rmSync(devCommitOutput, { force: true });
     console.warn("WARN: could not record the source commit for this dev build");
-    return;
+    return "";
   }
   writeFileSync(devCommitOutput, commit + "\n");
   console.log(`✓ Recorded dev build commit: ${commit}`);
+  return commit;
+}
+
+function isReleaseBuild(buildEnv) {
+  return Boolean((buildEnv.LOAF_BUILD_COMMIT || "").trim() || (buildEnv.LOAF_BUILD_DATE || "").trim());
 }
 
 function readBuildTargets(goEnv) {
