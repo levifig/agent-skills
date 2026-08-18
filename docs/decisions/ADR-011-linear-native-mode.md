@@ -62,7 +62,7 @@ ADR-010 established the consolidation pattern at the overlay-file layer (`.agent
 - `/implement`'s Linear-native routing enforces `blockedBy` as a pre-flight gate and auto-closes the parent when the last sub-issue is `completed`.
 - `/housekeeping` adds mode-aware reconciliation (warnings, not auto-fixes): spec ↔ Linear parent status matching, orphaned `linear_parent` references, pre-Linear local task detection.
 - `/council` files live locally even in Linear-native mode; `linear_parent` added to frontmatter when present so Linear readers can trace back.
-- `orchestration/references/linear.md` gains `spec` label convention, parent-vs-child structure, `mcp_server_name` config, and project-scoped vs user-scoped `.mcp.json` guidance for multi-workspace setups.
+- The Linear coordination guidance gains the `spec` label convention, parent-vs-child structure, named MCP selection, and project-scoped versus user-scoped configuration guidance for multi-workspace setups.
 - SPEC-023 (backend abstraction) narrows: most of the work becomes extracting Linear-specific calls into a `tracker` CLI subcommand and adding a second backend (GitHub Issues would be next), not rewriting skills.
 - No migration shim. Projects that toggle Linear on mid-flight keep existing local tasks; only new breakdowns go Linear-native. Migration is user-initiated.
 
@@ -73,4 +73,4 @@ ADR-010 established the consolidation pattern at the overlay-file layer (`.agent
 ## Shipped
 
 - PR #34 merged 2026-04-22 as `v2.0.0-dev.29`.
-- 6 skill updates across `breakdown`, `implement`, `housekeeping`, `shape`, `council`, plus the `orchestration/references/linear.md` reference doc.
+- 6 skill updates across `breakdown`, `implement`, `housekeeping`, `shape`, `council`, plus the then-shared Linear coordination reference.

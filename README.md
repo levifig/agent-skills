@@ -124,6 +124,7 @@ Skills you invoke directly to drive work forward.
 | `housekeeping` | Reviewing and archiving agent artifacts |
 | `handoff` | Creating disposable transfer packets in `.agents/handoffs/` |
 | `bootstrap` | Bootstrapping new or existing projects (initial issue arc after pitched BRIEF) |
+| `linear` | Managing Linear issues, projects, cycles, and Loaf issue coordination through configured MCP servers |
 | `wrap` | Optional end-of-conversation checkpoint: shipped, pending, next |
 
 Explore and brainstorm are agent techniques (not user slash entry); agents reach for them when direction is undecided — human entry intent routes to `/pitch`.
@@ -134,7 +135,7 @@ Background skills that activate automatically during agent coordination and proj
 
 | Skill | Activates When |
 |-------|----------------|
-| `orchestration` | Journal continuity, delegating agents, Linear integration |
+| `orchestration` | Journal continuity, delegating agents, and council workflows |
 | `council` | Multi-perspective deliberation during complex decisions |
 | `knowledge-base` | Managing project knowledge files |
 | `loaf-reference` | Looking up which CLI command to use |

@@ -1,10 +1,10 @@
 ---
 name: orchestration
 description: >-
-  Coordinates multi-agent work: agent delegation, journal continuity, Linear
-  integration, and council workflows. Use when delegating to agents or
-  coordinating cross-cutting work across multiple agents. Not for single-task
-  implementation (use direct tool delegation) or solo research (use research).
+  Coordinates multi-agent work: agent delegation, journal continuity, and
+  council workflows. Use when delegating to agents or coordinating cross-cutting
+  work across multiple agents. Not for single-task implementation (use direct
+  tool delegation) or solo research (use research).
 user-invocable: false
 allowed-tools: 'Read, Write, Edit, Glob, Grep, TodoWrite, TodoRead'
 version: 0.3.1
@@ -22,7 +22,7 @@ version: 0.3.1
 - Artifact Locations
 - Workflow by Lifecycle
 
-Comprehensive patterns for orchestration: coordinating multi-agent work, keeping the project journal current, running councils, delegating to specialized agents, and integrating with Linear.
+Comprehensive patterns for orchestration: coordinating multi-agent work, keeping the project journal current, running councils, and delegating to specialized agents.
 
 ## Critical Rules
 
@@ -40,13 +40,8 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 - Spawn all agents in parallel
 
 ### Linear
-- Checkboxes only (`- [x]`), no emoji
-- Outcome-focused, self-contained, no local file references
-- Magic words in commit body, not subject
 
-**If `integrations.linear.enabled` is `true` in `.agents/loaf.json`:** Linear is an identity adapter — `loaf issue pull` / `push` / `reconcile`, not a second work unit. See [references/linear.md](references/linear.md). Linear MCP is an overlay; Loaf issues remain the work unit and Linear never drives Loaf status.
-
-**Otherwise:** coordinate with the project journal and `loaf issue` only; do not assume Linear MCP tools or identity delegation are available.
+Use the `linear` skill for MCP selection, reads and mutations, update formatting, and the Loaf issue authority boundary. If Linear is unavailable or disabled for the project, coordinate with the project journal and `loaf issue` only.
 
 ### Planning (Shape Up)
 - Complexity-based sizing (small / medium / large)
@@ -58,7 +53,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 
 - Verify `loaf journal recent` / `loaf journal context` reflect the current work
 - Validate council files with `validate-council.py` before concluding
-- Confirm Linear issue updates are self-contained (no local paths, no emoji)
+- When Linear participates, verify the Linear skill's read-before-write and outcome-reporting contract
 
 ## Quick Reference
 
@@ -66,7 +61,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 |------|--------|
 | Multi-step work | Log the intent, spawn agents |
 | Complex decision | Convene council (5-7 agents, odd) |
-| Linear update | Checkboxes, no emoji, no local paths |
+| Linear work | Use the Linear skill; keep Loaf issue execution authoritative |
 | Feature planning | Size by complexity, shape before building |
 | Agent selection | Match domain expertise to task |
 | Stuck on task | Check priority order, consider reshaping |
@@ -89,7 +84,7 @@ Comprehensive patterns for orchestration: coordinating multi-agent work, keeping
 | Council Workflow | [../council/SKILL.md](../council/SKILL.md) | Convening councils for complex decisions |
 | Journal Continuity | [references/journal.md](references/journal.md) | Journal-first model, logging protocol, derived continuity, recovery |
 | Context Management | [references/context-management.md](references/context-management.md) | Clearing/compacting context, managing context limits |
-| Linear Integration | [references/linear.md](references/linear.md) | Updating Linear issues, magic words, status conventions |
+| Linear Workflows | `linear` skill | Selecting a configured Linear MCP, managing Linear work, or coordinating Loaf-backed issues |
 | Script Surface | [references/script-surface.md](references/script-surface.md) | Deciding whether helper scripts should become CLI commands |
 
 ## Philosophy
@@ -111,12 +106,7 @@ This skill uses paths from `.agents/loaf.json`:
 
 ```json
 {
-  "councils_directory": ".agents/councils",
-  "linear": {
-    "workspace": "your-workspace-slug",
-    "project": { "id": "...", "name": "..." },
-    "default_team": "Platform"
-  }
+  "councils_directory": ".agents/councils"
 }
 ```
 
