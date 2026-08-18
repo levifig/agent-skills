@@ -602,6 +602,15 @@ Configure target-specific behavior and sidecars.
 - [Claude Code Skills Best Practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
 - [Claude Code Skills Documentation](https://code.claude.com/docs/en/skills)
 
+## Cursor Cloud specific instructions
+
+Loaf is a Go CLI (`cmd/loaf`, `internal/`) with a Node build layer (`cli/scripts/*.mjs`). There is **no server or dev server** — nothing long-running to start. You exercise the product by invoking the `loaf` CLI. The update script (`npm install`) already refreshes dependencies on startup, so you normally do not need to reinstall.
+
+- **`npm install` builds the binary.** `package.json`'s `prepare` hook runs `build:go`, which compiles the native binary to `bin/native/<platform>/loaf`, writes the `bin/loaf` launcher, and downloads Go modules (`CGO_ENABLED=0`, `GOTOOLCHAIN` pinned from `go.mod`). So after the startup update script, `./bin/loaf` is already runnable without a separate build. Run `npm run build` (or `loaf build`) only when you change skills/agents/hooks and need the regenerated `dist/`/`plugins/` content.
+- **Standard gates** are in "Before Committing" above: `loaf build`, `npm run typecheck` (`go test ./... -run=^$`), `npm run test` (`go test ./...`). The Go test suite takes ~1–2 min.
+- **Isolate scratch CLI runs.** Any real `loaf` command writes to the global SQLite DB (`~/.local/share/loaf/loaf.sqlite`) unless redirected. For throwaway experiments set `LOAF_DB` to an absolute temp path first (see "Dev Isolation" above); `go test` already isolates via temp dirs.
+- **`npm run test:smoke` currently fails on 4 stale assertions** referencing removed `journal-post-commit`/`journal-post-pr` hook ids (journal capture moved to other hooks in `config/hooks.yaml`). This is pre-existing and not one of the commit gates; do not treat it as an environment regression. `npm run test:capability-runners` passes.
+
 <!-- loaf:managed:start sha256=21e91a6226ead7de1ef1d3d61c4e2060dc9763e8485192f6efc0060a09bbe66e -->
 <!-- Maintained by loaf install/upgrade - do not edit manually -->
 ## Loaf Framework
