@@ -116,7 +116,7 @@ issue/<alias-or-id>
 
 ### Types
 
-- `issue/` - Started from `loaf issue start` (`issue/loaf-42`)
+- `issue/` - Started from `loaf issue start` on the shippable root (`issue/loaf-42`)
 - `feat/` - New features (e.g., `feat/thermal-rating-cli`)
 - `fix/` - Bug fixes
 - `hotfix/` - Critical production fixes

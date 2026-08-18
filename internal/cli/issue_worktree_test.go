@@ -66,7 +66,7 @@ func gitOutputCLI(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func TestRunnerIssueStartChildBranchesOffStartedAncestor(t *testing.T) {
+func TestRunnerIssueStartChildJoinsRootWorkspace(t *testing.T) {
 	repo, stateHome := issueGitFixture(t)
 	if _, err := runIssue(t, repo, stateHome, "new", "Parent"); err != nil {
 		t.Fatalf("issue new parent error = %v", err)
@@ -83,22 +83,8 @@ func TestRunnerIssueStartChildBranchesOffStartedAncestor(t *testing.T) {
 		t.Fatalf("issue start parent error = %v", err)
 	}
 	parent := decodeIssueStart(t, parentOut)
-	if parent.Branch != "issue/loaf-1" || parent.Base != "main" {
-		t.Fatalf("parent start = branch %q base %q, want issue/loaf-1 from main", parent.Branch, parent.Base)
-	}
-	if _, err := os.Stat(parent.Worktree); err != nil {
-		t.Fatalf("parent worktree %s: %v", parent.Worktree, err)
-	}
-
-	if err := os.WriteFile(filepath.Join(parent.Worktree, "from-parent.txt"), []byte("ancestor work\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(from-parent) error = %v", err)
-	}
-	gitCLI(t, parent.Worktree, "add", "from-parent.txt")
-	gitCLI(t, parent.Worktree, "-c", "user.name=Loaf Test", "-c", "user.email=loaf@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "parent work")
-	parentHead := gitOutputCLI(t, repo, "rev-parse", "issue/loaf-1")
-	mainHead := gitOutputCLI(t, repo, "rev-parse", "main")
-	if parentHead == mainHead {
-		t.Fatal("parent branch still at main after commit")
+	if parent.Branch != "issue/loaf-1" || parent.Base != "main" || parent.Joined || parent.Requested != "LOAF-1" {
+		t.Fatalf("parent start = %#v, want issue/loaf-1 from main", parent)
 	}
 
 	childAOut, err := runIssue(t, repo, stateHome, "start", "LOAF-2", "--json")
@@ -106,18 +92,14 @@ func TestRunnerIssueStartChildBranchesOffStartedAncestor(t *testing.T) {
 		t.Fatalf("issue start child A error = %v", err)
 	}
 	childA := decodeIssueStart(t, childAOut)
-	if childA.Base != "issue/loaf-1" {
-		t.Fatalf("child A base = %q, want issue/loaf-1 (started ancestor), not default branch", childA.Base)
+	if !childA.Joined || childA.Requested != "LOAF-2" || childA.Issue.Alias != "LOAF-1" {
+		t.Fatalf("child A start = %#v, want join of LOAF-1", childA)
 	}
-	if childA.Branch != "issue/loaf-2" {
-		t.Fatalf("child A branch = %q, want issue/loaf-2", childA.Branch)
+	if childA.Branch != parent.Branch || childA.Worktree != parent.Worktree {
+		t.Fatalf("child A workspace = %s %s, want parent %s %s", childA.Branch, childA.Worktree, parent.Branch, parent.Worktree)
 	}
-	childAHead := gitOutputCLI(t, repo, "rev-parse", "issue/loaf-2")
-	if childAHead != parentHead {
-		t.Fatalf("child A HEAD = %s, want parent HEAD %s", childAHead, parentHead)
-	}
-	if _, err := os.Stat(filepath.Join(childA.Worktree, "from-parent.txt")); err != nil {
-		t.Fatalf("child A worktree missing ancestor commit file: %v", err)
+	if gitRefExists(repo, "refs/heads/issue/loaf-2") {
+		t.Fatal("child A minted issue/loaf-2; descendants must join the root")
 	}
 
 	childBOut, err := runIssue(t, repo, stateHome, "start", "LOAF-3", "--json")
@@ -125,19 +107,214 @@ func TestRunnerIssueStartChildBranchesOffStartedAncestor(t *testing.T) {
 		t.Fatalf("issue start child B error = %v", err)
 	}
 	childB := decodeIssueStart(t, childBOut)
-	if childB.Base != "issue/loaf-1" {
-		t.Fatalf("child B base = %q, want issue/loaf-1", childB.Base)
+	if !childB.Joined || childB.Worktree != parent.Worktree || childB.Branch != "issue/loaf-1" {
+		t.Fatalf("child B start = %#v, want same root workspace", childB)
 	}
-	if childA.Worktree == childB.Worktree {
-		t.Fatalf("siblings share worktree %s", childA.Worktree)
+	if gitRefExists(repo, "refs/heads/issue/loaf-3") {
+		t.Fatal("child B minted issue/loaf-3; descendants must join the root")
 	}
-	if _, err := os.Stat(childB.Worktree); err != nil {
-		t.Fatalf("child B worktree %s: %v", childB.Worktree, err)
+
+	root, err := project.ResolveRoot(repo)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
 	}
-	if gitOutputCLI(t, repo, "rev-parse", "issue/loaf-3") != parentHead {
-		t.Fatalf("child B HEAD = %s, want parent HEAD %s", gitOutputCLI(t, repo, "rev-parse", "issue/loaf-3"), parentHead)
+	resolver := state.PathResolver{StateHome: stateHome}
+	for _, alias := range []string{"LOAF-2", "LOAF-3"} {
+		issue, err := state.GetIssue(context.Background(), root, resolver, alias)
+		if err != nil {
+			t.Fatalf("GetIssue(%s) error = %v", alias, err)
+		}
+		if issue.Status != state.IssueStatusActive {
+			t.Fatalf("%s status = %q, want active", alias, issue.Status)
+		}
+		if issue.StartedBranch != "" || issue.StartedWorktree != "" {
+			t.Fatalf("%s started fields = %#v, want empty on descendant", alias, issue)
+		}
+	}
+	listed, err := runIssue(t, repo, stateHome, "list", "--started")
+	if err != nil {
+		t.Fatalf("issue list --started error = %v", err)
+	}
+	if !strings.Contains(listed, "LOAF-1") || strings.Contains(listed, "LOAF-2") || strings.Contains(listed, "LOAF-3") {
+		t.Fatalf("started list = %s, want only the root", listed)
 	}
 }
+
+func TestRunnerIssueStartChildCreatesRootWorkspace(t *testing.T) {
+	repo, stateHome := issueGitFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Parent"); err != nil {
+		t.Fatalf("issue new parent error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "new", "Child", "--parent", "LOAF-1"); err != nil {
+		t.Fatalf("issue new child error = %v", err)
+	}
+
+	out, err := runIssue(t, repo, stateHome, "start", "LOAF-2", "--json")
+	if err != nil {
+		t.Fatalf("issue start child error = %v", err)
+	}
+	started := decodeIssueStart(t, out)
+	if started.Joined || started.Requested != "LOAF-2" || started.Issue.Alias != "LOAF-1" {
+		t.Fatalf("start child = %#v, want created root workspace", started)
+	}
+	if started.Branch != "issue/loaf-1" || started.Base != "main" {
+		t.Fatalf("workspace = branch %q base %q, want issue/loaf-1 from main", started.Branch, started.Base)
+	}
+	if _, err := os.Stat(started.Worktree); err != nil {
+		t.Fatalf("root worktree %s: %v", started.Worktree, err)
+	}
+	if gitRefExists(repo, "refs/heads/issue/loaf-2") {
+		t.Fatal("start child minted issue/loaf-2")
+	}
+
+	root, err := project.ResolveRoot(repo)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	resolver := state.PathResolver{StateHome: stateHome}
+	parent, err := state.GetIssue(context.Background(), root, resolver, "LOAF-1")
+	if err != nil {
+		t.Fatalf("GetIssue(parent) error = %v", err)
+	}
+	if parent.Status != state.IssueStatusActive || parent.StartedBranch != "issue/loaf-1" || parent.StartedWorktree != started.Worktree {
+		t.Fatalf("parent after child start = %#v", parent)
+	}
+	child, err := state.GetIssue(context.Background(), root, resolver, "LOAF-2")
+	if err != nil {
+		t.Fatalf("GetIssue(child) error = %v", err)
+	}
+	if child.Status != state.IssueStatusActive || child.StartedBranch != "" || child.StartedWorktree != "" {
+		t.Fatalf("child after start = %#v, want active without workspace", child)
+	}
+
+	human, err := runIssue(t, repo, stateHome, "start", "LOAF-2")
+	if err != nil {
+		t.Fatalf("idempotent join error = %v", err)
+	}
+	if !strings.Contains(human, "joined issue LOAF-1") || !strings.Contains(human, "activated: LOAF-2") {
+		t.Fatalf("idempotent join output = %s", human)
+	}
+}
+
+func TestRunnerIssueStopChildWithoutWorkspace(t *testing.T) {
+	repo, stateHome := issueGitFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Parent"); err != nil {
+		t.Fatalf("issue new parent error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "new", "Child", "--parent", "LOAF-1"); err != nil {
+		t.Fatalf("issue new child error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "start", "LOAF-1"); err != nil {
+		t.Fatalf("issue start parent error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "start", "LOAF-2"); err != nil {
+		t.Fatalf("issue start child error = %v", err)
+	}
+
+	_, err := runIssue(t, repo, stateHome, "stop", "LOAF-2")
+	if err == nil || !strings.Contains(err.Error(), "does not own a worktree") || !strings.Contains(err.Error(), "stop LOAF-1") {
+		t.Fatalf("stop child error = %v, want root-owned refusal", err)
+	}
+
+	root, err := project.ResolveRoot(repo)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	parent, err := state.GetIssue(context.Background(), root, state.PathResolver{StateHome: stateHome}, "LOAF-1")
+	if err != nil {
+		t.Fatalf("GetIssue(parent) error = %v", err)
+	}
+	if parent.StartedBranch == "" || parent.StartedWorktree == "" {
+		t.Fatalf("stop child cleared the root workspace: %#v", parent)
+	}
+	if _, err := os.Stat(parent.StartedWorktree); err != nil {
+		t.Fatalf("root worktree missing after refused child stop: %v", err)
+	}
+}
+
+func TestRunnerIssueStartChildRefusesMissingRootWorktree(t *testing.T) {
+	repo, stateHome := issueGitFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Parent"); err != nil {
+		t.Fatalf("issue new parent error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "new", "Child", "--parent", "LOAF-1"); err != nil {
+		t.Fatalf("issue new child error = %v", err)
+	}
+	parentOut, err := runIssue(t, repo, stateHome, "start", "LOAF-1", "--json")
+	if err != nil {
+		t.Fatalf("issue start parent error = %v", err)
+	}
+	parent := decodeIssueStart(t, parentOut)
+	if err := os.RemoveAll(parent.Worktree); err != nil {
+		t.Fatalf("RemoveAll(%s) error = %v", parent.Worktree, err)
+	}
+
+	_, err = runIssue(t, repo, stateHome, "start", "LOAF-2")
+	if err == nil || !strings.Contains(err.Error(), "missing") || !strings.Contains(err.Error(), "stop LOAF-1") {
+		t.Fatalf("start child error = %v, want missing-root-worktree refusal", err)
+	}
+
+	root, err := project.ResolveRoot(repo)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	child, err := state.GetIssue(context.Background(), root, state.PathResolver{StateHome: stateHome}, "LOAF-2")
+	if err != nil {
+		t.Fatalf("GetIssue(child) error = %v", err)
+	}
+	if child.Status == state.IssueStatusActive {
+		t.Fatalf("child status = %q, want unchanged after refused join", child.Status)
+	}
+}
+
+func TestRunnerIssueStartChildRefusesTerminalStartedRoot(t *testing.T) {
+	repo, stateHome := issueGitFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Parent"); err != nil {
+		t.Fatalf("issue new parent error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "new", "Child", "--parent", "LOAF-1"); err != nil {
+		t.Fatalf("issue new child error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "start", "LOAF-1"); err != nil {
+		t.Fatalf("issue start parent error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "status", "LOAF-1", "done"); err != nil {
+		t.Fatalf("issue status done error = %v", err)
+	}
+
+	_, err := runIssue(t, repo, stateHome, "start", "LOAF-2")
+	if err == nil || !strings.Contains(err.Error(), "done") {
+		t.Fatalf("start child error = %v, want terminal root refusal", err)
+	}
+
+	root, err := project.ResolveRoot(repo)
+	if err != nil {
+		t.Fatalf("ResolveRoot() error = %v", err)
+	}
+	child, err := state.GetIssue(context.Background(), root, state.PathResolver{StateHome: stateHome}, "LOAF-2")
+	if err != nil {
+		t.Fatalf("GetIssue(child) error = %v", err)
+	}
+	if child.Status == state.IssueStatusActive {
+		t.Fatalf("child status = %q, want unchanged after refused join", child.Status)
+	}
+}
+
+func TestRunnerIssueStopChildNamesRootWhenRootNotStarted(t *testing.T) {
+	repo, stateHome := issueGitFixture(t)
+	if _, err := runIssue(t, repo, stateHome, "new", "Parent"); err != nil {
+		t.Fatalf("issue new parent error = %v", err)
+	}
+	if _, err := runIssue(t, repo, stateHome, "new", "Child", "--parent", "LOAF-1"); err != nil {
+		t.Fatalf("issue new child error = %v", err)
+	}
+
+	_, err := runIssue(t, repo, stateHome, "stop", "LOAF-2")
+	if err == nil || !strings.Contains(err.Error(), "does not own a worktree") || !strings.Contains(err.Error(), "stop LOAF-1") {
+		t.Fatalf("stop child error = %v, want root-directed refusal", err)
+	}
+}
+
 
 func TestRunnerIssueListStartedShowsLiveAndStale(t *testing.T) {
 	repo, stateHome := issueGitFixture(t)

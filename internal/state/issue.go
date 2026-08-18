@@ -833,6 +833,50 @@ func issueStartRefusedStatus(status string) bool {
 	}
 }
 
+// IssueRoot walks parent_id to the shippable root (the issue with no parent).
+func IssueRoot(ctx context.Context, root project.Root, resolver PathResolver, ref string) (Issue, error) {
+	store, err := openProjectStoreReadExisting(ctx, root, resolver)
+	if err != nil {
+		return Issue{}, err
+	}
+	defer store.Close()
+	return store.IssueRoot(ctx, root, ref)
+}
+
+// IssueRoot walks parent_id from an open store to the issue with no parent.
+func (s *Store) IssueRoot(ctx context.Context, root project.Root, ref string) (Issue, error) {
+	projectID, err := s.projectID(ctx, root)
+	if err != nil {
+		return Issue{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return Issue{}, fmt.Errorf("begin issue root: %w", err)
+	}
+	defer tx.Rollback()
+	issueID, _, err := resolveIssueRefTx(ctx, tx, projectID, ref)
+	if err != nil {
+		return Issue{}, err
+	}
+	issue, err := loadIssueTx(ctx, tx, projectID, issueID)
+	if err != nil {
+		return Issue{}, err
+	}
+	visited := map[string]bool{issue.ID: true}
+	for issue.ParentID != "" {
+		if visited[issue.ParentID] {
+			return Issue{}, fmt.Errorf("parent cycle detected in stored issue data at %s", issue.ParentID)
+		}
+		visited[issue.ParentID] = true
+		parent, err := loadIssueTx(ctx, tx, projectID, issue.ParentID)
+		if err != nil {
+			return Issue{}, err
+		}
+		issue = parent
+	}
+	return issue, nil
+}
+
 // NearestStartedAncestor walks parent_id and returns the nearest ancestor
 // that itself has a recorded started workspace.
 func NearestStartedAncestor(ctx context.Context, root project.Root, resolver PathResolver, ref string) (Issue, bool, error) {
