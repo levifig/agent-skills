@@ -461,10 +461,10 @@ func cliReferenceCommands() []cliReferenceCommand {
 				{Name: "frontier", Description: "List unblocked pick-up-next issues", Options: []cliReferenceOption{
 					{Flags: "--json", Description: "Output frontier issues, global database scope, and project identity as JSON"},
 				}},
-				{Name: "start", Description: "Create a branch and worktree for an issue", Options: []cliReferenceOption{
-					{Flags: "--json", Description: "Output the started issue, branch, worktree, base, global database scope, and project identity as JSON"},
+				{Name: "start", Description: "Start or join the shippable root workspace", Options: []cliReferenceOption{
+					{Flags: "--json", Description: "Output the root issue, requested ref, joined flag, branch, worktree, base, global database scope, and project identity as JSON"},
 				}},
-				{Name: "stop", Description: "Remove an issue worktree and clear the started workspace", Options: []cliReferenceOption{
+				{Name: "stop", Description: "Remove a started worktree; descendants must stop the root", Options: []cliReferenceOption{
 					{Flags: "--force", Description: "Remove a dirty worktree"},
 					{Flags: "--json", Description: "Output the stopped issue, branch, worktree, already-gone flag, global database scope, and project identity as JSON"},
 				}},

@@ -45,13 +45,14 @@ loaf issue list --started [--json]
 **Invariant:** one agent, one worktree. Check `loaf issue list --started`
 before dispatch. Never send two agents into the same path.
 
-`start` creates branch `issue/<alias-or-id>` in lowercase (`issue/loaf-42`,
-disambiguated with an id suffix when that name is already claimed), adds a
-sibling worktree, records `started_branch` / `started_worktree` on the row, and
-moves status to `active` through the events path. Base is the nearest started
-ancestor's branch, else the repository default branch. Start refuses an already
-started row, an archived row, and terminal statuses (`done`, `cancelled`,
-`duplicate`). Requires a git repository.
+`start` walks `parent_id` to the shippable root and creates or joins branch
+`issue/<root-alias-or-id>` in lowercase (`issue/loaf-42`, disambiguated with an
+id suffix when that name is already claimed). Only the root records
+`started_branch` / `started_worktree`. The requested issue becomes `active`.
+Base is the repository default branch. Start refuses an already started root, an
+archived row, and terminal statuses (`done`, `cancelled`, `duplicate`). A
+descendant that does not own a worktree cannot be stopped; stop the root.
+Requires a git repository.
 
 `list --started` prints alias, title, `started_branch`, `started_worktree`, and
 `(missing)` when the recorded path is gone.

@@ -26,7 +26,7 @@ Git conventions for branching, commits, PRs, and merge workflow.
 - Use Conventional Commits format for all commit messages
 - Commit complete units of work -- don't commit partial or in-progress changes
 - Squash merge feature branches -- never merge commits directly
-- One branch per issue; `loaf issue start` creates `issue/<alias-or-id>` (or use `feat/{slug}` / `fix/{slug}` when not starting from an issue)
+- One branch per shippable root; `loaf issue start` walks to that root and creates or joins `issue/<root-alias-or-id>` (or use `feat/{slug}` / `fix/{slug}` when not starting from an issue). Related child issues share the parent's branch and the PR to main.
 - Never force-push to `main` or shared branches
 - Never push without explicit user confirmation
 
@@ -40,7 +40,7 @@ Git conventions for branching, commits, PRs, and merge workflow.
 
 | Action | Command/Pattern |
 |--------|----------------|
-| Branch naming | `issue/<alias-or-id>` from `loaf issue start`; else `feat/{slug}`, `fix/{slug}`, `chore/{slug}` |
+| Branch naming | `issue/<root-alias-or-id>` from `loaf issue start`; else `feat/{slug}`, `fix/{slug}`, `chore/{slug}` |
 | Commit format | `type: description` |
 | Squash merge | `gh pr merge --squash` |
 | PR creation | `gh pr create --title "..." --body "..."` |
