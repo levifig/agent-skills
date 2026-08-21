@@ -36,6 +36,8 @@ Built-in Amp `medium` cannot be rewritten by a plugin. Do not claim that ordinar
 
 If a required pin is unavailable, report the compatibility failure and stop. There is no silent fallback and no local fallback. Do not silently perform that role with the orchestrating model, substitute another model, change reasoning, expand capabilities, or invent a local fallback.
 
+A wait timeout is not a pin failure. Implementation delegates start a child thread with `createThread` so aborting the parent tool does not cancel Grok. If the parent times out, open the child thread URL, wait, or steer it. Do not treat `Timed out waiting for agent response` as an unavailable model.
+
 ## Isolation and Workdir
 
 Workdir is routing context, not a sandbox. Pass a canonical absolute existing directory. Isolation still requires a Loaf-started isolated worktree (`loaf issue start`) or an appropriate Amp runner/orb when isolation matters. Never treat Amp's local executor as a jail.
@@ -74,10 +76,12 @@ Loaf must never overwrite or delete `delegated-agents.ts` or any other unrelated
 | Stay on built-in Amp medium and expect forced delegation | Switch to Loaf Medium; built-in Medium cannot be rewritten |
 | Register Grok or Luna as picker modes | Keep them as tools only |
 | Fall back to the orchestrating model when a pin is missing | Fail closed with the preflight diagnostic |
+| Treat a wait timeout as an unavailable model | Open the child thread; the pin worked and the child may still be running |
 | Ask Luna or Loaf to run `git diff` | Prepare the snapshot in the caller, then pass `diff` |
 | Treat `workdir` as a sandbox | Use a Loaf-started isolated worktree or an appropriate runner |
 | Delete `~/.config/amp/plugins/delegated-agents.ts` from Loaf | Leave the prototype and unrelated plugins untouched |
 
+2026-08-21 22:30- Distinguish child-thread timeouts from pin failures; Grok starts via createThread.
 2026-08-21 21:20- Isolate hook load from delegate registration; orchestrator allowlist may include mcp__*.
 2026-08-21 20:50- Retarget to Loaf Medium/Ultra orchestrators; Grok/Luna/oracle are tools only.
 2026-08-21 19:40- Clarify shared-skill copy, leftover prototype collisions, and local tsc limits.

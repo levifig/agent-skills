@@ -182,11 +182,31 @@ function assertFiniteAllowlist(tools: readonly string[], role: string): void {
   }
 }
 
-function delegateCompatibilityFailure(role: string, model: string, tools: readonly string[], cause?: unknown): Error {
+function classifyDelegateFailure(cause?: unknown): 'timeout' | 'compatibility' {
   const detail = cause instanceof Error ? cause.message : cause ? String(cause) : '';
+  const lowered = detail.toLowerCase();
+  if (lowered.includes('timed out') || lowered.includes('timeout')) {
+    return 'timeout';
+  }
+  return 'compatibility';
+}
+
+function delegateFailure(role: string, model: string, tools: readonly string[], cause?: unknown, threadID?: string): Error {
+  const detail = cause instanceof Error ? cause.message : cause ? String(cause) : '';
+  const kind = classifyDelegateFailure(cause);
+  const threadLine = threadID ? %%BT%%Child thread: https://ampcode.com/threads/${threadID}%%BT%% : '';
+  if (kind === 'timeout') {
+    return new Error([
+      %%BT%%${role} timed out waiting for the child agent. The pinned model ${model} and tools [${tools.join(', ')}] were available; this is not a pin failure.%%BT%%,
+      threadLine,
+      'The child thread may still be running. Open it, wait, or steer it. Do not treat this as an unavailable model.',
+      'Do not substitute a model, reasoning level, broader capability set, or local execution by the orchestrating model.',
+    ].filter(Boolean).join(' '));
+  }
   return new Error([
     %%BT%%${role} compatibility failure: pinned model ${model} or required tools [${tools.join(', ')}] are unavailable.%%BT%%,
     detail,
+    threadLine,
     'Do not substitute a model, reasoning level, broader capability set, or local execution by the orchestrating model.',
     'There is no silent fallback and no local fallback.',
     'Run %%BT%%amp plugins show-agent-options --json%%BT%% and confirm the pinned model id and each required built-in tool name before retrying.',
@@ -201,7 +221,7 @@ function createPinnedAgent(amp: PluginAPI, role: string, model: string, tools: r
   try {
     return amp.createAgent(config);
   } catch (cause) {
-    throw delegateCompatibilityFailure(role, model, tools, cause);
+    throw delegateFailure(role, model, tools, cause);
   }
 }
 
@@ -209,7 +229,7 @@ function registerPinnedAgentMode(amp: PluginAPI, role: string, model: string, to
   try {
     amp.registerAgentMode(definition);
   } catch (cause) {
-    throw delegateCompatibilityFailure(role, model, tools, cause);
+    throw delegateFailure(role, model, tools, cause);
   }
 }
 
@@ -217,7 +237,7 @@ function registerPinnedTool(amp: PluginAPI, role: string, model: string, tools: 
   try {
     amp.registerTool(definition);
   } catch (cause) {
-    throw delegateCompatibilityFailure(role, model, tools, cause);
+    throw delegateFailure(role, model, tools, cause);
   }
 }
 
@@ -229,14 +249,19 @@ async function runPinnedAgent(
   prompt: string,
   ctx: { thread: { id: string } },
 ): Promise<{ threadID: string; text: string }> {
+  let threadID = '';
   try {
-    return await agent.run(prompt, {
+    const thread = await agent.createThread({
       parentThreadID: ctx.thread.id,
       executor: 'local',
-      timeoutMs: 3_600_000,
     });
+    threadID = thread.id;
+    await thread.appendUserMessage({ type: 'user-message', content: prompt });
+    const reply = await thread.waitForResponse({ timeoutMs: 3_600_000 });
+    const text = typeof reply.content === 'string' ? reply.content : '';
+    return { threadID, text };
   } catch (cause) {
-    throw delegateCompatibilityFailure(role, model, tools, cause);
+    throw delegateFailure(role, model, tools, cause, threadID || undefined);
   }
 }
 

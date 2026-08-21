@@ -419,8 +419,15 @@ declare module '@ampcode/plugin' {
     text: string;
   }
 
+  export interface AgentThread {
+    readonly id: ThreadID;
+    appendUserMessage(message: { type: 'user-message'; content: string }): Promise<void>;
+    waitForResponse(options?: { timeoutMs?: number }): Promise<{ content?: string }>;
+  }
+
   export interface Agent {
     readonly definition: AgentDefinition;
+    createThread(options?: { parentThreadID?: ThreadID; executor?: 'local' | 'orb' }): Promise<AgentThread>;
     run(message: string, options?: { parentThreadID?: ThreadID; executor?: 'local' | 'orb'; timeoutMs?: number }): Promise<AgentRunResult>;
   }
 
