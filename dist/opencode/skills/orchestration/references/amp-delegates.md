@@ -54,7 +54,7 @@ Before relying on the delegates, confirm the current Amp surface:
 amp plugins show-agent-options --json
 ```
 
-Require the pinned model ids `openai/gpt-5.6-sol`, `xai/grok-4.6`, and `openai/gpt-5.6-luna`, plus every tool on each finite allowlist. Missing models, missing tools, leftover picker-mode prototypes that collide on tool names, or a plugin API without `createAgent` / `registerAgentMode` / `registerTool` is an actionable compatibility failure. Local `tsc` against Loaf's generated ambient types is not that preflight. Do not substitute, expand the allowlist, or continue locally.
+Require the pinned model ids `openai/gpt-5.6-sol`, `xai/grok-4.6`, and `openai/gpt-5.6-luna`, plus every tool on each finite allowlist. Missing models, missing tools, leftover picker-mode prototypes that collide on tool names, or a plugin API without `createAgent` / `registerAgentMode` / `registerTool` is an actionable compatibility failure for the delegates. Hook enforcement still loads: `registerDelegatedAgents` is isolated from `tool.call` / `tool.result`, so a leftover prototype must not disable Loaf Amp checks. Local `tsc` against Loaf's generated ambient types is not that preflight. Do not substitute, expand a worker allowlist, or continue locally.
 
 ## Migration from the Standalone Prototype
 
@@ -78,6 +78,7 @@ Loaf must never overwrite or delete `delegated-agents.ts` or any other unrelated
 | Treat `workdir` as a sandbox | Use a Loaf-started isolated worktree or an appropriate runner |
 | Delete `~/.config/amp/plugins/delegated-agents.ts` from Loaf | Leave the prototype and unrelated plugins untouched |
 
+2026-08-21 21:20- Isolate hook load from delegate registration; orchestrator allowlist may include mcp__*.
 2026-08-21 20:50- Retarget to Loaf Medium/Ultra orchestrators; Grok/Luna/oracle are tools only.
 2026-08-21 19:40- Clarify shared-skill copy, leftover prototype collisions, and local tsc limits.
 2026-08-21 18:10- Initial Amp Grok/Luna delegate operating guidance.
