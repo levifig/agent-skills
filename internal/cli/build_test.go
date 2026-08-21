@@ -463,6 +463,10 @@ func TestRunnerBuildTargetAmpConstrainsDelegatedAgents(t *testing.T) {
 		"isAbsolute",
 		"parentThreadID: ctx.thread.id",
 		"executor: 'local'",
+		"createThread",
+		"appendUserMessage",
+		"waitForResponse",
+		"this is not a pin failure",
 		"Do not commit, push, merge, rewrite history",
 		"Workdir is routing context, not a sandbox",
 		"amp plugins show-agent-options",
@@ -509,6 +513,7 @@ func TestAmpDelegateGuidanceCoversIsolationSnapshotsPreflightAndMigration(t *tes
 		"consult_oracle",
 		"not selectable picker modes",
 		"Hook enforcement still loads",
+		"A wait timeout is not a pin failure",
 		"~/.config/amp/plugins/delegated-agents.ts",
 		"Loaf must never overwrite or delete",
 		"no silent fallback",
@@ -620,6 +625,24 @@ func TestAmpDelegatedAgentRuntimeContract(t *testing.T) {
 		t.Fatalf("run failure succeeded: %#v", runFail)
 	}
 	assertAmpDelegateCompatibilityFailure(t, runFail.Error, "agent.run unavailable")
+
+	timeoutFail := runAmpDelegateHarness(t, plugin, map[string]any{"case": "timeout-failure", "workdir": workdir, "prompt": "implement"})
+	if timeoutFail.OK {
+		t.Fatalf("timeout failure succeeded: %#v", timeoutFail)
+	}
+	for _, want := range []string{
+		"timed out waiting for the child agent",
+		"this is not a pin failure",
+		"Child thread: https://ampcode.com/threads/T-grok-implementation-agent",
+		"may still be running",
+	} {
+		if !strings.Contains(timeoutFail.Error, want) {
+			t.Fatalf("timeout diagnostic = %q, want %q", timeoutFail.Error, want)
+		}
+	}
+	if strings.Contains(timeoutFail.Error, "compatibility failure") {
+		t.Fatalf("timeout must not be labeled compatibility failure: %q", timeoutFail.Error)
+	}
 }
 
 func TestAmpDelegateGuidanceIsSharedSkillNotPerTargetRewrite(t *testing.T) {
@@ -3003,17 +3026,53 @@ function registerPinnedTool(amp, role, model, tools, definition) {
   }
 }
 
+function classifyDelegateFailure(cause) {
+  const detail = cause instanceof Error ? cause.message : cause ? String(cause) : '';
+  const lowered = detail.toLowerCase();
+  if (lowered.includes('timed out') || lowered.includes('timeout')) {
+    return 'timeout';
+  }
+  return 'compatibility';
+}
+
+function delegateFailure(role, model, tools, cause, threadID) {
+  const detail = cause instanceof Error ? cause.message : cause ? String(cause) : '';
+  const kind = classifyDelegateFailure(cause);
+  const threadLine = threadID ? 'Child thread: https://ampcode.com/threads/' + threadID : '';
+  if (kind === 'timeout') {
+    return new Error([
+      role + ' timed out waiting for the child agent. The pinned model ' + model + ' and tools [' + tools.join(', ') + '] were available; this is not a pin failure.',
+      threadLine,
+      'The child thread may still be running. Open it, wait, or steer it. Do not treat this as an unavailable model.',
+      'Do not substitute a model, reasoning level, broader capability set, or local execution by the orchestrating model.',
+    ].filter(Boolean).join(' '));
+  }
+  return new Error([
+    role + ' compatibility failure: pinned model ' + model + ' or required tools [' + tools.join(', ') + '] are unavailable.',
+    detail,
+    threadLine,
+    'Do not substitute a model, reasoning level, broader capability set, or local execution by the orchestrating model.',
+    'There is no silent fallback and no local fallback.',
+    'Run amp plugins show-agent-options --json and confirm the pinned model id and each required built-in tool name before retrying.',
+  ].filter(Boolean).join(' '));
+}
+
 async function runPinnedAgent(agent, role, model, tools, prompt, ctx) {
+  let threadID = '';
   try {
-    return await agent.run(prompt, {
+    const thread = await agent.createThread({
       parentThreadID: ctx.thread.id,
       executor: 'local',
-      timeoutMs: 3600000,
     });
+    threadID = thread.id;
+    await thread.appendUserMessage({ type: 'user-message', content: prompt });
+    const reply = await thread.waitForResponse({ timeoutMs: 3600000 });
+    return { threadID, text: reply.content || '' };
   } catch (cause) {
-    throw delegateCompatibilityFailure(role, model, tools, cause);
+    throw delegateFailure(role, model, tools, cause, threadID);
   }
 }
+
 
 function registerDelegatedAgents(amp) {
   const grokImplementer = createPinnedAgent(amp, 'grok-impl', GROK_MODEL, GROK_IMPL_TOOLS, {
@@ -3072,15 +3131,26 @@ function createStub(kind) {
     if (config.name === 'luna-review-agent') state.luna = record;
     return {
       definition: { kind: 'agent-definition', name: config.name },
-      async run(prompt, options = {}) {
+      async createThread(options = {}) {
         if (kind === 'run-failure') throw new Error('agent.run unavailable');
-        record.prompt = prompt;
         record.parentThreadID = options.parentThreadID || '';
         record.executor = options.executor || '';
-        const lowered = String(prompt).toLowerCase();
-        if (/\bgit\s+(diff|status|add|commit|push|restore)\b/.test(lowered)) record.gitInvoked = true;
-        if (/\b(shell_command|execfile)\b/.test(lowered)) record.shellInvoked = true;
-        return { threadID: 'T-' + config.name, text: config.name + ' ok' };
+        return {
+          id: 'T-' + config.name,
+          async appendUserMessage(message) {
+            record.prompt = message.content || '';
+            const lowered = String(record.prompt).toLowerCase();
+            if (/\bgit\s+(diff|status|add|commit|push|restore)\b/.test(lowered)) record.gitInvoked = true;
+            if (/\b(shell_command|execfile)\b/.test(lowered)) record.shellInvoked = true;
+          },
+          async waitForResponse() {
+            if (kind === 'timeout-failure') throw new Error('Timed out waiting for agent response');
+            return { content: config.name + ' ok' };
+          },
+        };
+      },
+      async run() {
+        throw new Error('agent.run should not be used for long-running delegates');
       },
     };
   }
@@ -3131,7 +3201,7 @@ try {
     }));
     process.exit(0);
   }
-  if (payload.case === 'happy' || payload.case === 'run-failure' || payload.case === 'invalid-prompt' || payload.case === 'invalid-workdir') {
+  if (payload.case === 'happy' || payload.case === 'run-failure' || payload.case === 'timeout-failure' || payload.case === 'invalid-prompt' || payload.case === 'invalid-workdir') {
     await state.tools.get('delegate_grok_implementation').execute({ workdir: payload.workdir, prompt: payload.prompt }, ctx);
   }
   if (payload.case === 'happy' || payload.case === 'missing-diff') {
