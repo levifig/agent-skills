@@ -61,6 +61,10 @@ Reference LOAF-123 if relevant.
 
 The background agent's journal entries are tagged with its own harness id automatically — there is no session alias to pass.
 
+### Amp
+
+Amp's managed Loaf plugin registers `loaf-medium` and `loaf-ultra` as selectable orchestrators and `delegate_grok_implementation` / `delegate_luna_review` / `consult_oracle` as callable tools. Grok and Luna are not picker modes. Built-in Amp medium cannot be rewritten. Isolation still needs a Loaf-started worktree or an appropriate runner. See [amp-delegates.md](amp-delegates.md).
+
 ### Other harnesses
 
 If your product has no dedicated background-agent API, run the work in a separate conversation or thread, give it the same report path and durable IDs, and track spawn/completion with `loaf journal log` as below.

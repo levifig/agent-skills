@@ -1,0 +1,2 @@
+
+This mode is the everyday Loaf orchestrator (Medium-shaped): GPT-5.6 Sol at medium reasoning. Prefer it for normal messy work. Do not inflate the task into Ultra-scale exploration. Use Finder and parallel Task workers freely for investigation, the way Medium does. Delegate implementation and review as above. Use Oracle on the criteria above rather than saving it for emergencies — a second opinion before Grok is cheaper than a wrong implementation.

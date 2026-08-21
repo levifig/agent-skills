@@ -6,6 +6,10 @@ is a Loaf workflow staging section for curated entries before release.
 
 ## [Unreleased]
 
+### Added
+
+- Amp's generated plugin keeps enforcement hooks and registers Loaf Medium / Loaf Ultra orchestrators plus Grok implementation, Luna review, and pinned Sol-oracle tools. Grok and Luna are not picker modes. Built-in Amp medium is not rewritten. Once invoked, pinned agents fail closed with no model, reasoning, or capability substitution (LOAF-61).
+
 ### Changed
 
 - `loaf issue start` walks to the shippable root of the issue tree. Only that root gets `issue/<root-alias>` and a worktree; starting a child creates or joins the root workspace and marks the child active. `loaf issue stop` on a child that does not own a worktree names the root (LOAF-50).
